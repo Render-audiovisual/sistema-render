@@ -830,7 +830,9 @@ function App() {
 
   const esAdmin = sesion.usuario.rol === "admin";
   const rutaPropia = USUARIO_A_RUTA[sesion.usuario.usuario];
-  const rutaPermitida = esAdmin || path === "/" || rutaPropia === path;
+  const rutasCompartidas = ["/", "/calendario", "/perfil"];
+  const rutaPermitida =
+    esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
 
   if (!rutaPermitida) {
     window.location.href = rutaPropia || "/";
@@ -858,6 +860,15 @@ function App() {
     }
     if (path === "/equipo") {
       return <EquipoDashboard />;
+    }
+    if (path === "/calendario") {
+      return <CalendarioPage />;
+    }
+    if (path === "/perfil") {
+      return <PerfilPage />;
+    }
+    if (path === "/empleados") {
+      return <EmpleadosPage />;
     }
     if (path === "/nueva-tarea") {
       return <NuevaTareaPage />;
@@ -890,84 +901,383 @@ function App() {
   );
 }
 
+const ROLES_HOME = [
+  { nombre: "Agustín", descripcion: "Panorama admin", path: "/agustin" },
+  { nombre: "Franco", descripcion: "Cola de aprobaciones", path: "/franco" },
+  { nombre: "Augusto", descripcion: "Diseño", path: "/augusto" },
+  { nombre: "Luciano", descripcion: "Edición", path: "/luciano" },
+  { nombre: "Germán", descripcion: "Producción", path: "/german" },
+  { nombre: "Oriana", descripcion: "Community", path: "/oriana" },
+];
+
 function HomePage() {
-  const roles = [
+  const sesion = getSesion();
+  const esAdmin = sesion?.usuario?.rol === "admin";
+  const rutaPropia = USUARIO_A_RUTA[sesion?.usuario?.usuario] || "/";
+
+  const atajos = [
     {
-      nombre: "Agustín",
-      descripcion: "Dashboard admin panorámico",
-      path: "/agustin",
+      titulo: "Mi tablero",
+      desc: "Tu vista de trabajo diaria",
+      href: rutaPropia,
     },
     {
-      nombre: "Franco",
-      descripcion: "Cola de aprobaciones",
-      path: "/franco",
+      titulo: "Calendario",
+      desc: "Cuándo se publica cada pieza",
+      href: "/calendario",
     },
     {
-      nombre: "Augusto",
-      descripcion: "Diseño",
-      path: "/augusto",
-    },
-    {
-      nombre: "Luciano",
-      descripcion: "Edición",
-      path: "/luciano",
-    },
-    {
-      nombre: "Germán",
-      descripcion: "Producción",
-      path: "/german",
-    },
-    {
-      nombre: "Oriana",
-      descripcion: "Community",
-      path: "/oriana",
+      titulo: "Mi perfil",
+      desc: "Tus datos y contraseña",
+      href: "/perfil",
     },
   ];
+  if (esAdmin) {
+    atajos.push({
+      titulo: "Vista de equipo",
+      desc: "Carga y cumplimiento por persona",
+      href: "/equipo",
+    });
+    atajos.push({
+      titulo: "Cargar tarea nueva",
+      desc: "Asignar trabajo a alguien",
+      href: "/nueva-tarea",
+    });
+    atajos.push({
+      titulo: "Gestión de empleados",
+      desc: "Altas, bajas y accesos",
+      href: "/empleados",
+    });
+  }
 
   return (
     <main aria-label="Render platform home">
-      <div className="note">
-        WIREFRAME — baja fidelidad, sin marca ni color final. Objetivo:
-        validar estructura y navegación, no estética.
-      </div>
-
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
             <span className="active">Home</span>
           </div>
-          <div className="tag">Entrada plataforma</div>
+          <div className="tag">
+            {sesion?.usuario?.nombre} · {sesion?.usuario?.rol}
+          </div>
         </div>
 
         <div className="content">
-          <div className="section-label">Punto de entrada</div>
-          <div className="box">
-            <div className="box-header">
-              <strong>Seleccionar dashboard</strong>
-              <span className="tag">6 roles</span>
+          <div className="home-hero">
+            <h2>Hola, {sesion?.usuario?.nombre} 👋</h2>
+            <div className="caption">
+              Bienvenido a la plataforma interna de Render. Elegí por dónde
+              seguir.
             </div>
+          </div>
 
-            <a
-              className="btn primary"
-              href="/nueva-tarea"
-              style={{ marginBottom: "12px", display: "inline-block" }}
-            >
-              + Cargar tarea nueva
-            </a>
-            <div className="home-grid">
-              {roles.map((rol) => (
-                <div className="home-role" key={rol.path}>
-                  <div>
-                    <div className="home-role-name">{rol.nombre}</div>
-                    <div className="caption">{rol.descripcion}</div>
-                  </div>
-                  <a className="btn" href={rol.path}>
-                    Abrir
-                  </a>
+          <div className="section-label">Accesos rápidos</div>
+          <div className="home-shortcuts">
+            {atajos.map((atajo) => (
+              <a className="home-shortcut" href={atajo.href} key={atajo.href}>
+                <div>
+                  <div className="hs-title">{atajo.titulo}</div>
+                  <div className="hs-desc">{atajo.desc}</div>
                 </div>
-              ))}
+              </a>
+            ))}
+          </div>
+
+          {esAdmin && (
+            <>
+              <div className="section-label">Ir al tablero de cada rol</div>
+              <div className="box">
+                <div className="home-grid">
+                  {ROLES_HOME.map((rol) => (
+                    <div className="home-role" key={rol.path}>
+                      <div>
+                        <div className="home-role-name">{rol.nombre}</div>
+                        <div className="caption">{rol.descripcion}</div>
+                      </div>
+                      <a className="btn" href={rol.path}>
+                        Abrir
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+const MESES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+function getGrillaMes(year, month) {
+  const primerDia = new Date(year, month, 1);
+  const totalDias = new Date(year, month + 1, 0).getDate();
+  let offset = primerDia.getDay();
+  offset = offset === 0 ? 6 : offset - 1;
+
+  const celdas = [];
+  for (let i = 0; i < offset; i += 1) celdas.push(null);
+  for (let d = 1; d <= totalDias; d += 1) celdas.push(d);
+  while (celdas.length % 7 !== 0) celdas.push(null);
+
+  const semanas = [];
+  for (let i = 0; i < celdas.length; i += 7) {
+    semanas.push(celdas.slice(i, i + 7));
+  }
+  return semanas;
+}
+
+function fechaISODesde(year, month, day) {
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function CalendarioPage() {
+  const hoy = new Date();
+  const [year, setYear] = useState(hoy.getFullYear());
+  const [month, setMonth] = useState(hoy.getMonth());
+  const [piezas, setPiezas] = useState([]);
+  const [error, setError] = useState(null);
+  const [filtroTipo, setFiltroTipo] = useState("todos");
+  const [piezaSel, setPiezaSel] = useState(null);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/historias").then((r) => r.json()),
+      fetch("/api/publicaciones").then((r) => r.json()),
+    ])
+      .then(([historias, publicaciones]) => {
+        setPiezas([
+          ...historias.map((h) => ({
+            ...h,
+            origen: "historia",
+            tipo: "historia",
+            tipoLabel: "Historia",
+          })),
+          ...publicaciones.map((p) => ({
+            ...p,
+            origen: "publicacion",
+            tipoLabel: getTipoPublicacionLabel(p.tipo),
+          })),
+        ]);
+      })
+      .catch((err) => {
+        console.error("No se pudo cargar el calendario", err);
+        setError("No se pudo cargar el calendario.");
+      });
+  }, []);
+
+  const piezasFiltradas = piezas.filter((pz) => {
+    if (filtroTipo === "todos") return true;
+    if (filtroTipo === "historia") return pz.origen === "historia";
+    return pz.tipo === filtroTipo;
+  });
+
+  const porFecha = {};
+  piezasFiltradas.forEach((pz) => {
+    if (!pz.fecha_programada) return;
+    (porFecha[pz.fecha_programada] = porFecha[pz.fecha_programada] || []).push(pz);
+  });
+
+  const semanas = getGrillaMes(year, month);
+  const hoyISO = getHoyLocalISO();
+
+  const irMes = (delta) => {
+    let m = month + delta;
+    let y = year;
+    if (m < 0) {
+      m = 11;
+      y -= 1;
+    } else if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+    setMonth(m);
+    setYear(y);
+  };
+
+  const filtros = [
+    { key: "todos", label: "Todo" },
+    { key: "historia", label: "Historias" },
+    { key: "reel", label: "Reels" },
+    { key: "carrusel", label: "Carruseles" },
+    { key: "flyer", label: "Flyers" },
+    { key: "video", label: "Videos" },
+  ];
+
+  return (
+    <main aria-label="Render platform calendario">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Calendario</span>
+          </div>
+          <div className="tag">Publicaciones e historias</div>
+        </div>
+
+        <div className="content">
+          <div className="cal-toolbar">
+            <button className="btn" type="button" onClick={() => irMes(-1)}>
+              ◀ Mes anterior
+            </button>
+            <span className="cal-title">
+              {MESES[month]} {year}
+            </span>
+            <button className="btn" type="button" onClick={() => irMes(1)}>
+              Mes siguiente ▶
+            </button>
+          </div>
+
+          <div className="tabs">
+            {filtros.map((f) => (
+              <span
+                key={f.key}
+                className={filtroTipo === f.key ? "active" : ""}
+                onClick={() => setFiltroTipo(f.key)}
+              >
+                {f.label}
+              </span>
+            ))}
+          </div>
+
+          {error && <div className="caption">{error}</div>}
+
+          <div className="cal-grid">
+            {DIAS_SEMANA.map((dia) => (
+              <div className="cal-dow" key={dia}>
+                {dia}
+              </div>
+            ))}
+            {semanas.map((semana, si) =>
+              semana.map((dia, di) => {
+                if (dia === null) {
+                  return (
+                    <div className="cal-cell empty" key={`${si}-${di}`}></div>
+                  );
+                }
+                const iso = fechaISODesde(year, month, dia);
+                const items = porFecha[iso] || [];
+                return (
+                  <div
+                    className={`cal-cell ${iso === hoyISO ? "today" : ""}`}
+                    key={`${si}-${di}`}
+                  >
+                    <div className="cal-daynum">{dia}</div>
+                    {items.map((pz) => (
+                      <div
+                        className={`cal-chip ${pz.estado}`}
+                        key={`${pz.origen}-${pz.id}`}
+                        onClick={() => setPiezaSel(pz)}
+                        title={`${pz.tipoLabel} · ${pz.cliente_nombre} · ${getEstadoHistoriaLabel(
+                          pz.estado,
+                        )}`}
+                      >
+                        {pz.tipoLabel[0]} · {pz.cliente_nombre}
+                      </div>
+                    ))}
+                  </div>
+                );
+              }),
+            )}
+          </div>
+
+          <div className="cal-legend">
+            <span className="lg-pend">Pendiente / en diseño</span>
+            <span className="lg-rev">En revisión</span>
+            <span className="lg-bloq">Bloqueada</span>
+            <span className="lg-pub">Publicada</span>
+          </div>
+          <div className="caption">
+            → Cada casilla muestra las piezas programadas ese día. La inicial
+            indica el tipo (H istoria, R eel, C arrusel, F lyer, V ideo).
+          </div>
+        </div>
+      </div>
+
+      {piezaSel && (
+        <CalendarioPiezaModal pieza={piezaSel} onClose={() => setPiezaSel(null)} />
+      )}
+    </main>
+  );
+}
+
+function CalendarioPiezaModal({ pieza, onClose }) {
+  return (
+    <div className="modal-overlay open" role="dialog" aria-modal="true">
+      <div className="modal">
+        <div className="modal-header">
+          <span>
+            {pieza.cliente_nombre} · {pieza.metadata?.Idea || "Sin idea cargada"}
+          </span>
+          <button className="modal-close" type="button" onClick={onClose}>
+            X
+          </button>
+        </div>
+        <div className="modal-body">
+          <div className="detail-grid">
+            <div className="detail-field">
+              <div className="detail-label">Tipo</div>
+              <div>{pieza.tipoLabel}</div>
             </div>
+            <div className="detail-field">
+              <div className="detail-label">Estado</div>
+              <div>{getEstadoHistoriaLabel(pieza.estado)}</div>
+            </div>
+            <div className="detail-field">
+              <div className="detail-label">Fecha programada</div>
+              <div>{pieza.fecha_programada}</div>
+            </div>
+            <div className="detail-field">
+              <div className="detail-label">Responsable</div>
+              <div>{pieza.responsable}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PerfilPage() {
+  return (
+    <main aria-label="Render platform perfil">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Mi perfil</span>
+          </div>
+        </div>
+        <div className="content">
+          <div className="box">
+            <div className="caption">Perfil en construcción.</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function EmpleadosPage() {
+  return (
+    <main aria-label="Render platform empleados">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Empleados</span>
+          </div>
+        </div>
+        <div className="content">
+          <div className="box">
+            <div className="caption">Gestión de empleados en construcción.</div>
           </div>
         </div>
       </div>

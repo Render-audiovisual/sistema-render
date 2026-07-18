@@ -98,7 +98,14 @@
       "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"SELECT id, cliente_id, estado, responsable FROM historias WHERE estado='bloqueada';\\\\\"\")",
       "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"SELECT id FROM historias WHERE responsable='Augusto' LIMIT 1;\\\\\"\")",
       "Bash(curl -s -X PATCH http://66.94.104.21:5173/api/historias/6 -H \"Content-Type: application/json\" -d '{\"estado\":\"bloqueada\",\"metadata\":{\"Aclaración\":\"Prueba: falta confirmar producto\"}}' -o /dev/null -w \"set bloqueada: %{http_code}\\\\n\")",
-      "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"SELECT id, estado FROM historias WHERE id=6;\\\\\"\")"
+      "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"SELECT id, estado FROM historias WHERE id=6;\\\\\"\")",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"ALTER TABLE publicaciones DROP CONSTRAINT publicaciones_tipo_check;\\\\\" -c \\\\\"ALTER TABLE publicaciones ADD CONSTRAINT publicaciones_tipo_check CHECK \\(tipo = ANY \\(ARRAY['reel'::text, 'carrusel'::text, 'flyer'::text, 'video'::text]\\)\\);\\\\\"\")",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c '\\\\\\\\d publicaciones' | grep -A2 Check\")",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"INSERT INTO publicaciones \\(cliente_id, tipo, estado, fecha_programada, responsable, metadata\\) VALUES \\(97, 'flyer', 'en_revision', '2026-07-20', 'Augusto', '{\\\\\\\\\\\\\"Idea\\\\\\\\\\\\\": \\\\\\\\\\\\\"Flyer promo test\\\\\\\\\\\\\"}'\\) RETURNING id;\\\\\"\")",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"DELETE FROM publicaciones WHERE id=15;\\\\\"\")",
+      "Bash(curl -s http://66.94.104.21:3001/health -w \"\\\\nBackend: %{http_code}\\\\n\")",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"SELECT id,nombre,cuota_reels,cuota_carruseles FROM clientes WHERE id=97;\\\\\" -c \\\\\"SELECT count\\(*\\) FROM publicaciones;\\\\\" -c \\\\\"SELECT id,estado FROM historias WHERE id=6;\\\\\"\")",
+      "Bash(rsync -avz '--rsync-path=sudo rsync' -e ssh '/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx' '/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/styles.css' claude-render@66.94.104.21:/root/.openclaw/workspace/frontend/src/)"
     ]
   }
 }
