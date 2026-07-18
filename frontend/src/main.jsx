@@ -585,12 +585,22 @@ function LoginPage() {
   );
 }
 
+const RESPONSABLES = [
+  "Agustín",
+  "Franco",
+  "Augusto",
+  "Luciano",
+  "Germán",
+  "Oriana",
+];
+
 function NuevaTareaPage() {
   const [clientes, setClientes] = useState([]);
   const [titulo, setTitulo] = useState("");
   const [asignadoA, setAsignadoA] = useState("Augusto");
   const [clienteId, setClienteId] = useState("");
   const [estado, setEstado] = useState("pendiente");
+  const [fechaVencimiento, setFechaVencimiento] = useState("");
   const [requiereAprobacion, setRequiereAprobacion] = useState(false);
   const [mensaje, setMensaje] = useState(null);
   const [error, setError] = useState(null);
@@ -618,6 +628,7 @@ function NuevaTareaPage() {
         cliente_id: clienteId ? Number(clienteId) : null,
         estado,
         requiere_aprobacion: requiereAprobacion,
+        fecha_vencimiento: fechaVencimiento || null,
       }),
     })
       .then(async (response) => {
@@ -630,6 +641,9 @@ function NuevaTareaPage() {
       .then((data) => {
         setMensaje(`Tarea creada: "${data.titulo}" asignada a ${data.asignado_a}.`);
         setTitulo("");
+        setClienteId("");
+        setEstado("pendiente");
+        setFechaVencimiento("");
         setRequiereAprobacion(false);
       })
       .catch((err) => setError(err.message))
@@ -638,11 +652,6 @@ function NuevaTareaPage() {
 
   return (
     <main aria-label="Render platform nueva tarea">
-      <div className="note">
-        WIREFRAME — baja fidelidad, sin marca ni color final. Objetivo:
-        validar estructura y navegación, no estética.
-      </div>
-
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
@@ -650,70 +659,102 @@ function NuevaTareaPage() {
             <span className="active">Nueva tarea</span>
             <a href="/">Home</a>
           </div>
+          <div className="tag">Cargar trabajo</div>
         </div>
 
         <div className="content">
           <div className="section-label">Cargar tarea y asignar responsable</div>
           <div className="box">
-            <form onSubmit={handleSubmit} className="login-form">
-              <label className="login-field">
-                <span className="detail-label">Título</span>
-                <input
-                  type="text"
-                  value={titulo}
-                  onChange={(e) => setTitulo(e.target.value)}
-                  required
-                />
-              </label>
+            <form onSubmit={handleSubmit}>
+              <div className="form-section-title">Qué hay que hacer</div>
+              <div className="form-grid">
+                <label className="form-field">
+                  <span>Título de la tarea *</span>
+                  <input
+                    type="text"
+                    value={titulo}
+                    placeholder="Ej: Reel testimonio cliente"
+                    onChange={(e) => setTitulo(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Cliente</span>
+                  <select
+                    value={clienteId}
+                    onChange={(e) => setClienteId(e.target.value)}
+                  >
+                    <option value="">Sin cliente asociado</option>
+                    {clientes.map((cliente) => (
+                      <option key={cliente.id} value={cliente.id}>
+                        {cliente.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
 
-              <label className="login-field">
-                <span className="detail-label">Cliente (opcional)</span>
-                <select
-                  value={clienteId}
-                  onChange={(e) => setClienteId(e.target.value)}
+              <div className="form-section-title">Asignación y plazo</div>
+              <div className="form-grid cols-2">
+                <label className="form-field">
+                  <span>Responsable *</span>
+                  <select
+                    value={asignadoA}
+                    onChange={(e) => setAsignadoA(e.target.value)}
+                  >
+                    {RESPONSABLES.map((nombre) => (
+                      <option key={nombre} value={nombre}>
+                        {nombre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>Vence el</span>
+                  <input
+                    type="date"
+                    value={fechaVencimiento}
+                    onChange={(e) => setFechaVencimiento(e.target.value)}
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Estado inicial</span>
+                  <select
+                    value={estado}
+                    onChange={(e) => setEstado(e.target.value)}
+                  >
+                    <option value="pendiente">Pendiente</option>
+                    <option value="en_progreso">En progreso</option>
+                    <option value="bloqueada">Bloqueada</option>
+                  </select>
+                </label>
+                <label
+                  className="form-field"
+                  style={{ flexDirection: "row", alignItems: "center", gap: "8px", marginTop: "18px" }}
                 >
-                  <option value="">Sin cliente asociado</option>
-                  {clientes.map((cliente) => (
-                    <option key={cliente.id} value={cliente.id}>
-                      {cliente.nombre}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="login-field">
-                <span className="detail-label">Responsable</span>
-                <select
-                  value={asignadoA}
-                  onChange={(e) => setAsignadoA(e.target.value)}
-                >
-                  <option value="Agustín">Agustín</option>
-                  <option value="Franco">Franco</option>
-                  <option value="Augusto">Augusto</option>
-                  <option value="Luciano">Luciano</option>
-                  <option value="Germán">Germán</option>
-                  <option value="Oriana">Oriana</option>
-                </select>
-              </label>
-
-              <label
-                className="login-field"
-                style={{ flexDirection: "row", alignItems: "center", gap: "8px" }}
-              >
-                <input
-                  type="checkbox"
-                  checked={requiereAprobacion}
-                  onChange={(e) => setRequiereAprobacion(e.target.checked)}
-                />
-                <span className="detail-label">Requiere aprobación de Franco</span>
-              </label>
+                  <input
+                    type="checkbox"
+                    checked={requiereAprobacion}
+                    onChange={(e) => setRequiereAprobacion(e.target.checked)}
+                  />
+                  <span style={{ textTransform: "none" }}>
+                    Requiere aprobación de Franco
+                  </span>
+                </label>
+              </div>
 
               {error && <div className="caption login-error">{error}</div>}
-              {mensaje && <div className="caption">{mensaje}</div>}
+              {mensaje && (
+                <div className="caption" style={{ color: "#333", fontWeight: "bold" }}>
+                  {mensaje}
+                </div>
+              )}
 
-              <button className="btn primary" type="submit" disabled={enviando}>
-                {enviando ? "Creando..." : "Crear tarea"}
-              </button>
+              <div style={{ marginTop: "14px" }}>
+                <button className="btn primary" type="submit" disabled={enviando}>
+                  {enviando ? "Creando..." : "Crear tarea"}
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -774,6 +815,22 @@ function TareasAsignadasGenericas({ nombre }) {
                   {tarea.cliente_nombre ?? "Sin cliente"}
                 </div>
                 <div>{tarea.titulo}</div>
+                <div className="meta">
+                  {tarea.fecha_vencimiento && (
+                    <>
+                      Vence: {tarea.fecha_vencimiento}
+                      {tarea.fecha_vencimiento < getHoyLocalISO() &&
+                        tarea.estado !== "hecha" && (
+                          <span
+                            className="tag atraso"
+                            style={{ marginLeft: "6px" }}
+                          >
+                            Atrasada
+                          </span>
+                        )}
+                    </>
+                  )}
+                </div>
                 <div className="meta">
                   {tarea.requiere_aprobacion && (
                     <span className="tag creativa">Requiere aprobación</span>

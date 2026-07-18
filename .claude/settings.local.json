@@ -105,7 +105,20 @@
       "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"DELETE FROM publicaciones WHERE id=15;\\\\\"\")",
       "Bash(curl -s http://66.94.104.21:3001/health -w \"\\\\nBackend: %{http_code}\\\\n\")",
       "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"SELECT id,nombre,cuota_reels,cuota_carruseles FROM clientes WHERE id=97;\\\\\" -c \\\\\"SELECT count\\(*\\) FROM publicaciones;\\\\\" -c \\\\\"SELECT id,estado FROM historias WHERE id=6;\\\\\"\")",
-      "Bash(rsync -avz '--rsync-path=sudo rsync' -e ssh '/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx' '/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/styles.css' claude-render@66.94.104.21:/root/.openclaw/workspace/frontend/src/)"
+      "Bash(rsync -avz '--rsync-path=sudo rsync' -e ssh '/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx' '/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/styles.css' claude-render@66.94.104.21:/root/.openclaw/workspace/frontend/src/)",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c 'ALTER TABLE tareas ADD COLUMN IF NOT EXISTS fecha_vencimiento date;' -c '\\\\\\\\d tareas' | grep -A14 'Column'\")",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"SELECT id, titulo, asignado_a, fecha_vencimiento FROM tareas ORDER BY id DESC LIMIT 1;\\\\\"\")",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"SELECT id, titulo, fecha_vencimiento FROM tareas ORDER BY id DESC LIMIT 1;\\\\\"\")",
+      "Bash(curl -s -X POST http://66.94.104.21:5173/api/tareas -H \"Content-Type: application/json\" -d '{\"titulo\":\"Test curl fecha\",\"asignado_a\":\"Augusto\",\"fecha_vencimiento\":\"2026-07-25\"}')",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo grep -c 'fecha_vencimiento' /root/.openclaw/workspace/backend/src/server.js && echo '--- proceso ---' && sudo ps aux | grep 'server.js' | grep -v grep\")",
+      "Bash(curl -s -X POST http://66.94.104.21:5173/api/tareas -H \"Content-Type: application/json\" -d '{\"titulo\":\"Test curl fecha 2\",\"asignado_a\":\"Augusto\",\"fecha_vencimiento\":\"2026-07-26\"}')",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo grep -A2 'INSERT INTO tareas' /root/.openclaw/workspace/backend/src/server.js\")",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo kill 762591 && sleep 2 && echo 'worker killed, --watch should respawn'\")",
+      "Bash(curl -s http://66.94.104.21:3001/health -w \"\\\\nhealth: %{http_code}\\\\n\")",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo ps aux | grep 'server.js' | grep -v grep || echo 'NO server.js process running'\")",
+      "Bash(curl -s -X POST http://66.94.104.21:5173/api/tareas -H \"Content-Type: application/json\" -d '{\"titulo\":\"Test fecha post-reinicio\",\"asignado_a\":\"Augusto\",\"fecha_vencimiento\":\"2026-07-26\"}')",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"DELETE FROM tareas WHERE id IN \\(15,16,17,18,19\\);\\\\\"\")",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo -u postgres psql -U postgres -d render_platform -c \\\\\"DELETE FROM tareas WHERE id=20;\\\\\"\")"
     ]
   }
 }

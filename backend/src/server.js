@@ -251,6 +251,7 @@ app.post("/tareas", async (req, res, next) => {
       requiere_aprobacion,
       escalada_a,
       motivo,
+      fecha_vencimiento,
     } = req.body;
 
     if (!titulo || !asignado_a) {
@@ -277,9 +278,9 @@ app.post("/tareas", async (req, res, next) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, created_at, updated_at`,
+      `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, created_at, updated_at`,
       [
         titulo,
         asignado_a,
@@ -287,6 +288,7 @@ app.post("/tareas", async (req, res, next) => {
         estadoFinal,
         Boolean(requiere_aprobacion),
         JSON.stringify(propiedadesExtra),
+        fecha_vencimiento || null,
       ],
     );
 
@@ -323,7 +325,7 @@ app.patch("/tareas/:id", async (req, res, next) => {
          END,
          updated_at = now()
        WHERE id = $3
-       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, created_at, updated_at`,
+       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, created_at, updated_at`,
       [
         estado || null,
         propiedades_extra ? JSON.stringify(propiedades_extra) : null,
@@ -354,6 +356,7 @@ app.get("/tareas", async (_req, res, next) => {
         t.propiedades_extra,
         t.cliente_id,
         c.nombre AS cliente_nombre,
+        to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
         t.created_at,
         t.updated_at
       FROM tareas t
