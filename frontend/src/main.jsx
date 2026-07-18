@@ -186,32 +186,91 @@ function calcularPorcentajePublicadas(items) {
   return Math.round((publicadas / items.length) * 100);
 }
 
+function calcularPorcentajeCuota(publicadas, cuota) {
+  if (cuota <= 0) return 0;
+  return Math.min(100, Math.round((publicadas / cuota) * 100));
+}
+
+function getMesActualISO() {
+  const hoy = new Date();
+  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function esDelMesActual(fechaISO) {
+  return typeof fechaISO === "string" && fechaISO.startsWith(getMesActualISO());
+}
+
+function getInicioSemanaISO() {
+  const hoy = new Date();
+  const dia = hoy.getDay();
+  const diffLunes = dia === 0 ? -6 : 1 - dia;
+  const lunes = new Date(hoy);
+  lunes.setDate(hoy.getDate() + diffLunes);
+  const year = lunes.getFullYear();
+  const month = String(lunes.getMonth() + 1).padStart(2, "0");
+  const day = String(lunes.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function esDeEstaSemana(fechaISO) {
+  return (
+    typeof fechaISO === "string" &&
+    fechaISO >= getInicioSemanaISO() &&
+    fechaISO <= getHoyLocalISO()
+  );
+}
+
 function getPanoramaClientes(clientes, historias, publicaciones) {
   return clientes
     .map((cliente) => {
       const historiasCliente = historias.filter(
-        (historia) => historia.cliente_id === cliente.id,
+        (historia) =>
+          historia.cliente_id === cliente.id &&
+          esDelMesActual(historia.fecha_programada),
       );
-      const publicacionesCliente = publicaciones.filter(
-        (publicacion) => publicacion.cliente_id === cliente.id,
+      const feedDelMes = publicaciones.filter(
+        (publicacion) =>
+          publicacion.cliente_id === cliente.id &&
+          esDelMesActual(publicacion.fecha_programada),
       );
+      const feedDeEstaSemana = feedDelMes.filter((publicacion) =>
+        esDeEstaSemana(publicacion.fecha_programada),
+      );
+
+      const cuotaFeedMes =
+        (cliente.cuota_reels || 0) + (cliente.cuota_carruseles || 0);
+      const cuotaFeedSemana = cuotaFeedMes / 4;
+
+      const feedPublicadoMes = feedDelMes.filter(
+        (publicacion) => publicacion.estado === "publicada",
+      ).length;
+      const feedPublicadoSemana = feedDeEstaSemana.filter(
+        (publicacion) => publicacion.estado === "publicada",
+      ).length;
+
       const porcentajeHistorias = calcularPorcentajePublicadas(historiasCliente);
-      const porcentajeFeed = calcularPorcentajePublicadas(publicacionesCliente);
+      const porcentajeFeed = calcularPorcentajeCuota(
+        feedPublicadoMes,
+        cuotaFeedMes,
+      );
+      const porcentajeFeedSemana = calcularPorcentajeCuota(
+        feedPublicadoSemana,
+        cuotaFeedSemana,
+      );
       const porcentajeObjetivo = Math.round(
         (porcentajeHistorias + porcentajeFeed) / 2,
       );
       const porcentajes = {
         historias: porcentajeHistorias,
         feed: porcentajeFeed,
+        feedSemana: porcentajeFeedSemana,
         objetivo: porcentajeObjetivo,
         historiasPublicadas: historiasCliente.filter(
           (historia) => historia.estado === "publicada",
         ).length,
         historiasTotal: historiasCliente.length,
-        feedPublicado: publicacionesCliente.filter(
-          (publicacion) => publicacion.estado === "publicada",
-        ).length,
-        feedTotal: publicacionesCliente.length,
+        feedPublicado: feedPublicadoMes,
+        feedTotal: cuotaFeedMes,
       };
 
       return {
@@ -229,11 +288,22 @@ function getPanoramaClientes(clientes, historias, publicaciones) {
     });
 }
 
+function getCumplimientoGeneral(clientes) {
+  const conDatos = clientes.filter((cliente) => cliente.porcentajes);
+  if (conDatos.length === 0) return 0;
+  const suma = conDatos.reduce(
+    (acc, cliente) => acc + cliente.porcentajes.objetivo,
+    0,
+  );
+  return Math.round(suma / conDatos.length);
+}
+
 function getPorcentajesCliente(cliente) {
   return (
     cliente.porcentajes ?? {
       historias: 0,
       feed: 0,
+      feedSemana: 0,
       objetivo: 0,
     }
   );
@@ -244,13 +314,13 @@ function getResumenEquipo(historias, publicaciones, tareas) {
   const personas = ["Augusto", "Oriana", "Luciano", "Germán"];
 
   return personas.map((nombre) => {
-    const items = [
+    const piezas = [
       ...historias.filter((historia) => historia.responsable === nombre),
       ...publicaciones.filter(
         (publicacion) => publicacion.responsable === nombre,
       ),
-      ...tareas.filter((tarea) => tarea.asignado_a === nombre),
     ];
+    const items = [...piezas, ...tareas.filter((tarea) => tarea.asignado_a === nombre)];
     const bloqueadas = items.filter((item) => item.estado === "bloqueada");
     const atrasadas = items.filter(
       (item) =>
@@ -259,6 +329,10 @@ function getResumenEquipo(historias, publicaciones, tareas) {
         item.estado !== "publicada" &&
         item.estado !== "hecha",
     );
+    const piezasDelMes = piezas.filter((pieza) =>
+      esDelMesActual(pieza.fecha_programada),
+    );
+    const cargaTotal = items.length;
 
     let estado = "Al día";
     if (bloqueadas.length > 0) {
@@ -277,6 +351,8 @@ function getResumenEquipo(historias, publicaciones, tareas) {
       alerta: bloqueadas.length > 0 || atrasadas.length > 0,
       bloqueadas: bloqueadas.length,
       atrasadas: atrasadas.length,
+      cargaTotal,
+      cumplimiento: calcularPorcentajePublicadas(piezasDelMes),
     };
   });
 }
@@ -1815,8 +1891,10 @@ function AgustinDashboard() {
           </div>
           <div className="box">
             <div className="box-header">
-              <strong>Panorama de clientes — Julio 2026</strong>
-              <span className="tag">Filtro: Todos ▾</span>
+              <strong>Panorama de clientes — {getMesActualISO()}</strong>
+              <span className="tag">
+                Cumplimiento general: {getCumplimientoGeneral(clientes)}%
+              </span>
             </div>
 
             <table>
@@ -1825,7 +1903,8 @@ function AgustinDashboard() {
                   <th>Estado</th>
                   <th>Cliente</th>
                   <th>Historias</th>
-                  <th>Feed</th>
+                  <th>Feed (mes)</th>
+                  <th>Feed (semana)</th>
                   <th>Objetivo mes</th>
                 </tr>
               </thead>
@@ -1847,13 +1926,14 @@ function AgustinDashboard() {
                       <td>{cliente.nombre}</td>
                       <td>{porcentajes.historias}%</td>
                       <td>{porcentajes.feed}%</td>
+                      <td>{porcentajes.feedSemana}%</td>
                       <td>{porcentajes.objetivo}%</td>
                     </tr>
                   );
                 })}
                 {panoramaError && (
                   <tr>
-                    <td colSpan="5">{panoramaError}</td>
+                    <td colSpan="6">{panoramaError}</td>
                   </tr>
                 )}
               </tbody>
@@ -1876,6 +1956,10 @@ function AgustinDashboard() {
             {resumenEquipo.map((persona) => (
               <div className="persona-row" key={persona.nombre}>
                 <span>{persona.nombre}</span>
+                <span className="caption">
+                  {persona.cargaTotal} asignadas · {persona.cumplimiento}%
+                  cumplimiento
+                </span>
                 <span className={`tag ${persona.alerta ? "atraso" : ""}`}>
                   {persona.estado}
                 </span>
@@ -1973,9 +2057,9 @@ function AgustinDashboard() {
 
 function FrancoDashboard() {
   const [piezaSeleccionada, setPiezaSeleccionada] = useState(null);
-  const [historiasEnRevision, setHistoriasEnRevision] = useState([]);
-  const [historiasEnRevisionError, setHistoriasEnRevisionError] =
-    useState(null);
+  const [piezasEnRevision, setPiezasEnRevision] = useState([]);
+  const [piezasEnRevisionError, setPiezasEnRevisionError] = useState(null);
+  const [filtroCola, setFiltroCola] = useState("todas");
   const [tareasFranco, setTareasFranco] = useState([]);
   const [tareasFrancoError, setTareasFrancoError] = useState(null);
 
@@ -1986,18 +2070,36 @@ function FrancoDashboard() {
     (tarea) => tarea.propiedades_extra?.escalada_a,
   );
 
-  useEffect(() => {
-    fetch("/api/historias")
-      .then((response) => response.json())
-      .then((historias) => {
-        setHistoriasEnRevision(
-          historias.filter((historia) => historia.estado === "en_revision"),
+  const cargarCola = () => {
+    Promise.all([
+      fetch("/api/historias").then((r) => r.json()),
+      fetch("/api/publicaciones").then((r) => r.json()),
+    ])
+      .then(([historias, publicaciones]) => {
+        const combinadas = [
+          ...historias.map((h) => ({
+            ...h,
+            origen: "historia",
+            tipoLabel: "Historia",
+          })),
+          ...publicaciones.map((p) => ({
+            ...p,
+            origen: "publicacion",
+            tipoLabel: p.tipo === "carrusel" ? "Carrusel" : "Reel",
+          })),
+        ].filter(
+          (pieza) => pieza.estado === "en_revision" || pieza.estado === "bloqueada",
         );
+        setPiezasEnRevision(combinadas);
       })
       .catch((error) => {
         console.error("No se pudieron cargar las aprobaciones de Franco", error);
-        setHistoriasEnRevisionError("No se pudieron cargar las aprobaciones.");
+        setPiezasEnRevisionError("No se pudieron cargar las aprobaciones.");
       });
+  };
+
+  useEffect(() => {
+    cargarCola();
 
     fetch("/api/tareas")
       .then((response) => response.json())
@@ -2009,6 +2111,12 @@ function FrancoDashboard() {
         setTareasFrancoError("No se pudieron cargar las tareas.");
       });
   }, []);
+
+  const piezasFiltradas = piezasEnRevision.filter((pieza) => {
+    if (filtroCola === "creativa") return pieza.estado === "en_revision";
+    if (filtroCola === "bloqueo") return pieza.estado === "bloqueada";
+    return true;
+  });
 
   return (
     <main aria-label="Render platform Franco">
@@ -2036,14 +2144,29 @@ function FrancoDashboard() {
               <div className="box-header">
                 <strong>Mi cola de aprobaciones</strong>
                 <span className="tag">
-                  Pendientes: {historiasEnRevision.length}
+                  Pendientes: {piezasEnRevision.length}
                 </span>
               </div>
 
             <div className="tabs">
-              <span className="active">Todas</span>
-              <span>Aprobación creativa</span>
-              <span>Bloqueo operativo</span>
+              <span
+                className={filtroCola === "todas" ? "active" : ""}
+                onClick={() => setFiltroCola("todas")}
+              >
+                Todas
+              </span>
+              <span
+                className={filtroCola === "creativa" ? "active" : ""}
+                onClick={() => setFiltroCola("creativa")}
+              >
+                Aprobación creativa
+              </span>
+              <span
+                className={filtroCola === "bloqueo" ? "active" : ""}
+                onClick={() => setFiltroCola("bloqueo")}
+              >
+                Bloqueo operativo
+              </span>
             </div>
 
             <table>
@@ -2053,42 +2176,54 @@ function FrancoDashboard() {
                   <th>Pieza</th>
                   <th>Tipo</th>
                   <th>Responsable</th>
-                  <th>Estado</th>
+                  <th>Vence</th>
                   <th>Acción</th>
                 </tr>
               </thead>
               <tbody>
-                {historiasEnRevision.map((historia) => (
-                  <tr key={historia.id}>
-                    <td>{historia.cliente_nombre}</td>
-                    <td>{historia.metadata?.Idea || "Sin idea cargada"}</td>
+                {piezasFiltradas.map((pieza) => (
+                  <tr key={`${pieza.origen}-${pieza.id}`}>
+                    <td>{pieza.cliente_nombre}</td>
+                    <td>{pieza.metadata?.Idea || "Sin idea cargada"}</td>
                     <td>
-                      <span className="tag creativa">Creativa</span>
-                    </td>
-                    <td>{historia.responsable}</td>
-                    <td>{historia.fecha_programada}</td>
-                    <td>
-                      <button
-                        className="btn"
-                        type="button"
-                        onClick={() => setPiezaSeleccionada(historia)}
+                      <span
+                        className={`tag ${
+                          pieza.estado === "bloqueada" ? "operativa" : "creativa"
+                        }`}
                       >
-                        Revisar
-                      </button>
+                        {pieza.tipoLabel}
+                      </span>
+                    </td>
+                    <td>{pieza.responsable}</td>
+                    <td>{pieza.fecha_programada}</td>
+                    <td>
+                      {pieza.estado === "en_revision" ? (
+                        <button
+                          className="btn"
+                          type="button"
+                          onClick={() => setPiezaSeleccionada(pieza)}
+                        >
+                          Revisar
+                        </button>
+                      ) : (
+                        <span className="caption">
+                          Bloqueada:{" "}
+                          {pieza.metadata?.Aclaración || "sin aclaración cargada"}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
-                {historiasEnRevisionError && (
+                {piezasEnRevisionError && (
                   <tr>
-                    <td colSpan="6">{historiasEnRevisionError}</td>
+                    <td colSpan="6">{piezasEnRevisionError}</td>
                   </tr>
                 )}
-                {!historiasEnRevisionError &&
-                  historiasEnRevision.length === 0 && (
-                    <tr>
-                      <td colSpan="6">No hay historias en revisión.</td>
-                    </tr>
-                  )}
+                {!piezasEnRevisionError && piezasFiltradas.length === 0 && (
+                  <tr>
+                    <td colSpan="6">No hay piezas en esta vista.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
 
@@ -2169,16 +2304,8 @@ function FrancoDashboard() {
         <RevisionPiezaModal
           pieza={piezaSeleccionada}
           onClose={() => setPiezaSeleccionada(null)}
-          onAprobar={(id) => {
-            setHistoriasEnRevision((actuales) =>
-              actuales.filter((historia) => historia.id !== id),
-            );
-          }}
-          onCorreccion={(id) => {
-            setHistoriasEnRevision((actuales) =>
-              actuales.filter((historia) => historia.id !== id),
-            );
-          }}
+          onAprobar={cargarCola}
+          onCorreccion={cargarCola}
         />
       )}
       <TareasAsignadasGenericas nombre="Franco" />
@@ -2189,12 +2316,16 @@ function FrancoDashboard() {
 function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
+  const endpointPieza =
+    pieza.origen === "publicacion"
+      ? `/api/publicaciones/${pieza.id}`
+      : `/api/historias/${pieza.id}`;
 
   const handleAprobar = () => {
     setEnviando("aprobar");
     setError(null);
 
-    fetch(`/api/historias/${pieza.id}`, {
+    fetch(endpointPieza, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ estado: "lista" }),
@@ -2226,7 +2357,7 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
     setEnviando("correccion");
     setError(null);
 
-    fetch(`/api/historias/${pieza.id}`, {
+    fetch(endpointPieza, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
