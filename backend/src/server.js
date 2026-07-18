@@ -474,6 +474,280 @@ app.get("/tareas", async (_req, res, next) => {
   }
 });
 
+app.get("/piezas", async (_req, res, next) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        'publicacion' AS origen,
+        p.id,
+        p.tipo,
+        p.estado,
+        p.cliente_id,
+        c.nombre AS cliente_nombre,
+        p.responsable,
+        p.fecha_programada,
+        p.metadata->>'Idea' AS idea,
+        p.metadata->>'Copy' AS copy,
+        p.metadata->>'Material' AS material_referencia,
+        p.metadata->>'Aclaración' AS aclaraciones,
+        p.idea,
+        p.copy,
+        p.material_referencia,
+        p.aclaraciones,
+        p.prioridad,
+        p.created_at,
+        p.updated_at
+      FROM publicaciones p
+      LEFT JOIN clientes c ON c.id = p.cliente_id
+
+      UNION ALL
+
+      SELECT
+        'historia' AS origen,
+        h.id,
+        'historia'::text AS tipo,
+        h.estado,
+        h.cliente_id,
+        c.nombre AS cliente_nombre,
+        h.responsable,
+        h.fecha_programada,
+        h.metadata->>'Idea' AS idea,
+        h.metadata->>'Copy' AS copy,
+        h.metadata->>'Material' AS material_referencia,
+        h.metadata->>'Aclaración' AS aclaraciones,
+        h.idea,
+        h.copy,
+        h.material_referencia,
+        h.aclaraciones,
+        h.prioridad,
+        h.created_at,
+        h.updated_at
+      FROM historias h
+      LEFT JOIN clientes c ON c.id = h.cliente_id
+
+      ORDER BY created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/piezas/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const resultP = await pool.query(
+      `SELECT
+        'publicacion' AS origen,
+        p.id,
+        p.tipo,
+        p.estado,
+        p.cliente_id,
+        c.nombre AS cliente_nombre,
+        p.responsable,
+        p.fecha_programada,
+        p.idea,
+        p.copy,
+        p.material_referencia,
+        p.aclaraciones,
+        p.prioridad,
+        p.created_at,
+        p.updated_at
+      FROM publicaciones p
+      LEFT JOIN clientes c ON c.id = p.cliente_id
+      WHERE p.id = $1`,
+      [id],
+    );
+
+    if (resultP.rows.length > 0) {
+      return res.json(resultP.rows[0]);
+    }
+
+    const resultH = await pool.query(
+      `SELECT
+        'historia' AS origen,
+        h.id,
+        'historia'::text AS tipo,
+        h.estado,
+        h.cliente_id,
+        c.nombre AS cliente_nombre,
+        h.responsable,
+        h.fecha_programada,
+        h.idea,
+        h.copy,
+        h.material_referencia,
+        h.aclaraciones,
+        h.prioridad,
+        h.created_at,
+        h.updated_at
+      FROM historias h
+      LEFT JOIN clientes c ON c.id = h.cliente_id
+      WHERE h.id = $1`,
+      [id],
+    );
+
+    if (resultH.rows.length === 0) {
+      return res.status(404).json({ error: "Pieza no encontrada." });
+    }
+
+    res.json(resultH.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/piezas", async (req, res, next) => {
+  try {
+    const {
+      tipo,
+      cliente_id,
+      responsable,
+      fecha_programada,
+      estado,
+      idea,
+      copy,
+      material_referencia,
+      aclaraciones,
+      prioridad,
+    } = req.body;
+
+    if (!tipo || !cliente_id || !responsable || !fecha_programada) {
+      return res
+        .status(400)
+        .json({
+          error: "Faltan tipo, cliente_id, responsable o fecha_programada.",
+        });
+    }
+
+    if (tipo === "historia") {
+      const result = await pool.query(
+        `INSERT INTO historias (cliente_id, estado, fecha_programada, responsable, idea, copy, material_referencia, aclaraciones, prioridad)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING 'historia' AS origen, id, 'historia' AS tipo, cliente_id, estado, fecha_programada, responsable, idea, copy, material_referencia, aclaraciones, prioridad, created_at, updated_at`,
+        [
+          cliente_id,
+          estado || "pendiente",
+          fecha_programada,
+          responsable,
+          idea || "",
+          copy || "",
+          material_referencia || "",
+          aclaraciones || "",
+          prioridad || "media",
+        ],
+      );
+      return res.status(201).json(result.rows[0]);
+    }
+
+    if (["reel", "carrusel", "flyer", "video"].includes(tipo)) {
+      const result = await pool.query(
+        `INSERT INTO publicaciones (cliente_id, tipo, estado, fecha_programada, responsable, idea, copy, material_referencia, aclaraciones, prioridad)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING 'publicacion' AS origen, id, tipo, cliente_id, estado, fecha_programada, responsable, idea, copy, material_referencia, aclaraciones, prioridad, created_at, updated_at`,
+        [
+          cliente_id,
+          tipo,
+          estado || "pendiente",
+          fecha_programada,
+          responsable,
+          idea || "",
+          copy || "",
+          material_referencia || "",
+          aclaraciones || "",
+          prioridad || "media",
+        ],
+      );
+      return res.status(201).json(result.rows[0]);
+    }
+
+    res.status(400).json({
+      error: "Tipo de pieza inválido. Usa: historia, reel, carrusel, flyer, video",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/piezas/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { estado, prioridad, idea, copy, material_referencia, aclaraciones } =
+      req.body;
+
+    const estadosValidos = [
+      "pendiente",
+      "en_diseño",
+      "en_edición",
+      "en_revisión",
+      "lista",
+      "publicada",
+      "bloqueada",
+    ];
+
+    if (estado && !estadosValidos.includes(estado)) {
+      return res.status(400).json({ error: "Estado inválido." });
+    }
+
+    let resultP = await pool.query(
+      `UPDATE publicaciones
+       SET
+         estado = COALESCE($1, estado),
+         prioridad = COALESCE($2, prioridad),
+         idea = COALESCE($3, idea),
+         copy = COALESCE($4, copy),
+         material_referencia = COALESCE($5, material_referencia),
+         aclaraciones = COALESCE($6, aclaraciones),
+         updated_at = now()
+       WHERE id = $7
+       RETURNING 'publicacion' AS origen, id, tipo, estado, cliente_id, responsable, prioridad, idea, copy, material_referencia, aclaraciones, updated_at`,
+      [
+        estado || null,
+        prioridad || null,
+        idea || null,
+        copy || null,
+        material_referencia || null,
+        aclaraciones || null,
+        id,
+      ],
+    );
+
+    if (resultP.rows.length > 0) {
+      return res.json(resultP.rows[0]);
+    }
+
+    let resultH = await pool.query(
+      `UPDATE historias
+       SET
+         estado = COALESCE($1, estado),
+         prioridad = COALESCE($2, prioridad),
+         idea = COALESCE($3, idea),
+         copy = COALESCE($4, copy),
+         material_referencia = COALESCE($5, material_referencia),
+         aclaraciones = COALESCE($6, aclaraciones),
+         updated_at = now()
+       WHERE id = $7
+       RETURNING 'historia' AS origen, id, 'historia' AS tipo, estado, cliente_id, responsable, prioridad, idea, copy, material_referencia, aclaraciones, updated_at`,
+      [
+        estado || null,
+        prioridad || null,
+        idea || null,
+        copy || null,
+        material_referencia || null,
+        aclaraciones || null,
+        id,
+      ],
+    );
+
+    if (resultH.rows.length === 0) {
+      return res.status(404).json({ error: "Pieza no encontrada." });
+    }
+
+    res.json(resultH.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
 try {
   await checkDatabaseConnection();
   await setupDemoClientes();
