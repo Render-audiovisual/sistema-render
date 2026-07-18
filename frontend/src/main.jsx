@@ -956,7 +956,7 @@ function OrianaDashboard() {
                     }}
                   >
                     <div className="cliente">{pieza.cliente_nombre}</div>
-                    <div>{pieza.metadata?.Idea ?? "Sin idea cargada"}</div>
+                    <div>{pieza.metadata?.Idea || "Sin idea cargada"}</div>
                     <div className="meta">
                       <span
                         className={`tag ${
@@ -994,9 +994,9 @@ function OrianaDashboard() {
                 key={`bloqueada-${pieza.origen}-${pieza.id}`}
               >
                 <div className="cliente">{pieza.cliente_nombre}</div>
-                <div>{pieza.metadata?.Idea ?? "Sin idea cargada"}</div>
+                <div>{pieza.metadata?.Idea || "Sin idea cargada"}</div>
                 <div className="meta">
-                  {pieza.metadata?.Aclaración ?? "Sin aclaración cargada"}
+                  {pieza.metadata?.Aclaración || "Sin aclaración cargada"}
                 </div>
               </div>
             ))}
@@ -1092,7 +1092,7 @@ function ChecklistPublicacionOrianaModal({ publicacion, onClose, onPublicar }) {
         <div className="modal-header">
           <span>
             {publicacion.cliente_nombre} ·{" "}
-            {publicacion.metadata?.Idea ?? "Sin idea cargada"}
+            {publicacion.metadata?.Idea || "Sin idea cargada"}
           </span>
           <button className="modal-close" type="button" onClick={onClose}>
             X
@@ -1380,7 +1380,7 @@ function LucianoDashboard() {
                       {publicacion.cliente_nombre}
                     </div>
                     <div>
-                      {publicacion.metadata?.Idea ?? "Sin idea cargada"}
+                      {publicacion.metadata?.Idea || "Sin idea cargada"}
                     </div>
                     <div className="meta">{publicacion.fecha_programada}</div>
                     <div className="meta">
@@ -1425,11 +1425,11 @@ function LucianoDashboard() {
                         {publicacion.cliente_nombre}
                       </div>
                       <div>
-                        {publicacion.metadata?.Idea ?? "Sin idea cargada"}
+                        {publicacion.metadata?.Idea || "Sin idea cargada"}
                       </div>
                       <div className="meta">
                         {publicacion.estado === "bloqueada" ? (
-                          publicacion.metadata?.Aclaración ??
+                          publicacion.metadata?.Aclaración ||
                           "Sin aclaración cargada"
                         ) : (
                           <span
@@ -1487,7 +1487,7 @@ function TareaAprobacionPendienteModal({ tarea, onClose }) {
       <div className="modal">
         <div className="modal-header">
           <span>
-            {tarea.cliente_nombre} · {tarea.metadata?.Idea ?? "Sin idea cargada"}
+            {tarea.cliente_nombre} · {tarea.metadata?.Idea || "Sin idea cargada"}
           </span>
           <button className="modal-close" type="button" onClick={onClose}>
             X
@@ -1503,7 +1503,7 @@ function TareaAprobacionPendienteModal({ tarea, onClose }) {
             </div>
             <div className="detail-field">
               <div className="detail-label">Material</div>
-              <div>{tarea.metadata?.Material ?? "Sin material cargado"}</div>
+              <div>{tarea.metadata?.Material || "Sin material cargado"}</div>
             </div>
           </div>
 
@@ -1568,43 +1568,56 @@ function AugustoDashboard() {
               <div className="caption">{historiasAugustoError}</div>
             )}
             {!historiasAugustoError &&
-              historiasAugusto.map((historia) => {
-                const estaAtrasada =
-                  historia.fecha_programada < getHoyLocalISO() &&
-                  historia.estado !== "publicada";
-                const estaBloqueada = historia.estado === "bloqueada";
+              historiasAugusto
+                .filter((historia) => {
+                  const vencidaOVenceHoy =
+                    historia.fecha_programada <= getHoyLocalISO() &&
+                    historia.estado !== "publicada";
+                  return vencidaOVenceHoy || historia.estado === "bloqueada";
+                })
+                .map((historia) => {
+                  const estaAtrasada =
+                    historia.fecha_programada < getHoyLocalISO() &&
+                    historia.estado !== "publicada";
+                  const estaBloqueada = historia.estado === "bloqueada";
 
-                return (
-                  <div
-                    className={`priority-card ${
-                      estaAtrasada || estaBloqueada ? "blocked" : ""
-                    }`}
-                    key={historia.id}
-                    onClick={() => setHistoriaSeleccionada(historia)}
-                  >
-                    <div className="cliente">{historia.cliente_nombre}</div>
-                    <div>{historia.metadata?.Idea ?? "Sin idea cargada"}</div>
-                    <div className="meta">
-                      {historia.fecha_programada} ·{" "}
-                      {getEstadoHistoriaLabel(historia.estado)}
-                    </div>
-                    {estaBloqueada && (
+                  return (
+                    <div
+                      className={`priority-card ${
+                        estaAtrasada || estaBloqueada ? "blocked" : ""
+                      }`}
+                      key={historia.id}
+                      onClick={() => setHistoriaSeleccionada(historia)}
+                    >
+                      <div className="cliente">{historia.cliente_nombre}</div>
+                      <div>{historia.metadata?.Idea || "Sin idea cargada"}</div>
                       <div className="meta">
-                        <span className="tag operativa">
-                          Bloqueada:{" "}
-                          {historia.metadata?.Aclaración ??
-                            "sin aclaración cargada"}
-                        </span>
+                        {historia.fecha_programada} ·{" "}
+                        {getEstadoHistoriaLabel(historia.estado)}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            {!historiasAugustoError && historiasAugusto.length === 0 && (
-              <div className="caption">
-                No hay historias asignadas a Augusto.
-              </div>
-            )}
+                      {estaBloqueada && (
+                        <div className="meta">
+                          <span className="tag operativa">
+                            Bloqueada:{" "}
+                            {historia.metadata?.Aclaración ||
+                              "sin aclaración cargada"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            {!historiasAugustoError &&
+              historiasAugusto.filter((historia) => {
+                const vencidaOVenceHoy =
+                  historia.fecha_programada <= getHoyLocalISO() &&
+                  historia.estado !== "publicada";
+                return vencidaOVenceHoy || historia.estado === "bloqueada";
+              }).length === 0 && (
+                <div className="caption">
+                  No hay historias atrasadas ni que venzan hoy.
+                </div>
+              )}
             <div className="caption">
               → Primero ve historias reales asignadas a Augusto. El detalle del
               modal queda para el próximo paso.
@@ -1630,7 +1643,7 @@ function AugustoDashboard() {
                           {historia.cliente_nombre}
                         </div>
                         <div>
-                          {historia.metadata?.Idea ?? "Sin idea cargada"}
+                          {historia.metadata?.Idea || "Sin idea cargada"}
                         </div>
                         <div className="meta">
                           {historia.fecha_programada} ·{" "}
@@ -1640,7 +1653,7 @@ function AugustoDashboard() {
                           <div className="meta">
                             <span className="tag operativa">
                               Bloqueada:{" "}
-                              {historia.metadata?.Aclaración ??
+                              {historia.metadata?.Aclaración ||
                                 "sin aclaración cargada"}
                             </span>
                           </div>
@@ -1697,7 +1710,7 @@ function DetalleHistoriaModal({ historia, onClose }) {
         <div className="modal-header">
           <span>
             {historia.cliente_nombre} ·{" "}
-            {historia.metadata?.Idea ?? "Historia sin idea cargada"}
+            {historia.metadata?.Idea || "Historia sin idea cargada"}
           </span>
           <button className="modal-close" type="button" onClick={onClose}>
             X
@@ -1711,20 +1724,20 @@ function DetalleHistoriaModal({ historia, onClose }) {
           <div className="detail-grid">
             <div className="detail-field">
               <div className="detail-label">Copy</div>
-              <div>{historia.metadata?.Copy ?? "Sin copy cargado"}</div>
+              <div>{historia.metadata?.Copy || "Sin copy cargado"}</div>
             </div>
             <div className="detail-field">
               <div className="detail-label">CTA</div>
-              <div>{historia.metadata?.CTA ?? "Sin CTA cargado"}</div>
+              <div>{historia.metadata?.CTA || "Sin CTA cargado"}</div>
             </div>
             <div className="detail-field">
               <div className="detail-label">Material</div>
-              <div>{historia.metadata?.Material ?? "Sin material cargado"}</div>
+              <div>{historia.metadata?.Material || "Sin material cargado"}</div>
             </div>
             <div className="detail-field">
               <div className="detail-label">Aclaración</div>
               <div>
-                {historia.metadata?.Aclaración ?? "Sin aclaración cargada"}
+                {historia.metadata?.Aclaración || "Sin aclaración cargada"}
               </div>
             </div>
           </div>
@@ -2048,7 +2061,7 @@ function FrancoDashboard() {
                 {historiasEnRevision.map((historia) => (
                   <tr key={historia.id}>
                     <td>{historia.cliente_nombre}</td>
-                    <td>{historia.metadata?.Idea ?? "Sin idea cargada"}</td>
+                    <td>{historia.metadata?.Idea || "Sin idea cargada"}</td>
                     <td>
                       <span className="tag creativa">Creativa</span>
                     </td>
@@ -2253,7 +2266,7 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         titulo: `Escalado: ${
-          pieza.metadata?.Idea ?? "Pieza sin idea"
+          pieza.metadata?.Idea || "Pieza sin idea"
         } (${pieza.cliente_nombre})`,
         asignado_a: "Franco",
         cliente_id: pieza.cliente_id,
@@ -2283,7 +2296,7 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
       <div className="modal">
         <div className="modal-header">
           <span>
-            {pieza.cliente_nombre} · {pieza.metadata?.Idea ?? "Sin idea cargada"}
+            {pieza.cliente_nombre} · {pieza.metadata?.Idea || "Sin idea cargada"}
           </span>
           <button className="modal-close" type="button" onClick={onClose}>
             X
@@ -2295,7 +2308,7 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
           <div className="preview-box">[ Preview del reel ]</div>
 
           <div className="meta-block">
-            Material: {pieza.metadata?.Material ?? "Sin material cargado"}
+            Material: {pieza.metadata?.Material || "Sin material cargado"}
           </div>
 
           {error && <div className="caption login-error">{error}</div>}
@@ -2338,14 +2351,14 @@ function DetalleClienteModal({ cliente, historias, publicaciones, onClose }) {
   const piezas = [
     ...historias.map((h) => ({
       id: `historia-${h.id}`,
-      pieza: h.metadata?.Idea ?? "Historia sin título",
+      pieza: h.metadata?.Idea || "Historia sin título",
       responsable: h.responsable,
       estado: h.estado,
     })),
     ...publicaciones.map((p) => ({
       id: `publicacion-${p.id}`,
       pieza:
-        p.metadata?.Idea ??
+        p.metadata?.Idea ||
         `${p.tipo === "carrusel" ? "Carrusel" : "Reel"} sin título`,
       responsable: p.responsable,
       estado: p.estado,
