@@ -65,6 +65,111 @@ app.post("/login", async (req, res, next) => {
   }
 });
 
+const ROLES_VALIDOS = [
+  "admin",
+  "diseno",
+  "edicion",
+  "produccion",
+  "community",
+];
+
+app.get("/usuarios", async (_req, res, next) => {
+  try {
+    const result = await pool.query(
+      "SELECT id, usuario, nombre, rol, created_at FROM usuarios ORDER BY id",
+    );
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/usuarios", async (req, res, next) => {
+  try {
+    const { usuario, nombre, rol, password } = req.body;
+
+    if (!usuario || !nombre || !rol || !password) {
+      return res.status(400).json({ error: "Faltan datos del empleado." });
+    }
+    if (!ROLES_VALIDOS.includes(rol)) {
+      return res.status(400).json({ error: "Rol inválido." });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      `INSERT INTO usuarios (usuario, nombre, rol, password_hash)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, usuario, nombre, rol, created_at`,
+      [usuario, nombre, rol, passwordHash],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res
+        .status(409)
+        .json({ error: "Ya existe un usuario con ese nombre de acceso." });
+    }
+    next(error);
+  }
+});
+
+app.delete("/usuarios/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      "DELETE FROM usuarios WHERE id = $1 RETURNING id",
+      [id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado." });
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/usuarios/password", async (req, res, next) => {
+  try {
+    const { usuario, password_actual, password_nueva } = req.body;
+
+    if (!usuario || !password_actual || !password_nueva) {
+      return res
+        .status(400)
+        .json({ error: "Faltan la contraseña actual y la nueva." });
+    }
+
+    const found = await pool.query(
+      "SELECT id, password_hash FROM usuarios WHERE usuario = $1",
+      [usuario],
+    );
+    if (found.rows.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado." });
+    }
+
+    const passwordValida = await bcrypt.compare(
+      password_actual,
+      found.rows[0].password_hash,
+    );
+    if (!passwordValida) {
+      return res.status(401).json({ error: "La contraseña actual es incorrecta." });
+    }
+
+    const passwordHash = await bcrypt.hash(password_nueva, 10);
+    await pool.query("UPDATE usuarios SET password_hash = $1 WHERE id = $2", [
+      passwordHash,
+      found.rows[0].id,
+    ]);
+
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/clientes", async (_req, res, next) => {
   try {
     const result = await pool.query(`

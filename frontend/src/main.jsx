@@ -1302,7 +1302,65 @@ function CalendarioPiezaModal({ pieza, onClose }) {
   );
 }
 
+const ROL_LABELS = {
+  admin: "Administrador",
+  diseno: "Diseño",
+  edicion: "Edición",
+  produccion: "Producción",
+  community: "Community",
+};
+
 function PerfilPage() {
+  const sesion = getSesion();
+  const usuario = sesion?.usuario;
+  const [actual, setActual] = useState("");
+  const [nueva, setNueva] = useState("");
+  const [confirmar, setConfirmar] = useState("");
+  const [mensaje, setMensaje] = useState(null);
+  const [error, setError] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    setMensaje(null);
+    setError(null);
+
+    if (nueva.length < 4) {
+      setError("La nueva contraseña debe tener al menos 4 caracteres.");
+      return;
+    }
+    if (nueva !== confirmar) {
+      setError("La nueva contraseña y su confirmación no coinciden.");
+      return;
+    }
+
+    setEnviando(true);
+    fetch("/api/usuarios/password", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        usuario: usuario.usuario,
+        password_actual: actual,
+        password_nueva: nueva,
+      }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo cambiar la contraseña.");
+        }
+        return data;
+      })
+      .then(() => {
+        setMensaje("Contraseña actualizada correctamente.");
+        setActual("");
+        setNueva("");
+        setConfirmar("");
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setEnviando(false));
+  };
+
   return (
     <main aria-label="Render platform perfil">
       <div className="frame">
@@ -1310,11 +1368,75 @@ function PerfilPage() {
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
             <span className="active">Mi perfil</span>
+            <a href="/">Home</a>
           </div>
+          <div className="tag">{usuario?.nombre}</div>
         </div>
+
         <div className="content">
+          <div className="section-label">Mis datos</div>
           <div className="box">
-            <div className="caption">Perfil en construcción.</div>
+            <div className="detail-grid">
+              <div className="detail-field">
+                <div className="detail-label">Nombre</div>
+                <div>{usuario?.nombre}</div>
+              </div>
+              <div className="detail-field">
+                <div className="detail-label">Usuario de acceso</div>
+                <div>{usuario?.usuario}</div>
+              </div>
+              <div className="detail-field">
+                <div className="detail-label">Rol</div>
+                <div>{ROL_LABELS[usuario?.rol] || usuario?.rol}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="section-label">Cambiar mi contraseña</div>
+          <div className="box">
+            <form onSubmit={handleSubmit} className="login-form">
+              <label className="login-field">
+                <span className="detail-label">Contraseña actual</span>
+                <input
+                  type="password"
+                  value={actual}
+                  onChange={(e) => setActual(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              <label className="login-field">
+                <span className="detail-label">Nueva contraseña</span>
+                <input
+                  type="password"
+                  value={nueva}
+                  onChange={(e) => setNueva(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+              <label className="login-field">
+                <span className="detail-label">Repetir nueva contraseña</span>
+                <input
+                  type="password"
+                  value={confirmar}
+                  onChange={(e) => setConfirmar(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+
+              {error && <div className="caption login-error">{error}</div>}
+              {mensaje && (
+                <div className="caption" style={{ color: "#333", fontWeight: "bold" }}>
+                  {mensaje}
+                </div>
+              )}
+
+              <button className="btn primary" type="submit" disabled={enviando}>
+                {enviando ? "Guardando..." : "Cambiar contraseña"}
+              </button>
+            </form>
           </div>
         </div>
       </div>
@@ -1323,6 +1445,71 @@ function PerfilPage() {
 }
 
 function EmpleadosPage() {
+  const [usuarios, setUsuarios] = useState([]);
+  const [error, setError] = useState(null);
+  const [nombre, setNombre] = useState("");
+  const [usuario, setUsuario] = useState("");
+  const [rol, setRol] = useState("diseno");
+  const [password, setPassword] = useState("");
+  const [formError, setFormError] = useState(null);
+  const [mensaje, setMensaje] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+
+  const cargarUsuarios = () => {
+    fetch("/api/usuarios")
+      .then((r) => r.json())
+      .then(setUsuarios)
+      .catch(() => setError("No se pudieron cargar los empleados."));
+  };
+
+  useEffect(cargarUsuarios, []);
+
+  const handleCrear = (event) => {
+    event.preventDefault();
+    setFormError(null);
+    setMensaje(null);
+    setEnviando(true);
+
+    fetch("/api/usuarios", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre, usuario, rol, password }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo crear el empleado.");
+        }
+        return data;
+      })
+      .then((data) => {
+        setMensaje(`Empleado creado: ${data.nombre} (${data.usuario}).`);
+        setNombre("");
+        setUsuario("");
+        setRol("diseno");
+        setPassword("");
+        cargarUsuarios();
+      })
+      .catch((err) => setFormError(err.message))
+      .finally(() => setEnviando(false));
+  };
+
+  const handleEliminar = (u) => {
+    if (
+      !window.confirm(
+        `¿Dar de baja a ${u.nombre} (${u.usuario})? Perderá el acceso a la plataforma.`,
+      )
+    ) {
+      return;
+    }
+    fetch(`/api/usuarios/${u.id}`, { method: "DELETE" })
+      .then((response) => {
+        if (!response.ok) throw new Error("No se pudo dar de baja.");
+        cargarUsuarios();
+      })
+      .catch(() => setError("No se pudo dar de baja al empleado."));
+  };
+
   return (
     <main aria-label="Render platform empleados">
       <div className="frame">
@@ -1330,11 +1517,113 @@ function EmpleadosPage() {
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
             <span className="active">Empleados</span>
+            <a href="/">Home</a>
           </div>
+          <div className="tag">Gestión de accesos</div>
         </div>
+
         <div className="content">
+          <div className="section-label">Empleados con acceso</div>
           <div className="box">
-            <div className="caption">Gestión de empleados en construcción.</div>
+            {error && <div className="caption">{error}</div>}
+            <table>
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Usuario</th>
+                  <th>Rol</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usuarios.map((u) => (
+                  <tr key={u.id}>
+                    <td>{u.nombre}</td>
+                    <td>{u.usuario}</td>
+                    <td>{ROL_LABELS[u.rol] || u.rol}</td>
+                    <td>
+                      <button
+                        className="btn"
+                        type="button"
+                        onClick={() => handleEliminar(u)}
+                      >
+                        Dar de baja
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {usuarios.length === 0 && !error && (
+                  <tr>
+                    <td colSpan="4">No hay empleados cargados.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="section-label">Alta de nuevo empleado</div>
+          <div className="box">
+            <form onSubmit={handleCrear}>
+              <div className="form-grid cols-2">
+                <label className="form-field">
+                  <span>Nombre y apellido *</span>
+                  <input
+                    type="text"
+                    value={nombre}
+                    onChange={(e) => setNombre(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Usuario de acceso *</span>
+                  <input
+                    type="text"
+                    value={usuario}
+                    placeholder="ej: martina"
+                    onChange={(e) => setUsuario(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Rol *</span>
+                  <select value={rol} onChange={(e) => setRol(e.target.value)}>
+                    {Object.entries(ROL_LABELS).map(([key, label]) => (
+                      <option key={key} value={key}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>Contraseña inicial *</span>
+                  <input
+                    type="text"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </label>
+              </div>
+
+              {formError && (
+                <div className="caption login-error">{formError}</div>
+              )}
+              {mensaje && (
+                <div className="caption" style={{ color: "#333", fontWeight: "bold" }}>
+                  {mensaje}
+                </div>
+              )}
+
+              <div style={{ marginTop: "14px" }}>
+                <button className="btn primary" type="submit" disabled={enviando}>
+                  {enviando ? "Creando..." : "Crear empleado"}
+                </button>
+              </div>
+            </form>
+            <div className="caption">
+              → La contraseña inicial se le comparte al empleado, y él puede
+              cambiarla desde "Mi perfil".
+            </div>
           </div>
         </div>
       </div>
