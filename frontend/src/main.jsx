@@ -359,7 +359,9 @@ function getResumenEquipo(historias, publicaciones, tareas) {
 
 function getAprobacionesAgustin(tareas) {
   return tareas.filter(
-    (tarea) => tarea.propiedades_extra?.escalada_a === "Agustín",
+    (tarea) =>
+      tarea.propiedades_extra?.escalada_a === "Agustín" &&
+      tarea.estado !== "hecha",
   );
 }
 
@@ -1189,10 +1191,9 @@ function ChecklistPublicacionOrianaModal({ publicacion, onClose, onPublicar }) {
           {error && <div className="caption login-error">{error}</div>}
 
           <div className="modal-actions">
-            <span className="btn primary">Confirmar y subir</span>
             {/* Regla dura: solo Agustín o Franco pueden marcar publicada. */}
             <button
-              className="btn disabled"
+              className="btn primary disabled"
               disabled={!esAdmin || enviando}
               title={esAdmin ? undefined : "Solo admin puede marcar publicada"}
               type="button"
@@ -1212,7 +1213,7 @@ function GermanDashboard() {
   const [tareasGerman, setTareasGerman] = useState([]);
   const [tareasGermanError, setTareasGermanError] = useState(null);
 
-  useEffect(() => {
+  const cargarTareasGerman = () => {
     fetch("/api/tareas")
       .then((response) => response.json())
       .then((tareas) => {
@@ -1224,7 +1225,9 @@ function GermanDashboard() {
         console.error("No se pudieron cargar las tareas de Germán", error);
         setTareasGermanError("No se pudieron cargar las tareas.");
       });
-  }, []);
+  };
+
+  useEffect(cargarTareasGerman, []);
 
   const pendientes = tareasGerman.filter((tarea) => tarea.estado !== "hecha");
   const entregadas = tareasGerman.filter(
@@ -1327,6 +1330,7 @@ function GermanDashboard() {
         <DetalleProduccionGermanModal
           produccion={produccionSeleccionada}
           onClose={() => setProduccionSeleccionada(null)}
+          onActualizado={cargarTareasGerman}
         />
       )}
       <TareasAsignadasGenericas nombre="Germán" />
@@ -1334,7 +1338,68 @@ function GermanDashboard() {
   );
 }
 
-function DetalleProduccionGermanModal({ produccion, onClose }) {
+function DetalleProduccionGermanModal({ produccion, onClose, onActualizado }) {
+  const [enviando, setEnviando] = useState(null);
+  const [error, setError] = useState(null);
+
+  const handleCoordinarFecha = () => {
+    const horario = window.prompt(
+      "¿Para cuándo se coordina? (ej: 2026-07-25 10:00)",
+      produccion.propiedades_extra?.horario || "",
+    );
+    if (!horario) return;
+
+    setEnviando("coordinar");
+    setError(null);
+
+    fetch(`/api/tareas/${produccion.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        propiedades_extra: { horario, coordinada: true },
+      }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("No se pudo coordinar la fecha.");
+        }
+        return response.json();
+      })
+      .then(() => {
+        onActualizado();
+        onClose();
+      })
+      .catch(() => {
+        setError("No se pudo coordinar la fecha. Intentá de nuevo.");
+        setEnviando(null);
+      });
+  };
+
+  const handleMarcarEntregado = () => {
+    setEnviando("entregar");
+    setError(null);
+
+    fetch(`/api/tareas/${produccion.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estado: "hecha" }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("No se pudo marcar el material como entregado.");
+        }
+        return response.json();
+      })
+      .then(() => {
+        onActualizado();
+        onClose();
+      })
+      .catch(() => {
+        setError("No se pudo marcar como entregado. Intentá de nuevo.");
+        setEnviando(null);
+      });
+  };
+
   return (
     <div className="modal-overlay open" role="dialog" aria-modal="true">
       <div className="modal">
@@ -1366,9 +1431,27 @@ function DetalleProduccionGermanModal({ produccion, onClose }) {
             </div>
           </div>
 
+          {error && <div className="caption login-error">{error}</div>}
+
           <div className="modal-actions">
-            <span className="btn primary">Coordinar fecha</span>
-            <span className="btn">Marcar material entregado</span>
+            <button
+              className="btn primary"
+              type="button"
+              disabled={enviando !== null}
+              onClick={handleCoordinarFecha}
+            >
+              {enviando === "coordinar" ? "Guardando..." : "Coordinar fecha"}
+            </button>
+            <button
+              className="btn"
+              type="button"
+              disabled={enviando !== null || produccion.estado === "hecha"}
+              onClick={handleMarcarEntregado}
+            >
+              {enviando === "entregar"
+                ? "Guardando..."
+                : "Marcar material entregado"}
+            </button>
           </div>
         </div>
       </div>
@@ -1593,7 +1676,10 @@ function TareaAprobacionPendienteModal({ tarea, onClose }) {
             >
               Marcar como hecha
             </button>
-            <span className="btn">Ver estado en cola de Franco</span>
+            <span className="caption">
+              Esperando revisión de Franco — no requiere ninguna acción tuya
+              por ahora.
+            </span>
           </div>
         </div>
       </div>
@@ -1606,7 +1692,7 @@ function AugustoDashboard() {
   const [historiasAugusto, setHistoriasAugusto] = useState([]);
   const [historiasAugustoError, setHistoriasAugustoError] = useState(null);
 
-  useEffect(() => {
+  const cargarHistoriasAugusto = () => {
     fetch("/api/historias")
       .then((response) => response.json())
       .then((historias) => {
@@ -1618,7 +1704,9 @@ function AugustoDashboard() {
         console.error("No se pudieron cargar las historias de Augusto", error);
         setHistoriasAugustoError("No se pudieron cargar las historias.");
       });
-  }, []);
+  };
+
+  useEffect(cargarHistoriasAugusto, []);
 
   return (
     <main aria-label="Render platform Augusto">
@@ -1772,6 +1860,7 @@ function AugustoDashboard() {
         <DetalleHistoriaModal
           historia={historiaSeleccionada}
           onClose={() => setHistoriaSeleccionada(null)}
+          onActualizado={cargarHistoriasAugusto}
         />
       )}
       <TareasAsignadasGenericas nombre="Augusto" />
@@ -1779,7 +1868,71 @@ function AugustoDashboard() {
   );
 }
 
-function DetalleHistoriaModal({ historia, onClose }) {
+function DetalleHistoriaModal({ historia, onClose, onActualizado }) {
+  const [enviando, setEnviando] = useState(null);
+  const [error, setError] = useState(null);
+  const estaBloqueada = historia.estado === "bloqueada";
+
+  const handleDesbloquear = () => {
+    setEnviando("desbloquear");
+    setError(null);
+
+    fetch(`/api/historias/${historia.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estado: "pendiente" }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("No se pudo desbloquear la historia.");
+        }
+        return response.json();
+      })
+      .then(() => {
+        onActualizado();
+        onClose();
+      })
+      .catch(() => {
+        setError("No se pudo desbloquear la historia. Intentá de nuevo.");
+        setEnviando(null);
+      });
+  };
+
+  const handleAvisarGerman = () => {
+    const nota = window.prompt("¿Qué necesita saber Germán sobre esta historia?");
+    if (!nota) return;
+
+    setEnviando("avisar");
+    setError(null);
+
+    fetch("/api/tareas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        titulo: `${historia.cliente_nombre}: ${
+          historia.metadata?.Idea || "historia"
+        } — ${nota}`,
+        asignado_a: "Germán",
+        cliente_id: historia.cliente_id,
+        estado: "pendiente",
+        motivo: nota,
+      }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("No se pudo avisar a Germán.");
+        }
+        return response.json();
+      })
+      .then(() => {
+        onClose();
+      })
+      .catch(() => {
+        setError("No se pudo avisar a Germán. Intentá de nuevo.");
+        setEnviando(null);
+      });
+  };
+
   return (
     <div className="modal-overlay open" role="dialog" aria-modal="true">
       <div className="modal">
@@ -1818,9 +1971,28 @@ function DetalleHistoriaModal({ historia, onClose }) {
             </div>
           </div>
 
+          {error && <div className="caption login-error">{error}</div>}
+
           <div className="modal-actions">
-            <span className="btn primary">Marcar como desbloqueada</span>
-            <span className="btn">Avisar a Germán</span>
+            <button
+              className="btn primary"
+              type="button"
+              disabled={!estaBloqueada || enviando !== null}
+              title={estaBloqueada ? undefined : "Esta historia no está bloqueada"}
+              onClick={handleDesbloquear}
+            >
+              {enviando === "desbloquear"
+                ? "Desbloqueando..."
+                : "Marcar como desbloqueada"}
+            </button>
+            <button
+              className="btn"
+              type="button"
+              disabled={enviando !== null}
+              onClick={handleAvisarGerman}
+            >
+              {enviando === "avisar" ? "Enviando..." : "Avisar a Germán"}
+            </button>
           </div>
         </div>
       </div>
@@ -1839,8 +2011,9 @@ function AgustinDashboard() {
     useState(null);
   const [historiasRaw, setHistoriasRaw] = useState([]);
   const [publicacionesRaw, setPublicacionesRaw] = useState([]);
+  const [busquedaCliente, setBusquedaCliente] = useState("");
 
-  useEffect(() => {
+  const cargarPanorama = () => {
     Promise.all([
       fetch("/api/clientes").then((response) => response.json()),
       fetch("/api/historias").then((response) => response.json()),
@@ -1864,7 +2037,13 @@ function AgustinDashboard() {
         setResumenEquipoError("No se pudo cargar el resumen de equipo.");
         setAprobacionesAgustinError("No se pudieron cargar las aprobaciones.");
       });
-  }, []);
+  };
+
+  useEffect(cargarPanorama, []);
+
+  const clientesFiltrados = clientes.filter((cliente) =>
+    cliente.nombre.toLowerCase().includes(busquedaCliente.toLowerCase()),
+  );
 
   return (
     <main aria-label="Render platform">
@@ -1897,6 +2076,14 @@ function AgustinDashboard() {
               </span>
             </div>
 
+            <input
+              type="text"
+              placeholder="Buscar cliente por nombre…"
+              value={busquedaCliente}
+              onChange={(e) => setBusquedaCliente(e.target.value)}
+              style={{ marginBottom: "12px", width: "100%" }}
+            />
+
             <table>
               <thead>
                 <tr>
@@ -1909,7 +2096,7 @@ function AgustinDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {clientes.map((cliente) => {
+                {clientesFiltrados.map((cliente) => {
                   const porcentajes = getPorcentajesCliente(cliente);
                   const estado = cliente.semaforo;
 
@@ -1936,6 +2123,15 @@ function AgustinDashboard() {
                     <td colSpan="6">{panoramaError}</td>
                   </tr>
                 )}
+                {!panoramaError &&
+                  clientes.length > 0 &&
+                  clientesFiltrados.length === 0 && (
+                    <tr>
+                      <td colSpan="6">
+                        Ningún cliente coincide con "{busquedaCliente}".
+                      </td>
+                    </tr>
+                  )}
               </tbody>
             </table>
 
@@ -1997,7 +2193,21 @@ function AgustinDashboard() {
                         "Sin motivo cargado"}
                     </td>
                     <td>
-                      <span className="btn">Ver</span>
+                      <button
+                        className="btn"
+                        type="button"
+                        onClick={() => {
+                          fetch(`/api/tareas/${aprobacion.id}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ estado: "hecha" }),
+                          }).then((response) => {
+                            if (response.ok) cargarPanorama();
+                          });
+                        }}
+                      >
+                        Marcar resuelta
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -2022,18 +2232,9 @@ function AgustinDashboard() {
             </div>
           </div>
 
-          <div className="section-label">
-            4 · Accesos rápidos (uso ocasional, no diario)
-          </div>
-          <div className="grid-2">
-            <div className="box quick-access-box">
-              <div className="quick-access-title">Config Maestra</div>
-              <span className="btn">Editar cuotas por cliente</span>
-            </div>
-            <div className="box quick-access-box">
-              <div className="quick-access-title">Buscar cliente puntual</div>
-              <span className="btn">Buscar</span>
-            </div>
+          <div className="caption">
+            → Para editar la cuota mensual de un cliente, abrí su detalle
+            haciendo clic en la fila del panorama.
           </div>
         </div>
       </div>
@@ -2048,6 +2249,7 @@ function AgustinDashboard() {
             (p) => p.cliente_id === clienteSeleccionado.id,
           )}
           onClose={() => setClienteSeleccionado(null)}
+          onCuotaActualizada={cargarPanorama}
         />
       )}
       <TareasAsignadasGenericas nombre="Agustín" />
@@ -2476,9 +2678,99 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
   );
 }
 
-function DetalleClienteModal({ cliente, historias, publicaciones, onClose }) {
+function DetalleClienteModal({
+  cliente,
+  historias,
+  publicaciones,
+  onClose,
+  onCuotaActualizada,
+}) {
+  const [enviando, setEnviando] = useState(null);
+  const [error, setError] = useState(null);
   const porcentajes = getPorcentajesCliente(cliente);
   const estado = getEstadoPorObjetivo(porcentajes.objetivo);
+
+  const handleEditarCuota = () => {
+    const nuevaCuotaReels = window.prompt(
+      "Nueva cuota de reels por mes:",
+      cliente.cuota_reels ?? "0",
+    );
+    if (nuevaCuotaReels === null) return;
+    const nuevaCuotaCarruseles = window.prompt(
+      "Nueva cuota de carruseles por mes:",
+      cliente.cuota_carruseles ?? "0",
+    );
+    if (nuevaCuotaCarruseles === null) return;
+
+    const cuota_reels = Number(nuevaCuotaReels);
+    const cuota_carruseles = Number(nuevaCuotaCarruseles);
+    if (
+      !Number.isInteger(cuota_reels) ||
+      !Number.isInteger(cuota_carruseles) ||
+      cuota_reels < 0 ||
+      cuota_carruseles < 0
+    ) {
+      setError("Las cuotas deben ser números enteros ≥ 0.");
+      return;
+    }
+
+    setEnviando("cuota");
+    setError(null);
+
+    fetch(`/api/clientes/${cliente.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cuota_reels, cuota_carruseles }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("No se pudo actualizar la cuota.");
+        }
+        return response.json();
+      })
+      .then(() => {
+        onCuotaActualizada();
+        onClose();
+      })
+      .catch(() => {
+        setError("No se pudo actualizar la cuota. Intentá de nuevo.");
+        setEnviando(null);
+      });
+  };
+
+  const handleAvisar = (destinatario) => {
+    const mensaje = window.prompt(`Mensaje para ${destinatario}:`);
+    if (!mensaje) return;
+
+    setEnviando(destinatario);
+    setError(null);
+
+    fetch("/api/tareas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        titulo: `${cliente.nombre}: ${mensaje}`,
+        asignado_a: destinatario,
+        cliente_id: cliente.id,
+        estado: "pendiente",
+        motivo: mensaje,
+      }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("No se pudo enviar el aviso.");
+        }
+        return response.json();
+      })
+      .then(() => {
+        onClose();
+      })
+      .catch(() => {
+        setError("No se pudo enviar el aviso. Intentá de nuevo.");
+        setEnviando(null);
+      });
+  };
+
   const piezas = [
     ...historias.map((h) => ({
       id: `historia-${h.id}`,
@@ -2513,6 +2805,13 @@ function DetalleClienteModal({ cliente, historias, publicaciones, onClose }) {
             </strong>
           </div>
 
+          <div className="caption">
+            Cuota mensual: {cliente.cuota_reels ?? 0} reels ·{" "}
+            {cliente.cuota_carruseles ?? 0} carruseles
+          </div>
+
+          {error && <div className="caption login-error">{error}</div>}
+
           <table>
             <thead>
               <tr>
@@ -2540,8 +2839,30 @@ function DetalleClienteModal({ cliente, historias, publicaciones, onClose }) {
           </table>
 
           <div className="modal-actions">
-            <span className="btn primary">Escribir a Augusto</span>
-            <span className="btn">Escalar a Franco</span>
+            <button
+              className="btn primary"
+              type="button"
+              disabled={enviando !== null}
+              onClick={() => handleAvisar("Augusto")}
+            >
+              {enviando === "Augusto" ? "Enviando..." : "Escribir a Augusto"}
+            </button>
+            <button
+              className="btn"
+              type="button"
+              disabled={enviando !== null}
+              onClick={() => handleAvisar("Franco")}
+            >
+              {enviando === "Franco" ? "Enviando..." : "Escalar a Franco"}
+            </button>
+            <button
+              className="btn"
+              type="button"
+              disabled={enviando !== null}
+              onClick={handleEditarCuota}
+            >
+              {enviando === "cuota" ? "Guardando..." : "Editar cuota"}
+            </button>
           </div>
         </div>
       </div>

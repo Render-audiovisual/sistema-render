@@ -78,6 +78,44 @@ app.get("/clientes", async (_req, res, next) => {
   }
 });
 
+app.patch("/clientes/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { cuota_reels, cuota_carruseles } = req.body;
+
+    const cuotaReelsValida =
+      cuota_reels === undefined ||
+      (Number.isInteger(cuota_reels) && cuota_reels >= 0);
+    const cuotaCarruselesValida =
+      cuota_carruseles === undefined ||
+      (Number.isInteger(cuota_carruseles) && cuota_carruseles >= 0);
+
+    if (!cuotaReelsValida || !cuotaCarruselesValida) {
+      return res.status(400).json({
+        error: "cuota_reels y cuota_carruseles deben ser enteros ≥ 0.",
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE clientes
+       SET
+         cuota_reels = COALESCE($1, cuota_reels),
+         cuota_carruseles = COALESCE($2, cuota_carruseles)
+       WHERE id = $3
+       RETURNING id, nombre, cuota_reels, cuota_carruseles`,
+      [cuota_reels ?? null, cuota_carruseles ?? null, id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Cliente no encontrado." });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.patch("/historias/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -261,7 +299,7 @@ app.post("/tareas", async (req, res, next) => {
 app.patch("/tareas/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { estado } = req.body;
+    const { estado, propiedades_extra } = req.body;
 
     const estadosValidos = [
       "pendiente",
@@ -271,16 +309,26 @@ app.patch("/tareas/:id", async (req, res, next) => {
       "bloqueada",
     ];
 
-    if (!estadosValidos.includes(estado)) {
+    if (estado !== undefined && !estadosValidos.includes(estado)) {
       return res.status(400).json({ error: "Estado inválido." });
     }
 
     const result = await pool.query(
       `UPDATE tareas
-       SET estado = $1, updated_at = now()
-       WHERE id = $2
+       SET
+         estado = COALESCE($1, estado),
+         propiedades_extra = CASE
+           WHEN $2::jsonb IS NOT NULL THEN propiedades_extra || $2::jsonb
+           ELSE propiedades_extra
+         END,
+         updated_at = now()
+       WHERE id = $3
        RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, created_at, updated_at`,
-      [estado, id],
+      [
+        estado || null,
+        propiedades_extra ? JSON.stringify(propiedades_extra) : null,
+        id,
+      ],
     );
 
     if (result.rows.length === 0) {
