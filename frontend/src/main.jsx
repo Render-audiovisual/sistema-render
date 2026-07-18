@@ -387,6 +387,17 @@ function getEstadoHistoriaLabel(estado) {
   return estado.replace("_", " ");
 }
 
+const TIPO_PUBLICACION_LABELS = {
+  reel: "Reel",
+  carrusel: "Carrusel",
+  flyer: "Flyer",
+  video: "Video",
+};
+
+function getTipoPublicacionLabel(tipo) {
+  return TIPO_PUBLICACION_LABELS[tipo] || "Reel";
+}
+
 function getHistoriasAugustoKanban(historias) {
   const columnas = [
     { estado: "Pendiente", historias: [] },
@@ -2287,7 +2298,7 @@ function FrancoDashboard() {
           ...publicaciones.map((p) => ({
             ...p,
             origen: "publicacion",
-            tipoLabel: p.tipo === "carrusel" ? "Carrusel" : "Reel",
+            tipoLabel: getTipoPublicacionLabel(p.tipo),
           })),
         ].filter(
           (pieza) => pieza.estado === "en_revision" || pieza.estado === "bloqueada",
@@ -2781,8 +2792,7 @@ function DetalleClienteModal({
     ...publicaciones.map((p) => ({
       id: `publicacion-${p.id}`,
       pieza:
-        p.metadata?.Idea ||
-        `${p.tipo === "carrusel" ? "Carrusel" : "Reel"} sin título`,
+        p.metadata?.Idea || `${getTipoPublicacionLabel(p.tipo)} sin título`,
       responsable: p.responsable,
       estado: p.estado,
     })),
