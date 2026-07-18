@@ -126,7 +126,9 @@
       "Bash(curl -s -X POST http://66.94.104.21:5173/api/usuarios -H \"Content-Type: application/json\" -d '{\"nombre\":\"Empleado Prueba\",\"usuario\":\"testemp\",\"rol\":\"diseno\",\"password\":\"test1234\"}')",
       "Bash(curl -s -X PATCH http://66.94.104.21:5173/api/usuarios/password -H \"Content-Type: application/json\" -d '{\"usuario\":\"testemp\",\"password_actual\":\"malaclave\",\"password_nueva\":\"nueva9999\"}')",
       "Bash(curl -s -X PATCH http://66.94.104.21:5173/api/usuarios/password -H \"Content-Type: application/json\" -d '{\"usuario\":\"testemp\",\"password_actual\":\"test1234\",\"password_nueva\":\"nueva9999\"}')",
-      "Bash(python3 -c \"import sys,json; print\\([u['usuario'] for u in json.load\\(sys.stdin\\)]\\)\")"
+      "Bash(python3 -c \"import sys,json; print\\([u['usuario'] for u in json.load\\(sys.stdin\\)]\\)\")",
+      "Bash(perl -0pi -e 's/      <div className=\"note\">\\\\n        WIREFRAME — baja fidelidad, sin marca ni color final\\\\. Objetivo:\\\\n        validar estructura y navegación, no estética\\\\.\\\\n      <\\\\/div>\\\\n\\\\n//g' main.jsx)",
+      "Bash(rsync -avz '--rsync-path=sudo rsync' -e ssh '/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/styles.css' claude-render@66.94.104.21:/root/.openclaw/workspace/frontend/src/styles.css)"
     ]
   }
 }

@@ -534,11 +534,6 @@ function LoginPage() {
 
   return (
     <main aria-label="Render platform login">
-      <div className="note">
-        WIREFRAME — baja fidelidad, sin marca ni color final. Objetivo:
-        validar estructura y navegación, no estética.
-      </div>
-
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
@@ -933,22 +928,35 @@ function App() {
     return <HomePage />;
   })();
 
+  const enlacesNav = [
+    { href: "/", label: "Home" },
+    { href: rutaPropia || "/", label: "Mi tablero" },
+    { href: "/calendario", label: "Calendario" },
+    { href: "/perfil", label: "Mi perfil" },
+  ];
+  if (esAdmin) {
+    enlacesNav.push({ href: "/equipo", label: "Equipo" });
+    enlacesNav.push({ href: "/empleados", label: "Empleados" });
+    enlacesNav.push({ href: "/nueva-tarea", label: "+ Nueva tarea" });
+  }
+
   return (
     <>
       {dashboard}
       <div className="session-bar">
         <span className="caption">
-          {sesion.usuario.nombre} · {sesion.usuario.rol}
+          {sesion.usuario.nombre} · {ROL_LABELS[sesion.usuario.rol] || sesion.usuario.rol}
         </span>
         <div className="session-bar-links">
-          <a className="btn" href="/">
-            Home
-          </a>
-          {esAdmin && (
-            <a className="btn" href="/nueva-tarea">
-              + Nueva tarea
+          {enlacesNav.map((enlace) => (
+            <a
+              className={`btn ${path === enlace.href ? "primary" : ""}`}
+              href={enlace.href}
+              key={enlace.href}
+            >
+              {enlace.label}
             </a>
-          )}
+          ))}
           <button className="btn" type="button" onClick={cerrarSesion}>
             Cerrar sesión
           </button>
@@ -1669,11 +1677,6 @@ function OrianaDashboard() {
 
   return (
     <main aria-label="Render platform Oriana">
-      <div className="note">
-        WIREFRAME — baja fidelidad, sin marca ni color final. Objetivo:
-        validar estructura y navegación, no estética.
-      </div>
-
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
@@ -1906,11 +1909,6 @@ function GermanDashboard() {
 
   return (
     <main aria-label="Render platform German">
-      <div className="note">
-        WIREFRAME — baja fidelidad, sin marca ni color final. Objetivo:
-        validar estructura y navegación, no estética.
-      </div>
-
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
@@ -2167,11 +2165,6 @@ function LucianoDashboard() {
 
   return (
     <main aria-label="Render platform Luciano">
-      <div className="note">
-        WIREFRAME — baja fidelidad, sin marca ni color final. Objetivo:
-        validar estructura y navegación, no estética.
-      </div>
-
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
@@ -2380,11 +2373,6 @@ function AugustoDashboard() {
 
   return (
     <main aria-label="Render platform Augusto">
-      <div className="note">
-        WIREFRAME — baja fidelidad, sin marca ni color final. Objetivo:
-        validar estructura y navegación, no estética.
-      </div>
-
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
@@ -2695,11 +2683,6 @@ function EquipoDashboard() {
 
   return (
     <main aria-label="Render platform Equipo">
-      <div className="note">
-        WIREFRAME — baja fidelidad, sin marca ni color final. Objetivo:
-        validar estructura y navegación, no estética.
-      </div>
-
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
@@ -2798,11 +2781,6 @@ function AgustinDashboard() {
 
   return (
     <main aria-label="Render platform">
-      <div className="note">
-        WIREFRAME — baja fidelidad, sin marca ni color final. Objetivo:
-        validar estructura y navegación, no estética.
-      </div>
-
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
@@ -3073,11 +3051,6 @@ function FrancoDashboard() {
 
   return (
     <main aria-label="Render platform Franco">
-      <div className="note">
-        WIREFRAME — baja fidelidad, sin marca ni color final. Objetivo:
-        validar estructura y navegación, no estética.
-      </div>
-
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
