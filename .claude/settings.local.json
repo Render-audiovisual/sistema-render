@@ -218,7 +218,14 @@
       "Bash(awk '/^function CalendarioPiezaModal/,/^function [A-Z]/ {print NR\": \"$0}' \"/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx\")",
       "Bash(curl -s http://66.94.104.21:3001/workflow-historias)",
       "Bash(curl -s http://66.94.104.21:3001/reportes/historias)",
-      "Bash(awk 'NR>=1954 && NR<=2250 {print NR\": \"$0}' \"/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx\")"
+      "Bash(awk 'NR>=1954 && NR<=2250 {print NR\": \"$0}' \"/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx\")",
+      "Bash(curl -s -X POST http://66.94.104.21:3001/tareas -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c \"import sys, json; d=json.load\\(sys.stdin\\); print\\(f\\\\\"✅ Tarea creada: ID {d['id']}, titulo: {d['titulo']}, tipo: {d['tipo_tarea']}, asignado_a: {d['asignado_a']}\\\\\"\\)\")",
+      "Bash(curl -s \"http://66.94.104.21:3001/tareas?asignado_a=Augusto&tipo_tarea=diseno\")",
+      "Bash(python3 -c \"import sys, json; d=json.load\\(sys.stdin\\); print\\(f\\\\\"Tareas de diseño para Augusto: {len\\(d\\)}\\\\\"\\); [print\\(f\\\\\"  - {t['id']}: {t['titulo']} \\({t['estado']}\\)\\\\\"\\) for t in d[:3]]\")",
+      "Bash(curl -s http://66.94.104.21:5173/tareas-diseno -w \"\\\\nStatus: %{http_code}\\\\n\")",
+      "Bash(brew install *)"
     ]
   }
 }
