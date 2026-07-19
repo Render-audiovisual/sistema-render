@@ -165,7 +165,12 @@
       "Bash(echo \"\")",
       "Bash(tail -n +866 frontend/src/main.jsx)",
       "Bash(cp /tmp/main_new.jsx frontend/src/main.jsx)",
-      "mcp__visualize__read_me"
+      "mcp__visualize__read_me",
+      "Bash(curl -s -w \"Status: %{http_code}\\\\n\" http://66.94.104.21:5173/)",
+      "Bash(ssh -o ConnectTimeout=5 \"claude-render@66.94.104.21\" \"cd /root/workspace && pwd\")",
+      "Bash(ssh \"claude-render@66.94.104.21\" \"ls -la /root/.openclaw/workspace/\")",
+      "Bash(cat)",
+      "Read(//tmp/**)"
     ]
   }
 }
