@@ -1515,7 +1515,7 @@ function App() {
 
   const esAdmin = sesion.usuario.rol === "admin";
   const rutaPropia = USUARIO_A_RUTA[sesion.usuario.usuario];
-  const rutasCompartidas = ["/", "/calendario", "/perfil", "/piezas"];
+  const rutasCompartidas = ["/", "/calendario", "/calendario-estructura", "/perfil", "/piezas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -1549,6 +1549,9 @@ function App() {
     if (path === "/calendario") {
       return <CalendarioPage />;
     }
+    if (path === "/calendario-estructura") {
+      return <CalendarioEstructuraPage />;
+    }
     if (path === "/perfil") {
       return <PerfilPage />;
     }
@@ -1568,6 +1571,7 @@ function App() {
     { href: "/", label: "Home" },
     { href: rutaPropia || "/", label: "Mi tablero" },
     { href: "/calendario", label: "Calendario" },
+    { href: "/calendario-estructura", label: "Estructura de publicación" },
     { href: "/perfil", label: "Mi perfil" },
     { href: "/piezas", label: "📋 Tareas" },
   ];
@@ -1944,6 +1948,255 @@ function CalendarioPiezaModal({ pieza, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function CalendarioEstructuraPage() {
+  const [clientes, setClientes] = useState([]);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const [estructura, setEstructura] = useState([]);
+  const [checkPublicacion, setCheckPublicacion] = useState([]);
+  const [fechasEspeciales, setFechasEspeciales] = useState([]);
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState(null);
+
+  const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+  useEffect(() => {
+    fetch("/api/clientes")
+      .then((r) => r.json())
+      .then((data) => {
+        setClientes(data);
+        if (data.length > 0) setClienteSeleccionado(data[0].id);
+      })
+      .catch((err) => {
+        console.error("No se pudieron cargar clientes", err);
+        setError("No se pudieron cargar clientes.");
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!clienteSeleccionado) return;
+
+    setCargando(true);
+    setError(null);
+
+    Promise.all([
+      fetch("/api/estructura").then((r) => r.json()),
+      fetch("/api/check-publicacion").then((r) => r.json()),
+      fetch("/api/fechas-especiales").then((r) => r.json()),
+    ])
+      .then(([est, check, fechas]) => {
+        setEstructura(est.filter((e) => e.cliente_id === clienteSeleccionado));
+        setCheckPublicacion(check.filter((c) => c.cliente_id === clienteSeleccionado));
+        setFechasEspeciales(fechas.filter((f) => !f.cliente_id || f.cliente_id === clienteSeleccionado));
+      })
+      .catch((err) => {
+        console.error("No se pudo cargar calendario", err);
+        setError("No se pudo cargar el calendario.");
+      })
+      .finally(() => setCargando(false));
+  }, [clienteSeleccionado]);
+
+  const hoy = new Date();
+  const hoyISO = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
+
+  const estructuraPorDia = {};
+  estructura.forEach((e) => {
+    estructuraPorDia[e.dia_semana] = e;
+  });
+
+  const checkPorFecha = {};
+  checkPublicacion.forEach((c) => {
+    checkPorFecha[c.fecha] = c;
+  });
+
+  const manejarCheckPublicacion = async (fecha, publicado) => {
+    if (!clienteSeleccionado) return;
+
+    try {
+      const res = await fetch("/api/check-publicacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cliente_id: clienteSeleccionado,
+          fecha,
+          publicado,
+          confirmado_por: getSesion()?.usuario?.nombre || "Sistema",
+        }),
+      });
+      if (!res.ok) throw new Error("No se pudo actualizar");
+
+      setCheckPublicacion((prev) => {
+        const existe = prev.find((c) => c.fecha === fecha);
+        if (existe) {
+          return prev.map((c) => (c.fecha === fecha ? { ...c, publicado } : c));
+        } else {
+          return [...prev, { cliente_id: clienteSeleccionado, fecha, publicado }];
+        }
+      });
+    } catch (err) {
+      console.error("Error actualizando check:", err);
+      setError("No se pudo actualizar el check de publicación.");
+    }
+  };
+
+  const semanaActual = [];
+  const ahora = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(ahora);
+    d.setDate(d.getDate() + i - d.getDay());
+    const iso = d.toISOString().split("T")[0];
+    semanaActual.push({ fecha: iso, dia: d.getDay(), diaNum: d.getDate() });
+  }
+
+  const clienteNombre = clientes.find((c) => c.id === clienteSeleccionado)?.nombre || "Cliente";
+
+  return (
+    <main aria-label="Render platform calendario estructura">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Calendario</span>
+          </div>
+          <div className="tag">Estructura de publicación</div>
+        </div>
+
+        <div className="content">
+          {error && <div style={{ padding: "12px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "16px" }}>{error}</div>}
+
+          <div className="section-label">Seleccionar cliente</div>
+          <select
+            value={clienteSeleccionado || ""}
+            onChange={(e) => setClienteSeleccionado(Number(e.target.value))}
+            style={{ padding: "8px", borderRadius: "4px", border: "1px solid #ccc", marginBottom: "20px" }}
+          >
+            {clientes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+
+          {cargando ? (
+            <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando...</div>
+          ) : (
+            <>
+              <div className="section-label">1 · Estructura base: {clienteNombre}</div>
+              <div className="box">
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid #333" }}>
+                      <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Día</th>
+                      <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Tipo</th>
+                      <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Tema</th>
+                      <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Horario</th>
+                      <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>CTA Fijo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DIAS_SEMANA.map((dia, idx) => {
+                      const est = estructuraPorDia[idx];
+                      return (
+                        <tr key={idx} style={{ borderBottom: "1px solid #e0e0e0" }}>
+                          <td style={{ padding: "8px", fontWeight: "600" }}>{dia}</td>
+                          <td style={{ padding: "8px" }}>{est?.tipo || "—"}</td>
+                          <td style={{ padding: "8px" }}>{est?.tema || "—"}</td>
+                          <td style={{ padding: "8px" }}>{est?.horario || "—"}</td>
+                          <td style={{ padding: "8px" }}>{est?.cta_fijo || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="section-label">2 · Semana actual: check de publicación</div>
+              <div className="box">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "12px" }}>
+                  {semanaActual.map((s) => {
+                    const est = estructuraPorDia[s.dia];
+                    const check = checkPorFecha[s.fecha];
+                    return (
+                      <div
+                        key={s.fecha}
+                        style={{
+                          padding: "12px",
+                          border: `2px solid ${check?.publicado ? "#4caf50" : "#ddd"}`,
+                          borderRadius: "4px",
+                          textAlign: "center",
+                          background: check?.publicado ? "#f1f8e9" : "#fafafa",
+                        }}
+                      >
+                        <div style={{ fontSize: "12px", color: "#666", fontWeight: "600" }}>{DIAS_SEMANA[s.dia]}</div>
+                        <div style={{ fontSize: "20px", fontWeight: "bold", margin: "4px 0" }}>{s.diaNum}</div>
+                        <div style={{ fontSize: "11px", color: "#999" }}>{est?.tipo || "—"}</div>
+                        <button
+                          className="btn"
+                          style={{
+                            fontSize: "12px",
+                            padding: "4px 8px",
+                            marginTop: "8px",
+                            background: check?.publicado ? "#4caf50" : "#fff",
+                            color: check?.publicado ? "#fff" : "#333",
+                            border: check?.publicado ? "none" : "1px solid #ccc",
+                          }}
+                          onClick={() => manejarCheckPublicacion(s.fecha, !check?.publicado)}
+                        >
+                          {check?.publicado ? "✓ Publicado" : "Marcar"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="section-label">3 · Fechas especiales próximas</div>
+              <div className="box">
+                {fechasEspeciales.length === 0 ? (
+                  <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>No hay fechas especiales registradas.</div>
+                ) : (
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "2px solid #333" }}>
+                        <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Fecha</th>
+                        <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Evento</th>
+                        <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Estado</th>
+                        <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Idea</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fechasEspeciales.map((f) => (
+                        <tr key={f.id} style={{ borderBottom: "1px solid #e0e0e0" }}>
+                          <td style={{ padding: "8px" }}>{f.fecha}</td>
+                          <td style={{ padding: "8px" }}>{f.evento}</td>
+                          <td style={{ padding: "8px" }}>
+                            <span
+                              style={{
+                                display: "inline-block",
+                                padding: "2px 6px",
+                                borderRadius: "3px",
+                                fontSize: "11px",
+                                background: f.estado === "hecho" ? "#c8e6c9" : f.estado === "en_curso" ? "#fff9c4" : "#ffccbc",
+                                color: "#333",
+                              }}
+                            >
+                              {f.estado}
+                            </span>
+                          </td>
+                          <td style={{ padding: "8px" }}>{f.idea || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </main>
   );
 }
 
