@@ -170,6 +170,172 @@ app.patch("/usuarios/password", async (req, res, next) => {
   }
 });
 
+// ── ESTRUCTURA BASE POR CLIENTE ──────────────────────────────────────────────
+
+app.get("/estructura", async (_req, res, next) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        e.id,
+        e.cliente_id,
+        c.nombre AS cliente_nombre,
+        e.dia_semana,
+        e.tema,
+        e.horario,
+        e.cta_fijo,
+        e.tipo,
+        e.activo
+      FROM estructura_cliente e
+      JOIN clientes c ON c.id = e.cliente_id
+      WHERE e.activo = true
+      ORDER BY c.nombre, e.dia_semana
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/estructura", async (req, res, next) => {
+  try {
+    const { cliente_id, dia_semana, tema, horario, cta_fijo, tipo } = req.body;
+
+    if (!cliente_id || dia_semana === undefined) {
+      return res.status(400).json({ error: "Faltan cliente_id o dia_semana." });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO estructura_cliente (cliente_id, dia_semana, tema, horario, cta_fijo, tipo)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT DO NOTHING
+       RETURNING *`,
+      [cliente_id, dia_semana, tema || null, horario || null, cta_fijo || null, tipo || null],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── CHECK DE PUBLICACIÓN DIARIO ───────────────────────────────────────────────
+
+app.get("/check-publicacion", async (req, res, next) => {
+  try {
+    const { desde, hasta } = req.query;
+
+    const result = await pool.query(`
+      SELECT
+        cp.id,
+        cp.cliente_id,
+        c.nombre AS cliente_nombre,
+        to_char(cp.fecha, 'YYYY-MM-DD') AS fecha,
+        cp.publicado,
+        cp.confirmado_por,
+        cp.confirmado_at
+      FROM check_publicacion cp
+      JOIN clientes c ON c.id = cp.cliente_id
+      WHERE
+        ($1::date IS NULL OR cp.fecha >= $1::date) AND
+        ($2::date IS NULL OR cp.fecha <= $2::date)
+      ORDER BY cp.fecha, c.nombre
+    `, [desde || null, hasta || null]);
+
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/check-publicacion", async (req, res, next) => {
+  try {
+    const { cliente_id, fecha, publicado, confirmado_por } = req.body;
+
+    if (!cliente_id || !fecha) {
+      return res.status(400).json({ error: "Faltan cliente_id o fecha." });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO check_publicacion (cliente_id, fecha, publicado, confirmado_por, confirmado_at)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (cliente_id, fecha)
+       DO UPDATE SET
+         publicado = EXCLUDED.publicado,
+         confirmado_por = EXCLUDED.confirmado_por,
+         confirmado_at = EXCLUDED.confirmado_at,
+         updated_at = now()
+       RETURNING id, cliente_id, to_char(fecha, 'YYYY-MM-DD') AS fecha, publicado, confirmado_por, confirmado_at`,
+      [
+        cliente_id,
+        fecha,
+        Boolean(publicado),
+        confirmado_por || null,
+        publicado ? new Date().toISOString() : null,
+      ],
+    );
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── FECHAS ESPECIALES ─────────────────────────────────────────────────────────
+
+app.get("/fechas-especiales", async (_req, res, next) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        fe.id,
+        fe.cliente_id,
+        c.nombre AS cliente_nombre,
+        to_char(fe.fecha, 'YYYY-MM-DD') AS fecha,
+        fe.evento,
+        fe.tipo,
+        fe.anticipacion_dias,
+        fe.idea,
+        fe.estado
+      FROM fechas_especiales fe
+      LEFT JOIN clientes c ON c.id = fe.cliente_id
+      ORDER BY fe.fecha NULLS LAST, fe.evento
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/fechas-especiales/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { estado, idea } = req.body;
+
+    const estadosValidos = ["pendiente", "en_curso", "hecho"];
+    if (estado && !estadosValidos.includes(estado)) {
+      return res.status(400).json({ error: "Estado inválido." });
+    }
+
+    const result = await pool.query(
+      `UPDATE fechas_especiales
+       SET
+         estado = COALESCE($1, estado),
+         idea = COALESCE($2, idea),
+         updated_at = now()
+       WHERE id = $3
+       RETURNING id, to_char(fecha, 'YYYY-MM-DD') AS fecha, evento, tipo, anticipacion_dias, idea, estado`,
+      [estado || null, idea || null, id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Fecha especial no encontrada." });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/clientes", async (_req, res, next) => {
   try {
     const result = await pool.query(`
