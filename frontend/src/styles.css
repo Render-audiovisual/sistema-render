@@ -58,6 +58,7 @@ main {
 @media (max-width: 768px) {
   main {
     margin-left: 0;
+    padding: 60px 12px 24px;
   }
 }
 
@@ -137,6 +138,12 @@ main {
   padding: 16px;
 }
 
+@media (max-width: 480px) {
+  .content {
+    padding: 12px;
+  }
+}
+
 .section-label {
   color: #666;
   font-size: 11px;
@@ -155,11 +162,20 @@ main {
   border: 1px solid #ddd;
   border-radius: 6px;
   padding: 16px;
+  overflow-x: auto;
+}
+
+@media (max-width: 480px) {
+  .box {
+    padding: 12px;
+  }
 }
 
 .box-header {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: space-between;
   margin-bottom: 8px;
 }
@@ -180,6 +196,17 @@ td {
   border: 1px solid #ddd;
   padding: 8px 10px;
   text-align: left;
+}
+
+@media (max-width: 480px) {
+  table {
+    font-size: 12px;
+  }
+
+  th,
+  td {
+    padding: 6px 8px;
+  }
 }
 
 th {
@@ -576,6 +603,15 @@ select:focus {
 .modal-body {
   font-size: 13px;
   padding: 16px;
+  overflow-x: auto;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+}
+
+@media (max-width: 480px) {
+  .modal-body {
+    padding: 12px;
+  }
 }
 
 .modal-client-status {
@@ -927,6 +963,32 @@ select:focus {
   border-radius: 4px;
   min-height: 82px;
   padding: 5px;
+}
+
+@media (max-width: 480px) {
+  .cal-grid {
+    gap: 2px;
+  }
+
+  .cal-cell {
+    min-height: 58px;
+    padding: 3px;
+  }
+
+  .cal-dow {
+    font-size: 9px;
+    padding: 3px 1px;
+  }
+
+  .cal-daynum {
+    font-size: 9px;
+    margin-bottom: 1px;
+  }
+
+  .cal-chip {
+    font-size: 8px;
+    padding: 1px 3px;
+  }
 }
 
 .cal-cell.empty {

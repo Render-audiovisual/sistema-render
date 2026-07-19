@@ -1449,12 +1449,8 @@ function PiezasTableroPage() {
 
             <div className="modal-body">
               <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "15px",
-                  marginBottom: "15px",
-                }}
+                className="form-grid cols-2"
+                style={{ marginBottom: "15px" }}
               >
                 <div>
                   <label className="caption">Cliente</label>
@@ -5712,7 +5708,7 @@ function HistoriasEstructuraTab({ clienteId, clienteNombre }) {
 
       <div className="section-label">2 · Semana actual: check de publicación</div>
       <div className="box">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "10px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(72px, 1fr))", gap: "10px" }}>
           {semanaActual.map((s) => {
             const est = estructuraPorDia[s.dia];
             const check = checkPorFecha[s.fecha];
