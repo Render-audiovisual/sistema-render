@@ -170,7 +170,20 @@
       "Bash(ssh -o ConnectTimeout=5 \"claude-render@66.94.104.21\" \"cd /root/workspace && pwd\")",
       "Bash(ssh \"claude-render@66.94.104.21\" \"ls -la /root/.openclaw/workspace/\")",
       "Bash(cat)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(curl -s http://66.94.104.21:5173/piezas)",
+      "Read(//Users/agustinobregon/.ssh/**)",
+      "Read(//Users/agustinobregon/**)",
+      "Bash(ssh -v claude-render@66.94.104.21 \"ls -la\")",
+      "Bash(ssh -o \"StrictHostKeyChecking=no\" claude-render@66.94.104.21 \"pwd; ls -la\")",
+      "Bash(ssh -o \"StrictHostKeyChecking=no\" claude-render@66.94.104.21 \"find ~ -name 'main.jsx' -o -name 'vite.config.js' 2>/dev/null\")",
+      "Bash(ssh -o \"StrictHostKeyChecking=no\" claude-render@66.94.104.21 \"ps aux | grep -E 'node|npm|vite' | grep -v grep\")",
+      "Bash(ssh -o \"StrictHostKeyChecking=no\" claude-render@66.94.104.21 \"cd /root/.openclaw/workspace && git status 2>&1 | head -10\")",
+      "Bash(ssh -o \"StrictHostKeyChecking=no\" claude-render@66.94.104.21 \"sudo ls -la /root/.openclaw/workspace/frontend/src/ 2>&1 | head -20\")",
+      "Bash(scp -o StrictHostKeyChecking=no frontend/src/main.jsx claude-render@66.94.104.21:/tmp/main.jsx)",
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo cp /tmp/main.jsx /root/.openclaw/workspace/frontend/src/main.jsx &&    echo '\\\\''✅ Archivo actualizado'\\\\'' &&    sudo ls -lh /root/.openclaw/workspace/frontend/src/main.jsx')",
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo ps aux | grep '\\\\''vite\\\\|node'\\\\'' | grep -v grep | grep frontend')",
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo touch /root/.openclaw/workspace/frontend/src/main.jsx')"
     ]
   }
 }
