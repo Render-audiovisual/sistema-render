@@ -635,9 +635,11 @@ function LoginPage() {
               type="text"
               value={usuario}
               onChange={(e) => setUsuario(e.target.value)}
+              autoCapitalize="none"
               autoComplete="username"
               placeholder="agustin"
               required
+              spellCheck={false}
             />
           </label>
           <label className="login-field">
@@ -647,8 +649,11 @@ function LoginPage() {
                 type={mostrarPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                autoCapitalize="none"
                 autoComplete="current-password"
+                placeholder="Contraseña"
                 required
+                spellCheck={false}
               />
               <button
                 aria-label={mostrarPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
