@@ -1515,7 +1515,7 @@ function App() {
 
   const esAdmin = sesion.usuario.rol === "admin";
   const rutaPropia = USUARIO_A_RUTA[sesion.usuario.usuario];
-  const rutasCompartidas = ["/", "/calendario", "/calendario-estructura", "/perfil", "/piezas"];
+  const rutasCompartidas = ["/", "/calendario", "/calendario-estructura", "/workflow-historias", "/perfil", "/piezas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -1552,6 +1552,9 @@ function App() {
     if (path === "/calendario-estructura") {
       return <CalendarioEstructuraPage />;
     }
+    if (path === "/workflow-historias") {
+      return <HistoriasWorkflowPage />;
+    }
     if (path === "/perfil") {
       return <PerfilPage />;
     }
@@ -1572,6 +1575,7 @@ function App() {
     { href: rutaPropia || "/", label: "Mi tablero" },
     { href: "/calendario", label: "Calendario" },
     { href: "/calendario-estructura", label: "Estructura de publicación" },
+    { href: "/workflow-historias", label: "🎯 Historias" },
     { href: "/perfil", label: "Mi perfil" },
     { href: "/piezas", label: "📋 Tareas" },
   ];
@@ -2192,6 +2196,220 @@ function CalendarioEstructuraPage() {
                   </table>
                 )}
               </div>
+            </>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function HistoriasWorkflowPage() {
+  const sesion = getSesion();
+  const [historias, setHistorias] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const [filtroCliente, setFiltroCliente] = useState(null);
+  const [clientes, setClientes] = useState([]);
+  const [historiasModal, setHistoriasModal] = useState(null);
+
+  const FASES = [
+    { id: "planificado", label: "📋 Planificado", color: "#e3f2fd" },
+    { id: "en_diseño", label: "🎨 En diseño", color: "#f3e5f5" },
+    { id: "en_revisión", label: "👁️ En revisión", color: "#fff3e0" },
+    { id: "publicado", label: "✅ Publicado", color: "#e8f5e9" },
+  ];
+
+  useEffect(() => {
+    fetch("/api/clientes")
+      .then((r) => r.json())
+      .then((data) => {
+        setClientes(data);
+        if (data.length > 0) setFiltroCliente(data[0].id);
+      })
+      .catch((err) => console.error("Error cargando clientes", err));
+  }, []);
+
+  useEffect(() => {
+    if (!filtroCliente) return;
+
+    setCargando(true);
+    fetch(`/api/workflow-historias?cliente_id=${filtroCliente}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setHistorias(data);
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("Error cargando workflow", err);
+        setError("No se pudo cargar el workflow de historias.");
+      })
+      .finally(() => setCargando(false));
+  }, [filtroCliente]);
+
+  const moverHistoria = async (historiaId, nuevaFase) => {
+    try {
+      const res = await fetch(`/api/workflow-historias/${historiaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fase: nuevaFase }),
+      });
+      if (!res.ok) throw new Error("No se pudo actualizar");
+
+      setHistorias((prev) =>
+        prev.map((h) => (h.id === historiaId ? { ...h, fase: nuevaFase } : h)),
+      );
+    } catch (err) {
+      console.error("Error moviendo historia", err);
+      setError("No se pudo actualizar la historia.");
+    }
+  };
+
+  const historiasPorFase = {};
+  FASES.forEach((f) => {
+    historiasPorFase[f.id] = historias.filter((h) => h.fase === f.id);
+  });
+
+  const clienteActual = clientes.find((c) => c.id === filtroCliente);
+
+  return (
+    <main aria-label="Render platform historias workflow">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Workflow de Historias</span>
+          </div>
+          <div className="tag">Sistema profesional de gestión</div>
+        </div>
+
+        <div className="content">
+          {error && (
+            <div style={{ padding: "12px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "16px" }}>
+              {error}
+            </div>
+          )}
+
+          <div className="section-label">Seleccionar cliente</div>
+          <select
+            value={filtroCliente || ""}
+            onChange={(e) => setFiltroCliente(Number(e.target.value))}
+            style={{ padding: "8px", borderRadius: "4px", border: "1px solid #ccc", marginBottom: "20px", fontSize: "14px" }}
+          >
+            {clientes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+
+          {cargando ? (
+            <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando historias...</div>
+          ) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
+                {FASES.map((fase) => (
+                  <div key={fase.id} style={{ background: fase.color, borderRadius: "8px", padding: "16px" }}>
+                    <div style={{ fontWeight: "700", marginBottom: "12px", fontSize: "14px" }}>
+                      {fase.label} ({historiasPorFase[fase.id].length})
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {historiasPorFase[fase.id].map((historia) => (
+                        <div
+                          key={`${historia.id}-${historia.historia_id}`}
+                          style={{
+                            background: "#fff",
+                            border: "1px solid #ddd",
+                            borderRadius: "6px",
+                            padding: "12px",
+                            cursor: "pointer",
+                            transition: "all 0.2s",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "none")}
+                          onClick={() => setHistoriasModal(historia)}
+                        >
+                          <div style={{ fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>{historia.tema || "Sin tema"}</div>
+                          <div style={{ fontSize: "11px", color: "#666" }}>ID: {historia.historia_id}</div>
+                          <div style={{ fontSize: "11px", color: "#999", marginTop: "4px" }}>
+                            {historia.responsable_planificacion && `📌 ${historia.responsable_planificacion}`}
+                          </div>
+                          {historia.fecha_programada && (
+                            <div style={{ fontSize: "11px", color: "#999" }}>📅 {historia.fecha_programada}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {historiasModal && (
+                <div
+                  className="modal-overlay open"
+                  onClick={() => setHistoriasModal(null)}
+                  style={{ zIndex: 1000 }}
+                >
+                  <div className="modal" onClick={(e) => e.stopPropagation()}>
+                    <div className="modal-header">
+                      <span>{historiasModal.tema || "Sin tema"} (ID: {historiasModal.historia_id})</span>
+                      <button className="modal-close" onClick={() => setHistoriasModal(null)}>
+                        X
+                      </button>
+                    </div>
+                    <div className="modal-body">
+                      <div className="detail-grid">
+                        <div className="detail-field">
+                          <div className="detail-label">Fase actual</div>
+                          <div>{FASES.find((f) => f.id === historiasModal.fase)?.label}</div>
+                        </div>
+                        <div className="detail-field">
+                          <div className="detail-label">Cliente</div>
+                          <div>{historiasModal.cliente_nombre}</div>
+                        </div>
+                        <div className="detail-field">
+                          <div className="detail-label">Fecha programada</div>
+                          <div>{historiasModal.fecha_programada || "—"}</div>
+                        </div>
+                        <div className="detail-field">
+                          <div className="detail-label">Responsable planificación</div>
+                          <div>{historiasModal.responsable_planificacion || "—"}</div>
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: "20px", paddingTop: "12px", borderTop: "1px solid #e0e0e0" }}>
+                        <div style={{ fontWeight: "600", marginBottom: "8px" }}>Mover a:</div>
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                          {FASES.map((f) => (
+                            <button
+                              key={f.id}
+                              className="btn"
+                              onClick={() => {
+                                moverHistoria(historiasModal.id, f.id);
+                                setHistoriasModal(null);
+                              }}
+                              style={{
+                                background: historiasModal.fase === f.id ? "#333" : "#f5f5f5",
+                                color: historiasModal.fase === f.id ? "#fff" : "#333",
+                                border: historiasModal.fase === f.id ? "none" : "1px solid #ccc",
+                              }}
+                            >
+                              {f.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {historiasModal.descripcion && (
+                        <div style={{ marginTop: "16px" }}>
+                          <div style={{ fontWeight: "600", marginBottom: "6px" }}>Descripción</div>
+                          <div style={{ fontSize: "13px", color: "#555" }}>{historiasModal.descripcion}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
