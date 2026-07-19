@@ -8,8 +8,12 @@
 // script solo hace los INSERTs.
 //
 // Es seguro correrlo más de una vez:
-//   - historias: se salta por cliente si ese cliente ya tiene historias
-//     cargadas en julio 2026 (evita duplicar si se corre dos veces)
+//   - historias: cada fila que inserta este script queda marcada con
+//     metadata.origen = "migracion_google_sheet_julio_2026". Se salta por
+//     cliente si ese cliente ya tiene historias con esa marca (no alcanza
+//     con "el cliente ya tiene algo en julio" — eso rompía si había una
+//     sola historia de prueba cargada a mano, como le pasó a RPM
+//     Chevrolet en la primera corrida)
 //   - estructura_cliente: ON CONFLICT (cliente_id, dia_semana) DO NOTHING
 //   - check_publicacion: ON CONFLICT (cliente_id, fecha) DO NOTHING
 //   - fechas_especiales: se salta entera si la tabla ya tiene datos
@@ -60,13 +64,18 @@ async function importarHistorias(mapa) {
       continue;
     }
 
+    // Guardia por marca propia, no por "el cliente ya tiene algo en julio":
+    // ese chequeo genérico se equivocaba si había una sola historia de
+    // prueba cargada a mano (le pasó a RPM Chevrolet). Cada historia que
+    // inserta este script queda marcada en metadata.origen — reintentar
+    // el import solo se saltea lo que ESTE script ya insertó antes.
     const { rows: existentes } = await pool.query(
       `SELECT COUNT(*)::int AS n FROM historias
-       WHERE cliente_id = $1 AND fecha_programada BETWEEN '2026-07-01' AND '2026-07-31'`,
+       WHERE cliente_id = $1 AND metadata->>'origen' = 'migracion_google_sheet_julio_2026'`,
       [clienteId],
     );
     if (existentes[0].n > 0) {
-      console.log(`— ${nombreCliente}: ya tiene ${existentes[0].n} historias en julio 2026, se saltea todo el cliente`);
+      console.log(`— ${nombreCliente}: ya tiene ${existentes[0].n} historias de esta migración, se saltea todo el cliente`);
       totalSalteadas += historias.length;
       continue;
     }
@@ -86,7 +95,13 @@ async function importarHistorias(mapa) {
           yaPublicado ? "publicada" : "pendiente",
           h.fecha_programada,
           h.copy || "",
-          JSON.stringify({ tipo: h.tema, hora: h.hora, formato: h.formato, cta: h.cta }),
+          JSON.stringify({
+            tipo: h.tema,
+            hora: h.hora,
+            formato: h.formato,
+            cta: h.cta,
+            origen: "migracion_google_sheet_julio_2026",
+          }),
         ],
       );
       totalInsertadas++;
@@ -155,6 +170,39 @@ async function importarCheckPublicacion(mapa) {
   console.log(`Check publicación: ${insertadas} filas insertadas (de ${dataset.check_publicacion.length} en el dataset)`);
 }
 
+// Corrida única: la primera versión de este script (antes de agregar
+// metadata.origen) ya insertó correctamente las historias de estos 12
+// clientes. Sin esta marca retroactiva, correr el script de nuevo los
+// re-insertaría duplicados. RPM Chevrolet queda afuera a propósito: se
+// salteó en esa corrida por una historia de prueba preexistente, así
+// que sus historias reales todavía no están cargadas.
+const CLIENTES_YA_MIGRADOS_SIN_MARCA = [
+  "iPhone Shop", "Luzin", "Moketa", "Lavalle Hortícola", "Lavalle Market",
+  "El Ángel Azul Turismo", "El Ángel Azul Estudiantil", "Litoral Maq",
+  "Búnker Training", "Bendita", "Bohle", "Capital Motos",
+];
+
+async function backfillOrigenClientesYaMigrados(mapa) {
+  let total = 0;
+  for (const nombre of CLIENTES_YA_MIGRADOS_SIN_MARCA) {
+    const clienteId = mapa.get(nombre);
+    if (!clienteId) continue;
+    const res = await pool.query(
+      `UPDATE historias
+       SET metadata = metadata || '{"origen":"migracion_google_sheet_julio_2026"}'::jsonb
+       WHERE cliente_id = $1
+         AND fecha_programada BETWEEN '2026-07-01' AND '2026-07-31'
+         AND metadata->>'origen' IS DISTINCT FROM 'migracion_google_sheet_julio_2026'
+       RETURNING id`,
+      [clienteId],
+    );
+    total += res.rows.length;
+  }
+  if (total > 0) {
+    console.log(`Backfill: se marcaron retroactivamente ${total} historias ya migradas en la corrida anterior (sin duplicar)\n`);
+  }
+}
+
 async function main() {
   console.log(`Dataset: ${dataset.historias.length} historias, ${dataset.estructura.length} estructura, ${dataset.fechas_especiales.length} fechas especiales, ${dataset.check_publicacion.length} check publicación\n`);
 
@@ -167,6 +215,7 @@ async function main() {
     process.exit(1);
   }
 
+  await backfillOrigenClientesYaMigrados(mapa);
   await importarHistorias(mapa);
   await importarEstructura(mapa);
   await importarFechasEspeciales(mapa);
