@@ -5795,11 +5795,57 @@ function HistoriasEstructuraTab({ clienteId, clienteNombre }) {
   );
 }
 
+function FlyersMigrarBanner({ onMigrado }) {
+  const [flyers, setFlyers] = useState([]);
+  const [migrando, setMigrando] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/publicaciones")
+      .then((r) => r.json())
+      .then((data) => setFlyers(data.filter((p) => p.tipo === "flyer")))
+      .catch((err) => console.error("No se pudieron revisar flyers legacy", err));
+  }, []);
+
+  if (flyers.length === 0) return null;
+
+  const migrarTodos = async () => {
+    setMigrando(true);
+    setError(null);
+    try {
+      for (const f of flyers) {
+        const res = await fetch(`/api/historias/convertir-flyer/${f.id}`, { method: "POST" });
+        if (!res.ok) throw new Error("Falló la conversión de un flyer");
+      }
+      setFlyers([]);
+      onMigrado && onMigrado();
+    } catch (err) {
+      console.error("Error migrando flyers", err);
+      setError("No se pudieron convertir todos los flyers. Reintentá.");
+    } finally {
+      setMigrando(false);
+    }
+  };
+
+  return (
+    <div style={{ background: "#fff3e0", border: "1px solid #ffb74d", borderRadius: "6px", padding: "12px 16px", marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+      <div style={{ fontSize: "13px", color: "#e65100" }}>
+        ⚠️ Hay <strong>{flyers.length}</strong> flyer{flyers.length > 1 ? "s" : ""} viejo{flyers.length > 1 ? "s" : ""} en Publicaciones. Los flyers ahora viven dentro de Historias.
+        {error && <div style={{ marginTop: "4px" }}>{error}</div>}
+      </div>
+      <button className="btn" type="button" disabled={migrando} onClick={migrarTodos}>
+        {migrando ? "Convirtiendo…" : `Convertir ${flyers.length} a Historias`}
+      </button>
+    </div>
+  );
+}
+
 function HistoriasPage({ initialTab = "planilla" }) {
   const [tab, setTab] = useState(initialTab);
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [errorClientes, setErrorClientes] = useState(null);
+  const [refrescarKey, setRefrescarKey] = useState(0);
 
   useEffect(() => {
     fetch("/api/clientes")
@@ -5841,6 +5887,8 @@ function HistoriasPage({ initialTab = "planilla" }) {
             </div>
           )}
 
+          <FlyersMigrarBanner onMigrado={() => setRefrescarKey((k) => k + 1)} />
+
           <div style={{ display: "flex", gap: "4px", overflowX: "auto", borderBottom: "2px solid #ddd", marginBottom: "16px", paddingBottom: "0" }}>
             {clientes.map((c) => (
               <button
@@ -5880,13 +5928,13 @@ function HistoriasPage({ initialTab = "planilla" }) {
 
           {clienteSeleccionado && tab === "planilla" && (
             <HistoriasPlanillaTab
-              key={`p-${clienteSeleccionado}`}
+              key={`p-${clienteSeleccionado}-${refrescarKey}`}
               clienteId={clienteSeleccionado}
               clienteNombre={clienteNombre}
             />
           )}
           {clienteSeleccionado && tab === "tablero" && (
-            <HistoriasTableroTab key={`t-${clienteSeleccionado}`} clienteId={clienteSeleccionado} />
+            <HistoriasTableroTab key={`t-${clienteSeleccionado}-${refrescarKey}`} clienteId={clienteSeleccionado} />
           )}
           {clienteSeleccionado && tab === "estructura" && (
             <HistoriasEstructuraTab
