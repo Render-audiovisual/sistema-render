@@ -447,14 +447,12 @@ function getEstadoHistoriaLabel(estado) {
 }
 
 const TIPO_PUBLICACION_LABELS = {
-  reel: "Reel",
-  carrusel: "Carrusel",
-  flyer: "Flyer",
   video: "Video",
+  carrusel: "Carrusel",
 };
 
 function getTipoPublicacionLabel(tipo) {
-  return TIPO_PUBLICACION_LABELS[tipo] || "Reel";
+  return TIPO_PUBLICACION_LABELS[tipo] || "Video";
 }
 
 function getHistoriasAugustoKanban(historias) {
@@ -3013,7 +3011,7 @@ function LucianoDashboard() {
   }, []);
 
   const reelsLuciano = publicacionesLuciano.filter(
-    (publicacion) => publicacion.tipo === "reel",
+    (publicacion) => publicacion.tipo === "video",
   );
   const reelsPublicados = reelsLuciano.filter(
     (publicacion) => publicacion.estado === "publicada",

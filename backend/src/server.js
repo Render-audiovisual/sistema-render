@@ -943,6 +943,31 @@ app.get("/piezas/:id", async (req, res, next) => {
   }
 });
 
+// Un día antes de fecha_programada, sin bajar de la fecha de hoy.
+function fechaVencimientoTarea(fechaProgramada, diasAntes = 1) {
+  const f = new Date(`${fechaProgramada}T00:00:00`);
+  f.setDate(f.getDate() - diasAntes);
+  return f.toISOString().slice(0, 10);
+}
+
+async function crearTareaAuto({ titulo, asignado_a, cliente_id, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo }) {
+  await pool.query(
+    `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad)
+     VALUES ($1, $2, $3, 'pendiente', false, $4, $5, $6, $7, $8, $9, 'media')`,
+    [
+      titulo,
+      asignado_a,
+      cliente_id,
+      JSON.stringify({ Origen: "Generada automáticamente al crear la pieza" }),
+      fecha_vencimiento,
+      historia_id || null,
+      publicacion_id || null,
+      tipo_tarea,
+      subtipo || null,
+    ],
+  );
+}
+
 app.post("/piezas", async (req, res, next) => {
   try {
     const {
@@ -968,8 +993,8 @@ app.post("/piezas", async (req, res, next) => {
 
     if (tipo === "historia") {
       const result = await pool.query(
-        `INSERT INTO historias (cliente_id, estado, fecha_programada, responsable, idea, copy, material_referencia, aclaraciones, prioridad)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO historias (cliente_id, estado, fecha_programada, responsable, responsable_diseño, idea, copy, material_referencia, aclaraciones, prioridad)
+         VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9)
          RETURNING 'historia' AS origen, id, 'historia' AS tipo, cliente_id, estado, fecha_programada, responsable, idea, copy, material_referencia, aclaraciones, prioridad, created_at, updated_at`,
         [
           cliente_id,
@@ -983,13 +1008,25 @@ app.post("/piezas", async (req, res, next) => {
           prioridad || "media",
         ],
       );
-      return res.status(201).json(result.rows[0]);
+      const historia = result.rows[0];
+
+      await crearTareaAuto({
+        titulo: `Diseñar historia - ${idea || "sin idea"}`,
+        asignado_a: responsable,
+        cliente_id,
+        fecha_vencimiento: fechaVencimientoTarea(fecha_programada, 1),
+        historia_id: historia.id,
+        tipo_tarea: "diseno",
+        subtipo: "diseñar",
+      });
+
+      return res.status(201).json(historia);
     }
 
-    if (["reel", "carrusel", "flyer", "video"].includes(tipo)) {
+    if (["carrusel", "video"].includes(tipo)) {
       const result = await pool.query(
-        `INSERT INTO publicaciones (cliente_id, tipo, estado, fecha_programada, responsable, idea, copy, material_referencia, aclaraciones, prioridad)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `INSERT INTO publicaciones (cliente_id, tipo, estado, fecha_programada, responsable, responsable_diseño, idea, copy, material_referencia, aclaraciones, prioridad)
+         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10)
          RETURNING 'publicacion' AS origen, id, tipo, cliente_id, estado, fecha_programada, responsable, idea, copy, material_referencia, aclaraciones, prioridad, created_at, updated_at`,
         [
           cliente_id,
@@ -1004,12 +1041,77 @@ app.post("/piezas", async (req, res, next) => {
           prioridad || "media",
         ],
       );
-      return res.status(201).json(result.rows[0]);
+      const publicacion = result.rows[0];
+
+      await crearTareaAuto({
+        titulo: `Diseñar assets - ${idea || "sin idea"}`,
+        asignado_a: "Augusto",
+        cliente_id,
+        fecha_vencimiento: fechaVencimientoTarea(fecha_programada, tipo === "video" ? 2 : 1),
+        publicacion_id: publicacion.id,
+        tipo_tarea: "diseno",
+        subtipo: "diseñar",
+      });
+
+      if (tipo === "video") {
+        await crearTareaAuto({
+          titulo: `Editar video - ${idea || "sin idea"}`,
+          asignado_a: "Luciano",
+          cliente_id,
+          fecha_vencimiento: fechaVencimientoTarea(fecha_programada, 1),
+          publicacion_id: publicacion.id,
+          tipo_tarea: "edicion",
+          subtipo: "editar",
+        });
+      }
+
+      return res.status(201).json(publicacion);
     }
 
     res.status(400).json({
-      error: "Tipo de pieza inválido. Usa: historia, reel, carrusel, flyer, video",
+      error: "Tipo de pieza inválido. Usa: historia, carrusel, video",
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/historias/convertir-flyer/:publicacionId", async (req, res, next) => {
+  try {
+    const { publicacionId } = req.params;
+
+    const origen = await pool.query(
+      `SELECT * FROM publicaciones WHERE id = $1 AND tipo = 'flyer'`,
+      [publicacionId],
+    );
+
+    if (origen.rows.length === 0) {
+      return res.status(404).json({ error: "Flyer no encontrado en publicaciones." });
+    }
+
+    const p = origen.rows[0];
+
+    const result = await pool.query(
+      `INSERT INTO historias (cliente_id, estado, fecha_programada, responsable, responsable_diseño, idea, copy, material_referencia, aclaraciones, prioridad, metadata)
+       VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id, cliente_id, estado, to_char(fecha_programada, 'YYYY-MM-DD') AS fecha_programada, idea, copy, material_referencia, aclaraciones, prioridad, created_at`,
+      [
+        p.cliente_id,
+        p.estado === "publicada" ? "publicada" : "en_diseño",
+        p.fecha_programada,
+        p.responsable,
+        p.idea,
+        p.copy,
+        p.material_referencia,
+        p.aclaraciones,
+        p.prioridad,
+        JSON.stringify({ ...(p.metadata || {}), migrada_desde_flyer_id: p.id }),
+      ],
+    );
+
+    await pool.query("DELETE FROM publicaciones WHERE id = $1", [publicacionId]);
+
+    res.status(201).json(result.rows[0]);
   } catch (error) {
     next(error);
   }
