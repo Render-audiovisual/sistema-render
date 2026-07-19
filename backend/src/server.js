@@ -1058,6 +1058,11 @@ router.get("/piezas/:id", async (req, res, next) => {
 });
 
 // Un día antes de fecha_programada, sin bajar de la fecha de hoy.
+// Clientes que Germán filma hoy (confirmado con el dueño del sistema al
+// definir responsabilidades — el resto de los clientes con video
+// programado todavía no tiene productor asignado, se revisa más adelante).
+const CLIENTES_PRODUCCION_GERMAN = ["Luzin", "Moketa", "Búnker Training", "Bohle", "Capital Motos"];
+
 function fechaVencimientoTarea(fechaProgramada, diasAntes = 1) {
   const f = new Date(`${fechaProgramada}T00:00:00`);
   f.setDate(f.getDate() - diasAntes);
@@ -1157,26 +1162,50 @@ router.post("/piezas", async (req, res, next) => {
       );
       const publicacion = result.rows[0];
 
-      await crearTareaAuto({
-        titulo: `Diseñar assets - ${idea || "sin idea"}`,
-        asignado_a: "Augusto",
-        cliente_id,
-        fecha_vencimiento: fechaVencimientoTarea(fecha_programada, tipo === "video" ? 2 : 1),
-        publicacion_id: publicacion.id,
-        tipo_tarea: "diseno",
-        subtipo: "diseñar",
-      });
-
-      if (tipo === "video") {
+      if (tipo === "carrusel") {
+        // Carruseles/flyers: diseño de Augusto, sin filmación ni edición.
         await crearTareaAuto({
-          titulo: `Editar video - ${idea || "sin idea"}`,
-          asignado_a: "Luciano",
+          titulo: `Diseñar assets - ${idea || "sin idea"}`,
+          asignado_a: "Augusto",
           cliente_id,
           fecha_vencimiento: fechaVencimientoTarea(fecha_programada, 1),
           publicacion_id: publicacion.id,
-          tipo_tarea: "edicion",
-          subtipo: "editar",
+          tipo_tarea: "diseno",
+          subtipo: "diseñar",
         });
+      } else {
+        // Video: Germán filma (solo clientes confirmados) y Luciano edita.
+        // Augusto no interviene acá — diseño de video no existe como paso.
+        const { rows: clienteRows } = await pool.query(
+          "SELECT nombre FROM clientes WHERE id = $1",
+          [cliente_id],
+        );
+        const nombreCliente = clienteRows[0]?.nombre;
+
+        if (nombreCliente && CLIENTES_PRODUCCION_GERMAN.includes(nombreCliente)) {
+          await crearTareaAuto({
+            titulo: `Filmar video - ${idea || "sin idea"}`,
+            asignado_a: "Germán",
+            cliente_id,
+            fecha_vencimiento: fechaVencimientoTarea(fecha_programada, 3),
+            publicacion_id: publicacion.id,
+            tipo_tarea: "produccion",
+            subtipo: "filmar",
+          });
+
+          await crearTareaAuto({
+            titulo: `Editar video - ${idea || "sin idea"}`,
+            asignado_a: "Luciano",
+            cliente_id,
+            fecha_vencimiento: fechaVencimientoTarea(fecha_programada, 1),
+            publicacion_id: publicacion.id,
+            tipo_tarea: "edicion",
+            subtipo: "editar",
+          });
+        }
+        // Si el cliente no tiene productor asignado todavía, no se generan
+        // tareas automáticas — evita que Luciano reciba una edición sin
+        // material filmado por alguien.
       }
 
       return res.status(201).json(publicacion);

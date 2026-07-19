@@ -2,183 +2,6 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
-// TEMPORAL — reemplazar cuando exista tabla de historias/publicaciones/tareas.
-const piezasDetalleClienteDemo = [
-  {
-    pieza: "Historia — Catálogo semanal",
-    responsable: "Augusto",
-    estado: "Bloqueada (falta material)",
-  },
-  {
-    pieza: "Reel — Producto destacado",
-    responsable: "Augusto",
-    estado: "Pendiente",
-  },
-  {
-    pieza: "Reel — Producto destacado #2",
-    responsable: "Augusto",
-    estado: "Pendiente",
-  },
-];
-
-// TEMPORAL — reemplazar cuando exista tabla de historias/publicaciones/tareas.
-const piezasDestrabadasFrancoDemo = [
-  {
-    cliente: "Bendita",
-    pieza: "Historia — Nuevo producto",
-    dudaResuelta: "Confirmó copy final a Augusto",
-  },
-];
-
-// TEMPORAL — reemplazar cuando exista tabla de historias/publicaciones/tareas.
-const escaladosAgustinFrancoDemo = [
-  {
-    cliente: "RPM Chevrolet",
-    pieza: "Duda comercial sobre promo",
-    estado: "Escalado hoy · esperando respuesta de Agustín",
-  },
-];
-
-// TEMPORAL — reemplazar cuando exista tabla de publicaciones.
-const avanceAugustoDemo = {
-  feed: 64,
-};
-
-// TEMPORAL — reemplazar cuando exista tabla de tareas.
-const proximosLucianoDemo = [
-  {
-    cliente: "Moketa",
-    pieza: "Reel producto destacado",
-    vencimiento: "Publica hoy",
-    tag: "Requiere aprobación de Franco",
-    requiereAprobacion: true,
-  },
-  {
-    cliente: "Luzin",
-    pieza: "Reel novedades julio",
-    vencimiento: "Publica mañana",
-    tag: "No requiere aprobación",
-    requiereAprobacion: false,
-  },
-];
-
-// TEMPORAL — reemplazar cuando exista tabla de tareas.
-const tableroLucianoDemo = [
-  {
-    estado: "Pendiente",
-    tareas: [
-      {
-        cliente: "RPM Chevrolet",
-        pieza: "Reel testimonio",
-        tag: "No requiere aprobación",
-        requiereAprobacion: false,
-      },
-      {
-        cliente: "Bendita",
-        pieza: "Reel producto nuevo",
-        tag: "Requiere aprobación",
-        requiereAprobacion: true,
-      },
-    ],
-  },
-  {
-    estado: "En progreso",
-    tareas: [
-      {
-        cliente: "Litoral Maq",
-        pieza: "Reel institucional",
-        detalle: "Editando ahora",
-      },
-    ],
-  },
-  {
-    estado: "Corrección",
-    tareas: [
-      {
-        cliente: "Capital Motos",
-        pieza: "Reel 0km",
-        tag: "Nota de Franco",
-        requiereAprobacion: true,
-      },
-    ],
-  },
-];
-
-// TEMPORAL — reemplazar cuando exista tabla de tareas.
-const avanceLucianoDemo = {
-  editados: 34,
-  objetivo: 48,
-};
-
-// TEMPORAL — reemplazar cuando exista tabla de tareas.
-const produccionesGermanDemo = [
-  {
-    cliente: "Lavalle Market",
-    pieza: "Fotos de producto (3 destacados)",
-    estado: "Pedido por Augusto · sin fecha coordinada todavía",
-    abreModal: true,
-  },
-  {
-    cliente: "RPM Chevrolet",
-    pieza: "Video testimonio cliente",
-    estado: "Coordinado para el jueves (fuera de la plataforma, por WhatsApp)",
-    abreModal: false,
-  },
-  {
-    cliente: "Litoral Maq",
-    pieza: "Fotos de maquinaria nueva",
-    tag: "Bloqueada: falta acceso al predio",
-    abreModal: false,
-  },
-];
-
-// TEMPORAL — reemplazar cuando exista tabla de tareas.
-const avanceGermanDemo = {
-  entregadas: 9,
-  objetivo: 14,
-};
-
-// TEMPORAL — reemplazar cuando exista tabla de historias/publicaciones.
-const calendarioOrianaDemo = [
-  {
-    hora: "09:00",
-    cliente: "Luzin",
-    pieza: "Historia novedades",
-    tag: "Lista para subir",
-    estado: "lista",
-    abreModal: true,
-  },
-  {
-    hora: "11:00",
-    cliente: "RPM Chevrolet",
-    pieza: "Reel promo permuta",
-    tag: "Bloqueada: falta check de precio",
-    estado: "bloqueada",
-    abreModal: false,
-  },
-  {
-    hora: "14:00",
-    cliente: "Moketa",
-    pieza: "Carrusel catálogo",
-    tag: "Ya publicada 09:15",
-    estado: "publicada",
-    abreModal: false,
-  },
-];
-
-// TEMPORAL — reemplazar cuando exista tabla de historias/publicaciones.
-const bloqueadasOrianaDemo = [
-  {
-    cliente: "RPM Chevrolet",
-    pieza: "Reel promo permuta",
-    estado: "Bloqueada por Oriana: precio sin confirmar · avisado a Augusto",
-  },
-];
-
-// TEMPORAL — reemplazar cuando exista tabla de historias/publicaciones.
-const avanceOrianaDemo =
-  "Subidas hoy: 1 / 6 — 1 bloqueada, 4 pendientes de horario";
-
 function calcularPorcentajePublicadas(items) {
   if (items.length === 0) return 0;
 
@@ -453,46 +276,6 @@ const TIPO_PUBLICACION_LABELS = {
 
 function getTipoPublicacionLabel(tipo) {
   return TIPO_PUBLICACION_LABELS[tipo] || "Reel";
-}
-
-function getHistoriasAugustoKanban(historias) {
-  const columnas = [
-    { estado: "Pendiente", historias: [] },
-    { estado: "En progreso", historias: [] },
-    { estado: "Corrección", historias: [] },
-  ];
-  const columnasPorEstado = Object.fromEntries(
-    columnas.map((columna) => [columna.estado, columna]),
-  );
-
-  historias.forEach((historia) => {
-    if (historia.estado === "en_revision" || historia.estado === "lista") {
-      columnasPorEstado["En progreso"].historias.push(historia);
-      return;
-    }
-
-    if (
-      historia.estado === "pendiente" ||
-      historia.estado === "en_diseño" ||
-      historia.estado === "bloqueada"
-    ) {
-      columnasPorEstado.Pendiente.historias.push(historia);
-    }
-  });
-
-  return columnas;
-}
-
-function getPorcentajeHistoriasPublicadas(historias) {
-  if (historias.length === 0) {
-    return "0.0";
-  }
-
-  const publicadas = historias.filter(
-    (historia) => historia.estado === "publicada",
-  ).length;
-
-  return ((publicadas / historias.length) * 100).toFixed(1);
 }
 
 function getPublicacionesKanban(publicaciones) {
@@ -857,24 +640,31 @@ function NuevaTareaPage() {
   );
 }
 
-function TareasAsignadasGenericas({ nombre }) {
+function TareasAsignadasGenericas({ nombre, tipoTarea, titulo }) {
   const [tareas, setTareas] = useState([]);
   const [error, setError] = useState(null);
   const sesion = getSesion();
   const esAdmin = sesion?.usuario?.rol === "admin";
 
   const cargarTareas = () => {
-    fetch("/api/tareas")
+    const params = new URLSearchParams({ asignado_a: nombre });
+    if (tipoTarea) params.set("tipo_tarea", tipoTarea);
+    fetch(`/api/tareas?${params.toString()}`)
       .then((response) => response.json())
-      .then((todas) => {
-        setTareas(todas.filter((tarea) => tarea.asignado_a === nombre));
+      .then((propias) => {
+        setTareas(
+          propias
+            .slice()
+            .sort((a, b) => (a.fecha_vencimiento || "").localeCompare(b.fecha_vencimiento || "")),
+        );
       })
       .catch(() => setError("No se pudieron cargar las tareas asignadas."));
   };
 
   useEffect(() => {
     cargarTareas();
-  }, [nombre]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nombre, tipoTarea]);
 
   const cambiarEstado = (tareaId, nuevoEstado) => {
     fetch(`/api/tareas/${tareaId}`, {
@@ -894,14 +684,14 @@ function TareasAsignadasGenericas({ nombre }) {
 
   return (
     <>
-      <div className="section-label">
-        Tareas asignadas (cargadas desde la plataforma)
-      </div>
+      <div className="section-label">{titulo || "Tareas asignadas"}</div>
       <div className="box">
         {error && <div className="caption">{error}</div>}
         {!error &&
           tareas.map((tarea) => {
             const bloqueaCierre = tarea.requiere_aprobacion && !esAdmin;
+            const material = tarea.propiedades_extra?.material || tarea.propiedades_extra?.Material;
+            const feedback = tarea.propiedades_extra?.feedback || tarea.propiedades_extra?.motivo_bloqueo;
 
             return (
               <div className="card" key={`tarea-generica-${tarea.id}`}>
@@ -924,7 +714,21 @@ function TareasAsignadasGenericas({ nombre }) {
                         )}
                     </>
                   )}
+                  {tarea.prioridad && tarea.prioridad !== "media" && (
+                    <span
+                      className={`tag ${tarea.prioridad === "alta" ? "atraso" : "operativa"}`}
+                      style={{ marginLeft: "6px" }}
+                    >
+                      Prioridad {tarea.prioridad}
+                    </span>
+                  )}
                 </div>
+                {material && (
+                  <div className="meta">Material: {material}</div>
+                )}
+                {feedback && (
+                  <div className="meta">Feedback: {feedback}</div>
+                )}
                 <div className="meta">
                   {tarea.requiere_aprobacion && (
                     <span className="tag creativa">Requiere aprobación</span>
@@ -950,7 +754,7 @@ function TareasAsignadasGenericas({ nombre }) {
             );
           })}
         {!error && tareas.length === 0 && (
-          <div className="caption">No hay tareas cargadas asignadas.</div>
+          <div className="caption">No hay tareas asignadas por ahora.</div>
         )}
         <div className="caption">
           → Podés cambiar el estado directo desde acá. Las tareas que requieren
@@ -2757,10 +2561,27 @@ function OrianaDashboard() {
   }, []);
 
   const hoy = getHoyLocalISO();
-  const piezasHoy = piezasOriana.filter(
+
+  // Oriana solo publica — no le corresponde ver piezas todavía en diseño,
+  // edición o revisión. Su universo son: listas para subir, ya publicadas
+  // y bloqueadas (necesita saber que existen, aunque no las resuelva ella).
+  const piezasRelevantes = piezasOriana.filter((pieza) =>
+    ["lista", "publicada", "bloqueada"].includes(pieza.estado),
+  );
+
+  const piezasHoy = piezasRelevantes.filter(
     (pieza) => pieza.fecha_programada && pieza.fecha_programada.startsWith(hoy),
   );
-  const bloqueadas = piezasOriana.filter(
+  const proximas = piezasRelevantes.filter(
+    (pieza) => pieza.estado === "lista" && pieza.fecha_programada > hoy,
+  );
+  const vencidas = piezasRelevantes.filter(
+    (pieza) =>
+      pieza.estado !== "publicada" &&
+      pieza.fecha_programada &&
+      pieza.fecha_programada < hoy,
+  );
+  const bloqueadas = piezasRelevantes.filter(
     (pieza) => pieza.estado === "bloqueada",
   );
   const publicadasHoy = piezasHoy.filter(
@@ -2819,7 +2640,7 @@ function OrianaDashboard() {
                     }}
                   >
                     <div className="cliente">{pieza.cliente_nombre}</div>
-                    <div>{pieza.metadata?.Idea || "Sin idea cargada"}</div>
+                    <div>{pieza.idea || "Sin idea cargada"}</div>
                     <div className="meta">
                       <span
                         className={`tag ${
@@ -2844,12 +2665,45 @@ function OrianaDashboard() {
               </div>
             )}
             <div className="caption">
-              → Oriana ve primero el calendario del día y qué piezas ya están
-              listas, bloqueadas o publicadas.
+              → Solo contenido ya aprobado y listo para publicar — nada que
+              todavía esté en diseño, edición o revisión.
             </div>
           </div>
 
-          <div className="section-label">2 · Piezas bloqueadas por corrección</div>
+          <div className="section-label">2 · Vencidas (no publicadas a tiempo)</div>
+          <div className="box">
+            {vencidas.map((pieza) => (
+              <div
+                className="priority-card blocked"
+                key={`vencida-${pieza.origen}-${pieza.id}`}
+              >
+                <div className="cliente">{pieza.cliente_nombre}</div>
+                <div>{pieza.idea || "Sin idea cargada"}</div>
+                <div className="meta">
+                  Debía publicarse el {pieza.fecha_programada}
+                </div>
+              </div>
+            ))}
+            {vencidas.length === 0 && (
+              <div className="caption">No hay piezas vencidas.</div>
+            )}
+          </div>
+
+          <div className="section-label">3 · Próximas programadas</div>
+          <div className="box">
+            {proximas.slice(0, 10).map((pieza) => (
+              <div className="card" key={`proxima-${pieza.origen}-${pieza.id}`}>
+                <div className="cliente">{pieza.cliente_nombre}</div>
+                <div>{pieza.idea || "Sin idea cargada"}</div>
+                <div className="meta">{pieza.fecha_programada}</div>
+              </div>
+            ))}
+            {proximas.length === 0 && (
+              <div className="caption">No hay piezas listas programadas a futuro todavía.</div>
+            )}
+          </div>
+
+          <div className="section-label">4 · Piezas bloqueadas por corrección</div>
           <div className="box">
             {bloqueadas.map((pieza) => (
               <div
@@ -2857,9 +2711,9 @@ function OrianaDashboard() {
                 key={`bloqueada-${pieza.origen}-${pieza.id}`}
               >
                 <div className="cliente">{pieza.cliente_nombre}</div>
-                <div>{pieza.metadata?.Idea || "Sin idea cargada"}</div>
+                <div>{pieza.idea || "Sin idea cargada"}</div>
                 <div className="meta">
-                  {pieza.metadata?.Aclaración || "Sin aclaración cargada"}
+                  {pieza.aclaraciones || "Sin aclaración cargada"}
                 </div>
               </div>
             ))}
@@ -2872,7 +2726,7 @@ function OrianaDashboard() {
             </div>
           </div>
 
-          <div className="section-label">3 · Avance del día</div>
+          <div className="section-label">5 · Avance del día</div>
           <div className="box">
             <div className="progress-card">
               <div className="progress-label">Avance del día</div>
@@ -2955,7 +2809,7 @@ function ChecklistPublicacionOrianaModal({ publicacion, onClose, onPublicar }) {
         <div className="modal-header">
           <span>
             {publicacion.cliente_nombre} ·{" "}
-            {publicacion.metadata?.Idea || "Sin idea cargada"}
+            {publicacion.idea || "Sin idea cargada"}
           </span>
           <button className="modal-close" type="button" onClick={onClose}>
             X
@@ -3015,9 +2869,30 @@ function GermanDashboard() {
   useEffect(cargarTareasGerman, []);
 
   const pendientes = tareasGerman.filter((tarea) => tarea.estado !== "hecha");
-  const entregadas = tareasGerman.filter(
-    (tarea) => tarea.estado === "hecha",
-  ).length;
+
+  // Compromiso mensual pactado por cliente (confirmado al definir
+  // responsabilidades del equipo). El mes de cada tarea se aproxima por
+  // fecha_vencimiento (no hay fecha_programada directa en tareas) — el
+  // desvío es de a lo sumo unos días, aceptable para el MVP.
+  const mesActual = getHoyLocalISO().slice(0, 7);
+  const CUOTAS_GERMAN = [
+    { cliente: "Luzin", cuota: 8 },
+    { cliente: "Moketa", cuota: 8 },
+    { cliente: "Búnker Training", cuota: 4 },
+    { cliente: "Bohle", cuota: 6 },
+    { cliente: "Capital Motos", cuota: 6 },
+  ];
+  const cumplimientoPorCliente = CUOTAS_GERMAN.map((c) => {
+    const hechas = tareasGerman.filter(
+      (t) =>
+        t.cliente_nombre === c.cliente &&
+        t.estado === "hecha" &&
+        t.fecha_vencimiento?.startsWith(mesActual),
+    ).length;
+    return { ...c, hechas, porcentaje: Math.round((hechas / c.cuota) * 100) };
+  });
+  const cuotaTotal = CUOTAS_GERMAN.reduce((acc, c) => acc + c.cuota, 0);
+  const hechasTotal = cumplimientoPorCliente.reduce((acc, c) => acc + c.hechas, 0);
 
   return (
     <main aria-label="Render platform German">
@@ -3112,16 +2987,52 @@ function GermanDashboard() {
             </div>
           </div>
 
-          <div className="section-label">3 · Avance del mes</div>
+          <div className="section-label">3 · Cumplimiento mensual por cliente</div>
           <div className="box">
-            <div className="progress-card">
-              <div className="progress-label">
-                Producciones entregadas este mes
-              </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Videos entregados</th>
+                  <th>Cumplimiento</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cumplimientoPorCliente.map((c) => (
+                  <tr key={c.cliente}>
+                    <td>{c.cliente}</td>
+                    <td>{c.hechas} / {c.cuota}</td>
+                    <td>{c.porcentaje}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="progress-card" style={{ marginTop: "12px" }}>
+              <div className="progress-label">Total del mes</div>
               <div className="progress-value">
-                {entregadas} / {tareasGerman.length}
+                {hechasTotal} / {cuotaTotal} ({Math.round((hechasTotal / cuotaTotal) * 100)}%)
               </div>
             </div>
+            <div className="caption">
+              → Un video cuenta como cumplido recién cuando queda marcado
+              "Hecha" — no alcanza con haber ido a filmar.
+            </div>
+          </div>
+
+          <div className="section-label">4 · Bloqueos</div>
+          <div className="box">
+            {tareasGerman.filter((t) => t.estado === "bloqueada").length === 0 && (
+              <div className="caption">Sin bloqueos activos.</div>
+            )}
+            {tareasGerman
+              .filter((t) => t.estado === "bloqueada")
+              .map((t) => (
+                <div className="priority-card blocked" key={`bloqueo-${t.id}`}>
+                  <div className="cliente">{t.cliente_nombre ?? "Sin cliente"}</div>
+                  <div>{t.titulo}</div>
+                  <div className="meta">{t.propiedades_extra?.motivo_bloqueo ?? "Sin motivo cargado"}</div>
+                </div>
+              ))}
           </div>
         </div>
       </div>
@@ -3133,7 +3044,7 @@ function GermanDashboard() {
           onActualizado={cargarTareasGerman}
         />
       )}
-      <TareasAsignadasGenericas nombre="Germán" />
+      <TareasAsignadasGenericas nombre="Germán" tipoTarea="produccion" titulo="Producciones asignadas" />
     </main>
   );
 }
@@ -3260,40 +3171,28 @@ function DetalleProduccionGermanModal({ produccion, onClose, onActualizado }) {
 }
 
 function LucianoDashboard() {
-  const [piezaSeleccionada, setPiezaSeleccionada] = useState(null);
-  const [publicacionesLuciano, setPublicacionesLuciano] = useState([]);
-  const [publicacionesLucianoError, setPublicacionesLucianoError] =
-    useState(null);
+  const [edicionesLuciano, setEdicionesLuciano] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch("/api/publicaciones")
+    fetch("/api/tareas?asignado_a=Luciano&tipo_tarea=edicion")
       .then((response) => response.json())
-      .then((publicaciones) => {
-        setPublicacionesLuciano(
-          publicaciones
-            .filter((publicacion) => publicacion.responsable === "Luciano")
-            .sort((a, b) =>
-              a.fecha_programada < b.fecha_programada ? -1 : 1,
-            ),
+      .then((tareas) => {
+        setEdicionesLuciano(
+          tareas
+            .slice()
+            .sort((a, b) => (a.fecha_vencimiento || "").localeCompare(b.fecha_vencimiento || "")),
         );
       })
       .catch((error) => {
-        console.error(
-          "No se pudieron cargar las publicaciones de Luciano",
-          error,
-        );
-        setPublicacionesLucianoError(
-          "No se pudieron cargar las publicaciones.",
-        );
+        console.error("No se pudieron cargar las ediciones de Luciano", error);
+        setError("No se pudieron cargar las ediciones.");
       });
   }, []);
 
-  const reelsLuciano = publicacionesLuciano.filter(
-    (publicacion) => publicacion.tipo === "video",
-  );
-  const reelsPublicados = reelsLuciano.filter(
-    (publicacion) => publicacion.estado === "publicada",
-  ).length;
+  const pendientes = edicionesLuciano.filter((t) => t.estado !== "hecha");
+  const hechas = edicionesLuciano.filter((t) => t.estado === "hecha").length;
+  const proxima = pendientes[0];
 
   return (
     <main aria-label="Render platform Luciano">
@@ -3301,228 +3200,78 @@ function LucianoDashboard() {
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
-            <span className="active">Mis reels</span>
-            <span>Clientes</span>
+            <span className="active">Mis ediciones</span>
           </div>
           <div className="tag">Luciano · edición</div>
         </div>
 
         <div className="content">
+          {error && <div className="caption">{error}</div>}
+
           <div style={{ backgroundColor: "#d4edff", border: "2px solid #0066cc", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
-            {(() => {
-              const proximaPublicacion = publicacionesLuciano
-                .filter((p) => p.estado !== "publicada")
-                .sort((a, b) => a.fecha_programada.localeCompare(b.fecha_programada))[0];
-
-              if (!proximaPublicacion) {
-                return <div className="caption">✅ No hay reels pendientes.</div>;
-              }
-
-              return (
-                <div onClick={() => setPiezaSeleccionada(proximaPublicacion)} style={{ cursor: "pointer" }}>
-                  <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>🎬 Tu próxima edición</div>
-                  <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>{proximaPublicacion.metadata?.Idea || "Sin idea cargada"}</div>
-                  <div style={{ fontSize: "13px", color: "#333", marginBottom: "8px" }}>{proximaPublicacion.cliente_nombre} · Publica {proximaPublicacion.fecha_programada}</div>
-                  <div style={{ fontSize: "12px", color: "#555" }}>Estado: {proximaPublicacion.estado === "en_revision" ? "Esperando aprobación de Franco" : "Listo para subir"}</div>
+            {!proxima ? (
+              <div className="caption">✅ No hay ediciones pendientes.</div>
+            ) : (
+              <div>
+                <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>🎬 Tu próxima edición</div>
+                <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>{proxima.titulo}</div>
+                <div style={{ fontSize: "13px", color: "#333", marginBottom: "8px" }}>
+                  {proxima.cliente_nombre ?? "Sin cliente"} · Vence {proxima.fecha_vencimiento}
                 </div>
-              );
-            })()}
-          </div>
-
-          <div className="section-label">1 · Próximo a publicar</div>
-          <div className="box">
-            {publicacionesLucianoError && (
-              <div className="caption">{publicacionesLucianoError}</div>
+                <div style={{ fontSize: "12px", color: "#555" }}>
+                  {proxima.requiere_aprobacion ? "Esperando aprobación de Franco" : `Estado: ${getEstadoHistoriaLabel(proxima.estado)}`}
+                </div>
+              </div>
             )}
-            {!publicacionesLucianoError &&
-              publicacionesLuciano.map((publicacion) => {
-                const requiereAprobacion =
-                  publicacion.estado === "en_revision";
-
-                return (
-                  <div
-                    className={`priority-card ${
-                      requiereAprobacion ? "blocked" : ""
-                    }`}
-                    key={publicacion.id}
-                    onClick={() => {
-                      if (requiereAprobacion) {
-                        setPiezaSeleccionada(publicacion);
-                      }
-                    }}
-                  >
-                    <div className="cliente">
-                      {publicacion.cliente_nombre}
-                    </div>
-                    <div>
-                      {publicacion.metadata?.Idea || "Sin idea cargada"}
-                    </div>
-                    <div className="meta">{publicacion.fecha_programada}</div>
-                    <div className="meta">
-                      <span
-                        className={`tag ${
-                          requiereAprobacion ? "creativa" : "operativa"
-                        }`}
-                      >
-                        {requiereAprobacion
-                          ? "Requiere aprobación de Franco"
-                          : "No requiere aprobación"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            {!publicacionesLucianoError &&
-              publicacionesLuciano.length === 0 && (
-                <div className="caption">
-                  No hay publicaciones asignadas a Luciano.
-                </div>
-              )}
-            <div className="caption">
-              → Primero ve lo que está cerca de publicarse y si necesita
-              aprobación antes de salir.
-            </div>
           </div>
 
-          <div className="section-label">2 · Tablero por estado</div>
-          <div className="box">
-            <div className="kanban">
-              {getPublicacionesKanban(publicacionesLuciano).map((columna) => (
-                <div className="kanban-column" key={columna.estado}>
-                  <div className="kanban-header">
-                    <span>{columna.estado}</span>
-                    <span>{columna.publicaciones.length}</span>
-                  </div>
-
-                  {columna.publicaciones.map((publicacion) => (
-                    <div className="card" key={`kanban-${publicacion.id}`}>
-                      <div className="cliente">
-                        {publicacion.cliente_nombre}
-                      </div>
-                      <div>
-                        {publicacion.metadata?.Idea || "Sin idea cargada"}
-                      </div>
-                      <div className="meta">
-                        {publicacion.estado === "bloqueada" ? (
-                          publicacion.metadata?.Aclaración ||
-                          "Sin aclaración cargada"
-                        ) : (
-                          <span
-                            className={`tag ${
-                              publicacion.estado === "en_revision"
-                                ? "creativa"
-                                : "operativa"
-                            }`}
-                          >
-                            {getEstadoHistoriaLabel(publicacion.estado)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-            <div className="caption">
-              → Vista por estado para separar lo pendiente, lo que está en
-              edición y lo que volvió con corrección.
-            </div>
-          </div>
-
-          <div className="section-label">3 · Avance del mes</div>
+          <div className="section-label">Avance del mes</div>
           <div className="box">
             <div className="progress-card">
-              <div className="progress-label">Reels editados este mes</div>
+              <div className="progress-label">Videos editados</div>
               <div className="progress-value">
-                {reelsPublicados} / {reelsLuciano.length}
+                {hechas} / {edicionesLuciano.length}
               </div>
             </div>
             <div className="caption">
-              → Conteo real de reels de Luciano ya publicados sobre el total
-              asignado.
+              → Solo tus ediciones asignadas — no ves diseño, filmación ni
+              publicaciones de otros.
             </div>
           </div>
         </div>
       </div>
 
-      {piezaSeleccionada && (
-        <TareaAprobacionPendienteModal
-          tarea={piezaSeleccionada}
-          onClose={() => setPiezaSeleccionada(null)}
-        />
-      )}
-      <TareasAsignadasGenericas nombre="Luciano" />
+      <TareasAsignadasGenericas nombre="Luciano" tipoTarea="edicion" titulo="Ediciones asignadas — fecha límite, prioridad y material" />
     </main>
   );
 }
 
-function TareaAprobacionPendienteModal({ tarea, onClose }) {
-  return (
-    <div className="modal-overlay open" role="dialog" aria-modal="true">
-      <div className="modal">
-        <div className="modal-header">
-          <span>
-            {tarea.cliente_nombre} · {tarea.metadata?.Idea || "Sin idea cargada"}
-          </span>
-          <button className="modal-close" type="button" onClick={onClose}>
-            X
-          </button>
-        </div>
-        <div className="modal-body">
-          <span className="tag creativa">Requiere aprobación de Franco</span>
-
-          <div className="detail-grid">
-            <div className="detail-field">
-              <div className="detail-label">Estado actual</div>
-              <div>{getEstadoHistoriaLabel(tarea.estado)}</div>
-            </div>
-            <div className="detail-field">
-              <div className="detail-label">Material</div>
-              <div>{tarea.metadata?.Material || "Sin material cargado"}</div>
-            </div>
-          </div>
-
-          <div className="modal-actions">
-            {/* Luciano no puede cerrar esta pieza hasta que Franco la apruebe. */}
-            <button
-              className="btn disabled"
-              disabled
-              title="Bloqueado hasta que Franco apruebe"
-              type="button"
-            >
-              Marcar como hecha
-            </button>
-            <span className="caption">
-              Esperando revisión de Franco — no requiere ninguna acción tuya
-              por ahora.
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function AugustoDashboard() {
-  const [historiaSeleccionada, setHistoriaSeleccionada] = useState(null);
-  const [historiasAugusto, setHistoriasAugusto] = useState([]);
-  const [historiasAugustoError, setHistoriasAugustoError] = useState(null);
+  const [disenosAugusto, setDisenosAugusto] = useState([]);
+  const [error, setError] = useState(null);
 
-  const cargarHistoriasAugusto = () => {
-    fetch("/api/historias")
+  useEffect(() => {
+    fetch("/api/tareas?asignado_a=Augusto&tipo_tarea=diseno")
       .then((response) => response.json())
-      .then((historias) => {
-        setHistoriasAugusto(
-          historias.filter((historia) => historia.responsable === "Augusto"),
+      .then((tareas) => {
+        setDisenosAugusto(
+          tareas
+            .slice()
+            .sort((a, b) => (a.fecha_vencimiento || "").localeCompare(b.fecha_vencimiento || "")),
         );
       })
       .catch((error) => {
-        console.error("No se pudieron cargar las historias de Augusto", error);
-        setHistoriasAugustoError("No se pudieron cargar las historias.");
+        console.error("No se pudieron cargar los diseños de Augusto", error);
+        setError("No se pudieron cargar los diseños.");
       });
-  };
+  }, []);
 
-  useEffect(cargarHistoriasAugusto, []);
+  const hoy = getHoyLocalISO();
+  const atrasadasOHoy = disenosAugusto.filter(
+    (t) => t.estado !== "hecha" && t.fecha_vencimiento && t.fecha_vencimiento <= hoy,
+  );
+  const hechas = disenosAugusto.filter((t) => t.estado === "hecha").length;
+  const proxima = disenosAugusto.find((t) => t.estado !== "hecha");
 
   return (
     <main aria-label="Render platform Augusto">
@@ -3531,304 +3280,62 @@ function AugustoDashboard() {
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
             <span className="active">Mis diseños</span>
-            <span>Clientes</span>
           </div>
           <div className="tag">Augusto · diseño</div>
         </div>
 
         <div className="content">
+          {error && <div className="caption">{error}</div>}
+
           <div style={{ backgroundColor: "#fff3cd", border: "2px solid #ffc107", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
-            {(() => {
-              const proximaHistoria = historiasAugusto
-                .filter((h) => h.estado !== "publicada" && h.estado !== "bloqueada")
-                .sort((a, b) => a.fecha_programada.localeCompare(b.fecha_programada))[0];
-
-              if (!proximaHistoria) {
-                return <div className="caption">✅ No hay tareas pendientes.</div>;
-              }
-
-              return (
-                <div onClick={() => setHistoriaSeleccionada(proximaHistoria)} style={{ cursor: "pointer" }}>
-                  <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>📌 Tu próxima tarea</div>
-                  <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>{proximaHistoria.metadata?.Idea || "Sin idea cargada"}</div>
-                  <div style={{ fontSize: "13px", color: "#555", marginBottom: "8px" }}>{proximaHistoria.cliente_nombre} · Vence {proximaHistoria.fecha_programada}</div>
-                  <div style={{ fontSize: "12px", color: "#666" }}>Estado: {getEstadoHistoriaLabel(proximaHistoria.estado)}</div>
-                </div>
-              );
-            })()}
-          </div>
-
-          <div className="section-label">1 · Atrasadas / vencen hoy</div>
-          <div className="box">
-            {historiasAugustoError && (
-              <div className="caption">{historiasAugustoError}</div>
-            )}
-            {!historiasAugustoError &&
-              historiasAugusto
-                .filter((historia) => {
-                  const vencidaOVenceHoy =
-                    historia.fecha_programada <= getHoyLocalISO() &&
-                    historia.estado !== "publicada";
-                  return vencidaOVenceHoy || historia.estado === "bloqueada";
-                })
-                .map((historia) => {
-                  const estaAtrasada =
-                    historia.fecha_programada < getHoyLocalISO() &&
-                    historia.estado !== "publicada";
-                  const estaBloqueada = historia.estado === "bloqueada";
-
-                  return (
-                    <div
-                      className={`priority-card ${
-                        estaAtrasada || estaBloqueada ? "blocked" : ""
-                      }`}
-                      key={historia.id}
-                      onClick={() => setHistoriaSeleccionada(historia)}
-                    >
-                      <div className="cliente">{historia.cliente_nombre}</div>
-                      <div>{historia.metadata?.Idea || "Sin idea cargada"}</div>
-                      <div className="meta">
-                        {historia.fecha_programada} ·{" "}
-                        {getEstadoHistoriaLabel(historia.estado)}
-                      </div>
-                      {estaBloqueada && (
-                        <div className="meta">
-                          <span className="tag operativa">
-                            Bloqueada:{" "}
-                            {historia.metadata?.Aclaración ||
-                              "sin aclaración cargada"}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-            {!historiasAugustoError &&
-              historiasAugusto.filter((historia) => {
-                const vencidaOVenceHoy =
-                  historia.fecha_programada <= getHoyLocalISO() &&
-                  historia.estado !== "publicada";
-                return vencidaOVenceHoy || historia.estado === "bloqueada";
-              }).length === 0 && (
-                <div className="caption">
-                  No hay historias atrasadas ni que venzan hoy.
-                </div>
-              )}
-            <div className="caption">
-              → Primero ve historias reales asignadas a Augusto. El detalle del
-              modal queda para el próximo paso.
-            </div>
-          </div>
-
-          <div className="section-label">2 · Tablero por estado</div>
-          <div className="box">
-            <div className="kanban">
-              {getHistoriasAugustoKanban(historiasAugusto).map((columna) => (
-                <div className="kanban-column" key={columna.estado}>
-                  <div className="kanban-header">
-                    <span>{columna.estado}</span>
-                    <span>{columna.historias.length}</span>
-                  </div>
-
-                  {columna.historias.map((historia) => {
-                    const estaBloqueada = historia.estado === "bloqueada";
-
-                    return (
-                      <div className="card" key={`kanban-${historia.id}`}>
-                        <div className="cliente">
-                          {historia.cliente_nombre}
-                        </div>
-                        <div>
-                          {historia.metadata?.Idea || "Sin idea cargada"}
-                        </div>
-                        <div className="meta">
-                          {historia.fecha_programada} ·{" "}
-                          {getEstadoHistoriaLabel(historia.estado)}
-                        </div>
-                        {estaBloqueada && (
-                          <div className="meta">
-                            <span className="tag operativa">
-                              Bloqueada:{" "}
-                              {historia.metadata?.Aclaración ||
-                                "sin aclaración cargada"}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-            <div className="caption">
-              → Vista real por estado para que Augusto ordene qué diseñar y qué
-              está en marcha.
-            </div>
-          </div>
-
-          <div className="section-label">3 · Avance del mes</div>
-          <div className="box">
-            <div className="progress-grid">
-              <div className="progress-card">
-                <div className="progress-label">Historias</div>
-                <div className="progress-value">
-                  {getPorcentajeHistoriasPublicadas(historiasAugusto)}%
-                </div>
-              </div>
-              <div className="progress-card">
-                <div className="progress-label">Feed</div>
-                <div className="progress-value">{avanceAugustoDemo.feed}%</div>
-              </div>
-            </div>
-            <div className="caption">
-              → Historias calculado desde datos reales. Feed temporal hasta
-              conectar publicaciones reales.
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {historiaSeleccionada && (
-        <DetalleHistoriaModal
-          historia={historiaSeleccionada}
-          onClose={() => setHistoriaSeleccionada(null)}
-          onActualizado={cargarHistoriasAugusto}
-        />
-      )}
-      <TareasAsignadasGenericas nombre="Augusto" />
-    </main>
-  );
-}
-
-function DetalleHistoriaModal({ historia, onClose, onActualizado }) {
-  const [enviando, setEnviando] = useState(null);
-  const [error, setError] = useState(null);
-  const estaBloqueada = historia.estado === "bloqueada";
-
-  const handleDesbloquear = () => {
-    setEnviando("desbloquear");
-    setError(null);
-
-    fetch(`/api/historias/${historia.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estado: "pendiente" }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("No se pudo desbloquear la historia.");
-        }
-        return response.json();
-      })
-      .then(() => {
-        onActualizado();
-        onClose();
-      })
-      .catch(() => {
-        setError("No se pudo desbloquear la historia. Intentá de nuevo.");
-        setEnviando(null);
-      });
-  };
-
-  const handleAvisarGerman = () => {
-    const nota = window.prompt("¿Qué necesita saber Germán sobre esta historia?");
-    if (!nota) return;
-
-    setEnviando("avisar");
-    setError(null);
-
-    fetch("/api/tareas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        titulo: `${historia.cliente_nombre}: ${
-          historia.metadata?.Idea || "historia"
-        } — ${nota}`,
-        asignado_a: "Germán",
-        cliente_id: historia.cliente_id,
-        estado: "pendiente",
-        motivo: nota,
-      }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("No se pudo avisar a Germán.");
-        }
-        return response.json();
-      })
-      .then(() => {
-        onClose();
-      })
-      .catch(() => {
-        setError("No se pudo avisar a Germán. Intentá de nuevo.");
-        setEnviando(null);
-      });
-  };
-
-  return (
-    <div className="modal-overlay open" role="dialog" aria-modal="true">
-      <div className="modal">
-        <div className="modal-header">
-          <span>
-            {historia.cliente_nombre} ·{" "}
-            {historia.metadata?.Idea || "Historia sin idea cargada"}
-          </span>
-          <button className="modal-close" type="button" onClick={onClose}>
-            X
-          </button>
-        </div>
-        <div className="modal-body">
-          <span className="tag operativa">
-            {getEstadoHistoriaLabel(historia.estado)}
-          </span>
-
-          <div className="detail-grid">
-            <div className="detail-field">
-              <div className="detail-label">Copy</div>
-              <div>{historia.metadata?.Copy || "Sin copy cargado"}</div>
-            </div>
-            <div className="detail-field">
-              <div className="detail-label">CTA</div>
-              <div>{historia.metadata?.CTA || "Sin CTA cargado"}</div>
-            </div>
-            <div className="detail-field">
-              <div className="detail-label">Material</div>
-              <div>{historia.metadata?.Material || "Sin material cargado"}</div>
-            </div>
-            <div className="detail-field">
-              <div className="detail-label">Aclaración</div>
+            {!proxima ? (
+              <div className="caption">✅ No hay diseños pendientes.</div>
+            ) : (
               <div>
-                {historia.metadata?.Aclaración || "Sin aclaración cargada"}
+                <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>📌 Tu próxima tarea</div>
+                <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>{proxima.titulo}</div>
+                <div style={{ fontSize: "13px", color: "#555", marginBottom: "8px" }}>
+                  {proxima.cliente_nombre ?? "Sin cliente"} · Vence {proxima.fecha_vencimiento}
+                </div>
+                <div style={{ fontSize: "12px", color: "#666" }}>Estado: {getEstadoHistoriaLabel(proxima.estado)}</div>
               </div>
+            )}
+          </div>
+
+          <div className="section-label">Atrasados / vencen hoy</div>
+          <div className="box">
+            {atrasadasOHoy.length === 0 && (
+              <div className="caption">No hay diseños atrasados ni que venzan hoy.</div>
+            )}
+            {atrasadasOHoy.map((t) => (
+              <div className="priority-card blocked" key={t.id}>
+                <div className="cliente">{t.cliente_nombre ?? "Sin cliente"}</div>
+                <div>{t.titulo}</div>
+                <div className="meta">
+                  {t.fecha_vencimiento} · {getEstadoHistoriaLabel(t.estado)}
+                </div>
+              </div>
+            ))}
+            <div className="caption">
+              → Historias y carruseles juntos — todo lo que Augusto diseña, en
+              una sola lista.
             </div>
           </div>
 
-          {error && <div className="caption login-error">{error}</div>}
-
-          <div className="modal-actions">
-            <button
-              className="btn primary"
-              type="button"
-              disabled={!estaBloqueada || enviando !== null}
-              title={estaBloqueada ? undefined : "Esta historia no está bloqueada"}
-              onClick={handleDesbloquear}
-            >
-              {enviando === "desbloquear"
-                ? "Desbloqueando..."
-                : "Marcar como desbloqueada"}
-            </button>
-            <button
-              className="btn"
-              type="button"
-              disabled={enviando !== null}
-              onClick={handleAvisarGerman}
-            >
-              {enviando === "avisar" ? "Enviando..." : "Avisar a Germán"}
-            </button>
+          <div className="section-label">Avance del mes</div>
+          <div className="box">
+            <div className="progress-card">
+              <div className="progress-label">Diseños entregados</div>
+              <div className="progress-value">
+                {hechas} / {disenosAugusto.length}
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      <TareasAsignadasGenericas nombre="Augusto" tipoTarea="diseno" titulo="Diseños asignados — historias y carruseles" />
+    </main>
   );
 }
 
