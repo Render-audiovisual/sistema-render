@@ -155,7 +155,17 @@
       "Bash(curl -s -X POST http://66.94.104.21:3001/piezas -H 'Content-Type: application/json' -d '{ *)",
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f\\\\\"✅ Creada pieza ID {d['id']}\\\\\"\\); print\\(f\\\\\"Tipo: {d['tipo']}\\\\\"\\); print\\(f\\\\\"Estado: {d['estado']}\\\\\"\\); print\\(f\\\\\"Prioridad: {d['prioridad']}\\\\\"\\)\")",
       "Bash(curl -s -X PATCH http://66.94.104.21:3001/piezas/16 -H 'Content-Type: application/json' -d '{ *)",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f\\\\\"✅ Actualizada\\\\\"\\); print\\(f\\\\\"ID: {d['id']}\\\\\"\\); print\\(f\\\\\"Estado: {d['estado']}\\\\\"\\); print\\(f\\\\\"Aclaraciones: {d['aclaraciones']}\\\\\"\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f\\\\\"✅ Actualizada\\\\\"\\); print\\(f\\\\\"ID: {d['id']}\\\\\"\\); print\\(f\\\\\"Estado: {d['estado']}\\\\\"\\); print\\(f\\\\\"Aclaraciones: {d['aclaraciones']}\\\\\"\\)\")",
+      "Bash(curl -s http://66.94.104.21:5173 -w \"\\\\nFrontend: %{http_code}\\\\n\")",
+      "Bash(ssh claude-render@66.94.104.21 \"sudo node -c /root/.openclaw/workspace/frontend/src/main.jsx 2>&1 | head -20\")",
+      "Bash(git checkout *)",
+      "Bash(curl -s http://66.94.104.21:5173/)",
+      "Bash(head -n 863 frontend/src/main.jsx)",
+      "Bash(cat /tmp/piezas_tablero.jsx)",
+      "Bash(echo \"\")",
+      "Bash(tail -n +866 frontend/src/main.jsx)",
+      "Bash(cp /tmp/main_new.jsx frontend/src/main.jsx)",
+      "mcp__visualize__read_me"
     ]
   }
 }
