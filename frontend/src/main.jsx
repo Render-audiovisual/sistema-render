@@ -3128,13 +3128,16 @@ function OrianaDashboard() {
 
   const hoy = getHoyLocalISO();
   const piezasHoy = piezasOriana.filter(
-    (pieza) => pieza.fecha_programada === hoy,
+    (pieza) => pieza.fecha_programada && pieza.fecha_programada.startsWith(hoy),
   );
   const bloqueadas = piezasOriana.filter(
     (pieza) => pieza.estado === "bloqueada",
   );
   const publicadasHoy = piezasHoy.filter(
     (pieza) => pieza.estado === "publicada",
+  ).length;
+  const listasHoy = piezasHoy.filter(
+    (pieza) => pieza.estado === "lista",
   ).length;
 
   return (
@@ -3150,6 +3153,23 @@ function OrianaDashboard() {
         </div>
 
         <div className="content">
+          <div className="box" style={{ backgroundColor: "#f0f4f8", padding: "16px", marginBottom: "20px", borderRadius: "4px", border: "1px solid #ddd" }}>
+            <div style={{ display: "flex", justifyContent: "space-around", textAlign: "center" }}>
+              <div>
+                <div style={{ fontSize: "24px", fontWeight: "bold", color: "#0066cc" }}>{listasHoy}</div>
+                <div style={{ fontSize: "12px", color: "#666" }}>Listas para subir</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "24px", fontWeight: "bold", color: "#d9534f" }}>{piezasHoy.length - listasHoy - publicadasHoy}</div>
+                <div style={{ fontSize: "12px", color: "#666" }}>Esperando aprobación</div>
+              </div>
+              <div>
+                <div style={{ fontSize: "24px", fontWeight: "bold", color: "#28a745" }}>{publicadasHoy}</div>
+                <div style={{ fontSize: "12px", color: "#666" }}>Ya publicadas</div>
+              </div>
+            </div>
+          </div>
+
           <div className="section-label">1 · Calendario del día</div>
           <div className="box">
             {orianaError && <div className="caption">{orianaError}</div>}
@@ -4582,6 +4602,8 @@ function FrancoDashboard() {
   const [filtroCola, setFiltroCola] = useState("todas");
   const [tareasFranco, setTareasFranco] = useState([]);
   const [tareasFrancoError, setTareasFrancoError] = useState(null);
+  const [tareaAsignando, setTareaAsignando] = useState(null);
+  const [responsableSeleccionado, setResponsableSeleccionado] = useState("");
 
   const tareasDestrabadas = tareasFranco.filter(
     (tarea) => tarea.propiedades_extra?.destrabada_por,
@@ -4843,28 +4865,62 @@ function FrancoDashboard() {
                         <td>{tarea.asignado_a ?? "Sin asignar"}</td>
                         <td>{tarea.fecha_vencimiento ?? "—"}</td>
                         <td>
-                          <button
-                            className="btn"
-                            type="button"
-                            onClick={() => {
-                              const responsable = window.prompt(
-                                "¿A quién asigno? (Augusto, Luciano, Germán)",
-                              );
-                              if (responsable) {
-                                fetch(`/api/tareas/${tarea.id}`, {
-                                  method: "PATCH",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ asignado_a: responsable }),
-                                }).then((response) => {
-                                  if (response.ok) {
-                                    cargarCola();
+                          {tareaAsignando?.id === tarea.id ? (
+                            <div style={{ display: "flex", gap: "4px" }}>
+                              <select
+                                value={responsableSeleccionado}
+                                onChange={(e) => setResponsableSeleccionado(e.target.value)}
+                                style={{ padding: "4px", fontSize: "12px", borderRadius: "2px" }}
+                              >
+                                <option value="">Seleccionar...</option>
+                                <option value="Augusto">Augusto</option>
+                                <option value="Luciano">Luciano</option>
+                                <option value="Germán">Germán</option>
+                              </select>
+                              <button
+                                className="btn"
+                                type="button"
+                                onClick={() => {
+                                  if (responsableSeleccionado) {
+                                    fetch(`/api/tareas/${tarea.id}`, {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ asignado_a: responsableSeleccionado }),
+                                    }).then((response) => {
+                                      if (response.ok) {
+                                        setTareaAsignando(null);
+                                        setResponsableSeleccionado("");
+                                        cargarCola();
+                                      }
+                                    });
                                   }
-                                });
-                              }
-                            }}
-                          >
-                            Asignar
-                          </button>
+                                }}
+                                style={{ padding: "4px 8px", fontSize: "11px" }}
+                              >
+                                ✓
+                              </button>
+                              <button
+                                className="btn"
+                                type="button"
+                                onClick={() => {
+                                  setTareaAsignando(null);
+                                  setResponsableSeleccionado("");
+                                }}
+                                style={{ padding: "4px 8px", fontSize: "11px" }}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              className="btn"
+                              type="button"
+                              onClick={() => setTareaAsignando(tarea)}
+                              style={{ padding: "4px 8px", fontSize: "11px" }}
+                            >
+                              Asignar
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
