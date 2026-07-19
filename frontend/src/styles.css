@@ -1594,6 +1594,67 @@ select:focus {
 }
 
 /* ---- Grilla editable (planilla de historias, estilo Sheets) ---- */
+.sheet-toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.sheet-title {
+  display: inline-block;
+  font-size: 16px;
+  min-width: 160px;
+  text-align: center;
+}
+
+.sheet-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.sheet-stats span {
+  background: #eceff1;
+  border-radius: 12px;
+  padding: 4px 10px;
+}
+
+.sheet-stats .ok {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.sheet-stats .warn {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.sheet-frame {
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  max-height: 72vh;
+  overflow: auto;
+  padding: 0;
+}
+
+.sheet-namebar {
+  background: #f8f9fa;
+  border-bottom: 1px solid #dadce0;
+  color: #188038;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 12px;
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 3;
+}
+
 .sheet-table {
   border-collapse: collapse;
   font-size: 13px;
@@ -1602,23 +1663,23 @@ select:focus {
 }
 
 .sheet-table th {
-  background: #f8f9fa;
-  border-bottom: 2px solid #333;
-  border-right: 1px solid #e8e8e8;
-  color: #555;
+  background: #f1f3f4;
+  border-bottom: 1px solid #dadce0;
+  border-right: 1px solid #dadce0;
+  color: #3c4043;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   padding: 8px 10px;
   position: sticky;
   text-align: left;
   text-transform: uppercase;
-  top: 0;
+  top: 34px;
   z-index: 1;
 }
 
 .sheet-table td {
-  border-bottom: 1px solid #eee;
-  border-right: 1px solid #eee;
+  border-bottom: 1px solid #e8eaed;
+  border-right: 1px solid #e8eaed;
   padding: 0;
   vertical-align: middle;
 }
@@ -1640,8 +1701,8 @@ select:focus {
 
 .sheet-cell:focus {
   background: #fff;
-  border-color: #1a73e8;
-  box-shadow: 0 0 0 1px #1a73e8;
+  border-color: #188038;
+  box-shadow: 0 0 0 1px #188038;
   outline: none;
   position: relative;
   z-index: 2;

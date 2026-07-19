@@ -5645,22 +5645,22 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+      <div className="sheet-toolbar">
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
-          <strong style={{ fontSize: "16px", minWidth: "160px", textAlign: "center" }}>
+          <strong className="sheet-title">
             {MESES[month]} {year}
           </strong>
           <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
         </div>
-        <div style={{ display: "flex", gap: "8px", fontSize: "12px" }}>
-          <span style={{ padding: "4px 10px", background: "#eceff1", borderRadius: "12px" }}>
+        <div className="sheet-stats">
+          <span>
             {filasVisibles.length} planificadas
           </span>
-          <span style={{ padding: "4px 10px", background: "#e8f5e9", color: "#2e7d32", borderRadius: "12px" }}>
+          <span className="ok">
             {publicadas} publicadas
           </span>
-          <span style={{ padding: "4px 10px", background: "#fff3e0", color: "#e65100", borderRadius: "12px" }}>
+          <span className="warn">
             {filasVisibles.length - publicadas} pendientes
           </span>
         </div>
@@ -5675,7 +5675,8 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
       {cargando ? (
         <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando planilla…</div>
       ) : (
-        <div className="box" style={{ padding: 0, overflow: "auto", maxHeight: "70vh" }} ref={gridRef}>
+        <div className="sheet-frame" ref={gridRef}>
+          <div className="sheet-namebar">{clienteNombre}</div>
           <table className="sheet-table">
             <thead>
               <tr>
@@ -5859,7 +5860,7 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
       )}
 
       <div className="caption" style={{ marginTop: "10px" }}>
-        Planilla de {clienteNombre} · Click en una celda para escribir · Tab / Enter para moverte · pegá bloques copiados de Sheets directamente sobre la grilla.
+        Planilla de {clienteNombre}
       </div>
     </>
   );
@@ -6260,22 +6261,16 @@ function HistoriasPage({ initialTab = "planilla" }) {
   const clienteNombre =
     clientes.find((c) => c.id === clienteSeleccionado)?.nombre || "";
 
-  const TABS = [
-    { id: "planilla", label: "📋 Planilla mensual" },
-    { id: "tablero", label: "🗂 Tablero por estado" },
-    { id: "estructura", label: "🏗️ Estructura" },
-  ];
-
   return (
     <main aria-label="Render platform historias">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Historias</span>
+          <div className="topbar">
+            <div className="logo-box">[ LOGO RENDER ]</div>
+            <div className="nav">
+              <span className="active">Historias</span>
+            </div>
+          <div className="tag">Planilla mensual</div>
           </div>
-          <div className="tag">Planificación por cliente</div>
-        </div>
 
         <div className="content">
           {errorClientes && (
@@ -6310,32 +6305,9 @@ function HistoriasPage({ initialTab = "planilla" }) {
             ))}
           </div>
 
-          <div className="tabs" style={{ marginBottom: "16px" }}>
-            {TABS.map((t) => (
-              <span
-                key={t.id}
-                className={tab === t.id ? "active" : ""}
-                onClick={() => setTab(t.id)}
-                style={{ cursor: "pointer" }}
-              >
-                {t.label}
-              </span>
-            ))}
-          </div>
-
-          {clienteSeleccionado && tab === "planilla" && (
+          {clienteSeleccionado && (
             <HistoriasPlanillaTab
               key={`p-${clienteSeleccionado}-${refrescarKey}`}
-              clienteId={clienteSeleccionado}
-              clienteNombre={clienteNombre}
-            />
-          )}
-          {clienteSeleccionado && tab === "tablero" && (
-            <HistoriasTableroTab key={`t-${clienteSeleccionado}-${refrescarKey}`} clienteId={clienteSeleccionado} />
-          )}
-          {clienteSeleccionado && tab === "estructura" && (
-            <HistoriasEstructuraTab
-              key={`e-${clienteSeleccionado}`}
               clienteId={clienteSeleccionado}
               clienteNombre={clienteNombre}
             />
