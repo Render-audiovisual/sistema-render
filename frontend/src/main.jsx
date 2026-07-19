@@ -5866,7 +5866,7 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
   );
 }
 
-function HistoriasChecklistPublicadasTab({ clienteId, clienteNombre }) {
+function HistoriasChecklistPublicadasTab({ clientes }) {
   const hoy = new Date();
   const [year, setYear] = useState(hoy.getFullYear());
   const [month, setMonth] = useState(hoy.getMonth());
@@ -5880,7 +5880,7 @@ function HistoriasChecklistPublicadasTab({ clienteId, clienteNombre }) {
     fetch("/api/historias")
       .then((r) => r.json())
       .then((data) => {
-        setHistorias(data.filter((h) => h.cliente_id === clienteId));
+        setHistorias(data);
         setError(null);
       })
       .catch((err) => {
@@ -5890,24 +5890,50 @@ function HistoriasChecklistPublicadasTab({ clienteId, clienteNombre }) {
       .finally(() => setCargando(false));
   };
 
-  useEffect(cargar, [clienteId]);
+  useEffect(cargar, []);
 
   const hoyISO = getHoyLocalISO();
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
   const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
 
-  const filasVisibles = historias
-    .filter((h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix))
-    .slice()
-    .sort((a, b) =>
-      (a.fecha_programada + (a.metadata?.hora || "")).localeCompare(
-        b.fecha_programada + (b.metadata?.hora || ""),
-      ),
-    );
+  const historiasMes = historias.filter(
+    (h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix),
+  );
 
-  const publicadas = filasVisibles.filter((h) => h.estado === "publicada").length;
-  const pendientes = filasVisibles.length - publicadas;
-  const vencidas = filasVisibles.filter(
+  const historiasPorClienteFecha = historiasMes.reduce((acc, h) => {
+    const key = `${h.cliente_id}:${h.fecha_programada}`;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(h);
+    return acc;
+  }, {});
+
+  const primerDiaMes = new Date(year, month, 1);
+  const ultimoDiaMes = new Date(year, month + 1, 0);
+  const inicioCalendario = new Date(primerDiaMes);
+  inicioCalendario.setDate(primerDiaMes.getDate() - ((primerDiaMes.getDay() + 6) % 7));
+  const finCalendario = new Date(ultimoDiaMes);
+  finCalendario.setDate(ultimoDiaMes.getDate() + (7 - ((ultimoDiaMes.getDay() + 6) % 7) - 1));
+
+  const semanas = [];
+  const cursor = new Date(inicioCalendario);
+  while (cursor <= finCalendario) {
+    const dias = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(cursor);
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      dias.push({
+        date: d,
+        iso,
+        label: `${LETRAS_DIA[d.getDay()]} ${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    semanas.push(dias);
+  }
+
+  const publicadas = historiasMes.filter((h) => h.estado === "publicada").length;
+  const pendientes = historiasMes.length - publicadas;
+  const vencidas = historiasMes.filter(
     (h) => h.estado !== "publicada" && h.fecha_programada < hoyISO,
   ).length;
 
@@ -5925,19 +5951,31 @@ function HistoriasChecklistPublicadasTab({ clienteId, clienteNombre }) {
     setYear(y);
   };
 
-  const marcarPublicada = async (historiaId, publicada) => {
+  const marcarPublicada = async (clienteId, fecha, publicada) => {
     const nuevoEstado = publicada ? "publicada" : "pendiente";
-    setGuardandoId(historiaId);
+    const key = `${clienteId}:${fecha}`;
+    const historiasDelDia = historiasPorClienteFecha[key] || [];
+    if (historiasDelDia.length === 0) return;
+
+    setGuardandoId(key);
     setHistorias((prev) =>
-      prev.map((h) => (h.id === historiaId ? { ...h, estado: nuevoEstado } : h)),
+      prev.map((h) =>
+        h.cliente_id === clienteId && h.fecha_programada === fecha
+          ? { ...h, estado: nuevoEstado }
+          : h,
+      ),
     );
     try {
-      const res = await fetch(`/api/historias/${historiaId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado: nuevoEstado }),
-      });
-      if (!res.ok) throw new Error("No se pudo guardar");
+      await Promise.all(
+        historiasDelDia.map(async (h) => {
+          const res = await fetch(`/api/historias/${h.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ estado: nuevoEstado }),
+          });
+          if (!res.ok) throw new Error("No se pudo guardar");
+        }),
+      );
       setError(null);
     } catch (err) {
       console.error("Error actualizando checklist", err);
@@ -5959,7 +5997,7 @@ function HistoriasChecklistPublicadasTab({ clienteId, clienteNombre }) {
           <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
         </div>
         <div className="sheet-stats">
-          <span>{filasVisibles.length} historias</span>
+          <span>{historiasMes.length} historias</span>
           <span className="ok">{publicadas} publicadas</span>
           <span className="warn">{pendientes} pendientes</span>
           {vencidas > 0 && <span className="danger">{vencidas} vencidas</span>}
@@ -5975,82 +6013,113 @@ function HistoriasChecklistPublicadasTab({ clienteId, clienteNombre }) {
       {cargando ? (
         <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando checklist…</div>
       ) : (
-        <div className="sheet-frame">
-          <div className="sheet-namebar">CHECKHISTORIAS · {clienteNombre}</div>
-          <table className="sheet-table sheet-checklist-table">
-            <thead>
-              <tr>
-                <th style={{ width: "56px" }}>Día</th>
-                <th style={{ width: "120px" }}>Fecha</th>
-                <th style={{ width: "80px" }}>Hora</th>
-                <th style={{ width: "130px" }}>Tipo</th>
-                <th>Historia / copy</th>
-                <th style={{ width: "120px" }}>Responsable</th>
-                <th style={{ width: "128px" }}>Publicado</th>
-                <th style={{ width: "120px" }}>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filasVisibles.length === 0 && (
-                <tr>
-                  <td colSpan={8} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
-                    Sin historias planificadas este mes todavía.
-                  </td>
-                </tr>
-              )}
-              {filasVisibles.map((h) => {
-                const fecha = new Date(`${h.fecha_programada}T00:00:00`);
-                const dow = fecha.getDay();
-                const publicada = h.estado === "publicada";
-                const vencida = !publicada && h.fecha_programada < hoyISO;
-                const est = ESTADOS_HISTORIA.find((e) => e.id === h.estado) || ESTADOS_HISTORIA[0];
+        <div className="sheet-frame check-sheet-frame">
+          <div className="sheet-namebar">CHECK HISTORIAS — {MESES[month].toUpperCase()} {year}</div>
+          {semanas.map((dias, semanaIndex) => {
+            const desde = dias[0];
+            const hasta = dias[6];
+            const totalSemana = clientes.reduce(
+              (acc, c) =>
+                acc +
+                dias.reduce((sum, d) => {
+                  const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
+                  return sum + items.filter((h) => h.estado === "publicada").length;
+                }, 0),
+              0,
+            );
+            const totalPorDia = dias.map((d) =>
+              clientes.reduce((sum, c) => {
+                const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
+                return sum + items.filter((h) => h.estado === "publicada").length;
+              }, 0),
+            );
 
-                return (
-                  <tr
-                    key={h.id}
-                    className={publicada ? "sheet-row-ok" : vencida ? "sheet-row-danger" : undefined}
-                  >
-                    <td style={{ padding: "6px 10px", fontWeight: "700", color: dow === 0 || dow === 6 ? "#999" : "#333", fontSize: "12px" }}>
-                      {LETRAS_DIA[dow]}
-                    </td>
-                    <td style={{ padding: "6px 10px", fontSize: "12px" }}>{h.fecha_programada}</td>
-                    <td style={{ padding: "6px 10px", fontSize: "12px" }}>{h.metadata?.hora || "—"}</td>
-                    <td style={{ padding: "6px 10px", fontSize: "12px" }}>{h.metadata?.tipo || "Historia"}</td>
-                    <td style={{ padding: "6px 10px", fontSize: "13px", color: h.copy || h.idea ? "#222" : "#aaa" }}>
-                      {h.copy || h.idea || "Sin copy cargado"}
-                    </td>
-                    <td style={{ padding: "6px 10px", fontSize: "12px" }}>
-                      {h.responsable_diseño || h.responsable || "—"}
-                    </td>
-                    <td className="sheet-check-cell">
-                      <label className="sheet-check">
-                        <input
-                          type="checkbox"
-                          checked={publicada}
-                          disabled={guardandoId === h.id}
-                          onChange={(e) => marcarPublicada(h.id, e.target.checked)}
-                        />
-                        <span>{publicada ? "OK" : "Marcar"}</span>
-                      </label>
-                    </td>
-                    <td style={{ padding: "6px 10px" }}>
-                      <span
-                        className="sheet-status-pill"
-                        style={{ background: est.bg, color: est.fg }}
-                      >
-                        {publicada ? "Publicada" : vencida ? "Vencida" : est.label}
-                      </span>
-                    </td>
+            return (
+              <table className="check-sheet-table" key={desde.iso}>
+                <thead>
+                  <tr>
+                    <th colSpan={9} className="check-week-title">
+                      SEMANA {semanaIndex + 1} — {desde.label.slice(2)} al {hasta.label.slice(2)}
+                    </th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                  <tr>
+                    <th className="check-client-col">Cliente</th>
+                    {dias.map((d) => (
+                      <th key={d.iso} className={d.iso === hoyISO ? "check-day today" : "check-day"}>
+                        {d.label}
+                      </th>
+                    ))}
+                    <th className="check-total-col">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientes.map((c) => {
+                    const totalCliente = dias.reduce((sum, d) => {
+                      const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
+                      return sum + items.filter((h) => h.estado === "publicada").length;
+                    }, 0);
+
+                    return (
+                      <tr key={c.id}>
+                        <td className="check-client-col">{c.nombre}</td>
+                        {dias.map((d) => {
+                          const key = `${c.id}:${d.iso}`;
+                          const items = historiasPorClienteFecha[key] || [];
+                          const hayHistorias = items.length > 0;
+                          const publicadasDia = items.filter((h) => h.estado === "publicada").length;
+                          const todasPublicadas = hayHistorias && publicadasDia === items.length;
+                          const algunasPublicadas = publicadasDia > 0 && publicadasDia < items.length;
+
+                          return (
+                            <td
+                              key={d.iso}
+                              className={[
+                                "check-day-cell",
+                                !hayHistorias ? "empty" : "",
+                                todasPublicadas ? "ok" : "",
+                                algunasPublicadas ? "partial" : "",
+                              ].join(" ")}
+                              title={
+                                hayHistorias
+                                  ? `${items.length} historia${items.length > 1 ? "s" : ""} · ${publicadasDia} publicada${publicadasDia !== 1 ? "s" : ""}`
+                                  : "Sin historias planificadas"
+                              }
+                            >
+                              {hayHistorias ? (
+                                <button
+                                  type="button"
+                                  className="check-sheet-toggle"
+                                  disabled={guardandoId === key}
+                                  onClick={() => marcarPublicada(c.id, d.iso, !todasPublicadas)}
+                                >
+                                  {todasPublicadas ? "TRUE" : "FALSE"}
+                                </button>
+                              ) : (
+                                <span className="check-empty"> </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="check-total-col">{totalCliente}</td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="check-total-row">
+                    <td>Total por día</td>
+                    {totalPorDia.map((total, idx) => (
+                      <td key={dias[idx].iso}>{total}</td>
+                    ))}
+                    <td>{totalSemana}</td>
+                  </tr>
+                </tbody>
+              </table>
+            );
+          })}
         </div>
       )}
 
       <div className="caption" style={{ marginTop: "10px" }}>
-        Checklist de historias publicadas de {clienteNombre}
+        Matriz mensual igual a CHECKHISTORIAS: clientes por fila, días por columna.
       </div>
     </>
   );
@@ -6471,30 +6540,6 @@ function HistoriasPage({ initialTab = "planilla" }) {
 
           <FlyersMigrarBanner onMigrado={() => setRefrescarKey((k) => k + 1)} />
 
-          <div style={{ display: "flex", gap: "4px", overflowX: "auto", borderBottom: "2px solid #ddd", marginBottom: "16px", paddingBottom: "0" }}>
-            {clientes.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setClienteSeleccionado(c.id)}
-                style={{
-                  padding: "8px 18px",
-                  border: "none",
-                  borderBottom: clienteSeleccionado === c.id ? "3px solid #1a73e8" : "3px solid transparent",
-                  background: clienteSeleccionado === c.id ? "#e8f0fe" : "transparent",
-                  color: clienteSeleccionado === c.id ? "#1a73e8" : "#555",
-                  fontWeight: clienteSeleccionado === c.id ? "700" : "500",
-                  fontSize: "13px",
-                  cursor: "pointer",
-                  borderRadius: "6px 6px 0 0",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {c.nombre}
-              </button>
-            ))}
-          </div>
-
           <div className="sheet-view-tabs">
             <button
               type="button"
@@ -6512,6 +6557,32 @@ function HistoriasPage({ initialTab = "planilla" }) {
             </button>
           </div>
 
+          {vista === "planilla" && (
+            <div style={{ display: "flex", gap: "4px", overflowX: "auto", borderBottom: "2px solid #ddd", marginBottom: "16px", paddingBottom: "0" }}>
+              {clientes.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setClienteSeleccionado(c.id)}
+                  style={{
+                    padding: "8px 18px",
+                    border: "none",
+                    borderBottom: clienteSeleccionado === c.id ? "3px solid #1a73e8" : "3px solid transparent",
+                    background: clienteSeleccionado === c.id ? "#e8f0fe" : "transparent",
+                    color: clienteSeleccionado === c.id ? "#1a73e8" : "#555",
+                    fontWeight: clienteSeleccionado === c.id ? "700" : "500",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    borderRadius: "6px 6px 0 0",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {c.nombre}
+                </button>
+              ))}
+            </div>
+          )}
+
           {clienteSeleccionado && vista === "planilla" && (
             <HistoriasPlanillaTab
               key={`p-${clienteSeleccionado}-${refrescarKey}`}
@@ -6520,11 +6591,10 @@ function HistoriasPage({ initialTab = "planilla" }) {
             />
           )}
 
-          {clienteSeleccionado && vista === "checklist" && (
+          {vista === "checklist" && (
             <HistoriasChecklistPublicadasTab
-              key={`c-${clienteSeleccionado}-${refrescarKey}`}
-              clienteId={clienteSeleccionado}
-              clienteNombre={clienteNombre}
+              key={`c-${refrescarKey}`}
+              clientes={clientes}
             />
           )}
         </div>
