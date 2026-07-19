@@ -5015,6 +5015,7 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
   const [year, setYear] = useState(hoy.getFullYear());
   const [month, setMonth] = useState(hoy.getMonth());
   const [historias, setHistorias] = useState([]);
+  const [estructura, setEstructura] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const gridRef = useRef(null);
@@ -5037,6 +5038,15 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
 
   useEffect(cargar, [clienteId]);
 
+  // Estructura semanal base del cliente — se usa solo para sugerir tipo/hora
+  // al crear una historia nueva, no cambia nada del guardado.
+  useEffect(() => {
+    fetch("/api/estructura")
+      .then((r) => r.json())
+      .then((data) => setEstructura(data.filter((e) => e.cliente_id === clienteId)))
+      .catch((err) => console.error("No se pudo cargar la estructura semanal", err));
+  }, [clienteId]);
+
   const hoyISO = getHoyLocalISO();
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
   const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
@@ -5051,6 +5061,9 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
     );
 
   const publicadas = filasVisibles.filter((h) => h.estado === "publicada").length;
+  const atrasadas = filasVisibles.filter(
+    (h) => h.fecha_programada < hoyISO && h.estado !== "publicada",
+  ).length;
 
   // Foco tras crear una fila nueva: la agrega el efecto de abajo apenas
   // aparece en la lista (el fetch de recarga puede tardar un instante).
@@ -5115,6 +5128,22 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
       if (!res.ok) throw new Error("No se pudo crear");
       const creada = await res.json();
       enfocarProximoId.current = creada.id;
+
+      // Sugerencia de tipo/hora según el patrón semanal del cliente para ese
+      // día — se espera antes de recargar para que ya aparezca sugerido.
+      const diaSemana = new Date(`${iso}T00:00:00`).getDay();
+      const patron = estructura.find((e) => e.dia_semana === diaSemana);
+      if (patron?.tema || patron?.horario) {
+        const horaSugerida = patron.horario?.match(/\d{1,2}:\d{2}/)?.[0] || "";
+        await fetch(`/api/historias/${creada.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            metadata: { tipo: patron.tema || "", hora: horaSugerida },
+          }),
+        }).catch((err) => console.error("No se pudo sugerir tipo/hora", err));
+      }
+
       cargar();
     } catch (err) {
       console.error("Error creando historia", err);
@@ -5247,6 +5276,9 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
           <span className="warn">
             {filasVisibles.length - publicadas} pendientes
           </span>
+          {atrasadas > 0 && (
+            <span className="danger">{atrasadas} atrasadas</span>
+          )}
         </div>
       </div>
 
@@ -5289,13 +5321,15 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
                 const dow = fecha.getDay();
                 const esFinde = dow === 0 || dow === 6;
                 const esHoy = h.fecha_programada === hoyISO;
+                const estaAtrasada = h.fecha_programada < hoyISO && h.estado !== "publicada";
                 const est = ESTADOS_HISTORIA.find((e) => e.id === h.estado) || ESTADOS_HISTORIA[0];
-                const bgFila = esHoy ? "#e3f2fd" : esFinde ? "#fafafa" : undefined;
+                const bgFila = estaAtrasada ? "#fff5f5" : esHoy ? "#e3f2fd" : esFinde ? "#fafafa" : undefined;
 
                 return (
                   <tr key={h.id} style={{ background: bgFila }}>
-                    <td style={{ padding: "6px 10px", fontWeight: esHoy ? "700" : "600", color: esFinde ? "#999" : "#333", fontSize: "12px" }}>
+                    <td style={{ padding: "6px 10px", fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "#c62828" : esFinde ? "#999" : "#333", fontSize: "12px" }}>
                       {LETRAS_DIA[dow]}
+                      {estaAtrasada && <span title="Atrasada" style={{ marginLeft: "2px" }}>⚠</span>}
                     </td>
                     <td>
                       <input
@@ -5709,135 +5743,8 @@ function HistoriasChecklistPublicadasTab({ clientes }) {
   );
 }
 
-function HistoriasTableroTab({ clienteId }) {
-  const [historias, setHistorias] = useState([]);
-  const [error, setError] = useState(null);
-  const [modal, setModal] = useState(null);
-
-  useEffect(() => {
-    fetch("/api/historias")
-      .then((r) => r.json())
-      .then((data) => setHistorias(data.filter((h) => h.cliente_id === clienteId)))
-      .catch((err) => {
-        console.error("Error cargando historias", err);
-        setError("No se pudieron cargar las historias.");
-      });
-  }, [clienteId]);
-
-  const moverEstado = async (historiaId, nuevoEstado) => {
-    try {
-      const res = await fetch(`/api/historias/${historiaId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado: nuevoEstado }),
-      });
-      if (!res.ok) throw new Error("No se pudo actualizar");
-      setHistorias((prev) =>
-        prev.map((h) => (h.id === historiaId ? { ...h, estado: nuevoEstado } : h)),
-      );
-    } catch (err) {
-      console.error("Error moviendo historia", err);
-      setError("No se pudo actualizar la historia.");
-    }
-  };
-
-  return (
-    <>
-      {error && (
-        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
-          {error}
-        </div>
-      )}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
-        {ESTADOS_HISTORIA.map((est) => {
-          const items = historias.filter((h) => h.estado === est.id);
-          return (
-            <div key={est.id} style={{ background: est.bg, borderRadius: "8px", padding: "12px", minHeight: "120px" }}>
-              <div style={{ fontWeight: "700", fontSize: "13px", color: est.fg, marginBottom: "10px" }}>
-                {est.label} ({items.length})
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                {items.map((h) => (
-                  <div
-                    key={h.id}
-                    onClick={() => setModal(h)}
-                    style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: "5px", padding: "8px 10px", cursor: "pointer" }}
-                  >
-                    <div style={{ fontSize: "12px", fontWeight: "600", marginBottom: "2px" }}>
-                      {h.idea || "Sin idea"}
-                    </div>
-                    <div style={{ fontSize: "11px", color: "#999" }}>
-                      📅 {h.fecha_programada} {h.responsable_diseño ? `· ✏️ ${h.responsable_diseño}` : ""}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {modal && (
-        <div className="modal-overlay open" onClick={() => setModal(null)} style={{ zIndex: 1000 }}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span>{modal.idea || "Sin idea"}</span>
-              <button className="modal-close" onClick={() => setModal(null)}>X</button>
-            </div>
-            <div className="modal-body">
-              <div className="detail-grid">
-                <div className="detail-field">
-                  <div className="detail-label">Fecha programada</div>
-                  <div>{modal.fecha_programada || "—"}</div>
-                </div>
-                <div className="detail-field">
-                  <div className="detail-label">Responsable diseño</div>
-                  <div>{modal.responsable_diseño || modal.responsable || "—"}</div>
-                </div>
-                <div className="detail-field">
-                  <div className="detail-label">Copy</div>
-                  <div>{modal.copy || "—"}</div>
-                </div>
-                <div className="detail-field">
-                  <div className="detail-label">Material</div>
-                  <div>{modal.material_referencia || "—"}</div>
-                </div>
-              </div>
-              <div style={{ marginTop: "16px", paddingTop: "12px", borderTop: "1px solid #e0e0e0" }}>
-                <div style={{ fontWeight: "600", marginBottom: "8px", fontSize: "13px" }}>Cambiar estado:</div>
-                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                  {ESTADOS_HISTORIA.map((e) => (
-                    <button
-                      key={e.id}
-                      className="btn"
-                      type="button"
-                      onClick={() => {
-                        moverEstado(modal.id, e.id);
-                        setModal(null);
-                      }}
-                      style={{
-                        fontSize: "12px",
-                        background: modal.estado === e.id ? "#333" : e.bg,
-                        color: modal.estado === e.id ? "#fff" : e.fg,
-                        border: "none",
-                      }}
-                    >
-                      {e.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
 function HistoriasEstructuraTab({ clienteId, clienteNombre }) {
   const [estructura, setEstructura] = useState([]);
-  const [checkPublicacion, setCheckPublicacion] = useState([]);
   const [fechasEspeciales, setFechasEspeciales] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -5849,13 +5756,15 @@ function HistoriasEstructuraTab({ clienteId, clienteNombre }) {
     setCargando(true);
     Promise.all([
       fetch("/api/estructura").then((r) => r.json()),
-      fetch("/api/check-publicacion").then((r) => r.json()),
       fetch("/api/fechas-especiales").then((r) => r.json()),
     ])
-      .then(([est, check, fechas]) => {
+      .then(([est, fechas]) => {
         setEstructura(est.filter((e) => e.cliente_id === clienteId));
-        setCheckPublicacion(check.filter((c) => c.cliente_id === clienteId));
-        setFechasEspeciales(fechas.filter((f) => !f.cliente_id || f.cliente_id === clienteId));
+        setFechasEspeciales(
+          fechas
+            .filter((f) => !f.cliente_id || f.cliente_id === clienteId)
+            .sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "")),
+        );
         setError(null);
       })
       .catch((err) => {
@@ -5870,45 +5779,8 @@ function HistoriasEstructuraTab({ clienteId, clienteNombre }) {
     estructuraPorDia[e.dia_semana] = e;
   });
 
-  const checkPorFecha = {};
-  checkPublicacion.forEach((c) => {
-    checkPorFecha[c.fecha] = c;
-  });
-
-  const manejarCheck = async (fecha, publicado) => {
-    try {
-      const res = await fetch("/api/check-publicacion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cliente_id: clienteId,
-          fecha,
-          publicado,
-          confirmado_por: getSesion()?.usuario?.nombre || "Sistema",
-        }),
-      });
-      if (!res.ok) throw new Error("No se pudo actualizar");
-      setCheckPublicacion((prev) => {
-        const existe = prev.find((c) => c.fecha === fecha);
-        if (existe) {
-          return prev.map((c) => (c.fecha === fecha ? { ...c, publicado } : c));
-        }
-        return [...prev, { cliente_id: clienteId, fecha, publicado }];
-      });
-    } catch (err) {
-      console.error("Error actualizando check", err);
-      setError("No se pudo actualizar el check de publicación.");
-    }
-  };
-
-  const semanaActual = [];
-  const ahora = new Date();
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(ahora);
-    d.setDate(d.getDate() + i - d.getDay());
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    semanaActual.push({ fecha: iso, dia: d.getDay(), diaNum: d.getDate() });
-  }
+  const hoyISO = getHoyLocalISO();
+  const estadoLabel = { pendiente: "Pendiente", en_curso: "En curso", hecho: "Hecho" };
 
   if (cargando) {
     return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando estructura…</div>;
@@ -5922,28 +5794,28 @@ function HistoriasEstructuraTab({ clienteId, clienteNombre }) {
         </div>
       )}
 
-      <div className="section-label">1 · Estructura base semanal: {clienteNombre}</div>
-      <div className="box">
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div className="sheet-frame">
+        <div className="sheet-namebar">Estructura base semanal — {clienteNombre}</div>
+        <table className="sheet-table">
           <thead>
-            <tr style={{ borderBottom: "2px solid #333" }}>
-              <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Día</th>
-              <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Tipo</th>
-              <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Tema</th>
-              <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Horario</th>
-              <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>CTA fijo</th>
+            <tr>
+              <th style={{ width: "120px" }}>Día</th>
+              <th style={{ width: "110px" }}>Tipo</th>
+              <th>Tema</th>
+              <th style={{ width: "22%" }}>Horario</th>
+              <th style={{ width: "22%" }}>CTA fijo</th>
             </tr>
           </thead>
           <tbody>
             {NOMBRES_DIA.map((dia, idx) => {
               const est = estructuraPorDia[idx];
               return (
-                <tr key={idx} style={{ borderBottom: "1px solid #e0e0e0" }}>
-                  <td style={{ padding: "8px", fontWeight: "600" }}>{dia}</td>
-                  <td style={{ padding: "8px" }}>{est?.tipo || "—"}</td>
-                  <td style={{ padding: "8px" }}>{est?.tema || "—"}</td>
-                  <td style={{ padding: "8px" }}>{est?.horario || "—"}</td>
-                  <td style={{ padding: "8px" }}>{est?.cta_fijo || "—"}</td>
+                <tr key={idx}>
+                  <td style={{ padding: "8px 10px", fontWeight: "600" }}>{dia}</td>
+                  <td style={{ padding: "8px 10px" }}>{est?.tipo || "—"}</td>
+                  <td style={{ padding: "8px 10px" }}>{est?.tema || "—"}</td>
+                  <td style={{ padding: "8px 10px" }}>{est?.horario || "—"}</td>
+                  <td style={{ padding: "8px 10px" }}>{est?.cta_fijo || "—"}</td>
                 </tr>
               );
             })}
@@ -5951,81 +5823,36 @@ function HistoriasEstructuraTab({ clienteId, clienteNombre }) {
         </table>
       </div>
 
-      <div className="section-label">2 · Semana actual: check de publicación</div>
-      <div className="box">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(72px, 1fr))", gap: "10px" }}>
-          {semanaActual.map((s) => {
-            const est = estructuraPorDia[s.dia];
-            const check = checkPorFecha[s.fecha];
-            return (
-              <div
-                key={s.fecha}
-                style={{
-                  padding: "10px",
-                  border: `2px solid ${check?.publicado ? "#4caf50" : "#ddd"}`,
-                  borderRadius: "4px",
-                  textAlign: "center",
-                  background: check?.publicado ? "#f1f8e9" : "#fafafa",
-                }}
-              >
-                <div style={{ fontSize: "11px", color: "#666", fontWeight: "600" }}>{NOMBRES_DIA[s.dia].slice(0, 3)}</div>
-                <div style={{ fontSize: "18px", fontWeight: "bold", margin: "3px 0" }}>{s.diaNum}</div>
-                <div style={{ fontSize: "10px", color: "#999" }}>{est?.tipo || "—"}</div>
-                <button
-                  className="btn"
-                  type="button"
-                  style={{
-                    fontSize: "11px",
-                    padding: "3px 6px",
-                    marginTop: "6px",
-                    background: check?.publicado ? "#4caf50" : "#fff",
-                    color: check?.publicado ? "#fff" : "#333",
-                    border: check?.publicado ? "none" : "1px solid #ccc",
-                  }}
-                  onClick={() => manejarCheck(s.fecha, !check?.publicado)}
-                >
-                  {check?.publicado ? "✓" : "Marcar"}
-                </button>
-              </div>
-            );
-          })}
-        </div>
+      <div className="caption" style={{ marginTop: "10px", marginBottom: "18px" }}>
+        → Patrón base de cada día de la semana. Al agregar una historia nueva en
+        la Planilla, el tipo y horario de este día se sugieren solos.
       </div>
 
-      <div className="section-label">3 · Fechas especiales próximas</div>
-      <div className="box">
+      <div className="sheet-frame">
+        <div className="sheet-namebar">Fechas especiales próximas</div>
         {fechasEspeciales.length === 0 ? (
           <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>No hay fechas especiales registradas.</div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table className="sheet-table">
             <thead>
-              <tr style={{ borderBottom: "2px solid #333" }}>
-                <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Fecha</th>
-                <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Evento</th>
-                <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Estado</th>
-                <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Idea</th>
+              <tr>
+                <th style={{ width: "110px" }}>Fecha</th>
+                <th>Evento</th>
+                <th style={{ width: "110px" }}>Estado</th>
+                <th>Idea</th>
               </tr>
             </thead>
             <tbody>
               {fechasEspeciales.map((f) => (
-                <tr key={f.id} style={{ borderBottom: "1px solid #e0e0e0" }}>
-                  <td style={{ padding: "8px" }}>{f.fecha}</td>
-                  <td style={{ padding: "8px" }}>{f.evento}</td>
-                  <td style={{ padding: "8px" }}>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        padding: "2px 6px",
-                        borderRadius: "3px",
-                        fontSize: "11px",
-                        background: f.estado === "hecho" ? "#c8e6c9" : f.estado === "en_curso" ? "#fff9c4" : "#ffccbc",
-                        color: "#333",
-                      }}
-                    >
-                      {f.estado}
+                <tr key={f.id} className={f.fecha && f.fecha < hoyISO && f.estado !== "hecho" ? "sheet-row-danger" : undefined}>
+                  <td style={{ padding: "8px 10px" }}>{f.fecha || "Sin fecha"}</td>
+                  <td style={{ padding: "8px 10px" }}>{f.evento}</td>
+                  <td style={{ padding: "8px 10px" }}>
+                    <span className="sheet-status-pill" style={{ background: f.estado === "hecho" ? "#c8e6c9" : f.estado === "en_curso" ? "#fff9c4" : "#ffccbc" }}>
+                      {estadoLabel[f.estado] || f.estado}
                     </span>
                   </td>
-                  <td style={{ padding: "8px" }}>{f.idea || "—"}</td>
+                  <td style={{ padding: "8px 10px" }}>{f.idea || "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -6082,7 +5909,9 @@ function FlyersMigrarBanner({ onMigrado }) {
 }
 
 function HistoriasPage({ initialTab = "planilla" }) {
-  const [vista, setVista] = useState(initialTab === "checklist" ? "checklist" : "planilla");
+  const [vista, setVista] = useState(
+    ["checklist", "estructura"].includes(initialTab) ? initialTab : "planilla",
+  );
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [errorClientes, setErrorClientes] = useState(null);
@@ -6139,9 +5968,16 @@ function HistoriasPage({ initialTab = "planilla" }) {
             >
               Checklist publicadas
             </button>
+            <button
+              type="button"
+              className={vista === "estructura" ? "active" : ""}
+              onClick={() => setVista("estructura")}
+            >
+              Estructura
+            </button>
           </div>
 
-          {vista === "planilla" && (
+          {(vista === "planilla" || vista === "estructura") && (
             <div style={{ display: "flex", gap: "4px", overflowX: "auto", borderBottom: "2px solid #ddd", marginBottom: "16px", paddingBottom: "0" }}>
               {clientes.map((c) => (
                 <button
@@ -6170,6 +6006,14 @@ function HistoriasPage({ initialTab = "planilla" }) {
           {clienteSeleccionado && vista === "planilla" && (
             <HistoriasPlanillaTab
               key={`p-${clienteSeleccionado}-${refrescarKey}`}
+              clienteId={clienteSeleccionado}
+              clienteNombre={clienteNombre}
+            />
+          )}
+
+          {clienteSeleccionado && vista === "estructura" && (
+            <HistoriasEstructuraTab
+              key={`e-${clienteSeleccionado}`}
               clienteId={clienteSeleccionado}
               clienteNombre={clienteNombre}
             />
