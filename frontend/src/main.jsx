@@ -1587,8 +1587,8 @@ function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
       { href: sesion?.usuario?.usuario === "agustin" ? "/agustin" : sesion?.usuario?.usuario === "franco" ? "/franco" : USUARIO_A_RUTA[sesion?.usuario?.usuario], label: "📌 Mi tablero" },
     ],
     herramientas: [
-      { href: "/calendario", label: "📅 Calendario" },
-      { href: "/planificacion-historias", label: "🎯 Historias" },
+      { href: "/calendario", label: "📅 Calendario de publicaciones" },
+      { href: "/planificacion-historias", label: "🎯 Planificación de historias" },
       { href: "/reportes-historias", label: "📊 Reportes" },
       { href: "/piezas", label: "📋 Tareas" },
     ],
@@ -1768,8 +1768,8 @@ function App() {
   const enlacesNav = [
     { href: "/", label: "Home" },
     { href: rutaPropia || "/", label: "Mi tablero" },
-    { href: "/calendario", label: "Calendario" },
-    { href: "/planificacion-historias", label: "🎯 Historias" },
+    { href: "/calendario", label: "Calendario de publicaciones" },
+    { href: "/planificacion-historias", label: "🎯 Planificación de historias" },
     { href: "/reportes-historias", label: "📊 Reportes" },
     { href: "/perfil", label: "Mi perfil" },
     { href: "/piezas", label: "📋 Tareas" },
@@ -1809,7 +1809,7 @@ function HomePage() {
       href: rutaPropia,
     },
     {
-      titulo: "Calendario",
+      titulo: "Calendario de publicaciones",
       desc: "Cuándo se publica cada pieza",
       href: "/calendario",
     },
