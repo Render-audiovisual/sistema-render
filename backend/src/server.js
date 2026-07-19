@@ -1,20 +1,26 @@
 import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { checkDatabaseConnection, pool } from "./db.js";
 import { setupDemoClientes } from "./setup-demo-data.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 const app = express();
+const router = express.Router();
 const port = Number(process.env.PORT || 3001);
 
 app.use(express.json());
 
-app.get("/health", (_req, res) => {
+router.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/login", async (req, res, next) => {
+router.post("/login", async (req, res, next) => {
   try {
     const { usuario, password } = req.body;
 
@@ -73,7 +79,7 @@ const ROLES_VALIDOS = [
   "community",
 ];
 
-app.get("/usuarios", async (_req, res, next) => {
+router.get("/usuarios", async (_req, res, next) => {
   try {
     const result = await pool.query(
       "SELECT id, usuario, nombre, rol, created_at FROM usuarios ORDER BY id",
@@ -84,7 +90,7 @@ app.get("/usuarios", async (_req, res, next) => {
   }
 });
 
-app.post("/usuarios", async (req, res, next) => {
+router.post("/usuarios", async (req, res, next) => {
   try {
     const { usuario, nombre, rol, password } = req.body;
 
@@ -114,7 +120,7 @@ app.post("/usuarios", async (req, res, next) => {
   }
 });
 
-app.delete("/usuarios/:id", async (req, res, next) => {
+router.delete("/usuarios/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -132,7 +138,7 @@ app.delete("/usuarios/:id", async (req, res, next) => {
   }
 });
 
-app.patch("/usuarios/password", async (req, res, next) => {
+router.patch("/usuarios/password", async (req, res, next) => {
   try {
     const { usuario, password_actual, password_nueva } = req.body;
 
@@ -175,7 +181,7 @@ app.patch("/usuarios/password", async (req, res, next) => {
 // Ver migration 002_consolidate_historias_workflow.sql para detalles
 
 // Mantener para retrocompatibilidad temporal - redirigen a historias
-app.get("/workflow-historias", async (req, res, next) => {
+router.get("/workflow-historias", async (req, res, next) => {
   try {
     res.status(410).json({
       error: "Endpoint deprecated. Use GET /historias instead.",
@@ -187,14 +193,14 @@ app.get("/workflow-historias", async (req, res, next) => {
   }
 });
 
-app.post("/workflow-historias", async (req, res, next) => {
+router.post("/workflow-historias", async (req, res, next) => {
   res.status(410).json({
     error: "Endpoint deprecated. Use POST /historias instead.",
     deprecated_since: "2026-07-19"
   });
 });
 
-app.patch("/workflow-historias/:id", async (req, res, next) => {
+router.patch("/workflow-historias/:id", async (req, res, next) => {
   res.status(410).json({
     error: "Endpoint deprecated. Use PATCH /historias/:id instead.",
     deprecated_since: "2026-07-19"
@@ -203,7 +209,7 @@ app.patch("/workflow-historias/:id", async (req, res, next) => {
 
 // ── ESTRUCTURA BASE POR CLIENTE ──────────────────────────────────────────────
 
-app.get("/estructura", async (_req, res, next) => {
+router.get("/estructura", async (_req, res, next) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -227,7 +233,7 @@ app.get("/estructura", async (_req, res, next) => {
   }
 });
 
-app.post("/estructura", async (req, res, next) => {
+router.post("/estructura", async (req, res, next) => {
   try {
     const { cliente_id, dia_semana, tema, horario, cta_fijo, tipo } = req.body;
 
@@ -251,7 +257,7 @@ app.post("/estructura", async (req, res, next) => {
 
 // ── CHECK DE PUBLICACIÓN DIARIO ───────────────────────────────────────────────
 
-app.get("/check-publicacion", async (req, res, next) => {
+router.get("/check-publicacion", async (req, res, next) => {
   try {
     const { desde, hasta } = req.query;
 
@@ -278,7 +284,7 @@ app.get("/check-publicacion", async (req, res, next) => {
   }
 });
 
-app.post("/check-publicacion", async (req, res, next) => {
+router.post("/check-publicacion", async (req, res, next) => {
   try {
     const { cliente_id, fecha, publicado, confirmado_por } = req.body;
 
@@ -313,7 +319,7 @@ app.post("/check-publicacion", async (req, res, next) => {
 
 // ── FECHAS ESPECIALES ─────────────────────────────────────────────────────────
 
-app.get("/fechas-especiales", async (_req, res, next) => {
+router.get("/fechas-especiales", async (_req, res, next) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -336,7 +342,7 @@ app.get("/fechas-especiales", async (_req, res, next) => {
   }
 });
 
-app.patch("/fechas-especiales/:id", async (req, res, next) => {
+router.patch("/fechas-especiales/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
     const { estado, idea } = req.body;
@@ -367,7 +373,7 @@ app.patch("/fechas-especiales/:id", async (req, res, next) => {
   }
 });
 
-app.get("/clientes", async (_req, res, next) => {
+router.get("/clientes", async (_req, res, next) => {
   try {
     const result = await pool.query(`
       SELECT id, nombre, cuota_reels, cuota_carruseles
@@ -380,7 +386,7 @@ app.get("/clientes", async (_req, res, next) => {
   }
 });
 
-app.patch("/clientes/:id", async (req, res, next) => {
+router.patch("/clientes/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
     const { cuota_reels, cuota_carruseles } = req.body;
@@ -418,7 +424,7 @@ app.patch("/clientes/:id", async (req, res, next) => {
   }
 });
 
-app.patch("/historias/:id", async (req, res, next) => {
+router.patch("/historias/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
     const {
@@ -519,7 +525,7 @@ app.patch("/historias/:id", async (req, res, next) => {
   }
 });
 
-app.delete("/historias/:id", async (req, res, next) => {
+router.delete("/historias/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -537,7 +543,7 @@ app.delete("/historias/:id", async (req, res, next) => {
   }
 });
 
-app.get("/historias", async (_req, res, next) => {
+router.get("/historias", async (_req, res, next) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -579,7 +585,7 @@ app.get("/historias", async (_req, res, next) => {
   }
 });
 
-app.patch("/publicaciones/:id", async (req, res, next) => {
+router.patch("/publicaciones/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
     const { estado, metadata } = req.body;
@@ -618,7 +624,7 @@ app.patch("/publicaciones/:id", async (req, res, next) => {
   }
 });
 
-app.get("/publicaciones", async (_req, res, next) => {
+router.get("/publicaciones", async (_req, res, next) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -642,7 +648,7 @@ app.get("/publicaciones", async (_req, res, next) => {
   }
 });
 
-app.post("/tareas", async (req, res, next) => {
+router.post("/tareas", async (req, res, next) => {
   try {
     const {
       titulo,
@@ -709,7 +715,7 @@ app.post("/tareas", async (req, res, next) => {
   }
 });
 
-app.patch("/tareas/:id", async (req, res, next) => {
+router.patch("/tareas/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
     const { estado, propiedades_extra, tipo_tarea, subtipo, prioridad } = req.body;
@@ -760,7 +766,7 @@ app.patch("/tareas/:id", async (req, res, next) => {
   }
 });
 
-app.get("/tareas", async (req, res, next) => {
+router.get("/tareas", async (req, res, next) => {
   try {
     const { asignado_a, tipo_tarea, historia_id, publicacion_id } = req.query;
 
@@ -821,7 +827,7 @@ app.get("/tareas", async (req, res, next) => {
   }
 });
 
-app.get("/piezas", async (_req, res, next) => {
+router.get("/piezas", async (_req, res, next) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -880,7 +886,7 @@ app.get("/piezas", async (_req, res, next) => {
   }
 });
 
-app.get("/piezas/:id", async (req, res, next) => {
+router.get("/piezas/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
     const resultP = await pool.query(
@@ -968,7 +974,7 @@ async function crearTareaAuto({ titulo, asignado_a, cliente_id, fecha_vencimient
   );
 }
 
-app.post("/piezas", async (req, res, next) => {
+router.post("/piezas", async (req, res, next) => {
   try {
     const {
       tipo,
@@ -1076,7 +1082,7 @@ app.post("/piezas", async (req, res, next) => {
   }
 });
 
-app.post("/historias/convertir-flyer/:publicacionId", async (req, res, next) => {
+router.post("/historias/convertir-flyer/:publicacionId", async (req, res, next) => {
   try {
     const { publicacionId } = req.params;
 
@@ -1117,7 +1123,7 @@ app.post("/historias/convertir-flyer/:publicacionId", async (req, res, next) => 
   }
 });
 
-app.patch("/piezas/:id", async (req, res, next) => {
+router.patch("/piezas/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
     const { estado, prioridad, idea, copy, material_referencia, aclaraciones } =
@@ -1195,6 +1201,32 @@ app.patch("/piezas/:id", async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.use("/api", router);
+
+// Si existe un build del frontend (frontend/dist, generado con
+// `npm run build`), lo servimos desde acá mismo. Así todo — API y
+// frontend — vive en un solo proceso y un solo puerto: no hace falta
+// CORS ni coordinar dos servicios separados en el hosting.
+//
+// En desarrollo local esta carpeta normalmente no existe (se usa
+// `vite dev` con su propio proxy hacia /api), así que esto no cambia
+// nada del flujo de trabajo habitual.
+const distDir = path.join(__dirname, "..", "..", "frontend", "dist");
+if (fs.existsSync(distDir)) {
+  app.use(express.static(distDir));
+  app.get(/^\/(?!api\/).*/, (_req, res) => {
+    res.sendFile(path.join(distDir, "index.html"));
+  });
+  console.log("Sirviendo frontend estático desde", distDir);
+}
+
+// Error handler centralizado: sin esto, Express devuelve HTML/stack
+// traces por defecto en vez de JSON — riesgo de filtrar detalles internos.
+app.use((err, _req, res, _next) => {
+  console.error(err);
+  res.status(err.status || 500).json({ error: "Error interno del servidor." });
 });
 
 try {
