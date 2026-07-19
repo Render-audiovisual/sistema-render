@@ -3402,6 +3402,26 @@ function GermanDashboard() {
         </div>
 
         <div className="content">
+          <div style={{ backgroundColor: "#fff3cd", border: "2px solid #ff9800", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
+            {(() => {
+              const proximaTarea = pendientes
+                .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))[0];
+
+              if (!proximaTarea) {
+                return <div className="caption">✅ No hay tareas pendientes.</div>;
+              }
+
+              return (
+                <div onClick={() => setProduccionSeleccionada(proximaTarea)} style={{ cursor: "pointer" }}>
+                  <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>🎯 Tu próxima tarea</div>
+                  <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>{proximaTarea.titulo}</div>
+                  <div style={{ fontSize: "13px", color: "#333", marginBottom: "8px" }}>{proximaTarea.cliente_nombre ?? "Sin cliente"} · Vence {proximaTarea.fecha_vencimiento}</div>
+                  <div style={{ fontSize: "12px", color: "#555" }}>Estado: {proximaTarea.estado === "bloqueada" ? "Bloqueada: " + (proximaTarea.propiedades_extra?.motivo_bloqueo ?? "sin motivo") : getEstadoHistoriaLabel(proximaTarea.estado)}</div>
+                </div>
+              );
+            })()}
+          </div>
+
           <div className="section-label">1 · Producciones pendientes</div>
           <div className="box">
             {tareasGermanError && (
@@ -3658,6 +3678,27 @@ function LucianoDashboard() {
         </div>
 
         <div className="content">
+          <div style={{ backgroundColor: "#d4edff", border: "2px solid #0066cc", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
+            {(() => {
+              const proximaPublicacion = publicacionesLuciano
+                .filter((p) => p.estado !== "publicada")
+                .sort((a, b) => a.fecha_programada.localeCompare(b.fecha_programada))[0];
+
+              if (!proximaPublicacion) {
+                return <div className="caption">✅ No hay reels pendientes.</div>;
+              }
+
+              return (
+                <div onClick={() => setPiezaSeleccionada(proximaPublicacion)} style={{ cursor: "pointer" }}>
+                  <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>🎬 Tu próxima edición</div>
+                  <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>{proximaPublicacion.metadata?.Idea || "Sin idea cargada"}</div>
+                  <div style={{ fontSize: "13px", color: "#333", marginBottom: "8px" }}>{proximaPublicacion.cliente_nombre} · Publica {proximaPublicacion.fecha_programada}</div>
+                  <div style={{ fontSize: "12px", color: "#555" }}>Estado: {proximaPublicacion.estado === "en_revision" ? "Esperando aprobación de Franco" : "Listo para subir"}</div>
+                </div>
+              );
+            })()}
+          </div>
+
           <div className="section-label">1 · Próximo a publicar</div>
           <div className="box">
             {publicacionesLucianoError && (
@@ -3866,6 +3907,27 @@ function AugustoDashboard() {
         </div>
 
         <div className="content">
+          <div style={{ backgroundColor: "#fff3cd", border: "2px solid #ffc107", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
+            {(() => {
+              const proximaHistoria = historiasAugusto
+                .filter((h) => h.estado !== "publicada" && h.estado !== "bloqueada")
+                .sort((a, b) => a.fecha_programada.localeCompare(b.fecha_programada))[0];
+
+              if (!proximaHistoria) {
+                return <div className="caption">✅ No hay tareas pendientes.</div>;
+              }
+
+              return (
+                <div onClick={() => setHistoriaSeleccionada(proximaHistoria)} style={{ cursor: "pointer" }}>
+                  <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>📌 Tu próxima tarea</div>
+                  <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>{proximaHistoria.metadata?.Idea || "Sin idea cargada"}</div>
+                  <div style={{ fontSize: "13px", color: "#555", marginBottom: "8px" }}>{proximaHistoria.cliente_nombre} · Vence {proximaHistoria.fecha_programada}</div>
+                  <div style={{ fontSize: "12px", color: "#666" }}>Estado: {getEstadoHistoriaLabel(proximaHistoria.estado)}</div>
+                </div>
+              );
+            })()}
+          </div>
+
           <div className="section-label">1 · Atrasadas / vencen hoy</div>
           <div className="box">
             {historiasAugustoError && (
@@ -4276,6 +4338,30 @@ function AgustinDashboard() {
         </div>
 
         <div className="content">
+          <div style={{ backgroundColor: "#ffe0e0", border: "2px solid #d32f2f", borderRadius: "4px", padding: "12px", marginBottom: "20px", fontSize: "13px" }}>
+            {(() => {
+              const atrasadas = getPiezasAtrasadas(historiasRaw, publicacionesRaw);
+              const bloqueadas = getPiezasBloqueadas(historiasRaw, publicacionesRaw);
+              const cumplimiento = getCumplimientoGeneral(clientes);
+
+              return (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px" }}>
+                  <div>
+                    <span style={{ marginRight: "20px" }}>
+                      🔴 {atrasadas.length} atrasados
+                    </span>
+                    <span style={{ marginRight: "20px" }}>
+                      ⚠️ {bloqueadas.length} bloqueados
+                    </span>
+                    <span>
+                      📊 Cumplimiento: <strong>{cumplimiento}%</strong>
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
           <div className="section-label">
             1 · Lo primero que ve al entrar — sin scroll
           </div>
