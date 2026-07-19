@@ -1946,34 +1946,25 @@ function CalendarioPage() {
   const [piezaSel, setPiezaSel] = useState(null);
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/historias").then((r) => r.json()),
-      fetch("/api/publicaciones").then((r) => r.json()),
-    ])
-      .then(([historias, publicaciones]) => {
-        setPiezas([
-          ...historias.map((h) => ({
-            ...h,
-            origen: "historia",
-            tipo: "historia",
-            tipoLabel: "Historia",
-          })),
-          ...publicaciones.map((p) => ({
+    fetch("/api/publicaciones")
+      .then((r) => r.json())
+      .then((publicaciones) => {
+        setPiezas(
+          publicaciones.map((p) => ({
             ...p,
             origen: "publicacion",
             tipoLabel: getTipoPublicacionLabel(p.tipo),
-          })),
-        ]);
+          }))
+        );
       })
       .catch((err) => {
-        console.error("No se pudo cargar el calendario", err);
-        setError("No se pudo cargar el calendario.");
+        console.error("No se pudo cargar el calendario editorial", err);
+        setError("No se pudo cargar el calendario editorial.");
       });
   }, []);
 
   const piezasFiltradas = piezas.filter((pz) => {
     if (filtroTipo === "todos") return true;
-    if (filtroTipo === "historia") return pz.origen === "historia";
     return pz.tipo === filtroTipo;
   });
 
@@ -2002,11 +1993,8 @@ function CalendarioPage() {
 
   const filtros = [
     { key: "todos", label: "Todo" },
-    { key: "historia", label: "Historias" },
-    { key: "reel", label: "Reels" },
-    { key: "carrusel", label: "Carruseles" },
-    { key: "flyer", label: "Flyers" },
     { key: "video", label: "Videos" },
+    { key: "carrusel", label: "Carruseles" },
   ];
 
   return (
@@ -2017,7 +2005,7 @@ function CalendarioPage() {
           <div className="nav">
             <span className="active">Calendario</span>
           </div>
-          <div className="tag">Publicaciones e historias</div>
+          <div className="tag">Calendario Editorial - Publicaciones</div>
         </div>
 
         <div className="content">
