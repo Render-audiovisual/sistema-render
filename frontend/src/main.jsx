@@ -1939,6 +1939,15 @@ function fechaISODesde(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+function sumarDiasISO(fechaISO, dias) {
+  const fecha = new Date(`${fechaISO}T00:00:00`);
+  fecha.setDate(fecha.getDate() + dias);
+  const year = fecha.getFullYear();
+  const month = String(fecha.getMonth() + 1).padStart(2, "0");
+  const day = String(fecha.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function PublicacionesCalendarioTab({ onIrAPlanilla }) {
   const hoy = new Date();
   const [year, setYear] = useState(hoy.getFullYear());
@@ -1946,7 +1955,9 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
   const [piezas, setPiezas] = useState([]);
   const [error, setError] = useState(null);
   const [filtroTipo, setFiltroTipo] = useState("todos");
+  const [filtroEstado, setFiltroEstado] = useState("todos");
   const [piezaSel, setPiezaSel] = useState(null);
+  const [guardandoId, setGuardandoId] = useState(null);
 
   useEffect(() => {
     fetch("/api/publicaciones")
@@ -1966,8 +1977,16 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
   }, []);
 
   const piezasFiltradas = piezas.filter((pz) => {
-    if (filtroTipo === "todos") return true;
-    return pz.tipo === filtroTipo;
+    if (filtroTipo !== "todos" && pz.tipo !== filtroTipo) return false;
+    if (filtroEstado === "pendientes" && pz.estado === "publicada") return false;
+    if (
+      filtroEstado !== "todos" &&
+      filtroEstado !== "pendientes" &&
+      pz.estado !== filtroEstado
+    ) {
+      return false;
+    }
+    return true;
   });
 
   const porFecha = {};
@@ -1978,6 +1997,25 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
 
   const semanas = getGrillaMes(year, month);
   const hoyISO = getHoyLocalISO();
+  const finProximos7 = sumarDiasISO(hoyISO, 7);
+  const mesISO = fechaISODesde(year, month, 1).slice(0, 7);
+  const piezasDelMes = piezas.filter(
+    (pz) => pz.fecha_programada?.slice(0, 7) === mesISO,
+  );
+  const pendientesDelMes = piezasDelMes.filter((pz) => pz.estado !== "publicada");
+  const publicadasDelMes = piezasDelMes.filter((pz) => pz.estado === "publicada");
+  const pendientesVencidas = piezas.filter(
+    (pz) => pz.fecha_programada < hoyISO && pz.estado !== "publicada",
+  );
+  const pendientesHoy = piezas.filter(
+    (pz) => pz.fecha_programada === hoyISO && pz.estado !== "publicada",
+  );
+  const proximos7 = piezas.filter(
+    (pz) =>
+      pz.fecha_programada >= hoyISO &&
+      pz.fecha_programada <= finProximos7 &&
+      pz.estado !== "publicada",
+  );
 
   const irMes = (delta) => {
     let m = month + delta;
@@ -1998,6 +2036,41 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
     { key: "video", label: "Videos" },
     { key: "carrusel", label: "Carruseles" },
   ];
+
+  const filtrosEstado = [
+    { key: "todos", label: "Todos" },
+    { key: "pendientes", label: "Pendientes" },
+    { key: "publicada", label: "Publicadas" },
+    { key: "bloqueada", label: "No publicado / revisar" },
+  ];
+
+  const cambiarEstadoPublicacion = async (publicacion, nuevoEstado) => {
+    setGuardandoId(publicacion.id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/publicaciones/${publicacion.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estado: nuevoEstado }),
+      });
+      if (!res.ok) throw new Error("No se pudo guardar el check de publicación.");
+      const actualizada = await res.json();
+      const piezaActualizada = {
+        ...publicacion,
+        ...actualizada,
+        tipoLabel: getTipoPublicacionLabel(actualizada.tipo),
+      };
+      setPiezas((prev) =>
+        prev.map((pz) => (pz.id === publicacion.id ? piezaActualizada : pz)),
+      );
+      setPiezaSel(piezaActualizada);
+    } catch (err) {
+      console.error("No se pudo guardar el check de publicación", err);
+      setError(err.message);
+    } finally {
+      setGuardandoId(null);
+    }
+  };
 
   return (
     <>
@@ -2023,6 +2096,41 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
             {f.label}
           </span>
         ))}
+      </div>
+
+      <div className="tabs compact">
+        {filtrosEstado.map((f) => (
+          <span
+            key={f.key}
+            className={filtroEstado === f.key ? "active" : ""}
+            onClick={() => setFiltroEstado(f.key)}
+          >
+            {f.label}
+          </span>
+        ))}
+      </div>
+
+      <div className="publication-check-summary">
+        <div>
+          <strong>{publicadasDelMes.length}</strong>
+          <span>Publicadas del mes</span>
+        </div>
+        <div>
+          <strong>{pendientesDelMes.length}</strong>
+          <span>Pendientes del mes</span>
+        </div>
+        <div className={pendientesVencidas.length ? "alert" : ""}>
+          <strong>{pendientesVencidas.length}</strong>
+          <span>Vencidas sin check</span>
+        </div>
+        <div>
+          <strong>{pendientesHoy.length}</strong>
+          <span>Para publicar hoy</span>
+        </div>
+        <div>
+          <strong>{proximos7.length}</strong>
+          <span>Próximos 7 días</span>
+        </div>
       </div>
 
       {error && <div className="caption">{error}</div>}
@@ -2057,6 +2165,7 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
                       pz.estado,
                     )}`}
                   >
+                    {pz.estado === "publicada" ? "✓ " : ""}
                     {pz.tipoLabel[0]} · {pz.cliente_nombre}
                   </div>
                 ))}
@@ -2100,6 +2209,22 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
                   <div>{getEstadoHistoriaLabel(piezaSel.estado)}</div>
                 </div>
                 <div className="detail-field">
+                  <div className="detail-label">Check publicación</div>
+                  <div>
+                    {piezaSel.estado === "publicada"
+                      ? "Publicado"
+                      : piezaSel.estado === "bloqueada"
+                        ? "No publicado / revisar"
+                        : "Pendiente"}
+                  </div>
+                </div>
+                {piezaSel.fecha_publicación_real && (
+                  <div className="detail-field">
+                    <div className="detail-label">Marcada publicada</div>
+                    <div>{piezaSel.fecha_publicación_real}</div>
+                  </div>
+                )}
+                <div className="detail-field">
                   <div className="detail-label">Fecha programada</div>
                   <div>{piezaSel.fecha_programada}</div>
                 </div>
@@ -2117,6 +2242,30 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
               <div className="modal-actions">
                 <button
                   className="btn primary"
+                  type="button"
+                  disabled={guardandoId === piezaSel.id || piezaSel.estado === "publicada"}
+                  onClick={() => cambiarEstadoPublicacion(piezaSel, "publicada")}
+                >
+                  {guardandoId === piezaSel.id ? "Guardando..." : "Marcar publicado"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={guardandoId === piezaSel.id || piezaSel.estado === "lista"}
+                  onClick={() => cambiarEstadoPublicacion(piezaSel, "lista")}
+                >
+                  Volver a pendiente
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={guardandoId === piezaSel.id || piezaSel.estado === "bloqueada"}
+                  onClick={() => cambiarEstadoPublicacion(piezaSel, "bloqueada")}
+                >
+                  No publicado / revisar
+                </button>
+                <button
+                  className="btn"
                   type="button"
                   onClick={() => {
                     onIrAPlanilla(piezaSel.cliente_id);

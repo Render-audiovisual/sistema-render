@@ -1166,8 +1166,9 @@ select:focus {
 }
 
 .cal-chip.publicada {
-  border-left-color: #ccc;
-  color: #999;
+  background: #e8f5e9;
+  border-left-color: #2e7d32;
+  color: #1b5e20;
 }
 
 .cal-chip.lista {
@@ -1179,7 +1180,57 @@ select:focus {
 }
 
 .cal-chip.bloqueada {
-  border-left-color: #333;
+  background: #ffebee;
+  border-left-color: #c62828;
+  color: #8e1b1b;
+}
+
+.tabs.compact {
+  margin-top: -6px;
+}
+
+.publication-check-summary {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 10px 0 14px;
+}
+
+.publication-check-summary > div {
+  background: #fafafa;
+  border: 1px solid #e4e4e4;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.publication-check-summary strong {
+  display: block;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.publication-check-summary span {
+  color: #666;
+  display: block;
+  font-size: 11px;
+  line-height: 1.25;
+  margin-top: 5px;
+}
+
+.publication-check-summary .alert {
+  background: #fff3e0;
+  border-color: #ffcc80;
+}
+
+.publication-check-summary .alert strong,
+.publication-check-summary .alert span {
+  color: #bf360c;
+}
+
+@media (max-width: 720px) {
+  .publication-check-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .cal-legend {

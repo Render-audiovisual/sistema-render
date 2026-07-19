@@ -650,6 +650,11 @@ router.patch("/publicaciones/:id", async (req, res, next) => {
          fecha_diseño_entrega = COALESCE($16, fecha_diseño_entrega),
          fecha_edición_entrega = COALESCE($17, fecha_edición_entrega),
          fecha_revisión_aprobación = COALESCE($18, fecha_revisión_aprobación),
+         fecha_publicación_real = CASE
+           WHEN $1 = 'publicada' AND estado <> 'publicada' THEN now()
+           WHEN $1 IS NOT NULL AND $1 <> 'publicada' THEN NULL
+           ELSE fecha_publicación_real
+         END,
          metadata = CASE WHEN $19::jsonb IS NOT NULL THEN metadata || $19::jsonb ELSE metadata END,
          updated_at = now()
        WHERE id = $20
@@ -660,6 +665,7 @@ router.patch("/publicaciones/:id", async (req, res, next) => {
                  to_char(fecha_diseño_entrega, 'YYYY-MM-DD') AS fecha_diseño_entrega,
                  to_char(fecha_edición_entrega, 'YYYY-MM-DD') AS fecha_edición_entrega,
                  to_char(fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
+                 to_char(fecha_publicación_real, 'YYYY-MM-DD HH24:MI') AS fecha_publicación_real,
                  metadata, created_at, updated_at`,
       [
         estado || null,
@@ -736,6 +742,7 @@ router.get("/publicaciones", async (_req, res, next) => {
         to_char(p.fecha_diseño_entrega, 'YYYY-MM-DD') AS fecha_diseño_entrega,
         to_char(p.fecha_edición_entrega, 'YYYY-MM-DD') AS fecha_edición_entrega,
         to_char(p.fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
+        to_char(p.fecha_publicación_real, 'YYYY-MM-DD HH24:MI') AS fecha_publicación_real,
         p.metadata,
         p.created_at,
         p.updated_at
