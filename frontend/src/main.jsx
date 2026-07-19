@@ -1515,7 +1515,7 @@ function App() {
 
   const esAdmin = sesion.usuario.rol === "admin";
   const rutaPropia = USUARIO_A_RUTA[sesion.usuario.usuario];
-  const rutasCompartidas = ["/", "/calendario", "/calendario-estructura", "/workflow-historias", "/perfil", "/piezas"];
+  const rutasCompartidas = ["/", "/calendario", "/calendario-estructura", "/workflow-historias", "/reportes-historias", "/perfil", "/piezas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -1555,6 +1555,9 @@ function App() {
     if (path === "/workflow-historias") {
       return <HistoriasWorkflowPage />;
     }
+    if (path === "/reportes-historias") {
+      return <ReportesHistoriasPage />;
+    }
     if (path === "/perfil") {
       return <PerfilPage />;
     }
@@ -1576,6 +1579,7 @@ function App() {
     { href: "/calendario", label: "Calendario" },
     { href: "/calendario-estructura", label: "Estructura de publicación" },
     { href: "/workflow-historias", label: "🎯 Historias" },
+    { href: "/reportes-historias", label: "📊 Reportes" },
     { href: "/perfil", label: "Mi perfil" },
     { href: "/piezas", label: "📋 Tareas" },
   ];
@@ -2425,6 +2429,172 @@ const ROL_LABELS = {
   produccion: "Producción",
   community: "Community",
 };
+
+function ReportesHistoriasPage() {
+  const [reportes, setReportes] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/reportes/historias")
+      .then((r) => r.json())
+      .then((data) => {
+        setReportes(data);
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("Error cargando reportes", err);
+        setError("No se pudieron cargar los reportes.");
+      })
+      .finally(() => setCargando(false));
+  }, []);
+
+  const totalHistorias = reportes?.por_fase.reduce((sum, f) => sum + f.total, 0) || 0;
+
+  return (
+    <main aria-label="Render platform reportes historias">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Reportes</span>
+          </div>
+          <div className="tag">Métricas de gestión de historias</div>
+        </div>
+
+        <div className="content">
+          {error && (
+            <div style={{ padding: "12px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "16px" }}>
+              {error}
+            </div>
+          )}
+
+          {cargando ? (
+            <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando reportes...</div>
+          ) : (
+            <>
+              <div className="section-label">1 · Histórias por fase</div>
+              <div className="box">
+                {!reportes?.por_fase || reportes.por_fase.length === 0 ? (
+                  <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>Sin datos aún</div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
+                    {reportes.por_fase.map((f) => (
+                      <div
+                        key={f.fase}
+                        style={{
+                          border: "1px solid #ddd",
+                          borderRadius: "8px",
+                          padding: "16px",
+                          textAlign: "center",
+                        }}
+                      >
+                        <div style={{ fontSize: "28px", fontWeight: "700", color: "#333" }}>{f.total}</div>
+                        <div style={{ fontSize: "13px", color: "#666", marginTop: "4px", textTransform: "capitalize" }}>
+                          {f.fase.replace(/_/g, " ")}
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#999", marginTop: "8px" }}>
+                          {f.esta_semana} esta semana
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#999" }}>{f.hoy} hoy</div>
+                        <div style={{ fontSize: "11px", color: "#999", marginTop: "6px" }}>
+                          {totalHistorias > 0 ? `${Math.round((f.total / totalHistorias) * 100)}%` : "0%"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="section-label">2 · Histórias por cliente</div>
+              <div className="box">
+                {!reportes?.por_cliente || reportes.por_cliente.length === 0 ? (
+                  <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>Sin datos aún</div>
+                ) : (
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "2px solid #333" }}>
+                        <th style={{ textAlign: "left", padding: "12px", fontWeight: "600" }}>Cliente</th>
+                        <th style={{ textAlign: "center", padding: "12px", fontWeight: "600" }}>Total</th>
+                        <th style={{ textAlign: "center", padding: "12px", fontWeight: "600" }}>✅ Publicadas</th>
+                        <th style={{ textAlign: "center", padding: "12px", fontWeight: "600" }}>⏳ Pendientes</th>
+                        <th style={{ textAlign: "center", padding: "12px", fontWeight: "600" }}>Avance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportes.por_cliente.map((c) => {
+                        const avance =
+                          c.total > 0 ? Math.round((c.publicadas / c.total) * 100) : 0;
+                        return (
+                          <tr key={c.cliente} style={{ borderBottom: "1px solid #e0e0e0" }}>
+                            <td style={{ padding: "12px" }}>{c.cliente}</td>
+                            <td style={{ padding: "12px", textAlign: "center", fontWeight: "600" }}>
+                              {c.total}
+                            </td>
+                            <td style={{ padding: "12px", textAlign: "center", color: "#4caf50" }}>
+                              {c.publicadas}
+                            </td>
+                            <td style={{ padding: "12px", textAlign: "center", color: "#ff9800" }}>
+                              {c.pendientes}
+                            </td>
+                            <td style={{ padding: "12px", textAlign: "center" }}>
+                              <div
+                                style={{
+                                  display: "inline-block",
+                                  width: "60px",
+                                  height: "6px",
+                                  background: "#e0e0e0",
+                                  borderRadius: "3px",
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: `${avance}%`,
+                                    height: "100%",
+                                    background: avance > 70 ? "#4caf50" : avance > 30 ? "#ff9800" : "#f44336",
+                                    transition: "width 0.3s",
+                                  }}
+                                />
+                              </div>
+                              <div style={{ fontSize: "11px", marginTop: "4px" }}>{avance}%</div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div className="section-label">3 · Resumen general</div>
+              <div className="box">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
+                  <div style={{ padding: "16px", background: "#f5f5f5", borderRadius: "6px", textAlign: "center" }}>
+                    <div style={{ fontSize: "24px", fontWeight: "700", color: "#333" }}>{totalHistorias}</div>
+                    <div style={{ fontSize: "12px", color: "#666", marginTop: "6px" }}>Total de historias</div>
+                  </div>
+                  <div style={{ padding: "16px", background: "#f5f5f5", borderRadius: "6px", textAlign: "center" }}>
+                    <div style={{ fontSize: "24px", fontWeight: "700", color: "#4caf50" }}>
+                      {reportes?.por_cliente.reduce((sum, c) => sum + c.publicadas, 0) || 0}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#666", marginTop: "6px" }}>Publicadas</div>
+                  </div>
+                  <div style={{ padding: "16px", background: "#f5f5f5", borderRadius: "6px", textAlign: "center" }}>
+                    <div style={{ fontSize: "24px", fontWeight: "700", color: "#ff9800" }}>
+                      {reportes?.por_cliente.reduce((sum, c) => sum + c.pendientes, 0) || 0}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#666", marginTop: "6px" }}>Pendientes</div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}
 
 function PerfilPage() {
   const sesion = getSesion();
