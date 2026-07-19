@@ -423,6 +423,13 @@ function getPublicacionesDeHoy(historias, publicaciones) {
   return deHoy;
 }
 
+function getTareasParaAsignar(tareas) {
+  return tareas
+    .filter((t) => t.estado === "pendiente" && (!t.asignado_a || t.asignado_a === "Franco"))
+    .slice(0, 10)
+    .sort((a, b) => new Date(a.fecha_vencimiento || 0) - new Date(b.fecha_vencimiento || 0));
+}
+
 function getEstadoLabel(estado) {
   return estado.charAt(0).toUpperCase() + estado.slice(1);
 }
@@ -4805,6 +4812,70 @@ function FrancoDashboard() {
               → Franco ve qué ya salió de su cancha y está esperando respuesta.
             </div>
           </div>
+
+          <div className="section-label">4 · Tareas para asignar</div>
+          <div className="box">
+            {(() => {
+              const porAsignar = getTareasParaAsignar(tareasFranco);
+              if (porAsignar.length === 0) {
+                return (
+                  <div className="caption">
+                    ✅ No hay tareas pendientes de asignación.
+                  </div>
+                );
+              }
+              return (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Tarea</th>
+                      <th>Asignado a</th>
+                      <th>Vence</th>
+                      <th>Acción rápida</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {porAsignar.map((tarea) => (
+                      <tr key={tarea.id}>
+                        <td>{tarea.cliente_nombre ?? "—"}</td>
+                        <td>{tarea.titulo}</td>
+                        <td>{tarea.asignado_a ?? "Sin asignar"}</td>
+                        <td>{tarea.fecha_vencimiento ?? "—"}</td>
+                        <td>
+                          <button
+                            className="btn"
+                            type="button"
+                            onClick={() => {
+                              const responsable = window.prompt(
+                                "¿A quién asigno? (Augusto, Luciano, Germán)",
+                              );
+                              if (responsable) {
+                                fetch(`/api/tareas/${tarea.id}`, {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ asignado_a: responsable }),
+                                }).then((response) => {
+                                  if (response.ok) {
+                                    cargarCola();
+                                  }
+                                });
+                              }
+                            }}
+                          >
+                            Asignar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            })()}
+            <div className="caption">
+              → Tareas pendientes que Franco puede asignar rápidamente.
+            </div>
+          </div>
         </div>
       </div>
 
@@ -4930,6 +5001,41 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
       });
   };
 
+  const handleDesbloquear = () => {
+    const resolucion = window.prompt(
+      "¿Cómo se resolvió el bloqueo? (se guarda para referencia)",
+    );
+    if (!resolucion === undefined) {
+      return;
+    }
+
+    setEnviando("desbloquear");
+    setError(null);
+
+    fetch(endpointPieza, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        estado: "en_revision",
+        metadata: { Aclaración: `Desbloqueada por Franco: ${resolucion}` },
+      }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("No se pudo desbloquear la pieza.");
+        }
+        return response.json();
+      })
+      .then(() => {
+        onAprobar(pieza.id);
+        onClose();
+      })
+      .catch(() => {
+        setError("No se pudo desbloquear la pieza. Intentá de nuevo.");
+        setEnviando(null);
+      });
+  };
+
   return (
     <div className="modal-overlay open" role="dialog" aria-modal="true">
       <div className="modal">
@@ -4953,30 +5059,53 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
           {error && <div className="caption login-error">{error}</div>}
 
           <div className="modal-actions">
-            <button
-              className="btn primary"
-              type="button"
-              onClick={handleAprobar}
-              disabled={enviando !== null}
-            >
-              {enviando === "aprobar" ? "Aprobando..." : "Aprobar"}
-            </button>
-            <button
-              className="btn"
-              type="button"
-              onClick={handlePedirCorreccion}
-              disabled={enviando !== null}
-            >
-              {enviando === "correccion" ? "Enviando..." : "Pedir corrección"}
-            </button>
-            <button
-              className="btn"
-              type="button"
-              onClick={handleEscalar}
-              disabled={enviando !== null}
-            >
-              {enviando === "escalar" ? "Escalando..." : "Escalar a Agustín"}
-            </button>
+            {pieza.estado === "bloqueada" ? (
+              <>
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={handleDesbloquear}
+                  disabled={enviando !== null}
+                >
+                  {enviando === "desbloquear" ? "Desbloqueando..." : "Desbloquear"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleEscalar}
+                  disabled={enviando !== null}
+                >
+                  {enviando === "escalar" ? "Escalando..." : "Escalar a Agustín"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={handleAprobar}
+                  disabled={enviando !== null}
+                >
+                  {enviando === "aprobar" ? "Aprobando..." : "Aprobar"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handlePedirCorreccion}
+                  disabled={enviando !== null}
+                >
+                  {enviando === "correccion" ? "Enviando..." : "Pedir corrección"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={handleEscalar}
+                  disabled={enviando !== null}
+                >
+                  {enviando === "escalar" ? "Escalando..." : "Escalar a Agustín"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
