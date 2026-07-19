@@ -170,6 +170,148 @@ app.patch("/usuarios/password", async (req, res, next) => {
   }
 });
 
+// ── WORKFLOW DE HISTORIAS ────────────────────────────────────────────────────
+
+app.get("/workflow-historias", async (req, res, next) => {
+  try {
+    const { fase, cliente_id } = req.query;
+
+    let query = `
+      SELECT
+        w.id,
+        w.historia_id,
+        w.cliente_id,
+        c.nombre AS cliente_nombre,
+        w.tema,
+        w.descripcion,
+        w.fase,
+        w.responsable_planificacion,
+        w.responsable_diseño,
+        w.responsable_revisión,
+        w.fecha_programada,
+        w.fecha_entrega_diseño,
+        w.fecha_revisión,
+        w.fecha_publicación,
+        w.link_diseño,
+        w.notas,
+        w.created_at,
+        w.updated_at
+      FROM workflow_historia w
+      JOIN clientes c ON c.id = w.cliente_id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (fase) {
+      query += ` AND w.fase = $${params.length + 1}`;
+      params.push(fase);
+    }
+
+    if (cliente_id) {
+      query += ` AND w.cliente_id = $${params.length + 1}`;
+      params.push(cliente_id);
+    }
+
+    query += ` ORDER BY w.created_at DESC`;
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/workflow-historias", async (req, res, next) => {
+  try {
+    const { historia_id, cliente_id, tema, descripcion, fecha_programada, responsable_planificacion } = req.body;
+
+    if (!historia_id || !cliente_id) {
+      return res.status(400).json({ error: "Faltan historia_id o cliente_id." });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO workflow_historia (historia_id, cliente_id, tema, descripcion, fecha_programada, responsable_planificacion)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [historia_id, cliente_id, tema || null, descripcion || null, fecha_programada || null, responsable_planificacion || null],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/workflow-historias/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { fase, responsable_diseño, responsable_revisión, link_diseño, fecha_entrega_diseño, fecha_revisión, fecha_publicación, notas } = req.body;
+
+    const fasesValidas = ["planificado", "en_diseño", "en_revisión", "publicado"];
+    if (fase && !fasesValidas.includes(fase)) {
+      return res.status(400).json({ error: "Fase inválida." });
+    }
+
+    const result = await pool.query(
+      `UPDATE workflow_historia
+       SET
+         fase = COALESCE($1, fase),
+         responsable_diseño = COALESCE($2, responsable_diseño),
+         responsable_revisión = COALESCE($3, responsable_revisión),
+         link_diseño = COALESCE($4, link_diseño),
+         fecha_entrega_diseño = COALESCE($5, fecha_entrega_diseño),
+         fecha_revisión = COALESCE($6, fecha_revisión),
+         fecha_publicación = COALESCE($7, fecha_publicación),
+         notas = COALESCE($8, notas),
+         updated_at = now()
+       WHERE id = $9
+       RETURNING *`,
+      [fase || null, responsable_diseño || null, responsable_revisión || null, link_diseño || null, fecha_entrega_diseño || null, fecha_revisión || null, fecha_publicación || null, notas || null, id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Workflow no encontrado." });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/reportes/historias", async (req, res, next) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        fase,
+        COUNT(*) as total,
+        COUNT(CASE WHEN DATE(created_at) >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as esta_semana,
+        COUNT(CASE WHEN DATE(updated_at) = CURRENT_DATE THEN 1 END) as hoy
+      FROM workflow_historia
+      GROUP BY fase
+    `);
+
+    const porCliente = await pool.query(`
+      SELECT
+        c.nombre as cliente,
+        COUNT(*) as total,
+        COUNT(CASE WHEN w.fase = 'publicado' THEN 1 END) as publicadas,
+        COUNT(CASE WHEN w.fase IN ('planificado', 'en_diseño', 'en_revisión') THEN 1 END) as pendientes
+      FROM workflow_historia w
+      JOIN clientes c ON c.id = w.cliente_id
+      GROUP BY c.nombre
+      ORDER BY total DESC
+    `);
+
+    res.json({
+      por_fase: result.rows,
+      por_cliente: porCliente.rows,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // ── ESTRUCTURA BASE POR CLIENTE ──────────────────────────────────────────────
 
 app.get("/estructura", async (_req, res, next) => {
