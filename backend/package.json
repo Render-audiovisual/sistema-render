@@ -10,6 +10,7 @@
     "migrate": "node scripts/migrate.js",
     "seed:usuarios": "node scripts/seed-usuarios.js",
     "importar:planificador": "node scripts/importar-planificador-historias.js",
+    "importar:publicaciones": "node scripts/importar-publicaciones.js",
     "setup": "npm run migrate && node -e \"import('./src/setup-demo-data.js').then(m => m.setupDemoClientes()).then(() => process.exit(0))\" && npm run seed:usuarios"
   },
   "dependencies": {

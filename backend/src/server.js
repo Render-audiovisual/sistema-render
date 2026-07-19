@@ -588,30 +588,101 @@ router.get("/historias", async (_req, res, next) => {
 router.patch("/publicaciones/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { estado, metadata } = req.body;
+    const {
+      estado,
+      tipo,
+      idea,
+      copy,
+      material_referencia,
+      aclaraciones,
+      prioridad,
+      fecha_programada,
+      responsable,
+      duracion_segundos,
+      num_imagenes,
+      responsable_diseño,
+      responsable_edición,
+      responsable_revisión,
+      responsable_publicacion,
+      fecha_diseño_entrega,
+      fecha_edición_entrega,
+      fecha_revisión_aprobación,
+      metadata,
+    } = req.body;
 
     const estadosValidos = [
       "pendiente",
       "en_diseño",
+      "en_edición",
       "en_revision",
+      "en_revisión",
       "lista",
       "publicada",
       "bloqueada",
     ];
+    const tiposValidos = ["video", "carrusel"];
 
     if (estado !== undefined && !estadosValidos.includes(estado)) {
       return res.status(400).json({ error: "Estado inválido." });
+    }
+    if (tipo !== undefined && !tiposValidos.includes(tipo)) {
+      return res.status(400).json({ error: "Tipo inválido. Usa: video, carrusel" });
     }
 
     const result = await pool.query(
       `UPDATE publicaciones
        SET
          estado = COALESCE($1, estado),
-         metadata = CASE WHEN $2::jsonb IS NOT NULL THEN metadata || $2::jsonb ELSE metadata END,
+         tipo = COALESCE($2, tipo),
+         idea = COALESCE($3, idea),
+         copy = COALESCE($4, copy),
+         material_referencia = COALESCE($5, material_referencia),
+         aclaraciones = COALESCE($6, aclaraciones),
+         prioridad = COALESCE($7, prioridad),
+         fecha_programada = COALESCE($8, fecha_programada),
+         responsable = COALESCE($9, responsable),
+         duracion_segundos = COALESCE($10, duracion_segundos),
+         num_imagenes = COALESCE($11, num_imagenes),
+         responsable_diseño = COALESCE($12, responsable_diseño),
+         responsable_edición = COALESCE($13, responsable_edición),
+         responsable_revisión = COALESCE($14, responsable_revisión),
+         responsable_publicacion = COALESCE($15, responsable_publicacion),
+         fecha_diseño_entrega = COALESCE($16, fecha_diseño_entrega),
+         fecha_edición_entrega = COALESCE($17, fecha_edición_entrega),
+         fecha_revisión_aprobación = COALESCE($18, fecha_revisión_aprobación),
+         metadata = CASE WHEN $19::jsonb IS NOT NULL THEN metadata || $19::jsonb ELSE metadata END,
          updated_at = now()
-       WHERE id = $3
-       RETURNING id, cliente_id, tipo, estado, to_char(fecha_programada, 'YYYY-MM-DD') AS fecha_programada, responsable, metadata, created_at, updated_at`,
-      [estado || null, metadata ? JSON.stringify(metadata) : null, id],
+       WHERE id = $20
+       RETURNING id, cliente_id, tipo, estado, to_char(fecha_programada, 'YYYY-MM-DD') AS fecha_programada,
+                 idea, copy, material_referencia, aclaraciones, prioridad, responsable,
+                 duracion_segundos, num_imagenes,
+                 responsable_diseño, responsable_edición, responsable_revisión, responsable_publicacion,
+                 to_char(fecha_diseño_entrega, 'YYYY-MM-DD') AS fecha_diseño_entrega,
+                 to_char(fecha_edición_entrega, 'YYYY-MM-DD') AS fecha_edición_entrega,
+                 to_char(fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
+                 metadata, created_at, updated_at`,
+      [
+        estado || null,
+        tipo || null,
+        idea || null,
+        copy || null,
+        material_referencia || null,
+        aclaraciones || null,
+        prioridad || null,
+        fecha_programada || null,
+        responsable || null,
+        duracion_segundos || null,
+        num_imagenes || null,
+        responsable_diseño || null,
+        responsable_edición || null,
+        responsable_revisión || null,
+        responsable_publicacion || null,
+        fecha_diseño_entrega || null,
+        fecha_edición_entrega || null,
+        fecha_revisión_aprobación || null,
+        metadata ? JSON.stringify(metadata) : null,
+        id,
+      ],
     );
 
     if (result.rows.length === 0) {
@@ -619,6 +690,22 @@ router.patch("/publicaciones/:id", async (req, res, next) => {
     }
 
     res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/publicaciones/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      "DELETE FROM publicaciones WHERE id = $1 RETURNING id",
+      [id],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Publicación no encontrada." });
+    }
+    res.json({ ok: true });
   } catch (error) {
     next(error);
   }
@@ -634,13 +721,27 @@ router.get("/publicaciones", async (_req, res, next) => {
         p.tipo,
         p.estado,
         to_char(p.fecha_programada, 'YYYY-MM-DD') AS fecha_programada,
+        p.idea,
+        p.copy,
+        p.material_referencia,
+        p.aclaraciones,
+        p.prioridad,
         p.responsable,
+        p.duracion_segundos,
+        p.num_imagenes,
+        p.responsable_diseño,
+        p.responsable_edición,
+        p.responsable_revisión,
+        p.responsable_publicacion,
+        to_char(p.fecha_diseño_entrega, 'YYYY-MM-DD') AS fecha_diseño_entrega,
+        to_char(p.fecha_edición_entrega, 'YYYY-MM-DD') AS fecha_edición_entrega,
+        to_char(p.fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
         p.metadata,
         p.created_at,
         p.updated_at
       FROM publicaciones p
       JOIN clientes c ON c.id = p.cliente_id
-      ORDER BY p.id
+      ORDER BY p.fecha_programada DESC, p.id
     `);
     res.json(result.rows);
   } catch (error) {

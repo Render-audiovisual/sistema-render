@@ -1589,6 +1589,7 @@ function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
     herramientas: [
       { href: "/calendario", label: "📅 Calendario de publicaciones" },
       { href: "/planificacion-historias", label: "🎯 Planificación de historias" },
+      { href: "/planificacion-publicaciones", label: "🎬 Planificación de publicaciones" },
       { href: "/reportes-historias", label: "📊 Reportes" },
       { href: "/piezas", label: "📋 Tareas" },
     ],
@@ -1695,7 +1696,7 @@ function App() {
 
   const esAdmin = sesion.usuario.rol === "admin";
   const rutaPropia = USUARIO_A_RUTA[sesion.usuario.usuario];
-  const rutasCompartidas = ["/", "/calendario", "/calendario-estructura", "/planificacion-historias", "/reportes-historias", "/perfil", "/piezas"];
+  const rutasCompartidas = ["/", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil", "/piezas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -1760,7 +1761,7 @@ function App() {
       return <TareasProduccionPage />;
     }
     if (path === "/planificacion-publicaciones") {
-      return <PlanificacionPublicacionesPage />;
+      return <PublicacionesPage />;
     }
     return <HomePage />;
   })();
@@ -1770,6 +1771,7 @@ function App() {
     { href: rutaPropia || "/", label: "Mi tablero" },
     { href: "/calendario", label: "Calendario de publicaciones" },
     { href: "/planificacion-historias", label: "🎯 Planificación de historias" },
+    { href: "/planificacion-publicaciones", label: "🎬 Planificación de publicaciones" },
     { href: "/reportes-historias", label: "📊 Reportes" },
     { href: "/perfil", label: "Mi perfil" },
     { href: "/piezas", label: "📋 Tareas" },
@@ -6417,22 +6419,693 @@ function ReportesEquipoPage() {
   );
 }
 
-function PlanificacionPublicacionesPage() {
+// ── MÓDULO PUBLICACIONES: vista general filtrable + planilla por cliente ──────
+
+const ESTADOS_PUBLICACION = [
+  { id: "pendiente", label: "Pendiente", bg: "#eceff1", fg: "#546e7a" },
+  { id: "en_diseño", label: "En diseño", bg: "#f3e5f5", fg: "#7b1fa2" },
+  { id: "en_edición", label: "En edición", bg: "#e1f5fe", fg: "#0277bd" },
+  { id: "en_revision", label: "En revisión", bg: "#fff3e0", fg: "#e65100" },
+  { id: "lista", label: "Lista", bg: "#f0f4c3", fg: "#827717" },
+  { id: "publicada", label: "Publicada", bg: "#e8f5e9", fg: "#2e7d32" },
+  { id: "bloqueada", label: "Bloqueada", bg: "#ffebee", fg: "#c62828" },
+];
+
+const TIPOS_PUBLICACION = [
+  { id: "video", label: "Video" },
+  { id: "carrusel", label: "Carrusel" },
+];
+
+const COLUMNAS_PUBLICACION = ["fecha", "tipo", "idea", "copy", "material", "aclaraciones", "responsable", "estado"];
+
+function payloadColumnaPublicacion(columna, valorCrudo) {
+  const valor = (valorCrudo || "").trim();
+  switch (columna) {
+    case "fecha":
+      return /^\d{4}-\d{2}-\d{2}$/.test(valor) ? { fecha_programada: valor } : null;
+    case "tipo":
+      return TIPOS_PUBLICACION.some((t) => t.id === valor) ? { tipo: valor } : null;
+    case "idea":
+      return { idea: valor };
+    case "copy":
+      return { copy: valor };
+    case "material":
+      return { material_referencia: valor };
+    case "aclaraciones":
+      return { aclaraciones: valor };
+    case "responsable":
+      return RESPONSABLES_EQUIPO.includes(valor) ? { responsable: valor } : null;
+    case "estado":
+      return ESTADOS_PUBLICACION.some((e) => e.id === valor) ? { estado: valor } : null;
+    default:
+      return null;
+  }
+}
+
+function PublicacionesGeneralTab({ clientes, onIrACliente }) {
+  const [publicaciones, setPublicaciones] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const [filtroCliente, setFiltroCliente] = useState("todos");
+  const [filtroMes, setFiltroMes] = useState("todos");
+  const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [filtroResponsable, setFiltroResponsable] = useState("todos");
+  const [filtroTipo, setFiltroTipo] = useState("todos");
+
+  useEffect(() => {
+    fetch("/api/publicaciones")
+      .then((r) => r.json())
+      .then((data) => {
+        setPublicaciones(data);
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("Error cargando publicaciones", err);
+        setError("No se pudieron cargar las publicaciones.");
+      })
+      .finally(() => setCargando(false));
+  }, []);
+
+  const mesesDisponibles = [
+    ...new Set(publicaciones.map((p) => p.fecha_programada?.slice(0, 7)).filter(Boolean)),
+  ].sort();
+
+  const responsablesDisponibles = [
+    ...new Set(publicaciones.map((p) => p.responsable).filter(Boolean)),
+  ].sort();
+
+  const filtradas = publicaciones.filter((p) => {
+    if (filtroCliente !== "todos" && p.cliente_id !== Number(filtroCliente)) return false;
+    if (filtroMes !== "todos" && !p.fecha_programada?.startsWith(filtroMes)) return false;
+    if (filtroEstado !== "todos" && p.estado !== filtroEstado) return false;
+    if (filtroResponsable !== "todos" && p.responsable !== filtroResponsable) return false;
+    if (filtroTipo !== "todos" && p.tipo !== filtroTipo) return false;
+    return true;
+  });
+
+  const selectStyle = { fontSize: "12px", padding: "6px 8px" };
+
   return (
-    <main aria-label="Planificación de Publicaciones">
+    <>
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
+        <select style={selectStyle} value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}>
+          <option value="todos">Todos los clientes</option>
+          {clientes.map((c) => (
+            <option key={c.id} value={c.id}>{c.nombre}</option>
+          ))}
+        </select>
+        <select style={selectStyle} value={filtroMes} onChange={(e) => setFiltroMes(e.target.value)}>
+          <option value="todos">Todos los meses</option>
+          {mesesDisponibles.map((m) => (
+            <option key={m} value={m}>
+              {MESES[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}
+            </option>
+          ))}
+        </select>
+        <select style={selectStyle} value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+          <option value="todos">Todos los estados</option>
+          {ESTADOS_PUBLICACION.map((e) => (
+            <option key={e.id} value={e.id}>{e.label}</option>
+          ))}
+        </select>
+        <select style={selectStyle} value={filtroResponsable} onChange={(e) => setFiltroResponsable(e.target.value)}>
+          <option value="todos">Todos los responsables</option>
+          {responsablesDisponibles.map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+        <select style={selectStyle} value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
+          <option value="todos">Todos los tipos</option>
+          {TIPOS_PUBLICACION.map((t) => (
+            <option key={t.id} value={t.id}>{t.label}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: "12px", color: "#777", alignSelf: "center", marginLeft: "auto" }}>
+          {filtradas.length} publicaciones
+        </span>
+      </div>
+
+      {error && (
+        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+          {error}
+        </div>
+      )}
+
+      {cargando ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando publicaciones…</div>
+      ) : (
+        <div className="box" style={{ padding: 0, overflow: "auto", maxHeight: "70vh" }}>
+          <table className="sheet-table">
+            <thead>
+              <tr>
+                <th style={{ width: "100px" }}>Fecha</th>
+                <th style={{ width: "180px" }}>Cliente</th>
+                <th style={{ width: "90px" }}>Tipo</th>
+                <th>Idea</th>
+                <th style={{ width: "120px" }}>Responsable</th>
+                <th style={{ width: "120px" }}>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtradas.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
+                    Sin publicaciones para estos filtros.
+                  </td>
+                </tr>
+              )}
+              {filtradas.map((p) => {
+                const est = ESTADOS_PUBLICACION.find((e) => e.id === p.estado) || ESTADOS_PUBLICACION[0];
+                return (
+                  <tr
+                    key={p.id}
+                    className="row-clickable"
+                    onClick={() => onIrACliente(p.cliente_id)}
+                    title="Ver la planilla de este cliente"
+                  >
+                    <td style={{ padding: "6px 10px", fontSize: "12px" }}>{p.fecha_programada}</td>
+                    <td style={{ padding: "6px 10px", fontSize: "13px", fontWeight: "600" }}>{p.cliente_nombre}</td>
+                    <td style={{ padding: "6px 10px", fontSize: "12px" }}>{getTipoPublicacionLabel(p.tipo)}</td>
+                    <td style={{ padding: "6px 10px", fontSize: "13px", color: p.idea ? "#222" : "#bbb" }}>
+                      {p.idea || "Sin idea cargada"}
+                    </td>
+                    <td style={{ padding: "6px 10px", fontSize: "12px" }}>{p.responsable || "—"}</td>
+                    <td style={{ padding: "6px 10px" }}>
+                      <span style={{ background: est.bg, color: est.fg, fontWeight: "600", fontSize: "11px", padding: "3px 8px", borderRadius: "10px" }}>
+                        {est.label}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+function PublicacionesPlanillaTab({ clienteId, clienteNombre }) {
+  const hoy = new Date();
+  const [year, setYear] = useState(hoy.getFullYear());
+  const [month, setMonth] = useState(hoy.getMonth());
+  const [publicaciones, setPublicaciones] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const gridRef = useRef(null);
+  const enfocarProximoId = useRef(null);
+
+  const cargar = () => {
+    setCargando(true);
+    fetch("/api/publicaciones")
+      .then((r) => r.json())
+      .then((data) => {
+        setPublicaciones(data.filter((p) => p.cliente_id === clienteId));
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("Error cargando publicaciones", err);
+        setError("No se pudieron cargar las publicaciones.");
+      })
+      .finally(() => setCargando(false));
+  };
+
+  useEffect(cargar, [clienteId]);
+
+  const hoyISO = getHoyLocalISO();
+  const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
+
+  const filasVisibles = publicaciones
+    .filter((p) => p.fecha_programada && p.fecha_programada.startsWith(mesPrefix))
+    .slice()
+    .sort((a, b) => a.fecha_programada.localeCompare(b.fecha_programada));
+
+  const publicadas = filasVisibles.filter((p) => p.estado === "publicada").length;
+
+  useEffect(() => {
+    if (!enfocarProximoId.current) return;
+    const idx = filasVisibles.findIndex((p) => p.id === enfocarProximoId.current);
+    if (idx === -1) return;
+    enfocarProximoId.current = null;
+    requestAnimationFrame(() => enfocarCelda(idx, "fecha"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicaciones]);
+
+  const actualizarLocal = (id, campos) => {
+    setPublicaciones((prev) => prev.map((p) => (p.id === id ? { ...p, ...campos } : p)));
+  };
+
+  const guardarEnServidor = async (id, campos) => {
+    try {
+      const res = await fetch(`/api/publicaciones/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(campos),
+      });
+      if (!res.ok) throw new Error("No se pudo guardar");
+    } catch (err) {
+      console.error("Error guardando", err);
+      setError("No se pudo guardar un cambio — reintentá.");
+    }
+  };
+
+  const confirmarCampoTexto = (id, campos) => {
+    actualizarLocal(id, campos);
+    guardarEnServidor(id, campos);
+  };
+
+  const crearPublicacion = async () => {
+    const iso = mesPrefix === hoyISO.slice(0, 7) ? hoyISO : `${mesPrefix}-01`;
+    try {
+      const res = await fetch("/api/piezas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "video",
+          cliente_id: clienteId,
+          responsable: "Augusto",
+          fecha_programada: iso,
+          estado: "pendiente",
+          idea: "",
+        }),
+      });
+      if (!res.ok) throw new Error("No se pudo crear");
+      const creada = await res.json();
+      enfocarProximoId.current = creada.id;
+      cargar();
+    } catch (err) {
+      console.error("Error creando publicación", err);
+      setError("No se pudo crear la publicación.");
+    }
+  };
+
+  const borrarPublicacion = async (id) => {
+    if (!window.confirm("¿Eliminar esta publicación de la planilla?")) return;
+    try {
+      const res = await fetch(`/api/publicaciones/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("No se pudo eliminar");
+      setPublicaciones((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      console.error("Error eliminando publicación", err);
+      setError("No se pudo eliminar la publicación.");
+    }
+  };
+
+  const copiarFila = async (p) => {
+    const est = ESTADOS_PUBLICACION.find((e) => e.id === p.estado);
+    const linea = [
+      p.fecha_programada || "",
+      getTipoPublicacionLabel(p.tipo),
+      p.idea || "",
+      p.copy || "",
+      p.material_referencia || "",
+      p.aclaraciones || "",
+      p.responsable || "",
+      est?.label || p.estado || "",
+    ].join("\t");
+    try {
+      await navigator.clipboard.writeText(linea);
+    } catch (err) {
+      console.error("No se pudo copiar la fila", err);
+    }
+  };
+
+  const irMes = (delta) => {
+    let m = month + delta;
+    let y = year;
+    if (m < 0) {
+      m = 11;
+      y -= 1;
+    } else if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+    setMonth(m);
+    setYear(y);
+  };
+
+  const enfocarCelda = (rowIndex, columna) => {
+    const el = gridRef.current?.querySelector(`[data-cell="${rowIndex}:${columna}"]`);
+    if (!el) return;
+    el.focus();
+    if (typeof el.select === "function") el.select();
+  };
+
+  const manejarEnterOTab = (e, rowIndex, columna) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.currentTarget.blur();
+      enfocarCelda(rowIndex + 1, columna);
+    }
+  };
+
+  const manejarPaste = (e, rowIndex, columna) => {
+    const texto = e.clipboardData.getData("text/plain");
+    if (!texto.includes("\t") && !texto.includes("\n")) return;
+    e.preventDefault();
+
+    const filasTexto = texto.replace(/\r/g, "").split("\n");
+    while (filasTexto.length > 1 && filasTexto[filasTexto.length - 1] === "") {
+      filasTexto.pop();
+    }
+
+    const colInicio = COLUMNAS_PUBLICACION.indexOf(columna);
+
+    filasTexto.forEach((filaTexto, dRow) => {
+      const objetivo = filasVisibles[rowIndex + dRow];
+      if (!objetivo) return;
+
+      const valores = filaTexto.split("\t");
+      let payload = {};
+      valores.forEach((valorCelda, dCol) => {
+        const colObjetivo = COLUMNAS_PUBLICACION[colInicio + dCol];
+        if (!colObjetivo) return;
+        const campo = payloadColumnaPublicacion(colObjetivo, valorCelda);
+        if (!campo) return;
+        payload = { ...payload, ...campo };
+      });
+
+      if (Object.keys(payload).length > 0) {
+        actualizarLocal(objetivo.id, payload);
+        guardarEnServidor(objetivo.id, payload);
+      }
+    });
+  };
+
+  return (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
+          <strong style={{ fontSize: "16px", minWidth: "160px", textAlign: "center" }}>
+            {MESES[month]} {year}
+          </strong>
+          <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
+        </div>
+        <div style={{ display: "flex", gap: "8px", fontSize: "12px" }}>
+          <span style={{ padding: "4px 10px", background: "#eceff1", borderRadius: "12px" }}>
+            {filasVisibles.length} planificadas
+          </span>
+          <span style={{ padding: "4px 10px", background: "#e8f5e9", color: "#2e7d32", borderRadius: "12px" }}>
+            {publicadas} publicadas
+          </span>
+          <span style={{ padding: "4px 10px", background: "#fff3e0", color: "#e65100", borderRadius: "12px" }}>
+            {filasVisibles.length - publicadas} pendientes
+          </span>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+          {error}
+        </div>
+      )}
+
+      {cargando ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando planilla…</div>
+      ) : (
+        <div className="box" style={{ padding: 0, overflow: "auto", maxHeight: "70vh" }} ref={gridRef}>
+          <table className="sheet-table">
+            <thead>
+              <tr>
+                <th style={{ width: "56px" }}>Día</th>
+                <th style={{ width: "120px" }}>Fecha</th>
+                <th style={{ width: "100px" }}>Tipo</th>
+                <th style={{ width: "20%" }}>Idea</th>
+                <th style={{ width: "24%" }}>Copy</th>
+                <th style={{ width: "14%" }}>Material</th>
+                <th style={{ width: "16%" }}>Observaciones</th>
+                <th style={{ width: "110px" }}>Responsable</th>
+                <th style={{ width: "120px" }}>Estado</th>
+                <th style={{ width: "56px" }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filasVisibles.length === 0 && (
+                <tr>
+                  <td colSpan={10} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
+                    Sin publicaciones planificadas este mes todavía.
+                  </td>
+                </tr>
+              )}
+              {filasVisibles.map((p, rowIndex) => {
+                const fecha = new Date(`${p.fecha_programada}T00:00:00`);
+                const dow = fecha.getDay();
+                const esFinde = dow === 0 || dow === 6;
+                const esHoy = p.fecha_programada === hoyISO;
+                const est = ESTADOS_PUBLICACION.find((e) => e.id === p.estado) || ESTADOS_PUBLICACION[0];
+                const bgFila = esHoy ? "#e3f2fd" : esFinde ? "#fafafa" : undefined;
+
+                return (
+                  <tr key={p.id} style={{ background: bgFila }}>
+                    <td style={{ padding: "6px 10px", fontWeight: esHoy ? "700" : "600", color: esFinde ? "#999" : "#333", fontSize: "12px" }}>
+                      {LETRAS_DIA[dow]}
+                    </td>
+                    <td>
+                      <input
+                        type="date"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:fecha`}
+                        value={p.fecha_programada || ""}
+                        onChange={(e) => actualizarLocal(p.id, { fecha_programada: e.target.value })}
+                        onBlur={(e) => guardarEnServidor(p.id, { fecha_programada: e.target.value })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "fecha")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "fecha")}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:tipo`}
+                        value={p.tipo}
+                        onChange={(e) => {
+                          actualizarLocal(p.id, { tipo: e.target.value });
+                          guardarEnServidor(p.id, { tipo: e.target.value });
+                        }}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "tipo")}
+                      >
+                        {TIPOS_PUBLICACION.map((t) => (
+                          <option key={t.id} value={t.id}>{t.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:idea`}
+                        placeholder="Escribir idea…"
+                        value={p.idea || ""}
+                        onChange={(e) => actualizarLocal(p.id, { idea: e.target.value })}
+                        onBlur={(e) => confirmarCampoTexto(p.id, { idea: e.target.value.trim() })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "idea")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "idea")}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:copy`}
+                        placeholder="Escribir copy…"
+                        value={p.copy || ""}
+                        onChange={(e) => actualizarLocal(p.id, { copy: e.target.value })}
+                        onBlur={(e) => confirmarCampoTexto(p.id, { copy: e.target.value.trim() })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "copy")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "copy")}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:material`}
+                        placeholder="Link…"
+                        value={p.material_referencia || ""}
+                        onChange={(e) => actualizarLocal(p.id, { material_referencia: e.target.value })}
+                        onBlur={(e) => confirmarCampoTexto(p.id, { material_referencia: e.target.value.trim() })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "material")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "material")}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:aclaraciones`}
+                        placeholder="—"
+                        value={p.aclaraciones || ""}
+                        onChange={(e) => actualizarLocal(p.id, { aclaraciones: e.target.value })}
+                        onBlur={(e) => confirmarCampoTexto(p.id, { aclaraciones: e.target.value.trim() })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "aclaraciones")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "aclaraciones")}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:responsable`}
+                        value={p.responsable || "Augusto"}
+                        onChange={(e) => {
+                          actualizarLocal(p.id, { responsable: e.target.value });
+                          guardarEnServidor(p.id, { responsable: e.target.value });
+                        }}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "responsable")}
+                      >
+                        {RESPONSABLES_EQUIPO.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:estado`}
+                        value={p.estado}
+                        onChange={(e) => {
+                          actualizarLocal(p.id, { estado: e.target.value });
+                          guardarEnServidor(p.id, { estado: e.target.value });
+                        }}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "estado")}
+                        style={{ background: est.bg, color: est.fg, fontWeight: "600", border: "1px solid transparent" }}
+                      >
+                        {ESTADOS_PUBLICACION.map((e) => (
+                          <option key={e.id} value={e.id}>{e.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <div className="sheet-row-actions">
+                        <button
+                          type="button"
+                          className="sheet-icon-btn"
+                          onClick={() => copiarFila(p)}
+                          title="Copiar fila (para pegar en otra fila o en Sheets)"
+                        >
+                          ⧉
+                        </button>
+                        <button
+                          type="button"
+                          className="sheet-icon-btn"
+                          onClick={() => borrarPublicacion(p.id)}
+                          title="Eliminar"
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr>
+                <td colSpan={10} style={{ padding: 0 }}>
+                  <button type="button" className="sheet-add-row" onClick={crearPublicacion}>
+                    <span style={{ fontSize: "15px" }}>+</span> Agregar publicación
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="caption" style={{ marginTop: "10px" }}>
+        Planilla de {clienteNombre} · Click en una celda para escribir · Tab / Enter para moverte · pegá bloques copiados de Sheets directamente sobre la grilla.
+      </div>
+    </>
+  );
+}
+
+function PublicacionesPage() {
+  const [vista, setVista] = useState("general");
+  const [clientes, setClientes] = useState([]);
+  const [errorClientes, setErrorClientes] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/clientes")
+      .then((r) => r.json())
+      .then((data) => setClientes(data))
+      .catch((err) => {
+        console.error("No se pudieron cargar clientes", err);
+        setErrorClientes("No se pudieron cargar los clientes.");
+      });
+  }, []);
+
+  const clienteActual = clientes.find((c) => c.id === vista);
+  const clienteNombre = clienteActual?.nombre || "";
+
+  return (
+    <main aria-label="Render platform publicaciones">
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
-            <span className="active">Planificación</span>
+            <span className="active">Publicaciones</span>
           </div>
-          <div className="tag">Admin</div>
+          <div className="tag">Planificación centralizada</div>
         </div>
+
         <div className="content">
-          <div className="section-label">Planificación de Publicaciones</div>
-          <div className="box">
-            <div className="caption">Módulo en desarrollo - Aquí se planificarán los reels y carruseles del feed</div>
+          {errorClientes && (
+            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+              {errorClientes}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: "4px", overflowX: "auto", borderBottom: "2px solid #ddd", marginBottom: "16px", paddingBottom: "0" }}>
+            <button
+              type="button"
+              onClick={() => setVista("general")}
+              style={{
+                padding: "8px 18px",
+                border: "none",
+                borderBottom: vista === "general" ? "3px solid #1a73e8" : "3px solid transparent",
+                background: vista === "general" ? "#e8f0fe" : "transparent",
+                color: vista === "general" ? "#1a73e8" : "#555",
+                fontWeight: vista === "general" ? "700" : "500",
+                fontSize: "13px",
+                cursor: "pointer",
+                borderRadius: "6px 6px 0 0",
+                whiteSpace: "nowrap",
+              }}
+            >
+              📋 Vista general
+            </button>
+            {clientes.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setVista(c.id)}
+                style={{
+                  padding: "8px 18px",
+                  border: "none",
+                  borderBottom: vista === c.id ? "3px solid #1a73e8" : "3px solid transparent",
+                  background: vista === c.id ? "#e8f0fe" : "transparent",
+                  color: vista === c.id ? "#1a73e8" : "#555",
+                  fontWeight: vista === c.id ? "700" : "500",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  borderRadius: "6px 6px 0 0",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {c.nombre}
+              </button>
+            ))}
           </div>
+
+          {vista === "general" && (
+            <PublicacionesGeneralTab clientes={clientes} onIrACliente={(clienteId) => setVista(clienteId)} />
+          )}
+          {vista !== "general" && clienteActual && (
+            <PublicacionesPlanillaTab
+              key={`pub-${vista}`}
+              clienteId={vista}
+              clienteNombre={clienteNombre}
+            />
+          )}
         </div>
       </div>
     </main>
