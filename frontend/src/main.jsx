@@ -4587,7 +4587,7 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
   const [tareas, setTareas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
-  const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [filtroEstado, setFiltroEstado] = useState("activas");
   const [filtroPrioridad, setFiltroPrioridad] = useState("todos");
   const [tareaSeleccionada, setTareaSeleccionada] = useState(null);
   const [actualizando, setActualizando] = useState(false);
@@ -4611,16 +4611,77 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
   };
 
   const tareasFiltradas = tareas.filter((t) => {
-    if (filtroEstado !== "todos" && t.estado !== filtroEstado) return false;
+    if (filtroEstado === "activas" && t.estado === "hecha") return false;
+    if (filtroEstado !== "todos" && filtroEstado !== "activas" && t.estado !== filtroEstado) return false;
     if (filtroPrioridad !== "todos" && t.prioridad !== filtroPrioridad) return false;
     return true;
   });
 
   const estadosDisponibles = ["pendiente", "en_progreso", "en_revision", "hecha"];
-  const tareasPorEstado = estadosDisponibles.map((estado) => ({
-    estado,
-    tareas: tareasFiltradas.filter((t) => t.estado === estado),
-  }));
+  const hoyISO = getHoyLocalISO();
+  const limiteSemana = new Date(`${hoyISO}T00:00:00`);
+  limiteSemana.setDate(limiteSemana.getDate() + 7);
+  const limiteSemanaISO = limiteSemana.toISOString().slice(0, 10);
+
+  const ordenarTareas = (items) =>
+    [...items].sort((a, b) => {
+      const fechaA = a.fecha_vencimiento || "9999-12-31";
+      const fechaB = b.fecha_vencimiento || "9999-12-31";
+      return (
+        fechaA.localeCompare(fechaB) ||
+        (a.cliente_nombre || "").localeCompare(b.cliente_nombre || "") ||
+        a.id - b.id
+      );
+    });
+
+  const gruposOperativos = [
+    {
+      id: "vencidas",
+      titulo: "Vencidas",
+      tareas: tareasFiltradas.filter(
+        (t) => t.estado !== "hecha" && t.fecha_vencimiento && t.fecha_vencimiento < hoyISO,
+      ),
+    },
+    {
+      id: "hoy",
+      titulo: "Hoy",
+      tareas: tareasFiltradas.filter(
+        (t) => t.estado !== "hecha" && t.fecha_vencimiento === hoyISO,
+      ),
+    },
+    {
+      id: "semana",
+      titulo: "Próximos 7 días",
+      tareas: tareasFiltradas.filter(
+        (t) =>
+          t.estado !== "hecha" &&
+          t.fecha_vencimiento &&
+          t.fecha_vencimiento > hoyISO &&
+          t.fecha_vencimiento <= limiteSemanaISO,
+      ),
+    },
+    {
+      id: "mas-adelante",
+      titulo: "Más adelante",
+      tareas: tareasFiltradas.filter(
+        (t) =>
+          t.estado !== "hecha" &&
+          (!t.fecha_vencimiento || t.fecha_vencimiento > limiteSemanaISO),
+      ),
+    },
+    {
+      id: "hechas",
+      titulo: "Hechas",
+      tareas: tareasFiltradas.filter((t) => t.estado === "hecha"),
+    },
+  ]
+    .map((grupo) => ({ ...grupo, tareas: ordenarTareas(grupo.tareas) }))
+    .filter((grupo) => grupo.tareas.length > 0);
+
+  const pendientesActivas = tareas.filter((t) => t.estado !== "hecha").length;
+  const vencidasActivas = tareas.filter(
+    (t) => t.estado !== "hecha" && t.fecha_vencimiento && t.fecha_vencimiento < hoyISO,
+  ).length;
 
   const actualizarEstado = (tareaId, nuevoEstado) => {
     setActualizando(true);
@@ -4684,6 +4745,7 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
                 fontSize: "14px",
               }}
             >
+              <option value="activas">Activas</option>
               <option value="todos">Todos los estados</option>
               <option value="pendiente">Pendiente</option>
               <option value="en_progreso">En progreso</option>
@@ -4707,55 +4769,70 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
               <option value="baja">Baja</option>
             </select>
 
-            <div style={{ marginLeft: "auto", fontSize: "14px", color: "#666" }}>
-              {tareasFiltradas.length} tarea{tareasFiltradas.length !== 1 ? "s" : ""}
+            <div style={{ marginLeft: "auto", fontSize: "14px", color: "#666", display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+              <span>{tareasFiltradas.length} visible{tareasFiltradas.length !== 1 ? "s" : ""}</span>
+              <span>{pendientesActivas} activa{pendientesActivas !== 1 ? "s" : ""}</span>
+              {vencidasActivas > 0 && <span style={{ color: "#c62828", fontWeight: 700 }}>{vencidasActivas} vencida{vencidasActivas !== 1 ? "s" : ""}</span>}
             </div>
           </div>
 
-          <div className="section-label">2 · Tablero de tareas</div>
-          <div className="kanban">
-            {tareasPorEstado.map((col) => (
-              <div key={col.estado} className="kanban-column">
-                <div className="kanban-header">
-                  <span style={{ color: getEstadoColor(col.estado) }}>●</span>
-                  <span style={{ marginLeft: "8px", textTransform: "capitalize" }}>{col.estado.replace("_", " ")}</span>
-                  <span style={{ marginLeft: "auto", fontSize: "12px", fontWeight: "bold" }}>
-                    {col.tareas.length}
-                  </span>
+          <div className="section-label">2 · Lista operativa tipo ClickUp</div>
+          <div className="box" style={{ padding: 0, overflow: "hidden" }}>
+            {cargando && (
+              <div style={{ padding: "24px", color: "#666" }}>Cargando tareas...</div>
+            )}
+            {error && (
+              <div style={{ padding: "16px", color: "#c62828" }}>{error}</div>
+            )}
+            {!cargando && !error && gruposOperativos.length === 0 && (
+              <div style={{ padding: "24px", color: "#999" }}>No hay tareas con ese filtro.</div>
+            )}
+            {!cargando && !error && gruposOperativos.map((grupo) => (
+              <div key={grupo.id} style={{ borderTop: "1px solid #eee" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", background: "#fafafa", borderBottom: "1px solid #eee" }}>
+                  <strong style={{ fontSize: "13px" }}>{grupo.titulo}</strong>
+                  <span className="tag">{grupo.tareas.length}</span>
                 </div>
-
-                {col.tareas.map((tarea) => (
-                  <div
-                    key={tarea.id}
-                    className="card"
-                    onClick={() => setTareaSeleccionada(tarea)}
-                    style={{ cursor: "pointer", borderLeft: `4px solid ${getEstadoColor(tarea.estado)}` }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, marginBottom: "4px" }}>{tarea.titulo}</div>
-                        {tarea.cliente_nombre && (
-                          <div style={{ fontSize: "12px", color: "#666" }}>{tarea.cliente_nombre}</div>
-                        )}
-                      </div>
-                      <div style={{ fontSize: "16px" }}>{getPrioridadBadge(tarea.prioridad)}</div>
-                    </div>
-                    {tarea.fecha_vencimiento && (
-                      <div style={{ fontSize: "12px", color: "#666", marginTop: "8px" }}>📅 {tarea.fecha_vencimiento}</div>
-                    )}
-                    {tarea.subtipo && (
-                      <div style={{ fontSize: "12px", color: "#0066cc", marginTop: "4px", fontWeight: 500 }}>
-                        {tarea.subtipo}
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {col.tareas.length === 0 && (
-                  <div style={{ padding: "12px", textAlign: "center", color: "#ccc", fontSize: "12px" }}>
-                    Sin tareas
-                  </div>
-                )}
+                <div style={{ overflowX: "auto" }}>
+                  <table className="sheet-table" style={{ minWidth: "820px" }}>
+                    <tbody>
+                      {grupo.tareas.map((tarea) => (
+                        <tr key={tarea.id}>
+                          <td style={{ width: "36%", fontWeight: 600 }}>
+                            <button
+                              type="button"
+                              onClick={() => setTareaSeleccionada(tarea)}
+                              style={{ border: 0, background: "transparent", padding: 0, textAlign: "left", font: "inherit", cursor: "pointer" }}
+                            >
+                              {tarea.titulo}
+                            </button>
+                          </td>
+                          <td style={{ width: "18%", color: "#555" }}>{tarea.cliente_nombre || "Sin cliente"}</td>
+                          <td style={{ width: "12%", color: tarea.fecha_vencimiento && tarea.fecha_vencimiento < hoyISO && tarea.estado !== "hecha" ? "#c62828" : "#666", fontWeight: tarea.fecha_vencimiento && tarea.fecha_vencimiento < hoyISO && tarea.estado !== "hecha" ? 700 : 400 }}>
+                            {tarea.fecha_vencimiento || "Sin fecha"}
+                          </td>
+                          <td style={{ width: "12%" }}>
+                            <span style={{ color: getEstadoColor(tarea.estado), fontWeight: 700 }}>●</span>{" "}
+                            {getEstadoHistoriaLabel(tarea.estado)}
+                          </td>
+                          <td style={{ width: "10%" }}>{getPrioridadBadge(tarea.prioridad)} {tarea.prioridad || "media"}</td>
+                          <td style={{ width: "12%" }}>
+                            <select
+                              className="sheet-cell"
+                              value={tarea.estado}
+                              disabled={actualizando}
+                              onChange={(e) => actualizarEstado(tarea.id, e.target.value)}
+                            >
+                              {estadosDisponibles.map((estado) => (
+                                <option key={estado} value={estado}>{getEstadoHistoriaLabel(estado)}</option>
+                              ))}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ))}
           </div>
