@@ -1464,6 +1464,7 @@ function PiezasTableroPage() {
     </main>
   );
 }
+}
 
 function App() {
   const path = window.location.pathname;
