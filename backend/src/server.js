@@ -665,6 +665,11 @@ app.post("/tareas", async (req, res, next) => {
       escalada_a,
       motivo,
       fecha_vencimiento,
+      historia_id,
+      publicacion_id,
+      tipo_tarea,
+      subtipo,
+      prioridad,
     } = req.body;
 
     if (!titulo || !asignado_a) {
@@ -691,9 +696,9 @@ app.post("/tareas", async (req, res, next) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, created_at, updated_at`,
+      `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, created_at, updated_at`,
       [
         titulo,
         asignado_a,
@@ -702,6 +707,11 @@ app.post("/tareas", async (req, res, next) => {
         Boolean(requiere_aprobacion),
         JSON.stringify(propiedadesExtra),
         fecha_vencimiento || null,
+        historia_id || null,
+        publicacion_id || null,
+        tipo_tarea || null,
+        subtipo || null,
+        prioridad || "media",
       ],
     );
 
@@ -714,7 +724,7 @@ app.post("/tareas", async (req, res, next) => {
 app.patch("/tareas/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { estado, propiedades_extra } = req.body;
+    const { estado, propiedades_extra, tipo_tarea, subtipo, prioridad } = req.body;
 
     const estadosValidos = [
       "pendiente",
@@ -732,17 +742,23 @@ app.patch("/tareas/:id", async (req, res, next) => {
       `UPDATE tareas
        SET
          estado = COALESCE($1, estado),
+         tipo_tarea = COALESCE($4, tipo_tarea),
+         subtipo = COALESCE($5, subtipo),
+         prioridad = COALESCE($6, prioridad),
          propiedades_extra = CASE
            WHEN $2::jsonb IS NOT NULL THEN propiedades_extra || $2::jsonb
            ELSE propiedades_extra
          END,
          updated_at = now()
        WHERE id = $3
-       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, created_at, updated_at`,
+       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, created_at, updated_at`,
       [
         estado || null,
         propiedades_extra ? JSON.stringify(propiedades_extra) : null,
         id,
+        tipo_tarea || null,
+        subtipo || null,
+        prioridad || null,
       ],
     );
 
@@ -756,9 +772,11 @@ app.patch("/tareas/:id", async (req, res, next) => {
   }
 });
 
-app.get("/tareas", async (_req, res, next) => {
+app.get("/tareas", async (req, res, next) => {
   try {
-    const result = await pool.query(`
+    const { asignado_a, tipo_tarea, historia_id, publicacion_id } = req.query;
+
+    let query = `
       SELECT
         t.id,
         t.titulo,
@@ -770,12 +788,45 @@ app.get("/tareas", async (_req, res, next) => {
         t.cliente_id,
         c.nombre AS cliente_nombre,
         to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
+        t.historia_id,
+        t.publicacion_id,
+        t.tipo_tarea,
+        t.subtipo,
+        t.prioridad,
         t.created_at,
         t.updated_at
       FROM tareas t
       LEFT JOIN clientes c ON c.id = t.cliente_id
-      ORDER BY t.id
-    `);
+      WHERE 1=1
+    `;
+
+    const params = [];
+    let paramCount = 1;
+
+    if (asignado_a) {
+      query += ` AND t.asignado_a = $${paramCount}`;
+      params.push(asignado_a);
+      paramCount++;
+    }
+    if (tipo_tarea) {
+      query += ` AND t.tipo_tarea = $${paramCount}`;
+      params.push(tipo_tarea);
+      paramCount++;
+    }
+    if (historia_id) {
+      query += ` AND t.historia_id = $${paramCount}`;
+      params.push(historia_id);
+      paramCount++;
+    }
+    if (publicacion_id) {
+      query += ` AND t.publicacion_id = $${paramCount}`;
+      params.push(publicacion_id);
+      paramCount++;
+    }
+
+    query += ` ORDER BY t.fecha_vencimiento ASC NULLS LAST, t.id DESC`;
+
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
     next(error);
