@@ -1698,6 +1698,21 @@ function App() {
     if (path === "/piezas") {
       return <PiezasTableroPage />;
     }
+    if (path === "/tareas-diseno") {
+      return <TareasDisenioPage />;
+    }
+    if (path === "/tareas-edicion") {
+      return <TareasEdicionPage />;
+    }
+    if (path === "/tareas-produccion") {
+      return <TareasProduccionPage />;
+    }
+    if (path === "/planificacion-historias") {
+      return <PlanificacionHistoriasPage />;
+    }
+    if (path === "/planificacion-publicaciones") {
+      return <PlanificacionPublicacionesPage />;
+    }
     return <HomePage />;
   })();
 
@@ -4978,6 +4993,227 @@ function DetalleClienteModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function TareasDisenioPage() {
+  const [tareas, setTareas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/tareas?asignado_a=Augusto&tipo_tarea=diseno")
+      .then((r) => r.json())
+      .then((data) => {
+        setTareas(data);
+        setCargando(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setCargando(false);
+      });
+  }, []);
+
+  return (
+    <main aria-label="Tareas de Diseño">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Mis diseños</span>
+          </div>
+          <div className="tag">Augusto · diseño</div>
+        </div>
+
+        <div className="content">
+          <div className="section-label">Tareas de Diseño Asignadas</div>
+          <div className="box">
+            {cargando && <div className="caption">Cargando tareas...</div>}
+            {error && <div className="caption error">Error: {error}</div>}
+            {!cargando && tareas.length === 0 && (
+              <div className="caption">No hay tareas de diseño asignadas.</div>
+            )}
+            {!cargando &&
+              tareas.map((tarea) => (
+                <div key={tarea.id} className="card">
+                  <div className="cliente">{tarea.titulo}</div>
+                  <div className="meta">
+                    Estado: <strong>{tarea.estado}</strong>
+                  </div>
+                  {tarea.fecha_vencimiento && (
+                    <div className="meta">Vence: {tarea.fecha_vencimiento}</div>
+                  )}
+                  <div className="meta">
+                    Prioridad: <strong>{tarea.prioridad || "media"}</strong>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function TareasEdicionPage() {
+  const [tareas, setTareas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/tareas?asignado_a=Luciano&tipo_tarea=edicion")
+      .then((r) => r.json())
+      .then((data) => {
+        setTareas(data);
+        setCargando(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setCargando(false);
+      });
+  }, []);
+
+  return (
+    <main aria-label="Tareas de Edición">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Mis ediciones</span>
+          </div>
+          <div className="tag">Luciano · edición</div>
+        </div>
+
+        <div className="content">
+          <div className="section-label">Tareas de Edición Asignadas</div>
+          <div className="box">
+            {cargando && <div className="caption">Cargando tareas...</div>}
+            {error && <div className="caption error">Error: {error}</div>}
+            {!cargando && tareas.length === 0 && (
+              <div className="caption">No hay tareas de edición asignadas.</div>
+            )}
+            {!cargando &&
+              tareas.map((tarea) => (
+                <div key={tarea.id} className="card">
+                  <div className="cliente">{tarea.titulo}</div>
+                  <div className="meta">
+                    Estado: <strong>{tarea.estado}</strong>
+                  </div>
+                  {tarea.fecha_vencimiento && (
+                    <div className="meta">Vence: {tarea.fecha_vencimiento}</div>
+                  )}
+                  <div className="meta">
+                    Prioridad: <strong>{tarea.prioridad || "media"}</strong>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function TareasProduccionPage() {
+  const [tareas, setTareas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/tareas?asignado_a=Germán&tipo_tarea=produccion")
+      .then((r) => r.json())
+      .then((data) => {
+        setTareas(data);
+        setCargando(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setCargando(false);
+      });
+  }, []);
+
+  return (
+    <main aria-label="Tareas de Producción">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Mis tareas</span>
+          </div>
+          <div className="tag">Germán · producción</div>
+        </div>
+
+        <div className="content">
+          <div className="section-label">Tareas de Producción Asignadas</div>
+          <div className="box">
+            {cargando && <div className="caption">Cargando tareas...</div>}
+            {error && <div className="caption error">Error: {error}</div>}
+            {!cargando && tareas.length === 0 && (
+              <div className="caption">No hay tareas de producción asignadas.</div>
+            )}
+            {!cargando &&
+              tareas.map((tarea) => (
+                <div key={tarea.id} className="card">
+                  <div className="cliente">{tarea.titulo}</div>
+                  <div className="meta">
+                    Estado: <strong>{tarea.estado}</strong>
+                  </div>
+                  {tarea.fecha_vencimiento && (
+                    <div className="meta">Vence: {tarea.fecha_vencimiento}</div>
+                  )}
+                  <div className="meta">
+                    Prioridad: <strong>{tarea.prioridad || "media"}</strong>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function PlanificacionHistoriasPage() {
+  return (
+    <main aria-label="Planificación de Historias">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Planificación</span>
+          </div>
+          <div className="tag">Admin</div>
+        </div>
+        <div className="content">
+          <div className="section-label">Planificación de Historias</div>
+          <div className="box">
+            <div className="caption">Módulo en desarrollo - Aquí se planificarán las historias mensuales de Instagram</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function PlanificacionPublicacionesPage() {
+  return (
+    <main aria-label="Planificación de Publicaciones">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Planificación</span>
+          </div>
+          <div className="tag">Admin</div>
+        </div>
+        <div className="content">
+          <div className="section-label">Planificación de Publicaciones</div>
+          <div className="box">
+            <div className="caption">Módulo en desarrollo - Aquí se planificarán los reels y carruseles del feed</div>
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }
 
