@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
+    "start": "node scripts/migrate.js && node src/server.js",
     "db:check": "node src/db-check.js",
     "migrate": "node scripts/migrate.js",
     "seed:usuarios": "node scripts/seed-usuarios.js",
