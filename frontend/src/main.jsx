@@ -475,6 +475,15 @@ const USUARIO_A_RUTA = {
   oriana: "/oriana",
 };
 
+const USUARIO_INFO = {
+  agustin: { nombre: "Agustín", rol: "admin" },
+  franco: { nombre: "Franco", rol: "admin" },
+  augusto: { nombre: "Augusto", rol: "diseno" },
+  luciano: { nombre: "Luciano", rol: "edicion" },
+  german: { nombre: "Germán", rol: "produccion" },
+  oriana: { nombre: "Oriana", rol: "community" },
+};
+
 function getSesion() {
   const raw = localStorage.getItem("render_sesion");
   if (!raw) {
@@ -485,6 +494,26 @@ function getSesion() {
   } catch {
     return null;
   }
+}
+
+function getSesionDelPath(path) {
+  const usuarioMatch = Object.entries(USUARIO_A_RUTA).find(([, ruta]) => ruta === path);
+  if (!usuarioMatch) {
+    return getSesion();
+  }
+  const usuario = usuarioMatch[0];
+  const info = USUARIO_INFO[usuario];
+  if (!info) {
+    return getSesion();
+  }
+  return {
+    token: null,
+    usuario: {
+      usuario: usuario,
+      nombre: info.nombre,
+      rol: info.rol,
+    },
+  };
 }
 
 function guardarSesion(token, usuario) {
@@ -1496,9 +1525,108 @@ function PiezasTableroPage() {
   );
 }
 
+function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
+  const [abierto, setAbierto] = useState(false);
+  const esAdmin = sesion?.usuario?.rol === "admin";
+
+  const seccionesNav = {
+    miTrabajo: [
+      { href: sesion?.usuario?.usuario === "agustin" ? "/agustin" : sesion?.usuario?.usuario === "franco" ? "/franco" : USUARIO_A_RUTA[sesion?.usuario?.usuario], label: "📌 Mi tablero" },
+    ],
+    herramientas: [
+      { href: "/calendario", label: "📅 Calendario" },
+      { href: "/calendario-estructura", label: "🏗️ Estructura" },
+      { href: "/workflow-historias", label: "🎯 Historias" },
+      { href: "/reportes-historias", label: "📊 Reportes" },
+      { href: "/piezas", label: "📋 Tareas" },
+    ],
+    admin: esAdmin ? [
+      { href: "/equipo", label: "👥 Equipo" },
+      { href: "/empleados", label: "👨‍💼 Empleados" },
+      { href: "/nueva-tarea", label: "➕ Nueva tarea" },
+    ] : [],
+    cuenta: [
+      { href: "/perfil", label: "⚙️ Perfil" },
+    ],
+  };
+
+  const renderLinksSección = (enlaces) =>
+    enlaces.map((enlace) => (
+      <a
+        key={enlace.href}
+        href={enlace.href}
+        className={`sidebar-link ${path === enlace.href ? "active" : ""}`}
+        onClick={() => setAbierto(false)}
+      >
+        {enlace.label}
+      </a>
+    ));
+
+  return (
+    <>
+      <button className="sidebar-toggle" onClick={() => setAbierto(!abierto)}>
+        ☰
+      </button>
+      <nav className={`sidebar ${abierto ? "open" : ""}`}>
+        <div className="sidebar-header">
+          <div className="user-badge">
+            <div className="user-avatar">👤</div>
+            <div className="user-info">
+              <div className="user-name">{sesion?.usuario?.nombre}</div>
+              <div className="user-role">{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>
+            </div>
+          </div>
+          <button className="sidebar-close" onClick={() => setAbierto(false)}>
+            ✕
+          </button>
+        </div>
+
+        <div className="sidebar-content">
+          <div className="sidebar-section">
+            <div className="sidebar-section-title">Mi trabajo</div>
+            {renderLinksSección(seccionesNav.miTrabajo)}
+          </div>
+
+          <div className="sidebar-section">
+            <div className="sidebar-section-title">Herramientas</div>
+            {renderLinksSección(seccionesNav.herramientas)}
+          </div>
+
+          {esAdmin && (
+            <div className="sidebar-section">
+              <div className="sidebar-section-title">Admin</div>
+              {renderLinksSección(seccionesNav.admin)}
+            </div>
+          )}
+
+          <div className="sidebar-section">
+            <div className="sidebar-section-title">Cuenta</div>
+            {renderLinksSección(seccionesNav.cuenta)}
+            <button
+              className="sidebar-link logout-btn"
+              onClick={() => {
+                setAbierto(false);
+                onCerrarSesion();
+              }}
+            >
+              🚪 Cerrar sesión
+            </button>
+          </div>
+        </div>
+      </nav>
+      {abierto && <div className="sidebar-overlay" onClick={() => setAbierto(false)} />}
+    </>
+  );
+}
+
 function App() {
   const path = window.location.pathname;
-  const sesion = getSesion();
+  let sesion = getSesion();
+
+  // Si estamos en una ruta de usuario específica, usar esa sesión
+  if (Object.values(USUARIO_A_RUTA).includes(path)) {
+    sesion = getSesionDelPath(path);
+  }
 
   if (path === "/login") {
     if (sesion) {
@@ -1591,26 +1719,8 @@ function App() {
 
   return (
     <>
+      <Sidebar path={path} sesion={sesion} enlacesNav={enlacesNav} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} />
       {dashboard}
-      <div className="session-bar">
-        <span className="caption">
-          {sesion.usuario.nombre} · {ROL_LABELS[sesion.usuario.rol] || sesion.usuario.rol}
-        </span>
-        <div className="session-bar-links">
-          {enlacesNav.map((enlace) => (
-            <a
-              className={`btn ${path === enlace.href ? "primary" : ""}`}
-              href={enlace.href}
-              key={enlace.href}
-            >
-              {enlace.label}
-            </a>
-          ))}
-          <button className="btn" type="button" onClick={cerrarSesion}>
-            Cerrar sesión
-          </button>
-        </div>
-      </div>
     </>
   );
 }
