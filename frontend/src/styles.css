@@ -1121,14 +1121,32 @@ select:focus {
     padding: 3px 1px;
   }
 
+  .cal-cell-head {
+    margin-bottom: 2px;
+  }
+
   .cal-daynum {
+    font-size: 10px;
+  }
+
+  .cal-count {
     font-size: 9px;
-    margin-bottom: 1px;
+    min-width: 16px;
+    padding: 2px 4px;
   }
 
   .cal-chip {
-    font-size: 8px;
-    padding: 1px 3px;
+    font-size: 0;
+    min-height: 7px;
+    padding: 0;
+  }
+
+  .cal-chip::after {
+    content: "";
+  }
+
+  .cal-more {
+    font-size: 9px;
   }
 }
 
@@ -1141,11 +1159,39 @@ select:focus {
   border: 2px solid #333;
 }
 
+.cal-cell.has-items {
+  cursor: pointer;
+}
+
+.cal-cell-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  min-height: 16px;
+}
+
 .cal-daynum {
-  color: #999;
+  color: #888;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cal-count {
+  background: #f0f0f0;
+  border-radius: 999px;
+  color: #555;
   font-size: 10px;
   font-weight: 700;
-  margin-bottom: 3px;
+  line-height: 1;
+  min-width: 18px;
+  padding: 3px 5px;
+  text-align: center;
+}
+
+.cal-chip-stack {
+  display: grid;
+  gap: 3px;
 }
 
 .cal-chip {
@@ -1153,16 +1199,33 @@ select:focus {
   border-left: 3px solid #999;
   border-radius: 3px;
   cursor: pointer;
-  font-size: 10px;
-  margin-bottom: 2px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.15;
+  min-height: 17px;
   overflow: hidden;
-  padding: 2px 5px;
+  padding: 3px 5px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cal-chip:hover {
   background: #ececec;
+}
+
+.cal-more {
+  background: transparent;
+  border: 0;
+  color: #555;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 0 0;
+  text-align: left;
+}
+
+.cal-more:hover {
+  color: #111;
 }
 
 .cal-chip.publicada {
@@ -1231,6 +1294,72 @@ select:focus {
   .publication-check-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+.day-modal {
+  max-width: 560px;
+}
+
+.day-publication-list {
+  display: grid;
+  gap: 8px;
+}
+
+.day-publication-row {
+  align-items: center;
+  background: #fafafa;
+  border: 1px solid #e5e5e5;
+  border-left: 4px solid #999;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.day-publication-row:hover {
+  background: #f2f2f2;
+}
+
+.day-publication-row.publicada {
+  background: #e8f5e9;
+  border-left-color: #2e7d32;
+}
+
+.day-publication-row.bloqueada {
+  background: #ffebee;
+  border-left-color: #c62828;
+}
+
+.day-publication-main {
+  display: grid;
+  gap: 3px;
+}
+
+.day-publication-main strong {
+  color: #222;
+  font-size: 13px;
+}
+
+.day-publication-main span {
+  color: #666;
+  font-size: 11px;
+}
+
+.day-publication-badge {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  height: 28px;
+  justify-content: center;
+  min-width: 28px;
+  padding: 0 8px;
 }
 
 .cal-legend {

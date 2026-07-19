@@ -619,6 +619,7 @@ function LoginPage() {
       });
   };
 
+
   return (
     <main className="login-main" aria-label="Render platform login">
       <section className="login-card" aria-label="Inicio de sesión RENDER">
@@ -1948,6 +1949,34 @@ function sumarDiasISO(fechaISO, dias) {
   return `${year}-${month}-${day}`;
 }
 
+function abreviarClientePublicacion(nombre = "") {
+  const limpio = nombre.replace(/^El Ángel Azul\s+/i, "Ángel ").trim();
+  const abreviaturas = {
+    "Búnker Training": "Búnker",
+    "Capital Motos": "Capital",
+    "El Ángel Azul Estudiantil": "Ángel Est.",
+    "El Ángel Azul Turismo": "Ángel Tur.",
+    "iPhone Shop": "iPhone",
+    "Lavalle Hortícola": "Lavalle H.",
+    "Lavalle Market": "Lavalle M.",
+    "Litoral Maq": "Litoral",
+    "RPM Chevrolet": "RPM",
+  };
+  return abreviaturas[nombre] || limpio.split(/\s+/).slice(0, 2).join(" ");
+}
+
+function etiquetaCortaPublicacion(pz) {
+  const tipo = pz.tipo === "carrusel" ? "C" : "V";
+  const check = pz.estado === "publicada" ? "✓ " : "";
+  return `${check}${tipo} · ${abreviarClientePublicacion(pz.cliente_nombre)}`;
+}
+
+function getCheckPublicacionLabel(estado) {
+  if (estado === "publicada") return "Publicado";
+  if (estado === "bloqueada") return "No publicado / revisar";
+  return "Pendiente";
+}
+
 function PublicacionesCalendarioTab({ onIrAPlanilla }) {
   const hoy = new Date();
   const [year, setYear] = useState(hoy.getFullYear());
@@ -1957,6 +1986,7 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
   const [filtroTipo, setFiltroTipo] = useState("todos");
   const [filtroEstado, setFiltroEstado] = useState("todos");
   const [piezaSel, setPiezaSel] = useState(null);
+  const [diaSel, setDiaSel] = useState(null);
   const [guardandoId, setGuardandoId] = useState(null);
 
   useEffect(() => {
@@ -1993,6 +2023,14 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
   piezasFiltradas.forEach((pz) => {
     if (!pz.fecha_programada) return;
     (porFecha[pz.fecha_programada] = porFecha[pz.fecha_programada] || []).push(pz);
+  });
+  Object.values(porFecha).forEach((items) => {
+    items.sort((a, b) => {
+      if (a.estado === b.estado) return a.cliente_nombre.localeCompare(b.cliente_nombre);
+      if (a.estado === "publicada") return 1;
+      if (b.estado === "publicada") return -1;
+      return a.estado.localeCompare(b.estado);
+    });
   });
 
   const semanas = getGrillaMes(year, month);
@@ -2064,12 +2102,27 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
         prev.map((pz) => (pz.id === publicacion.id ? piezaActualizada : pz)),
       );
       setPiezaSel(piezaActualizada);
+      setDiaSel((dia) =>
+        dia?.fecha === piezaActualizada.fecha_programada
+          ? {
+              ...dia,
+              items: dia.items.map((pz) =>
+                pz.id === piezaActualizada.id ? piezaActualizada : pz,
+              ),
+            }
+          : dia,
+      );
     } catch (err) {
       console.error("No se pudo guardar el check de publicación", err);
       setError(err.message);
     } finally {
       setGuardandoId(null);
     }
+  };
+
+  const abrirDia = (fecha, items) => {
+    if (!items.length) return;
+    setDiaSel({ fecha, items });
   };
 
   return (
@@ -2150,25 +2203,47 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
             }
             const iso = fechaISODesde(year, month, dia);
             const items = porFecha[iso] || [];
+            const visibles = items.slice(0, 3);
+            const ocultos = Math.max(items.length - visibles.length, 0);
             return (
               <div
-                className={`cal-cell ${iso === hoyISO ? "today" : ""}`}
+                className={`cal-cell ${iso === hoyISO ? "today" : ""} ${items.length ? "has-items" : ""}`}
                 key={`${si}-${di}`}
+                onClick={() => abrirDia(iso, items)}
               >
-                <div className="cal-daynum">{dia}</div>
-                {items.map((pz) => (
-                  <div
-                    className={`cal-chip ${pz.estado}`}
-                    key={pz.id}
-                    onClick={() => setPiezaSel(pz)}
-                    title={`${pz.tipoLabel} · ${pz.cliente_nombre} · ${getEstadoHistoriaLabel(
-                      pz.estado,
-                    )}`}
-                  >
-                    {pz.estado === "publicada" ? "✓ " : ""}
-                    {pz.tipoLabel[0]} · {pz.cliente_nombre}
-                  </div>
-                ))}
+                <div className="cal-cell-head">
+                  <span className="cal-daynum">{dia}</span>
+                  {items.length > 0 && <span className="cal-count">{items.length}</span>}
+                </div>
+                <div className="cal-chip-stack">
+                  {visibles.map((pz) => (
+                    <div
+                      className={`cal-chip ${pz.estado}`}
+                      key={pz.id}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setPiezaSel(pz);
+                      }}
+                      title={`${pz.tipoLabel} · ${pz.cliente_nombre} · ${getEstadoHistoriaLabel(
+                        pz.estado,
+                      )}`}
+                    >
+                      {etiquetaCortaPublicacion(pz)}
+                    </div>
+                  ))}
+                  {ocultos > 0 && (
+                    <button
+                      className="cal-more"
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        abrirDia(iso, items);
+                      }}
+                    >
+                      +{ocultos} más
+                    </button>
+                  )}
+                </div>
               </div>
             );
           }),
@@ -2182,10 +2257,42 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
         <span className="lg-pub">Publicada</span>
       </div>
       <div className="caption">
-        → Cada casilla muestra las publicaciones programadas ese día. La
-        inicial indica el tipo (R video, C arrusel). Click en una publicación
-        para ver el detalle o pasar a editarla en la planilla.
+        Cada casilla muestra un resumen limpio. Tocá una fecha para ver todas
+        las publicaciones del día y marcar el check correspondiente.
       </div>
+
+      {diaSel && (
+        <div className="modal-overlay open" role="dialog" aria-modal="true">
+          <div className="modal day-modal">
+            <div className="modal-header">
+              <span>Publicaciones del {diaSel.fecha}</span>
+              <button className="modal-close" type="button" onClick={() => setDiaSel(null)}>
+                X
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="day-publication-list">
+                {diaSel.items.map((pz) => (
+                  <button
+                    className={`day-publication-row ${pz.estado}`}
+                    key={pz.id}
+                    type="button"
+                    onClick={() => setPiezaSel(pz)}
+                  >
+                    <span className="day-publication-main">
+                      <strong>{pz.cliente_nombre}</strong>
+                      <span>{pz.tipoLabel} · {getCheckPublicacionLabel(pz.estado)}</span>
+                    </span>
+                    <span className="day-publication-badge">
+                      {pz.estado === "publicada" ? "✓" : pz.tipo === "carrusel" ? "C" : "V"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {piezaSel && (
         <div className="modal-overlay open" role="dialog" aria-modal="true">
@@ -2211,11 +2318,7 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
                 <div className="detail-field">
                   <div className="detail-label">Check publicación</div>
                   <div>
-                    {piezaSel.estado === "publicada"
-                      ? "Publicado"
-                      : piezaSel.estado === "bloqueada"
-                        ? "No publicado / revisar"
-                        : "Pendiente"}
+                    {getCheckPublicacionLabel(piezaSel.estado)}
                   </div>
                 </div>
                 {piezaSel.fecha_publicación_real && (
