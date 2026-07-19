@@ -423,6 +423,13 @@ app.patch("/historias/:id", async (req, res, next) => {
     const { id } = req.params;
     const {
       estado,
+      idea,
+      copy,
+      material_referencia,
+      aclaraciones,
+      prioridad,
+      fecha_programada,
+      responsable,
       responsable_planificacion,
       responsable_diseño,
       responsable_revisión,
@@ -453,25 +460,40 @@ app.patch("/historias/:id", async (req, res, next) => {
       `UPDATE historias
        SET
          estado = COALESCE($1, estado),
-         responsable_planificacion = COALESCE($2, responsable_planificacion),
-         responsable_diseño = COALESCE($3, responsable_diseño),
-         responsable_revisión = COALESCE($4, responsable_revisión),
-         responsable_publicacion = COALESCE($5, responsable_publicacion),
-         fecha_diseño_entrega = COALESCE($6, fecha_diseño_entrega),
-         fecha_revisión_aprobación = COALESCE($7, fecha_revisión_aprobación),
-         notas_planificacion = COALESCE($8, notas_planificacion),
-         notas_diseño = COALESCE($9, notas_diseño),
-         notas_revisión = COALESCE($10, notas_revisión),
-         notas_bloqueador = COALESCE($11, notas_bloqueador),
-         metadata = CASE WHEN $12::jsonb IS NOT NULL THEN metadata || $12::jsonb ELSE metadata END,
+         idea = COALESCE($2, idea),
+         copy = COALESCE($3, copy),
+         material_referencia = COALESCE($4, material_referencia),
+         aclaraciones = COALESCE($5, aclaraciones),
+         prioridad = COALESCE($6, prioridad),
+         fecha_programada = COALESCE($7, fecha_programada),
+         responsable = COALESCE($8, responsable),
+         responsable_planificacion = COALESCE($9, responsable_planificacion),
+         responsable_diseño = COALESCE($10, responsable_diseño),
+         responsable_revisión = COALESCE($11, responsable_revisión),
+         responsable_publicacion = COALESCE($12, responsable_publicacion),
+         fecha_diseño_entrega = COALESCE($13, fecha_diseño_entrega),
+         fecha_revisión_aprobación = COALESCE($14, fecha_revisión_aprobación),
+         notas_planificacion = COALESCE($15, notas_planificacion),
+         notas_diseño = COALESCE($16, notas_diseño),
+         notas_revisión = COALESCE($17, notas_revisión),
+         notas_bloqueador = COALESCE($18, notas_bloqueador),
+         metadata = CASE WHEN $19::jsonb IS NOT NULL THEN metadata || $19::jsonb ELSE metadata END,
          updated_at = now()
-       WHERE id = $13
+       WHERE id = $20
        RETURNING id, cliente_id, estado, to_char(fecha_programada, 'YYYY-MM-DD') AS fecha_programada,
+                 idea, copy, material_referencia, aclaraciones, prioridad, responsable,
                  responsable_diseño, responsable_revisión, to_char(fecha_diseño_entrega, 'YYYY-MM-DD') AS fecha_diseño_entrega,
                  to_char(fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
                  notas_diseño, notas_revisión, notas_bloqueador, metadata, created_at, updated_at`,
       [
         estado || null,
+        idea || null,
+        copy || null,
+        material_referencia || null,
+        aclaraciones || null,
+        prioridad || null,
+        fecha_programada || null,
+        responsable || null,
         responsable_planificacion || null,
         responsable_diseño || null,
         responsable_revisión || null,
@@ -492,6 +514,24 @@ app.patch("/historias/:id", async (req, res, next) => {
     }
 
     res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/historias/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      "DELETE FROM historias WHERE id = $1 RETURNING id",
+      [id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Historia no encontrada." });
+    }
+
+    res.json({ ok: true });
   } catch (error) {
     next(error);
   }

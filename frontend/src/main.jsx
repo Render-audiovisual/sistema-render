@@ -1594,7 +1594,6 @@ function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
     ],
     herramientas: [
       { href: "/calendario", label: "📅 Calendario" },
-      { href: "/calendario-estructura", label: "🏗️ Estructura" },
       { href: "/planificacion-historias", label: "🎯 Historias" },
       { href: "/reportes-historias", label: "📊 Reportes" },
       { href: "/piezas", label: "📋 Tareas" },
@@ -1737,13 +1736,13 @@ function App() {
       return <CalendarioPage />;
     }
     if (path === "/calendario-estructura") {
-      return <CalendarioEstructuraPage />;
+      return <HistoriasPage initialTab="estructura" />;
     }
     if (path === "/planificacion-historias") {
-      return <HistoriasWorkflowPage />;
+      return <HistoriasPage />;
     }
     if (path === "/reportes-historias") {
-      return <ReportesHistoriasPage />;
+      return <ReportesEquipoPage />;
     }
     if (path === "/perfil") {
       return <PerfilPage />;
@@ -1766,9 +1765,6 @@ function App() {
     if (path === "/tareas-produccion") {
       return <TareasProduccionPage />;
     }
-    if (path === "/planificacion-historias") {
-      return <PlanificacionHistoriasPage />;
-    }
     if (path === "/planificacion-publicaciones") {
       return <PlanificacionPublicacionesPage />;
     }
@@ -1779,7 +1775,6 @@ function App() {
     { href: "/", label: "Home" },
     { href: rutaPropia || "/", label: "Mi tablero" },
     { href: "/calendario", label: "Calendario" },
-    { href: "/calendario-estructura", label: "Estructura de publicación" },
     { href: "/planificacion-historias", label: "🎯 Historias" },
     { href: "/reportes-historias", label: "📊 Reportes" },
     { href: "/perfil", label: "Mi perfil" },
@@ -2131,472 +2126,6 @@ function CalendarioPiezaModal({ pieza, onClose }) {
   );
 }
 
-function CalendarioEstructuraPage() {
-  const [clientes, setClientes] = useState([]);
-  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
-  const [estructura, setEstructura] = useState([]);
-  const [checkPublicacion, setCheckPublicacion] = useState([]);
-  const [fechasEspeciales, setFechasEspeciales] = useState([]);
-  const [cargando, setCargando] = useState(false);
-  const [error, setError] = useState(null);
-
-  const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
-
-  useEffect(() => {
-    fetch("/api/clientes")
-      .then((r) => r.json())
-      .then((data) => {
-        setClientes(data);
-        if (data.length > 0) setClienteSeleccionado(data[0].id);
-      })
-      .catch((err) => {
-        console.error("No se pudieron cargar clientes", err);
-        setError("No se pudieron cargar clientes.");
-      });
-  }, []);
-
-  useEffect(() => {
-    if (!clienteSeleccionado) return;
-
-    setCargando(true);
-    setError(null);
-
-    Promise.all([
-      fetch("/api/estructura").then((r) => r.json()),
-      fetch("/api/check-publicacion").then((r) => r.json()),
-      fetch("/api/fechas-especiales").then((r) => r.json()),
-    ])
-      .then(([est, check, fechas]) => {
-        setEstructura(est.filter((e) => e.cliente_id === clienteSeleccionado));
-        setCheckPublicacion(check.filter((c) => c.cliente_id === clienteSeleccionado));
-        setFechasEspeciales(fechas.filter((f) => !f.cliente_id || f.cliente_id === clienteSeleccionado));
-      })
-      .catch((err) => {
-        console.error("No se pudo cargar calendario", err);
-        setError("No se pudo cargar el calendario.");
-      })
-      .finally(() => setCargando(false));
-  }, [clienteSeleccionado]);
-
-  const hoy = new Date();
-  const hoyISO = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
-
-  const estructuraPorDia = {};
-  estructura.forEach((e) => {
-    estructuraPorDia[e.dia_semana] = e;
-  });
-
-  const checkPorFecha = {};
-  checkPublicacion.forEach((c) => {
-    checkPorFecha[c.fecha] = c;
-  });
-
-  const manejarCheckPublicacion = async (fecha, publicado) => {
-    if (!clienteSeleccionado) return;
-
-    try {
-      const res = await fetch("/api/check-publicacion", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cliente_id: clienteSeleccionado,
-          fecha,
-          publicado,
-          confirmado_por: getSesion()?.usuario?.nombre || "Sistema",
-        }),
-      });
-      if (!res.ok) throw new Error("No se pudo actualizar");
-
-      setCheckPublicacion((prev) => {
-        const existe = prev.find((c) => c.fecha === fecha);
-        if (existe) {
-          return prev.map((c) => (c.fecha === fecha ? { ...c, publicado } : c));
-        } else {
-          return [...prev, { cliente_id: clienteSeleccionado, fecha, publicado }];
-        }
-      });
-    } catch (err) {
-      console.error("Error actualizando check:", err);
-      setError("No se pudo actualizar el check de publicación.");
-    }
-  };
-
-  const semanaActual = [];
-  const ahora = new Date();
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(ahora);
-    d.setDate(d.getDate() + i - d.getDay());
-    const iso = d.toISOString().split("T")[0];
-    semanaActual.push({ fecha: iso, dia: d.getDay(), diaNum: d.getDate() });
-  }
-
-  const clienteNombre = clientes.find((c) => c.id === clienteSeleccionado)?.nombre || "Cliente";
-
-  return (
-    <main aria-label="Render platform calendario estructura">
-      <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Calendario</span>
-          </div>
-          <div className="tag">Estructura de publicación</div>
-        </div>
-
-        <div className="content">
-          {error && <div style={{ padding: "12px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "16px" }}>{error}</div>}
-
-          <div className="section-label">Seleccionar cliente</div>
-          <select
-            value={clienteSeleccionado || ""}
-            onChange={(e) => setClienteSeleccionado(Number(e.target.value))}
-            style={{ padding: "8px", borderRadius: "4px", border: "1px solid #ccc", marginBottom: "20px" }}
-          >
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
-
-          {cargando ? (
-            <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando...</div>
-          ) : (
-            <>
-              <div className="section-label">1 · Estructura base: {clienteNombre}</div>
-              <div className="box">
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr style={{ borderBottom: "2px solid #333" }}>
-                      <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Día</th>
-                      <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Tipo</th>
-                      <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Tema</th>
-                      <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Horario</th>
-                      <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>CTA Fijo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {DIAS_SEMANA.map((dia, idx) => {
-                      const est = estructuraPorDia[idx];
-                      return (
-                        <tr key={idx} style={{ borderBottom: "1px solid #e0e0e0" }}>
-                          <td style={{ padding: "8px", fontWeight: "600" }}>{dia}</td>
-                          <td style={{ padding: "8px" }}>{est?.tipo || "—"}</td>
-                          <td style={{ padding: "8px" }}>{est?.tema || "—"}</td>
-                          <td style={{ padding: "8px" }}>{est?.horario || "—"}</td>
-                          <td style={{ padding: "8px" }}>{est?.cta_fijo || "—"}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="section-label">2 · Semana actual: check de publicación</div>
-              <div className="box">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "12px" }}>
-                  {semanaActual.map((s) => {
-                    const est = estructuraPorDia[s.dia];
-                    const check = checkPorFecha[s.fecha];
-                    return (
-                      <div
-                        key={s.fecha}
-                        style={{
-                          padding: "12px",
-                          border: `2px solid ${check?.publicado ? "#4caf50" : "#ddd"}`,
-                          borderRadius: "4px",
-                          textAlign: "center",
-                          background: check?.publicado ? "#f1f8e9" : "#fafafa",
-                        }}
-                      >
-                        <div style={{ fontSize: "12px", color: "#666", fontWeight: "600" }}>{DIAS_SEMANA[s.dia]}</div>
-                        <div style={{ fontSize: "20px", fontWeight: "bold", margin: "4px 0" }}>{s.diaNum}</div>
-                        <div style={{ fontSize: "11px", color: "#999" }}>{est?.tipo || "—"}</div>
-                        <button
-                          className="btn"
-                          style={{
-                            fontSize: "12px",
-                            padding: "4px 8px",
-                            marginTop: "8px",
-                            background: check?.publicado ? "#4caf50" : "#fff",
-                            color: check?.publicado ? "#fff" : "#333",
-                            border: check?.publicado ? "none" : "1px solid #ccc",
-                          }}
-                          onClick={() => manejarCheckPublicacion(s.fecha, !check?.publicado)}
-                        >
-                          {check?.publicado ? "✓ Publicado" : "Marcar"}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="section-label">3 · Fechas especiales próximas</div>
-              <div className="box">
-                {fechasEspeciales.length === 0 ? (
-                  <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>No hay fechas especiales registradas.</div>
-                ) : (
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "2px solid #333" }}>
-                        <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Fecha</th>
-                        <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Evento</th>
-                        <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Estado</th>
-                        <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Idea</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {fechasEspeciales.map((f) => (
-                        <tr key={f.id} style={{ borderBottom: "1px solid #e0e0e0" }}>
-                          <td style={{ padding: "8px" }}>{f.fecha}</td>
-                          <td style={{ padding: "8px" }}>{f.evento}</td>
-                          <td style={{ padding: "8px" }}>
-                            <span
-                              style={{
-                                display: "inline-block",
-                                padding: "2px 6px",
-                                borderRadius: "3px",
-                                fontSize: "11px",
-                                background: f.estado === "hecho" ? "#c8e6c9" : f.estado === "en_curso" ? "#fff9c4" : "#ffccbc",
-                                color: "#333",
-                              }}
-                            >
-                              {f.estado}
-                            </span>
-                          </td>
-                          <td style={{ padding: "8px" }}>{f.idea || "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </main>
-  );
-}
-
-function HistoriasWorkflowPage() {
-  const sesion = getSesion();
-  const [historias, setHistorias] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(null);
-  const [filtroCliente, setFiltroCliente] = useState(null);
-  const [clientes, setClientes] = useState([]);
-  const [historiasModal, setHistoriasModal] = useState(null);
-
-  const ESTADOS = [
-    { id: "pendiente", label: "📋 Pendiente", color: "#e3f2fd" },
-    { id: "en_diseño", label: "🎨 En diseño", color: "#f3e5f5" },
-    { id: "en_revision", label: "👁️ En revisión", color: "#fff3e0" },
-    { id: "lista", label: "✅ Lista", color: "#f0f4c3" },
-    { id: "publicada", label: "✅ Publicada", color: "#e8f5e9" },
-    { id: "bloqueada", label: "🚫 Bloqueada", color: "#ffebee" },
-  ];
-
-  useEffect(() => {
-    fetch("/api/clientes")
-      .then((r) => r.json())
-      .then((data) => {
-        setClientes(data);
-        if (data.length > 0) setFiltroCliente(data[0].id);
-      })
-      .catch((err) => console.error("Error cargando clientes", err));
-  }, []);
-
-  useEffect(() => {
-    if (!filtroCliente) return;
-
-    setCargando(true);
-    fetch(`/api/historias`)
-      .then((r) => r.json())
-      .then((data) => {
-        const filtradas = filtroCliente ? data.filter(h => h.cliente_id === filtroCliente) : data;
-        setHistorias(filtradas);
-        setError(null);
-      })
-      .catch((err) => {
-        console.error("Error cargando historias", err);
-        setError("No se pudo cargar las historias.");
-      })
-      .finally(() => setCargando(false));
-  }, [filtroCliente]);
-
-  const moverHistoria = async (historiaId, nuevoEstado) => {
-    try {
-      const res = await fetch(`/api/historias/${historiaId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado: nuevoEstado }),
-      });
-      if (!res.ok) throw new Error("No se pudo actualizar");
-
-      setHistorias((prev) =>
-        prev.map((h) => (h.id === historiaId ? { ...h, estado: nuevoEstado } : h)),
-      );
-    } catch (err) {
-      console.error("Error moviendo historia", err);
-      setError("No se pudo actualizar la historia.");
-    }
-  };
-
-  const historiasPorEstado = {};
-  ESTADOS.forEach((e) => {
-    historiasPorEstado[e.id] = historias.filter((h) => h.estado === e.id);
-  });
-
-  const clienteActual = clientes.find((c) => c.id === filtroCliente);
-
-  return (
-    <main aria-label="Render platform historias workflow">
-      <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Workflow de Historias</span>
-          </div>
-          <div className="tag">Sistema profesional de gestión</div>
-        </div>
-
-        <div className="content">
-          {error && (
-            <div style={{ padding: "12px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "16px" }}>
-              {error}
-            </div>
-          )}
-
-          <div className="section-label">Seleccionar cliente</div>
-          <select
-            value={filtroCliente || ""}
-            onChange={(e) => setFiltroCliente(Number(e.target.value))}
-            style={{ padding: "8px", borderRadius: "4px", border: "1px solid #ccc", marginBottom: "20px", fontSize: "14px" }}
-          >
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
-
-          {cargando ? (
-            <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando historias...</div>
-          ) : (
-            <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "16px" }}>
-                {ESTADOS.map((estado) => (
-                  <div key={estado.id} style={{ background: estado.color, borderRadius: "8px", padding: "16px" }}>
-                    <div style={{ fontWeight: "700", marginBottom: "12px", fontSize: "14px" }}>
-                      {estado.label} ({historiasPorEstado[estado.id].length})
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                      {historiasPorEstado[estado.id].map((historia) => (
-                        <div
-                          key={historia.id}
-                          style={{
-                            background: "#fff",
-                            border: "1px solid #ddd",
-                            borderRadius: "6px",
-                            padding: "12px",
-                            cursor: "pointer",
-                            transition: "all 0.2s",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.boxShadow = "none")}
-                          onClick={() => setHistoriasModal(historia)}
-                        >
-                          <div style={{ fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>{historia.idea || "Sin idea"}</div>
-                          <div style={{ fontSize: "11px", color: "#666" }}>ID: {historia.id}</div>
-                          <div style={{ fontSize: "11px", color: "#999", marginTop: "4px" }}>
-                            {historia.responsable_diseño && `✏️ ${historia.responsable_diseño}`}
-                          </div>
-                          {historia.fecha_programada && (
-                            <div style={{ fontSize: "11px", color: "#999" }}>📅 {historia.fecha_programada}</div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {historiasModal && (
-                <div
-                  className="modal-overlay open"
-                  onClick={() => setHistoriasModal(null)}
-                  style={{ zIndex: 1000 }}
-                >
-                  <div className="modal" onClick={(e) => e.stopPropagation()}>
-                    <div className="modal-header">
-                      <span>{historiasModal.idea || "Sin idea"} (ID: {historiasModal.id})</span>
-                      <button className="modal-close" onClick={() => setHistoriasModal(null)}>
-                        X
-                      </button>
-                    </div>
-                    <div className="modal-body">
-                      <div className="detail-grid">
-                        <div className="detail-field">
-                          <div className="detail-label">Estado actual</div>
-                          <div>{ESTADOS.find((e) => e.id === historiasModal.estado)?.label}</div>
-                        </div>
-                        <div className="detail-field">
-                          <div className="detail-label">Cliente</div>
-                          <div>{historiasModal.cliente_nombre}</div>
-                        </div>
-                        <div className="detail-field">
-                          <div className="detail-label">Fecha programada</div>
-                          <div>{historiasModal.fecha_programada || "—"}</div>
-                        </div>
-                        <div className="detail-field">
-                          <div className="detail-label">Responsable diseño</div>
-                          <div>{historiasModal.responsable_diseño || "—"}</div>
-                        </div>
-                      </div>
-
-                      <div style={{ marginTop: "20px", paddingTop: "12px", borderTop: "1px solid #e0e0e0" }}>
-                        <div style={{ fontWeight: "600", marginBottom: "8px" }}>Cambiar estado a:</div>
-                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                          {ESTADOS.map((e) => (
-                            <button
-                              key={e.id}
-                              className="btn"
-                              onClick={() => {
-                                moverHistoria(historiasModal.id, e.id);
-                                setHistoriasModal(null);
-                              }}
-                              style={{
-                                background: historiasModal.estado === e.id ? "#333" : "#f5f5f5",
-                                color: historiasModal.estado === e.id ? "#fff" : "#333",
-                                border: historiasModal.estado === e.id ? "none" : "1px solid #ccc",
-                              }}
-                            >
-                              {e.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {historiasModal.copy && (
-                        <div style={{ marginTop: "16px" }}>
-                          <div style={{ fontWeight: "600", marginBottom: "6px" }}>Copy</div>
-                          <div style={{ fontSize: "13px", color: "#555" }}>{historiasModal.copy}</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </main>
-  );
-}
-
 const ROL_LABELS = {
   admin: "Administrador",
   diseno: "Diseño",
@@ -2604,172 +2133,6 @@ const ROL_LABELS = {
   produccion: "Producción",
   community: "Community",
 };
-
-function ReportesHistoriasPage() {
-  const [reportes, setReportes] = useState(null);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    fetch("/api/reportes/historias")
-      .then((r) => r.json())
-      .then((data) => {
-        setReportes(data);
-        setError(null);
-      })
-      .catch((err) => {
-        console.error("Error cargando reportes", err);
-        setError("No se pudieron cargar los reportes.");
-      })
-      .finally(() => setCargando(false));
-  }, []);
-
-  const totalHistorias = reportes?.por_fase.reduce((sum, f) => sum + f.total, 0) || 0;
-
-  return (
-    <main aria-label="Render platform reportes historias">
-      <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Reportes</span>
-          </div>
-          <div className="tag">Métricas de gestión de historias</div>
-        </div>
-
-        <div className="content">
-          {error && (
-            <div style={{ padding: "12px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "16px" }}>
-              {error}
-            </div>
-          )}
-
-          {cargando ? (
-            <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando reportes...</div>
-          ) : (
-            <>
-              <div className="section-label">1 · Histórias por fase</div>
-              <div className="box">
-                {!reportes?.por_fase || reportes.por_fase.length === 0 ? (
-                  <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>Sin datos aún</div>
-                ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px" }}>
-                    {reportes.por_fase.map((f) => (
-                      <div
-                        key={f.fase}
-                        style={{
-                          border: "1px solid #ddd",
-                          borderRadius: "8px",
-                          padding: "16px",
-                          textAlign: "center",
-                        }}
-                      >
-                        <div style={{ fontSize: "28px", fontWeight: "700", color: "#333" }}>{f.total}</div>
-                        <div style={{ fontSize: "13px", color: "#666", marginTop: "4px", textTransform: "capitalize" }}>
-                          {f.fase.replace(/_/g, " ")}
-                        </div>
-                        <div style={{ fontSize: "11px", color: "#999", marginTop: "8px" }}>
-                          {f.esta_semana} esta semana
-                        </div>
-                        <div style={{ fontSize: "11px", color: "#999" }}>{f.hoy} hoy</div>
-                        <div style={{ fontSize: "11px", color: "#999", marginTop: "6px" }}>
-                          {totalHistorias > 0 ? `${Math.round((f.total / totalHistorias) * 100)}%` : "0%"}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="section-label">2 · Histórias por cliente</div>
-              <div className="box">
-                {!reportes?.por_cliente || reportes.por_cliente.length === 0 ? (
-                  <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>Sin datos aún</div>
-                ) : (
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "2px solid #333" }}>
-                        <th style={{ textAlign: "left", padding: "12px", fontWeight: "600" }}>Cliente</th>
-                        <th style={{ textAlign: "center", padding: "12px", fontWeight: "600" }}>Total</th>
-                        <th style={{ textAlign: "center", padding: "12px", fontWeight: "600" }}>✅ Publicadas</th>
-                        <th style={{ textAlign: "center", padding: "12px", fontWeight: "600" }}>⏳ Pendientes</th>
-                        <th style={{ textAlign: "center", padding: "12px", fontWeight: "600" }}>Avance</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {reportes.por_cliente.map((c) => {
-                        const avance =
-                          c.total > 0 ? Math.round((c.publicadas / c.total) * 100) : 0;
-                        return (
-                          <tr key={c.cliente} style={{ borderBottom: "1px solid #e0e0e0" }}>
-                            <td style={{ padding: "12px" }}>{c.cliente}</td>
-                            <td style={{ padding: "12px", textAlign: "center", fontWeight: "600" }}>
-                              {c.total}
-                            </td>
-                            <td style={{ padding: "12px", textAlign: "center", color: "#4caf50" }}>
-                              {c.publicadas}
-                            </td>
-                            <td style={{ padding: "12px", textAlign: "center", color: "#ff9800" }}>
-                              {c.pendientes}
-                            </td>
-                            <td style={{ padding: "12px", textAlign: "center" }}>
-                              <div
-                                style={{
-                                  display: "inline-block",
-                                  width: "60px",
-                                  height: "6px",
-                                  background: "#e0e0e0",
-                                  borderRadius: "3px",
-                                  overflow: "hidden",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    width: `${avance}%`,
-                                    height: "100%",
-                                    background: avance > 70 ? "#4caf50" : avance > 30 ? "#ff9800" : "#f44336",
-                                    transition: "width 0.3s",
-                                  }}
-                                />
-                              </div>
-                              <div style={{ fontSize: "11px", marginTop: "4px" }}>{avance}%</div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              <div className="section-label">3 · Resumen general</div>
-              <div className="box">
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
-                  <div style={{ padding: "16px", background: "#f5f5f5", borderRadius: "6px", textAlign: "center" }}>
-                    <div style={{ fontSize: "24px", fontWeight: "700", color: "#333" }}>{totalHistorias}</div>
-                    <div style={{ fontSize: "12px", color: "#666", marginTop: "6px" }}>Total de historias</div>
-                  </div>
-                  <div style={{ padding: "16px", background: "#f5f5f5", borderRadius: "6px", textAlign: "center" }}>
-                    <div style={{ fontSize: "24px", fontWeight: "700", color: "#4caf50" }}>
-                      {reportes?.por_cliente.reduce((sum, c) => sum + c.publicadas, 0) || 0}
-                    </div>
-                    <div style={{ fontSize: "12px", color: "#666", marginTop: "6px" }}>Publicadas</div>
-                  </div>
-                  <div style={{ padding: "16px", background: "#f5f5f5", borderRadius: "6px", textAlign: "center" }}>
-                    <div style={{ fontSize: "24px", fontWeight: "700", color: "#ff9800" }}>
-                      {reportes?.por_cliente.reduce((sum, c) => sum + c.pendientes, 0) || 0}
-                    </div>
-                    <div style={{ fontSize: "12px", color: "#666", marginTop: "6px" }}>Pendientes</div>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </main>
-  );
-}
 
 function PerfilPage() {
   const sesion = getSesion();
@@ -5742,22 +5105,1151 @@ function TareasProduccionPage() {
   );
 }
 
-function PlanificacionHistoriasPage() {
+// ── MÓDULO HISTORIAS: planilla por cliente + tablero + estructura ─────────────
+
+const ESTADOS_HISTORIA = [
+  { id: "pendiente", label: "Pendiente", bg: "#eceff1", fg: "#546e7a" },
+  { id: "en_diseño", label: "En diseño", bg: "#f3e5f5", fg: "#7b1fa2" },
+  { id: "en_revision", label: "En revisión", bg: "#fff3e0", fg: "#e65100" },
+  { id: "lista", label: "Lista", bg: "#f0f4c3", fg: "#827717" },
+  { id: "publicada", label: "Publicada", bg: "#e8f5e9", fg: "#2e7d32" },
+  { id: "bloqueada", label: "Bloqueada", bg: "#ffebee", fg: "#c62828" },
+];
+
+const RESPONSABLES_EQUIPO = ["Augusto", "Luciano", "Germán", "Oriana", "Franco", "Agustín"];
+
+function CeldaEditable({ valor, placeholder, onGuardar, multiline }) {
+  const [editando, setEditando] = useState(false);
+  const [texto, setTexto] = useState(valor || "");
+
+  useEffect(() => {
+    setTexto(valor || "");
+  }, [valor]);
+
+  const guardar = () => {
+    setEditando(false);
+    if ((texto || "").trim() !== (valor || "").trim() && texto.trim() !== "") {
+      onGuardar(texto.trim());
+    } else {
+      setTexto(valor || "");
+    }
+  };
+
+  if (editando) {
+    return (
+      <input
+        autoFocus
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        onBlur={guardar}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            setTexto(valor || "");
+            setEditando(false);
+          }
+        }}
+        style={{ width: "100%", padding: "4px 6px", fontSize: "13px", border: "2px solid #1a73e8", borderRadius: "3px", boxSizing: "border-box" }}
+      />
+    );
+  }
+
   return (
-    <main aria-label="Planificación de Historias">
+    <div
+      onClick={() => setEditando(true)}
+      title="Click para editar"
+      style={{
+        cursor: "text",
+        minHeight: "20px",
+        padding: "2px 4px",
+        fontSize: "13px",
+        color: texto ? "#222" : "#bbb",
+        whiteSpace: multiline ? "normal" : "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        borderRadius: "3px",
+      }}
+    >
+      {texto || placeholder}
+    </div>
+  );
+}
+
+function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
+  const hoy = new Date();
+  const [year, setYear] = useState(hoy.getFullYear());
+  const [month, setMonth] = useState(hoy.getMonth());
+  const [historias, setHistorias] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  const cargar = () => {
+    setCargando(true);
+    fetch("/api/historias")
+      .then((r) => r.json())
+      .then((data) => {
+        setHistorias(data.filter((h) => h.cliente_id === clienteId));
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("Error cargando historias", err);
+        setError("No se pudieron cargar las historias.");
+      })
+      .finally(() => setCargando(false));
+  };
+
+  useEffect(cargar, [clienteId]);
+
+  const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const historiasDelMes = historias.filter(
+    (h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix),
+  );
+
+  const diasEnMes = new Date(year, month + 1, 0).getDate();
+  const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
+  const hoyISO = getHoyLocalISO();
+
+  const actualizarCampo = async (historiaId, campos) => {
+    try {
+      const res = await fetch(`/api/historias/${historiaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(campos),
+      });
+      if (!res.ok) throw new Error("No se pudo guardar");
+      setHistorias((prev) =>
+        prev.map((h) => (h.id === historiaId ? { ...h, ...campos } : h)),
+      );
+    } catch (err) {
+      console.error("Error guardando", err);
+      setError("No se pudo guardar el cambio.");
+    }
+  };
+
+  const crearHistoria = async (iso) => {
+    try {
+      const res = await fetch("/api/piezas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "historia",
+          cliente_id: clienteId,
+          responsable: "Augusto",
+          fecha_programada: iso,
+          estado: "pendiente",
+          idea: "",
+        }),
+      });
+      if (!res.ok) throw new Error("No se pudo crear");
+      cargar();
+    } catch (err) {
+      console.error("Error creando historia", err);
+      setError("No se pudo crear la historia.");
+    }
+  };
+
+  const borrarHistoria = async (historiaId) => {
+    if (!window.confirm("¿Eliminar esta historia de la planilla?")) return;
+    try {
+      const res = await fetch(`/api/historias/${historiaId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("No se pudo eliminar");
+      setHistorias((prev) => prev.filter((h) => h.id !== historiaId));
+    } catch (err) {
+      console.error("Error eliminando historia", err);
+      setError("No se pudo eliminar la historia.");
+    }
+  };
+
+  const irMes = (delta) => {
+    let m = month + delta;
+    let y = year;
+    if (m < 0) {
+      m = 11;
+      y -= 1;
+    } else if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+    setMonth(m);
+    setYear(y);
+  };
+
+  const filas = [];
+  for (let dia = 1; dia <= diasEnMes; dia++) {
+    const iso = fechaISODesde(year, month, dia);
+    const delDia = historiasDelMes.filter((h) =>
+      h.fecha_programada.startsWith(iso),
+    );
+    if (delDia.length === 0) {
+      filas.push({ vacia: true, dia, iso });
+    } else {
+      delDia.forEach((h, i) => {
+        filas.push({ vacia: false, dia, iso, historia: h, primera: i === 0, cantidad: delDia.length });
+      });
+    }
+  }
+
+  const publicadas = historiasDelMes.filter((h) => h.estado === "publicada").length;
+
+  const thStyle = { textAlign: "left", padding: "8px 10px", fontWeight: "600", fontSize: "12px", color: "#555", borderBottom: "2px solid #333", background: "#fafafa", position: "sticky", top: 0 };
+  const tdStyle = { padding: "5px 10px", borderBottom: "1px solid #eee", verticalAlign: "middle" };
+
+  return (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
+          <strong style={{ fontSize: "16px", minWidth: "160px", textAlign: "center" }}>
+            {MESES[month]} {year}
+          </strong>
+          <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
+        </div>
+        <div style={{ display: "flex", gap: "8px", fontSize: "12px" }}>
+          <span style={{ padding: "4px 10px", background: "#eceff1", borderRadius: "12px" }}>
+            {historiasDelMes.length} planificadas
+          </span>
+          <span style={{ padding: "4px 10px", background: "#e8f5e9", color: "#2e7d32", borderRadius: "12px" }}>
+            {publicadas} publicadas
+          </span>
+          <span style={{ padding: "4px 10px", background: "#fff3e0", color: "#e65100", borderRadius: "12px" }}>
+            {historiasDelMes.length - publicadas} pendientes
+          </span>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+          {error}
+        </div>
+      )}
+
+      {cargando ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando planilla…</div>
+      ) : (
+        <div className="box" style={{ padding: 0, overflow: "auto", maxHeight: "70vh" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "900px" }}>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, width: "70px" }}>Día</th>
+                <th style={{ ...thStyle, width: "22%" }}>Idea</th>
+                <th style={{ ...thStyle, width: "28%" }}>Copy</th>
+                <th style={{ ...thStyle, width: "15%" }}>Material</th>
+                <th style={{ ...thStyle, width: "110px" }}>Responsable</th>
+                <th style={{ ...thStyle, width: "120px" }}>Estado</th>
+                <th style={{ ...thStyle, width: "60px" }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filas.map((fila, idx) => {
+                const fecha = new Date(year, month, fila.dia);
+                const dow = fecha.getDay();
+                const esFinde = dow === 0 || dow === 6;
+                const esHoy = fila.iso === hoyISO;
+                const bgFila = esHoy ? "#e3f2fd" : esFinde ? "#f7f7f7" : "#fff";
+
+                if (fila.vacia) {
+                  return (
+                    <tr key={`v-${fila.iso}`} style={{ background: bgFila }}>
+                      <td style={{ ...tdStyle, fontWeight: esHoy ? "700" : "600", color: esFinde ? "#999" : "#333" }}>
+                        {fila.dia} <span style={{ fontSize: "11px", color: "#999" }}>{LETRAS_DIA[dow]}</span>
+                      </td>
+                      <td style={tdStyle} colSpan={5}>
+                        <span style={{ color: "#ccc", fontSize: "12px" }}>—</span>
+                      </td>
+                      <td style={tdStyle}>
+                        <button
+                          type="button"
+                          onClick={() => crearHistoria(fila.iso)}
+                          title="Agregar historia este día"
+                          style={{ border: "1px dashed #bbb", background: "none", borderRadius: "4px", cursor: "pointer", padding: "2px 8px", color: "#888", fontSize: "13px" }}
+                        >
+                          +
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                }
+
+                const h = fila.historia;
+                const est = ESTADOS_HISTORIA.find((e) => e.id === h.estado) || ESTADOS_HISTORIA[0];
+
+                return (
+                  <tr key={h.id} style={{ background: bgFila }}>
+                    <td style={{ ...tdStyle, fontWeight: esHoy ? "700" : "600", color: esFinde ? "#999" : "#333" }}>
+                      {fila.primera ? (
+                        <>
+                          {fila.dia} <span style={{ fontSize: "11px", color: "#999" }}>{LETRAS_DIA[dow]}</span>
+                          {fila.cantidad > 1 && (
+                            <span style={{ fontSize: "10px", color: "#1a73e8", marginLeft: "4px" }}>×{fila.cantidad}</span>
+                          )}
+                        </>
+                      ) : (
+                        <span style={{ fontSize: "11px", color: "#bbb" }}>↳</span>
+                      )}
+                    </td>
+                    <td style={tdStyle}>
+                      <CeldaEditable
+                        valor={h.idea}
+                        placeholder="Escribir idea…"
+                        onGuardar={(v) => actualizarCampo(h.id, { idea: v })}
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <CeldaEditable
+                        valor={h.copy}
+                        placeholder="Escribir copy…"
+                        multiline
+                        onGuardar={(v) => actualizarCampo(h.id, { copy: v })}
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <CeldaEditable
+                        valor={h.material_referencia}
+                        placeholder="Link…"
+                        onGuardar={(v) => actualizarCampo(h.id, { material_referencia: v })}
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <select
+                        value={h.responsable_diseño || h.responsable || "Augusto"}
+                        onChange={(e) =>
+                          actualizarCampo(h.id, { responsable: e.target.value, responsable_diseño: e.target.value })
+                        }
+                        style={{ fontSize: "12px", padding: "3px", border: "1px solid #ddd", borderRadius: "3px", width: "100%" }}
+                      >
+                        {RESPONSABLES_EQUIPO.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={tdStyle}>
+                      <select
+                        value={h.estado}
+                        onChange={(e) => actualizarCampo(h.id, { estado: e.target.value })}
+                        style={{ fontSize: "12px", padding: "3px 6px", borderRadius: "10px", width: "100%", border: "none", background: est.bg, color: est.fg, fontWeight: "600", cursor: "pointer" }}
+                      >
+                        {ESTADOS_HISTORIA.map((e) => (
+                          <option key={e.id} value={e.id}>{e.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={tdStyle}>
+                      <div style={{ display: "flex", gap: "4px" }}>
+                        <button
+                          type="button"
+                          onClick={() => crearHistoria(fila.iso)}
+                          title="Agregar otra historia este día"
+                          style={{ border: "none", background: "none", cursor: "pointer", color: "#888", fontSize: "13px", padding: "2px" }}
+                        >
+                          +
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => borrarHistoria(h.id)}
+                          title="Eliminar"
+                          style={{ border: "none", background: "none", cursor: "pointer", fontSize: "12px", padding: "2px" }}
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="caption" style={{ marginTop: "10px" }}>
+        Planilla de {clienteNombre} · Click en cualquier celda para editar · "+" agrega una historia en ese día.
+      </div>
+    </>
+  );
+}
+
+function HistoriasTableroTab({ clienteId }) {
+  const [historias, setHistorias] = useState([]);
+  const [error, setError] = useState(null);
+  const [modal, setModal] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/historias")
+      .then((r) => r.json())
+      .then((data) => setHistorias(data.filter((h) => h.cliente_id === clienteId)))
+      .catch((err) => {
+        console.error("Error cargando historias", err);
+        setError("No se pudieron cargar las historias.");
+      });
+  }, [clienteId]);
+
+  const moverEstado = async (historiaId, nuevoEstado) => {
+    try {
+      const res = await fetch(`/api/historias/${historiaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estado: nuevoEstado }),
+      });
+      if (!res.ok) throw new Error("No se pudo actualizar");
+      setHistorias((prev) =>
+        prev.map((h) => (h.id === historiaId ? { ...h, estado: nuevoEstado } : h)),
+      );
+    } catch (err) {
+      console.error("Error moviendo historia", err);
+      setError("No se pudo actualizar la historia.");
+    }
+  };
+
+  return (
+    <>
+      {error && (
+        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+          {error}
+        </div>
+      )}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px" }}>
+        {ESTADOS_HISTORIA.map((est) => {
+          const items = historias.filter((h) => h.estado === est.id);
+          return (
+            <div key={est.id} style={{ background: est.bg, borderRadius: "8px", padding: "12px", minHeight: "120px" }}>
+              <div style={{ fontWeight: "700", fontSize: "13px", color: est.fg, marginBottom: "10px" }}>
+                {est.label} ({items.length})
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {items.map((h) => (
+                  <div
+                    key={h.id}
+                    onClick={() => setModal(h)}
+                    style={{ background: "#fff", border: "1px solid rgba(0,0,0,0.08)", borderRadius: "5px", padding: "8px 10px", cursor: "pointer" }}
+                  >
+                    <div style={{ fontSize: "12px", fontWeight: "600", marginBottom: "2px" }}>
+                      {h.idea || "Sin idea"}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#999" }}>
+                      📅 {h.fecha_programada} {h.responsable_diseño ? `· ✏️ ${h.responsable_diseño}` : ""}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {modal && (
+        <div className="modal-overlay open" onClick={() => setModal(null)} style={{ zIndex: 1000 }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <span>{modal.idea || "Sin idea"}</span>
+              <button className="modal-close" onClick={() => setModal(null)}>X</button>
+            </div>
+            <div className="modal-body">
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <div className="detail-label">Fecha programada</div>
+                  <div>{modal.fecha_programada || "—"}</div>
+                </div>
+                <div className="detail-field">
+                  <div className="detail-label">Responsable diseño</div>
+                  <div>{modal.responsable_diseño || modal.responsable || "—"}</div>
+                </div>
+                <div className="detail-field">
+                  <div className="detail-label">Copy</div>
+                  <div>{modal.copy || "—"}</div>
+                </div>
+                <div className="detail-field">
+                  <div className="detail-label">Material</div>
+                  <div>{modal.material_referencia || "—"}</div>
+                </div>
+              </div>
+              <div style={{ marginTop: "16px", paddingTop: "12px", borderTop: "1px solid #e0e0e0" }}>
+                <div style={{ fontWeight: "600", marginBottom: "8px", fontSize: "13px" }}>Cambiar estado:</div>
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  {ESTADOS_HISTORIA.map((e) => (
+                    <button
+                      key={e.id}
+                      className="btn"
+                      type="button"
+                      onClick={() => {
+                        moverEstado(modal.id, e.id);
+                        setModal(null);
+                      }}
+                      style={{
+                        fontSize: "12px",
+                        background: modal.estado === e.id ? "#333" : e.bg,
+                        color: modal.estado === e.id ? "#fff" : e.fg,
+                        border: "none",
+                      }}
+                    >
+                      {e.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function HistoriasEstructuraTab({ clienteId, clienteNombre }) {
+  const [estructura, setEstructura] = useState([]);
+  const [checkPublicacion, setCheckPublicacion] = useState([]);
+  const [fechasEspeciales, setFechasEspeciales] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  const NOMBRES_DIA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+  useEffect(() => {
+    if (!clienteId) return;
+    setCargando(true);
+    Promise.all([
+      fetch("/api/estructura").then((r) => r.json()),
+      fetch("/api/check-publicacion").then((r) => r.json()),
+      fetch("/api/fechas-especiales").then((r) => r.json()),
+    ])
+      .then(([est, check, fechas]) => {
+        setEstructura(est.filter((e) => e.cliente_id === clienteId));
+        setCheckPublicacion(check.filter((c) => c.cliente_id === clienteId));
+        setFechasEspeciales(fechas.filter((f) => !f.cliente_id || f.cliente_id === clienteId));
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("No se pudo cargar estructura", err);
+        setError("No se pudo cargar la estructura.");
+      })
+      .finally(() => setCargando(false));
+  }, [clienteId]);
+
+  const estructuraPorDia = {};
+  estructura.forEach((e) => {
+    estructuraPorDia[e.dia_semana] = e;
+  });
+
+  const checkPorFecha = {};
+  checkPublicacion.forEach((c) => {
+    checkPorFecha[c.fecha] = c;
+  });
+
+  const manejarCheck = async (fecha, publicado) => {
+    try {
+      const res = await fetch("/api/check-publicacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cliente_id: clienteId,
+          fecha,
+          publicado,
+          confirmado_por: getSesion()?.usuario?.nombre || "Sistema",
+        }),
+      });
+      if (!res.ok) throw new Error("No se pudo actualizar");
+      setCheckPublicacion((prev) => {
+        const existe = prev.find((c) => c.fecha === fecha);
+        if (existe) {
+          return prev.map((c) => (c.fecha === fecha ? { ...c, publicado } : c));
+        }
+        return [...prev, { cliente_id: clienteId, fecha, publicado }];
+      });
+    } catch (err) {
+      console.error("Error actualizando check", err);
+      setError("No se pudo actualizar el check de publicación.");
+    }
+  };
+
+  const semanaActual = [];
+  const ahora = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(ahora);
+    d.setDate(d.getDate() + i - d.getDay());
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    semanaActual.push({ fecha: iso, dia: d.getDay(), diaNum: d.getDate() });
+  }
+
+  if (cargando) {
+    return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando estructura…</div>;
+  }
+
+  return (
+    <>
+      {error && (
+        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+          {error}
+        </div>
+      )}
+
+      <div className="section-label">1 · Estructura base semanal: {clienteNombre}</div>
+      <div className="box">
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ borderBottom: "2px solid #333" }}>
+              <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Día</th>
+              <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Tipo</th>
+              <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Tema</th>
+              <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Horario</th>
+              <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>CTA fijo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {NOMBRES_DIA.map((dia, idx) => {
+              const est = estructuraPorDia[idx];
+              return (
+                <tr key={idx} style={{ borderBottom: "1px solid #e0e0e0" }}>
+                  <td style={{ padding: "8px", fontWeight: "600" }}>{dia}</td>
+                  <td style={{ padding: "8px" }}>{est?.tipo || "—"}</td>
+                  <td style={{ padding: "8px" }}>{est?.tema || "—"}</td>
+                  <td style={{ padding: "8px" }}>{est?.horario || "—"}</td>
+                  <td style={{ padding: "8px" }}>{est?.cta_fijo || "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="section-label">2 · Semana actual: check de publicación</div>
+      <div className="box">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "10px" }}>
+          {semanaActual.map((s) => {
+            const est = estructuraPorDia[s.dia];
+            const check = checkPorFecha[s.fecha];
+            return (
+              <div
+                key={s.fecha}
+                style={{
+                  padding: "10px",
+                  border: `2px solid ${check?.publicado ? "#4caf50" : "#ddd"}`,
+                  borderRadius: "4px",
+                  textAlign: "center",
+                  background: check?.publicado ? "#f1f8e9" : "#fafafa",
+                }}
+              >
+                <div style={{ fontSize: "11px", color: "#666", fontWeight: "600" }}>{NOMBRES_DIA[s.dia].slice(0, 3)}</div>
+                <div style={{ fontSize: "18px", fontWeight: "bold", margin: "3px 0" }}>{s.diaNum}</div>
+                <div style={{ fontSize: "10px", color: "#999" }}>{est?.tipo || "—"}</div>
+                <button
+                  className="btn"
+                  type="button"
+                  style={{
+                    fontSize: "11px",
+                    padding: "3px 6px",
+                    marginTop: "6px",
+                    background: check?.publicado ? "#4caf50" : "#fff",
+                    color: check?.publicado ? "#fff" : "#333",
+                    border: check?.publicado ? "none" : "1px solid #ccc",
+                  }}
+                  onClick={() => manejarCheck(s.fecha, !check?.publicado)}
+                >
+                  {check?.publicado ? "✓" : "Marcar"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="section-label">3 · Fechas especiales próximas</div>
+      <div className="box">
+        {fechasEspeciales.length === 0 ? (
+          <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>No hay fechas especiales registradas.</div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: "2px solid #333" }}>
+                <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Fecha</th>
+                <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Evento</th>
+                <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Estado</th>
+                <th style={{ textAlign: "left", padding: "8px", fontWeight: "600" }}>Idea</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fechasEspeciales.map((f) => (
+                <tr key={f.id} style={{ borderBottom: "1px solid #e0e0e0" }}>
+                  <td style={{ padding: "8px" }}>{f.fecha}</td>
+                  <td style={{ padding: "8px" }}>{f.evento}</td>
+                  <td style={{ padding: "8px" }}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        padding: "2px 6px",
+                        borderRadius: "3px",
+                        fontSize: "11px",
+                        background: f.estado === "hecho" ? "#c8e6c9" : f.estado === "en_curso" ? "#fff9c4" : "#ffccbc",
+                        color: "#333",
+                      }}
+                    >
+                      {f.estado}
+                    </span>
+                  </td>
+                  <td style={{ padding: "8px" }}>{f.idea || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
+function HistoriasPage({ initialTab = "planilla" }) {
+  const [tab, setTab] = useState(initialTab);
+  const [clientes, setClientes] = useState([]);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const [errorClientes, setErrorClientes] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/clientes")
+      .then((r) => r.json())
+      .then((data) => {
+        setClientes(data);
+        if (data.length > 0) setClienteSeleccionado(data[0].id);
+      })
+      .catch((err) => {
+        console.error("No se pudieron cargar clientes", err);
+        setErrorClientes("No se pudieron cargar los clientes.");
+      });
+  }, []);
+
+  const clienteNombre =
+    clientes.find((c) => c.id === clienteSeleccionado)?.nombre || "";
+
+  const TABS = [
+    { id: "planilla", label: "📋 Planilla mensual" },
+    { id: "tablero", label: "🗂 Tablero por estado" },
+    { id: "estructura", label: "🏗️ Estructura" },
+  ];
+
+  return (
+    <main aria-label="Render platform historias">
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
-            <span className="active">Planificación</span>
+            <span className="active">Historias</span>
           </div>
-          <div className="tag">Admin</div>
+          <div className="tag">Planificación por cliente</div>
         </div>
+
         <div className="content">
-          <div className="section-label">Planificación de Historias</div>
-          <div className="box">
-            <div className="caption">Módulo en desarrollo - Aquí se planificarán las historias mensuales de Instagram</div>
+          {errorClientes && (
+            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+              {errorClientes}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: "4px", overflowX: "auto", borderBottom: "2px solid #ddd", marginBottom: "16px", paddingBottom: "0" }}>
+            {clientes.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setClienteSeleccionado(c.id)}
+                style={{
+                  padding: "8px 18px",
+                  border: "none",
+                  borderBottom: clienteSeleccionado === c.id ? "3px solid #1a73e8" : "3px solid transparent",
+                  background: clienteSeleccionado === c.id ? "#e8f0fe" : "transparent",
+                  color: clienteSeleccionado === c.id ? "#1a73e8" : "#555",
+                  fontWeight: clienteSeleccionado === c.id ? "700" : "500",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  borderRadius: "6px 6px 0 0",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {c.nombre}
+              </button>
+            ))}
           </div>
+
+          <div className="tabs" style={{ marginBottom: "16px" }}>
+            {TABS.map((t) => (
+              <span
+                key={t.id}
+                className={tab === t.id ? "active" : ""}
+                onClick={() => setTab(t.id)}
+                style={{ cursor: "pointer" }}
+              >
+                {t.label}
+              </span>
+            ))}
+          </div>
+
+          {clienteSeleccionado && tab === "planilla" && (
+            <HistoriasPlanillaTab
+              key={`p-${clienteSeleccionado}`}
+              clienteId={clienteSeleccionado}
+              clienteNombre={clienteNombre}
+            />
+          )}
+          {clienteSeleccionado && tab === "tablero" && (
+            <HistoriasTableroTab key={`t-${clienteSeleccionado}`} clienteId={clienteSeleccionado} />
+          )}
+          {clienteSeleccionado && tab === "estructura" && (
+            <HistoriasEstructuraTab
+              key={`e-${clienteSeleccionado}`}
+              clienteId={clienteSeleccionado}
+              clienteNombre={clienteNombre}
+            />
+          )}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+// ── REPORTES DE EQUIPO: rendimiento por empleado ──────────────────────────────
+
+function ReportesEquipoPage() {
+  const [tareas, setTareas] = useState([]);
+  const [historias, setHistorias] = useState([]);
+  const [publicaciones, setPublicaciones] = useState([]);
+  const [usuarios, setUsuarios] = useState([]);
+  const [periodo, setPeriodo] = useState("mes_actual");
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const [detalleDe, setDetalleDe] = useState(null);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/tareas").then((r) => r.json()),
+      fetch("/api/historias").then((r) => r.json()),
+      fetch("/api/publicaciones").then((r) => r.json()),
+      fetch("/api/usuarios").then((r) => r.json()),
+    ])
+      .then(([t, h, p, u]) => {
+        setTareas(Array.isArray(t) ? t : []);
+        setHistorias(Array.isArray(h) ? h : []);
+        setPublicaciones(Array.isArray(p) ? p : []);
+        setUsuarios(Array.isArray(u) ? u : []);
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("Error cargando reportes", err);
+        setError("No se pudieron cargar los datos del reporte.");
+      })
+      .finally(() => setCargando(false));
+  }, []);
+
+  const hoyISO = getHoyLocalISO();
+  const ahora = new Date();
+
+  const rangoPeriodo = (() => {
+    const pad = (n) => String(n).padStart(2, "0");
+    if (periodo === "mes_actual") {
+      const desde = `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-01`;
+      const sig = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 1);
+      const hasta = `${sig.getFullYear()}-${pad(sig.getMonth() + 1)}-01`;
+      return { desde, hasta, dias: new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0).getDate() };
+    }
+    if (periodo === "mes_pasado") {
+      const prev = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
+      const desde = `${prev.getFullYear()}-${pad(prev.getMonth() + 1)}-01`;
+      const hasta = `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-01`;
+      return { desde, hasta, dias: new Date(prev.getFullYear(), prev.getMonth() + 1, 0).getDate() };
+    }
+    const d30 = new Date(ahora);
+    d30.setDate(d30.getDate() - 30);
+    const desde = `${d30.getFullYear()}-${pad(d30.getMonth() + 1)}-${pad(d30.getDate())}`;
+    return { desde, hasta: "9999-12-31", dias: 30 };
+  })();
+
+  const enPeriodo = (fechaISO) =>
+    typeof fechaISO === "string" &&
+    fechaISO.slice(0, 10) >= rangoPeriodo.desde &&
+    fechaISO.slice(0, 10) < rangoPeriodo.hasta;
+
+  const nombresConTareas = [...new Set(tareas.map((t) => t.asignado_a).filter(Boolean))];
+  const nombresUsuarios = usuarios
+    .filter((u) => u.rol !== "admin" || nombresConTareas.includes(u.nombre))
+    .map((u) => u.nombre);
+  const empleados = [...new Set([...nombresUsuarios, ...nombresConTareas])];
+
+  const filas = empleados.map((nombre) => {
+    const propias = tareas.filter((t) => t.asignado_a === nombre);
+    const activas = propias.filter((t) => t.estado !== "hecha");
+    const bloqueadas = propias.filter((t) => t.estado === "bloqueada");
+    const atrasadas = activas.filter(
+      (t) => t.fecha_vencimiento && t.fecha_vencimiento < hoyISO,
+    );
+    const terminadasPeriodo = propias.filter(
+      (t) => t.estado === "hecha" && enPeriodo(t.updated_at || ""),
+    );
+    const vencianEnPeriodo = propias.filter(
+      (t) => t.fecha_vencimiento && enPeriodo(t.fecha_vencimiento),
+    );
+    const vencidasHechas = vencianEnPeriodo.filter((t) => t.estado === "hecha");
+    const cumplimiento =
+      vencianEnPeriodo.length > 0
+        ? Math.round((vencidasHechas.length / vencianEnPeriodo.length) * 100)
+        : null;
+
+    const tiempos = terminadasPeriodo
+      .map((t) => {
+        if (!t.created_at || !t.updated_at) return null;
+        const dias = (new Date(t.updated_at) - new Date(t.created_at)) / 86400000;
+        return dias >= 0 ? dias : null;
+      })
+      .filter((d) => d !== null);
+    const tiempoPromedio =
+      tiempos.length > 0
+        ? (tiempos.reduce((a, b) => a + b, 0) / tiempos.length).toFixed(1)
+        : null;
+
+    const productividad = (terminadasPeriodo.length / (rangoPeriodo.dias / 7)).toFixed(1);
+
+    const rol = usuarios.find((u) => u.nombre === nombre)?.rol;
+
+    return {
+      nombre,
+      rol,
+      carga: activas.length,
+      terminadas: terminadasPeriodo.length,
+      atrasadas,
+      bloqueadas: bloqueadas.length,
+      cumplimiento,
+      tiempoPromedio,
+      productividad,
+    };
+  });
+
+  const filasOrdenadas = [...filas].sort((a, b) => b.carga - a.carga);
+
+  const totales = {
+    activas: filas.reduce((s, f) => s + f.carga, 0),
+    terminadas: filas.reduce((s, f) => s + f.terminadas, 0),
+    atrasadas: filas.reduce((s, f) => s + f.atrasadas.length, 0),
+    bloqueadas: filas.reduce((s, f) => s + f.bloqueadas, 0),
+  };
+
+  const piezasPorResponsable = empleados
+    .map((nombre) => {
+      const hs = historias.filter(
+        (h) => (h.responsable_diseño || h.responsable) === nombre,
+      );
+      const ps = publicaciones.filter((p) => p.responsable === nombre);
+      const total = hs.length + ps.length;
+      const publicadas =
+        hs.filter((h) => h.estado === "publicada").length +
+        ps.filter((p) => p.estado === "publicada").length;
+      return { nombre, total, publicadas };
+    })
+    .filter((f) => f.total > 0)
+    .sort((a, b) => b.total - a.total);
+
+  const PERIODOS = [
+    { id: "mes_actual", label: "Este mes" },
+    { id: "mes_pasado", label: "Mes pasado" },
+    { id: "ultimos_30", label: "Últimos 30 días" },
+  ];
+
+  const cardStyle = { padding: "16px", borderRadius: "8px", textAlign: "center" };
+
+  return (
+    <main aria-label="Render platform reportes equipo">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Reportes</span>
+          </div>
+          <div className="tag">Rendimiento del equipo</div>
+        </div>
+
+        <div className="content">
+          {error && (
+            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+              {error}
+            </div>
+          )}
+
+          <div className="tabs" style={{ marginBottom: "16px" }}>
+            {PERIODOS.map((p) => (
+              <span
+                key={p.id}
+                className={periodo === p.id ? "active" : ""}
+                onClick={() => setPeriodo(p.id)}
+                style={{ cursor: "pointer" }}
+              >
+                {p.label}
+              </span>
+            ))}
+          </div>
+
+          {cargando ? (
+            <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando reportes…</div>
+          ) : (
+            <>
+              <div className="section-label">1 · Salud del equipo — vista rápida</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px", marginBottom: "24px" }}>
+                <div style={{ ...cardStyle, background: "#e3f2fd" }}>
+                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#1565c0" }}>{totales.activas}</div>
+                  <div style={{ fontSize: "12px", color: "#1565c0" }}>Tareas activas</div>
+                </div>
+                <div style={{ ...cardStyle, background: "#e8f5e9" }}>
+                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#2e7d32" }}>{totales.terminadas}</div>
+                  <div style={{ fontSize: "12px", color: "#2e7d32" }}>Terminadas en el período</div>
+                </div>
+                <div style={{ ...cardStyle, background: "#fff3e0" }}>
+                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#e65100" }}>{totales.atrasadas}</div>
+                  <div style={{ fontSize: "12px", color: "#e65100" }}>Atrasadas hoy</div>
+                </div>
+                <div style={{ ...cardStyle, background: "#ffebee" }}>
+                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#c62828" }}>{totales.bloqueadas}</div>
+                  <div style={{ fontSize: "12px", color: "#c62828" }}>Bloqueadas</div>
+                </div>
+              </div>
+
+              <div className="section-label">2 · Rendimiento por empleado</div>
+              <div className="box" style={{ padding: 0, overflow: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "820px" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid #333", background: "#fafafa" }}>
+                      <th style={{ textAlign: "left", padding: "10px 12px", fontWeight: "600", fontSize: "12px" }}>Empleado</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Carga actual</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Terminadas</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Atrasadas</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Bloqueadas</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Cumplimiento</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Tiempo prom.</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Ritmo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filasOrdenadas.length === 0 && (
+                      <tr>
+                        <td colSpan={8} style={{ padding: "24px", textAlign: "center", color: "#999" }}>
+                          Sin datos de tareas todavía.
+                        </td>
+                      </tr>
+                    )}
+                    {filasOrdenadas.map((f) => (
+                      <React.Fragment key={f.nombre}>
+                        <tr
+                          style={{ borderBottom: "1px solid #eee", cursor: f.atrasadas.length > 0 ? "pointer" : "default" }}
+                          onClick={() =>
+                            f.atrasadas.length > 0 &&
+                            setDetalleDe(detalleDe === f.nombre ? null : f.nombre)
+                          }
+                        >
+                          <td style={{ padding: "10px 12px" }}>
+                            <div style={{ fontWeight: "600", fontSize: "13px" }}>{f.nombre}</div>
+                            {f.rol && (
+                              <div style={{ fontSize: "11px", color: "#999" }}>{ROL_LABELS[f.rol] || f.rol}</div>
+                            )}
+                          </td>
+                          <td style={{ padding: "10px", textAlign: "center", fontWeight: "600" }}>{f.carga}</td>
+                          <td style={{ padding: "10px", textAlign: "center", color: "#2e7d32", fontWeight: "600" }}>{f.terminadas}</td>
+                          <td style={{ padding: "10px", textAlign: "center" }}>
+                            {f.atrasadas.length > 0 ? (
+                              <span style={{ background: "#fff3e0", color: "#e65100", padding: "2px 8px", borderRadius: "10px", fontWeight: "700", fontSize: "12px" }}>
+                                {f.atrasadas.length} ▾
+                              </span>
+                            ) : (
+                              <span style={{ color: "#bbb" }}>0</span>
+                            )}
+                          </td>
+                          <td style={{ padding: "10px", textAlign: "center" }}>
+                            {f.bloqueadas > 0 ? (
+                              <span style={{ background: "#ffebee", color: "#c62828", padding: "2px 8px", borderRadius: "10px", fontWeight: "700", fontSize: "12px" }}>
+                                {f.bloqueadas}
+                              </span>
+                            ) : (
+                              <span style={{ color: "#bbb" }}>0</span>
+                            )}
+                          </td>
+                          <td style={{ padding: "10px", textAlign: "center" }}>
+                            {f.cumplimiento === null ? (
+                              <span style={{ color: "#bbb", fontSize: "12px" }}>Sin venc.</span>
+                            ) : (
+                              <>
+                                <div style={{ display: "inline-block", width: "56px", height: "6px", background: "#e0e0e0", borderRadius: "3px", overflow: "hidden", verticalAlign: "middle" }}>
+                                  <div
+                                    style={{
+                                      width: `${f.cumplimiento}%`,
+                                      height: "100%",
+                                      background: f.cumplimiento >= 80 ? "#4caf50" : f.cumplimiento >= 50 ? "#ff9800" : "#f44336",
+                                    }}
+                                  />
+                                </div>
+                                <div style={{ fontSize: "11px", marginTop: "2px", fontWeight: "600" }}>{f.cumplimiento}%</div>
+                              </>
+                            )}
+                          </td>
+                          <td style={{ padding: "10px", textAlign: "center", fontSize: "12px" }}>
+                            {f.tiempoPromedio !== null ? `${f.tiempoPromedio} días` : <span style={{ color: "#bbb" }}>—</span>}
+                          </td>
+                          <td style={{ padding: "10px", textAlign: "center", fontSize: "12px" }}>
+                            {f.productividad} /sem
+                          </td>
+                        </tr>
+                        {detalleDe === f.nombre &&
+                          f.atrasadas.map((t) => (
+                            <tr key={`det-${t.id}`} style={{ background: "#fffde7", borderBottom: "1px solid #f0f0f0" }}>
+                              <td colSpan={8} style={{ padding: "6px 12px 6px 32px", fontSize: "12px", color: "#795548" }}>
+                                ⏰ <strong>{t.titulo}</strong>
+                                {t.cliente_nombre ? ` · ${t.cliente_nombre}` : ""} · vencía {t.fecha_vencimiento} ·{" "}
+                                {t.estado === "bloqueada" ? "bloqueada" : "en curso"}
+                              </td>
+                            </tr>
+                          ))}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="caption" style={{ marginTop: "8px", marginBottom: "20px" }}>
+                Cumplimiento = tareas que vencían en el período y fueron terminadas. Ritmo = tareas terminadas por semana. Click en una fila con atrasadas para ver el detalle.
+              </div>
+
+              <div className="section-label">3 · Piezas asignadas por responsable</div>
+              <div className="box">
+                {piezasPorResponsable.length === 0 ? (
+                  <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>Sin piezas asignadas todavía.</div>
+                ) : (
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "2px solid #333" }}>
+                        <th style={{ textAlign: "left", padding: "10px 12px", fontWeight: "600", fontSize: "12px" }}>Responsable</th>
+                        <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Piezas asignadas</th>
+                        <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Publicadas</th>
+                        <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Avance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {piezasPorResponsable.map((f) => {
+                        const avance = f.total > 0 ? Math.round((f.publicadas / f.total) * 100) : 0;
+                        return (
+                          <tr key={f.nombre} style={{ borderBottom: "1px solid #eee" }}>
+                            <td style={{ padding: "10px 12px", fontWeight: "600", fontSize: "13px" }}>{f.nombre}</td>
+                            <td style={{ padding: "10px", textAlign: "center" }}>{f.total}</td>
+                            <td style={{ padding: "10px", textAlign: "center", color: "#2e7d32" }}>{f.publicadas}</td>
+                            <td style={{ padding: "10px", textAlign: "center" }}>
+                              <div style={{ display: "inline-block", width: "60px", height: "6px", background: "#e0e0e0", borderRadius: "3px", overflow: "hidden", verticalAlign: "middle" }}>
+                                <div
+                                  style={{
+                                    width: `${avance}%`,
+                                    height: "100%",
+                                    background: avance >= 70 ? "#4caf50" : avance >= 30 ? "#ff9800" : "#f44336",
+                                  }}
+                                />
+                              </div>
+                              <span style={{ fontSize: "11px", marginLeft: "6px" }}>{avance}%</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </main>
