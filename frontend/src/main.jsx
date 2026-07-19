@@ -371,6 +371,58 @@ function getEstadoPorObjetivo(objetivo) {
   return "verde";
 }
 
+function getPiezasAtrasadas(historias, publicaciones) {
+  const hoy = getHoyLocalISO();
+  const atrasadas = [
+    ...historias
+      .filter(
+        (h) =>
+          h.fecha_programada < hoy &&
+          h.estado !== "publicada" &&
+          h.estado !== "rechazada",
+      )
+      .map((h) => ({ ...h, tipo: "Historia", origen: "historia" })),
+    ...publicaciones
+      .filter(
+        (p) =>
+          p.fecha_programada < hoy &&
+          p.estado !== "publicada" &&
+          p.estado !== "rechazada",
+      )
+      .map((p) => ({ ...p, tipo: getTipoPublicacionLabel(p.tipo), origen: "publicacion" })),
+  ].sort((a, b) => new Date(a.fecha_programada) - new Date(b.fecha_programada));
+  return atrasadas;
+}
+
+function getPiezasBloqueadas(historias, publicaciones) {
+  const bloqueadas = [
+    ...historias
+      .filter((h) => h.estado === "bloqueada")
+      .map((h) => ({ ...h, tipo: "Historia", origen: "historia" })),
+    ...publicaciones
+      .filter((p) => p.estado === "bloqueada")
+      .map((p) => ({ ...p, tipo: getTipoPublicacionLabel(p.tipo), origen: "publicacion" })),
+  ];
+  return bloqueadas;
+}
+
+function getPublicacionesDeHoy(historias, publicaciones) {
+  const hoy = getHoyLocalISO();
+  const deHoy = [
+    ...historias
+      .filter((h) => h.fecha_programada && h.fecha_programada.startsWith(hoy))
+      .map((h) => ({ ...h, tipo: "Historia", origen: "historia" })),
+    ...publicaciones
+      .filter((p) => p.fecha_programada && p.fecha_programada.startsWith(hoy))
+      .map((p) => ({ ...p, tipo: getTipoPublicacionLabel(p.tipo), origen: "publicacion" })),
+  ].sort((a, b) => {
+    const timeA = a.fecha_programada.split(" ")[1] || "00:00";
+    const timeB = b.fecha_programada.split(" ")[1] || "00:00";
+    return timeA.localeCompare(timeB);
+  });
+  return deHoy;
+}
+
 function getEstadoLabel(estado) {
   return estado.charAt(0).toUpperCase() + estado.slice(1);
 }
@@ -4361,6 +4413,133 @@ function AgustinDashboard() {
             <div className="caption">
               → No es la cola completa (esa es de Franco). Solo lo escalado
               específicamente a Agustín.
+            </div>
+          </div>
+
+          <div className="section-label">4 · Piezas atrasadas</div>
+          <div className="box">
+            {(() => {
+              const atrasadas = getPiezasAtrasadas(historiasRaw, publicacionesRaw);
+              if (atrasadas.length === 0) {
+                return (
+                  <div className="caption">✅ No hay piezas atrasadas.</div>
+                );
+              }
+              return (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Tipo</th>
+                      <th>Pieza</th>
+                      <th>Vencía</th>
+                      <th>Días atrasada</th>
+                      <th>Estado actual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {atrasadas.map((pieza) => {
+                      const diasAtrasada = Math.floor(
+                        (new Date(getHoyLocalISO()) -
+                          new Date(pieza.fecha_programada)) /
+                          (1000 * 60 * 60 * 24),
+                      );
+                      return (
+                        <tr key={`${pieza.origen}-${pieza.id}`}>
+                          <td>{pieza.cliente_nombre ?? pieza.cliente_id}</td>
+                          <td>{pieza.tipo}</td>
+                          <td>{pieza.idea || pieza.titulo || "Sin título"}</td>
+                          <td>{pieza.fecha_programada}</td>
+                          <td style={{ color: "#d9534f", fontWeight: "bold" }}>
+                            {diasAtrasada} {diasAtrasada === 1 ? "día" : "días"}
+                          </td>
+                          <td>{pieza.estado}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              );
+            })()}
+            <div className="caption">
+              → Piezas que debían publicarse pero no lo hicieron. Revisar con
+              Franco.
+            </div>
+          </div>
+
+          <div className="section-label">5 · Bloqueos críticos</div>
+          <div className="box">
+            {(() => {
+              const bloqueadas = getPiezasBloqueadas(historiasRaw, publicacionesRaw);
+              if (bloqueadas.length === 0) {
+                return <div className="caption">✅ No hay piezas bloqueadas.</div>;
+              }
+              return (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Tipo</th>
+                      <th>Pieza</th>
+                      <th>Aclaraciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bloqueadas.map((pieza) => (
+                      <tr key={`${pieza.origen}-${pieza.id}`}>
+                        <td>{pieza.cliente_nombre ?? pieza.cliente_id}</td>
+                        <td>{pieza.tipo}</td>
+                        <td>{pieza.idea || pieza.titulo || "Sin título"}</td>
+                        <td>{pieza.aclaraciones || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            })()}
+            <div className="caption">
+              → Piezas con estado "bloqueada". Alguien las está esperando.
+            </div>
+          </div>
+
+          <div className="section-label">6 · Publicaciones de hoy</div>
+          <div className="box">
+            {(() => {
+              const deHoy = getPublicacionesDeHoy(historiasRaw, publicacionesRaw);
+              if (deHoy.length === 0) {
+                return (
+                  <div className="caption">
+                    ℹ️ No hay piezas programadas para hoy.
+                  </div>
+                );
+              }
+              return (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Hora</th>
+                      <th>Cliente</th>
+                      <th>Tipo</th>
+                      <th>Pieza</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deHoy.map((pieza) => (
+                      <tr key={`${pieza.origen}-${pieza.id}`}>
+                        <td>{pieza.fecha_programada.split(" ")[1] || "—"}</td>
+                        <td>{pieza.cliente_nombre ?? pieza.cliente_id}</td>
+                        <td>{pieza.tipo}</td>
+                        <td>{pieza.idea || pieza.titulo || "Sin título"}</td>
+                        <td>{pieza.estado}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            })()}
+            <div className="caption">
+              → Qué publica hoy. Revisar que esté aprobado y programado.
             </div>
           </div>
 
