@@ -1599,9 +1599,8 @@ function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
       { href: sesion?.usuario?.usuario === "agustin" ? "/agustin" : sesion?.usuario?.usuario === "franco" ? "/franco" : USUARIO_A_RUTA[sesion?.usuario?.usuario], label: "📌 Mi tablero" },
     ],
     herramientas: [
-      { href: "/calendario", label: "📅 Calendario de publicaciones" },
       { href: "/planificacion-historias", label: "🎯 Planificación de historias" },
-      { href: "/planificacion-publicaciones", label: "🎬 Planificación de publicaciones" },
+      { href: "/planificacion-publicaciones", label: "🎬 Publicaciones" },
       { href: "/reportes-historias", label: "📊 Reportes" },
       { href: "/piezas", label: "📋 Tareas" },
     ],
@@ -1740,7 +1739,9 @@ function App() {
       return <EquipoDashboard />;
     }
     if (path === "/calendario") {
-      return <CalendarioPage />;
+      // Alias histórico: el calendario ahora vive como pestaña dentro del
+      // módulo unificado de Publicaciones (no se rompen links guardados).
+      return <PublicacionesPage tabInicial="calendario" />;
     }
     if (path === "/calendario-estructura") {
       return <HistoriasPage initialTab="estructura" />;
@@ -1781,9 +1782,8 @@ function App() {
   const enlacesNav = [
     { href: "/", label: "Home" },
     { href: rutaPropia || "/", label: "Mi tablero" },
-    { href: "/calendario", label: "Calendario de publicaciones" },
     { href: "/planificacion-historias", label: "🎯 Planificación de historias" },
-    { href: "/planificacion-publicaciones", label: "🎬 Planificación de publicaciones" },
+    { href: "/planificacion-publicaciones", label: "🎬 Publicaciones" },
     { href: "/reportes-historias", label: "📊 Reportes" },
     { href: "/perfil", label: "Mi perfil" },
     { href: "/piezas", label: "📋 Tareas" },
@@ -1823,9 +1823,9 @@ function HomePage() {
       href: rutaPropia,
     },
     {
-      titulo: "Calendario de publicaciones",
-      desc: "Cuándo se publica cada pieza",
-      href: "/calendario",
+      titulo: "Publicaciones",
+      desc: "Calendario, planilla y lista operativa en un solo lugar",
+      href: "/planificacion-publicaciones",
     },
     {
       titulo: "Mi perfil",
@@ -1939,7 +1939,7 @@ function fechaISODesde(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function CalendarioPage() {
+function PublicacionesCalendarioTab({ onIrAPlanilla }) {
   const hoy = new Date();
   const [year, setYear] = useState(hoy.getFullYear());
   const [month, setMonth] = useState(hoy.getMonth());
@@ -1955,7 +1955,6 @@ function CalendarioPage() {
         setPiezas(
           publicaciones.map((p) => ({
             ...p,
-            origen: "publicacion",
             tipoLabel: getTipoPublicacionLabel(p.tipo),
           }))
         );
@@ -2001,136 +2000,137 @@ function CalendarioPage() {
   ];
 
   return (
-    <main aria-label="Render platform calendario">
-      <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Calendario</span>
-          </div>
-          <div className="tag">Calendario Editorial - Publicaciones</div>
-        </div>
+    <>
+      <div className="cal-toolbar">
+        <button className="btn" type="button" onClick={() => irMes(-1)}>
+          ◀ Mes anterior
+        </button>
+        <span className="cal-title">
+          {MESES[month]} {year}
+        </span>
+        <button className="btn" type="button" onClick={() => irMes(1)}>
+          Mes siguiente ▶
+        </button>
+      </div>
 
-        <div className="content">
-          <div className="cal-toolbar">
-            <button className="btn" type="button" onClick={() => irMes(-1)}>
-              ◀ Mes anterior
-            </button>
-            <span className="cal-title">
-              {MESES[month]} {year}
-            </span>
-            <button className="btn" type="button" onClick={() => irMes(1)}>
-              Mes siguiente ▶
-            </button>
-          </div>
+      <div className="tabs">
+        {filtros.map((f) => (
+          <span
+            key={f.key}
+            className={filtroTipo === f.key ? "active" : ""}
+            onClick={() => setFiltroTipo(f.key)}
+          >
+            {f.label}
+          </span>
+        ))}
+      </div>
 
-          <div className="tabs">
-            {filtros.map((f) => (
-              <span
-                key={f.key}
-                className={filtroTipo === f.key ? "active" : ""}
-                onClick={() => setFiltroTipo(f.key)}
+      {error && <div className="caption">{error}</div>}
+
+      <div className="cal-grid">
+        {DIAS_SEMANA.map((dia) => (
+          <div className="cal-dow" key={dia}>
+            {dia}
+          </div>
+        ))}
+        {semanas.map((semana, si) =>
+          semana.map((dia, di) => {
+            if (dia === null) {
+              return (
+                <div className="cal-cell empty" key={`${si}-${di}`}></div>
+              );
+            }
+            const iso = fechaISODesde(year, month, dia);
+            const items = porFecha[iso] || [];
+            return (
+              <div
+                className={`cal-cell ${iso === hoyISO ? "today" : ""}`}
+                key={`${si}-${di}`}
               >
-                {f.label}
-              </span>
-            ))}
-          </div>
-
-          {error && <div className="caption">{error}</div>}
-
-          <div className="cal-grid">
-            {DIAS_SEMANA.map((dia) => (
-              <div className="cal-dow" key={dia}>
-                {dia}
-              </div>
-            ))}
-            {semanas.map((semana, si) =>
-              semana.map((dia, di) => {
-                if (dia === null) {
-                  return (
-                    <div className="cal-cell empty" key={`${si}-${di}`}></div>
-                  );
-                }
-                const iso = fechaISODesde(year, month, dia);
-                const items = porFecha[iso] || [];
-                return (
+                <div className="cal-daynum">{dia}</div>
+                {items.map((pz) => (
                   <div
-                    className={`cal-cell ${iso === hoyISO ? "today" : ""}`}
-                    key={`${si}-${di}`}
+                    className={`cal-chip ${pz.estado}`}
+                    key={pz.id}
+                    onClick={() => setPiezaSel(pz)}
+                    title={`${pz.tipoLabel} · ${pz.cliente_nombre} · ${getEstadoHistoriaLabel(
+                      pz.estado,
+                    )}`}
                   >
-                    <div className="cal-daynum">{dia}</div>
-                    {items.map((pz) => (
-                      <div
-                        className={`cal-chip ${pz.estado}`}
-                        key={`${pz.origen}-${pz.id}`}
-                        onClick={() => setPiezaSel(pz)}
-                        title={`${pz.tipoLabel} · ${pz.cliente_nombre} · ${getEstadoHistoriaLabel(
-                          pz.estado,
-                        )}`}
-                      >
-                        {pz.tipoLabel[0]} · {pz.cliente_nombre}
-                      </div>
-                    ))}
+                    {pz.tipoLabel[0]} · {pz.cliente_nombre}
                   </div>
-                );
-              }),
-            )}
-          </div>
+                ))}
+              </div>
+            );
+          }),
+        )}
+      </div>
 
-          <div className="cal-legend">
-            <span className="lg-pend">Pendiente / en diseño</span>
-            <span className="lg-rev">En revisión</span>
-            <span className="lg-bloq">Bloqueada</span>
-            <span className="lg-pub">Publicada</span>
-          </div>
-          <div className="caption">
-            → Cada casilla muestra las piezas programadas ese día. La inicial
-            indica el tipo (H istoria, R eel, C arrusel, F lyer, V ideo).
-          </div>
-        </div>
+      <div className="cal-legend">
+        <span className="lg-pend">Pendiente / en diseño</span>
+        <span className="lg-rev">En revisión</span>
+        <span className="lg-bloq">Bloqueada</span>
+        <span className="lg-pub">Publicada</span>
+      </div>
+      <div className="caption">
+        → Cada casilla muestra las publicaciones programadas ese día. La
+        inicial indica el tipo (R video, C arrusel). Click en una publicación
+        para ver el detalle o pasar a editarla en la planilla.
       </div>
 
       {piezaSel && (
-        <CalendarioPiezaModal pieza={piezaSel} onClose={() => setPiezaSel(null)} />
-      )}
-    </main>
-  );
-}
-
-function CalendarioPiezaModal({ pieza, onClose }) {
-  return (
-    <div className="modal-overlay open" role="dialog" aria-modal="true">
-      <div className="modal">
-        <div className="modal-header">
-          <span>
-            {pieza.cliente_nombre} · {pieza.metadata?.Idea || "Sin idea cargada"}
-          </span>
-          <button className="modal-close" type="button" onClick={onClose}>
-            X
-          </button>
-        </div>
-        <div className="modal-body">
-          <div className="detail-grid">
-            <div className="detail-field">
-              <div className="detail-label">Tipo</div>
-              <div>{pieza.tipoLabel}</div>
+        <div className="modal-overlay open" role="dialog" aria-modal="true">
+          <div className="modal">
+            <div className="modal-header">
+              <span>
+                {piezaSel.cliente_nombre} · {piezaSel.idea || "Sin idea cargada"}
+              </span>
+              <button className="modal-close" type="button" onClick={() => setPiezaSel(null)}>
+                X
+              </button>
             </div>
-            <div className="detail-field">
-              <div className="detail-label">Estado</div>
-              <div>{getEstadoHistoriaLabel(pieza.estado)}</div>
-            </div>
-            <div className="detail-field">
-              <div className="detail-label">Fecha programada</div>
-              <div>{pieza.fecha_programada}</div>
-            </div>
-            <div className="detail-field">
-              <div className="detail-label">Responsable</div>
-              <div>{pieza.responsable}</div>
+            <div className="modal-body">
+              <div className="detail-grid">
+                <div className="detail-field">
+                  <div className="detail-label">Tipo</div>
+                  <div>{piezaSel.tipoLabel}</div>
+                </div>
+                <div className="detail-field">
+                  <div className="detail-label">Estado</div>
+                  <div>{getEstadoHistoriaLabel(piezaSel.estado)}</div>
+                </div>
+                <div className="detail-field">
+                  <div className="detail-label">Fecha programada</div>
+                  <div>{piezaSel.fecha_programada}</div>
+                </div>
+                <div className="detail-field">
+                  <div className="detail-label">Responsable</div>
+                  <div>{piezaSel.responsable || "—"}</div>
+                </div>
+                {piezaSel.copy && (
+                  <div className="detail-field">
+                    <div className="detail-label">Copy</div>
+                    <div>{piezaSel.copy}</div>
+                  </div>
+                )}
+              </div>
+              <div className="modal-actions">
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={() => {
+                    onIrAPlanilla(piezaSel.cliente_id);
+                    setPiezaSel(null);
+                  }}
+                >
+                  Editar en la planilla →
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      )}
+    </>
   );
 }
 
@@ -7030,23 +7030,37 @@ function PublicacionesPlanillaTab({ clienteId, clienteNombre }) {
   );
 }
 
-function PublicacionesPage() {
-  const [vista, setVista] = useState("general");
+function PublicacionesPage({ tabInicial = "calendario" }) {
+  const [tabPrincipal, setTabPrincipal] = useState(tabInicial);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [clientes, setClientes] = useState([]);
   const [errorClientes, setErrorClientes] = useState(null);
 
   useEffect(() => {
     fetch("/api/clientes")
       .then((r) => r.json())
-      .then((data) => setClientes(data))
+      .then((data) => {
+        setClientes(data);
+        if (data.length > 0) setClienteSeleccionado((prev) => prev ?? data[0].id);
+      })
       .catch((err) => {
         console.error("No se pudieron cargar clientes", err);
         setErrorClientes("No se pudieron cargar los clientes.");
       });
   }, []);
 
-  const clienteActual = clientes.find((c) => c.id === vista);
-  const clienteNombre = clienteActual?.nombre || "";
+  const irAPlanillaDeCliente = (clienteId) => {
+    setClienteSeleccionado(clienteId);
+    setTabPrincipal("planilla");
+  };
+
+  const clienteActual = clientes.find((c) => c.id === clienteSeleccionado);
+
+  const TABS_PRINCIPALES = [
+    { id: "calendario", label: "📅 Calendario" },
+    { id: "planilla", label: "📝 Planilla" },
+    { id: "lista", label: "📋 Lista operativa" },
+  ];
 
   return (
     <main aria-label="Render platform publicaciones">
@@ -7066,57 +7080,61 @@ function PublicacionesPage() {
             </div>
           )}
 
-          <div style={{ display: "flex", gap: "4px", overflowX: "auto", borderBottom: "2px solid #ddd", marginBottom: "16px", paddingBottom: "0" }}>
-            <button
-              type="button"
-              onClick={() => setVista("general")}
-              style={{
-                padding: "8px 18px",
-                border: "none",
-                borderBottom: vista === "general" ? "3px solid #1a73e8" : "3px solid transparent",
-                background: vista === "general" ? "#e8f0fe" : "transparent",
-                color: vista === "general" ? "#1a73e8" : "#555",
-                fontWeight: vista === "general" ? "700" : "500",
-                fontSize: "13px",
-                cursor: "pointer",
-                borderRadius: "6px 6px 0 0",
-                whiteSpace: "nowrap",
-              }}
-            >
-              📋 Vista general
-            </button>
-            {clientes.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setVista(c.id)}
-                style={{
-                  padding: "8px 18px",
-                  border: "none",
-                  borderBottom: vista === c.id ? "3px solid #1a73e8" : "3px solid transparent",
-                  background: vista === c.id ? "#e8f0fe" : "transparent",
-                  color: vista === c.id ? "#1a73e8" : "#555",
-                  fontWeight: vista === c.id ? "700" : "500",
-                  fontSize: "13px",
-                  cursor: "pointer",
-                  borderRadius: "6px 6px 0 0",
-                  whiteSpace: "nowrap",
-                }}
+          <div className="tabs" style={{ marginBottom: "16px" }}>
+            {TABS_PRINCIPALES.map((t) => (
+              <span
+                key={t.id}
+                className={tabPrincipal === t.id ? "active" : ""}
+                onClick={() => setTabPrincipal(t.id)}
+                style={{ cursor: "pointer" }}
               >
-                {c.nombre}
-              </button>
+                {t.label}
+              </span>
             ))}
           </div>
 
-          {vista === "general" && (
-            <PublicacionesGeneralTab clientes={clientes} onIrACliente={(clienteId) => setVista(clienteId)} />
+          {tabPrincipal === "calendario" && (
+            <PublicacionesCalendarioTab onIrAPlanilla={irAPlanillaDeCliente} />
           )}
-          {vista !== "general" && clienteActual && (
-            <PublicacionesPlanillaTab
-              key={`pub-${vista}`}
-              clienteId={vista}
-              clienteNombre={clienteNombre}
-            />
+
+          {tabPrincipal === "lista" && (
+            <PublicacionesGeneralTab clientes={clientes} onIrACliente={irAPlanillaDeCliente} />
+          )}
+
+          {tabPrincipal === "planilla" && (
+            <>
+              <div style={{ display: "flex", gap: "4px", overflowX: "auto", borderBottom: "2px solid #ddd", marginBottom: "16px", paddingBottom: "0" }}>
+                {clientes.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setClienteSeleccionado(c.id)}
+                    style={{
+                      padding: "8px 18px",
+                      border: "none",
+                      borderBottom: clienteSeleccionado === c.id ? "3px solid #1a73e8" : "3px solid transparent",
+                      background: clienteSeleccionado === c.id ? "#e8f0fe" : "transparent",
+                      color: clienteSeleccionado === c.id ? "#1a73e8" : "#555",
+                      fontWeight: clienteSeleccionado === c.id ? "700" : "500",
+                      fontSize: "13px",
+                      cursor: "pointer",
+                      borderRadius: "6px 6px 0 0",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {c.nombre}
+                  </button>
+                ))}
+              </div>
+
+              {clienteActual && (
+                <PublicacionesPlanillaTab
+                  key={`pub-${clienteSeleccionado}`}
+                  clienteId={clienteSeleccionado}
+                  clienteNombre={clienteActual.nombre}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
