@@ -861,6 +861,608 @@ function TareasAsignadasGenericas({ nombre }) {
       </div>
     </>
   );
+function PiezasTableroPage() {
+  const sesion = getSesion();
+  const API_BASE = "http://66.94.104.21:3001";
+  const token = sesion?.token;
+
+  const [piezas, setPiezas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const [vista, setVista] = useState("kanban"); // "kanban" o "tabla"
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [piezaSeleccionada, setPiezaSeleccionada] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+
+  // Filtros
+  const [filtroResponsable, setFiltroResponsable] = useState("");
+  const [filtroCliente, setFiltroCliente] = useState("");
+  const [filtroPrioridad, setFiltroPrioridad] = useState("");
+
+  // Estados posibles
+  const ESTADOS = [
+    "pendiente",
+    "en_diseño",
+    "en_edición",
+    "en_revisión",
+    "lista",
+    "publicada",
+    "bloqueada",
+  ];
+
+  const ESTADO_LABELS = {
+    pendiente: "Pendiente",
+    en_diseño: "En diseño",
+    en_edición: "En edición",
+    en_revisión: "En revisión",
+    lista: "Lista",
+    publicada: "Publicada",
+    bloqueada: "Bloqueada",
+  };
+
+  const TIPO_ICONOS = {
+    historia: "📖",
+    reel: "🎬",
+    carrusel: "📸",
+    flyer: "📋",
+    video: "📹",
+  };
+
+  // Cargar piezas al montar
+  useEffect(() => {
+    cargarPiezas();
+  }, []);
+
+  async function cargarPiezas() {
+    try {
+      setCargando(true);
+      setError(null);
+      const respuesta = await fetch(`${API_BASE}/piezas`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!respuesta.ok) {
+        throw new Error(`Error ${respuesta.status}: ${respuesta.statusText}`);
+      }
+
+      const datos = await respuesta.json();
+      setPiezas(datos);
+    } catch (err) {
+      setError(err.message);
+      console.error("Error cargando piezas:", err);
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  // Filtrar piezas según los filtros activos
+  const piezasFiltradas = piezas.filter((pieza) => {
+    if (filtroResponsable && pieza.responsable !== filtroResponsable)
+      return false;
+    if (filtroCliente && pieza.cliente_id !== parseInt(filtroCliente))
+      return false;
+    if (filtroPrioridad && pieza.prioridad !== filtroPrioridad) return false;
+    return true;
+  });
+
+  // Obtener responsables únicos
+  const responsables = [...new Set(piezas.map((p) => p.responsable).filter(Boolean))].sort();
+
+  // Obtener clientes únicos
+  const clientes = [
+    ...new Set(piezas.map((p) => ({ id: p.cliente_id, nombre: p.cliente_nombre })).filter((c) => c.id)),
+  ].sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+  // Prioridades
+  const prioridades = ["baja", "media", "alta"];
+
+  // Agrupar por estado
+  function agruparPorEstado() {
+    const grupos = {};
+    ESTADOS.forEach((estado) => {
+      grupos[estado] = [];
+    });
+    piezasFiltradas.forEach((pieza) => {
+      const estado = pieza.estado || "pendiente";
+      if (!grupos[estado]) {
+        grupos[estado] = [];
+      }
+      grupos[estado].push(pieza);
+    });
+    return grupos;
+  }
+
+  async function cambiarEstado(piezaId, nuevoEstado) {
+    try {
+      setEnviando(true);
+      const respuesta = await fetch(`${API_BASE}/piezas/${piezaId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ estado: nuevoEstado }),
+      });
+
+      if (!respuesta.ok) {
+        throw new Error(`Error ${respuesta.status}`);
+      }
+
+      // Actualizar pieza localmente
+      setPiezas(
+        piezas.map((p) =>
+          p.id === piezaId ? { ...p, estado: nuevoEstado } : p
+        )
+      );
+
+      // Actualizar modal si está abierto
+      if (piezaSeleccionada?.id === piezaId) {
+        setPiezaSeleccionada({ ...piezaSeleccionada, estado: nuevoEstado });
+      }
+    } catch (err) {
+      alert("Error al cambiar estado: " + err.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  function abrirModal(pieza) {
+    setPiezaSeleccionada(pieza);
+    setModalAbierto(true);
+  }
+
+  function cerrarModal() {
+    setModalAbierto(false);
+    setPiezaSeleccionada(null);
+  }
+
+  function obtenerColorPrioridad(prioridad) {
+    switch (prioridad) {
+      case "alta":
+        return "#ff6b6b";
+      case "media":
+        return "#ffa500";
+      case "baja":
+        return "#4ecdc4";
+      default:
+        return "#999";
+    }
+  }
+
+  if (cargando) {
+    return (
+      <main aria-label="Render platform piezas">
+        <div className="section-label">Tablero de Piezas</div>
+        <div className="box">
+          <div style={{ textAlign: "center", padding: "40px" }}>
+            Cargando piezas...
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main aria-label="Render platform piezas">
+      <div className="section-label">
+        📋 Tablero de Piezas ({piezasFiltradas.length})
+      </div>
+
+      <div className="box" style={{ marginBottom: "20px" }}>
+        {/* Controles */}
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            marginBottom: "20px",
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <button
+            className={`btn ${vista === "kanban" ? "btn-active" : ""}`}
+            onClick={() => setVista("kanban")}
+          >
+            Kanban
+          </button>
+          <button
+            className={`btn ${vista === "tabla" ? "btn-active" : ""}`}
+            onClick={() => setVista("tabla")}
+          >
+            Tabla
+          </button>
+          <span style={{ marginLeft: "20px", fontWeight: "bold" }}>
+            Filtros:
+          </span>
+
+          <select
+            value={filtroResponsable}
+            onChange={(e) => setFiltroResponsable(e.target.value)}
+            style={{ padding: "5px", fontSize: "12px" }}
+          >
+            <option value="">Todos los responsables</option>
+            {responsables.map((resp) => (
+              <option key={resp} value={resp}>
+                {resp}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filtroCliente}
+            onChange={(e) => setFiltroCliente(e.target.value)}
+            style={{ padding: "5px", fontSize: "12px" }}
+          >
+            <option value="">Todos los clientes</option>
+            {clientes.map((cliente) => (
+              <option key={cliente.id} value={cliente.id}>
+                {cliente.nombre}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filtroPrioridad}
+            onChange={(e) => setFiltroPrioridad(e.target.value)}
+            style={{ padding: "5px", fontSize: "12px" }}
+          >
+            <option value="">Todas las prioridades</option>
+            {prioridades.map((prio) => (
+              <option key={prio} value={prio}>
+                {prio.charAt(0).toUpperCase() + prio.slice(1)}
+              </option>
+            ))}
+          </select>
+
+          <button
+            className="btn"
+            onClick={() => {
+              setFiltroResponsable("");
+              setFiltroCliente("");
+              setFiltroPrioridad("");
+            }}
+            style={{ marginLeft: "auto" }}
+          >
+            Limpiar filtros
+          </button>
+        </div>
+
+        {error && (
+          <div style={{ color: "red", padding: "10px", marginBottom: "10px" }}>
+            Error: {error}
+          </div>
+        )}
+
+        {/* VISTA KANBAN */}
+        {vista === "kanban" && (
+          <div className="kanban">
+            {ESTADOS.map((estado) => {
+              const piezasDelEstado = agruparPorEstado()[estado];
+              return (
+                <div key={estado} className="kanban-column">
+                  <div className="kanban-header">
+                    <span className="font-weight-bold">
+                      {ESTADO_LABELS[estado]}
+                    </span>
+                    <span style={{ fontSize: "12px", color: "#999" }}>
+                      ({piezasDelEstado.length})
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    {piezasDelEstado.map((pieza) => (
+                      <div
+                        key={pieza.id}
+                        className="card"
+                        onClick={() => abrirModal(pieza)}
+                        style={{ cursor: "pointer" }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "start",
+                            marginBottom: "6px",
+                          }}
+                        >
+                          <div>
+                            <span style={{ fontSize: "16px" }}>
+                              {TIPO_ICONOS[pieza.tipo] || "📄"}
+                            </span>
+                            <span style={{ fontSize: "14px", fontWeight: "bold" }}>
+                              {pieza.tipo.charAt(0).toUpperCase() +
+                                pieza.tipo.slice(1)}
+                            </span>
+                          </div>
+                          <div
+                            style={{
+                              width: "10px",
+                              height: "10px",
+                              borderRadius: "50%",
+                              backgroundColor: obtenerColorPrioridad(
+                                pieza.prioridad
+                              ),
+                            }}
+                            title={pieza.prioridad}
+                          ></div>
+                        </div>
+
+                        <div className="cliente">
+                          {pieza.cliente_nombre || "Sin cliente"}
+                        </div>
+
+                        <div className="meta" style={{ marginTop: "6px" }}>
+                          <small>
+                            Responsable: <strong>{pieza.responsable}</strong>
+                          </small>
+                        </div>
+
+                        {pieza.fecha_programada && (
+                          <div className="meta">
+                            <small>
+                              Fecha:{" "}
+                              <strong>
+                                {new Date(
+                                  pieza.fecha_programada
+                                ).toLocaleDateString()}
+                              </strong>
+                            </small>
+                          </div>
+                        )}
+
+                        {pieza.idea && (
+                          <div className="meta" style={{ marginTop: "6px" }}>
+                            <small>
+                              <strong>Idea:</strong> {pieza.idea.substring(0, 50)}
+                              {pieza.idea.length > 50 ? "..." : ""}
+                            </small>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {piezasDelEstado.length === 0 && (
+                      <div
+                        style={{
+                          padding: "10px",
+                          textAlign: "center",
+                          fontSize: "12px",
+                          color: "#999",
+                        }}
+                      >
+                        Vacío
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* VISTA TABLA */}
+        {vista === "tabla" && (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", fontSize: "13px" }}>
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Cliente</th>
+                  <th>Responsable</th>
+                  <th>Idea</th>
+                  <th>Estado</th>
+                  <th>Prioridad</th>
+                  <th>Fecha programada</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {piezasFiltradas.map((pieza) => (
+                  <tr key={pieza.id}>
+                    <td>
+                      <span style={{ marginRight: "4px" }}>
+                        {TIPO_ICONOS[pieza.tipo] || "📄"}
+                      </span>
+                      {pieza.tipo}
+                    </td>
+                    <td>{pieza.cliente_nombre || "Sin cliente"}</td>
+                    <td>{pieza.responsable || "—"}</td>
+                    <td>{pieza.idea?.substring(0, 40) || "—"}</td>
+                    <td>{ESTADO_LABELS[pieza.estado]}</td>
+                    <td>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          padding: "2px 6px",
+                          borderRadius: "3px",
+                          backgroundColor: obtenerColorPrioridad(
+                            pieza.prioridad
+                          ),
+                          color: "white",
+                          fontSize: "11px",
+                        }}
+                      >
+                        {pieza.prioridad || "—"}
+                      </span>
+                    </td>
+                    <td>
+                      {pieza.fecha_programada
+                        ? new Date(pieza.fecha_programada).toLocaleDateString()
+                        : "—"}
+                    </td>
+                    <td>
+                      <button
+                        className="btn"
+                        onClick={() => abrirModal(pieza)}
+                        style={{ fontSize: "11px", padding: "4px 8px" }}
+                      >
+                        Ver
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {piezasFiltradas.length === 0 && (
+              <div style={{ padding: "20px", textAlign: "center", color: "#999" }}>
+                No hay piezas que coincidan con los filtros.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* MODAL */}
+      {modalAbierto && piezaSeleccionada && (
+        <div className="modal-overlay open">
+          <div className="modal">
+            <div className="modal-header">
+              <h2>
+                {TIPO_ICONOS[piezaSeleccionada.tipo] || "📄"}{" "}
+                {piezaSeleccionada.tipo}
+              </h2>
+              <button
+                className="modal-close"
+                onClick={cerrarModal}
+                aria-label="Cerrar modal"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "15px",
+                  marginBottom: "15px",
+                }}
+              >
+                <div>
+                  <label className="caption">Cliente</label>
+                  <div style={{ fontWeight: "bold" }}>
+                    {piezaSeleccionada.cliente_nombre || "Sin cliente"}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="caption">Responsable</label>
+                  <div style={{ fontWeight: "bold" }}>
+                    {piezaSeleccionada.responsable || "—"}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="caption">Prioridad</label>
+                  <div
+                    style={{
+                      display: "inline-block",
+                      padding: "4px 8px",
+                      borderRadius: "3px",
+                      backgroundColor: obtenerColorPrioridad(
+                        piezaSeleccionada.prioridad
+                      ),
+                      color: "white",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {piezaSeleccionada.prioridad || "—"}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="caption">Fecha programada</label>
+                  <div style={{ fontWeight: "bold" }}>
+                    {piezaSeleccionada.fecha_programada
+                      ? new Date(
+                          piezaSeleccionada.fecha_programada
+                        ).toLocaleDateString()
+                      : "—"}
+                  </div>
+                </div>
+              </div>
+
+              {piezaSeleccionada.idea && (
+                <div style={{ marginBottom: "15px" }}>
+                  <label className="caption">Idea</label>
+                  <div>{piezaSeleccionada.idea}</div>
+                </div>
+              )}
+
+              {piezaSeleccionada.copy && (
+                <div style={{ marginBottom: "15px" }}>
+                  <label className="caption">Copy</label>
+                  <div>{piezaSeleccionada.copy}</div>
+                </div>
+              )}
+
+              {piezaSeleccionada.material_referencia && (
+                <div style={{ marginBottom: "15px" }}>
+                  <label className="caption">Material de referencia</label>
+                  <div>
+                    <a
+                      href={piezaSeleccionada.material_referencia}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "#0066cc" }}
+                    >
+                      {piezaSeleccionada.material_referencia}
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {piezaSeleccionada.aclaraciones && (
+                <div style={{ marginBottom: "15px" }}>
+                  <label className="caption">Aclaraciones</label>
+                  <div>{piezaSeleccionada.aclaraciones}</div>
+                </div>
+              )}
+
+              <div style={{ marginBottom: "15px" }}>
+                <label className="caption">Estado actual</label>
+                <div style={{ marginTop: "8px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  {ESTADOS.map((estado) => (
+                    <button
+                      key={estado}
+                      className="btn"
+                      onClick={() => cambiarEstado(piezaSeleccionada.id, estado)}
+                      disabled={enviando}
+                      style={{
+                        padding: "6px 12px",
+                        fontSize: "12px",
+                        backgroundColor:
+                          piezaSeleccionada.estado === estado
+                            ? "#0066cc"
+                            : "#ddd",
+                        color:
+                          piezaSeleccionada.estado === estado ? "white" : "#333",
+                      }}
+                    >
+                      {ESTADO_LABELS[estado]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn"
+                onClick={cerrarModal}
+                style={{ flex: 1, marginRight: "10px" }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </main>
+  );
 }
 
 function App() {
@@ -882,7 +1484,7 @@ function App() {
 
   const esAdmin = sesion.usuario.rol === "admin";
   const rutaPropia = USUARIO_A_RUTA[sesion.usuario.usuario];
-  const rutasCompartidas = ["/", "/calendario", "/perfil"];
+  const rutasCompartidas = ["/", "/calendario", "/perfil", "/piezas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -923,6 +1525,9 @@ function App() {
       return <EmpleadosPage />;
     }
     if (path === "/nueva-tarea") {
+    if (path === "/piezas") {
+      return <PiezasTableroPage />;
+    }
       return <NuevaTareaPage />;
     }
     return <HomePage />;
@@ -933,6 +1538,7 @@ function App() {
     { href: rutaPropia || "/", label: "Mi tablero" },
     { href: "/calendario", label: "Calendario" },
     { href: "/perfil", label: "Mi perfil" },
+    { href: "/piezas", label: "📋 Tareas" },
   ];
   if (esAdmin) {
     enlacesNav.push({ href: "/equipo", label: "Equipo" });
