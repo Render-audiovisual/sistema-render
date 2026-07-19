@@ -205,7 +205,20 @@
       "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo cp /tmp/main.jsx /root/.openclaw/workspace/frontend/src/main.jsx && echo '\\\\''✅ main.jsx actualizado'\\\\''')",
       "Bash(scp -o \"StrictHostKeyChecking=no\" frontend/src/styles.css claude-render@66.94.104.21:/tmp/styles.css)",
       "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo cp /tmp/styles.css /root/.openclaw/workspace/frontend/src/styles.css && echo '\\\\''✅ styles.css actualizado'\\\\''')",
-      "Bash(awk 'NR==3626,NR==3900' \"/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx\")"
+      "Bash(awk 'NR==3626,NR==3900' \"/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx\")",
+      "Bash(git config *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 ' *)",
+      "Bash(ssh -o *)",
+      "Bash(scp -o \"StrictHostKeyChecking=no\" backend/src/server.js claude-render@66.94.104.21:/tmp/server.js)",
+      "Bash(curl -s http://66.94.104.21:3001/estructura)",
+      "Bash(curl -s http://66.94.104.21:3001/fechas-especiales)",
+      "Bash(curl -s http://66.94.104.21:3001/check-publicacion)",
+      "Bash(awk '/^function CalendarioPiezaModal/,/^function [A-Z]/ {print NR\": \"$0}' \"/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx\")",
+      "Bash(curl -s http://66.94.104.21:3001/workflow-historias)",
+      "Bash(curl -s http://66.94.104.21:3001/reportes/historias)",
+      "Bash(awk 'NR>=1954 && NR<=2250 {print NR\": \"$0}' \"/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx\")"
     ]
   }
 }
