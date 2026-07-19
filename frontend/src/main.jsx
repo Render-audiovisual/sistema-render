@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -5112,61 +5112,36 @@ const ESTADOS_HISTORIA = [
 
 const RESPONSABLES_EQUIPO = ["Augusto", "Luciano", "Germán", "Oriana", "Franco", "Agustín"];
 
-function CeldaEditable({ valor, placeholder, onGuardar, multiline }) {
-  const [editando, setEditando] = useState(false);
-  const [texto, setTexto] = useState(valor || "");
+// Orden de columnas navegables con Tab/Enter (coincide con el orden visual).
+const COLUMNAS_PLANILLA = ["fecha", "hora", "tipo", "copy", "material", "aclaraciones", "responsable", "estado"];
 
-  useEffect(() => {
-    setTexto(valor || "");
-  }, [valor]);
-
-  const guardar = () => {
-    setEditando(false);
-    if ((texto || "").trim() !== (valor || "").trim() && texto.trim() !== "") {
-      onGuardar(texto.trim());
-    } else {
-      setTexto(valor || "");
-    }
-  };
-
-  if (editando) {
-    return (
-      <input
-        autoFocus
-        value={texto}
-        onChange={(e) => setTexto(e.target.value)}
-        onBlur={guardar}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-          if (e.key === "Escape") {
-            setTexto(valor || "");
-            setEditando(false);
-          }
-        }}
-        style={{ width: "100%", padding: "4px 6px", fontSize: "13px", border: "2px solid #1a73e8", borderRadius: "3px", boxSizing: "border-box" }}
-      />
-    );
+// Convierte un valor pegado/tipeado en una columna al payload que espera
+// PATCH /api/historias/:id. Devuelve null si el valor no es válido para esa
+// columna (paste defensivo: mejor ignorar una celda que guardar basura).
+function payloadColumnaPlanilla(columna, valorCrudo) {
+  const valor = (valorCrudo || "").trim();
+  switch (columna) {
+    case "fecha":
+      return /^\d{4}-\d{2}-\d{2}$/.test(valor) ? { fecha_programada: valor } : null;
+    case "hora":
+      return { metadata: { hora: valor } };
+    case "tipo":
+      return { metadata: { tipo: valor } };
+    case "copy":
+      return { copy: valor };
+    case "material":
+      return { material_referencia: valor };
+    case "aclaraciones":
+      return { aclaraciones: valor };
+    case "responsable":
+      return RESPONSABLES_EQUIPO.includes(valor)
+        ? { responsable: valor, responsable_diseño: valor }
+        : null;
+    case "estado":
+      return ESTADOS_HISTORIA.some((e) => e.id === valor) ? { estado: valor } : null;
+    default:
+      return null;
   }
-
-  return (
-    <div
-      onClick={() => setEditando(true)}
-      title="Click para editar"
-      style={{
-        cursor: "text",
-        minHeight: "20px",
-        padding: "2px 4px",
-        fontSize: "13px",
-        color: texto ? "#222" : "#bbb",
-        whiteSpace: multiline ? "normal" : "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        borderRadius: "3px",
-      }}
-    >
-      {texto || placeholder}
-    </div>
-  );
 }
 
 function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
@@ -5176,6 +5151,8 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
   const [historias, setHistorias] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
+  const gridRef = useRef(null);
+  const enfocarProximoId = useRef(null);
 
   const cargar = () => {
     setCargando(true);
@@ -5194,16 +5171,44 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
 
   useEffect(cargar, [clienteId]);
 
-  const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const historiasDelMes = historias.filter(
-    (h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix),
-  );
-
-  const diasEnMes = new Date(year, month + 1, 0).getDate();
-  const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
   const hoyISO = getHoyLocalISO();
+  const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
 
-  const actualizarCampo = async (historiaId, campos) => {
+  const filasVisibles = historias
+    .filter((h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix))
+    .slice()
+    .sort((a, b) =>
+      (a.fecha_programada + (a.metadata?.hora || "")).localeCompare(
+        b.fecha_programada + (b.metadata?.hora || ""),
+      ),
+    );
+
+  const publicadas = filasVisibles.filter((h) => h.estado === "publicada").length;
+
+  // Foco tras crear una fila nueva: la agrega el efecto de abajo apenas
+  // aparece en la lista (el fetch de recarga puede tardar un instante).
+  useEffect(() => {
+    if (!enfocarProximoId.current) return;
+    const idx = filasVisibles.findIndex((h) => h.id === enfocarProximoId.current);
+    if (idx === -1) return;
+    enfocarProximoId.current = null;
+    requestAnimationFrame(() => enfocarCelda(idx, "fecha"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historias]);
+
+  const actualizarLocal = (historiaId, campos) => {
+    setHistorias((prev) =>
+      prev.map((h) => {
+        if (h.id !== historiaId) return h;
+        const actualizado = { ...h, ...campos };
+        if (campos.metadata) actualizado.metadata = { ...(h.metadata || {}), ...campos.metadata };
+        return actualizado;
+      }),
+    );
+  };
+
+  const guardarEnServidor = async (historiaId, campos) => {
     try {
       const res = await fetch(`/api/historias/${historiaId}`, {
         method: "PATCH",
@@ -5211,16 +5216,23 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
         body: JSON.stringify(campos),
       });
       if (!res.ok) throw new Error("No se pudo guardar");
-      setHistorias((prev) =>
-        prev.map((h) => (h.id === historiaId ? { ...h, ...campos } : h)),
-      );
     } catch (err) {
       console.error("Error guardando", err);
-      setError("No se pudo guardar el cambio.");
+      setError("No se pudo guardar un cambio — reintentá.");
     }
   };
 
-  const crearHistoria = async (iso) => {
+  // onBlur de las celdas de texto: recorta espacios y sincroniza el
+  // estado local con lo mismo que se manda al servidor (evita que quede
+  // un valor con espacios en el input mientras la DB ya tiene la versión
+  // recortada).
+  const confirmarCampoTexto = (historiaId, campos) => {
+    actualizarLocal(historiaId, campos);
+    guardarEnServidor(historiaId, campos);
+  };
+
+  const crearHistoria = async () => {
+    const iso = mesPrefix === hoyISO.slice(0, 7) ? hoyISO : `${mesPrefix}-01`;
     try {
       const res = await fetch("/api/piezas", {
         method: "POST",
@@ -5235,6 +5247,8 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
         }),
       });
       if (!res.ok) throw new Error("No se pudo crear");
+      const creada = await res.json();
+      enfocarProximoId.current = creada.id;
       cargar();
     } catch (err) {
       console.error("Error creando historia", err);
@@ -5245,14 +5259,31 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
   const borrarHistoria = async (historiaId) => {
     if (!window.confirm("¿Eliminar esta historia de la planilla?")) return;
     try {
-      const res = await fetch(`/api/historias/${historiaId}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/historias/${historiaId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("No se pudo eliminar");
       setHistorias((prev) => prev.filter((h) => h.id !== historiaId));
     } catch (err) {
       console.error("Error eliminando historia", err);
       setError("No se pudo eliminar la historia.");
+    }
+  };
+
+  const copiarFila = async (h) => {
+    const est = ESTADOS_HISTORIA.find((e) => e.id === h.estado);
+    const linea = [
+      h.fecha_programada || "",
+      h.metadata?.hora || "",
+      h.metadata?.tipo || "",
+      h.copy || "",
+      h.material_referencia || "",
+      h.aclaraciones || "",
+      h.responsable_diseño || h.responsable || "",
+      est?.label || h.estado || "",
+    ].join("\t");
+    try {
+      await navigator.clipboard.writeText(linea);
+    } catch (err) {
+      console.error("No se pudo copiar la fila", err);
     }
   };
 
@@ -5270,25 +5301,65 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
     setYear(y);
   };
 
-  const filas = [];
-  for (let dia = 1; dia <= diasEnMes; dia++) {
-    const iso = fechaISODesde(year, month, dia);
-    const delDia = historiasDelMes.filter((h) =>
-      h.fecha_programada.startsWith(iso),
+  const enfocarCelda = (rowIndex, columna) => {
+    const el = gridRef.current?.querySelector(
+      `[data-cell="${rowIndex}:${columna}"]`,
     );
-    if (delDia.length === 0) {
-      filas.push({ vacia: true, dia, iso });
-    } else {
-      delDia.forEach((h, i) => {
-        filas.push({ vacia: false, dia, iso, historia: h, primera: i === 0, cantidad: delDia.length });
-      });
+    if (!el) return;
+    el.focus();
+    if (typeof el.select === "function") el.select();
+  };
+
+  // Enter mueve a la misma columna, fila de abajo (como Sheets/Excel).
+  const manejarEnterOTab = (e, rowIndex, columna) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.currentTarget.blur();
+      enfocarCelda(rowIndex + 1, columna);
     }
-  }
+    // Tab usa el orden natural del DOM — no hace falta manejarlo a mano.
+  };
 
-  const publicadas = historiasDelMes.filter((h) => h.estado === "publicada").length;
+  // Pegado multi-celda: si el portapapeles trae tabs/saltos de línea (un
+  // bloque copiado de Sheets), lo distribuye sobre las filas/columnas
+  // existentes a partir de la celda activa. Un valor suelto usa el paste
+  // nativo del input y no pasa por acá.
+  const manejarPaste = (e, rowIndex, columna) => {
+    const texto = e.clipboardData.getData("text/plain");
+    if (!texto.includes("\t") && !texto.includes("\n")) return;
+    e.preventDefault();
 
-  const thStyle = { textAlign: "left", padding: "8px 10px", fontWeight: "600", fontSize: "12px", color: "#555", borderBottom: "2px solid #333", background: "#fafafa", position: "sticky", top: 0 };
-  const tdStyle = { padding: "5px 10px", borderBottom: "1px solid #eee", verticalAlign: "middle" };
+    const filasTexto = texto.replace(/\r/g, "").split("\n");
+    while (filasTexto.length > 1 && filasTexto[filasTexto.length - 1] === "") {
+      filasTexto.pop();
+    }
+
+    const colInicio = COLUMNAS_PLANILLA.indexOf(columna);
+
+    filasTexto.forEach((filaTexto, dRow) => {
+      const historiaObjetivo = filasVisibles[rowIndex + dRow];
+      if (!historiaObjetivo) return;
+
+      const valores = filaTexto.split("\t");
+      let payload = {};
+      valores.forEach((valorCelda, dCol) => {
+        const colObjetivo = COLUMNAS_PLANILLA[colInicio + dCol];
+        if (!colObjetivo) return;
+        const campo = payloadColumnaPlanilla(colObjetivo, valorCelda);
+        if (!campo) return;
+        payload = {
+          ...payload,
+          ...campo,
+          metadata: { ...(payload.metadata || {}), ...(campo.metadata || {}) },
+        };
+      });
+
+      if (Object.keys(payload).length > 0) {
+        actualizarLocal(historiaObjetivo.id, payload);
+        guardarEnServidor(historiaObjetivo.id, payload);
+      }
+    });
+  };
 
   return (
     <>
@@ -5302,13 +5373,13 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
         </div>
         <div style={{ display: "flex", gap: "8px", fontSize: "12px" }}>
           <span style={{ padding: "4px 10px", background: "#eceff1", borderRadius: "12px" }}>
-            {historiasDelMes.length} planificadas
+            {filasVisibles.length} planificadas
           </span>
           <span style={{ padding: "4px 10px", background: "#e8f5e9", color: "#2e7d32", borderRadius: "12px" }}>
             {publicadas} publicadas
           </span>
           <span style={{ padding: "4px 10px", background: "#fff3e0", color: "#e65100", borderRadius: "12px" }}>
-            {historiasDelMes.length - publicadas} pendientes
+            {filasVisibles.length - publicadas} pendientes
           </span>
         </div>
       </div>
@@ -5322,128 +5393,169 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
       {cargando ? (
         <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando planilla…</div>
       ) : (
-        <div className="box" style={{ padding: 0, overflow: "auto", maxHeight: "70vh" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "900px" }}>
+        <div className="box" style={{ padding: 0, overflow: "auto", maxHeight: "70vh" }} ref={gridRef}>
+          <table className="sheet-table">
             <thead>
               <tr>
-                <th style={{ ...thStyle, width: "70px" }}>Día</th>
-                <th style={{ ...thStyle, width: "22%" }}>Idea</th>
-                <th style={{ ...thStyle, width: "28%" }}>Copy</th>
-                <th style={{ ...thStyle, width: "15%" }}>Material</th>
-                <th style={{ ...thStyle, width: "110px" }}>Responsable</th>
-                <th style={{ ...thStyle, width: "120px" }}>Estado</th>
-                <th style={{ ...thStyle, width: "60px" }}></th>
+                <th style={{ width: "56px" }}>Día</th>
+                <th style={{ width: "120px" }}>Fecha</th>
+                <th style={{ width: "80px" }}>Hora</th>
+                <th style={{ width: "130px" }}>Tipo</th>
+                <th style={{ width: "24%" }}>Copy</th>
+                <th style={{ width: "14%" }}>Material</th>
+                <th style={{ width: "18%" }}>Observaciones</th>
+                <th style={{ width: "110px" }}>Responsable</th>
+                <th style={{ width: "120px" }}>Estado</th>
+                <th style={{ width: "56px" }}></th>
               </tr>
             </thead>
             <tbody>
-              {filas.map((fila, idx) => {
-                const fecha = new Date(year, month, fila.dia);
+              {filasVisibles.length === 0 && (
+                <tr>
+                  <td colSpan={10} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
+                    Sin historias planificadas este mes todavía.
+                  </td>
+                </tr>
+              )}
+              {filasVisibles.map((h, rowIndex) => {
+                const fecha = new Date(`${h.fecha_programada}T00:00:00`);
                 const dow = fecha.getDay();
                 const esFinde = dow === 0 || dow === 6;
-                const esHoy = fila.iso === hoyISO;
-                const bgFila = esHoy ? "#e3f2fd" : esFinde ? "#f7f7f7" : "#fff";
-
-                if (fila.vacia) {
-                  return (
-                    <tr key={`v-${fila.iso}`} style={{ background: bgFila }}>
-                      <td style={{ ...tdStyle, fontWeight: esHoy ? "700" : "600", color: esFinde ? "#999" : "#333" }}>
-                        {fila.dia} <span style={{ fontSize: "11px", color: "#999" }}>{LETRAS_DIA[dow]}</span>
-                      </td>
-                      <td style={tdStyle} colSpan={5}>
-                        <span style={{ color: "#ccc", fontSize: "12px" }}>—</span>
-                      </td>
-                      <td style={tdStyle}>
-                        <button
-                          type="button"
-                          onClick={() => crearHistoria(fila.iso)}
-                          title="Agregar historia este día"
-                          style={{ border: "1px dashed #bbb", background: "none", borderRadius: "4px", cursor: "pointer", padding: "2px 8px", color: "#888", fontSize: "13px" }}
-                        >
-                          +
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                }
-
-                const h = fila.historia;
+                const esHoy = h.fecha_programada === hoyISO;
                 const est = ESTADOS_HISTORIA.find((e) => e.id === h.estado) || ESTADOS_HISTORIA[0];
+                const bgFila = esHoy ? "#e3f2fd" : esFinde ? "#fafafa" : undefined;
 
                 return (
                   <tr key={h.id} style={{ background: bgFila }}>
-                    <td style={{ ...tdStyle, fontWeight: esHoy ? "700" : "600", color: esFinde ? "#999" : "#333" }}>
-                      {fila.primera ? (
-                        <>
-                          {fila.dia} <span style={{ fontSize: "11px", color: "#999" }}>{LETRAS_DIA[dow]}</span>
-                          {fila.cantidad > 1 && (
-                            <span style={{ fontSize: "10px", color: "#1a73e8", marginLeft: "4px" }}>×{fila.cantidad}</span>
-                          )}
-                        </>
-                      ) : (
-                        <span style={{ fontSize: "11px", color: "#bbb" }}>↳</span>
-                      )}
+                    <td style={{ padding: "6px 10px", fontWeight: esHoy ? "700" : "600", color: esFinde ? "#999" : "#333", fontSize: "12px" }}>
+                      {LETRAS_DIA[dow]}
                     </td>
-                    <td style={tdStyle}>
-                      <CeldaEditable
-                        valor={h.idea}
-                        placeholder="Escribir idea…"
-                        onGuardar={(v) => actualizarCampo(h.id, { idea: v })}
+                    <td>
+                      <input
+                        type="date"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:fecha`}
+                        value={h.fecha_programada || ""}
+                        onChange={(e) => actualizarLocal(h.id, { fecha_programada: e.target.value })}
+                        onBlur={(e) => guardarEnServidor(h.id, { fecha_programada: e.target.value })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "fecha")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "fecha")}
                       />
                     </td>
-                    <td style={tdStyle}>
-                      <CeldaEditable
-                        valor={h.copy}
+                    <td>
+                      <input
+                        type="text"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:hora`}
+                        placeholder="—"
+                        value={h.metadata?.hora || ""}
+                        onChange={(e) => actualizarLocal(h.id, { metadata: { hora: e.target.value } })}
+                        onBlur={(e) => confirmarCampoTexto(h.id, { metadata: { hora: e.target.value.trim() } })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "hora")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "hora")}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:tipo`}
+                        placeholder="Testimonio, promo…"
+                        value={h.metadata?.tipo || ""}
+                        onChange={(e) => actualizarLocal(h.id, { metadata: { tipo: e.target.value } })}
+                        onBlur={(e) => confirmarCampoTexto(h.id, { metadata: { tipo: e.target.value.trim() } })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "tipo")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "tipo")}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:copy`}
                         placeholder="Escribir copy…"
-                        multiline
-                        onGuardar={(v) => actualizarCampo(h.id, { copy: v })}
+                        value={h.copy || ""}
+                        onChange={(e) => actualizarLocal(h.id, { copy: e.target.value })}
+                        onBlur={(e) => confirmarCampoTexto(h.id, { copy: e.target.value.trim() })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "copy")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "copy")}
                       />
                     </td>
-                    <td style={tdStyle}>
-                      <CeldaEditable
-                        valor={h.material_referencia}
+                    <td>
+                      <input
+                        type="text"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:material`}
                         placeholder="Link…"
-                        onGuardar={(v) => actualizarCampo(h.id, { material_referencia: v })}
+                        value={h.material_referencia || ""}
+                        onChange={(e) => actualizarLocal(h.id, { material_referencia: e.target.value })}
+                        onBlur={(e) => confirmarCampoTexto(h.id, { material_referencia: e.target.value.trim() })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "material")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "material")}
                       />
                     </td>
-                    <td style={tdStyle}>
+                    <td>
+                      <input
+                        type="text"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:aclaraciones`}
+                        placeholder="—"
+                        value={h.aclaraciones || ""}
+                        onChange={(e) => actualizarLocal(h.id, { aclaraciones: e.target.value })}
+                        onBlur={(e) => confirmarCampoTexto(h.id, { aclaraciones: e.target.value.trim() })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "aclaraciones")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "aclaraciones")}
+                      />
+                    </td>
+                    <td>
                       <select
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:responsable`}
                         value={h.responsable_diseño || h.responsable || "Augusto"}
-                        onChange={(e) =>
-                          actualizarCampo(h.id, { responsable: e.target.value, responsable_diseño: e.target.value })
-                        }
-                        style={{ fontSize: "12px", padding: "3px", border: "1px solid #ddd", borderRadius: "3px", width: "100%" }}
+                        onChange={(e) => {
+                          const campos = { responsable: e.target.value, responsable_diseño: e.target.value };
+                          actualizarLocal(h.id, campos);
+                          guardarEnServidor(h.id, campos);
+                        }}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "responsable")}
                       >
                         {RESPONSABLES_EQUIPO.map((r) => (
                           <option key={r} value={r}>{r}</option>
                         ))}
                       </select>
                     </td>
-                    <td style={tdStyle}>
+                    <td>
                       <select
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:estado`}
                         value={h.estado}
-                        onChange={(e) => actualizarCampo(h.id, { estado: e.target.value })}
-                        style={{ fontSize: "12px", padding: "3px 6px", borderRadius: "10px", width: "100%", border: "none", background: est.bg, color: est.fg, fontWeight: "600", cursor: "pointer" }}
+                        onChange={(e) => {
+                          actualizarLocal(h.id, { estado: e.target.value });
+                          guardarEnServidor(h.id, { estado: e.target.value });
+                        }}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "estado")}
+                        style={{ background: est.bg, color: est.fg, fontWeight: "600", border: "1px solid transparent" }}
                       >
                         {ESTADOS_HISTORIA.map((e) => (
                           <option key={e.id} value={e.id}>{e.label}</option>
                         ))}
                       </select>
                     </td>
-                    <td style={tdStyle}>
-                      <div style={{ display: "flex", gap: "4px" }}>
+                    <td>
+                      <div className="sheet-row-actions">
                         <button
                           type="button"
-                          onClick={() => crearHistoria(fila.iso)}
-                          title="Agregar otra historia este día"
-                          style={{ border: "none", background: "none", cursor: "pointer", color: "#888", fontSize: "13px", padding: "2px" }}
+                          className="sheet-icon-btn"
+                          onClick={() => copiarFila(h)}
+                          title="Copiar fila (para pegar en otra fila o en Sheets)"
                         >
-                          +
+                          ⧉
                         </button>
                         <button
                           type="button"
+                          className="sheet-icon-btn"
                           onClick={() => borrarHistoria(h.id)}
                           title="Eliminar"
-                          style={{ border: "none", background: "none", cursor: "pointer", fontSize: "12px", padding: "2px" }}
                         >
                           🗑
                         </button>
@@ -5452,13 +5564,20 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
                   </tr>
                 );
               })}
+              <tr>
+                <td colSpan={10} style={{ padding: 0 }}>
+                  <button type="button" className="sheet-add-row" onClick={crearHistoria}>
+                    <span style={{ fontSize: "15px" }}>+</span> Agregar historia
+                  </button>
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
       )}
 
       <div className="caption" style={{ marginTop: "10px" }}>
-        Planilla de {clienteNombre} · Click en cualquier celda para editar · "+" agrega una historia en ese día.
+        Planilla de {clienteNombre} · Click en una celda para escribir · Tab / Enter para moverte · pegá bloques copiados de Sheets directamente sobre la grilla.
       </div>
     </>
   );

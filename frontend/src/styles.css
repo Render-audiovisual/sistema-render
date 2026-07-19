@@ -1178,3 +1178,106 @@ select:focus {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* ---- Grilla editable (planilla de historias, estilo Sheets) ---- */
+.sheet-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  min-width: 1050px;
+  width: 100%;
+}
+
+.sheet-table th {
+  background: #f8f9fa;
+  border-bottom: 2px solid #333;
+  border-right: 1px solid #e8e8e8;
+  color: #555;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 8px 10px;
+  position: sticky;
+  text-align: left;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 1;
+}
+
+.sheet-table td {
+  border-bottom: 1px solid #eee;
+  border-right: 1px solid #eee;
+  padding: 0;
+  vertical-align: middle;
+}
+
+.sheet-cell {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  width: 100%;
+}
+
+.sheet-cell:hover {
+  border-color: #ddd;
+}
+
+.sheet-cell:focus {
+  background: #fff;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 1px #1a73e8;
+  outline: none;
+  position: relative;
+  z-index: 2;
+}
+
+select.sheet-cell {
+  cursor: pointer;
+}
+
+.sheet-row-actions {
+  align-items: center;
+  display: flex;
+  gap: 2px;
+  justify-content: center;
+  opacity: 0.35;
+  transition: opacity 0.15s;
+}
+
+tr:hover .sheet-row-actions {
+  opacity: 1;
+}
+
+.sheet-icon-btn {
+  background: none;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 6px;
+}
+
+.sheet-icon-btn:hover {
+  background: #eee;
+}
+
+.sheet-add-row {
+  align-items: center;
+  background: none;
+  border: none;
+  color: #777;
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: 6px;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.sheet-add-row:hover {
+  background: #f5f5f5;
+  color: #1a73e8;
+}
