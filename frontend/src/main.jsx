@@ -5866,6 +5866,196 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
   );
 }
 
+function HistoriasChecklistPublicadasTab({ clienteId, clienteNombre }) {
+  const hoy = new Date();
+  const [year, setYear] = useState(hoy.getFullYear());
+  const [month, setMonth] = useState(hoy.getMonth());
+  const [historias, setHistorias] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const [guardandoId, setGuardandoId] = useState(null);
+
+  const cargar = () => {
+    setCargando(true);
+    fetch("/api/historias")
+      .then((r) => r.json())
+      .then((data) => {
+        setHistorias(data.filter((h) => h.cliente_id === clienteId));
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("Error cargando checklist de historias", err);
+        setError("No se pudo cargar el checklist de historias.");
+      })
+      .finally(() => setCargando(false));
+  };
+
+  useEffect(cargar, [clienteId]);
+
+  const hoyISO = getHoyLocalISO();
+  const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
+
+  const filasVisibles = historias
+    .filter((h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix))
+    .slice()
+    .sort((a, b) =>
+      (a.fecha_programada + (a.metadata?.hora || "")).localeCompare(
+        b.fecha_programada + (b.metadata?.hora || ""),
+      ),
+    );
+
+  const publicadas = filasVisibles.filter((h) => h.estado === "publicada").length;
+  const pendientes = filasVisibles.length - publicadas;
+  const vencidas = filasVisibles.filter(
+    (h) => h.estado !== "publicada" && h.fecha_programada < hoyISO,
+  ).length;
+
+  const irMes = (delta) => {
+    let m = month + delta;
+    let y = year;
+    if (m < 0) {
+      m = 11;
+      y -= 1;
+    } else if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+    setMonth(m);
+    setYear(y);
+  };
+
+  const marcarPublicada = async (historiaId, publicada) => {
+    const nuevoEstado = publicada ? "publicada" : "pendiente";
+    setGuardandoId(historiaId);
+    setHistorias((prev) =>
+      prev.map((h) => (h.id === historiaId ? { ...h, estado: nuevoEstado } : h)),
+    );
+    try {
+      const res = await fetch(`/api/historias/${historiaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ estado: nuevoEstado }),
+      });
+      if (!res.ok) throw new Error("No se pudo guardar");
+      setError(null);
+    } catch (err) {
+      console.error("Error actualizando checklist", err);
+      setError("No se pudo actualizar el checklist. Reintentá.");
+      cargar();
+    } finally {
+      setGuardandoId(null);
+    }
+  };
+
+  return (
+    <>
+      <div className="sheet-toolbar">
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
+          <strong className="sheet-title">
+            {MESES[month]} {year}
+          </strong>
+          <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
+        </div>
+        <div className="sheet-stats">
+          <span>{filasVisibles.length} historias</span>
+          <span className="ok">{publicadas} publicadas</span>
+          <span className="warn">{pendientes} pendientes</span>
+          {vencidas > 0 && <span className="danger">{vencidas} vencidas</span>}
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+          {error}
+        </div>
+      )}
+
+      {cargando ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando checklist…</div>
+      ) : (
+        <div className="sheet-frame">
+          <div className="sheet-namebar">CHECKHISTORIAS · {clienteNombre}</div>
+          <table className="sheet-table sheet-checklist-table">
+            <thead>
+              <tr>
+                <th style={{ width: "56px" }}>Día</th>
+                <th style={{ width: "120px" }}>Fecha</th>
+                <th style={{ width: "80px" }}>Hora</th>
+                <th style={{ width: "130px" }}>Tipo</th>
+                <th>Historia / copy</th>
+                <th style={{ width: "120px" }}>Responsable</th>
+                <th style={{ width: "128px" }}>Publicado</th>
+                <th style={{ width: "120px" }}>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filasVisibles.length === 0 && (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
+                    Sin historias planificadas este mes todavía.
+                  </td>
+                </tr>
+              )}
+              {filasVisibles.map((h) => {
+                const fecha = new Date(`${h.fecha_programada}T00:00:00`);
+                const dow = fecha.getDay();
+                const publicada = h.estado === "publicada";
+                const vencida = !publicada && h.fecha_programada < hoyISO;
+                const est = ESTADOS_HISTORIA.find((e) => e.id === h.estado) || ESTADOS_HISTORIA[0];
+
+                return (
+                  <tr
+                    key={h.id}
+                    className={publicada ? "sheet-row-ok" : vencida ? "sheet-row-danger" : undefined}
+                  >
+                    <td style={{ padding: "6px 10px", fontWeight: "700", color: dow === 0 || dow === 6 ? "#999" : "#333", fontSize: "12px" }}>
+                      {LETRAS_DIA[dow]}
+                    </td>
+                    <td style={{ padding: "6px 10px", fontSize: "12px" }}>{h.fecha_programada}</td>
+                    <td style={{ padding: "6px 10px", fontSize: "12px" }}>{h.metadata?.hora || "—"}</td>
+                    <td style={{ padding: "6px 10px", fontSize: "12px" }}>{h.metadata?.tipo || "Historia"}</td>
+                    <td style={{ padding: "6px 10px", fontSize: "13px", color: h.copy || h.idea ? "#222" : "#aaa" }}>
+                      {h.copy || h.idea || "Sin copy cargado"}
+                    </td>
+                    <td style={{ padding: "6px 10px", fontSize: "12px" }}>
+                      {h.responsable_diseño || h.responsable || "—"}
+                    </td>
+                    <td className="sheet-check-cell">
+                      <label className="sheet-check">
+                        <input
+                          type="checkbox"
+                          checked={publicada}
+                          disabled={guardandoId === h.id}
+                          onChange={(e) => marcarPublicada(h.id, e.target.checked)}
+                        />
+                        <span>{publicada ? "OK" : "Marcar"}</span>
+                      </label>
+                    </td>
+                    <td style={{ padding: "6px 10px" }}>
+                      <span
+                        className="sheet-status-pill"
+                        style={{ background: est.bg, color: est.fg }}
+                      >
+                        {publicada ? "Publicada" : vencida ? "Vencida" : est.label}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="caption" style={{ marginTop: "10px" }}>
+        Checklist de historias publicadas de {clienteNombre}
+      </div>
+    </>
+  );
+}
+
 function HistoriasTableroTab({ clienteId }) {
   const [historias, setHistorias] = useState([]);
   const [error, setError] = useState(null);
@@ -6239,7 +6429,7 @@ function FlyersMigrarBanner({ onMigrado }) {
 }
 
 function HistoriasPage({ initialTab = "planilla" }) {
-  const [tab, setTab] = useState(initialTab);
+  const [vista, setVista] = useState(initialTab === "checklist" ? "checklist" : "planilla");
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [errorClientes, setErrorClientes] = useState(null);
@@ -6305,9 +6495,34 @@ function HistoriasPage({ initialTab = "planilla" }) {
             ))}
           </div>
 
-          {clienteSeleccionado && (
+          <div className="sheet-view-tabs">
+            <button
+              type="button"
+              className={vista === "planilla" ? "active" : ""}
+              onClick={() => setVista("planilla")}
+            >
+              Planilla mensual
+            </button>
+            <button
+              type="button"
+              className={vista === "checklist" ? "active" : ""}
+              onClick={() => setVista("checklist")}
+            >
+              Checklist publicadas
+            </button>
+          </div>
+
+          {clienteSeleccionado && vista === "planilla" && (
             <HistoriasPlanillaTab
               key={`p-${clienteSeleccionado}-${refrescarKey}`}
+              clienteId={clienteSeleccionado}
+              clienteNombre={clienteNombre}
+            />
+          )}
+
+          {clienteSeleccionado && vista === "checklist" && (
+            <HistoriasChecklistPublicadasTab
+              key={`c-${clienteSeleccionado}-${refrescarKey}`}
               clienteId={clienteSeleccionado}
               clienteNombre={clienteNombre}
             />

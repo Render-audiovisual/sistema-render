@@ -1633,6 +1633,38 @@ select:focus {
   color: #e65100;
 }
 
+.sheet-stats .danger {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.sheet-view-tabs {
+  align-items: flex-end;
+  display: flex;
+  gap: 4px;
+  margin: -4px 0 14px;
+  overflow-x: auto;
+}
+
+.sheet-view-tabs button {
+  background: #f8f9fa;
+  border: 1px solid #dadce0;
+  border-bottom-color: #cfd3d7;
+  border-radius: 6px 6px 0 0;
+  color: #5f6368;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  white-space: nowrap;
+}
+
+.sheet-view-tabs button.active {
+  background: #fff;
+  border-bottom-color: #188038;
+  color: #188038;
+}
+
 .sheet-frame {
   background: #fff;
   border: 1px solid #dadce0;
@@ -1682,6 +1714,46 @@ select:focus {
   border-right: 1px solid #e8eaed;
   padding: 0;
   vertical-align: middle;
+}
+
+.sheet-checklist-table {
+  min-width: 980px;
+}
+
+.sheet-row-ok {
+  background: #f1f8e9;
+}
+
+.sheet-row-danger {
+  background: #fff5f5;
+}
+
+.sheet-check-cell {
+  padding: 4px 10px !important;
+}
+
+.sheet-check {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #3c4043;
+  cursor: pointer;
+}
+
+.sheet-check input {
+  accent-color: #188038;
+  height: 16px;
+  width: 16px;
+}
+
+.sheet-status-pill {
+  border-radius: 10px;
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
 }
 
 .sheet-cell {
