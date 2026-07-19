@@ -861,9 +861,11 @@ function TareasAsignadasGenericas({ nombre }) {
       </div>
     </>
   );
+}
+
 function PiezasTableroPage() {
   const sesion = getSesion();
-  const API_BASE = "http://66.94.104.21:3001";
+  const API_BASE = "/api";
   const token = sesion?.token;
 
   const [piezas, setPiezas] = useState([]);
@@ -953,9 +955,15 @@ function PiezasTableroPage() {
   const responsables = [...new Set(piezas.map((p) => p.responsable).filter(Boolean))].sort();
 
   // Obtener clientes únicos
-  const clientes = [
-    ...new Set(piezas.map((p) => ({ id: p.cliente_id, nombre: p.cliente_nombre })).filter((c) => c.id)),
-  ].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const clientesPorId = new Map();
+  piezas.forEach((p) => {
+    if (p.cliente_id && !clientesPorId.has(p.cliente_id)) {
+      clientesPorId.set(p.cliente_id, p.cliente_nombre);
+    }
+  });
+  const clientes = [...clientesPorId.entries()]
+    .map(([id, nombre]) => ({ id, nombre }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
 
   // Prioridades
   const prioridades = ["baja", "media", "alta"];
@@ -1023,14 +1031,18 @@ function PiezasTableroPage() {
   function obtenerColorPrioridad(prioridad) {
     switch (prioridad) {
       case "alta":
-        return "#ff6b6b";
+        return "#333";
       case "media":
-        return "#ffa500";
+        return "#777";
       case "baja":
-        return "#4ecdc4";
+        return "#ccc";
       default:
-        return "#999";
+        return "#aaa";
     }
+  }
+
+  function obtenerColorTextoPrioridad(prioridad) {
+    return prioridad === "baja" ? "#333" : "#fff";
   }
 
   if (cargando) {
@@ -1075,14 +1087,22 @@ function PiezasTableroPage() {
           >
             Tabla
           </button>
-          <span style={{ marginLeft: "20px", fontWeight: "bold" }}>
+          <span
+            style={{
+              marginLeft: "12px",
+              fontSize: "11px",
+              fontWeight: 600,
+              color: "#666",
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
             Filtros:
           </span>
 
           <select
             value={filtroResponsable}
             onChange={(e) => setFiltroResponsable(e.target.value)}
-            style={{ padding: "5px", fontSize: "12px" }}
           >
             <option value="">Todos los responsables</option>
             {responsables.map((resp) => (
@@ -1095,7 +1115,6 @@ function PiezasTableroPage() {
           <select
             value={filtroCliente}
             onChange={(e) => setFiltroCliente(e.target.value)}
-            style={{ padding: "5px", fontSize: "12px" }}
           >
             <option value="">Todos los clientes</option>
             {clientes.map((cliente) => (
@@ -1108,7 +1127,6 @@ function PiezasTableroPage() {
           <select
             value={filtroPrioridad}
             onChange={(e) => setFiltroPrioridad(e.target.value)}
-            style={{ padding: "5px", fontSize: "12px" }}
           >
             <option value="">Todas las prioridades</option>
             {prioridades.map((prio) => (
@@ -1132,7 +1150,17 @@ function PiezasTableroPage() {
         </div>
 
         {error && (
-          <div style={{ color: "red", padding: "10px", marginBottom: "10px" }}>
+          <div
+            style={{
+              color: "#333",
+              fontWeight: 600,
+              background: "#f7f7f7",
+              border: "1px solid #ddd",
+              borderRadius: "6px",
+              padding: "10px 12px",
+              marginBottom: "12px",
+            }}
+          >
             Error: {error}
           </div>
         )}
@@ -1155,7 +1183,7 @@ function PiezasTableroPage() {
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     {piezasDelEstado.map((pieza) => (
                       <div
-                        key={pieza.id}
+                        key={`${pieza.origen}-${pieza.id}`}
                         className="card"
                         onClick={() => abrirModal(pieza)}
                         style={{ cursor: "pointer" }}
@@ -1260,7 +1288,7 @@ function PiezasTableroPage() {
               </thead>
               <tbody>
                 {piezasFiltradas.map((pieza) => (
-                  <tr key={pieza.id}>
+                  <tr key={`${pieza.origen}-${pieza.id}`}>
                     <td>
                       <span style={{ marginRight: "4px" }}>
                         {TIPO_ICONOS[pieza.tipo] || "📄"}
@@ -1275,13 +1303,14 @@ function PiezasTableroPage() {
                       <span
                         style={{
                           display: "inline-block",
-                          padding: "2px 6px",
-                          borderRadius: "3px",
+                          padding: "3px 8px",
+                          borderRadius: "4px",
                           backgroundColor: obtenerColorPrioridad(
                             pieza.prioridad
                           ),
-                          color: "white",
+                          color: obtenerColorTextoPrioridad(pieza.prioridad),
                           fontSize: "11px",
+                          fontWeight: 500,
                         }}
                       >
                         {pieza.prioridad || "—"}
@@ -1360,13 +1389,15 @@ function PiezasTableroPage() {
                   <div
                     style={{
                       display: "inline-block",
-                      padding: "4px 8px",
-                      borderRadius: "3px",
+                      padding: "4px 10px",
+                      borderRadius: "4px",
                       backgroundColor: obtenerColorPrioridad(
                         piezaSeleccionada.prioridad
                       ),
-                      color: "white",
-                      fontWeight: "bold",
+                      color: obtenerColorTextoPrioridad(
+                        piezaSeleccionada.prioridad
+                      ),
+                      fontWeight: 600,
                     }}
                   >
                     {piezaSeleccionada.prioridad || "—"}
@@ -1407,7 +1438,7 @@ function PiezasTableroPage() {
                       href={piezaSeleccionada.material_referencia}
                       target="_blank"
                       rel="noopener noreferrer"
-                      style={{ color: "#0066cc" }}
+                      style={{ color: "#333", textDecoration: "underline" }}
                     >
                       {piezaSeleccionada.material_referencia}
                     </a>
@@ -1436,10 +1467,10 @@ function PiezasTableroPage() {
                         fontSize: "12px",
                         backgroundColor:
                           piezaSeleccionada.estado === estado
-                            ? "#0066cc"
-                            : "#ddd",
+                            ? "#333"
+                            : "#fff",
                         color:
-                          piezaSeleccionada.estado === estado ? "white" : "#333",
+                          piezaSeleccionada.estado === estado ? "#fff" : "#333",
                       }}
                     >
                       {ESTADO_LABELS[estado]}
@@ -1463,7 +1494,6 @@ function PiezasTableroPage() {
       )}
     </main>
   );
-}
 }
 
 function App() {
@@ -1526,10 +1556,10 @@ function App() {
       return <EmpleadosPage />;
     }
     if (path === "/nueva-tarea") {
+      return <NuevaTareaPage />;
+    }
     if (path === "/piezas") {
       return <PiezasTableroPage />;
-    }
-      return <NuevaTareaPage />;
     }
     return <HomePage />;
   })();

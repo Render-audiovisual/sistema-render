@@ -183,7 +183,29 @@
       "Bash(scp -o StrictHostKeyChecking=no frontend/src/main.jsx claude-render@66.94.104.21:/tmp/main.jsx)",
       "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo cp /tmp/main.jsx /root/.openclaw/workspace/frontend/src/main.jsx &&    echo '\\\\''✅ Archivo actualizado'\\\\'' &&    sudo ls -lh /root/.openclaw/workspace/frontend/src/main.jsx')",
       "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo ps aux | grep '\\\\''vite\\\\|node'\\\\'' | grep -v grep | grep frontend')",
-      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo touch /root/.openclaw/workspace/frontend/src/main.jsx')"
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo touch /root/.openclaw/workspace/frontend/src/main.jsx')",
+      "Bash(curl -s -w \"\\\\nHTTP Status: %{http_code}\\\\n\" http://66.94.104.21:5173/)",
+      "Bash(curl -s -w \"\\\\nHTTP Status: %{http_code}\\\\n\" http://66.94.104.21:5173/piezas)",
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo tail -50 /root/.openclaw/workspace/frontend/node_modules/.bin/vite')",
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo cp /tmp/main.jsx /root/.openclaw/workspace/frontend/src/main.jsx &&    echo '\\\\''✅ Archivo actualizado'\\\\''')",
+      "Bash(cp frontend/src/styles.css frontend/src/styles.css.backup)",
+      "Bash(cp /tmp/visual_improvements.css frontend/src/styles.css)",
+      "Bash(scp -o StrictHostKeyChecking=no frontend/src/styles.css claude-render@66.94.104.21:/tmp/styles.css)",
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo cp /tmp/styles.css /root/.openclaw/workspace/frontend/src/styles.css &&    echo '\\\\''✅ Estilos actualizado'\\\\''')",
+      "Bash(grep -n 'style={{ padding: \"5px\", fontSize: \"12px\" }}' \"/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx\")",
+      "Bash(python3 -)",
+      "Bash(scp -o \"StrictHostKeyChecking=no\" frontend/src/main.jsx claude-render@66.94.104.21:/tmp/main_check.jsx)",
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'cd /root/.openclaw/workspace/frontend 2>/dev/null || cd ~; sudo /root/.openclaw/workspace/frontend/node_modules/.bin/esbuild /tmp/main_check.jsx --loader=jsx --bundle=false --outfile=/tmp/main_check_out.js 2>&1 | head -60')",
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo cp /tmp/main_check.jsx /tmp/main_check2.jsx.jsx && sudo /root/.openclaw/workspace/frontend/node_modules/.bin/esbuild /tmp/main_check2.jsx.jsx --bundle=false --outfile=/tmp/main_check_out.js 2>&1 | head -80')",
+      "Bash(python3 /tmp/brace_check2.py)",
+      "Bash(\nsed -i '' 's|/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx|/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx|' /tmp/brace_check2.py\npython3 /tmp/brace_check2.py\n)",
+      "Bash(scp -o \"StrictHostKeyChecking=no\" frontend/src/main.jsx claude-render@66.94.104.21:/tmp/main_check3.jsx)",
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo cp /tmp/main_check3.jsx /tmp/main_check3.jsx.jsx && sudo /root/.openclaw/workspace/frontend/node_modules/.bin/esbuild /tmp/main_check3.jsx.jsx --bundle=false --outfile=/tmp/main_check_out3.js 2>&1 | head -80 && echo '\\\\''✅ ESBUILD OK'\\\\''')",
+      "Bash(scp -o \"StrictHostKeyChecking=no\" frontend/src/main.jsx claude-render@66.94.104.21:/tmp/main.jsx)",
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo cp /tmp/main.jsx /root/.openclaw/workspace/frontend/src/main.jsx && echo '\\\\''✅ main.jsx actualizado'\\\\''')",
+      "Bash(scp -o \"StrictHostKeyChecking=no\" frontend/src/styles.css claude-render@66.94.104.21:/tmp/styles.css)",
+      "Bash(ssh -o StrictHostKeyChecking=no claude-render@66.94.104.21 'sudo cp /tmp/styles.css /root/.openclaw/workspace/frontend/src/styles.css && echo '\\\\''✅ styles.css actualizado'\\\\''')",
+      "Bash(awk 'NR==3626,NR==3900' \"/Users/agustinobregon/Desktop/CLAUDE : PAGINAS/SISTEMA RENDER/frontend/src/main.jsx\")"
     ]
   }
 }
