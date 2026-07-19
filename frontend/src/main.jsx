@@ -4996,13 +4996,22 @@ function DetalleClienteModal({
   );
 }
 
-function TareasDisenioPage() {
+function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, rol }) {
   const [tareas, setTareas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
+  const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [filtroPrioridad, setFiltroPrioridad] = useState("todos");
+  const [tareaSeleccionada, setTareaSeleccionada] = useState(null);
+  const [actualizando, setActualizando] = useState(false);
 
   useEffect(() => {
-    fetch("/api/tareas?asignado_a=Augusto&tipo_tarea=diseno")
+    cargarTareas();
+  }, []);
+
+  const cargarTareas = () => {
+    setCargando(true);
+    fetch(`/api/tareas?asignado_a=${asignado_a}&tipo_tarea=${tipo_tarea}`)
       .then((r) => r.json())
       .then((data) => {
         setTareas(data);
@@ -5012,164 +5021,283 @@ function TareasDisenioPage() {
         setError(err.message);
         setCargando(false);
       });
-  }, []);
+  };
+
+  const tareasFiltradas = tareas.filter((t) => {
+    if (filtroEstado !== "todos" && t.estado !== filtroEstado) return false;
+    if (filtroPrioridad !== "todos" && t.prioridad !== filtroPrioridad) return false;
+    return true;
+  });
+
+  const estadosDisponibles = ["pendiente", "en_progreso", "en_revision", "hecha"];
+  const tareasPorEstado = estadosDisponibles.map((estado) => ({
+    estado,
+    tareas: tareasFiltradas.filter((t) => t.estado === estado),
+  }));
+
+  const actualizarEstado = (tareaId, nuevoEstado) => {
+    setActualizando(true);
+    fetch(`/api/tareas/${tareaId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estado: nuevoEstado }),
+    })
+      .then((r) => r.json())
+      .then(() => {
+        setTareas(tareas.map((t) => (t.id === tareaId ? { ...t, estado: nuevoEstado } : t)));
+        setTareaSeleccionada(null);
+        setActualizando(false);
+      })
+      .catch((err) => {
+        setError(err.message);
+        setActualizando(false);
+      });
+  };
+
+  const getEstadoColor = (estado) => {
+    const colores = {
+      pendiente: "#ff9500",
+      en_progreso: "#0066cc",
+      en_revision: "#ff6b6b",
+      hecha: "#28a745",
+    };
+    return colores[estado] || "#ccc";
+  };
+
+  const getPrioridadBadge = (prioridad) => {
+    const colores = {
+      alta: "🔴",
+      media: "🟡",
+      baja: "🟢",
+    };
+    return colores[prioridad] || "◯";
+  };
 
   return (
-    <main aria-label="Tareas de Diseño">
+    <main aria-label={titulo}>
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
-            <span className="active">Mis diseños</span>
+            <span className="active">{titulo}</span>
           </div>
-          <div className="tag">Augusto · diseño</div>
+          <div className="tag">{nombre_usuario} · {rol}</div>
         </div>
 
         <div className="content">
-          <div className="section-label">Tareas de Diseño Asignadas</div>
-          <div className="box">
-            {cargando && <div className="caption">Cargando tareas...</div>}
-            {error && <div className="caption error">Error: {error}</div>}
-            {!cargando && tareas.length === 0 && (
-              <div className="caption">No hay tareas de diseño asignadas.</div>
-            )}
-            {!cargando &&
-              tareas.map((tarea) => (
-                <div key={tarea.id} className="card">
-                  <div className="cliente">{tarea.titulo}</div>
-                  <div className="meta">
-                    Estado: <strong>{tarea.estado}</strong>
+          <div className="section-label">1 · Filtros</div>
+          <div className="box" style={{ display: "flex", gap: "16px", marginBottom: "20px", flexWrap: "wrap" }}>
+            <select
+              value={filtroEstado}
+              onChange={(e) => setFiltroEstado(e.target.value)}
+              style={{
+                padding: "8px 12px",
+                border: "1px solid #ddd",
+                borderRadius: "4px",
+                fontSize: "14px",
+              }}
+            >
+              <option value="todos">Todos los estados</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="en_progreso">En progreso</option>
+              <option value="en_revision">En revisión</option>
+              <option value="hecha">Hecha</option>
+            </select>
+
+            <select
+              value={filtroPrioridad}
+              onChange={(e) => setFiltroPrioridad(e.target.value)}
+              style={{
+                padding: "8px 12px",
+                border: "1px solid #ddd",
+                borderRadius: "4px",
+                fontSize: "14px",
+              }}
+            >
+              <option value="todos">Todas las prioridades</option>
+              <option value="alta">Alta</option>
+              <option value="media">Media</option>
+              <option value="baja">Baja</option>
+            </select>
+
+            <div style={{ marginLeft: "auto", fontSize: "14px", color: "#666" }}>
+              {tareasFiltradas.length} tarea{tareasFiltradas.length !== 1 ? "s" : ""}
+            </div>
+          </div>
+
+          <div className="section-label">2 · Tablero de tareas</div>
+          <div className="kanban">
+            {tareasPorEstado.map((col) => (
+              <div key={col.estado} className="kanban-column">
+                <div className="kanban-header">
+                  <span style={{ color: getEstadoColor(col.estado) }}>●</span>
+                  <span style={{ marginLeft: "8px", textTransform: "capitalize" }}>{col.estado.replace("_", " ")}</span>
+                  <span style={{ marginLeft: "auto", fontSize: "12px", fontWeight: "bold" }}>
+                    {col.tareas.length}
+                  </span>
+                </div>
+
+                {col.tareas.map((tarea) => (
+                  <div
+                    key={tarea.id}
+                    className="card"
+                    onClick={() => setTareaSeleccionada(tarea)}
+                    style={{ cursor: "pointer", borderLeft: `4px solid ${getEstadoColor(tarea.estado)}` }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, marginBottom: "4px" }}>{tarea.titulo}</div>
+                        {tarea.cliente_nombre && (
+                          <div style={{ fontSize: "12px", color: "#666" }}>{tarea.cliente_nombre}</div>
+                        )}
+                      </div>
+                      <div style={{ fontSize: "16px" }}>{getPrioridadBadge(tarea.prioridad)}</div>
+                    </div>
+                    {tarea.fecha_vencimiento && (
+                      <div style={{ fontSize: "12px", color: "#666", marginTop: "8px" }}>📅 {tarea.fecha_vencimiento}</div>
+                    )}
+                    {tarea.subtipo && (
+                      <div style={{ fontSize: "12px", color: "#0066cc", marginTop: "4px", fontWeight: 500 }}>
+                        {tarea.subtipo}
+                      </div>
+                    )}
                   </div>
-                  {tarea.fecha_vencimiento && (
-                    <div className="meta">Vence: {tarea.fecha_vencimiento}</div>
+                ))}
+
+                {col.tareas.length === 0 && (
+                  <div style={{ padding: "12px", textAlign: "center", color: "#ccc", fontSize: "12px" }}>
+                    Sin tareas
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {tareaSeleccionada && (
+            <div className="modal-overlay" onClick={() => setTareaSeleccionada(null)}>
+              <div className="modal" onClick={(e) => e.stopPropagation()}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <h2 style={{ margin: 0 }}>{tareaSeleccionada.titulo}</h2>
+                  <button
+                    onClick={() => setTareaSeleccionada(null)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      fontSize: "24px",
+                      cursor: "pointer",
+                      color: "#666",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div style={{ marginBottom: "16px" }}>
+                  <div style={{ marginBottom: "8px" }}>
+                    <strong>Cliente:</strong> {tareaSeleccionada.cliente_nombre || "—"}
+                  </div>
+                  <div style={{ marginBottom: "8px" }}>
+                    <strong>Estado actual:</strong> <span style={{ color: getEstadoColor(tareaSeleccionada.estado) }}>●</span> {tareaSeleccionada.estado}
+                  </div>
+                  <div style={{ marginBottom: "8px" }}>
+                    <strong>Prioridad:</strong> {getPrioridadBadge(tareaSeleccionada.prioridad)} {tareaSeleccionada.prioridad}
+                  </div>
+                  {tareaSeleccionada.fecha_vencimiento && (
+                    <div style={{ marginBottom: "8px" }}>
+                      <strong>Vencimiento:</strong> {tareaSeleccionada.fecha_vencimiento}
+                    </div>
                   )}
-                  <div className="meta">
-                    Prioridad: <strong>{tarea.prioridad || "media"}</strong>
+                  {tareaSeleccionada.subtipo && (
+                    <div style={{ marginBottom: "8px" }}>
+                      <strong>Tipo:</strong> {tareaSeleccionada.subtipo}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginBottom: "16px" }}>
+                  <strong>Cambiar estado a:</strong>
+                  <div style={{ display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
+                    {estadosDisponibles
+                      .filter((e) => e !== tareaSeleccionada.estado)
+                      .map((estado) => (
+                        <button
+                          key={estado}
+                          onClick={() => actualizarEstado(tareaSeleccionada.id, estado)}
+                          disabled={actualizando}
+                          style={{
+                            padding: "8px 12px",
+                            background: getEstadoColor(estado),
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            textTransform: "capitalize",
+                            opacity: actualizando ? 0.6 : 1,
+                          }}
+                        >
+                          {actualizando ? "..." : estado.replace("_", " ")}
+                        </button>
+                      ))}
                   </div>
                 </div>
-              ))}
-          </div>
+
+                <button
+                  onClick={() => setTareaSeleccionada(null)}
+                  style={{
+                    padding: "8px 16px",
+                    background: "#ccc",
+                    border: "none",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                  }}
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </main>
+  );
+}
+
+function TareasDisenioPage() {
+  return (
+    <TareasWorkspacePage
+      asignado_a="Augusto"
+      tipo_tarea="diseno"
+      titulo="Mis diseños"
+      nombre_usuario="Augusto"
+      rol="diseño"
+    />
   );
 }
 
 function TareasEdicionPage() {
-  const [tareas, setTareas] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    fetch("/api/tareas?asignado_a=Luciano&tipo_tarea=edicion")
-      .then((r) => r.json())
-      .then((data) => {
-        setTareas(data);
-        setCargando(false);
-      })
-      .catch((err) => {
-        setError(err.message);
-        setCargando(false);
-      });
-  }, []);
-
   return (
-    <main aria-label="Tareas de Edición">
-      <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Mis ediciones</span>
-          </div>
-          <div className="tag">Luciano · edición</div>
-        </div>
-
-        <div className="content">
-          <div className="section-label">Tareas de Edición Asignadas</div>
-          <div className="box">
-            {cargando && <div className="caption">Cargando tareas...</div>}
-            {error && <div className="caption error">Error: {error}</div>}
-            {!cargando && tareas.length === 0 && (
-              <div className="caption">No hay tareas de edición asignadas.</div>
-            )}
-            {!cargando &&
-              tareas.map((tarea) => (
-                <div key={tarea.id} className="card">
-                  <div className="cliente">{tarea.titulo}</div>
-                  <div className="meta">
-                    Estado: <strong>{tarea.estado}</strong>
-                  </div>
-                  {tarea.fecha_vencimiento && (
-                    <div className="meta">Vence: {tarea.fecha_vencimiento}</div>
-                  )}
-                  <div className="meta">
-                    Prioridad: <strong>{tarea.prioridad || "media"}</strong>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </div>
-      </div>
-    </main>
+    <TareasWorkspacePage
+      asignado_a="Luciano"
+      tipo_tarea="edicion"
+      titulo="Mis ediciones"
+      nombre_usuario="Luciano"
+      rol="edición"
+    />
   );
 }
 
 function TareasProduccionPage() {
-  const [tareas, setTareas] = useState([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    fetch("/api/tareas?asignado_a=Germán&tipo_tarea=produccion")
-      .then((r) => r.json())
-      .then((data) => {
-        setTareas(data);
-        setCargando(false);
-      })
-      .catch((err) => {
-        setError(err.message);
-        setCargando(false);
-      });
-  }, []);
-
   return (
-    <main aria-label="Tareas de Producción">
-      <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Mis tareas</span>
-          </div>
-          <div className="tag">Germán · producción</div>
-        </div>
-
-        <div className="content">
-          <div className="section-label">Tareas de Producción Asignadas</div>
-          <div className="box">
-            {cargando && <div className="caption">Cargando tareas...</div>}
-            {error && <div className="caption error">Error: {error}</div>}
-            {!cargando && tareas.length === 0 && (
-              <div className="caption">No hay tareas de producción asignadas.</div>
-            )}
-            {!cargando &&
-              tareas.map((tarea) => (
-                <div key={tarea.id} className="card">
-                  <div className="cliente">{tarea.titulo}</div>
-                  <div className="meta">
-                    Estado: <strong>{tarea.estado}</strong>
-                  </div>
-                  {tarea.fecha_vencimiento && (
-                    <div className="meta">Vence: {tarea.fecha_vencimiento}</div>
-                  )}
-                  <div className="meta">
-                    Prioridad: <strong>{tarea.prioridad || "media"}</strong>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </div>
-      </div>
-    </main>
+    <TareasWorkspacePage
+      asignado_a="Germán"
+      tipo_tarea="produccion"
+      titulo="Mis tareas"
+      nombre_usuario="Germán"
+      rol="producción"
+    />
   );
 }
 
