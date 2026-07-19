@@ -1720,6 +1720,118 @@ select:focus {
   min-width: 980px;
 }
 
+.check-sheet-frame {
+  max-height: 74vh;
+  padding-bottom: 12px;
+}
+
+.check-sheet-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 0 0 14px;
+  min-width: 980px;
+  width: 100%;
+}
+
+.check-sheet-table th,
+.check-sheet-table td {
+  border: 1px solid #dadce0;
+  height: 32px;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+.check-week-title {
+  background: #f1f3f4;
+  color: #3c4043;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: left !important;
+}
+
+.check-client-col {
+  background: #fff;
+  color: #202124;
+  font-weight: 700;
+  left: 0;
+  min-width: 190px;
+  position: sticky;
+  text-align: left !important;
+  z-index: 2;
+}
+
+th.check-client-col {
+  background: #f1f3f4;
+  z-index: 3;
+}
+
+.check-day {
+  background: #f1f3f4;
+  color: #3c4043;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 94px;
+}
+
+.check-day.today {
+  background: #e8f0fe;
+  color: #1a73e8;
+}
+
+.check-total-col {
+  background: #f8f9fa;
+  font-weight: 800;
+  min-width: 72px;
+}
+
+.check-day-cell {
+  background: #fff;
+}
+
+.check-day-cell.empty {
+  background: #f8f9fa;
+}
+
+.check-day-cell.ok {
+  background: #e8f5e9;
+}
+
+.check-day-cell.partial {
+  background: #fff8e1;
+}
+
+.check-sheet-toggle {
+  background: transparent;
+  border: 0;
+  color: #c62828;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  height: 100%;
+  min-height: 28px;
+  width: 100%;
+}
+
+.check-day-cell.ok .check-sheet-toggle {
+  color: #2e7d32;
+}
+
+.check-day-cell.partial .check-sheet-toggle {
+  color: #ef6c00;
+}
+
+.check-sheet-toggle:focus {
+  box-shadow: inset 0 0 0 2px #188038;
+  outline: none;
+}
+
+.check-total-row td {
+  background: #f1f3f4;
+  color: #3c4043;
+  font-weight: 800;
+}
+
 .sheet-row-ok {
   background: #f1f8e9;
 }
