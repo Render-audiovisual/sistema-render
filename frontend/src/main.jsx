@@ -447,12 +447,12 @@ function getEstadoHistoriaLabel(estado) {
 }
 
 const TIPO_PUBLICACION_LABELS = {
-  video: "Video",
+  video: "Reel",
   carrusel: "Carrusel",
 };
 
 function getTipoPublicacionLabel(tipo) {
-  return TIPO_PUBLICACION_LABELS[tipo] || "Video";
+  return TIPO_PUBLICACION_LABELS[tipo] || "Reel";
 }
 
 function getHistoriasAugustoKanban(historias) {
@@ -2071,7 +2071,7 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
 
   const filtros = [
     { key: "todos", label: "Todo" },
-    { key: "video", label: "Videos" },
+    { key: "video", label: "Reels" },
     { key: "carrusel", label: "Carruseles" },
   ];
   const filtrosEstado = [
@@ -6712,7 +6712,7 @@ const ESTADOS_PUBLICACION = [
 ];
 
 const TIPOS_PUBLICACION = [
-  { id: "video", label: "Video" },
+  { id: "video", label: "Reel" },
   { id: "carrusel", label: "Carrusel" },
 ];
 
@@ -6787,6 +6787,7 @@ function PublicacionesGeneralTab({ clientes, onIrACliente }) {
 
   return (
     <>
+      <div className="section-label">Control de publicaciones</div>
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
         <select style={selectStyle} value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}>
           <option value="todos">Todos los clientes</option>
@@ -7325,9 +7326,8 @@ function PublicacionesPage({ tabInicial = "calendario" }) {
   const clienteActual = clientes.find((c) => c.id === clienteSeleccionado);
 
   const TABS_PRINCIPALES = [
-    { id: "calendario", label: "📅 Calendario" },
-    { id: "planilla", label: "📝 Planilla" },
-    { id: "lista", label: "📋 Lista operativa" },
+    { id: "calendario", label: "Calendario" },
+    { id: "lista", label: "Control" },
   ];
 
   return (
@@ -7338,7 +7338,7 @@ function PublicacionesPage({ tabInicial = "calendario" }) {
           <div className="nav">
             <span className="active">Publicaciones</span>
           </div>
-          <div className="tag">Planificación centralizada</div>
+          <div className="tag">Calendario y control</div>
         </div>
 
         <div className="content">
