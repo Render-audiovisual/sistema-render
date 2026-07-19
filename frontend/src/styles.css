@@ -1071,15 +1071,76 @@ select:focus {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.cal-monthnav {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 220px;
 }
 
 .cal-title {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
   color: #222;
+  min-width: 132px;
+  text-align: center;
+}
+
+.cal-navbtn {
+  border-radius: 999px;
+  font-size: 22px;
+  height: 34px;
+  line-height: 1;
+  padding: 0;
+  width: 34px;
+}
+
+.cal-filters {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.cal-filters label {
+  align-items: center;
+  color: #777;
+  display: flex;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 6px;
+  position: relative;
+  text-transform: uppercase;
+}
+
+.cal-filters select {
+  appearance: none;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  color: #222;
+  cursor: pointer;
+  font-size: 12px;
+  min-width: 116px;
+  padding: 7px 28px 7px 10px;
+  text-transform: none;
+}
+
+.cal-filters label::after {
+  color: #777;
+  content: "⌄";
+  font-size: 13px;
+  pointer-events: none;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-44%);
 }
 
 .cal-grid {
@@ -1107,6 +1168,38 @@ select:focus {
 }
 
 @media (max-width: 480px) {
+  .cal-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cal-monthnav {
+    justify-content: space-between;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .cal-title {
+    font-size: 16px;
+  }
+
+  .cal-filters {
+    display: grid;
+    gap: 6px;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cal-filters label {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .cal-filters select {
+    min-width: 0;
+    width: 100%;
+  }
+
   .cal-grid {
     gap: 2px;
   }

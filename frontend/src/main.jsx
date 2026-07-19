@@ -2074,7 +2074,6 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
     { key: "video", label: "Videos" },
     { key: "carrusel", label: "Carruseles" },
   ];
-
   const filtrosEstado = [
     { key: "todos", label: "Todos" },
     { key: "pendientes", label: "Pendientes" },
@@ -2128,39 +2127,56 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
   return (
     <>
       <div className="cal-toolbar">
-        <button className="btn" type="button" onClick={() => irMes(-1)}>
-          ◀ Mes anterior
-        </button>
-        <span className="cal-title">
-          {MESES[month]} {year}
-        </span>
-        <button className="btn" type="button" onClick={() => irMes(1)}>
-          Mes siguiente ▶
-        </button>
-      </div>
-
-      <div className="tabs">
-        {filtros.map((f) => (
-          <span
-            key={f.key}
-            className={filtroTipo === f.key ? "active" : ""}
-            onClick={() => setFiltroTipo(f.key)}
+        <div className="cal-monthnav">
+          <button
+            aria-label="Mes anterior"
+            className="btn cal-navbtn"
+            type="button"
+            onClick={() => irMes(-1)}
           >
-            {f.label}
+            ‹
+          </button>
+          <span className="cal-title">
+            {MESES[month]} {year}
           </span>
-        ))}
-      </div>
-
-      <div className="tabs compact">
-        {filtrosEstado.map((f) => (
-          <span
-            key={f.key}
-            className={filtroEstado === f.key ? "active" : ""}
-            onClick={() => setFiltroEstado(f.key)}
+          <button
+            aria-label="Mes siguiente"
+            className="btn cal-navbtn"
+            type="button"
+            onClick={() => irMes(1)}
           >
-            {f.label}
-          </span>
-        ))}
+            ›
+          </button>
+        </div>
+
+        <div className="cal-filters" aria-label="Filtros de calendario">
+          <label>
+            Tipo
+            <select
+              value={filtroTipo}
+              onChange={(event) => setFiltroTipo(event.target.value)}
+            >
+              {filtros.map((f) => (
+                <option key={f.key} value={f.key}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Estado
+            <select
+              value={filtroEstado}
+              onChange={(event) => setFiltroEstado(event.target.value)}
+            >
+              {filtrosEstado.map((f) => (
+                <option key={f.key} value={f.key}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       <div className="publication-check-summary">
