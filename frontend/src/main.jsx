@@ -1588,7 +1588,7 @@ function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
     ],
     herramientas: [
       { href: "/calendario", label: "📅 Calendario" },
-      { href: "/planificacion-historias", label: "🎯 Historias" },
+      { href: "/planificacion-historias", label: "🎯 Planificación de historias" },
       { href: "/reportes-historias", label: "📊 Reportes" },
       { href: "/piezas", label: "📋 Tareas" },
     ],
@@ -1769,7 +1769,7 @@ function App() {
     { href: "/", label: "Home" },
     { href: rutaPropia || "/", label: "Mi tablero" },
     { href: "/calendario", label: "Calendario" },
-    { href: "/planificacion-historias", label: "🎯 Historias" },
+    { href: "/planificacion-historias", label: "🎯 Planificación de historias" },
     { href: "/reportes-historias", label: "📊 Reportes" },
     { href: "/perfil", label: "Mi perfil" },
     { href: "/piezas", label: "📋 Tareas" },
