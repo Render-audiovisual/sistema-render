@@ -247,6 +247,11 @@ th {
   background: #ddd;
 }
 
+.semaforo.gris {
+  background: #fff;
+  border-color: #aaa;
+}
+
 .leyenda {
   color: #777;
   font-size: 11px;

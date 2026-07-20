@@ -194,6 +194,90 @@ function getEstadoPorObjetivo(objetivo) {
   return "verde";
 }
 
+function getEstadoHistoriasCliente(total, porcentaje) {
+  if (total === 0) {
+    return { color: "gris", label: "Sin planificación" };
+  }
+  if (porcentaje >= 80) {
+    return { color: "verde", label: "Al día" };
+  }
+  if (porcentaje >= 50) {
+    return { color: "amarillo", label: "Revisar" };
+  }
+  return { color: "rojo", label: "Bajo" };
+}
+
+function getResumenClientesActivos(clientes, historias, publicaciones) {
+  return clientes
+    .map((cliente) => {
+      const historiasMes = historias.filter(
+        (historia) =>
+          historia.cliente_id === cliente.id &&
+          esDelMesActual(historia.fecha_programada),
+      );
+      const publicacionesMes = publicaciones.filter(
+        (publicacion) =>
+          publicacion.cliente_id === cliente.id &&
+          esDelMesActual(publicacion.fecha_programada),
+      );
+      const historiasPublicadas = historiasMes.filter(
+        (historia) => historia.estado === "publicada",
+      );
+      const publicacionesPublicadas = publicacionesMes.filter(
+        (publicacion) => publicacion.estado === "publicada",
+      );
+      const reelsPublicados = publicacionesPublicadas.filter(
+        (publicacion) => publicacion.tipo === "reel" || publicacion.tipo === "video",
+      ).length;
+      const carruselesPublicados = publicacionesPublicadas.filter(
+        (publicacion) => publicacion.tipo === "carrusel",
+      ).length;
+      const porcentajeHistorias = calcularPorcentajePublicadas(historiasMes);
+      const estadoHistorias = getEstadoHistoriasCliente(
+        historiasMes.length,
+        porcentajeHistorias,
+      );
+      const ultimaHistoriaOk = historiasPublicadas
+        .map((historia) => historia.fecha_programada)
+        .filter(Boolean)
+        .sort()
+        .at(-1);
+
+      return {
+        ...cliente,
+        activo: true,
+        porcentajes: {
+          historias: porcentajeHistorias,
+          feed: calcularPorcentajeCuota(
+            reelsPublicados + carruselesPublicados,
+            (cliente.cuota_reels || 0) + (cliente.cuota_carruseles || 0),
+          ),
+          feedSemana: 0,
+          objetivo: porcentajeHistorias,
+          historiasPublicadas: historiasPublicadas.length,
+          historiasTotal: historiasMes.length,
+          feedPublicado: reelsPublicados + carruselesPublicados,
+          feedTotal: (cliente.cuota_reels || 0) + (cliente.cuota_carruseles || 0),
+        },
+        historiasMes: historiasMes.length,
+        historiasPublicadas: historiasPublicadas.length,
+        porcentajeHistorias,
+        estadoHistorias,
+        ultimaHistoriaOk,
+        reelsPublicados,
+        carruselesPublicados,
+      };
+    })
+    .sort((a, b) => {
+      const ordenEstado = { rojo: 0, amarillo: 1, gris: 2, verde: 3 };
+      return (
+        ordenEstado[a.estadoHistorias.color] -
+          ordenEstado[b.estadoHistorias.color] ||
+        a.nombre.localeCompare(b.nombre)
+      );
+    });
+}
+
 function getPiezasAtrasadas(historias, publicaciones) {
   const hoy = getHoyLocalISO();
   const atrasadas = [
@@ -1434,7 +1518,7 @@ function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
       { href: "/reportes-historias", label: "Reportes" },
     ],
     admin: esAdmin ? [
-      { href: "/equipo", label: "Clientes" },
+      { href: "/clientes", label: "Clientes" },
       { href: "/empleados", label: "Usuarios / permisos" },
     ] : [],
     cuenta: [
@@ -1570,6 +1654,9 @@ function App() {
     if (path === "/equipo") {
       return <EquipoDashboard />;
     }
+    if (path === "/clientes") {
+      return <ClientesAdminPage />;
+    }
     if (path === "/calendario") {
       // Alias histórico: el calendario ahora vive como pestaña dentro del
       // módulo unificado de Publicaciones (no se rompen links guardados).
@@ -1621,7 +1708,7 @@ function App() {
     { href: "/piezas", label: "📋 Tareas" },
   ];
   if (esAdmin) {
-    enlacesNav.push({ href: "/equipo", label: "Equipo" });
+    enlacesNav.push({ href: "/clientes", label: "Clientes" });
     enlacesNav.push({ href: "/empleados", label: "Empleados" });
     enlacesNav.push({ href: "/nueva-tarea", label: "+ Nueva tarea" });
   }
@@ -3438,6 +3525,209 @@ function EquipoDashboard() {
           </div>
         </div>
       </div>
+    </main>
+  );
+}
+
+function ClientesAdminPage() {
+  const [clientes, setClientes] = useState([]);
+  const [historias, setHistorias] = useState([]);
+  const [publicaciones, setPublicaciones] = useState([]);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const [busqueda, setBusqueda] = useState("");
+  const [error, setError] = useState(null);
+  const [cargando, setCargando] = useState(true);
+
+  const cargarClientes = () => {
+    setCargando(true);
+    setError(null);
+    Promise.all([
+      fetch("/api/clientes").then((response) => response.json()),
+      fetch("/api/historias").then((response) => response.json()),
+      fetch("/api/publicaciones").then((response) => response.json()),
+    ])
+      .then(([clientesApi, historiasApi, publicacionesApi]) => {
+        setClientes(clientesApi);
+        setHistorias(historiasApi);
+        setPublicaciones(publicacionesApi);
+      })
+      .catch((err) => {
+        console.error("No se pudo cargar el tablero de clientes", err);
+        setError("No se pudo cargar el tablero de clientes.");
+      })
+      .finally(() => setCargando(false));
+  };
+
+  useEffect(cargarClientes, []);
+
+  const filas = getResumenClientesActivos(clientes, historias, publicaciones);
+  const filasFiltradas = filas.filter((cliente) =>
+    cliente.nombre.toLowerCase().includes(busqueda.toLowerCase()),
+  );
+  const conPlanificacion = filas.filter((cliente) => cliente.historiasMes > 0);
+  const cumplimientoHistorias =
+    conPlanificacion.length === 0
+      ? 0
+      : Math.round(
+          conPlanificacion.reduce(
+            (sum, cliente) => sum + cliente.porcentajeHistorias,
+            0,
+          ) / conPlanificacion.length,
+        );
+  const clientesBajos = filas.filter(
+    (cliente) => cliente.estadoHistorias.color === "rojo",
+  ).length;
+
+  return (
+    <main aria-label="Administración de clientes">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Clientes</span>
+            <a href="/empleados">Usuarios / permisos</a>
+          </div>
+          <div className="tag">Administración</div>
+        </div>
+
+        <div className="content">
+          <div className="section-label">
+            Clientes activos — {getMesActualISO()}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gap: "10px",
+              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              marginBottom: "16px",
+            }}
+          >
+            <div className="box" style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "24px", fontWeight: 700 }}>
+                {filas.length}
+              </div>
+              <div className="caption">Clientes activos</div>
+            </div>
+            <div className="box" style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "24px", fontWeight: 700 }}>
+                {cumplimientoHistorias}%
+              </div>
+              <div className="caption">Cumplimiento historias</div>
+            </div>
+            <div className="box" style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "24px", fontWeight: 700 }}>
+                {clientesBajos}
+              </div>
+              <div className="caption">Clientes bajos</div>
+            </div>
+          </div>
+
+          <div className="box">
+            <div className="box-header">
+              <strong>Control mensual de clientes</strong>
+              <span className="tag">Checklist de historias conectado</span>
+            </div>
+
+            <input
+              type="text"
+              placeholder="Buscar cliente por nombre..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              style={{ marginBottom: "12px", width: "100%" }}
+            />
+
+            {error && <div className="caption login-error">{error}</div>}
+            {cargando ? (
+              <div style={{ padding: "24px", textAlign: "center", color: "#999" }}>
+                Cargando clientes...
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ minWidth: "920px" }}>
+                  <thead>
+                    <tr>
+                      <th>Estado</th>
+                      <th>Cliente</th>
+                      <th>Reels mes</th>
+                      <th>Carruseles mes</th>
+                      <th>Historias</th>
+                      <th>Último OK</th>
+                      <th>Alerta</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filasFiltradas.map((cliente) => (
+                      <tr
+                        className="row-clickable"
+                        key={cliente.id}
+                        onClick={() => setClienteSeleccionado(cliente)}
+                      >
+                        <td>
+                          <span
+                            className={`semaforo ${cliente.estadoHistorias.color}`}
+                          ></span>
+                          {cliente.estadoHistorias.label}
+                        </td>
+                        <td>
+                          <strong>{cliente.nombre}</strong>
+                          <div className="caption">Activo</div>
+                        </td>
+                        <td>
+                          {cliente.reelsPublicados} / {cliente.cuota_reels ?? 0}
+                        </td>
+                        <td>
+                          {cliente.carruselesPublicados} /{" "}
+                          {cliente.cuota_carruseles ?? 0}
+                        </td>
+                        <td>
+                          <strong>{cliente.porcentajeHistorias}%</strong>
+                          <div className="caption">
+                            {cliente.historiasPublicadas} / {cliente.historiasMes} OK
+                          </div>
+                        </td>
+                        <td>{cliente.ultimaHistoriaOk || "-"}</td>
+                        <td>
+                          {cliente.historiasMes === 0
+                            ? "Sin planificación cargada"
+                            : cliente.estadoHistorias.color === "rojo"
+                              ? "Se están subiendo pocas historias"
+                              : cliente.estadoHistorias.color === "amarillo"
+                                ? "Revisar ritmo"
+                                : "Al día"}
+                        </td>
+                      </tr>
+                    ))}
+                    {filasFiltradas.length === 0 && (
+                      <tr>
+                        <td colSpan="7">No hay clientes con ese criterio.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="caption">
+              Historias sale de la checklist: las marcadas OK cuentan como
+              publicadas. Si un cliente no tiene historias planificadas, queda
+              gris y no se lo castiga como incumplido.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {clienteSeleccionado && (
+        <DetalleClienteModal
+          cliente={clienteSeleccionado}
+          historias={historias.filter((h) => h.cliente_id === clienteSeleccionado.id)}
+          publicaciones={publicaciones.filter(
+            (p) => p.cliente_id === clienteSeleccionado.id,
+          )}
+          onClose={() => setClienteSeleccionado(null)}
+          onCuotaActualizada={cargarClientes}
+        />
+      )}
     </main>
   );
 }
