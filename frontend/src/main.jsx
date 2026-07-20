@@ -4980,6 +4980,11 @@ const RESPONSABLES_EQUIPO = ["Augusto", "Luciano", "Germán", "Oriana", "Franco"
 
 // Orden de columnas navegables con Tab/Enter (coincide con el orden visual).
 const COLUMNAS_PLANILLA = ["fecha", "hora", "tipo", "copy", "material", "aclaraciones", "responsable", "estado"];
+// Columnas de texto largo: son <textarea>, no <input> — admiten líneas
+// propias (Enter no debe saltar de fila) y solo se tratan como pegado
+// multi-celda si el portapapeles trae tabs (un salto de línea solo puede
+// ser contenido real, como un copy con varios renglones).
+const COLUMNAS_MULTILINEA = ["copy", "aclaraciones"];
 
 // Convierte un valor pegado/tipeado en una columna al payload que espera
 // PATCH /api/historias/:id. Devuelve null si el valor no es válido para esa
@@ -5205,8 +5210,20 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
     if (typeof el.select === "function") el.select();
   };
 
-  // Enter mueve a la misma columna, fila de abajo (como Sheets/Excel).
+  // Crece el textarea con el contenido en vez de esconder texto o abrir
+  // scroll interno — la fila entera se estira, igual que en el Sheet.
+  const ajustarAltura = (el) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
+
+  // Enter mueve a la misma columna, fila de abajo (como Sheets/Excel). En
+  // copy/observaciones Enter inserta un renglón propio en cambio — son
+  // textos largos que legítimamente llevan varias líneas (un copy de
+  // Instagram con su propio salto de párrafo, por ejemplo).
   const manejarEnterOTab = (e, rowIndex, columna) => {
+    if (COLUMNAS_MULTILINEA.includes(columna)) return;
     if (e.key === "Enter") {
       e.preventDefault();
       e.currentTarget.blur();
@@ -5215,13 +5232,18 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
     // Tab usa el orden natural del DOM — no hace falta manejarlo a mano.
   };
 
-  // Pegado multi-celda: si el portapapeles trae tabs/saltos de línea (un
-  // bloque copiado de Sheets), lo distribuye sobre las filas/columnas
-  // existentes a partir de la celda activa. Un valor suelto usa el paste
-  // nativo del input y no pasa por acá.
+  // Pegado multi-celda: si el portapapeles trae tabs (un bloque copiado de
+  // Sheets), lo distribuye sobre las filas/columnas existentes a partir de
+  // la celda activa. En columnas de texto largo un salto de línea solo no
+  // dispara esto — puede ser contenido real (un copy de varios renglones)
+  // pegado en una sola celda, no un rango de Sheets.
   const manejarPaste = (e, rowIndex, columna) => {
     const texto = e.clipboardData.getData("text/plain");
-    if (!texto.includes("\t") && !texto.includes("\n")) return;
+    const esMultilinea = COLUMNAS_MULTILINEA.includes(columna);
+    const esPegadoMultiCelda = esMultilinea
+      ? texto.includes("\t")
+      : texto.includes("\t") || texto.includes("\n");
+    if (!esPegadoMultiCelda) return;
     e.preventDefault();
 
     const filasTexto = texto.replace(/\r/g, "").split("\n");
@@ -5296,16 +5318,16 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
           <table className="sheet-table">
             <thead>
               <tr>
-                <th style={{ width: "56px" }}>Día</th>
-                <th style={{ width: "120px" }}>Fecha</th>
-                <th style={{ width: "80px" }}>Hora</th>
-                <th style={{ width: "130px" }}>Tipo</th>
-                <th style={{ width: "24%" }}>Copy</th>
-                <th style={{ width: "14%" }}>Material</th>
-                <th style={{ width: "18%" }}>Observaciones</th>
-                <th style={{ width: "110px" }}>Responsable</th>
-                <th style={{ width: "120px" }}>Estado</th>
-                <th style={{ width: "56px" }}></th>
+                <th style={{ width: "40px" }}>Día</th>
+                <th style={{ width: "108px" }}>Fecha</th>
+                <th style={{ width: "62px" }}>Hora</th>
+                <th style={{ width: "150px" }}>Tipo</th>
+                <th style={{ width: "34%" }}>Copy</th>
+                <th style={{ width: "11%" }}>Material</th>
+                <th style={{ width: "19%" }}>Observaciones</th>
+                <th style={{ width: "100px" }}>Responsable</th>
+                <th style={{ width: "118px" }}>Estado</th>
+                <th style={{ width: "50px" }}></th>
               </tr>
             </thead>
             <tbody>
@@ -5323,13 +5345,18 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
                 const esHoy = h.fecha_programada === hoyISO;
                 const estaAtrasada = h.fecha_programada < hoyISO && h.estado !== "publicada";
                 const est = ESTADOS_HISTORIA.find((e) => e.id === h.estado) || ESTADOS_HISTORIA[0];
-                const bgFila = estaAtrasada ? "#fff5f5" : esHoy ? "#e3f2fd" : esFinde ? "#fafafa" : undefined;
+                // Franjeado sutil por día (no por fila): ayuda a distinguir
+                // rápido dónde termina un día y empieza el siguiente, igual
+                // que en el Sheet, sin competir con hoy/atrasada/finde.
+                const diaPar = fecha.getDate() % 2 === 0;
+                const bgFila = estaAtrasada ? "#fff5f5" : esHoy ? "#e3f2fd" : esFinde ? "#fafafa" : diaPar ? "#fbfcfa" : undefined;
+                const esNuevoDia = rowIndex === 0 || filasVisibles[rowIndex - 1].fecha_programada !== h.fecha_programada;
 
                 return (
-                  <tr key={h.id} style={{ background: bgFila }}>
-                    <td style={{ padding: "6px 10px", fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "#c62828" : esFinde ? "#999" : "#333", fontSize: "12px" }}>
-                      {LETRAS_DIA[dow]}
-                      {estaAtrasada && <span title="Atrasada" style={{ marginLeft: "2px" }}>⚠</span>}
+                  <tr key={h.id} style={{ background: bgFila, borderTop: esNuevoDia && rowIndex > 0 ? "2px solid #dadce0" : undefined }}>
+                    <td style={{ padding: "8px 6px", fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "#c62828" : esFinde ? "#999" : "#333", fontSize: "12px" }}>
+                      {esNuevoDia ? LETRAS_DIA[dow] : ""}
+                      {estaAtrasada && esNuevoDia && <span title="Atrasada" style={{ marginLeft: "2px" }}>⚠</span>}
                     </td>
                     <td>
                       <input
@@ -5370,13 +5397,17 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
                       />
                     </td>
                     <td>
-                      <input
-                        type="text"
-                        className="sheet-cell"
+                      <textarea
+                        className="sheet-cell sheet-cell-textarea"
                         data-cell={`${rowIndex}:copy`}
                         placeholder="Escribir copy…"
+                        rows={1}
+                        ref={ajustarAltura}
                         value={h.copy || ""}
-                        onChange={(e) => actualizarLocal(h.id, { copy: e.target.value })}
+                        onChange={(e) => {
+                          actualizarLocal(h.id, { copy: e.target.value });
+                          ajustarAltura(e.target);
+                        }}
                         onBlur={(e) => confirmarCampoTexto(h.id, { copy: e.target.value.trim() })}
                         onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "copy")}
                         onPaste={(e) => manejarPaste(e, rowIndex, "copy")}
@@ -5396,13 +5427,17 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
                       />
                     </td>
                     <td>
-                      <input
-                        type="text"
-                        className="sheet-cell"
+                      <textarea
+                        className="sheet-cell sheet-cell-textarea"
                         data-cell={`${rowIndex}:aclaraciones`}
                         placeholder="—"
+                        rows={1}
+                        ref={ajustarAltura}
                         value={h.aclaraciones || ""}
-                        onChange={(e) => actualizarLocal(h.id, { aclaraciones: e.target.value })}
+                        onChange={(e) => {
+                          actualizarLocal(h.id, { aclaraciones: e.target.value });
+                          ajustarAltura(e.target);
+                        }}
                         onBlur={(e) => confirmarCampoTexto(h.id, { aclaraciones: e.target.value.trim() })}
                         onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "aclaraciones")}
                         onPaste={(e) => manejarPaste(e, rowIndex, "aclaraciones")}

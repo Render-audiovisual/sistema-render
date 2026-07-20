@@ -1713,7 +1713,7 @@ select:focus {
   border-bottom: 1px solid #e8eaed;
   border-right: 1px solid #e8eaed;
   padding: 0;
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 .sheet-checklist-table {
@@ -1894,6 +1894,38 @@ th.check-client-col {
 
 select.sheet-cell {
   cursor: pointer;
+}
+
+/* Celdas de texto largo (copy, observaciones): a diferencia de un
+   <input>, envuelven en varias líneas y crecen con el contenido — igual
+   que una celda de Sheets, en vez de cortar o esconder el texto. */
+textarea.sheet-cell-textarea {
+  display: block;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  min-height: 34px;
+  overflow: hidden;
+  resize: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  width: 100%;
+}
+
+textarea.sheet-cell-textarea:hover {
+  border-color: #ddd;
+}
+
+textarea.sheet-cell-textarea:focus {
+  background: #fff;
+  border-color: #188038;
+  box-shadow: 0 0 0 1px #188038;
+  outline: none;
+  position: relative;
+  z-index: 2;
 }
 
 .sheet-row-actions {
