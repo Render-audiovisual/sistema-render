@@ -928,6 +928,8 @@ function PiezasTableroPage() {
   const [enviando, setEnviando] = useState(false);
 
   // Filtros
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroResponsable, setFiltroResponsable] = useState("");
   const [filtroCliente, setFiltroCliente] = useState("");
   const [filtroPrioridad, setFiltroPrioridad] = useState("");
@@ -993,7 +995,28 @@ function PiezasTableroPage() {
   }
 
   // Filtrar piezas según los filtros activos
+  const busquedaNormalizada = busqueda.trim().toLowerCase();
   const piezasFiltradas = piezas.filter((pieza) => {
+    if (busquedaNormalizada) {
+      const textoPieza = [
+        pieza.tipo,
+        pieza.cliente_nombre,
+        pieza.responsable,
+        pieza.idea,
+        pieza.copy,
+        pieza.material_referencia,
+        pieza.aclaraciones,
+        ESTADO_LABELS[pieza.estado],
+        pieza.prioridad,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      if (!textoPieza.includes(busquedaNormalizada)) return false;
+    }
+    if (filtroEstado && (pieza.estado || "pendiente") !== filtroEstado)
+      return false;
     if (filtroResponsable && pieza.responsable !== filtroResponsable)
       return false;
     if (filtroCliente && pieza.cliente_id !== parseInt(filtroCliente))
@@ -1018,6 +1041,12 @@ function PiezasTableroPage() {
 
   // Prioridades
   const prioridades = ["baja", "media", "alta"];
+  const hayFiltrosActivos =
+    busqueda.trim() ||
+    filtroEstado ||
+    filtroResponsable ||
+    filtroCliente ||
+    filtroPrioridad;
 
   // Agrupar por estado
   function agruparPorEstado() {
@@ -1148,41 +1177,47 @@ function PiezasTableroPage() {
 
       <div className="box" style={{ marginBottom: "20px" }}>
         {/* Controles */}
-        <div
-          style={{
-            display: "flex",
-            gap: "10px",
-            marginBottom: "20px",
-            flexWrap: "wrap",
-            alignItems: "center",
-          }}
-        >
-          <button
-            className={`btn ${vista === "kanban" ? "btn-active" : ""}`}
-            onClick={() => setVista("kanban")}
-          >
-            Kanban
-          </button>
-          <button
-            className={`btn ${vista === "tabla" ? "btn-active" : ""}`}
-            onClick={() => setVista("tabla")}
-          >
-            Tabla
-          </button>
-          <span
-            style={{
-              marginLeft: "12px",
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "#666",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-            }}
-          >
-            Filtros:
-          </span>
+        <div className="task-toolbar">
+          <div className="task-view-toggle">
+            <button
+              className={`btn ${vista === "kanban" ? "btn-active" : ""}`}
+              onClick={() => setVista("kanban")}
+            >
+              Kanban
+            </button>
+            <button
+              className={`btn ${vista === "tabla" ? "btn-active" : ""}`}
+              onClick={() => setVista("tabla")}
+            >
+              Tabla
+            </button>
+          </div>
+
+          <label className="task-search">
+            <span>Buscar</span>
+            <input
+              type="search"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Tarea, cliente o idea..."
+            />
+          </label>
 
           <select
+            className="task-filter-select"
+            value={filtroEstado}
+            onChange={(e) => setFiltroEstado(e.target.value)}
+          >
+            <option value="">Todos los estados</option>
+            {ESTADOS.map((estado) => (
+              <option key={estado} value={estado}>
+                {ESTADO_LABELS[estado]}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="task-filter-select"
             value={filtroResponsable}
             onChange={(e) => setFiltroResponsable(e.target.value)}
           >
@@ -1195,6 +1230,7 @@ function PiezasTableroPage() {
           </select>
 
           <select
+            className="task-filter-select"
             value={filtroCliente}
             onChange={(e) => setFiltroCliente(e.target.value)}
           >
@@ -1207,6 +1243,7 @@ function PiezasTableroPage() {
           </select>
 
           <select
+            className="task-filter-select"
             value={filtroPrioridad}
             onChange={(e) => setFiltroPrioridad(e.target.value)}
           >
@@ -1221,14 +1258,20 @@ function PiezasTableroPage() {
           <button
             className="btn"
             onClick={() => {
+              setBusqueda("");
+              setFiltroEstado("");
               setFiltroResponsable("");
               setFiltroCliente("");
               setFiltroPrioridad("");
             }}
-            style={{ marginLeft: "auto" }}
+            disabled={!hayFiltrosActivos}
           >
             Limpiar filtros
           </button>
+
+          <span className="task-results-count">
+            {piezasFiltradas.length} de {piezas.length} tareas
+          </span>
         </div>
 
         {error && (
