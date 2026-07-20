@@ -138,6 +138,56 @@ router.delete("/usuarios/:id", async (req, res, next) => {
   }
 });
 
+router.patch("/usuarios/perfil", async (req, res, next) => {
+  try {
+    const { usuario_actual, password_actual, usuario_nuevo } = req.body;
+    const usuarioNuevo = (usuario_nuevo || "").trim();
+
+    if (!usuario_actual || !password_actual || !usuarioNuevo) {
+      return res
+        .status(400)
+        .json({ error: "Faltan el usuario actual, la contraseña actual y el usuario nuevo." });
+    }
+
+    const found = await pool.query(
+      "SELECT id, usuario, nombre, rol, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
+      [usuario_actual],
+    );
+    if (found.rows.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado." });
+    }
+
+    const usuarioDB = found.rows[0];
+    const passwordValida = await bcrypt.compare(
+      password_actual,
+      usuarioDB.password_hash,
+    );
+    if (!passwordValida) {
+      return res.status(401).json({ error: "La contraseña actual es incorrecta." });
+    }
+
+    const duplicado = await pool.query(
+      "SELECT id FROM usuarios WHERE lower(usuario) = lower($1) AND id <> $2",
+      [usuarioNuevo, usuarioDB.id],
+    );
+    if (duplicado.rows.length > 0) {
+      return res.status(409).json({ error: "Ya existe un usuario con ese nombre de acceso." });
+    }
+
+    const updated = await pool.query(
+      `UPDATE usuarios
+       SET usuario = $1
+       WHERE id = $2
+       RETURNING id, usuario, nombre, rol, created_at`,
+      [usuarioNuevo, usuarioDB.id],
+    );
+
+    res.json(updated.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.patch("/usuarios/password", async (req, res, next) => {
   try {
     const { usuario, password_actual, password_nueva } = req.body;

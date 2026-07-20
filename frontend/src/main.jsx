@@ -2372,12 +2372,67 @@ function normalizarPrimerNombre(nombre) {
 function PerfilPage() {
   const sesion = getSesion();
   const usuario = sesion?.usuario;
+  const [perfilUsuario, setPerfilUsuario] = useState(usuario);
+  const [usuarioNuevo, setUsuarioNuevo] = useState(usuario?.usuario || "");
+  const [passwordUsuario, setPasswordUsuario] = useState("");
   const [actual, setActual] = useState("");
   const [nueva, setNueva] = useState("");
   const [confirmar, setConfirmar] = useState("");
   const [mensaje, setMensaje] = useState(null);
   const [error, setError] = useState(null);
+  const [mensajeUsuario, setMensajeUsuario] = useState(null);
+  const [errorUsuario, setErrorUsuario] = useState(null);
+  const [enviandoUsuario, setEnviandoUsuario] = useState(false);
   const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    setPerfilUsuario(usuario);
+    setUsuarioNuevo(usuario?.usuario || "");
+  }, [usuario?.usuario]);
+
+  const handleCambiarUsuario = (event) => {
+    event.preventDefault();
+    setMensajeUsuario(null);
+    setErrorUsuario(null);
+
+    const usuarioLimpio = usuarioNuevo.trim();
+    if (!usuarioLimpio) {
+      setErrorUsuario("El usuario nuevo no puede estar vacío.");
+      return;
+    }
+
+    setEnviandoUsuario(true);
+    fetch("/api/usuarios/perfil", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        usuario_actual: perfilUsuario.usuario,
+        password_actual: passwordUsuario,
+        usuario_nuevo: usuarioLimpio,
+      }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo cambiar el usuario.");
+        }
+        return data;
+      })
+      .then((data) => {
+        const usuarioActualizado = {
+          usuario: data.usuario,
+          nombre: data.nombre,
+          rol: data.rol,
+        };
+        guardarSesion(sesion.token, usuarioActualizado);
+        setPerfilUsuario(usuarioActualizado);
+        setUsuarioNuevo(data.usuario);
+        setPasswordUsuario("");
+        setMensajeUsuario("Usuario actualizado correctamente.");
+      })
+      .catch((err) => setErrorUsuario(err.message))
+      .finally(() => setEnviandoUsuario(false));
+  };
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -2398,7 +2453,7 @@ function PerfilPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        usuario: usuario.usuario,
+        usuario: perfilUsuario.usuario,
         password_actual: actual,
         password_nueva: nueva,
       }),
@@ -2429,7 +2484,7 @@ function PerfilPage() {
             <span className="active">Mi perfil</span>
             <a href="/">Home</a>
           </div>
-          <div className="tag">{usuario?.nombre}</div>
+          <div className="tag">{perfilUsuario?.nombre}</div>
         </div>
 
         <div className="content">
@@ -2438,16 +2493,56 @@ function PerfilPage() {
             <div className="detail-grid">
               <div className="detail-field">
                 <div className="detail-label">Nombre</div>
-                <div>{usuario?.nombre}</div>
+                <div>{perfilUsuario?.nombre}</div>
               </div>
               <div className="detail-field">
                 <div className="detail-label">Usuario de acceso</div>
-                <div>{usuario?.usuario}</div>
+                <div>{perfilUsuario?.usuario}</div>
               </div>
               <div className="detail-field">
                 <div className="detail-label">Rol</div>
-                <div>{ROL_LABELS[usuario?.rol] || usuario?.rol}</div>
+                <div>{ROL_LABELS[perfilUsuario?.rol] || perfilUsuario?.rol}</div>
               </div>
+            </div>
+          </div>
+
+          <div className="section-label">Cambiar mi usuario</div>
+          <div className="box">
+            <form onSubmit={handleCambiarUsuario} className="login-form">
+              <label className="login-field">
+                <span className="detail-label">Nuevo usuario</span>
+                <input
+                  type="text"
+                  value={usuarioNuevo}
+                  onChange={(e) => setUsuarioNuevo(e.target.value)}
+                  autoComplete="username"
+                  required
+                />
+              </label>
+              <label className="login-field">
+                <span className="detail-label">Contraseña actual</span>
+                <input
+                  type="password"
+                  value={passwordUsuario}
+                  onChange={(e) => setPasswordUsuario(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+
+              {errorUsuario && <div className="caption login-error">{errorUsuario}</div>}
+              {mensajeUsuario && (
+                <div className="caption" style={{ color: "#333", fontWeight: "bold" }}>
+                  {mensajeUsuario}
+                </div>
+              )}
+
+              <button className="btn primary" type="submit" disabled={enviandoUsuario}>
+                {enviandoUsuario ? "Guardando..." : "Cambiar usuario"}
+              </button>
+            </form>
+            <div className="caption">
+              El rol es solo de lectura y no se puede cambiar desde el perfil.
             </div>
           </div>
 
