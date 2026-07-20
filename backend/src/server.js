@@ -29,7 +29,7 @@ router.post("/login", async (req, res, next) => {
     }
 
     const result = await pool.query(
-      "SELECT id, usuario, nombre, rol, password_hash FROM usuarios WHERE usuario = $1",
+      "SELECT id, usuario, nombre, rol, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
       [usuario],
     );
 
@@ -149,7 +149,7 @@ router.patch("/usuarios/password", async (req, res, next) => {
     }
 
     const found = await pool.query(
-      "SELECT id, password_hash FROM usuarios WHERE usuario = $1",
+      "SELECT id, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
       [usuario],
     );
     if (found.rows.length === 0) {

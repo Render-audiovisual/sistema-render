@@ -431,6 +431,13 @@ const USUARIO_INFO = {
   oriana: { nombre: "Oriana", rol: "community" },
 };
 
+function getUsuarioKey(usuario) {
+  return (usuario || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 function getSesion() {
   const raw = localStorage.getItem("render_sesion");
   if (!raw) {
@@ -498,7 +505,7 @@ function LoginPage() {
       })
       .then((data) => {
         guardarSesion(data.token, data.usuario);
-        const destino = USUARIO_A_RUTA[data.usuario.usuario] || "/";
+        const destino = USUARIO_A_RUTA[getUsuarioKey(data.usuario.usuario)] || "/";
         window.location.href = destino;
       })
       .catch((err) => {
@@ -1521,12 +1528,13 @@ function PiezasTableroPage() {
 function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
   const [abierto, setAbierto] = useState(false);
   const esAdmin = sesion?.usuario?.rol === "admin";
+  const usuarioKey = getUsuarioKey(sesion?.usuario?.usuario);
   const rutaTablero =
-    sesion?.usuario?.usuario === "agustin"
+    usuarioKey === "agustin"
       ? "/agustin"
-      : sesion?.usuario?.usuario === "franco"
+      : usuarioKey === "franco"
         ? "/franco"
-        : USUARIO_A_RUTA[sesion?.usuario?.usuario];
+        : USUARIO_A_RUTA[usuarioKey];
 
   const seccionesNav = {
     inicio: [
@@ -1633,7 +1641,7 @@ function App() {
 
   if (path === "/login") {
     if (sesion) {
-      window.location.href = USUARIO_A_RUTA[sesion.usuario.usuario] || "/";
+      window.location.href = USUARIO_A_RUTA[getUsuarioKey(sesion.usuario.usuario)] || "/";
       return null;
     }
     return <LoginPage />;
@@ -1645,7 +1653,7 @@ function App() {
   }
 
   const esAdmin = sesion.usuario.rol === "admin";
-  const rutaPropia = USUARIO_A_RUTA[sesion.usuario.usuario];
+  const rutaPropia = USUARIO_A_RUTA[getUsuarioKey(sesion.usuario.usuario)];
   const rutasCompartidas = ["/", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil", "/piezas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
@@ -1756,7 +1764,7 @@ const ROLES_HOME = [
 function HomePage() {
   const sesion = getSesion();
   const esAdmin = sesion?.usuario?.rol === "admin";
-  const rutaPropia = USUARIO_A_RUTA[sesion?.usuario?.usuario] || "/";
+  const rutaPropia = USUARIO_A_RUTA[getUsuarioKey(sesion?.usuario?.usuario)] || "/";
 
   const atajos = [
     {
@@ -2351,6 +2359,16 @@ const ROL_LABELS = {
   community: "Comunidad",
 };
 
+function normalizarPrimerNombre(nombre) {
+  const primero = (nombre || "").trim().split(/\s+/)[0] || "";
+  const limpio = primero
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "");
+  if (!limpio) return "";
+  return limpio.charAt(0).toUpperCase() + limpio.slice(1).toLowerCase();
+}
+
 function PerfilPage() {
   const sesion = getSesion();
   const usuario = sesion?.usuario;
@@ -2496,6 +2514,21 @@ function EmpleadosPage() {
   const [mensaje, setMensaje] = useState(null);
   const [enviando, setEnviando] = useState(false);
 
+  const handleNombreChange = (event) => {
+    const nuevoNombre = event.target.value;
+    const usuarioActualSugerido = normalizarPrimerNombre(nombre);
+    const passwordActualSugerida = usuarioActualSugerido ? `${usuarioActualSugerido}1` : "";
+    const nuevoUsuarioSugerido = normalizarPrimerNombre(nuevoNombre);
+
+    setNombre(nuevoNombre);
+    if (!usuario || usuario === usuarioActualSugerido) {
+      setUsuario(nuevoUsuarioSugerido);
+    }
+    if (!password || password === passwordActualSugerida) {
+      setPassword(nuevoUsuarioSugerido ? `${nuevoUsuarioSugerido}1` : "");
+    }
+  };
+
   const cargarUsuarios = () => {
     fetch("/api/usuarios")
       .then((r) => r.json())
@@ -2611,7 +2644,7 @@ function EmpleadosPage() {
                   <input
                     type="text"
                     value={nombre}
-                    onChange={(e) => setNombre(e.target.value)}
+                    onChange={handleNombreChange}
                     required
                   />
                 </label>
@@ -2620,7 +2653,7 @@ function EmpleadosPage() {
                   <input
                     type="text"
                     value={usuario}
-                    placeholder="ej: martina"
+                    placeholder="ej: Luciano"
                     onChange={(e) => setUsuario(e.target.value)}
                     required
                   />
@@ -2640,6 +2673,7 @@ function EmpleadosPage() {
                   <input
                     type="text"
                     value={password}
+                    placeholder="ej: Luciano1"
                     onChange={(e) => setPassword(e.target.value)}
                     required
                   />
@@ -2662,7 +2696,8 @@ function EmpleadosPage() {
               </div>
             </form>
             <div className="caption">
-              → La contraseña inicial se le comparte al empleado, y él puede
+              → Por defecto: usuario con mayúscula inicial y contraseña nombre + 1.
+              La contraseña inicial se le comparte al empleado, y él puede
               cambiarla desde "Mi perfil".
             </div>
           </div>
