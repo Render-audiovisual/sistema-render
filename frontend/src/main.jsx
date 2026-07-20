@@ -6539,6 +6539,10 @@ function HistoriasPage({ initialTab = "planilla" }) {
 // ── REPORTES DE EQUIPO: rendimiento por empleado ──────────────────────────────
 
 function ReportesEquipoPage() {
+  const sesion = getSesion();
+  const usuarioSesion = sesion?.usuario;
+  const esVistaAdmin = usuarioSesion?.rol === "admin";
+  const nombrePropio = usuarioSesion?.nombre;
   const [tareas, setTareas] = useState([]);
   const [historias, setHistorias] = useState([]);
   const [publicaciones, setPublicaciones] = useState([]);
@@ -6549,8 +6553,12 @@ function ReportesEquipoPage() {
   const [detalleDe, setDetalleDe] = useState(null);
 
   useEffect(() => {
+    const tareasUrl =
+      esVistaAdmin || !nombrePropio
+        ? "/api/tareas"
+        : `/api/tareas?asignado_a=${encodeURIComponent(nombrePropio)}`;
     Promise.all([
-      fetch("/api/tareas").then((r) => r.json()),
+      fetch(tareasUrl).then((r) => r.json()),
       fetch("/api/historias").then((r) => r.json()),
       fetch("/api/publicaciones").then((r) => r.json()),
       fetch("/api/usuarios").then((r) => r.json()),
@@ -6567,7 +6575,7 @@ function ReportesEquipoPage() {
         setError("No se pudieron cargar los datos del reporte.");
       })
       .finally(() => setCargando(false));
-  }, []);
+  }, [esVistaAdmin, nombrePropio]);
 
   const hoyISO = getHoyLocalISO();
   const ahora = new Date();
@@ -6613,7 +6621,9 @@ function ReportesEquipoPage() {
   const nombresUsuarios = usuarios
     .filter((u) => u.rol !== "admin" || nombresConTareas.includes(u.nombre))
     .map((u) => u.nombre);
-  const empleados = [...new Set([...nombresUsuarios, ...nombresConTareas])];
+  const empleados = esVistaAdmin
+    ? [...new Set([...nombresUsuarios, ...nombresConTareas])]
+    : [nombrePropio].filter(Boolean);
 
   const filas = empleados.map((nombre) => {
     const propias = tareas.filter((t) => t.asignado_a === nombre);
@@ -6708,6 +6718,7 @@ function ReportesEquipoPage() {
             filasConObjetivo.length,
         )
       : 0;
+  const filaPropia = !esVistaAdmin ? filasOrdenadas[0] : null;
 
   const totales = {
     activas: filas.reduce((s, f) => s + f.carga, 0),
@@ -6745,15 +6756,19 @@ function ReportesEquipoPage() {
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
-            <span className="active">Reporte del equipo</span>
+            <span className="active">{esVistaAdmin ? "Reporte del equipo" : "Mi reporte"}</span>
           </div>
-          <div className="tag">Objetivo mensual</div>
+          <div className="tag">{esVistaAdmin ? "Objetivo mensual" : "Mi objetivo"}</div>
         </div>
 
         <div className="content">
-          <div className="section-label">Rendimiento mensual del equipo</div>
+          <div className="section-label">
+            {esVistaAdmin ? "Rendimiento mensual del equipo" : "Mi rendimiento mensual"}
+          </div>
           <div className="caption" style={{ marginBottom: "16px" }}>
-            Seguimiento de objetivos, tareas completadas y pendientes por persona.
+            {esVistaAdmin
+              ? "Seguimiento de objetivos, tareas completadas y pendientes por persona."
+              : "Seguimiento de tu objetivo, tareas completadas y pendientes."}
           </div>
 
           {error && (
@@ -6779,27 +6794,56 @@ function ReportesEquipoPage() {
             <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando reportes…</div>
           ) : (
             <>
-              <div className="section-label">1 · Objetivo mensual — vista rápida</div>
+              <div className="section-label">
+                {esVistaAdmin ? "1 · Objetivo mensual — vista rápida" : "1 · Mi objetivo mensual — vista rápida"}
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px", marginBottom: "24px" }}>
-                <div style={{ ...cardStyle, background: "#e8f5e9" }}>
-                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#2e7d32" }}>{equipoAlDia}/{filasConObjetivo.length}</div>
-                  <div style={{ fontSize: "12px", color: "#2e7d32" }}>Equipo al día</div>
-                </div>
-                <div style={{ ...cardStyle, background: "#fff3e0" }}>
-                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#e65100" }}>{equipoEnRiesgo}</div>
-                  <div style={{ fontSize: "12px", color: "#e65100" }}>En riesgo</div>
-                </div>
-                <div style={{ ...cardStyle, background: "#ffebee" }}>
-                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#c62828" }}>{equipoAtrasado}</div>
-                  <div style={{ fontSize: "12px", color: "#c62828" }}>Atrasados</div>
-                </div>
-                <div style={{ ...cardStyle, background: "#e3f2fd" }}>
-                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#1565c0" }}>{cumplimientoPromedio}%</div>
-                  <div style={{ fontSize: "12px", color: "#1565c0" }}>Cumplimiento promedio</div>
-                </div>
+                {esVistaAdmin ? (
+                  <>
+                    <div style={{ ...cardStyle, background: "#e8f5e9" }}>
+                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#2e7d32" }}>{equipoAlDia}/{filasConObjetivo.length}</div>
+                      <div style={{ fontSize: "12px", color: "#2e7d32" }}>Equipo al día</div>
+                    </div>
+                    <div style={{ ...cardStyle, background: "#fff3e0" }}>
+                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#e65100" }}>{equipoEnRiesgo}</div>
+                      <div style={{ fontSize: "12px", color: "#e65100" }}>En riesgo</div>
+                    </div>
+                    <div style={{ ...cardStyle, background: "#ffebee" }}>
+                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#c62828" }}>{equipoAtrasado}</div>
+                      <div style={{ fontSize: "12px", color: "#c62828" }}>Atrasados</div>
+                    </div>
+                    <div style={{ ...cardStyle, background: "#e3f2fd" }}>
+                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#1565c0" }}>{cumplimientoPromedio}%</div>
+                      <div style={{ fontSize: "12px", color: "#1565c0" }}>Cumplimiento promedio</div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ ...cardStyle, background: filaPropia?.estadoObjetivo?.bg || "#eceff1" }}>
+                      <div style={{ fontSize: "26px", fontWeight: "700", color: filaPropia?.estadoObjetivo?.fg || "#546e7a" }}>
+                        {filaPropia?.estadoObjetivo?.label || "Sin datos"}
+                      </div>
+                      <div style={{ fontSize: "12px", color: filaPropia?.estadoObjetivo?.fg || "#546e7a" }}>Estado</div>
+                    </div>
+                    <div style={{ ...cardStyle, background: "#e3f2fd" }}>
+                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#1565c0" }}>{filaPropia?.avanceObjetivo ?? 0}%</div>
+                      <div style={{ fontSize: "12px", color: "#1565c0" }}>Avance al 100%</div>
+                    </div>
+                    <div style={{ ...cardStyle, background: "#e8f5e9" }}>
+                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#2e7d32" }}>{filaPropia?.terminadas ?? 0}</div>
+                      <div style={{ fontSize: "12px", color: "#2e7d32" }}>Hecho este mes</div>
+                    </div>
+                    <div style={{ ...cardStyle, background: "#fff3e0" }}>
+                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#e65100" }}>{filaPropia?.carga ?? 0}</div>
+                      <div style={{ fontSize: "12px", color: "#e65100" }}>Pendientes</div>
+                    </div>
+                  </>
+                )}
               </div>
 
-              <div className="section-label">2 · Rendimiento por empleado</div>
+              <div className="section-label">
+                {esVistaAdmin ? "2 · Rendimiento por empleado" : "2 · Mi rendimiento"}
+              </div>
               <div className="box" style={{ padding: 0, overflow: "hidden" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
@@ -6902,7 +6946,9 @@ function ReportesEquipoPage() {
                 El 100% se calcula contra el objetivo mensual de cada rol. El estado compara lo hecho con el ritmo esperado del mes y marca atrasos si hay vencidas.
               </div>
 
-              <div className="section-label">3 · Piezas asignadas por responsable</div>
+              <div className="section-label">
+                {esVistaAdmin ? "3 · Piezas asignadas por responsable" : "3 · Mis piezas asignadas"}
+              </div>
               <div className="box">
                 {piezasPorResponsable.length === 0 ? (
                   <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>Sin piezas asignadas todavía.</div>
