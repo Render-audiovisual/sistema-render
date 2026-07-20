@@ -1538,7 +1538,7 @@ function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
     ],
     gestion: [
       { href: "/piezas", label: "Tareas" },
-      { href: "/reportes-historias", label: "Reportes" },
+      { href: "/reportes-historias", label: "Reporte del equipo" },
     ],
     admin: esAdmin ? [
       { href: "/clientes", label: "Clientes" },
@@ -1726,7 +1726,7 @@ function App() {
     { href: rutaPropia || "/", label: "Mi tablero" },
     { href: "/planificacion-historias", label: "🎯 Historias" },
     { href: "/planificacion-publicaciones", label: "🎬 Publicaciones" },
-    { href: "/reportes-historias", label: "📊 Reportes" },
+    { href: "/reportes-historias", label: "📊 Reporte del equipo" },
     { href: "/perfil", label: "Mi perfil" },
     { href: "/piezas", label: "📋 Tareas" },
   ];
@@ -2348,7 +2348,7 @@ const ROL_LABELS = {
   diseno: "Diseño",
   edicion: "Edición",
   produccion: "Producción",
-  community: "Community",
+  community: "Comunidad",
 };
 
 function PerfilPage() {
@@ -6441,6 +6441,12 @@ function ReportesEquipoPage() {
 
   const hoyISO = getHoyLocalISO();
   const ahora = new Date();
+  const OBJETIVOS_MENSUALES_EQUIPO = {
+    edicion: 40,
+    diseno: 30,
+    produccion: 12,
+    community: 120,
+  };
 
   const rangoPeriodo = (() => {
     const pad = (n) => String(n).padStart(2, "0");
@@ -6448,18 +6454,24 @@ function ReportesEquipoPage() {
       const desde = `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-01`;
       const sig = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 1);
       const hasta = `${sig.getFullYear()}-${pad(sig.getMonth() + 1)}-01`;
-      return { desde, hasta, dias: new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0).getDate() };
+      return {
+        desde,
+        hasta,
+        dias: new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0).getDate(),
+        diasTranscurridos: ahora.getDate(),
+      };
     }
     if (periodo === "mes_pasado") {
       const prev = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
       const desde = `${prev.getFullYear()}-${pad(prev.getMonth() + 1)}-01`;
       const hasta = `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-01`;
-      return { desde, hasta, dias: new Date(prev.getFullYear(), prev.getMonth() + 1, 0).getDate() };
+      const dias = new Date(prev.getFullYear(), prev.getMonth() + 1, 0).getDate();
+      return { desde, hasta, dias, diasTranscurridos: dias };
     }
     const d30 = new Date(ahora);
     d30.setDate(d30.getDate() - 30);
     const desde = `${d30.getFullYear()}-${pad(d30.getMonth() + 1)}-${pad(d30.getDate())}`;
-    return { desde, hasta: "9999-12-31", dias: 30 };
+    return { desde, hasta: "9999-12-31", dias: 30, diasTranscurridos: 30 };
   })();
 
   const enPeriodo = (fechaISO) =>
@@ -6507,10 +6519,36 @@ function ReportesEquipoPage() {
     const productividad = (terminadasPeriodo.length / (rangoPeriodo.dias / 7)).toFixed(1);
 
     const rol = usuarios.find((u) => u.nombre === nombre)?.rol;
+    const objetivoMensual = OBJETIVOS_MENSUALES_EQUIPO[rol] || null;
+    const objetivoAlDia = objetivoMensual
+      ? Math.max(
+          1,
+          Math.ceil(
+            objetivoMensual *
+              (Math.min(rangoPeriodo.diasTranscurridos, rangoPeriodo.dias) / rangoPeriodo.dias),
+          ),
+        )
+      : null;
+    const avanceObjetivo = objetivoMensual
+      ? Math.round((terminadasPeriodo.length / objetivoMensual) * 100)
+      : null;
+    const estadoObjetivo = (() => {
+      if (!objetivoMensual) return { label: "Sin objetivo", bg: "#eceff1", fg: "#546e7a" };
+      if (atrasadas.length > 0) return { label: "Atrasado", bg: "#ffebee", fg: "#c62828" };
+      if (terminadasPeriodo.length >= objetivoAlDia) return { label: "Al día", bg: "#e8f5e9", fg: "#2e7d32" };
+      if (terminadasPeriodo.length >= Math.ceil(objetivoAlDia * 0.75)) {
+        return { label: "En riesgo", bg: "#fff3e0", fg: "#e65100" };
+      }
+      return { label: "Atrasado", bg: "#ffebee", fg: "#c62828" };
+    })();
 
     return {
       nombre,
       rol,
+      objetivoMensual,
+      objetivoAlDia,
+      avanceObjetivo,
+      estadoObjetivo,
       carga: activas.length,
       terminadas: terminadasPeriodo.length,
       atrasadas,
@@ -6521,7 +6559,25 @@ function ReportesEquipoPage() {
     };
   });
 
-  const filasOrdenadas = [...filas].sort((a, b) => b.carga - a.carga);
+  const prioridadEstado = { Atrasado: 0, "En riesgo": 1, "Al día": 2, "Sin objetivo": 3 };
+  const filasOrdenadas = [...filas].sort((a, b) => {
+    const estadoA = prioridadEstado[a.estadoObjetivo.label] ?? 9;
+    const estadoB = prioridadEstado[b.estadoObjetivo.label] ?? 9;
+    if (estadoA !== estadoB) return estadoA - estadoB;
+    return a.nombre.localeCompare(b.nombre);
+  });
+
+  const filasConObjetivo = filas.filter((f) => f.objetivoMensual);
+  const equipoAlDia = filasConObjetivo.filter((f) => f.estadoObjetivo.label === "Al día").length;
+  const equipoEnRiesgo = filasConObjetivo.filter((f) => f.estadoObjetivo.label === "En riesgo").length;
+  const equipoAtrasado = filasConObjetivo.filter((f) => f.estadoObjetivo.label === "Atrasado").length;
+  const cumplimientoPromedio =
+    filasConObjetivo.length > 0
+      ? Math.round(
+          filasConObjetivo.reduce((s, f) => s + Math.min(f.avanceObjetivo || 0, 100), 0) /
+            filasConObjetivo.length,
+        )
+      : 0;
 
   const totales = {
     activas: filas.reduce((s, f) => s + f.carga, 0),
@@ -6559,12 +6615,17 @@ function ReportesEquipoPage() {
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
-            <span className="active">Reportes</span>
+            <span className="active">Reporte del equipo</span>
           </div>
-          <div className="tag">Rendimiento del equipo</div>
+          <div className="tag">Objetivo mensual</div>
         </div>
 
         <div className="content">
+          <div className="section-label">Rendimiento mensual del equipo</div>
+          <div className="caption" style={{ marginBottom: "16px" }}>
+            Seguimiento de objetivos, tareas completadas y pendientes por persona.
+          </div>
+
           {error && (
             <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
               {error}
@@ -6588,45 +6649,43 @@ function ReportesEquipoPage() {
             <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando reportes…</div>
           ) : (
             <>
-              <div className="section-label">1 · Salud del equipo — vista rápida</div>
+              <div className="section-label">1 · Objetivo mensual — vista rápida</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px", marginBottom: "24px" }}>
-                <div style={{ ...cardStyle, background: "#e3f2fd" }}>
-                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#1565c0" }}>{totales.activas}</div>
-                  <div style={{ fontSize: "12px", color: "#1565c0" }}>Tareas activas</div>
-                </div>
                 <div style={{ ...cardStyle, background: "#e8f5e9" }}>
-                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#2e7d32" }}>{totales.terminadas}</div>
-                  <div style={{ fontSize: "12px", color: "#2e7d32" }}>Terminadas en el período</div>
+                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#2e7d32" }}>{equipoAlDia}/{filasConObjetivo.length}</div>
+                  <div style={{ fontSize: "12px", color: "#2e7d32" }}>Equipo al día</div>
                 </div>
                 <div style={{ ...cardStyle, background: "#fff3e0" }}>
-                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#e65100" }}>{totales.atrasadas}</div>
-                  <div style={{ fontSize: "12px", color: "#e65100" }}>Atrasadas hoy</div>
+                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#e65100" }}>{equipoEnRiesgo}</div>
+                  <div style={{ fontSize: "12px", color: "#e65100" }}>En riesgo</div>
                 </div>
                 <div style={{ ...cardStyle, background: "#ffebee" }}>
-                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#c62828" }}>{totales.bloqueadas}</div>
-                  <div style={{ fontSize: "12px", color: "#c62828" }}>Bloqueadas</div>
+                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#c62828" }}>{equipoAtrasado}</div>
+                  <div style={{ fontSize: "12px", color: "#c62828" }}>Atrasados</div>
+                </div>
+                <div style={{ ...cardStyle, background: "#e3f2fd" }}>
+                  <div style={{ fontSize: "26px", fontWeight: "700", color: "#1565c0" }}>{cumplimientoPromedio}%</div>
+                  <div style={{ fontSize: "12px", color: "#1565c0" }}>Cumplimiento promedio</div>
                 </div>
               </div>
 
               <div className="section-label">2 · Rendimiento por empleado</div>
-              <div className="box" style={{ padding: 0, overflow: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "820px" }}>
+              <div className="box" style={{ padding: 0, overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ borderBottom: "2px solid #333", background: "#fafafa" }}>
                       <th style={{ textAlign: "left", padding: "10px 12px", fontWeight: "600", fontSize: "12px" }}>Empleado</th>
-                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Carga actual</th>
-                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Terminadas</th>
-                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Atrasadas</th>
-                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Bloqueadas</th>
-                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Cumplimiento</th>
-                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Tiempo prom.</th>
-                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Ritmo</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Objetivo</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Hecho</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Avance al 100%</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Estado</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Pendientes</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filasOrdenadas.length === 0 && (
                       <tr>
-                        <td colSpan={8} style={{ padding: "24px", textAlign: "center", color: "#999" }}>
+                        <td colSpan={6} style={{ padding: "24px", textAlign: "center", color: "#999" }}>
                           Sin datos de tareas todavía.
                         </td>
                       </tr>
@@ -6646,56 +6705,59 @@ function ReportesEquipoPage() {
                               <div style={{ fontSize: "11px", color: "#999" }}>{ROL_LABELS[f.rol] || f.rol}</div>
                             )}
                           </td>
-                          <td style={{ padding: "10px", textAlign: "center", fontWeight: "600" }}>{f.carga}</td>
+                          <td style={{ padding: "10px", textAlign: "center", fontWeight: "600" }}>
+                            {f.objetivoMensual ? (
+                              <>
+                                <div>{f.objetivoMensual}</div>
+                                <div style={{ fontSize: "11px", color: "#999" }}>al mes</div>
+                              </>
+                            ) : (
+                              <span style={{ color: "#bbb" }}>—</span>
+                            )}
+                          </td>
                           <td style={{ padding: "10px", textAlign: "center", color: "#2e7d32", fontWeight: "600" }}>{f.terminadas}</td>
                           <td style={{ padding: "10px", textAlign: "center" }}>
-                            {f.atrasadas.length > 0 ? (
-                              <span style={{ background: "#fff3e0", color: "#e65100", padding: "2px 8px", borderRadius: "10px", fontWeight: "700", fontSize: "12px" }}>
-                                {f.atrasadas.length} ▾
-                              </span>
-                            ) : (
-                              <span style={{ color: "#bbb" }}>0</span>
-                            )}
-                          </td>
-                          <td style={{ padding: "10px", textAlign: "center" }}>
-                            {f.bloqueadas > 0 ? (
-                              <span style={{ background: "#ffebee", color: "#c62828", padding: "2px 8px", borderRadius: "10px", fontWeight: "700", fontSize: "12px" }}>
-                                {f.bloqueadas}
-                              </span>
-                            ) : (
-                              <span style={{ color: "#bbb" }}>0</span>
-                            )}
-                          </td>
-                          <td style={{ padding: "10px", textAlign: "center" }}>
-                            {f.cumplimiento === null ? (
-                              <span style={{ color: "#bbb", fontSize: "12px" }}>Sin venc.</span>
+                            {f.avanceObjetivo === null ? (
+                              <span style={{ color: "#bbb", fontSize: "12px" }}>Sin objetivo</span>
                             ) : (
                               <>
                                 <div style={{ display: "inline-block", width: "56px", height: "6px", background: "#e0e0e0", borderRadius: "3px", overflow: "hidden", verticalAlign: "middle" }}>
                                   <div
                                     style={{
-                                      width: `${f.cumplimiento}%`,
+                                      width: `${Math.min(f.avanceObjetivo, 100)}%`,
                                       height: "100%",
-                                      background: f.cumplimiento >= 80 ? "#4caf50" : f.cumplimiento >= 50 ? "#ff9800" : "#f44336",
+                                      background: f.avanceObjetivo >= 100 ? "#4caf50" : f.avanceObjetivo >= 70 ? "#ff9800" : "#f44336",
                                     }}
                                   />
                                 </div>
-                                <div style={{ fontSize: "11px", marginTop: "2px", fontWeight: "600" }}>{f.cumplimiento}%</div>
+                                <div style={{ fontSize: "11px", marginTop: "2px", fontWeight: "600" }}>{f.avanceObjetivo}%</div>
                               </>
                             )}
                           </td>
-                          <td style={{ padding: "10px", textAlign: "center", fontSize: "12px" }}>
-                            {f.tiempoPromedio !== null ? `${f.tiempoPromedio} días` : <span style={{ color: "#bbb" }}>—</span>}
+                          <td style={{ padding: "10px", textAlign: "center" }}>
+                            <span style={{ background: f.estadoObjetivo.bg, color: f.estadoObjetivo.fg, padding: "3px 8px", borderRadius: "10px", fontWeight: "700", fontSize: "12px" }}>
+                              {f.estadoObjetivo.label}
+                            </span>
                           </td>
                           <td style={{ padding: "10px", textAlign: "center", fontSize: "12px" }}>
-                            {f.productividad} /sem
+                            <strong>{f.carga}</strong>
+                            {f.atrasadas.length > 0 && (
+                              <span style={{ background: "#fff3e0", color: "#e65100", padding: "2px 6px", borderRadius: "10px", fontWeight: "700", fontSize: "11px", marginLeft: "6px" }}>
+                                {f.atrasadas.length} atras.
+                              </span>
+                            )}
+                            {f.bloqueadas > 0 && (
+                              <span style={{ background: "#ffebee", color: "#c62828", padding: "2px 6px", borderRadius: "10px", fontWeight: "700", fontSize: "11px", marginLeft: "6px" }}>
+                                {f.bloqueadas} bloq.
+                              </span>
+                            )}
                           </td>
                         </tr>
                         {detalleDe === f.nombre &&
                           f.atrasadas.map((t) => (
                             <tr key={`det-${t.id}`} style={{ background: "#fffde7", borderBottom: "1px solid #f0f0f0" }}>
-                              <td colSpan={8} style={{ padding: "6px 12px 6px 32px", fontSize: "12px", color: "#795548" }}>
-                                ⏰ <strong>{t.titulo}</strong>
+                              <td colSpan={6} style={{ padding: "6px 12px 6px 32px", fontSize: "12px", color: "#795548" }}>
+                                <strong>{t.titulo}</strong>
                                 {t.cliente_nombre ? ` · ${t.cliente_nombre}` : ""} · vencía {t.fecha_vencimiento} ·{" "}
                                 {t.estado === "bloqueada" ? "bloqueada" : "en curso"}
                               </td>
@@ -6707,7 +6769,7 @@ function ReportesEquipoPage() {
                 </table>
               </div>
               <div className="caption" style={{ marginTop: "8px", marginBottom: "20px" }}>
-                Cumplimiento = tareas que vencían en el período y fueron terminadas. Ritmo = tareas terminadas por semana. Click en una fila con atrasadas para ver el detalle.
+                El 100% se calcula contra el objetivo mensual de cada rol. El estado compara lo hecho con el ritmo esperado del mes y marca atrasos si hay vencidas.
               </div>
 
               <div className="section-label">3 · Piezas asignadas por responsable</div>
