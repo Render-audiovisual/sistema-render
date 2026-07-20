@@ -1398,24 +1398,32 @@ function PiezasTableroPage() {
 function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
   const [abierto, setAbierto] = useState(false);
   const esAdmin = sesion?.usuario?.rol === "admin";
+  const rutaTablero =
+    sesion?.usuario?.usuario === "agustin"
+      ? "/agustin"
+      : sesion?.usuario?.usuario === "franco"
+        ? "/franco"
+        : USUARIO_A_RUTA[sesion?.usuario?.usuario];
 
   const seccionesNav = {
-    miTrabajo: [
-      { href: sesion?.usuario?.usuario === "agustin" ? "/agustin" : sesion?.usuario?.usuario === "franco" ? "/franco" : USUARIO_A_RUTA[sesion?.usuario?.usuario], label: "📌 Mi tablero" },
+    inicio: [
+      { href: rutaTablero || "/", label: "Inicio" },
     ],
-    herramientas: [
-      { href: "/planificacion-historias", label: "🎯 Historias" },
-      { href: "/planificacion-publicaciones", label: "🎬 Publicaciones" },
-      { href: "/reportes-historias", label: "📊 Reportes" },
-      { href: "/piezas", label: "📋 Tareas" },
+    planificacion: [
+      { href: "/planificacion-historias", label: "Historias" },
+      { href: "/planificacion-publicaciones", label: "Publicaciones" },
+    ],
+    gestion: [
+      { href: "/piezas", label: "Tareas" },
+      { href: "/reportes-historias", label: "Reportes" },
     ],
     admin: esAdmin ? [
-      { href: "/equipo", label: "👥 Equipo" },
-      { href: "/empleados", label: "👨‍💼 Empleados" },
-      { href: "/nueva-tarea", label: "➕ Nueva tarea" },
+      { href: "/equipo", label: "Clientes" },
+      { href: "/empleados", label: "Usuarios / permisos" },
+      { href: "/nueva-tarea", label: "Nueva tarea" },
     ] : [],
     cuenta: [
-      { href: "/perfil", label: "⚙️ Perfil" },
+      { href: "/perfil", label: "Perfil" },
     ],
   };
 
@@ -1452,18 +1460,22 @@ function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
 
         <div className="sidebar-content">
           <div className="sidebar-section">
-            <div className="sidebar-section-title">Mi trabajo</div>
-            {renderLinksSección(seccionesNav.miTrabajo)}
+            {renderLinksSección(seccionesNav.inicio)}
           </div>
 
           <div className="sidebar-section">
-            <div className="sidebar-section-title">Herramientas</div>
-            {renderLinksSección(seccionesNav.herramientas)}
+            <div className="sidebar-section-title">Planificación</div>
+            {renderLinksSección(seccionesNav.planificacion)}
+          </div>
+
+          <div className="sidebar-section">
+            <div className="sidebar-section-title">Gestión</div>
+            {renderLinksSección(seccionesNav.gestion)}
           </div>
 
           {esAdmin && (
             <div className="sidebar-section">
-              <div className="sidebar-section-title">Admin</div>
+              <div className="sidebar-section-title">Administración</div>
               {renderLinksSección(seccionesNav.admin)}
             </div>
           )}
