@@ -5969,7 +5969,7 @@ function HistoriasPage({ initialTab = "planilla" }) {
     clientes.find((c) => c.id === clienteSeleccionado)?.nombre || "";
 
   return (
-    <main aria-label="Render platform historias">
+    <main aria-label="Render platform historias" className="historias-viewport">
       <div className="frame">
           <div className="topbar">
             <div className="logo-box">[ LOGO RENDER ]</div>

@@ -1594,6 +1594,52 @@ select:focus {
 }
 
 /* ---- Grilla editable (planilla de historias, estilo Sheets) ---- */
+/* Historias: en vez de que toda la página scrollee (obligando a bajar
+   para llegar a la barra de scroll horizontal de la grilla, que queda
+   fuera de vista), la página ocupa el alto de pantalla disponible y
+   solo la grilla interna scrollea — igual que Sheets, donde la barra
+   siempre está a mano. Solo en escritorio: 100vh en el celular es poco
+   confiable por la barra de direcciones del navegador, así que ahí se
+   mantiene el scroll de página normal, con la grilla un poco más baja
+   para no exigir tanto scroll extra. */
+@media (min-width: 769px) {
+  .historias-viewport {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    padding-bottom: 12px;
+  }
+
+  .historias-viewport .frame {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    max-width: 1400px;
+    min-height: 0;
+  }
+
+  .historias-viewport .content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .historias-viewport .sheet-frame {
+    flex: 1;
+    max-height: none;
+    min-height: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  .historias-viewport .sheet-frame {
+    max-height: 58vh;
+  }
+}
+
 .sheet-toolbar {
   align-items: center;
   display: flex;
