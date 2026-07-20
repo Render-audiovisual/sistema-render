@@ -951,10 +951,10 @@ function PiezasTableroPage() {
   if (cargando) {
     return (
       <main aria-label="Render platform piezas">
-        <div className="section-label">Tablero de Piezas</div>
+        <div className="section-label">Tareas</div>
         <div className="box">
           <div style={{ textAlign: "center", padding: "40px" }}>
-            Cargando piezas...
+            Cargando tareas...
           </div>
         </div>
       </main>
@@ -963,8 +963,24 @@ function PiezasTableroPage() {
 
   return (
     <main aria-label="Render platform piezas">
-      <div className="section-label">
-        📋 Tablero de Piezas ({piezasFiltradas.length})
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "10px",
+          justifyContent: "space-between",
+          marginBottom: "12px",
+        }}
+      >
+        <div className="section-label" style={{ margin: 0 }}>
+          Tareas ({piezasFiltradas.length})
+        </div>
+        {sesion?.usuario?.rol === "admin" && (
+          <a className="btn primary" href="/nueva-tarea">
+            Nueva tarea
+          </a>
+        )}
       </div>
 
       <div className="box" style={{ marginBottom: "20px" }}>
@@ -1420,7 +1436,6 @@ function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
     admin: esAdmin ? [
       { href: "/equipo", label: "Clientes" },
       { href: "/empleados", label: "Usuarios / permisos" },
-      { href: "/nueva-tarea", label: "Nueva tarea" },
     ] : [],
     cuenta: [
       { href: "/perfil", label: "Perfil" },
