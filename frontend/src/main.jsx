@@ -207,6 +207,31 @@ function getEstadoHistoriasCliente(total, porcentaje) {
   return { color: "rojo", label: "Bajo" };
 }
 
+const PRIORIDAD_CLIENTES_ADMIN = [
+  "rpm",
+  "iphone shop",
+  "luzin",
+  "moketa",
+];
+
+function normalizarNombreCliente(nombre = "") {
+  return nombre
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getPrioridadCliente(nombre) {
+  const normalizado = normalizarNombreCliente(nombre);
+  const index = PRIORIDAD_CLIENTES_ADMIN.findIndex(
+    (prioridad) =>
+      normalizado === prioridad || normalizado.includes(prioridad),
+  );
+  return index === -1 ? PRIORIDAD_CLIENTES_ADMIN.length : index;
+}
+
 function getResumenClientesActivos(clientes, historias, publicaciones) {
   return clientes
     .map((cliente) => {
@@ -269,10 +294,8 @@ function getResumenClientesActivos(clientes, historias, publicaciones) {
       };
     })
     .sort((a, b) => {
-      const ordenEstado = { rojo: 0, amarillo: 1, gris: 2, verde: 3 };
       return (
-        ordenEstado[a.estadoHistorias.color] -
-          ordenEstado[b.estadoHistorias.color] ||
+        getPrioridadCliente(a.nombre) - getPrioridadCliente(b.nombre) ||
         a.nombre.localeCompare(b.nombre)
       );
     });
@@ -3643,16 +3666,15 @@ function ClientesAdminPage() {
                 Cargando clientes...
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ minWidth: "920px" }}>
+              <div style={{ overflowX: "hidden" }}>
+                <table className="clientes-admin-table">
                   <thead>
                     <tr>
                       <th>Estado</th>
                       <th>Cliente</th>
-                      <th>Reels mes</th>
-                      <th>Carruseles mes</th>
+                      <th>Reels</th>
+                      <th>Carr.</th>
                       <th>Historias</th>
-                      <th>Último OK</th>
                       <th>Alerta</th>
                     </tr>
                   </thead>
@@ -3685,8 +3707,10 @@ function ClientesAdminPage() {
                           <div className="caption">
                             {cliente.historiasPublicadas} / {cliente.historiasMes} OK
                           </div>
+                          <div className="caption">
+                            Último: {cliente.ultimaHistoriaOk || "-"}
+                          </div>
                         </td>
-                        <td>{cliente.ultimaHistoriaOk || "-"}</td>
                         <td>
                           {cliente.historiasMes === 0
                             ? "Sin planificación cargada"
@@ -3700,7 +3724,7 @@ function ClientesAdminPage() {
                     ))}
                     {filasFiltradas.length === 0 && (
                       <tr>
-                        <td colSpan="7">No hay clientes con ese criterio.</td>
+                        <td colSpan="6">No hay clientes con ese criterio.</td>
                       </tr>
                     )}
                   </tbody>

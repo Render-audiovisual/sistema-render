@@ -2023,3 +2023,46 @@ tr:hover .sheet-row-actions {
   background: #f5f5f5;
   color: #1a73e8;
 }
+
+.clientes-admin-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.clientes-admin-table th,
+.clientes-admin-table td {
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 8px;
+  vertical-align: top;
+  white-space: normal;
+  word-break: normal;
+}
+
+.clientes-admin-table th:nth-child(1),
+.clientes-admin-table td:nth-child(1) {
+  width: 118px;
+}
+
+.clientes-admin-table th:nth-child(2),
+.clientes-admin-table td:nth-child(2) {
+  width: 24%;
+}
+
+.clientes-admin-table th:nth-child(3),
+.clientes-admin-table td:nth-child(3),
+.clientes-admin-table th:nth-child(4),
+.clientes-admin-table td:nth-child(4) {
+  text-align: center;
+  width: 78px;
+}
+
+.clientes-admin-table th:nth-child(5),
+.clientes-admin-table td:nth-child(5) {
+  width: 140px;
+}
+
+.clientes-admin-table th:nth-child(6),
+.clientes-admin-table td:nth-child(6) {
+  width: auto;
+}
