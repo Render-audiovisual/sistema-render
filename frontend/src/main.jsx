@@ -683,7 +683,6 @@ function NuevaTareaPage() {
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
             <span className="active">Nueva tarea</span>
-            <a href="/">Home</a>
           </div>
           <TopbarUser fallback="Cargar trabajo" />
         </div>
@@ -1560,7 +1559,7 @@ function PiezasTableroPage() {
   );
 }
 
-function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
+function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
   const [abierto, setAbierto] = useState(false);
   const esAdmin = sesion?.usuario?.rol === "admin";
   const usuarioKey = getUsuarioKey(sesion?.usuario?.usuario);
@@ -1724,7 +1723,8 @@ function App() {
       return <FrancoDashboard />;
     }
     if (path === "/equipo") {
-      return <EquipoDashboard />;
+      window.location.href = "/reportes-historias";
+      return null;
     }
     if (path === "/clientes") {
       return <ClientesAdminPage />;
@@ -1770,24 +1770,9 @@ function App() {
     return <HomePage />;
   })();
 
-  const enlacesNav = [
-    { href: "/", label: "Home" },
-    { href: rutaPropia || "/", label: "Mi tablero" },
-    { href: "/planificacion-historias", label: "🎯 Historias" },
-    { href: "/planificacion-publicaciones", label: "🎬 Publicaciones" },
-    { href: "/reportes-historias", label: "📊 Reporte del equipo" },
-    { href: "/perfil", label: "Mi perfil" },
-    { href: "/piezas", label: "📋 Tareas" },
-  ];
-  if (esAdmin) {
-    enlacesNav.push({ href: "/clientes", label: "Clientes" });
-    enlacesNav.push({ href: "/empleados", label: "Empleados" });
-    enlacesNav.push({ href: "/nueva-tarea", label: "+ Nueva tarea" });
-  }
-
   return (
     <>
-      <Sidebar path={path} sesion={sesion} enlacesNav={enlacesNav} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} />
+      <Sidebar path={path} sesion={sesion} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} />
       {dashboard}
     </>
   );
@@ -1820,20 +1805,20 @@ function HomePage() {
     },
     {
       titulo: "Mi perfil",
-      desc: "Tus datos y contraseña",
+      desc: "Tus datos, foto, usuario y contraseña",
       href: "/perfil",
     },
   ];
   if (esAdmin) {
     atajos.push({
-      titulo: "Vista de equipo",
-      desc: "Carga y cumplimiento por persona",
-      href: "/equipo",
+      titulo: "Reporte del equipo",
+      desc: "Objetivos, cumplimiento y pendientes por persona",
+      href: "/reportes-historias",
     });
     atajos.push({
-      titulo: "Cargar tarea nueva",
-      desc: "Asignar trabajo a alguien",
-      href: "/nueva-tarea",
+      titulo: "Tareas",
+      desc: "Ver pendientes y cargar una tarea nueva",
+      href: "/piezas",
     });
     atajos.push({
       titulo: "Gestión de empleados",
@@ -2609,7 +2594,6 @@ function PerfilPage() {
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
             <span className="active">Mi perfil</span>
-            <a href="/">Home</a>
           </div>
           <TopbarUser fallback={perfilUsuario?.nombre} />
         </div>
@@ -2851,7 +2835,6 @@ function EmpleadosPage() {
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
             <span className="active">Empleados</span>
-            <a href="/">Home</a>
           </div>
           <TopbarUser fallback="Gestión de accesos" />
         </div>
@@ -3030,7 +3013,6 @@ function OrianaDashboard() {
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
             <span className="active">Calendario</span>
-            <span>Publicaciones</span>
           </div>
           <TopbarUser fallback="Oriana · publicación" />
         </div>
@@ -3261,18 +3243,22 @@ function ChecklistPublicacionOrianaModal({ publicacion, onClose, onPublicar }) {
 
           {error && <div className="caption login-error">{error}</div>}
 
-          <div className="modal-actions">
-            {/* Regla dura: solo Agustín o Franco pueden marcar publicada. */}
-            <button
-              className="btn primary disabled"
-              disabled={!esAdmin || enviando}
-              title={esAdmin ? undefined : "Solo admin puede marcar publicada"}
-              type="button"
-              onClick={esAdmin ? handleMarcarPublicada : undefined}
-            >
-              {enviando ? "Marcando..." : "Marcar publicada"}
-            </button>
-          </div>
+          {esAdmin ? (
+            <div className="modal-actions">
+              <button
+                className="btn primary"
+                disabled={enviando}
+                type="button"
+                onClick={handleMarcarPublicada}
+              >
+                {enviando ? "Marcando..." : "Marcar publicada"}
+              </button>
+            </div>
+          ) : (
+            <div className="caption">
+              Solo Agustín o Franco pueden marcar una pieza como publicada.
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -3333,7 +3319,6 @@ function GermanDashboard() {
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
             <span className="active">Producciones</span>
-            <span>Agenda</span>
           </div>
           <TopbarUser fallback="Germán · producción" />
         </div>
@@ -4102,9 +4087,6 @@ function AgustinDashboard() {
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
             <span className="active">Panorama</span>
-            <span>Clientes</span>
-            <span>Config Maestra</span>
-            <a href="/equipo">Equipo</a>
           </div>
           <TopbarUser fallback="Agustín · admin" />
         </div>
@@ -4525,8 +4507,6 @@ function FrancoDashboard() {
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
             <span className="active">Mi cola</span>
-            <span>Clientes</span>
-            <a href="/equipo">Equipo</a>
           </div>
           <TopbarUser fallback="Franco · aprobación" />
         </div>
