@@ -939,8 +939,8 @@ function PiezasTableroPage() {
     "en_edición",
     "en_revisión",
     "lista",
-    "publicada",
     "bloqueada",
+    "publicada",
   ];
 
   const ESTADO_LABELS = {
@@ -1033,6 +1033,21 @@ function PiezasTableroPage() {
       grupos[estado].push(pieza);
     });
     return grupos;
+  }
+
+  const piezasPorEstado = agruparPorEstado();
+
+  function obtenerTituloPieza(pieza) {
+    const texto = pieza.idea || pieza.copy || pieza.tipo || "Tarea sin detalle";
+    return texto.length > 86 ? `${texto.substring(0, 86)}...` : texto;
+  }
+
+  function formatearFechaCorta(fechaISO) {
+    if (!fechaISO) return null;
+    return new Date(fechaISO).toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "short",
+    });
   }
 
   async function cambiarEstado(piezaId, nuevoEstado) {
@@ -1236,7 +1251,7 @@ function PiezasTableroPage() {
         {vista === "kanban" && (
           <div className="kanban">
             {ESTADOS.map((estado) => {
-              const piezasDelEstado = agruparPorEstado()[estado];
+              const piezasDelEstado = piezasPorEstado[estado];
               return (
                 <div key={estado} className="kanban-column">
                   <div className="kanban-header">
@@ -1251,82 +1266,53 @@ function PiezasTableroPage() {
                     {piezasDelEstado.map((pieza) => (
                       <div
                         key={`${pieza.origen}-${pieza.id}`}
-                        className="card"
+                        className="task-card"
                         onClick={() => abrirModal(pieza)}
-                        style={{ cursor: "pointer" }}
                       >
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "start",
-                            marginBottom: "6px",
-                          }}
-                        >
-                          <div>
-                            <span style={{ fontSize: "16px" }}>
-                              {TIPO_ICONOS[pieza.tipo] || "📄"}
-                            </span>
-                            <span style={{ fontSize: "14px", fontWeight: "bold" }}>
-                              {pieza.tipo.charAt(0).toUpperCase() +
-                                pieza.tipo.slice(1)}
-                            </span>
-                          </div>
+                        <div className="task-card-topline">
+                          <span className="task-card-type">
+                            {TIPO_ICONOS[pieza.tipo] || "📄"}{" "}
+                            {pieza.tipo.charAt(0).toUpperCase() +
+                              pieza.tipo.slice(1)}
+                          </span>
                           <div
+                            className="task-priority-dot"
+                            title={pieza.prioridad}
                             style={{
-                              width: "10px",
-                              height: "10px",
-                              borderRadius: "50%",
                               backgroundColor: obtenerColorPrioridad(
                                 pieza.prioridad
                               ),
                             }}
-                            title={pieza.prioridad}
                           ></div>
                         </div>
 
-                        <div className="cliente">
+                        <div className="task-card-client">
                           {pieza.cliente_nombre || "Sin cliente"}
                         </div>
 
-                        <div className="meta" style={{ marginTop: "6px" }}>
-                          <small>
-                            Responsable: <strong>{pieza.responsable}</strong>
-                          </small>
+                        <div className="task-card-title">
+                          {obtenerTituloPieza(pieza)}
                         </div>
 
-                        {pieza.fecha_programada && (
-                          <div className="meta">
-                            <small>
-                              Fecha:{" "}
-                              <strong>
-                                {new Date(
-                                  pieza.fecha_programada
-                                ).toLocaleDateString()}
-                              </strong>
-                            </small>
-                          </div>
-                        )}
+                        <div className="task-card-meta">
+                          <span>{pieza.responsable || "Sin responsable"}</span>
+                          {pieza.fecha_programada && (
+                            <span>{formatearFechaCorta(pieza.fecha_programada)}</span>
+                          )}
+                          {pieza.prioridad && (
+                            <span>{pieza.prioridad}</span>
+                          )}
+                        </div>
 
-                        {pieza.idea && (
-                          <div className="meta" style={{ marginTop: "6px" }}>
-                            <small>
-                              <strong>Idea:</strong> {pieza.idea.substring(0, 50)}
-                              {pieza.idea.length > 50 ? "..." : ""}
-                            </small>
+                        {pieza.material_referencia && (
+                          <div className="task-card-footer">
+                            Material cargado
                           </div>
                         )}
                       </div>
                     ))}
                     {piezasDelEstado.length === 0 && (
-                      <div
-                        style={{
-                          padding: "10px",
-                          textAlign: "center",
-                          fontSize: "12px",
-                          color: "#999",
-                        }}
-                      >
+                      <div className="kanban-empty">
                         Vacío
                       </div>
                     )}
