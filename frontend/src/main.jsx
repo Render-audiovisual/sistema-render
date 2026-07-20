@@ -3608,7 +3608,6 @@ function ClientesAdminPage() {
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
             <span className="active">Clientes</span>
-            <a href="/empleados">Usuarios / permisos</a>
           </div>
           <div className="tag">Administración</div>
         </div>
