@@ -194,9 +194,24 @@ function getEstadoPorObjetivo(objetivo) {
   return "verde";
 }
 
-function getEstadoHistoriasCliente(total, porcentaje) {
+// Fracción del mes ya transcurrida (0 a 1). Sirve para no tratar igual a un
+// cliente sin historias cargadas el día 2 del mes (normal, recién arranca)
+// que a uno sin cargar nada el día 20 (alerta real).
+function getAvanceDelMes() {
+  const hoy = new Date();
+  const diasEnMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+  return hoy.getDate() / diasEnMes;
+}
+
+function getEstadoHistoriasCliente(total, porcentaje, avanceDelMes = getAvanceDelMes()) {
   if (total === 0) {
-    return { color: "gris", label: "Sin planificación" };
+    if (avanceDelMes >= 0.6) {
+      return { color: "rojo", label: "Sin cargar" };
+    }
+    if (avanceDelMes >= 0.25) {
+      return { color: "amarillo", label: "Sin cargar todavía" };
+    }
+    return { color: "gris", label: "Recién arranca" };
   }
   if (porcentaje >= 80) {
     return { color: "verde", label: "Al día" };
@@ -4115,8 +4130,12 @@ function ClientesAdminPage() {
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(true);
 
-  const cargarClientes = () => {
-    setCargando(true);
+  // silencioso=true (polling / vuelta a la pestaña) no muestra el spinner de
+  // carga para no interrumpir a quien está mirando la tabla — solo actualiza
+  // los números por detrás. La primera carga y el guardado explícito de una
+  // cuota sí lo muestran.
+  const cargarClientes = ({ silencioso = false } = {}) => {
+    if (!silencioso) setCargando(true);
     setError(null);
     Promise.all([
       fetch("/api/clientes").then((response) => response.json()),
@@ -4132,10 +4151,30 @@ function ClientesAdminPage() {
         console.error("No se pudo cargar el tablero de clientes", err);
         setError("No se pudo cargar el tablero de clientes.");
       })
-      .finally(() => setCargando(false));
+      .finally(() => {
+        if (!silencioso) setCargando(false);
+      });
   };
 
-  useEffect(cargarClientes, []);
+  // % de historias/publicaciones en tiempo real: el equipo marca cosas como
+  // publicadas desde Historias/Publicaciones mientras alguien tiene este
+  // tablero abierto en otra pestaña, así que se refresca solo cada 30s y
+  // también apenas la pestaña vuelve a estar visible (por si el intervalo
+  // quedó pausado por el navegador mientras estaba en segundo plano).
+  useEffect(() => {
+    cargarClientes();
+    const intervalo = setInterval(() => cargarClientes({ silencioso: true }), 30000);
+    const alVolverVisible = () => {
+      if (document.visibilityState === "visible") {
+        cargarClientes({ silencioso: true });
+      }
+    };
+    document.addEventListener("visibilitychange", alVolverVisible);
+    return () => {
+      clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", alVolverVisible);
+    };
+  }, []);
 
   const filas = getResumenClientesActivos(clientes, historias, publicaciones);
   const filasFiltradas = filas.filter((cliente) =>
@@ -4266,7 +4305,11 @@ function ClientesAdminPage() {
                         </td>
                         <td>
                           {cliente.historiasMes === 0
-                            ? "Sin planificación cargada"
+                            ? cliente.estadoHistorias.color === "rojo"
+                              ? "Ya pasó medio mes y no hay nada cargado"
+                              : cliente.estadoHistorias.color === "amarillo"
+                                ? "Va avanzado el mes y todavía no se cargó nada"
+                                : "Recién arranca el mes, todavía normal"
                             : cliente.estadoHistorias.color === "rojo"
                               ? "Se están subiendo pocas historias"
                               : cliente.estadoHistorias.color === "amarillo"
@@ -5904,48 +5947,28 @@ function payloadColumnaPlanilla(columna, valorCrudo) {
   }
 }
 
-function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
-  const hoy = new Date();
-  const [year, setYear] = useState(hoy.getFullYear());
-  const [month, setMonth] = useState(hoy.getMonth());
-  const [historias, setHistorias] = useState([]);
-  const [estructura, setEstructura] = useState([]);
-  const [cargando, setCargando] = useState(true);
+function HistoriasPlanillaTab({
+  clienteId,
+  clienteNombre,
+  year,
+  month,
+  cargando,
+  historiasCliente,
+  ultimoIdCreado,
+  onActualizarLocal,
+  onGuardarServidor,
+  onAgregar,
+  onDuplicar,
+  onEliminar,
+}) {
   const [error, setError] = useState(null);
   const gridRef = useRef(null);
-  const enfocarProximoId = useRef(null);
-
-  const cargar = () => {
-    setCargando(true);
-    fetch("/api/historias")
-      .then((r) => r.json())
-      .then((data) => {
-        setHistorias(data.filter((h) => h.cliente_id === clienteId));
-        setError(null);
-      })
-      .catch((err) => {
-        console.error("Error cargando historias", err);
-        setError("No se pudieron cargar las historias.");
-      })
-      .finally(() => setCargando(false));
-  };
-
-  useEffect(cargar, [clienteId]);
-
-  // Estructura semanal base del cliente — se usa solo para sugerir tipo/hora
-  // al crear una historia nueva, no cambia nada del guardado.
-  useEffect(() => {
-    fetch("/api/estructura")
-      .then((r) => r.json())
-      .then((data) => setEstructura(data.filter((e) => e.cliente_id === clienteId)))
-      .catch((err) => console.error("No se pudo cargar la estructura semanal", err));
-  }, [clienteId]);
 
   const hoyISO = getHoyLocalISO();
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
   const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
 
-  const filasVisibles = historias
+  const filasVisibles = historiasCliente
     .filter((h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix))
     .slice()
     .sort((a, b) =>
@@ -5954,46 +5977,27 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
       ),
     );
 
-  const publicadas = filasVisibles.filter((h) => h.estado === "publicada").length;
-  const atrasadas = filasVisibles.filter(
-    (h) => h.fecha_programada < hoyISO && h.estado !== "publicada",
-  ).length;
+  const enfocarCelda = (rowIndex, columna) => {
+    const el = gridRef.current?.querySelector(
+      `[data-cell="${rowIndex}:${columna}"]`,
+    );
+    if (!el) return;
+    el.focus();
+    if (typeof el.select === "function") el.select();
+  };
 
-  // Foco tras crear una fila nueva: la agrega el efecto de abajo apenas
-  // aparece en la lista (el fetch de recarga puede tardar un instante).
+  // Foco tras crear/duplicar una fila: el padre avisa por prop cuál es el
+  // id nuevo apenas responde el servidor.
   useEffect(() => {
-    if (!enfocarProximoId.current) return;
-    const idx = filasVisibles.findIndex((h) => h.id === enfocarProximoId.current);
+    if (!ultimoIdCreado) return;
+    const idx = filasVisibles.findIndex((h) => h.id === ultimoIdCreado);
     if (idx === -1) return;
-    enfocarProximoId.current = null;
     requestAnimationFrame(() => enfocarCelda(idx, "fecha"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [historias]);
+  }, [ultimoIdCreado, historiasCliente]);
 
-  const actualizarLocal = (historiaId, campos) => {
-    setHistorias((prev) =>
-      prev.map((h) => {
-        if (h.id !== historiaId) return h;
-        const actualizado = { ...h, ...campos };
-        if (campos.metadata) actualizado.metadata = { ...(h.metadata || {}), ...campos.metadata };
-        return actualizado;
-      }),
-    );
-  };
-
-  const guardarEnServidor = async (historiaId, campos) => {
-    try {
-      const res = await fetch(`/api/historias/${historiaId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(campos),
-      });
-      if (!res.ok) throw new Error("No se pudo guardar");
-    } catch (err) {
-      console.error("Error guardando", err);
-      setError("No se pudo guardar un cambio — reintentá.");
-    }
-  };
+  const actualizarLocal = (historiaId, campos) => onActualizarLocal(historiaId, campos);
+  const guardarEnServidor = (historiaId, campos) => onGuardarServidor(historiaId, campos);
 
   // onBlur de las celdas de texto: recorta espacios y sincroniza el
   // estado local con lo mismo que se manda al servidor (evita que quede
@@ -6002,59 +6006,6 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
   const confirmarCampoTexto = (historiaId, campos) => {
     actualizarLocal(historiaId, campos);
     guardarEnServidor(historiaId, campos);
-  };
-
-  const crearHistoria = async () => {
-    const iso = mesPrefix === hoyISO.slice(0, 7) ? hoyISO : `${mesPrefix}-01`;
-    try {
-      const res = await fetch("/api/piezas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tipo: "historia",
-          cliente_id: clienteId,
-          responsable: "Augusto",
-          fecha_programada: iso,
-          estado: "pendiente",
-          idea: "",
-        }),
-      });
-      if (!res.ok) throw new Error("No se pudo crear");
-      const creada = await res.json();
-      enfocarProximoId.current = creada.id;
-
-      // Sugerencia de tipo/hora según el patrón semanal del cliente para ese
-      // día — se espera antes de recargar para que ya aparezca sugerido.
-      const diaSemana = new Date(`${iso}T00:00:00`).getDay();
-      const patron = estructura.find((e) => e.dia_semana === diaSemana);
-      if (patron?.tema || patron?.horario) {
-        const horaSugerida = patron.horario?.match(/\d{1,2}:\d{2}/)?.[0] || "";
-        await fetch(`/api/historias/${creada.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            metadata: { tipo: patron.tema || "", hora: horaSugerida },
-          }),
-        }).catch((err) => console.error("No se pudo sugerir tipo/hora", err));
-      }
-
-      cargar();
-    } catch (err) {
-      console.error("Error creando historia", err);
-      setError("No se pudo crear la historia.");
-    }
-  };
-
-  const borrarHistoria = async (historiaId) => {
-    if (!window.confirm("¿Eliminar esta historia de la planilla?")) return;
-    try {
-      const res = await fetch(`/api/historias/${historiaId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("No se pudo eliminar");
-      setHistorias((prev) => prev.filter((h) => h.id !== historiaId));
-    } catch (err) {
-      console.error("Error eliminando historia", err);
-      setError("No se pudo eliminar la historia.");
-    }
   };
 
   const copiarFila = async (h) => {
@@ -6074,29 +6025,6 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
     } catch (err) {
       console.error("No se pudo copiar la fila", err);
     }
-  };
-
-  const irMes = (delta) => {
-    let m = month + delta;
-    let y = year;
-    if (m < 0) {
-      m = 11;
-      y -= 1;
-    } else if (m > 11) {
-      m = 0;
-      y += 1;
-    }
-    setMonth(m);
-    setYear(y);
-  };
-
-  const enfocarCelda = (rowIndex, columna) => {
-    const el = gridRef.current?.querySelector(
-      `[data-cell="${rowIndex}:${columna}"]`,
-    );
-    if (!el) return;
-    el.focus();
-    if (typeof el.select === "function") el.select();
   };
 
   // Crece el textarea con el contenido en vez de esconder texto o abrir
@@ -6169,30 +6097,6 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
 
   return (
     <>
-      <div className="sheet-toolbar">
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
-          <strong className="sheet-title">
-            {MESES[month]} {year}
-          </strong>
-          <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
-        </div>
-        <div className="sheet-stats">
-          <span>
-            {filasVisibles.length} planificadas
-          </span>
-          <span className="ok">
-            {publicadas} publicadas
-          </span>
-          <span className="warn">
-            {filasVisibles.length - publicadas} pendientes
-          </span>
-          {atrasadas > 0 && (
-            <span className="danger">{atrasadas} atrasadas</span>
-          )}
-        </div>
-      </div>
-
       {error && (
         <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
           {error}
@@ -6203,7 +6107,6 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
         <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando planilla…</div>
       ) : (
         <div className="sheet-frame" ref={gridRef}>
-          <div className="sheet-namebar">{clienteNombre}</div>
           <table className="sheet-table">
             <thead>
               <tr>
@@ -6216,7 +6119,7 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
                 <th style={{ width: "19%" }}>Observaciones</th>
                 <th style={{ width: "100px" }}>Responsable</th>
                 <th style={{ width: "118px" }}>Estado</th>
-                <th style={{ width: "50px" }}></th>
+                <th style={{ width: "78px" }}></th>
               </tr>
             </thead>
             <tbody>
@@ -6379,7 +6282,15 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
                         <button
                           type="button"
                           className="sheet-icon-btn"
-                          onClick={() => borrarHistoria(h.id)}
+                          onClick={() => onDuplicar(h)}
+                          title="Duplicar historia"
+                        >
+                          ⎘
+                        </button>
+                        <button
+                          type="button"
+                          className="sheet-icon-btn"
+                          onClick={() => onEliminar(h.id)}
                           title="Eliminar"
                         >
                           🗑
@@ -6391,7 +6302,7 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
               })}
               <tr>
                 <td colSpan={10} style={{ padding: 0 }}>
-                  <button type="button" className="sheet-add-row" onClick={crearHistoria}>
+                  <button type="button" className="sheet-add-row" onClick={onAgregar}>
                     <span style={{ fontSize: "15px" }}>+</span> Agregar historia
                   </button>
                 </td>
@@ -6408,31 +6319,9 @@ function HistoriasPlanillaTab({ clienteId, clienteNombre }) {
   );
 }
 
-function HistoriasChecklistPublicadasTab({ clientes }) {
-  const hoy = new Date();
-  const [year, setYear] = useState(hoy.getFullYear());
-  const [month, setMonth] = useState(hoy.getMonth());
-  const [historias, setHistorias] = useState([]);
-  const [cargando, setCargando] = useState(true);
+function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, month, onHistoriasActualizadas }) {
   const [error, setError] = useState(null);
   const [guardandoId, setGuardandoId] = useState(null);
-
-  const cargar = () => {
-    setCargando(true);
-    fetch("/api/historias")
-      .then((r) => r.json())
-      .then((data) => {
-        setHistorias(data);
-        setError(null);
-      })
-      .catch((err) => {
-        console.error("Error cargando checklist de historias", err);
-        setError("No se pudo cargar el checklist de historias.");
-      })
-      .finally(() => setCargando(false));
-  };
-
-  useEffect(cargar, []);
 
   const hoyISO = getHoyLocalISO();
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -6479,20 +6368,6 @@ function HistoriasChecklistPublicadasTab({ clientes }) {
     (h) => h.estado !== "publicada" && h.fecha_programada < hoyISO,
   ).length;
 
-  const irMes = (delta) => {
-    let m = month + delta;
-    let y = year;
-    if (m < 0) {
-      m = 11;
-      y -= 1;
-    } else if (m > 11) {
-      m = 0;
-      y += 1;
-    }
-    setMonth(m);
-    setYear(y);
-  };
-
   const marcarPublicada = async (clienteId, fecha, publicada) => {
     const nuevoEstado = publicada ? "publicada" : "pendiente";
     const key = `${clienteId}:${fecha}`;
@@ -6500,7 +6375,7 @@ function HistoriasChecklistPublicadasTab({ clientes }) {
     if (historiasDelDia.length === 0) return;
 
     setGuardandoId(key);
-    setHistorias((prev) =>
+    onHistoriasActualizadas((prev) =>
       prev.map((h) =>
         h.cliente_id === clienteId && h.fecha_programada === fecha
           ? { ...h, estado: nuevoEstado }
@@ -6522,7 +6397,6 @@ function HistoriasChecklistPublicadasTab({ clientes }) {
     } catch (err) {
       console.error("Error actualizando checklist", err);
       setError("No se pudo actualizar el checklist. Reintentá.");
-      cargar();
     } finally {
       setGuardandoId(null);
     }
@@ -6531,13 +6405,6 @@ function HistoriasChecklistPublicadasTab({ clientes }) {
   return (
     <>
       <div className="sheet-toolbar">
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
-          <strong className="sheet-title">
-            {MESES[month]} {year}
-          </strong>
-          <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
-        </div>
         <div className="sheet-stats">
           <span>{historiasMes.length} historias</span>
           <span className="ok">{publicadas} publicadas</span>
@@ -6832,6 +6699,52 @@ function FlyersMigrarBanner({ onMigrado }) {
   );
 }
 
+function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atrasadasPorCliente }) {
+  const [busqueda, setBusqueda] = useState("");
+  const filtrados = clientes.filter((c) =>
+    c.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()),
+  );
+
+  return (
+    <aside className="h-rail">
+      <div className="h-rail-head">
+        <div className="h-rail-search">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.3-4.3" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Buscar cliente…"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="h-rail-list">
+        {filtrados.map((c) => {
+          const atrasadas = atrasadasPorCliente[c.id] || 0;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              className={`h-client-row ${clienteSeleccionado === c.id ? "active" : ""}`}
+              onClick={() => onSeleccionar(c.id)}
+            >
+              <span className={`h-client-dot ${atrasadas > 0 ? "danger" : "ok"}`}></span>
+              <span className="h-client-name">{c.nombre}</span>
+              {atrasadas > 0 && <span className="h-client-badge">{atrasadas}</span>}
+            </button>
+          );
+        })}
+        {filtrados.length === 0 && (
+          <div className="caption" style={{ padding: "10px" }}>Sin resultados.</div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 function HistoriasPage({ initialTab = "planilla" }) {
   const [vista, setVista] = useState(
     ["checklist", "estructura"].includes(initialTab) ? initialTab : "planilla",
@@ -6840,6 +6753,16 @@ function HistoriasPage({ initialTab = "planilla" }) {
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [errorClientes, setErrorClientes] = useState(null);
   const [refrescarKey, setRefrescarKey] = useState(0);
+
+  const [historias, setHistorias] = useState([]);
+  const [cargandoHistorias, setCargandoHistorias] = useState(true);
+  const [errorHistorias, setErrorHistorias] = useState(null);
+  const [estructura, setEstructura] = useState([]);
+  const [ultimoIdCreado, setUltimoIdCreado] = useState(null);
+
+  const hoyDate = new Date();
+  const [year, setYear] = useState(hoyDate.getFullYear());
+  const [month, setMonth] = useState(hoyDate.getMonth());
 
   useEffect(() => {
     fetch("/api/clientes")
@@ -6854,101 +6777,297 @@ function HistoriasPage({ initialTab = "planilla" }) {
       });
   }, []);
 
-  const clienteNombre =
-    clientes.find((c) => c.id === clienteSeleccionado)?.nombre || "";
+  const cargarHistorias = () => {
+    setCargandoHistorias(true);
+    fetch("/api/historias")
+      .then((r) => r.json())
+      .then((data) => {
+        setHistorias(data);
+        setErrorHistorias(null);
+      })
+      .catch((err) => {
+        console.error("Error cargando historias", err);
+        setErrorHistorias("No se pudieron cargar las historias.");
+      })
+      .finally(() => setCargandoHistorias(false));
+  };
+  useEffect(cargarHistorias, [refrescarKey]);
+
+  useEffect(() => {
+    fetch("/api/estructura")
+      .then((r) => r.json())
+      .then((data) => setEstructura(data))
+      .catch((err) => console.error("No se pudo cargar la estructura semanal", err));
+  }, []);
+
+  const hoyISO = getHoyLocalISO();
+  const clienteNombre = clientes.find((c) => c.id === clienteSeleccionado)?.nombre || "";
+
+  // Una sola pasada sobre todas las historias para saber, por cliente,
+  // cuántas están atrasadas — es lo que alimenta el punto rojo del panel
+  // lateral, sin tener que entrar a cada cliente para averiguarlo.
+  const atrasadasPorCliente = {};
+  historias.forEach((h) => {
+    if (h.fecha_programada < hoyISO && h.estado !== "publicada") {
+      atrasadasPorCliente[h.cliente_id] = (atrasadasPorCliente[h.cliente_id] || 0) + 1;
+    }
+  });
+
+  const irMes = (delta) => {
+    let m = month + delta;
+    let y = year;
+    if (m < 0) { m = 11; y -= 1; } else if (m > 11) { m = 0; y += 1; }
+    setMonth(m);
+    setYear(y);
+  };
+  const irAHoy = () => {
+    setMonth(hoyDate.getMonth());
+    setYear(hoyDate.getFullYear());
+  };
+
+  const actualizarHistoriaLocal = (historiaId, campos) => {
+    setHistorias((prev) =>
+      prev.map((h) => {
+        if (h.id !== historiaId) return h;
+        const actualizado = { ...h, ...campos };
+        if (campos.metadata) actualizado.metadata = { ...(h.metadata || {}), ...campos.metadata };
+        return actualizado;
+      }),
+    );
+  };
+
+  const guardarHistoriaEnServidor = async (historiaId, campos) => {
+    try {
+      const res = await fetch(`/api/historias/${historiaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(campos),
+      });
+      if (!res.ok) throw new Error("No se pudo guardar");
+    } catch (err) {
+      console.error("Error guardando", err);
+      setErrorHistorias("No se pudo guardar un cambio — reintentá.");
+    }
+  };
+
+  const crearHistoria = async (clienteIdDestino, fechaISO) => {
+    const res = await fetch("/api/piezas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "historia",
+        cliente_id: clienteIdDestino,
+        responsable: "Augusto",
+        fecha_programada: fechaISO,
+        estado: "pendiente",
+        idea: "",
+      }),
+    });
+    if (!res.ok) throw new Error("No se pudo crear");
+    const creada = await res.json();
+
+    // Sugerencia de tipo/hora según el patrón semanal de ese día.
+    const diaSemana = new Date(`${fechaISO}T00:00:00`).getDay();
+    const patron = estructura.find((e) => e.cliente_id === clienteIdDestino && e.dia_semana === diaSemana);
+    let metadataSugerida = {};
+    if (patron?.tema || patron?.horario) {
+      const horaSugerida = patron.horario?.match(/\d{1,2}:\d{2}/)?.[0] || "";
+      metadataSugerida = { tipo: patron.tema || "", hora: horaSugerida };
+      await fetch(`/api/historias/${creada.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metadata: metadataSugerida }),
+      }).catch((err) => console.error("No se pudo sugerir tipo/hora", err));
+    }
+
+    setHistorias((prev) => [...prev, { ...creada, metadata: metadataSugerida }]);
+    return creada.id;
+  };
+
+  // Punto de entrada único para "agregar historia": lo usan tanto el botón
+  // de la barra superior (accesible sin scrollear hasta el pie de la
+  // grilla) como el renglón "+" al final de la tabla — ambos crean en el
+  // mismo lugar (hoy, o el día 1 si se está viendo otro mes) y enfocan la
+  // fila nueva apenas aparece.
+  const agregarHistoriaEnMesActual = async () => {
+    if (!clienteSeleccionado) return;
+    const hoyISOActual = getHoyLocalISO();
+    const mesActualPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    const iso = mesActualPrefix === hoyISOActual.slice(0, 7) ? hoyISOActual : `${mesActualPrefix}-01`;
+    try {
+      const id = await crearHistoria(clienteSeleccionado, iso);
+      setUltimoIdCreado(id);
+    } catch (err) {
+      console.error("Error creando historia", err);
+      setErrorHistorias("No se pudo crear la historia.");
+    }
+  };
+
+  const duplicarHistoria = async (historia) => {
+    try {
+      const res = await fetch("/api/piezas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "historia",
+          cliente_id: historia.cliente_id,
+          responsable: historia.responsable_diseño || historia.responsable || "Augusto",
+          fecha_programada: historia.fecha_programada,
+          estado: "pendiente",
+          idea: historia.idea || "",
+          copy: historia.copy || "",
+          material_referencia: historia.material_referencia || "",
+          aclaraciones: historia.aclaraciones || "",
+          prioridad: historia.prioridad || "media",
+        }),
+      });
+      if (!res.ok) throw new Error("No se pudo duplicar");
+      const creada = await res.json();
+      if (historia.metadata && Object.keys(historia.metadata).length > 0) {
+        await fetch(`/api/historias/${creada.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ metadata: historia.metadata }),
+        }).catch((err) => console.error("No se pudo copiar metadata al duplicar", err));
+      }
+      const nueva = { ...creada, metadata: historia.metadata || {} };
+      setHistorias((prev) => [...prev, nueva]);
+      setUltimoIdCreado(nueva.id);
+    } catch (err) {
+      console.error("Error duplicando historia", err);
+      setErrorHistorias("No se pudo duplicar la historia.");
+    }
+  };
+
+  const eliminarHistoria = async (historiaId) => {
+    if (!window.confirm("¿Eliminar esta historia de la planilla?")) return;
+    try {
+      const res = await fetch(`/api/historias/${historiaId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("No se pudo eliminar");
+      setHistorias((prev) => prev.filter((h) => h.id !== historiaId));
+    } catch (err) {
+      console.error("Error eliminando historia", err);
+      setErrorHistorias("No se pudo eliminar la historia.");
+    }
+  };
+
+  const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const historiasClienteSeleccionado = historias.filter((h) => h.cliente_id === clienteSeleccionado);
+  const historiasClienteMes = historiasClienteSeleccionado.filter((h) => h.fecha_programada?.startsWith(mesPrefix));
+  const publicadasCliente = historiasClienteMes.filter((h) => h.estado === "publicada").length;
+  const atrasadasCliente = historiasClienteMes.filter((h) => h.fecha_programada < hoyISO && h.estado !== "publicada").length;
 
   return (
     <main aria-label="Render platform historias" className="historias-viewport">
       <div className="frame">
-          <div className="topbar">
-            <div className="logo-box">[ LOGO RENDER ]</div>
-            <div className="nav">
-              <span className="active">Planificación de historias</span>
-            </div>
-          <TopbarUser fallback="Planilla mensual" />
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Planificación de historias</span>
           </div>
+          <TopbarUser fallback="Planilla mensual" />
+        </div>
 
         <div className="content">
-          {errorClientes && (
-            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
-              {errorClientes}
+          {(errorClientes || errorHistorias) && (
+            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828" }}>
+              {errorClientes || errorHistorias}
             </div>
           )}
 
-          <FlyersMigrarBanner onMigrado={() => setRefrescarKey((k) => k + 1)} />
-
-          <div className="sheet-view-tabs">
-            <button
-              type="button"
-              className={vista === "planilla" ? "active" : ""}
-              onClick={() => setVista("planilla")}
-            >
-              Planilla mensual
-            </button>
-            <button
-              type="button"
-              className={vista === "checklist" ? "active" : ""}
-              onClick={() => setVista("checklist")}
-            >
-              Checklist publicadas
-            </button>
-            <button
-              type="button"
-              className={vista === "estructura" ? "active" : ""}
-              onClick={() => setVista("estructura")}
-            >
-              Estructura
-            </button>
-          </div>
-
-          {(vista === "planilla" || vista === "estructura") && (
-            <div style={{ display: "flex", gap: "4px", overflowX: "auto", borderBottom: "2px solid #ddd", marginBottom: "16px", paddingBottom: "0" }}>
-              {clientes.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setClienteSeleccionado(c.id)}
-                  style={{
-                    padding: "8px 18px",
-                    border: "none",
-                    borderBottom: clienteSeleccionado === c.id ? "3px solid #1a73e8" : "3px solid transparent",
-                    background: clienteSeleccionado === c.id ? "#e8f0fe" : "transparent",
-                    color: clienteSeleccionado === c.id ? "#1a73e8" : "#555",
-                    fontWeight: clienteSeleccionado === c.id ? "700" : "500",
-                    fontSize: "13px",
-                    cursor: "pointer",
-                    borderRadius: "6px 6px 0 0",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {c.nombre}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {clienteSeleccionado && vista === "planilla" && (
-            <HistoriasPlanillaTab
-              key={`p-${clienteSeleccionado}-${refrescarKey}`}
-              clienteId={clienteSeleccionado}
-              clienteNombre={clienteNombre}
-            />
-          )}
-
-          {clienteSeleccionado && vista === "estructura" && (
-            <HistoriasEstructuraTab
-              key={`e-${clienteSeleccionado}`}
-              clienteId={clienteSeleccionado}
-              clienteNombre={clienteNombre}
-            />
-          )}
-
-          {vista === "checklist" && (
-            <HistoriasChecklistPublicadasTab
-              key={`c-${refrescarKey}`}
+          <div className="h-workspace">
+            <ClientesRail
               clientes={clientes}
+              clienteSeleccionado={clienteSeleccionado}
+              onSeleccionar={setClienteSeleccionado}
+              atrasadasPorCliente={atrasadasPorCliente}
             />
-          )}
+
+            <div className="h-main">
+              <div className="h-toolbar">
+                {vista !== "checklist" && (
+                  <div className="h-toolbar-client">{clienteNombre || "…"}</div>
+                )}
+                {vista !== "estructura" && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
+                    <strong className="sheet-title">{MESES[month]} {year}</strong>
+                    <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
+                  </div>
+                )}
+                {vista !== "estructura" && (
+                  <button className="h-today-btn" type="button" onClick={irAHoy}>Ir a hoy</button>
+                )}
+
+                <div className="sheet-view-tabs" style={{ margin: 0 }}>
+                  <button type="button" className={vista === "planilla" ? "active" : ""} onClick={() => setVista("planilla")}>Planilla</button>
+                  <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => setVista("checklist")}>Checklist</button>
+                  <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => setVista("estructura")}>Estructura</button>
+                </div>
+
+                {vista === "planilla" && (
+                  <div className="sheet-stats" style={{ marginLeft: "auto" }}>
+                    <span>{historiasClienteMes.length} historias</span>
+                    <span className="ok">{publicadasCliente} publicadas</span>
+                    {atrasadasCliente > 0 && <span className="danger">{atrasadasCliente} atrasadas</span>}
+                  </div>
+                )}
+
+                {vista === "planilla" && clienteSeleccionado && (
+                  <button
+                    className="add-btn"
+                    type="button"
+                    style={{ background: "#202124", color: "#fff", border: "none", borderRadius: "6px", padding: "8px 14px", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}
+                    onClick={agregarHistoriaEnMesActual}
+                  >
+                    + Nueva historia
+                  </button>
+                )}
+              </div>
+
+              <div className="h-body">
+                <FlyersMigrarBanner onMigrado={() => setRefrescarKey((k) => k + 1)} />
+
+                {clienteSeleccionado && vista === "planilla" && (
+                  <HistoriasPlanillaTab
+                    key={`p-${clienteSeleccionado}`}
+                    clienteId={clienteSeleccionado}
+                    clienteNombre={clienteNombre}
+                    year={year}
+                    month={month}
+                    cargando={cargandoHistorias}
+                    historiasCliente={historiasClienteSeleccionado}
+                    ultimoIdCreado={ultimoIdCreado}
+                    onActualizarLocal={actualizarHistoriaLocal}
+                    onGuardarServidor={guardarHistoriaEnServidor}
+                    onAgregar={agregarHistoriaEnMesActual}
+                    onDuplicar={duplicarHistoria}
+                    onEliminar={eliminarHistoria}
+                  />
+                )}
+
+                {clienteSeleccionado && vista === "estructura" && (
+                  <HistoriasEstructuraTab
+                    key={`e-${clienteSeleccionado}`}
+                    clienteId={clienteSeleccionado}
+                    clienteNombre={clienteNombre}
+                  />
+                )}
+
+                {vista === "checklist" && (
+                  <HistoriasChecklistPublicadasTab
+                    key={`c-${refrescarKey}`}
+                    clientes={clientes}
+                    historias={historias}
+                    cargando={cargandoHistorias}
+                    year={year}
+                    month={month}
+                    onHistoriasActualizadas={setHistorias}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </main>
