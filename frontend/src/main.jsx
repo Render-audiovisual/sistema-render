@@ -1404,7 +1404,7 @@ function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
       { href: sesion?.usuario?.usuario === "agustin" ? "/agustin" : sesion?.usuario?.usuario === "franco" ? "/franco" : USUARIO_A_RUTA[sesion?.usuario?.usuario], label: "📌 Mi tablero" },
     ],
     herramientas: [
-      { href: "/planificacion-historias", label: "🎯 Planificación de historias" },
+      { href: "/planificacion-historias", label: "🎯 Historias" },
       { href: "/planificacion-publicaciones", label: "🎬 Publicaciones" },
       { href: "/reportes-historias", label: "📊 Reportes" },
       { href: "/piezas", label: "📋 Tareas" },
@@ -1587,7 +1587,7 @@ function App() {
   const enlacesNav = [
     { href: "/", label: "Home" },
     { href: rutaPropia || "/", label: "Mi tablero" },
-    { href: "/planificacion-historias", label: "🎯 Planificación de historias" },
+    { href: "/planificacion-historias", label: "🎯 Historias" },
     { href: "/planificacion-publicaciones", label: "🎬 Publicaciones" },
     { href: "/reportes-historias", label: "📊 Reportes" },
     { href: "/perfil", label: "Mi perfil" },
@@ -5974,7 +5974,7 @@ function HistoriasPage({ initialTab = "planilla" }) {
           <div className="topbar">
             <div className="logo-box">[ LOGO RENDER ]</div>
             <div className="nav">
-              <span className="active">Historias</span>
+              <span className="active">Planificación de historias</span>
             </div>
           <div className="tag">Planilla mensual</div>
           </div>
@@ -7056,7 +7056,7 @@ function PublicacionesPage({ tabInicial = "calendario" }) {
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
           <div className="nav">
-            <span className="active">Publicaciones</span>
+            <span className="active">Planificación de publicaciones</span>
           </div>
           <div className="tag">Calendario y control</div>
         </div>
