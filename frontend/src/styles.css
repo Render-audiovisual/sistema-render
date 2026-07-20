@@ -403,6 +403,12 @@ th {
   background: #222;
 }
 
+.btn.ghost {
+  background: #fff;
+  border-color: #bbb;
+  color: #555;
+}
+
 .btn.disabled,
 .btn:disabled {
   background: #ececec;
@@ -691,6 +697,46 @@ select:focus {
   text-transform: uppercase;
 }
 
+.profile-photo-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.profile-photo-preview {
+  align-items: center;
+  background: #f1f1f1;
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  color: #555;
+  display: flex;
+  flex-shrink: 0;
+  font-size: 22px;
+  font-weight: 700;
+  height: 84px;
+  justify-content: center;
+  overflow: hidden;
+  width: 84px;
+}
+
+.profile-photo-preview img,
+.user-avatar img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.profile-photo-actions {
+  align-items: flex-start;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 180px;
+}
+
 .modal-actions {
   display: flex;
   flex-wrap: wrap;
@@ -923,11 +969,14 @@ select:focus {
   height: 40px;
   border-radius: 50%;
   background: #444;
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 20px;
+  font-size: 13px;
+  font-weight: 700;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .user-info {

@@ -14,7 +14,7 @@ const app = express();
 const router = express.Router();
 const port = Number(process.env.PORT || 3001);
 
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
 
 router.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -29,7 +29,7 @@ router.post("/login", async (req, res, next) => {
     }
 
     const result = await pool.query(
-      "SELECT id, usuario, nombre, rol, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
+      "SELECT id, usuario, nombre, rol, foto_perfil, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
       [usuario],
     );
 
@@ -64,6 +64,7 @@ router.post("/login", async (req, res, next) => {
         usuario: usuarioDB.usuario,
         nombre: usuarioDB.nombre,
         rol: usuarioDB.rol,
+        foto_perfil: usuarioDB.foto_perfil,
       },
     });
   } catch (error) {
@@ -82,7 +83,7 @@ const ROLES_VALIDOS = [
 router.get("/usuarios", async (_req, res, next) => {
   try {
     const result = await pool.query(
-      "SELECT id, usuario, nombre, rol, created_at FROM usuarios ORDER BY id",
+      "SELECT id, usuario, nombre, rol, foto_perfil, created_at FROM usuarios ORDER BY id",
     );
     res.json(result.rows);
   } catch (error) {
@@ -105,7 +106,7 @@ router.post("/usuarios", async (req, res, next) => {
     const result = await pool.query(
       `INSERT INTO usuarios (usuario, nombre, rol, password_hash)
        VALUES ($1, $2, $3, $4)
-       RETURNING id, usuario, nombre, rol, created_at`,
+       RETURNING id, usuario, nombre, rol, foto_perfil, created_at`,
       [usuario, nombre, rol, passwordHash],
     );
 
@@ -150,7 +151,7 @@ router.patch("/usuarios/perfil", async (req, res, next) => {
     }
 
     const found = await pool.query(
-      "SELECT id, usuario, nombre, rol, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
+      "SELECT id, usuario, nombre, rol, foto_perfil, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
       [usuario_actual],
     );
     if (found.rows.length === 0) {
@@ -178,9 +179,42 @@ router.patch("/usuarios/perfil", async (req, res, next) => {
       `UPDATE usuarios
        SET usuario = $1
        WHERE id = $2
-       RETURNING id, usuario, nombre, rol, created_at`,
+       RETURNING id, usuario, nombre, rol, foto_perfil, created_at`,
       [usuarioNuevo, usuarioDB.id],
     );
+
+    res.json(updated.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/usuarios/foto", async (req, res, next) => {
+  try {
+    const { usuario, foto_perfil } = req.body;
+    const foto = typeof foto_perfil === "string" ? foto_perfil.trim() : "";
+
+    if (!usuario) {
+      return res.status(400).json({ error: "Falta el usuario." });
+    }
+    if (foto && !foto.startsWith("data:image/")) {
+      return res.status(400).json({ error: "La foto debe ser una imagen válida." });
+    }
+    if (foto.length > 1500000) {
+      return res.status(400).json({ error: "La foto es demasiado pesada." });
+    }
+
+    const updated = await pool.query(
+      `UPDATE usuarios
+       SET foto_perfil = $1
+       WHERE lower(usuario) = lower($2)
+       RETURNING id, usuario, nombre, rol, foto_perfil, created_at`,
+      [foto || null, usuario],
+    );
+
+    if (updated.rows.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado." });
+    }
 
     res.json(updated.rows[0]);
   } catch (error) {

@@ -474,6 +474,16 @@ function guardarSesion(token, usuario) {
   localStorage.setItem("render_sesion", JSON.stringify({ token, usuario }));
 }
 
+function inicialesUsuario(nombre) {
+  return (nombre || "?")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((parte) => parte[0])
+    .join("")
+    .toUpperCase();
+}
+
 function cerrarSesion() {
   localStorage.removeItem("render_sesion");
   window.location.href = "/login";
@@ -1577,7 +1587,13 @@ function Sidebar({ path, sesion, enlacesNav, onCerrarSesion, ROL_LABELS }) {
       <nav className={`sidebar ${abierto ? "open" : ""}`}>
         <div className="sidebar-header">
           <div className="user-badge">
-            <div className="user-avatar">👤</div>
+            <div className="user-avatar">
+              {sesion?.usuario?.foto_perfil ? (
+                <img src={sesion.usuario.foto_perfil} alt="" />
+              ) : (
+                inicialesUsuario(sesion?.usuario?.nombre)
+              )}
+            </div>
             <div className="user-info">
               <div className="user-name">{sesion?.usuario?.nombre}</div>
               <div className="user-role">{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>
@@ -2373,11 +2389,15 @@ function PerfilPage() {
   const sesion = getSesion();
   const usuario = sesion?.usuario;
   const [perfilUsuario, setPerfilUsuario] = useState(usuario);
+  const [fotoPerfil, setFotoPerfil] = useState(usuario?.foto_perfil || "");
   const [usuarioNuevo, setUsuarioNuevo] = useState(usuario?.usuario || "");
   const [passwordUsuario, setPasswordUsuario] = useState("");
   const [actual, setActual] = useState("");
   const [nueva, setNueva] = useState("");
   const [confirmar, setConfirmar] = useState("");
+  const [mensajeFoto, setMensajeFoto] = useState(null);
+  const [errorFoto, setErrorFoto] = useState(null);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
   const [mensaje, setMensaje] = useState(null);
   const [error, setError] = useState(null);
   const [mensajeUsuario, setMensajeUsuario] = useState(null);
@@ -2387,8 +2407,98 @@ function PerfilPage() {
 
   useEffect(() => {
     setPerfilUsuario(usuario);
+    setFotoPerfil(usuario?.foto_perfil || "");
     setUsuarioNuevo(usuario?.usuario || "");
-  }, [usuario?.usuario]);
+  }, [usuario?.usuario, usuario?.foto_perfil]);
+
+  const actualizarSesionPerfil = (data) => {
+    const usuarioActualizado = {
+      usuario: data.usuario,
+      nombre: data.nombre,
+      rol: data.rol,
+      foto_perfil: data.foto_perfil || "",
+    };
+    guardarSesion(sesion.token, usuarioActualizado);
+    setPerfilUsuario(usuarioActualizado);
+    setFotoPerfil(usuarioActualizado.foto_perfil);
+    return usuarioActualizado;
+  };
+
+  const reducirFotoPerfil = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const image = new Image();
+        image.onload = () => {
+          const size = 360;
+          const canvas = document.createElement("canvas");
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext("2d");
+          const scale = Math.max(size / image.width, size / image.height);
+          const width = image.width * scale;
+          const height = image.height * scale;
+          const x = (size - width) / 2;
+          const y = (size - height) / 2;
+          ctx.fillStyle = "#f5f5f5";
+          ctx.fillRect(0, 0, size, size);
+          ctx.drawImage(image, x, y, width, height);
+          resolve(canvas.toDataURL("image/jpeg", 0.82));
+        };
+        image.onerror = () => reject(new Error("No se pudo leer la imagen."));
+        image.src = reader.result;
+      };
+      reader.onerror = () => reject(new Error("No se pudo leer el archivo."));
+      reader.readAsDataURL(file);
+    });
+
+  const guardarFotoPerfil = (foto) => {
+    setEnviandoFoto(true);
+    return fetch("/api/usuarios/foto", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        usuario: perfilUsuario.usuario,
+        foto_perfil: foto,
+      }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo guardar la foto.");
+        }
+        return data;
+      })
+      .then((data) => {
+        actualizarSesionPerfil(data);
+        setMensajeFoto(foto ? "Foto de perfil actualizada." : "Foto de perfil quitada.");
+      })
+      .finally(() => setEnviandoFoto(false));
+  };
+
+  const handleFotoPerfil = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    setMensajeFoto(null);
+    setErrorFoto(null);
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setErrorFoto("Elegí una imagen válida.");
+      return;
+    }
+    try {
+      const fotoReducida = await reducirFotoPerfil(file);
+      await guardarFotoPerfil(fotoReducida);
+    } catch (err) {
+      setErrorFoto(err.message);
+    }
+  };
+
+  const handleQuitarFotoPerfil = () => {
+    setMensajeFoto(null);
+    setErrorFoto(null);
+    guardarFotoPerfil("").catch((err) => setErrorFoto(err.message));
+  };
 
   const handleCambiarUsuario = (event) => {
     event.preventDefault();
@@ -2419,13 +2529,7 @@ function PerfilPage() {
         return data;
       })
       .then((data) => {
-        const usuarioActualizado = {
-          usuario: data.usuario,
-          nombre: data.nombre,
-          rol: data.rol,
-        };
-        guardarSesion(sesion.token, usuarioActualizado);
-        setPerfilUsuario(usuarioActualizado);
+        actualizarSesionPerfil(data);
         setUsuarioNuevo(data.usuario);
         setPasswordUsuario("");
         setMensajeUsuario("Usuario actualizado correctamente.");
@@ -2490,6 +2594,44 @@ function PerfilPage() {
         <div className="content">
           <div className="section-label">Mis datos</div>
           <div className="box">
+            <div className="profile-photo-row">
+              <div className="profile-photo-preview">
+                {fotoPerfil ? (
+                  <img src={fotoPerfil} alt="" />
+                ) : (
+                  inicialesUsuario(perfilUsuario?.nombre)
+                )}
+              </div>
+              <div className="profile-photo-actions">
+                <div className="detail-label">Foto de perfil</div>
+                <label className={`btn primary ${enviandoFoto ? "disabled" : ""}`}>
+                  {enviandoFoto ? "Guardando..." : fotoPerfil ? "Cambiar foto" : "Subir foto"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFotoPerfil}
+                    disabled={enviandoFoto}
+                    hidden
+                  />
+                </label>
+                {fotoPerfil && (
+                  <button
+                    className="btn ghost"
+                    type="button"
+                    onClick={handleQuitarFotoPerfil}
+                    disabled={enviandoFoto}
+                  >
+                    Quitar foto
+                  </button>
+                )}
+                {errorFoto && <div className="caption login-error">{errorFoto}</div>}
+                {mensajeFoto && (
+                  <div className="caption" style={{ color: "#333", fontWeight: "bold" }}>
+                    {mensajeFoto}
+                  </div>
+                )}
+              </div>
+            </div>
             <div className="detail-grid">
               <div className="detail-field">
                 <div className="detail-label">Nombre</div>
