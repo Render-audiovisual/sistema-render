@@ -484,6 +484,31 @@ function inicialesUsuario(nombre) {
     .toUpperCase();
 }
 
+function TopbarUser({ fallback }) {
+  const sesion = getSesion();
+  const usuario = sesion?.usuario;
+
+  if (!usuario) {
+    return <div className="tag">{fallback}</div>;
+  }
+
+  return (
+    <div className="topbar-user">
+      <div className="topbar-avatar">
+        {usuario.foto_perfil ? (
+          <img src={usuario.foto_perfil} alt="" />
+        ) : (
+          inicialesUsuario(usuario.nombre)
+        )}
+      </div>
+      <div className="topbar-user-text">
+        <div className="topbar-user-name">{usuario.nombre}</div>
+        <div className="topbar-user-role">{ROL_LABELS[usuario.rol] || usuario.rol}</div>
+      </div>
+    </div>
+  );
+}
+
 function cerrarSesion() {
   localStorage.removeItem("render_sesion");
   window.location.href = "/login";
@@ -660,7 +685,7 @@ function NuevaTareaPage() {
             <span className="active">Nueva tarea</span>
             <a href="/">Home</a>
           </div>
-          <div className="tag">Cargar trabajo</div>
+          <TopbarUser fallback="Cargar trabajo" />
         </div>
 
         <div className="content">
@@ -1825,9 +1850,7 @@ function HomePage() {
           <div className="nav">
             <span className="active">Home</span>
           </div>
-          <div className="tag">
-            {sesion?.usuario?.nombre} · {sesion?.usuario?.rol}
-          </div>
+          <TopbarUser fallback="Usuario" />
         </div>
 
         <div className="content">
@@ -2588,7 +2611,7 @@ function PerfilPage() {
             <span className="active">Mi perfil</span>
             <a href="/">Home</a>
           </div>
-          <div className="tag">{perfilUsuario?.nombre}</div>
+          <TopbarUser fallback={perfilUsuario?.nombre} />
         </div>
 
         <div className="content">
@@ -2830,7 +2853,7 @@ function EmpleadosPage() {
             <span className="active">Empleados</span>
             <a href="/">Home</a>
           </div>
-          <div className="tag">Gestión de accesos</div>
+          <TopbarUser fallback="Gestión de accesos" />
         </div>
 
         <div className="content">
@@ -3009,7 +3032,7 @@ function OrianaDashboard() {
             <span className="active">Calendario</span>
             <span>Publicaciones</span>
           </div>
-          <div className="tag">Oriana · publicación</div>
+          <TopbarUser fallback="Oriana · publicación" />
         </div>
 
         <div className="content">
@@ -3312,7 +3335,7 @@ function GermanDashboard() {
             <span className="active">Producciones</span>
             <span>Agenda</span>
           </div>
-          <div className="tag">Germán · producción</div>
+          <TopbarUser fallback="Germán · producción" />
         </div>
 
         <div className="content">
@@ -3611,7 +3634,7 @@ function LucianoDashboard() {
           <div className="nav">
             <span className="active">Mis ediciones</span>
           </div>
-          <div className="tag">Luciano · edición</div>
+          <TopbarUser fallback="Luciano · edición" />
         </div>
 
         <div className="content">
@@ -3690,7 +3713,7 @@ function AugustoDashboard() {
           <div className="nav">
             <span className="active">Mis diseños</span>
           </div>
-          <div className="tag">Augusto · diseño</div>
+          <TopbarUser fallback="Augusto · diseño" />
         </div>
 
         <div className="content">
@@ -3780,7 +3803,7 @@ function EquipoDashboard() {
             <span>Panorama</span>
             <span className="active">Equipo</span>
           </div>
-          <div className="tag">Vista de equipo</div>
+          <TopbarUser fallback="Vista de equipo" />
         </div>
 
         <div className="content">
@@ -3881,7 +3904,7 @@ function ClientesAdminPage() {
           <div className="nav">
             <span className="active">Clientes</span>
           </div>
-          <div className="tag">Administración</div>
+          <TopbarUser fallback="Administración" />
         </div>
 
         <div className="content">
@@ -4083,7 +4106,7 @@ function AgustinDashboard() {
             <span>Config Maestra</span>
             <a href="/equipo">Equipo</a>
           </div>
-          <div className="tag">Agustín · admin</div>
+          <TopbarUser fallback="Agustín · admin" />
         </div>
 
         <div className="content">
@@ -4505,7 +4528,7 @@ function FrancoDashboard() {
             <span>Clientes</span>
             <a href="/equipo">Equipo</a>
           </div>
-          <div className="tag">Franco · aprobación</div>
+          <TopbarUser fallback="Franco · aprobación" />
         </div>
 
         <div className="content">
@@ -5341,7 +5364,7 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
           <div className="nav">
             <span className="active">{titulo}</span>
           </div>
-          <div className="tag">{nombre_usuario} · {rol}</div>
+          <TopbarUser fallback={`${nombre_usuario} · ${rol}`} />
         </div>
 
         <div className="content">
@@ -6588,7 +6611,7 @@ function HistoriasPage({ initialTab = "planilla" }) {
             <div className="nav">
               <span className="active">Planificación de historias</span>
             </div>
-          <div className="tag">Planilla mensual</div>
+          <TopbarUser fallback="Planilla mensual" />
           </div>
 
         <div className="content">
@@ -6900,7 +6923,7 @@ function ReportesEquipoPage() {
           <div className="nav">
             <span className="active">{esVistaAdmin ? "Reporte del equipo" : "Mi reporte"}</span>
           </div>
-          <div className="tag">{esVistaAdmin ? "Objetivo mensual" : "Mi objetivo"}</div>
+          <TopbarUser fallback={esVistaAdmin ? "Objetivo mensual" : "Mi objetivo"} />
         </div>
 
         <div className="content">
@@ -7778,7 +7801,7 @@ function PublicacionesPage({ tabInicial = "calendario" }) {
           <div className="nav">
             <span className="active">Planificación de publicaciones</span>
           </div>
-          <div className="tag">Calendario y control</div>
+          <TopbarUser fallback="Calendario y control" />
         </div>
 
         <div className="content">

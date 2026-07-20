@@ -353,6 +353,63 @@ th {
   white-space: nowrap;
 }
 
+.topbar-user {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 999px;
+  display: flex;
+  gap: 8px;
+  max-width: 210px;
+  min-width: 0;
+  padding: 4px 9px 4px 4px;
+}
+
+.topbar-avatar {
+  align-items: center;
+  background: #333;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  height: 30px;
+  justify-content: center;
+  overflow: hidden;
+  width: 30px;
+}
+
+.topbar-avatar img {
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+.topbar-user-text {
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.topbar-user-name,
+.topbar-user-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-user-name {
+  color: #333;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.topbar-user-role {
+  color: #777;
+  font-size: 9px;
+  margin-top: 1px;
+}
+
 .tag.atraso {
   background: #ddd;
   border-color: #333;
