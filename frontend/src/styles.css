@@ -66,6 +66,7 @@ main {
   }
 
   .task-view-toggle,
+  .task-area-toggle,
   .task-search,
   .task-filter-select,
   .task-toolbar .btn {
@@ -74,6 +75,14 @@ main {
 
   .task-view-toggle .btn {
     flex: 1;
+  }
+
+  .task-area-toggle {
+    overflow-x: auto;
+  }
+
+  .task-area-toggle .btn {
+    flex: 1 0 auto;
   }
 
   .task-results-count {
@@ -521,6 +530,16 @@ select:focus {
   gap: 8px;
 }
 
+.task-area-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.task-area-toggle .btn {
+  min-height: 34px;
+  white-space: nowrap;
+}
+
 .task-search {
   align-items: flex-start;
   display: flex;
@@ -691,12 +710,46 @@ select:focus {
   padding: 3px 7px;
 }
 
+.task-card-split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.task-card-split span {
+  background: #f7f7f7;
+  border: 1px solid #e3e3e3;
+  border-radius: 999px;
+  color: #555;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 3px 7px;
+  text-transform: uppercase;
+}
+
 .task-card-footer {
   border-top: 1px solid #eee;
   color: #777;
   font-size: 11px;
   margin-top: 10px;
   padding-top: 8px;
+}
+
+.task-table-area {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.task-table-area strong {
+  font-size: 12px;
+}
+
+.task-table-area span {
+  color: #777;
+  font-size: 11px;
 }
 
 .progress-grid {

@@ -929,6 +929,8 @@ function PiezasTableroPage() {
 
   // Filtros
   const [busqueda, setBusqueda] = useState("");
+  const [filtroArea, setFiltroArea] = useState("");
+  const [filtroSubtipo, setFiltroSubtipo] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroResponsable, setFiltroResponsable] = useState("");
   const [filtroCliente, setFiltroCliente] = useState("");
@@ -962,6 +964,106 @@ function PiezasTableroPage() {
     flyer: "📋",
     video: "📹",
   };
+
+  const AREAS_TAREAS = [
+    { id: "", label: "Todas" },
+    { id: "diseno", label: "Diseño" },
+    { id: "videos", label: "Videos" },
+    { id: "community", label: "Community manager" },
+  ];
+
+  const SUBTIPOS_TAREAS = [
+    { id: "historias_flyers", area: "diseno", label: "Historias / flyers" },
+    { id: "carruseles", area: "diseno", label: "Carruseles" },
+    {
+      id: "carteleria_impresiones",
+      area: "diseno",
+      label: "Cartelería / impresiones",
+    },
+    { id: "reels", area: "videos", label: "Reels" },
+    { id: "visitas", area: "videos", label: "Visitas" },
+    { id: "edicion", area: "videos", label: "Edición" },
+    { id: "community_pendiente", area: "community", label: "A definir" },
+  ];
+
+  const AREA_LABELS = {
+    diseno: "Diseño",
+    videos: "Videos",
+    community: "Community manager",
+  };
+
+  const SUBTIPO_LABELS = SUBTIPOS_TAREAS.reduce((acc, subtipo) => {
+    acc[subtipo.id] = subtipo.label;
+    return acc;
+  }, {});
+
+  function obtenerTextoClasificacion(pieza) {
+    return [
+      pieza.tipo,
+      pieza.idea,
+      pieza.copy,
+      pieza.aclaraciones,
+      pieza.material_referencia,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+  }
+
+  function clasificarPieza(pieza) {
+    const tipo = (pieza.tipo || "").toLowerCase();
+    const responsable = (pieza.responsable || "").toLowerCase();
+    const texto = obtenerTextoClasificacion(pieza);
+
+    if (
+      tipo.includes("carteleria") ||
+      tipo.includes("cartelería") ||
+      tipo.includes("impresion") ||
+      tipo.includes("impresión") ||
+      texto.includes("carteleria") ||
+      texto.includes("cartelería") ||
+      texto.includes("impresion") ||
+      texto.includes("impresión")
+    ) {
+      return { area: "diseno", subtipo: "carteleria_impresiones" };
+    }
+
+    if (tipo === "carrusel" || tipo.includes("carrusel")) {
+      return { area: "diseno", subtipo: "carruseles" };
+    }
+
+    if (tipo === "historia" || tipo === "flyer" || tipo.includes("flyer")) {
+      return { area: "diseno", subtipo: "historias_flyers" };
+    }
+
+    if (
+      tipo.includes("visita") ||
+      texto.includes("visita") ||
+      texto.includes("grabacion") ||
+      texto.includes("grabación") ||
+      texto.includes("filmacion") ||
+      texto.includes("filmación")
+    ) {
+      return { area: "videos", subtipo: "visitas" };
+    }
+
+    if (
+      tipo.includes("edicion") ||
+      tipo.includes("edición") ||
+      responsable.includes("luciano") ||
+      texto.includes("editar") ||
+      texto.includes("edicion") ||
+      texto.includes("edición")
+    ) {
+      return { area: "videos", subtipo: "edicion" };
+    }
+
+    if (tipo === "video" || tipo === "reel" || tipo.includes("reel")) {
+      return { area: "videos", subtipo: "reels" };
+    }
+
+    return { area: "community", subtipo: "community_pendiente" };
+  }
 
   // Cargar piezas al montar
   useEffect(() => {
@@ -997,9 +1099,13 @@ function PiezasTableroPage() {
   // Filtrar piezas según los filtros activos
   const busquedaNormalizada = busqueda.trim().toLowerCase();
   const piezasFiltradas = piezas.filter((pieza) => {
+    const clasificacion = clasificarPieza(pieza);
+
     if (busquedaNormalizada) {
       const textoPieza = [
         pieza.tipo,
+        AREA_LABELS[clasificacion.area],
+        SUBTIPO_LABELS[clasificacion.subtipo],
         pieza.cliente_nombre,
         pieza.responsable,
         pieza.idea,
@@ -1015,6 +1121,8 @@ function PiezasTableroPage() {
 
       if (!textoPieza.includes(busquedaNormalizada)) return false;
     }
+    if (filtroArea && clasificacion.area !== filtroArea) return false;
+    if (filtroSubtipo && clasificacion.subtipo !== filtroSubtipo) return false;
     if (filtroEstado && (pieza.estado || "pendiente") !== filtroEstado)
       return false;
     if (filtroResponsable && pieza.responsable !== filtroResponsable)
@@ -1041,8 +1149,13 @@ function PiezasTableroPage() {
 
   // Prioridades
   const prioridades = ["baja", "media", "alta"];
+  const subtiposDisponibles = SUBTIPOS_TAREAS.filter(
+    (subtipo) => !filtroArea || subtipo.area === filtroArea
+  );
   const hayFiltrosActivos =
     busqueda.trim() ||
+    filtroArea ||
+    filtroSubtipo ||
     filtroEstado ||
     filtroResponsable ||
     filtroCliente ||
@@ -1203,6 +1316,34 @@ function PiezasTableroPage() {
             />
           </label>
 
+          <div className="task-area-toggle" aria-label="Área de tarea">
+            {AREAS_TAREAS.map((area) => (
+              <button
+                key={area.id || "todas"}
+                className={`btn ${filtroArea === area.id ? "btn-active" : ""}`}
+                onClick={() => {
+                  setFiltroArea(area.id);
+                  setFiltroSubtipo("");
+                }}
+              >
+                {area.label}
+              </button>
+            ))}
+          </div>
+
+          <select
+            className="task-filter-select"
+            value={filtroSubtipo}
+            onChange={(e) => setFiltroSubtipo(e.target.value)}
+          >
+            <option value="">Todos los subtipos</option>
+            {subtiposDisponibles.map((subtipo) => (
+              <option key={subtipo.id} value={subtipo.id}>
+                {subtipo.label}
+              </option>
+            ))}
+          </select>
+
           <select
             className="task-filter-select"
             value={filtroEstado}
@@ -1259,6 +1400,8 @@ function PiezasTableroPage() {
             className="btn"
             onClick={() => {
               setBusqueda("");
+              setFiltroArea("");
+              setFiltroSubtipo("");
               setFiltroEstado("");
               setFiltroResponsable("");
               setFiltroCliente("");
@@ -1306,54 +1449,62 @@ function PiezasTableroPage() {
                     </span>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                    {piezasDelEstado.map((pieza) => (
-                      <div
-                        key={`${pieza.origen}-${pieza.id}`}
-                        className="task-card"
-                        onClick={() => abrirModal(pieza)}
-                      >
-                        <div className="task-card-topline">
-                          <span className="task-card-type">
-                            {TIPO_ICONOS[pieza.tipo] || "📄"}{" "}
-                            {pieza.tipo.charAt(0).toUpperCase() +
-                              pieza.tipo.slice(1)}
-                          </span>
-                          <div
-                            className="task-priority-dot"
-                            title={pieza.prioridad}
-                            style={{
-                              backgroundColor: obtenerColorPrioridad(
-                                pieza.prioridad
-                              ),
-                            }}
-                          ></div>
-                        </div>
-
-                        <div className="task-card-client">
-                          {pieza.cliente_nombre || "Sin cliente"}
-                        </div>
-
-                        <div className="task-card-title">
-                          {obtenerTituloPieza(pieza)}
-                        </div>
-
-                        <div className="task-card-meta">
-                          <span>{pieza.responsable || "Sin responsable"}</span>
-                          {pieza.fecha_programada && (
-                            <span>{formatearFechaCorta(pieza.fecha_programada)}</span>
-                          )}
-                          {pieza.prioridad && (
-                            <span>{pieza.prioridad}</span>
-                          )}
-                        </div>
-
-                        {pieza.material_referencia && (
-                          <div className="task-card-footer">
-                            Material cargado
+                    {piezasDelEstado.map((pieza) => {
+                      const clasificacion = clasificarPieza(pieza);
+                      return (
+                        <div
+                          key={`${pieza.origen}-${pieza.id}`}
+                          className="task-card"
+                          onClick={() => abrirModal(pieza)}
+                        >
+                          <div className="task-card-topline">
+                            <span className="task-card-type">
+                              {TIPO_ICONOS[pieza.tipo] || "📄"}{" "}
+                              {pieza.tipo.charAt(0).toUpperCase() +
+                                pieza.tipo.slice(1)}
+                            </span>
+                            <div
+                              className="task-priority-dot"
+                              title={pieza.prioridad}
+                              style={{
+                                backgroundColor: obtenerColorPrioridad(
+                                  pieza.prioridad
+                                ),
+                              }}
+                            ></div>
                           </div>
-                        )}
-                      </div>
-                    ))}
+
+                          <div className="task-card-split">
+                            <span>{AREA_LABELS[clasificacion.area]}</span>
+                            <span>{SUBTIPO_LABELS[clasificacion.subtipo]}</span>
+                          </div>
+
+                          <div className="task-card-client">
+                            {pieza.cliente_nombre || "Sin cliente"}
+                          </div>
+
+                          <div className="task-card-title">
+                            {obtenerTituloPieza(pieza)}
+                          </div>
+
+                          <div className="task-card-meta">
+                            <span>{pieza.responsable || "Sin responsable"}</span>
+                            {pieza.fecha_programada && (
+                              <span>{formatearFechaCorta(pieza.fecha_programada)}</span>
+                            )}
+                            {pieza.prioridad && (
+                              <span>{pieza.prioridad}</span>
+                            )}
+                          </div>
+
+                          {pieza.material_referencia && (
+                            <div className="task-card-footer">
+                              Material cargado
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                     {piezasDelEstado.length === 0 && (
                       <div className="kanban-empty">
                         Vacío
@@ -1372,6 +1523,7 @@ function PiezasTableroPage() {
             <table style={{ width: "100%", fontSize: "13px" }}>
               <thead>
                 <tr>
+                  <th>Área</th>
                   <th>Tipo</th>
                   <th>Cliente</th>
                   <th>Responsable</th>
@@ -1383,51 +1535,60 @@ function PiezasTableroPage() {
                 </tr>
               </thead>
               <tbody>
-                {piezasFiltradas.map((pieza) => (
-                  <tr key={`${pieza.origen}-${pieza.id}`}>
-                    <td>
-                      <span style={{ marginRight: "4px" }}>
-                        {TIPO_ICONOS[pieza.tipo] || "📄"}
-                      </span>
-                      {pieza.tipo}
-                    </td>
-                    <td>{pieza.cliente_nombre || "Sin cliente"}</td>
-                    <td>{pieza.responsable || "—"}</td>
-                    <td>{pieza.idea?.substring(0, 40) || "—"}</td>
-                    <td>{ESTADO_LABELS[pieza.estado]}</td>
-                    <td>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          padding: "3px 8px",
-                          borderRadius: "4px",
-                          backgroundColor: obtenerColorPrioridad(
-                            pieza.prioridad
-                          ),
-                          color: obtenerColorTextoPrioridad(pieza.prioridad),
-                          fontSize: "11px",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {pieza.prioridad || "—"}
-                      </span>
-                    </td>
-                    <td>
-                      {pieza.fecha_programada
-                        ? new Date(pieza.fecha_programada).toLocaleDateString()
-                        : "—"}
-                    </td>
-                    <td>
-                      <button
-                        className="btn"
-                        onClick={() => abrirModal(pieza)}
-                        style={{ fontSize: "11px", padding: "4px 8px" }}
-                      >
-                        Ver
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {piezasFiltradas.map((pieza) => {
+                  const clasificacion = clasificarPieza(pieza);
+                  return (
+                    <tr key={`${pieza.origen}-${pieza.id}`}>
+                      <td>
+                        <div className="task-table-area">
+                          <strong>{AREA_LABELS[clasificacion.area]}</strong>
+                          <span>{SUBTIPO_LABELS[clasificacion.subtipo]}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{ marginRight: "4px" }}>
+                          {TIPO_ICONOS[pieza.tipo] || "📄"}
+                        </span>
+                        {pieza.tipo}
+                      </td>
+                      <td>{pieza.cliente_nombre || "Sin cliente"}</td>
+                      <td>{pieza.responsable || "—"}</td>
+                      <td>{pieza.idea?.substring(0, 40) || "—"}</td>
+                      <td>{ESTADO_LABELS[pieza.estado]}</td>
+                      <td>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "3px 8px",
+                            borderRadius: "4px",
+                            backgroundColor: obtenerColorPrioridad(
+                              pieza.prioridad
+                            ),
+                            color: obtenerColorTextoPrioridad(pieza.prioridad),
+                            fontSize: "11px",
+                            fontWeight: 500,
+                          }}
+                        >
+                          {pieza.prioridad || "—"}
+                        </span>
+                      </td>
+                      <td>
+                        {pieza.fecha_programada
+                          ? new Date(pieza.fecha_programada).toLocaleDateString()
+                          : "—"}
+                      </td>
+                      <td>
+                        <button
+                          className="btn"
+                          onClick={() => abrirModal(pieza)}
+                          style={{ fontSize: "11px", padding: "4px 8px" }}
+                        >
+                          Ver
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {piezasFiltradas.length === 0 && (
