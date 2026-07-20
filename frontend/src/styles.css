@@ -619,6 +619,14 @@ select:focus {
   overflow-y: auto;
   padding: 12px;
   scroll-snap-align: start;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.kanban-column-over {
+  background: #e9e9e9;
+  border-color: #999;
 }
 
 .kanban-header {
@@ -645,18 +653,29 @@ select:focus {
   background: #fff;
   border: 1px solid #ddd;
   border-radius: 6px;
-  cursor: pointer;
+  cursor: grab;
   padding: 11px;
   transition:
     border-color 0.15s ease,
+    opacity 0.15s ease,
     box-shadow 0.15s ease,
     transform 0.15s ease;
+  user-select: none;
+}
+
+.task-card:active {
+  cursor: grabbing;
 }
 
 .task-card:hover {
   border-color: #bbb;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
   transform: translateY(-1px);
+}
+
+.task-card-dragging {
+  opacity: 0.55;
+  transform: rotate(1deg);
 }
 
 .task-card-topline,

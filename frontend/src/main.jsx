@@ -926,6 +926,9 @@ function PiezasTableroPage() {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [piezaSeleccionada, setPiezaSeleccionada] = useState(null);
   const [enviando, setEnviando] = useState(false);
+  const [piezaArrastrada, setPiezaArrastrada] = useState(null);
+  const [estadoSobre, setEstadoSobre] = useState(null);
+  const [bloquearClickTarjeta, setBloquearClickTarjeta] = useState(false);
 
   // Filtros
   const [busqueda, setBusqueda] = useState("");
@@ -1192,7 +1195,8 @@ function PiezasTableroPage() {
     });
   }
 
-  async function cambiarEstado(piezaId, nuevoEstado) {
+  async function cambiarEstado(piezaId, nuevoEstado, opciones = {}) {
+    const { actualizarLocal = true } = opciones;
     try {
       setEnviando(true);
       const respuesta = await fetch(`${API_BASE}/piezas/${piezaId}`, {
@@ -1208,21 +1212,80 @@ function PiezasTableroPage() {
         throw new Error(`Error ${respuesta.status}`);
       }
 
-      // Actualizar pieza localmente
-      setPiezas(
-        piezas.map((p) =>
-          p.id === piezaId ? { ...p, estado: nuevoEstado } : p
-        )
-      );
+      if (actualizarLocal) {
+        setPiezas((actuales) =>
+          actuales.map((p) =>
+            p.id === piezaId ? { ...p, estado: nuevoEstado } : p
+          )
+        );
+      }
 
       // Actualizar modal si está abierto
       if (piezaSeleccionada?.id === piezaId) {
         setPiezaSeleccionada({ ...piezaSeleccionada, estado: nuevoEstado });
       }
+      return true;
     } catch (err) {
       alert("Error al cambiar estado: " + err.message);
+      return false;
     } finally {
       setEnviando(false);
+    }
+  }
+
+  function iniciarArrastre(evento, pieza) {
+    const estadoActual = pieza.estado || "pendiente";
+    setPiezaArrastrada({ id: pieza.id, estado: estadoActual });
+    setBloquearClickTarjeta(true);
+    evento.dataTransfer.effectAllowed = "move";
+    evento.dataTransfer.setData("text/plain", String(pieza.id));
+  }
+
+  function terminarArrastre() {
+    setPiezaArrastrada(null);
+    setEstadoSobre(null);
+    setTimeout(() => setBloquearClickTarjeta(false), 0);
+  }
+
+  function permitirSoltar(evento, estado) {
+    evento.preventDefault();
+    evento.dataTransfer.dropEffect = "move";
+    setEstadoSobre(estado);
+  }
+
+  async function soltarEnEstado(evento, nuevoEstado) {
+    evento.preventDefault();
+    const piezaId =
+      piezaArrastrada?.id || Number(evento.dataTransfer.getData("text/plain"));
+    const piezaAnterior = piezas.find((p) => p.id === piezaId);
+    const estadoAnterior =
+      piezaArrastrada?.estado || piezaAnterior?.estado || "pendiente";
+
+    terminarArrastre();
+
+    if (!piezaId || estadoAnterior === nuevoEstado || !piezaAnterior) {
+      return;
+    }
+
+    const piezaActualizada = { ...piezaAnterior, estado: nuevoEstado };
+    setPiezas((actuales) =>
+      actuales.map((p) => (p.id === piezaId ? piezaActualizada : p))
+    );
+    if (piezaSeleccionada?.id === piezaId) {
+      setPiezaSeleccionada(piezaActualizada);
+    }
+
+    const guardado = await cambiarEstado(piezaId, nuevoEstado, {
+      actualizarLocal: false,
+    });
+
+    if (!guardado) {
+      setPiezas((actuales) =>
+        actuales.map((p) => (p.id === piezaId ? piezaAnterior : p))
+      );
+      if (piezaSeleccionada?.id === piezaId) {
+        setPiezaSeleccionada(piezaAnterior);
+      }
     }
   }
 
@@ -1439,7 +1502,15 @@ function PiezasTableroPage() {
             {ESTADOS.map((estado) => {
               const piezasDelEstado = piezasPorEstado[estado];
               return (
-                <div key={estado} className="kanban-column">
+                <div
+                  key={estado}
+                  className={`kanban-column ${
+                    estadoSobre === estado ? "kanban-column-over" : ""
+                  }`}
+                  onDragOver={(evento) => permitirSoltar(evento, estado)}
+                  onDragLeave={() => setEstadoSobre(null)}
+                  onDrop={(evento) => soltarEnEstado(evento, estado)}
+                >
                   <div className="kanban-header">
                     <span className="font-weight-bold">
                       {ESTADO_LABELS[estado]}
@@ -1454,8 +1525,21 @@ function PiezasTableroPage() {
                       return (
                         <div
                           key={`${pieza.origen}-${pieza.id}`}
-                          className="task-card"
-                          onClick={() => abrirModal(pieza)}
+                          className={`task-card ${
+                            piezaArrastrada?.id === pieza.id
+                              ? "task-card-dragging"
+                              : ""
+                          }`}
+                          data-pieza-id={pieza.id}
+                          data-estado={pieza.estado || "pendiente"}
+                          draggable
+                          onDragStart={(evento) =>
+                            iniciarArrastre(evento, pieza)
+                          }
+                          onDragEnd={terminarArrastre}
+                          onClick={() => {
+                            if (!bloquearClickTarjeta) abrirModal(pieza);
+                          }}
                         >
                           <div className="task-card-topline">
                             <span className="task-card-type">
