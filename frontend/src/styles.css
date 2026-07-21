@@ -1955,7 +1955,8 @@ select:focus {
    volvió al scroll de página normal en todos los anchos, que es el modo
    comprobado que funciona; la grilla igual tiene su propio scroll interno
    (ver .sheet-frame) como ayuda extra, no como único mecanismo. */
-.historias-viewport .frame {
+.historias-viewport .frame,
+.publicaciones-viewport .frame {
   max-width: 1500px;
 }
 
@@ -2142,24 +2143,29 @@ select:focus {
 }
 
 /* Legibilidad ante todo: se prioriza esto por sobre mostrar más columnas
-   a la vez. Estos overrides solo aplican dentro de Historias — no tocan
-   la grilla de Publicaciones, que comparte las clases .sheet-*. */
+   a la vez. Comparten estos overrides Historias y Publicaciones, que usan
+   las mismas clases .sheet-* y el mismo layout de panel lateral. */
 .historias-viewport .sheet-cell,
-.historias-viewport textarea.sheet-cell-textarea {
+.historias-viewport textarea.sheet-cell-textarea,
+.publicaciones-viewport .sheet-cell,
+.publicaciones-viewport textarea.sheet-cell-textarea {
   font-size: 14px;
   padding: 9px 10px;
 }
 
-.historias-viewport textarea.sheet-cell-textarea {
+.historias-viewport textarea.sheet-cell-textarea,
+.publicaciones-viewport textarea.sheet-cell-textarea {
   line-height: 1.55;
   min-height: 40px;
 }
 
-.historias-viewport td.h-copy-cell textarea.sheet-cell-textarea {
+.historias-viewport td.h-copy-cell textarea.sheet-cell-textarea,
+.publicaciones-viewport td.h-copy-cell textarea.sheet-cell-textarea {
   font-size: 14.5px;
 }
 
-.historias-viewport .sheet-table th {
+.historias-viewport .sheet-table th,
+.publicaciones-viewport .sheet-table th {
   font-size: 11px;
   padding: 10px 10px;
   top: 0;
@@ -2170,7 +2176,8 @@ select:focus {
     padding: 10px 12px 12px;
   }
 
-  .historias-viewport .sheet-frame {
+  .historias-viewport .sheet-frame,
+  .publicaciones-viewport .sheet-frame {
     max-height: 58vh;
   }
 }

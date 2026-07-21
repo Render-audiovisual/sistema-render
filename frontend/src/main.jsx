@@ -7723,10 +7723,7 @@ function PublicacionesGeneralTab({ clientes, onIrACliente }) {
   );
 }
 
-function PublicacionesPlanillaTab({ clienteId, clienteNombre }) {
-  const hoy = new Date();
-  const [year, setYear] = useState(hoy.getFullYear());
-  const [month, setMonth] = useState(hoy.getMonth());
+function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month }) {
   const [publicaciones, setPublicaciones] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -7758,8 +7755,6 @@ function PublicacionesPlanillaTab({ clienteId, clienteNombre }) {
     .filter((p) => p.fecha_programada && p.fecha_programada.startsWith(mesPrefix))
     .slice()
     .sort((a, b) => a.fecha_programada.localeCompare(b.fecha_programada));
-
-  const publicadas = filasVisibles.filter((p) => p.estado === "publicada").length;
 
   useEffect(() => {
     if (!enfocarProximoId.current) return;
@@ -7849,20 +7844,6 @@ function PublicacionesPlanillaTab({ clienteId, clienteNombre }) {
     }
   };
 
-  const irMes = (delta) => {
-    let m = month + delta;
-    let y = year;
-    if (m < 0) {
-      m = 11;
-      y -= 1;
-    } else if (m > 11) {
-      m = 0;
-      y += 1;
-    }
-    setMonth(m);
-    setYear(y);
-  };
-
   const enfocarCelda = (rowIndex, columna) => {
     const el = gridRef.current?.querySelector(`[data-cell="${rowIndex}:${columna}"]`);
     if (!el) return;
@@ -7913,27 +7894,6 @@ function PublicacionesPlanillaTab({ clienteId, clienteNombre }) {
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "10px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
-          <strong style={{ fontSize: "16px", minWidth: "160px", textAlign: "center" }}>
-            {MESES[month]} {year}
-          </strong>
-          <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
-        </div>
-        <div style={{ display: "flex", gap: "8px", fontSize: "12px" }}>
-          <span style={{ padding: "4px 10px", background: "#eceff1", borderRadius: "12px" }}>
-            {filasVisibles.length} planificadas
-          </span>
-          <span style={{ padding: "4px 10px", background: "#e8f5e9", color: "#2e7d32", borderRadius: "12px" }}>
-            {publicadas} publicadas
-          </span>
-          <span style={{ padding: "4px 10px", background: "#fff3e0", color: "#e65100", borderRadius: "12px" }}>
-            {filasVisibles.length - publicadas} pendientes
-          </span>
-        </div>
-      </div>
-
       {error && (
         <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
           {error}
@@ -7943,7 +7903,7 @@ function PublicacionesPlanillaTab({ clienteId, clienteNombre }) {
       {cargando ? (
         <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando planilla…</div>
       ) : (
-        <div className="box" style={{ padding: 0, overflow: "auto", maxHeight: "70vh" }} ref={gridRef}>
+        <div className="sheet-frame" ref={gridRef}>
           <table className="sheet-table">
             <thead>
               <tr>
@@ -8140,6 +8100,11 @@ function PublicacionesPage({ tabInicial = "calendario" }) {
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [clientes, setClientes] = useState([]);
   const [errorClientes, setErrorClientes] = useState(null);
+  const [publicaciones, setPublicaciones] = useState([]);
+
+  const hoyDate = new Date();
+  const [year, setYear] = useState(hoyDate.getFullYear());
+  const [month, setMonth] = useState(hoyDate.getMonth());
 
   useEffect(() => {
     fetch("/api/clientes")
@@ -8154,20 +8119,61 @@ function PublicacionesPage({ tabInicial = "calendario" }) {
       });
   }, []);
 
+  // Solo para alimentar el punto rojo del panel lateral (quién tiene
+  // publicaciones atrasadas) sin entrar a cada cliente — la grilla editable
+  // de cada cliente sigue trayendo sus propios datos por separado.
+  useEffect(() => {
+    fetch("/api/publicaciones")
+      .then((r) => r.json())
+      .then((data) => setPublicaciones(Array.isArray(data) ? data : []))
+      .catch((err) => console.error("No se pudo cargar el panorama de publicaciones", err));
+  }, []);
+
   const irAPlanillaDeCliente = (clienteId) => {
     setClienteSeleccionado(clienteId);
     setTabPrincipal("planilla");
   };
 
   const clienteActual = clientes.find((c) => c.id === clienteSeleccionado);
+  const clienteNombre = clienteActual?.nombre || "";
+
+  const hoyISO = getHoyLocalISO();
+  const atrasadasPorCliente = {};
+  publicaciones.forEach((p) => {
+    if (p.fecha_programada < hoyISO && p.estado !== "publicada") {
+      atrasadasPorCliente[p.cliente_id] = (atrasadasPorCliente[p.cliente_id] || 0) + 1;
+    }
+  });
+
+  const irMes = (delta) => {
+    let m = month + delta;
+    let y = year;
+    if (m < 0) { m = 11; y -= 1; } else if (m > 11) { m = 0; y += 1; }
+    setMonth(m);
+    setYear(y);
+  };
+  const irAHoy = () => {
+    setMonth(hoyDate.getMonth());
+    setYear(hoyDate.getFullYear());
+  };
+
+  const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const publicacionesClienteMes = publicaciones.filter(
+    (p) => p.cliente_id === clienteSeleccionado && p.fecha_programada?.startsWith(mesPrefix),
+  );
+  const publicadasCliente = publicacionesClienteMes.filter((p) => p.estado === "publicada").length;
+  const atrasadasCliente = publicacionesClienteMes.filter(
+    (p) => p.fecha_programada < hoyISO && p.estado !== "publicada",
+  ).length;
 
   const TABS_PRINCIPALES = [
     { id: "calendario", label: "Calendario" },
     { id: "lista", label: "Control" },
+    { id: "planilla", label: "Planilla" },
   ];
 
   return (
-    <main aria-label="Render platform publicaciones">
+    <main aria-label="Render platform publicaciones" className="publicaciones-viewport">
       <div className="frame">
         <div className="topbar">
           <div className="logo-box">[ LOGO RENDER ]</div>
@@ -8184,62 +8190,79 @@ function PublicacionesPage({ tabInicial = "calendario" }) {
             </div>
           )}
 
-          <div className="tabs" style={{ marginBottom: "16px" }}>
-            {TABS_PRINCIPALES.map((t) => (
-              <span
-                key={t.id}
-                className={tabPrincipal === t.id ? "active" : ""}
-                onClick={() => setTabPrincipal(t.id)}
-                style={{ cursor: "pointer" }}
-              >
-                {t.label}
-              </span>
-            ))}
-          </div>
+          <div className="h-workspace">
+            <ClientesRail
+              clientes={clientes}
+              clienteSeleccionado={clienteSeleccionado}
+              onSeleccionar={irAPlanillaDeCliente}
+              atrasadasPorCliente={atrasadasPorCliente}
+            />
 
-          {tabPrincipal === "calendario" && (
-            <PublicacionesCalendarioTab onIrAPlanilla={irAPlanillaDeCliente} />
-          )}
+            <div className="h-main">
+              <div className="h-toolbar">
+                {tabPrincipal === "planilla" && (
+                  <div className="h-toolbar-client">{clienteNombre || "…"}</div>
+                )}
+                {tabPrincipal === "planilla" && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
+                    <strong className="sheet-title">{MESES[month]} {year}</strong>
+                    <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
+                  </div>
+                )}
+                {tabPrincipal === "planilla" && (
+                  <button className="h-today-btn" type="button" onClick={irAHoy}>Ir a hoy</button>
+                )}
 
-          {tabPrincipal === "lista" && (
-            <PublicacionesGeneralTab clientes={clientes} onIrACliente={irAPlanillaDeCliente} />
-          )}
+                <div className="sheet-view-tabs" style={{ margin: 0 }}>
+                  {TABS_PRINCIPALES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={tabPrincipal === t.id ? "active" : ""}
+                      onClick={() => setTabPrincipal(t.id)}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
 
-          {tabPrincipal === "planilla" && (
-            <>
-              <div style={{ display: "flex", gap: "4px", overflowX: "auto", borderBottom: "2px solid #ddd", marginBottom: "16px", paddingBottom: "0" }}>
-                {clientes.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => setClienteSeleccionado(c.id)}
-                    style={{
-                      padding: "8px 18px",
-                      border: "none",
-                      borderBottom: clienteSeleccionado === c.id ? "3px solid #1a73e8" : "3px solid transparent",
-                      background: clienteSeleccionado === c.id ? "#e8f0fe" : "transparent",
-                      color: clienteSeleccionado === c.id ? "#1a73e8" : "#555",
-                      fontWeight: clienteSeleccionado === c.id ? "700" : "500",
-                      fontSize: "13px",
-                      cursor: "pointer",
-                      borderRadius: "6px 6px 0 0",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {c.nombre}
-                  </button>
-                ))}
+                {tabPrincipal === "planilla" && (
+                  <div className="sheet-stats" style={{ marginLeft: "auto" }}>
+                    <span>{publicacionesClienteMes.length} publicaciones</span>
+                    <span className="ok">{publicadasCliente} publicadas</span>
+                    {atrasadasCliente > 0 && <span className="danger">{atrasadasCliente} atrasadas</span>}
+                  </div>
+                )}
               </div>
 
-              {clienteActual && (
-                <PublicacionesPlanillaTab
-                  key={`pub-${clienteSeleccionado}`}
-                  clienteId={clienteSeleccionado}
-                  clienteNombre={clienteActual.nombre}
-                />
-              )}
-            </>
-          )}
+              <div className="h-body">
+                {tabPrincipal === "calendario" && (
+                  <PublicacionesCalendarioTab onIrAPlanilla={irAPlanillaDeCliente} />
+                )}
+
+                {tabPrincipal === "lista" && (
+                  <PublicacionesGeneralTab clientes={clientes} onIrACliente={irAPlanillaDeCliente} />
+                )}
+
+                {tabPrincipal === "planilla" && clienteActual && (
+                  <PublicacionesPlanillaTab
+                    key={`pub-${clienteSeleccionado}`}
+                    clienteId={clienteSeleccionado}
+                    clienteNombre={clienteNombre}
+                    year={year}
+                    month={month}
+                  />
+                )}
+
+                {tabPrincipal === "planilla" && !clienteActual && (
+                  <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>
+                    Elegí un cliente en el panel izquierdo.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </main>
