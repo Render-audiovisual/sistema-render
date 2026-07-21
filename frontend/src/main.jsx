@@ -1030,6 +1030,7 @@ function TareasTableroPage() {
   const [error, setError] = useState(null);
   const [tareaSeleccionadaId, setTareaSeleccionadaId] = useState(null);
   const [vista, setVista] = useState("tabla");
+  const [mostrarWizard, setMostrarWizard] = useState(false);
 
   const [busqueda, setBusqueda] = useState("");
   const [filtroSector, setFiltroSector] = useState("todos");
@@ -1225,7 +1226,7 @@ function TareasTableroPage() {
                 </div>
 
                 {esAdmin && (
-                  <a className="btn" href="/nueva-tarea">+ Nueva tarea</a>
+                  <button className="btn" type="button" onClick={() => setMostrarWizard(true)}>+ Nueva tarea</button>
                 )}
               </div>
 
@@ -1446,6 +1447,20 @@ function TareasTableroPage() {
           </div>
         </div>
       </div>
+
+      {mostrarWizard && (
+        <NuevaTareaWizard
+          clientes={clientes}
+          onCerrar={() => setMostrarWizard(false)}
+          onCreada={(creada) => {
+            const clienteNombre = clientes.find((c) => c.id === creada.cliente_id)?.nombre || null;
+            const tareaCompleta = { ...creada, cliente_nombre: clienteNombre };
+            setTareas((prev) => [tareaCompleta, ...prev]);
+            setMostrarWizard(false);
+            setTareaSeleccionadaId(creada.id);
+          }}
+        />
+      )}
     </main>
   );
 }
@@ -1641,6 +1656,274 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
 // actualiza al soltar. Sirve tanto para "Kanban" (columnas = estado) como
 // para "Por persona" (columnas = responsable) sin duplicar la lógica de
 // arrastre — mismo patrón HTML5 nativo que ya usaba PiezasTableroPage.
+const SUBTIPOS_SUGERIDOS = ["reel", "historia", "carrusel", "visita", "flyer", "editar", "filmar", "diseñar"];
+
+// Formulario guiado de creación tipo Notion: en vez de una página aparte,
+// abre en el momento sobre la tabla y la tarea aparece ahí apenas se crea.
+// Reemplaza el link a /nueva-tarea en /piezas (esa página queda intacta
+// para quien todavía la tenga en un enlace directo).
+function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
+  const [paso, setPaso] = useState(1);
+  const [tipoTarea, setTipoTarea] = useState("");
+  const [subtipo, setSubtipo] = useState("");
+  const [clienteId, setClienteId] = useState("");
+  const [asignadoA, setAsignadoA] = useState("");
+  const [titulo, setTitulo] = useState("");
+  const [fechaVencimiento, setFechaVencimiento] = useState("");
+  const [prioridad, setPrioridad] = useState("media");
+  const [materialReferencia, setMaterialReferencia] = useState("");
+  const [aclaraciones, setAclaraciones] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState(null);
+
+  const TOTAL_PASOS = 5;
+
+  const puedeAvanzar =
+    (paso === 1 && Boolean(tipoTarea)) ||
+    paso === 2 ||
+    paso === 3 ||
+    (paso === 4 && Boolean(asignadoA));
+
+  const crearTarea = async () => {
+    if (!titulo.trim()) {
+      setError("Falta el título de la tarea.");
+      return;
+    }
+    setEnviando(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/tareas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo: titulo.trim(),
+          asignado_a: asignadoA,
+          cliente_id: clienteId ? Number(clienteId) : null,
+          tipo_tarea: tipoTarea || null,
+          subtipo: subtipo || null,
+          prioridad,
+          fecha_vencimiento: fechaVencimiento || null,
+          material_referencia: materialReferencia.trim() || null,
+          aclaraciones: aclaraciones.trim() || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "No se pudo crear la tarea.");
+      onCreada(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay open" role="dialog" aria-modal="true" onClick={onCerrar}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Nueva tarea — paso {paso} de {TOTAL_PASOS}</h2>
+          <button onClick={onCerrar} style={{ background: "none", border: "none", fontSize: "24px", cursor: "pointer", color: "#666" }}>✕</button>
+        </div>
+
+        <div className="modal-body">
+          {error && (
+            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "14px" }}>
+              {error}
+            </div>
+          )}
+
+          {paso === 1 && (
+            <>
+              <div className="form-section-title">1 · Elegí el sector</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                {SECTORES_TAREA.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setTipoTarea(s.id)}
+                    style={{
+                      padding: "10px 16px",
+                      borderRadius: "8px",
+                      border: tipoTarea === s.id ? `2px solid ${s.fg}` : "1px solid #ddd",
+                      background: tipoTarea === s.id ? s.bg : "#fff",
+                      color: tipoTarea === s.id ? s.fg : "#333",
+                      fontWeight: 600,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {paso === 2 && (
+            <>
+              <div className="form-section-title">2 · Tipo de tarea (opcional)</div>
+              <input
+                type="text"
+                value={subtipo}
+                placeholder="reel, historia, carrusel, visita…"
+                onChange={(e) => setSubtipo(e.target.value)}
+                style={{ width: "100%", marginBottom: "10px" }}
+              />
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {SUBTIPOS_SUGERIDOS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="tag"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setSubtipo(s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {paso === 3 && (
+            <>
+              <div className="form-section-title">3 · Elegí el cliente (opcional)</div>
+              <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} style={{ width: "100%" }}>
+                <option value="">Sin cliente asociado</option>
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                ))}
+              </select>
+            </>
+          )}
+
+          {paso === 4 && (
+            <>
+              <div className="form-section-title">4 · Asigná un responsable</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                {RESPONSABLES_EQUIPO.map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setAsignadoA(r)}
+                    style={{
+                      padding: "10px 16px",
+                      borderRadius: "8px",
+                      border: asignadoA === r ? "2px solid #188038" : "1px solid #ddd",
+                      background: asignadoA === r ? "#e6f4ea" : "#fff",
+                      color: asignadoA === r ? "#188038" : "#333",
+                      fontWeight: 600,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {paso === 5 && (
+            <>
+              <div className="form-section-title">5 · Título, fecha, prioridad y detalle</div>
+              <div className="form-grid">
+                <label className="form-field">
+                  <span>Título *</span>
+                  <input
+                    type="text"
+                    value={titulo}
+                    placeholder="Ej: Reel testimonio cliente"
+                    onChange={(e) => setTitulo(e.target.value)}
+                    autoFocus
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Vence el</span>
+                  <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} />
+                </label>
+                <label className="form-field">
+                  <span>Prioridad</span>
+                  <select value={prioridad} onChange={(e) => setPrioridad(e.target.value)}>
+                    {PRIORIDADES_TAREA.map((p) => (
+                      <option key={p.id} value={p.id}>{p.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>Material / link</span>
+                  <input
+                    type="text"
+                    value={materialReferencia}
+                    placeholder="Link al material…"
+                    onChange={(e) => setMaterialReferencia(e.target.value)}
+                  />
+                </label>
+              </div>
+              <label className="form-field" style={{ marginTop: "10px" }}>
+                <span>Aclaraciones</span>
+                <textarea
+                  value={aclaraciones}
+                  onChange={(e) => setAclaraciones(e.target.value)}
+                  rows={3}
+                  style={{ width: "100%", font: "inherit", padding: "8px 10px", border: "1px solid #ddd", borderRadius: "4px" }}
+                />
+              </label>
+            </>
+          )}
+        </div>
+
+        <div className="modal-actions">
+          {paso > 1 && (
+            <button className="btn" type="button" onClick={() => setPaso((p) => p - 1)} disabled={enviando}>
+              ← Atrás
+            </button>
+          )}
+          {paso < TOTAL_PASOS ? (
+            <button
+              type="button"
+              onClick={() => setPaso((p) => p + 1)}
+              disabled={!puedeAvanzar}
+              style={{
+                marginLeft: "auto",
+                background: puedeAvanzar ? "#202124" : "#ccc",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "8px 16px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: puedeAvanzar ? "pointer" : "not-allowed",
+              }}
+            >
+              Siguiente →
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={crearTarea}
+              disabled={enviando || !titulo.trim()}
+              style={{
+                marginLeft: "auto",
+                background: enviando || !titulo.trim() ? "#ccc" : "#202124",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "8px 16px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: enviando || !titulo.trim() ? "not-allowed" : "pointer",
+              }}
+            >
+              {enviando ? "Creando…" : "Crear tarea"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TareaKanbanBoard({ tareas, columnas, campo, onMover, onAbrir }) {
   const [arrastrandoId, setArrastrandoId] = useState(null);
   const [columnaSobre, setColumnaSobre] = useState(null);
