@@ -351,17 +351,21 @@ function getPiezasBloqueadas(historias, publicaciones) {
   return bloqueadas;
 }
 
+// Cualquier tarea encadenada a una tarea padre (tarea_padre_id, ver
+// POST /piezas en el backend) que todavía no esté hecha — el caso típico es
+// una edición esperando que Germán termine de filmar, pero la relación no
+// está limitada a tipo_tarea "edicion".
+function esperandoMaterial(tarea) {
+  return Boolean(tarea.tarea_padre_id) && tarea.tarea_padre_estado !== "hecha";
+}
+
 // Ediciones de video frenadas porque la filmación (tarea padre) todavía
 // no está hecha — el cuello de botella real detrás de "Luciano atrasado"
 // suele ser "Germán no filmó todavía", así que separarlo ayuda a saber a
 // quién ir a destrabar.
 function getEdicionesEsperandoMaterial(tareas) {
   return tareas.filter(
-    (t) =>
-      t.tipo_tarea === "edicion" &&
-      t.estado !== "hecha" &&
-      t.tarea_padre_id &&
-      t.tarea_padre_estado !== "hecha",
+    (t) => t.tipo_tarea === "edicion" && t.estado !== "hecha" && esperandoMaterial(t),
   );
 }
 
@@ -655,6 +659,9 @@ function NuevaTareaPage() {
   const [asignadoA, setAsignadoA] = useState("Augusto");
   const [clienteId, setClienteId] = useState("");
   const [estado, setEstado] = useState("pendiente");
+  const [sector, setSector] = useState("");
+  const [subtipo, setSubtipo] = useState("");
+  const [prioridad, setPrioridad] = useState("media");
   const [fechaVencimiento, setFechaVencimiento] = useState("");
   const [requiereAprobacion, setRequiereAprobacion] = useState(false);
   const [mensaje, setMensaje] = useState(null);
@@ -682,6 +689,9 @@ function NuevaTareaPage() {
         asignado_a: asignadoA,
         cliente_id: clienteId ? Number(clienteId) : null,
         estado,
+        tipo_tarea: sector || null,
+        subtipo: subtipo || null,
+        prioridad,
         requiere_aprobacion: requiereAprobacion,
         fecha_vencimiento: fechaVencimiento || null,
       }),
@@ -698,6 +708,9 @@ function NuevaTareaPage() {
         setTitulo("");
         setClienteId("");
         setEstado("pendiente");
+        setSector("");
+        setSubtipo("");
+        setPrioridad("media");
         setFechaVencimiento("");
         setRequiereAprobacion(false);
       })
@@ -746,6 +759,24 @@ function NuevaTareaPage() {
                     ))}
                   </select>
                 </label>
+                <label className="form-field">
+                  <span>Sector</span>
+                  <select value={sector} onChange={(e) => setSector(e.target.value)}>
+                    <option value="">Sin sector</option>
+                    {SECTORES_TAREA.map((s) => (
+                      <option key={s.id} value={s.id}>{s.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>Subtipo</span>
+                  <input
+                    type="text"
+                    value={subtipo}
+                    placeholder="reel, historia, carrusel, visita…"
+                    onChange={(e) => setSubtipo(e.target.value)}
+                  />
+                </label>
               </div>
 
               <div className="form-section-title">Asignación y plazo</div>
@@ -780,6 +811,17 @@ function NuevaTareaPage() {
                     <option value="pendiente">Pendiente</option>
                     <option value="en_progreso">En progreso</option>
                     <option value="bloqueada">Bloqueada</option>
+                  </select>
+                </label>
+                <label className="form-field">
+                  <span>Prioridad</span>
+                  <select
+                    value={prioridad}
+                    onChange={(e) => setPrioridad(e.target.value)}
+                  >
+                    {PRIORIDADES_TAREA.map((p) => (
+                      <option key={p.id} value={p.id}>{p.label}</option>
+                    ))}
                   </select>
                 </label>
                 <label
@@ -940,6 +982,631 @@ function TareasAsignadasGenericas({ nombre, tipoTarea, titulo }) {
         </div>
       </div>
     </>
+  );
+}
+
+// ── TAREAS: tablero operativo real, sobre la tabla `tareas` (no el UNION
+// de historias+publicaciones que usa PiezasTableroPage más abajo) ────────
+
+const SECTORES_TAREA = [
+  { id: "diseno", label: "Diseño", bg: "#f3e5f5", fg: "#7b1fa2" },
+  { id: "produccion", label: "Producción", bg: "#e0f2f1", fg: "#00695c" },
+  { id: "edicion", label: "Edición", bg: "#e3f2fd", fg: "#1565c0" },
+  { id: "community", label: "Community", bg: "#fce4ec", fg: "#ad1457" },
+  { id: "administracion", label: "Administración", bg: "#eceff1", fg: "#455a64" },
+];
+
+const ESTADOS_TAREA = [
+  { id: "pendiente", label: "Pendiente", bg: "#eceff1", fg: "#546e7a" },
+  { id: "en_progreso", label: "En progreso", bg: "#e3f2fd", fg: "#1565c0" },
+  { id: "en_revision", label: "En revisión", bg: "#fff3e0", fg: "#e65100" },
+  { id: "hecha", label: "Hecha", bg: "#e8f5e9", fg: "#2e7d32" },
+  { id: "bloqueada", label: "Bloqueada", bg: "#ffebee", fg: "#c62828" },
+];
+
+const PRIORIDADES_TAREA = [
+  { id: "alta", label: "Alta", bg: "#ffebee", fg: "#c62828" },
+  { id: "media", label: "Media", bg: "#fff3e0", fg: "#e65100" },
+  { id: "baja", label: "Baja", bg: "#e8f5e9", fg: "#2e7d32" },
+];
+
+function getSectorTarea(id) {
+  return SECTORES_TAREA.find((s) => s.id === id);
+}
+function getEstadoTarea(id) {
+  return ESTADOS_TAREA.find((e) => e.id === id) || ESTADOS_TAREA[0];
+}
+function getPrioridadTarea(id) {
+  return PRIORIDADES_TAREA.find((p) => p.id === id) || PRIORIDADES_TAREA[1];
+}
+
+function TareasTableroPage() {
+  const sesion = getSesion();
+  const esAdmin = sesion?.usuario?.rol === "admin";
+
+  const [tareas, setTareas] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+  const [tareaSeleccionadaId, setTareaSeleccionadaId] = useState(null);
+
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroSector, setFiltroSector] = useState("todos");
+  const [filtroResponsable, setFiltroResponsable] = useState("todos");
+  const [filtroCliente, setFiltroCliente] = useState("todos");
+  const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [filtroPrioridad, setFiltroPrioridad] = useState("todos");
+  const [filtroFecha, setFiltroFecha] = useState("todas");
+  const [agruparPor, setAgruparPor] = useState("estado");
+
+  const cargarTareas = () => {
+    setCargando(true);
+    fetch("/api/tareas")
+      .then((r) => r.json())
+      .then((data) => {
+        setTareas(Array.isArray(data) ? data : []);
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("Error cargando tareas", err);
+        setError("No se pudieron cargar las tareas.");
+      })
+      .finally(() => setCargando(false));
+  };
+
+  useEffect(cargarTareas, []);
+  useEffect(() => {
+    fetch("/api/clientes")
+      .then((r) => r.json())
+      .then((data) => setClientes(Array.isArray(data) ? data : []))
+      .catch((err) => console.error("No se pudieron cargar clientes", err));
+  }, []);
+
+  const hoyISO = getHoyLocalISO();
+  const limiteSemana = new Date(`${hoyISO}T00:00:00`);
+  limiteSemana.setDate(limiteSemana.getDate() + 7);
+  const limiteSemanaISO = limiteSemana.toISOString().slice(0, 10);
+
+  const coincideBusqueda = (t) => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return true;
+    return [t.titulo, t.cliente_nombre, t.asignado_a, t.aclaraciones, t.material_referencia, t.subtipo]
+      .some((campo) => campo && campo.toLowerCase().includes(q));
+  };
+
+  const coincideFecha = (t) => {
+    if (filtroFecha === "todas") return true;
+    if (filtroFecha === "sin_fecha") return !t.fecha_vencimiento;
+    if (!t.fecha_vencimiento) return false;
+    if (filtroFecha === "vencidas") return t.fecha_vencimiento < hoyISO && t.estado !== "hecha";
+    if (filtroFecha === "hoy") return t.fecha_vencimiento === hoyISO;
+    if (filtroFecha === "semana") return t.fecha_vencimiento > hoyISO && t.fecha_vencimiento <= limiteSemanaISO;
+    return true;
+  };
+
+  const tareasFiltradas = tareas.filter((t) => {
+    if (filtroSector !== "todos" && t.tipo_tarea !== filtroSector) return false;
+    if (filtroResponsable !== "todos" && t.asignado_a !== filtroResponsable) return false;
+    if (filtroCliente !== "todos" && String(t.cliente_id) !== filtroCliente) return false;
+    if (filtroEstado !== "todos" && t.estado !== filtroEstado) return false;
+    if (filtroPrioridad !== "todos" && t.prioridad !== filtroPrioridad) return false;
+    if (!coincideFecha(t)) return false;
+    if (!coincideBusqueda(t)) return false;
+    return true;
+  });
+
+  const grupos = (
+    agruparPor === "responsable"
+      ? [...new Set(tareasFiltradas.map((t) => t.asignado_a))].sort().map((nombre) => ({
+          id: nombre,
+          titulo: nombre,
+          tareas: tareasFiltradas.filter((t) => t.asignado_a === nombre),
+        }))
+      : ESTADOS_TAREA.map((e) => ({
+          id: e.id,
+          titulo: e.label,
+          tareas: tareasFiltradas.filter((t) => t.estado === e.id),
+        }))
+  ).filter((grupo) => grupo.tareas.length > 0);
+
+  const actualizarLocal = (id, campos) => {
+    setTareas((prev) => prev.map((t) => (t.id === id ? { ...t, ...campos } : t)));
+  };
+
+  const guardarEnServidor = async (id, campos) => {
+    try {
+      const res = await fetch(`/api/tareas/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(campos),
+      });
+      if (!res.ok) throw new Error("No se pudo guardar");
+      const actualizada = await res.json();
+      setTareas((prev) => prev.map((t) => (t.id === id ? { ...t, ...actualizada } : t)));
+    } catch (err) {
+      console.error("Error guardando tarea", err);
+      setError("No se pudo guardar un cambio — reintentá.");
+    }
+  };
+
+  const actualizarCampo = (id, campos) => {
+    actualizarLocal(id, campos);
+    guardarEnServidor(id, campos);
+  };
+
+  const eliminarTarea = async (id) => {
+    if (!window.confirm("¿Eliminar esta tarea? No se puede deshacer.")) return;
+    try {
+      const res = await fetch(`/api/tareas/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("No se pudo eliminar");
+      setTareas((prev) => prev.filter((t) => t.id !== id));
+      setTareaSeleccionadaId((actual) => (actual === id ? null : actual));
+    } catch (err) {
+      console.error("Error eliminando tarea", err);
+      setError("No se pudo eliminar la tarea.");
+    }
+  };
+
+  const limpiarFiltros = () => {
+    setBusqueda("");
+    setFiltroSector("todos");
+    setFiltroResponsable("todos");
+    setFiltroCliente("todos");
+    setFiltroEstado("todos");
+    setFiltroPrioridad("todos");
+    setFiltroFecha("todas");
+  };
+
+  const tareaSeleccionada = tareas.find((t) => t.id === tareaSeleccionadaId) || null;
+
+  return (
+    <main aria-label="Render platform tareas" className="tareas-viewport">
+      <div className="frame">
+        <div className="topbar">
+          <div className="logo-box">[ LOGO RENDER ]</div>
+          <div className="nav">
+            <span className="active">Tareas</span>
+          </div>
+          <TopbarUser fallback="Tablero de tareas" />
+        </div>
+
+        <div className="content">
+          <div className="h-workspace">
+            <div className="h-main">
+              <div className="h-toolbar">
+                <div className="task-search">
+                  <span>Buscar</span>
+                  <input
+                    type="text"
+                    placeholder="Título, cliente o responsable…"
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                  />
+                </div>
+                <select className="task-filter-select" value={filtroResponsable} onChange={(e) => setFiltroResponsable(e.target.value)}>
+                  <option value="todos">Todos los responsables</option>
+                  {RESPONSABLES_EQUIPO.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+                <select className="task-filter-select" value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}>
+                  <option value="todos">Todos los clientes</option>
+                  {clientes.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
+                </select>
+                <select className="task-filter-select" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+                  <option value="todos">Todos los estados</option>
+                  {ESTADOS_TAREA.map((e) => (
+                    <option key={e.id} value={e.id}>{e.label}</option>
+                  ))}
+                </select>
+                <select className="task-filter-select" value={filtroPrioridad} onChange={(e) => setFiltroPrioridad(e.target.value)}>
+                  <option value="todos">Toda prioridad</option>
+                  {PRIORIDADES_TAREA.map((p) => (
+                    <option key={p.id} value={p.id}>{p.label}</option>
+                  ))}
+                </select>
+                <select className="task-filter-select" value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)}>
+                  <option value="todas">Toda fecha</option>
+                  <option value="vencidas">Vencidas</option>
+                  <option value="hoy">Hoy</option>
+                  <option value="semana">Esta semana</option>
+                  <option value="sin_fecha">Sin fecha</option>
+                </select>
+                <button className="btn" type="button" onClick={limpiarFiltros}>Limpiar filtros</button>
+
+                <div className="sheet-view-tabs" style={{ margin: 0, marginLeft: "auto" }}>
+                  <button type="button" className={agruparPor === "estado" ? "active" : ""} onClick={() => setAgruparPor("estado")}>Por estado</button>
+                  <button type="button" className={agruparPor === "responsable" ? "active" : ""} onClick={() => setAgruparPor("responsable")}>Por responsable</button>
+                </div>
+
+                {esAdmin && (
+                  <a className="btn" href="/nueva-tarea">+ Nueva tarea</a>
+                )}
+              </div>
+
+              <div className="task-sector-panel" style={{ margin: "0 20px" }}>
+                <div className="task-sector-tabs">
+                  <button type="button" className={`task-sector-tab ${filtroSector === "todos" ? "active" : ""}`} onClick={() => setFiltroSector("todos")}>
+                    <span>Todos</span>
+                    <strong>{tareas.length}</strong>
+                  </button>
+                  {SECTORES_TAREA.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className={`task-sector-tab ${filtroSector === s.id ? "active" : ""}`}
+                      onClick={() => setFiltroSector(s.id)}
+                    >
+                      <span>{s.label}</span>
+                      <strong>{tareas.filter((t) => t.tipo_tarea === s.id).length}</strong>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="h-body">
+                {error && (
+                  <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+                    {error}
+                  </div>
+                )}
+
+                {cargando ? (
+                  <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando tareas…</div>
+                ) : grupos.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>
+                    {tareas.length === 0
+                      ? "No hay tareas todavía."
+                      : "Ninguna tarea coincide con estos filtros."}
+                  </div>
+                ) : (
+                  <div className="sheet-frame">
+                    <table className="sheet-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: "26%" }}>Título</th>
+                          <th style={{ width: "14%" }}>Cliente</th>
+                          <th style={{ width: "13%" }}>Sector</th>
+                          <th style={{ width: "12%" }}>Responsable</th>
+                          <th style={{ width: "13%" }}>Estado</th>
+                          <th style={{ width: "9%" }}>Prioridad</th>
+                          <th style={{ width: "11%" }}>Vencimiento</th>
+                          <th style={{ width: "50px" }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {grupos.map((grupo) => (
+                          <React.Fragment key={grupo.id}>
+                            <tr>
+                              <td colSpan={8} style={{ background: "#f8f9fa", fontWeight: 700, fontSize: "12px", padding: "8px 10px", color: "#3c4043" }}>
+                                {grupo.titulo} <span style={{ color: "#999", fontWeight: 400 }}>({grupo.tareas.length})</span>
+                              </td>
+                            </tr>
+                            {grupo.tareas.map((t) => {
+                              const est = getEstadoTarea(t.estado);
+                              const prio = getPrioridadTarea(t.prioridad);
+                              const sector = getSectorTarea(t.tipo_tarea);
+                              const vencida = t.fecha_vencimiento && t.fecha_vencimiento < hoyISO && t.estado !== "hecha";
+
+                              return (
+                                <tr key={t.id}>
+                                  <td>
+                                    <input
+                                      type="text"
+                                      className="sheet-cell"
+                                      value={t.titulo}
+                                      onChange={(e) => actualizarLocal(t.id, { titulo: e.target.value })}
+                                      onBlur={(e) => guardarEnServidor(t.id, { titulo: e.target.value.trim() })}
+                                    />
+                                    {esperandoMaterial(t) && (
+                                      <div style={{ fontSize: "11px", fontWeight: 700, color: "#e65100", padding: "0 8px" }}>
+                                        ⏳ Esperando material
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td>
+                                    <select
+                                      className="sheet-cell"
+                                      value={t.cliente_id ?? ""}
+                                      onChange={(e) => actualizarCampo(t.id, { cliente_id: e.target.value ? Number(e.target.value) : null })}
+                                    >
+                                      <option value="">Sin cliente</option>
+                                      {clientes.map((c) => (
+                                        <option key={c.id} value={c.id}>{c.nombre}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td>
+                                    <select
+                                      className="sheet-cell"
+                                      value={t.tipo_tarea ?? ""}
+                                      onChange={(e) => actualizarCampo(t.id, { tipo_tarea: e.target.value || null })}
+                                      style={sector ? { background: sector.bg, color: sector.fg, fontWeight: "600" } : undefined}
+                                    >
+                                      <option value="">Sin sector</option>
+                                      {SECTORES_TAREA.map((s) => (
+                                        <option key={s.id} value={s.id}>{s.label}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td>
+                                    <select
+                                      className="sheet-cell"
+                                      value={t.asignado_a}
+                                      onChange={(e) => actualizarCampo(t.id, { asignado_a: e.target.value })}
+                                    >
+                                      {RESPONSABLES_EQUIPO.map((r) => (
+                                        <option key={r} value={r}>{r}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td>
+                                    <select
+                                      className="sheet-cell"
+                                      value={t.estado}
+                                      onChange={(e) => actualizarCampo(t.id, { estado: e.target.value })}
+                                      style={{ background: est.bg, color: est.fg, fontWeight: "600" }}
+                                    >
+                                      {ESTADOS_TAREA.map((e) => (
+                                        <option key={e.id} value={e.id}>{e.label}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td>
+                                    <select
+                                      className="sheet-cell"
+                                      value={t.prioridad}
+                                      onChange={(e) => actualizarCampo(t.id, { prioridad: e.target.value })}
+                                      style={{ background: prio.bg, color: prio.fg, fontWeight: "600" }}
+                                    >
+                                      {PRIORIDADES_TAREA.map((p) => (
+                                        <option key={p.id} value={p.id}>{p.label}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td>
+                                    <input
+                                      type="date"
+                                      className="sheet-cell"
+                                      value={t.fecha_vencimiento || ""}
+                                      onChange={(e) => actualizarCampo(t.id, { fecha_vencimiento: e.target.value || null })}
+                                      style={vencida ? { color: "#c62828", fontWeight: "700" } : undefined}
+                                    />
+                                  </td>
+                                  <td>
+                                    <div className="sheet-row-actions">
+                                      <button
+                                        type="button"
+                                        className="sheet-icon-btn"
+                                        onClick={() => setTareaSeleccionadaId(t.id)}
+                                        title="Ver detalle"
+                                      >
+                                        ↗
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="sheet-icon-btn"
+                                        onClick={() => eliminarTarea(t.id)}
+                                        title="Eliminar"
+                                      >
+                                        🗑
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {tareaSeleccionada && (
+              <TareaDetallePanel
+                tarea={tareaSeleccionada}
+                clientes={clientes}
+                onCerrar={() => setTareaSeleccionadaId(null)}
+                onActualizarCampo={actualizarCampo}
+                onEliminar={eliminarTarea}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEliminar }) {
+  const est = getEstadoTarea(tarea.estado);
+  const prio = getPrioridadTarea(tarea.prioridad);
+  const sector = getSectorTarea(tarea.tipo_tarea);
+
+  const origen = tarea.historia_id
+    ? {
+        tipo: "Historia",
+        fecha: tarea.historia_fecha_programada,
+        estado: tarea.historia_estado,
+        href: "/planificacion-historias",
+      }
+    : tarea.publicacion_id
+      ? {
+          tipo: getTipoPublicacionLabel(tarea.publicacion_tipo),
+          fecha: tarea.publicacion_fecha_programada,
+          estado: tarea.publicacion_estado,
+          href: "/planificacion-publicaciones",
+        }
+      : null;
+
+  return (
+    <aside className="td-panel">
+      <div className="td-panel-header">
+        <input
+          type="text"
+          className="sheet-cell td-panel-title"
+          value={tarea.titulo}
+          onChange={(e) => onActualizarCampo(tarea.id, { titulo: e.target.value })}
+          onBlur={(e) => onActualizarCampo(tarea.id, { titulo: e.target.value.trim() })}
+        />
+        <button type="button" className="sheet-icon-btn" onClick={onCerrar} title="Cerrar">✕</button>
+      </div>
+
+      {esperandoMaterial(tarea) && (
+        <div className="td-panel-banner">
+          ⏳ Esperando material — la tarea de filmación todavía no está marcada como hecha.
+        </div>
+      )}
+
+      <div className="td-panel-body">
+        <label className="td-panel-field">
+          <span>Responsable</span>
+          <select
+            className="sheet-cell"
+            value={tarea.asignado_a}
+            onChange={(e) => onActualizarCampo(tarea.id, { asignado_a: e.target.value })}
+          >
+            {RESPONSABLES_EQUIPO.map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="td-panel-field">
+          <span>Cliente</span>
+          <select
+            className="sheet-cell"
+            value={tarea.cliente_id ?? ""}
+            onChange={(e) => onActualizarCampo(tarea.id, { cliente_id: e.target.value ? Number(e.target.value) : null })}
+          >
+            <option value="">Sin cliente</option>
+            {clientes.map((c) => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="td-panel-field">
+          <span>Sector</span>
+          <select
+            className="sheet-cell"
+            value={tarea.tipo_tarea ?? ""}
+            onChange={(e) => onActualizarCampo(tarea.id, { tipo_tarea: e.target.value || null })}
+            style={sector ? { background: sector.bg, color: sector.fg, fontWeight: "600" } : undefined}
+          >
+            <option value="">Sin sector</option>
+            {SECTORES_TAREA.map((s) => (
+              <option key={s.id} value={s.id}>{s.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="td-panel-field">
+          <span>Subtipo</span>
+          <input
+            type="text"
+            className="sheet-cell"
+            placeholder="reel, historia, carrusel, visita…"
+            value={tarea.subtipo || ""}
+            onChange={(e) => onActualizarCampo(tarea.id, { subtipo: e.target.value || null })}
+          />
+        </label>
+
+        <label className="td-panel-field">
+          <span>Estado</span>
+          <select
+            className="sheet-cell"
+            value={tarea.estado}
+            onChange={(e) => onActualizarCampo(tarea.id, { estado: e.target.value })}
+            style={{ background: est.bg, color: est.fg, fontWeight: "600" }}
+          >
+            {ESTADOS_TAREA.map((e) => (
+              <option key={e.id} value={e.id}>{e.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="td-panel-field">
+          <span>Prioridad</span>
+          <select
+            className="sheet-cell"
+            value={tarea.prioridad}
+            onChange={(e) => onActualizarCampo(tarea.id, { prioridad: e.target.value })}
+            style={{ background: prio.bg, color: prio.fg, fontWeight: "600" }}
+          >
+            {PRIORIDADES_TAREA.map((p) => (
+              <option key={p.id} value={p.id}>{p.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="td-panel-field">
+          <span>Vencimiento</span>
+          <input
+            type="date"
+            className="sheet-cell"
+            value={tarea.fecha_vencimiento || ""}
+            onChange={(e) => onActualizarCampo(tarea.id, { fecha_vencimiento: e.target.value || null })}
+          />
+        </label>
+
+        <label className="td-panel-field">
+          <span>Aclaraciones</span>
+          <textarea
+            className="sheet-cell sheet-cell-textarea"
+            rows={3}
+            value={tarea.aclaraciones || ""}
+            onChange={(e) => onActualizarCampo(tarea.id, { aclaraciones: e.target.value })}
+            onBlur={(e) => onActualizarCampo(tarea.id, { aclaraciones: e.target.value.trim() || null })}
+          />
+        </label>
+
+        <label className="td-panel-field">
+          <span>Material / link</span>
+          <input
+            type="text"
+            className="sheet-cell"
+            placeholder="https://…"
+            value={tarea.material_referencia || ""}
+            onChange={(e) => onActualizarCampo(tarea.id, { material_referencia: e.target.value })}
+            onBlur={(e) => onActualizarCampo(tarea.id, { material_referencia: e.target.value.trim() || null })}
+          />
+          {tarea.material_referencia && (
+            <a href={tarea.material_referencia} target="_blank" rel="noopener noreferrer" className="td-panel-link">
+              Abrir material ↗
+            </a>
+          )}
+        </label>
+
+        {origen && (
+          <div className="td-panel-origen">
+            <span>Origen</span>
+            <div>
+              {origen.tipo} · {origen.fecha || "sin fecha"} · {origen.estado}
+            </div>
+            <a href={origen.href}>Ir a la planificación →</a>
+          </div>
+        )}
+
+        {tarea.tarea_padre_id && (
+          <div className="td-panel-origen">
+            <span>Depende de</span>
+            <div>Tarea #{tarea.tarea_padre_id} — estado: {tarea.tarea_padre_estado || "—"}</div>
+          </div>
+        )}
+      </div>
+
+      <div className="td-panel-footer">
+        <button type="button" className="btn" onClick={() => onEliminar(tarea.id)} style={{ color: "#c62828", borderColor: "#c62828" }}>
+          Eliminar tarea
+        </button>
+      </div>
+    </aside>
   );
 }
 
@@ -2094,7 +2761,7 @@ function App() {
       return <NuevaTareaPage />;
     }
     if (path === "/piezas") {
-      return <PiezasTableroPage />;
+      return <TareasTableroPage />;
     }
     if (path === "/tareas-diseno") {
       return <TareasDisenioPage />;
@@ -5712,13 +6379,6 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
     };
     return colores[prioridad] || "◯";
   };
-
-  // Producción/edición de video quedan encadenadas por tarea_padre_id (ver
-  // POST /piezas en el backend): mientras la tarea padre (filmar) no esté
-  // hecha, la de edición se marca como "esperando material" para que
-  // Luciano no la empiece a ciegas sin saber si ya hay algo filmado.
-  const esperandoMaterial = (tarea) =>
-    Boolean(tarea.tarea_padre_id) && tarea.tarea_padre_estado !== "hecha";
 
   return (
     <main aria-label={titulo}>
