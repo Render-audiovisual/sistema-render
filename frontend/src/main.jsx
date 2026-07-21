@@ -5288,14 +5288,25 @@ function ClientesAdminPage() {
         </div>
 
         <div className="content clientes-page">
-          <div className="clientes-heading">
-            <div>
+          <div className="clientes-command-bar">
+            <div className="clientes-heading">
               <div className="section-label">Clientes — {getMesActualISO()}</div>
               <h2>Control mensual de cartera</h2>
             </div>
-            <div className="clientes-heading-meta">
-              <span>{filasFiltradas.length} visibles</span>
-              <span>{filas.length} activos</span>
+            <div className="clientes-top-actions">
+              <div className="clientes-search-control">
+                <span>Buscar</span>
+                <input
+                  type="text"
+                  placeholder="Nombre del cliente..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                />
+              </div>
+              <div className="clientes-heading-meta">
+                <span>{filasFiltradas.length} visibles</span>
+                <span>{filas.length} activos</span>
+              </div>
               <button
                 className="btn primary"
                 type="button"
@@ -5338,12 +5349,6 @@ function ClientesAdminPage() {
                 <strong>Cartera activa</strong>
                 <span>Cuotas editables y estado del mes</span>
               </div>
-              <input
-                type="text"
-                placeholder="Buscar cliente..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-              />
             </div>
 
             {error && <div className="caption login-error">{error}</div>}

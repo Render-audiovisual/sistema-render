@@ -2944,17 +2944,72 @@ tr:hover .sheet-row-actions {
   gap: 14px;
 }
 
-.clientes-heading {
-  align-items: end;
+.clientes-command-bar {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
   display: flex;
-  justify-content: space-between;
   gap: 16px;
+  justify-content: space-between;
+  padding: 14px;
+}
+
+.clientes-heading {
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
 }
 
 .clientes-heading h2 {
   font-size: 24px;
   letter-spacing: 0;
-  margin: 4px 0 0;
+  margin: 0;
+}
+
+.clientes-top-actions {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.clientes-search-control {
+  align-items: center;
+  background: #f8f9fa;
+  border: 1px solid #e8eaed;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(180px, 280px);
+  min-height: 42px;
+  padding: 6px 8px 6px 10px;
+}
+
+.clientes-search-control span {
+  color: #5f6368;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.clientes-search-control input {
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  color: #202124;
+  font: inherit;
+  min-height: 30px;
+  padding: 6px 9px;
+  width: 100%;
+}
+
+.clientes-search-control input:focus {
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.12);
+  outline: none;
 }
 
 .clientes-heading-meta {
@@ -3049,11 +3104,6 @@ tr:hover .sheet-row-actions {
 .clientes-table-toolbar > div {
   display: grid;
   gap: 3px;
-}
-
-.clientes-table-toolbar input {
-  max-width: 280px;
-  width: 100%;
 }
 
 .cliente-create-form {
@@ -3261,10 +3311,19 @@ tr:hover .sheet-row-actions {
 }
 
 @media (max-width: 760px) {
-  .clientes-heading,
+  .clientes-command-bar,
   .clientes-table-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .clientes-top-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .clientes-search-control {
+    grid-template-columns: 1fr;
   }
 
   .clientes-heading-meta {
