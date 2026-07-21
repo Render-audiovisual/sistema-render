@@ -858,20 +858,21 @@ router.post("/tareas", async (req, res, next) => {
       tipo_tarea,
       subtipo,
       prioridad,
+      aclaraciones,
+      material_referencia,
     } = req.body;
 
     if (!titulo || !asignado_a) {
       return res.status(400).json({ error: "Faltan título o asignado_a." });
     }
+    if (tipo_tarea && !TIPOS_TAREA_VALIDOS.includes(tipo_tarea)) {
+      return res.status(400).json({ error: "Sector (tipo_tarea) inválido." });
+    }
+    if (prioridad && !PRIORIDADES_TAREA_VALIDAS.includes(prioridad)) {
+      return res.status(400).json({ error: "Prioridad inválida." });
+    }
 
-    const estadosValidos = [
-      "pendiente",
-      "en_progreso",
-      "en_revision",
-      "hecha",
-      "bloqueada",
-    ];
-    const estadoFinal = estadosValidos.includes(estado)
+    const estadoFinal = ESTADOS_TAREA_VALIDOS.includes(estado)
       ? estado
       : "pendiente";
 
@@ -884,9 +885,9 @@ router.post("/tareas", async (req, res, next) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, created_at, updated_at`,
+      `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, created_at, updated_at`,
       [
         titulo,
         asignado_a,
@@ -900,6 +901,8 @@ router.post("/tareas", async (req, res, next) => {
         tipo_tarea || null,
         subtipo || null,
         prioridad || "media",
+        aclaraciones || null,
+        material_referencia || null,
       ],
     );
 
@@ -909,45 +912,100 @@ router.post("/tareas", async (req, res, next) => {
   }
 });
 
+const ESTADOS_TAREA_VALIDOS = [
+  "pendiente",
+  "en_progreso",
+  "en_revision",
+  "hecha",
+  "bloqueada",
+];
+const TIPOS_TAREA_VALIDOS = [
+  "diseno",
+  "edicion",
+  "produccion",
+  "community",
+  "administracion",
+];
+const PRIORIDADES_TAREA_VALIDAS = ["baja", "media", "alta"];
+
+// Columnas que se pueden tocar por PATCH parcial. El SET se arma solo con
+// las claves presentes en el body (no con un COALESCE fijo), para poder
+// distinguir "este campo no vino" (no tocar) de "vino en null explícito"
+// (ej. borrar cliente o fecha de vencimiento) — con COALESCE eso último es
+// imposible de expresar, porque COALESCE(null, actual) devuelve el valor
+// actual y nunca lo borra.
+const TAREA_COLUMNAS_EDITABLES = [
+  "titulo",
+  "asignado_a",
+  "cliente_id",
+  "fecha_vencimiento",
+  "tipo_tarea",
+  "subtipo",
+  "prioridad",
+  "estado",
+  "aclaraciones",
+  "material_referencia",
+];
+
 router.patch("/tareas/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { estado, propiedades_extra, tipo_tarea, subtipo, prioridad } = req.body;
+    const body = req.body;
 
-    const estadosValidos = [
-      "pendiente",
-      "en_progreso",
-      "en_revision",
-      "hecha",
-      "bloqueada",
-    ];
-
-    if (estado !== undefined && !estadosValidos.includes(estado)) {
-      return res.status(400).json({ error: "Estado inválido." });
+    if (Object.prototype.hasOwnProperty.call(body, "estado")) {
+      if (body.estado === null || !ESTADOS_TAREA_VALIDOS.includes(body.estado)) {
+        return res.status(400).json({ error: "Estado inválido." });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "titulo")) {
+      if (body.titulo === null || !String(body.titulo).trim()) {
+        return res.status(400).json({ error: "El título no puede quedar vacío." });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "asignado_a")) {
+      if (body.asignado_a === null || !String(body.asignado_a).trim()) {
+        return res.status(400).json({ error: "El responsable no puede quedar vacío." });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "tipo_tarea")) {
+      if (body.tipo_tarea !== null && !TIPOS_TAREA_VALIDOS.includes(body.tipo_tarea)) {
+        return res.status(400).json({ error: "Sector (tipo_tarea) inválido." });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "prioridad")) {
+      if (body.prioridad === null || !PRIORIDADES_TAREA_VALIDAS.includes(body.prioridad)) {
+        return res.status(400).json({ error: "Prioridad inválida." });
+      }
     }
 
+    const sets = [];
+    const valores = [];
+    let i = 1;
+    for (const columna of TAREA_COLUMNAS_EDITABLES) {
+      if (Object.prototype.hasOwnProperty.call(body, columna)) {
+        sets.push(`${columna} = $${i}`);
+        valores.push(body[columna]);
+        i++;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "propiedades_extra") && body.propiedades_extra) {
+      sets.push(`propiedades_extra = propiedades_extra || $${i}::jsonb`);
+      valores.push(JSON.stringify(body.propiedades_extra));
+      i++;
+    }
+
+    if (sets.length === 0) {
+      return res.status(400).json({ error: "No se envió ningún campo para actualizar." });
+    }
+
+    sets.push("updated_at = now()");
+    valores.push(id);
+
     const result = await pool.query(
-      `UPDATE tareas
-       SET
-         estado = COALESCE($1, estado),
-         tipo_tarea = COALESCE($4, tipo_tarea),
-         subtipo = COALESCE($5, subtipo),
-         prioridad = COALESCE($6, prioridad),
-         propiedades_extra = CASE
-           WHEN $2::jsonb IS NOT NULL THEN propiedades_extra || $2::jsonb
-           ELSE propiedades_extra
-         END,
-         updated_at = now()
-       WHERE id = $3
-       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, created_at, updated_at`,
-      [
-        estado || null,
-        propiedades_extra ? JSON.stringify(propiedades_extra) : null,
-        id,
-        tipo_tarea || null,
-        subtipo || null,
-        prioridad || null,
-      ],
+      `UPDATE tareas SET ${sets.join(", ")}
+       WHERE id = $${i}
+       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, created_at, updated_at`,
+      valores,
     );
 
     if (result.rows.length === 0) {
@@ -960,9 +1018,33 @@ router.patch("/tareas/:id", async (req, res, next) => {
   }
 });
 
+router.delete("/tareas/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      "DELETE FROM tareas WHERE id = $1 RETURNING id",
+      [id],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Tarea no encontrada." });
+    }
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/tareas", async (req, res, next) => {
   try {
-    const { asignado_a, tipo_tarea, historia_id, publicacion_id } = req.query;
+    const {
+      asignado_a,
+      tipo_tarea,
+      historia_id,
+      publicacion_id,
+      cliente_id,
+      prioridad,
+      estado,
+    } = req.query;
 
     let query = `
       SELECT
@@ -979,12 +1061,18 @@ router.get("/tareas", async (req, res, next) => {
         to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
         t.historia_id,
         t.publicacion_id,
-        COALESCE(h.material_referencia, p.material_referencia) AS material_referencia,
+        COALESCE(t.material_referencia, h.material_referencia, p.material_referencia) AS material_referencia,
+        COALESCE(t.aclaraciones, h.aclaraciones, p.aclaraciones) AS aclaraciones,
         t.tipo_tarea,
         t.subtipo,
         t.prioridad,
         t.created_at,
-        t.updated_at
+        t.updated_at,
+        to_char(h.fecha_programada, 'YYYY-MM-DD') AS historia_fecha_programada,
+        h.estado AS historia_estado,
+        to_char(p.fecha_programada, 'YYYY-MM-DD') AS publicacion_fecha_programada,
+        p.estado AS publicacion_estado,
+        p.tipo AS publicacion_tipo
       FROM tareas t
       LEFT JOIN clientes c ON c.id = t.cliente_id
       LEFT JOIN tareas padre ON padre.id = t.tarea_padre_id
@@ -1014,6 +1102,21 @@ router.get("/tareas", async (req, res, next) => {
     if (publicacion_id) {
       query += ` AND t.publicacion_id = $${paramCount}`;
       params.push(publicacion_id);
+      paramCount++;
+    }
+    if (cliente_id) {
+      query += ` AND t.cliente_id = $${paramCount}`;
+      params.push(cliente_id);
+      paramCount++;
+    }
+    if (prioridad) {
+      query += ` AND t.prioridad = $${paramCount}`;
+      params.push(prioridad);
+      paramCount++;
+    }
+    if (estado) {
+      query += ` AND t.estado = $${paramCount}`;
+      params.push(estado);
       paramCount++;
     }
 

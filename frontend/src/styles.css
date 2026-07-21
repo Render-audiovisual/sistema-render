@@ -2213,7 +2213,8 @@ select:focus {
    comprobado que funciona; la grilla igual tiene su propio scroll interno
    (ver .sheet-frame) como ayuda extra, no como único mecanismo. */
 .historias-viewport .frame,
-.publicaciones-viewport .frame {
+.publicaciones-viewport .frame,
+.tareas-viewport .frame {
   max-width: 1500px;
 }
 
@@ -2400,18 +2401,21 @@ select:focus {
 }
 
 /* Legibilidad ante todo: se prioriza esto por sobre mostrar más columnas
-   a la vez. Comparten estos overrides Historias y Publicaciones, que usan
-   las mismas clases .sheet-* y el mismo layout de panel lateral. */
+   a la vez. Comparten estos overrides Historias, Publicaciones y Tareas,
+   que usan las mismas clases .sheet-* y el mismo layout de panel lateral. */
 .historias-viewport .sheet-cell,
 .historias-viewport textarea.sheet-cell-textarea,
 .publicaciones-viewport .sheet-cell,
-.publicaciones-viewport textarea.sheet-cell-textarea {
+.publicaciones-viewport textarea.sheet-cell-textarea,
+.tareas-viewport .sheet-cell,
+.tareas-viewport textarea.sheet-cell-textarea {
   font-size: 14px;
   padding: 9px 10px;
 }
 
 .historias-viewport textarea.sheet-cell-textarea,
-.publicaciones-viewport textarea.sheet-cell-textarea {
+.publicaciones-viewport textarea.sheet-cell-textarea,
+.tareas-viewport textarea.sheet-cell-textarea {
   line-height: 1.55;
   min-height: 40px;
 }
@@ -2422,7 +2426,8 @@ select:focus {
 }
 
 .historias-viewport .sheet-table th,
-.publicaciones-viewport .sheet-table th {
+.publicaciones-viewport .sheet-table th,
+.tareas-viewport .sheet-table th {
   font-size: 11px;
   padding: 10px 10px;
   top: 0;
@@ -2434,9 +2439,116 @@ select:focus {
   }
 
   .historias-viewport .sheet-frame,
-  .publicaciones-viewport .sheet-frame {
+  .publicaciones-viewport .sheet-frame,
+  .tareas-viewport .sheet-frame {
     max-height: 58vh;
   }
+}
+
+/* Panel lateral de detalle de una tarea — no existía ningún patrón de panel
+   deslizante en el sistema, todo detalle usaba un modal centrado. Se abre
+   como segunda columna de .h-workspace (junto a .h-main), no como overlay,
+   para poder seguir viendo la tabla de fondo mientras se edita. */
+.td-panel {
+  width: 360px;
+  flex-shrink: 0;
+  border-left: 1px solid #dadce0;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .td-panel {
+    width: 100%;
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    border-left: none;
+  }
+}
+
+.td-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid #dadce0;
+}
+
+.td-panel-title {
+  font-size: 15px;
+  font-weight: 700;
+  flex: 1;
+}
+
+.td-panel-banner {
+  margin: 12px 14px 0;
+  padding: 10px 12px;
+  background: #fff3e0;
+  color: #e65100;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.td-panel-body {
+  flex: 1;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.td-panel-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.td-panel-field > span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.td-panel-field .sheet-cell {
+  border-color: #dadce0;
+}
+
+.td-panel-link {
+  font-size: 12px;
+  color: #188038;
+}
+
+.td-panel-origen {
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.td-panel-origen > span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+
+.td-panel-origen a {
+  color: #1a73e8;
+  font-weight: 600;
+}
+
+.td-panel-footer {
+  padding: 12px 14px;
+  border-top: 1px solid #dadce0;
 }
 
 .sheet-toolbar {
