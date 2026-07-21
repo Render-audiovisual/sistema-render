@@ -5062,6 +5062,7 @@ function ClientesAdminPage() {
   const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [guardandoCuotaId, setGuardandoCuotaId] = useState(null);
   const [clienteDrafts, setClienteDrafts] = useState({});
+  const [altaClienteAbierta, setAltaClienteAbierta] = useState(false);
 
   // silencioso=true (polling / vuelta a la pestaña) no muestra el spinner de
   // carga para no interrumpir a quien está mirando la tabla — solo actualiza
@@ -5147,6 +5148,7 @@ function ClientesAdminPage() {
         setClientes((prev) => [...prev, cliente]);
         setNuevoCliente({ nombre: "", cuota_reels: "0", cuota_carruseles: "0" });
         setBusqueda("");
+        setAltaClienteAbierta(false);
       })
       .catch((err) => setError(err.message))
       .finally(() => setGuardandoCliente(false));
@@ -5294,6 +5296,13 @@ function ClientesAdminPage() {
             <div className="clientes-heading-meta">
               <span>{filasFiltradas.length} visibles</span>
               <span>{filas.length} activos</span>
+              <button
+                className="btn primary"
+                type="button"
+                onClick={() => setAltaClienteAbierta(true)}
+              >
+                Agregar cliente
+              </button>
             </div>
           </div>
 
@@ -5322,53 +5331,6 @@ function ClientesAdminPage() {
               <small>{totalCarruselesPublicados} carruseles</small>
             </div>
           </div>
-
-          <section className="clientes-create-panel" aria-label="Alta de cliente">
-            <div className="clientes-panel-copy">
-              <strong>Agregar cliente</strong>
-              <span>Cargalo con sus cuotas base; después se ajusta directo en la tabla.</span>
-            </div>
-            <form className="cliente-create-form" onSubmit={crearCliente}>
-              <label>
-                <span>Cliente</span>
-                <input
-                  type="text"
-                  placeholder="Nombre"
-                  value={nuevoCliente.nombre}
-                  onChange={(e) =>
-                    setNuevoCliente((prev) => ({ ...prev, nombre: e.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Reels/mes</span>
-                <input
-                  min="0"
-                  step="1"
-                  type="number"
-                  value={nuevoCliente.cuota_reels}
-                  onChange={(e) =>
-                    setNuevoCliente((prev) => ({ ...prev, cuota_reels: e.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                <span>Carruseles/mes</span>
-                <input
-                  min="0"
-                  step="1"
-                  type="number"
-                  value={nuevoCliente.cuota_carruseles}
-                  onChange={(e) =>
-                    setNuevoCliente((prev) => ({ ...prev, cuota_carruseles: e.target.value }))
-                  }
-                />
-              </label>
-              <button className="btn primary" type="submit" disabled={guardandoCliente}>
-                {guardandoCliente ? "Creando..." : "Agregar"}
-              </button>
-            </form>
-          </section>
 
           <div className="box clientes-table-panel">
             <div className="clientes-table-toolbar">
@@ -5524,6 +5486,81 @@ function ClientesAdminPage() {
           </div>
         </div>
       </div>
+
+      {altaClienteAbierta && (
+        <div className="modal-overlay open" role="dialog" aria-modal="true">
+          <div className="modal cliente-create-modal">
+            <div className="modal-header">
+              <span>Agregar cliente</span>
+              <button
+                className="modal-close"
+                type="button"
+                onClick={() => setAltaClienteAbierta(false)}
+              >
+                X
+              </button>
+            </div>
+            <form className="modal-body cliente-create-modal-body" onSubmit={crearCliente}>
+              <div className="clientes-panel-copy">
+                <strong>Oferta mensual inicial</strong>
+                <span>Definí el nombre y las cantidades que se van a entregar por mes.</span>
+              </div>
+              <label>
+                <span>Cliente</span>
+                <input
+                  autoFocus
+                  type="text"
+                  placeholder="Nombre del cliente"
+                  value={nuevoCliente.nombre}
+                  onChange={(e) =>
+                    setNuevoCliente((prev) => ({ ...prev, nombre: e.target.value }))
+                  }
+                />
+              </label>
+              <div className="cliente-create-modal-grid">
+                <label>
+                  <span>Reels por mes</span>
+                  <input
+                    min="0"
+                    step="1"
+                    type="number"
+                    value={nuevoCliente.cuota_reels}
+                    onChange={(e) =>
+                      setNuevoCliente((prev) => ({ ...prev, cuota_reels: e.target.value }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Carruseles por mes</span>
+                  <input
+                    min="0"
+                    step="1"
+                    type="number"
+                    value={nuevoCliente.cuota_carruseles}
+                    onChange={(e) =>
+                      setNuevoCliente((prev) => ({ ...prev, cuota_carruseles: e.target.value }))
+                    }
+                  />
+                </label>
+              </div>
+              {error && <div className="caption login-error">{error}</div>}
+              <div className="modal-actions">
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={guardandoCliente}
+                  onClick={() => setAltaClienteAbierta(false)}
+                >
+                  Cancelar
+                </button>
+                <button className="btn primary" type="submit" disabled={guardandoCliente}>
+                  {guardandoCliente ? "Creando..." : "Crear cliente"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {clienteSeleccionado && (
         <DetalleClienteModal
