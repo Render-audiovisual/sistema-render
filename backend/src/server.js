@@ -470,10 +470,47 @@ router.get("/clientes", async (_req, res, next) => {
   }
 });
 
+router.post("/clientes", async (req, res, next) => {
+  try {
+    const nombre = (req.body.nombre || "").trim();
+    const cuota_reels = Number(req.body.cuota_reels ?? 0);
+    const cuota_carruseles = Number(req.body.cuota_carruseles ?? 0);
+
+    if (!nombre) {
+      return res.status(400).json({ error: "Falta el nombre del cliente." });
+    }
+    if (
+      !Number.isInteger(cuota_reels) ||
+      !Number.isInteger(cuota_carruseles) ||
+      cuota_reels < 0 ||
+      cuota_carruseles < 0
+    ) {
+      return res.status(400).json({
+        error: "cuota_reels y cuota_carruseles deben ser enteros ≥ 0.",
+      });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO clientes (nombre, cuota_reels, cuota_carruseles)
+       VALUES ($1, $2, $3)
+       RETURNING id, nombre, cuota_reels, cuota_carruseles`,
+      [nombre, cuota_reels, cuota_carruseles],
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "Ya existe un cliente con ese nombre." });
+    }
+    next(error);
+  }
+});
+
 router.patch("/clientes/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { cuota_reels, cuota_carruseles } = req.body;
+    const { nombre, cuota_reels, cuota_carruseles } = req.body;
+    const nombreNormalizado = nombre === undefined ? undefined : String(nombre).trim();
 
     const cuotaReelsValida =
       cuota_reels === undefined ||
@@ -487,15 +524,24 @@ router.patch("/clientes/:id", async (req, res, next) => {
         error: "cuota_reels y cuota_carruseles deben ser enteros ≥ 0.",
       });
     }
+    if (nombreNormalizado !== undefined && !nombreNormalizado) {
+      return res.status(400).json({ error: "El nombre del cliente no puede quedar vacío." });
+    }
 
     const result = await pool.query(
       `UPDATE clientes
        SET
-         cuota_reels = COALESCE($1, cuota_reels),
-         cuota_carruseles = COALESCE($2, cuota_carruseles)
-       WHERE id = $3
+         nombre = COALESCE($1, nombre),
+         cuota_reels = COALESCE($2, cuota_reels),
+         cuota_carruseles = COALESCE($3, cuota_carruseles)
+       WHERE id = $4
        RETURNING id, nombre, cuota_reels, cuota_carruseles`,
-      [cuota_reels ?? null, cuota_carruseles ?? null, id],
+      [
+        nombreNormalizado ?? null,
+        cuota_reels ?? null,
+        cuota_carruseles ?? null,
+        id,
+      ],
     );
 
     if (result.rows.length === 0) {
@@ -504,6 +550,9 @@ router.patch("/clientes/:id", async (req, res, next) => {
 
     res.json(result.rows[0]);
   } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "Ya existe un cliente con ese nombre." });
+    }
     next(error);
   }
 });

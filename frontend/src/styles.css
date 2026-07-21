@@ -2935,6 +2935,69 @@ tr:hover .sheet-row-actions {
   width: 100%;
 }
 
+.cliente-create-form {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 1fr) 110px 130px auto;
+  margin-bottom: 12px;
+}
+
+.cliente-create-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cliente-create-form label span {
+  color: #5f6368;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.cliente-create-form input,
+.cliente-inline-input {
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  color: #202124;
+  font: inherit;
+  min-height: 34px;
+  padding: 7px 9px;
+  width: 100%;
+}
+
+.cliente-inline-input {
+  min-height: 30px;
+}
+
+.cliente-inline-input:focus,
+.cliente-create-form input:focus {
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.12);
+  outline: none;
+}
+
+.cliente-name-input {
+  font-weight: 700;
+}
+
+.cliente-quota-cell {
+  align-items: center;
+  display: grid;
+  gap: 6px;
+  grid-template-columns: auto auto 46px;
+  justify-content: center;
+}
+
+.cliente-quota-input {
+  padding-left: 7px;
+  padding-right: 4px;
+  text-align: center;
+}
+
 .clientes-admin-table th,
 .clientes-admin-table td {
   font-size: 12px;
@@ -2971,4 +3034,10 @@ tr:hover .sheet-row-actions {
 .clientes-admin-table th:nth-child(6),
 .clientes-admin-table td:nth-child(6) {
   width: auto;
+}
+
+@media (max-width: 760px) {
+  .cliente-create-form {
+    grid-template-columns: 1fr;
+  }
 }

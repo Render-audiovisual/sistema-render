@@ -5054,6 +5054,14 @@ function ClientesAdminPage() {
   const [busqueda, setBusqueda] = useState("");
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(true);
+  const [nuevoCliente, setNuevoCliente] = useState({
+    nombre: "",
+    cuota_reels: "0",
+    cuota_carruseles: "0",
+  });
+  const [guardandoCliente, setGuardandoCliente] = useState(false);
+  const [guardandoCuotaId, setGuardandoCuotaId] = useState(null);
+  const [clienteDrafts, setClienteDrafts] = useState({});
 
   // silencioso=true (polling / vuelta a la pestaña) no muestra el spinner de
   // carga para no interrumpir a quien está mirando la tabla — solo actualiza
@@ -5100,6 +5108,132 @@ function ClientesAdminPage() {
       document.removeEventListener("visibilitychange", alVolverVisible);
     };
   }, []);
+
+  const validarCuota = (valor) => {
+    const numero = Number(valor);
+    return Number.isInteger(numero) && numero >= 0;
+  };
+
+  const crearCliente = (event) => {
+    event.preventDefault();
+    const nombre = nuevoCliente.nombre.trim();
+    const cuota_reels = Number(nuevoCliente.cuota_reels);
+    const cuota_carruseles = Number(nuevoCliente.cuota_carruseles);
+
+    if (!nombre) {
+      setError("El nombre del cliente es obligatorio.");
+      return;
+    }
+    if (!validarCuota(cuota_reels) || !validarCuota(cuota_carruseles)) {
+      setError("Las cuotas deben ser números enteros ≥ 0.");
+      return;
+    }
+
+    setGuardandoCliente(true);
+    setError(null);
+    fetch("/api/clientes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre, cuota_reels, cuota_carruseles }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo crear el cliente.");
+        }
+        return data;
+      })
+      .then((cliente) => {
+        setClientes((prev) => [...prev, cliente]);
+        setNuevoCliente({ nombre: "", cuota_reels: "0", cuota_carruseles: "0" });
+        setBusqueda("");
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setGuardandoCliente(false));
+  };
+
+  const actualizarClienteLocal = (id, campos) => {
+    setClientes((prev) =>
+      prev.map((cliente) => (cliente.id === id ? { ...cliente, ...campos } : cliente)),
+    );
+    setClienteSeleccionado((actual) =>
+      actual?.id === id ? { ...actual, ...campos } : actual,
+    );
+  };
+
+  const actualizarDraftCliente = (id, campo, valor) => {
+    setClienteDrafts((prev) => ({
+      ...prev,
+      [id]: {
+        ...(prev[id] || {}),
+        [campo]: valor,
+      },
+    }));
+  };
+
+  const limpiarDraftCliente = (id, campos) => {
+    setClienteDrafts((prev) => {
+      if (!prev[id]) return prev;
+      const siguienteDraft = { ...prev[id] };
+      campos.forEach((campo) => delete siguienteDraft[campo]);
+      if (Object.keys(siguienteDraft).length === 0) {
+        const { [id]: _omitido, ...resto } = prev;
+        return resto;
+      }
+      return { ...prev, [id]: siguienteDraft };
+    });
+  };
+
+  const valorClienteEditable = (cliente, campo) =>
+    clienteDrafts[cliente.id]?.[campo] ?? cliente[campo] ?? "";
+
+  const guardarCliente = (id, campos) => {
+    const payload = { ...campos };
+    if (Object.prototype.hasOwnProperty.call(payload, "nombre")) {
+      payload.nombre = payload.nombre.trim();
+      if (!payload.nombre) {
+        setError("El nombre del cliente no puede quedar vacío.");
+        cargarClientes({ silencioso: true });
+        return;
+      }
+    }
+    for (const key of ["cuota_reels", "cuota_carruseles"]) {
+      if (Object.prototype.hasOwnProperty.call(payload, key)) {
+        const numero = Number(payload[key]);
+        if (!validarCuota(numero)) {
+          setError("Las cuotas deben ser números enteros ≥ 0.");
+          cargarClientes({ silencioso: true });
+          return;
+        }
+        payload[key] = numero;
+      }
+    }
+
+    setGuardandoCuotaId(id);
+    setError(null);
+    fetch(`/api/clientes/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo guardar el cliente.");
+        }
+        return data;
+      })
+      .then((cliente) => {
+        actualizarClienteLocal(id, cliente);
+        limpiarDraftCliente(id, Object.keys(payload));
+      })
+      .catch((err) => {
+        setError(err.message);
+        cargarClientes({ silencioso: true });
+        limpiarDraftCliente(id, Object.keys(payload));
+      })
+      .finally(() => setGuardandoCuotaId(null));
+  };
 
   const filas = getResumenClientesActivos(clientes, historias, publicaciones);
   const filasFiltradas = filas.filter((cliente) =>
@@ -5169,6 +5303,47 @@ function ClientesAdminPage() {
               <span className="tag">Checklist de historias conectado</span>
             </div>
 
+            <form className="cliente-create-form" onSubmit={crearCliente}>
+              <label>
+                <span>Cliente nuevo</span>
+                <input
+                  type="text"
+                  placeholder="Nombre del cliente"
+                  value={nuevoCliente.nombre}
+                  onChange={(e) =>
+                    setNuevoCliente((prev) => ({ ...prev, nombre: e.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                <span>Reels/mes</span>
+                <input
+                  min="0"
+                  step="1"
+                  type="number"
+                  value={nuevoCliente.cuota_reels}
+                  onChange={(e) =>
+                    setNuevoCliente((prev) => ({ ...prev, cuota_reels: e.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                <span>Carruseles/mes</span>
+                <input
+                  min="0"
+                  step="1"
+                  type="number"
+                  value={nuevoCliente.cuota_carruseles}
+                  onChange={(e) =>
+                    setNuevoCliente((prev) => ({ ...prev, cuota_carruseles: e.target.value }))
+                  }
+                />
+              </label>
+              <button className="btn primary" type="submit" disabled={guardandoCliente}>
+                {guardandoCliente ? "Creando..." : "Agregar cliente"}
+              </button>
+            </form>
+
             <input
               type="text"
               placeholder="Buscar cliente por nombre..."
@@ -5209,15 +5384,72 @@ function ClientesAdminPage() {
                           {cliente.estadoHistorias.label}
                         </td>
                         <td>
-                          <strong>{cliente.nombre}</strong>
+                          <input
+                            className="cliente-inline-input cliente-name-input"
+                            onBlur={(e) => guardarCliente(cliente.id, { nombre: e.target.value })}
+                            onChange={(e) =>
+                              actualizarDraftCliente(cliente.id, "nombre", e.target.value)
+                            }
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") e.currentTarget.blur();
+                            }}
+                            value={valorClienteEditable(cliente, "nombre")}
+                          />
                           <div className="caption">Activo</div>
                         </td>
                         <td>
-                          {cliente.reelsPublicados} / {cliente.cuota_reels ?? 0}
+                          <div className="cliente-quota-cell">
+                            <strong>{cliente.reelsPublicados}</strong>
+                            <span>/</span>
+                            <input
+                              className="cliente-inline-input cliente-quota-input"
+                              min="0"
+                              onBlur={(e) =>
+                                guardarCliente(cliente.id, { cuota_reels: e.target.value })
+                              }
+                              onChange={(e) =>
+                                actualizarDraftCliente(cliente.id, "cuota_reels", e.target.value)
+                              }
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                              }}
+                              step="1"
+                              type="number"
+                              value={valorClienteEditable(cliente, "cuota_reels")}
+                            />
+                          </div>
                         </td>
                         <td>
-                          {cliente.carruselesPublicados} /{" "}
-                          {cliente.cuota_carruseles ?? 0}
+                          <div className="cliente-quota-cell">
+                            <strong>{cliente.carruselesPublicados}</strong>
+                            <span>/</span>
+                            <input
+                              className="cliente-inline-input cliente-quota-input"
+                              min="0"
+                              onBlur={(e) =>
+                                guardarCliente(cliente.id, { cuota_carruseles: e.target.value })
+                              }
+                              onChange={(e) =>
+                                actualizarDraftCliente(
+                                  cliente.id,
+                                  "cuota_carruseles",
+                                  e.target.value,
+                                )
+                              }
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                              }}
+                              step="1"
+                              type="number"
+                              value={valorClienteEditable(cliente, "cuota_carruseles")}
+                            />
+                          </div>
+                          {guardandoCuotaId === cliente.id && (
+                            <div className="caption">Guardando...</div>
+                          )}
                         </td>
                         <td>
                           <strong>{cliente.porcentajeHistorias}%</strong>
