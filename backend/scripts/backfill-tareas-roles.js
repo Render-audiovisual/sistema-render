@@ -34,10 +34,11 @@ function fechaVencimiento(fechaProgramada, diasAntes) {
   return f.toISOString().slice(0, 10);
 }
 
-async function crearTarea({ titulo, asignado_a, cliente_id, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo }) {
-  await pool.query(
-    `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad)
-     VALUES ($1, $2, $3, 'pendiente', false, $4, $5, $6, $7, $8, $9, 'media')`,
+async function crearTarea({ titulo, asignado_a, cliente_id, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, tarea_padre_id }) {
+  const { rows } = await pool.query(
+    `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, tarea_padre_id)
+     VALUES ($1, $2, $3, 'pendiente', false, $4, $5, $6, $7, $8, $9, 'media', $10)
+     RETURNING id`,
     [
       titulo,
       asignado_a,
@@ -48,8 +49,10 @@ async function crearTarea({ titulo, asignado_a, cliente_id, fecha_vencimiento, h
       publicacion_id || null,
       tipo_tarea,
       subtipo || null,
+      tarea_padre_id || null,
     ],
   );
+  return rows[0].id;
 }
 
 async function main() {
@@ -120,7 +123,7 @@ async function main() {
       videosSinProductor++;
       continue;
     }
-    await crearTarea({
+    const tareaFilmarId = await crearTarea({
       titulo: `Filmar video - ${p.idea || "sin idea"}`,
       asignado_a: "Germán",
       cliente_id: p.cliente_id,
@@ -137,6 +140,7 @@ async function main() {
       publicacion_id: p.id,
       tipo_tarea: "edicion",
       subtipo: "editar",
+      tarea_padre_id: tareaFilmarId,
     });
     videosConProductor++;
   }

@@ -5691,6 +5691,13 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
     return colores[prioridad] || "◯";
   };
 
+  // Producción/edición de video quedan encadenadas por tarea_padre_id (ver
+  // POST /piezas en el backend): mientras la tarea padre (filmar) no esté
+  // hecha, la de edición se marca como "esperando material" para que
+  // Luciano no la empiece a ciegas sin saber si ya hay algo filmado.
+  const esperandoMaterial = (tarea) =>
+    Boolean(tarea.tarea_padre_id) && tarea.tarea_padre_estado !== "hecha";
+
   return (
     <main aria-label={titulo}>
       <div className="frame">
@@ -5776,6 +5783,11 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
                             >
                               {tarea.titulo}
                             </button>
+                            {esperandoMaterial(tarea) && (
+                              <span style={{ marginLeft: "8px", fontSize: "11px", fontWeight: 700, color: "#e65100" }}>
+                                ⏳ Esperando material
+                              </span>
+                            )}
                           </td>
                           <td style={{ width: "18%", color: "#555" }}>{tarea.cliente_nombre || "Sin cliente"}</td>
                           <td style={{ width: "12%", color: tarea.fecha_vencimiento && tarea.fecha_vencimiento < hoyISO && tarea.estado !== "hecha" ? "#c62828" : "#666", fontWeight: tarea.fecha_vencimiento && tarea.fecha_vencimiento < hoyISO && tarea.estado !== "hecha" ? 700 : 400 }}>
@@ -5826,6 +5838,12 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
                   </button>
                 </div>
 
+                {esperandoMaterial(tareaSeleccionada) && (
+                  <div style={{ padding: "10px 12px", background: "#fff3e0", color: "#e65100", borderRadius: "4px", fontWeight: 600, fontSize: "13px", marginBottom: "16px" }}>
+                    ⏳ Esperando material — la tarea de filmación todavía no está marcada como hecha.
+                  </div>
+                )}
+
                 <div style={{ marginBottom: "16px" }}>
                   <div style={{ marginBottom: "8px" }}>
                     <strong>Cliente:</strong> {tareaSeleccionada.cliente_nombre || "—"}
@@ -5844,6 +5862,14 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
                   {tareaSeleccionada.subtipo && (
                     <div style={{ marginBottom: "8px" }}>
                       <strong>Tipo:</strong> {tareaSeleccionada.subtipo}
+                    </div>
+                  )}
+                  {tareaSeleccionada.material_referencia && (
+                    <div style={{ marginBottom: "8px" }}>
+                      <strong>Material:</strong>{" "}
+                      <a href={tareaSeleccionada.material_referencia} target="_blank" rel="noopener noreferrer">
+                        {tareaSeleccionada.material_referencia}
+                      </a>
                     </div>
                   )}
                 </div>

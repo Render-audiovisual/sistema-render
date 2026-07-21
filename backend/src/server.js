@@ -972,12 +972,14 @@ router.get("/tareas", async (req, res, next) => {
         t.asignado_a,
         t.requiere_aprobacion,
         t.tarea_padre_id,
+        padre.estado AS tarea_padre_estado,
         t.propiedades_extra,
         t.cliente_id,
         c.nombre AS cliente_nombre,
         to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
         t.historia_id,
         t.publicacion_id,
+        COALESCE(h.material_referencia, p.material_referencia) AS material_referencia,
         t.tipo_tarea,
         t.subtipo,
         t.prioridad,
@@ -985,6 +987,9 @@ router.get("/tareas", async (req, res, next) => {
         t.updated_at
       FROM tareas t
       LEFT JOIN clientes c ON c.id = t.cliente_id
+      LEFT JOIN tareas padre ON padre.id = t.tarea_padre_id
+      LEFT JOIN historias h ON h.id = t.historia_id
+      LEFT JOIN publicaciones p ON p.id = t.publicacion_id
       WHERE 1=1
     `;
 
@@ -1157,10 +1162,11 @@ function fechaVencimientoTarea(fechaProgramada, diasAntes = 1) {
   return f.toISOString().slice(0, 10);
 }
 
-async function crearTareaAuto({ titulo, asignado_a, cliente_id, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo }) {
-  await pool.query(
-    `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad)
-     VALUES ($1, $2, $3, 'pendiente', false, $4, $5, $6, $7, $8, $9, 'media')`,
+async function crearTareaAuto({ titulo, asignado_a, cliente_id, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, tarea_padre_id }) {
+  const { rows } = await pool.query(
+    `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, tarea_padre_id)
+     VALUES ($1, $2, $3, 'pendiente', false, $4, $5, $6, $7, $8, $9, 'media', $10)
+     RETURNING id`,
     [
       titulo,
       asignado_a,
@@ -1171,8 +1177,10 @@ async function crearTareaAuto({ titulo, asignado_a, cliente_id, fecha_vencimient
       publicacion_id || null,
       tipo_tarea,
       subtipo || null,
+      tarea_padre_id || null,
     ],
   );
+  return rows[0].id;
 }
 
 router.post("/piezas", async (req, res, next) => {
@@ -1271,7 +1279,7 @@ router.post("/piezas", async (req, res, next) => {
         const nombreCliente = clienteRows[0]?.nombre;
 
         if (nombreCliente && CLIENTES_PRODUCCION_GERMAN.includes(nombreCliente)) {
-          await crearTareaAuto({
+          const tareaFilmarId = await crearTareaAuto({
             titulo: `Filmar video - ${idea || "sin idea"}`,
             asignado_a: "Germán",
             cliente_id,
@@ -1281,6 +1289,9 @@ router.post("/piezas", async (req, res, next) => {
             subtipo: "filmar",
           });
 
+          // tarea_padre_id conecta la edición a la filmación: mientras
+          // Germán no la marque hecha, Luciano ve "esperando material" en
+          // vez de una tarea suelta sin indicar si ya hay algo para editar.
           await crearTareaAuto({
             titulo: `Editar video - ${idea || "sin idea"}`,
             asignado_a: "Luciano",
@@ -1289,6 +1300,7 @@ router.post("/piezas", async (req, res, next) => {
             publicacion_id: publicacion.id,
             tipo_tarea: "edicion",
             subtipo: "editar",
+            tarea_padre_id: tareaFilmarId,
           });
         }
         // Si el cliente no tiene productor asignado todavía, no se generan
