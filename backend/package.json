@@ -12,6 +12,7 @@
     "importar:planificador": "node scripts/importar-planificador-historias.js",
     "importar:publicaciones": "node scripts/importar-publicaciones.js",
     "backfill:tareas": "node scripts/backfill-tareas-roles.js",
+    "backfill:tarea-padre-edicion": "node scripts/backfill-tarea-padre-edicion.js",
     "setup": "npm run migrate && node -e \"import('./src/setup-demo-data.js').then(m => m.setupDemoClientes()).then(() => process.exit(0))\" && npm run seed:usuarios"
   },
   "dependencies": {
