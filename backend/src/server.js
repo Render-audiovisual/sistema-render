@@ -661,6 +661,7 @@ router.get("/historias", async (_req, res, next) => {
         h.updated_at
       FROM historias h
       JOIN clientes c ON c.id = h.cliente_id
+      WHERE h.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
       ORDER BY h.fecha_programada DESC, h.id
     `);
     res.json(result.rows);
@@ -832,6 +833,7 @@ router.get("/publicaciones", async (_req, res, next) => {
         p.updated_at
       FROM publicaciones p
       JOIN clientes c ON c.id = p.cliente_id
+      WHERE p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
       ORDER BY p.fecha_programada DESC, p.id
     `);
     res.json(result.rows);
