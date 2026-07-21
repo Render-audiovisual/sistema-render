@@ -5252,6 +5252,27 @@ function ClientesAdminPage() {
   const clientesBajos = filas.filter(
     (cliente) => cliente.estadoHistorias.color === "rojo",
   ).length;
+  const clientesSinHistorias = filas.filter((cliente) => cliente.historiasMes === 0).length;
+  const totalReelsPublicados = filas.reduce((sum, cliente) => sum + cliente.reelsPublicados, 0);
+  const totalCarruselesPublicados = filas.reduce(
+    (sum, cliente) => sum + cliente.carruselesPublicados,
+    0,
+  );
+  const totalCuotaReels = filas.reduce((sum, cliente) => sum + (Number(cliente.cuota_reels) || 0), 0);
+  const totalCuotaCarruseles = filas.reduce(
+    (sum, cliente) => sum + (Number(cliente.cuota_carruseles) || 0),
+    0,
+  );
+  const avanceFeed = calcularPorcentajeCuota(
+    totalReelsPublicados + totalCarruselesPublicados,
+    totalCuotaReels + totalCuotaCarruseles,
+  );
+  const getAlertaCliente = (cliente) => {
+    if (cliente.estadoHistorias.color === "rojo") return "Necesita seguimiento";
+    if (cliente.estadoHistorias.color === "amarillo") return "Revisar ritmo";
+    if (cliente.historiasMes === 0) return "Sin planificación de historias";
+    return "Al día";
+  };
 
   return (
     <main aria-label="Administración de clientes">
@@ -5264,51 +5285,55 @@ function ClientesAdminPage() {
           <TopbarUser fallback="Administración" />
         </div>
 
-        <div className="content">
-          <div className="section-label">
-            Clientes activos — {getMesActualISO()}
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gap: "10px",
-              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-              marginBottom: "16px",
-            }}
-          >
-            <div className="box" style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "24px", fontWeight: 700 }}>
-                {filas.length}
-              </div>
-              <div className="caption">Clientes activos</div>
+        <div className="content clientes-page">
+          <div className="clientes-heading">
+            <div>
+              <div className="section-label">Clientes — {getMesActualISO()}</div>
+              <h2>Control mensual de cartera</h2>
             </div>
-            <div className="box" style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "24px", fontWeight: 700 }}>
-                {cumplimientoHistorias}%
-              </div>
-              <div className="caption">Cumplimiento historias</div>
-            </div>
-            <div className="box" style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "24px", fontWeight: 700 }}>
-                {clientesBajos}
-              </div>
-              <div className="caption">Clientes bajos</div>
+            <div className="clientes-heading-meta">
+              <span>{filasFiltradas.length} visibles</span>
+              <span>{filas.length} activos</span>
             </div>
           </div>
 
-          <div className="box">
-            <div className="box-header">
-              <strong>Control mensual de clientes</strong>
-              <span className="tag">Checklist de historias conectado</span>
+          <div className="clientes-metrics">
+            <div className="cliente-metric">
+              <span>Clientes activos</span>
+              <strong>{filas.length}</strong>
+              <small>{clientesSinHistorias} sin historias del mes</small>
             </div>
+            <div className="cliente-metric">
+              <span>Historias</span>
+              <strong>{cumplimientoHistorias}%</strong>
+              <small>{clientesBajos} cliente{clientesBajos === 1 ? "" : "s"} bajo seguimiento</small>
+            </div>
+            <div className="cliente-metric">
+              <span>Feed mensual</span>
+              <strong>{avanceFeed}%</strong>
+              <small>
+                {totalReelsPublicados + totalCarruselesPublicados} /{" "}
+                {totalCuotaReels + totalCuotaCarruseles} piezas
+              </small>
+            </div>
+            <div className="cliente-metric">
+              <span>Mix publicado</span>
+              <strong>{totalReelsPublicados}</strong>
+              <small>{totalCarruselesPublicados} carruseles</small>
+            </div>
+          </div>
 
+          <section className="clientes-create-panel" aria-label="Alta de cliente">
+            <div className="clientes-panel-copy">
+              <strong>Agregar cliente</strong>
+              <span>Cargalo con sus cuotas base; después se ajusta directo en la tabla.</span>
+            </div>
             <form className="cliente-create-form" onSubmit={crearCliente}>
               <label>
-                <span>Cliente nuevo</span>
+                <span>Cliente</span>
                 <input
                   type="text"
-                  placeholder="Nombre del cliente"
+                  placeholder="Nombre"
                   value={nuevoCliente.nombre}
                   onChange={(e) =>
                     setNuevoCliente((prev) => ({ ...prev, nombre: e.target.value }))
@@ -5340,17 +5365,24 @@ function ClientesAdminPage() {
                 />
               </label>
               <button className="btn primary" type="submit" disabled={guardandoCliente}>
-                {guardandoCliente ? "Creando..." : "Agregar cliente"}
+                {guardandoCliente ? "Creando..." : "Agregar"}
               </button>
             </form>
+          </section>
 
-            <input
-              type="text"
-              placeholder="Buscar cliente por nombre..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              style={{ marginBottom: "12px", width: "100%" }}
-            />
+          <div className="box clientes-table-panel">
+            <div className="clientes-table-toolbar">
+              <div>
+                <strong>Cartera activa</strong>
+                <span>Cuotas editables y estado del mes</span>
+              </div>
+              <input
+                type="text"
+                placeholder="Buscar cliente..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+              />
+            </div>
 
             {error && <div className="caption login-error">{error}</div>}
             {cargando ? (
@@ -5364,10 +5396,10 @@ function ClientesAdminPage() {
                     <tr>
                       <th>Estado</th>
                       <th>Cliente</th>
-                      <th>Reels</th>
-                      <th>Carr.</th>
+                      <th>Reels / mes</th>
+                      <th>Carruseles / mes</th>
                       <th>Historias</th>
-                      <th>Alerta</th>
+                      <th>Próxima acción</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -5378,10 +5410,10 @@ function ClientesAdminPage() {
                         onClick={() => setClienteSeleccionado(cliente)}
                       >
                         <td>
-                          <span
-                            className={`semaforo ${cliente.estadoHistorias.color}`}
-                          ></span>
-                          {cliente.estadoHistorias.label}
+                          <span className={`cliente-status-pill ${cliente.estadoHistorias.color}`}>
+                            <span className={`semaforo ${cliente.estadoHistorias.color}`}></span>
+                            {cliente.estadoHistorias.label}
+                          </span>
                         </td>
                         <td>
                           <input
@@ -5460,18 +5492,17 @@ function ClientesAdminPage() {
                             Último: {cliente.ultimaHistoriaOk || "-"}
                           </div>
                         </td>
-                        <td>
-                          {cliente.historiasMes === 0
-                            ? cliente.estadoHistorias.color === "rojo"
-                              ? "Ya pasó medio mes y no hay nada cargado"
-                              : cliente.estadoHistorias.color === "amarillo"
-                                ? "Va avanzado el mes y todavía no se cargó nada"
-                                : "Recién arranca el mes, todavía normal"
-                            : cliente.estadoHistorias.color === "rojo"
-                              ? "Se están subiendo pocas historias"
-                              : cliente.estadoHistorias.color === "amarillo"
-                                ? "Revisar ritmo"
-                                : "Al día"}
+                        <td className="cliente-action-cell">
+                          <strong>{getAlertaCliente(cliente)}</strong>
+                          <span>
+                            {cliente.historiasMes === 0
+                              ? "No hay historias planificadas."
+                              : `${cliente.historiasMes - cliente.historiasPublicadas} historia${
+                                  cliente.historiasMes - cliente.historiasPublicadas === 1 ? "" : "s"
+                                } pendiente${
+                                  cliente.historiasMes - cliente.historiasPublicadas === 1 ? "" : "s"
+                                }.`}
+                          </span>
                         </td>
                       </tr>
                     ))}
@@ -6626,6 +6657,14 @@ function DetalleClienteModal({
       estado: p.estado,
     })),
   ];
+  const reelsPublicados = publicaciones.filter(
+    (publicacion) =>
+      publicacion.estado === "publicada" &&
+      (publicacion.tipo === "reel" || publicacion.tipo === "video"),
+  ).length;
+  const carruselesPublicados = publicaciones.filter(
+    (publicacion) => publicacion.estado === "publicada" && publicacion.tipo === "carrusel",
+  ).length;
 
   return (
     <div className="modal-overlay open" role="dialog" aria-modal="true">
@@ -6637,21 +6676,40 @@ function DetalleClienteModal({
           </button>
         </div>
         <div className="modal-body">
-          <div className="modal-client-status">
-            <span className={`semaforo ${estado}`}></span>
-            <strong>
-              {getEstadoLabel(estado)} · {porcentajes.objetivo}% objetivo mes
-            </strong>
+          <div className="modal-client-summary">
+            <div className="modal-client-status">
+              <span className={`semaforo ${estado}`}></span>
+              <strong>
+                {getEstadoLabel(estado)} · {porcentajes.objetivo}% objetivo mes
+              </strong>
+            </div>
+            <div className="caption">
+              Cuota mensual: {cliente.cuota_reels ?? 0} reels ·{" "}
+              {cliente.cuota_carruseles ?? 0} carruseles
+            </div>
           </div>
 
-          <div className="caption">
-            Cuota mensual: {cliente.cuota_reels ?? 0} reels ·{" "}
-            {cliente.cuota_carruseles ?? 0} carruseles
+          <div className="cliente-detail-metrics">
+            <div>
+              <span>Historias</span>
+              <strong>{porcentajes.historias}%</strong>
+              <small>{porcentajes.historiasPublicadas} / {porcentajes.historiasTotal} OK</small>
+            </div>
+            <div>
+              <span>Reels</span>
+              <strong>{reelsPublicados}</strong>
+              <small>de {cliente.cuota_reels ?? 0} mensuales</small>
+            </div>
+            <div>
+              <span>Carruseles</span>
+              <strong>{carruselesPublicados}</strong>
+              <small>de {cliente.cuota_carruseles ?? 0} mensuales</small>
+            </div>
           </div>
 
           {error && <div className="caption login-error">{error}</div>}
 
-          <table>
+          <table className="cliente-detail-table">
             <thead>
               <tr>
                 <th>Pieza</th>
