@@ -557,6 +557,45 @@ router.patch("/clientes/:id", async (req, res, next) => {
   }
 });
 
+router.delete("/clientes/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const dependencias = await pool.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM historias WHERE cliente_id = $1) AS historias,
+         (SELECT COUNT(*)::int FROM publicaciones WHERE cliente_id = $1) AS publicaciones,
+         (SELECT COUNT(*)::int FROM tareas WHERE cliente_id = $1) AS tareas,
+         (SELECT COUNT(*)::int FROM estructura_cliente WHERE cliente_id = $1) AS estructura,
+         (SELECT COUNT(*)::int FROM check_publicacion WHERE cliente_id = $1) AS checklist`,
+      [id],
+    );
+    const conteos = dependencias.rows[0];
+    const tieneMovimiento = Object.values(conteos).some((cantidad) => cantidad > 0);
+
+    if (tieneMovimiento) {
+      return res.status(409).json({
+        error: "El cliente tiene piezas, tareas o planificación asociada. No se puede eliminar desde este panel.",
+        dependencias: conteos,
+      });
+    }
+
+    const result = await pool.query(
+      `DELETE FROM clientes
+       WHERE id = $1
+       RETURNING id, nombre`,
+      [id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Cliente no encontrado." });
+    }
+
+    res.json({ ok: true, cliente: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.patch("/historias/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
