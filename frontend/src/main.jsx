@@ -351,6 +351,20 @@ function getPiezasBloqueadas(historias, publicaciones) {
   return bloqueadas;
 }
 
+// Ediciones de video frenadas porque la filmación (tarea padre) todavía
+// no está hecha — el cuello de botella real detrás de "Luciano atrasado"
+// suele ser "Germán no filmó todavía", así que separarlo ayuda a saber a
+// quién ir a destrabar.
+function getEdicionesEsperandoMaterial(tareas) {
+  return tareas.filter(
+    (t) =>
+      t.tipo_tarea === "edicion" &&
+      t.estado !== "hecha" &&
+      t.tarea_padre_id &&
+      t.tarea_padre_estado !== "hecha",
+  );
+}
+
 function getPublicacionesDeHoy(historias, publicaciones) {
   const hoy = getHoyLocalISO();
   const deHoy = [
@@ -4363,6 +4377,7 @@ function AgustinDashboard() {
     useState(null);
   const [historiasRaw, setHistoriasRaw] = useState([]);
   const [publicacionesRaw, setPublicacionesRaw] = useState([]);
+  const [tareasRaw, setTareasRaw] = useState([]);
   const [busquedaCliente, setBusquedaCliente] = useState("");
 
   const cargarPanorama = () => {
@@ -4382,6 +4397,7 @@ function AgustinDashboard() {
         setAprobacionesAgustin(getAprobacionesAgustin(tareasApi));
         setHistoriasRaw(historiasApi);
         setPublicacionesRaw(publicacionesApi);
+        setTareasRaw(tareasApi);
       })
       .catch((error) => {
         console.error("No se pudieron cargar los datos de Agustín", error);
@@ -4414,6 +4430,7 @@ function AgustinDashboard() {
               const atrasadas = getPiezasAtrasadas(historiasRaw, publicacionesRaw);
               const bloqueadas = getPiezasBloqueadas(historiasRaw, publicacionesRaw);
               const cumplimiento = getCumplimientoGeneral(clientes);
+              const edicionesEsperando = getEdicionesEsperandoMaterial(tareasRaw);
 
               return (
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px" }}>
@@ -4424,6 +4441,11 @@ function AgustinDashboard() {
                     <span style={{ marginRight: "20px" }}>
                       ⚠️ {bloqueadas.length} bloqueados
                     </span>
+                    {edicionesEsperando.length > 0 && (
+                      <span style={{ marginRight: "20px" }}>
+                        ⏳ {edicionesEsperando.length} edicion{edicionesEsperando.length === 1 ? "" : "es"} esperando material de Germán
+                      </span>
+                    )}
                     <span>
                       📊 Cumplimiento: <strong>{cumplimiento}%</strong>
                     </span>
