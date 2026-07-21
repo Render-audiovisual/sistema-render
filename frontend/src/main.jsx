@@ -1170,6 +1170,17 @@ function PiezasTableroPage() {
   const subtiposDisponibles = SUBTIPOS_TAREAS.filter(
     (subtipo) => !filtroArea || subtipo.area === filtroArea
   );
+  const conteoAreas = piezas.reduce((acc, pieza) => {
+    const clasificacion = clasificarPieza(pieza);
+    acc[clasificacion.area] = (acc[clasificacion.area] || 0) + 1;
+    acc.todas += 1;
+    return acc;
+  }, { todas: 0 });
+  const conteoSubtipos = piezas.reduce((acc, pieza) => {
+    const clasificacion = clasificarPieza(pieza);
+    acc[clasificacion.subtipo] = (acc[clasificacion.subtipo] || 0) + 1;
+    return acc;
+  }, {});
   const hayFiltrosActivos =
     busqueda.trim() ||
     filtroArea ||
@@ -1367,6 +1378,54 @@ function PiezasTableroPage() {
       </div>
 
       <div className="box" style={{ marginBottom: "20px" }}>
+        <div className="task-sector-panel">
+          <div className="task-sector-tabs" aria-label="Sector de tarea">
+            {AREAS_TAREAS.map((area) => (
+              <button
+                key={area.id || "todas"}
+                type="button"
+                className={`task-sector-tab ${
+                  filtroArea === area.id ? "active" : ""
+                }`}
+                onClick={() => {
+                  setFiltroArea(area.id);
+                  setFiltroSubtipo("");
+                }}
+              >
+                <span>{area.label}</span>
+                <strong>
+                  {area.id ? conteoAreas[area.id] || 0 : conteoAreas.todas}
+                </strong>
+              </button>
+            ))}
+          </div>
+
+          <div className="task-subtype-tabs" aria-label="Tipo de tarea">
+            <button
+              type="button"
+              className={`task-subtype-chip ${
+                filtroSubtipo === "" ? "active" : ""
+              }`}
+              onClick={() => setFiltroSubtipo("")}
+            >
+              Todos los subtipos
+            </button>
+            {subtiposDisponibles.map((subtipo) => (
+              <button
+                key={subtipo.id}
+                type="button"
+                className={`task-subtype-chip ${
+                  filtroSubtipo === subtipo.id ? "active" : ""
+                }`}
+                onClick={() => setFiltroSubtipo(subtipo.id)}
+              >
+                <span>{subtipo.label}</span>
+                <strong>{conteoSubtipos[subtipo.id] || 0}</strong>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Controles */}
         <div className="task-toolbar">
           <div className="task-view-toggle">
@@ -1393,34 +1452,6 @@ function PiezasTableroPage() {
               placeholder="Tarea, cliente o idea..."
             />
           </label>
-
-          <div className="task-area-toggle" aria-label="Área de tarea">
-            {AREAS_TAREAS.map((area) => (
-              <button
-                key={area.id || "todas"}
-                className={`btn ${filtroArea === area.id ? "btn-active" : ""}`}
-                onClick={() => {
-                  setFiltroArea(area.id);
-                  setFiltroSubtipo("");
-                }}
-              >
-                {area.label}
-              </button>
-            ))}
-          </div>
-
-          <select
-            className="task-filter-select"
-            value={filtroSubtipo}
-            onChange={(e) => setFiltroSubtipo(e.target.value)}
-          >
-            <option value="">Todos los subtipos</option>
-            {subtiposDisponibles.map((subtipo) => (
-              <option key={subtipo.id} value={subtipo.id}>
-                {subtipo.label}
-              </option>
-            ))}
-          </select>
 
           <select
             className="task-filter-select"
@@ -1537,6 +1568,10 @@ function PiezasTableroPage() {
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                     {piezasDelEstado.map((pieza) => {
                       const clasificacion = clasificarPieza(pieza);
+                      const chipsClasificacion = [
+                        !filtroArea && AREA_LABELS[clasificacion.area],
+                        !filtroSubtipo && SUBTIPO_LABELS[clasificacion.subtipo],
+                      ].filter(Boolean);
                       return (
                         <div
                           key={`${pieza.origen}-${pieza.id}`}
@@ -1573,10 +1608,13 @@ function PiezasTableroPage() {
                             ></div>
                           </div>
 
-                          <div className="task-card-split">
-                            <span>{AREA_LABELS[clasificacion.area]}</span>
-                            <span>{SUBTIPO_LABELS[clasificacion.subtipo]}</span>
-                          </div>
+                          {chipsClasificacion.length > 0 && (
+                            <div className="task-card-split">
+                              {chipsClasificacion.map((chip) => (
+                                <span key={chip}>{chip}</span>
+                              ))}
+                            </div>
+                          )}
 
                           <div className="task-card-client">
                             {pieza.cliente_nombre || "Sin cliente"}
