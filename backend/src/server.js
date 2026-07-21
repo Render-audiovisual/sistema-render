@@ -1080,53 +1080,6 @@ router.get("/piezas", async (_req, res, next) => {
   }
 });
 
-router.post("/piezas/limpiar-tablero", async (req, res, next) => {
-  try {
-    const { confirmacion } = req.body;
-
-    if (confirmacion !== "limpiar tablero completo") {
-      return res.status(400).json({ error: "Confirmación inválida." });
-    }
-
-    const motivo = "limpieza tablero /piezas solicitada por Agus";
-    const publicaciones = await pool.query(
-      `UPDATE publicaciones
-       SET
-         metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
-           'archivado_tablero', true,
-           'archivado_tablero_at', now()::text,
-           'archivado_tablero_motivo', $1::text
-         ),
-         updated_at = now()
-       WHERE metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
-       RETURNING id`,
-      [motivo],
-    );
-    const historias = await pool.query(
-      `UPDATE historias
-       SET
-         metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
-           'archivado_tablero', true,
-           'archivado_tablero_at', now()::text,
-           'archivado_tablero_motivo', $1::text
-         ),
-         updated_at = now()
-       WHERE metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
-       RETURNING id`,
-      [motivo],
-    );
-
-    res.json({
-      ok: true,
-      publicaciones_archivadas: publicaciones.rowCount,
-      historias_archivadas: historias.rowCount,
-      total_archivado: publicaciones.rowCount + historias.rowCount,
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
 router.get("/piezas/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
