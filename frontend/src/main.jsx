@@ -1029,6 +1029,7 @@ function TareasTableroPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [tareaSeleccionadaId, setTareaSeleccionadaId] = useState(null);
+  const [vista, setVista] = useState("tabla");
 
   const [busqueda, setBusqueda] = useState("");
   const [filtroSector, setFiltroSector] = useState("todos");
@@ -1217,8 +1218,10 @@ function TareasTableroPage() {
                 <button className="btn" type="button" onClick={limpiarFiltros}>Limpiar filtros</button>
 
                 <div className="sheet-view-tabs" style={{ margin: 0, marginLeft: "auto" }}>
-                  <button type="button" className={agruparPor === "estado" ? "active" : ""} onClick={() => setAgruparPor("estado")}>Por estado</button>
-                  <button type="button" className={agruparPor === "responsable" ? "active" : ""} onClick={() => setAgruparPor("responsable")}>Por responsable</button>
+                  <button type="button" className={vista === "tabla" ? "active" : ""} onClick={() => setVista("tabla")}>Tabla</button>
+                  <button type="button" className={vista === "kanban" ? "active" : ""} onClick={() => setVista("kanban")}>Kanban</button>
+                  <button type="button" className={vista === "calendario" ? "active" : ""} onClick={() => setVista("calendario")}>Calendario</button>
+                  <button type="button" className={vista === "persona" ? "active" : ""} onClick={() => setVista("persona")}>Por persona</button>
                 </div>
 
                 {esAdmin && (
@@ -1255,6 +1258,24 @@ function TareasTableroPage() {
 
                 {cargando ? (
                   <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando tareas…</div>
+                ) : vista === "kanban" ? (
+                  <TareaKanbanBoard
+                    tareas={tareasFiltradas}
+                    columnas={ESTADOS_TAREA}
+                    campo="estado"
+                    onMover={(id, nuevoEstado) => actualizarCampo(id, { estado: nuevoEstado })}
+                    onAbrir={setTareaSeleccionadaId}
+                  />
+                ) : vista === "calendario" ? (
+                  <TareaCalendario tareas={tareasFiltradas} onAbrir={setTareaSeleccionadaId} />
+                ) : vista === "persona" ? (
+                  <TareaKanbanBoard
+                    tareas={tareasFiltradas}
+                    columnas={RESPONSABLES_EQUIPO.map((r) => ({ id: r, label: r }))}
+                    campo="asignado_a"
+                    onMover={(id, nuevoResponsable) => actualizarCampo(id, { asignado_a: nuevoResponsable })}
+                    onAbrir={setTareaSeleccionadaId}
+                  />
                 ) : grupos.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>
                     {tareas.length === 0
@@ -1263,6 +1284,12 @@ function TareasTableroPage() {
                   </div>
                 ) : (
                   <div className="sheet-frame">
+                    <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 10px", borderBottom: "1px solid #e8eaed" }}>
+                      <div className="sheet-view-tabs" style={{ margin: 0 }}>
+                        <button type="button" className={agruparPor === "estado" ? "active" : ""} onClick={() => setAgruparPor("estado")}>Por estado</button>
+                        <button type="button" className={agruparPor === "responsable" ? "active" : ""} onClick={() => setAgruparPor("responsable")}>Por responsable</button>
+                      </div>
+                    </div>
                     <table className="sheet-table">
                       <thead>
                         <tr>
@@ -1607,6 +1634,185 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
         </button>
       </div>
     </aside>
+  );
+}
+
+// Tablero drag-and-drop genérico: columnas + un campo de la tarea que se
+// actualiza al soltar. Sirve tanto para "Kanban" (columnas = estado) como
+// para "Por persona" (columnas = responsable) sin duplicar la lógica de
+// arrastre — mismo patrón HTML5 nativo que ya usaba PiezasTableroPage.
+function TareaKanbanBoard({ tareas, columnas, campo, onMover, onAbrir }) {
+  const [arrastrandoId, setArrastrandoId] = useState(null);
+  const [columnaSobre, setColumnaSobre] = useState(null);
+
+  const iniciarArrastre = (evento, tarea) => {
+    setArrastrandoId(tarea.id);
+    evento.dataTransfer.effectAllowed = "move";
+    evento.dataTransfer.setData("text/plain", String(tarea.id));
+  };
+
+  const terminarArrastre = () => {
+    setArrastrandoId(null);
+    setColumnaSobre(null);
+  };
+
+  const permitirSoltar = (evento, columnaId) => {
+    evento.preventDefault();
+    evento.dataTransfer.dropEffect = "move";
+    setColumnaSobre(columnaId);
+  };
+
+  const soltar = (evento, columnaId) => {
+    evento.preventDefault();
+    const id = arrastrandoId || Number(evento.dataTransfer.getData("text/plain"));
+    terminarArrastre();
+    const tarea = tareas.find((t) => t.id === id);
+    if (!tarea || (tarea[campo] || null) === columnaId) return;
+    onMover(id, columnaId);
+  };
+
+  return (
+    <div className="kanban">
+      {columnas.map((col) => {
+        const items = tareas.filter((t) => (t[campo] || null) === col.id);
+        return (
+          <div
+            key={col.id}
+            className={`kanban-column ${columnaSobre === col.id ? "kanban-column-over" : ""}`}
+            onDragOver={(evento) => permitirSoltar(evento, col.id)}
+            onDrop={(evento) => soltar(evento, col.id)}
+          >
+            <div className="kanban-header">
+              <span>{col.label}</span>
+              <strong>{items.length}</strong>
+            </div>
+            {items.map((t) => {
+              const prio = getPrioridadTarea(t.prioridad);
+              return (
+                <div
+                  key={t.id}
+                  className={`task-card ${arrastrandoId === t.id ? "task-card-dragging" : ""}`}
+                  draggable
+                  onDragStart={(evento) => iniciarArrastre(evento, t)}
+                  onDragEnd={terminarArrastre}
+                  onClick={() => onAbrir(t.id)}
+                >
+                  <div className="task-card-topline">
+                    <span className="task-priority-dot" style={{ background: prio.fg }}></span>
+                    {t.cliente_nombre && <span className="task-card-type">{t.cliente_nombre}</span>}
+                  </div>
+                  <div className="task-card-title">{t.titulo}</div>
+                  <div className="task-card-meta">
+                    <span>{t.asignado_a}</span>
+                    {t.fecha_vencimiento && <span>{t.fecha_vencimiento}</span>}
+                  </div>
+                  {esperandoMaterial(t) && (
+                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#e65100", marginTop: "6px" }}>
+                      ⏳ Esperando material
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {items.length === 0 && <div className="kanban-empty">Sin tareas</div>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Vista calendario de tareas por fecha de vencimiento — reusa la grilla
+// mensual (getGrillaMes) y las clases .cal-* que ya arma el calendario
+// editorial de Publicaciones, para no reinventar el layout de mes.
+function TareaCalendario({ tareas, onAbrir }) {
+  const hoy = new Date();
+  const [year, setYear] = useState(hoy.getFullYear());
+  const [month, setMonth] = useState(hoy.getMonth());
+
+  const irMes = (delta) => {
+    let m = month + delta;
+    let y = year;
+    if (m < 0) {
+      m = 11;
+      y -= 1;
+    } else if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+    setMonth(m);
+    setYear(y);
+  };
+
+  const hoyISO = getHoyLocalISO();
+  const semanas = getGrillaMes(year, month);
+
+  const porFecha = {};
+  tareas.forEach((t) => {
+    if (!t.fecha_vencimiento) return;
+    (porFecha[t.fecha_vencimiento] = porFecha[t.fecha_vencimiento] || []).push(t);
+  });
+  Object.values(porFecha).forEach((items) => {
+    items.sort((a, b) => a.titulo.localeCompare(b.titulo));
+  });
+
+  return (
+    <>
+      <div className="cal-toolbar">
+        <div className="cal-monthnav">
+          <button aria-label="Mes anterior" className="btn cal-navbtn" type="button" onClick={() => irMes(-1)}>‹</button>
+          <span className="cal-title">{MESES[month]} {year}</span>
+          <button aria-label="Mes siguiente" className="btn cal-navbtn" type="button" onClick={() => irMes(1)}>›</button>
+        </div>
+      </div>
+
+      <div className="cal-grid">
+        {DIAS_SEMANA.map((dia) => (
+          <div className="cal-dow" key={dia}>{dia}</div>
+        ))}
+        {semanas.map((semana, si) =>
+          semana.map((dia, di) => {
+            if (dia === null) {
+              return <div className="cal-cell empty" key={`${si}-${di}`}></div>;
+            }
+            const iso = fechaISODesde(year, month, dia);
+            const items = porFecha[iso] || [];
+            const visibles = items.slice(0, 3);
+            const ocultos = Math.max(items.length - visibles.length, 0);
+            return (
+              <div
+                className={`cal-cell ${iso === hoyISO ? "today" : ""} ${items.length ? "has-items" : ""}`}
+                key={`${si}-${di}`}
+              >
+                <div className="cal-cell-head">
+                  <span className="cal-daynum">{dia}</span>
+                  {items.length > 0 && <span className="cal-count">{items.length}</span>}
+                </div>
+                <div className="cal-chip-stack">
+                  {visibles.map((t) => {
+                    const est = getEstadoTarea(t.estado);
+                    return (
+                      <div
+                        className="cal-chip"
+                        key={t.id}
+                        style={{ background: est.bg, borderLeftColor: est.fg, color: est.fg }}
+                        onClick={() => onAbrir(t.id)}
+                        title={`${t.titulo} · ${t.asignado_a} · ${est.label}`}
+                      >
+                        {t.titulo}
+                      </div>
+                    );
+                  })}
+                  {ocultos > 0 && (
+                    <div className="cal-more" style={{ cursor: "default" }}>+{ocultos} más</div>
+                  )}
+                </div>
+              </div>
+            );
+          }),
+        )}
+      </div>
+    </>
   );
 }
 
