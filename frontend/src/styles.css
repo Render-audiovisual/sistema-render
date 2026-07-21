@@ -50,15 +50,12 @@ textarea {
 
 main {
   min-height: 100vh;
-  padding: 24px;
-  margin-left: 240px;
-  transition: margin-left 0.3s ease;
+  padding: 96px 24px 24px;
 }
 
 @media (max-width: 768px) {
   main {
-    margin-left: 0;
-    padding: 60px 12px 24px;
+    padding: 126px 12px 24px;
   }
 
   .task-toolbar {
@@ -1498,50 +1495,52 @@ select:focus {
   }
 }
 
-/* ---- SIDEBAR ---- */
+/* ---- TOP NAV ---- */
 .sidebar {
-  position: fixed;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 240px;
+  align-items: center;
   background: #2a2a2a;
+  border-bottom: 1px solid #444;
   color: #fff;
-  padding: 0;
   display: flex;
-  flex-direction: column;
+  gap: 16px;
+  left: 0;
+  min-height: 72px;
+  padding: 12px 24px;
+  position: fixed;
+  right: 0;
+  top: 0;
   z-index: 1000;
-  transition: transform 0.3s ease;
 }
 
 .sidebar-header {
-  padding: 20px 16px;
-  border-bottom: 1px solid #444;
-  display: flex;
   align-items: center;
+  display: flex;
+  flex: 0 0 auto;
   justify-content: space-between;
+  min-width: 170px;
+  padding: 0;
 }
 
 .user-badge {
-  display: flex;
   align-items: center;
-  gap: 12px;
+  display: flex;
   flex: 1;
+  gap: 12px;
 }
 
 .user-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+  align-items: center;
   background: #444;
+  border-radius: 50%;
   color: #fff;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-shrink: 0;
   font-size: 13px;
   font-weight: 700;
-  flex-shrink: 0;
+  height: 38px;
+  justify-content: center;
   overflow: hidden;
+  width: 38px;
 }
 
 .user-info {
@@ -1549,67 +1548,45 @@ select:focus {
 }
 
 .user-name {
-  font-weight: 600;
-  font-size: 13px;
   color: #fff;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .user-role {
-  font-size: 11px;
   color: #aaa;
+  font-size: 11px;
   margin-top: 2px;
 }
 
-.sidebar-close {
-  display: none;
-  background: none;
-  border: none;
-  color: #fff;
-  font-size: 20px;
-  cursor: pointer;
-  padding: 0;
-  width: 30px;
-  height: 30px;
-}
-
 .sidebar-content {
+  align-items: center;
+  display: flex;
   flex: 1;
-  overflow-y: auto;
-  padding: 16px 0;
-}
-
-.sidebar-section {
-  padding: 0 0 12px 0;
-  border-bottom: 1px solid #444;
-  margin-bottom: 12px;
-}
-
-.sidebar-section:last-child {
-  border-bottom: none;
-}
-
-.sidebar-section-title {
-  font-size: 10px;
-  font-weight: 700;
-  color: #888;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  padding: 0 16px 8px;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 2px 0;
+  scrollbar-width: thin;
 }
 
 .sidebar-link {
-  display: block;
-  padding: 10px 16px;
-  color: #ccc;
-  text-decoration: none;
+  align-items: center;
   background: none;
-  border: none;
-  font-size: 13px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #ccc;
   cursor: pointer;
+  display: inline-flex;
   font-family: inherit;
+  font-size: 13px;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 12px;
+  text-align: center;
+  text-decoration: none;
   transition: all 0.2s ease;
-  text-align: left;
-  width: 100%;
+  white-space: nowrap;
+  width: auto;
 }
 
 .sidebar-link:hover {
@@ -1619,12 +1596,14 @@ select:focus {
 
 .sidebar-link.active {
   background: #0066cc;
+  border-color: #1b7fe5;
   color: #fff;
   font-weight: 600;
 }
 
 .logout-btn {
   color: #ff6b6b;
+  flex: 0 0 auto;
 }
 
 .logout-btn:hover {
@@ -1632,56 +1611,46 @@ select:focus {
   color: #fff;
 }
 
-.sidebar-toggle {
-  display: none;
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  background: #333;
-  color: #fff;
-  border: 1px solid #555;
-  border-radius: 4px;
-  padding: 8px 12px;
-  font-size: 18px;
-  cursor: pointer;
-  z-index: 1001;
-}
-
-.sidebar-overlay {
-  display: none;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 999;
-}
-
-/* Mobile responsive */
-@media (max-width: 768px) {
+@media (max-width: 980px) {
   .sidebar {
-    transform: translateX(-100%);
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-height: 0;
+    padding: 10px 14px;
   }
 
-  .sidebar.open {
-    transform: translateX(0);
+  .sidebar-header {
+    min-width: 0;
   }
 
-  .sidebar-toggle {
-    display: block;
+  .sidebar-content {
+    flex-basis: 100%;
+    order: 3;
   }
 
-  .sidebar-close {
-    display: block;
+  .logout-btn {
+    margin-left: auto;
   }
 
-  .sidebar-overlay {
-    display: block;
+  main {
+    padding-top: 134px;
   }
+}
 
-  .sidebar-overlay.hidden {
+@media (max-width: 560px) {
+  .user-info {
     display: none;
+  }
+
+  .sidebar-link {
+    font-size: 12px;
+    min-height: 34px;
+    padding: 7px 10px;
+  }
+
+  main {
+    padding-top: 126px;
   }
 }
 

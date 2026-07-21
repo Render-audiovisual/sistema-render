@@ -2774,7 +2774,6 @@ function PiezasTableroPage() {
 }
 
 function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
-  const [abierto, setAbierto] = useState(false);
   const esAdmin = sesion?.usuario?.rol === "admin";
   const usuarioKey = getUsuarioKey(sesion?.usuario?.usuario);
   const rutaTablero =
@@ -2805,82 +2804,54 @@ function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
     ],
   };
 
+  const enlacesNav = [
+    ...seccionesNav.inicio,
+    ...seccionesNav.planificacion,
+    ...seccionesNav.gestion,
+    ...seccionesNav.admin,
+    ...seccionesNav.cuenta,
+  ];
+
   const renderLinksSección = (enlaces) =>
     enlaces.map((enlace) => (
       <a
         key={enlace.href}
         href={enlace.href}
         className={`sidebar-link ${path === enlace.href ? "active" : ""}`}
-        onClick={() => setAbierto(false)}
       >
         {enlace.label}
       </a>
     ));
 
   return (
-    <>
-      <button className="sidebar-toggle" onClick={() => setAbierto(!abierto)}>
-        ☰
+    <nav className="sidebar" aria-label="Navegación principal">
+      <div className="sidebar-header">
+        <div className="user-badge">
+          <div className="user-avatar">
+            {sesion?.usuario?.foto_perfil ? (
+              <img src={sesion.usuario.foto_perfil} alt="" />
+            ) : (
+              inicialesUsuario(sesion?.usuario?.nombre)
+            )}
+          </div>
+          <div className="user-info">
+            <div className="user-name">{sesion?.usuario?.nombre}</div>
+            <div className="user-role">{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="sidebar-content">
+        {renderLinksSección(enlacesNav)}
+      </div>
+
+      <button
+        className="sidebar-link logout-btn"
+        onClick={onCerrarSesion}
+      >
+        Cerrar sesión
       </button>
-      <nav className={`sidebar ${abierto ? "open" : ""}`}>
-        <div className="sidebar-header">
-          <div className="user-badge">
-            <div className="user-avatar">
-              {sesion?.usuario?.foto_perfil ? (
-                <img src={sesion.usuario.foto_perfil} alt="" />
-              ) : (
-                inicialesUsuario(sesion?.usuario?.nombre)
-              )}
-            </div>
-            <div className="user-info">
-              <div className="user-name">{sesion?.usuario?.nombre}</div>
-              <div className="user-role">{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>
-            </div>
-          </div>
-          <button className="sidebar-close" onClick={() => setAbierto(false)}>
-            ✕
-          </button>
-        </div>
-
-        <div className="sidebar-content">
-          <div className="sidebar-section">
-            {renderLinksSección(seccionesNav.inicio)}
-          </div>
-
-          <div className="sidebar-section">
-            <div className="sidebar-section-title">Planificación</div>
-            {renderLinksSección(seccionesNav.planificacion)}
-          </div>
-
-          <div className="sidebar-section">
-            <div className="sidebar-section-title">Gestión</div>
-            {renderLinksSección(seccionesNav.gestion)}
-          </div>
-
-          {esAdmin && (
-            <div className="sidebar-section">
-              <div className="sidebar-section-title">Administración</div>
-              {renderLinksSección(seccionesNav.admin)}
-            </div>
-          )}
-
-          <div className="sidebar-section">
-            <div className="sidebar-section-title">Cuenta</div>
-            {renderLinksSección(seccionesNav.cuenta)}
-            <button
-              className="sidebar-link logout-btn"
-              onClick={() => {
-                setAbierto(false);
-                onCerrarSesion();
-              }}
-            >
-              🚪 Cerrar sesión
-            </button>
-          </div>
-        </div>
-      </nav>
-      {abierto && <div className="sidebar-overlay" onClick={() => setAbierto(false)} />}
-    </>
+    </nav>
   );
 }
 
