@@ -5503,6 +5503,10 @@ function ClientesAdminPage() {
           )}
           onClose={() => setClienteSeleccionado(null)}
           onCuotaActualizada={cargarClientes}
+          onClienteEliminado={(id) => {
+            setClientes((prev) => prev.filter((cliente) => cliente.id !== id));
+            setClienteSeleccionado(null);
+          }}
         />
       )}
     </main>
@@ -6495,6 +6499,7 @@ function DetalleClienteModal({
   publicaciones,
   onClose,
   onCuotaActualizada,
+  onClienteEliminado,
 }) {
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
@@ -6578,6 +6583,30 @@ function DetalleClienteModal({
       })
       .catch(() => {
         setError("No se pudo enviar el aviso. Intentá de nuevo.");
+        setEnviando(null);
+      });
+  };
+
+  const handleEliminarCliente = () => {
+    const confirmado = window.confirm(
+      `Eliminar ${cliente.nombre}? Solo se permite si no tiene piezas, tareas ni planificación asociada.`,
+    );
+    if (!confirmado) return;
+
+    setEnviando("eliminar");
+    setError(null);
+
+    fetch(`/api/clientes/${cliente.id}`, { method: "DELETE" })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo eliminar el cliente.");
+        }
+        return data;
+      })
+      .then(() => onClienteEliminado(cliente.id))
+      .catch((err) => {
+        setError(err.message);
         setEnviando(null);
       });
   };
@@ -6672,6 +6701,14 @@ function DetalleClienteModal({
               onClick={handleEditarCuota}
             >
               {enviando === "cuota" ? "Guardando..." : "Editar cuota"}
+            </button>
+            <button
+              className="btn danger"
+              type="button"
+              disabled={enviando !== null}
+              onClick={handleEliminarCliente}
+            >
+              {enviando === "eliminar" ? "Eliminando..." : "Eliminar cliente"}
             </button>
           </div>
         </div>

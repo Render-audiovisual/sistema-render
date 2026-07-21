@@ -499,6 +499,15 @@ th {
   color: #555;
 }
 
+.btn.danger {
+  border-color: #b91c1c;
+  color: #b91c1c;
+}
+
+.btn.danger:hover {
+  background: #fef2f2;
+}
+
 .btn.disabled,
 .btn:disabled {
   background: #ececec;
