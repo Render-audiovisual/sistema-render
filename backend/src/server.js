@@ -1044,6 +1044,7 @@ router.get("/piezas", async (_req, res, next) => {
         p.updated_at
       FROM publicaciones p
       LEFT JOIN clientes c ON c.id = p.cliente_id
+      WHERE p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
 
       UNION ALL
 
@@ -1069,6 +1070,7 @@ router.get("/piezas", async (_req, res, next) => {
         h.updated_at
       FROM historias h
       LEFT JOIN clientes c ON c.id = h.cliente_id
+      WHERE h.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
 
       ORDER BY created_at DESC
     `);
