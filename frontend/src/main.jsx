@@ -1656,7 +1656,7 @@ function PiezasTableroPage() {
 
         {/* VISTA TABLA */}
         {vista === "tabla" && (
-          <div style={{ overflowX: "auto" }}>
+          <div className="task-table-scroll">
             <table style={{ width: "100%", fontSize: "13px" }}>
               <thead>
                 <tr>

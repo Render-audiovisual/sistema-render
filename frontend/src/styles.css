@@ -882,6 +882,152 @@ select:focus {
   font-size: 11px;
 }
 
+.task-table-scroll {
+  overflow-x: auto;
+}
+
+.task-table-scroll table {
+  width: 100%;
+  font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .box {
+    padding: 12px;
+  }
+
+  .task-sector-panel {
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 8px;
+  }
+
+  .task-sector-tabs {
+    gap: 7px;
+  }
+
+  .task-sector-tab {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+    justify-content: center;
+    min-height: 58px;
+    padding: 9px;
+  }
+
+  .task-sector-tab span {
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .task-sector-tab strong {
+    align-self: flex-start;
+    font-size: 11px;
+    min-width: 24px;
+  }
+
+  .task-subtype-tabs {
+    margin: 0 -8px;
+    padding: 0 8px 4px;
+    scrollbar-width: thin;
+  }
+
+  .task-subtype-chip {
+    max-width: 210px;
+    min-height: 34px;
+    white-space: nowrap;
+  }
+
+  .task-toolbar {
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .task-view-toggle {
+    width: 100%;
+  }
+
+  .task-search {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  .task-filter-select {
+    min-width: 0;
+  }
+
+  .task-results-count {
+    order: 10;
+    text-align: center;
+    width: 100%;
+  }
+
+  .kanban {
+    gap: 10px;
+    margin: 0 -12px;
+    padding: 2px 12px 12px;
+    scroll-padding-left: 12px;
+    scroll-snap-type: x mandatory;
+  }
+
+  .kanban-column {
+    flex-basis: min(86vw, 330px);
+    max-height: calc(100svh - 260px);
+    min-width: min(86vw, 330px);
+    padding: 10px;
+  }
+
+  .kanban-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #f2f2f2;
+    padding-bottom: 7px;
+  }
+
+  .task-card {
+    padding: 10px;
+  }
+
+  .task-card:hover {
+    box-shadow: none;
+    transform: none;
+  }
+
+  .task-card-topline,
+  .task-card-meta {
+    align-items: flex-start;
+  }
+
+  .task-card-type {
+    line-height: 1.25;
+    max-width: calc(100% - 24px);
+  }
+
+  .task-card-client {
+    font-size: 12px;
+    margin-top: 7px;
+  }
+
+  .task-card-title {
+    font-size: 12px;
+  }
+
+  .task-card-meta span,
+  .task-card-split span {
+    line-height: 1.2;
+  }
+
+  .task-table-scroll {
+    margin: 0 -12px;
+    padding: 0 12px 4px;
+  }
+
+  .task-table-scroll table {
+    min-width: 780px;
+  }
+}
+
 .progress-grid {
   display: grid;
   gap: 12px;
