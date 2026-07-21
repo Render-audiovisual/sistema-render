@@ -11,7 +11,7 @@ async function archivarTabla(tabla) {
         metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
           'archivado_tablero', true,
           'archivado_tablero_at', now()::text,
-          'archivado_tablero_motivo', $1
+          'archivado_tablero_motivo', $1::text
         ),
         updated_at = now()
       WHERE metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
