@@ -2793,24 +2793,25 @@ function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
     ],
     gestion: [
       { href: "/piezas", label: "Tareas" },
-      { href: "/reportes-historias", label: "Reporte del equipo" },
     ],
     admin: esAdmin ? [
       { href: "/clientes", label: "Clientes" },
-      { href: "/empleados", label: "Usuarios / permisos" },
     ] : [],
-    cuenta: [
+    mas: [
+      { href: "/reportes-historias", label: "Reporte" },
+      ...(esAdmin ? [{ href: "/empleados", label: "Usuarios" }] : []),
       { href: "/perfil", label: "Perfil" },
     ],
   };
 
-  const enlacesNav = [
+  const enlacesPrincipales = [
     ...seccionesNav.inicio,
     ...seccionesNav.planificacion,
     ...seccionesNav.gestion,
     ...seccionesNav.admin,
-    ...seccionesNav.cuenta,
   ];
+  const enlacesMas = seccionesNav.mas;
+  const masActivo = enlacesMas.some((enlace) => path === enlace.href);
 
   const renderLinksSección = (enlaces) =>
     enlaces.map((enlace) => (
@@ -2842,7 +2843,15 @@ function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
       </div>
 
       <div className="sidebar-content">
-        {renderLinksSección(enlacesNav)}
+        {renderLinksSección(enlacesPrincipales)}
+        {enlacesMas.length > 0 && (
+          <details className={`sidebar-more ${masActivo ? "active" : ""}`}>
+            <summary className="sidebar-link sidebar-more-trigger">Más</summary>
+            <div className="sidebar-more-menu">
+              {renderLinksSección(enlacesMas)}
+            </div>
+          </details>
+        )}
       </div>
 
       <button

@@ -1564,9 +1564,8 @@ select:focus {
   display: flex;
   flex: 1;
   gap: 6px;
-  overflow-x: auto;
+  overflow: visible;
   padding: 2px 0;
-  scrollbar-width: thin;
 }
 
 .sidebar-link {
@@ -1601,6 +1600,56 @@ select:focus {
   font-weight: 600;
 }
 
+.sidebar-more {
+  flex: 0 0 auto;
+  position: relative;
+}
+
+.sidebar-more summary {
+  list-style: none;
+}
+
+.sidebar-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.sidebar-more-trigger::after {
+  content: "v";
+  font-size: 10px;
+  margin-left: 7px;
+}
+
+.sidebar-more.active > .sidebar-more-trigger {
+  background: #333;
+  border-color: #555;
+  color: #fff;
+}
+
+.sidebar-more[open] > .sidebar-more-trigger {
+  background: #333;
+  color: #fff;
+}
+
+.sidebar-more-menu {
+  background: #2f2f2f;
+  border: 1px solid #4a4a4a;
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.22);
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+  padding: 8px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 1001;
+}
+
+.sidebar-more-menu .sidebar-link {
+  justify-content: flex-start;
+  width: 100%;
+}
+
 .logout-btn {
   color: #ff6b6b;
   flex: 0 0 auto;
@@ -1627,6 +1676,14 @@ select:focus {
   .sidebar-content {
     flex-basis: 100%;
     order: 3;
+    overflow-x: auto;
+    overflow-y: visible;
+    scrollbar-width: thin;
+  }
+
+  .sidebar-more-menu {
+    left: 0;
+    right: auto;
   }
 
   .logout-btn {
