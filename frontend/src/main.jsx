@@ -1031,6 +1031,7 @@ function TareasTableroPage() {
   const [tareaSeleccionadaId, setTareaSeleccionadaId] = useState(null);
   const [vista, setVista] = useState("tabla");
   const [mostrarWizard, setMostrarWizard] = useState(false);
+  const [mostrarFiltros, setMostrarFiltros] = useState(false);
 
   const [busqueda, setBusqueda] = useState("");
   const [filtroSector, setFiltroSector] = useState("todos");
@@ -1085,6 +1086,14 @@ function TareasTableroPage() {
     if (filtroFecha === "semana") return t.fecha_vencimiento > hoyISO && t.fecha_vencimiento <= limiteSemanaISO;
     return true;
   };
+
+  const filtrosActivos = [
+    filtroResponsable !== "todos",
+    filtroCliente !== "todos",
+    filtroEstado !== "todos",
+    filtroPrioridad !== "todos",
+    filtroFecha !== "todas",
+  ].filter(Boolean).length;
 
   const tareasFiltradas = tareas.filter((t) => {
     if (filtroSector !== "todos" && t.tipo_tarea !== filtroSector) return false;
@@ -1185,38 +1194,97 @@ function TareasTableroPage() {
                     onChange={(e) => setBusqueda(e.target.value)}
                   />
                 </div>
-                <select className="task-filter-select" value={filtroResponsable} onChange={(e) => setFiltroResponsable(e.target.value)}>
-                  <option value="todos">Todos los responsables</option>
-                  {RESPONSABLES_EQUIPO.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-                <select className="task-filter-select" value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}>
-                  <option value="todos">Todos los clientes</option>
-                  {clientes.map((c) => (
-                    <option key={c.id} value={c.id}>{c.nombre}</option>
-                  ))}
-                </select>
-                <select className="task-filter-select" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
-                  <option value="todos">Todos los estados</option>
-                  {ESTADOS_TAREA.map((e) => (
-                    <option key={e.id} value={e.id}>{e.label}</option>
-                  ))}
-                </select>
-                <select className="task-filter-select" value={filtroPrioridad} onChange={(e) => setFiltroPrioridad(e.target.value)}>
-                  <option value="todos">Toda prioridad</option>
-                  {PRIORIDADES_TAREA.map((p) => (
-                    <option key={p.id} value={p.id}>{p.label}</option>
-                  ))}
-                </select>
-                <select className="task-filter-select" value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)}>
-                  <option value="todas">Toda fecha</option>
-                  <option value="vencidas">Vencidas</option>
-                  <option value="hoy">Hoy</option>
-                  <option value="semana">Esta semana</option>
-                  <option value="sin_fecha">Sin fecha</option>
-                </select>
-                <button className="btn" type="button" onClick={limpiarFiltros}>Limpiar filtros</button>
+
+                <div style={{ position: "relative" }}>
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => setMostrarFiltros((v) => !v)}
+                    style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                  >
+                    Filtros
+                    {filtrosActivos > 0 && (
+                      <span
+                        style={{
+                          background: "#202124",
+                          color: "#fff",
+                          borderRadius: "999px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          minWidth: "18px",
+                          height: "18px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "0 5px",
+                        }}
+                      >
+                        {filtrosActivos}
+                      </span>
+                    )}
+                  </button>
+
+                  {mostrarFiltros && (
+                    <>
+                      <div
+                        onClick={() => setMostrarFiltros(false)}
+                        style={{ position: "fixed", inset: 0, zIndex: 20 }}
+                      />
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "calc(100% + 6px)",
+                          left: 0,
+                          background: "#fff",
+                          border: "1px solid #ddd",
+                          borderRadius: "8px",
+                          boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                          padding: "14px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "8px",
+                          minWidth: "220px",
+                          zIndex: 21,
+                        }}
+                      >
+                        <select className="task-filter-select" style={{ width: "100%" }} value={filtroResponsable} onChange={(e) => setFiltroResponsable(e.target.value)}>
+                          <option value="todos">Todos los responsables</option>
+                          {RESPONSABLES_EQUIPO.map((r) => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                        <select className="task-filter-select" style={{ width: "100%" }} value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}>
+                          <option value="todos">Todos los clientes</option>
+                          {clientes.map((c) => (
+                            <option key={c.id} value={c.id}>{c.nombre}</option>
+                          ))}
+                        </select>
+                        <select className="task-filter-select" style={{ width: "100%" }} value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+                          <option value="todos">Todos los estados</option>
+                          {ESTADOS_TAREA.map((e) => (
+                            <option key={e.id} value={e.id}>{e.label}</option>
+                          ))}
+                        </select>
+                        <select className="task-filter-select" style={{ width: "100%" }} value={filtroPrioridad} onChange={(e) => setFiltroPrioridad(e.target.value)}>
+                          <option value="todos">Toda prioridad</option>
+                          {PRIORIDADES_TAREA.map((p) => (
+                            <option key={p.id} value={p.id}>{p.label}</option>
+                          ))}
+                        </select>
+                        <select className="task-filter-select" style={{ width: "100%" }} value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)}>
+                          <option value="todas">Toda fecha</option>
+                          <option value="vencidas">Vencidas</option>
+                          <option value="hoy">Hoy</option>
+                          <option value="semana">Esta semana</option>
+                          <option value="sin_fecha">Sin fecha</option>
+                        </select>
+                        {filtrosActivos > 0 && (
+                          <button className="btn" type="button" onClick={limpiarFiltros}>Limpiar filtros</button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
 
                 <div className="sheet-view-tabs" style={{ margin: 0, marginLeft: "auto" }}>
                   <button type="button" className={vista === "tabla" ? "active" : ""} onClick={() => setVista("tabla")}>Tabla</button>
