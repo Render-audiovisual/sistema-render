@@ -3152,14 +3152,14 @@ function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
     ],
     gestion: [
       { href: "/piezas", label: "Tareas" },
+      { href: "/reportes-historias", label: "Reporte" },
     ],
     admin: esAdmin ? [
       { href: "/clientes", label: "Clientes" },
     ] : [],
-    mas: [
-      { href: "/reportes-historias", label: "Reporte" },
-      ...(esAdmin ? [{ href: "/empleados", label: "Usuarios" }] : []),
+    cuenta: [
       { href: "/perfil", label: "Perfil" },
+      ...(esAdmin ? [{ href: "/empleados", label: "Usuarios" }] : []),
     ],
   };
 
@@ -3169,8 +3169,8 @@ function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
     ...seccionesNav.gestion,
     ...seccionesNav.admin,
   ];
-  const enlacesMas = seccionesNav.mas;
-  const masActivo = enlacesMas.some((enlace) => path === enlace.href);
+  const enlacesCuenta = seccionesNav.cuenta;
+  const cuentaActiva = enlacesCuenta.some((enlace) => path === enlace.href);
 
   const renderLinksSección = (enlaces) =>
     enlaces.map((enlace) => (
@@ -3186,39 +3186,39 @@ function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
   return (
     <nav className="sidebar" aria-label="Navegación principal">
       <div className="sidebar-header">
-        <div className="user-badge">
-          <div className="user-avatar">
-            {sesion?.usuario?.foto_perfil ? (
-              <img src={sesion.usuario.foto_perfil} alt="" />
-            ) : (
-              inicialesUsuario(sesion?.usuario?.nombre)
-            )}
-          </div>
-          <div className="user-info">
-            <div className="user-name">{sesion?.usuario?.nombre}</div>
-            <div className="user-role">{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>
-          </div>
-        </div>
+        <div className="brand-mark">RENDER</div>
       </div>
 
       <div className="sidebar-content">
         {renderLinksSección(enlacesPrincipales)}
-        {enlacesMas.length > 0 && (
-          <details className={`sidebar-more ${masActivo ? "active" : ""}`}>
-            <summary className="sidebar-link sidebar-more-trigger">Más</summary>
-            <div className="sidebar-more-menu">
-              {renderLinksSección(enlacesMas)}
-            </div>
-          </details>
-        )}
       </div>
 
-      <button
-        className="sidebar-link logout-btn"
-        onClick={onCerrarSesion}
-      >
-        Cerrar sesión
-      </button>
+      <details className={`account-menu ${cuentaActiva ? "active" : ""}`}>
+        <summary className="account-trigger">
+          <div className="user-badge">
+            <div className="user-avatar">
+              {sesion?.usuario?.foto_perfil ? (
+                <img src={sesion.usuario.foto_perfil} alt="" />
+              ) : (
+                inicialesUsuario(sesion?.usuario?.nombre)
+              )}
+            </div>
+            <div className="user-info">
+              <div className="user-name">{sesion?.usuario?.nombre}</div>
+              <div className="user-role">{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>
+            </div>
+          </div>
+        </summary>
+        <div className="account-menu-panel">
+          {renderLinksSección(enlacesCuenta)}
+          <button
+            className="sidebar-link logout-btn"
+            onClick={onCerrarSesion}
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </details>
     </nav>
   );
 }
@@ -7767,25 +7767,45 @@ function HistoriasPlanillaTab({
         <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando planilla…</div>
       ) : (
         <div className="sheet-frame" ref={gridRef}>
-          <table className="sheet-table">
+          <table className="sheet-table sheet-planning-table">
+            <colgroup>
+              <col className="sheet-rownum-col" />
+              <col className="sheet-day-col" />
+              <col className="sheet-date-col" />
+              <col className="sheet-time-col" />
+              <col className="sheet-type-col" />
+              <col className="sheet-copy-col" />
+              <col className="sheet-material-col" />
+              <col className="sheet-notes-col" />
+              <col className="sheet-owner-col" />
+              <col className="sheet-status-col" />
+              <col className="sheet-actions-col" />
+            </colgroup>
             <thead>
+              <tr className="sheet-column-letters">
+                <th className="sheet-corner"></th>
+                {["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"].map((letra) => (
+                  <th key={letra}>{letra}</th>
+                ))}
+              </tr>
               <tr>
-                <th style={{ width: "40px" }}>Día</th>
-                <th style={{ width: "108px" }}>Fecha</th>
-                <th style={{ width: "62px" }}>Hora</th>
-                <th style={{ width: "150px" }}>Tipo</th>
-                <th style={{ width: "34%" }}>Copy</th>
-                <th style={{ width: "11%" }}>Material</th>
-                <th style={{ width: "19%" }}>Observaciones</th>
-                <th style={{ width: "100px" }}>Responsable</th>
-                <th style={{ width: "118px" }}>Estado</th>
-                <th style={{ width: "78px" }}></th>
+                <th className="sheet-rownum-head"></th>
+                <th>Día</th>
+                <th>Fecha</th>
+                <th>Hora</th>
+                <th>Tipo</th>
+                <th>Copy</th>
+                <th>Material</th>
+                <th>Observaciones</th>
+                <th>Responsable</th>
+                <th>Estado</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {filasVisibles.length === 0 && (
                 <tr>
-                  <td colSpan={10} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
+                  <td colSpan={11} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
                     Sin historias planificadas este mes todavía.
                   </td>
                 </tr>
@@ -7806,11 +7826,12 @@ function HistoriasPlanillaTab({
 
                 return (
                   <tr key={h.id} style={{ background: bgFila, borderTop: esNuevoDia && rowIndex > 0 ? "2px solid #dadce0" : undefined }}>
-                    <td style={{ padding: "8px 6px", fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "#c62828" : esFinde ? "#999" : "#333", fontSize: "12px" }}>
+                    <td className="sheet-row-number">{rowIndex + 1}</td>
+                    <td className="sheet-day-cell" style={{ fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "#c62828" : esFinde ? "#999" : "#333" }}>
                       {esNuevoDia ? LETRAS_DIA[dow] : ""}
                       {estaAtrasada && esNuevoDia && <span title="Atrasada" style={{ marginLeft: "2px" }}>⚠</span>}
                     </td>
-                    <td>
+                    <td className="sheet-date-cell">
                       <input
                         type="date"
                         className="sheet-cell"
@@ -7848,7 +7869,7 @@ function HistoriasPlanillaTab({
                         onPaste={(e) => manejarPaste(e, rowIndex, "tipo")}
                       />
                     </td>
-                    <td>
+                    <td className="h-copy-cell">
                       <textarea
                         className="sheet-cell sheet-cell-textarea"
                         data-cell={`${rowIndex}:copy`}
@@ -7961,6 +7982,7 @@ function HistoriasPlanillaTab({
                 );
               })}
               <tr>
+                <td className="sheet-row-number">{filasVisibles.length + 1}</td>
                 <td colSpan={10} style={{ padding: 0 }}>
                   <button type="button" className="sheet-add-row" onClick={onAgregar}>
                     <span style={{ fontSize: "15px" }}>+</span> Agregar historia
@@ -8194,28 +8216,27 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
   );
 }
 
-function HistoriasEstructuraTab({ clienteId, clienteNombre }) {
+function HistoriasEstructuraTab({ clientes }) {
   const [estructura, setEstructura] = useState([]);
-  const [fechasEspeciales, setFechasEspeciales] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
 
-  const NOMBRES_DIA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+  const DIAS_SEMANA = [
+    { id: 1, label: "Lunes" },
+    { id: 2, label: "Martes" },
+    { id: 3, label: "Miércoles" },
+    { id: 4, label: "Jueves" },
+    { id: 5, label: "Viernes" },
+    { id: 6, label: "Sábado" },
+    { id: 0, label: "Domingo" },
+  ];
 
   useEffect(() => {
-    if (!clienteId) return;
     setCargando(true);
-    Promise.all([
-      fetch("/api/estructura").then((r) => r.json()),
-      fetch("/api/fechas-especiales").then((r) => r.json()),
-    ])
-      .then(([est, fechas]) => {
-        setEstructura(est.filter((e) => e.cliente_id === clienteId));
-        setFechasEspeciales(
-          fechas
-            .filter((f) => !f.cliente_id || f.cliente_id === clienteId)
-            .sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "")),
-        );
+    fetch("/api/estructura")
+      .then((r) => r.json())
+      .then((data) => {
+        setEstructura(data);
         setError(null);
       })
       .catch((err) => {
@@ -8223,15 +8244,13 @@ function HistoriasEstructuraTab({ clienteId, clienteNombre }) {
         setError("No se pudo cargar la estructura.");
       })
       .finally(() => setCargando(false));
-  }, [clienteId]);
+  }, []);
 
-  const estructuraPorDia = {};
+  const estructuraPorClienteDia = {};
   estructura.forEach((e) => {
-    estructuraPorDia[e.dia_semana] = e;
+    if (!estructuraPorClienteDia[e.cliente_id]) estructuraPorClienteDia[e.cliente_id] = {};
+    estructuraPorClienteDia[e.cliente_id][e.dia_semana] = e;
   });
-
-  const hoyISO = getHoyLocalISO();
-  const estadoLabel = { pendiente: "Pendiente", en_curso: "En curso", hecho: "Hecho" };
 
   if (cargando) {
     return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando estructura…</div>;
@@ -8246,27 +8265,46 @@ function HistoriasEstructuraTab({ clienteId, clienteNombre }) {
       )}
 
       <div className="sheet-frame">
-        <div className="sheet-namebar">Estructura base semanal — {clienteNombre}</div>
-        <table className="sheet-table">
+        <div className="sheet-namebar">Estructura semanal de historias</div>
+        <table className="sheet-table historias-week-structure-table">
+          <colgroup>
+            <col className="historias-local-col" />
+            {DIAS_SEMANA.map((dia) => (
+              <col key={dia.id} className="historias-day-structure-col" />
+            ))}
+          </colgroup>
           <thead>
             <tr>
-              <th style={{ width: "120px" }}>Día</th>
-              <th style={{ width: "110px" }}>Tipo</th>
-              <th>Tema</th>
-              <th style={{ width: "22%" }}>Horario</th>
-              <th style={{ width: "22%" }}>CTA fijo</th>
+              <th>Local</th>
+              {DIAS_SEMANA.map((dia) => (
+                <th key={dia.id}>{dia.label}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {NOMBRES_DIA.map((dia, idx) => {
-              const est = estructuraPorDia[idx];
+            {clientes.map((cliente) => {
+              const estructuraCliente = estructuraPorClienteDia[cliente.id] || {};
               return (
-                <tr key={idx}>
-                  <td style={{ padding: "8px 10px", fontWeight: "600" }}>{dia}</td>
-                  <td style={{ padding: "8px 10px" }}>{est?.tipo || "—"}</td>
-                  <td style={{ padding: "8px 10px" }}>{est?.tema || "—"}</td>
-                  <td style={{ padding: "8px 10px" }}>{est?.horario || "—"}</td>
-                  <td style={{ padding: "8px 10px" }}>{est?.cta_fijo || "—"}</td>
+                <tr key={cliente.id}>
+                  <td className="historias-local-cell">{cliente.nombre}</td>
+                  {DIAS_SEMANA.map((dia) => {
+                    const est = estructuraCliente[dia.id];
+                    return (
+                      <td key={dia.id} className="historias-structure-cell">
+                        {est ? (
+                          <>
+                            <div className="historias-structure-type">{est.tipo || "Historia"}</div>
+                            <div className="historias-structure-topic">{est.tema || "—"}</div>
+                            <div className="historias-structure-meta">
+                              {[est.horario, est.cta_fijo].filter(Boolean).join(" · ") || "Sin horario"}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="muted-cell">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
                 </tr>
               );
             })}
@@ -8275,35 +8313,78 @@ function HistoriasEstructuraTab({ clienteId, clienteNombre }) {
       </div>
 
       <div className="caption" style={{ marginTop: "10px", marginBottom: "18px" }}>
-        → Patrón base de cada día de la semana. Al agregar una historia nueva en
-        la Planilla, el tipo y horario de este día se sugieren solos.
+        Patrón base semanal por local. Al agregar una historia nueva en la Planilla,
+        el tipo y horario de ese día se sugieren solos.
       </div>
+    </>
+  );
+}
+
+function HistoriasFechasEspecialesTab({ clientes }) {
+  const [fechasEspeciales, setFechasEspeciales] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setCargando(true);
+    fetch("/api/fechas-especiales")
+      .then((r) => r.json())
+      .then((data) => {
+        setFechasEspeciales(
+          data.slice().sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "")),
+        );
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("No se pudieron cargar fechas especiales", err);
+        setError("No se pudieron cargar las fechas especiales.");
+      })
+      .finally(() => setCargando(false));
+  }, []);
+
+  const hoyISO = getHoyLocalISO();
+  const estadoLabel = { pendiente: "Pendiente", en_curso: "En curso", hecho: "Hecho" };
+  const clientesPorId = Object.fromEntries(clientes.map((c) => [c.id, c.nombre]));
+
+  if (cargando) {
+    return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando fechas especiales…</div>;
+  }
+
+  return (
+    <>
+      {error && (
+        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+          {error}
+        </div>
+      )}
 
       <div className="sheet-frame">
-        <div className="sheet-namebar">Fechas especiales próximas</div>
+        <div className="sheet-namebar">Fechas especiales</div>
         {fechasEspeciales.length === 0 ? (
           <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>No hay fechas especiales registradas.</div>
         ) : (
-          <table className="sheet-table">
+          <table className="sheet-table historias-special-dates-table">
             <thead>
               <tr>
                 <th style={{ width: "110px" }}>Fecha</th>
-                <th>Evento</th>
+                <th style={{ width: "170px" }}>Local</th>
+                <th style={{ width: "24%" }}>Motivo</th>
+                <th>Acción sugerida</th>
                 <th style={{ width: "110px" }}>Estado</th>
-                <th>Idea</th>
               </tr>
             </thead>
             <tbody>
               {fechasEspeciales.map((f) => (
                 <tr key={f.id} className={f.fecha && f.fecha < hoyISO && f.estado !== "hecho" ? "sheet-row-danger" : undefined}>
                   <td style={{ padding: "8px 10px" }}>{f.fecha || "Sin fecha"}</td>
-                  <td style={{ padding: "8px 10px" }}>{f.evento}</td>
+                  <td style={{ padding: "8px 10px", fontWeight: 600 }}>{f.cliente_id ? clientesPorId[f.cliente_id] || "Sin local" : "Todos"}</td>
+                  <td style={{ padding: "8px 10px" }}>{f.evento || "—"}</td>
+                  <td style={{ padding: "8px 10px" }}>{f.idea || "—"}</td>
                   <td style={{ padding: "8px 10px" }}>
                     <span className="sheet-status-pill" style={{ background: f.estado === "hecho" ? "#c8e6c9" : f.estado === "en_curso" ? "#fff9c4" : "#ffccbc" }}>
                       {estadoLabel[f.estado] || f.estado}
                     </span>
                   </td>
-                  <td style={{ padding: "8px 10px" }}>{f.idea || "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -8359,27 +8440,48 @@ function FlyersMigrarBanner({ onMigrado }) {
   );
 }
 
-function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atrasadasPorCliente }) {
+function getInicialesCliente(nombre = "") {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return "?";
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return `${partes[0][0]}${partes[1][0]}`.toUpperCase();
+}
+
+function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atrasadasPorCliente, compacto, onToggleCompacto }) {
   const [busqueda, setBusqueda] = useState("");
   const filtrados = clientes.filter((c) =>
     c.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()),
   );
 
   return (
-    <aside className="h-rail">
+    <aside className={`h-rail ${compacto ? "compact" : ""}`}>
       <div className="h-rail-head">
-        <div className="h-rail-search">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-            <circle cx="11" cy="11" r="7" />
-            <path d="M21 21l-4.3-4.3" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Buscar cliente…"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-          />
+        <div className="h-rail-titlebar">
+          <span>Locales</span>
+          <button
+            type="button"
+            className="h-rail-toggle"
+            onClick={onToggleCompacto}
+            aria-label={compacto ? "Expandir locales" : "Compactar locales"}
+            title={compacto ? "Expandir locales" : "Compactar locales"}
+          >
+            {compacto ? ">" : "<"}
+          </button>
         </div>
+        {!compacto && (
+          <div className="h-rail-search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Buscar local…"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+          </div>
+        )}
       </div>
       <div className="h-rail-list">
         {filtrados.map((c) => {
@@ -8390,8 +8492,10 @@ function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atrasadasP
               type="button"
               className={`h-client-row ${clienteSeleccionado === c.id ? "active" : ""}`}
               onClick={() => onSeleccionar(c.id)}
+              title={c.nombre}
             >
               <span className={`h-client-dot ${atrasadas > 0 ? "danger" : "ok"}`}></span>
+              {compacto && <span className="h-client-initials">{getInicialesCliente(c.nombre)}</span>}
               <span className="h-client-name">{c.nombre}</span>
               {atrasadas > 0 && <span className="h-client-badge">{atrasadas}</span>}
             </button>
@@ -8407,12 +8511,13 @@ function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atrasadasP
 
 function HistoriasPage({ initialTab = "planilla" }) {
   const [vista, setVista] = useState(
-    ["checklist", "estructura"].includes(initialTab) ? initialTab : "planilla",
+    ["checklist", "estructura", "fechas"].includes(initialTab) ? initialTab : "planilla",
   );
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [errorClientes, setErrorClientes] = useState(null);
   const [refrescarKey, setRefrescarKey] = useState(0);
+  const [clientesCompactos, setClientesCompactos] = useState(true);
 
   const [historias, setHistorias] = useState([]);
   const [cargandoHistorias, setCargandoHistorias] = useState(true);
@@ -8636,33 +8741,38 @@ function HistoriasPage({ initialTab = "planilla" }) {
           )}
 
           <div className="h-workspace">
-            <ClientesRail
-              clientes={clientes}
-              clienteSeleccionado={clienteSeleccionado}
-              onSeleccionar={setClienteSeleccionado}
-              atrasadasPorCliente={atrasadasPorCliente}
-            />
+            {vista === "planilla" && (
+              <ClientesRail
+                clientes={clientes}
+                clienteSeleccionado={clienteSeleccionado}
+                onSeleccionar={setClienteSeleccionado}
+                atrasadasPorCliente={atrasadasPorCliente}
+                compacto={clientesCompactos}
+                onToggleCompacto={() => setClientesCompactos((valor) => !valor)}
+              />
+            )}
 
             <div className="h-main">
               <div className="h-toolbar">
-                {vista !== "checklist" && (
+                {vista === "planilla" && (
                   <div className="h-toolbar-client">{clienteNombre || "…"}</div>
                 )}
-                {vista !== "estructura" && (
+                {["planilla", "checklist"].includes(vista) && (
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                     <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
                     <strong className="sheet-title">{MESES[month]} {year}</strong>
                     <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
                   </div>
                 )}
-                {vista !== "estructura" && (
+                {["planilla", "checklist"].includes(vista) && (
                   <button className="h-today-btn" type="button" onClick={irAHoy}>Ir a hoy</button>
                 )}
 
                 <div className="sheet-view-tabs" style={{ margin: 0 }}>
                   <button type="button" className={vista === "planilla" ? "active" : ""} onClick={() => setVista("planilla")}>Planilla</button>
                   <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => setVista("checklist")}>Checklist</button>
-                  <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => setVista("estructura")}>Estructura</button>
+                  <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => setVista("estructura")}>Estructura semanal</button>
+                  <button type="button" className={vista === "fechas" ? "active" : ""} onClick={() => setVista("fechas")}>Fechas especiales</button>
                 </div>
 
                 {vista === "planilla" && (
@@ -8706,11 +8816,17 @@ function HistoriasPage({ initialTab = "planilla" }) {
                   />
                 )}
 
-                {clienteSeleccionado && vista === "estructura" && (
+                {vista === "estructura" && (
                   <HistoriasEstructuraTab
-                    key={`e-${clienteSeleccionado}`}
-                    clienteId={clienteSeleccionado}
-                    clienteNombre={clienteNombre}
+                    key="estructura-general"
+                    clientes={clientes}
+                  />
+                )}
+
+                {vista === "fechas" && (
+                  <HistoriasFechasEspecialesTab
+                    key="fechas-especiales"
+                    clientes={clientes}
                   />
                 )}
 
