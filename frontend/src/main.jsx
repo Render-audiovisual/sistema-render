@@ -988,26 +988,31 @@ function TareasAsignadasGenericas({ nombre, tipoTarea, titulo }) {
 // ── TAREAS: tablero operativo real, sobre la tabla `tareas` (no el UNION
 // de historias+publicaciones que usa PiezasTableroPage más abajo) ────────
 
+// Colores pensados para fondo oscuro (Tareas es la única sección de
+// Sistema Render en modo oscuro, ver .tareas-viewport en styles.css) —
+// estas constantes son exclusivas del módulo Tareas, no se usan en
+// ningún lugar claro de la app (confirmado: NuevaTareaPage solo usa
+// .label, no .bg/.fg).
 const SECTORES_TAREA = [
-  { id: "diseno", label: "Diseño", bg: "#f3e5f5", fg: "#7b1fa2" },
-  { id: "produccion", label: "Producción", bg: "#e0f2f1", fg: "#00695c" },
-  { id: "edicion", label: "Edición", bg: "#e3f2fd", fg: "#1565c0" },
-  { id: "community", label: "Community", bg: "#fce4ec", fg: "#ad1457" },
-  { id: "administracion", label: "Administración", bg: "#eceff1", fg: "#455a64" },
+  { id: "diseno", label: "Diseño", bg: "#2a1f33", fg: "#ce93d8" },
+  { id: "produccion", label: "Producción", bg: "#0f2b28", fg: "#4db6ac" },
+  { id: "edicion", label: "Edición", bg: "#17233a", fg: "#64b5f6" },
+  { id: "community", label: "Community", bg: "#331825", fg: "#f06292" },
+  { id: "administracion", label: "Administración", bg: "#24272b", fg: "#90a4ae" },
 ];
 
 const ESTADOS_TAREA = [
-  { id: "pendiente", label: "Pendiente", bg: "#eceff1", fg: "#546e7a" },
-  { id: "en_progreso", label: "En progreso", bg: "#e3f2fd", fg: "#1565c0" },
-  { id: "en_revision", label: "En revisión", bg: "#fff3e0", fg: "#e65100" },
-  { id: "hecha", label: "Hecha", bg: "#e8f5e9", fg: "#2e7d32" },
-  { id: "bloqueada", label: "Bloqueada", bg: "#ffebee", fg: "#c62828" },
+  { id: "pendiente", label: "Pendiente", bg: "#24272b", fg: "#90a4ae" },
+  { id: "en_progreso", label: "En progreso", bg: "#17233a", fg: "#64b5f6" },
+  { id: "en_revision", label: "En revisión", bg: "#332413", fg: "#ffb74d" },
+  { id: "hecha", label: "Hecha", bg: "#123320", fg: "#66bb6a" },
+  { id: "bloqueada", label: "Bloqueada", bg: "#331616", fg: "#ef5350" },
 ];
 
 const PRIORIDADES_TAREA = [
-  { id: "alta", label: "Alta", bg: "#ffebee", fg: "#c62828" },
-  { id: "media", label: "Media", bg: "#fff3e0", fg: "#e65100" },
-  { id: "baja", label: "Baja", bg: "#e8f5e9", fg: "#2e7d32" },
+  { id: "alta", label: "Alta", bg: "#331616", fg: "#ef5350" },
+  { id: "media", label: "Media", bg: "#332413", fg: "#ffb74d" },
+  { id: "baja", label: "Baja", bg: "#123320", fg: "#66bb6a" },
 ];
 
 function getSectorTarea(id) {
@@ -1206,7 +1211,7 @@ function TareasTableroPage() {
                     {filtrosActivos > 0 && (
                       <span
                         style={{
-                          background: "#202124",
+                          background: "#188038",
                           color: "#fff",
                           borderRadius: "999px",
                           fontSize: "11px",
@@ -1235,10 +1240,10 @@ function TareasTableroPage() {
                           position: "absolute",
                           top: "calc(100% + 6px)",
                           left: 0,
-                          background: "#fff",
-                          border: "1px solid #ddd",
+                          background: "#1f2023",
+                          border: "1px solid #34363a",
                           borderRadius: "8px",
-                          boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                          boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
                           padding: "14px",
                           display: "flex",
                           flexDirection: "column",
@@ -1320,13 +1325,13 @@ function TareasTableroPage() {
 
               <div className="h-body">
                 {error && (
-                  <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+                  <div style={{ padding: "10px", background: "#331616", color: "#ef5350", borderRadius: "4px", marginBottom: "12px" }}>
                     {error}
                   </div>
                 )}
 
                 {cargando ? (
-                  <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando tareas…</div>
+                  <div style={{ textAlign: "center", padding: "40px", color: "#6b6f76" }}>Cargando tareas…</div>
                 ) : vista === "kanban" ? (
                   <TareaKanbanBoard
                     tareas={tareasFiltradas}
@@ -1346,14 +1351,14 @@ function TareasTableroPage() {
                     onAbrir={setTareaSeleccionadaId}
                   />
                 ) : grupos.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>
+                  <div style={{ textAlign: "center", padding: "40px", color: "#6b6f76" }}>
                     {tareas.length === 0
                       ? "No hay tareas todavía."
                       : "Ninguna tarea coincide con estos filtros."}
                   </div>
                 ) : (
                   <div className="sheet-frame">
-                    <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 10px", borderBottom: "1px solid #e8eaed" }}>
+                    <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 10px", borderBottom: "1px solid #34363a" }}>
                       <div className="sheet-view-tabs" style={{ margin: 0 }}>
                         <button type="button" className={agruparPor === "estado" ? "active" : ""} onClick={() => setAgruparPor("estado")}>Por estado</button>
                         <button type="button" className={agruparPor === "responsable" ? "active" : ""} onClick={() => setAgruparPor("responsable")}>Por responsable</button>
@@ -1376,8 +1381,8 @@ function TareasTableroPage() {
                         {grupos.map((grupo) => (
                           <React.Fragment key={grupo.id}>
                             <tr>
-                              <td colSpan={8} style={{ background: "#f8f9fa", fontWeight: 700, fontSize: "12px", padding: "8px 10px", color: "#3c4043" }}>
-                                {grupo.titulo} <span style={{ color: "#999", fontWeight: 400 }}>({grupo.tareas.length})</span>
+                              <td colSpan={8} style={{ background: "#26282c", fontWeight: 700, fontSize: "12px", padding: "8px 10px", color: "#e8eaed" }}>
+                                {grupo.titulo} <span style={{ color: "#6b6f76", fontWeight: 400 }}>({grupo.tareas.length})</span>
                               </td>
                             </tr>
                             {grupo.tareas.map((t) => {
@@ -1468,7 +1473,7 @@ function TareasTableroPage() {
                                       className="sheet-cell"
                                       value={t.fecha_vencimiento || ""}
                                       onChange={(e) => actualizarCampo(t.id, { fecha_vencimiento: e.target.value || null })}
-                                      style={vencida ? { color: "#c62828", fontWeight: "700" } : undefined}
+                                      style={vencida ? { color: "#ef5350", fontWeight: "700" } : undefined}
                                     />
                                   </td>
                                   <td>
@@ -1712,7 +1717,7 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
       </div>
 
       <div className="td-panel-footer">
-        <button type="button" className="btn" onClick={() => onEliminar(tarea.id)} style={{ color: "#c62828", borderColor: "#c62828" }}>
+        <button type="button" className="btn" onClick={() => onEliminar(tarea.id)} style={{ color: "#ef5350", borderColor: "#ef5350" }}>
           Eliminar tarea
         </button>
       </div>
@@ -1790,12 +1795,12 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Nueva tarea — paso {paso} de {TOTAL_PASOS}</h2>
-          <button onClick={onCerrar} style={{ background: "none", border: "none", fontSize: "24px", cursor: "pointer", color: "#666" }}>✕</button>
+          <button onClick={onCerrar} style={{ background: "none", border: "none", fontSize: "24px", cursor: "pointer", color: "#9aa0a6" }}>✕</button>
         </div>
 
         <div className="modal-body">
           {error && (
-            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "14px" }}>
+            <div style={{ padding: "10px", background: "#331616", color: "#ef5350", borderRadius: "4px", marginBottom: "14px" }}>
               {error}
             </div>
           )}
@@ -1812,9 +1817,9 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
                     style={{
                       padding: "10px 16px",
                       borderRadius: "8px",
-                      border: tipoTarea === s.id ? `2px solid ${s.fg}` : "1px solid #ddd",
-                      background: tipoTarea === s.id ? s.bg : "#fff",
-                      color: tipoTarea === s.id ? s.fg : "#333",
+                      border: tipoTarea === s.id ? `2px solid ${s.fg}` : "1px solid #34363a",
+                      background: tipoTarea === s.id ? s.bg : "#1f2023",
+                      color: tipoTarea === s.id ? s.fg : "#e8eaed",
                       fontWeight: 600,
                       fontSize: "13px",
                       cursor: "pointer",
@@ -1877,9 +1882,9 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
                     style={{
                       padding: "10px 16px",
                       borderRadius: "8px",
-                      border: asignadoA === r ? "2px solid #188038" : "1px solid #ddd",
-                      background: asignadoA === r ? "#e6f4ea" : "#fff",
-                      color: asignadoA === r ? "#188038" : "#333",
+                      border: asignadoA === r ? "2px solid #188038" : "1px solid #34363a",
+                      background: asignadoA === r ? "#123320" : "#1f2023",
+                      color: asignadoA === r ? "#66bb6a" : "#e8eaed",
                       fontWeight: 600,
                       fontSize: "13px",
                       cursor: "pointer",
@@ -1934,7 +1939,7 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
                   value={aclaraciones}
                   onChange={(e) => setAclaraciones(e.target.value)}
                   rows={3}
-                  style={{ width: "100%", font: "inherit", padding: "8px 10px", border: "1px solid #ddd", borderRadius: "4px" }}
+                  style={{ width: "100%", font: "inherit", padding: "8px 10px", border: "1px solid #34363a", borderRadius: "4px", background: "#1f2023", color: "#e8eaed" }}
                 />
               </label>
             </>
@@ -1954,8 +1959,8 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
               disabled={!puedeAvanzar}
               style={{
                 marginLeft: "auto",
-                background: puedeAvanzar ? "#202124" : "#ccc",
-                color: "#fff",
+                background: puedeAvanzar ? "#188038" : "#34363a",
+                color: puedeAvanzar ? "#fff" : "#9aa0a6",
                 border: "none",
                 borderRadius: "6px",
                 padding: "8px 16px",
@@ -1973,8 +1978,8 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
               disabled={enviando || !titulo.trim()}
               style={{
                 marginLeft: "auto",
-                background: enviando || !titulo.trim() ? "#ccc" : "#202124",
-                color: "#fff",
+                background: enviando || !titulo.trim() ? "#34363a" : "#188038",
+                color: enviando || !titulo.trim() ? "#9aa0a6" : "#fff",
                 border: "none",
                 borderRadius: "6px",
                 padding: "8px 16px",
@@ -2034,7 +2039,12 @@ function TareaKanbanBoard({ tareas, columnas, campo, onMover, onAbrir }) {
             onDrop={(evento) => soltar(evento, col.id)}
           >
             <div className="kanban-header">
-              <span>{col.label}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                {col.fg && (
+                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: col.fg, display: "inline-block", flexShrink: 0 }}></span>
+                )}
+                {col.label}
+              </span>
               <strong>{items.length}</strong>
             </div>
             {items.map((t) => {
@@ -2048,14 +2058,12 @@ function TareaKanbanBoard({ tareas, columnas, campo, onMover, onAbrir }) {
                   onDragEnd={terminarArrastre}
                   onClick={() => onAbrir(t.id)}
                 >
-                  <div className="task-card-topline">
-                    <span className="task-priority-dot" style={{ background: prio.fg }}></span>
-                    {t.cliente_nombre && <span className="task-card-type">{t.cliente_nombre}</span>}
-                  </div>
                   <div className="task-card-title">{t.titulo}</div>
                   <div className="task-card-meta">
-                    <span>{t.asignado_a}</span>
-                    {t.fecha_vencimiento && <span>{t.fecha_vencimiento}</span>}
+                    {t.cliente_nombre && <span>{t.cliente_nombre}</span>}
+                    <span>👤 {t.asignado_a}</span>
+                    {t.fecha_vencimiento && <span>📅 {t.fecha_vencimiento}</span>}
+                    <span style={{ color: prio.fg }}>🚩 {prio.label}</span>
                   </div>
                   {esperandoMaterial(t) && (
                     <div style={{ fontSize: "11px", fontWeight: 700, color: "#e65100", marginTop: "6px" }}>

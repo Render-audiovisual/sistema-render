@@ -3702,3 +3702,337 @@ tr:hover .sheet-row-actions {
     grid-template-columns: 1fr;
   }
 }
+
+/* ====================================================================
+   Tareas — tema oscuro
+   Único módulo oscuro de Sistema Render (decisión explícita: el resto
+   de la app queda clara). Todo scoped bajo .tareas-viewport para no
+   afectar las clases compartidas (.frame, .btn, .sheet-table, .modal,
+   .kanban, .cal-*, etc.) en Historias/Publicaciones/Clientes/donde sea
+   que también las usen.
+   ==================================================================== */
+.tareas-viewport {
+  background: #17181a;
+  color: #e8eaed;
+}
+
+.tareas-viewport .frame {
+  background: #17181a;
+  border-color: #2b2d31;
+}
+
+.tareas-viewport .topbar {
+  background: #1f2023;
+  border-bottom-color: #2b2d31;
+}
+
+.tareas-viewport .logo-box {
+  border-color: #4a4d52;
+  color: #9aa0a6;
+}
+
+.tareas-viewport .nav span,
+.tareas-viewport .nav a {
+  background: #26282c;
+  border-color: #3a3d42;
+  color: #e8eaed;
+}
+
+.tareas-viewport .nav span:hover,
+.tareas-viewport .nav a:hover {
+  background: #303236;
+  border-color: #4a4d52;
+}
+
+.tareas-viewport .nav span.active,
+.tareas-viewport .nav a.active {
+  background: #188038;
+  border-color: #188038;
+  color: #fff;
+}
+
+.tareas-viewport .topbar-user-name {
+  color: #e8eaed;
+}
+
+.tareas-viewport .topbar-user {
+  background: #26282c;
+  border-color: #3a3d42;
+}
+
+.tareas-viewport .topbar-avatar {
+  background: #188038;
+  color: #fff;
+}
+
+.tareas-viewport .topbar-user-role {
+  color: #9aa0a6;
+}
+
+.tareas-viewport .h-toolbar {
+  border-bottom-color: #2b2d31;
+}
+
+.tareas-viewport .btn {
+  background: #26282c;
+  border-color: #3a3d42;
+  color: #e8eaed;
+}
+
+.tareas-viewport .btn:hover {
+  background: #303236;
+}
+
+.tareas-viewport .task-search span {
+  color: #9aa0a6;
+}
+
+.tareas-viewport .task-search input,
+.tareas-viewport select,
+.tareas-viewport input[type="text"],
+.tareas-viewport input[type="date"] {
+  background: #26282c;
+  border-color: #3a3d42;
+  color: #e8eaed;
+}
+
+.tareas-viewport .task-search input:focus,
+.tareas-viewport select:focus,
+.tareas-viewport input:focus {
+  border-color: #188038;
+  outline: none;
+}
+
+.tareas-viewport .task-sector-panel {
+  background: #1f2023;
+  border-color: #2b2d31;
+}
+
+.tareas-viewport .task-sector-tab {
+  background: #26282c;
+  border-color: #3a3d42;
+  color: #e8eaed;
+}
+
+.tareas-viewport .task-sector-tab strong {
+  background: #303236;
+  color: #9aa0a6;
+}
+
+.tareas-viewport .task-sector-tab.active {
+  border-color: #188038;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.tareas-viewport .task-sector-tab.active strong {
+  background: #188038;
+  color: #fff;
+}
+
+.tareas-viewport .sheet-view-tabs button {
+  background: #1f2023;
+  border-color: #2b2d31;
+  color: #9aa0a6;
+}
+
+.tareas-viewport .sheet-view-tabs button.active {
+  background: #26282c;
+  border-bottom-color: #188038;
+  color: #188038;
+}
+
+.tareas-viewport .sheet-frame {
+  background: #1f2023;
+  border-color: #2b2d31;
+}
+
+.tareas-viewport .sheet-table th {
+  background: #26282c;
+  border-color: #2b2d31;
+  color: #9aa0a6;
+}
+
+.tareas-viewport .sheet-table td {
+  border-color: #26282c;
+}
+
+.tareas-viewport .sheet-cell {
+  color: #e8eaed;
+}
+
+.tareas-viewport .sheet-cell:hover {
+  border-color: #3a3d42;
+}
+
+.tareas-viewport .sheet-cell:focus {
+  background: #26282c;
+  border-color: #188038;
+  box-shadow: 0 0 0 1px #188038;
+}
+
+.tareas-viewport .sheet-icon-btn:hover {
+  background: #303236;
+}
+
+.tareas-viewport .kanban-column {
+  background: #1f2023;
+  border-color: #2b2d31;
+}
+
+.tareas-viewport .kanban-column-over {
+  background: #26282c;
+  border-color: #4a4d52;
+}
+
+.tareas-viewport .kanban-empty {
+  border-color: #3a3d42;
+  color: #6b6f76;
+}
+
+.tareas-viewport .task-card {
+  background: #26282c;
+  border-color: #3a3d42;
+}
+
+.tareas-viewport .task-card:hover {
+  border-color: #4a4d52;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.4);
+}
+
+.tareas-viewport .task-card-title {
+  color: #e8eaed;
+}
+
+.tareas-viewport .task-card-meta {
+  color: #9aa0a6;
+}
+
+.tareas-viewport .task-card-meta span {
+  background: #1f2023;
+  border-color: #3a3d42;
+}
+
+.tareas-viewport .cal-toolbar .cal-title {
+  color: #e8eaed;
+}
+
+.tareas-viewport .cal-navbtn {
+  background: #26282c;
+  border-color: #3a3d42;
+  color: #e8eaed;
+}
+
+.tareas-viewport .cal-grid {
+  background: #2b2d31;
+}
+
+.tareas-viewport .cal-dow {
+  background: #1f2023;
+  color: #9aa0a6;
+}
+
+.tareas-viewport .cal-cell {
+  background: #1a1b1e;
+}
+
+.tareas-viewport .cal-cell.empty {
+  background: #17181a;
+}
+
+.tareas-viewport .cal-cell.today {
+  background: #17233a;
+}
+
+.tareas-viewport .cal-daynum {
+  color: #9aa0a6;
+}
+
+.tareas-viewport .cal-count {
+  background: #303236;
+  color: #9aa0a6;
+}
+
+.tareas-viewport .cal-chip {
+  background: #26282c;
+}
+
+.tareas-viewport .cal-chip:hover {
+  background: #303236;
+}
+
+.tareas-viewport .cal-more {
+  color: #9aa0a6;
+}
+
+.tareas-viewport .td-panel {
+  background: #1f2023;
+  border-left-color: #2b2d31;
+  color: #e8eaed;
+}
+
+.tareas-viewport .td-panel-header {
+  border-bottom-color: #2b2d31;
+}
+
+.tareas-viewport .td-panel-banner {
+  background: #332413;
+  color: #ffb74d;
+}
+
+.tareas-viewport .td-panel-field > span {
+  color: #9aa0a6;
+}
+
+.tareas-viewport .td-panel-field .sheet-cell {
+  border-color: #3a3d42;
+}
+
+.tareas-viewport .td-panel-origen {
+  background: #26282c;
+}
+
+.tareas-viewport .td-panel-origen > span {
+  color: #9aa0a6;
+}
+
+.tareas-viewport .td-panel-footer {
+  border-top-color: #2b2d31;
+}
+
+.tareas-viewport .modal {
+  background: #1f2023;
+  border-color: #2b2d31;
+  color: #e8eaed;
+}
+
+.tareas-viewport .modal-header {
+  background: #26282c;
+  border-bottom-color: #2b2d31;
+}
+
+.tareas-viewport .form-section-title {
+  border-bottom-color: #3a3d42;
+  color: #9aa0a6;
+}
+
+.tareas-viewport .form-field > span {
+  color: #9aa0a6;
+}
+
+.tareas-viewport .form-field input,
+.tareas-viewport .form-field select {
+  background: #26282c;
+  border-color: #3a3d42;
+  color: #e8eaed;
+}
+
+.tareas-viewport .form-field input:focus,
+.tareas-viewport .form-field select:focus {
+  border-color: #188038;
+}
+
+.tareas-viewport .tag {
+  background: #26282c;
+  border-color: #3a3d42;
+  color: #e8eaed;
+}
