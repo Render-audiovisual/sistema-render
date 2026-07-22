@@ -4476,6 +4476,10 @@ tr:hover .sheet-row-actions {
 }
 
 @media (max-width: 768px) {
+  .tareas-viewport .td-panel {
+    z-index: 1100;
+  }
+
   .tareas-viewport .task-calendar {
     gap: 10px;
   }
