@@ -1007,8 +1007,8 @@ const ESTADOS_TAREA_VALIDOS = [
   "pendiente",
   "en_progreso",
   "en_revision",
-  "hecha",
-  "bloqueada",
+  "programada",
+  "publicada",
 ];
 const TIPOS_TAREA_VALIDOS = [
   "diseno",
@@ -1484,7 +1484,7 @@ router.post("/piezas", async (req, res, next) => {
           });
 
           // tarea_padre_id conecta la edición a la filmación: mientras
-          // Germán no la marque hecha, Luciano ve "esperando material" en
+          // Germán no la marque publicada, Luciano ve "esperando material" en
           // vez de una tarea suelta sin indicar si ya hay algo para editar.
           await crearTareaAuto({
             titulo: `Editar video - ${idea || "sin idea"}`,
