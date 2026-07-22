@@ -8027,6 +8027,7 @@ function HistoriasPlanillaTab({
 function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, month, onHistoriasActualizadas }) {
   const [error, setError] = useState(null);
   const [guardandoId, setGuardandoId] = useState(null);
+  const [checks, setChecks] = useState([]);
 
   const hoyISO = getHoyLocalISO();
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -8040,6 +8041,11 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
     const key = `${h.cliente_id}:${h.fecha_programada}`;
     if (!acc[key]) acc[key] = [];
     acc[key].push(h);
+    return acc;
+  }, {});
+
+  const checksPorClienteFecha = checks.reduce((acc, check) => {
+    acc[`${check.cliente_id}:${check.fecha}`] = check;
     return acc;
   }, {});
 
@@ -8067,6 +8073,22 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
     semanas.push(dias);
   }
 
+  useEffect(() => {
+    const desde = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+    const hasta = `${year}-${String(month + 1).padStart(2, "0")}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, "0")}`;
+
+    fetch(`/api/check-publicacion?desde=${desde}&hasta=${hasta}`)
+      .then((r) => {
+        if (!r.ok) throw new Error("No se pudo cargar el checklist");
+        return r.json();
+      })
+      .then((data) => setChecks(data))
+      .catch((err) => {
+        console.error("No se pudo cargar checklist de historias", err);
+        setError("No se pudo cargar el estado del checklist.");
+      });
+  }, [year, month]);
+
   const publicadas = historiasMes.filter((h) => h.estado === "publicada").length;
   const pendientes = historiasMes.length - publicadas;
   const vencidas = historiasMes.filter(
@@ -8077,9 +8099,28 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
     const nuevoEstado = publicada ? "publicada" : "pendiente";
     const key = `${clienteId}:${fecha}`;
     const historiasDelDia = historiasPorClienteFecha[key] || [];
-    if (historiasDelDia.length === 0) return;
 
     setGuardandoId(key);
+    setChecks((prev) => {
+      const existe = prev.some((check) => check.cliente_id === clienteId && check.fecha === fecha);
+      if (existe) {
+        return prev.map((check) =>
+          check.cliente_id === clienteId && check.fecha === fecha
+            ? { ...check, publicado: publicada }
+            : check,
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: `local-${key}`,
+          cliente_id: clienteId,
+          fecha,
+          publicado: publicada,
+          confirmado_por: getSesion()?.usuario?.nombre || null,
+        },
+      ];
+    });
     onHistoriasActualizadas((prev) =>
       prev.map((h) =>
         h.cliente_id === clienteId && h.fecha_programada === fecha
@@ -8088,6 +8129,18 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
       ),
     );
     try {
+      const checkRes = await fetch("/api/check-publicacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cliente_id: clienteId,
+          fecha,
+          publicado: publicada,
+          confirmado_por: getSesion()?.usuario?.nombre || "Sistema",
+        }),
+      });
+      if (!checkRes.ok) throw new Error("No se pudo guardar el OK");
+
       await Promise.all(
         historiasDelDia.map(async (h) => {
           const res = await fetch(`/api/historias/${h.id}`, {
@@ -8137,14 +8190,18 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                 acc +
                 dias.reduce((sum, d) => {
                   const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
-                  return sum + items.filter((h) => h.estado === "publicada").length;
+                  const check = checksPorClienteFecha[`${c.id}:${d.iso}`];
+                  const publicadaPorHistorias = items.length > 0 && items.every((h) => h.estado === "publicada");
+                  return sum + (check?.publicado || publicadaPorHistorias ? 1 : 0);
                 }, 0),
               0,
             );
             const totalPorDia = dias.map((d) =>
               clientes.reduce((sum, c) => {
                 const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
-                return sum + items.filter((h) => h.estado === "publicada").length;
+                const check = checksPorClienteFecha[`${c.id}:${d.iso}`];
+                const publicadaPorHistorias = items.length > 0 && items.every((h) => h.estado === "publicada");
+                return sum + (check?.publicado || publicadaPorHistorias ? 1 : 0);
               }, 0),
             );
 
@@ -8170,7 +8227,9 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                   {clientes.map((c) => {
                     const totalCliente = dias.reduce((sum, d) => {
                       const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
-                      return sum + items.filter((h) => h.estado === "publicada").length;
+                      const check = checksPorClienteFecha[`${c.id}:${d.iso}`];
+                      const publicadaPorHistorias = items.length > 0 && items.every((h) => h.estado === "publicada");
+                      return sum + (check?.publicado || publicadaPorHistorias ? 1 : 0);
                     }, 0);
 
                     return (
@@ -8179,10 +8238,11 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                         {dias.map((d) => {
                           const key = `${c.id}:${d.iso}`;
                           const items = historiasPorClienteFecha[key] || [];
+                          const check = checksPorClienteFecha[key];
                           const hayHistorias = items.length > 0;
                           const publicadasDia = items.filter((h) => h.estado === "publicada").length;
-                          const todasPublicadas = hayHistorias && publicadasDia === items.length;
-                          const algunasPublicadas = publicadasDia > 0 && publicadasDia < items.length;
+                          const todasPublicadas = Boolean(check?.publicado) || (hayHistorias && publicadasDia === items.length);
+                          const algunasPublicadas = !check?.publicado && publicadasDia > 0 && publicadasDia < items.length;
                           const toggleLabel = todasPublicadas
                             ? "OK"
                             : algunasPublicadas
@@ -8194,29 +8254,27 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                               key={d.iso}
                               className={[
                                 "check-day-cell",
-                                !hayHistorias ? "empty" : "",
+                                !hayHistorias && !check?.publicado ? "empty" : "",
                                 todasPublicadas ? "ok" : "",
                                 algunasPublicadas ? "partial" : "",
                               ].join(" ")}
                               title={
                                 hayHistorias
                                   ? `${items.length} historia${items.length > 1 ? "s" : ""} · ${publicadasDia} publicada${publicadasDia !== 1 ? "s" : ""}`
-                                  : "Sin historias planificadas"
+                                  : check?.publicado
+                                    ? "OK marcado en checklist"
+                                    : "Sin historias planificadas"
                               }
                             >
-                              {hayHistorias ? (
-                                <button
-                                  type="button"
-                                  className="check-sheet-toggle"
-                                  disabled={guardandoId === key}
-                                  aria-label={todasPublicadas ? "Quitar OK" : "Marcar OK"}
-                                  onClick={() => marcarPublicada(c.id, d.iso, !todasPublicadas)}
-                                >
-                                  {guardandoId === key ? "..." : toggleLabel}
-                                </button>
-                              ) : (
-                                <span className="check-empty"> </span>
-                              )}
+                              <button
+                                type="button"
+                                className="check-sheet-toggle"
+                                disabled={guardandoId === key}
+                                aria-label={todasPublicadas ? "Quitar OK" : "Marcar OK"}
+                                onClick={() => marcarPublicada(c.id, d.iso, !todasPublicadas)}
+                              >
+                                {guardandoId === key ? "..." : toggleLabel}
+                              </button>
                             </td>
                           );
                         })}
