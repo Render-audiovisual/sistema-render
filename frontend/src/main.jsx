@@ -8246,8 +8246,8 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                           const toggleLabel = todasPublicadas
                             ? "OK"
                             : algunasPublicadas
-                              ? `${publicadasDia}/${items.length}`
-                              : "OK";
+                              ? ""
+                              : "";
 
                           return (
                             <td
