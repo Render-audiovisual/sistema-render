@@ -1987,52 +1987,54 @@ function TareaKanbanBoard({ tareas, columnas, campo, onMover, onAbrir }) {
   };
 
   return (
-    <div className="kanban">
+    <div className="kanban task-kanban-board" aria-label="Tablero Kanban de tareas">
       {columnas.map((col) => {
         const items = tareas.filter((t) => (t[campo] || null) === col.id);
         return (
           <div
             key={col.id}
-            className={`kanban-column ${columnaSobre === col.id ? "kanban-column-over" : ""}`}
+            className={`kanban-column task-kanban-column ${columnaSobre === col.id ? "kanban-column-over" : ""}`}
             onDragOver={(evento) => permitirSoltar(evento, col.id)}
             onDrop={(evento) => soltar(evento, col.id)}
           >
-            <div className="kanban-header">
+            <div className="kanban-header task-kanban-header">
               <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 {col.fg && (
                   <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: col.fg, display: "inline-block", flexShrink: 0 }}></span>
                 )}
                 {col.label}
               </span>
-              <strong>{items.length}</strong>
+              <strong className="task-kanban-count">{items.length}</strong>
             </div>
-            {items.map((t) => {
-              const prio = getPrioridadTarea(t.prioridad);
-              return (
-                <div
-                  key={t.id}
-                  className={`task-card ${arrastrandoId === t.id ? "task-card-dragging" : ""}`}
-                  draggable
-                  onDragStart={(evento) => iniciarArrastre(evento, t)}
-                  onDragEnd={terminarArrastre}
-                  onClick={() => onAbrir(t.id)}
-                >
-                  <div className="task-card-title">{t.titulo}</div>
-                  <div className="task-card-meta">
-                    {t.cliente_nombre && <span>{t.cliente_nombre}</span>}
-                    <span>👤 {t.asignado_a}</span>
-                    {t.fecha_vencimiento && <span>📅 {t.fecha_vencimiento}</span>}
-                    <span style={{ color: prio.fg }}>🚩 {prio.label}</span>
-                  </div>
-                  {esperandoMaterial(t) && (
-                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#e65100", marginTop: "6px" }}>
-                      ⏳ Esperando material
+            <div className="task-kanban-list">
+              {items.map((t) => {
+                const prio = getPrioridadTarea(t.prioridad);
+                return (
+                  <div
+                    key={t.id}
+                    className={`task-card task-kanban-card ${arrastrandoId === t.id ? "task-card-dragging" : ""}`}
+                    draggable
+                    onDragStart={(evento) => iniciarArrastre(evento, t)}
+                    onDragEnd={terminarArrastre}
+                    onClick={() => onAbrir(t.id)}
+                  >
+                    <div className="task-card-title">{t.titulo}</div>
+                    <div className="task-card-meta task-kanban-meta">
+                      {t.cliente_nombre && <span>{t.cliente_nombre}</span>}
+                      <span>👤 {t.asignado_a}</span>
+                      {t.fecha_vencimiento && <span>📅 {t.fecha_vencimiento}</span>}
+                      <span style={{ color: prio.fg }}>🚩 {prio.label}</span>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-            {items.length === 0 && <div className="kanban-empty">Sin tareas</div>}
+                    {esperandoMaterial(t) && (
+                      <div className="task-kanban-material" style={{ color: "#e65100" }}>
+                        ⏳ Esperando material
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {items.length === 0 && <div className="kanban-empty">Sin tareas</div>}
+            </div>
           </div>
         );
       })}
