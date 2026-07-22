@@ -7571,7 +7571,7 @@ const ESTADOS_HISTORIA = [
 const RESPONSABLES_EQUIPO = ["Augusto", "Luciano", "Germán", "Oriana", "Franco", "Agustín"];
 
 // Orden de columnas navegables con Tab/Enter (coincide con el orden visual).
-const COLUMNAS_PLANILLA = ["fecha", "hora", "tipo", "copy", "material", "aclaraciones", "responsable", "estado"];
+const COLUMNAS_PLANILLA = ["cliente", "fecha", "hora", "tipo", "copy", "material", "aclaraciones", "responsable", "estado"];
 // Columnas de texto largo: son <textarea>, no <input> — admiten líneas
 // propias (Enter no debe saltar de fila) y solo se tratan como pegado
 // multi-celda si el portapapeles trae tabs (un salto de línea solo puede
@@ -7584,6 +7584,8 @@ const COLUMNAS_MULTILINEA = ["copy", "aclaraciones"];
 function payloadColumnaPlanilla(columna, valorCrudo) {
   const valor = (valorCrudo || "").trim();
   switch (columna) {
+    case "cliente":
+      return null;
     case "fecha":
       return /^\d{4}-\d{2}-\d{2}$/.test(valor) ? { fecha_programada: valor } : null;
     case "hora":
@@ -7608,12 +7610,11 @@ function payloadColumnaPlanilla(columna, valorCrudo) {
 }
 
 function HistoriasPlanillaTab({
-  clienteId,
-  clienteNombre,
+  clientes,
   year,
   month,
   cargando,
-  historiasCliente,
+  historias,
   ultimoIdCreado,
   onActualizarLocal,
   onGuardarServidor,
@@ -7628,12 +7629,14 @@ function HistoriasPlanillaTab({
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
   const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
 
-  const filasVisibles = historiasCliente
+  const clientesPorId = Object.fromEntries(clientes.map((c) => [c.id, c.nombre]));
+
+  const filasVisibles = historias
     .filter((h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix))
     .slice()
     .sort((a, b) =>
-      (a.fecha_programada + (a.metadata?.hora || "")).localeCompare(
-        b.fecha_programada + (b.metadata?.hora || ""),
+      (a.fecha_programada + (clientesPorId[a.cliente_id] || "") + (a.metadata?.hora || "")).localeCompare(
+        b.fecha_programada + (clientesPorId[b.cliente_id] || "") + (b.metadata?.hora || ""),
       ),
     );
 
@@ -7654,7 +7657,7 @@ function HistoriasPlanillaTab({
     if (idx === -1) return;
     requestAnimationFrame(() => enfocarCelda(idx, "fecha"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ultimoIdCreado, historiasCliente]);
+  }, [ultimoIdCreado, historias]);
 
   const actualizarLocal = (historiaId, campos) => onActualizarLocal(historiaId, campos);
   const guardarEnServidor = (historiaId, campos) => onGuardarServidor(historiaId, campos);
@@ -7671,6 +7674,7 @@ function HistoriasPlanillaTab({
   const copiarFila = async (h) => {
     const est = ESTADOS_HISTORIA.find((e) => e.id === h.estado);
     const linea = [
+      clientesPorId[h.cliente_id] || "",
       h.fecha_programada || "",
       h.metadata?.hora || "",
       h.metadata?.tipo || "",
@@ -7770,6 +7774,7 @@ function HistoriasPlanillaTab({
           <table className="sheet-table sheet-planning-table">
             <colgroup>
               <col className="sheet-rownum-col" />
+              <col className="sheet-client-col" />
               <col className="sheet-day-col" />
               <col className="sheet-date-col" />
               <col className="sheet-time-col" />
@@ -7784,12 +7789,13 @@ function HistoriasPlanillaTab({
             <thead>
               <tr className="sheet-column-letters">
                 <th className="sheet-corner"></th>
-                {["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"].map((letra) => (
+                {["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"].map((letra) => (
                   <th key={letra}>{letra}</th>
                 ))}
               </tr>
               <tr>
                 <th className="sheet-rownum-head"></th>
+                <th>Local</th>
                 <th>Día</th>
                 <th>Fecha</th>
                 <th>Hora</th>
@@ -7805,7 +7811,7 @@ function HistoriasPlanillaTab({
             <tbody>
               {filasVisibles.length === 0 && (
                 <tr>
-                  <td colSpan={11} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
+                  <td colSpan={12} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
                     Sin historias planificadas este mes todavía.
                   </td>
                 </tr>
@@ -7827,6 +7833,23 @@ function HistoriasPlanillaTab({
                 return (
                   <tr key={h.id} style={{ background: bgFila, borderTop: esNuevoDia && rowIndex > 0 ? "2px solid #dadce0" : undefined }}>
                     <td className="sheet-row-number">{rowIndex + 1}</td>
+                    <td className="sheet-client-cell">
+                      <select
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:cliente`}
+                        value={h.cliente_id || ""}
+                        onChange={(e) => {
+                          const campos = { cliente_id: Number(e.target.value) };
+                          actualizarLocal(h.id, campos);
+                          guardarEnServidor(h.id, campos);
+                        }}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "cliente")}
+                      >
+                        {clientes.map((cliente) => (
+                          <option key={cliente.id} value={cliente.id}>{cliente.nombre}</option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="sheet-day-cell" style={{ fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "#c62828" : esFinde ? "#999" : "#333" }}>
                       {esNuevoDia ? LETRAS_DIA[dow] : ""}
                       {estaAtrasada && esNuevoDia && <span title="Atrasada" style={{ marginLeft: "2px" }}>⚠</span>}
@@ -7983,7 +8006,7 @@ function HistoriasPlanillaTab({
               })}
               <tr>
                 <td className="sheet-row-number">{filasVisibles.length + 1}</td>
-                <td colSpan={10} style={{ padding: 0 }}>
+                <td colSpan={11} style={{ padding: 0 }}>
                   <button type="button" className="sheet-add-row" onClick={onAgregar}>
                     <span style={{ fontSize: "15px" }}>+</span> Agregar historia
                   </button>
@@ -7995,7 +8018,7 @@ function HistoriasPlanillaTab({
       )}
 
       <div className="caption" style={{ marginTop: "10px" }}>
-        Planilla de {clienteNombre}
+        Planilla general de historias: todos los locales en una sola hoja.
       </div>
     </>
   );
@@ -8517,7 +8540,6 @@ function HistoriasPage({ initialTab = "planilla" }) {
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [errorClientes, setErrorClientes] = useState(null);
   const [refrescarKey, setRefrescarKey] = useState(0);
-  const [clientesCompactos, setClientesCompactos] = useState(true);
 
   const [historias, setHistorias] = useState([]);
   const [cargandoHistorias, setCargandoHistorias] = useState(true);
@@ -8566,17 +8588,6 @@ function HistoriasPage({ initialTab = "planilla" }) {
   }, []);
 
   const hoyISO = getHoyLocalISO();
-  const clienteNombre = clientes.find((c) => c.id === clienteSeleccionado)?.nombre || "";
-
-  // Una sola pasada sobre todas las historias para saber, por cliente,
-  // cuántas están atrasadas — es lo que alimenta el punto rojo del panel
-  // lateral, sin tener que entrar a cada cliente para averiguarlo.
-  const atrasadasPorCliente = {};
-  historias.forEach((h) => {
-    if (h.fecha_programada < hoyISO && h.estado !== "publicada") {
-      atrasadasPorCliente[h.cliente_id] = (atrasadasPorCliente[h.cliente_id] || 0) + 1;
-    }
-  });
 
   const irMes = (delta) => {
     let m = month + delta;
@@ -8655,12 +8666,13 @@ function HistoriasPage({ initialTab = "planilla" }) {
   // mismo lugar (hoy, o el día 1 si se está viendo otro mes) y enfocan la
   // fila nueva apenas aparece.
   const agregarHistoriaEnMesActual = async () => {
-    if (!clienteSeleccionado) return;
+    const clienteDestino = vista === "planilla" ? (clientes[0]?.id || clienteSeleccionado) : clienteSeleccionado;
+    if (!clienteDestino) return;
     const hoyISOActual = getHoyLocalISO();
     const mesActualPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
     const iso = mesActualPrefix === hoyISOActual.slice(0, 7) ? hoyISOActual : `${mesActualPrefix}-01`;
     try {
-      const id = await crearHistoria(clienteSeleccionado, iso);
+      const id = await crearHistoria(clienteDestino, iso);
       setUltimoIdCreado(id);
     } catch (err) {
       console.error("Error creando historia", err);
@@ -8717,10 +8729,9 @@ function HistoriasPage({ initialTab = "planilla" }) {
   };
 
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const historiasClienteSeleccionado = historias.filter((h) => h.cliente_id === clienteSeleccionado);
-  const historiasClienteMes = historiasClienteSeleccionado.filter((h) => h.fecha_programada?.startsWith(mesPrefix));
-  const publicadasCliente = historiasClienteMes.filter((h) => h.estado === "publicada").length;
-  const atrasadasCliente = historiasClienteMes.filter((h) => h.fecha_programada < hoyISO && h.estado !== "publicada").length;
+  const historiasMes = historias.filter((h) => h.fecha_programada?.startsWith(mesPrefix));
+  const publicadasMes = historiasMes.filter((h) => h.estado === "publicada").length;
+  const atrasadasMes = historiasMes.filter((h) => h.fecha_programada < hoyISO && h.estado !== "publicada").length;
 
   return (
     <main aria-label="Render platform historias" className="historias-viewport">
@@ -8741,21 +8752,10 @@ function HistoriasPage({ initialTab = "planilla" }) {
           )}
 
           <div className="h-workspace">
-            {vista === "planilla" && (
-              <ClientesRail
-                clientes={clientes}
-                clienteSeleccionado={clienteSeleccionado}
-                onSeleccionar={setClienteSeleccionado}
-                atrasadasPorCliente={atrasadasPorCliente}
-                compacto={clientesCompactos}
-                onToggleCompacto={() => setClientesCompactos((valor) => !valor)}
-              />
-            )}
-
             <div className="h-main">
               <div className="h-toolbar">
                 {vista === "planilla" && (
-                  <div className="h-toolbar-client">{clienteNombre || "…"}</div>
+                  <div className="h-toolbar-client">Hoja general</div>
                 )}
                 {["planilla", "checklist"].includes(vista) && (
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -8777,13 +8777,13 @@ function HistoriasPage({ initialTab = "planilla" }) {
 
                 {vista === "planilla" && (
                   <div className="sheet-stats" style={{ marginLeft: "auto" }}>
-                    <span>{historiasClienteMes.length} historias</span>
-                    <span className="ok">{publicadasCliente} publicadas</span>
-                    {atrasadasCliente > 0 && <span className="danger">{atrasadasCliente} atrasadas</span>}
+                    <span>{historiasMes.length} historias</span>
+                    <span className="ok">{publicadasMes} publicadas</span>
+                    {atrasadasMes > 0 && <span className="danger">{atrasadasMes} atrasadas</span>}
                   </div>
                 )}
 
-                {vista === "planilla" && clienteSeleccionado && (
+                {vista === "planilla" && clientes.length > 0 && (
                   <button
                     className="add-btn"
                     type="button"
@@ -8798,15 +8798,14 @@ function HistoriasPage({ initialTab = "planilla" }) {
               <div className="h-body">
                 <FlyersMigrarBanner onMigrado={() => setRefrescarKey((k) => k + 1)} />
 
-                {clienteSeleccionado && vista === "planilla" && (
+                {vista === "planilla" && (
                   <HistoriasPlanillaTab
-                    key={`p-${clienteSeleccionado}`}
-                    clienteId={clienteSeleccionado}
-                    clienteNombre={clienteNombre}
+                    key="p-general"
+                    clientes={clientes}
                     year={year}
                     month={month}
                     cargando={cargandoHistorias}
-                    historiasCliente={historiasClienteSeleccionado}
+                    historias={historias}
                     ultimoIdCreado={ultimoIdCreado}
                     onActualizarLocal={actualizarHistoriaLocal}
                     onGuardarServidor={guardarHistoriaEnServidor}

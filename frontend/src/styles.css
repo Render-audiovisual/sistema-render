@@ -2826,13 +2826,17 @@ select:focus {
 .sheet-table {
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 1480px;
+  min-width: 1640px;
   table-layout: fixed;
   width: 100%;
 }
 
 .sheet-rownum-col {
   width: 42px;
+}
+
+.sheet-client-col {
+  width: 176px;
 }
 
 .sheet-day-col {
@@ -3001,28 +3005,38 @@ select:focus {
   background-color: rgba(232, 240, 254, 0.34);
 }
 
+.sheet-client-cell,
 .sheet-day-cell,
 .sheet-date-cell,
 .sheet-planning-table thead tr:nth-child(2) th:nth-child(2),
 .sheet-planning-table thead tr:nth-child(2) th:nth-child(3),
+.sheet-planning-table thead tr:nth-child(2) th:nth-child(4),
 .sheet-planning-table thead tr:first-child th:nth-child(2),
-.sheet-planning-table thead tr:first-child th:nth-child(3) {
+.sheet-planning-table thead tr:first-child th:nth-child(3),
+.sheet-planning-table thead tr:first-child th:nth-child(4) {
   position: sticky;
   z-index: 2;
 }
 
-.sheet-day-cell,
+.sheet-client-cell,
 .sheet-planning-table thead tr:nth-child(2) th:nth-child(2),
 .sheet-planning-table thead tr:first-child th:nth-child(2) {
   left: 42px;
 }
 
-.sheet-date-cell,
+.sheet-day-cell,
 .sheet-planning-table thead tr:nth-child(2) th:nth-child(3),
 .sheet-planning-table thead tr:first-child th:nth-child(3) {
-  left: 90px;
+  left: 218px;
 }
 
+.sheet-date-cell,
+.sheet-planning-table thead tr:nth-child(2) th:nth-child(4),
+.sheet-planning-table thead tr:first-child th:nth-child(4) {
+  left: 266px;
+}
+
+.sheet-client-cell,
 .sheet-day-cell,
 .sheet-date-cell {
   background: inherit;
@@ -3037,8 +3051,10 @@ select:focus {
 
 .sheet-planning-table thead tr:nth-child(2) th:nth-child(2),
 .sheet-planning-table thead tr:nth-child(2) th:nth-child(3),
+.sheet-planning-table thead tr:nth-child(2) th:nth-child(4),
 .sheet-planning-table thead tr:first-child th:nth-child(2),
-.sheet-planning-table thead tr:first-child th:nth-child(3) {
+.sheet-planning-table thead tr:first-child th:nth-child(3),
+.sheet-planning-table thead tr:first-child th:nth-child(4) {
   background: #f8fafd;
   z-index: 3;
 }
