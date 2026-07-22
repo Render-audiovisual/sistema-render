@@ -7692,24 +7692,44 @@ function HistoriasPlanillaTab({
       ) : (
         <div className="sheet-frame" ref={gridRef}>
           <table className="sheet-table">
+            <colgroup>
+              <col className="sheet-rownum-col" />
+              <col className="sheet-day-col" />
+              <col className="sheet-date-col" />
+              <col className="sheet-time-col" />
+              <col className="sheet-type-col" />
+              <col className="sheet-copy-col" />
+              <col className="sheet-material-col" />
+              <col className="sheet-notes-col" />
+              <col className="sheet-owner-col" />
+              <col className="sheet-status-col" />
+              <col className="sheet-actions-col" />
+            </colgroup>
             <thead>
+              <tr className="sheet-column-letters">
+                <th className="sheet-corner"></th>
+                {["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"].map((letra) => (
+                  <th key={letra}>{letra}</th>
+                ))}
+              </tr>
               <tr>
-                <th style={{ width: "40px" }}>Día</th>
-                <th style={{ width: "108px" }}>Fecha</th>
-                <th style={{ width: "62px" }}>Hora</th>
-                <th style={{ width: "150px" }}>Tipo</th>
-                <th style={{ width: "34%" }}>Copy</th>
-                <th style={{ width: "11%" }}>Material</th>
-                <th style={{ width: "19%" }}>Observaciones</th>
-                <th style={{ width: "100px" }}>Responsable</th>
-                <th style={{ width: "118px" }}>Estado</th>
-                <th style={{ width: "78px" }}></th>
+                <th className="sheet-rownum-head"></th>
+                <th>Día</th>
+                <th>Fecha</th>
+                <th>Hora</th>
+                <th>Tipo</th>
+                <th>Copy</th>
+                <th>Material</th>
+                <th>Observaciones</th>
+                <th>Responsable</th>
+                <th>Estado</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {filasVisibles.length === 0 && (
                 <tr>
-                  <td colSpan={10} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
+                  <td colSpan={11} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
                     Sin historias planificadas este mes todavía.
                   </td>
                 </tr>
@@ -7730,11 +7750,12 @@ function HistoriasPlanillaTab({
 
                 return (
                   <tr key={h.id} style={{ background: bgFila, borderTop: esNuevoDia && rowIndex > 0 ? "2px solid #dadce0" : undefined }}>
-                    <td style={{ padding: "8px 6px", fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "#c62828" : esFinde ? "#999" : "#333", fontSize: "12px" }}>
+                    <td className="sheet-row-number">{rowIndex + 1}</td>
+                    <td className="sheet-day-cell" style={{ fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "#c62828" : esFinde ? "#999" : "#333" }}>
                       {esNuevoDia ? LETRAS_DIA[dow] : ""}
                       {estaAtrasada && esNuevoDia && <span title="Atrasada" style={{ marginLeft: "2px" }}>⚠</span>}
                     </td>
-                    <td>
+                    <td className="sheet-date-cell">
                       <input
                         type="date"
                         className="sheet-cell"
@@ -7772,7 +7793,7 @@ function HistoriasPlanillaTab({
                         onPaste={(e) => manejarPaste(e, rowIndex, "tipo")}
                       />
                     </td>
-                    <td>
+                    <td className="h-copy-cell">
                       <textarea
                         className="sheet-cell sheet-cell-textarea"
                         data-cell={`${rowIndex}:copy`}
@@ -7885,6 +7906,7 @@ function HistoriasPlanillaTab({
                 );
               })}
               <tr>
+                <td className="sheet-row-number">{filasVisibles.length + 1}</td>
                 <td colSpan={10} style={{ padding: 0 }}>
                   <button type="button" className="sheet-add-row" onClick={onAgregar}>
                     <span style={{ fontSize: "15px" }}>+</span> Agregar historia
