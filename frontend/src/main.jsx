@@ -7484,13 +7484,16 @@ function HistoriasPlanillaTab({
   onAgregar,
   onDuplicar,
   onEliminar,
+  clienteFiltradoNombre,
 }) {
   const [error, setError] = useState(null);
   const gridRef = useRef(null);
 
   const hoyISO = getHoyLocalISO();
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
+  // Nombre corto pero inequívoco del día — antes era una sola letra
+  // (M, X, J...) que obligaba a memorizar a qué día correspondía cada una.
+  const LETRAS_DIA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
   const clientesPorId = Object.fromEntries(clientes.map((c) => [c.id, c.nombre]));
 
@@ -7881,7 +7884,9 @@ function HistoriasPlanillaTab({
       )}
 
       <div className="caption" style={{ marginTop: "10px" }}>
-        Planilla general de historias: todos los locales en una sola hoja.
+        {clienteFiltradoNombre
+          ? `Planilla de ${clienteFiltradoNombre}.`
+          : "Planilla general de historias: todos los locales en una sola hoja."}
       </div>
     </>
   );
@@ -8519,6 +8524,11 @@ function HistoriasPage({ initialTab = "planilla" }) {
   );
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  // Filtro de cliente propio de la pestaña Planilla — separado de
+  // clienteSeleccionado (que ya se usaba como destino por default de
+  // "+ Nueva historia" en otras pestañas) para no cambiar ese comportamiento
+  // existente. Vacío = "Hoja general" (todos los clientes), como hoy.
+  const [filtroClientePlanilla, setFiltroClientePlanilla] = useState("");
   const [errorClientes, setErrorClientes] = useState(null);
   const [refrescarKey, setRefrescarKey] = useState(0);
 
@@ -8647,7 +8657,13 @@ function HistoriasPage({ initialTab = "planilla" }) {
   // mismo lugar (hoy, o el día 1 si se está viendo otro mes) y enfocan la
   // fila nueva apenas aparece.
   const agregarHistoriaEnMesActual = async () => {
-    const clienteDestino = vista === "planilla" ? (clientes[0]?.id || clienteSeleccionado) : clienteSeleccionado;
+    // Si la Planilla está filtrada a un cliente, la historia nueva se crea
+    // para ESE cliente (no tendría sentido crearla para otro mientras se
+    // está mirando la hoja de uno en particular).
+    const clienteDestino =
+      vista === "planilla"
+        ? (filtroClientePlanilla ? Number(filtroClientePlanilla) : clientes[0]?.id) || clienteSeleccionado
+        : clienteSeleccionado;
     if (!clienteDestino) return;
     const hoyISOActual = getHoyLocalISO();
     const mesActualPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -8710,7 +8726,13 @@ function HistoriasPage({ initialTab = "planilla" }) {
   };
 
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const historiasMes = historias.filter((h) => h.fecha_programada?.startsWith(mesPrefix));
+  // Cuando hay un cliente elegido en el selector de la Planilla, todo lo
+  // que se ve en esa pestaña (tabla y contadores) se filtra a ese cliente
+  // — sin filtro (vacío) se sigue viendo la Hoja general de siempre.
+  const historiasPlanillaVisibles = filtroClientePlanilla
+    ? historias.filter((h) => String(h.cliente_id) === filtroClientePlanilla)
+    : historias;
+  const historiasMes = historiasPlanillaVisibles.filter((h) => h.fecha_programada?.startsWith(mesPrefix));
   const publicadasMes = historiasMes.filter((h) => h.estado === "publicada").length;
   const atrasadasMes = historiasMes.filter((h) => h.fecha_programada < hoyISO && h.estado !== "publicada").length;
 
@@ -8728,7 +8750,17 @@ function HistoriasPage({ initialTab = "planilla" }) {
             <div className="h-main">
               <div className="h-toolbar">
                 {vista === "planilla" && (
-                  <div className="h-toolbar-client">Hoja general</div>
+                  <select
+                    className="h-toolbar-client-select"
+                    value={filtroClientePlanilla}
+                    onChange={(e) => setFiltroClientePlanilla(e.target.value)}
+                    aria-label="Filtrar planilla por cliente"
+                  >
+                    <option value="">Hoja general (todos los clientes)</option>
+                    {clientes.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
+                  </select>
                 )}
                 {["planilla", "checklist"].includes(vista) && (
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -8778,13 +8810,18 @@ function HistoriasPage({ initialTab = "planilla" }) {
                     year={year}
                     month={month}
                     cargando={cargandoHistorias}
-                    historias={historias}
+                    historias={historiasPlanillaVisibles}
                     ultimoIdCreado={ultimoIdCreado}
                     onActualizarLocal={actualizarHistoriaLocal}
                     onGuardarServidor={guardarHistoriaEnServidor}
                     onAgregar={agregarHistoriaEnMesActual}
                     onDuplicar={duplicarHistoria}
                     onEliminar={eliminarHistoria}
+                    clienteFiltradoNombre={
+                      filtroClientePlanilla
+                        ? clientes.find((c) => String(c.id) === filtroClientePlanilla)?.nombre
+                        : null
+                    }
                   />
                 )}
 

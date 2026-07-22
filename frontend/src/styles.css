@@ -2557,6 +2557,13 @@ select:focus {
   white-space: nowrap;
 }
 
+.h-toolbar-client-select {
+  font-size: 15px;
+  font-weight: 700;
+  min-width: 220px;
+  padding: 7px 10px;
+}
+
 .h-today-btn {
   font-size: 12px;
   font-weight: 600;
