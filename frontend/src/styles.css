@@ -48,6 +48,12 @@ textarea {
   font-family: inherit;
 }
 
+.sheet-cell-textarea {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
 main {
   min-height: 100vh;
   padding: 96px 24px 24px;
@@ -2595,7 +2601,9 @@ select:focus {
 .tareas-viewport .sheet-cell,
 .tareas-viewport textarea.sheet-cell-textarea {
   font-size: 14px;
-  padding: 9px 10px;
+  padding: 10px 12px;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .historias-viewport textarea.sheet-cell-textarea,
@@ -3107,7 +3115,7 @@ select:focus {
 .sheet-table td {
   border-bottom: 1px solid #e8eaed;
   border-right: 1px solid #e8eaed;
-  padding: 0;
+  padding: 8px 12px;
   vertical-align: top;
 }
 
@@ -3126,7 +3134,7 @@ select:focus {
 .sheet-planning-table thead tr:first-child th:nth-child(3),
 .sheet-planning-table thead tr:first-child th:nth-child(4) {
   position: sticky;
-  z-index: 2;
+  z-index: 10;
 }
 
 .sheet-client-cell,
@@ -3150,7 +3158,28 @@ select:focus {
 .sheet-client-cell,
 .sheet-day-cell,
 .sheet-date-cell {
-  background: inherit;
+  background: white !important;
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  max-width: 100%;
+  overflow: hidden !important;
+}
+
+.sheet-client-cell input,
+.sheet-client-cell select,
+.sheet-day-cell input,
+.sheet-day-cell select,
+.sheet-date-cell input,
+.sheet-date-cell select {
+  max-width: calc(100% - 16px);
+  width: 100%;
+}
+
+.sheet-table tbody tr:hover .sheet-client-cell,
+.sheet-table tbody tr:hover .sheet-day-cell,
+.sheet-table tbody tr:hover .sheet-date-cell {
+  background: rgba(232, 240, 254, 0.5) !important;
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.1);
 }
 
 .sheet-day-cell {
@@ -3247,8 +3276,9 @@ th.check-client-col {
 }
 
 .check-day-cell.empty .check-sheet-toggle {
-  border-color: transparent;
+  border-color: #ddd;
   color: transparent;
+  background: #f9f9f9;
 }
 
 .check-day-cell.ok {
@@ -3260,37 +3290,46 @@ th.check-client-col {
 }
 
 .check-sheet-toggle {
-  background: transparent;
-  border: 1px solid transparent;
+  background: #fff;
+  border: 2px solid #ddd;
   border-radius: 4px;
-  color: transparent;
+  color: #333;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
-  font-weight: 800;
-  height: 100%;
-  min-height: 28px;
-  width: 100%;
+  font-size: 14px;
+  font-weight: 700;
+  height: 32px;
+  min-height: 32px;
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  transition: all 0.2s;
 }
 
 .check-day-cell.ok .check-sheet-toggle {
-  background: #2e7d32;
-  border-color: #2e7d32;
+  background: #1976d2;
+  border-color: #1976d2;
   color: #fff;
-  height: 26px;
-  min-width: 42px;
-  padding: 0 8px;
-  width: auto;
+  height: 32px;
+  min-height: 32px;
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
 }
 
 .check-day-cell:not(.empty):not(.ok):not(.partial) .check-sheet-toggle {
-  border-color: transparent;
+  border-color: #ddd;
   color: transparent;
+  background: #fff;
 }
 
 .check-day-cell:not(.empty):not(.ok):not(.partial) .check-sheet-toggle:hover {
-  background: rgba(24, 128, 56, 0.08);
-  border-color: rgba(24, 128, 56, 0.32);
+  background: #f0f4ff;
+  border-color: #1976d2;
 }
 
 .check-day-cell.partial .check-sheet-toggle {
@@ -3299,9 +3338,22 @@ th.check-client-col {
   color: transparent;
 }
 
+.check-sheet-toggle:hover:not(:disabled) {
+  transform: scale(1.05);
+}
+
+.check-sheet-toggle:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 .check-sheet-toggle:focus {
-  box-shadow: inset 0 0 0 2px #188038;
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.2);
   outline: none;
+}
+
+.check-sheet-toggle:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .check-total-row td {
@@ -3355,6 +3407,7 @@ th.check-client-col {
   font-size: 13px;
   padding: 6px 8px;
   width: 100%;
+  max-width: 100%;
 }
 
 .sheet-cell:hover {

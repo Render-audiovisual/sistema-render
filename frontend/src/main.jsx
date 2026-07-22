@@ -7892,6 +7892,157 @@ function HistoriasPlanillaTab({
   );
 }
 
+// ── HOJA POR CLIENTE: calendario día por día de un cliente ──────────────────
+function HistoriasClienteTab({ clientes, estructura, historias, year, month }) {
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(clientes.length > 0 ? clientes[0].id : null);
+
+  const DIAS_SEMANA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+  const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  const clienteActual = clientes.find((c) => c.id === clienteSeleccionado);
+
+  const estructuraPorDia = {};
+  if (estructura && clienteSeleccionado) {
+    estructura.forEach((e) => {
+      if (e.cliente_id === clienteSeleccionado) {
+        estructuraPorDia[e.dia_semana] = e;
+      }
+    });
+  }
+
+  const primerDia = new Date(year, month, 1);
+  const ultimoDia = new Date(year, month + 1, 0);
+  const inicioCalendario = new Date(primerDia);
+  inicioCalendario.setDate(primerDia.getDate() - ((primerDia.getDay() + 6) % 7));
+
+  const semanas = [];
+  const cursor = new Date(inicioCalendario);
+  while (cursor <= ultimoDia) {
+    const dias = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(cursor);
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const diaSemana = d.getDay();
+      const estructuraDelDia = estructuraPorDia[diaSemana];
+      const historiasDelDia = historias.filter(
+        (h) => h.cliente_id === clienteSeleccionado && h.fecha_programada === iso
+      );
+
+      dias.push({
+        date: d,
+        iso,
+        diaSemana,
+        esDiaMes: d.getMonth() === primerDia.getMonth(),
+        tema: estructuraDelDia?.tema || estructuraDelDia?.tipo || "No definido",
+        horario: estructuraDelDia?.horario || "",
+        historiasDelDia,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    semanas.push(dias);
+  }
+
+  if (!clienteActual) {
+    return <div style={{ padding: "40px", textAlign: "center", color: "#999" }}>No hay clientes cargados</div>;
+  }
+
+  return (
+    <>
+      <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "24px" }}>
+        <label style={{ fontWeight: "600", color: "#333", fontSize: "14px" }}>Seleccionar cliente:</label>
+        <select
+          value={clienteSeleccionado}
+          onChange={(e) => setClienteSeleccionado(Number(e.target.value))}
+          style={{
+            padding: "10px 14px",
+            border: "1px solid #ddd",
+            borderRadius: "6px",
+            fontSize: "14px",
+            fontWeight: "500",
+            cursor: "pointer",
+            background: "white",
+          }}
+        >
+          {clientes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nombre}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ background: "linear-gradient(135deg, #1565c0 0%, #1976d2 100%)", color: "white", padding: "20px", borderRadius: "8px", marginBottom: "24px", boxShadow: "0 2px 8px rgba(21,101,192,0.2)" }}>
+        <h2 style={{ fontSize: "20px", margin: "0 0 8px 0", fontWeight: "700" }}>{clienteActual.nombre}</h2>
+        <p style={{ fontSize: "13px", margin: "0", opacity: 0.95, display: "flex", gap: "8px" }}>
+          <span>🏢 {clienteActual.rubro || "—"}</span>
+          {clienteActual.frecuencia && <span>•</span>}
+          {clienteActual.frecuencia && <span>📅 {clienteActual.frecuencia}</span>}
+        </p>
+      </div>
+
+      <div style={{ marginBottom: "16px", fontSize: "12px", color: "#666", padding: "12px", background: "#f0f4ff", borderRadius: "6px", borderLeft: "3px solid #1976d2" }}>
+        📋 <strong>{MESES[month]} {year}</strong> — Estructura día por día
+      </div>
+
+      {semanas.map((dias, semanaIdx) => {
+        const semanaInicio = dias.find((d) => d.esDiaMes);
+        if (!semanaInicio) return null;
+
+        return (
+          <div key={semanaIdx} style={{ marginBottom: "24px" }}>
+            <div style={{ fontSize: "12px", fontWeight: "700", color: "#1565c0", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Semana {semanaIdx + 1}
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                gap: "10px",
+                background: "white",
+                padding: "16px",
+                borderRadius: "8px",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+              }}
+            >
+              {dias.map((dia) => (
+                <div
+                  key={dia.iso}
+                  style={{
+                    background: dia.esDiaMes ? "#f5f8ff" : "#f9f9f9",
+                    border: dia.esDiaMes ? "2px solid #e3f2fd" : "1px solid #e8e8e8",
+                    borderRadius: "8px",
+                    padding: "12px",
+                    textAlign: "center",
+                    minHeight: "110px",
+                    display: "flex",
+                    flexDirection: "column",
+                    opacity: !dia.esDiaMes ? 0.4 : 1,
+                    transition: "all 0.2s",
+                  }}
+                >
+                  <div style={{ fontSize: "11px", fontWeight: "600", color: "#999", marginBottom: "2px", textTransform: "uppercase" }}>
+                    {DIAS_SEMANA[dia.diaSemana]}
+                  </div>
+                  <div style={{ fontSize: "16px", fontWeight: "700", color: "#1976d2", marginBottom: "8px" }}>
+                    {String(dia.date.getDate()).padStart(2, "0")}
+                  </div>
+                  <div style={{ fontSize: "13px", fontWeight: "600", color: "#333", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: "1.3" }}>
+                    {dia.tema}
+                  </div>
+                  {dia.horario && (
+                    <div style={{ fontSize: "11px", color: "#1976d2", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #e0e8ff", fontWeight: "500" }}>
+                      🕐 {dia.horario}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, month, onHistoriasActualizadas }) {
   const [error, setError] = useState(null);
   const [guardandoId, setGuardandoId] = useState(null);
@@ -8111,12 +8262,6 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                           const publicadasDia = items.filter((h) => h.estado === "publicada").length;
                           const todasPublicadas = Boolean(check?.publicado) || (hayHistorias && publicadasDia === items.length);
                           const algunasPublicadas = !check?.publicado && publicadasDia > 0 && publicadasDia < items.length;
-                          const toggleLabel = todasPublicadas
-                            ? "OK"
-                            : algunasPublicadas
-                              ? ""
-                              : "";
-
                           return (
                             <td
                               key={d.iso}
@@ -8141,7 +8286,7 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                                 aria-label={todasPublicadas ? "Quitar OK" : "Marcar OK"}
                                 onClick={() => marcarPublicada(c.id, d.iso, !todasPublicadas)}
                               >
-                                {guardandoId === key ? "..." : toggleLabel}
+                                {guardandoId === key ? "..." : (todasPublicadas ? "✓" : "")}
                               </button>
                             </td>
                           );
@@ -8177,13 +8322,13 @@ function HistoriasEstructuraTab({ clientes }) {
   const [error, setError] = useState(null);
 
   const DIAS_SEMANA = [
-    { id: 1, label: "Lunes" },
-    { id: 2, label: "Martes" },
-    { id: 3, label: "Miércoles" },
-    { id: 4, label: "Jueves" },
-    { id: 5, label: "Viernes" },
-    { id: 6, label: "Sábado" },
-    { id: 0, label: "Domingo" },
+    { id: 1, label: "Lunes", abrev: "L" },
+    { id: 2, label: "Martes", abrev: "M" },
+    { id: 3, label: "Miércoles", abrev: "X" },
+    { id: 4, label: "Jueves", abrev: "J" },
+    { id: 5, label: "Viernes", abrev: "V" },
+    { id: 6, label: "Sábado", abrev: "S" },
+    { id: 0, label: "Domingo", abrev: "D" },
   ];
 
   useEffect(() => {
@@ -8207,28 +8352,6 @@ function HistoriasEstructuraTab({ clientes }) {
     estructuraPorClienteDia[e.cliente_id][e.dia_semana] = e;
   });
 
-  const getEstadoEstructura = (est) => {
-    const tienePublico = Boolean(est?.tipo || est?.tema);
-    const tieneAdmin = Boolean(est?.horario || est?.cta_fijo);
-
-    if (tienePublico && tieneAdmin) return { id: "terminado", label: "Terminado" };
-    if (tienePublico || tieneAdmin) return { id: "en-proceso", label: "En proceso" };
-    return { id: "pendiente", label: "Pendiente" };
-  };
-
-  const resumenEstructura = clientes.reduce(
-    (acc, cliente) => {
-      const estructuraCliente = estructuraPorClienteDia[cliente.id] || {};
-      DIAS_SEMANA.forEach((dia) => {
-        const estado = getEstadoEstructura(estructuraCliente[dia.id]);
-        acc[estado.id] += 1;
-        acc.total += 1;
-      });
-      return acc;
-    },
-    { total: 0, terminado: 0, "en-proceso": 0, pendiente: 0 }
-  );
-
   if (cargando) {
     return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando estructura…</div>;
   }
@@ -8236,81 +8359,92 @@ function HistoriasEstructuraTab({ clientes }) {
   return (
     <>
       {error && (
-        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
-          {error}
+        <div style={{ padding: "12px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "20px", fontSize: "13px" }}>
+          ⚠️ {error}
         </div>
       )}
 
-      <div className="historias-structure-overview">
-        <div className="historias-structure-overview-copy">
-          <div className="historias-structure-kicker">Hoja general</div>
-          <h3>Estructura semanal de historias</h3>
-          <p>
-            Una sola matriz para leer de un vistazo qué se ve en la página pública
-            y qué datos usa el administrador para organizar la publicación.
-          </p>
-        </div>
-        <div className="historias-structure-summary">
-          <div>
-            <span>{clientes.length}</span>
-            <small>Locales</small>
-          </div>
-          <div>
-            <span>{resumenEstructura.terminado}</span>
-            <small>Terminadas</small>
-          </div>
-          <div>
-            <span>{resumenEstructura["en-proceso"]}</span>
-            <small>En proceso</small>
-          </div>
-          <div>
-            <span>{resumenEstructura.pendiente}</span>
-            <small>Pendientes</small>
-          </div>
-        </div>
+      <div style={{ background: "white", borderRadius: "8px", padding: "20px", marginBottom: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+        <h2 style={{ fontSize: "18px", margin: "0 0 8px 0", color: "#333" }}>📅 Estructura Semanal de Historias</h2>
+        <p style={{ fontSize: "13px", color: "#666", margin: "0" }}>
+          Qué tema va cada día para cada cliente y a qué hora se publica. Patrón base que se sugiere automáticamente.
+        </p>
       </div>
 
-      <div className="sheet-frame">
-        <div className="sheet-namebar">Estructura semanal de historias</div>
-        <table className="sheet-table historias-week-structure-table">
-          <colgroup>
-            <col className="historias-local-col" />
-            {DIAS_SEMANA.map((dia) => (
-              <col key={dia.id} className="historias-day-structure-col" />
-            ))}
-          </colgroup>
+      <div style={{ background: "white", borderRadius: "8px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
-            <tr>
-              <th>Local</th>
+            <tr style={{ background: "#1565c0", color: "white" }}>
+              <th style={{ padding: "14px 16px", textAlign: "left", fontWeight: "600", fontSize: "13px", borderBottom: "2px solid #0d47a1", minWidth: "140px" }}>
+                Cliente
+              </th>
+              <th style={{ padding: "14px 8px", textAlign: "center", fontWeight: "600", fontSize: "12px", borderBottom: "2px solid #0d47a1", width: "14.28%" }}>
+                Rubro
+              </th>
               {DIAS_SEMANA.map((dia) => (
-                <th key={dia.id}>{dia.label}</th>
+                <th
+                  key={dia.id}
+                  style={{
+                    padding: "10px 4px",
+                    textAlign: "center",
+                    fontWeight: "600",
+                    fontSize: "12px",
+                    borderBottom: "2px solid #0d47a1",
+                    width: "12.5%",
+                  }}
+                >
+                  <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.7)", fontWeight: "400", marginBottom: "1px" }}>{dia.abrev}</div>
+                  <div>{dia.label.slice(0, 3)}</div>
+                </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {clientes.map((cliente) => {
+            {clientes.map((cliente, idx) => {
               const estructuraCliente = estructuraPorClienteDia[cliente.id] || {};
               return (
-                <tr key={cliente.id}>
-                  <td className="historias-local-cell">{cliente.nombre}</td>
+                <tr key={cliente.id} style={{ borderBottom: "1px solid #e0e0e0", background: idx % 2 === 0 ? "#fafafa" : "#fff" }}>
+                  <td style={{ padding: "16px", fontWeight: "600", color: "#333", fontSize: "13px", verticalAlign: "top" }}>
+                    {cliente.nombre}
+                  </td>
+                  <td style={{ padding: "12px 8px", fontSize: "12px", color: "#666", textAlign: "center", verticalAlign: "top" }}>
+                    {cliente.rubro || "—"}
+                  </td>
                   {DIAS_SEMANA.map((dia) => {
                     const est = estructuraCliente[dia.id];
-                    const estado = getEstadoEstructura(est);
                     return (
-                      <td key={dia.id} className="historias-structure-cell">
-                        <div className={`historias-structure-card estado-${estado.id}`} title={estado.label}>
-                          {est ? (
-                            <>
-                              <div className="historias-structure-type">{est.tipo || "Sin categoría"}</div>
-                              <div className="historias-structure-topic">{est.tema || "Sin tema definido"}</div>
-                              <div className="historias-structure-meta">
-                                {[est.horario, est.cta_fijo].filter(Boolean).join(" · ") || "Sin horario"}
+                      <td
+                        key={dia.id}
+                        style={{
+                          padding: "12px 6px",
+                          textAlign: "center",
+                          verticalAlign: "top",
+                          fontSize: "12px",
+                          background: est ? "#f0f4ff" : "#f9f9f9",
+                          borderLeft: "1px solid #e0e8ff",
+                        }}
+                      >
+                        {est ? (
+                          <div style={{ minHeight: "70px", display: "flex", flexDirection: "column", justifyContent: "center", gap: "4px" }}>
+                            {est.horario && (
+                              <div style={{ fontSize: "11px", color: "#1976d2", fontWeight: "600", padding: "2px 4px", background: "#e3f2fd", borderRadius: "3px" }}>
+                                {est.horario}
                               </div>
-                            </>
-                          ) : (
-                            <div className="historias-structure-type muted-cell">Sin estructura cargada</div>
-                          )}
-                        </div>
+                            )}
+                            <div style={{ fontSize: "12px", fontWeight: "600", color: "#333" }}>
+                              {est.tema || "Sin tema"}
+                            </div>
+                            {est.tipo && (
+                              <div style={{ fontSize: "11px", color: "#999", fontStyle: "italic" }}>
+                                ({est.tipo})
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ minHeight: "70px", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: "11px" }}>
+                            —
+                          </div>
+                        )}
                       </td>
                     );
                   })}
@@ -8321,9 +8455,8 @@ function HistoriasEstructuraTab({ clientes }) {
         </table>
       </div>
 
-      <div className="caption" style={{ marginTop: "10px", marginBottom: "18px" }}>
-        Patrón base semanal por local. Al agregar una historia nueva en la Planilla,
-        el tipo y horario de ese día se sugieren solos.
+      <div style={{ fontSize: "12px", color: "#666", marginTop: "16px", padding: "12px", background: "#f5f5f5", borderRadius: "4px" }}>
+        💡 <strong>Consejo:</strong> Cuando agregues una historia nueva, el tipo y horario de ese día se sugieren automáticamente basándose en esta estructura.
       </div>
     </>
   );
@@ -8520,7 +8653,7 @@ function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atrasadasP
 
 function HistoriasPage({ initialTab = "planilla" }) {
   const [vista, setVista] = useState(
-    ["checklist", "estructura", "fechas"].includes(initialTab) ? initialTab : "planilla",
+    ["estructura", "checklist", "cliente", "fechas", "planilla"].includes(initialTab) ? initialTab : "estructura",
   );
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
@@ -8774,10 +8907,11 @@ function HistoriasPage({ initialTab = "planilla" }) {
                 )}
 
                 <div className="sheet-view-tabs" style={{ margin: 0 }}>
-                  <button type="button" className={vista === "planilla" ? "active" : ""} onClick={() => setVista("planilla")}>Planilla</button>
-                  <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => setVista("checklist")}>Checklist</button>
-                  <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => setVista("estructura")}>Estructura semanal</button>
+                  <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => setVista("estructura")}>1. Estructura</button>
+                  <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => setVista("checklist")}>2. Checklist</button>
+                  <button type="button" className={vista === "cliente" ? "active" : ""} onClick={() => setVista("cliente")}>3. Hoja por Cliente</button>
                   <button type="button" className={vista === "fechas" ? "active" : ""} onClick={() => setVista("fechas")}>Fechas especiales</button>
+                  <button type="button" className={vista === "planilla" ? "active" : ""} onClick={() => setVista("planilla")}>Planilla completa</button>
                 </div>
 
                 {vista === "planilla" && (
@@ -8829,6 +8963,17 @@ function HistoriasPage({ initialTab = "planilla" }) {
                   <HistoriasEstructuraTab
                     key="estructura-general"
                     clientes={clientes}
+                  />
+                )}
+
+                {vista === "cliente" && (
+                  <HistoriasClienteTab
+                    key="cliente-general"
+                    clientes={clientes}
+                    estructura={estructura}
+                    historias={historias}
+                    year={year}
+                    month={month}
                   />
                 )}
 
