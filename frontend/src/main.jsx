@@ -980,7 +980,6 @@ const SECTORES_TAREA = [
   { id: "produccion", label: "Producción", bg: "#0f2b28", fg: "#4db6ac" },
   { id: "edicion", label: "Edición", bg: "#17233a", fg: "#64b5f6" },
   { id: "community", label: "Community", bg: "#331825", fg: "#f06292" },
-  { id: "administracion", label: "Administración", bg: "#24272b", fg: "#90a4ae" },
 ];
 
 const ESTADOS_TAREA = [
@@ -1018,15 +1017,7 @@ function TareasTableroPage() {
   const [tareaSeleccionadaId, setTareaSeleccionadaId] = useState(null);
   const [vista, setVista] = useState("tabla");
   const [mostrarWizard, setMostrarWizard] = useState(false);
-  const [mostrarFiltros, setMostrarFiltros] = useState(false);
-
-  const [busqueda, setBusqueda] = useState("");
   const [filtroSector, setFiltroSector] = useState("todos");
-  const [filtroResponsable, setFiltroResponsable] = useState("todos");
-  const [filtroCliente, setFiltroCliente] = useState("todos");
-  const [filtroEstado, setFiltroEstado] = useState("todos");
-  const [filtroPrioridad, setFiltroPrioridad] = useState("todos");
-  const [filtroFecha, setFiltroFecha] = useState("todas");
   const [agruparPor, setAgruparPor] = useState("estado");
 
   const cargarTareas = () => {
@@ -1053,43 +1044,9 @@ function TareasTableroPage() {
   }, []);
 
   const hoyISO = getHoyLocalISO();
-  const limiteSemana = new Date(`${hoyISO}T00:00:00`);
-  limiteSemana.setDate(limiteSemana.getDate() + 7);
-  const limiteSemanaISO = limiteSemana.toISOString().slice(0, 10);
-
-  const coincideBusqueda = (t) => {
-    const q = busqueda.trim().toLowerCase();
-    if (!q) return true;
-    return [t.titulo, t.cliente_nombre, t.asignado_a, t.aclaraciones, t.material_referencia, t.subtipo]
-      .some((campo) => campo && campo.toLowerCase().includes(q));
-  };
-
-  const coincideFecha = (t) => {
-    if (filtroFecha === "todas") return true;
-    if (filtroFecha === "sin_fecha") return !t.fecha_vencimiento;
-    if (!t.fecha_vencimiento) return false;
-    if (filtroFecha === "vencidas") return t.fecha_vencimiento < hoyISO && t.estado !== ESTADO_FINAL_TAREA;
-    if (filtroFecha === "hoy") return t.fecha_vencimiento === hoyISO;
-    if (filtroFecha === "semana") return t.fecha_vencimiento > hoyISO && t.fecha_vencimiento <= limiteSemanaISO;
-    return true;
-  };
-
-  const filtrosActivos = [
-    filtroResponsable !== "todos",
-    filtroCliente !== "todos",
-    filtroEstado !== "todos",
-    filtroPrioridad !== "todos",
-    filtroFecha !== "todas",
-  ].filter(Boolean).length;
 
   const tareasFiltradas = tareas.filter((t) => {
     if (filtroSector !== "todos" && t.tipo_tarea !== filtroSector) return false;
-    if (filtroResponsable !== "todos" && t.asignado_a !== filtroResponsable) return false;
-    if (filtroCliente !== "todos" && String(t.cliente_id) !== filtroCliente) return false;
-    if (filtroEstado !== "todos" && t.estado !== filtroEstado) return false;
-    if (filtroPrioridad !== "todos" && t.prioridad !== filtroPrioridad) return false;
-    if (!coincideFecha(t)) return false;
-    if (!coincideBusqueda(t)) return false;
     return true;
   });
 
@@ -1145,16 +1102,6 @@ function TareasTableroPage() {
     }
   };
 
-  const limpiarFiltros = () => {
-    setBusqueda("");
-    setFiltroSector("todos");
-    setFiltroResponsable("todos");
-    setFiltroCliente("todos");
-    setFiltroEstado("todos");
-    setFiltroPrioridad("todos");
-    setFiltroFecha("todas");
-  };
-
   const tareaSeleccionada = tareas.find((t) => t.id === tareaSeleccionadaId) || null;
 
   return (
@@ -1163,109 +1110,8 @@ function TareasTableroPage() {
         <div className="content">
           <div className="h-workspace">
             <div className="h-main">
-              <div className="h-toolbar">
-                <div className="task-search">
-                  <span>Buscar</span>
-                  <input
-                    type="text"
-                    placeholder="Título, cliente o responsable…"
-                    value={busqueda}
-                    onChange={(e) => setBusqueda(e.target.value)}
-                  />
-                </div>
-
-                <div style={{ position: "relative" }}>
-                  <button
-                    className="btn"
-                    type="button"
-                    onClick={() => setMostrarFiltros((v) => !v)}
-                    style={{ display: "flex", alignItems: "center", gap: "6px" }}
-                  >
-                    Filtros
-                    {filtrosActivos > 0 && (
-                      <span
-                        style={{
-                          background: "#188038",
-                          color: "#fff",
-                          borderRadius: "999px",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          minWidth: "18px",
-                          height: "18px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          padding: "0 5px",
-                        }}
-                      >
-                        {filtrosActivos}
-                      </span>
-                    )}
-                  </button>
-
-                  {mostrarFiltros && (
-                    <>
-                      <div
-                        onClick={() => setMostrarFiltros(false)}
-                        style={{ position: "fixed", inset: 0, zIndex: 20 }}
-                      />
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: "calc(100% + 6px)",
-                          left: 0,
-                          background: "#1f2023",
-                          border: "1px solid #34363a",
-                          borderRadius: "8px",
-                          boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
-                          padding: "14px",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "8px",
-                          minWidth: "220px",
-                          zIndex: 21,
-                        }}
-                      >
-                        <select className="task-filter-select" style={{ width: "100%" }} value={filtroResponsable} onChange={(e) => setFiltroResponsable(e.target.value)}>
-                          <option value="todos">Todos los responsables</option>
-                          {RESPONSABLES_EQUIPO.map((r) => (
-                            <option key={r} value={r}>{r}</option>
-                          ))}
-                        </select>
-                        <select className="task-filter-select" style={{ width: "100%" }} value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}>
-                          <option value="todos">Todos los clientes</option>
-                          {clientes.map((c) => (
-                            <option key={c.id} value={c.id}>{c.nombre}</option>
-                          ))}
-                        </select>
-                        <select className="task-filter-select" style={{ width: "100%" }} value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
-                          <option value="todos">Todos los estados</option>
-                          {ESTADOS_TAREA.map((e) => (
-                            <option key={e.id} value={e.id}>{e.label}</option>
-                          ))}
-                        </select>
-                        <select className="task-filter-select" style={{ width: "100%" }} value={filtroPrioridad} onChange={(e) => setFiltroPrioridad(e.target.value)}>
-                          <option value="todos">Toda prioridad</option>
-                          {PRIORIDADES_TAREA.map((p) => (
-                            <option key={p.id} value={p.id}>{p.label}</option>
-                          ))}
-                        </select>
-                        <select className="task-filter-select" style={{ width: "100%" }} value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)}>
-                          <option value="todas">Toda fecha</option>
-                          <option value="vencidas">Vencidas</option>
-                          <option value="hoy">Hoy</option>
-                          <option value="semana">Esta semana</option>
-                          <option value="sin_fecha">Sin fecha</option>
-                        </select>
-                        {filtrosActivos > 0 && (
-                          <button className="btn" type="button" onClick={limpiarFiltros}>Limpiar filtros</button>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <div className="sheet-view-tabs" style={{ margin: 0, marginLeft: "auto" }}>
+              <div className="h-toolbar task-toolbar-simplified">
+                <div className="sheet-view-tabs task-view-tabs">
                   <button type="button" className={vista === "tabla" ? "active" : ""} onClick={() => setVista("tabla")}>Lista</button>
                   <button type="button" className={vista === "kanban" ? "active" : ""} onClick={() => setVista("kanban")}>Columnas</button>
                   <button type="button" className={vista === "calendario" ? "active" : ""} onClick={() => setVista("calendario")}>Calendario</button>
@@ -1273,11 +1119,11 @@ function TareasTableroPage() {
                 </div>
 
                 {esAdmin && (
-                  <button className="btn" type="button" onClick={() => setMostrarWizard(true)}>+ Nueva tarea</button>
+                  <button className="btn task-new-button" type="button" onClick={() => setMostrarWizard(true)}>+ Nueva tarea</button>
                 )}
               </div>
 
-              <div className="task-sector-panel" style={{ margin: "0 20px" }}>
+              <div className="task-sector-panel task-sector-panel-simplified">
                 <div className="task-sector-tabs">
                   <button type="button" className={`task-sector-tab ${filtroSector === "todos" ? "active" : ""}`} onClick={() => setFiltroSector("todos")}>
                     <span>Todos</span>

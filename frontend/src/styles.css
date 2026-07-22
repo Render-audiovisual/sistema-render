@@ -3924,6 +3924,79 @@ tr:hover .sheet-row-actions {
   border-bottom-color: #2b2d31;
 }
 
+.tareas-viewport .task-toolbar-simplified {
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 58px;
+  padding-block: 10px;
+}
+
+.tareas-viewport .task-view-tabs {
+  margin: 0;
+}
+
+.tareas-viewport .btn.task-new-button {
+  background: #188038;
+  border-color: #188038;
+  color: #fff;
+  font-weight: 700;
+  margin-left: auto;
+}
+
+.tareas-viewport .btn.task-new-button:hover {
+  background: #137333;
+}
+
+.tareas-viewport .task-sector-panel-simplified {
+  margin: 12px 20px 0;
+  padding: 10px;
+}
+
+.tareas-viewport .task-sector-panel-simplified .task-sector-tabs {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@media (max-width: 768px) {
+  .tareas-viewport .task-toolbar-simplified {
+    align-items: stretch;
+  }
+
+  .tareas-viewport .task-view-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .tareas-viewport .task-view-tabs button {
+    min-width: 0;
+    padding-inline: 6px;
+  }
+
+  .tareas-viewport .task-new-button {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .tareas-viewport .task-sector-panel-simplified {
+    margin: 10px 12px 0;
+  }
+
+  .tareas-viewport .task-sector-panel-simplified .task-sector-tabs {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .tareas-viewport .task-sector-panel-simplified .task-sector-tab {
+    align-items: center;
+    flex: 0 0 132px;
+    flex-direction: row;
+    justify-content: space-between;
+    min-height: 42px;
+  }
+}
+
 .tareas-viewport .btn {
   background: #26282c;
   border-color: #3a3d42;
