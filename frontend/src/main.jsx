@@ -1251,8 +1251,8 @@ function TareasTableroPage() {
                 </div>
 
                 <div className="sheet-view-tabs" style={{ margin: 0, marginLeft: "auto" }}>
-                  <button type="button" className={vista === "tabla" ? "active" : ""} onClick={() => setVista("tabla")}>Tabla</button>
-                  <button type="button" className={vista === "kanban" ? "active" : ""} onClick={() => setVista("kanban")}>Kanban</button>
+                  <button type="button" className={vista === "tabla" ? "active" : ""} onClick={() => setVista("tabla")}>Lista</button>
+                  <button type="button" className={vista === "kanban" ? "active" : ""} onClick={() => setVista("kanban")}>Columnas</button>
                   <button type="button" className={vista === "calendario" ? "active" : ""} onClick={() => setVista("calendario")}>Calendario</button>
                   <button type="button" className={vista === "persona" ? "active" : ""} onClick={() => setVista("persona")}>Por persona</button>
                 </div>
