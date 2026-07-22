@@ -8339,6 +8339,28 @@ function HistoriasEstructuraTab({ clientes }) {
     estructuraPorClienteDia[e.cliente_id][e.dia_semana] = e;
   });
 
+  const getEstadoEstructura = (est) => {
+    const tienePublico = Boolean(est?.tipo || est?.tema);
+    const tieneAdmin = Boolean(est?.horario || est?.cta_fijo);
+
+    if (tienePublico && tieneAdmin) return { id: "terminado", label: "Terminado" };
+    if (tienePublico || tieneAdmin) return { id: "en-proceso", label: "En proceso" };
+    return { id: "pendiente", label: "Pendiente" };
+  };
+
+  const resumenEstructura = clientes.reduce(
+    (acc, cliente) => {
+      const estructuraCliente = estructuraPorClienteDia[cliente.id] || {};
+      DIAS_SEMANA.forEach((dia) => {
+        const estado = getEstadoEstructura(estructuraCliente[dia.id]);
+        acc[estado.id] += 1;
+        acc.total += 1;
+      });
+      return acc;
+    },
+    { total: 0, terminado: 0, "en-proceso": 0, pendiente: 0 }
+  );
+
   if (cargando) {
     return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando estructura…</div>;
   }
@@ -8350,6 +8372,35 @@ function HistoriasEstructuraTab({ clientes }) {
           {error}
         </div>
       )}
+
+      <div className="historias-structure-overview">
+        <div className="historias-structure-overview-copy">
+          <div className="historias-structure-kicker">Hoja general</div>
+          <h3>Estructura semanal de historias</h3>
+          <p>
+            Una sola matriz para leer de un vistazo qué se ve en la página pública
+            y qué datos usa el administrador para organizar la publicación.
+          </p>
+        </div>
+        <div className="historias-structure-summary">
+          <div>
+            <span>{clientes.length}</span>
+            <small>Locales</small>
+          </div>
+          <div>
+            <span>{resumenEstructura.terminado}</span>
+            <small>Terminadas</small>
+          </div>
+          <div>
+            <span>{resumenEstructura["en-proceso"]}</span>
+            <small>En proceso</small>
+          </div>
+          <div>
+            <span>{resumenEstructura.pendiente}</span>
+            <small>Pendientes</small>
+          </div>
+        </div>
+      </div>
 
       <div className="sheet-frame">
         <div className="sheet-namebar">Estructura semanal de historias</div>
@@ -8376,19 +8427,41 @@ function HistoriasEstructuraTab({ clientes }) {
                   <td className="historias-local-cell">{cliente.nombre}</td>
                   {DIAS_SEMANA.map((dia) => {
                     const est = estructuraCliente[dia.id];
+                    const estado = getEstadoEstructura(est);
                     return (
                       <td key={dia.id} className="historias-structure-cell">
-                        {est ? (
-                          <>
-                            <div className="historias-structure-type">{est.tipo || "Historia"}</div>
-                            <div className="historias-structure-topic">{est.tema || "—"}</div>
-                            <div className="historias-structure-meta">
-                              {[est.horario, est.cta_fijo].filter(Boolean).join(" · ") || "Sin horario"}
+                        <div className={`historias-structure-card estado-${estado.id}`}>
+                          <div className="historias-structure-card-head">
+                            <span className={`historias-structure-status estado-${estado.id}`}>
+                              {estado.label}
+                            </span>
+                          </div>
+
+                          {est ? (
+                            <>
+                              <div className="historias-structure-section">
+                                <div className="historias-structure-section-label">Página pública</div>
+                                <div className="historias-structure-type">{est.tipo || "Sin categoría"}</div>
+                                <div className="historias-structure-topic">{est.tema || "Sin tema definido"}</div>
+                              </div>
+
+                              <div className="historias-structure-section">
+                                <div className="historias-structure-section-label">Administrador</div>
+                                <div className="historias-structure-meta">
+                                  <span>{est.horario || "Sin horario"}</span>
+                                  <span>{est.cta_fijo || "Sin CTA fijo"}</span>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="historias-structure-empty">
+                              <div className="historias-structure-type">Sin estructura cargada</div>
+                              <div className="historias-structure-topic">
+                                Pendiente definir página pública y administrador.
+                              </div>
                             </div>
-                          </>
-                        ) : (
-                          <span className="muted-cell">—</span>
-                        )}
+                          )}
+                        </div>
                       </td>
                     );
                   })}
