@@ -2807,7 +2807,13 @@ select:focus {
   max-height: 72vh;
   overflow: auto;
   padding: 0;
-  box-shadow: inset 0 1px 0 #f8fafd;
+  /* El primer inset (arriba) ya estaba; el segundo (derecha) es un aviso
+     de que hay más columnas al costado — sin esto, una tabla ancha
+     cortada de golpe en el borde se ve como si estuviera rota en vez de
+     continuar con scroll horizontal. */
+  box-shadow:
+    inset 0 1px 0 #f8fafd,
+    inset -14px 0 10px -10px rgba(60, 64, 67, 0.18);
 }
 
 .sheet-namebar {
@@ -3982,6 +3988,9 @@ tr:hover .sheet-row-actions {
 .tareas-viewport .sheet-frame {
   background: #1f2023;
   border-color: #2b2d31;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset -14px 0 10px -10px rgba(0, 0, 0, 0.55);
 }
 
 .tareas-viewport .sheet-table th {
