@@ -8187,7 +8187,7 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                             ? "OK"
                             : algunasPublicadas
                               ? `${publicadasDia}/${items.length}`
-                              : "—";
+                              : "OK";
 
                           return (
                             <td

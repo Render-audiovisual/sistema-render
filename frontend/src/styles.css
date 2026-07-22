@@ -3165,7 +3165,8 @@ th.check-client-col {
 }
 
 .check-day-cell:not(.empty):not(.ok):not(.partial) .check-sheet-toggle {
-  color: #5f6368;
+  border-color: #9aa0a6;
+  color: #188038;
 }
 
 .check-day-cell:not(.empty):not(.ok):not(.partial) .check-sheet-toggle:hover {
