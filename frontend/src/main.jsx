@@ -184,7 +184,7 @@ function getAprobacionesAgustin(tareas) {
   return tareas.filter(
     (tarea) =>
       tarea.propiedades_extra?.escalada_a === "Agustín" &&
-      tarea.estado !== "hecha",
+      tarea.estado !== ESTADO_FINAL_TAREA,
   );
 }
 
@@ -352,20 +352,20 @@ function getPiezasBloqueadas(historias, publicaciones) {
 }
 
 // Cualquier tarea encadenada a una tarea padre (tarea_padre_id, ver
-// POST /piezas en el backend) que todavía no esté hecha — el caso típico es
+// POST /piezas en el backend) que todavía no esté publicada — el caso típico es
 // una edición esperando que Germán termine de filmar, pero la relación no
 // está limitada a tipo_tarea "edicion".
 function esperandoMaterial(tarea) {
-  return Boolean(tarea.tarea_padre_id) && tarea.tarea_padre_estado !== "hecha";
+  return Boolean(tarea.tarea_padre_id) && tarea.tarea_padre_estado !== ESTADO_FINAL_TAREA;
 }
 
 // Ediciones de video frenadas porque la filmación (tarea padre) todavía
-// no está hecha — el cuello de botella real detrás de "Luciano atrasado"
+// no está publicada — el cuello de botella real detrás de "Luciano atrasado"
 // suele ser "Germán no filmó todavía", así que separarlo ayuda a saber a
 // quién ir a destrabar.
 function getEdicionesEsperandoMaterial(tareas) {
   return tareas.filter(
-    (t) => t.tipo_tarea === "edicion" && t.estado !== "hecha" && esperandoMaterial(t),
+    (t) => t.tipo_tarea === "edicion" && t.estado !== ESTADO_FINAL_TAREA && esperandoMaterial(t),
   );
 }
 
@@ -407,6 +407,19 @@ function getHoyLocalISO() {
 
 function getEstadoHistoriaLabel(estado) {
   return estado.replace("_", " ");
+}
+
+const ESTADO_FINAL_TAREA = "publicada";
+const ESTADO_TAREA_LABELS = {
+  pendiente: "Pendiente",
+  en_progreso: "En proceso",
+  en_revision: "En revisión",
+  programada: "Programada",
+  publicada: "Publicada",
+};
+
+function getEstadoTareaLabel(estado) {
+  return ESTADO_TAREA_LABELS[estado] || estado?.replaceAll("_", " ") || "—";
 }
 
 const TIPO_PUBLICACION_LABELS = {
@@ -776,8 +789,10 @@ function NuevaTareaPage() {
                     onChange={(e) => setEstado(e.target.value)}
                   >
                     <option value="pendiente">Pendiente</option>
-                    <option value="en_progreso">En progreso</option>
-                    <option value="bloqueada">Bloqueada</option>
+                    <option value="en_progreso">En proceso</option>
+                    <option value="en_revision">En revisión</option>
+                    <option value="programada">Programada</option>
+                    <option value="publicada">Publicada</option>
                   </select>
                 </label>
                 <label className="form-field">
@@ -890,7 +905,7 @@ function TareasAsignadasGenericas({ nombre, tipoTarea, titulo }) {
                     <>
                       Vence: {tarea.fecha_vencimiento}
                       {tarea.fecha_vencimiento < getHoyLocalISO() &&
-                        tarea.estado !== "hecha" && (
+                        tarea.estado !== ESTADO_FINAL_TAREA && (
                           <span
                             className="tag atraso"
                             style={{ marginLeft: "6px" }}
@@ -926,14 +941,14 @@ function TareasAsignadasGenericas({ nombre, tipoTarea, titulo }) {
                     onChange={(e) => cambiarEstado(tarea.id, e.target.value)}
                   >
                     <option value="pendiente">Pendiente</option>
-                    <option value="en_progreso">En progreso</option>
+                    <option value="en_progreso">En proceso</option>
                     <option value="en_revision">En revisión</option>
-                    <option value="hecha" disabled={bloqueaCierre}>
+                    <option value="programada">Programada</option>
+                    <option value="publicada" disabled={bloqueaCierre}>
                       {bloqueaCierre
-                        ? "Hecha (requiere aprobación de admin)"
-                        : "Hecha"}
+                        ? "Publicada (requiere aprobación de admin)"
+                        : "Publicada"}
                     </option>
-                    <option value="bloqueada">Bloqueada</option>
                   </select>
                 </div>
               </div>
@@ -944,7 +959,7 @@ function TareasAsignadasGenericas({ nombre, tipoTarea, titulo }) {
         )}
         <div className="caption">
           → Podés cambiar el estado directo desde acá. Las tareas que requieren
-          aprobación no se pueden marcar "Hecha" salvo que quien esté logueado
+          aprobación no se pueden marcar "Publicada" salvo que quien esté logueado
           sea admin (Agustín o Franco).
         </div>
       </div>
@@ -970,10 +985,10 @@ const SECTORES_TAREA = [
 
 const ESTADOS_TAREA = [
   { id: "pendiente", label: "Pendiente", bg: "#24272b", fg: "#90a4ae" },
-  { id: "en_progreso", label: "En progreso", bg: "#17233a", fg: "#64b5f6" },
+  { id: "en_progreso", label: "En proceso", bg: "#17233a", fg: "#64b5f6" },
   { id: "en_revision", label: "En revisión", bg: "#332413", fg: "#ffb74d" },
-  { id: "hecha", label: "Hecha", bg: "#123320", fg: "#66bb6a" },
-  { id: "bloqueada", label: "Bloqueada", bg: "#331616", fg: "#ef5350" },
+  { id: "programada", label: "Programada", bg: "#2d2340", fg: "#b39ddb" },
+  { id: "publicada", label: "Publicada", bg: "#123320", fg: "#66bb6a" },
 ];
 
 const PRIORIDADES_TAREA = [
@@ -1053,7 +1068,7 @@ function TareasTableroPage() {
     if (filtroFecha === "todas") return true;
     if (filtroFecha === "sin_fecha") return !t.fecha_vencimiento;
     if (!t.fecha_vencimiento) return false;
-    if (filtroFecha === "vencidas") return t.fecha_vencimiento < hoyISO && t.estado !== "hecha";
+    if (filtroFecha === "vencidas") return t.fecha_vencimiento < hoyISO && t.estado !== ESTADO_FINAL_TAREA;
     if (filtroFecha === "hoy") return t.fecha_vencimiento === hoyISO;
     if (filtroFecha === "semana") return t.fecha_vencimiento > hoyISO && t.fecha_vencimiento <= limiteSemanaISO;
     return true;
@@ -1348,7 +1363,7 @@ function TareasTableroPage() {
                               const est = getEstadoTarea(t.estado);
                               const prio = getPrioridadTarea(t.prioridad);
                               const sector = getSectorTarea(t.tipo_tarea);
-                              const vencida = t.fecha_vencimiento && t.fecha_vencimiento < hoyISO && t.estado !== "hecha";
+                              const vencida = t.fecha_vencimiento && t.fecha_vencimiento < hoyISO && t.estado !== ESTADO_FINAL_TAREA;
 
                               return (
                                 <tr key={t.id}>
@@ -1533,7 +1548,7 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
 
       {esperandoMaterial(tarea) && (
         <div className="td-panel-banner">
-          ⏳ Esperando material — la tarea de filmación todavía no está marcada como hecha.
+          ⏳ Esperando material — la tarea de filmación todavía no está marcada como publicada.
         </div>
       )}
 
@@ -1685,7 +1700,7 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
 }
 
 // Tablero drag-and-drop genérico: columnas + un campo de la tarea que se
-// actualiza al soltar. Sirve tanto para "Kanban" (columnas = estado) como
+// actualiza al soltar. Sirve tanto para "Columnas" (columnas = estado) como
 // para "Por persona" (columnas = responsable) sin duplicar la lógica de
 // arrastre — mismo patrón HTML5 nativo que ya usaba PiezasTableroPage.
 const SUBTIPOS_SUGERIDOS = ["reel", "historia", "carrusel", "visita", "flyer", "editar", "filmar", "diseñar"];
@@ -1987,7 +2002,7 @@ function TareaKanbanBoard({ tareas, columnas, campo, onMover, onAbrir }) {
   };
 
   return (
-    <div className="kanban task-kanban-board" aria-label="Tablero Kanban de tareas">
+    <div className="kanban task-kanban-board" aria-label="Vista por columnas de tareas">
       {columnas.map((col) => {
         const items = tareas.filter((t) => (t[campo] || null) === col.id);
         return (
@@ -4768,7 +4783,7 @@ function GermanDashboard() {
 
   useEffect(cargarTareasGerman, []);
 
-  const pendientes = tareasGerman.filter((tarea) => tarea.estado !== "hecha");
+  const pendientes = tareasGerman.filter((tarea) => tarea.estado !== ESTADO_FINAL_TAREA);
 
   // Compromiso mensual pactado por cliente (confirmado al definir
   // responsabilidades del equipo). El mes de cada tarea se aproxima por
@@ -4786,7 +4801,7 @@ function GermanDashboard() {
     const hechas = tareasGerman.filter(
       (t) =>
         t.cliente_nombre === c.cliente &&
-        t.estado === "hecha" &&
+        t.estado === ESTADO_FINAL_TAREA &&
         t.fecha_vencimiento?.startsWith(mesActual),
     ).length;
     return { ...c, hechas, porcentaje: Math.round((hechas / c.cuota) * 100) };
@@ -4812,7 +4827,7 @@ function GermanDashboard() {
                   <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>🎯 Tu próxima tarea</div>
                   <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>{proximaTarea.titulo}</div>
                   <div style={{ fontSize: "13px", color: "#333", marginBottom: "8px" }}>{proximaTarea.cliente_nombre ?? "Sin cliente"} · Vence {proximaTarea.fecha_vencimiento}</div>
-                  <div style={{ fontSize: "12px", color: "#555" }}>Estado: {proximaTarea.estado === "bloqueada" ? "Bloqueada: " + (proximaTarea.propiedades_extra?.motivo_bloqueo ?? "sin motivo") : getEstadoHistoriaLabel(proximaTarea.estado)}</div>
+                  <div style={{ fontSize: "12px", color: "#555" }}>Estado: {getEstadoTareaLabel(proximaTarea.estado)}</div>
                 </div>
               );
             })()}
@@ -4825,11 +4840,9 @@ function GermanDashboard() {
             )}
             {!tareasGermanError &&
               pendientes.map((tarea) => {
-                const estaBloqueada = tarea.estado === "bloqueada";
-
                 return (
                   <div
-                    className={`priority-card ${estaBloqueada ? "blocked" : ""}`}
+                    className="priority-card"
                     key={tarea.id}
                     onClick={() => setProduccionSeleccionada(tarea)}
                   >
@@ -4838,19 +4851,13 @@ function GermanDashboard() {
                     </div>
                     <div>{tarea.titulo}</div>
                     <div className="meta">
-                      {estaBloqueada ? (
-                        <span className="tag operativa">
-                          Bloqueada:{" "}
-                          {tarea.propiedades_extra?.motivo_bloqueo ??
-                            "sin motivo cargado"}
-                        </span>
-                      ) : tarea.propiedades_extra?.coordinada ? (
+                      {tarea.propiedades_extra?.coordinada ? (
                         `Coordinado para ${
                           tarea.propiedades_extra.horario ??
                           "fecha sin especificar"
                         }`
                       ) : (
-                        getEstadoHistoriaLabel(tarea.estado)
+                        getEstadoTareaLabel(tarea.estado)
                       )}
                     </div>
                   </div>
@@ -4906,22 +4913,22 @@ function GermanDashboard() {
             </div>
             <div className="caption">
               → Un video cuenta como cumplido recién cuando queda marcado
-              "Hecha" — no alcanza con haber ido a filmar.
+              "Publicada" — no alcanza con haber ido a filmar.
             </div>
           </div>
 
-          <div className="section-label">4 · Bloqueos</div>
+          <div className="section-label">4 · En revisión</div>
           <div className="box">
-            {tareasGerman.filter((t) => t.estado === "bloqueada").length === 0 && (
-              <div className="caption">Sin bloqueos activos.</div>
+            {tareasGerman.filter((t) => t.estado === "en_revision").length === 0 && (
+              <div className="caption">No hay producciones en revisión.</div>
             )}
             {tareasGerman
-              .filter((t) => t.estado === "bloqueada")
+              .filter((t) => t.estado === "en_revision")
               .map((t) => (
-                <div className="priority-card blocked" key={`bloqueo-${t.id}`}>
+                <div className="priority-card" key={`revision-${t.id}`}>
                   <div className="cliente">{t.cliente_nombre ?? "Sin cliente"}</div>
                   <div>{t.titulo}</div>
-                  <div className="meta">{t.propiedades_extra?.motivo_bloqueo ?? "Sin motivo cargado"}</div>
+                  <div className="meta">Pendiente de revisión.</div>
                 </div>
               ))}
           </div>
@@ -4984,7 +4991,7 @@ function DetalleProduccionGermanModal({ produccion, onClose, onActualizado }) {
     fetch(`/api/tareas/${produccion.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estado: "hecha" }),
+      body: JSON.stringify({ estado: ESTADO_FINAL_TAREA }),
     })
       .then((response) => {
         if (!response.ok) {
@@ -5021,7 +5028,7 @@ function DetalleProduccionGermanModal({ produccion, onClose, onActualizado }) {
             </div>
             <div className="detail-field">
               <div className="detail-label">Estado actual</div>
-              <div>{getEstadoHistoriaLabel(produccion.estado)}</div>
+              <div>{getEstadoTareaLabel(produccion.estado)}</div>
             </div>
             <div className="detail-field">
               <div className="detail-label">Detalle</div>
@@ -5047,7 +5054,7 @@ function DetalleProduccionGermanModal({ produccion, onClose, onActualizado }) {
             <button
               className="btn"
               type="button"
-              disabled={enviando !== null || produccion.estado === "hecha"}
+              disabled={enviando !== null || produccion.estado === ESTADO_FINAL_TAREA}
               onClick={handleMarcarEntregado}
             >
               {enviando === "entregar"
@@ -5081,8 +5088,8 @@ function LucianoDashboard() {
       });
   }, []);
 
-  const pendientes = edicionesLuciano.filter((t) => t.estado !== "hecha");
-  const hechas = edicionesLuciano.filter((t) => t.estado === "hecha").length;
+  const pendientes = edicionesLuciano.filter((t) => t.estado !== ESTADO_FINAL_TAREA);
+  const publicadas = edicionesLuciano.filter((t) => t.estado === ESTADO_FINAL_TAREA).length;
   const proxima = pendientes[0];
 
   return (
@@ -5102,7 +5109,7 @@ function LucianoDashboard() {
                   {proxima.cliente_nombre ?? "Sin cliente"} · Vence {proxima.fecha_vencimiento}
                 </div>
                 <div style={{ fontSize: "12px", color: "#555" }}>
-                  {proxima.requiere_aprobacion ? "Esperando aprobación de Franco" : `Estado: ${getEstadoHistoriaLabel(proxima.estado)}`}
+                  {proxima.requiere_aprobacion ? "Esperando aprobación de Franco" : `Estado: ${getEstadoTareaLabel(proxima.estado)}`}
                 </div>
               </div>
             )}
@@ -5113,7 +5120,7 @@ function LucianoDashboard() {
             <div className="progress-card">
               <div className="progress-label">Videos editados</div>
               <div className="progress-value">
-                {hechas} / {edicionesLuciano.length}
+                {publicadas} / {edicionesLuciano.length}
               </div>
             </div>
             <div className="caption">
@@ -5151,10 +5158,10 @@ function AugustoDashboard() {
 
   const hoy = getHoyLocalISO();
   const atrasadasOHoy = disenosAugusto.filter(
-    (t) => t.estado !== "hecha" && t.fecha_vencimiento && t.fecha_vencimiento <= hoy,
+    (t) => t.estado !== ESTADO_FINAL_TAREA && t.fecha_vencimiento && t.fecha_vencimiento <= hoy,
   );
-  const hechas = disenosAugusto.filter((t) => t.estado === "hecha").length;
-  const proxima = disenosAugusto.find((t) => t.estado !== "hecha");
+  const publicadas = disenosAugusto.filter((t) => t.estado === ESTADO_FINAL_TAREA).length;
+  const proxima = disenosAugusto.find((t) => t.estado !== ESTADO_FINAL_TAREA);
 
   return (
     <main aria-label="Render platform Augusto">
@@ -5172,7 +5179,7 @@ function AugustoDashboard() {
                 <div style={{ fontSize: "13px", color: "#555", marginBottom: "8px" }}>
                   {proxima.cliente_nombre ?? "Sin cliente"} · Vence {proxima.fecha_vencimiento}
                 </div>
-                <div style={{ fontSize: "12px", color: "#666" }}>Estado: {getEstadoHistoriaLabel(proxima.estado)}</div>
+                <div style={{ fontSize: "12px", color: "#666" }}>Estado: {getEstadoTareaLabel(proxima.estado)}</div>
               </div>
             )}
           </div>
@@ -5187,7 +5194,7 @@ function AugustoDashboard() {
                 <div className="cliente">{t.cliente_nombre ?? "Sin cliente"}</div>
                 <div>{t.titulo}</div>
                 <div className="meta">
-                  {t.fecha_vencimiento} · {getEstadoHistoriaLabel(t.estado)}
+                  {t.fecha_vencimiento} · {getEstadoTareaLabel(t.estado)}
                 </div>
               </div>
             ))}
@@ -5202,7 +5209,7 @@ function AugustoDashboard() {
             <div className="progress-card">
               <div className="progress-label">Diseños entregados</div>
               <div className="progress-value">
-                {hechas} / {disenosAugusto.length}
+                {publicadas} / {disenosAugusto.length}
               </div>
             </div>
           </div>
@@ -6030,7 +6037,7 @@ function AgustinDashboard() {
                           fetch(`/api/tareas/${aprobacion.id}`, {
                             method: "PATCH",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ estado: "hecha" }),
+                            body: JSON.stringify({ estado: ESTADO_FINAL_TAREA }),
                           }).then((response) => {
                             if (response.ok) cargarPanorama();
                           });
@@ -7057,13 +7064,13 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
   };
 
   const tareasFiltradas = tareas.filter((t) => {
-    if (filtroEstado === "activas" && t.estado === "hecha") return false;
+    if (filtroEstado === "activas" && t.estado === ESTADO_FINAL_TAREA) return false;
     if (filtroEstado !== "todos" && filtroEstado !== "activas" && t.estado !== filtroEstado) return false;
     if (filtroPrioridad !== "todos" && t.prioridad !== filtroPrioridad) return false;
     return true;
   });
 
-  const estadosDisponibles = ["pendiente", "en_progreso", "en_revision", "hecha"];
+  const estadosDisponibles = ["pendiente", "en_progreso", "en_revision", "programada", "publicada"];
   const hoyISO = getHoyLocalISO();
   const limiteSemana = new Date(`${hoyISO}T00:00:00`);
   limiteSemana.setDate(limiteSemana.getDate() + 7);
@@ -7085,14 +7092,14 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
       id: "vencidas",
       titulo: "Vencidas",
       tareas: tareasFiltradas.filter(
-        (t) => t.estado !== "hecha" && t.fecha_vencimiento && t.fecha_vencimiento < hoyISO,
+        (t) => t.estado !== ESTADO_FINAL_TAREA && t.fecha_vencimiento && t.fecha_vencimiento < hoyISO,
       ),
     },
     {
       id: "hoy",
       titulo: "Hoy",
       tareas: tareasFiltradas.filter(
-        (t) => t.estado !== "hecha" && t.fecha_vencimiento === hoyISO,
+        (t) => t.estado !== ESTADO_FINAL_TAREA && t.fecha_vencimiento === hoyISO,
       ),
     },
     {
@@ -7100,7 +7107,7 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
       titulo: "Próximos 7 días",
       tareas: tareasFiltradas.filter(
         (t) =>
-          t.estado !== "hecha" &&
+          t.estado !== ESTADO_FINAL_TAREA &&
           t.fecha_vencimiento &&
           t.fecha_vencimiento > hoyISO &&
           t.fecha_vencimiento <= limiteSemanaISO,
@@ -7111,22 +7118,22 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
       titulo: "Más adelante",
       tareas: tareasFiltradas.filter(
         (t) =>
-          t.estado !== "hecha" &&
+          t.estado !== ESTADO_FINAL_TAREA &&
           (!t.fecha_vencimiento || t.fecha_vencimiento > limiteSemanaISO),
       ),
     },
     {
-      id: "hechas",
-      titulo: "Hechas",
-      tareas: tareasFiltradas.filter((t) => t.estado === "hecha"),
+      id: "publicadas",
+      titulo: "Publicadas",
+      tareas: tareasFiltradas.filter((t) => t.estado === ESTADO_FINAL_TAREA),
     },
   ]
     .map((grupo) => ({ ...grupo, tareas: ordenarTareas(grupo.tareas) }))
     .filter((grupo) => grupo.tareas.length > 0);
 
-  const pendientesActivas = tareas.filter((t) => t.estado !== "hecha").length;
+  const pendientesActivas = tareas.filter((t) => t.estado !== ESTADO_FINAL_TAREA).length;
   const vencidasActivas = tareas.filter(
-    (t) => t.estado !== "hecha" && t.fecha_vencimiento && t.fecha_vencimiento < hoyISO,
+    (t) => t.estado !== ESTADO_FINAL_TAREA && t.fecha_vencimiento && t.fecha_vencimiento < hoyISO,
   ).length;
 
   const actualizarEstado = (tareaId, nuevoEstado) => {
@@ -7153,7 +7160,8 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
       pendiente: "#ff9500",
       en_progreso: "#0066cc",
       en_revision: "#ff6b6b",
-      hecha: "#28a745",
+      programada: "#7e57c2",
+      publicada: "#28a745",
     };
     return colores[estado] || "#ccc";
   };
@@ -7186,9 +7194,10 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
               <option value="activas">Activas</option>
               <option value="todos">Todos los estados</option>
               <option value="pendiente">Pendiente</option>
-              <option value="en_progreso">En progreso</option>
+              <option value="en_progreso">En proceso</option>
               <option value="en_revision">En revisión</option>
-              <option value="hecha">Hecha</option>
+              <option value="programada">Programada</option>
+              <option value="publicada">Publicada</option>
             </select>
 
             <select
@@ -7251,12 +7260,12 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
                             )}
                           </td>
                           <td style={{ width: "18%", color: "#555" }}>{tarea.cliente_nombre || "Sin cliente"}</td>
-                          <td style={{ width: "12%", color: tarea.fecha_vencimiento && tarea.fecha_vencimiento < hoyISO && tarea.estado !== "hecha" ? "#c62828" : "#666", fontWeight: tarea.fecha_vencimiento && tarea.fecha_vencimiento < hoyISO && tarea.estado !== "hecha" ? 700 : 400 }}>
+                          <td style={{ width: "12%", color: tarea.fecha_vencimiento && tarea.fecha_vencimiento < hoyISO && tarea.estado !== ESTADO_FINAL_TAREA ? "#c62828" : "#666", fontWeight: tarea.fecha_vencimiento && tarea.fecha_vencimiento < hoyISO && tarea.estado !== ESTADO_FINAL_TAREA ? 700 : 400 }}>
                             {tarea.fecha_vencimiento || "Sin fecha"}
                           </td>
                           <td style={{ width: "12%" }}>
                             <span style={{ color: getEstadoColor(tarea.estado), fontWeight: 700 }}>●</span>{" "}
-                            {getEstadoHistoriaLabel(tarea.estado)}
+                            {getEstadoTareaLabel(tarea.estado)}
                           </td>
                           <td style={{ width: "10%" }}>{getPrioridadBadge(tarea.prioridad)} {tarea.prioridad || "media"}</td>
                           <td style={{ width: "12%" }}>
@@ -7267,7 +7276,7 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
                               onChange={(e) => actualizarEstado(tarea.id, e.target.value)}
                             >
                               {estadosDisponibles.map((estado) => (
-                                <option key={estado} value={estado}>{getEstadoHistoriaLabel(estado)}</option>
+                                <option key={estado} value={estado}>{getEstadoTareaLabel(estado)}</option>
                               ))}
                             </select>
                           </td>
@@ -7301,7 +7310,7 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
 
                 {esperandoMaterial(tareaSeleccionada) && (
                   <div style={{ padding: "10px 12px", background: "#fff3e0", color: "#e65100", borderRadius: "4px", fontWeight: 600, fontSize: "13px", marginBottom: "16px" }}>
-                    ⏳ Esperando material — la tarea de filmación todavía no está marcada como hecha.
+                    ⏳ Esperando material — la tarea de filmación todavía no está marcada como publicada.
                   </div>
                 )}
 
@@ -7310,7 +7319,7 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
                     <strong>Cliente:</strong> {tareaSeleccionada.cliente_nombre || "—"}
                   </div>
                   <div style={{ marginBottom: "8px" }}>
-                    <strong>Estado actual:</strong> <span style={{ color: getEstadoColor(tareaSeleccionada.estado) }}>●</span> {tareaSeleccionada.estado}
+                    <strong>Estado actual:</strong> <span style={{ color: getEstadoColor(tareaSeleccionada.estado) }}>●</span> {getEstadoTareaLabel(tareaSeleccionada.estado)}
                   </div>
                   <div style={{ marginBottom: "8px" }}>
                     <strong>Prioridad:</strong> {getPrioridadBadge(tareaSeleccionada.prioridad)} {tareaSeleccionada.prioridad}
@@ -7358,7 +7367,7 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
                             opacity: actualizando ? 0.6 : 1,
                           }}
                         >
-                          {actualizando ? "..." : estado.replace("_", " ")}
+                          {actualizando ? "..." : getEstadoTareaLabel(estado)}
                         </button>
                       ))}
                   </div>
@@ -8952,21 +8961,20 @@ function ReportesEquipoPage() {
 
   const filas = empleados.map((nombre) => {
     const propias = tareas.filter((t) => t.asignado_a === nombre);
-    const activas = propias.filter((t) => t.estado !== "hecha");
-    const bloqueadas = propias.filter((t) => t.estado === "bloqueada");
+    const activas = propias.filter((t) => t.estado !== ESTADO_FINAL_TAREA);
     const atrasadas = activas.filter(
       (t) => t.fecha_vencimiento && t.fecha_vencimiento < hoyISO,
     );
     const terminadasPeriodo = propias.filter(
-      (t) => t.estado === "hecha" && enPeriodo(t.updated_at || ""),
+      (t) => t.estado === ESTADO_FINAL_TAREA && enPeriodo(t.updated_at || ""),
     );
     const vencianEnPeriodo = propias.filter(
       (t) => t.fecha_vencimiento && enPeriodo(t.fecha_vencimiento),
     );
-    const vencidasHechas = vencianEnPeriodo.filter((t) => t.estado === "hecha");
+    const vencidasPublicadas = vencianEnPeriodo.filter((t) => t.estado === ESTADO_FINAL_TAREA);
     const cumplimiento =
       vencianEnPeriodo.length > 0
-        ? Math.round((vencidasHechas.length / vencianEnPeriodo.length) * 100)
+        ? Math.round((vencidasPublicadas.length / vencianEnPeriodo.length) * 100)
         : null;
 
     const tiempos = terminadasPeriodo
@@ -9017,7 +9025,6 @@ function ReportesEquipoPage() {
       carga: activas.length,
       terminadas: terminadasPeriodo.length,
       atrasadas,
-      bloqueadas: bloqueadas.length,
       cumplimiento,
       tiempoPromedio,
       productividad,
@@ -9049,7 +9056,6 @@ function ReportesEquipoPage() {
     activas: filas.reduce((s, f) => s + f.carga, 0),
     terminadas: filas.reduce((s, f) => s + f.terminadas, 0),
     atrasadas: filas.reduce((s, f) => s + f.atrasadas.length, 0),
-    bloqueadas: filas.reduce((s, f) => s + f.bloqueadas, 0),
   };
 
   const piezasPorResponsable = empleados
@@ -9148,7 +9154,7 @@ function ReportesEquipoPage() {
                     </div>
                     <div style={{ ...cardStyle, background: "#e8f5e9" }}>
                       <div style={{ fontSize: "26px", fontWeight: "700", color: "#2e7d32" }}>{filaPropia?.terminadas ?? 0}</div>
-                      <div style={{ fontSize: "12px", color: "#2e7d32" }}>Hecho este mes</div>
+                      <div style={{ fontSize: "12px", color: "#2e7d32" }}>Publicadas este mes</div>
                     </div>
                     <div style={{ ...cardStyle, background: "#fff3e0" }}>
                       <div style={{ fontSize: "26px", fontWeight: "700", color: "#e65100" }}>{filaPropia?.carga ?? 0}</div>
@@ -9167,7 +9173,7 @@ function ReportesEquipoPage() {
                     <tr style={{ borderBottom: "2px solid #333", background: "#fafafa" }}>
                       <th style={{ textAlign: "left", padding: "10px 12px", fontWeight: "600", fontSize: "12px" }}>Empleado</th>
                       <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Objetivo</th>
-                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Hecho</th>
+                      <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Publicadas</th>
                       <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Avance al 100%</th>
                       <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Estado</th>
                       <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Pendientes</th>
@@ -9237,11 +9243,6 @@ function ReportesEquipoPage() {
                                 {f.atrasadas.length} atras.
                               </span>
                             )}
-                            {f.bloqueadas > 0 && (
-                              <span style={{ background: "#ffebee", color: "#c62828", padding: "2px 6px", borderRadius: "10px", fontWeight: "700", fontSize: "11px", marginLeft: "6px" }}>
-                                {f.bloqueadas} bloq.
-                              </span>
-                            )}
                           </td>
                         </tr>
                         {detalleDe === f.nombre &&
@@ -9250,7 +9251,7 @@ function ReportesEquipoPage() {
                               <td colSpan={6} style={{ padding: "6px 12px 6px 32px", fontSize: "12px", color: "#795548" }}>
                                 <strong>{t.titulo}</strong>
                                 {t.cliente_nombre ? ` · ${t.cliente_nombre}` : ""} · vencía {t.fecha_vencimiento} ·{" "}
-                                {t.estado === "bloqueada" ? "bloqueada" : "en curso"}
+                                {getEstadoTareaLabel(t.estado)}
                               </td>
                             </tr>
                           ))}
