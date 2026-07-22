@@ -3136,8 +3136,8 @@ th.check-client-col {
 }
 
 .check-day-cell.empty .check-sheet-toggle {
-  border-color: #dadce0;
-  color: #5f6368;
+  border-color: transparent;
+  color: transparent;
 }
 
 .check-day-cell.ok {
@@ -3149,40 +3149,43 @@ th.check-client-col {
 }
 
 .check-sheet-toggle {
-  background: #fff;
-  border: 1px solid #dadce0;
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 4px;
-  color: #c62828;
+  color: transparent;
   cursor: pointer;
   font: inherit;
   font-size: 12px;
   font-weight: 800;
-  height: 26px;
+  height: 100%;
   min-height: 28px;
-  min-width: 42px;
-  padding: 0 8px;
+  width: 100%;
 }
 
 .check-day-cell.ok .check-sheet-toggle {
   background: #2e7d32;
   border-color: #2e7d32;
   color: #fff;
+  height: 26px;
+  min-width: 42px;
+  padding: 0 8px;
+  width: auto;
 }
 
 .check-day-cell:not(.empty):not(.ok):not(.partial) .check-sheet-toggle {
-  border-color: #9aa0a6;
-  color: #188038;
+  border-color: transparent;
+  color: transparent;
 }
 
 .check-day-cell:not(.empty):not(.ok):not(.partial) .check-sheet-toggle:hover {
-  border-color: #188038;
-  color: #2e7d32;
+  background: rgba(24, 128, 56, 0.08);
+  border-color: rgba(24, 128, 56, 0.32);
 }
 
 .check-day-cell.partial .check-sheet-toggle {
-  background: #fff;
-  border-color: #ef6c00;
-  color: #ef6c00;
+  background: transparent;
+  border-color: transparent;
+  color: transparent;
 }
 
 .check-sheet-toggle:focus {
