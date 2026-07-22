@@ -8293,36 +8293,17 @@ function HistoriasEstructuraTab({ clientes }) {
                     const estado = getEstadoEstructura(est);
                     return (
                       <td key={dia.id} className="historias-structure-cell">
-                        <div className={`historias-structure-card estado-${estado.id}`}>
-                          <div className="historias-structure-card-head">
-                            <span className={`historias-structure-status estado-${estado.id}`}>
-                              {estado.label}
-                            </span>
-                          </div>
-
+                        <div className={`historias-structure-card estado-${estado.id}`} title={estado.label}>
                           {est ? (
                             <>
-                              <div className="historias-structure-section">
-                                <div className="historias-structure-section-label">Página pública</div>
-                                <div className="historias-structure-type">{est.tipo || "Sin categoría"}</div>
-                                <div className="historias-structure-topic">{est.tema || "Sin tema definido"}</div>
-                              </div>
-
-                              <div className="historias-structure-section">
-                                <div className="historias-structure-section-label">Administrador</div>
-                                <div className="historias-structure-meta">
-                                  <span>{est.horario || "Sin horario"}</span>
-                                  <span>{est.cta_fijo || "Sin CTA fijo"}</span>
-                                </div>
+                              <div className="historias-structure-type">{est.tipo || "Sin categoría"}</div>
+                              <div className="historias-structure-topic">{est.tema || "Sin tema definido"}</div>
+                              <div className="historias-structure-meta">
+                                {[est.horario, est.cta_fijo].filter(Boolean).join(" · ") || "Sin horario"}
                               </div>
                             </>
                           ) : (
-                            <div className="historias-structure-empty">
-                              <div className="historias-structure-type">Sin estructura cargada</div>
-                              <div className="historias-structure-topic">
-                                Pendiente definir página pública y administrador.
-                              </div>
-                            </div>
+                            <div className="historias-structure-type muted-cell">Sin estructura cargada</div>
                           )}
                         </div>
                       </td>
