@@ -1903,9 +1903,9 @@ function TareaKanbanBoard({ tareas, columnas, campo, onMover, onAbrir }) {
   );
 }
 
-// Vista calendario de tareas por fecha de vencimiento — reusa la grilla
-// mensual (getGrillaMes) y las clases .cal-* que ya arma el calendario
-// editorial de Publicaciones, para no reinventar el layout de mes.
+// Vista calendario de tareas por fecha de vencimiento. Mantiene la lectura
+// mensual en escritorio y cambia a agenda vertical en pantallas angostas para
+// no comprimir siete columnas hasta volverlas ilegibles.
 function TareaCalendario({ tareas, onAbrir }) {
   const hoy = new Date();
   const [year, setYear] = useState(hoy.getFullYear());
@@ -1925,8 +1925,15 @@ function TareaCalendario({ tareas, onAbrir }) {
     setYear(y);
   };
 
+  const volverAHoy = () => {
+    setYear(hoy.getFullYear());
+    setMonth(hoy.getMonth());
+  };
+
   const hoyISO = getHoyLocalISO();
   const semanas = getGrillaMes(year, month);
+  const claveMes = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const esMesActual = year === hoy.getFullYear() && month === hoy.getMonth();
 
   const porFecha = {};
   tareas.forEach((t) => {
@@ -1934,27 +1941,75 @@ function TareaCalendario({ tareas, onAbrir }) {
     (porFecha[t.fecha_vencimiento] = porFecha[t.fecha_vencimiento] || []).push(t);
   });
   Object.values(porFecha).forEach((items) => {
-    items.sort((a, b) => a.titulo.localeCompare(b.titulo));
+    items.sort((a, b) => {
+      const estadoA = ESTADOS_TAREA.findIndex((estado) => estado.id === a.estado);
+      const estadoB = ESTADOS_TAREA.findIndex((estado) => estado.id === b.estado);
+      return estadoA - estadoB || a.titulo.localeCompare(b.titulo);
+    });
   });
 
-  return (
-    <>
-      <div className="cal-toolbar">
-        <div className="cal-monthnav">
-          <button aria-label="Mes anterior" className="btn cal-navbtn" type="button" onClick={() => irMes(-1)}>‹</button>
-          <span className="cal-title">{MESES[month]} {year}</span>
-          <button aria-label="Mes siguiente" className="btn cal-navbtn" type="button" onClick={() => irMes(1)}>›</button>
-        </div>
-      </div>
+  const diasConTareas = Object.entries(porFecha)
+    .filter(([fecha]) => fecha.startsWith(claveMes))
+    .sort(([fechaA], [fechaB]) => fechaA.localeCompare(fechaB));
+  const cantidadMes = diasConTareas.reduce((total, [, items]) => total + items.length, 0);
 
-      <div className="cal-grid">
+  const renderTarea = (t, variante = "") => {
+    const estado = getEstadoTarea(t.estado);
+    const contexto = [t.cliente_nombre || getSectorTarea(t.tipo_tarea)?.label, t.asignado_a]
+      .filter(Boolean)
+      .join(" · ");
+    return (
+      <button
+        aria-label={`Abrir tarea ${t.titulo}`}
+        className={`task-calendar-card ${variante}`}
+        key={t.id}
+        onClick={() => onAbrir(t.id)}
+        style={{ borderLeftColor: estado.fg }}
+        title={`${t.titulo} · ${contexto} · ${estado.label}`}
+        type="button"
+      >
+        <span className="task-calendar-card-title">{t.titulo}</span>
+        <span className="task-calendar-card-bottom">
+          <span className="task-calendar-card-meta">{contexto || "Sin asignar"}</span>
+          <span className="task-calendar-card-status" style={{ color: estado.fg }}>
+            <i style={{ background: estado.fg }} />
+            {estado.label}
+          </span>
+        </span>
+      </button>
+    );
+  };
+
+  return (
+    <section className="task-calendar" aria-label={`Calendario de tareas de ${MESES[month]} ${year}`}>
+      <header className="task-calendar-toolbar">
+        <div className="task-calendar-heading">
+          <span className="task-calendar-eyebrow">Calendario de tareas</span>
+          <div className="task-calendar-heading-line">
+            <h2>{MESES[month]} {year}</h2>
+            <span>{cantidadMes} tareas en {diasConTareas.length} días</span>
+          </div>
+        </div>
+
+        <div className="task-calendar-actions">
+          <button className="btn task-calendar-today" disabled={esMesActual} onClick={volverAHoy} type="button">
+            Hoy
+          </button>
+          <div className="task-calendar-monthnav" aria-label="Cambiar mes">
+            <button aria-label="Mes anterior" className="btn task-calendar-navbtn" type="button" onClick={() => irMes(-1)}>‹</button>
+            <button aria-label="Mes siguiente" className="btn task-calendar-navbtn" type="button" onClick={() => irMes(1)}>›</button>
+          </div>
+        </div>
+      </header>
+
+      <div className="task-calendar-grid">
         {DIAS_SEMANA.map((dia) => (
-          <div className="cal-dow" key={dia}>{dia}</div>
+          <div className="task-calendar-dow" key={dia}>{dia}</div>
         ))}
         {semanas.map((semana, si) =>
           semana.map((dia, di) => {
             if (dia === null) {
-              return <div className="cal-cell empty" key={`${si}-${di}`}></div>;
+              return <div className="task-calendar-cell empty" key={`${si}-${di}`}></div>;
             }
             const iso = fechaISODesde(year, month, dia);
             const items = porFecha[iso] || [];
@@ -1962,30 +2017,17 @@ function TareaCalendario({ tareas, onAbrir }) {
             const ocultos = Math.max(items.length - visibles.length, 0);
             return (
               <div
-                className={`cal-cell ${iso === hoyISO ? "today" : ""} ${items.length ? "has-items" : ""}`}
+                className={`task-calendar-cell ${iso === hoyISO ? "today" : ""} ${di >= 5 ? "weekend" : ""}`}
                 key={`${si}-${di}`}
               >
-                <div className="cal-cell-head">
-                  <span className="cal-daynum">{dia}</span>
-                  {items.length > 0 && <span className="cal-count">{items.length}</span>}
+                <div className="task-calendar-dayhead">
+                  <span className="task-calendar-daynum">{dia}</span>
+                  {items.length > 0 && <span className="task-calendar-count">{items.length}</span>}
                 </div>
-                <div className="cal-chip-stack">
-                  {visibles.map((t) => {
-                    const est = getEstadoTarea(t.estado);
-                    return (
-                      <div
-                        className="cal-chip"
-                        key={t.id}
-                        style={{ background: est.bg, borderLeftColor: est.fg, color: est.fg }}
-                        onClick={() => onAbrir(t.id)}
-                        title={`${t.titulo} · ${t.asignado_a} · ${est.label}`}
-                      >
-                        {t.titulo}
-                      </div>
-                    );
-                  })}
+                <div className="task-calendar-card-stack">
+                  {visibles.map((t) => renderTarea(t))}
                   {ocultos > 0 && (
-                    <div className="cal-more" style={{ cursor: "default" }}>+{ocultos} más</div>
+                    <div className="task-calendar-more">+{ocultos} tareas más</div>
                   )}
                 </div>
               </div>
@@ -1993,7 +2035,36 @@ function TareaCalendario({ tareas, onAbrir }) {
           }),
         )}
       </div>
-    </>
+
+      <div className="task-calendar-agenda">
+        {diasConTareas.length === 0 ? (
+          <div className="task-calendar-agenda-empty">No hay tareas con fecha en este mes.</div>
+        ) : (
+          diasConTareas.map(([fecha, items]) => {
+            const fechaLocal = new Date(`${fecha}T12:00:00`);
+            const visibles = items.slice(0, 4);
+            const ocultos = Math.max(items.length - visibles.length, 0);
+            return (
+              <article className={`task-calendar-agenda-day ${fecha === hoyISO ? "today" : ""}`} key={fecha}>
+                <div className="task-calendar-agenda-date">
+                  <strong>{fechaLocal.getDate()}</strong>
+                  <span>{fechaLocal.toLocaleDateString("es-AR", { weekday: "short" }).replace(".", "")}</span>
+                </div>
+                <div className="task-calendar-agenda-content">
+                  <div className="task-calendar-agenda-head">
+                    <span>{items.length === 1 ? "1 tarea" : `${items.length} tareas`}</span>
+                  </div>
+                  <div className="task-calendar-agenda-list">
+                    {visibles.map((t) => renderTarea(t, "agenda"))}
+                  </div>
+                  {ocultos > 0 && <div className="task-calendar-more">+{ocultos} tareas más</div>}
+                </div>
+              </article>
+            );
+          })
+        )}
+      </div>
+    </section>
   );
 }
 
