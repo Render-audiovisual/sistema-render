@@ -3755,6 +3755,16 @@ tr:hover .sheet-row-actions {
   color: #e8eaed;
 }
 
+.tareas-viewport .topbar-user {
+  background: #26282c;
+  border-color: #3a3d42;
+}
+
+.tareas-viewport .topbar-avatar {
+  background: #188038;
+  color: #fff;
+}
+
 .tareas-viewport .topbar-user-role {
   color: #9aa0a6;
 }
