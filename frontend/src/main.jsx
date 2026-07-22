@@ -517,31 +517,6 @@ function inicialesUsuario(nombre) {
     .toUpperCase();
 }
 
-function TopbarUser({ fallback }) {
-  const sesion = getSesion();
-  const usuario = sesion?.usuario;
-
-  if (!usuario) {
-    return <div className="tag">{fallback}</div>;
-  }
-
-  return (
-    <div className="topbar-user">
-      <div className="topbar-avatar">
-        {usuario.foto_perfil ? (
-          <img src={usuario.foto_perfil} alt="" />
-        ) : (
-          inicialesUsuario(usuario.nombre)
-        )}
-      </div>
-      <div className="topbar-user-text">
-        <div className="topbar-user-name">{usuario.nombre}</div>
-        <div className="topbar-user-role">{ROL_LABELS[usuario.rol] || usuario.rol}</div>
-      </div>
-    </div>
-  );
-}
-
 function cerrarSesion() {
   localStorage.removeItem("render_sesion");
   window.location.href = "/login";
@@ -721,14 +696,6 @@ function NuevaTareaPage() {
   return (
     <main aria-label="Render platform nueva tarea">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Nueva tarea</span>
-          </div>
-          <TopbarUser fallback="Cargar trabajo" />
-        </div>
-
         <div className="content">
           <div className="section-label">Cargar tarea y asignar responsable</div>
           <div className="box">
@@ -1178,14 +1145,6 @@ function TareasTableroPage() {
   return (
     <main aria-label="Render platform tareas" className="tareas-viewport">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Tareas</span>
-          </div>
-          <TopbarUser fallback="Tablero de tareas" />
-        </div>
-
         <div className="content">
           <div className="h-workspace">
             <div className="h-main">
@@ -3383,14 +3342,6 @@ function HomePage() {
   return (
     <main aria-label="Render platform home">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Home</span>
-          </div>
-          <TopbarUser fallback="Usuario" />
-        </div>
-
         <div className="content">
           <div className="home-hero">
             <h2>Hola, {sesion?.usuario?.nombre} 👋</h2>
@@ -4143,14 +4094,6 @@ function PerfilPage() {
   return (
     <main aria-label="Render platform perfil">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Mi perfil</span>
-          </div>
-          <TopbarUser fallback={perfilUsuario?.nombre} />
-        </div>
-
         <div className="content">
           <div className="section-label">Mis datos</div>
           <div className="box">
@@ -4384,14 +4327,6 @@ function EmpleadosPage() {
   return (
     <main aria-label="Render platform empleados">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Empleados</span>
-          </div>
-          <TopbarUser fallback="Gestión de accesos" />
-        </div>
-
         <div className="content">
           <div className="section-label">Empleados con acceso</div>
           <div className="box">
@@ -4562,14 +4497,6 @@ function OrianaDashboard() {
   return (
     <main aria-label="Render platform Oriana">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Calendario</span>
-          </div>
-          <TopbarUser fallback="Oriana · publicación" />
-        </div>
-
         <div className="content">
           <div className="box" style={{ backgroundColor: "#f0f4f8", padding: "16px", marginBottom: "20px", borderRadius: "4px", border: "1px solid #ddd" }}>
             <div style={{ display: "flex", justifyContent: "space-around", textAlign: "center" }}>
@@ -4868,14 +4795,6 @@ function GermanDashboard() {
   return (
     <main aria-label="Render platform German">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Producciones</span>
-          </div>
-          <TopbarUser fallback="Germán · producción" />
-        </div>
-
         <div className="content">
           <div style={{ backgroundColor: "#fff3cd", border: "2px solid #ff9800", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
             {(() => {
@@ -5167,14 +5086,6 @@ function LucianoDashboard() {
   return (
     <main aria-label="Render platform Luciano">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Mis ediciones</span>
-          </div>
-          <TopbarUser fallback="Luciano · edición" />
-        </div>
-
         <div className="content">
           {error && <div className="caption">{error}</div>}
 
@@ -5246,14 +5157,6 @@ function AugustoDashboard() {
   return (
     <main aria-label="Render platform Augusto">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Mis diseños</span>
-          </div>
-          <TopbarUser fallback="Augusto · diseño" />
-        </div>
-
         <div className="content">
           {error && <div className="caption">{error}</div>}
 
@@ -5335,14 +5238,6 @@ function EquipoDashboard() {
   return (
     <main aria-label="Render platform Equipo">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span>Panorama</span>
-            <span className="active">Equipo</span>
-          </div>
-          <TopbarUser fallback="Vista de equipo" />
-        </div>
 
         <div className="content">
           <div className="section-label">
@@ -5618,14 +5513,6 @@ function ClientesAdminPage() {
   return (
     <main aria-label="Administración de clientes">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Clientes</span>
-          </div>
-          <TopbarUser fallback="Administración" />
-        </div>
-
         <div className="content clientes-page">
           <div className="clientes-command-bar">
             <div className="clientes-heading">
@@ -5975,14 +5862,6 @@ function AgustinDashboard() {
   return (
     <main aria-label="Render platform">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Panorama</span>
-          </div>
-          <TopbarUser fallback="Agustín · admin" />
-        </div>
-
         <div className="content">
           <div style={{ backgroundColor: "#ffe0e0", border: "2px solid #d32f2f", borderRadius: "4px", padding: "12px", marginBottom: "20px", fontSize: "13px" }}>
             {(() => {
@@ -6401,14 +6280,6 @@ function FrancoDashboard() {
   return (
     <main aria-label="Render platform Franco">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Mi cola</span>
-          </div>
-          <TopbarUser fallback="Franco · aprobación" />
-        </div>
-
         <div className="content">
           <div className="section-label">
             1 · Mi cola de aprobaciones — lo que sí requiere mi decisión
@@ -7297,14 +7168,6 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
   return (
     <main aria-label={titulo}>
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">{titulo}</span>
-          </div>
-          <TopbarUser fallback={`${nombre_usuario} · ${rol}`} />
-        </div>
-
         <div className="content">
           <div className="section-label">1 · Filtros</div>
           <div className="box" style={{ display: "flex", gap: "16px", marginBottom: "20px", flexWrap: "wrap" }}>
@@ -8725,14 +8588,6 @@ function HistoriasPage({ initialTab = "planilla" }) {
   return (
     <main aria-label="Render platform historias" className="historias-viewport">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Planificación de historias</span>
-          </div>
-          <TopbarUser fallback="Planilla mensual" />
-        </div>
-
         <div className="content">
           {(errorClientes || errorHistorias) && (
             <div style={{ padding: "10px", background: "#ffebee", color: "#c62828" }}>
@@ -9067,14 +8922,6 @@ function ReportesEquipoPage() {
   return (
     <main aria-label="Render platform reportes equipo">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">{esVistaAdmin ? "Reporte del equipo" : "Mi reporte"}</span>
-          </div>
-          <TopbarUser fallback={esVistaAdmin ? "Objetivo mensual" : "Mi objetivo"} />
-        </div>
-
         <div className="content">
           <div className="section-label">
             {esVistaAdmin ? "Rendimiento mensual del equipo" : "Mi rendimiento mensual"}
@@ -9951,14 +9798,6 @@ function PublicacionesPage({ tabInicial = "calendario" }) {
   return (
     <main aria-label="Render platform publicaciones" className="publicaciones-viewport">
       <div className="frame">
-        <div className="topbar">
-          <div className="logo-box">[ LOGO RENDER ]</div>
-          <div className="nav">
-            <span className="active">Planificación de publicaciones</span>
-          </div>
-          <TopbarUser fallback="Calendario y control" />
-        </div>
-
         <div className="content">
           {errorClientes && (
             <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
