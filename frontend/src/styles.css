@@ -3135,6 +3135,11 @@ th.check-client-col {
   background: #f8f9fa;
 }
 
+.check-day-cell.empty .check-sheet-toggle {
+  border-color: #dadce0;
+  color: #5f6368;
+}
+
 .check-day-cell.ok {
   background: #e8f5e9;
 }
