@@ -7434,7 +7434,7 @@ const ESTADOS_HISTORIA = [
 const RESPONSABLES_EQUIPO = ["Augusto", "Luciano", "Germán", "Oriana", "Franco", "Agustín"];
 
 // Orden de columnas navegables con Tab/Enter (coincide con el orden visual).
-const COLUMNAS_PLANILLA = ["fecha", "hora", "tipo", "copy", "material", "aclaraciones", "responsable", "estado"];
+const COLUMNAS_PLANILLA = ["cliente", "fecha", "hora", "tipo", "copy", "material", "aclaraciones", "responsable", "estado"];
 // Columnas de texto largo: son <textarea>, no <input> — admiten líneas
 // propias (Enter no debe saltar de fila) y solo se tratan como pegado
 // multi-celda si el portapapeles trae tabs (un salto de línea solo puede
@@ -7447,6 +7447,8 @@ const COLUMNAS_MULTILINEA = ["copy", "aclaraciones"];
 function payloadColumnaPlanilla(columna, valorCrudo) {
   const valor = (valorCrudo || "").trim();
   switch (columna) {
+    case "cliente":
+      return null;
     case "fecha":
       return /^\d{4}-\d{2}-\d{2}$/.test(valor) ? { fecha_programada: valor } : null;
     case "hora":
@@ -7471,12 +7473,11 @@ function payloadColumnaPlanilla(columna, valorCrudo) {
 }
 
 function HistoriasPlanillaTab({
-  clienteId,
-  clienteNombre,
+  clientes,
   year,
   month,
   cargando,
-  historiasCliente,
+  historias,
   ultimoIdCreado,
   onActualizarLocal,
   onGuardarServidor,
@@ -7491,12 +7492,14 @@ function HistoriasPlanillaTab({
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
   const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
 
-  const filasVisibles = historiasCliente
+  const clientesPorId = Object.fromEntries(clientes.map((c) => [c.id, c.nombre]));
+
+  const filasVisibles = historias
     .filter((h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix))
     .slice()
     .sort((a, b) =>
-      (a.fecha_programada + (a.metadata?.hora || "")).localeCompare(
-        b.fecha_programada + (b.metadata?.hora || ""),
+      (a.fecha_programada + (clientesPorId[a.cliente_id] || "") + (a.metadata?.hora || "")).localeCompare(
+        b.fecha_programada + (clientesPorId[b.cliente_id] || "") + (b.metadata?.hora || ""),
       ),
     );
 
@@ -7517,7 +7520,7 @@ function HistoriasPlanillaTab({
     if (idx === -1) return;
     requestAnimationFrame(() => enfocarCelda(idx, "fecha"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ultimoIdCreado, historiasCliente]);
+  }, [ultimoIdCreado, historias]);
 
   const actualizarLocal = (historiaId, campos) => onActualizarLocal(historiaId, campos);
   const guardarEnServidor = (historiaId, campos) => onGuardarServidor(historiaId, campos);
@@ -7534,6 +7537,7 @@ function HistoriasPlanillaTab({
   const copiarFila = async (h) => {
     const est = ESTADOS_HISTORIA.find((e) => e.id === h.estado);
     const linea = [
+      clientesPorId[h.cliente_id] || "",
       h.fecha_programada || "",
       h.metadata?.hora || "",
       h.metadata?.tipo || "",
@@ -7633,6 +7637,7 @@ function HistoriasPlanillaTab({
           <table className="sheet-table sheet-planning-table">
             <colgroup>
               <col className="sheet-rownum-col" />
+              <col className="sheet-client-col" />
               <col className="sheet-day-col" />
               <col className="sheet-date-col" />
               <col className="sheet-time-col" />
@@ -7647,12 +7652,13 @@ function HistoriasPlanillaTab({
             <thead>
               <tr className="sheet-column-letters">
                 <th className="sheet-corner"></th>
-                {["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"].map((letra) => (
+                {["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"].map((letra) => (
                   <th key={letra}>{letra}</th>
                 ))}
               </tr>
               <tr>
                 <th className="sheet-rownum-head"></th>
+                <th>Local</th>
                 <th>Día</th>
                 <th>Fecha</th>
                 <th>Hora</th>
@@ -7668,7 +7674,7 @@ function HistoriasPlanillaTab({
             <tbody>
               {filasVisibles.length === 0 && (
                 <tr>
-                  <td colSpan={11} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
+                  <td colSpan={12} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
                     Sin historias planificadas este mes todavía.
                   </td>
                 </tr>
@@ -7690,6 +7696,23 @@ function HistoriasPlanillaTab({
                 return (
                   <tr key={h.id} style={{ background: bgFila, borderTop: esNuevoDia && rowIndex > 0 ? "2px solid #dadce0" : undefined }}>
                     <td className="sheet-row-number">{rowIndex + 1}</td>
+                    <td className="sheet-client-cell">
+                      <select
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:cliente`}
+                        value={h.cliente_id || ""}
+                        onChange={(e) => {
+                          const campos = { cliente_id: Number(e.target.value) };
+                          actualizarLocal(h.id, campos);
+                          guardarEnServidor(h.id, campos);
+                        }}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "cliente")}
+                      >
+                        {clientes.map((cliente) => (
+                          <option key={cliente.id} value={cliente.id}>{cliente.nombre}</option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="sheet-day-cell" style={{ fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "#c62828" : esFinde ? "#999" : "#333" }}>
                       {esNuevoDia ? LETRAS_DIA[dow] : ""}
                       {estaAtrasada && esNuevoDia && <span title="Atrasada" style={{ marginLeft: "2px" }}>⚠</span>}
@@ -7846,7 +7869,7 @@ function HistoriasPlanillaTab({
               })}
               <tr>
                 <td className="sheet-row-number">{filasVisibles.length + 1}</td>
-                <td colSpan={10} style={{ padding: 0 }}>
+                <td colSpan={11} style={{ padding: 0 }}>
                   <button type="button" className="sheet-add-row" onClick={onAgregar}>
                     <span style={{ fontSize: "15px" }}>+</span> Agregar historia
                   </button>
@@ -7858,7 +7881,7 @@ function HistoriasPlanillaTab({
       )}
 
       <div className="caption" style={{ marginTop: "10px" }}>
-        Planilla de {clienteNombre}
+        Planilla general de historias: todos los locales en una sola hoja.
       </div>
     </>
   );
@@ -7867,6 +7890,7 @@ function HistoriasPlanillaTab({
 function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, month, onHistoriasActualizadas }) {
   const [error, setError] = useState(null);
   const [guardandoId, setGuardandoId] = useState(null);
+  const [checks, setChecks] = useState([]);
 
   const hoyISO = getHoyLocalISO();
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -7880,6 +7904,11 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
     const key = `${h.cliente_id}:${h.fecha_programada}`;
     if (!acc[key]) acc[key] = [];
     acc[key].push(h);
+    return acc;
+  }, {});
+
+  const checksPorClienteFecha = checks.reduce((acc, check) => {
+    acc[`${check.cliente_id}:${check.fecha}`] = check;
     return acc;
   }, {});
 
@@ -7907,6 +7936,22 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
     semanas.push(dias);
   }
 
+  useEffect(() => {
+    const desde = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+    const hasta = `${year}-${String(month + 1).padStart(2, "0")}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, "0")}`;
+
+    fetch(`/api/check-publicacion?desde=${desde}&hasta=${hasta}`)
+      .then((r) => {
+        if (!r.ok) throw new Error("No se pudo cargar el checklist");
+        return r.json();
+      })
+      .then((data) => setChecks(data))
+      .catch((err) => {
+        console.error("No se pudo cargar checklist de historias", err);
+        setError("No se pudo cargar el estado del checklist.");
+      });
+  }, [year, month]);
+
   const publicadas = historiasMes.filter((h) => h.estado === "publicada").length;
   const pendientes = historiasMes.length - publicadas;
   const vencidas = historiasMes.filter(
@@ -7917,9 +7962,28 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
     const nuevoEstado = publicada ? "publicada" : "pendiente";
     const key = `${clienteId}:${fecha}`;
     const historiasDelDia = historiasPorClienteFecha[key] || [];
-    if (historiasDelDia.length === 0) return;
 
     setGuardandoId(key);
+    setChecks((prev) => {
+      const existe = prev.some((check) => check.cliente_id === clienteId && check.fecha === fecha);
+      if (existe) {
+        return prev.map((check) =>
+          check.cliente_id === clienteId && check.fecha === fecha
+            ? { ...check, publicado: publicada }
+            : check,
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: `local-${key}`,
+          cliente_id: clienteId,
+          fecha,
+          publicado: publicada,
+          confirmado_por: getSesion()?.usuario?.nombre || null,
+        },
+      ];
+    });
     onHistoriasActualizadas((prev) =>
       prev.map((h) =>
         h.cliente_id === clienteId && h.fecha_programada === fecha
@@ -7928,6 +7992,18 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
       ),
     );
     try {
+      const checkRes = await fetch("/api/check-publicacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cliente_id: clienteId,
+          fecha,
+          publicado: publicada,
+          confirmado_por: getSesion()?.usuario?.nombre || "Sistema",
+        }),
+      });
+      if (!checkRes.ok) throw new Error("No se pudo guardar el OK");
+
       await Promise.all(
         historiasDelDia.map(async (h) => {
           const res = await fetch(`/api/historias/${h.id}`, {
@@ -7977,14 +8053,18 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                 acc +
                 dias.reduce((sum, d) => {
                   const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
-                  return sum + items.filter((h) => h.estado === "publicada").length;
+                  const check = checksPorClienteFecha[`${c.id}:${d.iso}`];
+                  const publicadaPorHistorias = items.length > 0 && items.every((h) => h.estado === "publicada");
+                  return sum + (check?.publicado || publicadaPorHistorias ? 1 : 0);
                 }, 0),
               0,
             );
             const totalPorDia = dias.map((d) =>
               clientes.reduce((sum, c) => {
                 const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
-                return sum + items.filter((h) => h.estado === "publicada").length;
+                const check = checksPorClienteFecha[`${c.id}:${d.iso}`];
+                const publicadaPorHistorias = items.length > 0 && items.every((h) => h.estado === "publicada");
+                return sum + (check?.publicado || publicadaPorHistorias ? 1 : 0);
               }, 0),
             );
 
@@ -8010,7 +8090,9 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                   {clientes.map((c) => {
                     const totalCliente = dias.reduce((sum, d) => {
                       const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
-                      return sum + items.filter((h) => h.estado === "publicada").length;
+                      const check = checksPorClienteFecha[`${c.id}:${d.iso}`];
+                      const publicadaPorHistorias = items.length > 0 && items.every((h) => h.estado === "publicada");
+                      return sum + (check?.publicado || publicadaPorHistorias ? 1 : 0);
                     }, 0);
 
                     return (
@@ -8019,38 +8101,43 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                         {dias.map((d) => {
                           const key = `${c.id}:${d.iso}`;
                           const items = historiasPorClienteFecha[key] || [];
+                          const check = checksPorClienteFecha[key];
                           const hayHistorias = items.length > 0;
                           const publicadasDia = items.filter((h) => h.estado === "publicada").length;
-                          const todasPublicadas = hayHistorias && publicadasDia === items.length;
-                          const algunasPublicadas = publicadasDia > 0 && publicadasDia < items.length;
+                          const todasPublicadas = Boolean(check?.publicado) || (hayHistorias && publicadasDia === items.length);
+                          const algunasPublicadas = !check?.publicado && publicadasDia > 0 && publicadasDia < items.length;
+                          const toggleLabel = todasPublicadas
+                            ? "OK"
+                            : algunasPublicadas
+                              ? ""
+                              : "";
 
                           return (
                             <td
                               key={d.iso}
                               className={[
                                 "check-day-cell",
-                                !hayHistorias ? "empty" : "",
+                                !hayHistorias && !check?.publicado ? "empty" : "",
                                 todasPublicadas ? "ok" : "",
                                 algunasPublicadas ? "partial" : "",
                               ].join(" ")}
                               title={
                                 hayHistorias
                                   ? `${items.length} historia${items.length > 1 ? "s" : ""} · ${publicadasDia} publicada${publicadasDia !== 1 ? "s" : ""}`
-                                  : "Sin historias planificadas"
+                                  : check?.publicado
+                                    ? "OK marcado en checklist"
+                                    : "Sin historias planificadas"
                               }
                             >
-                              {hayHistorias ? (
-                                <button
-                                  type="button"
-                                  className="check-sheet-toggle"
-                                  disabled={guardandoId === key}
-                                  onClick={() => marcarPublicada(c.id, d.iso, !todasPublicadas)}
-                                >
-                                  {todasPublicadas ? "TRUE" : "FALSE"}
-                                </button>
-                              ) : (
-                                <span className="check-empty"> </span>
-                              )}
+                              <button
+                                type="button"
+                                className="check-sheet-toggle"
+                                disabled={guardandoId === key}
+                                aria-label={todasPublicadas ? "Quitar OK" : "Marcar OK"}
+                                onClick={() => marcarPublicada(c.id, d.iso, !todasPublicadas)}
+                              >
+                                {guardandoId === key ? "..." : toggleLabel}
+                              </button>
                             </td>
                           );
                         })}
@@ -8115,6 +8202,28 @@ function HistoriasEstructuraTab({ clientes }) {
     estructuraPorClienteDia[e.cliente_id][e.dia_semana] = e;
   });
 
+  const getEstadoEstructura = (est) => {
+    const tienePublico = Boolean(est?.tipo || est?.tema);
+    const tieneAdmin = Boolean(est?.horario || est?.cta_fijo);
+
+    if (tienePublico && tieneAdmin) return { id: "terminado", label: "Terminado" };
+    if (tienePublico || tieneAdmin) return { id: "en-proceso", label: "En proceso" };
+    return { id: "pendiente", label: "Pendiente" };
+  };
+
+  const resumenEstructura = clientes.reduce(
+    (acc, cliente) => {
+      const estructuraCliente = estructuraPorClienteDia[cliente.id] || {};
+      DIAS_SEMANA.forEach((dia) => {
+        const estado = getEstadoEstructura(estructuraCliente[dia.id]);
+        acc[estado.id] += 1;
+        acc.total += 1;
+      });
+      return acc;
+    },
+    { total: 0, terminado: 0, "en-proceso": 0, pendiente: 0 }
+  );
+
   if (cargando) {
     return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando estructura…</div>;
   }
@@ -8126,6 +8235,35 @@ function HistoriasEstructuraTab({ clientes }) {
           {error}
         </div>
       )}
+
+      <div className="historias-structure-overview">
+        <div className="historias-structure-overview-copy">
+          <div className="historias-structure-kicker">Hoja general</div>
+          <h3>Estructura semanal de historias</h3>
+          <p>
+            Una sola matriz para leer de un vistazo qué se ve en la página pública
+            y qué datos usa el administrador para organizar la publicación.
+          </p>
+        </div>
+        <div className="historias-structure-summary">
+          <div>
+            <span>{clientes.length}</span>
+            <small>Locales</small>
+          </div>
+          <div>
+            <span>{resumenEstructura.terminado}</span>
+            <small>Terminadas</small>
+          </div>
+          <div>
+            <span>{resumenEstructura["en-proceso"]}</span>
+            <small>En proceso</small>
+          </div>
+          <div>
+            <span>{resumenEstructura.pendiente}</span>
+            <small>Pendientes</small>
+          </div>
+        </div>
+      </div>
 
       <div className="sheet-frame">
         <div className="sheet-namebar">Estructura semanal de historias</div>
@@ -8152,19 +8290,41 @@ function HistoriasEstructuraTab({ clientes }) {
                   <td className="historias-local-cell">{cliente.nombre}</td>
                   {DIAS_SEMANA.map((dia) => {
                     const est = estructuraCliente[dia.id];
+                    const estado = getEstadoEstructura(est);
                     return (
                       <td key={dia.id} className="historias-structure-cell">
-                        {est ? (
-                          <>
-                            <div className="historias-structure-type">{est.tipo || "Historia"}</div>
-                            <div className="historias-structure-topic">{est.tema || "—"}</div>
-                            <div className="historias-structure-meta">
-                              {[est.horario, est.cta_fijo].filter(Boolean).join(" · ") || "Sin horario"}
+                        <div className={`historias-structure-card estado-${estado.id}`}>
+                          <div className="historias-structure-card-head">
+                            <span className={`historias-structure-status estado-${estado.id}`}>
+                              {estado.label}
+                            </span>
+                          </div>
+
+                          {est ? (
+                            <>
+                              <div className="historias-structure-section">
+                                <div className="historias-structure-section-label">Página pública</div>
+                                <div className="historias-structure-type">{est.tipo || "Sin categoría"}</div>
+                                <div className="historias-structure-topic">{est.tema || "Sin tema definido"}</div>
+                              </div>
+
+                              <div className="historias-structure-section">
+                                <div className="historias-structure-section-label">Administrador</div>
+                                <div className="historias-structure-meta">
+                                  <span>{est.horario || "Sin horario"}</span>
+                                  <span>{est.cta_fijo || "Sin CTA fijo"}</span>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="historias-structure-empty">
+                              <div className="historias-structure-type">Sin estructura cargada</div>
+                              <div className="historias-structure-topic">
+                                Pendiente definir página pública y administrador.
+                              </div>
                             </div>
-                          </>
-                        ) : (
-                          <span className="muted-cell">—</span>
-                        )}
+                          )}
+                        </div>
                       </td>
                     );
                   })}
@@ -8380,7 +8540,6 @@ function HistoriasPage({ initialTab = "planilla" }) {
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [errorClientes, setErrorClientes] = useState(null);
   const [refrescarKey, setRefrescarKey] = useState(0);
-  const [clientesCompactos, setClientesCompactos] = useState(true);
 
   const [historias, setHistorias] = useState([]);
   const [cargandoHistorias, setCargandoHistorias] = useState(true);
@@ -8429,17 +8588,6 @@ function HistoriasPage({ initialTab = "planilla" }) {
   }, []);
 
   const hoyISO = getHoyLocalISO();
-  const clienteNombre = clientes.find((c) => c.id === clienteSeleccionado)?.nombre || "";
-
-  // Una sola pasada sobre todas las historias para saber, por cliente,
-  // cuántas están atrasadas — es lo que alimenta el punto rojo del panel
-  // lateral, sin tener que entrar a cada cliente para averiguarlo.
-  const atrasadasPorCliente = {};
-  historias.forEach((h) => {
-    if (h.fecha_programada < hoyISO && h.estado !== "publicada") {
-      atrasadasPorCliente[h.cliente_id] = (atrasadasPorCliente[h.cliente_id] || 0) + 1;
-    }
-  });
 
   const irMes = (delta) => {
     let m = month + delta;
@@ -8518,12 +8666,13 @@ function HistoriasPage({ initialTab = "planilla" }) {
   // mismo lugar (hoy, o el día 1 si se está viendo otro mes) y enfocan la
   // fila nueva apenas aparece.
   const agregarHistoriaEnMesActual = async () => {
-    if (!clienteSeleccionado) return;
+    const clienteDestino = vista === "planilla" ? (clientes[0]?.id || clienteSeleccionado) : clienteSeleccionado;
+    if (!clienteDestino) return;
     const hoyISOActual = getHoyLocalISO();
     const mesActualPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
     const iso = mesActualPrefix === hoyISOActual.slice(0, 7) ? hoyISOActual : `${mesActualPrefix}-01`;
     try {
-      const id = await crearHistoria(clienteSeleccionado, iso);
+      const id = await crearHistoria(clienteDestino, iso);
       setUltimoIdCreado(id);
     } catch (err) {
       console.error("Error creando historia", err);
@@ -8580,10 +8729,9 @@ function HistoriasPage({ initialTab = "planilla" }) {
   };
 
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const historiasClienteSeleccionado = historias.filter((h) => h.cliente_id === clienteSeleccionado);
-  const historiasClienteMes = historiasClienteSeleccionado.filter((h) => h.fecha_programada?.startsWith(mesPrefix));
-  const publicadasCliente = historiasClienteMes.filter((h) => h.estado === "publicada").length;
-  const atrasadasCliente = historiasClienteMes.filter((h) => h.fecha_programada < hoyISO && h.estado !== "publicada").length;
+  const historiasMes = historias.filter((h) => h.fecha_programada?.startsWith(mesPrefix));
+  const publicadasMes = historiasMes.filter((h) => h.estado === "publicada").length;
+  const atrasadasMes = historiasMes.filter((h) => h.fecha_programada < hoyISO && h.estado !== "publicada").length;
 
   return (
     <main aria-label="Render platform historias" className="historias-viewport">
@@ -8596,21 +8744,10 @@ function HistoriasPage({ initialTab = "planilla" }) {
           )}
 
           <div className="h-workspace">
-            {vista === "planilla" && (
-              <ClientesRail
-                clientes={clientes}
-                clienteSeleccionado={clienteSeleccionado}
-                onSeleccionar={setClienteSeleccionado}
-                atrasadasPorCliente={atrasadasPorCliente}
-                compacto={clientesCompactos}
-                onToggleCompacto={() => setClientesCompactos((valor) => !valor)}
-              />
-            )}
-
             <div className="h-main">
               <div className="h-toolbar">
                 {vista === "planilla" && (
-                  <div className="h-toolbar-client">{clienteNombre || "…"}</div>
+                  <div className="h-toolbar-client">Hoja general</div>
                 )}
                 {["planilla", "checklist"].includes(vista) && (
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -8632,13 +8769,13 @@ function HistoriasPage({ initialTab = "planilla" }) {
 
                 {vista === "planilla" && (
                   <div className="sheet-stats" style={{ marginLeft: "auto" }}>
-                    <span>{historiasClienteMes.length} historias</span>
-                    <span className="ok">{publicadasCliente} publicadas</span>
-                    {atrasadasCliente > 0 && <span className="danger">{atrasadasCliente} atrasadas</span>}
+                    <span>{historiasMes.length} historias</span>
+                    <span className="ok">{publicadasMes} publicadas</span>
+                    {atrasadasMes > 0 && <span className="danger">{atrasadasMes} atrasadas</span>}
                   </div>
                 )}
 
-                {vista === "planilla" && clienteSeleccionado && (
+                {vista === "planilla" && clientes.length > 0 && (
                   <button
                     className="add-btn"
                     type="button"
@@ -8653,15 +8790,14 @@ function HistoriasPage({ initialTab = "planilla" }) {
               <div className="h-body">
                 <FlyersMigrarBanner onMigrado={() => setRefrescarKey((k) => k + 1)} />
 
-                {clienteSeleccionado && vista === "planilla" && (
+                {vista === "planilla" && (
                   <HistoriasPlanillaTab
-                    key={`p-${clienteSeleccionado}`}
-                    clienteId={clienteSeleccionado}
-                    clienteNombre={clienteNombre}
+                    key="p-general"
+                    clientes={clientes}
                     year={year}
                     month={month}
                     cargando={cargandoHistorias}
-                    historiasCliente={historiasClienteSeleccionado}
+                    historias={historias}
                     ultimoIdCreado={ultimoIdCreado}
                     onActualizarLocal={actualizarHistoriaLocal}
                     onGuardarServidor={guardarHistoriaEnServidor}
