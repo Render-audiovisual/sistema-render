@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS tareas (
   id SERIAL PRIMARY KEY,
   titulo TEXT NOT NULL,
   estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN (
-    'pendiente', 'en_progreso', 'en_revision', 'hecha', 'bloqueada'
+    'pendiente', 'en_progreso', 'en_revision', 'programada', 'publicada'
   )),
   asignado_a TEXT NOT NULL,
   requiere_aprobacion BOOLEAN NOT NULL DEFAULT false,
