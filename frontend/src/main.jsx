@@ -8373,27 +8373,48 @@ function FlyersMigrarBanner({ onMigrado }) {
   );
 }
 
-function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atrasadasPorCliente }) {
+function getInicialesCliente(nombre = "") {
+  const partes = nombre.trim().split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return "?";
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return `${partes[0][0]}${partes[1][0]}`.toUpperCase();
+}
+
+function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atrasadasPorCliente, compacto, onToggleCompacto }) {
   const [busqueda, setBusqueda] = useState("");
   const filtrados = clientes.filter((c) =>
     c.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()),
   );
 
   return (
-    <aside className="h-rail">
+    <aside className={`h-rail ${compacto ? "compact" : ""}`}>
       <div className="h-rail-head">
-        <div className="h-rail-search">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-            <circle cx="11" cy="11" r="7" />
-            <path d="M21 21l-4.3-4.3" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Buscar cliente…"
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-          />
+        <div className="h-rail-titlebar">
+          <span>Locales</span>
+          <button
+            type="button"
+            className="h-rail-toggle"
+            onClick={onToggleCompacto}
+            aria-label={compacto ? "Expandir locales" : "Compactar locales"}
+            title={compacto ? "Expandir locales" : "Compactar locales"}
+          >
+            {compacto ? ">" : "<"}
+          </button>
         </div>
+        {!compacto && (
+          <div className="h-rail-search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Buscar local…"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+          </div>
+        )}
       </div>
       <div className="h-rail-list">
         {filtrados.map((c) => {
@@ -8404,8 +8425,10 @@ function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atrasadasP
               type="button"
               className={`h-client-row ${clienteSeleccionado === c.id ? "active" : ""}`}
               onClick={() => onSeleccionar(c.id)}
+              title={c.nombre}
             >
               <span className={`h-client-dot ${atrasadas > 0 ? "danger" : "ok"}`}></span>
+              {compacto && <span className="h-client-initials">{getInicialesCliente(c.nombre)}</span>}
               <span className="h-client-name">{c.nombre}</span>
               {atrasadas > 0 && <span className="h-client-badge">{atrasadas}</span>}
             </button>
@@ -8427,6 +8450,7 @@ function HistoriasPage({ initialTab = "planilla" }) {
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [errorClientes, setErrorClientes] = useState(null);
   const [refrescarKey, setRefrescarKey] = useState(0);
+  const [clientesCompactos, setClientesCompactos] = useState(true);
 
   const [historias, setHistorias] = useState([]);
   const [cargandoHistorias, setCargandoHistorias] = useState(true);
@@ -8655,6 +8679,8 @@ function HistoriasPage({ initialTab = "planilla" }) {
               clienteSeleccionado={clienteSeleccionado}
               onSeleccionar={setClienteSeleccionado}
               atrasadasPorCliente={atrasadasPorCliente}
+              compacto={clientesCompactos}
+              onToggleCompacto={() => setClientesCompactos((valor) => !valor)}
             />
 
             <div className="h-main">
