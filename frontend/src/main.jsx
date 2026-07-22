@@ -2793,14 +2793,14 @@ function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
     ],
     gestion: [
       { href: "/piezas", label: "Tareas" },
+      { href: "/reportes-historias", label: "Reporte" },
     ],
     admin: esAdmin ? [
       { href: "/clientes", label: "Clientes" },
     ] : [],
-    mas: [
-      { href: "/reportes-historias", label: "Reporte" },
-      ...(esAdmin ? [{ href: "/empleados", label: "Usuarios" }] : []),
+    cuenta: [
       { href: "/perfil", label: "Perfil" },
+      ...(esAdmin ? [{ href: "/empleados", label: "Usuarios" }] : []),
     ],
   };
 
@@ -2810,8 +2810,8 @@ function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
     ...seccionesNav.gestion,
     ...seccionesNav.admin,
   ];
-  const enlacesMas = seccionesNav.mas;
-  const masActivo = enlacesMas.some((enlace) => path === enlace.href);
+  const enlacesCuenta = seccionesNav.cuenta;
+  const cuentaActiva = enlacesCuenta.some((enlace) => path === enlace.href);
 
   const renderLinksSección = (enlaces) =>
     enlaces.map((enlace) => (
@@ -2827,39 +2827,39 @@ function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
   return (
     <nav className="sidebar" aria-label="Navegación principal">
       <div className="sidebar-header">
-        <div className="user-badge">
-          <div className="user-avatar">
-            {sesion?.usuario?.foto_perfil ? (
-              <img src={sesion.usuario.foto_perfil} alt="" />
-            ) : (
-              inicialesUsuario(sesion?.usuario?.nombre)
-            )}
-          </div>
-          <div className="user-info">
-            <div className="user-name">{sesion?.usuario?.nombre}</div>
-            <div className="user-role">{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>
-          </div>
-        </div>
+        <div className="brand-mark">RENDER</div>
       </div>
 
       <div className="sidebar-content">
         {renderLinksSección(enlacesPrincipales)}
-        {enlacesMas.length > 0 && (
-          <details className={`sidebar-more ${masActivo ? "active" : ""}`}>
-            <summary className="sidebar-link sidebar-more-trigger">Más</summary>
-            <div className="sidebar-more-menu">
-              {renderLinksSección(enlacesMas)}
-            </div>
-          </details>
-        )}
       </div>
 
-      <button
-        className="sidebar-link logout-btn"
-        onClick={onCerrarSesion}
-      >
-        Cerrar sesión
-      </button>
+      <details className={`account-menu ${cuentaActiva ? "active" : ""}`}>
+        <summary className="account-trigger">
+          <div className="user-badge">
+            <div className="user-avatar">
+              {sesion?.usuario?.foto_perfil ? (
+                <img src={sesion.usuario.foto_perfil} alt="" />
+              ) : (
+                inicialesUsuario(sesion?.usuario?.nombre)
+              )}
+            </div>
+            <div className="user-info">
+              <div className="user-name">{sesion?.usuario?.nombre}</div>
+              <div className="user-role">{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>
+            </div>
+          </div>
+        </summary>
+        <div className="account-menu-panel">
+          {renderLinksSección(enlacesCuenta)}
+          <button
+            className="sidebar-link logout-btn"
+            onClick={onCerrarSesion}
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </details>
     </nav>
   );
 }
