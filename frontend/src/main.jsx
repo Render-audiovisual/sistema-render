@@ -8183,6 +8183,11 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                           const publicadasDia = items.filter((h) => h.estado === "publicada").length;
                           const todasPublicadas = hayHistorias && publicadasDia === items.length;
                           const algunasPublicadas = publicadasDia > 0 && publicadasDia < items.length;
+                          const toggleLabel = todasPublicadas
+                            ? "OK"
+                            : algunasPublicadas
+                              ? `${publicadasDia}/${items.length}`
+                              : "—";
 
                           return (
                             <td
@@ -8204,9 +8209,10 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
                                   type="button"
                                   className="check-sheet-toggle"
                                   disabled={guardandoId === key}
+                                  aria-label={todasPublicadas ? "Quitar OK" : "Marcar OK"}
                                   onClick={() => marcarPublicada(c.id, d.iso, !todasPublicadas)}
                                 >
-                                  {todasPublicadas ? "TRUE" : "FALSE"}
+                                  {guardandoId === key ? "..." : toggleLabel}
                                 </button>
                               ) : (
                                 <span className="check-empty"> </span>
