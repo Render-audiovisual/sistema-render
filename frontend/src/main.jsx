@@ -5695,20 +5695,14 @@ function ClientesAdminPage() {
   };
 
   const filas = getResumenClientesActivos(clientes, historias, publicaciones);
-  const conPlanificacion = filas.filter((cliente) => cliente.historiasMes > 0);
-  const cumplimientoHistorias =
-    conPlanificacion.length === 0
-      ? 0
-      : Math.round(
-          conPlanificacion.reduce(
-            (sum, cliente) => sum + cliente.porcentajeHistorias,
-            0,
-          ) / conPlanificacion.length,
-        );
-  const clientesBajos = filas.filter(
-    (cliente) => cliente.estadoHistorias.color === "rojo",
-  ).length;
-  const clientesSinHistorias = filas.filter((cliente) => cliente.historiasMes === 0).length;
+  const totalHistorias = filas.reduce(
+    (sum, cliente) => sum + cliente.historiasMes,
+    0,
+  );
+  const totalHistoriasPublicadas = filas.reduce(
+    (sum, cliente) => sum + cliente.historiasPublicadas,
+    0,
+  );
   const clavesFeedContadas = new Set();
   const filasFeedUnicas = filas.filter((cliente) => {
     const clave = getClaveFeed(cliente);
@@ -5721,13 +5715,33 @@ function ClientesAdminPage() {
     (sum, cliente) => sum + cliente.carruselesPublicados,
     0,
   );
-  const totalCuotaFeed = filasFeedUnicas.reduce(
-    (sum, cliente) => sum + getCuotaFeedMensual(cliente),
+  const totalCuotaReels = filasFeedUnicas.reduce(
+    (sum, cliente) => sum + getCuotaReelsMensual(cliente),
     0,
   );
-  const avanceFeed = calcularPorcentajeCuota(
-    totalReelsPublicados + totalCarruselesPublicados,
-    totalCuotaFeed,
+  const totalCuotaCarruseles = filasFeedUnicas.reduce(
+    (sum, cliente) => sum + getCuotaCarruselesMensual(cliente),
+    0,
+  );
+  const totalPiezasPublicadas =
+    totalHistoriasPublicadas + totalReelsPublicados + totalCarruselesPublicados;
+  const totalPiezasComprometidas =
+    totalHistorias + totalCuotaReels + totalCuotaCarruseles;
+  const avanceHistorias = calcularPorcentajeCuota(
+    totalHistoriasPublicadas,
+    totalHistorias,
+  );
+  const avanceReels = calcularPorcentajeCuota(
+    totalReelsPublicados,
+    totalCuotaReels,
+  );
+  const avanceCarruseles = calcularPorcentajeCuota(
+    totalCarruselesPublicados,
+    totalCuotaCarruseles,
+  );
+  const avanceTotal = calcularPorcentajeCuota(
+    totalPiezasPublicadas,
+    totalPiezasComprometidas,
   );
   const getAlertaCliente = (cliente) => {
     if (cliente.estadoHistorias.color === "rojo") return "Necesita seguimiento";
@@ -5761,27 +5775,24 @@ function ClientesAdminPage() {
 
           <div className="clientes-metrics">
             <div className="cliente-metric">
-              <span>Clientes activos</span>
-              <strong>{filas.length}</strong>
-              <small>{clientesSinHistorias} sin historias del mes</small>
-            </div>
-            <div className="cliente-metric">
               <span>Historias</span>
-              <strong>{cumplimientoHistorias}%</strong>
-              <small>{clientesBajos} cliente{clientesBajos === 1 ? "" : "s"} bajo seguimiento</small>
+              <strong>{avanceHistorias}%</strong>
+              <small>{totalHistoriasPublicadas} / {totalHistorias} publicadas</small>
             </div>
             <div className="cliente-metric">
-              <span>Feed mensual</span>
-              <strong>{avanceFeed}%</strong>
-              <small>
-                {totalReelsPublicados + totalCarruselesPublicados} /{" "}
-                {totalCuotaFeed} piezas
-              </small>
+              <span>Reels</span>
+              <strong>{avanceReels}%</strong>
+              <small>{totalReelsPublicados} / {totalCuotaReels} publicados</small>
             </div>
             <div className="cliente-metric">
-              <span>Mix publicado</span>
-              <strong>{totalReelsPublicados}</strong>
-              <small>{totalCarruselesPublicados} carruseles</small>
+              <span>Carruseles</span>
+              <strong>{avanceCarruseles}%</strong>
+              <small>{totalCarruselesPublicados} / {totalCuotaCarruseles} publicados</small>
+            </div>
+            <div className="cliente-metric">
+              <span>Total</span>
+              <strong>{avanceTotal}%</strong>
+              <small>{totalPiezasPublicadas} / {totalPiezasComprometidas} piezas del mes</small>
             </div>
           </div>
 
