@@ -1,6 +1,7 @@
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
+import dns from "node:dns";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import compression from "compression";
@@ -12,6 +13,13 @@ import {
   notificarAsignacionSinInterrumpir,
 } from "./email-notifications.js";
 import { setupDemoClientes } from "./setup-demo-data.js";
+
+// Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
+// IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
+// la conexión SMTP con ENETUNREACH antes de llegar a autenticar. Esto fuerza
+// IPv4 en TODAS las resoluciones DNS del proceso, no solo en nodemailer
+// (pasar family:4 al transporter no alcanzaba: no llegaba hasta el socket).
+dns.setDefaultResultOrder("ipv4first");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
