@@ -1083,7 +1083,7 @@ function TareasTableroPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [tareaSeleccionadaId, setTareaSeleccionadaId] = useState(null);
-  const [vista, setVista] = useState("tabla");
+  const [vista, setVista] = useState("kanban");
   const [mostrarWizard, setMostrarWizard] = useState(false);
   const [filtroSector, setFiltroSector] = useState("todos");
   const [filtroResponsable, setFiltroResponsable] = useState("todos");
@@ -1130,6 +1130,32 @@ function TareasTableroPage() {
     if (filtroSector !== "todos" && t.tipo_tarea !== filtroSector) return false;
     return true;
   });
+
+  const fechaLimiteSemana = new Date();
+  fechaLimiteSemana.setDate(fechaLimiteSemana.getDate() + 7);
+  const fechaLimiteSemanaISO = [
+    fechaLimiteSemana.getFullYear(),
+    String(fechaLimiteSemana.getMonth() + 1).padStart(2, "0"),
+    String(fechaLimiteSemana.getDate()).padStart(2, "0"),
+  ].join("-");
+  const tareasVencenSemana = tareasFiltradas.filter(
+    (t) =>
+      t.fecha_vencimiento &&
+      t.fecha_vencimiento >= hoyISO &&
+      t.fecha_vencimiento <= fechaLimiteSemanaISO &&
+      t.estado !== ESTADO_FINAL_TAREA,
+  ).length;
+  const tareasAtrasadas = tareasFiltradas.filter(
+    (t) =>
+      t.fecha_vencimiento &&
+      t.fecha_vencimiento < hoyISO &&
+      t.estado !== ESTADO_FINAL_TAREA,
+  ).length;
+  const tareasEnRevision = tareasFiltradas.filter(
+    (t) => t.estado === "en_revision",
+  ).length;
+  const hayFiltros =
+    filtroResponsable !== "todos" || filtroSector !== "todos";
 
   const grupos = ESTADOS_TAREA.map((e) => ({
     id: e.id,
@@ -1183,6 +1209,18 @@ function TareasTableroPage() {
         <div className="content">
           <div className="h-workspace">
             <div className="h-main">
+              <div className="task-page-heading">
+                <div>
+                  <h1>Tareas</h1>
+                  <p>Organizá, asigná y revisá el trabajo del equipo.</p>
+                </div>
+                {esAdmin && (
+                  <button className="btn task-new-button" type="button" onClick={() => setMostrarWizard(true)}>
+                    + Nueva tarea
+                  </button>
+                )}
+              </div>
+
               <div className="h-toolbar task-toolbar-simplified">
                 <div className="sheet-view-tabs task-view-tabs">
                   <button type="button" className={vista === "tabla" ? "active" : ""} onClick={() => setVista("tabla")}>Lista</button>
@@ -1190,7 +1228,7 @@ function TareasTableroPage() {
                   <button type="button" className={vista === "calendario" ? "active" : ""} onClick={() => setVista("calendario")}>Calendario</button>
                 </div>
 
-                <label className="task-responsible-filter">
+                <label className="task-compact-filter">
                   <span>Responsable</span>
                   <select
                     value={filtroResponsable}
@@ -1205,29 +1243,43 @@ function TareasTableroPage() {
                   </select>
                 </label>
 
-                {esAdmin && (
-                  <button className="btn task-new-button" type="button" onClick={() => setMostrarWizard(true)}>+ Nueva tarea</button>
+                <label className="task-compact-filter">
+                  <span>Sector</span>
+                  <select
+                    value={filtroSector}
+                    onChange={(e) => setFiltroSector(e.target.value)}
+                  >
+                    <option value="todos">Todos los sectores</option>
+                    {SECTORES_TAREA.map((sector) => (
+                      <option key={sector.id} value={sector.id}>
+                        {sector.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                {hayFiltros && (
+                  <button
+                    className="btn task-clear-filters"
+                    type="button"
+                    onClick={() => {
+                      setFiltroResponsable("todos");
+                      setFiltroSector("todos");
+                    }}
+                  >
+                    Limpiar
+                  </button>
                 )}
               </div>
 
-              <div className="task-sector-panel task-sector-panel-simplified">
-                <div className="task-sector-tabs">
-                  <button type="button" className={`task-sector-tab ${filtroSector === "todos" ? "active" : ""}`} onClick={() => setFiltroSector("todos")}>
-                    <span>Todos</span>
-                    <strong>{tareasDelResponsable.length}</strong>
-                  </button>
-                  {SECTORES_TAREA.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className={`task-sector-tab ${filtroSector === s.id ? "active" : ""}`}
-                      onClick={() => setFiltroSector(s.id)}
-                    >
-                      <span>{s.label}</span>
-                      <strong>{tareasDelResponsable.filter((t) => t.tipo_tarea === s.id).length}</strong>
-                    </button>
-                  ))}
-                </div>
+              <div className="task-compact-summary" aria-label="Resumen de tareas filtradas">
+                <span><strong>{tareasFiltradas.length}</strong> tareas</span>
+                <i aria-hidden="true" />
+                <span><strong>{tareasVencenSemana}</strong> vencen esta semana</span>
+                <i aria-hidden="true" />
+                <span className={tareasAtrasadas > 0 ? "is-alert" : ""}><strong>{tareasAtrasadas}</strong> atrasadas</span>
+                <i aria-hidden="true" />
+                <span><strong>{tareasEnRevision}</strong> en revisión</span>
               </div>
 
               <div className="h-body">
@@ -1256,25 +1308,21 @@ function TareasTableroPage() {
                       : "Ninguna tarea coincide con estos filtros."}
                   </div>
                 ) : (
-                  <div className="sheet-frame">
-                    <table className="sheet-table">
+                  <div className="sheet-frame task-list-frame">
+                    <table className="sheet-table task-list-table">
                       <thead>
                         <tr>
-                          <th style={{ width: "26%" }}>Título</th>
-                          <th style={{ width: "14%" }}>Cliente</th>
-                          <th style={{ width: "13%" }}>Sector</th>
-                          <th style={{ width: "12%" }}>Responsable</th>
-                          <th style={{ width: "13%" }}>Estado</th>
-                          <th style={{ width: "9%" }}>Prioridad</th>
-                          <th style={{ width: "11%" }}>Vencimiento</th>
-                          <th style={{ width: "50px" }}></th>
+                          <th>Tarea</th>
+                          <th>Responsable</th>
+                          <th>Estado</th>
+                          <th>Vencimiento</th>
                         </tr>
                       </thead>
                       <tbody>
                         {grupos.map((grupo) => (
                           <React.Fragment key={grupo.id}>
                             <tr>
-                              <td colSpan={8} style={{ background: "#26282c", fontWeight: 700, fontSize: "12px", padding: "8px 10px", color: "#e8eaed" }}>
+                              <td colSpan={4} className="task-list-group">
                                 {grupo.titulo} <span style={{ color: "#6b6f76", fontWeight: 400 }}>({grupo.tareas.length})</span>
                               </td>
                             </tr>
@@ -1285,109 +1333,24 @@ function TareasTableroPage() {
                               const vencida = t.fecha_vencimiento && t.fecha_vencimiento < hoyISO && t.estado !== ESTADO_FINAL_TAREA;
 
                               return (
-                                <tr key={t.id}>
-                                  <td>
-                                    <input
-                                      type="text"
-                                      className="sheet-cell"
-                                      value={t.titulo}
-                                      onChange={(e) => actualizarLocal(t.id, { titulo: e.target.value })}
-                                      onBlur={(e) => guardarEnServidor(t.id, { titulo: e.target.value.trim() })}
-                                    />
+                                <tr key={t.id} className="task-list-row" onClick={() => setTareaSeleccionadaId(t.id)}>
+                                  <td className="task-list-main">
+                                    <strong>{t.titulo}</strong>
+                                    <div>
+                                      <span>{t.cliente_nombre || "Sin cliente"}</span>
+                                      {sector && <span>{sector.label}</span>}
+                                      {t.prioridad === "alta" && (
+                                        <span style={{ color: prio.fg }}>Prioridad alta</span>
+                                      )}
+                                    </div>
                                     {esperandoMaterial(t) && (
-                                      <div style={{ fontSize: "11px", fontWeight: 700, color: "#e65100", padding: "0 8px" }}>
-                                        ⏳ Esperando material
-                                      </div>
+                                      <small className="task-list-material">Esperando material</small>
                                     )}
                                   </td>
-                                  <td>
-                                    <select
-                                      className="sheet-cell"
-                                      value={t.cliente_id ?? ""}
-                                      onChange={(e) => actualizarCampo(t.id, { cliente_id: e.target.value ? Number(e.target.value) : null })}
-                                    >
-                                      <option value="">Sin cliente</option>
-                                      {clientes.map((c) => (
-                                        <option key={c.id} value={c.id}>{c.nombre}</option>
-                                      ))}
-                                    </select>
-                                  </td>
-                                  <td>
-                                    <select
-                                      className="sheet-cell"
-                                      value={t.tipo_tarea ?? ""}
-                                      onChange={(e) => actualizarCampo(t.id, { tipo_tarea: e.target.value || null })}
-                                      style={sector ? { background: sector.bg, color: sector.fg, fontWeight: "600" } : undefined}
-                                    >
-                                      <option value="">Sin sector</option>
-                                      {SECTORES_TAREA.map((s) => (
-                                        <option key={s.id} value={s.id}>{s.label}</option>
-                                      ))}
-                                    </select>
-                                  </td>
-                                  <td>
-                                    <select
-                                      className="sheet-cell"
-                                      value={t.asignado_a}
-                                      onChange={(e) => actualizarCampo(t.id, { asignado_a: e.target.value })}
-                                    >
-                                      {RESPONSABLES_EQUIPO.map((r) => (
-                                        <option key={r} value={r}>{r}</option>
-                                      ))}
-                                    </select>
-                                  </td>
-                                  <td>
-                                    <select
-                                      className="sheet-cell"
-                                      value={t.estado}
-                                      onChange={(e) => actualizarCampo(t.id, { estado: e.target.value })}
-                                      style={{ background: est.bg, color: est.fg, fontWeight: "600" }}
-                                    >
-                                      {ESTADOS_TAREA.map((e) => (
-                                        <option key={e.id} value={e.id}>{e.label}</option>
-                                      ))}
-                                    </select>
-                                  </td>
-                                  <td>
-                                    <select
-                                      className="sheet-cell"
-                                      value={t.prioridad}
-                                      onChange={(e) => actualizarCampo(t.id, { prioridad: e.target.value })}
-                                      style={{ background: prio.bg, color: prio.fg, fontWeight: "600" }}
-                                    >
-                                      {PRIORIDADES_TAREA.map((p) => (
-                                        <option key={p.id} value={p.id}>{p.label}</option>
-                                      ))}
-                                    </select>
-                                  </td>
-                                  <td>
-                                    <input
-                                      type="date"
-                                      className="sheet-cell"
-                                      value={t.fecha_vencimiento || ""}
-                                      onChange={(e) => actualizarCampo(t.id, { fecha_vencimiento: e.target.value || null })}
-                                      style={vencida ? { color: "#ef5350", fontWeight: "700" } : undefined}
-                                    />
-                                  </td>
-                                  <td>
-                                    <div className="sheet-row-actions">
-                                      <button
-                                        type="button"
-                                        className="sheet-icon-btn"
-                                        onClick={() => setTareaSeleccionadaId(t.id)}
-                                        title="Ver detalle"
-                                      >
-                                        ↗
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="sheet-icon-btn"
-                                        onClick={() => eliminarTarea(t.id)}
-                                        title="Eliminar"
-                                      >
-                                        🗑
-                                      </button>
-                                    </div>
+                                  <td><span className="task-list-person">{t.asignado_a}</span></td>
+                                  <td><span className="task-list-status" style={{ color: est.fg, background: est.bg }}>{est.label}</span></td>
+                                  <td className={vencida ? "task-list-due is-overdue" : "task-list-due"}>
+                                    {formatearFechaTarea(t.fecha_vencimiento)}
                                   </td>
                                 </tr>
                               );
@@ -2235,15 +2198,17 @@ function TareaKanbanBoard({ tareas, columnas, campo, onMover, onAbrir }) {
                     onClick={() => onAbrir(t.id)}
                   >
                     <div className="task-card-title">{t.titulo}</div>
+                    {t.cliente_nombre && (
+                      <div className="task-kanban-client">{t.cliente_nombre}</div>
+                    )}
                     <div className="task-card-meta task-kanban-meta">
-                      {t.cliente_nombre && <span>{t.cliente_nombre}</span>}
-                      <span>👤 {t.asignado_a}</span>
-                      {t.fecha_vencimiento && <span>📅 {t.fecha_vencimiento}</span>}
-                      <span style={{ color: prio.fg }}>🚩 {prio.label}</span>
+                      <span>{t.asignado_a}</span>
+                      {t.fecha_vencimiento && <span>{formatearFechaTarea(t.fecha_vencimiento)}</span>}
+                      {t.prioridad === "alta" && <span style={{ color: prio.fg }}>Alta</span>}
                     </div>
                     {esperandoMaterial(t) && (
                       <div className="task-kanban-material" style={{ color: "#e65100" }}>
-                        ⏳ Esperando material
+                        Esperando material
                       </div>
                     )}
                   </div>
