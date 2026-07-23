@@ -41,10 +41,13 @@ export async function setupDemoClientes() {
   }
 
   await pool.query(`
-    INSERT INTO grupos_feed (nombre, cuota_mensual)
-    VALUES ('Lavalle', 16)
+    INSERT INTO grupos_feed (nombre, cuota_mensual, cuota_reels, cuota_carruseles)
+    VALUES ('Lavalle', 20, 16, 4)
     ON CONFLICT (nombre)
-    DO UPDATE SET cuota_mensual = EXCLUDED.cuota_mensual
+    DO UPDATE SET
+      cuota_mensual = EXCLUDED.cuota_mensual,
+      cuota_reels = EXCLUDED.cuota_reels,
+      cuota_carruseles = EXCLUDED.cuota_carruseles
   `);
   await pool.query(`
     UPDATE clientes

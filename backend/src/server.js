@@ -469,7 +469,9 @@ router.get("/clientes", async (_req, res, next) => {
         c.cuota_carruseles,
         c.grupo_feed_id,
         gf.nombre AS grupo_feed_nombre,
-        gf.cuota_mensual AS cuota_feed_compartida
+        gf.cuota_reels AS cuota_feed_reels,
+        gf.cuota_carruseles AS cuota_feed_carruseles,
+        (gf.cuota_reels + gf.cuota_carruseles) AS cuota_feed_compartida
       FROM clientes c
       LEFT JOIN grupos_feed gf ON gf.id = c.grupo_feed_id
       ORDER BY c.id
@@ -511,6 +513,8 @@ router.post("/clientes", async (req, res, next) => {
       ...result.rows[0],
       grupo_feed_id: null,
       grupo_feed_nombre: null,
+      cuota_feed_reels: null,
+      cuota_feed_carruseles: null,
       cuota_feed_compartida: null,
     });
   } catch (error) {
@@ -525,7 +529,13 @@ router.patch("/clientes/:id", async (req, res, next) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
-    const { nombre, cuota_reels, cuota_carruseles, cuota_feed_compartida } = req.body;
+    const {
+      nombre,
+      cuota_reels,
+      cuota_carruseles,
+      cuota_feed_reels,
+      cuota_feed_carruseles,
+    } = req.body;
     const nombreNormalizado = nombre === undefined ? undefined : String(nombre).trim();
 
     const cuotaReelsValida =
@@ -534,11 +544,19 @@ router.patch("/clientes/:id", async (req, res, next) => {
     const cuotaCarruselesValida =
       cuota_carruseles === undefined ||
       (Number.isInteger(cuota_carruseles) && cuota_carruseles >= 0);
-    const cuotaFeedCompartidaValida =
-      cuota_feed_compartida === undefined ||
-      (Number.isInteger(cuota_feed_compartida) && cuota_feed_compartida >= 0);
+    const cuotaFeedReelsValida =
+      cuota_feed_reels === undefined ||
+      (Number.isInteger(cuota_feed_reels) && cuota_feed_reels >= 0);
+    const cuotaFeedCarruselesValida =
+      cuota_feed_carruseles === undefined ||
+      (Number.isInteger(cuota_feed_carruseles) && cuota_feed_carruseles >= 0);
 
-    if (!cuotaReelsValida || !cuotaCarruselesValida || !cuotaFeedCompartidaValida) {
+    if (
+      !cuotaReelsValida ||
+      !cuotaCarruselesValida ||
+      !cuotaFeedReelsValida ||
+      !cuotaFeedCarruselesValida
+    ) {
       return res.status(400).json({
         error: "Las cuotas deben ser enteros ≥ 0.",
       });
@@ -558,14 +576,22 @@ router.patch("/clientes/:id", async (req, res, next) => {
     }
 
     const grupoFeedId = existente.rows[0].grupo_feed_id;
-    if (cuota_feed_compartida !== undefined && !grupoFeedId) {
+    const actualizaCuotaFeed =
+      cuota_feed_reels !== undefined || cuota_feed_carruseles !== undefined;
+    if (actualizaCuotaFeed && !grupoFeedId) {
       await client.query("ROLLBACK");
       return res.status(400).json({ error: "Este cliente no tiene una cuota de feed compartida." });
     }
-    if (cuota_feed_compartida !== undefined) {
+    if (actualizaCuotaFeed) {
       await client.query(
-        "UPDATE grupos_feed SET cuota_mensual = $1 WHERE id = $2",
-        [cuota_feed_compartida, grupoFeedId],
+        `UPDATE grupos_feed
+         SET
+           cuota_reels = COALESCE($1, cuota_reels),
+           cuota_carruseles = COALESCE($2, cuota_carruseles),
+           cuota_mensual =
+             COALESCE($1, cuota_reels) + COALESCE($2, cuota_carruseles)
+         WHERE id = $3`,
+        [cuota_feed_reels ?? null, cuota_feed_carruseles ?? null, grupoFeedId],
       );
     }
 
@@ -591,7 +617,9 @@ router.patch("/clientes/:id", async (req, res, next) => {
          c.cuota_carruseles,
          c.grupo_feed_id,
          gf.nombre AS grupo_feed_nombre,
-         gf.cuota_mensual AS cuota_feed_compartida
+         gf.cuota_reels AS cuota_feed_reels,
+         gf.cuota_carruseles AS cuota_feed_carruseles,
+         (gf.cuota_reels + gf.cuota_carruseles) AS cuota_feed_compartida
        FROM clientes c
        LEFT JOIN grupos_feed gf ON gf.id = c.grupo_feed_id
        WHERE c.id = $1`,
@@ -946,8 +974,9 @@ router.delete("/publicaciones/:id", async (req, res, next) => {
   }
 });
 
-router.get("/publicaciones", async (_req, res, next) => {
+router.get("/publicaciones", async (req, res, next) => {
   try {
+    const incluirArchivadas = req.query.incluir_archivadas === "true";
     const result = await pool.query(`
       SELECT
         p.id,
@@ -977,9 +1006,9 @@ router.get("/publicaciones", async (_req, res, next) => {
         p.updated_at
       FROM publicaciones p
       JOIN clientes c ON c.id = p.cliente_id
-      WHERE p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
+      WHERE $1::boolean OR p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
       ORDER BY p.fecha_programada DESC, p.id
-    `);
+    `, [incluirArchivadas]);
     res.json(result.rows);
   } catch (error) {
     next(error);
