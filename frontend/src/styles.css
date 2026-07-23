@@ -4042,7 +4042,97 @@ tr:hover .sheet-row-actions {
   margin-top: 8px;
 }
 
+.lider-dashboard-header {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.lider-dashboard-header .section-label {
+  margin-bottom: 0;
+}
+
+.lider-dashboard-header h2 {
+  margin: 4px 0 0;
+}
+
+.lider-dashboard-tabs {
+  background: #f1f3f4;
+  border-radius: 9px;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.lider-dashboard-tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #5f6368;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 9px 12px;
+}
+
+.lider-dashboard-tabs button.active {
+  background: #202124;
+  color: #fff;
+}
+
+.lider-dashboard-view {
+  min-width: 0;
+}
+
+.lider-dashboard-view .box {
+  overflow-x: auto;
+}
+
+.lider-dashboard-divider {
+  background: #202124;
+  border-radius: 8px;
+  color: #fff;
+  display: grid;
+  gap: 3px;
+  margin: 26px 0 16px;
+  padding: 14px 16px;
+}
+
+.lider-dashboard-divider span {
+  color: #bdc1c6;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.lider-dashboard-divider strong {
+  font-size: 18px;
+}
+
+.lider-gestion-panel {
+  display: grid;
+  gap: 12px;
+}
+
 @media (max-width: 760px) {
+  .lider-dashboard-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lider-dashboard-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .lider-dashboard-tabs button {
+    line-height: 1.25;
+    padding: 9px 7px;
+  }
+
   .clientes-command-bar,
   .clientes-table-toolbar {
     align-items: stretch;

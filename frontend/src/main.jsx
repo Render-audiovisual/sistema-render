@@ -180,10 +180,12 @@ function getResumenEquipo(historias, publicaciones, tareas) {
   });
 }
 
-function getAprobacionesAgustin(tareas) {
+function getAprobacionesLider(tareas) {
   return tareas.filter(
     (tarea) =>
-      tarea.propiedades_extra?.escalada_a === "Agustín" &&
+      ["Líder", "Agustín", "Franco"].includes(
+        tarea.propiedades_extra?.escalada_a,
+      ) &&
       tarea.estado !== ESTADO_FINAL_TAREA,
   );
 }
@@ -388,7 +390,12 @@ function getPublicacionesDeHoy(historias, publicaciones) {
 
 function getTareasParaAsignar(tareas) {
   return tareas
-    .filter((t) => t.estado === "pendiente" && (!t.asignado_a || t.asignado_a === "Franco"))
+    .filter(
+      (t) =>
+        t.estado === "pendiente" &&
+        (!t.asignado_a ||
+          ["Líder", "Agustín", "Franco"].includes(t.asignado_a)),
+    )
     .slice(0, 10)
     .sort((a, b) => new Date(a.fecha_vencimiento || 0) - new Date(b.fecha_vencimiento || 0));
 }
@@ -460,8 +467,7 @@ function getPublicacionesKanban(publicaciones) {
 }
 
 const USUARIO_A_RUTA = {
-  agustin: "/agustin",
-  franco: "/franco",
+  lider: "/lider",
   augusto: "/augusto",
   luciano: "/luciano",
   german: "/german",
@@ -469,8 +475,7 @@ const USUARIO_A_RUTA = {
 };
 
 const USUARIO_INFO = {
-  agustin: { nombre: "Agustín", rol: "admin" },
-  franco: { nombre: "Franco", rol: "admin" },
+  lider: { nombre: "Líder", rol: "admin" },
   augusto: { nombre: "Augusto", rol: "diseno" },
   luciano: { nombre: "Luciano", rol: "edicion" },
   german: { nombre: "Germán", rol: "produccion" },
@@ -484,13 +489,30 @@ function getUsuarioKey(usuario) {
     .toLowerCase();
 }
 
+function getRutaUsuario(usuario) {
+  const usuarioKey = getUsuarioKey(usuario);
+  if (usuarioKey === "agustin") return "/lider";
+  return USUARIO_A_RUTA[usuarioKey];
+}
+
 function getSesion() {
   const raw = localStorage.getItem("render_sesion");
   if (!raw) {
     return null;
   }
   try {
-    return JSON.parse(raw);
+    const sesion = JSON.parse(raw);
+    if (getUsuarioKey(sesion?.usuario?.usuario) === "franco") {
+      localStorage.removeItem("render_sesion");
+      return null;
+    }
+    if (getUsuarioKey(sesion?.usuario?.usuario) === "agustin") {
+      return {
+        ...sesion,
+        usuario: { ...sesion.usuario, usuario: "lider", nombre: "Líder" },
+      };
+    }
+    return sesion;
   } catch {
     return null;
   }
@@ -561,7 +583,7 @@ function LoginPage() {
       })
       .then((data) => {
         guardarSesion(data.token, data.usuario);
-        const destino = USUARIO_A_RUTA[getUsuarioKey(data.usuario.usuario)] || "/";
+        const destino = getRutaUsuario(data.usuario.usuario) || "/";
         window.location.href = destino;
       })
       .catch((err) => {
@@ -591,7 +613,7 @@ function LoginPage() {
               onChange={(e) => setUsuario(e.target.value)}
               autoCapitalize="none"
               autoComplete="username"
-              placeholder="agustin"
+              placeholder="lider"
               required
               spellCheck={false}
             />
@@ -633,8 +655,7 @@ function LoginPage() {
 }
 
 const RESPONSABLES = [
-  "Agustín",
-  "Franco",
+  "Líder",
   "Augusto",
   "Luciano",
   "Germán",
@@ -816,7 +837,7 @@ function NuevaTareaPage() {
                     onChange={(e) => setRequiereAprobacion(e.target.checked)}
                   />
                   <span style={{ textTransform: "none" }}>
-                    Requiere aprobación de Franco
+                    Requiere aprobación del Líder
                   </span>
                 </label>
               </div>
@@ -841,18 +862,27 @@ function NuevaTareaPage() {
   );
 }
 
-function TareasAsignadasGenericas({ nombre, tipoTarea, titulo }) {
+function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo }) {
   const [tareas, setTareas] = useState([]);
   const [error, setError] = useState(null);
   const sesion = getSesion();
   const esAdmin = sesion?.usuario?.rol === "admin";
+  const responsables = nombres?.length ? nombres : [nombre];
 
   const cargarTareas = () => {
-    const params = new URLSearchParams({ asignado_a: nombre });
-    if (tipoTarea) params.set("tipo_tarea", tipoTarea);
-    fetch(`/api/tareas?${params.toString()}`)
-      .then((response) => response.json())
-      .then((propias) => {
+    Promise.all(
+      responsables.map((responsable) => {
+        const params = new URLSearchParams({ asignado_a: responsable });
+        if (tipoTarea) params.set("tipo_tarea", tipoTarea);
+        return fetch(`/api/tareas?${params.toString()}`).then((response) =>
+          response.json(),
+        );
+      }),
+    )
+      .then((listas) => {
+        const propias = [
+          ...new Map(listas.flat().map((tarea) => [tarea.id, tarea])).values(),
+        ];
         setTareas(
           propias
             .slice()
@@ -865,7 +895,7 @@ function TareasAsignadasGenericas({ nombre, tipoTarea, titulo }) {
   useEffect(() => {
     cargarTareas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nombre, tipoTarea]);
+  }, [nombre, tipoTarea, nombres?.join("|")]);
 
   const cambiarEstado = (tareaId, nuevoEstado) => {
     fetch(`/api/tareas/${tareaId}`, {
@@ -960,7 +990,7 @@ function TareasAsignadasGenericas({ nombre, tipoTarea, titulo }) {
         <div className="caption">
           → Podés cambiar el estado directo desde acá. Las tareas que requieren
           aprobación no se pueden marcar "Publicada" salvo que quien esté logueado
-          sea admin (Agustín o Franco).
+          sea Líder.
         </div>
       </div>
     </>
@@ -3027,13 +3057,7 @@ function PiezasTableroPage() {
 
 function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
   const esAdmin = sesion?.usuario?.rol === "admin";
-  const usuarioKey = getUsuarioKey(sesion?.usuario?.usuario);
-  const rutaTablero =
-    usuarioKey === "agustin"
-      ? "/agustin"
-      : usuarioKey === "franco"
-        ? "/franco"
-        : USUARIO_A_RUTA[usuarioKey];
+  const rutaTablero = getRutaUsuario(sesion?.usuario?.usuario);
 
   const seccionesNav = {
     inicio: [
@@ -3120,6 +3144,11 @@ function App() {
   const path = window.location.pathname;
   let sesion = getSesion();
 
+  if (path === "/agustin" || path === "/franco") {
+    window.location.href = "/lider";
+    return null;
+  }
+
   // Si estamos en una ruta de usuario específica, usar esa sesión
   if (Object.values(USUARIO_A_RUTA).includes(path)) {
     sesion = getSesionDelPath(path);
@@ -3127,7 +3156,7 @@ function App() {
 
   if (path === "/login") {
     if (sesion) {
-      window.location.href = USUARIO_A_RUTA[getUsuarioKey(sesion.usuario.usuario)] || "/";
+      window.location.href = getRutaUsuario(sesion.usuario.usuario) || "/";
       return null;
     }
     return <LoginPage />;
@@ -3139,7 +3168,7 @@ function App() {
   }
 
   const esAdmin = sesion.usuario.rol === "admin";
-  const rutaPropia = USUARIO_A_RUTA[getUsuarioKey(sesion.usuario.usuario)];
+  const rutaPropia = getRutaUsuario(sesion.usuario.usuario);
   const rutasCompartidas = ["/", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil", "/piezas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
@@ -3150,8 +3179,8 @@ function App() {
   }
 
   const dashboard = (() => {
-    if (path === "/agustin") {
-      return <AgustinDashboard />;
+    if (path === "/lider") {
+      return <LiderDashboard />;
     }
     if (path === "/oriana") {
       return <OrianaDashboard />;
@@ -3164,9 +3193,6 @@ function App() {
     }
     if (path === "/augusto") {
       return <AugustoDashboard />;
-    }
-    if (path === "/franco") {
-      return <FrancoDashboard />;
     }
     if (path === "/equipo") {
       window.location.href = "/reportes-historias";
@@ -3225,8 +3251,7 @@ function App() {
 }
 
 const ROLES_HOME = [
-  { nombre: "Agustín", descripcion: "Panorama admin", path: "/agustin" },
-  { nombre: "Franco", descripcion: "Cola de aprobaciones", path: "/franco" },
+  { nombre: "Líder", descripcion: "Administración y aprobaciones", path: "/lider" },
   { nombre: "Augusto", descripcion: "Diseño", path: "/augusto" },
   { nombre: "Luciano", descripcion: "Edición", path: "/luciano" },
   { nombre: "Germán", descripcion: "Producción", path: "/german" },
@@ -3236,7 +3261,7 @@ const ROLES_HOME = [
 function HomePage() {
   const sesion = getSesion();
   const esAdmin = sesion?.usuario?.rol === "admin";
-  const rutaPropia = USUARIO_A_RUTA[getUsuarioKey(sesion?.usuario?.usuario)] || "/";
+  const rutaPropia = getRutaUsuario(sesion?.usuario?.usuario) || "/";
 
   const atajos = [
     {
@@ -3814,7 +3839,7 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
 }
 
 const ROL_LABELS = {
-  admin: "Administrador",
+  admin: "Líder",
   diseno: "Diseño",
   edicion: "Edición",
   produccion: "Producción",
@@ -4670,7 +4695,7 @@ function ChecklistPublicacionOrianaModal({ publicacion, onClose, onPublicar }) {
             </div>
           ) : (
             <div className="caption">
-              Solo Agustín o Franco pueden marcar una pieza como publicada.
+              Solo el Líder puede marcar una pieza como publicada.
             </div>
           )}
         </div>
@@ -5026,7 +5051,7 @@ function LucianoDashboard() {
                   {proxima.cliente_nombre ?? "Sin cliente"} · Vence {proxima.fecha_vencimiento}
                 </div>
                 <div style={{ fontSize: "12px", color: "#555" }}>
-                  {proxima.requiere_aprobacion ? "Esperando aprobación de Franco" : `Estado: ${getEstadoTareaLabel(proxima.estado)}`}
+                  {proxima.requiere_aprobacion ? "Esperando aprobación del Líder" : `Estado: ${getEstadoTareaLabel(proxima.estado)}`}
                 </div>
               </div>
             )}
@@ -5949,19 +5974,20 @@ function ClientesAdminPage() {
   );
 }
 
-function AgustinDashboard() {
+function LiderDashboard() {
   const [clientes, setClientes] = useState([]);
   const [resumenEquipo, setResumenEquipo] = useState([]);
-  const [aprobacionesAgustin, setAprobacionesAgustin] = useState([]);
+  const [aprobacionesLider, setAprobacionesLider] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [panoramaError, setPanoramaError] = useState(null);
   const [resumenEquipoError, setResumenEquipoError] = useState(null);
-  const [aprobacionesAgustinError, setAprobacionesAgustinError] =
+  const [aprobacionesLiderError, setAprobacionesLiderError] =
     useState(null);
   const [historiasRaw, setHistoriasRaw] = useState([]);
   const [publicacionesRaw, setPublicacionesRaw] = useState([]);
   const [tareasRaw, setTareasRaw] = useState([]);
   const [busquedaCliente, setBusquedaCliente] = useState("");
+  const [vistaLider, setVistaLider] = useState("panorama");
 
   const cargarPanorama = () => {
     Promise.all([
@@ -5977,16 +6003,16 @@ function AgustinDashboard() {
         setResumenEquipo(
           getResumenEquipo(historiasApi, publicacionesApi, tareasApi),
         );
-        setAprobacionesAgustin(getAprobacionesAgustin(tareasApi));
+        setAprobacionesLider(getAprobacionesLider(tareasApi));
         setHistoriasRaw(historiasApi);
         setPublicacionesRaw(publicacionesApi);
         setTareasRaw(tareasApi);
       })
       .catch((error) => {
-        console.error("No se pudieron cargar los datos de Agustín", error);
+        console.error("No se pudieron cargar los datos del Líder", error);
         setPanoramaError("No se pudo cargar el panorama de clientes.");
         setResumenEquipoError("No se pudo cargar el resumen de equipo.");
-        setAprobacionesAgustinError("No se pudieron cargar las aprobaciones.");
+        setAprobacionesLiderError("No se pudieron cargar las aprobaciones.");
       });
   };
 
@@ -6000,7 +6026,40 @@ function AgustinDashboard() {
     <main aria-label="Render platform">
       <div className="frame">
         <div className="content">
-          <div style={{ backgroundColor: "#ffe0e0", border: "2px solid #d32f2f", borderRadius: "4px", padding: "12px", marginBottom: "20px", fontSize: "13px" }}>
+          <div className="lider-dashboard-header">
+            <div>
+              <div className="section-label">Líder</div>
+              <h2>Administración general</h2>
+            </div>
+            <div
+              aria-label="Secciones del panel del Líder"
+              className="lider-dashboard-tabs"
+              role="tablist"
+            >
+              <button
+                aria-selected={vistaLider === "panorama"}
+                className={vistaLider === "panorama" ? "active" : ""}
+                onClick={() => setVistaLider("panorama")}
+                role="tab"
+                type="button"
+              >
+                Panorama y estadísticas
+              </button>
+              <button
+                aria-selected={vistaLider === "gestion"}
+                className={vistaLider === "gestion" ? "active" : ""}
+                onClick={() => setVistaLider("gestion")}
+                role="tab"
+                type="button"
+              >
+                Gestión y aprobaciones
+              </button>
+            </div>
+          </div>
+
+          {vistaLider === "panorama" && (
+            <div className="lider-dashboard-view" role="tabpanel">
+              <div style={{ backgroundColor: "#ffe0e0", border: "2px solid #d32f2f", borderRadius: "4px", padding: "12px", marginBottom: "20px", fontSize: "13px" }}>
             {(() => {
               const atrasadas = getPiezasAtrasadas(historiasRaw, publicacionesRaw);
               const bloqueadas = getPiezasBloqueadas(historiasRaw, publicacionesRaw);
@@ -6136,7 +6195,7 @@ function AgustinDashboard() {
           </div>
 
           <div className="section-label">
-            3 · Aprobaciones que le corresponden a él directamente
+            3 · Aprobaciones escaladas al Líder
           </div>
           <div className="box">
             <table>
@@ -6149,7 +6208,7 @@ function AgustinDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {aprobacionesAgustin.map((aprobacion) => (
+                {aprobacionesLider.map((aprobacion) => (
                   <tr key={aprobacion.id}>
                     <td>{aprobacion.cliente_nombre ?? "Sin cliente"}</td>
                     <td>{aprobacion.titulo}</td>
@@ -6176,24 +6235,24 @@ function AgustinDashboard() {
                     </td>
                   </tr>
                 ))}
-                {aprobacionesAgustinError && (
+                {aprobacionesLiderError && (
                   <tr>
-                    <td colSpan="4">{aprobacionesAgustinError}</td>
+                    <td colSpan="4">{aprobacionesLiderError}</td>
                   </tr>
                 )}
-                {!aprobacionesAgustinError &&
-                  aprobacionesAgustin.length === 0 && (
+                {!aprobacionesLiderError &&
+                  aprobacionesLider.length === 0 && (
                     <tr>
                       <td colSpan="4">
-                        No hay tareas escaladas a Agustín.
+                        No hay tareas escaladas al Líder.
                       </td>
                     </tr>
                   )}
               </tbody>
             </table>
             <div className="caption">
-              → No es la cola completa (esa es de Franco). Solo lo escalado
-              específicamente a Agustín.
+              → Reúne los casos escalados al equipo administrativo, incluidos
+              los pendientes anteriores a la unificación.
             </div>
           </div>
 
@@ -6244,7 +6303,7 @@ function AgustinDashboard() {
             })()}
             <div className="caption">
               → Piezas que debían publicarse pero no lo hicieron. Revisar con
-              Franco.
+              el Líder.
             </div>
           </div>
 
@@ -6328,6 +6387,24 @@ function AgustinDashboard() {
             → Para editar la cuota mensual de un cliente, abrí su detalle
             haciendo clic en la fila del panorama.
           </div>
+              </div>
+          )}
+
+          {vistaLider === "gestion" && (
+            <div className="lider-dashboard-view" role="tabpanel">
+              <div className="lider-dashboard-divider">
+                <span>Gestión y aprobaciones</span>
+                <strong>Decisiones operativas del Líder</strong>
+              </div>
+              <GestionLiderPanel />
+
+              <TareasAsignadasGenericas
+                nombre="Líder"
+                nombres={["Líder", "Agustín", "Franco"]}
+                titulo="Tareas asignadas al Líder"
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -6344,25 +6421,24 @@ function AgustinDashboard() {
           onCuotaActualizada={cargarPanorama}
         />
       )}
-      <TareasAsignadasGenericas nombre="Agustín" />
     </main>
   );
 }
 
-function FrancoDashboard() {
+function GestionLiderPanel() {
   const [piezaSeleccionada, setPiezaSeleccionada] = useState(null);
   const [piezasEnRevision, setPiezasEnRevision] = useState([]);
   const [piezasEnRevisionError, setPiezasEnRevisionError] = useState(null);
   const [filtroCola, setFiltroCola] = useState("todas");
-  const [tareasFranco, setTareasFranco] = useState([]);
-  const [tareasFrancoError, setTareasFrancoError] = useState(null);
+  const [tareasGestion, setTareasGestion] = useState([]);
+  const [tareasGestionError, setTareasGestionError] = useState(null);
   const [tareaAsignando, setTareaAsignando] = useState(null);
   const [responsableSeleccionado, setResponsableSeleccionado] = useState("");
 
-  const tareasDestrabadas = tareasFranco.filter(
+  const tareasDestrabadas = tareasGestion.filter(
     (tarea) => tarea.propiedades_extra?.destrabada_por,
   );
-  const tareasEscaladas = tareasFranco.filter(
+  const tareasEscaladas = tareasGestion.filter(
     (tarea) => tarea.propiedades_extra?.escalada_a,
   );
 
@@ -6389,7 +6465,7 @@ function FrancoDashboard() {
         setPiezasEnRevision(combinadas);
       })
       .catch((error) => {
-        console.error("No se pudieron cargar las aprobaciones de Franco", error);
+        console.error("No se pudieron cargar las aprobaciones del Líder", error);
         setPiezasEnRevisionError("No se pudieron cargar las aprobaciones.");
       });
   };
@@ -6400,11 +6476,11 @@ function FrancoDashboard() {
     fetch("/api/tareas")
       .then((response) => response.json())
       .then((tareas) => {
-        setTareasFranco(tareas);
+        setTareasGestion(tareas);
       })
       .catch((error) => {
-        console.error("No se pudieron cargar las tareas de Franco", error);
-        setTareasFrancoError("No se pudieron cargar las tareas.");
+        console.error("No se pudieron cargar las tareas del Líder", error);
+        setTareasGestionError("No se pudieron cargar las tareas.");
       });
   }, []);
 
@@ -6415,9 +6491,8 @@ function FrancoDashboard() {
   });
 
   return (
-    <main aria-label="Render platform Franco">
-      <div className="frame">
-        <div className="content">
+    <>
+      <section className="lider-gestion-panel" aria-label="Gestión y aprobaciones del Líder">
           <div className="section-label">
             1 · Mi cola de aprobaciones — lo que sí requiere mi decisión
           </div>
@@ -6509,8 +6584,7 @@ function FrancoDashboard() {
             </table>
 
             <div className="caption">
-              → Esta cola no mezcla todo: solo lo que necesita decisión directa
-              de Franco.
+              → Esta cola reúne lo que necesita una decisión directa del Líder.
             </div>
           </div>
 
@@ -6537,12 +6611,12 @@ function FrancoDashboard() {
                     </td>
                   </tr>
                 ))}
-                {tareasFrancoError && (
+                {tareasGestionError && (
                   <tr>
-                    <td colSpan="3">{tareasFrancoError}</td>
+                    <td colSpan="3">{tareasGestionError}</td>
                   </tr>
                 )}
-                {!tareasFrancoError && tareasDestrabadas.length === 0 && (
+                {!tareasGestionError && tareasDestrabadas.length === 0 && (
                   <tr>
                     <td colSpan="3">No hay piezas destrabadas registradas.</td>
                   </tr>
@@ -6550,11 +6624,11 @@ function FrancoDashboard() {
               </tbody>
             </table>
             <div className="caption">
-              → Historial simple de lo que Franco ya destrabó hoy.
+              → Historial simple de lo que el Líder ya destrabó hoy.
             </div>
           </div>
 
-          <div className="section-label">3 · Escalado a Agustín</div>
+          <div className="section-label">3 · Casos escalados al Líder</div>
           <div className="box">
             {tareasEscaladas.map((tarea) => (
               <div className="card" key={tarea.id}>
@@ -6568,21 +6642,21 @@ function FrancoDashboard() {
                 </div>
               </div>
             ))}
-            {tareasFrancoError && (
-              <div className="caption">{tareasFrancoError}</div>
+            {tareasGestionError && (
+              <div className="caption">{tareasGestionError}</div>
             )}
-            {!tareasFrancoError && tareasEscaladas.length === 0 && (
-              <div className="caption">No hay tareas escaladas a Agustín.</div>
+            {!tareasGestionError && tareasEscaladas.length === 0 && (
+              <div className="caption">No hay tareas escaladas al Líder.</div>
             )}
             <div className="caption">
-              → Franco ve qué ya salió de su cancha y está esperando respuesta.
+              → Conserva también los casos escalados antes de la unificación.
             </div>
           </div>
 
           <div className="section-label">4 · Tareas para asignar</div>
           <div className="box">
             {(() => {
-              const porAsignar = getTareasParaAsignar(tareasFranco);
+              const porAsignar = getTareasParaAsignar(tareasGestion);
               if (porAsignar.length === 0) {
                 return (
                   <div className="caption">
@@ -6673,11 +6747,10 @@ function FrancoDashboard() {
               );
             })()}
             <div className="caption">
-              → Tareas pendientes que Franco puede asignar rápidamente.
+              → Tareas pendientes que el Líder puede asignar rápidamente.
             </div>
           </div>
-        </div>
-      </div>
+      </section>
 
       {piezaSeleccionada && (
         <RevisionPiezaModal
@@ -6687,8 +6760,7 @@ function FrancoDashboard() {
           onCorreccion={cargarCola}
         />
       )}
-      <TareasAsignadasGenericas nombre="Franco" />
-    </main>
+    </>
   );
 }
 
@@ -6762,7 +6834,7 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
 
   const handleEscalar = () => {
     const motivo = window.prompt(
-      "¿Cuál es el motivo para escalar esto a Agustín?",
+      "Cuál es el motivo para escalar esto al Líder?",
     );
     if (!motivo) {
       return;
@@ -6778,11 +6850,11 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
         titulo: `Escalado: ${
           pieza.metadata?.Idea || "Pieza sin idea"
         } (${pieza.cliente_nombre})`,
-        asignado_a: "Franco",
+        asignado_a: "Líder",
         cliente_id: pieza.cliente_id,
         estado: "pendiente",
         requiere_aprobacion: true,
-        escalada_a: "Agustín",
+        escalada_a: "Líder",
         motivo,
       }),
     })
@@ -6817,7 +6889,7 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         estado: "en_revision",
-        metadata: { Aclaración: `Desbloqueada por Franco: ${resolucion}` },
+        metadata: { Aclaración: `Desbloqueada por Líder: ${resolucion}` },
       }),
     })
       .then((response) => {
@@ -6875,7 +6947,7 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
                   onClick={handleEscalar}
                   disabled={enviando !== null}
                 >
-                  {enviando === "escalar" ? "Escalando..." : "Escalar a Agustín"}
+                  {enviando === "escalar" ? "Escalando..." : "Escalar al Líder"}
                 </button>
               </>
             ) : (
@@ -6902,7 +6974,7 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
                   onClick={handleEscalar}
                   disabled={enviando !== null}
                 >
-                  {enviando === "escalar" ? "Escalando..." : "Escalar a Agustín"}
+                  {enviando === "escalar" ? "Escalando..." : "Escalar al Líder"}
                 </button>
               </>
             )}
@@ -7091,9 +7163,9 @@ function DetalleClienteModal({
               className="btn"
               type="button"
               disabled={enviando !== null}
-              onClick={() => handleAvisar("Franco")}
+              onClick={() => handleAvisar("Líder")}
             >
-              {enviando === "Franco" ? "Enviando..." : "Escalar a Franco"}
+              {enviando === "Líder" ? "Enviando..." : "Escalar al Líder"}
             </button>
             <button
               className="btn"
@@ -7536,7 +7608,7 @@ const ESTADOS_HISTORIA = [
   { id: "bloqueada", label: "Bloqueada", bg: "#ffebee", fg: "#c62828" },
 ];
 
-const RESPONSABLES_EQUIPO = ["Augusto", "Luciano", "Germán", "Oriana", "Franco", "Agustín"];
+const RESPONSABLES_EQUIPO = ["Augusto", "Luciano", "Germán", "Oriana", "Líder"];
 
 // Orden de columnas navegables con Tab/Enter (coincide con el orden visual).
 const COLUMNAS_PLANILLA = ["cliente", "fecha", "hora", "tipo", "copy", "material", "aclaraciones", "responsable", "estado"];
