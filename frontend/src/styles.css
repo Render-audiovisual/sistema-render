@@ -264,30 +264,30 @@ th {
 }
 
 .semaforo {
-  border: 1px solid #333;
+  border: 1px solid transparent;
   border-radius: 50%;
   display: inline-block;
-  height: 14px;
+  height: 10px;
   margin-right: 6px;
   vertical-align: middle;
-  width: 14px;
+  width: 10px;
 }
 
 .semaforo.rojo {
-  background: #333;
+  background: #b23a2e;
 }
 
 .semaforo.amarillo {
-  background: #999;
+  background: #d9a44f;
 }
 
 .semaforo.verde {
-  background: #ddd;
+  background: #3d7a53;
 }
 
 .semaforo.gris {
-  background: #fff;
-  border-color: #aaa;
+  background: #efece5;
+  border-color: #cfc9bc;
 }
 
 .leyenda {
@@ -4297,8 +4297,8 @@ tr:hover .sheet-row-actions {
 .clientes-command-bar {
   align-items: center;
   background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
+  border: 1px solid #e3dfd6;
+  border-radius: 12px;
   display: flex;
   gap: 16px;
   justify-content: space-between;
@@ -4327,7 +4327,7 @@ tr:hover .sheet-row-actions {
 
 .clientes-heading-meta {
   align-items: center;
-  color: #5f6368;
+  color: #6b6860;
   display: flex;
   flex-wrap: wrap;
   font-size: 12px;
@@ -4336,10 +4336,11 @@ tr:hover .sheet-row-actions {
 }
 
 .clientes-heading-meta span {
-  background: #f1f3f4;
-  border: 1px solid #e0e0e0;
+  background: #efece5;
+  border: 1px solid #e3dfd6;
   border-radius: 999px;
   padding: 5px 9px;
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
 }
 
 .clientes-metrics {
@@ -4349,8 +4350,8 @@ tr:hover .sheet-row-actions {
 }
 
 .cliente-metric {
-  background: #fff;
-  border: 1px solid #e0e0e0;
+  background: #efece5;
+  border: none;
   border-radius: 8px;
 }
 
@@ -4363,22 +4364,25 @@ tr:hover .sheet-row-actions {
 
 .cliente-metric span,
 .cliente-detail-metrics span {
-  color: #5f6368;
+  color: #6b6860;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0;
+  font-weight: 500;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
 .cliente-metric strong {
-  color: #202124;
-  font-size: 26px;
+  color: #1b1b18;
+  font-size: 24px;
+  font-weight: 600;
   line-height: 1;
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .cliente-metric small,
 .cliente-detail-metrics small {
-  color: #5f6368;
+  color: #948f83;
   font-size: 12px;
 }
 
@@ -4393,7 +4397,7 @@ tr:hover .sheet-row-actions {
 
 .clientes-panel-copy span,
 .clientes-table-toolbar span {
-  color: #5f6368;
+  color: #6b6860;
   font-size: 12px;
 }
 
@@ -4404,6 +4408,7 @@ tr:hover .sheet-row-actions {
 
 .clientes-table-panel {
   overflow: hidden;
+  border-radius: 12px;
 }
 
 .clientes-table-toolbar {
@@ -4663,8 +4668,8 @@ tr:hover .sheet-row-actions {
 
 .cliente-status-pill {
   align-items: center;
-  background: #f8f9fa;
-  border: 1px solid #e8eaed;
+  background: #efece5;
+  border: 1px solid #e3dfd6;
   border-radius: 999px;
   display: inline-flex;
   gap: 6px;
@@ -4673,7 +4678,7 @@ tr:hover .sheet-row-actions {
 }
 
 .cliente-action-cell {
-  color: #3c4043;
+  color: #1b1b18;
 }
 
 .cliente-action-cell strong {
@@ -4683,7 +4688,7 @@ tr:hover .sheet-row-actions {
 }
 
 .cliente-action-cell span {
-  color: #5f6368;
+  color: #6b6860;
   display: block;
   font-size: 12px;
 }
@@ -4697,8 +4702,8 @@ tr:hover .sheet-row-actions {
 
 .cliente-mobile-card {
   background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 10px;
+  border: 1px solid #e3dfd6;
+  border-radius: 12px;
   display: grid;
   gap: 14px;
   padding: 14px;
