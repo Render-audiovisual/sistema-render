@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
+import compression from "compression";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { checkDatabaseConnection, pool } from "./db.js";
@@ -14,6 +15,7 @@ const app = express();
 const router = express.Router();
 const port = Number(process.env.PORT || 3001);
 
+app.use(compression());
 app.use(express.json({ limit: "2mb" }));
 
 router.get("/health", (_req, res) => {
@@ -1646,7 +1648,19 @@ app.use("/api", router);
 // nada del flujo de trabajo habitual.
 const distDir = path.join(__dirname, "..", "..", "frontend", "dist");
 if (fs.existsSync(distDir)) {
-  app.use(express.static(distDir));
+  // Los archivos dentro de /assets llevan un hash en el nombre (los genera
+  // Vite en el build) — si cambia el contenido, cambia el nombre. Por eso
+  // son seguros para cachear "para siempre" en el navegador, evitando
+  // volver a descargarlos en cada visita.
+  app.use(
+    express.static(distDir, {
+      setHeaders: (res, filePath) => {
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+      },
+    }),
+  );
   app.get(/^\/(?!api\/).*/, (_req, res) => {
     res.sendFile(path.join(distDir, "index.html"));
   });

@@ -1,4 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap");
+/* Fuente Poppins: precargada en index.html con <link rel="preconnect"> +
+   <link rel="stylesheet"> — llega en paralelo con el JS en vez de esperar
+   a que se ejecute este CSS (que antes la traía con @import). */
 
 * {
   box-sizing: border-box;

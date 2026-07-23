@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -2085,6 +2085,7 @@ function PiezasTableroPage() {
   const [bloquearClickTarjeta, setBloquearClickTarjeta] = useState(false);
 
   // Filtros
+  const [busquedaSinDebounce, setBusquedaSinDebounce] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [filtroArea, setFiltroArea] = useState("");
   const [filtroSubtipo, setFiltroSubtipo] = useState("");
@@ -2092,6 +2093,12 @@ function PiezasTableroPage() {
   const [filtroResponsable, setFiltroResponsable] = useState("");
   const [filtroCliente, setFiltroCliente] = useState("");
   const [filtroPrioridad, setFiltroPrioridad] = useState("");
+
+  // Debounce para búsqueda (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => setBusqueda(busquedaSinDebounce), 300);
+    return () => clearTimeout(timer);
+  }, [busquedaSinDebounce]);
 
   // Estados posibles
   const ESTADOS = [
@@ -2149,12 +2156,17 @@ function PiezasTableroPage() {
     community: "Community manager",
   };
 
-  const SUBTIPO_LABELS = SUBTIPOS_TAREAS.reduce((acc, subtipo) => {
-    acc[subtipo.id] = subtipo.label;
-    return acc;
-  }, {});
+  const SUBTIPO_LABELS = useMemo(() =>
+    SUBTIPOS_TAREAS.reduce((acc, subtipo) => {
+      acc[subtipo.id] = subtipo.label;
+      return acc;
+    }, {}),
+    []
+  );
 
-  function obtenerTextoClasificacion(pieza) {
+  const clasificacionCache = useRef(new Map());
+
+  const obtenerTextoClasificacion = useCallback((pieza) => {
     return [
       pieza.tipo,
       pieza.idea,
@@ -2165,13 +2177,19 @@ function PiezasTableroPage() {
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
-  }
+  }, []);
 
-  function clasificarPieza(pieza) {
+  const clasificarPieza = useCallback((pieza) => {
+    const key = `${pieza.id}`;
+    if (clasificacionCache.current.has(key)) {
+      return clasificacionCache.current.get(key);
+    }
+
     const tipo = (pieza.tipo || "").toLowerCase();
     const responsable = (pieza.responsable || "").toLowerCase();
     const texto = obtenerTextoClasificacion(pieza);
 
+    let resultado;
     if (
       tipo.includes("carteleria") ||
       tipo.includes("cartelería") ||
@@ -2182,18 +2200,12 @@ function PiezasTableroPage() {
       texto.includes("impresion") ||
       texto.includes("impresión")
     ) {
-      return { area: "diseno", subtipo: "carteleria_impresiones" };
-    }
-
-    if (tipo === "carrusel" || tipo.includes("carrusel")) {
-      return { area: "diseno", subtipo: "carruseles" };
-    }
-
-    if (tipo === "historia" || tipo === "flyer" || tipo.includes("flyer")) {
-      return { area: "diseno", subtipo: "historias_flyers" };
-    }
-
-    if (
+      resultado = { area: "diseno", subtipo: "carteleria_impresiones" };
+    } else if (tipo === "carrusel" || tipo.includes("carrusel")) {
+      resultado = { area: "diseno", subtipo: "carruseles" };
+    } else if (tipo === "historia" || tipo === "flyer" || tipo.includes("flyer")) {
+      resultado = { area: "diseno", subtipo: "historias_flyers" };
+    } else if (
       tipo.includes("visita") ||
       texto.includes("visita") ||
       texto.includes("grabacion") ||
@@ -2201,10 +2213,8 @@ function PiezasTableroPage() {
       texto.includes("filmacion") ||
       texto.includes("filmación")
     ) {
-      return { area: "videos", subtipo: "visitas" };
-    }
-
-    if (
+      resultado = { area: "videos", subtipo: "visitas" };
+    } else if (
       tipo.includes("edicion") ||
       tipo.includes("edición") ||
       responsable.includes("luciano") ||
@@ -2212,20 +2222,26 @@ function PiezasTableroPage() {
       texto.includes("edicion") ||
       texto.includes("edición")
     ) {
-      return { area: "videos", subtipo: "edicion" };
+      resultado = { area: "videos", subtipo: "edicion" };
+    } else if (tipo === "video" || tipo === "reel" || tipo.includes("reel")) {
+      resultado = { area: "videos", subtipo: "reels" };
+    } else {
+      resultado = { area: "community", subtipo: "community_pendiente" };
     }
 
-    if (tipo === "video" || tipo === "reel" || tipo.includes("reel")) {
-      return { area: "videos", subtipo: "reels" };
-    }
-
-    return { area: "community", subtipo: "community_pendiente" };
-  }
+    clasificacionCache.current.set(key, resultado);
+    return resultado;
+  }, [obtenerTextoClasificacion]);
 
   // Cargar piezas al montar
   useEffect(() => {
     cargarPiezas();
   }, []);
+
+  // Limpiar cache cuando cambian las piezas
+  useEffect(() => {
+    clasificacionCache.current.clear();
+  }, [piezas]);
 
   async function cargarPiezas() {
     try {
@@ -2253,84 +2269,98 @@ function PiezasTableroPage() {
     }
   }
 
-  // Filtrar piezas según los filtros activos
+  // Filtrar piezas según los filtros activos (memoizado)
   const busquedaNormalizada = busqueda.trim().toLowerCase();
-  const piezasFiltradas = piezas.filter((pieza) => {
-    const clasificacion = clasificarPieza(pieza);
+  const piezasFiltradas = useMemo(() => {
+    return piezas.filter((pieza) => {
+      const clasificacion = clasificarPieza(pieza);
 
-    if (busquedaNormalizada) {
-      const textoPieza = [
-        pieza.tipo,
-        AREA_LABELS[clasificacion.area],
-        SUBTIPO_LABELS[clasificacion.subtipo],
-        pieza.cliente_nombre,
-        pieza.responsable,
-        pieza.idea,
-        pieza.copy,
-        pieza.material_referencia,
-        pieza.aclaraciones,
-        ESTADO_LABELS[pieza.estado],
-        pieza.prioridad,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+      if (busquedaNormalizada) {
+        const textoPieza = [
+          pieza.tipo,
+          AREA_LABELS[clasificacion.area],
+          SUBTIPO_LABELS[clasificacion.subtipo],
+          pieza.cliente_nombre,
+          pieza.responsable,
+          pieza.idea,
+          pieza.copy,
+          pieza.material_referencia,
+          pieza.aclaraciones,
+          ESTADO_LABELS[pieza.estado],
+          pieza.prioridad,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
 
-      if (!textoPieza.includes(busquedaNormalizada)) return false;
-    }
-    if (filtroArea && clasificacion.area !== filtroArea) return false;
-    if (filtroSubtipo && clasificacion.subtipo !== filtroSubtipo) return false;
-    if (filtroEstado && (pieza.estado || "pendiente") !== filtroEstado)
-      return false;
-    if (filtroResponsable && pieza.responsable !== filtroResponsable)
-      return false;
-    if (filtroCliente && pieza.cliente_id !== parseInt(filtroCliente))
-      return false;
-    if (filtroPrioridad && pieza.prioridad !== filtroPrioridad) return false;
-    return true;
-  });
+        if (!textoPieza.includes(busquedaNormalizada)) return false;
+      }
+      if (filtroArea && clasificacion.area !== filtroArea) return false;
+      if (filtroSubtipo && clasificacion.subtipo !== filtroSubtipo) return false;
+      if (filtroEstado && (pieza.estado || "pendiente") !== filtroEstado)
+        return false;
+      if (filtroResponsable && pieza.responsable !== filtroResponsable)
+        return false;
+      if (filtroCliente && pieza.cliente_id !== parseInt(filtroCliente))
+        return false;
+      if (filtroPrioridad && pieza.prioridad !== filtroPrioridad) return false;
+      return true;
+    });
+  }, [piezas, busquedaNormalizada, filtroArea, filtroSubtipo, filtroEstado, filtroResponsable, filtroCliente, filtroPrioridad, clasificarPieza, SUBTIPO_LABELS]);
 
-  // Obtener responsables únicos
-  const responsables = [...new Set(piezas.map((p) => p.responsable).filter(Boolean))].sort();
+  // Obtener responsables únicos (memoizado)
+  const responsables = useMemo(() =>
+    [...new Set(piezas.map((p) => p.responsable).filter(Boolean))].sort(),
+    [piezas]
+  );
 
-  // Obtener clientes únicos
-  const clientesPorId = new Map();
-  piezas.forEach((p) => {
-    if (p.cliente_id && !clientesPorId.has(p.cliente_id)) {
-      clientesPorId.set(p.cliente_id, p.cliente_nombre);
-    }
-  });
-  const clientes = [...clientesPorId.entries()]
-    .map(([id, nombre]) => ({ id, nombre }))
-    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  // Obtener clientes únicos (memoizado)
+  const clientes = useMemo(() => {
+    const clientesPorId = new Map();
+    piezas.forEach((p) => {
+      if (p.cliente_id && !clientesPorId.has(p.cliente_id)) {
+        clientesPorId.set(p.cliente_id, p.cliente_nombre);
+      }
+    });
+    return [...clientesPorId.entries()]
+      .map(([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [piezas]);
 
   // Prioridades
   const prioridades = ["baja", "media", "alta"];
-  const subtiposDisponibles = SUBTIPOS_TAREAS.filter(
-    (subtipo) => !filtroArea || subtipo.area === filtroArea
+
+  // Subtipos disponibles (memoizado)
+  const subtiposDisponibles = useMemo(() =>
+    SUBTIPOS_TAREAS.filter((subtipo) => !filtroArea || subtipo.area === filtroArea),
+    [filtroArea]
   );
-  const conteoAreas = piezas.reduce((acc, pieza) => {
-    const clasificacion = clasificarPieza(pieza);
-    acc[clasificacion.area] = (acc[clasificacion.area] || 0) + 1;
-    acc.todas += 1;
-    return acc;
-  }, { todas: 0 });
-  const conteoSubtipos = piezas.reduce((acc, pieza) => {
-    const clasificacion = clasificarPieza(pieza);
-    acc[clasificacion.subtipo] = (acc[clasificacion.subtipo] || 0) + 1;
-    return acc;
-  }, {});
-  const hayFiltrosActivos =
+
+  // Conteos (memoizado)
+  const { conteoAreas, conteoSubtipos } = useMemo(() => {
+    const areas = { todas: 0 };
+    const subtipos = {};
+    piezas.forEach((pieza) => {
+      const clasificacion = clasificarPieza(pieza);
+      areas[clasificacion.area] = (areas[clasificacion.area] || 0) + 1;
+      areas.todas += 1;
+      subtipos[clasificacion.subtipo] = (subtipos[clasificacion.subtipo] || 0) + 1;
+    });
+    return { conteoAreas: areas, conteoSubtipos: subtipos };
+  }, [piezas, clasificarPieza]);
+  const hayFiltrosActivos = useMemo(() =>
     busqueda.trim() ||
     filtroArea ||
     filtroSubtipo ||
     filtroEstado ||
     filtroResponsable ||
     filtroCliente ||
-    filtroPrioridad;
+    filtroPrioridad,
+    [busqueda, filtroArea, filtroSubtipo, filtroEstado, filtroResponsable, filtroCliente, filtroPrioridad]
+  );
 
-  // Agrupar por estado
-  function agruparPorEstado() {
+  // Agrupar por estado (memoizado)
+  const piezasPorEstado = useMemo(() => {
     const grupos = {};
     ESTADOS.forEach((estado) => {
       grupos[estado] = [];
@@ -2343,22 +2373,20 @@ function PiezasTableroPage() {
       grupos[estado].push(pieza);
     });
     return grupos;
-  }
+  }, [piezasFiltradas, ESTADOS]);
 
-  const piezasPorEstado = agruparPorEstado();
-
-  function obtenerTituloPieza(pieza) {
+  const obtenerTituloPieza = useCallback((pieza) => {
     const texto = pieza.idea || pieza.copy || pieza.tipo || "Tarea sin detalle";
     return texto.length > 86 ? `${texto.substring(0, 86)}...` : texto;
-  }
+  }, []);
 
-  function formatearFechaCorta(fechaISO) {
+  const formatearFechaCorta = useCallback((fechaISO) => {
     if (!fechaISO) return null;
     return new Date(fechaISO).toLocaleDateString("es-AR", {
       day: "2-digit",
       month: "short",
     });
-  }
+  }, []);
 
   async function cambiarEstado(piezaId, nuevoEstado, opciones = {}) {
     const { actualizarLocal = true } = opciones;
@@ -2464,22 +2492,22 @@ function PiezasTableroPage() {
     setPiezaSeleccionada(null);
   }
 
-  function obtenerColorPrioridad(prioridad) {
-    switch (prioridad) {
-      case "alta":
-        return "#333";
-      case "media":
-        return "#777";
-      case "baja":
-        return "#ccc";
-      default:
-        return "#aaa";
-    }
-  }
+  const COLORES_PRIORIDAD = useMemo(() => ({
+    alta: "#333",
+    media: "#777",
+    baja: "#ccc",
+    default: "#aaa",
+  }), []);
 
-  function obtenerColorTextoPrioridad(prioridad) {
-    return prioridad === "baja" ? "#333" : "#fff";
-  }
+  const obtenerColorPrioridad = useCallback((prioridad) =>
+    COLORES_PRIORIDAD[prioridad] || COLORES_PRIORIDAD.default,
+    [COLORES_PRIORIDAD]
+  );
+
+  const obtenerColorTextoPrioridad = useCallback((prioridad) =>
+    prioridad === "baja" ? "#333" : "#fff",
+    []
+  );
 
   if (cargando) {
     return (
@@ -2586,8 +2614,8 @@ function PiezasTableroPage() {
             <span>Buscar</span>
             <input
               type="search"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
+              value={busquedaSinDebounce}
+              onChange={(e) => setBusquedaSinDebounce(e.target.value)}
               placeholder="Tarea, cliente o idea..."
             />
           </label>
@@ -3417,7 +3445,7 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
       });
   }, []);
 
-  const piezasFiltradas = piezas.filter((pz) => {
+  const piezasFiltradas = useMemo(() => piezas.filter((pz) => {
     if (filtroTipo !== "todos" && pz.tipo !== filtroTipo) return false;
     if (filtroEstado === "pendientes" && pz.estado === "publicada") return false;
     if (
@@ -3428,45 +3456,52 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
       return false;
     }
     return true;
-  });
+  }), [piezas, filtroTipo, filtroEstado]);
 
-  const porFecha = {};
-  piezasFiltradas.forEach((pz) => {
-    if (!pz.fecha_programada) return;
-    (porFecha[pz.fecha_programada] = porFecha[pz.fecha_programada] || []).push(pz);
-  });
-  Object.values(porFecha).forEach((items) => {
-    items.sort((a, b) => {
-      if (a.estado === b.estado) return a.cliente_nombre.localeCompare(b.cliente_nombre);
-      if (a.estado === "publicada") return 1;
-      if (b.estado === "publicada") return -1;
-      return a.estado.localeCompare(b.estado);
+  const porFecha = useMemo(() => {
+    const tmp = {};
+    piezasFiltradas.forEach((pz) => {
+      if (!pz.fecha_programada) return;
+      (tmp[pz.fecha_programada] = tmp[pz.fecha_programada] || []).push(pz);
     });
-  });
+    Object.values(tmp).forEach((items) => {
+      items.sort((a, b) => {
+        if (a.estado === b.estado) return a.cliente_nombre.localeCompare(b.cliente_nombre);
+        if (a.estado === "publicada") return 1;
+        if (b.estado === "publicada") return -1;
+        return a.estado.localeCompare(b.estado);
+      });
+    });
+    return tmp;
+  }, [piezasFiltradas]);
 
-  const semanas = getGrillaMes(year, month);
+  const semanas = useMemo(() => getGrillaMes(year, month), [year, month]);
   const hoyISO = getHoyLocalISO();
   const finProximos7 = sumarDiasISO(hoyISO, 7);
   const mesISO = fechaISODesde(year, month, 1).slice(0, 7);
-  const piezasDelMes = piezas.filter(
-    (pz) => pz.fecha_programada?.slice(0, 7) === mesISO,
-  );
-  const pendientesDelMes = piezasDelMes.filter((pz) => pz.estado !== "publicada");
-  const publicadasDelMes = piezasDelMes.filter((pz) => pz.estado === "publicada");
-  const pendientesVencidas = piezas.filter(
-    (pz) => pz.fecha_programada < hoyISO && pz.estado !== "publicada",
-  );
-  const pendientesHoy = piezas.filter(
-    (pz) => pz.fecha_programada === hoyISO && pz.estado !== "publicada",
-  );
-  const proximos7 = piezas.filter(
-    (pz) =>
-      pz.fecha_programada >= hoyISO &&
-      pz.fecha_programada <= finProximos7 &&
-      pz.estado !== "publicada",
-  );
 
-  const irMes = (delta) => {
+  const estadisticas = useMemo(() => {
+    const piezasDelMes = piezas.filter(
+      (pz) => pz.fecha_programada?.slice(0, 7) === mesISO,
+    );
+    const pendientesDelMes = piezasDelMes.filter((pz) => pz.estado !== "publicada");
+    const publicadasDelMes = piezasDelMes.filter((pz) => pz.estado === "publicada");
+    const pendientesVencidas = piezas.filter(
+      (pz) => pz.fecha_programada < hoyISO && pz.estado !== "publicada",
+    );
+    const pendientesHoy = piezas.filter(
+      (pz) => pz.fecha_programada === hoyISO && pz.estado !== "publicada",
+    );
+    const proximos7 = piezas.filter(
+      (pz) =>
+        pz.fecha_programada >= hoyISO &&
+        pz.fecha_programada <= finProximos7 &&
+        pz.estado !== "publicada",
+    );
+    return { piezasDelMes, pendientesDelMes, publicadasDelMes, pendientesVencidas, pendientesHoy, proximos7 };
+  }, [piezas, mesISO, hoyISO, finProximos7]);
+
+  const irMes = useCallback((delta) => {
     let m = month + delta;
     let y = year;
     if (m < 0) {
@@ -3478,21 +3513,22 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
     }
     setMonth(m);
     setYear(y);
-  };
+  }, [month, year]);
 
-  const filtros = [
+  const FILTROS = useMemo(() => [
     { key: "todos", label: "Todo" },
     { key: "video", label: "Reels" },
     { key: "carrusel", label: "Carruseles" },
-  ];
-  const filtrosEstado = [
+  ], []);
+
+  const FILTROS_ESTADO = useMemo(() => [
     { key: "todos", label: "Todos" },
     { key: "pendientes", label: "Pendientes" },
     { key: "publicada", label: "Publicadas" },
     { key: "bloqueada", label: "No publicado / revisar" },
-  ];
+  ], []);
 
-  const cambiarEstadoPublicacion = async (publicacion, nuevoEstado) => {
+  const cambiarEstadoPublicacion = useCallback(async (publicacion, nuevoEstado) => {
     setGuardandoId(publicacion.id);
     setError(null);
     try {
@@ -3528,12 +3564,12 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
     } finally {
       setGuardandoId(null);
     }
-  };
+  }, []);
 
-  const abrirDia = (fecha, items) => {
+  const abrirDia = useCallback((fecha, items) => {
     if (!items.length) return;
     setDiaSel({ fecha, items });
-  };
+  }, []);
 
   return (
     <>
@@ -3567,7 +3603,7 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
               value={filtroTipo}
               onChange={(event) => setFiltroTipo(event.target.value)}
             >
-              {filtros.map((f) => (
+              {FILTROS.map((f) => (
                 <option key={f.key} value={f.key}>
                   {f.label}
                 </option>
@@ -3580,7 +3616,7 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
               value={filtroEstado}
               onChange={(event) => setFiltroEstado(event.target.value)}
             >
-              {filtrosEstado.map((f) => (
+              {FILTROS_ESTADO.map((f) => (
                 <option key={f.key} value={f.key}>
                   {f.label}
                 </option>
@@ -3592,23 +3628,23 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
 
       <div className="publication-check-summary">
         <div>
-          <strong>{publicadasDelMes.length}</strong>
+          <strong>{estadisticas.publicadasDelMes.length}</strong>
           <span>Publicadas del mes</span>
         </div>
         <div>
-          <strong>{pendientesDelMes.length}</strong>
+          <strong>{estadisticas.pendientesDelMes.length}</strong>
           <span>Pendientes del mes</span>
         </div>
-        <div className={pendientesVencidas.length ? "alert" : ""}>
-          <strong>{pendientesVencidas.length}</strong>
+        <div className={estadisticas.pendientesVencidas.length ? "alert" : ""}>
+          <strong>{estadisticas.pendientesVencidas.length}</strong>
           <span>Vencidas sin check</span>
         </div>
         <div>
-          <strong>{pendientesHoy.length}</strong>
+          <strong>{estadisticas.pendientesHoy.length}</strong>
           <span>Para publicar hoy</span>
         </div>
         <div>
-          <strong>{proximos7.length}</strong>
+          <strong>{estadisticas.proximos7.length}</strong>
           <span>Próximos 7 días</span>
         </div>
       </div>
@@ -7423,25 +7459,34 @@ function HistoriasPlanillaTab({
   // (M, X, J...) que obligaba a memorizar a qué día correspondía cada una.
   const LETRAS_DIA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
-  const clientesPorId = Object.fromEntries(clientes.map((c) => [c.id, c.nombre]));
+  const clientesPorId = useMemo(() => Object.fromEntries(clientes.map((c) => [c.id, c.nombre])), [clientes]);
 
-  const filasVisibles = historias
-    .filter((h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix))
-    .slice()
-    .sort((a, b) =>
-      (a.fecha_programada + (clientesPorId[a.cliente_id] || "") + (a.metadata?.hora || "")).localeCompare(
-        b.fecha_programada + (clientesPorId[b.cliente_id] || "") + (b.metadata?.hora || ""),
+  // Memoizar mapeo de estados para búsqueda rápida
+  const estadoPorId = useMemo(() =>
+    Object.fromEntries(ESTADOS_HISTORIA.map((e) => [e.id, e])),
+    []
+  );
+
+  const filasVisibles = useMemo(() =>
+    historias
+      .filter((h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix))
+      .slice()
+      .sort((a, b) =>
+        (a.fecha_programada + (clientesPorId[a.cliente_id] || "") + (a.metadata?.hora || "")).localeCompare(
+          b.fecha_programada + (clientesPorId[b.cliente_id] || "") + (b.metadata?.hora || ""),
+        ),
       ),
-    );
+    [historias, mesPrefix, clientesPorId]
+  );
 
-  const enfocarCelda = (rowIndex, columna) => {
+  const enfocarCelda = useCallback((rowIndex, columna) => {
     const el = gridRef.current?.querySelector(
       `[data-cell="${rowIndex}:${columna}"]`,
     );
     if (!el) return;
     el.focus();
     if (typeof el.select === "function") el.select();
-  };
+  }, []);
 
   // Foco tras crear/duplicar una fila: el padre avisa por prop cuál es el
   // id nuevo apenas responde el servidor.
@@ -7450,23 +7495,22 @@ function HistoriasPlanillaTab({
     const idx = filasVisibles.findIndex((h) => h.id === ultimoIdCreado);
     if (idx === -1) return;
     requestAnimationFrame(() => enfocarCelda(idx, "fecha"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ultimoIdCreado, historias]);
+  }, [ultimoIdCreado, filasVisibles, enfocarCelda]);
 
-  const actualizarLocal = (historiaId, campos) => onActualizarLocal(historiaId, campos);
-  const guardarEnServidor = (historiaId, campos) => onGuardarServidor(historiaId, campos);
+  const actualizarLocal = useCallback((historiaId, campos) => onActualizarLocal(historiaId, campos), [onActualizarLocal]);
+  const guardarEnServidor = useCallback((historiaId, campos) => onGuardarServidor(historiaId, campos), [onGuardarServidor]);
 
   // onBlur de las celdas de texto: recorta espacios y sincroniza el
   // estado local con lo mismo que se manda al servidor (evita que quede
   // un valor con espacios en el input mientras la DB ya tiene la versión
   // recortada).
-  const confirmarCampoTexto = (historiaId, campos) => {
+  const confirmarCampoTexto = useCallback((historiaId, campos) => {
     actualizarLocal(historiaId, campos);
     guardarEnServidor(historiaId, campos);
-  };
+  }, [actualizarLocal, guardarEnServidor]);
 
-  const copiarFila = async (h) => {
-    const est = ESTADOS_HISTORIA.find((e) => e.id === h.estado);
+  const copiarFila = useCallback(async (h) => {
+    const est = estadoPorId[h.estado];
     const linea = [
       clientesPorId[h.cliente_id] || "",
       h.fecha_programada || "",
@@ -7483,21 +7527,21 @@ function HistoriasPlanillaTab({
     } catch (err) {
       console.error("No se pudo copiar la fila", err);
     }
-  };
+  }, [clientesPorId, estadoPorId]);
 
   // Crece el textarea con el contenido en vez de esconder texto o abrir
   // scroll interno — la fila entera se estira, igual que en el Sheet.
-  const ajustarAltura = (el) => {
+  const ajustarAltura = useCallback((el) => {
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  };
+  }, []);
 
   // Enter mueve a la misma columna, fila de abajo (como Sheets/Excel). En
   // copy/observaciones Enter inserta un renglón propio en cambio — son
   // textos largos que legítimamente llevan varias líneas (un copy de
   // Instagram con su propio salto de párrafo, por ejemplo).
-  const manejarEnterOTab = (e, rowIndex, columna) => {
+  const manejarEnterOTab = useCallback((e, rowIndex, columna) => {
     if (COLUMNAS_MULTILINEA.includes(columna)) return;
     if (e.key === "Enter") {
       e.preventDefault();
@@ -7505,14 +7549,14 @@ function HistoriasPlanillaTab({
       enfocarCelda(rowIndex + 1, columna);
     }
     // Tab usa el orden natural del DOM — no hace falta manejarlo a mano.
-  };
+  }, [enfocarCelda]);
 
   // Pegado multi-celda: si el portapapeles trae tabs (un bloque copiado de
   // Sheets), lo distribuye sobre las filas/columnas existentes a partir de
   // la celda activa. En columnas de texto largo un salto de línea solo no
   // dispara esto — puede ser contenido real (un copy de varios renglones)
   // pegado en una sola celda, no un rango de Sheets.
-  const manejarPaste = (e, rowIndex, columna) => {
+  const manejarPaste = useCallback((e, rowIndex, columna) => {
     const texto = e.clipboardData.getData("text/plain");
     const esMultilinea = COLUMNAS_MULTILINEA.includes(columna);
     const esPegadoMultiCelda = esMultilinea
@@ -7551,7 +7595,7 @@ function HistoriasPlanillaTab({
         guardarEnServidor(historiaObjetivo.id, payload);
       }
     });
-  };
+  }, [filasVisibles, actualizarLocal, guardarEnServidor]);
 
   return (
     <>
@@ -7611,12 +7655,14 @@ function HistoriasPlanillaTab({
                 </tr>
               )}
               {filasVisibles.map((h, rowIndex) => {
+                // Cache de cálculos por historia para evitar recalcular en cada render
+                const cacheKey = `${h.id}:${h.fecha_programada}:${h.estado}`;
                 const fecha = new Date(`${h.fecha_programada}T00:00:00`);
                 const dow = fecha.getDay();
                 const esFinde = dow === 0 || dow === 6;
                 const esHoy = h.fecha_programada === hoyISO;
                 const estaAtrasada = h.fecha_programada < hoyISO && h.estado !== "publicada";
-                const est = ESTADOS_HISTORIA.find((e) => e.id === h.estado) || ESTADOS_HISTORIA[0];
+                const est = estadoPorId[h.estado] || ESTADOS_HISTORIA[0];
                 // Franjeado sutil por día (no por fila): ayuda a distinguir
                 // rápido dónde termina un día y empieza el siguiente, igual
                 // que en el Sheet, sin competir con hoy/atrasada/finde.
@@ -7821,53 +7867,70 @@ function HistoriasPlanillaTab({
 }
 
 // ── HOJA POR CLIENTE: calendario día por día de un cliente ──────────────────
+const DIAS_SEMANA_CLIENTE = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const MESES_CLIENTE = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
 function HistoriasClienteTab({ clientes, estructura, historias, year, month }) {
   const [clienteSeleccionado, setClienteSeleccionado] = useState(clientes.length > 0 ? clientes[0].id : null);
 
-  const DIAS_SEMANA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
-  const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-  const clienteActual = clientes.find((c) => c.id === clienteSeleccionado);
+  const DIAS_SEMANA = DIAS_SEMANA_CLIENTE;
+  const MESES = MESES_CLIENTE;
+  const clienteActual = useMemo(() => clientes.find((c) => c.id === clienteSeleccionado), [clientes, clienteSeleccionado]);
 
-  const estructuraPorDia = {};
-  if (estructura && clienteSeleccionado) {
-    estructura.forEach((e) => {
-      if (e.cliente_id === clienteSeleccionado) {
-        estructuraPorDia[e.dia_semana] = e;
-      }
-    });
-  }
-
-  const primerDia = new Date(year, month, 1);
-  const ultimoDia = new Date(year, month + 1, 0);
-  const inicioCalendario = new Date(primerDia);
-  inicioCalendario.setDate(primerDia.getDate() - ((primerDia.getDay() + 6) % 7));
-
-  const semanas = [];
-  const cursor = new Date(inicioCalendario);
-  while (cursor <= ultimoDia) {
-    const dias = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(cursor);
-      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const diaSemana = d.getDay();
-      const estructuraDelDia = estructuraPorDia[diaSemana];
-      const historiasDelDia = historias.filter(
-        (h) => h.cliente_id === clienteSeleccionado && h.fecha_programada === iso
-      );
-
-      dias.push({
-        date: d,
-        iso,
-        diaSemana,
-        esDiaMes: d.getMonth() === primerDia.getMonth(),
-        tema: estructuraDelDia?.tema || estructuraDelDia?.tipo || "No definido",
-        horario: estructuraDelDia?.horario || "",
-        historiasDelDia,
+  const estructuraPorDia = useMemo(() => {
+    const acc = {};
+    if (estructura && clienteSeleccionado) {
+      estructura.forEach((e) => {
+        if (e.cliente_id === clienteSeleccionado) {
+          acc[e.dia_semana] = e;
+        }
       });
-      cursor.setDate(cursor.getDate() + 1);
     }
-    semanas.push(dias);
-  }
+    return acc;
+  }, [estructura, clienteSeleccionado]);
+
+  // Indexar historias del cliente por fecha ISO — evita un .filter() O(n)
+  // por cada una de las ~35 celdas del calendario (era O(dias * historias)).
+  const historiasPorFecha = useMemo(() => {
+    const acc = {};
+    historias.forEach((h) => {
+      if (h.cliente_id !== clienteSeleccionado || !h.fecha_programada) return;
+      (acc[h.fecha_programada] = acc[h.fecha_programada] || []).push(h);
+    });
+    return acc;
+  }, [historias, clienteSeleccionado]);
+
+  const semanas = useMemo(() => {
+    const primerDia = new Date(year, month, 1);
+    const ultimoDia = new Date(year, month + 1, 0);
+    const inicioCalendario = new Date(primerDia);
+    inicioCalendario.setDate(primerDia.getDate() - ((primerDia.getDay() + 6) % 7));
+
+    const resultado = [];
+    const cursor = new Date(inicioCalendario);
+    while (cursor <= ultimoDia) {
+      const dias = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(cursor);
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const diaSemana = d.getDay();
+        const estructuraDelDia = estructuraPorDia[diaSemana];
+
+        dias.push({
+          date: d,
+          iso,
+          diaSemana,
+          esDiaMes: d.getMonth() === primerDia.getMonth(),
+          tema: estructuraDelDia?.tema || estructuraDelDia?.tipo || "No definido",
+          horario: estructuraDelDia?.horario || "",
+          historiasDelDia: historiasPorFecha[iso] || [],
+        });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      resultado.push(dias);
+    }
+    return resultado;
+  }, [year, month, estructuraPorDia, historiasPorFecha]);
 
   if (!clienteActual) {
     return <div style={{ padding: "40px", textAlign: "center", color: "#999" }}>No hay clientes cargados</div>;
@@ -7980,45 +8043,55 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
   const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
 
-  const historiasMes = historias.filter(
-    (h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix),
+  const historiasMes = useMemo(() =>
+    historias.filter((h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix)),
+    [historias, mesPrefix]
   );
 
-  const historiasPorClienteFecha = historiasMes.reduce((acc, h) => {
-    const key = `${h.cliente_id}:${h.fecha_programada}`;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(h);
-    return acc;
-  }, {});
+  const historiasPorClienteFecha = useMemo(() =>
+    historiasMes.reduce((acc, h) => {
+      const key = `${h.cliente_id}:${h.fecha_programada}`;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(h);
+      return acc;
+    }, {}),
+    [historiasMes]
+  );
 
-  const checksPorClienteFecha = checks.reduce((acc, check) => {
-    acc[`${check.cliente_id}:${check.fecha}`] = check;
-    return acc;
-  }, {});
+  const checksPorClienteFecha = useMemo(() =>
+    checks.reduce((acc, check) => {
+      acc[`${check.cliente_id}:${check.fecha}`] = check;
+      return acc;
+    }, {}),
+    [checks]
+  );
 
-  const primerDiaMes = new Date(year, month, 1);
-  const ultimoDiaMes = new Date(year, month + 1, 0);
-  const inicioCalendario = new Date(primerDiaMes);
-  inicioCalendario.setDate(primerDiaMes.getDate() - ((primerDiaMes.getDay() + 6) % 7));
-  const finCalendario = new Date(ultimoDiaMes);
-  finCalendario.setDate(ultimoDiaMes.getDate() + (7 - ((ultimoDiaMes.getDay() + 6) % 7) - 1));
+  const semanas = useMemo(() => {
+    const primerDiaMes = new Date(year, month, 1);
+    const ultimoDiaMes = new Date(year, month + 1, 0);
+    const inicioCalendario = new Date(primerDiaMes);
+    inicioCalendario.setDate(primerDiaMes.getDate() - ((primerDiaMes.getDay() + 6) % 7));
+    const finCalendario = new Date(ultimoDiaMes);
+    finCalendario.setDate(ultimoDiaMes.getDate() + (7 - ((ultimoDiaMes.getDay() + 6) % 7) - 1));
 
-  const semanas = [];
-  const cursor = new Date(inicioCalendario);
-  while (cursor <= finCalendario) {
-    const dias = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(cursor);
-      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      dias.push({
-        date: d,
-        iso,
-        label: `${LETRAS_DIA[d.getDay()]} ${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
-      });
-      cursor.setDate(cursor.getDate() + 1);
+    const resultado = [];
+    const cursor = new Date(inicioCalendario);
+    while (cursor <= finCalendario) {
+      const dias = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(cursor);
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        dias.push({
+          date: d,
+          iso,
+          label: `${LETRAS_DIA[d.getDay()]} ${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
+        });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      resultado.push(dias);
     }
-    semanas.push(dias);
-  }
+    return resultado;
+  }, [year, month]);
 
   useEffect(() => {
     const desde = `${year}-${String(month + 1).padStart(2, "0")}-01`;
@@ -8036,13 +8109,15 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
       });
   }, [year, month]);
 
-  const publicadas = historiasMes.filter((h) => h.estado === "publicada").length;
-  const pendientes = historiasMes.length - publicadas;
-  const vencidas = historiasMes.filter(
-    (h) => h.estado !== "publicada" && h.fecha_programada < hoyISO,
-  ).length;
+  const { publicadas, pendientes, vencidas } = useMemo(() => {
+    const pub = historiasMes.filter((h) => h.estado === "publicada").length;
+    const venc = historiasMes.filter(
+      (h) => h.estado !== "publicada" && h.fecha_programada < hoyISO,
+    ).length;
+    return { publicadas: pub, pendientes: historiasMes.length - pub, vencidas: venc };
+  }, [historiasMes, hoyISO]);
 
-  const marcarPublicada = async (clienteId, fecha, publicada) => {
+  const marcarPublicada = useCallback(async (clienteId, fecha, publicada) => {
     const nuevoEstado = publicada ? "publicada" : "pendiente";
     const key = `${clienteId}:${fecha}`;
     const historiasDelDia = historiasPorClienteFecha[key] || [];
@@ -8105,7 +8180,7 @@ function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, 
     } finally {
       setGuardandoId(null);
     }
-  };
+  }, [historiasPorClienteFecha, onHistoriasActualizadas]);
 
   return (
     <>
@@ -8579,9 +8654,9 @@ function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atrasadasP
   );
 }
 
-function HistoriasPage({ initialTab = "planilla" }) {
+function HistoriasPage({ initialTab = "estructura" }) {
   const [vista, setVista] = useState(
-    ["estructura", "checklist", "cliente", "fechas", "planilla"].includes(initialTab) ? initialTab : "estructura",
+    ["estructura", "checklist", "fechas"].includes(initialTab) ? initialTab : "estructura",
   );
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
@@ -8837,9 +8912,7 @@ function HistoriasPage({ initialTab = "planilla" }) {
                 <div className="sheet-view-tabs" style={{ margin: 0 }}>
                   <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => setVista("estructura")}>1. Estructura</button>
                   <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => setVista("checklist")}>2. Checklist</button>
-                  <button type="button" className={vista === "cliente" ? "active" : ""} onClick={() => setVista("cliente")}>3. Hoja por Cliente</button>
                   <button type="button" className={vista === "fechas" ? "active" : ""} onClick={() => setVista("fechas")}>Fechas especiales</button>
-                  <button type="button" className={vista === "planilla" ? "active" : ""} onClick={() => setVista("planilla")}>Planilla completa</button>
                 </div>
 
                 {vista === "planilla" && (
@@ -8982,7 +9055,7 @@ function ReportesEquipoPage() {
     community: 120,
   };
 
-  const rangoPeriodo = (() => {
+  const rangoPeriodo = useMemo(() => {
     const pad = (n) => String(n).padStart(2, "0");
     if (periodo === "mes_actual") {
       const desde = `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-01`;
@@ -9006,22 +9079,26 @@ function ReportesEquipoPage() {
     d30.setDate(d30.getDate() - 30);
     const desde = `${d30.getFullYear()}-${pad(d30.getMonth() + 1)}-${pad(d30.getDate())}`;
     return { desde, hasta: "9999-12-31", dias: 30, diasTranscurridos: 30 };
-  })();
+  }, [periodo, ahora]);
 
-  const enPeriodo = (fechaISO) =>
+  const enPeriodo = useCallback((fechaISO) =>
     typeof fechaISO === "string" &&
     fechaISO.slice(0, 10) >= rangoPeriodo.desde &&
-    fechaISO.slice(0, 10) < rangoPeriodo.hasta;
+    fechaISO.slice(0, 10) < rangoPeriodo.hasta,
+    [rangoPeriodo]
+  );
 
-  const nombresConTareas = [...new Set(tareas.map((t) => t.asignado_a).filter(Boolean))];
-  const nombresUsuarios = usuarios
-    .filter((u) => u.rol !== "admin" || nombresConTareas.includes(u.nombre))
-    .map((u) => u.nombre);
-  const empleados = esVistaAdmin
-    ? [...new Set([...nombresUsuarios, ...nombresConTareas])]
-    : [nombrePropio].filter(Boolean);
+  const empleados = useMemo(() => {
+    const nombresConTareas = [...new Set(tareas.map((t) => t.asignado_a).filter(Boolean))];
+    const nombresUsuarios = usuarios
+      .filter((u) => u.rol !== "admin" || nombresConTareas.includes(u.nombre))
+      .map((u) => u.nombre);
+    return esVistaAdmin
+      ? [...new Set([...nombresUsuarios, ...nombresConTareas])]
+      : [nombrePropio].filter(Boolean);
+  }, [tareas, usuarios, esVistaAdmin, nombrePropio]);
 
-  const filas = empleados.map((nombre) => {
+  const filas = useMemo(() => empleados.map((nombre) => {
     const propias = tareas.filter((t) => t.asignado_a === nombre);
     const activas = propias.filter((t) => t.estado !== ESTADO_FINAL_TAREA);
     const atrasadas = activas.filter(
@@ -9091,57 +9168,68 @@ function ReportesEquipoPage() {
       tiempoPromedio,
       productividad,
     };
-  });
+  }), [empleados, tareas, usuarios, rangoPeriodo, hoyISO, enPeriodo, ESTADO_FINAL_TAREA, OBJETIVOS_MENSUALES_EQUIPO]);
 
-  const prioridadEstado = { Atrasado: 0, "En riesgo": 1, "Al día": 2, "Sin objetivo": 3 };
-  const filasOrdenadas = [...filas].sort((a, b) => {
-    const estadoA = prioridadEstado[a.estadoObjetivo.label] ?? 9;
-    const estadoB = prioridadEstado[b.estadoObjetivo.label] ?? 9;
-    if (estadoA !== estadoB) return estadoA - estadoB;
-    return a.nombre.localeCompare(b.nombre);
-  });
+  const PRIORIDAD_ESTADO = useMemo(() => ({ Atrasado: 0, "En riesgo": 1, "Al día": 2, "Sin objetivo": 3 }), []);
 
-  const filasConObjetivo = filas.filter((f) => f.objetivoMensual);
-  const equipoAlDia = filasConObjetivo.filter((f) => f.estadoObjetivo.label === "Al día").length;
-  const equipoEnRiesgo = filasConObjetivo.filter((f) => f.estadoObjetivo.label === "En riesgo").length;
-  const equipoAtrasado = filasConObjetivo.filter((f) => f.estadoObjetivo.label === "Atrasado").length;
-  const cumplimientoPromedio =
-    filasConObjetivo.length > 0
-      ? Math.round(
-          filasConObjetivo.reduce((s, f) => s + Math.min(f.avanceObjetivo || 0, 100), 0) /
-            filasConObjetivo.length,
-        )
-      : 0;
-  const filaPropia = !esVistaAdmin ? filasOrdenadas[0] : null;
+  const filasOrdenadas = useMemo(() => {
+    const ordenadas = [...filas].sort((a, b) => {
+      const estadoA = PRIORIDAD_ESTADO[a.estadoObjetivo.label] ?? 9;
+      const estadoB = PRIORIDAD_ESTADO[b.estadoObjetivo.label] ?? 9;
+      if (estadoA !== estadoB) return estadoA - estadoB;
+      return a.nombre.localeCompare(b.nombre);
+    });
+    return ordenadas;
+  }, [filas, PRIORIDAD_ESTADO]);
 
-  const totales = {
+  const estadisticasEquipo = useMemo(() => {
+    const conObjetivo = filas.filter((f) => f.objetivoMensual);
+    const alDia = conObjetivo.filter((f) => f.estadoObjetivo.label === "Al día").length;
+    const enRiesgo = conObjetivo.filter((f) => f.estadoObjetivo.label === "En riesgo").length;
+    const atrasado = conObjetivo.filter((f) => f.estadoObjetivo.label === "Atrasado").length;
+    const promedio =
+      conObjetivo.length > 0
+        ? Math.round(
+            conObjetivo.reduce((s, f) => s + Math.min(f.avanceObjetivo || 0, 100), 0) /
+              conObjetivo.length,
+          )
+        : 0;
+    return { conObjetivo, alDia, enRiesgo, atrasado, promedio };
+  }, [filas]);
+
+  const filaPropia = useMemo(() => !esVistaAdmin ? filasOrdenadas[0] : null, [esVistaAdmin, filasOrdenadas]);
+
+  const totales = useMemo(() => ({
     activas: filas.reduce((s, f) => s + f.carga, 0),
     terminadas: filas.reduce((s, f) => s + f.terminadas, 0),
     atrasadas: filas.reduce((s, f) => s + f.atrasadas.length, 0),
-  };
+  }), [filas]);
 
-  const piezasPorResponsable = empleados
-    .map((nombre) => {
-      const hs = historias.filter(
-        (h) => (h.responsable_diseño || h.responsable) === nombre,
-      );
-      const ps = publicaciones.filter((p) => p.responsable === nombre);
-      const total = hs.length + ps.length;
-      const publicadas =
-        hs.filter((h) => h.estado === "publicada").length +
-        ps.filter((p) => p.estado === "publicada").length;
-      return { nombre, total, publicadas };
-    })
-    .filter((f) => f.total > 0)
-    .sort((a, b) => b.total - a.total);
+  const piezasPorResponsable = useMemo(() =>
+    empleados
+      .map((nombre) => {
+        const hs = historias.filter(
+          (h) => (h.responsable_diseño || h.responsable) === nombre,
+        );
+        const ps = publicaciones.filter((p) => p.responsable === nombre);
+        const total = hs.length + ps.length;
+        const publicadas =
+          hs.filter((h) => h.estado === "publicada").length +
+          ps.filter((p) => p.estado === "publicada").length;
+        return { nombre, total, publicadas };
+      })
+      .filter((f) => f.total > 0)
+      .sort((a, b) => b.total - a.total),
+    [empleados, historias, publicaciones]
+  );
 
-  const PERIODOS = [
+  const PERIODOS = useMemo(() => [
     { id: "mes_actual", label: "Este mes" },
     { id: "mes_pasado", label: "Mes pasado" },
     { id: "ultimos_30", label: "Últimos 30 días" },
-  ];
+  ], []);
 
-  const cardStyle = { padding: "16px", borderRadius: "8px", textAlign: "center" };
+  const cardStyle = useMemo(() => ({ padding: "16px", borderRadius: "8px", textAlign: "center" }), []);
 
   return (
     <main aria-label="Render platform reportes equipo">
@@ -9186,19 +9274,19 @@ function ReportesEquipoPage() {
                 {esVistaAdmin ? (
                   <>
                     <div style={{ ...cardStyle, background: "#e8f5e9" }}>
-                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#2e7d32" }}>{equipoAlDia}/{filasConObjetivo.length}</div>
+                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#2e7d32" }}>{estadisticasEquipo.alDia}/{estadisticasEquipo.conObjetivo.length}</div>
                       <div style={{ fontSize: "12px", color: "#2e7d32" }}>Equipo al día</div>
                     </div>
                     <div style={{ ...cardStyle, background: "#fff3e0" }}>
-                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#e65100" }}>{equipoEnRiesgo}</div>
+                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#e65100" }}>{estadisticasEquipo.enRiesgo}</div>
                       <div style={{ fontSize: "12px", color: "#e65100" }}>En riesgo</div>
                     </div>
                     <div style={{ ...cardStyle, background: "#ffebee" }}>
-                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#c62828" }}>{equipoAtrasado}</div>
+                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#c62828" }}>{estadisticasEquipo.atrasado}</div>
                       <div style={{ fontSize: "12px", color: "#c62828" }}>Atrasados</div>
                     </div>
                     <div style={{ ...cardStyle, background: "#e3f2fd" }}>
-                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#1565c0" }}>{cumplimientoPromedio}%</div>
+                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#1565c0" }}>{estadisticasEquipo.promedio}%</div>
                       <div style={{ fontSize: "12px", color: "#1565c0" }}>Cumplimiento promedio</div>
                     </div>
                   </>
