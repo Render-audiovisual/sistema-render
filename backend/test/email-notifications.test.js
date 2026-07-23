@@ -5,6 +5,7 @@ import {
   configuracionCorreoDisponible,
   crearContenidoCorreo,
   normalizarNombre,
+  resolverSMTPIPv4,
 } from "../src/email-notifications.js";
 
 const usuarios = [
@@ -74,4 +75,21 @@ test("arma el aviso con los datos operativos y enlace directo", () => {
   assert.match(contenido.text, /Cliente: Luzin/);
   assert.match(contenido.text, /Fecha de entrega: 2026-07-25/);
   assert.match(contenido.text, /piezas\?tarea=42/);
+});
+
+test("resuelve SMTP a IPv4 sin perder el hostname usado por TLS", async () => {
+  let opcionesRecibidas = null;
+  const destino = await resolverSMTPIPv4(
+    "smtp.gmail.com",
+    async (_hostname, opciones) => {
+      opcionesRecibidas = opciones;
+      return { address: "142.250.0.108", family: 4 };
+    },
+  );
+
+  assert.deepEqual(opcionesRecibidas, { family: 4 });
+  assert.deepEqual(destino, {
+    address: "142.250.0.108",
+    servername: "smtp.gmail.com",
+  });
 });
