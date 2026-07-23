@@ -1,4 +1,4 @@
-// Crea las 6 cuentas que el frontend espera (ver USUARIO_A_RUTA en
+// Crea las cuentas que el frontend espera (ver USUARIO_A_RUTA en
 // frontend/src/main.jsx). No hardcodea ninguna contraseña: las lee de
 // variables de entorno para no dejar credenciales en el código.
 //
@@ -6,7 +6,7 @@
 //   SEED_PASSWORD_DEFAULT="algo-fuerte" node scripts/seed-usuarios.js
 //
 // O una contraseña distinta por persona:
-//   SEED_PASSWORD_AGUSTIN=... SEED_PASSWORD_FRANCO=... node scripts/seed-usuarios.js
+//   SEED_PASSWORD_LIDER=... node scripts/seed-usuarios.js
 //
 // Es seguro correrlo más de una vez: si el usuario ya existe, no lo toca
 // (no pisa contraseñas que ya se hayan cambiado a mano).
@@ -15,8 +15,7 @@ import bcrypt from "bcryptjs";
 import { pool } from "../src/db.js";
 
 const USUARIOS = [
-  { usuario: "agustin", nombre: "Agustín", rol: "admin" },
-  { usuario: "franco", nombre: "Franco", rol: "admin" },
+  { usuario: "lider", nombre: "Líder", rol: "admin" },
   { usuario: "augusto", nombre: "Augusto", rol: "diseno" },
   { usuario: "luciano", nombre: "Luciano", rol: "edicion" },
   { usuario: "german", nombre: "Germán", rol: "produccion" },

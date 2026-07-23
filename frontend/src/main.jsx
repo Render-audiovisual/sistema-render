@@ -43,6 +43,29 @@ function esDeEstaSemana(fechaISO) {
   );
 }
 
+function getClaveFeed(cliente) {
+  return cliente.grupo_feed_id
+    ? `grupo-${cliente.grupo_feed_id}`
+    : `cliente-${cliente.id}`;
+}
+
+function getClienteIdsDelMismoFeed(cliente, clientes) {
+  if (!cliente.grupo_feed_id) return [cliente.id];
+  return clientes
+    .filter((item) => item.grupo_feed_id === cliente.grupo_feed_id)
+    .map((item) => item.id);
+}
+
+function getPublicacionesDelMismoFeed(cliente, clientes, publicaciones) {
+  const clienteIds = new Set(getClienteIdsDelMismoFeed(cliente, clientes));
+  return publicaciones.filter((publicacion) => clienteIds.has(publicacion.cliente_id));
+}
+
+function getCuotaFeedMensual(cliente) {
+  if (cliente.grupo_feed_id) return Number(cliente.cuota_feed_compartida) || 0;
+  return (Number(cliente.cuota_reels) || 0) + (Number(cliente.cuota_carruseles) || 0);
+}
+
 function getPanoramaClientes(clientes, historias, publicaciones) {
   return clientes
     .map((cliente) => {
@@ -51,17 +74,19 @@ function getPanoramaClientes(clientes, historias, publicaciones) {
           historia.cliente_id === cliente.id &&
           esDelMesActual(historia.fecha_programada),
       );
-      const feedDelMes = publicaciones.filter(
+      const feedDelMes = getPublicacionesDelMismoFeed(
+        cliente,
+        clientes,
+        publicaciones,
+      ).filter(
         (publicacion) =>
-          publicacion.cliente_id === cliente.id &&
           esDelMesActual(publicacion.fecha_programada),
       );
       const feedDeEstaSemana = feedDelMes.filter((publicacion) =>
         esDeEstaSemana(publicacion.fecha_programada),
       );
 
-      const cuotaFeedMes =
-        (cliente.cuota_reels || 0) + (cliente.cuota_carruseles || 0);
+      const cuotaFeedMes = getCuotaFeedMensual(cliente);
       const cuotaFeedSemana = cuotaFeedMes / 4;
 
       const feedPublicadoMes = feedDelMes.filter(
@@ -180,10 +205,12 @@ function getResumenEquipo(historias, publicaciones, tareas) {
   });
 }
 
-function getAprobacionesAgustin(tareas) {
+function getAprobacionesLider(tareas) {
   return tareas.filter(
     (tarea) =>
-      tarea.propiedades_extra?.escalada_a === "Agustín" &&
+      ["Líder", "Agustín", "Franco"].includes(
+        tarea.propiedades_extra?.escalada_a,
+      ) &&
       tarea.estado !== ESTADO_FINAL_TAREA,
   );
 }
@@ -255,9 +282,12 @@ function getResumenClientesActivos(clientes, historias, publicaciones) {
           historia.cliente_id === cliente.id &&
           esDelMesActual(historia.fecha_programada),
       );
-      const publicacionesMes = publicaciones.filter(
+      const publicacionesMes = getPublicacionesDelMismoFeed(
+        cliente,
+        clientes,
+        publicaciones,
+      ).filter(
         (publicacion) =>
-          publicacion.cliente_id === cliente.id &&
           esDelMesActual(publicacion.fecha_programada),
       );
       const historiasPublicadas = historiasMes.filter(
@@ -290,14 +320,14 @@ function getResumenClientesActivos(clientes, historias, publicaciones) {
           historias: porcentajeHistorias,
           feed: calcularPorcentajeCuota(
             reelsPublicados + carruselesPublicados,
-            (cliente.cuota_reels || 0) + (cliente.cuota_carruseles || 0),
+            getCuotaFeedMensual(cliente),
           ),
           feedSemana: 0,
           objetivo: porcentajeHistorias,
           historiasPublicadas: historiasPublicadas.length,
           historiasTotal: historiasMes.length,
           feedPublicado: reelsPublicados + carruselesPublicados,
-          feedTotal: (cliente.cuota_reels || 0) + (cliente.cuota_carruseles || 0),
+          feedTotal: getCuotaFeedMensual(cliente),
         },
         historiasMes: historiasMes.length,
         historiasPublicadas: historiasPublicadas.length,
@@ -306,6 +336,7 @@ function getResumenClientesActivos(clientes, historias, publicaciones) {
         ultimaHistoriaOk,
         reelsPublicados,
         carruselesPublicados,
+        feedCompartido: Boolean(cliente.grupo_feed_id),
       };
     })
     .sort((a, b) => {
@@ -388,7 +419,12 @@ function getPublicacionesDeHoy(historias, publicaciones) {
 
 function getTareasParaAsignar(tareas) {
   return tareas
-    .filter((t) => t.estado === "pendiente" && (!t.asignado_a || t.asignado_a === "Franco"))
+    .filter(
+      (t) =>
+        t.estado === "pendiente" &&
+        (!t.asignado_a ||
+          ["Líder", "Agustín", "Franco"].includes(t.asignado_a)),
+    )
     .slice(0, 10)
     .sort((a, b) => new Date(a.fecha_vencimiento || 0) - new Date(b.fecha_vencimiento || 0));
 }
@@ -460,8 +496,7 @@ function getPublicacionesKanban(publicaciones) {
 }
 
 const USUARIO_A_RUTA = {
-  agustin: "/agustin",
-  franco: "/franco",
+  lider: "/lider",
   augusto: "/augusto",
   luciano: "/luciano",
   german: "/german",
@@ -469,8 +504,7 @@ const USUARIO_A_RUTA = {
 };
 
 const USUARIO_INFO = {
-  agustin: { nombre: "Agustín", rol: "admin" },
-  franco: { nombre: "Franco", rol: "admin" },
+  lider: { nombre: "Líder", rol: "admin" },
   augusto: { nombre: "Augusto", rol: "diseno" },
   luciano: { nombre: "Luciano", rol: "edicion" },
   german: { nombre: "Germán", rol: "produccion" },
@@ -484,13 +518,30 @@ function getUsuarioKey(usuario) {
     .toLowerCase();
 }
 
+function getRutaUsuario(usuario) {
+  const usuarioKey = getUsuarioKey(usuario);
+  if (usuarioKey === "agustin") return "/lider";
+  return USUARIO_A_RUTA[usuarioKey];
+}
+
 function getSesion() {
   const raw = localStorage.getItem("render_sesion");
   if (!raw) {
     return null;
   }
   try {
-    return JSON.parse(raw);
+    const sesion = JSON.parse(raw);
+    if (getUsuarioKey(sesion?.usuario?.usuario) === "franco") {
+      localStorage.removeItem("render_sesion");
+      return null;
+    }
+    if (getUsuarioKey(sesion?.usuario?.usuario) === "agustin") {
+      return {
+        ...sesion,
+        usuario: { ...sesion.usuario, usuario: "lider", nombre: "Líder" },
+      };
+    }
+    return sesion;
   } catch {
     return null;
   }
@@ -561,7 +612,7 @@ function LoginPage() {
       })
       .then((data) => {
         guardarSesion(data.token, data.usuario);
-        const destino = USUARIO_A_RUTA[getUsuarioKey(data.usuario.usuario)] || "/";
+        const destino = getRutaUsuario(data.usuario.usuario) || "/";
         window.location.href = destino;
       })
       .catch((err) => {
@@ -591,7 +642,7 @@ function LoginPage() {
               onChange={(e) => setUsuario(e.target.value)}
               autoCapitalize="none"
               autoComplete="username"
-              placeholder="agustin"
+              placeholder="lider"
               required
               spellCheck={false}
             />
@@ -633,8 +684,7 @@ function LoginPage() {
 }
 
 const RESPONSABLES = [
-  "Agustín",
-  "Franco",
+  "Líder",
   "Augusto",
   "Luciano",
   "Germán",
@@ -816,7 +866,7 @@ function NuevaTareaPage() {
                     onChange={(e) => setRequiereAprobacion(e.target.checked)}
                   />
                   <span style={{ textTransform: "none" }}>
-                    Requiere aprobación de Franco
+                    Requiere aprobación del Líder
                   </span>
                 </label>
               </div>
@@ -841,18 +891,27 @@ function NuevaTareaPage() {
   );
 }
 
-function TareasAsignadasGenericas({ nombre, tipoTarea, titulo }) {
+function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo }) {
   const [tareas, setTareas] = useState([]);
   const [error, setError] = useState(null);
   const sesion = getSesion();
   const esAdmin = sesion?.usuario?.rol === "admin";
+  const responsables = nombres?.length ? nombres : [nombre];
 
   const cargarTareas = () => {
-    const params = new URLSearchParams({ asignado_a: nombre });
-    if (tipoTarea) params.set("tipo_tarea", tipoTarea);
-    fetch(`/api/tareas?${params.toString()}`)
-      .then((response) => response.json())
-      .then((propias) => {
+    Promise.all(
+      responsables.map((responsable) => {
+        const params = new URLSearchParams({ asignado_a: responsable });
+        if (tipoTarea) params.set("tipo_tarea", tipoTarea);
+        return fetch(`/api/tareas?${params.toString()}`).then((response) =>
+          response.json(),
+        );
+      }),
+    )
+      .then((listas) => {
+        const propias = [
+          ...new Map(listas.flat().map((tarea) => [tarea.id, tarea])).values(),
+        ];
         setTareas(
           propias
             .slice()
@@ -865,7 +924,7 @@ function TareasAsignadasGenericas({ nombre, tipoTarea, titulo }) {
   useEffect(() => {
     cargarTareas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nombre, tipoTarea]);
+  }, [nombre, tipoTarea, nombres?.join("|")]);
 
   const cambiarEstado = (tareaId, nuevoEstado) => {
     fetch(`/api/tareas/${tareaId}`, {
@@ -960,7 +1019,7 @@ function TareasAsignadasGenericas({ nombre, tipoTarea, titulo }) {
         <div className="caption">
           → Podés cambiar el estado directo desde acá. Las tareas que requieren
           aprobación no se pueden marcar "Publicada" salvo que quien esté logueado
-          sea admin (Agustín o Franco).
+          sea Líder.
         </div>
       </div>
     </>
@@ -3055,13 +3114,7 @@ function PiezasTableroPage() {
 
 function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
   const esAdmin = sesion?.usuario?.rol === "admin";
-  const usuarioKey = getUsuarioKey(sesion?.usuario?.usuario);
-  const rutaTablero =
-    usuarioKey === "agustin"
-      ? "/agustin"
-      : usuarioKey === "franco"
-        ? "/franco"
-        : USUARIO_A_RUTA[usuarioKey];
+  const rutaTablero = getRutaUsuario(sesion?.usuario?.usuario);
 
   const seccionesNav = {
     inicio: [
@@ -3148,6 +3201,11 @@ function App() {
   const path = window.location.pathname;
   let sesion = getSesion();
 
+  if (path === "/agustin" || path === "/franco") {
+    window.location.href = "/lider";
+    return null;
+  }
+
   // Si estamos en una ruta de usuario específica, usar esa sesión
   if (Object.values(USUARIO_A_RUTA).includes(path)) {
     sesion = getSesionDelPath(path);
@@ -3155,7 +3213,7 @@ function App() {
 
   if (path === "/login") {
     if (sesion) {
-      window.location.href = USUARIO_A_RUTA[getUsuarioKey(sesion.usuario.usuario)] || "/";
+      window.location.href = getRutaUsuario(sesion.usuario.usuario) || "/";
       return null;
     }
     return <LoginPage />;
@@ -3167,7 +3225,7 @@ function App() {
   }
 
   const esAdmin = sesion.usuario.rol === "admin";
-  const rutaPropia = USUARIO_A_RUTA[getUsuarioKey(sesion.usuario.usuario)];
+  const rutaPropia = getRutaUsuario(sesion.usuario.usuario);
   const rutasCompartidas = ["/", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil", "/piezas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
@@ -3178,8 +3236,8 @@ function App() {
   }
 
   const dashboard = (() => {
-    if (path === "/agustin") {
-      return <AgustinDashboard />;
+    if (path === "/lider") {
+      return <LiderDashboard />;
     }
     if (path === "/oriana") {
       return <OrianaDashboard />;
@@ -3192,9 +3250,6 @@ function App() {
     }
     if (path === "/augusto") {
       return <AugustoDashboard />;
-    }
-    if (path === "/franco") {
-      return <FrancoDashboard />;
     }
     if (path === "/equipo") {
       window.location.href = "/reportes-historias";
@@ -3253,8 +3308,7 @@ function App() {
 }
 
 const ROLES_HOME = [
-  { nombre: "Agustín", descripcion: "Panorama admin", path: "/agustin" },
-  { nombre: "Franco", descripcion: "Cola de aprobaciones", path: "/franco" },
+  { nombre: "Líder", descripcion: "Administración y aprobaciones", path: "/lider" },
   { nombre: "Augusto", descripcion: "Diseño", path: "/augusto" },
   { nombre: "Luciano", descripcion: "Edición", path: "/luciano" },
   { nombre: "Germán", descripcion: "Producción", path: "/german" },
@@ -3264,7 +3318,7 @@ const ROLES_HOME = [
 function HomePage() {
   const sesion = getSesion();
   const esAdmin = sesion?.usuario?.rol === "admin";
-  const rutaPropia = USUARIO_A_RUTA[getUsuarioKey(sesion?.usuario?.usuario)] || "/";
+  const rutaPropia = getRutaUsuario(sesion?.usuario?.usuario) || "/";
 
   const atajos = [
     {
@@ -3850,7 +3904,7 @@ function PublicacionesCalendarioTab({ onIrAPlanilla }) {
 }
 
 const ROL_LABELS = {
-  admin: "Administrador",
+  admin: "Líder",
   diseno: "Diseño",
   edicion: "Edición",
   produccion: "Producción",
@@ -4706,7 +4760,7 @@ function ChecklistPublicacionOrianaModal({ publicacion, onClose, onPublicar }) {
             </div>
           ) : (
             <div className="caption">
-              Solo Agustín o Franco pueden marcar una pieza como publicada.
+              Solo el Líder puede marcar una pieza como publicada.
             </div>
           )}
         </div>
@@ -5062,7 +5116,7 @@ function LucianoDashboard() {
                   {proxima.cliente_nombre ?? "Sin cliente"} · Vence {proxima.fecha_vencimiento}
                 </div>
                 <div style={{ fontSize: "12px", color: "#555" }}>
-                  {proxima.requiere_aprobacion ? "Esperando aprobación de Franco" : `Estado: ${getEstadoTareaLabel(proxima.estado)}`}
+                  {proxima.requiere_aprobacion ? "Esperando aprobación del Líder" : `Estado: ${getEstadoTareaLabel(proxima.estado)}`}
                 </div>
               </div>
             )}
@@ -5242,6 +5296,165 @@ function EquipoDashboard() {
   );
 }
 
+function ClienteCuotaResumen({ etiqueta, publicados, cuota }) {
+  const cuotaNumero = Number(cuota) || 0;
+  const porcentaje = calcularPorcentajeCuota(publicados, cuotaNumero);
+  return (
+    <div className="cliente-quota-summary">
+      <div className="cliente-quota-summary-head">
+        <span>{etiqueta}</span>
+        {cuotaNumero === 0 ? (
+          <strong className="cliente-quota-not-included">No incluido</strong>
+        ) : (
+          <strong>{publicados} de {cuotaNumero}</strong>
+        )}
+      </div>
+      {cuotaNumero > 0 && (
+        <>
+          <div className="cliente-quota-progress" aria-label={`${porcentaje}% de la cuota de ${etiqueta}`}>
+            <span style={{ width: `${Math.min(porcentaje, 100)}%` }} />
+          </div>
+          <small>{publicados} publicados · {cuotaNumero - Math.min(publicados, cuotaNumero)} pendientes</small>
+        </>
+      )}
+      {cuotaNumero === 0 && <small>Este formato no forma parte del acuerdo mensual.</small>}
+    </div>
+  );
+}
+
+function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
+  const esFeedCompartido = Boolean(cliente.grupo_feed_id);
+  const [cuotaReels, setCuotaReels] = useState(String(cliente.cuota_reels ?? 0));
+  const [cuotaCarruseles, setCuotaCarruseles] = useState(
+    String(cliente.cuota_carruseles ?? 0),
+  );
+  const [cuotaFeedCompartida, setCuotaFeedCompartida] = useState(
+    String(cliente.cuota_feed_compartida ?? 0),
+  );
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+
+  const esCuotaValida = (valor) =>
+    valor !== "" && Number.isInteger(Number(valor)) && Number(valor) >= 0;
+  const formularioValido = esFeedCompartido
+    ? esCuotaValida(cuotaFeedCompartida)
+    : esCuotaValida(cuotaReels) && esCuotaValida(cuotaCarruseles);
+  const totalMensual = formularioValido
+    ? esFeedCompartido
+      ? Number(cuotaFeedCompartida)
+      : Number(cuotaReels) + Number(cuotaCarruseles)
+    : 0;
+
+  const guardar = (event) => {
+    event.preventDefault();
+    if (!formularioValido) {
+      setError("Completá ambas cuotas con números enteros iguales o mayores a 0.");
+      return;
+    }
+    setGuardando(true);
+    setError(null);
+    fetch(`/api/clientes/${cliente.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        esFeedCompartido
+          ? { cuota_feed_compartida: Number(cuotaFeedCompartida) }
+          : {
+              cuota_reels: Number(cuotaReels),
+              cuota_carruseles: Number(cuotaCarruseles),
+            },
+      ),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "No se pudo actualizar la cuota.");
+        return data;
+      })
+      .then(onGuardado)
+      .catch((err) => setError(err.message))
+      .finally(() => setGuardando(false));
+  };
+
+  return (
+    <div className="modal-overlay open" role="dialog" aria-modal="true" aria-label="Editar cuota mensual">
+      <div className="modal cliente-create-modal">
+        <div className="modal-header">
+          <span>Editar cuota mensual</span>
+          <button className="modal-close" type="button" onClick={onClose} aria-label="Cerrar">
+            X
+          </button>
+        </div>
+        <form className="modal-body cliente-create-modal-body" onSubmit={guardar}>
+          <div className="clientes-panel-copy">
+            <strong>{cliente.nombre}</strong>
+            <span>
+              {esFeedCompartido
+                ? `Esta cuenta comparte su cuota con el grupo ${cliente.grupo_feed_nombre}.`
+                : "Definí la cantidad contratada de cada formato para un mes."}
+            </span>
+          </div>
+          {esFeedCompartido ? (
+            <label className="cliente-service-field">
+              <span>Piezas de feed compartidas por mes</span>
+              <input
+                min="0"
+                step="1"
+                type="number"
+                value={cuotaFeedCompartida}
+                onChange={(e) => setCuotaFeedCompartida(e.target.value)}
+              />
+              <small>Incluye los reels y carruseles publicados entre las dos cuentas.</small>
+            </label>
+          ) : (
+          <div className="cliente-create-modal-grid">
+            <label className="cliente-service-field">
+              <span>Reels mensuales</span>
+              <input
+                min="0"
+                step="1"
+                type="number"
+                value={cuotaReels}
+                onChange={(e) => setCuotaReels(e.target.value)}
+              />
+              <small>Usá 0 si el acuerdo no incluye reels.</small>
+            </label>
+            <label className="cliente-service-field">
+              <span>Carruseles mensuales</span>
+              <input
+                min="0"
+                step="1"
+                type="number"
+                value={cuotaCarruseles}
+                onChange={(e) => setCuotaCarruseles(e.target.value)}
+              />
+              <small>Usá 0 si el acuerdo no incluye carruseles.</small>
+            </label>
+          </div>
+          )}
+          <div className="cliente-contract-summary">
+            <span>Resumen del acuerdo</span>
+            <strong>{totalMensual} piezas mensuales</strong>
+            <small>
+              {esFeedCompartido
+                ? `Cuota única de ${cliente.grupo_feed_nombre}`
+                : `${cuotaReels || 0} reels · ${cuotaCarruseles || 0} carruseles`}
+            </small>
+          </div>
+          {error && <div className="caption login-error">{error}</div>}
+          <div className="modal-actions">
+            <button className="btn" type="button" disabled={guardando} onClick={onClose}>
+              Cancelar
+            </button>
+            <button className="btn primary" type="submit" disabled={guardando || !formularioValido}>
+              {guardando ? "Guardando..." : "Guardar cuota"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function ClientesAdminPage() {
   const [clientes, setClientes] = useState([]);
   const [historias, setHistorias] = useState([]);
@@ -5252,13 +5465,14 @@ function ClientesAdminPage() {
   const [cargando, setCargando] = useState(true);
   const [nuevoCliente, setNuevoCliente] = useState({
     nombre: "",
-    cuota_reels: "0",
-    cuota_carruseles: "0",
+    cuota_reels: "",
+    cuota_carruseles: "",
   });
   const [guardandoCliente, setGuardandoCliente] = useState(false);
-  const [guardandoCuotaId, setGuardandoCuotaId] = useState(null);
   const [clienteDrafts, setClienteDrafts] = useState({});
   const [altaClienteAbierta, setAltaClienteAbierta] = useState(false);
+  const [clienteCuotaEnEdicion, setClienteCuotaEnEdicion] = useState(null);
+  const [errorAltaCliente, setErrorAltaCliente] = useState(null);
 
   // silencioso=true (polling / vuelta a la pestaña) no muestra el spinner de
   // carga para no interrumpir a quien está mirando la tabla — solo actualiza
@@ -5308,26 +5522,49 @@ function ClientesAdminPage() {
 
   const validarCuota = (valor) => {
     const numero = Number(valor);
-    return Number.isInteger(numero) && numero >= 0;
+    return valor !== "" && Number.isInteger(numero) && numero >= 0;
+  };
+
+  const altaClienteValida =
+    nuevoCliente.nombre.trim().length > 0 &&
+    validarCuota(nuevoCliente.cuota_reels) &&
+    validarCuota(nuevoCliente.cuota_carruseles);
+  const totalPiezasNuevoCliente = altaClienteValida
+    ? Number(nuevoCliente.cuota_reels) + Number(nuevoCliente.cuota_carruseles)
+    : 0;
+
+  const abrirAltaCliente = () => {
+    setNuevoCliente({ nombre: "", cuota_reels: "", cuota_carruseles: "" });
+    setErrorAltaCliente(null);
+    setAltaClienteAbierta(true);
+  };
+
+  const cerrarAltaCliente = () => {
+    if (guardandoCliente) return;
+    setAltaClienteAbierta(false);
+    setErrorAltaCliente(null);
   };
 
   const crearCliente = (event) => {
     event.preventDefault();
     const nombre = nuevoCliente.nombre.trim();
+
+    if (!nombre) {
+      setErrorAltaCliente("El nombre del cliente es obligatorio.");
+      return;
+    }
+    if (
+      !validarCuota(nuevoCliente.cuota_reels) ||
+      !validarCuota(nuevoCliente.cuota_carruseles)
+    ) {
+      setErrorAltaCliente("Completá ambas cuotas con números enteros iguales o mayores a 0.");
+      return;
+    }
     const cuota_reels = Number(nuevoCliente.cuota_reels);
     const cuota_carruseles = Number(nuevoCliente.cuota_carruseles);
 
-    if (!nombre) {
-      setError("El nombre del cliente es obligatorio.");
-      return;
-    }
-    if (!validarCuota(cuota_reels) || !validarCuota(cuota_carruseles)) {
-      setError("Las cuotas deben ser números enteros ≥ 0.");
-      return;
-    }
-
     setGuardandoCliente(true);
-    setError(null);
+    setErrorAltaCliente(null);
     fetch("/api/clientes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -5342,11 +5579,11 @@ function ClientesAdminPage() {
       })
       .then((cliente) => {
         setClientes((prev) => [...prev, cliente]);
-        setNuevoCliente({ nombre: "", cuota_reels: "0", cuota_carruseles: "0" });
+        setNuevoCliente({ nombre: "", cuota_reels: "", cuota_carruseles: "" });
         setBusqueda("");
         setAltaClienteAbierta(false);
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => setErrorAltaCliente(err.message))
       .finally(() => setGuardandoCliente(false));
   };
 
@@ -5407,7 +5644,6 @@ function ClientesAdminPage() {
       }
     }
 
-    setGuardandoCuotaId(id);
     setError(null);
     fetch(`/api/clientes/${id}`, {
       method: "PATCH",
@@ -5429,8 +5665,7 @@ function ClientesAdminPage() {
         setError(err.message);
         cargarClientes({ silencioso: true });
         limpiarDraftCliente(id, Object.keys(payload));
-      })
-      .finally(() => setGuardandoCuotaId(null));
+      });
   };
 
   const filas = getResumenClientesActivos(clientes, historias, publicaciones);
@@ -5451,19 +5686,25 @@ function ClientesAdminPage() {
     (cliente) => cliente.estadoHistorias.color === "rojo",
   ).length;
   const clientesSinHistorias = filas.filter((cliente) => cliente.historiasMes === 0).length;
-  const totalReelsPublicados = filas.reduce((sum, cliente) => sum + cliente.reelsPublicados, 0);
-  const totalCarruselesPublicados = filas.reduce(
+  const clavesFeedContadas = new Set();
+  const filasFeedUnicas = filas.filter((cliente) => {
+    const clave = getClaveFeed(cliente);
+    if (clavesFeedContadas.has(clave)) return false;
+    clavesFeedContadas.add(clave);
+    return true;
+  });
+  const totalReelsPublicados = filasFeedUnicas.reduce((sum, cliente) => sum + cliente.reelsPublicados, 0);
+  const totalCarruselesPublicados = filasFeedUnicas.reduce(
     (sum, cliente) => sum + cliente.carruselesPublicados,
     0,
   );
-  const totalCuotaReels = filas.reduce((sum, cliente) => sum + (Number(cliente.cuota_reels) || 0), 0);
-  const totalCuotaCarruseles = filas.reduce(
-    (sum, cliente) => sum + (Number(cliente.cuota_carruseles) || 0),
+  const totalCuotaFeed = filasFeedUnicas.reduce(
+    (sum, cliente) => sum + getCuotaFeedMensual(cliente),
     0,
   );
   const avanceFeed = calcularPorcentajeCuota(
     totalReelsPublicados + totalCarruselesPublicados,
-    totalCuotaReels + totalCuotaCarruseles,
+    totalCuotaFeed,
   );
   const getAlertaCliente = (cliente) => {
     if (cliente.estadoHistorias.color === "rojo") return "Necesita seguimiento";
@@ -5498,7 +5739,7 @@ function ClientesAdminPage() {
               <button
                 className="btn primary"
                 type="button"
-                onClick={() => setAltaClienteAbierta(true)}
+                onClick={abrirAltaCliente}
               >
                 Agregar cliente
               </button>
@@ -5521,7 +5762,7 @@ function ClientesAdminPage() {
               <strong>{avanceFeed}%</strong>
               <small>
                 {totalReelsPublicados + totalCarruselesPublicados} /{" "}
-                {totalCuotaReels + totalCuotaCarruseles} piezas
+                {totalCuotaFeed} piezas
               </small>
             </div>
             <div className="cliente-metric">
@@ -5535,7 +5776,7 @@ function ClientesAdminPage() {
             <div className="clientes-table-toolbar">
               <div>
                 <strong>Cartera activa</strong>
-                <span>Cuotas editables y estado del mes</span>
+                <span>Producción publicada, acuerdo mensual y estado del mes</span>
               </div>
             </div>
 
@@ -5545,7 +5786,8 @@ function ClientesAdminPage() {
                 Cargando clientes...
               </div>
             ) : (
-              <div style={{ overflowX: "hidden" }}>
+              <>
+              <div className="clientes-desktop-table-wrap">
                 <table className="clientes-admin-table">
                   <thead>
                     <tr>
@@ -5585,59 +5827,35 @@ function ClientesAdminPage() {
                           />
                           <div className="caption">Activo</div>
                         </td>
-                        <td>
-                          <div className="cliente-quota-cell">
-                            <strong>{cliente.reelsPublicados}</strong>
-                            <span>/</span>
-                            <input
-                              className="cliente-inline-input cliente-quota-input"
-                              min="0"
-                              onBlur={(e) =>
-                                guardarCliente(cliente.id, { cuota_reels: e.target.value })
-                              }
-                              onChange={(e) =>
-                                actualizarDraftCliente(cliente.id, "cuota_reels", e.target.value)
-                              }
-                              onClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") e.currentTarget.blur();
-                              }}
-                              step="1"
-                              type="number"
-                              value={valorClienteEditable(cliente, "cuota_reels")}
+                        {cliente.feedCompartido ? (
+                          <td colSpan="2">
+                            <ClienteCuotaResumen
+                              etiqueta={`Feed compartido · ${cliente.grupo_feed_nombre}`}
+                              publicados={cliente.reelsPublicados + cliente.carruselesPublicados}
+                              cuota={cliente.cuota_feed_compartida}
                             />
-                          </div>
-                        </td>
-                        <td>
-                          <div className="cliente-quota-cell">
-                            <strong>{cliente.carruselesPublicados}</strong>
-                            <span>/</span>
-                            <input
-                              className="cliente-inline-input cliente-quota-input"
-                              min="0"
-                              onBlur={(e) =>
-                                guardarCliente(cliente.id, { cuota_carruseles: e.target.value })
-                              }
-                              onChange={(e) =>
-                                actualizarDraftCliente(
-                                  cliente.id,
-                                  "cuota_carruseles",
-                                  e.target.value,
-                                )
-                              }
-                              onClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") e.currentTarget.blur();
-                              }}
-                              step="1"
-                              type="number"
-                              value={valorClienteEditable(cliente, "cuota_carruseles")}
-                            />
-                          </div>
-                          {guardandoCuotaId === cliente.id && (
-                            <div className="caption">Guardando...</div>
-                          )}
-                        </td>
+                            <div className="caption">
+                              {cliente.reelsPublicados} reels · {cliente.carruselesPublicados} carruseles entre ambas cuentas
+                            </div>
+                          </td>
+                        ) : (
+                          <>
+                            <td>
+                              <ClienteCuotaResumen
+                                etiqueta="Reels"
+                                publicados={cliente.reelsPublicados}
+                                cuota={cliente.cuota_reels}
+                              />
+                            </td>
+                            <td>
+                              <ClienteCuotaResumen
+                                etiqueta="Carruseles"
+                                publicados={cliente.carruselesPublicados}
+                                cuota={cliente.cuota_carruseles}
+                              />
+                            </td>
+                          </>
+                        )}
                         <td>
                           <strong>{cliente.porcentajeHistorias}%</strong>
                           <div className="caption">
@@ -5658,6 +5876,16 @@ function ClientesAdminPage() {
                                   cliente.historiasMes - cliente.historiasPublicadas === 1 ? "" : "s"
                                 }.`}
                           </span>
+                          <button
+                            className="btn cliente-edit-quota-btn"
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setClienteCuotaEnEdicion(cliente);
+                            }}
+                          >
+                            Editar cuota
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -5669,6 +5897,80 @@ function ClientesAdminPage() {
                   </tbody>
                 </table>
               </div>
+              <div className="clientes-mobile-list">
+                {filasFiltradas.map((cliente) => (
+                  <article className="cliente-mobile-card" key={cliente.id}>
+                    <div className="cliente-mobile-card-head">
+                      <div>
+                        <strong>{cliente.nombre}</strong>
+                        <small>Cliente activo</small>
+                      </div>
+                      <span className={`cliente-status-pill ${cliente.estadoHistorias.color}`}>
+                        <span className={`semaforo ${cliente.estadoHistorias.color}`}></span>
+                        {cliente.estadoHistorias.label}
+                      </span>
+                    </div>
+                    <div className="cliente-mobile-quotas">
+                      {cliente.feedCompartido ? (
+                        <ClienteCuotaResumen
+                          etiqueta={`Feed compartido · ${cliente.grupo_feed_nombre}`}
+                          publicados={cliente.reelsPublicados + cliente.carruselesPublicados}
+                          cuota={cliente.cuota_feed_compartida}
+                        />
+                      ) : (
+                        <>
+                          <ClienteCuotaResumen
+                            etiqueta="Reels"
+                            publicados={cliente.reelsPublicados}
+                            cuota={cliente.cuota_reels}
+                          />
+                          <ClienteCuotaResumen
+                            etiqueta="Carruseles"
+                            publicados={cliente.carruselesPublicados}
+                            cuota={cliente.cuota_carruseles}
+                          />
+                        </>
+                      )}
+                    </div>
+                    <div className="cliente-mobile-status-grid">
+                      <div>
+                        <span>Historias</span>
+                        <strong>{cliente.historiasPublicadas} de {cliente.historiasMes} OK</strong>
+                        <small>{cliente.porcentajeHistorias}% publicado</small>
+                      </div>
+                      <div>
+                        <span>Próxima acción</span>
+                        <strong>{getAlertaCliente(cliente)}</strong>
+                        <small>
+                          {cliente.historiasMes === 0
+                            ? "Sin historias planificadas."
+                            : `${cliente.historiasMes - cliente.historiasPublicadas} pendientes.`}
+                        </small>
+                      </div>
+                    </div>
+                    <div className="cliente-mobile-actions">
+                      <button
+                        className="btn"
+                        type="button"
+                        onClick={() => setClienteCuotaEnEdicion(cliente)}
+                      >
+                        Editar cuota
+                      </button>
+                      <button
+                        className="btn primary"
+                        type="button"
+                        onClick={() => setClienteSeleccionado(cliente)}
+                      >
+                        Ver detalle
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {filasFiltradas.length === 0 && (
+                  <div className="cliente-mobile-empty">No hay clientes con ese criterio.</div>
+                )}
+              </div>
+              </>
             )}
 
             <div className="caption">
@@ -5688,65 +5990,82 @@ function ClientesAdminPage() {
               <button
                 className="modal-close"
                 type="button"
-                onClick={() => setAltaClienteAbierta(false)}
+                onClick={cerrarAltaCliente}
+                aria-label="Cerrar"
               >
                 X
               </button>
             </div>
             <form className="modal-body cliente-create-modal-body" onSubmit={crearCliente}>
               <div className="clientes-panel-copy">
-                <strong>Oferta mensual inicial</strong>
-                <span>Definí el nombre y las cantidades que se van a entregar por mes.</span>
+                <strong>Nuevo acuerdo mensual</strong>
+                <span>Registrá la identidad del cliente y el contenido contratado antes de confirmar.</span>
               </div>
-              <label>
-                <span>Cliente</span>
+              <label className="cliente-service-field">
+                <span>Nombre del cliente</span>
                 <input
                   autoFocus
                   type="text"
-                  placeholder="Nombre del cliente"
+                  placeholder="Ej. RENDER Motors"
                   value={nuevoCliente.nombre}
                   onChange={(e) =>
                     setNuevoCliente((prev) => ({ ...prev, nombre: e.target.value }))
                   }
                 />
+                <small>Usá el nombre oficial con el que se identifica en la cartera.</small>
               </label>
               <div className="cliente-create-modal-grid">
-                <label>
-                  <span>Reels por mes</span>
+                <label className="cliente-service-field">
+                  <span>Reels mensuales</span>
                   <input
                     min="0"
                     step="1"
                     type="number"
+                    placeholder="Ej. 4"
                     value={nuevoCliente.cuota_reels}
                     onChange={(e) =>
                       setNuevoCliente((prev) => ({ ...prev, cuota_reels: e.target.value }))
                     }
                   />
+                  <small>Usá 0 si el acuerdo no incluye reels.</small>
                 </label>
-                <label>
-                  <span>Carruseles por mes</span>
+                <label className="cliente-service-field">
+                  <span>Carruseles mensuales</span>
                   <input
                     min="0"
                     step="1"
                     type="number"
+                    placeholder="Ej. 2"
                     value={nuevoCliente.cuota_carruseles}
                     onChange={(e) =>
                       setNuevoCliente((prev) => ({ ...prev, cuota_carruseles: e.target.value }))
                     }
                   />
+                  <small>Usá 0 si el acuerdo no incluye carruseles.</small>
                 </label>
               </div>
-              {error && <div className="caption login-error">{error}</div>}
+              <div className="cliente-contract-summary">
+                <span>Resumen del acuerdo</span>
+                <strong>{totalPiezasNuevoCliente} piezas mensuales</strong>
+                <small>
+                  {nuevoCliente.cuota_reels || 0} reels · {nuevoCliente.cuota_carruseles || 0} carruseles
+                </small>
+              </div>
+              {errorAltaCliente && <div className="caption login-error">{errorAltaCliente}</div>}
               <div className="modal-actions">
                 <button
                   className="btn"
                   type="button"
                   disabled={guardandoCliente}
-                  onClick={() => setAltaClienteAbierta(false)}
+                  onClick={cerrarAltaCliente}
                 >
                   Cancelar
                 </button>
-                <button className="btn primary" type="submit" disabled={guardandoCliente}>
+                <button
+                  className="btn primary"
+                  type="submit"
+                  disabled={guardandoCliente || !altaClienteValida}
+                >
                   {guardandoCliente ? "Creando..." : "Crear cliente"}
                 </button>
               </div>
@@ -5755,12 +6074,25 @@ function ClientesAdminPage() {
         </div>
       )}
 
+      {clienteCuotaEnEdicion && (
+        <EditarCuotaClienteModal
+          cliente={clienteCuotaEnEdicion}
+          onClose={() => setClienteCuotaEnEdicion(null)}
+          onGuardado={(clienteActualizado) => {
+            actualizarClienteLocal(clienteActualizado.id, clienteActualizado);
+            setClienteCuotaEnEdicion(null);
+          }}
+        />
+      )}
+
       {clienteSeleccionado && (
         <DetalleClienteModal
           cliente={clienteSeleccionado}
           historias={historias.filter((h) => h.cliente_id === clienteSeleccionado.id)}
-          publicaciones={publicaciones.filter(
-            (p) => p.cliente_id === clienteSeleccionado.id,
+          publicaciones={getPublicacionesDelMismoFeed(
+            clienteSeleccionado,
+            clientes,
+            publicaciones,
           )}
           onClose={() => setClienteSeleccionado(null)}
           onCuotaActualizada={cargarClientes}
@@ -5774,19 +6106,20 @@ function ClientesAdminPage() {
   );
 }
 
-function AgustinDashboard() {
+function LiderDashboard() {
   const [clientes, setClientes] = useState([]);
   const [resumenEquipo, setResumenEquipo] = useState([]);
-  const [aprobacionesAgustin, setAprobacionesAgustin] = useState([]);
+  const [aprobacionesLider, setAprobacionesLider] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [panoramaError, setPanoramaError] = useState(null);
   const [resumenEquipoError, setResumenEquipoError] = useState(null);
-  const [aprobacionesAgustinError, setAprobacionesAgustinError] =
+  const [aprobacionesLiderError, setAprobacionesLiderError] =
     useState(null);
   const [historiasRaw, setHistoriasRaw] = useState([]);
   const [publicacionesRaw, setPublicacionesRaw] = useState([]);
   const [tareasRaw, setTareasRaw] = useState([]);
   const [busquedaCliente, setBusquedaCliente] = useState("");
+  const [vistaLider, setVistaLider] = useState("panorama");
 
   const cargarPanorama = () => {
     Promise.all([
@@ -5802,16 +6135,16 @@ function AgustinDashboard() {
         setResumenEquipo(
           getResumenEquipo(historiasApi, publicacionesApi, tareasApi),
         );
-        setAprobacionesAgustin(getAprobacionesAgustin(tareasApi));
+        setAprobacionesLider(getAprobacionesLider(tareasApi));
         setHistoriasRaw(historiasApi);
         setPublicacionesRaw(publicacionesApi);
         setTareasRaw(tareasApi);
       })
       .catch((error) => {
-        console.error("No se pudieron cargar los datos de Agustín", error);
+        console.error("No se pudieron cargar los datos del Líder", error);
         setPanoramaError("No se pudo cargar el panorama de clientes.");
         setResumenEquipoError("No se pudo cargar el resumen de equipo.");
-        setAprobacionesAgustinError("No se pudieron cargar las aprobaciones.");
+        setAprobacionesLiderError("No se pudieron cargar las aprobaciones.");
       });
   };
 
@@ -5825,7 +6158,40 @@ function AgustinDashboard() {
     <main aria-label="Render platform">
       <div className="frame">
         <div className="content">
-          <div style={{ backgroundColor: "#ffe0e0", border: "2px solid #d32f2f", borderRadius: "4px", padding: "12px", marginBottom: "20px", fontSize: "13px" }}>
+          <div className="lider-dashboard-header">
+            <div>
+              <div className="section-label">Líder</div>
+              <h2>Administración general</h2>
+            </div>
+            <div
+              aria-label="Secciones del panel del Líder"
+              className="lider-dashboard-tabs"
+              role="tablist"
+            >
+              <button
+                aria-selected={vistaLider === "panorama"}
+                className={vistaLider === "panorama" ? "active" : ""}
+                onClick={() => setVistaLider("panorama")}
+                role="tab"
+                type="button"
+              >
+                Panorama y estadísticas
+              </button>
+              <button
+                aria-selected={vistaLider === "gestion"}
+                className={vistaLider === "gestion" ? "active" : ""}
+                onClick={() => setVistaLider("gestion")}
+                role="tab"
+                type="button"
+              >
+                Gestión y aprobaciones
+              </button>
+            </div>
+          </div>
+
+          {vistaLider === "panorama" && (
+            <div className="lider-dashboard-view" role="tabpanel">
+              <div style={{ backgroundColor: "#ffe0e0", border: "2px solid #d32f2f", borderRadius: "4px", padding: "12px", marginBottom: "20px", fontSize: "13px" }}>
             {(() => {
               const atrasadas = getPiezasAtrasadas(historiasRaw, publicacionesRaw);
               const bloqueadas = getPiezasBloqueadas(historiasRaw, publicacionesRaw);
@@ -5961,7 +6327,7 @@ function AgustinDashboard() {
           </div>
 
           <div className="section-label">
-            3 · Aprobaciones que le corresponden a él directamente
+            3 · Aprobaciones escaladas al Líder
           </div>
           <div className="box">
             <table>
@@ -5974,7 +6340,7 @@ function AgustinDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {aprobacionesAgustin.map((aprobacion) => (
+                {aprobacionesLider.map((aprobacion) => (
                   <tr key={aprobacion.id}>
                     <td>{aprobacion.cliente_nombre ?? "Sin cliente"}</td>
                     <td>{aprobacion.titulo}</td>
@@ -6001,24 +6367,24 @@ function AgustinDashboard() {
                     </td>
                   </tr>
                 ))}
-                {aprobacionesAgustinError && (
+                {aprobacionesLiderError && (
                   <tr>
-                    <td colSpan="4">{aprobacionesAgustinError}</td>
+                    <td colSpan="4">{aprobacionesLiderError}</td>
                   </tr>
                 )}
-                {!aprobacionesAgustinError &&
-                  aprobacionesAgustin.length === 0 && (
+                {!aprobacionesLiderError &&
+                  aprobacionesLider.length === 0 && (
                     <tr>
                       <td colSpan="4">
-                        No hay tareas escaladas a Agustín.
+                        No hay tareas escaladas al Líder.
                       </td>
                     </tr>
                   )}
               </tbody>
             </table>
             <div className="caption">
-              → No es la cola completa (esa es de Franco). Solo lo escalado
-              específicamente a Agustín.
+              → Reúne los casos escalados al equipo administrativo, incluidos
+              los pendientes anteriores a la unificación.
             </div>
           </div>
 
@@ -6069,7 +6435,7 @@ function AgustinDashboard() {
             })()}
             <div className="caption">
               → Piezas que debían publicarse pero no lo hicieron. Revisar con
-              Franco.
+              el Líder.
             </div>
           </div>
 
@@ -6153,6 +6519,24 @@ function AgustinDashboard() {
             → Para editar la cuota mensual de un cliente, abrí su detalle
             haciendo clic en la fila del panorama.
           </div>
+              </div>
+          )}
+
+          {vistaLider === "gestion" && (
+            <div className="lider-dashboard-view" role="tabpanel">
+              <div className="lider-dashboard-divider">
+                <span>Gestión y aprobaciones</span>
+                <strong>Decisiones operativas del Líder</strong>
+              </div>
+              <GestionLiderPanel />
+
+              <TareasAsignadasGenericas
+                nombre="Líder"
+                nombres={["Líder", "Agustín", "Franco"]}
+                titulo="Tareas asignadas al Líder"
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -6162,32 +6546,33 @@ function AgustinDashboard() {
           historias={historiasRaw.filter(
             (h) => h.cliente_id === clienteSeleccionado.id,
           )}
-          publicaciones={publicacionesRaw.filter(
-            (p) => p.cliente_id === clienteSeleccionado.id,
+          publicaciones={getPublicacionesDelMismoFeed(
+            clienteSeleccionado,
+            clientes,
+            publicacionesRaw,
           )}
           onClose={() => setClienteSeleccionado(null)}
           onCuotaActualizada={cargarPanorama}
         />
       )}
-      <TareasAsignadasGenericas nombre="Agustín" />
     </main>
   );
 }
 
-function FrancoDashboard() {
+function GestionLiderPanel() {
   const [piezaSeleccionada, setPiezaSeleccionada] = useState(null);
   const [piezasEnRevision, setPiezasEnRevision] = useState([]);
   const [piezasEnRevisionError, setPiezasEnRevisionError] = useState(null);
   const [filtroCola, setFiltroCola] = useState("todas");
-  const [tareasFranco, setTareasFranco] = useState([]);
-  const [tareasFrancoError, setTareasFrancoError] = useState(null);
+  const [tareasGestion, setTareasGestion] = useState([]);
+  const [tareasGestionError, setTareasGestionError] = useState(null);
   const [tareaAsignando, setTareaAsignando] = useState(null);
   const [responsableSeleccionado, setResponsableSeleccionado] = useState("");
 
-  const tareasDestrabadas = tareasFranco.filter(
+  const tareasDestrabadas = tareasGestion.filter(
     (tarea) => tarea.propiedades_extra?.destrabada_por,
   );
-  const tareasEscaladas = tareasFranco.filter(
+  const tareasEscaladas = tareasGestion.filter(
     (tarea) => tarea.propiedades_extra?.escalada_a,
   );
 
@@ -6214,7 +6599,7 @@ function FrancoDashboard() {
         setPiezasEnRevision(combinadas);
       })
       .catch((error) => {
-        console.error("No se pudieron cargar las aprobaciones de Franco", error);
+        console.error("No se pudieron cargar las aprobaciones del Líder", error);
         setPiezasEnRevisionError("No se pudieron cargar las aprobaciones.");
       });
   };
@@ -6225,11 +6610,11 @@ function FrancoDashboard() {
     fetch("/api/tareas")
       .then((response) => response.json())
       .then((tareas) => {
-        setTareasFranco(tareas);
+        setTareasGestion(tareas);
       })
       .catch((error) => {
-        console.error("No se pudieron cargar las tareas de Franco", error);
-        setTareasFrancoError("No se pudieron cargar las tareas.");
+        console.error("No se pudieron cargar las tareas del Líder", error);
+        setTareasGestionError("No se pudieron cargar las tareas.");
       });
   }, []);
 
@@ -6240,9 +6625,8 @@ function FrancoDashboard() {
   });
 
   return (
-    <main aria-label="Render platform Franco">
-      <div className="frame">
-        <div className="content">
+    <>
+      <section className="lider-gestion-panel" aria-label="Gestión y aprobaciones del Líder">
           <div className="section-label">
             1 · Mi cola de aprobaciones — lo que sí requiere mi decisión
           </div>
@@ -6334,8 +6718,7 @@ function FrancoDashboard() {
             </table>
 
             <div className="caption">
-              → Esta cola no mezcla todo: solo lo que necesita decisión directa
-              de Franco.
+              → Esta cola reúne lo que necesita una decisión directa del Líder.
             </div>
           </div>
 
@@ -6362,12 +6745,12 @@ function FrancoDashboard() {
                     </td>
                   </tr>
                 ))}
-                {tareasFrancoError && (
+                {tareasGestionError && (
                   <tr>
-                    <td colSpan="3">{tareasFrancoError}</td>
+                    <td colSpan="3">{tareasGestionError}</td>
                   </tr>
                 )}
-                {!tareasFrancoError && tareasDestrabadas.length === 0 && (
+                {!tareasGestionError && tareasDestrabadas.length === 0 && (
                   <tr>
                     <td colSpan="3">No hay piezas destrabadas registradas.</td>
                   </tr>
@@ -6375,11 +6758,11 @@ function FrancoDashboard() {
               </tbody>
             </table>
             <div className="caption">
-              → Historial simple de lo que Franco ya destrabó hoy.
+              → Historial simple de lo que el Líder ya destrabó hoy.
             </div>
           </div>
 
-          <div className="section-label">3 · Escalado a Agustín</div>
+          <div className="section-label">3 · Casos escalados al Líder</div>
           <div className="box">
             {tareasEscaladas.map((tarea) => (
               <div className="card" key={tarea.id}>
@@ -6393,21 +6776,21 @@ function FrancoDashboard() {
                 </div>
               </div>
             ))}
-            {tareasFrancoError && (
-              <div className="caption">{tareasFrancoError}</div>
+            {tareasGestionError && (
+              <div className="caption">{tareasGestionError}</div>
             )}
-            {!tareasFrancoError && tareasEscaladas.length === 0 && (
-              <div className="caption">No hay tareas escaladas a Agustín.</div>
+            {!tareasGestionError && tareasEscaladas.length === 0 && (
+              <div className="caption">No hay tareas escaladas al Líder.</div>
             )}
             <div className="caption">
-              → Franco ve qué ya salió de su cancha y está esperando respuesta.
+              → Conserva también los casos escalados antes de la unificación.
             </div>
           </div>
 
           <div className="section-label">4 · Tareas para asignar</div>
           <div className="box">
             {(() => {
-              const porAsignar = getTareasParaAsignar(tareasFranco);
+              const porAsignar = getTareasParaAsignar(tareasGestion);
               if (porAsignar.length === 0) {
                 return (
                   <div className="caption">
@@ -6498,11 +6881,10 @@ function FrancoDashboard() {
               );
             })()}
             <div className="caption">
-              → Tareas pendientes que Franco puede asignar rápidamente.
+              → Tareas pendientes que el Líder puede asignar rápidamente.
             </div>
           </div>
-        </div>
-      </div>
+      </section>
 
       {piezaSeleccionada && (
         <RevisionPiezaModal
@@ -6512,8 +6894,7 @@ function FrancoDashboard() {
           onCorreccion={cargarCola}
         />
       )}
-      <TareasAsignadasGenericas nombre="Franco" />
-    </main>
+    </>
   );
 }
 
@@ -6587,7 +6968,7 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
 
   const handleEscalar = () => {
     const motivo = window.prompt(
-      "¿Cuál es el motivo para escalar esto a Agustín?",
+      "Cuál es el motivo para escalar esto al Líder?",
     );
     if (!motivo) {
       return;
@@ -6603,11 +6984,11 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
         titulo: `Escalado: ${
           pieza.metadata?.Idea || "Pieza sin idea"
         } (${pieza.cliente_nombre})`,
-        asignado_a: "Franco",
+        asignado_a: "Líder",
         cliente_id: pieza.cliente_id,
         estado: "pendiente",
         requiere_aprobacion: true,
-        escalada_a: "Agustín",
+        escalada_a: "Líder",
         motivo,
       }),
     })
@@ -6642,7 +7023,7 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         estado: "en_revision",
-        metadata: { Aclaración: `Desbloqueada por Franco: ${resolucion}` },
+        metadata: { Aclaración: `Desbloqueada por Líder: ${resolucion}` },
       }),
     })
       .then((response) => {
@@ -6700,7 +7081,7 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
                   onClick={handleEscalar}
                   disabled={enviando !== null}
                 >
-                  {enviando === "escalar" ? "Escalando..." : "Escalar a Agustín"}
+                  {enviando === "escalar" ? "Escalando..." : "Escalar al Líder"}
                 </button>
               </>
             ) : (
@@ -6727,7 +7108,7 @@ function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) {
                   onClick={handleEscalar}
                   disabled={enviando !== null}
                 >
-                  {enviando === "escalar" ? "Escalando..." : "Escalar a Agustín"}
+                  {enviando === "escalar" ? "Escalando..." : "Escalar al Líder"}
                 </button>
               </>
             )}
@@ -6748,56 +7129,9 @@ function DetalleClienteModal({
 }) {
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
+  const [editandoCuota, setEditandoCuota] = useState(false);
   const porcentajes = getPorcentajesCliente(cliente);
   const estado = getEstadoPorObjetivo(porcentajes.objetivo);
-
-  const handleEditarCuota = () => {
-    const nuevaCuotaReels = window.prompt(
-      "Nueva cuota de reels por mes:",
-      cliente.cuota_reels ?? "0",
-    );
-    if (nuevaCuotaReels === null) return;
-    const nuevaCuotaCarruseles = window.prompt(
-      "Nueva cuota de carruseles por mes:",
-      cliente.cuota_carruseles ?? "0",
-    );
-    if (nuevaCuotaCarruseles === null) return;
-
-    const cuota_reels = Number(nuevaCuotaReels);
-    const cuota_carruseles = Number(nuevaCuotaCarruseles);
-    if (
-      !Number.isInteger(cuota_reels) ||
-      !Number.isInteger(cuota_carruseles) ||
-      cuota_reels < 0 ||
-      cuota_carruseles < 0
-    ) {
-      setError("Las cuotas deben ser números enteros ≥ 0.");
-      return;
-    }
-
-    setEnviando("cuota");
-    setError(null);
-
-    fetch(`/api/clientes/${cliente.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cuota_reels, cuota_carruseles }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("No se pudo actualizar la cuota.");
-        }
-        return response.json();
-      })
-      .then(() => {
-        onCuotaActualizada();
-        onClose();
-      })
-      .catch(() => {
-        setError("No se pudo actualizar la cuota. Intentá de nuevo.");
-        setEnviando(null);
-      });
-  };
 
   const handleAvisar = (destinatario) => {
     const mensaje = window.prompt(`Mensaje para ${destinatario}:`);
@@ -6879,8 +7213,11 @@ function DetalleClienteModal({
   const carruselesPublicados = publicaciones.filter(
     (publicacion) => publicacion.estado === "publicada" && publicacion.tipo === "carrusel",
   ).length;
+  const esFeedCompartido = Boolean(cliente.grupo_feed_id);
+  const feedPublicado = reelsPublicados + carruselesPublicados;
 
   return (
+    <>
     <div className="modal-overlay open" role="dialog" aria-modal="true">
       <div className="modal">
         <div className="modal-header">
@@ -6898,8 +7235,9 @@ function DetalleClienteModal({
               </strong>
             </div>
             <div className="caption">
-              Cuota mensual: {cliente.cuota_reels ?? 0} reels ·{" "}
-              {cliente.cuota_carruseles ?? 0} carruseles
+              {esFeedCompartido
+                ? `Cuota compartida ${cliente.grupo_feed_nombre}: ${cliente.cuota_feed_compartida ?? 0} piezas de feed entre ambas cuentas`
+                : `Cuota mensual: ${cliente.cuota_reels ?? 0} reels · ${cliente.cuota_carruseles ?? 0} carruseles`}
             </div>
           </div>
 
@@ -6909,16 +7247,33 @@ function DetalleClienteModal({
               <strong>{porcentajes.historias}%</strong>
               <small>{porcentajes.historiasPublicadas} / {porcentajes.historiasTotal} OK</small>
             </div>
-            <div>
-              <span>Reels</span>
-              <strong>{reelsPublicados}</strong>
-              <small>de {cliente.cuota_reels ?? 0} mensuales</small>
-            </div>
-            <div>
-              <span>Carruseles</span>
-              <strong>{carruselesPublicados}</strong>
-              <small>de {cliente.cuota_carruseles ?? 0} mensuales</small>
-            </div>
+            {esFeedCompartido ? (
+              <>
+                <div>
+                  <span>Feed compartido</span>
+                  <strong>{feedPublicado}</strong>
+                  <small>de {cliente.cuota_feed_compartida ?? 0} mensuales</small>
+                </div>
+                <div>
+                  <span>Mix publicado</span>
+                  <strong>{reelsPublicados} + {carruselesPublicados}</strong>
+                  <small>reels + carruseles entre ambas cuentas</small>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <span>Reels</span>
+                  <strong>{reelsPublicados}</strong>
+                  <small>de {cliente.cuota_reels ?? 0} mensuales</small>
+                </div>
+                <div>
+                  <span>Carruseles</span>
+                  <strong>{carruselesPublicados}</strong>
+                  <small>de {cliente.cuota_carruseles ?? 0} mensuales</small>
+                </div>
+              </>
+            )}
           </div>
 
           {error && <div className="caption login-error">{error}</div>}
@@ -6962,17 +7317,17 @@ function DetalleClienteModal({
               className="btn"
               type="button"
               disabled={enviando !== null}
-              onClick={() => handleAvisar("Franco")}
+              onClick={() => handleAvisar("Líder")}
             >
-              {enviando === "Franco" ? "Enviando..." : "Escalar a Franco"}
+              {enviando === "Líder" ? "Enviando..." : "Escalar al Líder"}
             </button>
             <button
               className="btn"
               type="button"
               disabled={enviando !== null}
-              onClick={handleEditarCuota}
+              onClick={() => setEditandoCuota(true)}
             >
-              {enviando === "cuota" ? "Guardando..." : "Editar cuota"}
+              Editar cuota
             </button>
             <button
               className="btn danger"
@@ -6986,6 +7341,18 @@ function DetalleClienteModal({
         </div>
       </div>
     </div>
+    {editandoCuota && (
+      <EditarCuotaClienteModal
+        cliente={cliente}
+        onClose={() => setEditandoCuota(false)}
+        onGuardado={() => {
+          onCuotaActualizada?.();
+          setEditandoCuota(false);
+          onClose();
+        }}
+      />
+    )}
+    </>
   );
 }
 
@@ -7395,7 +7762,7 @@ const ESTADOS_HISTORIA = [
   { id: "bloqueada", label: "Bloqueada", bg: "#ffebee", fg: "#c62828" },
 ];
 
-const RESPONSABLES_EQUIPO = ["Augusto", "Luciano", "Germán", "Oriana", "Franco", "Agustín"];
+const RESPONSABLES_EQUIPO = ["Augusto", "Luciano", "Germán", "Oriana", "Líder"];
 
 // Orden de columnas navegables con Tab/Enter (coincide con el orden visual).
 const COLUMNAS_PLANILLA = ["cliente", "fecha", "hora", "tipo", "copy", "material", "aclaraciones", "responsable", "estado"];
@@ -9007,6 +9374,79 @@ function HistoriasPage({ initialTab = "estructura" }) {
 
 // ── REPORTES DE EQUIPO: rendimiento por empleado ──────────────────────────────
 
+function ResumenEntregableEquipo({
+  etiqueta,
+  realizados,
+  pendientes,
+  total,
+  verbo = "realizados",
+  verboSingular = "realizado",
+}) {
+  const porcentaje = total > 0 ? Math.round((realizados / total) * 100) : 0;
+  return (
+    <div style={{ paddingTop: "12px", borderTop: "1px solid #eceff1" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px" }}>
+        <div style={{ fontWeight: "700", fontSize: "13px", color: "#263238" }}>{etiqueta}</div>
+        <div style={{ fontSize: "12px", color: "#607d8b", whiteSpace: "nowrap" }}>
+          <strong style={{ color: "#263238", fontSize: "16px" }}>{realizados}</strong> de {total}
+        </div>
+      </div>
+      <div style={{ height: "7px", background: "#eceff1", borderRadius: "999px", overflow: "hidden", margin: "9px 0 7px" }}>
+        <div
+          style={{
+            width: `${Math.min(porcentaje, 100)}%`,
+            height: "100%",
+            background: porcentaje >= 80 ? "#2e7d32" : porcentaje >= 50 ? "#f9a825" : "#c62828",
+          }}
+        />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", fontSize: "11px", color: "#78909c" }}>
+        <span>{realizados} {realizados === 1 ? verboSingular : verbo}</span>
+        <span>{pendientes} {pendientes === 1 ? "pendiente" : "pendientes"}</span>
+        <strong style={{ color: "#455a64" }}>{porcentaje}%</strong>
+      </div>
+    </div>
+  );
+}
+
+function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMes = false }) {
+  return (
+    <article
+      style={{
+        background: "#fff",
+        border: "1px solid #e4e9ec",
+        borderRadius: "12px",
+        padding: "16px",
+        minWidth: 0,
+        boxShadow: "0 1px 2px rgba(38, 50, 56, 0.04)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
+        <div>
+          <div style={{ fontWeight: "800", fontSize: "15px", color: "#263238" }}>{nombre}</div>
+          <div style={{ fontSize: "11px", color: "#90a4ae", marginTop: "2px" }}>{rol}</div>
+        </div>
+        {proximoMes && (
+          <span style={{ padding: "5px 8px", borderRadius: "999px", background: "#eef2ff", color: "#3949ab", fontSize: "10px", fontWeight: "800" }}>
+            Comienza el próximo mes
+          </span>
+        )}
+      </div>
+      {proximoMes ? (
+        <div style={{ borderTop: "1px solid #eceff1", paddingTop: "12px", color: "#607d8b", fontSize: "12px", lineHeight: 1.5 }}>
+          Desde agosto se medirán carruseles e historias. Julio no muestra ceros ni porcentajes ficticios.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: "12px" }}>
+          {metricas.map((metrica) => (
+            <ResumenEntregableEquipo key={metrica.etiqueta} {...metrica} />
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
 function ReportesEquipoPage() {
   const sesion = getSesion();
   const usuarioSesion = sesion?.usuario;
@@ -9202,21 +9642,6 @@ function ReportesEquipoPage() {
     return ordenadas;
   }, [filas, PRIORIDAD_ESTADO]);
 
-  const estadisticasEquipo = useMemo(() => {
-    const conObjetivo = filas.filter((f) => f.objetivoMensual);
-    const alDia = conObjetivo.filter((f) => f.estadoObjetivo.label === "Al día").length;
-    const enRiesgo = conObjetivo.filter((f) => f.estadoObjetivo.label === "En riesgo").length;
-    const atrasado = conObjetivo.filter((f) => f.estadoObjetivo.label === "Atrasado").length;
-    const promedio =
-      conObjetivo.length > 0
-        ? Math.round(
-            conObjetivo.reduce((s, f) => s + Math.min(f.avanceObjetivo || 0, 100), 0) /
-              conObjetivo.length,
-          )
-        : 0;
-    return { conObjetivo, alDia, enRiesgo, atrasado, promedio };
-  }, [filas]);
-
   const filaPropia = useMemo(() => !esVistaAdmin ? filasOrdenadas[0] : null, [esVistaAdmin, filasOrdenadas]);
 
   const totales = useMemo(() => ({
@@ -9243,11 +9668,110 @@ function ReportesEquipoPage() {
     [empleados, historias, publicaciones]
   );
 
-  const PERIODOS = useMemo(() => [
+  const periodoMensualReporte = periodo === "mes_actual" || periodo === "mes_pasado"
+    ? rangoPeriodo.desde.slice(0, 7)
+    : null;
+  const tareasDelPeriodoPorPersona = (nombre) => {
+    const propias = tareas.filter((t) => t.asignado_a === nombre);
+    const fuenteMensual = periodoMensualReporte
+      ? propias.filter(
+          (t) =>
+            t.propiedades_extra?.reporte_fuente === "clickup" &&
+            t.propiedades_extra?.reporte_periodo === periodoMensualReporte,
+        )
+      : [];
+    if (fuenteMensual.length > 0) return fuenteMensual;
+    return propias.filter((t) => {
+      const cerradaEnPeriodo =
+        t.estado === ESTADO_FINAL_TAREA &&
+        enPeriodo(t.propiedades_extra?.clickup_cerrada_at || t.updated_at || "");
+      return cerradaEnPeriodo || enPeriodo(t.fecha_vencimiento || "");
+    });
+  };
+  const resumenEntregas = (items) => {
+    const realizados = items.filter((item) => item.estado === ESTADO_FINAL_TAREA).length;
+    return {
+      realizados,
+      pendientes: Math.max(items.length - realizados, 0),
+      total: items.length,
+    };
+  };
+  const esCarrusel = (tarea) => {
+    const titulo = (tarea.titulo || "").toLocaleLowerCase("es");
+    const lista = (tarea.propiedades_extra?.clickup_lista || "").toLocaleLowerCase("es");
+    return titulo.includes("carrusel") || lista.includes("carrusel");
+  };
+
+  const carruselesAugusto = resumenEntregas(
+    tareasDelPeriodoPorPersona("Augusto").filter(esCarrusel),
+  );
+  const videosLuciano = resumenEntregas(
+    tareasDelPeriodoPorPersona("Luciano").filter((t) => t.tipo_tarea === "edicion"),
+  );
+  const videosGerman = resumenEntregas(
+    tareasDelPeriodoPorPersona("Germán").filter((t) => t.tipo_tarea === "produccion"),
+  );
+
+  const historiasDelPeriodo = historias.filter((h) => enPeriodo(h.fecha_programada || ""));
+  const reelsDelPeriodo = publicaciones.filter(
+    (p) => p.tipo === "video" && enPeriodo(p.fecha_programada || ""),
+  );
+  const historiasOriana = resumenEntregas(historiasDelPeriodo);
+  const reelsOriana = resumenEntregas(reelsDelPeriodo);
+
+  const inicioMariano = "2026-08-01";
+  const marianoActivo = periodo === "ultimos_30"
+    ? hoyISO >= inicioMariano
+    : rangoPeriodo.desde >= inicioMariano;
+  const carruselesMariano = resumenEntregas(
+    tareasDelPeriodoPorPersona("Mariano").filter(esCarrusel),
+  );
+  const historiasMariano = resumenEntregas(
+    historiasDelPeriodo.filter(
+      (h) => (h.responsable_diseño || h.responsable || "").toLocaleLowerCase("es") === "mariano",
+    ),
+  );
+
+  const tarjetasEntregables = [
+    {
+      nombre: "Augusto",
+      rol: "Diseño",
+      metricas: [{ etiqueta: "Carruseles", ...carruselesAugusto }],
+    },
+    {
+      nombre: "Luciano",
+      rol: "Edición",
+      metricas: [{ etiqueta: "Videos editados", ...videosLuciano }],
+    },
+    {
+      nombre: "Germán",
+      rol: "Producción",
+      metricas: [{ etiqueta: "Videos grabados", ...videosGerman }],
+    },
+    {
+      nombre: "Oriana",
+      rol: "Publicación",
+      metricas: [
+        { etiqueta: "Historias publicadas", verbo: "publicadas", verboSingular: "publicada", ...historiasOriana },
+        { etiqueta: "Reels publicados", verbo: "publicados", verboSingular: "publicado", ...reelsOriana },
+      ],
+    },
+    {
+      nombre: "Mariano",
+      rol: "Diseño y contenido",
+      proximoMes: !marianoActivo,
+      metricas: [
+        { etiqueta: "Carruseles", ...carruselesMariano },
+        { etiqueta: "Historias", ...historiasMariano },
+      ],
+    },
+  ];
+
+  const PERIODOS = [
     { id: "mes_actual", label: "Este mes" },
     { id: "mes_pasado", label: "Mes pasado" },
     { id: "ultimos_30", label: "Últimos 30 días" },
-  ], []);
+  ];
 
   const cardStyle = useMemo(() => ({ padding: "16px", borderRadius: "8px", textAlign: "center" }), []);
 
@@ -9260,7 +9784,7 @@ function ReportesEquipoPage() {
           </div>
           <div className="caption" style={{ marginBottom: "16px" }}>
             {esVistaAdmin
-              ? "Seguimiento de objetivos, tareas completadas y pendientes por persona."
+              ? "Entregas realizadas y pendientes según el trabajo concreto de cada persona."
               : "Seguimiento de tu objetivo, tareas completadas y pendientes."}
           </div>
 
@@ -9288,28 +9812,13 @@ function ReportesEquipoPage() {
           ) : (
             <>
               <div className="section-label">
-                {esVistaAdmin ? "1 · Objetivo mensual — vista rápida" : "1 · Mi objetivo mensual — vista rápida"}
+                {esVistaAdmin ? "1 · Producción del mes" : "1 · Mi objetivo mensual — vista rápida"}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px", marginBottom: "24px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${esVistaAdmin ? "230px" : "150px"}, 1fr))`, gap: "14px", marginBottom: "12px" }}>
                 {esVistaAdmin ? (
-                  <>
-                    <div style={{ ...cardStyle, background: "#e8f5e9" }}>
-                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#2e7d32" }}>{estadisticasEquipo.alDia}/{estadisticasEquipo.conObjetivo.length}</div>
-                      <div style={{ fontSize: "12px", color: "#2e7d32" }}>Equipo al día</div>
-                    </div>
-                    <div style={{ ...cardStyle, background: "#fff3e0" }}>
-                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#e65100" }}>{estadisticasEquipo.enRiesgo}</div>
-                      <div style={{ fontSize: "12px", color: "#e65100" }}>En riesgo</div>
-                    </div>
-                    <div style={{ ...cardStyle, background: "#ffebee" }}>
-                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#c62828" }}>{estadisticasEquipo.atrasado}</div>
-                      <div style={{ fontSize: "12px", color: "#c62828" }}>Atrasados</div>
-                    </div>
-                    <div style={{ ...cardStyle, background: "#e3f2fd" }}>
-                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#1565c0" }}>{estadisticasEquipo.promedio}%</div>
-                      <div style={{ fontSize: "12px", color: "#1565c0" }}>Cumplimiento promedio</div>
-                    </div>
-                  </>
+                  tarjetasEntregables.map((tarjeta) => (
+                    <TarjetaEntregablesEquipo key={tarjeta.nombre} {...tarjeta} />
+                  ))
                 ) : (
                   <>
                     <div style={{ ...cardStyle, background: filaPropia?.estadoObjetivo?.bg || "#eceff1" }}>
@@ -9333,11 +9842,16 @@ function ReportesEquipoPage() {
                   </>
                 )}
               </div>
+              {esVistaAdmin && (
+                <div className="caption" style={{ marginBottom: "24px" }}>
+                  Carruseles, ediciones, grabaciones y publicaciones se calculan por separado. No se mezclan tareas de otros roles.
+                </div>
+              )}
 
-              <div className="section-label">
-                {esVistaAdmin ? "2 · Rendimiento por empleado" : "2 · Mi rendimiento"}
-              </div>
-              <div className="box" style={{ padding: 0, overflow: "hidden" }}>
+              {!esVistaAdmin && (
+                <>
+                  <div className="section-label">2 · Mi rendimiento</div>
+                  <div className="box" style={{ padding: 0, overflow: "hidden" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ borderBottom: "2px solid #333", background: "#fafafa" }}>
@@ -9429,15 +9943,17 @@ function ReportesEquipoPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-              <div className="caption" style={{ marginTop: "8px", marginBottom: "20px" }}>
-                El 100% se calcula contra el objetivo mensual de cada rol. El estado compara lo hecho con el ritmo esperado del mes y marca atrasos si hay vencidas.
-              </div>
+                  </div>
+                  <div className="caption" style={{ marginTop: "8px", marginBottom: "20px" }}>
+                    El 100% se calcula contra el objetivo mensual de tu rol. El estado compara lo hecho con el ritmo esperado del mes y marca atrasos si hay vencidas.
+                  </div>
+                </>
+              )}
 
-              <div className="section-label">
-                {esVistaAdmin ? "3 · Piezas asignadas por responsable" : "3 · Mis piezas asignadas"}
-              </div>
-              <div className="box">
+              {!esVistaAdmin && (
+                <>
+                  <div className="section-label">3 · Mis piezas asignadas</div>
+                  <div className="box">
                 {piezasPorResponsable.length === 0 ? (
                   <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>Sin piezas asignadas todavía.</div>
                 ) : (
@@ -9476,7 +9992,9 @@ function ReportesEquipoPage() {
                     </tbody>
                   </table>
                 )}
-              </div>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
