@@ -9100,14 +9100,34 @@ function ReportesEquipoPage() {
 
   const filas = useMemo(() => empleados.map((nombre) => {
     const propias = tareas.filter((t) => t.asignado_a === nombre);
-    const activas = propias.filter((t) => t.estado !== ESTADO_FINAL_TAREA);
+    // Cuando una persona tiene una base mensual auditada desde ClickUp, esa
+    // fuente es la que gobierna el reporte del mes. Así no se mezclan tareas
+    // operativas reales con backfills automáticos o registros históricos que
+    // siguen visibles en el tablero por otros motivos.
+    const periodoMensual = periodo === "mes_actual" || periodo === "mes_pasado"
+      ? rangoPeriodo.desde.slice(0, 7)
+      : null;
+    const propiasFuenteMensual = periodoMensual
+      ? propias.filter(
+          (t) =>
+            t.propiedades_extra?.reporte_fuente === "clickup" &&
+            t.propiedades_extra?.reporte_periodo === periodoMensual,
+        )
+      : [];
+    const propiasReporte = propiasFuenteMensual.length > 0
+      ? propiasFuenteMensual
+      : propias;
+
+    const activas = propiasReporte.filter((t) => t.estado !== ESTADO_FINAL_TAREA);
     const atrasadas = activas.filter(
       (t) => t.fecha_vencimiento && t.fecha_vencimiento < hoyISO,
     );
-    const terminadasPeriodo = propias.filter(
-      (t) => t.estado === ESTADO_FINAL_TAREA && enPeriodo(t.updated_at || ""),
+    const terminadasPeriodo = propiasReporte.filter(
+      (t) =>
+        t.estado === ESTADO_FINAL_TAREA &&
+        enPeriodo(t.propiedades_extra?.clickup_cerrada_at || t.updated_at || ""),
     );
-    const vencianEnPeriodo = propias.filter(
+    const vencianEnPeriodo = propiasReporte.filter(
       (t) => t.fecha_vencimiento && enPeriodo(t.fecha_vencimiento),
     );
     const vencidasPublicadas = vencianEnPeriodo.filter((t) => t.estado === ESTADO_FINAL_TAREA);
