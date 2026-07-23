@@ -26,9 +26,23 @@ reproducible, sin depender de que alguien recuerde comandos sueltos.
 | `DATABASE_URL` | Conexión a Postgres | `postgres://user:pass@host:5432/render_platform` |
 | `PORT` | Puerto donde escucha el server | `3001` (o el que asigne el hosting) |
 | `JWT_SECRET` | Firma los tokens de sesión | generar con `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
+| `SMTP_HOST` | Servidor de correo para avisos de tareas | `smtp.gmail.com` |
+| `SMTP_PORT` | Puerto SMTP | `465` |
+| `SMTP_SECURE` | Usar TLS desde el inicio | `true` |
+| `SMTP_USER` | Cuenta que envía los avisos | `notificaciones@ejemplo.com` |
+| `SMTP_PASS` | Contraseña de aplicación del correo | secreto del proveedor |
+| `EMAIL_FROM` | Remitente visible (opcional si coincide con `SMTP_USER`) | `RENDER <notificaciones@ejemplo.com>` |
+| `EMAIL_REPLY_TO` | Dirección para respuestas (opcional) | `equipo@ejemplo.com` |
+| `APP_URL` | URL usada en el botón “Abrir tarea” | `https://sistema-render-xuwo.onrender.com` |
 
 **`JWT_SECRET` es obligatorio.** Sin él, el login no genera tokens válidos.
 Nunca lo dejes vacío ni reutilices uno de otro proyecto.
+
+Los avisos por email se envían solamente al crear una tarea o cuando cambia
+su responsable. Si el SMTP no está configurado o el integrante no tiene
+`email_notificaciones`, la tarea se guarda igual y el envío se omite. Para
+Gmail se debe usar una contraseña de aplicación; nunca la contraseña normal
+de la cuenta.
 
 ## Primer deploy, paso a paso
 
