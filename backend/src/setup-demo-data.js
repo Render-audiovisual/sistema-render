@@ -5,8 +5,8 @@ const clientesReales = [
   ["iPhone Shop", 8, 4],
   ["Luzin", 8, 4],
   ["Moketa", 4, 4],
-  ["Lavalle Hortícola", 8, 4],
-  ["Lavalle Market", 4, 0],
+  ["Lavalle Hortícola", 0, 0],
+  ["Lavalle Market", 0, 0],
   ["El Ángel Azul Turismo", 4, 4],
   ["El Ángel Azul Estudiantil", 4, 4],
   ["Litoral Maq", 8, 2],
@@ -39,4 +39,16 @@ export async function setupDemoClientes() {
       [nombre, cuotaReels, cuotaCarruseles],
     );
   }
+
+  await pool.query(`
+    INSERT INTO grupos_feed (nombre, cuota_mensual)
+    VALUES ('Lavalle', 16)
+    ON CONFLICT (nombre)
+    DO UPDATE SET cuota_mensual = EXCLUDED.cuota_mensual
+  `);
+  await pool.query(`
+    UPDATE clientes
+    SET grupo_feed_id = (SELECT id FROM grupos_feed WHERE nombre = 'Lavalle')
+    WHERE nombre IN ('Lavalle Hortícola', 'Lavalle Market')
+  `);
 }

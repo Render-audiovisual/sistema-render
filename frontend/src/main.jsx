@@ -43,6 +43,29 @@ function esDeEstaSemana(fechaISO) {
   );
 }
 
+function getClaveFeed(cliente) {
+  return cliente.grupo_feed_id
+    ? `grupo-${cliente.grupo_feed_id}`
+    : `cliente-${cliente.id}`;
+}
+
+function getClienteIdsDelMismoFeed(cliente, clientes) {
+  if (!cliente.grupo_feed_id) return [cliente.id];
+  return clientes
+    .filter((item) => item.grupo_feed_id === cliente.grupo_feed_id)
+    .map((item) => item.id);
+}
+
+function getPublicacionesDelMismoFeed(cliente, clientes, publicaciones) {
+  const clienteIds = new Set(getClienteIdsDelMismoFeed(cliente, clientes));
+  return publicaciones.filter((publicacion) => clienteIds.has(publicacion.cliente_id));
+}
+
+function getCuotaFeedMensual(cliente) {
+  if (cliente.grupo_feed_id) return Number(cliente.cuota_feed_compartida) || 0;
+  return (Number(cliente.cuota_reels) || 0) + (Number(cliente.cuota_carruseles) || 0);
+}
+
 function getPanoramaClientes(clientes, historias, publicaciones) {
   return clientes
     .map((cliente) => {
@@ -51,17 +74,19 @@ function getPanoramaClientes(clientes, historias, publicaciones) {
           historia.cliente_id === cliente.id &&
           esDelMesActual(historia.fecha_programada),
       );
-      const feedDelMes = publicaciones.filter(
+      const feedDelMes = getPublicacionesDelMismoFeed(
+        cliente,
+        clientes,
+        publicaciones,
+      ).filter(
         (publicacion) =>
-          publicacion.cliente_id === cliente.id &&
           esDelMesActual(publicacion.fecha_programada),
       );
       const feedDeEstaSemana = feedDelMes.filter((publicacion) =>
         esDeEstaSemana(publicacion.fecha_programada),
       );
 
-      const cuotaFeedMes =
-        (cliente.cuota_reels || 0) + (cliente.cuota_carruseles || 0);
+      const cuotaFeedMes = getCuotaFeedMensual(cliente);
       const cuotaFeedSemana = cuotaFeedMes / 4;
 
       const feedPublicadoMes = feedDelMes.filter(
@@ -257,9 +282,12 @@ function getResumenClientesActivos(clientes, historias, publicaciones) {
           historia.cliente_id === cliente.id &&
           esDelMesActual(historia.fecha_programada),
       );
-      const publicacionesMes = publicaciones.filter(
+      const publicacionesMes = getPublicacionesDelMismoFeed(
+        cliente,
+        clientes,
+        publicaciones,
+      ).filter(
         (publicacion) =>
-          publicacion.cliente_id === cliente.id &&
           esDelMesActual(publicacion.fecha_programada),
       );
       const historiasPublicadas = historiasMes.filter(
@@ -292,14 +320,14 @@ function getResumenClientesActivos(clientes, historias, publicaciones) {
           historias: porcentajeHistorias,
           feed: calcularPorcentajeCuota(
             reelsPublicados + carruselesPublicados,
-            (cliente.cuota_reels || 0) + (cliente.cuota_carruseles || 0),
+            getCuotaFeedMensual(cliente),
           ),
           feedSemana: 0,
           objetivo: porcentajeHistorias,
           historiasPublicadas: historiasPublicadas.length,
           historiasTotal: historiasMes.length,
           feedPublicado: reelsPublicados + carruselesPublicados,
-          feedTotal: (cliente.cuota_reels || 0) + (cliente.cuota_carruseles || 0),
+          feedTotal: getCuotaFeedMensual(cliente),
         },
         historiasMes: historiasMes.length,
         historiasPublicadas: historiasPublicadas.length,
@@ -308,6 +336,7 @@ function getResumenClientesActivos(clientes, historias, publicaciones) {
         ultimaHistoriaOk,
         reelsPublicados,
         carruselesPublicados,
+        feedCompartido: Boolean(cliente.grupo_feed_id),
       };
     })
     .sort((a, b) => {
@@ -5258,18 +5287,26 @@ function ClienteCuotaResumen({ etiqueta, publicados, cuota }) {
 }
 
 function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
+  const esFeedCompartido = Boolean(cliente.grupo_feed_id);
   const [cuotaReels, setCuotaReels] = useState(String(cliente.cuota_reels ?? 0));
   const [cuotaCarruseles, setCuotaCarruseles] = useState(
     String(cliente.cuota_carruseles ?? 0),
+  );
+  const [cuotaFeedCompartida, setCuotaFeedCompartida] = useState(
+    String(cliente.cuota_feed_compartida ?? 0),
   );
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
 
   const esCuotaValida = (valor) =>
     valor !== "" && Number.isInteger(Number(valor)) && Number(valor) >= 0;
-  const formularioValido = esCuotaValida(cuotaReels) && esCuotaValida(cuotaCarruseles);
+  const formularioValido = esFeedCompartido
+    ? esCuotaValida(cuotaFeedCompartida)
+    : esCuotaValida(cuotaReels) && esCuotaValida(cuotaCarruseles);
   const totalMensual = formularioValido
-    ? Number(cuotaReels) + Number(cuotaCarruseles)
+    ? esFeedCompartido
+      ? Number(cuotaFeedCompartida)
+      : Number(cuotaReels) + Number(cuotaCarruseles)
     : 0;
 
   const guardar = (event) => {
@@ -5283,10 +5320,14 @@ function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
     fetch(`/api/clientes/${cliente.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        cuota_reels: Number(cuotaReels),
-        cuota_carruseles: Number(cuotaCarruseles),
-      }),
+      body: JSON.stringify(
+        esFeedCompartido
+          ? { cuota_feed_compartida: Number(cuotaFeedCompartida) }
+          : {
+              cuota_reels: Number(cuotaReels),
+              cuota_carruseles: Number(cuotaCarruseles),
+            },
+      ),
     })
       .then(async (response) => {
         const data = await response.json();
@@ -5310,8 +5351,25 @@ function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
         <form className="modal-body cliente-create-modal-body" onSubmit={guardar}>
           <div className="clientes-panel-copy">
             <strong>{cliente.nombre}</strong>
-            <span>Definí la cantidad contratada de cada formato para un mes.</span>
+            <span>
+              {esFeedCompartido
+                ? `Esta cuenta comparte su cuota con el grupo ${cliente.grupo_feed_nombre}.`
+                : "Definí la cantidad contratada de cada formato para un mes."}
+            </span>
           </div>
+          {esFeedCompartido ? (
+            <label className="cliente-service-field">
+              <span>Piezas de feed compartidas por mes</span>
+              <input
+                min="0"
+                step="1"
+                type="number"
+                value={cuotaFeedCompartida}
+                onChange={(e) => setCuotaFeedCompartida(e.target.value)}
+              />
+              <small>Incluye los reels y carruseles publicados entre las dos cuentas.</small>
+            </label>
+          ) : (
           <div className="cliente-create-modal-grid">
             <label className="cliente-service-field">
               <span>Reels mensuales</span>
@@ -5336,10 +5394,15 @@ function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
               <small>Usá 0 si el acuerdo no incluye carruseles.</small>
             </label>
           </div>
+          )}
           <div className="cliente-contract-summary">
             <span>Resumen del acuerdo</span>
             <strong>{totalMensual} piezas mensuales</strong>
-            <small>{cuotaReels || 0} reels · {cuotaCarruseles || 0} carruseles</small>
+            <small>
+              {esFeedCompartido
+                ? `Cuota única de ${cliente.grupo_feed_nombre}`
+                : `${cuotaReels || 0} reels · ${cuotaCarruseles || 0} carruseles`}
+            </small>
           </div>
           {error && <div className="caption login-error">{error}</div>}
           <div className="modal-actions">
@@ -5587,19 +5650,25 @@ function ClientesAdminPage() {
     (cliente) => cliente.estadoHistorias.color === "rojo",
   ).length;
   const clientesSinHistorias = filas.filter((cliente) => cliente.historiasMes === 0).length;
-  const totalReelsPublicados = filas.reduce((sum, cliente) => sum + cliente.reelsPublicados, 0);
-  const totalCarruselesPublicados = filas.reduce(
+  const clavesFeedContadas = new Set();
+  const filasFeedUnicas = filas.filter((cliente) => {
+    const clave = getClaveFeed(cliente);
+    if (clavesFeedContadas.has(clave)) return false;
+    clavesFeedContadas.add(clave);
+    return true;
+  });
+  const totalReelsPublicados = filasFeedUnicas.reduce((sum, cliente) => sum + cliente.reelsPublicados, 0);
+  const totalCarruselesPublicados = filasFeedUnicas.reduce(
     (sum, cliente) => sum + cliente.carruselesPublicados,
     0,
   );
-  const totalCuotaReels = filas.reduce((sum, cliente) => sum + (Number(cliente.cuota_reels) || 0), 0);
-  const totalCuotaCarruseles = filas.reduce(
-    (sum, cliente) => sum + (Number(cliente.cuota_carruseles) || 0),
+  const totalCuotaFeed = filasFeedUnicas.reduce(
+    (sum, cliente) => sum + getCuotaFeedMensual(cliente),
     0,
   );
   const avanceFeed = calcularPorcentajeCuota(
     totalReelsPublicados + totalCarruselesPublicados,
-    totalCuotaReels + totalCuotaCarruseles,
+    totalCuotaFeed,
   );
   const getAlertaCliente = (cliente) => {
     if (cliente.estadoHistorias.color === "rojo") return "Necesita seguimiento";
@@ -5657,7 +5726,7 @@ function ClientesAdminPage() {
               <strong>{avanceFeed}%</strong>
               <small>
                 {totalReelsPublicados + totalCarruselesPublicados} /{" "}
-                {totalCuotaReels + totalCuotaCarruseles} piezas
+                {totalCuotaFeed} piezas
               </small>
             </div>
             <div className="cliente-metric">
@@ -5722,20 +5791,35 @@ function ClientesAdminPage() {
                           />
                           <div className="caption">Activo</div>
                         </td>
-                        <td>
-                          <ClienteCuotaResumen
-                            etiqueta="Reels"
-                            publicados={cliente.reelsPublicados}
-                            cuota={cliente.cuota_reels}
-                          />
-                        </td>
-                        <td>
-                          <ClienteCuotaResumen
-                            etiqueta="Carruseles"
-                            publicados={cliente.carruselesPublicados}
-                            cuota={cliente.cuota_carruseles}
-                          />
-                        </td>
+                        {cliente.feedCompartido ? (
+                          <td colSpan="2">
+                            <ClienteCuotaResumen
+                              etiqueta={`Feed compartido · ${cliente.grupo_feed_nombre}`}
+                              publicados={cliente.reelsPublicados + cliente.carruselesPublicados}
+                              cuota={cliente.cuota_feed_compartida}
+                            />
+                            <div className="caption">
+                              {cliente.reelsPublicados} reels · {cliente.carruselesPublicados} carruseles entre ambas cuentas
+                            </div>
+                          </td>
+                        ) : (
+                          <>
+                            <td>
+                              <ClienteCuotaResumen
+                                etiqueta="Reels"
+                                publicados={cliente.reelsPublicados}
+                                cuota={cliente.cuota_reels}
+                              />
+                            </td>
+                            <td>
+                              <ClienteCuotaResumen
+                                etiqueta="Carruseles"
+                                publicados={cliente.carruselesPublicados}
+                                cuota={cliente.cuota_carruseles}
+                              />
+                            </td>
+                          </>
+                        )}
                         <td>
                           <strong>{cliente.porcentajeHistorias}%</strong>
                           <div className="caption">
@@ -5791,16 +5875,26 @@ function ClientesAdminPage() {
                       </span>
                     </div>
                     <div className="cliente-mobile-quotas">
-                      <ClienteCuotaResumen
-                        etiqueta="Reels"
-                        publicados={cliente.reelsPublicados}
-                        cuota={cliente.cuota_reels}
-                      />
-                      <ClienteCuotaResumen
-                        etiqueta="Carruseles"
-                        publicados={cliente.carruselesPublicados}
-                        cuota={cliente.cuota_carruseles}
-                      />
+                      {cliente.feedCompartido ? (
+                        <ClienteCuotaResumen
+                          etiqueta={`Feed compartido · ${cliente.grupo_feed_nombre}`}
+                          publicados={cliente.reelsPublicados + cliente.carruselesPublicados}
+                          cuota={cliente.cuota_feed_compartida}
+                        />
+                      ) : (
+                        <>
+                          <ClienteCuotaResumen
+                            etiqueta="Reels"
+                            publicados={cliente.reelsPublicados}
+                            cuota={cliente.cuota_reels}
+                          />
+                          <ClienteCuotaResumen
+                            etiqueta="Carruseles"
+                            publicados={cliente.carruselesPublicados}
+                            cuota={cliente.cuota_carruseles}
+                          />
+                        </>
+                      )}
                     </div>
                     <div className="cliente-mobile-status-grid">
                       <div>
@@ -5959,8 +6053,10 @@ function ClientesAdminPage() {
         <DetalleClienteModal
           cliente={clienteSeleccionado}
           historias={historias.filter((h) => h.cliente_id === clienteSeleccionado.id)}
-          publicaciones={publicaciones.filter(
-            (p) => p.cliente_id === clienteSeleccionado.id,
+          publicaciones={getPublicacionesDelMismoFeed(
+            clienteSeleccionado,
+            clientes,
+            publicaciones,
           )}
           onClose={() => setClienteSeleccionado(null)}
           onCuotaActualizada={cargarClientes}
@@ -6414,8 +6510,10 @@ function LiderDashboard() {
           historias={historiasRaw.filter(
             (h) => h.cliente_id === clienteSeleccionado.id,
           )}
-          publicaciones={publicacionesRaw.filter(
-            (p) => p.cliente_id === clienteSeleccionado.id,
+          publicaciones={getPublicacionesDelMismoFeed(
+            clienteSeleccionado,
+            clientes,
+            publicacionesRaw,
           )}
           onClose={() => setClienteSeleccionado(null)}
           onCuotaActualizada={cargarPanorama}
@@ -7079,6 +7177,8 @@ function DetalleClienteModal({
   const carruselesPublicados = publicaciones.filter(
     (publicacion) => publicacion.estado === "publicada" && publicacion.tipo === "carrusel",
   ).length;
+  const esFeedCompartido = Boolean(cliente.grupo_feed_id);
+  const feedPublicado = reelsPublicados + carruselesPublicados;
 
   return (
     <>
@@ -7099,8 +7199,9 @@ function DetalleClienteModal({
               </strong>
             </div>
             <div className="caption">
-              Cuota mensual: {cliente.cuota_reels ?? 0} reels ·{" "}
-              {cliente.cuota_carruseles ?? 0} carruseles
+              {esFeedCompartido
+                ? `Cuota compartida ${cliente.grupo_feed_nombre}: ${cliente.cuota_feed_compartida ?? 0} piezas de feed entre ambas cuentas`
+                : `Cuota mensual: ${cliente.cuota_reels ?? 0} reels · ${cliente.cuota_carruseles ?? 0} carruseles`}
             </div>
           </div>
 
@@ -7110,16 +7211,33 @@ function DetalleClienteModal({
               <strong>{porcentajes.historias}%</strong>
               <small>{porcentajes.historiasPublicadas} / {porcentajes.historiasTotal} OK</small>
             </div>
-            <div>
-              <span>Reels</span>
-              <strong>{reelsPublicados}</strong>
-              <small>de {cliente.cuota_reels ?? 0} mensuales</small>
-            </div>
-            <div>
-              <span>Carruseles</span>
-              <strong>{carruselesPublicados}</strong>
-              <small>de {cliente.cuota_carruseles ?? 0} mensuales</small>
-            </div>
+            {esFeedCompartido ? (
+              <>
+                <div>
+                  <span>Feed compartido</span>
+                  <strong>{feedPublicado}</strong>
+                  <small>de {cliente.cuota_feed_compartida ?? 0} mensuales</small>
+                </div>
+                <div>
+                  <span>Mix publicado</span>
+                  <strong>{reelsPublicados} + {carruselesPublicados}</strong>
+                  <small>reels + carruseles entre ambas cuentas</small>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <span>Reels</span>
+                  <strong>{reelsPublicados}</strong>
+                  <small>de {cliente.cuota_reels ?? 0} mensuales</small>
+                </div>
+                <div>
+                  <span>Carruseles</span>
+                  <strong>{carruselesPublicados}</strong>
+                  <small>de {cliente.cuota_carruseles ?? 0} mensuales</small>
+                </div>
+              </>
+            )}
           </div>
 
           {error && <div className="caption login-error">{error}</div>}

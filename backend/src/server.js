@@ -460,9 +460,17 @@ router.patch("/fechas-especiales/:id", async (req, res, next) => {
 router.get("/clientes", async (_req, res, next) => {
   try {
     const result = await pool.query(`
-      SELECT id, nombre, cuota_reels, cuota_carruseles
-      FROM clientes
-      ORDER BY id
+      SELECT
+        c.id,
+        c.nombre,
+        c.cuota_reels,
+        c.cuota_carruseles,
+        c.grupo_feed_id,
+        gf.nombre AS grupo_feed_nombre,
+        gf.cuota_mensual AS cuota_feed_compartida
+      FROM clientes c
+      LEFT JOIN grupos_feed gf ON gf.id = c.grupo_feed_id
+      ORDER BY c.id
     `);
     res.json(result.rows);
   } catch (error) {
@@ -497,7 +505,12 @@ router.post("/clientes", async (req, res, next) => {
       [nombre, cuota_reels, cuota_carruseles],
     );
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json({
+      ...result.rows[0],
+      grupo_feed_id: null,
+      grupo_feed_nombre: null,
+      cuota_feed_compartida: null,
+    });
   } catch (error) {
     if (error.code === "23505") {
       return res.status(409).json({ error: "Ya existe un cliente con ese nombre." });
@@ -507,9 +520,10 @@ router.post("/clientes", async (req, res, next) => {
 });
 
 router.patch("/clientes/:id", async (req, res, next) => {
+  const client = await pool.connect();
   try {
     const { id } = req.params;
-    const { nombre, cuota_reels, cuota_carruseles } = req.body;
+    const { nombre, cuota_reels, cuota_carruseles, cuota_feed_compartida } = req.body;
     const nombreNormalizado = nombre === undefined ? undefined : String(nombre).trim();
 
     const cuotaReelsValida =
@@ -518,24 +532,48 @@ router.patch("/clientes/:id", async (req, res, next) => {
     const cuotaCarruselesValida =
       cuota_carruseles === undefined ||
       (Number.isInteger(cuota_carruseles) && cuota_carruseles >= 0);
+    const cuotaFeedCompartidaValida =
+      cuota_feed_compartida === undefined ||
+      (Number.isInteger(cuota_feed_compartida) && cuota_feed_compartida >= 0);
 
-    if (!cuotaReelsValida || !cuotaCarruselesValida) {
+    if (!cuotaReelsValida || !cuotaCarruselesValida || !cuotaFeedCompartidaValida) {
       return res.status(400).json({
-        error: "cuota_reels y cuota_carruseles deben ser enteros ≥ 0.",
+        error: "Las cuotas deben ser enteros ≥ 0.",
       });
     }
     if (nombreNormalizado !== undefined && !nombreNormalizado) {
       return res.status(400).json({ error: "El nombre del cliente no puede quedar vacío." });
     }
 
-    const result = await pool.query(
+    await client.query("BEGIN");
+    const existente = await client.query(
+      "SELECT grupo_feed_id FROM clientes WHERE id = $1 FOR UPDATE",
+      [id],
+    );
+    if (existente.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Cliente no encontrado." });
+    }
+
+    const grupoFeedId = existente.rows[0].grupo_feed_id;
+    if (cuota_feed_compartida !== undefined && !grupoFeedId) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Este cliente no tiene una cuota de feed compartida." });
+    }
+    if (cuota_feed_compartida !== undefined) {
+      await client.query(
+        "UPDATE grupos_feed SET cuota_mensual = $1 WHERE id = $2",
+        [cuota_feed_compartida, grupoFeedId],
+      );
+    }
+
+    await client.query(
       `UPDATE clientes
        SET
          nombre = COALESCE($1, nombre),
          cuota_reels = COALESCE($2, cuota_reels),
          cuota_carruseles = COALESCE($3, cuota_carruseles)
-       WHERE id = $4
-       RETURNING id, nombre, cuota_reels, cuota_carruseles`,
+       WHERE id = $4`,
       [
         nombreNormalizado ?? null,
         cuota_reels ?? null,
@@ -543,17 +581,30 @@ router.patch("/clientes/:id", async (req, res, next) => {
         id,
       ],
     );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Cliente no encontrado." });
-    }
-
+    const result = await client.query(
+      `SELECT
+         c.id,
+         c.nombre,
+         c.cuota_reels,
+         c.cuota_carruseles,
+         c.grupo_feed_id,
+         gf.nombre AS grupo_feed_nombre,
+         gf.cuota_mensual AS cuota_feed_compartida
+       FROM clientes c
+       LEFT JOIN grupos_feed gf ON gf.id = c.grupo_feed_id
+       WHERE c.id = $1`,
+      [id],
+    );
+    await client.query("COMMIT");
     res.json(result.rows[0]);
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     if (error.code === "23505") {
       return res.status(409).json({ error: "Ya existe un cliente con ese nombre." });
     }
     next(error);
+  } finally {
+    client.release();
   }
 });
 
