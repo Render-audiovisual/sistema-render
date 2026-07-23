@@ -5488,7 +5488,6 @@ function ClientesAdminPage() {
   const [historias, setHistorias] = useState([]);
   const [publicaciones, setPublicaciones] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
-  const [busqueda, setBusqueda] = useState("");
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [nuevoCliente, setNuevoCliente] = useState({
@@ -5608,7 +5607,6 @@ function ClientesAdminPage() {
       .then((cliente) => {
         setClientes((prev) => [...prev, cliente]);
         setNuevoCliente({ nombre: "", cuota_reels: "", cuota_carruseles: "" });
-        setBusqueda("");
         setAltaClienteAbierta(false);
       })
       .catch((err) => setErrorAltaCliente(err.message))
@@ -5697,9 +5695,6 @@ function ClientesAdminPage() {
   };
 
   const filas = getResumenClientesActivos(clientes, historias, publicaciones);
-  const filasFiltradas = filas.filter((cliente) =>
-    cliente.nombre.toLowerCase().includes(busqueda.toLowerCase()),
-  );
   const conPlanificacion = filas.filter((cliente) => cliente.historiasMes > 0);
   const cumplimientoHistorias =
     conPlanificacion.length === 0
@@ -5751,17 +5746,7 @@ function ClientesAdminPage() {
               <h2>Control mensual de cartera</h2>
             </div>
             <div className="clientes-top-actions">
-              <div className="clientes-search-control">
-                <span>Buscar</span>
-                <input
-                  type="text"
-                  placeholder="Nombre del cliente..."
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                />
-              </div>
               <div className="clientes-heading-meta">
-                <span>{filasFiltradas.length} visibles</span>
                 <span>{filas.length} activos</span>
               </div>
               <button
@@ -5828,7 +5813,7 @@ function ClientesAdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filasFiltradas.map((cliente) => (
+                    {filas.map((cliente) => (
                       <tr
                         className="row-clickable"
                         key={cliente.id}
@@ -5923,7 +5908,7 @@ function ClientesAdminPage() {
                         </td>
                       </tr>
                     ))}
-                    {filasFiltradas.length === 0 && (
+                    {filas.length === 0 && (
                       <tr>
                         <td colSpan="6">No hay clientes con ese criterio.</td>
                       </tr>
@@ -5932,7 +5917,7 @@ function ClientesAdminPage() {
                 </table>
               </div>
               <div className="clientes-mobile-list">
-                {filasFiltradas.map((cliente) => (
+                {filas.map((cliente) => (
                   <article className="cliente-mobile-card" key={cliente.id}>
                     <div className="cliente-mobile-card-head">
                       <div>
@@ -6007,7 +5992,7 @@ function ClientesAdminPage() {
                     </div>
                   </article>
                 ))}
-                {filasFiltradas.length === 0 && (
+                {filas.length === 0 && (
                   <div className="cliente-mobile-empty">No hay clientes con ese criterio.</div>
                 )}
               </div>
