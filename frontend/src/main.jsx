@@ -62,8 +62,17 @@ function getPublicacionesDelMismoFeed(cliente, clientes, publicaciones) {
 }
 
 function getCuotaFeedMensual(cliente) {
-  if (cliente.grupo_feed_id) return Number(cliente.cuota_feed_compartida) || 0;
-  return (Number(cliente.cuota_reels) || 0) + (Number(cliente.cuota_carruseles) || 0);
+  return getCuotaReelsMensual(cliente) + getCuotaCarruselesMensual(cliente);
+}
+
+function getCuotaReelsMensual(cliente) {
+  if (cliente.grupo_feed_id) return Number(cliente.cuota_feed_reels) || 0;
+  return Number(cliente.cuota_reels) || 0;
+}
+
+function getCuotaCarruselesMensual(cliente) {
+  if (cliente.grupo_feed_id) return Number(cliente.cuota_feed_carruseles) || 0;
+  return Number(cliente.cuota_carruseles) || 0;
 }
 
 function getPanoramaClientes(clientes, historias, publicaciones) {
@@ -5292,8 +5301,11 @@ function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
   const [cuotaCarruseles, setCuotaCarruseles] = useState(
     String(cliente.cuota_carruseles ?? 0),
   );
-  const [cuotaFeedCompartida, setCuotaFeedCompartida] = useState(
-    String(cliente.cuota_feed_compartida ?? 0),
+  const [cuotaFeedReels, setCuotaFeedReels] = useState(
+    String(cliente.cuota_feed_reels ?? 0),
+  );
+  const [cuotaFeedCarruseles, setCuotaFeedCarruseles] = useState(
+    String(cliente.cuota_feed_carruseles ?? 0),
   );
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
@@ -5301,11 +5313,11 @@ function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
   const esCuotaValida = (valor) =>
     valor !== "" && Number.isInteger(Number(valor)) && Number(valor) >= 0;
   const formularioValido = esFeedCompartido
-    ? esCuotaValida(cuotaFeedCompartida)
+    ? esCuotaValida(cuotaFeedReels) && esCuotaValida(cuotaFeedCarruseles)
     : esCuotaValida(cuotaReels) && esCuotaValida(cuotaCarruseles);
   const totalMensual = formularioValido
     ? esFeedCompartido
-      ? Number(cuotaFeedCompartida)
+      ? Number(cuotaFeedReels) + Number(cuotaFeedCarruseles)
       : Number(cuotaReels) + Number(cuotaCarruseles)
     : 0;
 
@@ -5322,7 +5334,10 @@ function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(
         esFeedCompartido
-          ? { cuota_feed_compartida: Number(cuotaFeedCompartida) }
+          ? {
+              cuota_feed_reels: Number(cuotaFeedReels),
+              cuota_feed_carruseles: Number(cuotaFeedCarruseles),
+            }
           : {
               cuota_reels: Number(cuotaReels),
               cuota_carruseles: Number(cuotaCarruseles),
@@ -5358,17 +5373,30 @@ function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
             </span>
           </div>
           {esFeedCompartido ? (
-            <label className="cliente-service-field">
-              <span>Piezas de feed compartidas por mes</span>
-              <input
-                min="0"
-                step="1"
-                type="number"
-                value={cuotaFeedCompartida}
-                onChange={(e) => setCuotaFeedCompartida(e.target.value)}
-              />
-              <small>Incluye los reels y carruseles publicados entre las dos cuentas.</small>
-            </label>
+            <div className="cliente-create-modal-grid">
+              <label className="cliente-service-field">
+                <span>Reels compartidos por mes</span>
+                <input
+                  min="0"
+                  step="1"
+                  type="number"
+                  value={cuotaFeedReels}
+                  onChange={(e) => setCuotaFeedReels(e.target.value)}
+                />
+                <small>Se cuentan entre las dos cuentas del grupo.</small>
+              </label>
+              <label className="cliente-service-field">
+                <span>Carruseles compartidos por mes</span>
+                <input
+                  min="0"
+                  step="1"
+                  type="number"
+                  value={cuotaFeedCarruseles}
+                  onChange={(e) => setCuotaFeedCarruseles(e.target.value)}
+                />
+                <small>Se cuentan entre las dos cuentas del grupo.</small>
+              </label>
+            </div>
           ) : (
           <div className="cliente-create-modal-grid">
             <label className="cliente-service-field">
@@ -5400,7 +5428,7 @@ function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
             <strong>{totalMensual} piezas mensuales</strong>
             <small>
               {esFeedCompartido
-                ? `Cuota única de ${cliente.grupo_feed_nombre}`
+                ? `${cuotaFeedReels || 0} reels · ${cuotaFeedCarruseles || 0} carruseles compartidos`
                 : `${cuotaReels || 0} reels · ${cuotaCarruseles || 0} carruseles`}
             </small>
           </div>
@@ -5792,16 +5820,22 @@ function ClientesAdminPage() {
                           <div className="caption">Activo</div>
                         </td>
                         {cliente.feedCompartido ? (
-                          <td colSpan="2">
+                          <>
+                          <td>
                             <ClienteCuotaResumen
-                              etiqueta={`Feed compartido · ${cliente.grupo_feed_nombre}`}
-                              publicados={cliente.reelsPublicados + cliente.carruselesPublicados}
-                              cuota={cliente.cuota_feed_compartida}
+                              etiqueta={`Reels compartidos · ${cliente.grupo_feed_nombre}`}
+                              publicados={cliente.reelsPublicados}
+                              cuota={cliente.cuota_feed_reels}
                             />
-                            <div className="caption">
-                              {cliente.reelsPublicados} reels · {cliente.carruselesPublicados} carruseles entre ambas cuentas
-                            </div>
                           </td>
+                          <td>
+                            <ClienteCuotaResumen
+                              etiqueta={`Carruseles compartidos · ${cliente.grupo_feed_nombre}`}
+                              publicados={cliente.carruselesPublicados}
+                              cuota={cliente.cuota_feed_carruseles}
+                            />
+                          </td>
+                          </>
                         ) : (
                           <>
                             <td>
@@ -5876,11 +5910,18 @@ function ClientesAdminPage() {
                     </div>
                     <div className="cliente-mobile-quotas">
                       {cliente.feedCompartido ? (
-                        <ClienteCuotaResumen
-                          etiqueta={`Feed compartido · ${cliente.grupo_feed_nombre}`}
-                          publicados={cliente.reelsPublicados + cliente.carruselesPublicados}
-                          cuota={cliente.cuota_feed_compartida}
-                        />
+                        <>
+                          <ClienteCuotaResumen
+                            etiqueta={`Reels compartidos · ${cliente.grupo_feed_nombre}`}
+                            publicados={cliente.reelsPublicados}
+                            cuota={cliente.cuota_feed_reels}
+                          />
+                          <ClienteCuotaResumen
+                            etiqueta={`Carruseles compartidos · ${cliente.grupo_feed_nombre}`}
+                            publicados={cliente.carruselesPublicados}
+                            cuota={cliente.cuota_feed_carruseles}
+                          />
+                        </>
                       ) : (
                         <>
                           <ClienteCuotaResumen
@@ -7178,7 +7219,6 @@ function DetalleClienteModal({
     (publicacion) => publicacion.estado === "publicada" && publicacion.tipo === "carrusel",
   ).length;
   const esFeedCompartido = Boolean(cliente.grupo_feed_id);
-  const feedPublicado = reelsPublicados + carruselesPublicados;
 
   return (
     <>
@@ -7200,7 +7240,7 @@ function DetalleClienteModal({
             </div>
             <div className="caption">
               {esFeedCompartido
-                ? `Cuota compartida ${cliente.grupo_feed_nombre}: ${cliente.cuota_feed_compartida ?? 0} piezas de feed entre ambas cuentas`
+                ? `Cuota compartida ${cliente.grupo_feed_nombre}: ${cliente.cuota_feed_reels ?? 0} reels · ${cliente.cuota_feed_carruseles ?? 0} carruseles entre ambas cuentas`
                 : `Cuota mensual: ${cliente.cuota_reels ?? 0} reels · ${cliente.cuota_carruseles ?? 0} carruseles`}
             </div>
           </div>
@@ -7214,14 +7254,14 @@ function DetalleClienteModal({
             {esFeedCompartido ? (
               <>
                 <div>
-                  <span>Feed compartido</span>
-                  <strong>{feedPublicado}</strong>
-                  <small>de {cliente.cuota_feed_compartida ?? 0} mensuales</small>
+                  <span>Reels compartidos</span>
+                  <strong>{reelsPublicados}</strong>
+                  <small>de {cliente.cuota_feed_reels ?? 0} mensuales</small>
                 </div>
                 <div>
-                  <span>Mix publicado</span>
-                  <strong>{reelsPublicados} + {carruselesPublicados}</strong>
-                  <small>reels + carruseles entre ambas cuentas</small>
+                  <span>Carruseles compartidos</span>
+                  <strong>{carruselesPublicados}</strong>
+                  <small>de {cliente.cuota_feed_carruseles ?? 0} mensuales</small>
                 </div>
               </>
             ) : (
