@@ -5206,6 +5206,131 @@ function EquipoDashboard() {
   );
 }
 
+function ClienteCuotaResumen({ etiqueta, publicados, cuota }) {
+  const cuotaNumero = Number(cuota) || 0;
+  const porcentaje = calcularPorcentajeCuota(publicados, cuotaNumero);
+  return (
+    <div className="cliente-quota-summary">
+      <div className="cliente-quota-summary-head">
+        <span>{etiqueta}</span>
+        {cuotaNumero === 0 ? (
+          <strong className="cliente-quota-not-included">No incluido</strong>
+        ) : (
+          <strong>{publicados} de {cuotaNumero}</strong>
+        )}
+      </div>
+      {cuotaNumero > 0 && (
+        <>
+          <div className="cliente-quota-progress" aria-label={`${porcentaje}% de la cuota de ${etiqueta}`}>
+            <span style={{ width: `${Math.min(porcentaje, 100)}%` }} />
+          </div>
+          <small>{publicados} publicados · {cuotaNumero - Math.min(publicados, cuotaNumero)} pendientes</small>
+        </>
+      )}
+      {cuotaNumero === 0 && <small>Este formato no forma parte del acuerdo mensual.</small>}
+    </div>
+  );
+}
+
+function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
+  const [cuotaReels, setCuotaReels] = useState(String(cliente.cuota_reels ?? 0));
+  const [cuotaCarruseles, setCuotaCarruseles] = useState(
+    String(cliente.cuota_carruseles ?? 0),
+  );
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState(null);
+
+  const esCuotaValida = (valor) =>
+    valor !== "" && Number.isInteger(Number(valor)) && Number(valor) >= 0;
+  const formularioValido = esCuotaValida(cuotaReels) && esCuotaValida(cuotaCarruseles);
+  const totalMensual = formularioValido
+    ? Number(cuotaReels) + Number(cuotaCarruseles)
+    : 0;
+
+  const guardar = (event) => {
+    event.preventDefault();
+    if (!formularioValido) {
+      setError("Completá ambas cuotas con números enteros iguales o mayores a 0.");
+      return;
+    }
+    setGuardando(true);
+    setError(null);
+    fetch(`/api/clientes/${cliente.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cuota_reels: Number(cuotaReels),
+        cuota_carruseles: Number(cuotaCarruseles),
+      }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "No se pudo actualizar la cuota.");
+        return data;
+      })
+      .then(onGuardado)
+      .catch((err) => setError(err.message))
+      .finally(() => setGuardando(false));
+  };
+
+  return (
+    <div className="modal-overlay open" role="dialog" aria-modal="true" aria-label="Editar cuota mensual">
+      <div className="modal cliente-create-modal">
+        <div className="modal-header">
+          <span>Editar cuota mensual</span>
+          <button className="modal-close" type="button" onClick={onClose} aria-label="Cerrar">
+            X
+          </button>
+        </div>
+        <form className="modal-body cliente-create-modal-body" onSubmit={guardar}>
+          <div className="clientes-panel-copy">
+            <strong>{cliente.nombre}</strong>
+            <span>Definí la cantidad contratada de cada formato para un mes.</span>
+          </div>
+          <div className="cliente-create-modal-grid">
+            <label className="cliente-service-field">
+              <span>Reels mensuales</span>
+              <input
+                min="0"
+                step="1"
+                type="number"
+                value={cuotaReels}
+                onChange={(e) => setCuotaReels(e.target.value)}
+              />
+              <small>Usá 0 si el acuerdo no incluye reels.</small>
+            </label>
+            <label className="cliente-service-field">
+              <span>Carruseles mensuales</span>
+              <input
+                min="0"
+                step="1"
+                type="number"
+                value={cuotaCarruseles}
+                onChange={(e) => setCuotaCarruseles(e.target.value)}
+              />
+              <small>Usá 0 si el acuerdo no incluye carruseles.</small>
+            </label>
+          </div>
+          <div className="cliente-contract-summary">
+            <span>Resumen del acuerdo</span>
+            <strong>{totalMensual} piezas mensuales</strong>
+            <small>{cuotaReels || 0} reels · {cuotaCarruseles || 0} carruseles</small>
+          </div>
+          {error && <div className="caption login-error">{error}</div>}
+          <div className="modal-actions">
+            <button className="btn" type="button" disabled={guardando} onClick={onClose}>
+              Cancelar
+            </button>
+            <button className="btn primary" type="submit" disabled={guardando || !formularioValido}>
+              {guardando ? "Guardando..." : "Guardar cuota"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function ClientesAdminPage() {
   const [clientes, setClientes] = useState([]);
   const [historias, setHistorias] = useState([]);
@@ -5216,13 +5341,14 @@ function ClientesAdminPage() {
   const [cargando, setCargando] = useState(true);
   const [nuevoCliente, setNuevoCliente] = useState({
     nombre: "",
-    cuota_reels: "0",
-    cuota_carruseles: "0",
+    cuota_reels: "",
+    cuota_carruseles: "",
   });
   const [guardandoCliente, setGuardandoCliente] = useState(false);
-  const [guardandoCuotaId, setGuardandoCuotaId] = useState(null);
   const [clienteDrafts, setClienteDrafts] = useState({});
   const [altaClienteAbierta, setAltaClienteAbierta] = useState(false);
+  const [clienteCuotaEnEdicion, setClienteCuotaEnEdicion] = useState(null);
+  const [errorAltaCliente, setErrorAltaCliente] = useState(null);
 
   // silencioso=true (polling / vuelta a la pestaña) no muestra el spinner de
   // carga para no interrumpir a quien está mirando la tabla — solo actualiza
@@ -5272,26 +5398,49 @@ function ClientesAdminPage() {
 
   const validarCuota = (valor) => {
     const numero = Number(valor);
-    return Number.isInteger(numero) && numero >= 0;
+    return valor !== "" && Number.isInteger(numero) && numero >= 0;
+  };
+
+  const altaClienteValida =
+    nuevoCliente.nombre.trim().length > 0 &&
+    validarCuota(nuevoCliente.cuota_reels) &&
+    validarCuota(nuevoCliente.cuota_carruseles);
+  const totalPiezasNuevoCliente = altaClienteValida
+    ? Number(nuevoCliente.cuota_reels) + Number(nuevoCliente.cuota_carruseles)
+    : 0;
+
+  const abrirAltaCliente = () => {
+    setNuevoCliente({ nombre: "", cuota_reels: "", cuota_carruseles: "" });
+    setErrorAltaCliente(null);
+    setAltaClienteAbierta(true);
+  };
+
+  const cerrarAltaCliente = () => {
+    if (guardandoCliente) return;
+    setAltaClienteAbierta(false);
+    setErrorAltaCliente(null);
   };
 
   const crearCliente = (event) => {
     event.preventDefault();
     const nombre = nuevoCliente.nombre.trim();
+
+    if (!nombre) {
+      setErrorAltaCliente("El nombre del cliente es obligatorio.");
+      return;
+    }
+    if (
+      !validarCuota(nuevoCliente.cuota_reels) ||
+      !validarCuota(nuevoCliente.cuota_carruseles)
+    ) {
+      setErrorAltaCliente("Completá ambas cuotas con números enteros iguales o mayores a 0.");
+      return;
+    }
     const cuota_reels = Number(nuevoCliente.cuota_reels);
     const cuota_carruseles = Number(nuevoCliente.cuota_carruseles);
 
-    if (!nombre) {
-      setError("El nombre del cliente es obligatorio.");
-      return;
-    }
-    if (!validarCuota(cuota_reels) || !validarCuota(cuota_carruseles)) {
-      setError("Las cuotas deben ser números enteros ≥ 0.");
-      return;
-    }
-
     setGuardandoCliente(true);
-    setError(null);
+    setErrorAltaCliente(null);
     fetch("/api/clientes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -5306,11 +5455,11 @@ function ClientesAdminPage() {
       })
       .then((cliente) => {
         setClientes((prev) => [...prev, cliente]);
-        setNuevoCliente({ nombre: "", cuota_reels: "0", cuota_carruseles: "0" });
+        setNuevoCliente({ nombre: "", cuota_reels: "", cuota_carruseles: "" });
         setBusqueda("");
         setAltaClienteAbierta(false);
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => setErrorAltaCliente(err.message))
       .finally(() => setGuardandoCliente(false));
   };
 
@@ -5371,7 +5520,6 @@ function ClientesAdminPage() {
       }
     }
 
-    setGuardandoCuotaId(id);
     setError(null);
     fetch(`/api/clientes/${id}`, {
       method: "PATCH",
@@ -5393,8 +5541,7 @@ function ClientesAdminPage() {
         setError(err.message);
         cargarClientes({ silencioso: true });
         limpiarDraftCliente(id, Object.keys(payload));
-      })
-      .finally(() => setGuardandoCuotaId(null));
+      });
   };
 
   const filas = getResumenClientesActivos(clientes, historias, publicaciones);
@@ -5462,7 +5609,7 @@ function ClientesAdminPage() {
               <button
                 className="btn primary"
                 type="button"
-                onClick={() => setAltaClienteAbierta(true)}
+                onClick={abrirAltaCliente}
               >
                 Agregar cliente
               </button>
@@ -5499,7 +5646,7 @@ function ClientesAdminPage() {
             <div className="clientes-table-toolbar">
               <div>
                 <strong>Cartera activa</strong>
-                <span>Cuotas editables y estado del mes</span>
+                <span>Producción publicada, acuerdo mensual y estado del mes</span>
               </div>
             </div>
 
@@ -5509,7 +5656,8 @@ function ClientesAdminPage() {
                 Cargando clientes...
               </div>
             ) : (
-              <div style={{ overflowX: "hidden" }}>
+              <>
+              <div className="clientes-desktop-table-wrap">
                 <table className="clientes-admin-table">
                   <thead>
                     <tr>
@@ -5550,57 +5698,18 @@ function ClientesAdminPage() {
                           <div className="caption">Activo</div>
                         </td>
                         <td>
-                          <div className="cliente-quota-cell">
-                            <strong>{cliente.reelsPublicados}</strong>
-                            <span>/</span>
-                            <input
-                              className="cliente-inline-input cliente-quota-input"
-                              min="0"
-                              onBlur={(e) =>
-                                guardarCliente(cliente.id, { cuota_reels: e.target.value })
-                              }
-                              onChange={(e) =>
-                                actualizarDraftCliente(cliente.id, "cuota_reels", e.target.value)
-                              }
-                              onClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") e.currentTarget.blur();
-                              }}
-                              step="1"
-                              type="number"
-                              value={valorClienteEditable(cliente, "cuota_reels")}
-                            />
-                          </div>
+                          <ClienteCuotaResumen
+                            etiqueta="Reels"
+                            publicados={cliente.reelsPublicados}
+                            cuota={cliente.cuota_reels}
+                          />
                         </td>
                         <td>
-                          <div className="cliente-quota-cell">
-                            <strong>{cliente.carruselesPublicados}</strong>
-                            <span>/</span>
-                            <input
-                              className="cliente-inline-input cliente-quota-input"
-                              min="0"
-                              onBlur={(e) =>
-                                guardarCliente(cliente.id, { cuota_carruseles: e.target.value })
-                              }
-                              onChange={(e) =>
-                                actualizarDraftCliente(
-                                  cliente.id,
-                                  "cuota_carruseles",
-                                  e.target.value,
-                                )
-                              }
-                              onClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") e.currentTarget.blur();
-                              }}
-                              step="1"
-                              type="number"
-                              value={valorClienteEditable(cliente, "cuota_carruseles")}
-                            />
-                          </div>
-                          {guardandoCuotaId === cliente.id && (
-                            <div className="caption">Guardando...</div>
-                          )}
+                          <ClienteCuotaResumen
+                            etiqueta="Carruseles"
+                            publicados={cliente.carruselesPublicados}
+                            cuota={cliente.cuota_carruseles}
+                          />
                         </td>
                         <td>
                           <strong>{cliente.porcentajeHistorias}%</strong>
@@ -5622,6 +5731,16 @@ function ClientesAdminPage() {
                                   cliente.historiasMes - cliente.historiasPublicadas === 1 ? "" : "s"
                                 }.`}
                           </span>
+                          <button
+                            className="btn cliente-edit-quota-btn"
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setClienteCuotaEnEdicion(cliente);
+                            }}
+                          >
+                            Editar cuota
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -5633,6 +5752,70 @@ function ClientesAdminPage() {
                   </tbody>
                 </table>
               </div>
+              <div className="clientes-mobile-list">
+                {filasFiltradas.map((cliente) => (
+                  <article className="cliente-mobile-card" key={cliente.id}>
+                    <div className="cliente-mobile-card-head">
+                      <div>
+                        <strong>{cliente.nombre}</strong>
+                        <small>Cliente activo</small>
+                      </div>
+                      <span className={`cliente-status-pill ${cliente.estadoHistorias.color}`}>
+                        <span className={`semaforo ${cliente.estadoHistorias.color}`}></span>
+                        {cliente.estadoHistorias.label}
+                      </span>
+                    </div>
+                    <div className="cliente-mobile-quotas">
+                      <ClienteCuotaResumen
+                        etiqueta="Reels"
+                        publicados={cliente.reelsPublicados}
+                        cuota={cliente.cuota_reels}
+                      />
+                      <ClienteCuotaResumen
+                        etiqueta="Carruseles"
+                        publicados={cliente.carruselesPublicados}
+                        cuota={cliente.cuota_carruseles}
+                      />
+                    </div>
+                    <div className="cliente-mobile-status-grid">
+                      <div>
+                        <span>Historias</span>
+                        <strong>{cliente.historiasPublicadas} de {cliente.historiasMes} OK</strong>
+                        <small>{cliente.porcentajeHistorias}% publicado</small>
+                      </div>
+                      <div>
+                        <span>Próxima acción</span>
+                        <strong>{getAlertaCliente(cliente)}</strong>
+                        <small>
+                          {cliente.historiasMes === 0
+                            ? "Sin historias planificadas."
+                            : `${cliente.historiasMes - cliente.historiasPublicadas} pendientes.`}
+                        </small>
+                      </div>
+                    </div>
+                    <div className="cliente-mobile-actions">
+                      <button
+                        className="btn"
+                        type="button"
+                        onClick={() => setClienteCuotaEnEdicion(cliente)}
+                      >
+                        Editar cuota
+                      </button>
+                      <button
+                        className="btn primary"
+                        type="button"
+                        onClick={() => setClienteSeleccionado(cliente)}
+                      >
+                        Ver detalle
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {filasFiltradas.length === 0 && (
+                  <div className="cliente-mobile-empty">No hay clientes con ese criterio.</div>
+                )}
+              </div>
+              </>
             )}
 
             <div className="caption">
@@ -5652,71 +5835,99 @@ function ClientesAdminPage() {
               <button
                 className="modal-close"
                 type="button"
-                onClick={() => setAltaClienteAbierta(false)}
+                onClick={cerrarAltaCliente}
+                aria-label="Cerrar"
               >
                 X
               </button>
             </div>
             <form className="modal-body cliente-create-modal-body" onSubmit={crearCliente}>
               <div className="clientes-panel-copy">
-                <strong>Oferta mensual inicial</strong>
-                <span>Definí el nombre y las cantidades que se van a entregar por mes.</span>
+                <strong>Nuevo acuerdo mensual</strong>
+                <span>Registrá la identidad del cliente y el contenido contratado antes de confirmar.</span>
               </div>
-              <label>
-                <span>Cliente</span>
+              <label className="cliente-service-field">
+                <span>Nombre del cliente</span>
                 <input
                   autoFocus
                   type="text"
-                  placeholder="Nombre del cliente"
+                  placeholder="Ej. RENDER Motors"
                   value={nuevoCliente.nombre}
                   onChange={(e) =>
                     setNuevoCliente((prev) => ({ ...prev, nombre: e.target.value }))
                   }
                 />
+                <small>Usá el nombre oficial con el que se identifica en la cartera.</small>
               </label>
               <div className="cliente-create-modal-grid">
-                <label>
-                  <span>Reels por mes</span>
+                <label className="cliente-service-field">
+                  <span>Reels mensuales</span>
                   <input
                     min="0"
                     step="1"
                     type="number"
+                    placeholder="Ej. 4"
                     value={nuevoCliente.cuota_reels}
                     onChange={(e) =>
                       setNuevoCliente((prev) => ({ ...prev, cuota_reels: e.target.value }))
                     }
                   />
+                  <small>Usá 0 si el acuerdo no incluye reels.</small>
                 </label>
-                <label>
-                  <span>Carruseles por mes</span>
+                <label className="cliente-service-field">
+                  <span>Carruseles mensuales</span>
                   <input
                     min="0"
                     step="1"
                     type="number"
+                    placeholder="Ej. 2"
                     value={nuevoCliente.cuota_carruseles}
                     onChange={(e) =>
                       setNuevoCliente((prev) => ({ ...prev, cuota_carruseles: e.target.value }))
                     }
                   />
+                  <small>Usá 0 si el acuerdo no incluye carruseles.</small>
                 </label>
               </div>
-              {error && <div className="caption login-error">{error}</div>}
+              <div className="cliente-contract-summary">
+                <span>Resumen del acuerdo</span>
+                <strong>{totalPiezasNuevoCliente} piezas mensuales</strong>
+                <small>
+                  {nuevoCliente.cuota_reels || 0} reels · {nuevoCliente.cuota_carruseles || 0} carruseles
+                </small>
+              </div>
+              {errorAltaCliente && <div className="caption login-error">{errorAltaCliente}</div>}
               <div className="modal-actions">
                 <button
                   className="btn"
                   type="button"
                   disabled={guardandoCliente}
-                  onClick={() => setAltaClienteAbierta(false)}
+                  onClick={cerrarAltaCliente}
                 >
                   Cancelar
                 </button>
-                <button className="btn primary" type="submit" disabled={guardandoCliente}>
+                <button
+                  className="btn primary"
+                  type="submit"
+                  disabled={guardandoCliente || !altaClienteValida}
+                >
                   {guardandoCliente ? "Creando..." : "Crear cliente"}
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {clienteCuotaEnEdicion && (
+        <EditarCuotaClienteModal
+          cliente={clienteCuotaEnEdicion}
+          onClose={() => setClienteCuotaEnEdicion(null)}
+          onGuardado={(clienteActualizado) => {
+            actualizarClienteLocal(clienteActualizado.id, clienteActualizado);
+            setClienteCuotaEnEdicion(null);
+          }}
+        />
       )}
 
       {clienteSeleccionado && (
@@ -6712,56 +6923,9 @@ function DetalleClienteModal({
 }) {
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
+  const [editandoCuota, setEditandoCuota] = useState(false);
   const porcentajes = getPorcentajesCliente(cliente);
   const estado = getEstadoPorObjetivo(porcentajes.objetivo);
-
-  const handleEditarCuota = () => {
-    const nuevaCuotaReels = window.prompt(
-      "Nueva cuota de reels por mes:",
-      cliente.cuota_reels ?? "0",
-    );
-    if (nuevaCuotaReels === null) return;
-    const nuevaCuotaCarruseles = window.prompt(
-      "Nueva cuota de carruseles por mes:",
-      cliente.cuota_carruseles ?? "0",
-    );
-    if (nuevaCuotaCarruseles === null) return;
-
-    const cuota_reels = Number(nuevaCuotaReels);
-    const cuota_carruseles = Number(nuevaCuotaCarruseles);
-    if (
-      !Number.isInteger(cuota_reels) ||
-      !Number.isInteger(cuota_carruseles) ||
-      cuota_reels < 0 ||
-      cuota_carruseles < 0
-    ) {
-      setError("Las cuotas deben ser números enteros ≥ 0.");
-      return;
-    }
-
-    setEnviando("cuota");
-    setError(null);
-
-    fetch(`/api/clientes/${cliente.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cuota_reels, cuota_carruseles }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("No se pudo actualizar la cuota.");
-        }
-        return response.json();
-      })
-      .then(() => {
-        onCuotaActualizada();
-        onClose();
-      })
-      .catch(() => {
-        setError("No se pudo actualizar la cuota. Intentá de nuevo.");
-        setEnviando(null);
-      });
-  };
 
   const handleAvisar = (destinatario) => {
     const mensaje = window.prompt(`Mensaje para ${destinatario}:`);
@@ -6845,6 +7009,7 @@ function DetalleClienteModal({
   ).length;
 
   return (
+    <>
     <div className="modal-overlay open" role="dialog" aria-modal="true">
       <div className="modal">
         <div className="modal-header">
@@ -6934,9 +7099,9 @@ function DetalleClienteModal({
               className="btn"
               type="button"
               disabled={enviando !== null}
-              onClick={handleEditarCuota}
+              onClick={() => setEditandoCuota(true)}
             >
-              {enviando === "cuota" ? "Guardando..." : "Editar cuota"}
+              Editar cuota
             </button>
             <button
               className="btn danger"
@@ -6950,6 +7115,18 @@ function DetalleClienteModal({
         </div>
       </div>
     </div>
+    {editandoCuota && (
+      <EditarCuotaClienteModal
+        cliente={cliente}
+        onClose={() => setEditandoCuota(false)}
+        onGuardado={() => {
+          onCuotaActualizada?.();
+          setEditandoCuota(false);
+          onClose();
+        }}
+      />
+    )}
+    </>
   );
 }
 
