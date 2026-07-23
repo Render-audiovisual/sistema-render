@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { promises as dns } from "node:dns";
 
 const APP_URL_POR_DEFECTO = "https://sistema-render-xuwo.onrender.com";
 
@@ -108,19 +109,42 @@ export function crearContenidoCorreo({
   };
 }
 
-function crearTransporter(env = process.env) {
+export async function resolverSMTPIPv4(
+  hostname,
+  lookup = dns.lookup,
+) {
+  const resultado = await lookup(hostname, { family: 4 });
+  const address =
+    typeof resultado === "string" ? resultado : resultado?.address;
+
+  if (!address) {
+    throw new Error(`No se pudo resolver una dirección IPv4 para ${hostname}`);
+  }
+
+  return {
+    address,
+    servername: hostname,
+  };
+}
+
+async function crearTransporter(env = process.env) {
+  const destino = await resolverSMTPIPv4(env.SMTP_HOST);
+
   return nodemailer.createTransport({
-    host: env.SMTP_HOST,
+    // Nodemailer hace su propia resolución DNS. Pasarle directamente la IPv4
+    // evita que vuelva a elegir una dirección IPv6 sin salida en Render.
+    host: destino.address,
     port: Number(env.SMTP_PORT || 465),
     secure: String(env.SMTP_SECURE ?? "true").toLowerCase() === "true",
     auth: {
       user: env.SMTP_USER,
       pass: env.SMTP_PASS,
     },
-    // Render no siempre tiene salida IPv6 completa, y Gmail SMTP resuelve a
-    // IPv6 cuando está disponible — sin esto la conexión falla con
-    // ENETUNREACH antes de intentar autenticar. Forzar IPv4 evita ese salto.
-    family: 4,
+    // Aunque el socket se abra contra una IP, TLS debe validar el certificado
+    // contra el hostname original de Gmail.
+    tls: {
+      servername: destino.servername,
+    },
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 15_000,
@@ -160,7 +184,7 @@ export async function notificarAsignacionTarea({
     appUrl: env.APP_URL || APP_URL_POR_DEFECTO,
   });
 
-  const mailer = transporter || crearTransporter(env);
+  const mailer = transporter || (await crearTransporter(env));
   const info = await mailer.sendMail({
     from: env.EMAIL_FROM || env.SMTP_USER,
     to: destinatario.email_notificaciones,
@@ -178,6 +202,10 @@ export async function notificarAsignacionTarea({
 export function notificarAsignacionSinInterrumpir(opciones) {
   void notificarAsignacionTarea(opciones)
     .then((resultado) => {
+      if (resultado.enviado) {
+        console.info(`Notificación de tarea ${opciones.tarea.id} enviada.`);
+        return;
+      }
       if (!resultado.enviado && resultado.razon !== "correo_no_configurado") {
         console.warn(
           `Notificación de tarea ${opciones.tarea.id} omitida: ${resultado.razon}`,
