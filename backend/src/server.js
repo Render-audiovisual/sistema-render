@@ -972,8 +972,9 @@ router.delete("/publicaciones/:id", async (req, res, next) => {
   }
 });
 
-router.get("/publicaciones", async (_req, res, next) => {
+router.get("/publicaciones", async (req, res, next) => {
   try {
+    const incluirArchivadas = req.query.incluir_archivadas === "true";
     const result = await pool.query(`
       SELECT
         p.id,
@@ -1003,9 +1004,9 @@ router.get("/publicaciones", async (_req, res, next) => {
         p.updated_at
       FROM publicaciones p
       JOIN clientes c ON c.id = p.cliente_id
-      WHERE p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
+      WHERE $1::boolean OR p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
       ORDER BY p.fecha_programada DESC, p.id
-    `);
+    `, [incluirArchivadas]);
     res.json(result.rows);
   } catch (error) {
     next(error);
