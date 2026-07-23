@@ -117,6 +117,10 @@ function crearTransporter(env = process.env) {
       user: env.SMTP_USER,
       pass: env.SMTP_PASS,
     },
+    // Render no siempre tiene salida IPv6 completa, y Gmail SMTP resuelve a
+    // IPv6 cuando está disponible — sin esto la conexión falla con
+    // ENETUNREACH antes de intentar autenticar. Forzar IPv4 evita ese salto.
+    family: 4,
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 15_000,
