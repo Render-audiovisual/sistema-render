@@ -5921,6 +5921,321 @@ tr:hover .sheet-row-actions {
   }
 }
 
+/* Tareas · tablero compacto inspirado en la referencia operativa de Notion */
+.tareas-viewport .task-page-heading {
+  align-items: center;
+  border-bottom: 1px solid #2b2d31;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 20px 20px 16px;
+}
+
+.tareas-viewport .task-page-heading h1 {
+  color: #f1f3f4;
+  font-size: 24px;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.tareas-viewport .task-page-heading p {
+  color: #8f949b;
+  font-size: 13px;
+  margin: 5px 0 0;
+}
+
+.tareas-viewport .task-toolbar-simplified {
+  gap: 10px;
+  justify-content: flex-start;
+  min-height: 52px;
+  padding: 8px 20px;
+}
+
+.tareas-viewport .task-compact-filter {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.tareas-viewport .task-compact-filter span {
+  color: #8f949b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tareas-viewport .task-compact-filter select {
+  min-width: 160px;
+  padding-block: 6px;
+}
+
+.tareas-viewport .task-clear-filters {
+  color: #9aa0a6;
+  font-size: 12px;
+  margin-left: auto;
+  padding: 6px 10px;
+}
+
+.tareas-viewport .task-compact-summary {
+  align-items: center;
+  color: #8f949b;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 9px;
+  padding: 10px 20px 6px;
+}
+
+.tareas-viewport .task-compact-summary strong {
+  color: #d7d9dd;
+  font-variant-numeric: tabular-nums;
+}
+
+.tareas-viewport .task-compact-summary i {
+  background: #3a3d42;
+  border-radius: 50%;
+  height: 3px;
+  width: 3px;
+}
+
+.tareas-viewport .task-compact-summary .is-alert,
+.tareas-viewport .task-compact-summary .is-alert strong {
+  color: #ef6c68;
+}
+
+.tareas-viewport .h-body {
+  padding-top: 8px;
+}
+
+.tareas-viewport .task-kanban-board {
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.tareas-viewport .task-kanban-column {
+  background: #1d1e21;
+  border-color: #292b2f;
+  border-radius: 7px;
+  flex-basis: 264px;
+  padding: 10px;
+}
+
+.tareas-viewport .task-kanban-header {
+  border-bottom: 0;
+  font-size: 11px;
+  margin-bottom: 7px;
+  padding: 1px 2px 7px;
+  text-transform: none;
+}
+
+.tareas-viewport .task-kanban-count {
+  background: transparent;
+  border: 0;
+  color: #777c83;
+  height: auto;
+  min-width: 0;
+  padding: 0;
+}
+
+.tareas-viewport .task-kanban-list {
+  gap: 7px;
+}
+
+.tareas-viewport .task-kanban-card {
+  background: #25272a;
+  border-color: #34373b;
+  border-radius: 6px;
+  padding: 10px 11px;
+}
+
+.tareas-viewport .task-kanban-card:hover {
+  border-color: #53575d;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.28);
+}
+
+.tareas-viewport .task-kanban-card .task-card-title {
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.tareas-viewport .task-kanban-client {
+  color: #aeb2b8;
+  font-size: 11px;
+  font-weight: 650;
+  margin-top: 6px;
+}
+
+.tareas-viewport .task-kanban-meta {
+  gap: 5px 9px;
+  margin-top: 7px;
+}
+
+.tareas-viewport .task-kanban-meta span {
+  background: transparent;
+  border: 0;
+  color: #7f858c;
+  font-size: 10.5px;
+  padding: 0;
+}
+
+.tareas-viewport .task-kanban-material {
+  font-size: 10.5px;
+  margin-top: 7px;
+}
+
+.tareas-viewport .task-list-frame {
+  border-radius: 7px;
+  box-shadow: none;
+}
+
+.tareas-viewport .task-list-table th {
+  font-size: 10px;
+  padding-block: 8px;
+}
+
+.tareas-viewport .task-list-table th:first-child {
+  width: 55%;
+}
+
+.tareas-viewport .task-list-table th:not(:first-child) {
+  width: 15%;
+}
+
+.tareas-viewport .task-list-group {
+  background: #202226;
+  color: #d9dce0;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 7px 10px;
+}
+
+.tareas-viewport .task-list-row {
+  cursor: pointer;
+  transition: background-color 0.14s ease;
+}
+
+.tareas-viewport .task-list-row:hover {
+  background: #24262a;
+}
+
+.tareas-viewport .task-list-row td {
+  padding: 9px 10px;
+}
+
+.tareas-viewport .task-list-main strong {
+  color: #e7e9ec;
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.tareas-viewport .task-list-main > div {
+  color: #7f858c;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 10.5px;
+  gap: 5px 10px;
+  margin-top: 4px;
+}
+
+.tareas-viewport .task-list-material {
+  color: #f2994a;
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.tareas-viewport .task-list-person,
+.tareas-viewport .task-list-due {
+  color: #aeb2b8;
+  font-size: 11px;
+}
+
+.tareas-viewport .task-list-status {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 4px 7px;
+}
+
+.tareas-viewport .task-list-due.is-overdue {
+  color: #ef6c68;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .tareas-viewport .task-page-heading {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 16px 12px 12px;
+  }
+
+  .tareas-viewport .task-page-heading .task-new-button {
+    width: 100%;
+  }
+
+  .tareas-viewport .task-toolbar-simplified {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 8px 12px;
+  }
+
+  .tareas-viewport .task-view-tabs {
+    grid-column: 1 / -1;
+  }
+
+  .tareas-viewport .task-compact-filter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .tareas-viewport .task-compact-filter select {
+    min-height: 38px;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .tareas-viewport .task-clear-filters {
+    grid-column: 1 / -1;
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .tareas-viewport .task-compact-summary {
+    gap: 7px;
+    padding: 9px 12px 4px;
+  }
+
+  .tareas-viewport .task-kanban-column {
+    flex-basis: min(84vw, 310px);
+    min-width: min(84vw, 310px);
+  }
+
+  .tareas-viewport .task-list-table thead {
+    display: none;
+  }
+
+  .tareas-viewport .task-list-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+
+  .tareas-viewport .task-list-row td {
+    display: block;
+  }
+
+  .tareas-viewport .task-list-main {
+    grid-column: 1 / -1;
+  }
+
+  .tareas-viewport .task-list-row .task-list-due {
+    text-align: right;
+  }
+}
+
 /* ---- FICHA DE TAREA / MODO LECTURA OPERATIVA ---- */
 .td-panel-backdrop {
   background: rgba(6, 8, 11, 0.68);
