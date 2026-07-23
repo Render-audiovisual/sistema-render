@@ -9417,7 +9417,26 @@ function ResumenEntregableEquipo({
   total,
   verbo = "realizados",
   verboSingular = "realizado",
+  enRevision = false,
 }) {
+  if (enRevision) {
+    return (
+      <div style={{ paddingTop: "12px", borderTop: "1px solid #eceff1" }}>
+        <div style={{ fontWeight: "700", fontSize: "13px", color: "#263238" }}>{etiqueta}</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", marginTop: "10px" }}>
+          <div style={{ fontSize: "12px", color: "#607d8b" }}>
+            Objetivo mensual: <strong style={{ color: "#263238", fontSize: "18px" }}>{total}</strong>
+          </div>
+          <span style={{ padding: "5px 8px", borderRadius: "999px", background: "#fff8e1", color: "#8d6e00", fontSize: "10px", fontWeight: "800" }}>
+            En revisión
+          </span>
+        </div>
+        <div style={{ marginTop: "9px", fontSize: "11px", lineHeight: 1.45, color: "#78909c" }}>
+          El avance se confirmará cuando quede validada la trazabilidad del material.
+        </div>
+      </div>
+    );
+  }
   const porcentaje = total > 0 ? Math.round((realizados / total) * 100) : 0;
   return (
     <div style={{ paddingTop: "12px", borderTop: "1px solid #eceff1" }}>
@@ -9744,10 +9763,6 @@ function ReportesEquipoPage() {
   const videosLuciano = resumenEntregas(
     tareasDelPeriodoPorPersona("Luciano").filter((t) => t.tipo_tarea === "edicion"),
   );
-  const videosGerman = resumenEntregas(
-    tareasDelPeriodoPorPersona("Germán").filter((t) => t.tipo_tarea === "produccion"),
-  );
-
   const historiasDelPeriodo = historias.filter((h) => enPeriodo(h.fecha_programada || ""));
   const reelsDelPeriodo = publicaciones.filter(
     (p) => p.tipo === "video" && enPeriodo(p.fecha_programada || ""),
@@ -9782,7 +9797,13 @@ function ReportesEquipoPage() {
     {
       nombre: "Germán",
       rol: "Producción",
-      metricas: [{ etiqueta: "Videos grabados", ...videosGerman }],
+      metricas: [
+        {
+          etiqueta: "Videos útiles a grabar",
+          total: 40,
+          enRevision: true,
+        },
+      ],
     },
     {
       nombre: "Oriana",
