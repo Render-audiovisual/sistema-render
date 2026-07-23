@@ -1426,10 +1426,92 @@ function TareasTableroPage() {
   );
 }
 
+const URL_EN_TAREA_REGEX = /(https?:\/\/[^\s<>"')\]]+)/gi;
+
+function limpiarUrlTarea(url = "") {
+  return url.replace(/[.,;:!?]+$/, "");
+}
+
+function extraerUrlsTarea(texto = "") {
+  return [...texto.matchAll(URL_EN_TAREA_REGEX)]
+    .map((coincidencia) => limpiarUrlTarea(coincidencia[0]))
+    .filter(Boolean);
+}
+
+function renderizarTextoTarea(texto = "") {
+  return texto.split(URL_EN_TAREA_REGEX).map((parte, indice) => {
+    if (!/^https?:\/\//i.test(parte)) {
+      return <React.Fragment key={`texto-${indice}`}>{parte}</React.Fragment>;
+    }
+
+    const url = limpiarUrlTarea(parte);
+    const sufijo = parte.slice(url.length);
+    return (
+      <React.Fragment key={`link-${indice}`}>
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          {url}
+        </a>
+        {sufijo}
+      </React.Fragment>
+    );
+  });
+}
+
+function obtenerInfoLinkTarea(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    if (host.includes("instagram.com")) {
+      return { etiqueta: "Ver referencia de Instagram", dominio: "Instagram", tipo: "referencia" };
+    }
+    if (host.includes("tiktok.com")) {
+      return { etiqueta: "Ver referencia de TikTok", dominio: "TikTok", tipo: "referencia" };
+    }
+    if (host.includes("youtube.com") || host.includes("youtu.be")) {
+      return { etiqueta: "Ver referencia de YouTube", dominio: "YouTube", tipo: "referencia" };
+    }
+    if (host.includes("drive.google.com")) {
+      return { etiqueta: "Abrir carpeta de Drive", dominio: "Google Drive", tipo: "material" };
+    }
+    if (host.includes("docs.google.com")) {
+      return { etiqueta: "Abrir documento", dominio: "Google Docs", tipo: "material" };
+    }
+    return { etiqueta: "Abrir enlace", dominio: host, tipo: "referencia" };
+  } catch {
+    return { etiqueta: "Abrir enlace", dominio: "Enlace externo", tipo: "referencia" };
+  }
+}
+
+function formatearFechaTarea(fecha) {
+  if (!fecha) return "Sin vencimiento";
+  const [anio, mes, dia] = String(fecha).slice(0, 10).split("-").map(Number);
+  if (!anio || !mes || !dia) return fecha;
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(anio, mes - 1, dia));
+}
+
 function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEliminar }) {
+  const sesion = getSesion();
+  const esAdmin = sesion?.usuario?.rol === "admin";
+  const esResponsable =
+    getUsuarioKey(tarea.asignado_a) === getUsuarioKey(sesion?.usuario?.usuario);
+  const [modoEdicion, setModoEdicion] = useState(false);
   const est = getEstadoTarea(tarea.estado);
   const prio = getPrioridadTarea(tarea.prioridad);
   const sector = getSectorTarea(tarea.tipo_tarea);
+  const urlsAclaraciones = [...new Set(extraerUrlsTarea(tarea.aclaraciones || ""))];
+  const materialUrl = tarea.material_referencia || "";
+  const materialInfo = materialUrl ? obtenerInfoLinkTarea(materialUrl) : null;
+  const referencias = urlsAclaraciones.filter((url) => url !== materialUrl);
+  if (materialUrl && materialInfo?.tipo !== "material" && !referencias.includes(materialUrl)) {
+    referencias.unshift(materialUrl);
+  }
+
+  useEffect(() => {
+    setModoEdicion(false);
+  }, [tarea.id]);
 
   const origen = tarea.historia_id
     ? {
@@ -1448,168 +1530,368 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
       : null;
 
   return (
-    <aside className="td-panel">
-      <div className="td-panel-header">
-        <input
-          type="text"
-          className="sheet-cell td-panel-title"
-          value={tarea.titulo}
-          onChange={(e) => onActualizarCampo(tarea.id, { titulo: e.target.value })}
-          onBlur={(e) => onActualizarCampo(tarea.id, { titulo: e.target.value.trim() })}
-        />
-        <button type="button" className="sheet-icon-btn" onClick={onCerrar} title="Cerrar">✕</button>
-      </div>
-
-      {esperandoMaterial(tarea) && (
-        <div className="td-panel-banner">
-          ⏳ Esperando material — la tarea de filmación todavía no está marcada como publicada.
-        </div>
-      )}
-
-      <div className="td-panel-body">
-        <label className="td-panel-field">
-          <span>Responsable</span>
-          <select
-            className="sheet-cell"
-            value={tarea.asignado_a}
-            onChange={(e) => onActualizarCampo(tarea.id, { asignado_a: e.target.value })}
-          >
-            {RESPONSABLES_EQUIPO.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="td-panel-field">
-          <span>Cliente</span>
-          <select
-            className="sheet-cell"
-            value={tarea.cliente_id ?? ""}
-            onChange={(e) => onActualizarCampo(tarea.id, { cliente_id: e.target.value ? Number(e.target.value) : null })}
-          >
-            <option value="">Sin cliente</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>{c.nombre}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="td-panel-field">
-          <span>Sector</span>
-          <select
-            className="sheet-cell"
-            value={tarea.tipo_tarea ?? ""}
-            onChange={(e) => onActualizarCampo(tarea.id, { tipo_tarea: e.target.value || null })}
-            style={sector ? { background: sector.bg, color: sector.fg, fontWeight: "600" } : undefined}
-          >
-            <option value="">Sin sector</option>
-            {SECTORES_TAREA.map((s) => (
-              <option key={s.id} value={s.id}>{s.label}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="td-panel-field">
-          <span>Subtipo</span>
-          <input
-            type="text"
-            className="sheet-cell"
-            placeholder="reel, historia, carrusel, visita…"
-            value={tarea.subtipo || ""}
-            onChange={(e) => onActualizarCampo(tarea.id, { subtipo: e.target.value || null })}
-          />
-        </label>
-
-        <label className="td-panel-field">
-          <span>Estado</span>
-          <select
-            className="sheet-cell"
-            value={tarea.estado}
-            onChange={(e) => onActualizarCampo(tarea.id, { estado: e.target.value })}
-            style={{ background: est.bg, color: est.fg, fontWeight: "600" }}
-          >
-            {ESTADOS_TAREA.map((e) => (
-              <option key={e.id} value={e.id}>{e.label}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="td-panel-field">
-          <span>Prioridad</span>
-          <select
-            className="sheet-cell"
-            value={tarea.prioridad}
-            onChange={(e) => onActualizarCampo(tarea.id, { prioridad: e.target.value })}
-            style={{ background: prio.bg, color: prio.fg, fontWeight: "600" }}
-          >
-            {PRIORIDADES_TAREA.map((p) => (
-              <option key={p.id} value={p.id}>{p.label}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="td-panel-field">
-          <span>Vencimiento</span>
-          <input
-            type="date"
-            className="sheet-cell"
-            value={tarea.fecha_vencimiento || ""}
-            onChange={(e) => onActualizarCampo(tarea.id, { fecha_vencimiento: e.target.value || null })}
-          />
-        </label>
-
-        <label className="td-panel-field">
-          <span>Aclaraciones</span>
-          <textarea
-            className="sheet-cell sheet-cell-textarea"
-            rows={3}
-            value={tarea.aclaraciones || ""}
-            onChange={(e) => onActualizarCampo(tarea.id, { aclaraciones: e.target.value })}
-            onBlur={(e) => onActualizarCampo(tarea.id, { aclaraciones: e.target.value.trim() || null })}
-          />
-        </label>
-
-        <label className="td-panel-field">
-          <span>Material / link</span>
-          <input
-            type="text"
-            className="sheet-cell"
-            placeholder="https://…"
-            value={tarea.material_referencia || ""}
-            onChange={(e) => onActualizarCampo(tarea.id, { material_referencia: e.target.value })}
-            onBlur={(e) => onActualizarCampo(tarea.id, { material_referencia: e.target.value.trim() || null })}
-          />
-          {tarea.material_referencia && (
-            <a href={tarea.material_referencia} target="_blank" rel="noopener noreferrer" className="td-panel-link">
-              Abrir material ↗
-            </a>
-          )}
-        </label>
-
-        {origen && (
-          <div className="td-panel-origen">
-            <span>Origen</span>
-            <div>
-              {origen.tipo} · {origen.fecha || "sin fecha"} · {origen.estado}
+    <>
+      <div className="td-panel-backdrop" onMouseDown={onCerrar} aria-hidden="true" />
+      <aside className={`td-panel td-panel-readable ${modoEdicion ? "is-editing" : "is-reading"}`}>
+        <header className="td-readable-header">
+          <div className="td-readable-header-top">
+            <div className="td-readable-kicker">
+              {sector && (
+                <span className={`td-readable-sector sector-${sector.id}`}>
+                  {sector.label}
+                </span>
+              )}
+              <span>{tarea.cliente_nombre || "Sin cliente"}</span>
             </div>
-            <a href={origen.href}>Ir a la planificación →</a>
+            <div className="td-readable-header-actions">
+              {esAdmin && (
+                <button
+                  className="btn td-edit-toggle"
+                  type="button"
+                  onClick={() => setModoEdicion((actual) => !actual)}
+                >
+                  {modoEdicion ? "Ver tarea" : "Editar tarea"}
+                </button>
+              )}
+              <button
+                type="button"
+                className="td-readable-close"
+                onClick={onCerrar}
+                title="Cerrar"
+                aria-label="Cerrar tarea"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {modoEdicion ? (
+            <input
+              type="text"
+              className="sheet-cell td-panel-title"
+              value={tarea.titulo}
+              onChange={(e) => onActualizarCampo(tarea.id, { titulo: e.target.value })}
+              onBlur={(e) => onActualizarCampo(tarea.id, { titulo: e.target.value.trim() })}
+            />
+          ) : (
+            <h2>{tarea.titulo}</h2>
+          )}
+
+          {!modoEdicion && (
+            <div className="td-readable-summary">
+              <div>
+                <span>Responsable</span>
+                <strong>{tarea.asignado_a}</strong>
+              </div>
+              <div>
+                <span>Vencimiento</span>
+                <strong>{formatearFechaTarea(tarea.fecha_vencimiento)}</strong>
+              </div>
+              <div>
+                <span>Prioridad</span>
+                <strong style={{ color: prio.fg }}>{prio.label}</strong>
+              </div>
+              <div>
+                <span>Estado</span>
+                <strong style={{ color: est.fg }}>{est.label}</strong>
+              </div>
+            </div>
+          )}
+        </header>
+
+        {esperandoMaterial(tarea) && (
+          <div className="td-panel-banner">
+            Esperando material — la tarea de filmación todavía no está marcada como publicada.
           </div>
         )}
 
-        {tarea.tarea_padre_id && (
-          <div className="td-panel-origen">
-            <span>Depende de</span>
-            <div>Tarea #{tarea.tarea_padre_id} — estado: {tarea.tarea_padre_estado || "—"}</div>
-          </div>
-        )}
-      </div>
+        {modoEdicion ? (
+          <>
+            <div className="td-panel-body td-edit-form">
+              <label className="td-panel-field">
+                <span>Responsable</span>
+                <select
+                  className="sheet-cell"
+                  value={tarea.asignado_a}
+                  onChange={(e) => onActualizarCampo(tarea.id, { asignado_a: e.target.value })}
+                >
+                  {RESPONSABLES_EQUIPO.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </label>
 
-      <div className="td-panel-footer">
-        <button type="button" className="btn" onClick={() => onEliminar(tarea.id)} style={{ color: "#ef5350", borderColor: "#ef5350" }}>
-          Eliminar tarea
-        </button>
-      </div>
-    </aside>
+              <label className="td-panel-field">
+                <span>Cliente</span>
+                <select
+                  className="sheet-cell"
+                  value={tarea.cliente_id ?? ""}
+                  onChange={(e) => onActualizarCampo(tarea.id, { cliente_id: e.target.value ? Number(e.target.value) : null })}
+                >
+                  <option value="">Sin cliente</option>
+                  {clientes.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="td-panel-field">
+                <span>Sector</span>
+                <select
+                  className="sheet-cell"
+                  value={tarea.tipo_tarea ?? ""}
+                  onChange={(e) => onActualizarCampo(tarea.id, { tipo_tarea: e.target.value || null })}
+                  style={sector ? { background: sector.bg, color: sector.fg, fontWeight: "600" } : undefined}
+                >
+                  <option value="">Sin sector</option>
+                  {SECTORES_TAREA.map((s) => (
+                    <option key={s.id} value={s.id}>{s.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="td-panel-field">
+                <span>Subtipo</span>
+                <input
+                  type="text"
+                  className="sheet-cell"
+                  placeholder="reel, historia, carrusel, visita…"
+                  value={tarea.subtipo || ""}
+                  onChange={(e) => onActualizarCampo(tarea.id, { subtipo: e.target.value || null })}
+                />
+              </label>
+
+              <label className="td-panel-field">
+                <span>Estado</span>
+                <select
+                  className="sheet-cell"
+                  value={tarea.estado}
+                  onChange={(e) => onActualizarCampo(tarea.id, { estado: e.target.value })}
+                  style={{ background: est.bg, color: est.fg, fontWeight: "600" }}
+                >
+                  {ESTADOS_TAREA.map((e) => (
+                    <option key={e.id} value={e.id}>{e.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="td-panel-field">
+                <span>Prioridad</span>
+                <select
+                  className="sheet-cell"
+                  value={tarea.prioridad}
+                  onChange={(e) => onActualizarCampo(tarea.id, { prioridad: e.target.value })}
+                  style={{ background: prio.bg, color: prio.fg, fontWeight: "600" }}
+                >
+                  {PRIORIDADES_TAREA.map((p) => (
+                    <option key={p.id} value={p.id}>{p.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="td-panel-field">
+                <span>Vencimiento</span>
+                <input
+                  type="date"
+                  className="sheet-cell"
+                  value={tarea.fecha_vencimiento || ""}
+                  onChange={(e) => onActualizarCampo(tarea.id, { fecha_vencimiento: e.target.value || null })}
+                />
+              </label>
+
+              <label className="td-panel-field td-edit-brief">
+                <span>Guion / indicaciones</span>
+                <textarea
+                  className="sheet-cell sheet-cell-textarea"
+                  rows={12}
+                  value={tarea.aclaraciones || ""}
+                  onChange={(e) => onActualizarCampo(tarea.id, { aclaraciones: e.target.value })}
+                  onBlur={(e) => onActualizarCampo(tarea.id, { aclaraciones: e.target.value.trim() || null })}
+                />
+              </label>
+
+              <label className="td-panel-field td-edit-material">
+                <span>Material / link principal</span>
+                <input
+                  type="text"
+                  className="sheet-cell"
+                  placeholder="https://…"
+                  value={tarea.material_referencia || ""}
+                  onChange={(e) => onActualizarCampo(tarea.id, { material_referencia: e.target.value })}
+                  onBlur={(e) => onActualizarCampo(tarea.id, { material_referencia: e.target.value.trim() || null })}
+                />
+                {tarea.material_referencia && (
+                  <a href={tarea.material_referencia} target="_blank" rel="noopener noreferrer" className="td-panel-link">
+                    Abrir enlace ↗
+                  </a>
+                )}
+              </label>
+
+              {origen && (
+                <div className="td-panel-origen td-edit-wide">
+                  <span>Origen</span>
+                  <div>
+                    {origen.tipo} · {origen.fecha || "sin fecha"} · {origen.estado}
+                  </div>
+                  <a href={origen.href}>Ir a la planificación →</a>
+                </div>
+              )}
+
+              {tarea.tarea_padre_id && (
+                <div className="td-panel-origen td-edit-wide">
+                  <span>Depende de</span>
+                  <div>Tarea #{tarea.tarea_padre_id} — estado: {tarea.tarea_padre_estado || "—"}</div>
+                </div>
+              )}
+            </div>
+
+            <div className="td-panel-footer td-edit-footer">
+              <button
+                type="button"
+                className="btn td-danger-action"
+                onClick={() => onEliminar(tarea.id)}
+              >
+                Eliminar tarea
+              </button>
+              <button className="btn primary" type="button" onClick={() => setModoEdicion(false)}>
+                Terminar edición
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="td-readable-body">
+              <section className="td-readable-section td-readable-brief">
+                <div className="td-readable-section-heading">
+                  <span>Brief operativo</span>
+                  <h3>Guion e indicaciones</h3>
+                </div>
+                {tarea.aclaraciones ? (
+                  <div className="td-readable-copy">
+                    {renderizarTextoTarea(tarea.aclaraciones)}
+                  </div>
+                ) : (
+                  <div className="td-readable-empty">
+                    Esta tarea todavía no tiene indicaciones cargadas.
+                  </div>
+                )}
+              </section>
+
+              {referencias.length > 0 && (
+                <section className="td-readable-section">
+                  <div className="td-readable-section-heading">
+                    <span>Enlaces externos</span>
+                    <h3>Referencias</h3>
+                  </div>
+                  <div className="td-readable-links">
+                    {referencias.map((url) => {
+                      const info = obtenerInfoLinkTarea(url);
+                      return (
+                        <a href={url} target="_blank" rel="noopener noreferrer" key={url}>
+                          <div>
+                            <strong>{info.etiqueta}</strong>
+                            <span>{info.dominio}</span>
+                          </div>
+                          <b>↗</b>
+                        </a>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {materialUrl && materialInfo?.tipo === "material" && (
+                <section className="td-readable-section">
+                  <div className="td-readable-section-heading">
+                    <span>Archivos de trabajo</span>
+                    <h3>Material / Drive</h3>
+                  </div>
+                  <a
+                    className="td-readable-material"
+                    href={materialUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <div>
+                      <strong>{materialInfo.etiqueta}</strong>
+                      <span>{materialInfo.dominio}</span>
+                    </div>
+                    <b>↗</b>
+                  </a>
+                </section>
+              )}
+
+              {(origen || tarea.tarea_padre_id) && (
+                <section className="td-readable-section td-readable-context">
+                  <div className="td-readable-section-heading">
+                    <span>Contexto interno</span>
+                    <h3>Origen y dependencia</h3>
+                  </div>
+                  {origen && (
+                    <div className="td-readable-context-row">
+                      <div>
+                        <strong>{origen.tipo}</strong>
+                        <span>{origen.fecha || "Sin fecha"} · {origen.estado}</span>
+                      </div>
+                      <a href={origen.href}>Ver planificación →</a>
+                    </div>
+                  )}
+                  {tarea.tarea_padre_id && (
+                    <div className="td-readable-context-row">
+                      <div>
+                        <strong>Depende de la tarea #{tarea.tarea_padre_id}</strong>
+                        <span>Estado: {tarea.tarea_padre_estado || "—"}</span>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
+            </div>
+
+            <footer className="td-readable-footer">
+              {esAdmin ? (
+                <button className="btn primary" type="button" onClick={() => setModoEdicion(true)}>
+                  Editar tarea
+                </button>
+              ) : esResponsable && tarea.estado === "pendiente" ? (
+                <>
+                  <div>
+                    <span>Estado actual</span>
+                    <strong>{est.label}</strong>
+                  </div>
+                  <button
+                    className="btn primary"
+                    type="button"
+                    onClick={() => onActualizarCampo(tarea.id, { estado: "en_progreso" })}
+                  >
+                    Empezar tarea
+                  </button>
+                </>
+              ) : esResponsable && tarea.estado === "en_progreso" ? (
+                <>
+                  <div>
+                    <span>Estado actual</span>
+                    <strong>{est.label}</strong>
+                  </div>
+                  <button
+                    className="btn primary"
+                    type="button"
+                    onClick={() => onActualizarCampo(tarea.id, { estado: "en_revision" })}
+                  >
+                    Enviar a revisión
+                  </button>
+                </>
+              ) : (
+                <div className="td-readable-status-note">
+                  <span>Estado actual</span>
+                  <strong style={{ color: est.fg }}>{est.label}</strong>
+                </div>
+              )}
+            </footer>
+          </>
+        )}
+      </aside>
+    </>
   );
 }
 
