@@ -1116,6 +1116,7 @@ const TAREA_COLUMNAS_EDITABLES = [
   "estado",
   "aclaraciones",
   "material_referencia",
+  "publicacion_id",
 ];
 
 router.patch("/tareas/:id", async (req, res, next) => {
