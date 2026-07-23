@@ -5033,12 +5033,33 @@ tr:hover .sheet-row-actions {
   margin: 0;
 }
 
+.tareas-viewport .task-responsible-filter {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.tareas-viewport .task-responsible-filter span {
+  color: #9aa0a6;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tareas-viewport .task-responsible-filter select {
+  background: #26282c;
+  border-color: #3a3d42;
+  color: #e8eaed;
+  min-width: 190px;
+}
+
 .tareas-viewport .btn.task-new-button {
   background: #188038;
   border-color: #188038;
   color: #fff;
   font-weight: 700;
-  margin-left: auto;
 }
 
 .tareas-viewport .btn.task-new-button:hover {
@@ -5061,7 +5082,7 @@ tr:hover .sheet-row-actions {
 
   .tareas-viewport .task-view-tabs {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
   }
 
@@ -5072,6 +5093,19 @@ tr:hover .sheet-row-actions {
 
   .tareas-viewport .task-new-button {
     margin-left: 0;
+    width: 100%;
+  }
+
+  .tareas-viewport .task-responsible-filter {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 5px;
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .tareas-viewport .task-responsible-filter select {
+    min-height: 42px;
     width: 100%;
   }
 

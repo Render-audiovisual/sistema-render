@@ -1086,7 +1086,7 @@ function TareasTableroPage() {
   const [vista, setVista] = useState("tabla");
   const [mostrarWizard, setMostrarWizard] = useState(false);
   const [filtroSector, setFiltroSector] = useState("todos");
-  const [agruparPor, setAgruparPor] = useState("estado");
+  const [filtroResponsable, setFiltroResponsable] = useState("todos");
 
   const cargarTareas = () => {
     setCargando(true);
@@ -1113,24 +1113,29 @@ function TareasTableroPage() {
 
   const hoyISO = getHoyLocalISO();
 
-  const tareasFiltradas = tareas.filter((t) => {
+  const responsablesDisponibles = [
+    ...new Set([
+      ...RESPONSABLES_EQUIPO,
+      ...tareas.map((t) => t.asignado_a).filter(Boolean),
+    ]),
+  ].sort((a, b) => a.localeCompare(b));
+
+  const tareasDelResponsable = tareas.filter(
+    (t) =>
+      filtroResponsable === "todos" ||
+      t.asignado_a === filtroResponsable,
+  );
+
+  const tareasFiltradas = tareasDelResponsable.filter((t) => {
     if (filtroSector !== "todos" && t.tipo_tarea !== filtroSector) return false;
     return true;
   });
 
-  const grupos = (
-    agruparPor === "responsable"
-      ? [...new Set(tareasFiltradas.map((t) => t.asignado_a))].sort().map((nombre) => ({
-          id: nombre,
-          titulo: nombre,
-          tareas: tareasFiltradas.filter((t) => t.asignado_a === nombre),
-        }))
-      : ESTADOS_TAREA.map((e) => ({
-          id: e.id,
-          titulo: e.label,
-          tareas: tareasFiltradas.filter((t) => t.estado === e.id),
-        }))
-  ).filter((grupo) => grupo.tareas.length > 0);
+  const grupos = ESTADOS_TAREA.map((e) => ({
+    id: e.id,
+    titulo: e.label,
+    tareas: tareasFiltradas.filter((t) => t.estado === e.id),
+  })).filter((grupo) => grupo.tareas.length > 0);
 
   const actualizarLocal = (id, campos) => {
     setTareas((prev) => prev.map((t) => (t.id === id ? { ...t, ...campos } : t)));
@@ -1183,8 +1188,22 @@ function TareasTableroPage() {
                   <button type="button" className={vista === "tabla" ? "active" : ""} onClick={() => setVista("tabla")}>Lista</button>
                   <button type="button" className={vista === "kanban" ? "active" : ""} onClick={() => setVista("kanban")}>Columnas</button>
                   <button type="button" className={vista === "calendario" ? "active" : ""} onClick={() => setVista("calendario")}>Calendario</button>
-                  <button type="button" className={vista === "persona" ? "active" : ""} onClick={() => setVista("persona")}>Por persona</button>
                 </div>
+
+                <label className="task-responsible-filter">
+                  <span>Responsable</span>
+                  <select
+                    value={filtroResponsable}
+                    onChange={(e) => setFiltroResponsable(e.target.value)}
+                  >
+                    <option value="todos">Todos los usuarios</option>
+                    {responsablesDisponibles.map((nombre) => (
+                      <option key={nombre} value={nombre}>
+                        {nombre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
                 {esAdmin && (
                   <button className="btn task-new-button" type="button" onClick={() => setMostrarWizard(true)}>+ Nueva tarea</button>
@@ -1195,7 +1214,7 @@ function TareasTableroPage() {
                 <div className="task-sector-tabs">
                   <button type="button" className={`task-sector-tab ${filtroSector === "todos" ? "active" : ""}`} onClick={() => setFiltroSector("todos")}>
                     <span>Todos</span>
-                    <strong>{tareas.length}</strong>
+                    <strong>{tareasDelResponsable.length}</strong>
                   </button>
                   {SECTORES_TAREA.map((s) => (
                     <button
@@ -1205,7 +1224,7 @@ function TareasTableroPage() {
                       onClick={() => setFiltroSector(s.id)}
                     >
                       <span>{s.label}</span>
-                      <strong>{tareas.filter((t) => t.tipo_tarea === s.id).length}</strong>
+                      <strong>{tareasDelResponsable.filter((t) => t.tipo_tarea === s.id).length}</strong>
                     </button>
                   ))}
                 </div>
@@ -1230,14 +1249,6 @@ function TareasTableroPage() {
                   />
                 ) : vista === "calendario" ? (
                   <TareaCalendario tareas={tareasFiltradas} onAbrir={setTareaSeleccionadaId} />
-                ) : vista === "persona" ? (
-                  <TareaKanbanBoard
-                    tareas={tareasFiltradas}
-                    columnas={RESPONSABLES_EQUIPO.map((r) => ({ id: r, label: r }))}
-                    campo="asignado_a"
-                    onMover={(id, nuevoResponsable) => actualizarCampo(id, { asignado_a: nuevoResponsable })}
-                    onAbrir={setTareaSeleccionadaId}
-                  />
                 ) : grupos.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "40px", color: "#6b6f76" }}>
                     {tareas.length === 0
@@ -1246,12 +1257,6 @@ function TareasTableroPage() {
                   </div>
                 ) : (
                   <div className="sheet-frame">
-                    <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 10px", borderBottom: "1px solid #34363a" }}>
-                      <div className="sheet-view-tabs" style={{ margin: 0 }}>
-                        <button type="button" className={agruparPor === "estado" ? "active" : ""} onClick={() => setAgruparPor("estado")}>Por estado</button>
-                        <button type="button" className={agruparPor === "responsable" ? "active" : ""} onClick={() => setAgruparPor("responsable")}>Por responsable</button>
-                      </div>
-                    </div>
                     <table className="sheet-table">
                       <thead>
                         <tr>
