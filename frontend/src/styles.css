@@ -6779,3 +6779,153 @@ tr:hover .sheet-row-actions {
     font-size: 11px;
   }
 }
+
+/* Adaptación del modelo Notion sobre Tareas, manteniendo el flujo RENDER. */
+.tareas-viewport .task-completed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #9aa0a6;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tareas-viewport .task-completed-toggle input { accent-color: #66bb6a; }
+
+.tareas-viewport .task-kanban-summary {
+  color: #9aa0a6;
+  font-size: 11px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tareas-viewport .task-kanban-tags,
+.td-task-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.tareas-viewport .task-kanban-tags span,
+.td-task-tags span {
+  border: 1px solid #3c4043;
+  border-radius: 999px;
+  color: #bdc1c6;
+  font-size: 10px;
+  padding: 2px 7px;
+}
+
+.task-project-view { display: grid; gap: 14px; }
+
+.task-project-group {
+  border: 1px solid #34363a;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #1f2023;
+}
+
+.task-project-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  border-bottom: 1px solid #34363a;
+}
+
+.task-project-group h2 { margin: 0; color: #e8eaed; font-size: 14px; }
+.task-project-group header span { color: #9aa0a6; font-size: 11px; }
+.task-project-group > div { display: grid; }
+
+.task-project-group button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  text-align: left;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid #2b2d31;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.task-project-group button:last-child { border-bottom: 0; }
+.task-project-group button:hover { background: #26282c; }
+.task-project-group button > span { display: grid; gap: 3px; min-width: 0; }
+.task-project-group button strong { color: #e8eaed; font-size: 13px; }
+.task-project-group button small { color: #9aa0a6; font-size: 11px; }
+
+.task-project-group button b {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  font-size: 10px;
+  padding: 4px 8px;
+}
+
+.task-project-empty { color: #9aa0a6; padding: 40px; text-align: center; }
+.td-readable-description { margin: 8px 0 0; color: #bdc1c6; font-size: 14px; line-height: 1.5; }
+.td-task-tags { margin-top: 10px; }
+.td-summary-wide { grid-column: 1 / -1; }
+
+.td-collaborators {
+  border: 1px solid #3c4043;
+  border-radius: 8px;
+  padding: 10px 12px 12px;
+}
+
+.td-collaborators legend { color: #9aa0a6; font-size: 11px; padding: 0 5px; }
+.td-collaborators > div { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.td-collaborators label { display: inline-flex; align-items: center; gap: 6px; color: #e8eaed; font-size: 12px; }
+.td-subtasks, .td-comments { display: grid; gap: 8px; }
+
+.td-subtasks > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #3c4043;
+  border-radius: 8px;
+  background: #202124;
+  color: #e8eaed;
+  padding: 9px 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.td-subtasks > button:hover { border-color: #5f6368; }
+.td-subtasks > button span.is-done { color: #80868b; text-decoration: line-through; }
+.td-subtasks > button b { flex: 0 0 auto; font-size: 10px; }
+
+.td-subtask-create,
+.td-comment-create { display: flex; align-items: flex-end; gap: 8px; margin-top: 10px; }
+
+.td-subtask-create input,
+.td-comment-create textarea {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #3c4043;
+  border-radius: 8px;
+  background: #202124;
+  color: #e8eaed;
+  font: inherit;
+  padding: 9px 10px;
+}
+
+.td-comments article { border-left: 2px solid #5f6368; padding: 4px 0 4px 11px; }
+.td-comments article > div { display: flex; justify-content: space-between; gap: 8px; }
+.td-comments article strong { color: #e8eaed; font-size: 12px; }
+.td-comments article time { color: #80868b; font-size: 10px; }
+
+.td-comments article p {
+  margin: 5px 0 0;
+  color: #bdc1c6;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .tareas-viewport .task-completed-toggle { grid-column: 1 / -1; }
+  .td-subtask-create, .td-comment-create { align-items: stretch; flex-direction: column; }
+}

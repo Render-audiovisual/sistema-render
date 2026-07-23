@@ -1055,7 +1055,7 @@ const ESTADOS_TAREA = [
   { id: "en_progreso", label: "En proceso", bg: "#17233a", fg: "#64b5f6" },
   { id: "en_revision", label: "En revisión", bg: "#332413", fg: "#ffb74d" },
   { id: "programada", label: "Programada", bg: "#2d2340", fg: "#b39ddb" },
-  { id: "publicada", label: "Publicada", bg: "#123320", fg: "#66bb6a" },
+  { id: "publicada", label: "Completada", bg: "#123320", fg: "#66bb6a" },
 ];
 
 const PRIORIDADES_TAREA = [
@@ -1074,6 +1074,20 @@ function getPrioridadTarea(id) {
   return PRIORIDADES_TAREA.find((p) => p.id === id) || PRIORIDADES_TAREA[1];
 }
 
+const ORDEN_PRIORIDAD_TAREA = { alta: 0, media: 1, baja: 2 };
+
+function ordenarTareasPorPrioridad(tareas) {
+  return [...tareas].sort((a, b) => {
+    const prioridad =
+      (ORDEN_PRIORIDAD_TAREA[a.prioridad] ?? 1) -
+      (ORDEN_PRIORIDAD_TAREA[b.prioridad] ?? 1);
+    if (prioridad !== 0) return prioridad;
+    return (a.fecha_vencimiento || "9999-12-31").localeCompare(
+      b.fecha_vencimiento || "9999-12-31",
+    );
+  });
+}
+
 function TareasTableroPage() {
   const sesion = getSesion();
   const esAdmin = sesion?.usuario?.rol === "admin";
@@ -1087,6 +1101,7 @@ function TareasTableroPage() {
   const [mostrarWizard, setMostrarWizard] = useState(false);
   const [filtroSector, setFiltroSector] = useState("todos");
   const [filtroResponsable, setFiltroResponsable] = useState("todos");
+  const [mostrarCompletadas, setMostrarCompletadas] = useState(false);
 
   const cargarTareas = () => {
     setCargando(true);
@@ -1126,10 +1141,11 @@ function TareasTableroPage() {
       t.asignado_a === filtroResponsable,
   );
 
-  const tareasFiltradas = tareasDelResponsable.filter((t) => {
+  const tareasFiltradas = ordenarTareasPorPrioridad(tareasDelResponsable.filter((t) => {
     if (filtroSector !== "todos" && t.tipo_tarea !== filtroSector) return false;
+    if (!mostrarCompletadas && t.estado === ESTADO_FINAL_TAREA) return false;
     return true;
-  });
+  }));
 
   const fechaLimiteSemana = new Date();
   fechaLimiteSemana.setDate(fechaLimiteSemana.getDate() + 7);
@@ -1155,7 +1171,7 @@ function TareasTableroPage() {
     (t) => t.estado === "en_revision",
   ).length;
   const hayFiltros =
-    filtroResponsable !== "todos" || filtroSector !== "todos";
+    filtroResponsable !== "todos" || filtroSector !== "todos" || mostrarCompletadas;
 
   const grupos = ESTADOS_TAREA.map((e) => ({
     id: e.id,
@@ -1226,6 +1242,7 @@ function TareasTableroPage() {
                   <button type="button" className={vista === "tabla" ? "active" : ""} onClick={() => setVista("tabla")}>Lista</button>
                   <button type="button" className={vista === "kanban" ? "active" : ""} onClick={() => setVista("kanban")}>Columnas</button>
                   <button type="button" className={vista === "calendario" ? "active" : ""} onClick={() => setVista("calendario")}>Calendario</button>
+                  <button type="button" className={vista === "proyecto" ? "active" : ""} onClick={() => setVista("proyecto")}>Por cliente</button>
                 </div>
 
                 <label className="task-compact-filter">
@@ -1258,6 +1275,15 @@ function TareasTableroPage() {
                   </select>
                 </label>
 
+                <label className="task-completed-toggle">
+                  <input
+                    type="checkbox"
+                    checked={mostrarCompletadas}
+                    onChange={(e) => setMostrarCompletadas(e.target.checked)}
+                  />
+                  <span>Mostrar completadas</span>
+                </label>
+
                 {hayFiltros && (
                   <button
                     className="btn task-clear-filters"
@@ -1265,6 +1291,7 @@ function TareasTableroPage() {
                     onClick={() => {
                       setFiltroResponsable("todos");
                       setFiltroSector("todos");
+                      setMostrarCompletadas(false);
                     }}
                   >
                     Limpiar
@@ -1294,13 +1321,17 @@ function TareasTableroPage() {
                 ) : vista === "kanban" ? (
                   <TareaKanbanBoard
                     tareas={tareasFiltradas}
-                    columnas={ESTADOS_TAREA}
+                    columnas={ESTADOS_TAREA.filter(
+                      (estado) => tareasFiltradas.some((tarea) => tarea.estado === estado.id),
+                    )}
                     campo="estado"
                     onMover={(id, nuevoEstado) => actualizarCampo(id, { estado: nuevoEstado })}
                     onAbrir={setTareaSeleccionadaId}
                   />
                 ) : vista === "calendario" ? (
                   <TareaCalendario tareas={tareasFiltradas} onAbrir={setTareaSeleccionadaId} />
+                ) : vista === "proyecto" ? (
+                  <TareasPorCliente tareas={tareasFiltradas} onAbrir={setTareaSeleccionadaId} />
                 ) : grupos.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "40px", color: "#6b6f76" }}>
                     {tareas.length === 0
@@ -1368,9 +1399,15 @@ function TareasTableroPage() {
               <TareaDetallePanel
                 tarea={tareaSeleccionada}
                 clientes={clientes}
+                tareas={tareas}
                 onCerrar={() => setTareaSeleccionadaId(null)}
+                onAbrir={setTareaSeleccionadaId}
                 onActualizarCampo={actualizarCampo}
                 onEliminar={eliminarTarea}
+                onSubtareaCreada={(creada) => {
+                  const clienteNombre = clientes.find((c) => c.id === creada.cliente_id)?.nombre || null;
+                  setTareas((prev) => [{ ...creada, cliente_nombre: clienteNombre }, ...prev]);
+                }}
               />
             )}
           </div>
@@ -1460,12 +1497,26 @@ function formatearFechaTarea(fecha) {
   }).format(new Date(anio, mes - 1, dia));
 }
 
-function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEliminar }) {
+function TareaDetallePanel({
+  tarea,
+  clientes,
+  tareas,
+  onCerrar,
+  onAbrir,
+  onActualizarCampo,
+  onEliminar,
+  onSubtareaCreada,
+}) {
   const sesion = getSesion();
   const esAdmin = sesion?.usuario?.rol === "admin";
   const esResponsable =
     getUsuarioKey(tarea.asignado_a) === getUsuarioKey(sesion?.usuario?.usuario);
   const [modoEdicion, setModoEdicion] = useState(false);
+  const [comentarios, setComentarios] = useState([]);
+  const [comentarioNuevo, setComentarioNuevo] = useState("");
+  const [enviandoComentario, setEnviandoComentario] = useState(false);
+  const [tituloSubtarea, setTituloSubtarea] = useState("");
+  const [creandoSubtarea, setCreandoSubtarea] = useState(false);
   const est = getEstadoTarea(tarea.estado);
   const prio = getPrioridadTarea(tarea.prioridad);
   const sector = getSectorTarea(tarea.tipo_tarea);
@@ -1473,13 +1524,87 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
   const materialUrl = tarea.material_referencia || "";
   const materialInfo = materialUrl ? obtenerInfoLinkTarea(materialUrl) : null;
   const referencias = urlsAclaraciones.filter((url) => url !== materialUrl);
+  const resumen = tarea.propiedades_extra?.resumen || "";
+  const etiquetas = Array.isArray(tarea.propiedades_extra?.etiquetas)
+    ? tarea.propiedades_extra.etiquetas
+    : [];
+  const colaboradores = Array.isArray(tarea.propiedades_extra?.colaboradores)
+    ? tarea.propiedades_extra.colaboradores
+    : [];
+  const subtareas = ordenarTareasPorPrioridad(
+    tareas.filter((item) => Number(item.tarea_padre_id) === Number(tarea.id)),
+  );
   if (materialUrl && materialInfo?.tipo !== "material" && !referencias.includes(materialUrl)) {
     referencias.unshift(materialUrl);
   }
 
   useEffect(() => {
     setModoEdicion(false);
+    setComentarioNuevo("");
+    setTituloSubtarea("");
+    fetch(`/api/tareas/${tarea.id}/comentarios`)
+      .then((respuesta) => respuesta.json())
+      .then((data) => setComentarios(Array.isArray(data) ? data : []))
+      .catch((error) => console.error("No se pudieron cargar comentarios", error));
   }, [tarea.id]);
+
+  const actualizarMetadatos = (campos) => {
+    onActualizarCampo(tarea.id, {
+      propiedades_extra: { ...tarea.propiedades_extra, ...campos },
+    });
+  };
+
+  const enviarComentario = async () => {
+    const contenido = comentarioNuevo.trim();
+    if (!contenido || enviandoComentario) return;
+    setEnviandoComentario(true);
+    try {
+      const respuesta = await fetch(`/api/tareas/${tarea.id}/comentarios`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER",
+          contenido,
+        }),
+      });
+      const data = await respuesta.json();
+      if (!respuesta.ok) throw new Error(data.error || "No se pudo comentar.");
+      setComentarios((actuales) => [...actuales, data]);
+      setComentarioNuevo("");
+    } catch (error) {
+      console.error("No se pudo guardar el comentario", error);
+    } finally {
+      setEnviandoComentario(false);
+    }
+  };
+
+  const crearSubtarea = async () => {
+    const titulo = tituloSubtarea.trim();
+    if (!titulo || creandoSubtarea) return;
+    setCreandoSubtarea(true);
+    try {
+      const respuesta = await fetch("/api/tareas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo,
+          asignado_a: tarea.asignado_a,
+          cliente_id: tarea.cliente_id,
+          tipo_tarea: tarea.tipo_tarea,
+          prioridad: tarea.prioridad,
+          tarea_padre_id: tarea.id,
+        }),
+      });
+      const creada = await respuesta.json();
+      if (!respuesta.ok) throw new Error(creada.error || "No se pudo crear la subtarea.");
+      onSubtareaCreada(creada);
+      setTituloSubtarea("");
+    } catch (error) {
+      console.error("No se pudo crear la subtarea", error);
+    } finally {
+      setCreandoSubtarea(false);
+    }
+  };
 
   const origen = tarea.historia_id
     ? {
@@ -1542,7 +1667,15 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
               onBlur={(e) => onActualizarCampo(tarea.id, { titulo: e.target.value.trim() })}
             />
           ) : (
-            <h2>{tarea.titulo}</h2>
+            <>
+              <h2>{tarea.titulo}</h2>
+              {resumen && <p className="td-readable-description">{resumen}</p>}
+              {etiquetas.length > 0 && (
+                <div className="td-task-tags">
+                  {etiquetas.map((etiqueta) => <span key={etiqueta}>{etiqueta}</span>)}
+                </div>
+              )}
+            </>
           )}
 
           {!modoEdicion && (
@@ -1563,6 +1696,12 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
                 <span>Estado</span>
                 <strong style={{ color: est.fg }}>{est.label}</strong>
               </div>
+              {colaboradores.length > 0 && (
+                <div className="td-summary-wide">
+                  <span>Colaboran</span>
+                  <strong>{colaboradores.join(", ")}</strong>
+                </div>
+              )}
             </div>
           )}
         </header>
@@ -1577,7 +1716,7 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
           <>
             <div className="td-panel-body td-edit-form">
               <label className="td-panel-field">
-                <span>Responsable</span>
+                <span>Responsable principal</span>
                 <select
                   className="sheet-cell"
                   value={tarea.asignado_a}
@@ -1588,6 +1727,50 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
                   ))}
                 </select>
               </label>
+
+              <label className="td-panel-field td-edit-wide">
+                <span>Resumen corto</span>
+                <input
+                  type="text"
+                  className="sheet-cell"
+                  placeholder="Una línea para entender la tarea rápidamente"
+                  value={resumen}
+                  onChange={(e) => actualizarMetadatos({ resumen: e.target.value })}
+                />
+              </label>
+
+              <label className="td-panel-field td-edit-wide">
+                <span>Etiquetas (separadas por coma)</span>
+                <input
+                  type="text"
+                  className="sheet-cell"
+                  placeholder="Mejora, Sitio web, Urgente"
+                  value={etiquetas.join(", ")}
+                  onChange={(e) => actualizarMetadatos({
+                    etiquetas: e.target.value.split(",").map((item) => item.trim()).filter(Boolean),
+                  })}
+                />
+              </label>
+
+              <fieldset className="td-panel-field td-edit-wide td-collaborators">
+                <legend>Colaboradores</legend>
+                <div>
+                  {RESPONSABLES_EQUIPO.filter((nombre) => nombre !== tarea.asignado_a).map((nombre) => (
+                    <label key={nombre}>
+                      <input
+                        type="checkbox"
+                        checked={colaboradores.includes(nombre)}
+                        onChange={(e) => actualizarMetadatos({
+                          colaboradores: e.target.checked
+                            ? [...colaboradores, nombre]
+                            : colaboradores.filter((item) => item !== nombre),
+                        })}
+                      />
+                      <span>{nombre}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
 
               <label className="td-panel-field">
                 <span>Cliente</span>
@@ -1814,6 +1997,92 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
                   )}
                 </section>
               )}
+
+              <section className="td-readable-section">
+                <div className="td-readable-section-heading">
+                  <span>Jerarquía</span>
+                  <h3>Subtareas</h3>
+                </div>
+                <div className="td-subtasks">
+                  {subtareas.map((subtarea) => {
+                    const estadoSubtarea = getEstadoTarea(subtarea.estado);
+                    return (
+                      <button key={subtarea.id} type="button" onClick={() => onAbrir(subtarea.id)}>
+                        <span className={subtarea.estado === ESTADO_FINAL_TAREA ? "is-done" : ""}>
+                          {subtarea.titulo}
+                        </span>
+                        <b style={{ color: estadoSubtarea.fg }}>{estadoSubtarea.label}</b>
+                      </button>
+                    );
+                  })}
+                  {subtareas.length === 0 && (
+                    <div className="td-readable-empty">No hay subtareas cargadas.</div>
+                  )}
+                </div>
+                {esAdmin && (
+                  <div className="td-subtask-create">
+                    <input
+                      type="text"
+                      value={tituloSubtarea}
+                      placeholder="Nombre de la subtarea"
+                      onChange={(e) => setTituloSubtarea(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") crearSubtarea();
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={!tituloSubtarea.trim() || creandoSubtarea}
+                      onClick={crearSubtarea}
+                    >
+                      {creandoSubtarea ? "Creando…" : "+ Agregar"}
+                    </button>
+                  </div>
+                )}
+              </section>
+
+              <section className="td-readable-section">
+                <div className="td-readable-section-heading">
+                  <span>Conversación</span>
+                  <h3>Comentarios</h3>
+                </div>
+                <div className="td-comments">
+                  {comentarios.map((comentario) => (
+                    <article key={comentario.id}>
+                      <div>
+                        <strong>{comentario.autor}</strong>
+                        <time>{new Date(comentario.created_at).toLocaleString("es-AR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}</time>
+                      </div>
+                      <p>{comentario.contenido}</p>
+                    </article>
+                  ))}
+                  {comentarios.length === 0 && (
+                    <div className="td-readable-empty">Todavía no hay comentarios.</div>
+                  )}
+                </div>
+                <div className="td-comment-create">
+                  <textarea
+                    rows={3}
+                    value={comentarioNuevo}
+                    placeholder="Escribí una actualización, consulta o bloqueo…"
+                    onChange={(e) => setComentarioNuevo(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={!comentarioNuevo.trim() || enviandoComentario}
+                    onClick={enviarComentario}
+                  >
+                    {enviandoComentario ? "Enviando…" : "Comentar"}
+                  </button>
+                </div>
+              </section>
             </div>
 
             <footer className="td-readable-footer">
@@ -1869,6 +2138,48 @@ function TareaDetallePanel({ tarea, clientes, onCerrar, onActualizarCampo, onEli
 // arrastre — mismo patrón HTML5 nativo que ya usaba PiezasTableroPage.
 const SUBTIPOS_SUGERIDOS = ["reel", "historia", "carrusel", "visita", "flyer", "editar", "filmar", "diseñar"];
 
+function TareasPorCliente({ tareas, onAbrir }) {
+  const grupos = [...tareas.reduce((mapa, tarea) => {
+    const cliente = tarea.cliente_nombre || "Sin cliente";
+    if (!mapa.has(cliente)) mapa.set(cliente, []);
+    mapa.get(cliente).push(tarea);
+    return mapa;
+  }, new Map()).entries()].sort(([clienteA], [clienteB]) =>
+    clienteA.localeCompare(clienteB),
+  );
+
+  if (grupos.length === 0) {
+    return <div className="task-project-empty">No hay tareas para mostrar.</div>;
+  }
+
+  return (
+    <div className="task-project-view">
+      {grupos.map(([cliente, items]) => (
+        <section key={cliente} className="task-project-group">
+          <header>
+            <h2>{cliente}</h2>
+            <span>{items.length} {items.length === 1 ? "tarea" : "tareas"}</span>
+          </header>
+          <div>
+            {items.map((tarea) => {
+              const estado = getEstadoTarea(tarea.estado);
+              return (
+                <button key={tarea.id} type="button" onClick={() => onAbrir(tarea.id)}>
+                  <span>
+                    <strong>{tarea.titulo}</strong>
+                    <small>{tarea.asignado_a} · {formatearFechaTarea(tarea.fecha_vencimiento)}</small>
+                  </span>
+                  <b style={{ color: estado.fg, background: estado.bg }}>{estado.label}</b>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 // Formulario guiado de creación tipo Notion: en vez de una página aparte,
 // abre en el momento sobre la tabla y la tarea aparece ahí apenas se crea.
 // Reemplaza el link a /nueva-tarea en /piezas (esa página queda intacta
@@ -1884,6 +2195,9 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
   const [prioridad, setPrioridad] = useState("media");
   const [materialReferencia, setMaterialReferencia] = useState("");
   const [aclaraciones, setAclaraciones] = useState("");
+  const [resumen, setResumen] = useState("");
+  const [etiquetas, setEtiquetas] = useState("");
+  const [colaboradores, setColaboradores] = useState([]);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState(null);
 
@@ -1916,6 +2230,9 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
           fecha_vencimiento: fechaVencimiento || null,
           material_referencia: materialReferencia.trim() || null,
           aclaraciones: aclaraciones.trim() || null,
+          resumen: resumen.trim() || null,
+          etiquetas: etiquetas.split(",").map((item) => item.trim()).filter(Boolean),
+          colaboradores,
         }),
       });
       const data = await res.json();
@@ -2062,6 +2379,15 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
                   </select>
                 </label>
                 <label className="form-field">
+                  <span>Resumen corto</span>
+                  <input
+                    type="text"
+                    value={resumen}
+                    placeholder="Qué hay que resolver"
+                    onChange={(e) => setResumen(e.target.value)}
+                  />
+                </label>
+                <label className="form-field">
                   <span>Material / link</span>
                   <input
                     type="text"
@@ -2070,7 +2396,35 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
                     onChange={(e) => setMaterialReferencia(e.target.value)}
                   />
                 </label>
+                <label className="form-field">
+                  <span>Etiquetas</span>
+                  <input
+                    type="text"
+                    value={etiquetas}
+                    placeholder="Mejora, Sitio web"
+                    onChange={(e) => setEtiquetas(e.target.value)}
+                  />
+                </label>
               </div>
+              <fieldset className="td-collaborators" style={{ marginTop: "10px" }}>
+                <legend>Colaboradores opcionales</legend>
+                <div>
+                  {RESPONSABLES_EQUIPO.filter((nombre) => nombre !== asignadoA).map((nombre) => (
+                    <label key={nombre}>
+                      <input
+                        type="checkbox"
+                        checked={colaboradores.includes(nombre)}
+                        onChange={(e) => setColaboradores((actuales) =>
+                          e.target.checked
+                            ? [...actuales, nombre]
+                            : actuales.filter((item) => item !== nombre),
+                        )}
+                      />
+                      <span>{nombre}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <label className="form-field" style={{ marginTop: "10px" }}>
                 <span>Aclaraciones</span>
                 <textarea
@@ -2198,6 +2552,9 @@ function TareaKanbanBoard({ tareas, columnas, campo, onMover, onAbrir }) {
                     onClick={() => onAbrir(t.id)}
                   >
                     <div className="task-card-title">{t.titulo}</div>
+                    {t.propiedades_extra?.resumen && (
+                      <div className="task-kanban-summary">{t.propiedades_extra.resumen}</div>
+                    )}
                     {t.cliente_nombre && (
                       <div className="task-kanban-client">{t.cliente_nombre}</div>
                     )}
@@ -2206,6 +2563,13 @@ function TareaKanbanBoard({ tareas, columnas, campo, onMover, onAbrir }) {
                       {t.fecha_vencimiento && <span>{formatearFechaTarea(t.fecha_vencimiento)}</span>}
                       {t.prioridad === "alta" && <span style={{ color: prio.fg }}>Alta</span>}
                     </div>
+                    {Array.isArray(t.propiedades_extra?.etiquetas) && t.propiedades_extra.etiquetas.length > 0 && (
+                      <div className="task-kanban-tags">
+                        {t.propiedades_extra.etiquetas.slice(0, 3).map((etiqueta) => (
+                          <span key={etiqueta}>{etiqueta}</span>
+                        ))}
+                      </div>
+                    )}
                     {esperandoMaterial(t) && (
                       <div className="task-kanban-material" style={{ color: "#e65100" }}>
                         Esperando material

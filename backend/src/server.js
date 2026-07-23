@@ -1088,6 +1088,10 @@ router.post("/tareas", async (req, res, next) => {
       prioridad,
       aclaraciones,
       material_referencia,
+      tarea_padre_id,
+      resumen,
+      etiquetas,
+      colaboradores,
     } = req.body;
 
     if (!titulo || !asignado_a) {
@@ -1111,11 +1115,20 @@ router.post("/tareas", async (req, res, next) => {
     if (motivo) {
       propiedadesExtra.motivo = motivo;
     }
+    if (resumen) {
+      propiedadesExtra.resumen = String(resumen).trim();
+    }
+    if (Array.isArray(etiquetas)) {
+      propiedadesExtra.etiquetas = etiquetas.map(String).map((item) => item.trim()).filter(Boolean);
+    }
+    if (Array.isArray(colaboradores)) {
+      propiedadesExtra.colaboradores = colaboradores.map(String).map((item) => item.trim()).filter(Boolean);
+    }
 
     const result = await pool.query(
-      `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, created_at, updated_at`,
+      `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
       [
         titulo,
         asignado_a,
@@ -1131,6 +1144,7 @@ router.post("/tareas", async (req, res, next) => {
         prioridad || "media",
         aclaraciones || null,
         material_referencia || null,
+        tarea_padre_id || null,
       ],
     );
 
@@ -1180,6 +1194,7 @@ const TAREA_COLUMNAS_EDITABLES = [
   "aclaraciones",
   "material_referencia",
   "publicacion_id",
+  "tarea_padre_id",
 ];
 
 router.patch("/tareas/:id", async (req, res, next) => {
@@ -1245,7 +1260,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
     const result = await pool.query(
       `UPDATE tareas SET ${sets.join(", ")}
        WHERE id = $${i}
-       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, created_at, updated_at`,
+       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
       valores,
     );
 
@@ -1378,6 +1393,43 @@ router.get("/tareas", async (req, res, next) => {
 
     const result = await pool.query(query, params);
     res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/tareas/:id/comentarios", async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, tarea_id, autor, contenido, created_at
+       FROM tarea_comentarios
+       WHERE tarea_id = $1
+       ORDER BY created_at ASC, id ASC`,
+      [req.params.id],
+    );
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/tareas/:id/comentarios", async (req, res, next) => {
+  try {
+    const autor = String(req.body.autor || "").trim();
+    const contenido = String(req.body.contenido || "").trim();
+    if (!autor || !contenido) {
+      return res.status(400).json({ error: "Faltan autor o comentario." });
+    }
+    const result = await pool.query(
+      `INSERT INTO tarea_comentarios (tarea_id, autor, contenido)
+       SELECT id, $2, $3 FROM tareas WHERE id = $1
+       RETURNING id, tarea_id, autor, contenido, created_at`,
+      [req.params.id, autor, contenido],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Tarea no encontrada." });
+    }
+    res.status(201).json(result.rows[0]);
   } catch (error) {
     next(error);
   }
