@@ -8934,6 +8934,79 @@ function HistoriasPage({ initialTab = "planilla" }) {
 
 // ── REPORTES DE EQUIPO: rendimiento por empleado ──────────────────────────────
 
+function ResumenEntregableEquipo({
+  etiqueta,
+  realizados,
+  pendientes,
+  total,
+  verbo = "realizados",
+  verboSingular = "realizado",
+}) {
+  const porcentaje = total > 0 ? Math.round((realizados / total) * 100) : 0;
+  return (
+    <div style={{ paddingTop: "12px", borderTop: "1px solid #eceff1" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px" }}>
+        <div style={{ fontWeight: "700", fontSize: "13px", color: "#263238" }}>{etiqueta}</div>
+        <div style={{ fontSize: "12px", color: "#607d8b", whiteSpace: "nowrap" }}>
+          <strong style={{ color: "#263238", fontSize: "16px" }}>{realizados}</strong> de {total}
+        </div>
+      </div>
+      <div style={{ height: "7px", background: "#eceff1", borderRadius: "999px", overflow: "hidden", margin: "9px 0 7px" }}>
+        <div
+          style={{
+            width: `${Math.min(porcentaje, 100)}%`,
+            height: "100%",
+            background: porcentaje >= 80 ? "#2e7d32" : porcentaje >= 50 ? "#f9a825" : "#c62828",
+          }}
+        />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", fontSize: "11px", color: "#78909c" }}>
+        <span>{realizados} {realizados === 1 ? verboSingular : verbo}</span>
+        <span>{pendientes} {pendientes === 1 ? "pendiente" : "pendientes"}</span>
+        <strong style={{ color: "#455a64" }}>{porcentaje}%</strong>
+      </div>
+    </div>
+  );
+}
+
+function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMes = false }) {
+  return (
+    <article
+      style={{
+        background: "#fff",
+        border: "1px solid #e4e9ec",
+        borderRadius: "12px",
+        padding: "16px",
+        minWidth: 0,
+        boxShadow: "0 1px 2px rgba(38, 50, 56, 0.04)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
+        <div>
+          <div style={{ fontWeight: "800", fontSize: "15px", color: "#263238" }}>{nombre}</div>
+          <div style={{ fontSize: "11px", color: "#90a4ae", marginTop: "2px" }}>{rol}</div>
+        </div>
+        {proximoMes && (
+          <span style={{ padding: "5px 8px", borderRadius: "999px", background: "#eef2ff", color: "#3949ab", fontSize: "10px", fontWeight: "800" }}>
+            Comienza el próximo mes
+          </span>
+        )}
+      </div>
+      {proximoMes ? (
+        <div style={{ borderTop: "1px solid #eceff1", paddingTop: "12px", color: "#607d8b", fontSize: "12px", lineHeight: 1.5 }}>
+          Desde agosto se medirán carruseles e historias. Julio no muestra ceros ni porcentajes ficticios.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: "12px" }}>
+          {metricas.map((metrica) => (
+            <ResumenEntregableEquipo key={metrica.etiqueta} {...metrica} />
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
 function ReportesEquipoPage() {
   const sesion = getSesion();
   const usuarioSesion = sesion?.usuario;
@@ -9155,6 +9228,105 @@ function ReportesEquipoPage() {
     .filter((f) => f.total > 0)
     .sort((a, b) => b.total - a.total);
 
+  const periodoMensualReporte = periodo === "mes_actual" || periodo === "mes_pasado"
+    ? rangoPeriodo.desde.slice(0, 7)
+    : null;
+  const tareasDelPeriodoPorPersona = (nombre) => {
+    const propias = tareas.filter((t) => t.asignado_a === nombre);
+    const fuenteMensual = periodoMensualReporte
+      ? propias.filter(
+          (t) =>
+            t.propiedades_extra?.reporte_fuente === "clickup" &&
+            t.propiedades_extra?.reporte_periodo === periodoMensualReporte,
+        )
+      : [];
+    if (fuenteMensual.length > 0) return fuenteMensual;
+    return propias.filter((t) => {
+      const cerradaEnPeriodo =
+        t.estado === ESTADO_FINAL_TAREA &&
+        enPeriodo(t.propiedades_extra?.clickup_cerrada_at || t.updated_at || "");
+      return cerradaEnPeriodo || enPeriodo(t.fecha_vencimiento || "");
+    });
+  };
+  const resumenEntregas = (items) => {
+    const realizados = items.filter((item) => item.estado === ESTADO_FINAL_TAREA).length;
+    return {
+      realizados,
+      pendientes: Math.max(items.length - realizados, 0),
+      total: items.length,
+    };
+  };
+  const esCarrusel = (tarea) => {
+    const titulo = (tarea.titulo || "").toLocaleLowerCase("es");
+    const lista = (tarea.propiedades_extra?.clickup_lista || "").toLocaleLowerCase("es");
+    return titulo.includes("carrusel") || lista.includes("carrusel");
+  };
+
+  const carruselesAugusto = resumenEntregas(
+    tareasDelPeriodoPorPersona("Augusto").filter(esCarrusel),
+  );
+  const videosLuciano = resumenEntregas(
+    tareasDelPeriodoPorPersona("Luciano").filter((t) => t.tipo_tarea === "edicion"),
+  );
+  const videosGerman = resumenEntregas(
+    tareasDelPeriodoPorPersona("Germán").filter((t) => t.tipo_tarea === "produccion"),
+  );
+
+  const historiasDelPeriodo = historias.filter((h) => enPeriodo(h.fecha_programada || ""));
+  const reelsDelPeriodo = publicaciones.filter(
+    (p) => p.tipo === "video" && enPeriodo(p.fecha_programada || ""),
+  );
+  const historiasOriana = resumenEntregas(historiasDelPeriodo);
+  const reelsOriana = resumenEntregas(reelsDelPeriodo);
+
+  const inicioMariano = "2026-08-01";
+  const marianoActivo = periodo === "ultimos_30"
+    ? hoyISO >= inicioMariano
+    : rangoPeriodo.desde >= inicioMariano;
+  const carruselesMariano = resumenEntregas(
+    tareasDelPeriodoPorPersona("Mariano").filter(esCarrusel),
+  );
+  const historiasMariano = resumenEntregas(
+    historiasDelPeriodo.filter(
+      (h) => (h.responsable_diseño || h.responsable || "").toLocaleLowerCase("es") === "mariano",
+    ),
+  );
+
+  const tarjetasEntregables = [
+    {
+      nombre: "Augusto",
+      rol: "Diseño",
+      metricas: [{ etiqueta: "Carruseles", ...carruselesAugusto }],
+    },
+    {
+      nombre: "Luciano",
+      rol: "Edición",
+      metricas: [{ etiqueta: "Videos editados", ...videosLuciano }],
+    },
+    {
+      nombre: "Germán",
+      rol: "Producción",
+      metricas: [{ etiqueta: "Videos grabados", ...videosGerman }],
+    },
+    {
+      nombre: "Oriana",
+      rol: "Publicación",
+      metricas: [
+        { etiqueta: "Historias publicadas", verbo: "publicadas", verboSingular: "publicada", ...historiasOriana },
+        { etiqueta: "Reels publicados", verbo: "publicados", verboSingular: "publicado", ...reelsOriana },
+      ],
+    },
+    {
+      nombre: "Mariano",
+      rol: "Diseño y contenido",
+      proximoMes: !marianoActivo,
+      metricas: [
+        { etiqueta: "Carruseles", ...carruselesMariano },
+        { etiqueta: "Historias", ...historiasMariano },
+      ],
+    },
+  ];
+
   const PERIODOS = [
     { id: "mes_actual", label: "Este mes" },
     { id: "mes_pasado", label: "Mes pasado" },
@@ -9172,7 +9344,7 @@ function ReportesEquipoPage() {
           </div>
           <div className="caption" style={{ marginBottom: "16px" }}>
             {esVistaAdmin
-              ? "Seguimiento de objetivos, tareas completadas y pendientes por persona."
+              ? "Entregas realizadas y pendientes según el trabajo concreto de cada persona."
               : "Seguimiento de tu objetivo, tareas completadas y pendientes."}
           </div>
 
@@ -9200,28 +9372,13 @@ function ReportesEquipoPage() {
           ) : (
             <>
               <div className="section-label">
-                {esVistaAdmin ? "1 · Objetivo mensual — vista rápida" : "1 · Mi objetivo mensual — vista rápida"}
+                {esVistaAdmin ? "1 · Producción del mes" : "1 · Mi objetivo mensual — vista rápida"}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px", marginBottom: "24px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${esVistaAdmin ? "230px" : "150px"}, 1fr))`, gap: "14px", marginBottom: "12px" }}>
                 {esVistaAdmin ? (
-                  <>
-                    <div style={{ ...cardStyle, background: "#e8f5e9" }}>
-                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#2e7d32" }}>{equipoAlDia}/{filasConObjetivo.length}</div>
-                      <div style={{ fontSize: "12px", color: "#2e7d32" }}>Equipo al día</div>
-                    </div>
-                    <div style={{ ...cardStyle, background: "#fff3e0" }}>
-                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#e65100" }}>{equipoEnRiesgo}</div>
-                      <div style={{ fontSize: "12px", color: "#e65100" }}>En riesgo</div>
-                    </div>
-                    <div style={{ ...cardStyle, background: "#ffebee" }}>
-                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#c62828" }}>{equipoAtrasado}</div>
-                      <div style={{ fontSize: "12px", color: "#c62828" }}>Atrasados</div>
-                    </div>
-                    <div style={{ ...cardStyle, background: "#e3f2fd" }}>
-                      <div style={{ fontSize: "26px", fontWeight: "700", color: "#1565c0" }}>{cumplimientoPromedio}%</div>
-                      <div style={{ fontSize: "12px", color: "#1565c0" }}>Cumplimiento promedio</div>
-                    </div>
-                  </>
+                  tarjetasEntregables.map((tarjeta) => (
+                    <TarjetaEntregablesEquipo key={tarjeta.nombre} {...tarjeta} />
+                  ))
                 ) : (
                   <>
                     <div style={{ ...cardStyle, background: filaPropia?.estadoObjetivo?.bg || "#eceff1" }}>
@@ -9245,11 +9402,16 @@ function ReportesEquipoPage() {
                   </>
                 )}
               </div>
+              {esVistaAdmin && (
+                <div className="caption" style={{ marginBottom: "24px" }}>
+                  Carruseles, ediciones, grabaciones y publicaciones se calculan por separado. No se mezclan tareas de otros roles.
+                </div>
+              )}
 
-              <div className="section-label">
-                {esVistaAdmin ? "2 · Rendimiento por empleado" : "2 · Mi rendimiento"}
-              </div>
-              <div className="box" style={{ padding: 0, overflow: "hidden" }}>
+              {!esVistaAdmin && (
+                <>
+                  <div className="section-label">2 · Mi rendimiento</div>
+                  <div className="box" style={{ padding: 0, overflow: "hidden" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ borderBottom: "2px solid #333", background: "#fafafa" }}>
@@ -9341,15 +9503,17 @@ function ReportesEquipoPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-              <div className="caption" style={{ marginTop: "8px", marginBottom: "20px" }}>
-                El 100% se calcula contra el objetivo mensual de cada rol. El estado compara lo hecho con el ritmo esperado del mes y marca atrasos si hay vencidas.
-              </div>
+                  </div>
+                  <div className="caption" style={{ marginTop: "8px", marginBottom: "20px" }}>
+                    El 100% se calcula contra el objetivo mensual de tu rol. El estado compara lo hecho con el ritmo esperado del mes y marca atrasos si hay vencidas.
+                  </div>
+                </>
+              )}
 
-              <div className="section-label">
-                {esVistaAdmin ? "3 · Piezas asignadas por responsable" : "3 · Mis piezas asignadas"}
-              </div>
-              <div className="box">
+              {!esVistaAdmin && (
+                <>
+                  <div className="section-label">3 · Mis piezas asignadas</div>
+                  <div className="box">
                 {piezasPorResponsable.length === 0 ? (
                   <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>Sin piezas asignadas todavía.</div>
                 ) : (
@@ -9388,7 +9552,9 @@ function ReportesEquipoPage() {
                     </tbody>
                   </table>
                 )}
-              </div>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
