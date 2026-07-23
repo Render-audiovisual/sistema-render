@@ -7,6 +7,10 @@ import compression from "compression";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { checkDatabaseConnection, pool } from "./db.js";
+import {
+  normalizarNombre,
+  notificarAsignacionSinInterrumpir,
+} from "./email-notifications.js";
 import { setupDemoClientes } from "./setup-demo-data.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1122,7 +1126,13 @@ router.post("/tareas", async (req, res, next) => {
       ],
     );
 
-    res.status(201).json(result.rows[0]);
+    const tareaCreada = result.rows[0];
+    res.status(201).json(tareaCreada);
+    notificarAsignacionSinInterrumpir({
+      pool,
+      tarea: tareaCreada,
+      motivo: "creada",
+    });
   } catch (error) {
     next(error);
   }
@@ -1168,6 +1178,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
     const body = req.body;
+    let asignadoAnterior = null;
 
     if (Object.prototype.hasOwnProperty.call(body, "estado")) {
       if (body.estado === null || !ESTADOS_TAREA_VALIDOS.includes(body.estado)) {
@@ -1183,6 +1194,11 @@ router.patch("/tareas/:id", async (req, res, next) => {
       if (body.asignado_a === null || !String(body.asignado_a).trim()) {
         return res.status(400).json({ error: "El responsable no puede quedar vacío." });
       }
+      const tareaAnterior = await pool.query(
+        "SELECT asignado_a FROM tareas WHERE id = $1",
+        [id],
+      );
+      asignadoAnterior = tareaAnterior.rows[0]?.asignado_a || null;
     }
     if (Object.prototype.hasOwnProperty.call(body, "tipo_tarea")) {
       if (body.tipo_tarea !== null && !TIPOS_TAREA_VALIDOS.includes(body.tipo_tarea)) {
@@ -1229,7 +1245,20 @@ router.patch("/tareas/:id", async (req, res, next) => {
       return res.status(404).json({ error: "Tarea no encontrada." });
     }
 
-    res.json(result.rows[0]);
+    const tareaActualizada = result.rows[0];
+    res.json(tareaActualizada);
+
+    if (
+      Object.prototype.hasOwnProperty.call(body, "asignado_a") &&
+      normalizarNombre(asignadoAnterior) !==
+        normalizarNombre(tareaActualizada.asignado_a)
+    ) {
+      notificarAsignacionSinInterrumpir({
+        pool,
+        tarea: tareaActualizada,
+        motivo: "reasignada",
+      });
+    }
   } catch (error) {
     next(error);
   }
