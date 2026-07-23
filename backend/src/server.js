@@ -85,7 +85,7 @@ const ROLES_VALIDOS = [
 router.get("/usuarios", async (_req, res, next) => {
   try {
     const result = await pool.query(
-      "SELECT id, usuario, nombre, rol, foto_perfil, created_at FROM usuarios ORDER BY id",
+      "SELECT id, usuario, nombre, rol, email_notificaciones, foto_perfil, created_at FROM usuarios ORDER BY id",
     );
     res.json(result.rows);
   } catch (error) {
@@ -95,7 +95,8 @@ router.get("/usuarios", async (_req, res, next) => {
 
 router.post("/usuarios", async (req, res, next) => {
   try {
-    const { usuario, nombre, rol, password } = req.body;
+    const { usuario, nombre, rol, password, email_notificaciones } = req.body;
+    const email = normalizarEmailNotificaciones(email_notificaciones);
 
     if (!usuario || !nombre || !rol || !password) {
       return res.status(400).json({ error: "Faltan datos del empleado." });
@@ -103,13 +104,16 @@ router.post("/usuarios", async (req, res, next) => {
     if (!ROLES_VALIDOS.includes(rol)) {
       return res.status(400).json({ error: "Rol inválido." });
     }
+    if (email_notificaciones && !email) {
+      return res.status(400).json({ error: "El correo para notificaciones no es válido." });
+    }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await pool.query(
-      `INSERT INTO usuarios (usuario, nombre, rol, password_hash)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, usuario, nombre, rol, foto_perfil, created_at`,
-      [usuario, nombre, rol, passwordHash],
+      `INSERT INTO usuarios (usuario, nombre, rol, password_hash, email_notificaciones)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, usuario, nombre, rol, email_notificaciones, foto_perfil, created_at`,
+      [usuario, nombre, rol, passwordHash, email],
     );
 
     res.status(201).json(result.rows[0]);
@@ -117,7 +121,46 @@ router.post("/usuarios", async (req, res, next) => {
     if (error.code === "23505") {
       return res
         .status(409)
-        .json({ error: "Ya existe un usuario con ese nombre de acceso." });
+        .json({ error: "Ya existe ese usuario o correo para notificaciones." });
+    }
+    next(error);
+  }
+});
+
+function normalizarEmailNotificaciones(value) {
+  const email = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!email) return null;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
+router.patch("/usuarios/:id/email-notificaciones", async (req, res, next) => {
+  try {
+    const emailIngresado =
+      typeof req.body.email_notificaciones === "string"
+        ? req.body.email_notificaciones.trim()
+        : "";
+    const email = normalizarEmailNotificaciones(emailIngresado);
+
+    if (emailIngresado && !email) {
+      return res.status(400).json({ error: "El correo para notificaciones no es válido." });
+    }
+
+    const updated = await pool.query(
+      `UPDATE usuarios
+       SET email_notificaciones = $1
+       WHERE id = $2
+       RETURNING id, usuario, nombre, rol, email_notificaciones, foto_perfil, created_at`,
+      [email, req.params.id],
+    );
+
+    if (updated.rows.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado." });
+    }
+
+    res.json(updated.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "Ese correo ya está asignado a otra persona." });
     }
     next(error);
   }

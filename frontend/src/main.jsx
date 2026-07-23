@@ -4283,6 +4283,10 @@ function EmpleadosPage() {
   const [usuario, setUsuario] = useState("");
   const [rol, setRol] = useState("diseno");
   const [password, setPassword] = useState("");
+  const [emailNotificaciones, setEmailNotificaciones] = useState("");
+  const [editandoCorreoId, setEditandoCorreoId] = useState(null);
+  const [correoEdicion, setCorreoEdicion] = useState("");
+  const [guardandoCorreoId, setGuardandoCorreoId] = useState(null);
   const [formError, setFormError] = useState(null);
   const [mensaje, setMensaje] = useState(null);
   const [enviando, setEnviando] = useState(false);
@@ -4320,7 +4324,13 @@ function EmpleadosPage() {
     fetch("/api/usuarios", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre, usuario, rol, password }),
+      body: JSON.stringify({
+        nombre,
+        usuario,
+        rol,
+        password,
+        email_notificaciones: emailNotificaciones,
+      }),
     })
       .then(async (response) => {
         const data = await response.json();
@@ -4335,6 +4345,7 @@ function EmpleadosPage() {
         setUsuario("");
         setRol("diseno");
         setPassword("");
+        setEmailNotificaciones("");
         cargarUsuarios();
       })
       .catch((err) => setFormError(err.message))
@@ -4357,6 +4368,44 @@ function EmpleadosPage() {
       .catch(() => setError("No se pudo dar de baja al empleado."));
   };
 
+  const iniciarEdicionCorreo = (u) => {
+    setEditandoCorreoId(u.id);
+    setCorreoEdicion(u.email_notificaciones || "");
+    setFormError(null);
+    setMensaje(null);
+  };
+
+  const guardarCorreo = (u) => {
+    setGuardandoCorreoId(u.id);
+    setFormError(null);
+    setMensaje(null);
+
+    fetch(`/api/usuarios/${u.id}/email-notificaciones`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email_notificaciones: correoEdicion }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo guardar el correo.");
+        }
+        return data;
+      })
+      .then((data) => {
+        setMensaje(
+          data.email_notificaciones
+            ? `Correo guardado para ${data.nombre}.`
+            : `Correo eliminado para ${data.nombre}.`,
+        );
+        setEditandoCorreoId(null);
+        setCorreoEdicion("");
+        cargarUsuarios();
+      })
+      .catch((err) => setFormError(err.message))
+      .finally(() => setGuardandoCorreoId(null));
+  };
+
   return (
     <main aria-label="Render platform empleados">
       <div className="frame">
@@ -4370,6 +4419,7 @@ function EmpleadosPage() {
                   <th>Nombre</th>
                   <th>Usuario</th>
                   <th>Rol</th>
+                  <th>Correo para notificaciones</th>
                   <th>Acción</th>
                 </tr>
               </thead>
@@ -4379,6 +4429,45 @@ function EmpleadosPage() {
                     <td>{u.nombre}</td>
                     <td>{u.usuario}</td>
                     <td>{ROL_LABELS[u.rol] || u.rol}</td>
+                    <td>
+                      {editandoCorreoId === u.id ? (
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                          <input
+                            type="email"
+                            value={correoEdicion}
+                            placeholder="nombre@gmail.com"
+                            onChange={(e) => setCorreoEdicion(e.target.value)}
+                            style={{ minWidth: "210px" }}
+                          />
+                          <button
+                            className="btn primary"
+                            type="button"
+                            disabled={guardandoCorreoId === u.id}
+                            onClick={() => guardarCorreo(u)}
+                          >
+                            {guardandoCorreoId === u.id ? "Guardando..." : "Guardar"}
+                          </button>
+                          <button
+                            className="btn"
+                            type="button"
+                            disabled={guardandoCorreoId === u.id}
+                            onClick={() => {
+                              setEditandoCorreoId(null);
+                              setCorreoEdicion("");
+                            }}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                          <span>{u.email_notificaciones || "Sin correo"}</span>
+                          <button className="btn" type="button" onClick={() => iniciarEdicionCorreo(u)}>
+                            {u.email_notificaciones ? "Editar" : "Agregar"}
+                          </button>
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <button
                         className="btn"
@@ -4392,7 +4481,7 @@ function EmpleadosPage() {
                 ))}
                 {usuarios.length === 0 && !error && (
                   <tr>
-                    <td colSpan="4">No hay empleados cargados.</td>
+                    <td colSpan="5">No hay empleados cargados.</td>
                   </tr>
                 )}
               </tbody>
@@ -4440,6 +4529,15 @@ function EmpleadosPage() {
                     placeholder="ej: Luciano1"
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                  />
+                </label>
+                <label className="form-field">
+                  <span>Correo para notificaciones</span>
+                  <input
+                    type="email"
+                    value={emailNotificaciones}
+                    placeholder="nombre@gmail.com"
+                    onChange={(e) => setEmailNotificaciones(e.target.value)}
                   />
                 </label>
               </div>
