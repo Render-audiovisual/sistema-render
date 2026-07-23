@@ -1548,6 +1548,17 @@ function TareaDetallePanel({
       .catch((error) => console.error("No se pudieron cargar comentarios", error));
   }, [tarea.id]);
 
+  useEffect(() => {
+    const overflowAnterior = document.body.style.overflow;
+    const overscrollAnterior = document.body.style.overscrollBehavior;
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "none";
+    return () => {
+      document.body.style.overflow = overflowAnterior;
+      document.body.style.overscrollBehavior = overscrollAnterior;
+    };
+  }, []);
+
   const actualizarMetadatos = (campos) => {
     onActualizarCampo(tarea.id, {
       propiedades_extra: { ...tarea.propiedades_extra, ...campos },
