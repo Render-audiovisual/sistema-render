@@ -1,0 +1,1564 @@
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { getHoyLocalISO, getInicialesCliente, getSesion, payloadColumnaPlanilla } from "../utils.jsx";
+import { COLUMNAS_MULTILINEA, COLUMNAS_PLANILLA, DIAS_SEMANA, DIAS_SEMANA_CLIENTE, ESTADOS_HISTORIA, MESES, MESES_CLIENTE, RESPONSABLES_EQUIPO } from "../constants.js";
+
+export function HistoriasPlanillaTab({
+  clientes,
+  year,
+  month,
+  cargando,
+  historias,
+  ultimoIdCreado,
+  onActualizarLocal,
+  onGuardarServidor,
+  onAgregar,
+  onDuplicar,
+  onEliminar,
+  clienteFiltradoNombre,
+}) {
+  const [error, setError] = useState(null);
+  const gridRef = useRef(null);
+
+  const hoyISO = getHoyLocalISO();
+  const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  // Nombre corto pero inequívoco del día — antes era una sola letra
+  // (M, X, J...) que obligaba a memorizar a qué día correspondía cada una.
+  const LETRAS_DIA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+
+  const clientesPorId = useMemo(() => Object.fromEntries(clientes.map((c) => [c.id, c.nombre])), [clientes]);
+
+  // Memoizar mapeo de estados para búsqueda rápida
+  const estadoPorId = useMemo(() =>
+    Object.fromEntries(ESTADOS_HISTORIA.map((e) => [e.id, e])),
+    []
+  );
+
+  const filasVisibles = useMemo(() =>
+    historias
+      .filter((h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix))
+      .slice()
+      .sort((a, b) =>
+        (a.fecha_programada + (clientesPorId[a.cliente_id] || "") + (a.metadata?.hora || "")).localeCompare(
+          b.fecha_programada + (clientesPorId[b.cliente_id] || "") + (b.metadata?.hora || ""),
+        ),
+      ),
+    [historias, mesPrefix, clientesPorId]
+  );
+
+  const enfocarCelda = useCallback((rowIndex, columna) => {
+    const el = gridRef.current?.querySelector(
+      `[data-cell="${rowIndex}:${columna}"]`,
+    );
+    if (!el) return;
+    el.focus();
+    if (typeof el.select === "function") el.select();
+  }, []);
+
+  // Foco tras crear/duplicar una fila: el padre avisa por prop cuál es el
+  // id nuevo apenas responde el servidor.
+  useEffect(() => {
+    if (!ultimoIdCreado) return;
+    const idx = filasVisibles.findIndex((h) => h.id === ultimoIdCreado);
+    if (idx === -1) return;
+    requestAnimationFrame(() => enfocarCelda(idx, "fecha"));
+  }, [ultimoIdCreado, filasVisibles, enfocarCelda]);
+
+  const actualizarLocal = useCallback((historiaId, campos) => onActualizarLocal(historiaId, campos), [onActualizarLocal]);
+  const guardarEnServidor = useCallback((historiaId, campos) => onGuardarServidor(historiaId, campos), [onGuardarServidor]);
+
+  // onBlur de las celdas de texto: recorta espacios y sincroniza el
+  // estado local con lo mismo que se manda al servidor (evita que quede
+  // un valor con espacios en el input mientras la DB ya tiene la versión
+  // recortada).
+  const confirmarCampoTexto = useCallback((historiaId, campos) => {
+    actualizarLocal(historiaId, campos);
+    guardarEnServidor(historiaId, campos);
+  }, [actualizarLocal, guardarEnServidor]);
+
+  const copiarFila = useCallback(async (h) => {
+    const est = estadoPorId[h.estado];
+    const linea = [
+      clientesPorId[h.cliente_id] || "",
+      h.fecha_programada || "",
+      h.metadata?.hora || "",
+      h.metadata?.tipo || "",
+      h.copy || "",
+      h.material_referencia || "",
+      h.aclaraciones || "",
+      h.responsable_diseño || h.responsable || "",
+      est?.label || h.estado || "",
+    ].join("\t");
+    try {
+      await navigator.clipboard.writeText(linea);
+    } catch (err) {
+      console.error("No se pudo copiar la fila", err);
+    }
+  }, [clientesPorId, estadoPorId]);
+
+  // Crece el textarea con el contenido en vez de esconder texto o abrir
+  // scroll interno — la fila entera se estira, igual que en el Sheet.
+  const ajustarAltura = useCallback((el) => {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+
+  // Enter mueve a la misma columna, fila de abajo (como Sheets/Excel). En
+  // copy/observaciones Enter inserta un renglón propio en cambio — son
+  // textos largos que legítimamente llevan varias líneas (un copy de
+  // Instagram con su propio salto de párrafo, por ejemplo).
+  const manejarEnterOTab = useCallback((e, rowIndex, columna) => {
+    if (COLUMNAS_MULTILINEA.includes(columna)) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.currentTarget.blur();
+      enfocarCelda(rowIndex + 1, columna);
+    }
+    // Tab usa el orden natural del DOM — no hace falta manejarlo a mano.
+  }, [enfocarCelda]);
+
+  // Pegado multi-celda: si el portapapeles trae tabs (un bloque copiado de
+  // Sheets), lo distribuye sobre las filas/columnas existentes a partir de
+  // la celda activa. En columnas de texto largo un salto de línea solo no
+  // dispara esto — puede ser contenido real (un copy de varios renglones)
+  // pegado en una sola celda, no un rango de Sheets.
+  const manejarPaste = useCallback((e, rowIndex, columna) => {
+    const texto = e.clipboardData.getData("text/plain");
+    const esMultilinea = COLUMNAS_MULTILINEA.includes(columna);
+    const esPegadoMultiCelda = esMultilinea
+      ? texto.includes("\t")
+      : texto.includes("\t") || texto.includes("\n");
+    if (!esPegadoMultiCelda) return;
+    e.preventDefault();
+
+    const filasTexto = texto.replace(/\r/g, "").split("\n");
+    while (filasTexto.length > 1 && filasTexto[filasTexto.length - 1] === "") {
+      filasTexto.pop();
+    }
+
+    const colInicio = COLUMNAS_PLANILLA.indexOf(columna);
+
+    filasTexto.forEach((filaTexto, dRow) => {
+      const historiaObjetivo = filasVisibles[rowIndex + dRow];
+      if (!historiaObjetivo) return;
+
+      const valores = filaTexto.split("\t");
+      let payload = {};
+      valores.forEach((valorCelda, dCol) => {
+        const colObjetivo = COLUMNAS_PLANILLA[colInicio + dCol];
+        if (!colObjetivo) return;
+        const campo = payloadColumnaPlanilla(colObjetivo, valorCelda);
+        if (!campo) return;
+        payload = {
+          ...payload,
+          ...campo,
+          metadata: { ...(payload.metadata || {}), ...(campo.metadata || {}) },
+        };
+      });
+
+      if (Object.keys(payload).length > 0) {
+        actualizarLocal(historiaObjetivo.id, payload);
+        guardarEnServidor(historiaObjetivo.id, payload);
+      }
+    });
+  }, [filasVisibles, actualizarLocal, guardarEnServidor]);
+
+  return (
+    <>
+      {error && (
+        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+          {error}
+        </div>
+      )}
+
+      {cargando ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando planilla…</div>
+      ) : (
+        <div className="sheet-frame" ref={gridRef}>
+          <table className="sheet-table sheet-planning-table">
+            <colgroup>
+              <col className="sheet-rownum-col" />
+              <col className="sheet-client-col" />
+              <col className="sheet-day-col" />
+              <col className="sheet-date-col" />
+              <col className="sheet-time-col" />
+              <col className="sheet-type-col" />
+              <col className="sheet-copy-col" />
+              <col className="sheet-material-col" />
+              <col className="sheet-notes-col" />
+              <col className="sheet-owner-col" />
+              <col className="sheet-status-col" />
+              <col className="sheet-actions-col" />
+            </colgroup>
+            <thead>
+              <tr className="sheet-column-letters">
+                <th className="sheet-corner"></th>
+                {["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"].map((letra) => (
+                  <th key={letra}>{letra}</th>
+                ))}
+              </tr>
+              <tr>
+                <th className="sheet-rownum-head"></th>
+                <th>Local</th>
+                <th>Día</th>
+                <th>Fecha</th>
+                <th>Hora</th>
+                <th>Tipo</th>
+                <th>Copy</th>
+                <th>Material</th>
+                <th>Observaciones</th>
+                <th>Responsable</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filasVisibles.length === 0 && (
+                <tr>
+                  <td colSpan={12} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
+                    Sin historias planificadas este mes todavía.
+                  </td>
+                </tr>
+              )}
+              {filasVisibles.map((h, rowIndex) => {
+                // Cache de cálculos por historia para evitar recalcular en cada render
+                const cacheKey = `${h.id}:${h.fecha_programada}:${h.estado}`;
+                const fecha = new Date(`${h.fecha_programada}T00:00:00`);
+                const dow = fecha.getDay();
+                const esFinde = dow === 0 || dow === 6;
+                const esHoy = h.fecha_programada === hoyISO;
+                const estaAtrasada = h.fecha_programada < hoyISO && h.estado !== "publicada";
+                const est = estadoPorId[h.estado] || ESTADOS_HISTORIA[0];
+                // Franjeado sutil por día (no por fila): ayuda a distinguir
+                // rápido dónde termina un día y empieza el siguiente, igual
+                // que en el Sheet, sin competir con hoy/atrasada/finde.
+                const diaPar = fecha.getDate() % 2 === 0;
+                const bgFila = estaAtrasada ? "#fff5f5" : esHoy ? "#e3f2fd" : esFinde ? "#fafafa" : diaPar ? "#fbfcfa" : undefined;
+                const esNuevoDia = rowIndex === 0 || filasVisibles[rowIndex - 1].fecha_programada !== h.fecha_programada;
+
+                return (
+                  <tr key={h.id} style={{ background: bgFila, borderTop: esNuevoDia && rowIndex > 0 ? "2px solid #dadce0" : undefined }}>
+                    <td className="sheet-row-number">{rowIndex + 1}</td>
+                    <td className="sheet-client-cell">
+                      <select
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:cliente`}
+                        value={h.cliente_id || ""}
+                        onChange={(e) => {
+                          const campos = { cliente_id: Number(e.target.value) };
+                          actualizarLocal(h.id, campos);
+                          guardarEnServidor(h.id, campos);
+                        }}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "cliente")}
+                      >
+                        {clientes.map((cliente) => (
+                          <option key={cliente.id} value={cliente.id}>{cliente.nombre}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="sheet-day-cell" style={{ fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "#c62828" : esFinde ? "#999" : "#333" }}>
+                      {esNuevoDia ? LETRAS_DIA[dow] : ""}
+                      {estaAtrasada && esNuevoDia && <span title="Atrasada" style={{ marginLeft: "2px" }}>⚠</span>}
+                    </td>
+                    <td className="sheet-date-cell">
+                      <input
+                        type="date"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:fecha`}
+                        value={h.fecha_programada || ""}
+                        onChange={(e) => actualizarLocal(h.id, { fecha_programada: e.target.value })}
+                        onBlur={(e) => guardarEnServidor(h.id, { fecha_programada: e.target.value })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "fecha")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "fecha")}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:hora`}
+                        placeholder="—"
+                        value={h.metadata?.hora || ""}
+                        onChange={(e) => actualizarLocal(h.id, { metadata: { hora: e.target.value } })}
+                        onBlur={(e) => confirmarCampoTexto(h.id, { metadata: { hora: e.target.value.trim() } })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "hora")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "hora")}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:tipo`}
+                        placeholder="Testimonio, promo…"
+                        value={h.metadata?.tipo || ""}
+                        onChange={(e) => actualizarLocal(h.id, { metadata: { tipo: e.target.value } })}
+                        onBlur={(e) => confirmarCampoTexto(h.id, { metadata: { tipo: e.target.value.trim() } })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "tipo")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "tipo")}
+                      />
+                    </td>
+                    <td className="h-copy-cell">
+                      <textarea
+                        className="sheet-cell sheet-cell-textarea"
+                        data-cell={`${rowIndex}:copy`}
+                        placeholder="Escribir copy…"
+                        rows={1}
+                        ref={ajustarAltura}
+                        value={h.copy || ""}
+                        onChange={(e) => {
+                          actualizarLocal(h.id, { copy: e.target.value });
+                          ajustarAltura(e.target);
+                        }}
+                        onBlur={(e) => confirmarCampoTexto(h.id, { copy: e.target.value.trim() })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "copy")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "copy")}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:material`}
+                        placeholder="Link…"
+                        value={h.material_referencia || ""}
+                        onChange={(e) => actualizarLocal(h.id, { material_referencia: e.target.value })}
+                        onBlur={(e) => confirmarCampoTexto(h.id, { material_referencia: e.target.value.trim() })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "material")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "material")}
+                      />
+                    </td>
+                    <td>
+                      <textarea
+                        className="sheet-cell sheet-cell-textarea"
+                        data-cell={`${rowIndex}:aclaraciones`}
+                        placeholder="—"
+                        rows={1}
+                        ref={ajustarAltura}
+                        value={h.aclaraciones || ""}
+                        onChange={(e) => {
+                          actualizarLocal(h.id, { aclaraciones: e.target.value });
+                          ajustarAltura(e.target);
+                        }}
+                        onBlur={(e) => confirmarCampoTexto(h.id, { aclaraciones: e.target.value.trim() })}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "aclaraciones")}
+                        onPaste={(e) => manejarPaste(e, rowIndex, "aclaraciones")}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:responsable`}
+                        value={h.responsable_diseño || h.responsable || "Augusto"}
+                        onChange={(e) => {
+                          const campos = { responsable: e.target.value, responsable_diseño: e.target.value };
+                          actualizarLocal(h.id, campos);
+                          guardarEnServidor(h.id, campos);
+                        }}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "responsable")}
+                      >
+                        {RESPONSABLES_EQUIPO.map((r) => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        className="sheet-cell"
+                        data-cell={`${rowIndex}:estado`}
+                        value={h.estado}
+                        onChange={(e) => {
+                          actualizarLocal(h.id, { estado: e.target.value });
+                          guardarEnServidor(h.id, { estado: e.target.value });
+                        }}
+                        onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "estado")}
+                        style={{ background: est.bg, color: est.fg, fontWeight: "600", border: "1px solid transparent" }}
+                      >
+                        {ESTADOS_HISTORIA.map((e) => (
+                          <option key={e.id} value={e.id}>{e.label}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <div className="sheet-row-actions">
+                        <button
+                          type="button"
+                          className="sheet-icon-btn"
+                          onClick={() => copiarFila(h)}
+                          title="Copiar fila (para pegar en otra fila o en Sheets)"
+                        >
+                          ⧉
+                        </button>
+                        <button
+                          type="button"
+                          className="sheet-icon-btn"
+                          onClick={() => onDuplicar(h)}
+                          title="Duplicar historia"
+                        >
+                          ⎘
+                        </button>
+                        <button
+                          type="button"
+                          className="sheet-icon-btn"
+                          onClick={() => onEliminar(h.id)}
+                          title="Eliminar"
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr>
+                <td className="sheet-row-number">{filasVisibles.length + 1}</td>
+                <td colSpan={11} style={{ padding: 0 }}>
+                  <button type="button" className="sheet-add-row" onClick={onAgregar}>
+                    <span style={{ fontSize: "15px" }}>+</span> Agregar historia
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="caption" style={{ marginTop: "10px" }}>
+        {clienteFiltradoNombre
+          ? `Planilla de ${clienteFiltradoNombre}.`
+          : "Planilla general de historias: todos los locales en una sola hoja."}
+      </div>
+    </>
+  );
+}
+
+// ── HOJA POR CLIENTE: calendario día por día de un cliente ──────────────────
+
+export function HistoriasClienteTab({ clientes, estructura, historias, year, month }) {
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(clientes.length > 0 ? clientes[0].id : null);
+
+  const DIAS_SEMANA = DIAS_SEMANA_CLIENTE;
+  const MESES = MESES_CLIENTE;
+  const clienteActual = useMemo(() => clientes.find((c) => c.id === clienteSeleccionado), [clientes, clienteSeleccionado]);
+
+  const estructuraPorDia = useMemo(() => {
+    const acc = {};
+    if (estructura && clienteSeleccionado) {
+      estructura.forEach((e) => {
+        if (e.cliente_id === clienteSeleccionado) {
+          acc[e.dia_semana] = e;
+        }
+      });
+    }
+    return acc;
+  }, [estructura, clienteSeleccionado]);
+
+  // Indexar historias del cliente por fecha ISO — evita un .filter() O(n)
+  // por cada una de las ~35 celdas del calendario (era O(dias * historias)).
+  const historiasPorFecha = useMemo(() => {
+    const acc = {};
+    historias.forEach((h) => {
+      if (h.cliente_id !== clienteSeleccionado || !h.fecha_programada) return;
+      (acc[h.fecha_programada] = acc[h.fecha_programada] || []).push(h);
+    });
+    return acc;
+  }, [historias, clienteSeleccionado]);
+
+  const semanas = useMemo(() => {
+    const primerDia = new Date(year, month, 1);
+    const ultimoDia = new Date(year, month + 1, 0);
+    const inicioCalendario = new Date(primerDia);
+    inicioCalendario.setDate(primerDia.getDate() - ((primerDia.getDay() + 6) % 7));
+
+    const resultado = [];
+    const cursor = new Date(inicioCalendario);
+    while (cursor <= ultimoDia) {
+      const dias = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(cursor);
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const diaSemana = d.getDay();
+        const estructuraDelDia = estructuraPorDia[diaSemana];
+
+        dias.push({
+          date: d,
+          iso,
+          diaSemana,
+          esDiaMes: d.getMonth() === primerDia.getMonth(),
+          tema: estructuraDelDia?.tema || estructuraDelDia?.tipo || "No definido",
+          horario: estructuraDelDia?.horario || "",
+          historiasDelDia: historiasPorFecha[iso] || [],
+        });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      resultado.push(dias);
+    }
+    return resultado;
+  }, [year, month, estructuraPorDia, historiasPorFecha]);
+
+  if (!clienteActual) {
+    return <div style={{ padding: "40px", textAlign: "center", color: "#999" }}>No hay clientes cargados</div>;
+  }
+
+  return (
+    <>
+      <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "24px" }}>
+        <label style={{ fontWeight: "600", color: "#333", fontSize: "14px" }}>Seleccionar cliente:</label>
+        <select
+          value={clienteSeleccionado}
+          onChange={(e) => setClienteSeleccionado(Number(e.target.value))}
+          style={{
+            padding: "10px 14px",
+            border: "1px solid #ddd",
+            borderRadius: "6px",
+            fontSize: "14px",
+            fontWeight: "500",
+            cursor: "pointer",
+            background: "white",
+          }}
+        >
+          {clientes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nombre}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ background: "linear-gradient(135deg, #1565c0 0%, #1976d2 100%)", color: "white", padding: "20px", borderRadius: "8px", marginBottom: "24px", boxShadow: "0 2px 8px rgba(21,101,192,0.2)" }}>
+        <h2 style={{ fontSize: "20px", margin: "0 0 8px 0", fontWeight: "700" }}>{clienteActual.nombre}</h2>
+        <p style={{ fontSize: "13px", margin: "0", opacity: 0.95, display: "flex", gap: "8px" }}>
+          <span>🏢 {clienteActual.rubro || "—"}</span>
+          {clienteActual.frecuencia && <span>•</span>}
+          {clienteActual.frecuencia && <span>📅 {clienteActual.frecuencia}</span>}
+        </p>
+      </div>
+
+      <div style={{ marginBottom: "16px", fontSize: "12px", color: "#666", padding: "12px", background: "#f0f4ff", borderRadius: "6px", borderLeft: "3px solid #1976d2" }}>
+        📋 <strong>{MESES[month]} {year}</strong> — Estructura día por día
+      </div>
+
+      {semanas.map((dias, semanaIdx) => {
+        const semanaInicio = dias.find((d) => d.esDiaMes);
+        if (!semanaInicio) return null;
+
+        return (
+          <div key={semanaIdx} style={{ marginBottom: "24px" }}>
+            <div style={{ fontSize: "12px", fontWeight: "700", color: "#1565c0", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              Semana {semanaIdx + 1}
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                gap: "10px",
+                background: "white",
+                padding: "16px",
+                borderRadius: "8px",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+              }}
+            >
+              {dias.map((dia) => (
+                <div
+                  key={dia.iso}
+                  style={{
+                    background: dia.esDiaMes ? "#f5f8ff" : "#f9f9f9",
+                    border: dia.esDiaMes ? "2px solid #e3f2fd" : "1px solid #e8e8e8",
+                    borderRadius: "8px",
+                    padding: "12px",
+                    textAlign: "center",
+                    minHeight: "110px",
+                    display: "flex",
+                    flexDirection: "column",
+                    opacity: !dia.esDiaMes ? 0.4 : 1,
+                    transition: "all 0.2s",
+                  }}
+                >
+                  <div style={{ fontSize: "11px", fontWeight: "600", color: "#999", marginBottom: "2px", textTransform: "uppercase" }}>
+                    {DIAS_SEMANA[dia.diaSemana]}
+                  </div>
+                  <div style={{ fontSize: "16px", fontWeight: "700", color: "#1976d2", marginBottom: "8px" }}>
+                    {String(dia.date.getDate()).padStart(2, "0")}
+                  </div>
+                  <div style={{ fontSize: "13px", fontWeight: "600", color: "#333", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: "1.3" }}>
+                    {dia.tema}
+                  </div>
+                  {dia.horario && (
+                    <div style={{ fontSize: "11px", color: "#1976d2", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #e0e8ff", fontWeight: "500" }}>
+                      🕐 {dia.horario}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, month, onHistoriasActualizadas }) {
+  const [error, setError] = useState(null);
+  const [guardandoId, setGuardandoId] = useState(null);
+  const [checks, setChecks] = useState([]);
+
+  const hoyISO = getHoyLocalISO();
+  const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const LETRAS_DIA = ["D", "L", "M", "X", "J", "V", "S"];
+
+  const historiasMes = useMemo(() =>
+    historias.filter((h) => h.fecha_programada && h.fecha_programada.startsWith(mesPrefix)),
+    [historias, mesPrefix]
+  );
+
+  const historiasPorClienteFecha = useMemo(() =>
+    historiasMes.reduce((acc, h) => {
+      const key = `${h.cliente_id}:${h.fecha_programada}`;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(h);
+      return acc;
+    }, {}),
+    [historiasMes]
+  );
+
+  const checksPorClienteFecha = useMemo(() =>
+    checks.reduce((acc, check) => {
+      acc[`${check.cliente_id}:${check.fecha}`] = check;
+      return acc;
+    }, {}),
+    [checks]
+  );
+
+  const semanas = useMemo(() => {
+    const primerDiaMes = new Date(year, month, 1);
+    const ultimoDiaMes = new Date(year, month + 1, 0);
+    const inicioCalendario = new Date(primerDiaMes);
+    inicioCalendario.setDate(primerDiaMes.getDate() - ((primerDiaMes.getDay() + 6) % 7));
+    const finCalendario = new Date(ultimoDiaMes);
+    finCalendario.setDate(ultimoDiaMes.getDate() + (7 - ((ultimoDiaMes.getDay() + 6) % 7) - 1));
+
+    const resultado = [];
+    const cursor = new Date(inicioCalendario);
+    while (cursor <= finCalendario) {
+      const dias = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(cursor);
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        dias.push({
+          date: d,
+          iso,
+          label: `${LETRAS_DIA[d.getDay()]} ${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
+        });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      resultado.push(dias);
+    }
+    return resultado;
+  }, [year, month]);
+
+  useEffect(() => {
+    const desde = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+    const hasta = `${year}-${String(month + 1).padStart(2, "0")}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, "0")}`;
+
+    fetch(`/api/check-publicacion?desde=${desde}&hasta=${hasta}`)
+      .then((r) => {
+        if (!r.ok) throw new Error("No se pudo cargar el checklist");
+        return r.json();
+      })
+      .then((data) => setChecks(data))
+      .catch((err) => {
+        console.error("No se pudo cargar checklist de historias", err);
+        setError("No se pudo cargar el estado del checklist.");
+      });
+  }, [year, month]);
+
+  const { publicadas, pendientes, vencidas } = useMemo(() => {
+    const pub = historiasMes.filter((h) => h.estado === "publicada").length;
+    const venc = historiasMes.filter(
+      (h) => h.estado !== "publicada" && h.fecha_programada < hoyISO,
+    ).length;
+    return { publicadas: pub, pendientes: historiasMes.length - pub, vencidas: venc };
+  }, [historiasMes, hoyISO]);
+
+  const marcarPublicada = useCallback(async (clienteId, fecha, publicada) => {
+    const nuevoEstado = publicada ? "publicada" : "pendiente";
+    const key = `${clienteId}:${fecha}`;
+    const historiasDelDia = historiasPorClienteFecha[key] || [];
+
+    setGuardandoId(key);
+    setChecks((prev) => {
+      const existe = prev.some((check) => check.cliente_id === clienteId && check.fecha === fecha);
+      if (existe) {
+        return prev.map((check) =>
+          check.cliente_id === clienteId && check.fecha === fecha
+            ? { ...check, publicado: publicada }
+            : check,
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: `local-${key}`,
+          cliente_id: clienteId,
+          fecha,
+          publicado: publicada,
+          confirmado_por: getSesion()?.usuario?.nombre || null,
+        },
+      ];
+    });
+    onHistoriasActualizadas((prev) =>
+      prev.map((h) =>
+        h.cliente_id === clienteId && h.fecha_programada === fecha
+          ? { ...h, estado: nuevoEstado }
+          : h,
+      ),
+    );
+    try {
+      const checkRes = await fetch("/api/check-publicacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cliente_id: clienteId,
+          fecha,
+          publicado: publicada,
+          confirmado_por: getSesion()?.usuario?.nombre || "Sistema",
+        }),
+      });
+      if (!checkRes.ok) throw new Error("No se pudo guardar el OK");
+
+      await Promise.all(
+        historiasDelDia.map(async (h) => {
+          const res = await fetch(`/api/historias/${h.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ estado: nuevoEstado }),
+          });
+          if (!res.ok) throw new Error("No se pudo guardar");
+        }),
+      );
+      setError(null);
+    } catch (err) {
+      console.error("Error actualizando checklist", err);
+      setError("No se pudo actualizar el checklist. Reintentá.");
+    } finally {
+      setGuardandoId(null);
+    }
+  }, [historiasPorClienteFecha, onHistoriasActualizadas]);
+
+  return (
+    <>
+      <div className="sheet-toolbar">
+        <div className="sheet-stats">
+          <span>{historiasMes.length} historias</span>
+          <span className="ok">{publicadas} publicadas</span>
+          <span className="warn">{pendientes} pendientes</span>
+          {vencidas > 0 && <span className="danger">{vencidas} vencidas</span>}
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+          {error}
+        </div>
+      )}
+
+      {cargando ? (
+        <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando checklist…</div>
+      ) : (
+        <div className="sheet-frame check-sheet-frame">
+          <div className="sheet-namebar">CHECK HISTORIAS — {MESES[month].toUpperCase()} {year}</div>
+          {semanas.map((dias, semanaIndex) => {
+            const desde = dias[0];
+            const hasta = dias[6];
+            const totalSemana = clientes.reduce(
+              (acc, c) =>
+                acc +
+                dias.reduce((sum, d) => {
+                  const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
+                  const check = checksPorClienteFecha[`${c.id}:${d.iso}`];
+                  const publicadaPorHistorias = items.length > 0 && items.every((h) => h.estado === "publicada");
+                  return sum + (check?.publicado || publicadaPorHistorias ? 1 : 0);
+                }, 0),
+              0,
+            );
+            const totalPorDia = dias.map((d) =>
+              clientes.reduce((sum, c) => {
+                const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
+                const check = checksPorClienteFecha[`${c.id}:${d.iso}`];
+                const publicadaPorHistorias = items.length > 0 && items.every((h) => h.estado === "publicada");
+                return sum + (check?.publicado || publicadaPorHistorias ? 1 : 0);
+              }, 0),
+            );
+
+            return (
+              <table className="check-sheet-table" key={desde.iso}>
+                <thead>
+                  <tr>
+                    <th colSpan={9} className="check-week-title">
+                      SEMANA {semanaIndex + 1} — {desde.label.slice(2)} al {hasta.label.slice(2)}
+                    </th>
+                  </tr>
+                  <tr>
+                    <th className="check-client-col">Cliente</th>
+                    {dias.map((d) => (
+                      <th key={d.iso} className={d.iso === hoyISO ? "check-day today" : "check-day"}>
+                        {d.label}
+                      </th>
+                    ))}
+                    <th className="check-total-col">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientes.map((c) => {
+                    const totalCliente = dias.reduce((sum, d) => {
+                      const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
+                      const check = checksPorClienteFecha[`${c.id}:${d.iso}`];
+                      const publicadaPorHistorias = items.length > 0 && items.every((h) => h.estado === "publicada");
+                      return sum + (check?.publicado || publicadaPorHistorias ? 1 : 0);
+                    }, 0);
+
+                    return (
+                      <tr key={c.id}>
+                        <td className="check-client-col">{c.nombre}</td>
+                        {dias.map((d) => {
+                          const key = `${c.id}:${d.iso}`;
+                          const items = historiasPorClienteFecha[key] || [];
+                          const check = checksPorClienteFecha[key];
+                          const hayHistorias = items.length > 0;
+                          const publicadasDia = items.filter((h) => h.estado === "publicada").length;
+                          const todasPublicadas = Boolean(check?.publicado) || (hayHistorias && publicadasDia === items.length);
+                          const algunasPublicadas = !check?.publicado && publicadasDia > 0 && publicadasDia < items.length;
+                          return (
+                            <td
+                              key={d.iso}
+                              className={[
+                                "check-day-cell",
+                                !hayHistorias && !check?.publicado ? "empty" : "",
+                                todasPublicadas ? "ok" : "",
+                                algunasPublicadas ? "partial" : "",
+                              ].join(" ")}
+                              title={
+                                hayHistorias
+                                  ? `${items.length} historia${items.length > 1 ? "s" : ""} · ${publicadasDia} publicada${publicadasDia !== 1 ? "s" : ""}`
+                                  : check?.publicado
+                                    ? "OK marcado en checklist"
+                                    : "Sin historias planificadas"
+                              }
+                            >
+                              <button
+                                type="button"
+                                className="check-sheet-toggle"
+                                disabled={guardandoId === key}
+                                aria-label={todasPublicadas ? "Quitar OK" : "Marcar OK"}
+                                onClick={() => marcarPublicada(c.id, d.iso, !todasPublicadas)}
+                              >
+                                {guardandoId === key ? "..." : (todasPublicadas ? "✓" : "")}
+                              </button>
+                            </td>
+                          );
+                        })}
+                        <td className="check-total-col">{totalCliente}</td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="check-total-row">
+                    <td>Total por día</td>
+                    {totalPorDia.map((total, idx) => (
+                      <td key={dias[idx].iso}>{total}</td>
+                    ))}
+                    <td>{totalSemana}</td>
+                  </tr>
+                </tbody>
+              </table>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="caption" style={{ marginTop: "10px" }}>
+        Matriz mensual igual a CHECKHISTORIAS: clientes por fila, días por columna.
+      </div>
+    </>
+  );
+}
+
+export function HistoriasEstructuraTab({ clientes }) {
+  const [estructura, setEstructura] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  const DIAS_SEMANA = [
+    { id: 1, label: "Lunes", abrev: "L" },
+    { id: 2, label: "Martes", abrev: "M" },
+    { id: 3, label: "Miércoles", abrev: "X" },
+    { id: 4, label: "Jueves", abrev: "J" },
+    { id: 5, label: "Viernes", abrev: "V" },
+    { id: 6, label: "Sábado", abrev: "S" },
+    { id: 0, label: "Domingo", abrev: "D" },
+  ];
+
+  useEffect(() => {
+    setCargando(true);
+    fetch("/api/estructura")
+      .then((r) => r.json())
+      .then((data) => {
+        setEstructura(data);
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("No se pudo cargar estructura", err);
+        setError("No se pudo cargar la estructura.");
+      })
+      .finally(() => setCargando(false));
+  }, []);
+
+  const estructuraPorClienteDia = {};
+  estructura.forEach((e) => {
+    if (!estructuraPorClienteDia[e.cliente_id]) estructuraPorClienteDia[e.cliente_id] = {};
+    estructuraPorClienteDia[e.cliente_id][e.dia_semana] = e;
+  });
+
+  if (cargando) {
+    return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando estructura…</div>;
+  }
+
+  return (
+    <>
+      {error && (
+        <div style={{ padding: "12px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "20px", fontSize: "13px" }}>
+          ⚠️ {error}
+        </div>
+      )}
+
+      <div style={{ background: "white", borderRadius: "8px", padding: "20px", marginBottom: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+        <h2 style={{ fontSize: "18px", margin: "0 0 8px 0", color: "#333" }}>📅 Estructura Semanal de Historias</h2>
+        <p style={{ fontSize: "13px", color: "#666", margin: "0" }}>
+          Qué tema va cada día para cada cliente y a qué hora se publica. Patrón base que se sugiere automáticamente.
+        </p>
+      </div>
+
+      <div style={{ background: "white", borderRadius: "8px", overflowX: "auto", overflowY: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ background: "#1565c0", color: "white" }}>
+              <th style={{ padding: "14px 16px", textAlign: "left", fontWeight: "600", fontSize: "13px", borderBottom: "2px solid #0d47a1", minWidth: "140px" }}>
+                Cliente
+              </th>
+              <th style={{ padding: "14px 8px", textAlign: "center", fontWeight: "600", fontSize: "12px", borderBottom: "2px solid #0d47a1", width: "14.28%" }}>
+                Rubro
+              </th>
+              {DIAS_SEMANA.map((dia) => (
+                <th
+                  key={dia.id}
+                  style={{
+                    padding: "10px 4px",
+                    textAlign: "center",
+                    fontWeight: "600",
+                    fontSize: "12px",
+                    borderBottom: "2px solid #0d47a1",
+                    width: "12.5%",
+                  }}
+                >
+                  <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.7)", fontWeight: "400", marginBottom: "1px" }}>{dia.abrev}</div>
+                  <div>{dia.label.slice(0, 3)}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {clientes.map((cliente, idx) => {
+              const estructuraCliente = estructuraPorClienteDia[cliente.id] || {};
+              return (
+                <tr key={cliente.id} style={{ borderBottom: "1px solid #e0e0e0", background: idx % 2 === 0 ? "#fafafa" : "#fff" }}>
+                  <td style={{ padding: "16px", fontWeight: "600", color: "#333", fontSize: "13px", verticalAlign: "top" }}>
+                    {cliente.nombre}
+                  </td>
+                  <td style={{ padding: "12px 8px", fontSize: "12px", color: "#666", textAlign: "center", verticalAlign: "top" }}>
+                    {cliente.rubro || "—"}
+                  </td>
+                  {DIAS_SEMANA.map((dia) => {
+                    const est = estructuraCliente[dia.id];
+                    return (
+                      <td
+                        key={dia.id}
+                        style={{
+                          padding: "12px 6px",
+                          textAlign: "center",
+                          verticalAlign: "top",
+                          fontSize: "12px",
+                          background: est ? "#f0f4ff" : "#f9f9f9",
+                          borderLeft: "1px solid #e0e8ff",
+                        }}
+                      >
+                        {est ? (
+                          <div style={{ minHeight: "70px", display: "flex", flexDirection: "column", justifyContent: "center", gap: "4px" }}>
+                            {est.horario && (
+                              <div style={{ fontSize: "11px", color: "#1976d2", fontWeight: "600", padding: "2px 4px", background: "#e3f2fd", borderRadius: "3px" }}>
+                                {est.horario}
+                              </div>
+                            )}
+                            <div style={{ fontSize: "12px", fontWeight: "600", color: "#333" }}>
+                              {est.tema || "Sin tema"}
+                            </div>
+                            {est.tipo && (
+                              <div style={{ fontSize: "11px", color: "#999", fontStyle: "italic" }}>
+                                ({est.tipo})
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ minHeight: "70px", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: "11px" }}>
+                            —
+                          </div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ fontSize: "12px", color: "#666", marginTop: "16px", padding: "12px", background: "#f5f5f5", borderRadius: "4px" }}>
+        💡 <strong>Consejo:</strong> Cuando agregues una historia nueva, el tipo y horario de ese día se sugieren automáticamente basándose en esta estructura.
+      </div>
+    </>
+  );
+}
+
+export function HistoriasFechasEspecialesTab({ clientes }) {
+  const [fechasEspeciales, setFechasEspeciales] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setCargando(true);
+    fetch("/api/fechas-especiales")
+      .then((r) => r.json())
+      .then((data) => {
+        setFechasEspeciales(
+          data.slice().sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "")),
+        );
+        setError(null);
+      })
+      .catch((err) => {
+        console.error("No se pudieron cargar fechas especiales", err);
+        setError("No se pudieron cargar las fechas especiales.");
+      })
+      .finally(() => setCargando(false));
+  }, []);
+
+  const hoyISO = getHoyLocalISO();
+  const estadoLabel = { pendiente: "Pendiente", en_curso: "En curso", hecho: "Hecho" };
+  const clientesPorId = Object.fromEntries(clientes.map((c) => [c.id, c.nombre]));
+
+  if (cargando) {
+    return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando fechas especiales…</div>;
+  }
+
+  return (
+    <>
+      {error && (
+        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+          {error}
+        </div>
+      )}
+
+      <div className="sheet-frame">
+        <div className="sheet-namebar">Fechas especiales</div>
+        {fechasEspeciales.length === 0 ? (
+          <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>No hay fechas especiales registradas.</div>
+        ) : (
+          <table className="sheet-table historias-special-dates-table">
+            <thead>
+              <tr>
+                <th style={{ width: "110px" }}>Fecha</th>
+                <th style={{ width: "170px" }}>Local</th>
+                <th style={{ width: "24%" }}>Motivo</th>
+                <th>Acción sugerida</th>
+                <th style={{ width: "110px" }}>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fechasEspeciales.map((f) => (
+                <tr key={f.id} className={f.fecha && f.fecha < hoyISO && f.estado !== "hecho" ? "sheet-row-danger" : undefined}>
+                  <td style={{ padding: "8px 10px" }}>{f.fecha || "Sin fecha"}</td>
+                  <td style={{ padding: "8px 10px", fontWeight: 600 }}>{f.cliente_id ? clientesPorId[f.cliente_id] || "Sin local" : "Todos"}</td>
+                  <td style={{ padding: "8px 10px" }}>{f.evento || "—"}</td>
+                  <td style={{ padding: "8px 10px" }}>{f.idea || "—"}</td>
+                  <td style={{ padding: "8px 10px" }}>
+                    <span className="sheet-status-pill" style={{ background: f.estado === "hecho" ? "#c8e6c9" : f.estado === "en_curso" ? "#fff9c4" : "#ffccbc" }}>
+                      {estadoLabel[f.estado] || f.estado}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
+export function FlyersMigrarBanner({ onMigrado }) {
+  const [flyers, setFlyers] = useState([]);
+  const [migrando, setMigrando] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/publicaciones")
+      .then((r) => r.json())
+      .then((data) => setFlyers(data.filter((p) => p.tipo === "flyer")))
+      .catch((err) => console.error("No se pudieron revisar flyers legacy", err));
+  }, []);
+
+  if (flyers.length === 0) return null;
+
+  const migrarTodos = async () => {
+    setMigrando(true);
+    setError(null);
+    try {
+      for (const f of flyers) {
+        const res = await fetch(`/api/historias/convertir-flyer/${f.id}`, { method: "POST" });
+        if (!res.ok) throw new Error("Falló la conversión de un flyer");
+      }
+      setFlyers([]);
+      onMigrado && onMigrado();
+    } catch (err) {
+      console.error("Error migrando flyers", err);
+      setError("No se pudieron convertir todos los flyers. Reintentá.");
+    } finally {
+      setMigrando(false);
+    }
+  };
+
+  return (
+    <div style={{ background: "#fff3e0", border: "1px solid #ffb74d", borderRadius: "6px", padding: "12px 16px", marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+      <div style={{ fontSize: "13px", color: "#e65100" }}>
+        ⚠️ Hay <strong>{flyers.length}</strong> flyer{flyers.length > 1 ? "s" : ""} viejo{flyers.length > 1 ? "s" : ""} en Publicaciones. Los flyers ahora viven dentro de Historias.
+        {error && <div style={{ marginTop: "4px" }}>{error}</div>}
+      </div>
+      <button className="btn" type="button" disabled={migrando} onClick={migrarTodos}>
+        {migrando ? "Convirtiendo…" : `Convertir ${flyers.length} a Historias`}
+      </button>
+    </div>
+  );
+}
+
+export function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atrasadasPorCliente, compacto, onToggleCompacto }) {
+  const [busqueda, setBusqueda] = useState("");
+  const filtrados = clientes.filter((c) =>
+    c.nombre.toLowerCase().includes(busqueda.trim().toLowerCase()),
+  );
+
+  return (
+    <aside className={`h-rail ${compacto ? "compact" : ""}`}>
+      <div className="h-rail-head">
+        <div className="h-rail-titlebar">
+          <span>Locales</span>
+          <button
+            type="button"
+            className="h-rail-toggle"
+            onClick={onToggleCompacto}
+            aria-label={compacto ? "Expandir locales" : "Compactar locales"}
+            title={compacto ? "Expandir locales" : "Compactar locales"}
+          >
+            {compacto ? ">" : "<"}
+          </button>
+        </div>
+        {!compacto && (
+          <div className="h-rail-search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Buscar local…"
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+          </div>
+        )}
+      </div>
+      <div className="h-rail-list">
+        {filtrados.map((c) => {
+          const atrasadas = atrasadasPorCliente[c.id] || 0;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              className={`h-client-row ${clienteSeleccionado === c.id ? "active" : ""}`}
+              onClick={() => onSeleccionar(c.id)}
+              title={c.nombre}
+            >
+              <span className={`h-client-dot ${atrasadas > 0 ? "danger" : "ok"}`}></span>
+              {compacto && <span className="h-client-initials">{getInicialesCliente(c.nombre)}</span>}
+              <span className="h-client-name">{c.nombre}</span>
+              {atrasadas > 0 && <span className="h-client-badge">{atrasadas}</span>}
+            </button>
+          );
+        })}
+        {filtrados.length === 0 && (
+          <div className="caption" style={{ padding: "10px" }}>Sin resultados.</div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+export function HistoriasPage({ initialTab = "estructura" }) {
+  const [vista, setVista] = useState(
+    ["estructura", "checklist", "fechas"].includes(initialTab) ? initialTab : "estructura",
+  );
+  const [clientes, setClientes] = useState([]);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  // Filtro de cliente propio de la pestaña Planilla — separado de
+  // clienteSeleccionado (que ya se usaba como destino por default de
+  // "+ Nueva historia" en otras pestañas) para no cambiar ese comportamiento
+  // existente. Vacío = "Hoja general" (todos los clientes), como hoy.
+  const [filtroClientePlanilla, setFiltroClientePlanilla] = useState("");
+  const [errorClientes, setErrorClientes] = useState(null);
+  const [refrescarKey, setRefrescarKey] = useState(0);
+
+  const [historias, setHistorias] = useState([]);
+  const [cargandoHistorias, setCargandoHistorias] = useState(true);
+  const [errorHistorias, setErrorHistorias] = useState(null);
+  const [estructura, setEstructura] = useState([]);
+  const [ultimoIdCreado, setUltimoIdCreado] = useState(null);
+
+  const hoyDate = new Date();
+  const [year, setYear] = useState(hoyDate.getFullYear());
+  const [month, setMonth] = useState(hoyDate.getMonth());
+
+  useEffect(() => {
+    fetch("/api/clientes")
+      .then((r) => r.json())
+      .then((data) => {
+        setClientes(data);
+        if (data.length > 0) setClienteSeleccionado(data[0].id);
+      })
+      .catch((err) => {
+        console.error("No se pudieron cargar clientes", err);
+        setErrorClientes("No se pudieron cargar los clientes.");
+      });
+  }, []);
+
+  const cargarHistorias = () => {
+    setCargandoHistorias(true);
+    fetch("/api/historias")
+      .then((r) => r.json())
+      .then((data) => {
+        setHistorias(data);
+        setErrorHistorias(null);
+      })
+      .catch((err) => {
+        console.error("Error cargando historias", err);
+        setErrorHistorias("No se pudieron cargar las historias.");
+      })
+      .finally(() => setCargandoHistorias(false));
+  };
+  useEffect(cargarHistorias, [refrescarKey]);
+
+  useEffect(() => {
+    fetch("/api/estructura")
+      .then((r) => r.json())
+      .then((data) => setEstructura(data))
+      .catch((err) => console.error("No se pudo cargar la estructura semanal", err));
+  }, []);
+
+  const hoyISO = getHoyLocalISO();
+
+  const irMes = (delta) => {
+    let m = month + delta;
+    let y = year;
+    if (m < 0) { m = 11; y -= 1; } else if (m > 11) { m = 0; y += 1; }
+    setMonth(m);
+    setYear(y);
+  };
+  const irAHoy = () => {
+    setMonth(hoyDate.getMonth());
+    setYear(hoyDate.getFullYear());
+  };
+
+  const actualizarHistoriaLocal = (historiaId, campos) => {
+    setHistorias((prev) =>
+      prev.map((h) => {
+        if (h.id !== historiaId) return h;
+        const actualizado = { ...h, ...campos };
+        if (campos.metadata) actualizado.metadata = { ...(h.metadata || {}), ...campos.metadata };
+        return actualizado;
+      }),
+    );
+  };
+
+  const guardarHistoriaEnServidor = async (historiaId, campos) => {
+    try {
+      const res = await fetch(`/api/historias/${historiaId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(campos),
+      });
+      if (!res.ok) throw new Error("No se pudo guardar");
+    } catch (err) {
+      console.error("Error guardando", err);
+      setErrorHistorias("No se pudo guardar un cambio — reintentá.");
+    }
+  };
+
+  const crearHistoria = async (clienteIdDestino, fechaISO) => {
+    const res = await fetch("/api/piezas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tipo: "historia",
+        cliente_id: clienteIdDestino,
+        responsable: "Augusto",
+        fecha_programada: fechaISO,
+        estado: "pendiente",
+        idea: "",
+      }),
+    });
+    if (!res.ok) throw new Error("No se pudo crear");
+    const creada = await res.json();
+
+    // Sugerencia de tipo/hora según el patrón semanal de ese día.
+    const diaSemana = new Date(`${fechaISO}T00:00:00`).getDay();
+    const patron = estructura.find((e) => e.cliente_id === clienteIdDestino && e.dia_semana === diaSemana);
+    let metadataSugerida = {};
+    if (patron?.tema || patron?.horario) {
+      const horaSugerida = patron.horario?.match(/\d{1,2}:\d{2}/)?.[0] || "";
+      metadataSugerida = { tipo: patron.tema || "", hora: horaSugerida };
+      await fetch(`/api/historias/${creada.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ metadata: metadataSugerida }),
+      }).catch((err) => console.error("No se pudo sugerir tipo/hora", err));
+    }
+
+    setHistorias((prev) => [...prev, { ...creada, metadata: metadataSugerida }]);
+    return creada.id;
+  };
+
+  // Punto de entrada único para "agregar historia": lo usan tanto el botón
+  // de la barra superior (accesible sin scrollear hasta el pie de la
+  // grilla) como el renglón "+" al final de la tabla — ambos crean en el
+  // mismo lugar (hoy, o el día 1 si se está viendo otro mes) y enfocan la
+  // fila nueva apenas aparece.
+  const agregarHistoriaEnMesActual = async () => {
+    // Si la Planilla está filtrada a un cliente, la historia nueva se crea
+    // para ESE cliente (no tendría sentido crearla para otro mientras se
+    // está mirando la hoja de uno en particular).
+    const clienteDestino =
+      vista === "planilla"
+        ? (filtroClientePlanilla ? Number(filtroClientePlanilla) : clientes[0]?.id) || clienteSeleccionado
+        : clienteSeleccionado;
+    if (!clienteDestino) return;
+    const hoyISOActual = getHoyLocalISO();
+    const mesActualPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+    const iso = mesActualPrefix === hoyISOActual.slice(0, 7) ? hoyISOActual : `${mesActualPrefix}-01`;
+    try {
+      const id = await crearHistoria(clienteDestino, iso);
+      setUltimoIdCreado(id);
+    } catch (err) {
+      console.error("Error creando historia", err);
+      setErrorHistorias("No se pudo crear la historia.");
+    }
+  };
+
+  const duplicarHistoria = async (historia) => {
+    try {
+      const res = await fetch("/api/piezas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "historia",
+          cliente_id: historia.cliente_id,
+          responsable: historia.responsable_diseño || historia.responsable || "Augusto",
+          fecha_programada: historia.fecha_programada,
+          estado: "pendiente",
+          idea: historia.idea || "",
+          copy: historia.copy || "",
+          material_referencia: historia.material_referencia || "",
+          aclaraciones: historia.aclaraciones || "",
+          prioridad: historia.prioridad || "media",
+        }),
+      });
+      if (!res.ok) throw new Error("No se pudo duplicar");
+      const creada = await res.json();
+      if (historia.metadata && Object.keys(historia.metadata).length > 0) {
+        await fetch(`/api/historias/${creada.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ metadata: historia.metadata }),
+        }).catch((err) => console.error("No se pudo copiar metadata al duplicar", err));
+      }
+      const nueva = { ...creada, metadata: historia.metadata || {} };
+      setHistorias((prev) => [...prev, nueva]);
+      setUltimoIdCreado(nueva.id);
+    } catch (err) {
+      console.error("Error duplicando historia", err);
+      setErrorHistorias("No se pudo duplicar la historia.");
+    }
+  };
+
+  const eliminarHistoria = async (historiaId) => {
+    if (!window.confirm("¿Eliminar esta historia de la planilla?")) return;
+    try {
+      const res = await fetch(`/api/historias/${historiaId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("No se pudo eliminar");
+      setHistorias((prev) => prev.filter((h) => h.id !== historiaId));
+    } catch (err) {
+      console.error("Error eliminando historia", err);
+      setErrorHistorias("No se pudo eliminar la historia.");
+    }
+  };
+
+  const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  // Cuando hay un cliente elegido en el selector de la Planilla, todo lo
+  // que se ve en esa pestaña (tabla y contadores) se filtra a ese cliente
+  // — sin filtro (vacío) se sigue viendo la Hoja general de siempre.
+  const historiasPlanillaVisibles = filtroClientePlanilla
+    ? historias.filter((h) => String(h.cliente_id) === filtroClientePlanilla)
+    : historias;
+  const historiasMes = historiasPlanillaVisibles.filter((h) => h.fecha_programada?.startsWith(mesPrefix));
+  const publicadasMes = historiasMes.filter((h) => h.estado === "publicada").length;
+  const atrasadasMes = historiasMes.filter((h) => h.fecha_programada < hoyISO && h.estado !== "publicada").length;
+
+  return (
+    <main aria-label="Render platform historias" className="historias-viewport">
+      <div className="frame">
+        <div className="content">
+          {(errorClientes || errorHistorias) && (
+            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828" }}>
+              {errorClientes || errorHistorias}
+            </div>
+          )}
+
+          <div className="h-workspace">
+            <div className="h-main">
+              <div className="h-toolbar">
+                {vista === "planilla" && (
+                  <select
+                    className="h-toolbar-client-select"
+                    value={filtroClientePlanilla}
+                    onChange={(e) => setFiltroClientePlanilla(e.target.value)}
+                    aria-label="Filtrar planilla por cliente"
+                  >
+                    <option value="">Hoja general (todos los clientes)</option>
+                    {clientes.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
+                  </select>
+                )}
+                {["planilla", "checklist"].includes(vista) && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
+                    <strong className="sheet-title">{MESES[month]} {year}</strong>
+                    <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
+                  </div>
+                )}
+                {["planilla", "checklist"].includes(vista) && (
+                  <button className="h-today-btn" type="button" onClick={irAHoy}>Ir a hoy</button>
+                )}
+
+                <div className="sheet-view-tabs" style={{ margin: 0 }}>
+                  <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => setVista("estructura")}>Estructura</button>
+                  <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => setVista("checklist")}>Checklist</button>
+                  <button type="button" className={vista === "fechas" ? "active" : ""} onClick={() => setVista("fechas")}>Fechas especiales</button>
+                </div>
+
+                {vista === "planilla" && (
+                  <div className="sheet-stats" style={{ marginLeft: "auto" }}>
+                    <span>{historiasMes.length} historias</span>
+                    <span className="ok">{publicadasMes} publicadas</span>
+                    {atrasadasMes > 0 && <span className="danger">{atrasadasMes} atrasadas</span>}
+                  </div>
+                )}
+
+                {vista === "planilla" && clientes.length > 0 && (
+                  <button
+                    className="add-btn"
+                    type="button"
+                    style={{ background: "#202124", color: "#fff", border: "none", borderRadius: "6px", padding: "8px 14px", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}
+                    onClick={agregarHistoriaEnMesActual}
+                  >
+                    + Nueva historia
+                  </button>
+                )}
+              </div>
+
+              <div className="h-body">
+                <FlyersMigrarBanner onMigrado={() => setRefrescarKey((k) => k + 1)} />
+
+                {vista === "planilla" && (
+                  <HistoriasPlanillaTab
+                    key="p-general"
+                    clientes={clientes}
+                    year={year}
+                    month={month}
+                    cargando={cargandoHistorias}
+                    historias={historiasPlanillaVisibles}
+                    ultimoIdCreado={ultimoIdCreado}
+                    onActualizarLocal={actualizarHistoriaLocal}
+                    onGuardarServidor={guardarHistoriaEnServidor}
+                    onAgregar={agregarHistoriaEnMesActual}
+                    onDuplicar={duplicarHistoria}
+                    onEliminar={eliminarHistoria}
+                    clienteFiltradoNombre={
+                      filtroClientePlanilla
+                        ? clientes.find((c) => String(c.id) === filtroClientePlanilla)?.nombre
+                        : null
+                    }
+                  />
+                )}
+
+                {vista === "estructura" && (
+                  <HistoriasEstructuraTab
+                    key="estructura-general"
+                    clientes={clientes}
+                  />
+                )}
+
+                {vista === "cliente" && (
+                  <HistoriasClienteTab
+                    key="cliente-general"
+                    clientes={clientes}
+                    estructura={estructura}
+                    historias={historias}
+                    year={year}
+                    month={month}
+                  />
+                )}
+
+                {vista === "fechas" && (
+                  <HistoriasFechasEspecialesTab
+                    key="fechas-especiales"
+                    clientes={clientes}
+                  />
+                )}
+
+                {vista === "checklist" && (
+                  <HistoriasChecklistPublicadasTab
+                    key={`c-${refrescarKey}`}
+                    clientes={clientes}
+                    historias={historias}
+                    cargando={cargandoHistorias}
+                    year={year}
+                    month={month}
+                    onHistoriasActualizadas={setHistorias}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
