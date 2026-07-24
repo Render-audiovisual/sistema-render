@@ -850,7 +850,6 @@ function NuevaTareaPage() {
                     <option value="pendiente">Pendiente</option>
                     <option value="en_progreso">En proceso</option>
                     <option value="en_revision">En revisión</option>
-                    <option value="programada">Programada</option>
                     <option value="publicada">Publicada</option>
                   </select>
                 </label>
@@ -1011,7 +1010,6 @@ function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo }) {
                     <option value="pendiente">Pendiente</option>
                     <option value="en_progreso">En proceso</option>
                     <option value="en_revision">En revisión</option>
-                    <option value="programada">Programada</option>
                     <option value="publicada" disabled={bloqueaCierre}>
                       {bloqueaCierre
                         ? "Publicada (requiere aprobación de admin)"
@@ -1054,8 +1052,7 @@ const ESTADOS_TAREA = [
   { id: "pendiente", label: "Pendiente", bg: "#24272b", fg: "#90a4ae" },
   { id: "en_progreso", label: "En proceso", bg: "#17233a", fg: "#64b5f6" },
   { id: "en_revision", label: "En revisión", bg: "#332413", fg: "#ffb74d" },
-  { id: "programada", label: "Programada", bg: "#2d2340", fg: "#b39ddb" },
-  { id: "publicada", label: "Completada", bg: "#123320", fg: "#66bb6a" },
+  { id: "publicada", label: "Publicada", bg: "#123320", fg: "#66bb6a" },
 ];
 
 const PRIORIDADES_TAREA = [
@@ -8402,7 +8399,7 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
     return true;
   });
 
-  const estadosDisponibles = ["pendiente", "en_progreso", "en_revision", "programada", "publicada"];
+  const estadosDisponibles = ["pendiente", "en_progreso", "en_revision", "publicada"];
   const hoyISO = getHoyLocalISO();
   const limiteSemana = new Date(`${hoyISO}T00:00:00`);
   limiteSemana.setDate(limiteSemana.getDate() + 7);
@@ -8528,7 +8525,6 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
               <option value="pendiente">Pendiente</option>
               <option value="en_progreso">En proceso</option>
               <option value="en_revision">En revisión</option>
-              <option value="programada">Programada</option>
               <option value="publicada">Publicada</option>
             </select>
 

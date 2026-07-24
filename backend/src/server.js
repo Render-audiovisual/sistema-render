@@ -1164,7 +1164,6 @@ const ESTADOS_TAREA_VALIDOS = [
   "pendiente",
   "en_progreso",
   "en_revision",
-  "programada",
   "publicada",
 ];
 const TIPOS_TAREA_VALIDOS = [
