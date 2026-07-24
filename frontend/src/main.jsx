@@ -1321,9 +1321,7 @@ function TareasTableroPage() {
                 ) : vista === "kanban" ? (
                   <TareaKanbanBoard
                     tareas={tareasFiltradas}
-                    columnas={ESTADOS_TAREA.filter(
-                      (estado) => tareasFiltradas.some((tarea) => tarea.estado === estado.id),
-                    )}
+                    columnas={ESTADOS_TAREA}
                     campo="estado"
                     onMover={(id, nuevoEstado) => actualizarCampo(id, { estado: nuevoEstado })}
                     onAbrir={setTareaSeleccionadaId}
