@@ -2221,9 +2221,9 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
 
   return (
     <div className="modal-overlay open" role="dialog" aria-modal="true" onClick={onCerrar}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: "600px", maxHeight: "90vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Nueva tarea — paso {paso} de {TOTAL_PASOS}</h2>
+          <h2>Nueva tarea</h2>
           <button onClick={onCerrar} style={{ background: "none", border: "none", fontSize: "24px", cursor: "pointer", color: "#9aa0a6" }}>✕</button>
         </div>
 
@@ -2234,101 +2234,83 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
             </div>
           )}
 
-          {paso === 1 && (
-            <>
-              <div className="form-section-title">Elegí el sector</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                {SECTORES_TAREA.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setTipoTarea(s.id)}
-                    style={{
-                      padding: "10px 16px",
-                      borderRadius: "8px",
-                      border: tipoTarea === s.id ? `2px solid ${s.fg}` : "1px solid #34363a",
-                      background: tipoTarea === s.id ? s.bg : "#1f2023",
-                      color: tipoTarea === s.id ? s.fg : "#e8eaed",
-                      fontWeight: 600,
-                      fontSize: "13px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+          <div className="form-section-title">Sector *</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "20px" }}>
+            {SECTORES_TAREA.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setTipoTarea(s.id)}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: "8px",
+                  border: tipoTarea === s.id ? `2px solid ${s.fg}` : "1px solid #34363a",
+                  background: tipoTarea === s.id ? s.bg : "#1f2023",
+                  color: tipoTarea === s.id ? s.fg : "#e8eaed",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
 
-          {paso === 2 && (
-            <>
-              <div className="form-section-title">Tipo de tarea (opcional)</div>
-              <input
-                type="text"
-                value={subtipo}
-                placeholder="reel, historia, carrusel, visita…"
-                onChange={(e) => setSubtipo(e.target.value)}
-                style={{ width: "100%", marginBottom: "10px" }}
-              />
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {SUBTIPOS_SUGERIDOS.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className="tag"
-                    style={{ cursor: "pointer" }}
-                    onClick={() => setSubtipo(s)}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+          <div className="form-section-title">Tipo de tarea (opcional)</div>
+          <input
+            type="text"
+            value={subtipo}
+            placeholder="reel, historia, carrusel, visita…"
+            onChange={(e) => setSubtipo(e.target.value)}
+            style={{ width: "100%", marginBottom: "10px" }}
+          />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "20px" }}>
+            {SUBTIPOS_SUGERIDOS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className="tag"
+                style={{ cursor: "pointer" }}
+                onClick={() => setSubtipo(s)}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
 
-          {paso === 3 && (
-            <>
-              <div className="form-section-title">Elegí el cliente (opcional)</div>
-              <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} style={{ width: "100%" }}>
-                <option value="">Sin cliente asociado</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>{c.nombre}</option>
-                ))}
-              </select>
-            </>
-          )}
+          <div className="form-section-title">Cliente (opcional)</div>
+          <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} style={{ width: "100%", marginBottom: "20px" }}>
+            <option value="">Sin cliente asociado</option>
+            {clientes.map((c) => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </select>
 
-          {paso === 4 && (
-            <>
-              <div className="form-section-title">Asigná un responsable</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                {RESPONSABLES_EQUIPO.map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setAsignadoA(r)}
-                    style={{
-                      padding: "10px 16px",
-                      borderRadius: "8px",
-                      border: asignadoA === r ? "2px solid #188038" : "1px solid #34363a",
-                      background: asignadoA === r ? "#123320" : "#1f2023",
-                      color: asignadoA === r ? "#66bb6a" : "#e8eaed",
-                      fontWeight: 600,
-                      fontSize: "13px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+          <div className="form-section-title">Responsable *</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "20px" }}>
+            {RESPONSABLES_EQUIPO.map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setAsignadoA(r)}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: "8px",
+                  border: asignadoA === r ? "2px solid #188038" : "1px solid #34363a",
+                  background: asignadoA === r ? "#123320" : "#1f2023",
+                  color: asignadoA === r ? "#66bb6a" : "#e8eaed",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
 
-          {paso === 5 && (
-            <>
-              <div className="form-section-title">Título, fecha, prioridad y detalle</div>
+          <div className="form-section-title">Detalles</div>
               <div className="form-grid">
                 <label className="form-field">
                   <span>Título *</span>
@@ -2408,55 +2390,30 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
                   style={{ width: "100%", font: "inherit", padding: "8px 10px", border: "1px solid #34363a", borderRadius: "4px", background: "#1f2023", color: "#e8eaed" }}
                 />
               </label>
-            </>
-          )}
         </div>
 
         <div className="modal-actions">
-          {paso > 1 && (
-            <button className="btn" type="button" onClick={() => setPaso((p) => p - 1)} disabled={enviando}>
-              ← Atrás
-            </button>
-          )}
-          {paso < TOTAL_PASOS ? (
-            <button
-              type="button"
-              onClick={() => setPaso((p) => p + 1)}
-              disabled={!puedeAvanzar}
-              style={{
-                marginLeft: "auto",
-                background: puedeAvanzar ? "#188038" : "#34363a",
-                color: puedeAvanzar ? "#fff" : "#9aa0a6",
-                border: "none",
-                borderRadius: "6px",
-                padding: "8px 16px",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor: puedeAvanzar ? "pointer" : "not-allowed",
-              }}
-            >
-              Siguiente →
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={crearTarea}
-              disabled={enviando || !titulo.trim()}
-              style={{
-                marginLeft: "auto",
-                background: enviando || !titulo.trim() ? "#34363a" : "#188038",
-                color: enviando || !titulo.trim() ? "#9aa0a6" : "#fff",
-                border: "none",
-                borderRadius: "6px",
-                padding: "8px 16px",
-                fontSize: "13px",
-                fontWeight: 600,
-                cursor: enviando || !titulo.trim() ? "not-allowed" : "pointer",
-              }}
-            >
-              {enviando ? "Creando…" : "Crear tarea"}
-            </button>
-          )}
+          <button className="btn" type="button" onClick={onCerrar} disabled={enviando}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={crearTarea}
+            disabled={enviando || !titulo.trim() || !asignadoA}
+            style={{
+              marginLeft: "auto",
+              background: enviando || !titulo.trim() || !asignadoA ? "#34363a" : "#188038",
+              color: enviando || !titulo.trim() || !asignadoA ? "#9aa0a6" : "#fff",
+              border: "none",
+              borderRadius: "6px",
+              padding: "8px 16px",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: enviando || !titulo.trim() || !asignadoA ? "not-allowed" : "pointer",
+            }}
+          >
+            {enviando ? "Creando…" : "Crear tarea"}
+          </button>
         </div>
       </div>
     </div>
