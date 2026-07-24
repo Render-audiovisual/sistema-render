@@ -5266,14 +5266,29 @@ function EmpleadosPage() {
                   />
                 </label>
                 <label className="form-field">
-                  <span>Contraseña inicial *</span>
-                  <input
-                    type="text"
-                    value={password}
-                    placeholder="ej: Luciano1"
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
+                  <span>Contraseña inicial * <small style={{fontWeight: 'normal', color: '#666'}}>(mín. 8 caracteres)</small></span>
+                  <div style={{display: 'flex', gap: '8px'}}>
+                    <input
+                      type="text"
+                      value={password}
+                      placeholder="Contraseña segura"
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength="8"
+                    />
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        const random = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 4).toUpperCase();
+                        setPassword(random);
+                      }}
+                      title="Generar contraseña segura"
+                    >
+                      🔐 Generar
+                    </button>
+                  </div>
+                  <small>La persona puede cambiarla en su primer login.</small>
                 </label>
                 <label className="form-field usuarios-form-email">
                   <span>Correo para notificaciones</span>
