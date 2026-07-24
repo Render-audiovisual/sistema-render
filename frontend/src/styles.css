@@ -5974,13 +5974,6 @@ tr:hover .sheet-row-actions {
   padding-block: 6px;
 }
 
-.tareas-viewport .task-clear-filters {
-  color: #9aa0a6;
-  font-size: 12px;
-  margin-left: auto;
-  padding: 6px 10px;
-}
-
 .tareas-viewport .task-compact-summary {
   align-items: center;
   color: #8f949b;
@@ -6200,12 +6193,6 @@ tr:hover .sheet-row-actions {
   .tareas-viewport .task-compact-filter select {
     min-height: 38px;
     min-width: 0;
-    width: 100%;
-  }
-
-  .tareas-viewport .task-clear-filters {
-    grid-column: 1 / -1;
-    margin-left: 0;
     width: 100%;
   }
 
@@ -6786,18 +6773,6 @@ tr:hover .sheet-row-actions {
   }
 }
 
-/* Adaptación del modelo Notion sobre Tareas, manteniendo el flujo RENDER. */
-.tareas-viewport .task-completed-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: #9aa0a6;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.tareas-viewport .task-completed-toggle input { accent-color: #66bb6a; }
-
 .tareas-viewport .task-kanban-summary {
   color: #9aa0a6;
   font-size: 11px;
@@ -6932,7 +6907,6 @@ tr:hover .sheet-row-actions {
 }
 
 @media (max-width: 720px) {
-  .tareas-viewport .task-completed-toggle { grid-column: 1 / -1; }
   .td-subtask-create, .td-comment-create { align-items: stretch; flex-direction: column; }
   .tareas-viewport .td-panel-readable { max-width: 100vw; overflow-x: hidden; }
 }

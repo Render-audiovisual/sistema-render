@@ -1098,7 +1098,6 @@ function TareasTableroPage() {
   const [mostrarWizard, setMostrarWizard] = useState(false);
   const [filtroSector, setFiltroSector] = useState("todos");
   const [filtroResponsable, setFiltroResponsable] = useState("todos");
-  const [mostrarCompletadas, setMostrarCompletadas] = useState(false);
 
   const cargarTareas = () => {
     setCargando(true);
@@ -1140,7 +1139,6 @@ function TareasTableroPage() {
 
   const tareasFiltradas = ordenarTareasPorPrioridad(tareasDelResponsable.filter((t) => {
     if (filtroSector !== "todos" && t.tipo_tarea !== filtroSector) return false;
-    if (!mostrarCompletadas && t.estado === ESTADO_FINAL_TAREA) return false;
     return true;
   }));
 
@@ -1167,9 +1165,6 @@ function TareasTableroPage() {
   const tareasEnRevision = tareasFiltradas.filter(
     (t) => t.estado === "en_revision",
   ).length;
-  const hayFiltros =
-    filtroResponsable !== "todos" || filtroSector !== "todos" || mostrarCompletadas;
-
   const grupos = ESTADOS_TAREA.map((e) => ({
     id: e.id,
     titulo: e.label,
@@ -1272,28 +1267,6 @@ function TareasTableroPage() {
                   </select>
                 </label>
 
-                <label className="task-completed-toggle">
-                  <input
-                    type="checkbox"
-                    checked={mostrarCompletadas}
-                    onChange={(e) => setMostrarCompletadas(e.target.checked)}
-                  />
-                  <span>Mostrar completadas</span>
-                </label>
-
-                {hayFiltros && (
-                  <button
-                    className="btn task-clear-filters"
-                    type="button"
-                    onClick={() => {
-                      setFiltroResponsable("todos");
-                      setFiltroSector("todos");
-                      setMostrarCompletadas(false);
-                    }}
-                  >
-                    Limpiar
-                  </button>
-                )}
               </div>
 
               <div className="task-compact-summary" aria-label="Resumen de tareas filtradas">
