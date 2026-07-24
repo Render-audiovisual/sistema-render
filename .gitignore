@@ -5,3 +5,12 @@ dist/
 !.env.example
 .DS_Store
 *.zip
+
+# Generados por scripts/build-hosting.sh (copia estática del frontend en
+# la raíz, lista para subir a un hosting aparte del backend). Se
+# regeneran con `npm run build:hosting`, no se versionan.
+/index.html
+/assets/
+/favicon.png
+/apple-touch-icon.png
+/.htaccess

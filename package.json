@@ -9,6 +9,7 @@
     "seed:usuarios": "npm run seed:usuarios --prefix backend",
     "start": "npm install --prefix backend && npm run migrate --prefix backend && npm start --prefix backend",
     "dev:backend": "npm run dev --prefix backend",
-    "dev:frontend": "npm run dev --prefix frontend"
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build:hosting": "bash scripts/build-hosting.sh"
   }
 }
