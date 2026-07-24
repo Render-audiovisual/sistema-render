@@ -1023,11 +1023,6 @@ function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo }) {
         {!error && tareas.length === 0 && (
           <div className="caption">No hay tareas asignadas por ahora.</div>
         )}
-        <div className="caption">
-          → Podés cambiar el estado directo desde acá. Las tareas que requieren
-          aprobación no se pueden marcar "Publicada" salvo que quien esté logueado
-          sea Líder.
-        </div>
       </div>
     </>
   );
@@ -2241,7 +2236,7 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
 
           {paso === 1 && (
             <>
-              <div className="form-section-title">1 · Elegí el sector</div>
+              <div className="form-section-title">Elegí el sector</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                 {SECTORES_TAREA.map((s) => (
                   <button
@@ -2268,7 +2263,7 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
 
           {paso === 2 && (
             <>
-              <div className="form-section-title">2 · Tipo de tarea (opcional)</div>
+              <div className="form-section-title">Tipo de tarea (opcional)</div>
               <input
                 type="text"
                 value={subtipo}
@@ -2294,7 +2289,7 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
 
           {paso === 3 && (
             <>
-              <div className="form-section-title">3 · Elegí el cliente (opcional)</div>
+              <div className="form-section-title">Elegí el cliente (opcional)</div>
               <select value={clienteId} onChange={(e) => setClienteId(e.target.value)} style={{ width: "100%" }}>
                 <option value="">Sin cliente asociado</option>
                 {clientes.map((c) => (
@@ -2306,7 +2301,7 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
 
           {paso === 4 && (
             <>
-              <div className="form-section-title">4 · Asigná un responsable</div>
+              <div className="form-section-title">Asigná un responsable</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                 {RESPONSABLES_EQUIPO.map((r) => (
                   <button
@@ -2333,7 +2328,7 @@ function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
 
           {paso === 5 && (
             <>
-              <div className="form-section-title">5 · Título, fecha, prioridad y detalle</div>
+              <div className="form-section-title">Título, fecha, prioridad y detalle</div>
               <div className="form-grid">
                 <label className="form-field">
                   <span>Título *</span>
@@ -5494,7 +5489,7 @@ function OrianaDashboard() {
             </div>
           </div>
 
-          <div className="section-label">1 · Calendario del día</div>
+          <div className="section-label">Calendario del día</div>
           <div className="box">
             {orianaError && <div className="caption">{orianaError}</div>}
             {!orianaError &&
@@ -5543,7 +5538,7 @@ function OrianaDashboard() {
             </div>
           </div>
 
-          <div className="section-label">2 · Vencidas (no publicadas a tiempo)</div>
+          <div className="section-label">Vencidas (no publicadas a tiempo)</div>
           <div className="box">
             {vencidas.map((pieza) => (
               <div
@@ -5562,7 +5557,7 @@ function OrianaDashboard() {
             )}
           </div>
 
-          <div className="section-label">3 · Próximas programadas</div>
+          <div className="section-label">Próximas programadas</div>
           <div className="box">
             {proximas.slice(0, 10).map((pieza) => (
               <div className="card" key={`proxima-${pieza.origen}-${pieza.id}`}>
@@ -5576,7 +5571,7 @@ function OrianaDashboard() {
             )}
           </div>
 
-          <div className="section-label">4 · Piezas bloqueadas por corrección</div>
+          <div className="section-label">Piezas bloqueadas por corrección</div>
           <div className="box">
             {bloqueadas.map((pieza) => (
               <div
@@ -5599,7 +5594,7 @@ function OrianaDashboard() {
             </div>
           </div>
 
-          <div className="section-label">5 · Avance del día</div>
+          <div className="section-label">Avance del día</div>
           <div className="box">
             <div className="progress-card">
               <div className="progress-label">Avance del día</div>
@@ -5795,7 +5790,7 @@ function GermanDashboard() {
             })()}
           </div>
 
-          <div className="section-label">1 · Producciones pendientes</div>
+          <div className="section-label">Producciones pendientes</div>
           <div className="box">
             {tareasGermanError && (
               <div className="caption">{tareasGermanError}</div>
@@ -5836,7 +5831,7 @@ function GermanDashboard() {
             </div>
           </div>
 
-          <div className="section-label">2 · Agenda de visitas</div>
+          <div className="section-label">Agenda de visitas</div>
           <div className="box">
             <div className="placeholder-box">
               [ Módulo de Agenda — Fase 2, no incluido en el MVP ]
@@ -5847,7 +5842,7 @@ function GermanDashboard() {
             </div>
           </div>
 
-          <div className="section-label">3 · Cumplimiento mensual por cliente</div>
+          <div className="section-label">Cumplimiento mensual por cliente</div>
           <div className="box">
             <table>
               <thead>
@@ -5879,7 +5874,7 @@ function GermanDashboard() {
             </div>
           </div>
 
-          <div className="section-label">4 · En revisión</div>
+          <div className="section-label">En revisión</div>
           <div className="box">
             {tareasGerman.filter((t) => t.estado === "en_revision").length === 0 && (
               <div className="caption">No hay producciones en revisión.</div>
@@ -7205,7 +7200,7 @@ function LiderDashboard() {
           </div>
 
           <div className="section-label">
-            1 · Lo primero que ve al entrar — sin scroll
+            Panorama de clientes
           </div>
           <div className="box">
             <div className="box-header">
@@ -7280,13 +7275,9 @@ function LiderDashboard() {
               &nbsp;
               <span className="semaforo verde"></span>Verde ≥90%
             </div>
-            <div className="caption">
-              → El ojo va directo a los rojos. Por eso van arriba, no en orden
-              alfabético.
-            </div>
           </div>
 
-          <div className="section-label">2 · Resumen de equipo</div>
+          <div className="section-label">Resumen de equipo</div>
           <div className="box">
             {resumenEquipo.map((persona) => (
               <div className="persona-row" key={persona.nombre}>
@@ -7303,14 +7294,10 @@ function LiderDashboard() {
             {resumenEquipoError && (
               <div className="caption">{resumenEquipoError}</div>
             )}
-            <div className="caption">
-              → Vista de personas, no de clientes. Detecta sobrecarga o
-              bloqueo de gente, no de cuentas.
-            </div>
           </div>
 
           <div className="section-label">
-            3 · Aprobaciones escaladas al Líder
+            Aprobaciones escaladas
           </div>
           <div className="box">
             <table>
@@ -7371,7 +7358,7 @@ function LiderDashboard() {
             </div>
           </div>
 
-          <div className="section-label">4 · Piezas atrasadas</div>
+          <div className="section-label">Piezas atrasadas</div>
           <div className="box">
             {(() => {
               const atrasadas = getPiezasAtrasadas(historiasRaw, publicacionesRaw);
@@ -7416,13 +7403,9 @@ function LiderDashboard() {
                 </table>
               );
             })()}
-            <div className="caption">
-              → Piezas que debían publicarse pero no lo hicieron. Revisar con
-              el Líder.
-            </div>
           </div>
 
-          <div className="section-label">5 · Bloqueos críticos</div>
+          <div className="section-label">Bloqueos críticos</div>
           <div className="box">
             {(() => {
               const bloqueadas = getPiezasBloqueadas(historiasRaw, publicacionesRaw);
@@ -7457,7 +7440,7 @@ function LiderDashboard() {
             </div>
           </div>
 
-          <div className="section-label">6 · Publicaciones de hoy</div>
+          <div className="section-label">Publicaciones de hoy</div>
           <div className="box">
             {(() => {
               const deHoy = getPublicacionesDeHoy(historiasRaw, publicacionesRaw);
@@ -7493,15 +7476,8 @@ function LiderDashboard() {
                 </table>
               );
             })()}
-            <div className="caption">
-              → Qué publica hoy. Revisar que esté aprobado y programado.
-            </div>
           </div>
 
-          <div className="caption">
-            → Para editar la cuota mensual de un cliente, abrí su detalle
-            haciendo clic en la fila del panorama.
-          </div>
               </div>
           )}
 
@@ -7611,7 +7587,7 @@ function GestionLiderPanel() {
     <>
       <section className="lider-gestion-panel" aria-label="Gestión y aprobaciones del Líder">
           <div className="section-label">
-            1 · Mi cola de aprobaciones — lo que sí requiere mi decisión
+            Mi cola de aprobaciones — lo que sí requiere mi decisión
           </div>
             <div className="box">
               <div className="box-header">
@@ -7705,7 +7681,7 @@ function GestionLiderPanel() {
             </div>
           </div>
 
-          <div className="section-label">2 · Piezas destrabadas hoy</div>
+          <div className="section-label">Piezas destrabadas hoy</div>
           <div className="box">
             <table>
               <thead>
@@ -7745,7 +7721,7 @@ function GestionLiderPanel() {
             </div>
           </div>
 
-          <div className="section-label">3 · Casos escalados al Líder</div>
+          <div className="section-label">Casos escalados al Líder</div>
           <div className="box">
             {tareasEscaladas.map((tarea) => (
               <div className="card" key={tarea.id}>
@@ -7770,7 +7746,7 @@ function GestionLiderPanel() {
             </div>
           </div>
 
-          <div className="section-label">4 · Tareas para asignar</div>
+          <div className="section-label">Tareas para asignar</div>
           <div className="box">
             {(() => {
               const porAsignar = getTareasParaAsignar(tareasGestion);
@@ -8481,7 +8457,7 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
     <main aria-label={titulo}>
       <div className="frame">
         <div className="content">
-          <div className="section-label">1 · Filtros</div>
+          <div className="section-label">Filtros</div>
           <div className="box" style={{ display: "flex", gap: "16px", marginBottom: "20px", flexWrap: "wrap" }}>
             <select
               value={filtroEstado}
@@ -8524,7 +8500,7 @@ function TareasWorkspacePage({ asignado_a, tipo_tarea, titulo, nombre_usuario, r
             </div>
           </div>
 
-          <div className="section-label">2 · Lista operativa tipo ClickUp</div>
+          <div className="section-label">Lista operativa tipo ClickUp</div>
           <div className="box" style={{ padding: 0, overflow: "hidden" }}>
             {cargando && (
               <div style={{ padding: "24px", color: "#666" }}>Cargando tareas...</div>
@@ -9722,7 +9698,7 @@ function HistoriasEstructuraTab({ clientes }) {
         </p>
       </div>
 
-      <div style={{ background: "white", borderRadius: "8px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+      <div style={{ background: "white", borderRadius: "8px", overflowX: "auto", overflowY: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#1565c0", color: "white" }}>
@@ -10258,8 +10234,8 @@ function HistoriasPage({ initialTab = "estructura" }) {
                 )}
 
                 <div className="sheet-view-tabs" style={{ margin: 0 }}>
-                  <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => setVista("estructura")}>1. Estructura</button>
-                  <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => setVista("checklist")}>2. Checklist</button>
+                  <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => setVista("estructura")}>Estructura</button>
+                  <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => setVista("checklist")}>Checklist</button>
                   <button type="button" className={vista === "fechas" ? "active" : ""} onClick={() => setVista("fechas")}>Fechas especiales</button>
                 </div>
 
@@ -10474,7 +10450,7 @@ function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMes = fal
       </div>
       {proximoMes ? (
         <div style={{ borderTop: `1px solid ${RR.border}`, paddingTop: "12px", color: RR.textFaint, fontSize: "12px", lineHeight: 1.5 }}>
-          Desde agosto se medirán carruseles e historias. Julio no muestra ceros ni porcentajes ficticios.
+          Carruseles e historias medidas a partir de agosto.
         </div>
       ) : (
         <div style={{ display: "grid", gap: "12px" }}>
@@ -10855,7 +10831,7 @@ function ReportesEquipoPage() {
           ) : (
             <>
               <div className="section-label">
-                {esVistaAdmin ? "1 · Producción del mes" : "1 · Mi objetivo mensual — vista rápida"}
+                {esVistaAdmin ? "Producción del mes" : "Mi objetivo mensual — vista rápida"}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${esVistaAdmin ? "230px" : "150px"}, 1fr))`, gap: "14px", marginBottom: "12px" }}>
                 {esVistaAdmin ? (
@@ -10893,7 +10869,7 @@ function ReportesEquipoPage() {
 
               {!esVistaAdmin && (
                 <>
-                  <div className="section-label">2 · Mi rendimiento</div>
+                  <div className="section-label">Mi rendimiento</div>
                   <div className="box" style={{ padding: 0, overflow: "hidden" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
@@ -10995,7 +10971,7 @@ function ReportesEquipoPage() {
 
               {!esVistaAdmin && (
                 <>
-                  <div className="section-label">3 · Mis piezas asignadas</div>
+                  <div className="section-label">Mis piezas asignadas</div>
                   <div className="box">
                 {piezasPorResponsable.length === 0 ? (
                   <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>Sin piezas asignadas todavía.</div>
