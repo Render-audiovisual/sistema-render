@@ -4879,6 +4879,11 @@ function EmpleadosPage() {
   const [correoEdicion, setCorreoEdicion] = useState("");
   const [editandoCorreo, setEditandoCorreo] = useState(false);
   const [guardandoCorreo, setGuardandoCorreo] = useState(false);
+  const [editandoDatos, setEditandoDatos] = useState(false);
+  const [guardandoDatos, setGuardandoDatos] = useState(false);
+  const [nombreEdicion, setNombreEdicion] = useState("");
+  const [usuarioEdicion, setUsuarioEdicion] = useState("");
+  const [rolEdicion, setRolEdicion] = useState("");
   const [formError, setFormError] = useState(null);
   const [mensaje, setMensaje] = useState(null);
   const [enviando, setEnviando] = useState(false);
@@ -5037,6 +5042,55 @@ function EmpleadosPage() {
       })
       .catch((err) => setFormError(err.message))
       .finally(() => setGuardandoCorreo(false));
+  };
+
+  const iniciarEdicionDatos = () => {
+    setNombreEdicion(usuarioAdministrado?.nombre || "");
+    setUsuarioEdicion(usuarioAdministrado?.usuario || "");
+    setRolEdicion(usuarioAdministrado?.rol || "diseno");
+    setEditandoDatos(true);
+    setFormError(null);
+    setMensaje(null);
+  };
+
+  const guardarDatos = (u) => {
+    if (!nombreEdicion.trim()) {
+      setFormError("El nombre no puede estar vacío.");
+      return;
+    }
+    if (!usuarioEdicion.trim()) {
+      setFormError("El usuario no puede estar vacío.");
+      return;
+    }
+
+    setGuardandoDatos(true);
+    setFormError(null);
+    setMensaje(null);
+
+    fetch(`/api/usuarios/${u.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nombre: nombreEdicion,
+        usuario: usuarioEdicion,
+        rol: rolEdicion
+      }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudieron guardar los datos.");
+        }
+        return data;
+      })
+      .then((data) => {
+        setMensaje("Datos actualizados correctamente.");
+        setUsuarioAdministrado(data);
+        setEditandoDatos(false);
+        cargarUsuarios();
+      })
+      .catch((err) => setFormError(err.message))
+      .finally(() => setGuardandoDatos(false));
   };
 
   const iniciales = (texto = "") =>
@@ -5291,27 +5345,88 @@ function EmpleadosPage() {
                 <div className="usuarios-panel-section-title">
                   <div>
                     <strong>Datos de acceso</strong>
-                    <span>Información actual de la cuenta</span>
+                    <span>Información de la cuenta</span>
                   </div>
+                  {!editandoDatos && (
+                    <button className="btn" type="button" onClick={iniciarEdicionDatos}>
+                      Editar datos
+                    </button>
+                  )}
                 </div>
-                <div className="usuarios-detail-grid">
-                  <div>
-                    <span>Nombre</span>
-                    <strong>{usuarioAdministrado.nombre}</strong>
+
+                {editandoDatos ? (
+                  <div className="usuarios-data-editor">
+                    <div className="form-grid cols-2">
+                      <label className="form-field">
+                        <span>Nombre</span>
+                        <input
+                          type="text"
+                          value={nombreEdicion}
+                          onChange={(e) => setNombreEdicion(e.target.value)}
+                          disabled={guardandoDatos}
+                          autoFocus
+                        />
+                      </label>
+                      <label className="form-field">
+                        <span>Usuario de acceso</span>
+                        <input
+                          type="text"
+                          value={usuarioEdicion}
+                          onChange={(e) => setUsuarioEdicion(e.target.value)}
+                          disabled={guardandoDatos}
+                        />
+                      </label>
+                      <label className="form-field">
+                        <span>Rol</span>
+                        <select value={rolEdicion} onChange={(e) => setRolEdicion(e.target.value)} disabled={guardandoDatos}>
+                          {Object.entries(ROL_LABELS).map(([key, label]) => (
+                            <option key={key} value={key}>{label}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <div className="usuarios-inline-actions">
+                      <button
+                        className="btn"
+                        type="button"
+                        disabled={guardandoDatos}
+                        onClick={() => {
+                          setEditandoDatos(false);
+                          setFormError(null);
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        className="btn primary"
+                        type="button"
+                        disabled={guardandoDatos}
+                        onClick={() => guardarDatos(usuarioAdministrado)}
+                      >
+                        {guardandoDatos ? "Guardando..." : "Guardar cambios"}
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <span>Usuario</span>
-                    <strong>{usuarioAdministrado.usuario}</strong>
+                ) : (
+                  <div className="usuarios-detail-grid">
+                    <div>
+                      <span>Nombre</span>
+                      <strong>{usuarioAdministrado.nombre}</strong>
+                    </div>
+                    <div>
+                      <span>Usuario</span>
+                      <strong>{usuarioAdministrado.usuario}</strong>
+                    </div>
+                    <div>
+                      <span>Rol</span>
+                      <strong>{ROL_LABELS[usuarioAdministrado.rol] || usuarioAdministrado.rol}</strong>
+                    </div>
+                    <div>
+                      <span>Estado</span>
+                      <strong className="status-ready">Activo</strong>
+                    </div>
                   </div>
-                  <div>
-                    <span>Rol</span>
-                    <strong>{ROL_LABELS[usuarioAdministrado.rol] || usuarioAdministrado.rol}</strong>
-                  </div>
-                  <div>
-                    <span>Estado</span>
-                    <strong className="status-ready">Activo</strong>
-                  </div>
-                </div>
+                )}
               </section>
 
               <section className="usuarios-panel-section">
