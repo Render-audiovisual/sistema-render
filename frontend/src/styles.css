@@ -4853,8 +4853,39 @@ tr:hover .sheet-row-actions {
   min-width: 0;
 }
 
+/* Inicio tiene muchas secciones apiladas (panorama, equipo, aprobaciones,
+   atrasadas, bloqueos, publicaciones de hoy). Se decidió mantenerlas todas
+   visibles en vez de colapsarlas, así que se compacta el espaciado acá en
+   vez de en el resto de la app (que usa las mismas clases .box/.section-label
+   con el spacing normal). */
 .lider-dashboard-view .box {
   overflow-x: auto;
+  padding: 10px 12px;
+}
+
+.lider-dashboard-view .section-label {
+  margin: 12px 0 6px;
+}
+
+.lider-dashboard-view .section-label:first-child {
+  margin-top: 0;
+}
+
+.lider-dashboard-view table {
+  font-size: 12px;
+}
+
+.lider-dashboard-view th,
+.lider-dashboard-view td {
+  padding: 5px 8px;
+}
+
+.lider-dashboard-view .persona-row {
+  padding: 4px 0;
+}
+
+.lider-dashboard-view .box-header {
+  margin-bottom: 8px;
 }
 
 .lider-dashboard-divider {

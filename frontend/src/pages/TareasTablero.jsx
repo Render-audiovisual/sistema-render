@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { esperandoMaterial, extraerUrlsTarea, fechaISODesde, formatearFechaTarea, getEstadoTarea, getGrillaMes, getHoyLocalISO, getPrioridadTarea, getSectorTarea, getSesion, getTipoPublicacionLabel, getUsuarioKey, obtenerInfoLinkTarea, ordenarTareasPorPrioridad, renderizarTextoTarea } from "../utils.jsx";
 import { DIAS_SEMANA, ESTADO_FINAL_TAREA, ESTADOS_TAREA, MESES, PRIORIDADES_TAREA, RESPONSABLES_EQUIPO, SECTORES_TAREA, SUBTIPOS_SUGERIDOS } from "../constants.js";
-import { PiezasTableroPage } from "../pages/PiezasTablero.jsx";
 
 export function TareasTableroPage() {
   const sesion = getSesion();
@@ -968,7 +967,7 @@ export function TareaDetallePanel({
 // Tablero drag-and-drop genérico: columnas + un campo de la tarea que se
 // actualiza al soltar. Sirve tanto para "Columnas" (columnas = estado) como
 // para "Por persona" (columnas = responsable) sin duplicar la lógica de
-// arrastre — mismo patrón HTML5 nativo que ya usaba PiezasTableroPage.
+// arrastre.
 
 export function TareasPorCliente({ tareas, onAbrir }) {
   const grupos = [...tareas.reduce((mapa, tarea) => {

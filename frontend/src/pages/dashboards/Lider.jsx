@@ -451,9 +451,6 @@ export function GestionLiderPanel() {
   const tareasDestrabadas = tareasGestion.filter(
     (tarea) => tarea.propiedades_extra?.destrabada_por,
   );
-  const tareasEscaladas = tareasGestion.filter(
-    (tarea) => tarea.propiedades_extra?.escalada_a,
-  );
 
   const cargarCola = () => {
     Promise.all([
@@ -638,31 +635,6 @@ export function GestionLiderPanel() {
             </table>
             <div className="caption">
               → Historial simple de lo que el Líder ya destrabó hoy.
-            </div>
-          </div>
-
-          <div className="section-label">Casos escalados al Líder</div>
-          <div className="box">
-            {tareasEscaladas.map((tarea) => (
-              <div className="card" key={tarea.id}>
-                <div className="cliente">
-                  {tarea.cliente_nombre ?? "Sin cliente"}
-                </div>
-                <div>{tarea.titulo}</div>
-                <div className="meta">
-                  Escalado · motivo:{" "}
-                  {tarea.propiedades_extra.motivo ?? "Sin motivo cargado"}
-                </div>
-              </div>
-            ))}
-            {tareasGestionError && (
-              <div className="caption">{tareasGestionError}</div>
-            )}
-            {!tareasGestionError && tareasEscaladas.length === 0 && (
-              <div className="caption">No hay tareas escaladas al Líder.</div>
-            )}
-            <div className="caption">
-              → Conserva también los casos escalados antes de la unificación.
             </div>
           </div>
 
