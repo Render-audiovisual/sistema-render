@@ -7,6 +7,7 @@ import express from "express";
 import compression from "compression";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { autenticar, requiereAdmin } from "./auth.js";
 import { checkDatabaseConnection, pool } from "./db.js";
 import {
   normalizarNombre,
@@ -98,6 +99,11 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
+// Todas las rutas declaradas a partir de acá requieren un JWT válido.
+// Health, login y el preflight CORS quedan públicos porque se registraron
+// antes de este middleware.
+router.use(autenticar);
+
 const ROLES_VALIDOS = [
   "admin",
   "diseno",
@@ -106,7 +112,7 @@ const ROLES_VALIDOS = [
   "community",
 ];
 
-router.get("/usuarios", async (_req, res, next) => {
+router.get("/usuarios", requiereAdmin, async (_req, res, next) => {
   try {
     const result = await pool.query(
       "SELECT id, usuario, nombre, rol, email_notificaciones, foto_perfil, created_at FROM usuarios ORDER BY id",
@@ -117,7 +123,7 @@ router.get("/usuarios", async (_req, res, next) => {
   }
 });
 
-router.post("/usuarios", async (req, res, next) => {
+router.post("/usuarios", requiereAdmin, async (req, res, next) => {
   try {
     const { usuario, nombre, rol, password, email_notificaciones } = req.body;
     const email = normalizarEmailNotificaciones(email_notificaciones);
@@ -157,7 +163,7 @@ function normalizarEmailNotificaciones(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
 }
 
-router.patch("/usuarios/:id/email-notificaciones", async (req, res, next) => {
+router.patch("/usuarios/:id/email-notificaciones", requiereAdmin, async (req, res, next) => {
   try {
     const emailIngresado =
       typeof req.body.email_notificaciones === "string"
@@ -190,7 +196,7 @@ router.patch("/usuarios/:id/email-notificaciones", async (req, res, next) => {
   }
 });
 
-router.delete("/usuarios/:id", async (req, res, next) => {
+router.delete("/usuarios/:id", requiereAdmin, async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -210,18 +216,18 @@ router.delete("/usuarios/:id", async (req, res, next) => {
 
 router.patch("/usuarios/perfil", async (req, res, next) => {
   try {
-    const { usuario_actual, password_actual, usuario_nuevo } = req.body;
+    const { password_actual, usuario_nuevo } = req.body;
     const usuarioNuevo = (usuario_nuevo || "").trim();
 
-    if (!usuario_actual || !password_actual || !usuarioNuevo) {
+    if (!password_actual || !usuarioNuevo) {
       return res
         .status(400)
-        .json({ error: "Faltan el usuario actual, la contraseña actual y el usuario nuevo." });
+        .json({ error: "Faltan la contraseña actual y el usuario nuevo." });
     }
 
     const found = await pool.query(
-      "SELECT id, usuario, nombre, rol, foto_perfil, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
-      [usuario_actual],
+      "SELECT id, usuario, nombre, rol, foto_perfil, password_hash FROM usuarios WHERE id = $1",
+      [req.usuario.id],
     );
     if (found.rows.length === 0) {
       return res.status(404).json({ error: "Usuario no encontrado." });
@@ -260,12 +266,9 @@ router.patch("/usuarios/perfil", async (req, res, next) => {
 
 router.patch("/usuarios/foto", async (req, res, next) => {
   try {
-    const { usuario, foto_perfil } = req.body;
+    const { foto_perfil } = req.body;
     const foto = typeof foto_perfil === "string" ? foto_perfil.trim() : "";
 
-    if (!usuario) {
-      return res.status(400).json({ error: "Falta el usuario." });
-    }
     if (foto && !foto.startsWith("data:image/")) {
       return res.status(400).json({ error: "La foto debe ser una imagen válida." });
     }
@@ -276,9 +279,9 @@ router.patch("/usuarios/foto", async (req, res, next) => {
     const updated = await pool.query(
       `UPDATE usuarios
        SET foto_perfil = $1
-       WHERE lower(usuario) = lower($2)
+       WHERE id = $2
        RETURNING id, usuario, nombre, rol, foto_perfil, created_at`,
-      [foto || null, usuario],
+      [foto || null, req.usuario.id],
     );
 
     if (updated.rows.length === 0) {
@@ -293,17 +296,17 @@ router.patch("/usuarios/foto", async (req, res, next) => {
 
 router.patch("/usuarios/password", async (req, res, next) => {
   try {
-    const { usuario, password_actual, password_nueva } = req.body;
+    const { password_actual, password_nueva } = req.body;
 
-    if (!usuario || !password_actual || !password_nueva) {
+    if (!password_actual || !password_nueva) {
       return res
         .status(400)
         .json({ error: "Faltan la contraseña actual y la nueva." });
     }
 
     const found = await pool.query(
-      "SELECT id, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
-      [usuario],
+      "SELECT id, password_hash FROM usuarios WHERE id = $1",
+      [req.usuario.id],
     );
     if (found.rows.length === 0) {
       return res.status(404).json({ error: "Usuario no encontrado." });
@@ -386,7 +389,7 @@ router.get("/estructura", async (_req, res, next) => {
   }
 });
 
-router.post("/estructura", async (req, res, next) => {
+router.post("/estructura", requiereAdmin, async (req, res, next) => {
   try {
     const { cliente_id, dia_semana, tema, horario, cta_fijo, tipo } = req.body;
 
@@ -437,7 +440,7 @@ router.get("/check-publicacion", async (req, res, next) => {
   }
 });
 
-router.post("/check-publicacion", async (req, res, next) => {
+router.post("/check-publicacion", requiereAdmin, async (req, res, next) => {
   try {
     const { cliente_id, fecha, publicado, confirmado_por } = req.body;
 
@@ -495,7 +498,7 @@ router.get("/fechas-especiales", async (_req, res, next) => {
   }
 });
 
-router.patch("/fechas-especiales/:id", async (req, res, next) => {
+router.patch("/fechas-especiales/:id", requiereAdmin, async (req, res, next) => {
   try {
     const { id } = req.params;
     const { estado, idea } = req.body;
@@ -549,7 +552,7 @@ router.get("/clientes", async (_req, res, next) => {
   }
 });
 
-router.post("/clientes", async (req, res, next) => {
+router.post("/clientes", requiereAdmin, async (req, res, next) => {
   try {
     const nombre = (req.body.nombre || "").trim();
     const cuota_reels = Number(req.body.cuota_reels ?? 0);
@@ -592,7 +595,7 @@ router.post("/clientes", async (req, res, next) => {
   }
 });
 
-router.patch("/clientes/:id", async (req, res, next) => {
+router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
@@ -705,7 +708,7 @@ router.patch("/clientes/:id", async (req, res, next) => {
   }
 });
 
-router.delete("/clientes/:id", async (req, res, next) => {
+router.delete("/clientes/:id", requiereAdmin, async (req, res, next) => {
   try {
     const { id } = req.params;
     const dependencias = await pool.query(
@@ -848,7 +851,7 @@ router.patch("/historias/:id", async (req, res, next) => {
   }
 });
 
-router.delete("/historias/:id", async (req, res, next) => {
+router.delete("/historias/:id", requiereAdmin, async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -1025,7 +1028,7 @@ router.patch("/publicaciones/:id", async (req, res, next) => {
   }
 });
 
-router.delete("/publicaciones/:id", async (req, res, next) => {
+router.delete("/publicaciones/:id", requiereAdmin, async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -1082,7 +1085,7 @@ router.get("/publicaciones", async (req, res, next) => {
   }
 });
 
-router.post("/tareas", async (req, res, next) => {
+router.post("/tareas", requiereAdmin, async (req, res, next) => {
   try {
     const {
       titulo,
@@ -1298,7 +1301,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
   }
 });
 
-router.delete("/tareas/:id", async (req, res, next) => {
+router.delete("/tareas/:id", requiereAdmin, async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
