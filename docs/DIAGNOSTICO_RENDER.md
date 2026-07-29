@@ -45,22 +45,13 @@
 
 ## ⚠️ RIESGOS CRÍTICOS (Seguridad)
 
-### 🔴 CRÍTICO: Sin autenticación en rutas
-**Problema:** El backend NO valida tokens JWT en ninguna ruta protegida. Solo `/login` requiere credenciales; el resto está completamente abierto.
+### ✅ RESUELTO: autenticación en rutas
+**Estado actualizado:** resuelto. El backend valida JWT en todas las rutas
+protegidas y aplica rol administrador en operaciones sensibles. Ver
+`backend/src/auth.js` y `docs/DEPLOY.md`.
 
-**Rutas sin protección:**
-- `GET /clientes` - acceso libre a todos los clientes
-- `GET /historias`, `PATCH /historias/:id` - cualquiera puede ver/modificar historias
-- `GET /publicaciones`, `PATCH /publicaciones/:id` - cualquiera puede modificar publicaciones
-- `GET /tareas`, `POST /tareas`, `PATCH /tareas/:id` - cualquiera puede crear/modificar tareas
-
-**Impacto:** Vulnerabilidad de seguridad grave. Cualquiera con acceso de red puede:
-- Leer datos sensibles (clientes, tareas, etc)
-- Modificar estados de proyectos
-- Crear tareas fake
-- Comprometer la integridad de datos
-
-**Código:** `server.js` línea 65+ no tiene middleware de verificación JWT
+Sin token válido, esas rutas devuelven `401`. Las acciones administrativas
+sensibles devuelven `403` a roles no administradores.
 
 ---
 
@@ -76,8 +67,10 @@ localStorage.setItem("render_sesion", JSON.stringify({ token, usuario }))
 
 ---
 
-### 🟡 ALTO: Sin roles y permisos (RBAC)
-**Problema:** La tabla `usuarios` tiene campo `rol`, pero no se valida en ninguna ruta. No hay diferencia entre usuarios normales y admins.
+### 🟡 ALTO: RBAC parcial
+**Estado:** ya se distingue `admin` en gestión de usuarios, clientes,
+configuración global y eliminaciones. Falta granular permisos por responsable
+en algunas actualizaciones operativas.
 
 **Impacto:** Imposible delegar responsabilidades. Todos tienen acceso igual.
 
@@ -106,10 +99,8 @@ localStorage.setItem("render_sesion", JSON.stringify({ token, usuario }))
 
 ---
 
-### 🟡 MEDIO: Sin CORS configurado
-**Problema:** No hay configuración de CORS en Express.
-
-**Impacto:** Solo funciona si accedes desde el mismo dominio. Si frontend se mueve a otro host, va a fallar.
+### ✅ RESUELTO: CORS para frontend separado
+La API responde preflight y permite `Content-Type` y `Authorization`.
 
 ---
 
@@ -117,8 +108,8 @@ localStorage.setItem("render_sesion", JSON.stringify({ token, usuario }))
 
 | Categoría | Qué falta | Prioridad |
 |-----------|-----------|-----------|
-| **Seguridad** | Middleware JWT validación | 🔴 CRÍTICO |
-| **Seguridad** | RBAC (roles y permisos) | 🔴 CRÍTICO |
+| **Seguridad** | Middleware JWT validación | ✅ Resuelto |
+| **Seguridad** | Completar permisos por responsable | 🟡 ALTO |
 | **Seguridad** | httpOnly cookies | 🟡 ALTO |
 | **Seguridad** | Validación robusta de entrada | 🟡 ALTO |
 | **BD** | schema.sql | 🟡 ALTO |
@@ -140,12 +131,12 @@ localStorage.setItem("render_sesion", JSON.stringify({ token, usuario }))
 ### **FASE 1: Seguridad (1-2 semanas)**
 Hacer el sistema seguro antes de cualquier otra mejora.
 
-- [ ] Crear middleware JWT que valide en todas las rutas protegidas
+- [x] Crear middleware JWT que valide en todas las rutas protegidas
 - [ ] Implementar RBAC: admin, manager, editor, viewer
 - [ ] Mover token a httpOnly cookies
 - [ ] Validar entrada en todas las rutas
-- [ ] Tests de autenticación
-- [ ] Documentar permisos por rol
+- [x] Tests de autenticación
+- [x] Documentar permisos administrativos actuales
 
 **Resultado:** Sistema seguro. Imposible acceder sin autenticación.
 
@@ -230,15 +221,14 @@ Una vez que base está sólida.
 
 ## 📝 RECOMENDACIÓN FINAL
 
-**No hacer cambios de features hasta que Fase 1 esté hecha.**
-
-El sistema es vulnerable a ataques. Alguien conectado a la red puede leer/modificar cualquier dato sin autenticación.
+La exposición anónima quedó cerrada. Antes de dar por terminada la seguridad,
+conviene completar permisos por responsable y evaluar cookies `httpOnly`.
 
 ### Prioridades:
-1. **Primero:** Implementar autenticación JWT + validación (máx 3 días)
-2. **Segundo:** Refactorizar código en componentes + schema.sql (máx 5 días)  
-3. **Tercero:** Tests + documentación (máx 3 días)
-4. **Luego:** Nuevas features
+1. **Primero:** completar permisos por responsable.
+2. **Segundo:** evaluar cookies `httpOnly` y protección CSRF.
+3. **Tercero:** ampliar tests de integración de permisos.
+4. **Luego:** retomar mejoras de UX.
 
 Con este plan, en ~2 semanas tendrás un sistema seguro, mantenible y listo para producción.
 
