@@ -26,6 +26,7 @@ reproducible, sin depender de que alguien recuerde comandos sueltos.
 | `DATABASE_URL` | Conexión a Postgres | `postgres://user:pass@host:5432/render_platform` |
 | `PORT` | Puerto donde escucha el server | `3001` (o el que asigne el hosting) |
 | `JWT_SECRET` | Firma los tokens de sesión | generar con `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
+| `GOOGLE_CLIENT_ID` | Verifica los tokens de login con Google (backend) | el Client ID de OAuth creado en Google Cloud Console |
 | `SMTP_HOST` | Servidor de correo para avisos de tareas | `smtp.gmail.com` |
 | `SMTP_PORT` | Puerto SMTP | `465` |
 | `SMTP_SECURE` | Usar TLS desde el inicio | `true` |
@@ -37,6 +38,13 @@ reproducible, sin depender de que alguien recuerde comandos sueltos.
 
 **`JWT_SECRET` es obligatorio.** Sin él, el login no genera tokens válidos.
 Nunca lo dejes vacío ni reutilices uno de otro proyecto.
+
+**`GOOGLE_CLIENT_ID` es opcional** — sin él, el botón de Google simplemente
+no aparece y el login por usuario/contraseña sigue funcionando igual. El
+frontend necesita la misma Client ID en `VITE_GOOGLE_CLIENT_ID`
+(`frontend/.env.example`), pero esa variable se hornea en el bundle al
+correr `npm run build` — hay que tenerla seteada en el entorno donde se
+compila, no alcanza con setearla donde corre el server después.
 
 Los avisos por email se envían solamente al crear una tarea o cuando cambia
 su responsable. Si el SMTP no está configurado o el integrante no tiene
@@ -78,6 +86,14 @@ de la cuenta.
 5. **Clientes:** se siembran solos en el primer arranque (`clientes` ya
    tenía un seed en `backend/src/setup-demo-data.js`, no cambió).
 
+6. **Vincular las cuentas de Google** (una sola vez, opcional): con
+   `GOOGLE_CLIENT_ID` configurado, cada persona necesita que se le cargue
+   su `google_email` antes de poder usar el botón de Google. Se hace con un
+   `UPDATE` directo (`UPDATE usuarios SET google_email = '...' WHERE
+   usuario = 'lider';`) o desde `PATCH /usuarios/:id/google-email`.
+   Mientras no esté cargado, esa persona sigue entrando con usuario y
+   contraseña sin ningún problema — ambos métodos conviven.
+
 ## Desarrollo local (sin tocar nada de esto)
 
 Sigue funcionando exactamente igual que antes:
@@ -96,3 +112,8 @@ y modificar clientes, historias, publicaciones y tareas sin loguearse. Esto
 no se tocó en este trabajo porque es un cambio de seguridad grande que
 merece revisión aparte, no algo para meter de paso. No lo dejes en producción
 con datos reales de clientes sin resolver esto primero.
+
+El login con Google (`POST /login/google`) no cambia nada de esto: emite el
+mismo JWT, con el mismo `JWT_SECRET`, que ya emitía `POST /login`. El día
+que se agregue el middleware que valide `jwt.verify(...)` en las rutas
+protegidas, no le importa por cuál de los dos caminos se emitió el token.

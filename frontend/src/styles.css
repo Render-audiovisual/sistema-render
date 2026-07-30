@@ -1402,6 +1402,30 @@ select:focus {
   max-width: 300px;
 }
 
+.login-google-btn {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+  margin-bottom: 4px;
+}
+
+.login-divider {
+  align-items: center;
+  color: #888;
+  display: flex;
+  font-size: 13px;
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.login-divider::before,
+.login-divider::after {
+  background: #e0e0e0;
+  content: "";
+  flex: 1;
+  height: 1px;
+}
+
 .login-form-card {
   gap: 18px;
   margin: 0 auto;
