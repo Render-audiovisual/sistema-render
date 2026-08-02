@@ -26,7 +26,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const router = express.Router();
-const port = Number(process.env.PORT || 3001);
+const port = Number(process.env.PORT || 3000);
 
 app.use(compression());
 app.use(express.json({ limit: "2mb" }));
