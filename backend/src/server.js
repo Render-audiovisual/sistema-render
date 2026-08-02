@@ -1903,20 +1903,25 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: "Error interno del servidor." });
 });
 
-try {
-  await checkDatabaseConnection();
-  if (shouldSetupDemoData()) {
-    await setupDemoClientes();
-    console.log("Postgres connection OK and demo data prepared");
-  } else {
-    console.log("Postgres connection OK");
+// IIFE en vez de top-level await: el runtime de Hostinger (LiteSpeed
+// lsnode.js) carga este archivo con require(), que no admite módulos ESM
+// con await de nivel superior (ERR_REQUIRE_ASYNC_MODULE).
+(async () => {
+  try {
+    await checkDatabaseConnection();
+    if (shouldSetupDemoData()) {
+      await setupDemoClientes();
+      console.log("Postgres connection OK and demo data prepared");
+    } else {
+      console.log("Postgres connection OK");
+    }
+  } catch (error) {
+    console.error("Postgres connection failed");
+    console.error(error.message);
+    process.exit(1);
   }
-} catch (error) {
-  console.error("Postgres connection failed");
-  console.error(error.message);
-  process.exit(1);
-}
 
-app.listen(port, () => {
-  console.log(`Backend listening on http://localhost:${port}`);
-});
+  app.listen(port, () => {
+    console.log(`Backend listening on http://localhost:${port}`);
+  });
+})();
