@@ -15,6 +15,7 @@ import { PublicacionesPage } from "./pages/Publicaciones.jsx";
 import { ReportesEquipoPage } from "./pages/Reportes.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { TareasTableroPage } from "./pages/TareasTablero.jsx";
+import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
 
 export function App() {
   const path = window.location.pathname;
@@ -58,6 +59,10 @@ export function App() {
   if (!rutaPermitida) {
     window.location.href = rutaPropia || "/";
     return null;
+  }
+
+  if (["/workspace/tareas", "/workspace/clientes", "/workspace/equipo"].includes(path)) {
+    return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
   }
 
   const dashboard = (() => {

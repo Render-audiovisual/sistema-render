@@ -50,7 +50,13 @@ router.use((_req, res, next) => {
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   next();
 });
-router.options(/.*/, (_req, res) => res.sendStatus(204));
+// Express 5 / path-to-regexp ya no acepta "*" como patrón de ruta.
+// Resolver el preflight como middleware evita depender de esa sintaxis y
+// mantiene OPTIONS público antes del middleware JWT.
+router.use((req, res, next) => {
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  return next();
+});
 
 router.get("/health", (_req, res) => {
   res.json({ ok: true });
