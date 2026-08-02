@@ -11,6 +11,7 @@ import {
   getEstadoLabel,
   getTipoPublicacionLabel,
 } from "../utils.jsx";
+import { Modal } from "./Modal.jsx";
 
 export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
   const esFeedCompartido = Boolean(cliente.grupo_feed_id);
@@ -72,14 +73,12 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
   };
 
   return (
-    <div className="modal-overlay open" role="dialog" aria-modal="true" aria-label="Editar cuota mensual">
-      <div className="modal cliente-create-modal">
-        <div className="modal-header">
-          <span>Editar cuota mensual</span>
-          <button className="modal-close" type="button" onClick={onClose} aria-label="Cerrar">
-            X
-          </button>
-        </div>
+    <Modal
+      onClose={onClose}
+      title={<span>Editar cuota mensual</span>}
+      className="cliente-create-modal"
+      overlayAriaLabel="Editar cuota mensual"
+    >
         <form className="modal-body cliente-create-modal-body" onSubmit={guardar}>
           <div className="clientes-panel-copy">
             <strong>{cliente.nombre}</strong>
@@ -159,8 +158,7 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -263,14 +261,7 @@ export function DetalleClienteModal({
 
   return (
     <>
-    <div className="modal-overlay open" role="dialog" aria-modal="true">
-      <div className="modal">
-        <div className="modal-header">
-          <span>{cliente.nombre}</span>
-          <button className="modal-close" type="button" onClick={onClose}>
-            X
-          </button>
-        </div>
+    <Modal onClose={onClose} title={<span>{cliente.nombre}</span>}>
         <div className="modal-body">
           <div className="modal-client-summary">
             <div className="modal-client-status">
@@ -384,8 +375,7 @@ export function DetalleClienteModal({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
     {editandoCuota && (
       <EditarCuotaClienteModal
         cliente={cliente}

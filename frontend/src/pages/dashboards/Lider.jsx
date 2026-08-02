@@ -3,6 +3,7 @@ import { getAprobacionesLider, getCumplimientoGeneral, getEdicionesEsperandoMate
 import { ESTADO_FINAL_TAREA } from "../../constants.js";
 import { EditarCuotaClienteModal, DetalleClienteModal } from "../../components/ClienteModals.jsx";
 import { TareasAsignadasGenericas } from "../../components/TareasAsignadasGenericas.jsx";
+import { Modal } from "../../components/Modal.jsx";
 
 export function LiderDashboard() {
   const [clientes, setClientes] = useState([]);
@@ -894,16 +895,14 @@ export function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) 
   };
 
   return (
-    <div className="modal-overlay open" role="dialog" aria-modal="true">
-      <div className="modal">
-        <div className="modal-header">
-          <span>
-            {pieza.cliente_nombre} · {pieza.metadata?.Idea || "Sin idea cargada"}
-          </span>
-          <button className="modal-close" type="button" onClick={onClose}>
-            X
-          </button>
-        </div>
+    <Modal
+      onClose={onClose}
+      title={
+        <span>
+          {pieza.cliente_nombre} · {pieza.metadata?.Idea || "Sin idea cargada"}
+        </span>
+      }
+    >
         <div className="modal-body">
           <span className="tag creativa">Aprobación creativa</span>
 
@@ -965,8 +964,7 @@ export function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) 
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

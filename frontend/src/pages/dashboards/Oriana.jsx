@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { getEstadoHistoriaLabel, getHoyLocalISO, getSesion } from "../../utils.jsx";
 import { TareasAsignadasGenericas } from "../../components/TareasAsignadasGenericas.jsx";
+import { Modal } from "../../components/Modal.jsx";
 
 export function OrianaDashboard() {
   const [publicacionChecklist, setPublicacionChecklist] = useState(null);
@@ -62,6 +63,9 @@ export function OrianaDashboard() {
     <main aria-label="Render platform Oriana">
       <div className="frame">
         <div className="content">
+          <div className="section-label">Community</div>
+          <h2>Mi calendario</h2>
+
           <div className="box" style={{ backgroundColor: "#f0f4f8", padding: "16px", marginBottom: "20px", borderRadius: "4px", border: "1px solid #ddd" }}>
             <div style={{ display: "flex", justifyContent: "space-around", textAlign: "center" }}>
               <div>
@@ -262,17 +266,15 @@ export function ChecklistPublicacionOrianaModal({ publicacion, onClose, onPublic
   };
 
   return (
-    <div className="modal-overlay open" role="dialog" aria-modal="true">
-      <div className="modal">
-        <div className="modal-header">
-          <span>
-            {publicacion.cliente_nombre} ·{" "}
-            {publicacion.idea || "Sin idea cargada"}
-          </span>
-          <button className="modal-close" type="button" onClick={onClose}>
-            X
-          </button>
-        </div>
+    <Modal
+      onClose={onClose}
+      title={
+        <span>
+          {publicacion.cliente_nombre} ·{" "}
+          {publicacion.idea || "Sin idea cargada"}
+        </span>
+      }
+    >
         <div className="modal-body">
           <div className="meta-block">Paso 0: Augusto ya confirmó la entrega ✓</div>
 
@@ -304,7 +306,6 @@ export function ChecklistPublicacionOrianaModal({ publicacion, onClose, onPublic
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

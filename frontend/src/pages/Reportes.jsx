@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
-import { RR, ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
+import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
 
 export function ResumenEntregableEquipo({
   etiqueta,
@@ -13,33 +13,33 @@ export function ResumenEntregableEquipo({
 }) {
   if (enRevision) {
     return (
-      <div style={{ paddingTop: "12px", borderTop: `1px solid ${RR.border}` }}>
-        <div style={{ fontWeight: "600", fontSize: "13px", color: RR.text }}>{etiqueta}</div>
+      <div style={{ paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+        <div style={{ fontWeight: "600", fontSize: "13px", color: "var(--text)" }}>{etiqueta}</div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", marginTop: "10px" }}>
-          <div style={{ fontSize: "12px", color: RR.textMuted }}>
-            Objetivo mensual: <strong style={{ color: RR.text, fontSize: "18px", fontFamily: RR.mono, fontVariantNumeric: "tabular-nums" }}>{total}</strong>
+          <div style={{ fontSize: "12px", color: "var(--muted)" }}>
+            Objetivo mensual: <strong style={{ color: "var(--text)", fontSize: "18px", fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', fontVariantNumeric: "tabular-nums" }}>{total}</strong>
           </div>
-          <span style={{ padding: "3px 9px", borderRadius: "999px", background: RR.warningBg, color: RR.warning, fontSize: "11px", fontWeight: "500" }}>
+          <span style={{ padding: "3px 9px", borderRadius: "999px", background: "#f6e9d8", color: "var(--warning)", fontSize: "11px", fontWeight: "500" }}>
             En revisión
           </span>
         </div>
-        <div style={{ marginTop: "9px", fontSize: "12px", lineHeight: 1.5, color: RR.textFaint }}>
+        <div style={{ marginTop: "9px", fontSize: "12px", lineHeight: 1.5, color: "var(--muted)" }}>
           El avance se confirmará cuando quede validada la trazabilidad del material.
         </div>
       </div>
     );
   }
   const porcentaje = total > 0 ? Math.round((realizados / total) * 100) : 0;
-  const colorBarra = porcentaje >= 80 ? RR.success : porcentaje >= 50 ? RR.warning : RR.danger;
+  const colorBarra = porcentaje >= 80 ? "var(--success)" : porcentaje >= 50 ? "var(--warning)" : "var(--danger)";
   return (
-    <div style={{ paddingTop: "12px", borderTop: `1px solid ${RR.border}` }}>
+    <div style={{ paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px" }}>
-        <div style={{ fontWeight: "600", fontSize: "13px", color: RR.text }}>{etiqueta}</div>
-        <div style={{ fontSize: "12px", color: RR.textMuted, whiteSpace: "nowrap" }}>
-          <strong style={{ color: RR.text, fontSize: "16px", fontFamily: RR.mono, fontVariantNumeric: "tabular-nums" }}>{realizados}</strong> de {total}
+        <div style={{ fontWeight: "600", fontSize: "13px", color: "var(--text)" }}>{etiqueta}</div>
+        <div style={{ fontSize: "12px", color: "var(--muted)", whiteSpace: "nowrap" }}>
+          <strong style={{ color: "var(--text)", fontSize: "16px", fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', fontVariantNumeric: "tabular-nums" }}>{realizados}</strong> de {total}
         </div>
       </div>
-      <div style={{ height: "6px", background: RR.surface2, borderRadius: "999px", overflow: "hidden", margin: "9px 0 7px" }}>
+      <div style={{ height: "6px", background: "var(--surface-soft)", borderRadius: "999px", overflow: "hidden", margin: "9px 0 7px" }}>
         <div
           style={{
             width: `${Math.min(porcentaje, 100)}%`,
@@ -48,10 +48,10 @@ export function ResumenEntregableEquipo({
           }}
         />
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", fontSize: "12px", color: RR.textFaint }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", fontSize: "12px", color: "var(--muted)" }}>
         <span>{realizados} {realizados === 1 ? verboSingular : verbo}</span>
         <span>{pendientes} {pendientes === 1 ? "pendiente" : "pendientes"}</span>
-        <strong style={{ color: RR.textMuted, fontFamily: RR.mono, fontVariantNumeric: "tabular-nums" }}>{porcentaje}%</strong>
+        <strong style={{ color: "var(--muted)", fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', fontVariantNumeric: "tabular-nums" }}>{porcentaje}%</strong>
       </div>
     </div>
   );
@@ -63,7 +63,7 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
     <article
       style={{
         background: "#fff",
-        border: `1px solid ${RR.border}`,
+        border: "1px solid var(--border)",
         borderRadius: "12px",
         padding: "16px",
         minWidth: 0,
@@ -76,8 +76,8 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
               width: "34px",
               height: "34px",
               borderRadius: "50%",
-              background: RR.surface2,
-              color: RR.textMuted,
+              background: "var(--surface-soft)",
+              color: "var(--muted)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -89,8 +89,8 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
             {inicial}
           </div>
           <div>
-            <div style={{ fontWeight: "600", fontSize: "14px", color: RR.text }}>{nombre}</div>
-            <div style={{ fontSize: "11px", color: RR.textFaint, marginTop: "1px", textTransform: "uppercase", letterSpacing: "0.03em" }}>{rol}</div>
+            <div style={{ fontWeight: "600", fontSize: "14px", color: "var(--text)" }}>{nombre}</div>
+            <div style={{ fontSize: "11px", color: "var(--muted)", marginTop: "1px", textTransform: "uppercase", letterSpacing: "0.03em" }}>{rol}</div>
           </div>
         </div>
         {proximoMes && (
@@ -100,7 +100,7 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
         )}
       </div>
       {proximoMes ? (
-        <div style={{ borderTop: `1px solid ${RR.border}`, paddingTop: "12px", color: RR.textFaint, fontSize: "12px", lineHeight: 1.5 }}>
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px", color: "var(--muted)", fontSize: "12px", lineHeight: 1.5 }}>
           Carruseles e historias medidas a partir de agosto.
         </div>
       ) : (
@@ -272,13 +272,13 @@ export function ReportesEquipoPage() {
       ? Math.round((terminadasPeriodo.length / objetivoMensual) * 100)
       : null;
     const estadoObjetivo = (() => {
-      if (!objetivoMensual) return { label: "Sin objetivo", bg: RR.surface2, fg: RR.textMuted };
-      if (atrasadas.length > 0) return { label: "Atrasado", bg: RR.dangerBg, fg: RR.danger };
-      if (terminadasPeriodo.length >= objetivoAlDia) return { label: "Al día", bg: RR.successBg, fg: RR.success };
+      if (!objetivoMensual) return { label: "Sin objetivo", bg: "var(--surface-soft)", fg: "var(--muted)" };
+      if (atrasadas.length > 0) return { label: "Atrasado", bg: "#f7e6e3", fg: "var(--danger)" };
+      if (terminadasPeriodo.length >= objetivoAlDia) return { label: "Al día", bg: "#e3ede5", fg: "var(--success)" };
       if (terminadasPeriodo.length >= Math.ceil(objetivoAlDia * 0.75)) {
-        return { label: "En riesgo", bg: RR.warningBg, fg: RR.warning };
+        return { label: "En riesgo", bg: "#f6e9d8", fg: "var(--warning)" };
       }
-      return { label: "Atrasado", bg: RR.dangerBg, fg: RR.danger };
+      return { label: "Atrasado", bg: "#f7e6e3", fg: "var(--danger)" };
     })();
 
     return {
@@ -443,7 +443,7 @@ export function ReportesEquipoPage() {
   ];
 
   const cardStyle = useMemo(() => ({ padding: "16px", borderRadius: "8px", textAlign: "center" }), []);
-  const numStyle = { fontFamily: RR.mono, fontVariantNumeric: "tabular-nums" };
+  const numStyle = { fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', fontVariantNumeric: "tabular-nums" };
 
   return (
     <main aria-label="Render platform reportes equipo">
@@ -491,23 +491,23 @@ export function ReportesEquipoPage() {
                   ))
                 ) : (
                   <>
-                    <div style={{ ...cardStyle, background: filaPropia?.estadoObjetivo?.bg || RR.surface2 }}>
-                      <div style={{ fontSize: "20px", fontWeight: "600", color: filaPropia?.estadoObjetivo?.fg || RR.textMuted }}>
+                    <div style={{ ...cardStyle, background: filaPropia?.estadoObjetivo?.bg || "var(--surface-soft)" }}>
+                      <div style={{ fontSize: "20px", fontWeight: "600", color: filaPropia?.estadoObjetivo?.fg || "var(--muted)" }}>
                         {filaPropia?.estadoObjetivo?.label || "Sin datos"}
                       </div>
-                      <div style={{ fontSize: "12px", color: filaPropia?.estadoObjetivo?.fg || RR.textMuted }}>Estado</div>
+                      <div style={{ fontSize: "12px", color: filaPropia?.estadoObjetivo?.fg || "var(--muted)" }}>Estado</div>
                     </div>
-                    <div style={{ ...cardStyle, background: RR.surface2 }}>
-                      <div style={{ ...numStyle, fontSize: "24px", fontWeight: "600", color: RR.accent }}>{filaPropia?.avanceObjetivo ?? 0}%</div>
-                      <div style={{ fontSize: "12px", color: RR.textMuted }}>Avance al 100%</div>
+                    <div style={{ ...cardStyle, background: "var(--surface-soft)" }}>
+                      <div style={{ ...numStyle, fontSize: "24px", fontWeight: "600", color: "var(--accent)" }}>{filaPropia?.avanceObjetivo ?? 0}%</div>
+                      <div style={{ fontSize: "12px", color: "var(--muted)" }}>Avance al 100%</div>
                     </div>
-                    <div style={{ ...cardStyle, background: RR.successBg }}>
-                      <div style={{ ...numStyle, fontSize: "24px", fontWeight: "600", color: RR.success }}>{filaPropia?.terminadas ?? 0}</div>
-                      <div style={{ fontSize: "12px", color: RR.success }}>Publicadas este mes</div>
+                    <div style={{ ...cardStyle, background: "#e3ede5" }}>
+                      <div style={{ ...numStyle, fontSize: "24px", fontWeight: "600", color: "var(--success)" }}>{filaPropia?.terminadas ?? 0}</div>
+                      <div style={{ fontSize: "12px", color: "var(--success)" }}>Publicadas este mes</div>
                     </div>
-                    <div style={{ ...cardStyle, background: RR.warningBg }}>
-                      <div style={{ ...numStyle, fontSize: "24px", fontWeight: "600", color: RR.warning }}>{filaPropia?.carga ?? 0}</div>
-                      <div style={{ fontSize: "12px", color: RR.warning }}>Pendientes</div>
+                    <div style={{ ...cardStyle, background: "#f6e9d8" }}>
+                      <div style={{ ...numStyle, fontSize: "24px", fontWeight: "600", color: "var(--warning)" }}>{filaPropia?.carga ?? 0}</div>
+                      <div style={{ fontSize: "12px", color: "var(--warning)" }}>Pendientes</div>
                     </div>
                   </>
                 )}

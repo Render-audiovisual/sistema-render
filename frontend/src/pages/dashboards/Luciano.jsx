@@ -31,6 +31,9 @@ export function LucianoDashboard() {
     <main aria-label="Render platform Luciano">
       <div className="frame">
         <div className="content">
+          <div className="section-label">Edición</div>
+          <h2>Mis tareas</h2>
+
           {error && <div className="caption">{error}</div>}
 
           <div style={{ backgroundColor: "#d4edff", border: "2px solid #0066cc", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>

@@ -205,7 +205,7 @@ const ROLES_VALIDOS = [
 router.get("/usuarios", async (_req, res, next) => {
   try {
     const result = await pool.query(
-      "SELECT id, usuario, nombre, rol, email_notificaciones, foto_perfil, created_at FROM usuarios ORDER BY id",
+      "SELECT id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at FROM usuarios ORDER BY id",
     );
     res.json(result.rows);
   } catch (error) {

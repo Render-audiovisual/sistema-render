@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { getEstadoTareaLabel, getHoyLocalISO } from "../../utils.jsx";
 import { ESTADO_FINAL_TAREA } from "../../constants.js";
 import { TareasAsignadasGenericas } from "../../components/TareasAsignadasGenericas.jsx";
+import { Modal } from "../../components/Modal.jsx";
 
 export function GermanDashboard() {
   const [produccionSeleccionada, setProduccionSeleccionada] = useState(null);
@@ -54,6 +55,9 @@ export function GermanDashboard() {
     <main aria-label="Render platform German">
       <div className="frame">
         <div className="content">
+          <div className="section-label">Producción</div>
+          <h2>Mis tareas</h2>
+
           <div style={{ backgroundColor: "#fff3cd", border: "2px solid #ff9800", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
             {(() => {
               const proximaTarea = pendientes
@@ -251,16 +255,14 @@ export function DetalleProduccionGermanModal({ produccion, onClose, onActualizad
   };
 
   return (
-    <div className="modal-overlay open" role="dialog" aria-modal="true">
-      <div className="modal">
-        <div className="modal-header">
-          <span>
-            {produccion.cliente_nombre ?? "Sin cliente"} · {produccion.titulo}
-          </span>
-          <button className="modal-close" type="button" onClick={onClose}>
-            X
-          </button>
-        </div>
+    <Modal
+      onClose={onClose}
+      title={
+        <span>
+          {produccion.cliente_nombre ?? "Sin cliente"} · {produccion.titulo}
+        </span>
+      }
+    >
         <div className="modal-body">
           <div className="detail-grid">
             <div className="detail-field">
@@ -304,7 +306,6 @@ export function DetalleProduccionGermanModal({ produccion, onClose, onActualizad
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

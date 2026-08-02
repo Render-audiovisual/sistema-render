@@ -34,6 +34,9 @@ export function AugustoDashboard() {
     <main aria-label="Render platform Augusto">
       <div className="frame">
         <div className="content">
+          <div className="section-label">Diseño</div>
+          <h2>Mis tareas</h2>
+
           {error && <div className="caption">{error}</div>}
 
           <div style={{ backgroundColor: "#fff3cd", border: "2px solid #ffc107", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
