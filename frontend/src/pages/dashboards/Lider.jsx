@@ -90,35 +90,49 @@ export function LiderDashboard() {
 
           {vistaLider === "panorama" && (
             <div className="lider-dashboard-view" role="tabpanel">
-              <div style={{ backgroundColor: "#ffe0e0", border: "2px solid #d32f2f", borderRadius: "4px", padding: "12px", marginBottom: "20px", fontSize: "13px" }}>
-            {(() => {
+              {(() => {
               const atrasadas = getPiezasAtrasadas(historiasRaw, publicacionesRaw);
               const bloqueadas = getPiezasBloqueadas(historiasRaw, publicacionesRaw);
               const cumplimiento = getCumplimientoGeneral(clientes);
               const edicionesEsperando = getEdicionesEsperandoMaterial(tareasRaw);
 
               return (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px" }}>
-                  <div>
-                    <span style={{ marginRight: "20px" }}>
-                      🔴 {atrasadas.length} atrasados
-                    </span>
-                    <span style={{ marginRight: "20px" }}>
-                      ⚠️ {bloqueadas.length} bloqueados
-                    </span>
-                    {edicionesEsperando.length > 0 && (
-                      <span style={{ marginRight: "20px" }}>
-                        ⏳ {edicionesEsperando.length} edicion{edicionesEsperando.length === 1 ? "" : "es"} esperando material de Germán
-                      </span>
-                    )}
-                    <span>
-                      📊 Cumplimiento: <strong>{cumplimiento}%</strong>
-                    </span>
+                <div className="stat-row">
+                  <div className={`stat-card ${atrasadas.length > 0 ? "is-critical" : "is-neutral"}`}>
+                    <span className="stat-dot"></span>
+                    <div>
+                      <div className="stat-num">{atrasadas.length}</div>
+                      <div className="stat-label">Atrasados</div>
+                    </div>
+                  </div>
+                  <div className={`stat-card ${bloqueadas.length > 0 ? "is-warning" : "is-neutral"}`}>
+                    <span className="stat-dot"></span>
+                    <div>
+                      <div className="stat-num">{bloqueadas.length}</div>
+                      <div className="stat-label">Bloqueados</div>
+                    </div>
+                  </div>
+                  {edicionesEsperando.length > 0 && (
+                    <div className="stat-card is-warning">
+                      <span className="stat-dot"></span>
+                      <div>
+                        <div className="stat-num">{edicionesEsperando.length}</div>
+                        <div className="stat-label">
+                          Edicion{edicionesEsperando.length === 1 ? "" : "es"} esperando material de Germán
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="stat-card is-neutral">
+                    <span className="stat-dot"></span>
+                    <div>
+                      <div className="stat-num">{cumplimiento}%</div>
+                      <div className="stat-label">Cumplimiento general</div>
+                    </div>
                   </div>
                 </div>
               );
             })()}
-          </div>
 
           <div className="section-label">
             Panorama de clientes
@@ -162,8 +176,10 @@ export function LiderDashboard() {
                       onClick={() => setClienteSeleccionado(cliente)}
                     >
                       <td>
-                        <span className={`semaforo ${estado}`}></span>
-                        {getEstadoLabel(estado)}
+                        <span className={`status-pill ${estado}`}>
+                          <i></i>
+                          {getEstadoLabel(estado)}
+                        </span>
                       </td>
                       <td>{cliente.nombre}</td>
                       <td>{porcentajes.historias}%</td>

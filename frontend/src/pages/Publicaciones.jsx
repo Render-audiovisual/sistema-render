@@ -509,7 +509,7 @@ export function PublicacionesGeneralTab({ clientes, onIrACliente }) {
             <option key={t.id} value={t.id}>{t.label}</option>
           ))}
         </select>
-        <span style={{ fontSize: "12px", color: "#777", alignSelf: "center", marginLeft: "auto" }}>
+        <span style={{ fontSize: "12px", color: "var(--muted)", alignSelf: "center", marginLeft: "auto" }}>
           {filtradas.length} publicaciones
         </span>
       </div>
@@ -553,7 +553,7 @@ export function PublicacionesGeneralTab({ clientes, onIrACliente }) {
                     <td style={{ padding: "6px 10px", fontSize: "12px" }}>{p.fecha_programada}</td>
                     <td style={{ padding: "6px 10px", fontSize: "13px", fontWeight: "600" }}>{p.cliente_nombre}</td>
                     <td style={{ padding: "6px 10px", fontSize: "12px" }}>{getTipoPublicacionLabel(p.tipo)}</td>
-                    <td style={{ padding: "6px 10px", fontSize: "13px", color: p.idea ? "#222" : "#bbb" }}>
+                    <td style={{ padding: "6px 10px", fontSize: "13px", color: p.idea ? "var(--text)" : "var(--muted)" }}>
                       {p.idea || "Sin idea cargada"}
                     </td>
                     <td style={{ padding: "6px 10px", fontSize: "12px" }}>{p.responsable || "—"}</td>
@@ -781,11 +781,11 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                 const esFinde = dow === 0 || dow === 6;
                 const esHoy = p.fecha_programada === hoyISO;
                 const est = ESTADOS_PUBLICACION.find((e) => e.id === p.estado) || ESTADOS_PUBLICACION[0];
-                const bgFila = esHoy ? "#e3f2fd" : esFinde ? "#fafafa" : undefined;
+                const bgFila = esHoy ? "var(--accent-wash)" : esFinde ? "var(--surface-soft)" : undefined;
 
                 return (
                   <tr key={p.id} style={{ background: bgFila }}>
-                    <td style={{ padding: "6px 10px", fontWeight: esHoy ? "700" : "600", color: esFinde ? "#999" : "#333", fontSize: "12px" }}>
+                    <td style={{ padding: "6px 10px", fontWeight: esHoy ? "700" : "600", color: esFinde ? "var(--muted)" : "var(--text)", fontSize: "12px" }}>
                       {LETRAS_DIA[dow]}
                     </td>
                     <td>
@@ -1025,7 +1025,7 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
       <div className="frame">
         <div className="content">
           {errorClientes && (
-            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+            <div style={{ padding: "10px", background: "var(--danger-wash)", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
               {errorClientes}
             </div>
           )}

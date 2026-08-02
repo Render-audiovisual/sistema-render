@@ -66,19 +66,26 @@ export function OrianaDashboard() {
           <div className="section-label">Community</div>
           <h2>Mi calendario</h2>
 
-          <div className="box" style={{ backgroundColor: "#f0f4f8", padding: "16px", marginBottom: "20px", borderRadius: "4px", border: "1px solid #ddd" }}>
-            <div style={{ display: "flex", justifyContent: "space-around", textAlign: "center" }}>
+          <div className="stat-row">
+            <div className="stat-card is-neutral">
+              <span className="stat-dot"></span>
               <div>
-                <div style={{ fontSize: "24px", fontWeight: "bold", color: "#0066cc" }}>{listasHoy}</div>
-                <div style={{ fontSize: "12px", color: "#666" }}>Listas para subir</div>
+                <div className="stat-num">{listasHoy}</div>
+                <div className="stat-label">Listas para subir</div>
               </div>
+            </div>
+            <div className={`stat-card ${piezasHoy.length - listasHoy - publicadasHoy > 0 ? "is-warning" : "is-neutral"}`}>
+              <span className="stat-dot"></span>
               <div>
-                <div style={{ fontSize: "24px", fontWeight: "bold", color: "#d9534f" }}>{piezasHoy.length - listasHoy - publicadasHoy}</div>
-                <div style={{ fontSize: "12px", color: "#666" }}>Esperando aprobación</div>
+                <div className="stat-num">{piezasHoy.length - listasHoy - publicadasHoy}</div>
+                <div className="stat-label">Esperando aprobación</div>
               </div>
+            </div>
+            <div className="stat-card is-neutral">
+              <span className="stat-dot"></span>
               <div>
-                <div style={{ fontSize: "24px", fontWeight: "bold", color: "#28a745" }}>{publicadasHoy}</div>
-                <div style={{ fontSize: "12px", color: "#666" }}>Ya publicadas</div>
+                <div className="stat-num">{publicadasHoy}</div>
+                <div className="stat-label">Ya publicadas</div>
               </div>
             </div>
           </div>

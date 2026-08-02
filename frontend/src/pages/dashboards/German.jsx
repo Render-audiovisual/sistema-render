@@ -58,21 +58,21 @@ export function GermanDashboard() {
           <div className="section-label">Producción</div>
           <h2>Mis tareas</h2>
 
-          <div style={{ backgroundColor: "#fff3cd", border: "2px solid #ff9800", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
+          <div className="highlight-card">
             {(() => {
               const proximaTarea = pendientes
                 .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))[0];
 
               if (!proximaTarea) {
-                return <div className="caption">✅ No hay tareas pendientes.</div>;
+                return <div className="caption">No hay tareas pendientes.</div>;
               }
 
               return (
                 <div onClick={() => setProduccionSeleccionada(proximaTarea)} style={{ cursor: "pointer" }}>
-                  <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>🎯 Tu próxima tarea</div>
-                  <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>{proximaTarea.titulo}</div>
-                  <div style={{ fontSize: "13px", color: "#333", marginBottom: "8px" }}>{proximaTarea.cliente_nombre ?? "Sin cliente"} · Vence {proximaTarea.fecha_vencimiento}</div>
-                  <div style={{ fontSize: "12px", color: "#555" }}>Estado: {getEstadoTareaLabel(proximaTarea.estado)}</div>
+                  <div className="highlight-eyebrow">Tu próxima tarea</div>
+                  <div className="highlight-title">{proximaTarea.titulo}</div>
+                  <div className="highlight-meta">{proximaTarea.cliente_nombre ?? "Sin cliente"} · Vence {proximaTarea.fecha_vencimiento}</div>
+                  <div className="highlight-status">Estado: {getEstadoTareaLabel(proximaTarea.estado)}</div>
                 </div>
               );
             })()}

@@ -19,7 +19,7 @@ export function ResumenEntregableEquipo({
           <div style={{ fontSize: "12px", color: "var(--muted)" }}>
             Objetivo mensual: <strong style={{ color: "var(--text)", fontSize: "18px", fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', fontVariantNumeric: "tabular-nums" }}>{total}</strong>
           </div>
-          <span style={{ padding: "3px 9px", borderRadius: "999px", background: "#f6e9d8", color: "var(--warning)", fontSize: "11px", fontWeight: "500" }}>
+          <span style={{ padding: "3px 9px", borderRadius: "999px", background: "var(--warning-wash)", color: "var(--warning)", fontSize: "11px", fontWeight: "500" }}>
             En revisión
           </span>
         </div>
@@ -62,7 +62,7 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
   return (
     <article
       style={{
-        background: "#fff",
+        background: "var(--surface)",
         border: "1px solid var(--border)",
         borderRadius: "12px",
         padding: "16px",
@@ -94,7 +94,7 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
           </div>
         </div>
         {proximoMes && (
-          <span style={{ padding: "4px 9px", borderRadius: "999px", background: "#eef2ff", color: "#3949ab", fontSize: "11px", fontWeight: "500" }}>
+          <span style={{ padding: "4px 9px", borderRadius: "999px", background: "var(--accent-wash)", color: "var(--accent-strong)", fontSize: "11px", fontWeight: "500" }}>
             Comienza el próximo mes
           </span>
         )}
@@ -273,12 +273,12 @@ export function ReportesEquipoPage() {
       : null;
     const estadoObjetivo = (() => {
       if (!objetivoMensual) return { label: "Sin objetivo", bg: "var(--surface-soft)", fg: "var(--muted)" };
-      if (atrasadas.length > 0) return { label: "Atrasado", bg: "#f7e6e3", fg: "var(--danger)" };
-      if (terminadasPeriodo.length >= objetivoAlDia) return { label: "Al día", bg: "#e3ede5", fg: "var(--success)" };
+      if (atrasadas.length > 0) return { label: "Atrasado", bg: "var(--danger-wash)", fg: "var(--danger)" };
+      if (terminadasPeriodo.length >= objetivoAlDia) return { label: "Al día", bg: "var(--success-wash)", fg: "var(--success)" };
       if (terminadasPeriodo.length >= Math.ceil(objetivoAlDia * 0.75)) {
-        return { label: "En riesgo", bg: "#f6e9d8", fg: "var(--warning)" };
+        return { label: "En riesgo", bg: "var(--warning-wash)", fg: "var(--warning)" };
       }
-      return { label: "Atrasado", bg: "#f7e6e3", fg: "var(--danger)" };
+      return { label: "Atrasado", bg: "var(--danger-wash)", fg: "var(--danger)" };
     })();
 
     return {
@@ -459,7 +459,7 @@ export function ReportesEquipoPage() {
           </div>
 
           {error && (
-            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+            <div style={{ padding: "10px", background: "var(--danger-wash)", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
               {error}
             </div>
           )}
@@ -478,7 +478,7 @@ export function ReportesEquipoPage() {
           </div>
 
           {cargando ? (
-            <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando reportes…</div>
+            <div style={{ textAlign: "center", padding: "40px", color: "var(--muted)" }}>Cargando reportes…</div>
           ) : (
             <>
               <div className="section-label">
@@ -505,7 +505,7 @@ export function ReportesEquipoPage() {
                       <div style={{ ...numStyle, fontSize: "24px", fontWeight: "600", color: "var(--success)" }}>{filaPropia?.terminadas ?? 0}</div>
                       <div style={{ fontSize: "12px", color: "var(--success)" }}>Publicadas este mes</div>
                     </div>
-                    <div style={{ ...cardStyle, background: "#f6e9d8" }}>
+                    <div style={{ ...cardStyle, background: "var(--warning-wash)" }}>
                       <div style={{ ...numStyle, fontSize: "24px", fontWeight: "600", color: "var(--warning)" }}>{filaPropia?.carga ?? 0}</div>
                       <div style={{ fontSize: "12px", color: "var(--warning)" }}>Pendientes</div>
                     </div>
@@ -524,7 +524,7 @@ export function ReportesEquipoPage() {
                   <div className="box" style={{ padding: 0, overflow: "hidden" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
-                    <tr style={{ borderBottom: "2px solid #333", background: "#fafafa" }}>
+                    <tr style={{ borderBottom: "2px solid var(--text)", background: "#fafafa" }}>
                       <th style={{ textAlign: "left", padding: "10px 12px", fontWeight: "600", fontSize: "12px" }}>Empleado</th>
                       <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Objetivo</th>
                       <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Publicadas</th>
@@ -536,7 +536,7 @@ export function ReportesEquipoPage() {
                   <tbody>
                     {filasOrdenadas.length === 0 && (
                       <tr>
-                        <td colSpan={6} style={{ padding: "24px", textAlign: "center", color: "#999" }}>
+                        <td colSpan={6} style={{ padding: "24px", textAlign: "center", color: "var(--muted)" }}>
                           Sin datos de tareas todavía.
                         </td>
                       </tr>
@@ -544,7 +544,7 @@ export function ReportesEquipoPage() {
                     {filasOrdenadas.map((f) => (
                       <React.Fragment key={f.nombre}>
                         <tr
-                          style={{ borderBottom: "1px solid #eee", cursor: f.atrasadas.length > 0 ? "pointer" : "default" }}
+                          style={{ borderBottom: "1px solid var(--border)", cursor: f.atrasadas.length > 0 ? "pointer" : "default" }}
                           onClick={() =>
                             f.atrasadas.length > 0 &&
                             setDetalleDe(detalleDe === f.nombre ? null : f.nombre)
@@ -553,31 +553,31 @@ export function ReportesEquipoPage() {
                           <td style={{ padding: "10px 12px" }}>
                             <div style={{ fontWeight: "600", fontSize: "13px" }}>{f.nombre}</div>
                             {f.rol && (
-                              <div style={{ fontSize: "11px", color: "#999" }}>{ROL_LABELS[f.rol] || f.rol}</div>
+                              <div style={{ fontSize: "11px", color: "var(--muted)" }}>{ROL_LABELS[f.rol] || f.rol}</div>
                             )}
                           </td>
                           <td style={{ padding: "10px", textAlign: "center", fontWeight: "600" }}>
                             {f.objetivoMensual ? (
                               <>
                                 <div>{f.objetivoMensual}</div>
-                                <div style={{ fontSize: "11px", color: "#999" }}>al mes</div>
+                                <div style={{ fontSize: "11px", color: "var(--muted)" }}>al mes</div>
                               </>
                             ) : (
-                              <span style={{ color: "#bbb" }}>—</span>
+                              <span style={{ color: "var(--muted)" }}>—</span>
                             )}
                           </td>
-                          <td style={{ padding: "10px", textAlign: "center", color: "#2e7d32", fontWeight: "600" }}>{f.terminadas}</td>
+                          <td style={{ padding: "10px", textAlign: "center", color: "var(--success)", fontWeight: "600" }}>{f.terminadas}</td>
                           <td style={{ padding: "10px", textAlign: "center" }}>
                             {f.avanceObjetivo === null ? (
-                              <span style={{ color: "#bbb", fontSize: "12px" }}>Sin objetivo</span>
+                              <span style={{ color: "var(--muted)", fontSize: "12px" }}>Sin objetivo</span>
                             ) : (
                               <>
-                                <div style={{ display: "inline-block", width: "56px", height: "6px", background: "#e0e0e0", borderRadius: "3px", overflow: "hidden", verticalAlign: "middle" }}>
+                                <div style={{ display: "inline-block", width: "56px", height: "6px", background: "var(--surface-sunken, var(--surface-soft))", borderRadius: "3px", overflow: "hidden", verticalAlign: "middle" }}>
                                   <div
                                     style={{
                                       width: `${Math.min(f.avanceObjetivo, 100)}%`,
                                       height: "100%",
-                                      background: f.avanceObjetivo >= 100 ? "#4caf50" : f.avanceObjetivo >= 70 ? "#ff9800" : "#f44336",
+                                      background: f.avanceObjetivo >= 100 ? "var(--success)" : f.avanceObjetivo >= 70 ? "#ff9800" : "#f44336",
                                     }}
                                   />
                                 </div>
@@ -593,7 +593,7 @@ export function ReportesEquipoPage() {
                           <td style={{ padding: "10px", textAlign: "center", fontSize: "12px" }}>
                             <strong>{f.carga}</strong>
                             {f.atrasadas.length > 0 && (
-                              <span style={{ background: "#fff3e0", color: "#e65100", padding: "2px 6px", borderRadius: "10px", fontWeight: "700", fontSize: "11px", marginLeft: "6px" }}>
+                              <span style={{ background: "var(--warning-wash)", color: "var(--warning)", padding: "2px 6px", borderRadius: "10px", fontWeight: "700", fontSize: "11px", marginLeft: "6px" }}>
                                 {f.atrasadas.length} atras.
                               </span>
                             )}
@@ -601,8 +601,8 @@ export function ReportesEquipoPage() {
                         </tr>
                         {detalleDe === f.nombre &&
                           f.atrasadas.map((t) => (
-                            <tr key={`det-${t.id}`} style={{ background: "#fffde7", borderBottom: "1px solid #f0f0f0" }}>
-                              <td colSpan={6} style={{ padding: "6px 12px 6px 32px", fontSize: "12px", color: "#795548" }}>
+                            <tr key={`det-${t.id}`} style={{ background: "var(--surface-soft)", borderBottom: "1px solid var(--border)" }}>
+                              <td colSpan={6} style={{ padding: "6px 12px 6px 32px", fontSize: "12px", color: "var(--muted)" }}>
                                 <strong>{t.titulo}</strong>
                                 {t.cliente_nombre ? ` · ${t.cliente_nombre}` : ""} · vencía {t.fecha_vencimiento} ·{" "}
                                 {getEstadoTareaLabel(t.estado)}
@@ -625,11 +625,11 @@ export function ReportesEquipoPage() {
                   <div className="section-label">Mis piezas asignadas</div>
                   <div className="box">
                 {piezasPorResponsable.length === 0 ? (
-                  <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>Sin piezas asignadas todavía.</div>
+                  <div style={{ color: "var(--muted)", textAlign: "center", padding: "20px" }}>Sin piezas asignadas todavía.</div>
                 ) : (
                   <table style={{ width: "100%", borderCollapse: "collapse" }}>
                     <thead>
-                      <tr style={{ borderBottom: "2px solid #333" }}>
+                      <tr style={{ borderBottom: "2px solid var(--text)" }}>
                         <th style={{ textAlign: "left", padding: "10px 12px", fontWeight: "600", fontSize: "12px" }}>Responsable</th>
                         <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Piezas asignadas</th>
                         <th style={{ textAlign: "center", padding: "10px", fontWeight: "600", fontSize: "12px" }}>Publicadas</th>
@@ -640,17 +640,17 @@ export function ReportesEquipoPage() {
                       {piezasPorResponsable.map((f) => {
                         const avance = f.total > 0 ? Math.round((f.publicadas / f.total) * 100) : 0;
                         return (
-                          <tr key={f.nombre} style={{ borderBottom: "1px solid #eee" }}>
+                          <tr key={f.nombre} style={{ borderBottom: "1px solid var(--border)" }}>
                             <td style={{ padding: "10px 12px", fontWeight: "600", fontSize: "13px" }}>{f.nombre}</td>
                             <td style={{ padding: "10px", textAlign: "center" }}>{f.total}</td>
-                            <td style={{ padding: "10px", textAlign: "center", color: "#2e7d32" }}>{f.publicadas}</td>
+                            <td style={{ padding: "10px", textAlign: "center", color: "var(--success)" }}>{f.publicadas}</td>
                             <td style={{ padding: "10px", textAlign: "center" }}>
-                              <div style={{ display: "inline-block", width: "60px", height: "6px", background: "#e0e0e0", borderRadius: "3px", overflow: "hidden", verticalAlign: "middle" }}>
+                              <div style={{ display: "inline-block", width: "60px", height: "6px", background: "var(--surface-sunken, var(--surface-soft))", borderRadius: "3px", overflow: "hidden", verticalAlign: "middle" }}>
                                 <div
                                   style={{
                                     width: `${avance}%`,
                                     height: "100%",
-                                    background: avance >= 70 ? "#4caf50" : avance >= 30 ? "#ff9800" : "#f44336",
+                                    background: avance >= 70 ? "var(--success)" : avance >= 30 ? "#ff9800" : "#f44336",
                                   }}
                                 />
                               </div>
