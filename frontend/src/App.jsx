@@ -20,6 +20,7 @@ import { TareasDisenioPage } from "./pages/TareasWorkspace.jsx";
 import { TareasEdicionPage } from "./pages/TareasWorkspace.jsx";
 import { TareasProduccionPage } from "./pages/TareasWorkspace.jsx";
 import { TareasTableroPage } from "./pages/TareasTablero.jsx";
+import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
 
 export function App() {
   const path = window.location.pathname;
@@ -52,6 +53,10 @@ export function App() {
   if (!rutaPermitida) {
     window.location.href = rutaPropia || "/";
     return null;
+  }
+
+  if (["/workspace/tareas", "/workspace/clientes", "/workspace/equipo"].includes(path)) {
+    return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
   }
 
   const dashboard = (() => {
