@@ -2015,8 +2015,13 @@ if (fs.existsSync(distDir)) {
       },
     }),
   );
+  // Se lee una sola vez en memoria en vez de usar res.sendFile(): en el
+  // hosting de Hostinger, sendFile devolvía NotFoundError pese a que el
+  // archivo existía (probablemente por cómo resuelve symlinks/permisos
+  // en esa infraestructura). readFileSync no tiene ese problema.
+  const indexHtml = fs.readFileSync(path.join(distDir, "index.html"), "utf-8");
   app.get(/^\/(?!api\/|health(?:\/|$)).*/, (_req, res) => {
-    res.sendFile(path.join(distDir, "index.html"));
+    res.type("html").send(indexHtml);
   });
   console.log("Sirviendo frontend estático desde", distDir);
 }
