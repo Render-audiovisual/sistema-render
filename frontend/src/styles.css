@@ -545,8 +545,8 @@ th {
 }
 
 .btn {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   color: var(--text);
   cursor: pointer;
@@ -560,13 +560,14 @@ th {
   padding: 0 18px;
   text-decoration: none;
   text-align: center;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
 }
 
 .btn:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
-  background: var(--surface-soft);
+  background: var(--surface-sunken, var(--surface-soft));
+  border-color: var(--muted);
 }
 
 .btn.primary,
@@ -579,6 +580,7 @@ th {
 .btn.primary:hover,
 .btn.btn-active:hover {
   background: var(--accent-strong);
+  border-color: var(--accent-strong);
 }
 
 .btn.ghost {
