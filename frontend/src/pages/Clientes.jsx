@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { calcularPorcentajeCuota, getClaveFeed, getCuotaCarruselesMensual, getCuotaReelsMensual, getMesActualISO, getPublicacionesDelMismoFeed, getResumenClientesActivos } from "../utils.jsx";
 import { EditarCuotaClienteModal, DetalleClienteModal } from "../components/ClienteModals.jsx";
+import { Modal } from "../components/Modal.jsx";
 
 export function ClienteCuotaResumen({ etiqueta, publicados, cuota }) {
   const cuotaNumero = Number(cuota) || 0;
@@ -351,9 +352,7 @@ export function ClientesAdminPage() {
 
             {error && <div className="caption login-error">{error}</div>}
             {cargando ? (
-              <div style={{ padding: "24px", textAlign: "center", color: "#999" }}>
-                Cargando clientes...
-              </div>
+              <div className="state-empty">Cargando clientes...</div>
             ) : (
               <>
               <div className="clientes-desktop-table-wrap">
@@ -565,19 +564,11 @@ export function ClientesAdminPage() {
       </div>
 
       {altaClienteAbierta && (
-        <div className="modal-overlay open" role="dialog" aria-modal="true">
-          <div className="modal cliente-create-modal">
-            <div className="modal-header">
-              <span>Agregar cliente</span>
-              <button
-                className="modal-close"
-                type="button"
-                onClick={cerrarAltaCliente}
-                aria-label="Cerrar"
-              >
-                X
-              </button>
-            </div>
+        <Modal
+          onClose={cerrarAltaCliente}
+          title={<span>Agregar cliente</span>}
+          className="cliente-create-modal"
+        >
             <form className="modal-body cliente-create-modal-body" onSubmit={crearCliente}>
               <div className="clientes-panel-copy">
                 <strong>Nuevo acuerdo mensual</strong>
@@ -652,8 +643,7 @@ export function ClientesAdminPage() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {clienteCuotaEnEdicion && (

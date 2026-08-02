@@ -7,6 +7,7 @@ import express from "express";
 import compression from "compression";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { OAuth2Client } from "google-auth-library";
 import { checkDatabaseConnection, pool } from "./db.js";
 import {
   normalizarNombre,
@@ -27,6 +28,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const router = express.Router();
 const port = Number(process.env.PORT || 3000);
+
+const googleClient = process.env.GOOGLE_CLIENT_ID
+  ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
+  : null;
 
 app.use(compression());
 app.use(express.json({ limit: "2mb" }));
@@ -103,6 +108,92 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
+router.post("/login/google", async (req, res, next) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      return res.status(400).json({ error: "Falta el token de Google." });
+    }
+    if (!googleClient) {
+      return res
+        .status(500)
+        .json({ error: "El login con Google no está configurado en el servidor." });
+    }
+
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch {
+      return res.status(401).json({ error: "Token de Google inválido o vencido." });
+    }
+
+    if (!payload?.email_verified) {
+      return res
+        .status(401)
+        .json({ error: "Tu cuenta de Google no tiene el email verificado." });
+    }
+
+    const porGoogleId = await pool.query(
+      "SELECT id, usuario, nombre, rol, foto_perfil FROM usuarios WHERE google_id = $1",
+      [payload.sub],
+    );
+    let usuarioDB = porGoogleId.rows[0] || null;
+
+    if (!usuarioDB) {
+      const porEmail = await pool.query(
+        "SELECT id, usuario, nombre, rol, foto_perfil FROM usuarios WHERE lower(google_email) = lower($1)",
+        [payload.email],
+      );
+      usuarioDB = porEmail.rows[0] || null;
+
+      if (usuarioDB) {
+        // Primer login con Google de esta persona: guardamos el google_id
+        // para no depender solo del email en los próximos logins (el email
+        // de Google podría cambiar, el sub no).
+        await pool.query("UPDATE usuarios SET google_id = $1 WHERE id = $2", [
+          payload.sub,
+          usuarioDB.id,
+        ]);
+      }
+    }
+
+    if (!usuarioDB) {
+      return res.status(403).json({
+        error:
+          "Tu cuenta de Google no está vinculada a ningún usuario de Render. Pedile al líder que te vincule.",
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        id: usuarioDB.id,
+        usuario: usuarioDB.usuario,
+        nombre: usuarioDB.nombre,
+        rol: usuarioDB.rol,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "30d" },
+    );
+
+    res.json({
+      token,
+      usuario: {
+        usuario: usuarioDB.usuario,
+        nombre: usuarioDB.nombre,
+        rol: usuarioDB.rol,
+        foto_perfil: usuarioDB.foto_perfil,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 const ROLES_VALIDOS = [
   "admin",
   "diseno",
@@ -114,7 +205,7 @@ const ROLES_VALIDOS = [
 router.get("/usuarios", async (_req, res, next) => {
   try {
     const result = await pool.query(
-      "SELECT id, usuario, nombre, rol, email_notificaciones, foto_perfil, created_at FROM usuarios ORDER BY id",
+      "SELECT id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at FROM usuarios ORDER BY id",
     );
     res.json(result.rows);
   } catch (error) {
@@ -190,6 +281,40 @@ router.patch("/usuarios/:id/email-notificaciones", async (req, res, next) => {
   } catch (error) {
     if (error.code === "23505") {
       return res.status(409).json({ error: "Ese correo ya está asignado a otra persona." });
+    }
+    next(error);
+  }
+});
+
+router.patch("/usuarios/:id/google-email", async (req, res, next) => {
+  try {
+    const emailIngresado =
+      typeof req.body.google_email === "string" ? req.body.google_email.trim() : "";
+    const email = normalizarEmailNotificaciones(emailIngresado);
+
+    if (emailIngresado && !email) {
+      return res.status(400).json({ error: "El email de Google no es válido." });
+    }
+
+    // Cambiar el email vinculado fuerza a re-vincular el google_id en el
+    // próximo login — evita que quede un google_id viejo apuntando a una
+    // cuenta de Google que ya no corresponde.
+    const updated = await pool.query(
+      `UPDATE usuarios
+       SET google_email = $1, google_id = NULL
+       WHERE id = $2
+       RETURNING id, usuario, nombre, rol, google_email, foto_perfil, created_at`,
+      [email, req.params.id],
+    );
+
+    if (updated.rows.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado." });
+    }
+
+    res.json(updated.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "Ese email de Google ya está asignado a otra persona." });
     }
     next(error);
   }

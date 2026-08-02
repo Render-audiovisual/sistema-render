@@ -166,13 +166,11 @@ export function HistoriasPlanillaTab({
   return (
     <>
       {error && (
-        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
-          {error}
-        </div>
+        <div className="alert is-error">{error}</div>
       )}
 
       {cargando ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando planilla…</div>
+        <div className="state-empty">Cargando planilla…</div>
       ) : (
         <div className="sheet-frame" ref={gridRef}>
           <table className="sheet-table sheet-planning-table">
@@ -497,7 +495,7 @@ export function HistoriasClienteTab({ clientes, estructura, historias, year, mon
   }, [year, month, estructuraPorDia, historiasPorFecha]);
 
   if (!clienteActual) {
-    return <div style={{ padding: "40px", textAlign: "center", color: "#999" }}>No hay clientes cargados</div>;
+    return <div className="state-empty">No hay clientes cargados</div>;
   }
 
   return (
@@ -758,13 +756,11 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
       </div>
 
       {error && (
-        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
-          {error}
-        </div>
+        <div className="alert is-error">{error}</div>
       )}
 
       {cargando ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando checklist…</div>
+        <div className="state-empty">Cargando checklist…</div>
       ) : (
         <div className="sheet-frame check-sheet-frame">
           <div className="sheet-namebar">CHECK HISTORIAS — {MESES[month].toUpperCase()} {year}</div>
@@ -920,7 +916,7 @@ export function HistoriasEstructuraTab({ clientes }) {
   });
 
   if (cargando) {
-    return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando estructura…</div>;
+    return <div className="state-empty">Cargando estructura…</div>;
   }
 
   return (
@@ -1056,15 +1052,13 @@ export function HistoriasFechasEspecialesTab({ clientes }) {
   const clientesPorId = Object.fromEntries(clientes.map((c) => [c.id, c.nombre]));
 
   if (cargando) {
-    return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando fechas especiales…</div>;
+    return <div className="state-empty">Cargando fechas especiales…</div>;
   }
 
   return (
     <>
       {error && (
-        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
-          {error}
-        </div>
+        <div className="alert is-error">{error}</div>
       )}
 
       <div className="sheet-frame">

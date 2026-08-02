@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { normalizarPrimerNombre } from "../utils.jsx";
+import { Modal } from "../components/Modal.jsx";
 import { ROL_LABELS } from "../constants.js";
 
 export function EmpleadosPage() {
@@ -15,6 +16,9 @@ export function EmpleadosPage() {
   const [correoEdicion, setCorreoEdicion] = useState("");
   const [editandoCorreo, setEditandoCorreo] = useState(false);
   const [guardandoCorreo, setGuardandoCorreo] = useState(false);
+  const [googleEmailEdicion, setGoogleEmailEdicion] = useState("");
+  const [editandoGoogleEmail, setEditandoGoogleEmail] = useState(false);
+  const [guardandoGoogleEmail, setGuardandoGoogleEmail] = useState(false);
   const [editandoDatos, setEditandoDatos] = useState(false);
   const [guardandoDatos, setGuardandoDatos] = useState(false);
   const [nombreEdicion, setNombreEdicion] = useState("");
@@ -178,6 +182,44 @@ export function EmpleadosPage() {
       })
       .catch((err) => setFormError(err.message))
       .finally(() => setGuardandoCorreo(false));
+  };
+
+  const iniciarEdicionGoogleEmail = () => {
+    setGoogleEmailEdicion(usuarioAdministrado?.google_email || "");
+    setEditandoGoogleEmail(true);
+    setFormError(null);
+    setMensaje(null);
+  };
+
+  const guardarGoogleEmail = (u) => {
+    setGuardandoGoogleEmail(true);
+    setFormError(null);
+    setMensaje(null);
+
+    fetch(`/api/usuarios/${u.id}/google-email`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ google_email: googleEmailEdicion }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "No se pudo guardar el email de Google.");
+        }
+        return data;
+      })
+      .then((data) => {
+        setMensaje(
+          data.google_email
+            ? `Email de Google guardado para ${data.nombre}.`
+            : `Email de Google eliminado para ${data.nombre}.`,
+        );
+        setUsuarioAdministrado(data);
+        setEditandoGoogleEmail(false);
+        cargarUsuarios();
+      })
+      .catch((err) => setFormError(err.message))
+      .finally(() => setGuardandoGoogleEmail(false));
   };
 
   const iniciarEdicionDatos = () => {
@@ -358,26 +400,22 @@ export function EmpleadosPage() {
       </div>
 
       {modalAltaAbierto && (
-        <div className="usuarios-modal-backdrop" role="presentation" onMouseDown={cerrarAlta}>
-          <section
-            className="usuarios-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="alta-usuario-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="usuarios-modal-header">
-              <div>
-                <span className="usuarios-eyebrow">Nuevo acceso</span>
-                <h3 id="alta-usuario-title">Agregar usuario</h3>
-                <p>Creá la cuenta y dejá listo su correo de notificaciones.</p>
-              </div>
-              <button className="usuarios-close" type="button" onClick={cerrarAlta} aria-label="Cerrar">
-                ×
-              </button>
+        <Modal
+          onClose={cerrarAlta}
+          overlayAriaLabel="Agregar usuario"
+          closeOnBackdropClick
+          style={{ maxWidth: "720px" }}
+          title={
+            <div>
+              <span className="usuarios-eyebrow">Nuevo acceso</span>
+              <h3 style={{ margin: 0 }}>Agregar usuario</h3>
+              <p style={{ color: "var(--muted)", fontSize: "12px", margin: "6px 0 0" }}>
+                Creá la cuenta y dejá listo su correo de notificaciones.
+              </p>
             </div>
-
-            <form onSubmit={handleCrear}>
+          }
+        >
+            <form className="modal-body" onSubmit={handleCrear}>
               <div className="form-grid cols-2 usuarios-form-grid">
                 <label className="form-field">
                   <span>Nombre y apellido *</span>
@@ -402,7 +440,7 @@ export function EmpleadosPage() {
                   />
                 </label>
                 <label className="form-field">
-                  <span>Contraseña inicial * <small style={{fontWeight: 'normal', color: '#666'}}>(mín. 8 caracteres)</small></span>
+                  <span>Contraseña inicial * <small style={{fontWeight: 400, color: 'var(--muted)'}}>(mín. 8 caracteres)</small></span>
                   <div style={{display: 'flex', gap: '8px'}}>
                     <input
                       type="text"
@@ -440,7 +478,7 @@ export function EmpleadosPage() {
 
               {formError && <div className="usuarios-alert is-error">{formError}</div>}
 
-              <div className="usuarios-modal-actions">
+              <div className="modal-actions">
                 <button className="btn" type="button" onClick={cerrarAlta} disabled={enviando}>
                   Cancelar
                 </button>
@@ -449,8 +487,7 @@ export function EmpleadosPage() {
                 </button>
               </div>
             </form>
-          </section>
-        </div>
+        </Modal>
       )}
 
       {usuarioAdministrado && (
@@ -638,6 +675,70 @@ export function EmpleadosPage() {
                         {usuarioAdministrado.email_notificaciones
                           ? "Esta persona puede recibir avisos de tareas."
                           : "Esta persona todavía no recibirá avisos por email."}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              <section className="usuarios-panel-section">
+                <div className="usuarios-panel-section-title">
+                  <div>
+                    <strong>Cuenta de Google</strong>
+                    <span>Para login sin contraseña</span>
+                  </div>
+                  {!editandoGoogleEmail && (
+                    <button className="btn" type="button" onClick={iniciarEdicionGoogleEmail}>
+                      {usuarioAdministrado.google_email ? "Editar email" : "Vincular email"}
+                    </button>
+                  )}
+                </div>
+
+                {editandoGoogleEmail ? (
+                  <div className="usuarios-email-editor">
+                    <label className="form-field">
+                      <span>Email de Google</span>
+                      <input
+                        type="email"
+                        value={googleEmailEdicion}
+                        placeholder="nombre@gmail.com"
+                        onChange={(e) => setGoogleEmailEdicion(e.target.value)}
+                        autoFocus
+                      />
+                    </label>
+                    <div className="usuarios-inline-actions">
+                      <button
+                        className="btn"
+                        type="button"
+                        disabled={guardandoGoogleEmail}
+                        onClick={() => {
+                          setEditandoGoogleEmail(false);
+                          setFormError(null);
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        className="btn primary"
+                        type="button"
+                        disabled={guardandoGoogleEmail}
+                        onClick={() => guardarGoogleEmail(usuarioAdministrado)}
+                      >
+                        {guardandoGoogleEmail ? "Guardando..." : "Guardar email"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`usuarios-notification-card ${usuarioAdministrado.google_email ? "is-ready" : "is-pending"}`}>
+                    <i className={`usuarios-dot ${usuarioAdministrado.google_email ? "is-ready" : "is-pending"}`} />
+                    <div>
+                      <strong>
+                        {usuarioAdministrado.google_email || "Email de Google sin vincular"}
+                      </strong>
+                      <span>
+                        {usuarioAdministrado.google_email
+                          ? "Esta persona puede ingresar con su cuenta de Google."
+                          : "Esta persona ingresa solo con contraseña."}
                       </span>
                     </div>
                   </div>

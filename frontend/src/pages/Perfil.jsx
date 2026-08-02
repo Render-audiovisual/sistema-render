@@ -200,6 +200,9 @@ export function PerfilPage() {
     <main aria-label="Render platform perfil">
       <div className="frame">
         <div className="content">
+          <div className="section-label">Cuenta</div>
+          <h2>Mi perfil</h2>
+
           <div className="section-label">Mis datos</div>
           <div className="box">
             <div className="profile-photo-row">
@@ -234,7 +237,7 @@ export function PerfilPage() {
                 )}
                 {errorFoto && <div className="caption login-error">{errorFoto}</div>}
                 {mensajeFoto && (
-                  <div className="caption" style={{ color: "#333", fontWeight: "bold" }}>
+                  <div className="caption" style={{ color: "var(--success)", fontWeight: 600 }}>
                     {mensajeFoto}
                   </div>
                 )}
@@ -282,7 +285,7 @@ export function PerfilPage() {
 
               {errorUsuario && <div className="caption login-error">{errorUsuario}</div>}
               {mensajeUsuario && (
-                <div className="caption" style={{ color: "#333", fontWeight: "bold" }}>
+                <div className="caption" style={{ color: "var(--success)", fontWeight: 600 }}>
                   {mensajeUsuario}
                 </div>
               )}
@@ -332,7 +335,7 @@ export function PerfilPage() {
 
               {error && <div className="caption login-error">{error}</div>}
               {mensaje && (
-                <div className="caption" style={{ color: "#333", fontWeight: "bold" }}>
+                <div className="caption" style={{ color: "var(--success)", fontWeight: 600 }}>
                   {mensaje}
                 </div>
               )}

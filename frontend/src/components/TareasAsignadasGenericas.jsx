@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ESTADO_FINAL_TAREA } from "../constants.js";
-import { NuevaTareaPage } from "../pages/NuevaTarea.jsx";
-import { PiezasTableroPage } from "../pages/PiezasTablero.jsx";
 
 export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo }) {
   const [tareas, setTareas] = useState([]);
@@ -133,11 +131,8 @@ export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo })
   );
 }
 
-// ── TAREAS: tablero operativo real, sobre la tabla `tareas` (no el UNION
-// de historias+publicaciones que usa PiezasTableroPage más abajo) ────────
+// ── TAREAS: tablero operativo real, sobre la tabla `tareas` ────────────
 
 // Colores pensados para fondo oscuro (Tareas es la única sección de
 // Sistema Render en modo oscuro, ver .tareas-viewport en styles.css) —
-// estas constantes son exclusivas del módulo Tareas, no se usan en
-// ningún lugar claro de la app (confirmado: NuevaTareaPage solo usa
-// .label, no .bg/.fg).
+// estas constantes son exclusivas del módulo Tareas.
