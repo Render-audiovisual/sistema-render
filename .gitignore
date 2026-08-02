@@ -5,6 +5,7 @@ dist/
 !.env.example
 .DS_Store
 *.zip
+/hostinger-dist/
 
 # Generados por scripts/build-hosting.sh (copia estática del frontend en
 # la raíz, lista para subir a un hosting aparte del backend). Se
