@@ -3,6 +3,10 @@ dist/
 .env
 .env.*
 !.env.example
+# El Client ID de Google no es secreto (viaja al navegador de todas
+# formas) — se commitea porque Vite solo lee .env.production en el
+# build, y el hosting de Hostinger no inyecta env vars en esa etapa.
+!frontend/.env.production
 .DS_Store
 *.zip
 
