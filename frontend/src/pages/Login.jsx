@@ -1,6 +1,15 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { getRutaUsuario, guardarSesion } from "../utils.jsx";
 
+// Fallback hardcodeado: el hosting de Hostinger no inyecta las
+// "Variables de entorno" del panel durante `npm run build` (solo en
+// runtime del backend), así que import.meta.env.VITE_GOOGLE_CLIENT_ID
+// llega undefined ahí. No es un secreto (viaja al navegador de todas
+// formas), así que hardcodearlo es seguro.
+const GOOGLE_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  "468370687841-do43hb7rje2t6agcliof3asq5gmbqssv.apps.googleusercontent.com";
+
 export function LoginPage() {
   const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
@@ -58,7 +67,7 @@ export function LoginPage() {
   );
 
   useEffect(() => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    const clientId = GOOGLE_CLIENT_ID;
     if (!clientId) return; // sin configurar: no mostramos el botón
 
     const renderBoton = () => {
@@ -103,7 +112,7 @@ export function LoginPage() {
 
         <div ref={googleBtnRef} className="login-google-btn" />
 
-        {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
+        {GOOGLE_CLIENT_ID && (
           <div className="login-divider"><span>o con tu usuario</span></div>
         )}
 
