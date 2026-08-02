@@ -14,6 +14,7 @@ import {
   notificarAsignacionSinInterrumpir,
 } from "./email-notifications.js";
 import { setupDemoClientes } from "./setup-demo-data.js";
+import { shouldSetupDemoData } from "./hosting-config.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -35,6 +36,10 @@ const googleClient = process.env.GOOGLE_CLIENT_ID
 app.use(compression());
 app.use(express.json({ limit: "2mb" }));
 
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
 // Permite llamar a esta API desde un frontend alojado en otro dominio
 // (por ejemplo una copia estática en Hostinger). No hay cookies ni
 // credenciales de sesión involucradas (el JWT viaja en el body/localStorage,
@@ -45,7 +50,7 @@ router.use((_req, res, next) => {
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   next();
 });
-router.options("*", (_req, res) => res.sendStatus(204));
+router.options(/.*/, (_req, res) => res.sendStatus(204));
 
 router.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -2010,7 +2015,7 @@ if (fs.existsSync(distDir)) {
       },
     }),
   );
-  app.get(/^\/(?!api\/).*/, (_req, res) => {
+  app.get(/^\/(?!api\/|health(?:\/|$)).*/, (_req, res) => {
     res.sendFile(path.join(distDir, "index.html"));
   });
   console.log("Sirviendo frontend estático desde", distDir);
@@ -2025,8 +2030,12 @@ app.use((err, _req, res, _next) => {
 
 try {
   await checkDatabaseConnection();
-  await setupDemoClientes();
-  console.log("Postgres connection OK");
+  if (shouldSetupDemoData()) {
+    await setupDemoClientes();
+    console.log("Postgres connection OK and demo data prepared");
+  } else {
+    console.log("Postgres connection OK");
+  }
 } catch (error) {
   console.error("Postgres connection failed");
   console.error(error.message);
