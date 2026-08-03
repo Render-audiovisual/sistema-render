@@ -3,10 +3,6 @@ import { ESTADO_FINAL_TAREA, ROL_LABELS } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea } from "../utils.jsx";
 import "./WorkspaceReadOnly.css";
 
-const SECTIONS = {
-  "/workspace/tareas": "tasks",
-};
-
 const STATUSES = [
   { id: "pendiente", label: "Por hacer", color: "#8d9095" },
   { id: "en_progreso", label: "En progreso", color: "#3378d4" },
@@ -52,6 +48,10 @@ async function apiTaskPage(offset = 0) {
   const items = Array.isArray(body) ? body : [];
   const totalHeader = Number.parseInt(response.headers.get("X-Total-Count"), 10);
   return { items, total: Number.isFinite(totalHeader) ? totalHeader : offset + items.length };
+}
+
+function apiTaskById(id) {
+  return apiRequest(`/api/tareas/${id}?workspace=render_os`);
 }
 
 function areaForTask(task) {
@@ -127,7 +127,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onUp
     setCommentError("");
     setSubtaskTitle("");
     setConfirmDelete(false);
-    apiJson(`/api/tareas/${task.id}/comentarios`)
+    apiJson(`/api/tareas/${task.id}/comentarios?workspace=render_os`)
       .then(setComments)
       .catch((reason) => setCommentError(reason.message || "No se pudieron cargar los comentarios."));
   }, [task?.id, task?.updated_at]);
@@ -357,6 +357,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const overdue = visible.filter((task) => task.estado !== ESTADO_FINAL_TAREA && task.fecha_vencimiento && task.fecha_vencimiento < today).length;
   const review = visible.filter((task) => task.estado === "en_revision").length;
   const active = visible.filter((task) => task.estado !== ESTADO_FINAL_TAREA).length;
+  const paginatedTaskCount = tasks.filter((task) => !task.__renderOsDirectOnly).length;
   const hasFilters = responsible !== "all" || client !== "all" || sector !== "all" || priority !== "all" || area !== "all";
 
   const openTask = useCallback((id) => {
@@ -397,26 +398,13 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     {view === "board" && <div className="ros-board">{STATUSES.map((status) => { const items = visible.filter((task) => task.estado === status.id); return <section className={`ros-column ${dragOver === status.id ? "drag-over" : ""}`} key={status.id} onDragOver={(event) => { event.preventDefault(); setDragOver(status.id); }} onDragLeave={() => setDragOver("")} onDrop={(event) => { event.preventDefault(); setDragOver(""); const task = tasks.find((item) => String(item.id) === event.dataTransfer.getData("text/task-id")); if (task) move(task, status.id); }}><header><span style={{ color: status.color }}>●</span><strong>{status.label}</strong><small>{items.length}</small></header><div>{items.slice(0, 250).map((task) => <TaskCard key={task.id} task={task} users={users} today={today} onOpen={openTask} onMove={move}/>)}{items.length > 250 && <div className="ros-column-limit">Mostrando 250 de {items.length}. Usá los filtros para acotar.</div>}{items.length === 0 && <div className="ros-empty-column">Soltá una tarea acá</div>}</div></section>; })}</div>}
     {view === "list" && <div className="ros-task-list"><div className="ros-task-list-head"><span>TAREA</span><span>ÁREA</span><span>CLIENTE</span><span>RESPONSABLE</span><span>ESTADO</span><span>FECHA</span></div>{visible.slice(0, 500).map((task) => <button key={task.id} onClick={() => openTask(task.id)}><strong>{task.titulo}</strong><AreaBadge task={task}/><span>{task.cliente_nombre || "Sin cliente"}</span><span>{task.asignado_a || "Sin asignar"}</span><span>{STATUSES.find((item) => item.id === task.estado)?.label || task.estado}</span><span>{formatDate(task.fecha_vencimiento)}</span></button>)}{visible.length > 500 && <div className="ros-list-limit">Mostrando 500 de {visible.length}. Usá los filtros para acotar.</div>}</div>}
     {view === "calendar" && <TaskCalendar tasks={visible} onOpen={openTask}/>} {view === "clients" && <TasksByClient tasks={visible} onOpen={openTask}/>} {visible.length === 0 && <div className="ros-no-results">No hay tareas con estos filtros.</div>}
-    {tasks.length < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${tasks.length} de ${totalTasks})`}</button></div>}
+    {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
   <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onUpdate={onUpdate} onArchive={archiveTask} onDelete={async (id) => { await onDelete(id); closeTask(); }} onCreateSubtask={createSubtask}/>
   {creating && <NewTaskModal users={users} clients={clients} onClose={() => setCreating(false)} onCreate={async (draft) => { const created = await onCreate(draft); setCreating(false); openTask(created.id); }}/>}</>;
 }
 
-function ClientsView({ clients, tasks, query }) {
-  const visible = clients.filter((client) => client.nombre.toLowerCase().includes(query.toLowerCase()));
-  const activeTasks = tasks.filter((task) => task.estado !== ESTADO_FINAL_TAREA).length;
-  const review = tasks.filter((task) => task.estado === "en_revision").length;
-  return <section className="ros-page"><div className="ros-title-row"><div><div className="ros-eyebrow">RELACIONES Y CUENTAS</div><h1>Clientes</h1><p>Conteos operativos calculados desde las tareas actuales.</p></div><a className="ros-primary-button" href="/clientes">Administrar clientes ↗</a></div><div className="ros-summary"><article><span className="blue">●</span><div><strong>{clients.length}</strong><small>Clientes registrados</small></div></article><article><span className="green">●</span><div><strong>{activeTasks}</strong><small>Tareas activas</small></div></article><article><span className="amber">●</span><div><strong>{review}</strong><small>Para revisar</small></div></article><article><span className="gray">●</span><div><strong>{tasks.length}</strong><small>Tareas históricas</small></div></article></div><div className="ros-section-bar"><strong>Todos los clientes</strong><span>● DATOS REALES</span></div><div className="ros-client-grid">{visible.map((client) => { const clientTasks = tasks.filter((task) => String(task.cliente_id) === String(client.id)); const active = clientTasks.filter((task) => task.estado !== ESTADO_FINAL_TAREA).length; const pendingReview = clientTasks.filter((task) => task.estado === "en_revision").length; return <article className="ros-client-card" key={client.id}><header><span>{initials(client.nombre)}</span><div><strong>{client.nombre}</strong><small>Cuenta #{client.id}</small></div></header><div><span><strong>{active}</strong><small>Activas</small></span><span><strong>{pendingReview}</strong><small>Para revisar</small></span><span><strong>{clientTasks.length}</strong><small>Total</small></span></div><footer><span>Cuota: {client.cuota_reels || 0} reels · {client.cuota_carruseles || 0} carruseles</span></footer></article>; })}</div></section>;
-}
-
-function TeamView({ users, tasks, query }) {
-  const visible = users.filter((user) => `${user.nombre} ${user.usuario} ${user.rol}`.toLowerCase().includes(query.toLowerCase()));
-  return <section className="ros-page"><div className="ros-title-row"><div><div className="ros-eyebrow">PERSONAS Y PERMISOS</div><h1>Equipo</h1><p>Cuentas, correos y carga activa calculada desde Tareas.</p></div><a className="ros-primary-button" href="/empleados">Administrar equipo ↗</a></div><div className="ros-summary"><article><span className="green">●</span><div><strong>{users.length}</strong><small>Usuarios activos</small></div></article><article><span className="blue">●</span><div><strong>{tasks.filter((task) => task.estado !== ESTADO_FINAL_TAREA).length}</strong><small>Tareas activas</small></div></article><article><span className="amber">●</span><div><strong>{new Set(tasks.map((task) => task.asignado_a).filter(Boolean)).size}</strong><small>Responsables con tareas</small></div></article><article><span className="green">●</span><div><strong>{users.filter((user) => user.email_notificaciones).length}</strong><small>Correos configurados</small></div></article></div><div className="ros-section-bar"><strong>Equipo activo</strong><span>● CUENTAS REALES</span></div><div className="ros-people-table"><div className="ros-people-head"><span>PERSONA</span><span>ROL</span><span>ACTIVAS</span><span>EN REVISIÓN</span><span>CUENTA</span></div>{visible.map((user) => { const assigned = tasks.filter((task) => task.asignado_a === user.nombre || task.asignado_a === user.usuario); const active = assigned.filter((task) => task.estado !== ESTADO_FINAL_TAREA).length; const review = assigned.filter((task) => task.estado === "en_revision").length; return <div className="ros-people-row" key={user.id}><span><Avatar person={user}/><span><strong>{user.nombre}</strong><small>@{user.usuario}</small></span></span><span className="ros-role">{ROL_LABELS[user.rol] || user.rol}</span><strong>{active}</strong><span>{review}</span><span><i/> Activa<small>{user.email_notificaciones || "Sin correo de notificaciones"}</small></span></div>; })}</div><div className="ros-note"><span>⌘</span><div><strong>Las nuevas tareas muestran nombre, @usuario y correo antes de asignar.</strong><p>La base actual conserva el nombre como vínculo compatible; la cuenta y el correo se resuelven desde Usuarios.</p></div></div></section>;
-}
-
-export function WorkspaceReadOnlyPage({ path, sesion }) {
-  const section = SECTIONS[path] || "tasks";
+export function WorkspaceReadOnlyPage({ sesion }) {
   const [tasks, setTasks] = useState([]);
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
@@ -433,19 +421,35 @@ export function WorkspaceReadOnlyPage({ path, sesion }) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([apiTaskPage(0), apiJson("/api/clientes"), isAdmin ? apiJson("/api/usuarios") : Promise.resolve([])])
-      .then(([taskPage, clientData, userData]) => { if (!active) return; setTasks(taskPage.items); setTotalTasks(taskPage.total); setClients(clientData); setUsers(userData); setError(""); })
+    const directTaskId = Number(new URLSearchParams(window.location.search).get("task")) || null;
+    Promise.all([apiTaskPage(0), apiJson("/api/clientes"), isAdmin ? apiJson("/api/usuarios") : Promise.resolve([]), directTaskId ? apiTaskById(directTaskId) : Promise.resolve(null)])
+      .then(([taskPage, clientData, userData, directTask]) => {
+        if (!active) return;
+        const items = directTask && !taskPage.items.some((task) => task.id === directTask.id)
+          ? [...taskPage.items, { ...directTask, __renderOsDirectOnly: true }]
+          : taskPage.items;
+        setTasks(items);
+        setTotalTasks(taskPage.total);
+        setClients(clientData);
+        setUsers(userData);
+        setError("");
+      })
       .catch((reason) => { if (active) setError(reason.message || "No se pudieron cargar los datos reales."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [isAdmin]);
 
   const loadMoreTasks = async () => {
-    if (loadingMore || tasks.length >= totalTasks) return;
+    const paginatedTaskCount = tasks.filter((task) => !task.__renderOsDirectOnly).length;
+    if (loadingMore || paginatedTaskCount >= totalTasks) return;
     setLoadingMore(true);
     try {
-      const page = await apiTaskPage(tasks.length);
-      setTasks((current) => [...current, ...page.items.filter((item) => !current.some((task) => task.id === item.id))]);
+      const page = await apiTaskPage(paginatedTaskCount);
+      setTasks((current) => {
+        const pageIds = new Set(page.items.map((item) => item.id));
+        const retained = current.filter((task) => !task.__renderOsDirectOnly || !pageIds.has(task.id));
+        return [...retained, ...page.items.filter((item) => !retained.some((task) => task.id === item.id))];
+      });
       setTotalTasks(page.total);
     } catch (reason) {
       notify(reason.message || "No se pudieron cargar más tareas.", "error");
@@ -455,12 +459,12 @@ export function WorkspaceReadOnlyPage({ path, sesion }) {
   };
 
   const notify = (message, type = "success") => { setToast({ message, type }); window.clearTimeout(window.__rosToastTimer); window.__rosToastTimer = window.setTimeout(() => setToast(null), 3500); };
-  const logActivity = (taskId, message) => apiRequest(`/api/tareas/${taskId}/comentarios`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER", contenido: `[Actividad] ${message}` }) });
+  const logActivity = (taskId, message) => apiRequest(`/api/tareas/${taskId}/comentarios?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER", contenido: `[Actividad] ${message}` }) });
   const updateTask = async (id, changes, activity) => {
     const previous = tasks.find((task) => task.id === id);
     setTasks((current) => current.map((task) => task.id === id ? { ...task, ...changes } : task));
     try {
-      const updated = await apiRequest(`/api/tareas/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_updated_at: previous?.updated_at || undefined }) });
+      const updated = await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_updated_at: previous?.updated_at || undefined }) });
       const client = clients.find((item) => String(item.id) === String(updated.cliente_id));
       setTasks((current) => current.map((task) => task.id === id ? { ...task, ...updated, cliente_nombre: client?.nombre || null } : task));
       let historyFailed = false;
@@ -497,7 +501,7 @@ export function WorkspaceReadOnlyPage({ path, sesion }) {
   };
   const deleteTask = async (id) => {
     try {
-      await apiRequest(`/api/tareas/${id}`, { method: "DELETE" });
+      await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "DELETE" });
       setTasks((current) => current.filter((task) => task.id !== id));
       setTotalTasks((current) => Math.max(0, current - 1));
       notify("Tarea eliminada definitivamente.");
@@ -507,9 +511,8 @@ export function WorkspaceReadOnlyPage({ path, sesion }) {
     }
   };
 
-  const title = section === "clients" ? "Clientes" : section === "team" ? "Equipo" : "Tareas";
-  const placeholder = section === "clients" ? "Buscar cliente…" : section === "team" ? "Buscar persona, usuario o rol…" : "Buscar tarea, cliente o responsable…";
-  const go = (target) => { window.location.href = target; };
+  const title = "Tareas";
+  const placeholder = "Buscar tarea, cliente o responsable…";
 
-  return <div className={`render-workspace ${collapsed ? "collapsed" : ""}`}><Toast toast={toast} onClose={() => setToast(null)}/><button className={`ros-backdrop ${mobileOpen ? "show" : ""}`} onClick={() => setMobileOpen(false)} aria-label="Cerrar menú"/><aside className={`ros-sidebar ${mobileOpen ? "open" : ""}`}><div className="ros-brand"><span>R</span><strong>RENDER</strong><b>OS</b><button className="ros-collapse" onClick={() => setCollapsed((value) => !value)}>{collapsed ? "›" : "‹"}</button><button className="ros-close" onClick={() => setMobileOpen(false)}>×</button></div><button className="ros-side-search" onClick={() => document.querySelector(".ros-top-search")?.focus()}><span>⌕</span><em>Buscar</em><kbd>⌘ K</kbd></button><nav><a href="/">⌂ <span>Inicio</span></a><a className={section === "tasks" ? "active" : ""} href="/workspace/tareas">✓ <span>Tareas</span></a>{isAdmin && <a className={section === "clients" ? "active" : ""} href="/clientes">◌ <span>Clientes</span></a>}{isAdmin && <a className={section === "team" ? "active" : ""} href="/empleados">♙ <span>Equipo</span></a>}<a href="/reportes-historias">↗ <span>Reportes</span></a></nav><div className="ros-side-label">ESPACIOS DE TRABAJO</div><nav className="ros-areas">{AREAS.slice(1).map((item) => <button key={item.id} className={section === "tasks" && area === item.id ? "active" : ""} onClick={() => { if (section !== "tasks") go("/workspace/tareas"); else setArea(item.id); }}><i style={{ color: item.color }}>{item.icon}</i><span>{item.label}</span></button>)}</nav><div className="ros-side-bottom"><a href="/perfil">?<span>Ayuda y procesos</span></a><div><Avatar name={sesion?.usuario?.nombre}/><span><strong>{sesion?.usuario?.nombre}</strong><small>{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</small></span></div></div></aside><main className="ros-main"><header className="ros-topbar"><button className="ros-menu" onClick={() => setMobileOpen(true)}>☰</button><div><span>RENDER</span><b>/</b><strong>{title}</strong></div><input className="ros-top-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={placeholder}/><span className="ros-live-badge">● DATOS REALES</span></header>{loading || error ? <LoadingState error={error}/> : section === "clients" && isAdmin ? <ClientsView clients={clients} tasks={tasks} query={query}/> : section === "team" && isAdmin ? <TeamView users={users} tasks={tasks} query={query}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} area={area} setArea={setArea} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onDelete={deleteTask}/>}</main><nav className="ros-mobile-nav"><a className={section === "tasks" ? "active" : ""} href="/workspace/tareas"><span>✓</span>Tareas</a>{isAdmin && <a className={section === "clients" ? "active" : ""} href="/clientes"><span>◌</span>Clientes</a>}{isAdmin && <a className={section === "team" ? "active" : ""} href="/empleados"><span>♙</span>Equipo</a>}<button onClick={() => setMobileOpen(true)}><span>☰</span>Más</button></nav></div>;
+  return <div className={`render-workspace ${collapsed ? "collapsed" : ""}`}><Toast toast={toast} onClose={() => setToast(null)}/><button className={`ros-backdrop ${mobileOpen ? "show" : ""}`} onClick={() => setMobileOpen(false)} aria-label="Cerrar menú"/><aside className={`ros-sidebar ${mobileOpen ? "open" : ""}`}><div className="ros-brand"><span>R</span><strong>RENDER</strong><b>OS</b><button className="ros-collapse" onClick={() => setCollapsed((value) => !value)}>{collapsed ? "›" : "‹"}</button><button className="ros-close" onClick={() => setMobileOpen(false)}>×</button></div><button className="ros-side-search" onClick={() => document.querySelector(".ros-top-search")?.focus()}><span>⌕</span><em>Buscar</em><kbd>⌘ K</kbd></button><nav><a href="/">⌂ <span>Inicio</span></a><a className="active" href="/workspace/tareas">✓ <span>Tareas</span></a>{isAdmin && <a href="/clientes">◌ <span>Clientes</span></a>}{isAdmin && <a href="/empleados">♙ <span>Equipo</span></a>}<a href="/reportes-historias">↗ <span>Reportes</span></a></nav><div className="ros-side-label">ESPACIOS DE TRABAJO</div><nav className="ros-areas">{AREAS.slice(1).map((item) => <button key={item.id} className={area === item.id ? "active" : ""} onClick={() => setArea(item.id)}><i style={{ color: item.color }}>{item.icon}</i><span>{item.label}</span></button>)}</nav><div className="ros-side-bottom"><a href="/perfil">?<span>Ayuda y procesos</span></a><div><Avatar name={sesion?.usuario?.nombre}/><span><strong>{sesion?.usuario?.nombre}</strong><small>{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</small></span></div></div></aside><main className="ros-main"><header className="ros-topbar"><button className="ros-menu" onClick={() => setMobileOpen(true)}>☰</button><div><span>RENDER</span><b>/</b><strong>{title}</strong></div><input className="ros-top-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={placeholder}/><span className="ros-live-badge">● DATOS REALES</span></header>{loading || error ? <LoadingState error={error}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} area={area} setArea={setArea} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onDelete={deleteTask}/>}</main><nav className="ros-mobile-nav"><a className="active" href="/workspace/tareas"><span>✓</span>Tareas</a>{isAdmin && <a href="/clientes"><span>◌</span>Clientes</a>}{isAdmin && <a href="/empleados"><span>♙</span>Equipo</a>}<button onClick={() => setMobileOpen(true)}><span>☰</span>Más</button></nav></div>;
 }

@@ -25,7 +25,7 @@ dns.setDefaultResultOrder("ipv4first");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const app = express();
+export const app = express();
 const router = express.Router();
 const port = Number(process.env.PORT || 3000);
 
@@ -1257,6 +1257,18 @@ router.post("/tareas", async (req, res, next) => {
       ? estado
       : "pendiente";
 
+    if (workspace === "render_os" && tarea_padre_id) {
+      const padreRenderOS = await pool.query(
+        `SELECT id FROM tareas
+         WHERE id = $1
+           AND propiedades_extra->>'workspace' = 'render_os'`,
+        [tarea_padre_id],
+      );
+      if (padreRenderOS.rows.length === 0) {
+        return res.status(404).json({ error: "Tarea padre no encontrada." });
+      }
+    }
+
     const propiedadesExtra = { Origen: "Cargada desde la plataforma" };
     if (escalada_a) {
       propiedadesExtra.escalada_a = escalada_a;
@@ -1355,6 +1367,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
     const body = req.body;
     let asignadoAnterior = null;
     let estadoAnterior = null;
+    const esRenderOS = req.query.workspace === "render_os";
 
     if (Object.prototype.hasOwnProperty.call(body, "estado")) {
       if (body.estado === null || !ESTADOS_TAREA_VALIDOS.includes(body.estado)) {
@@ -1392,6 +1405,17 @@ router.patch("/tareas/:id", async (req, res, next) => {
         return res.status(400).json({ error: "Prioridad inválida." });
       }
     }
+    if (esRenderOS && Object.prototype.hasOwnProperty.call(body, "tarea_padre_id") && body.tarea_padre_id) {
+      const padreRenderOS = await pool.query(
+        `SELECT id FROM tareas
+         WHERE id = $1
+           AND propiedades_extra->>'workspace' = 'render_os'`,
+        [body.tarea_padre_id],
+      );
+      if (padreRenderOS.rows.length === 0) {
+        return res.status(404).json({ error: "Tarea padre no encontrada." });
+      }
+    }
 
     const sets = [];
     const valores = [];
@@ -1405,7 +1429,9 @@ router.patch("/tareas/:id", async (req, res, next) => {
     }
     if (Object.prototype.hasOwnProperty.call(body, "propiedades_extra") && body.propiedades_extra) {
       sets.push(`propiedades_extra = propiedades_extra || $${i}::jsonb`);
-      valores.push(JSON.stringify(body.propiedades_extra));
+      valores.push(JSON.stringify(esRenderOS
+        ? { ...body.propiedades_extra, workspace: "render_os" }
+        : body.propiedades_extra));
       i++;
     }
 
@@ -1417,6 +1443,9 @@ router.patch("/tareas/:id", async (req, res, next) => {
     valores.push(id);
     const idPlaceholder = i;
     let where = `id = $${idPlaceholder}`;
+    if (esRenderOS) {
+      where += ` AND propiedades_extra->>'workspace' = 'render_os'`;
+    }
     if (body.expected_updated_at) {
       i++;
       where += ` AND updated_at = $${i}::timestamptz`;
@@ -1432,7 +1461,11 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
     if (result.rows.length === 0) {
       if (body.expected_updated_at) {
-        const existente = await pool.query("SELECT id FROM tareas WHERE id = $1", [id]);
+        const existente = await pool.query(
+          `SELECT id FROM tareas
+           WHERE id = $1${esRenderOS ? " AND propiedades_extra->>'workspace' = 'render_os'" : ""}`,
+          [id],
+        );
         if (existente.rows.length > 0) {
           return res.status(409).json({ error: "La tarea cambió mientras la estabas editando. Recargá y revisá la última versión." });
         }
@@ -1469,8 +1502,11 @@ router.patch("/tareas/:id", async (req, res, next) => {
 router.delete("/tareas/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
+    const esRenderOS = req.query.workspace === "render_os";
     const result = await pool.query(
-      "DELETE FROM tareas WHERE id = $1 RETURNING id",
+      `DELETE FROM tareas
+       WHERE id = $1${esRenderOS ? " AND propiedades_extra->>'workspace' = 'render_os'" : ""}
+       RETURNING id`,
       [id],
     );
     if (result.rows.length === 0) {
@@ -1532,7 +1568,9 @@ router.get("/tareas", async (req, res, next) => {
         p.tipo AS publicacion_tipo
       FROM tareas t
       LEFT JOIN clientes c ON c.id = t.cliente_id
-      LEFT JOIN tareas padre ON padre.id = t.tarea_padre_id
+      LEFT JOIN tareas padre
+        ON padre.id = t.tarea_padre_id
+       ${workspace === "render_os" ? "AND padre.propiedades_extra->>'workspace' = 'render_os'" : ""}
       LEFT JOIN historias h ON h.id = t.historia_id
       LEFT JOIN publicaciones p ON p.id = t.publicacion_id
       WHERE 1=1
@@ -1610,8 +1648,60 @@ router.get("/tareas", async (req, res, next) => {
   }
 });
 
+router.get("/tareas/:id", async (req, res, next) => {
+  try {
+    if (req.query.workspace !== "render_os") {
+      return res.status(400).json({ error: "Falta un workspace válido." });
+    }
+
+    const result = await pool.query(
+      `SELECT
+         t.id, t.titulo, t.estado, t.asignado_a, t.requiere_aprobacion,
+         t.tarea_padre_id, padre.estado AS tarea_padre_estado,
+         t.propiedades_extra, t.cliente_id, c.nombre AS cliente_nombre,
+         to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
+         t.historia_id, t.publicacion_id,
+         COALESCE(t.material_referencia, h.material_referencia, p.material_referencia) AS material_referencia,
+         COALESCE(t.aclaraciones, h.aclaraciones, p.aclaraciones) AS aclaraciones,
+         t.tipo_tarea, t.subtipo, t.prioridad, t.created_at, t.updated_at,
+         to_char(h.fecha_programada, 'YYYY-MM-DD') AS historia_fecha_programada,
+         h.estado AS historia_estado,
+         to_char(p.fecha_programada, 'YYYY-MM-DD') AS publicacion_fecha_programada,
+         p.estado AS publicacion_estado, p.tipo AS publicacion_tipo
+       FROM tareas t
+       LEFT JOIN clientes c ON c.id = t.cliente_id
+       LEFT JOIN tareas padre
+         ON padre.id = t.tarea_padre_id
+        AND padre.propiedades_extra->>'workspace' = 'render_os'
+       LEFT JOIN historias h ON h.id = t.historia_id
+       LEFT JOIN publicaciones p ON p.id = t.publicacion_id
+       WHERE t.id = $1
+         AND t.propiedades_extra->>'workspace' = 'render_os'`,
+      [req.params.id],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Tarea no encontrada." });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/tareas/:id/comentarios", async (req, res, next) => {
   try {
+    const esRenderOS = req.query.workspace === "render_os";
+    if (esRenderOS) {
+      const tarea = await pool.query(
+        `SELECT id FROM tareas
+         WHERE id = $1
+           AND propiedades_extra->>'workspace' = 'render_os'`,
+        [req.params.id],
+      );
+      if (tarea.rows.length === 0) {
+        return res.status(404).json({ error: "Tarea no encontrada." });
+      }
+    }
     const result = await pool.query(
       `SELECT id, tarea_id, autor, contenido, created_at
        FROM tarea_comentarios
@@ -1627,6 +1717,7 @@ router.get("/tareas/:id/comentarios", async (req, res, next) => {
 
 router.post("/tareas/:id/comentarios", async (req, res, next) => {
   try {
+    const esRenderOS = req.query.workspace === "render_os";
     const autor = String(req.body.autor || "").trim();
     const contenido = String(req.body.contenido || "").trim();
     if (!autor || !contenido) {
@@ -1634,7 +1725,8 @@ router.post("/tareas/:id/comentarios", async (req, res, next) => {
     }
     const result = await pool.query(
       `INSERT INTO tarea_comentarios (tarea_id, autor, contenido)
-       SELECT id, $2, $3 FROM tareas WHERE id = $1
+       SELECT id, $2, $3 FROM tareas
+       WHERE id = $1${esRenderOS ? " AND propiedades_extra->>'workspace' = 'render_os'" : ""}
        RETURNING id, tarea_id, autor, contenido, created_at`,
       [req.params.id, autor, contenido],
     );
@@ -2128,7 +2220,7 @@ app.use((err, _req, res, _next) => {
 // IIFE en vez de top-level await: el runtime de Hostinger (LiteSpeed
 // lsnode.js) carga este archivo con require(), que no admite módulos ESM
 // con await de nivel superior (ERR_REQUIRE_ASYNC_MODULE).
-(async () => {
+if (process.env.RENDER_DISABLE_SERVER_START !== "true") (async () => {
   try {
     await checkDatabaseConnection();
     if (shouldSetupDemoData()) {
