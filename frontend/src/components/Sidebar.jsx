@@ -18,11 +18,11 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
       { href: "/reportes-historias", label: "Reporte" },
     ],
     admin: esAdmin ? [
-      { href: "/workspace/clientes", label: "Clientes" },
+      { href: "/clientes", label: "Clientes" },
     ] : [],
     cuenta: [
       { href: "/perfil", label: "Perfil" },
-      ...(esAdmin ? [{ href: "/workspace/equipo", label: "Usuarios" }] : []),
+      ...(esAdmin ? [{ href: "/empleados", label: "Usuarios" }] : []),
     ],
   };
 

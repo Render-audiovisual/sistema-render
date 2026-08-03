@@ -15,18 +15,11 @@ import { PublicacionesPage } from "./pages/Publicaciones.jsx";
 import { ReportesEquipoPage } from "./pages/Reportes.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { TareasTableroPage } from "./pages/TareasTablero.jsx";
-import { WorkspaceReadOnlyPage, WorkspaceStagingLogin } from "./pages/WorkspaceReadOnly.jsx";
+import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
 
 export function App() {
   const path = window.location.pathname;
   let sesion = getSesion();
-  const esWorkspaceStaging = import.meta.env.VITE_WORKSPACE_STAGING === "true" &&
-    ["/workspace-staging", "/workspace-staging/", "/workspace-staging/index.html"].includes(path);
-
-  if (esWorkspaceStaging) {
-    if (!sesion) return <WorkspaceStagingLogin />;
-    return <WorkspaceReadOnlyPage path={path} sesion={sesion} staging />;
-  }
 
   if (path === "/agustin" || path === "/franco") {
     window.location.href = "/lider";
@@ -68,7 +61,7 @@ export function App() {
     return null;
   }
 
-  if (["/workspace/tareas", "/workspace/clientes", "/workspace/equipo"].includes(path)) {
+  if (path === "/workspace/tareas") {
     return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
   }
 

@@ -1,13 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ESTADO_FINAL_TAREA, ROL_LABELS } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea } from "../utils.jsx";
 import "./WorkspaceReadOnly.css";
-import "./WorkspaceStagingLogin.css";
 
 const SECTIONS = {
   "/workspace/tareas": "tasks",
-  "/workspace/clientes": "clients",
-  "/workspace/equipo": "team",
 };
 
 const STATUSES = [
@@ -36,8 +33,6 @@ const TASK_TYPES = [
   { id: "community", label: "Community" },
   { id: "administracion", label: "Administración" },
 ];
-
-const GOOGLE_CLIENT_ID = "468370687841-do43hb7rje2t6agcliof3asq5gmbqssv.apps.googleusercontent.com";
 
 async function apiRequest(url, options) {
   const response = await fetch(url, options);
@@ -420,78 +415,8 @@ function TeamView({ users, tasks, query }) {
   return <section className="ros-page"><div className="ros-title-row"><div><div className="ros-eyebrow">PERSONAS Y PERMISOS</div><h1>Equipo</h1><p>Cuentas, correos y carga activa calculada desde Tareas.</p></div><a className="ros-primary-button" href="/empleados">Administrar equipo ↗</a></div><div className="ros-summary"><article><span className="green">●</span><div><strong>{users.length}</strong><small>Usuarios activos</small></div></article><article><span className="blue">●</span><div><strong>{tasks.filter((task) => task.estado !== ESTADO_FINAL_TAREA).length}</strong><small>Tareas activas</small></div></article><article><span className="amber">●</span><div><strong>{new Set(tasks.map((task) => task.asignado_a).filter(Boolean)).size}</strong><small>Responsables con tareas</small></div></article><article><span className="green">●</span><div><strong>{users.filter((user) => user.email_notificaciones).length}</strong><small>Correos configurados</small></div></article></div><div className="ros-section-bar"><strong>Equipo activo</strong><span>● CUENTAS REALES</span></div><div className="ros-people-table"><div className="ros-people-head"><span>PERSONA</span><span>ROL</span><span>ACTIVAS</span><span>EN REVISIÓN</span><span>CUENTA</span></div>{visible.map((user) => { const assigned = tasks.filter((task) => task.asignado_a === user.nombre || task.asignado_a === user.usuario); const active = assigned.filter((task) => task.estado !== ESTADO_FINAL_TAREA).length; const review = assigned.filter((task) => task.estado === "en_revision").length; return <div className="ros-people-row" key={user.id}><span><Avatar person={user}/><span><strong>{user.nombre}</strong><small>@{user.usuario}</small></span></span><span className="ros-role">{ROL_LABELS[user.rol] || user.rol}</span><strong>{active}</strong><span>{review}</span><span><i/> Activa<small>{user.email_notificaciones || "Sin correo de notificaciones"}</small></span></div>; })}</div><div className="ros-note"><span>⌘</span><div><strong>Las nuevas tareas muestran nombre, @usuario y correo antes de asignar.</strong><p>La base actual conserva el nombre como vínculo compatible; la cuenta y el correo se resuelven desde Usuarios.</p></div></div></section>;
 }
 
-export function WorkspaceStagingLogin() {
-  const [usuario, setUsuario] = useState("");
-  const [contrasena, setContrasena] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const googleButton = useRef(null);
-
-  const completeLogin = useCallback(async (request) => {
-    setLoading(true);
-    setError("");
-    try {
-      const body = await request;
-      localStorage.setItem("render_sesion", JSON.stringify(body));
-      window.location.reload();
-    } catch (reason) {
-      setError(reason.message || "No se pudo iniciar sesión.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const renderGoogleButton = () => {
-      if (!window.google?.accounts?.id || !googleButton.current) return;
-      googleButton.current.innerHTML = "";
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: ({ credential }) => completeLogin(apiRequest("/api/login/google", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ credential }),
-        })),
-      });
-      window.google.accounts.id.renderButton(googleButton.current, {
-        type: "standard",
-        theme: "outline",
-        size: "large",
-        shape: "pill",
-        text: "continue_with",
-        locale: "es",
-        width: 320,
-      });
-    };
-
-    if (document.getElementById("google-identity-script")) {
-      renderGoogleButton();
-      return undefined;
-    }
-    const script = document.createElement("script");
-    script.id = "google-identity-script";
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = renderGoogleButton;
-    document.head.appendChild(script);
-    return undefined;
-  }, [completeLogin]);
-
-  const submit = async (event) => {
-    event.preventDefault();
-    await completeLogin(apiRequest("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ usuario, password: contrasena }),
-    }));
-  };
-  return <main className="ros-staging-login"><section><div className="ros-staging-brand"><span>R</span><strong>RENDER</strong><b>OS</b></div><div className="ros-operational-pill">● STAGING OPERATIVO</div><h1>Operación con datos reales</h1><p>Ingresá con la misma cuenta del sistema. Los cambios que hagas en tareas se guardan en <strong>sistema.rendercorrientes.com</strong>.</p><div className="ros-google-login" ref={googleButton}/><div className="ros-login-divider"><span>o con tu usuario</span></div><form onSubmit={submit}><label>Usuario<input autoComplete="username" value={usuario} onChange={(event) => setUsuario(event.target.value)} required autoFocus/></label><label>Contraseña<input type="password" autoComplete="current-password" value={contrasena} onChange={(event) => setContrasena(event.target.value)} required/></label>{error && <div className="ros-login-error">{error}</div>}<button type="submit" disabled={loading}>{loading ? "Ingresando…" : "Entrar al staging"}</button></form><a href="https://sistema.rendercorrientes.com/login">Volver al sistema actual ↗</a></section></main>;
-}
-
-export function WorkspaceReadOnlyPage({ path, sesion, staging = false }) {
-  const requestedSection = new URLSearchParams(window.location.search).get("section");
-  const section = staging && ["tasks", "clients", "team"].includes(requestedSection) ? requestedSection : SECTIONS[path] || "tasks";
+export function WorkspaceReadOnlyPage({ path, sesion }) {
+  const section = SECTIONS[path] || "tasks";
   const [tasks, setTasks] = useState([]);
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
@@ -584,22 +509,7 @@ export function WorkspaceReadOnlyPage({ path, sesion, staging = false }) {
 
   const title = section === "clients" ? "Clientes" : section === "team" ? "Equipo" : "Tareas";
   const placeholder = section === "clients" ? "Buscar cliente…" : section === "team" ? "Buscar persona, usuario o rol…" : "Buscar tarea, cliente o responsable…";
-  const legacyBase = staging ? (import.meta.env.VITE_API_BASE || "https://sistema.rendercorrientes.com") : "";
-  const workspaceTarget = (target) => staging ? `/workspace-staging/?section=${target}` : `/workspace/${target === "tasks" ? "tareas" : target === "clients" ? "clientes" : "equipo"}`;
-  const go = (target) => { window.location.href = staging && target === "/workspace/tareas" ? workspaceTarget("tasks") : target; };
+  const go = (target) => { window.location.href = target; };
 
-  useEffect(() => {
-    if (!staging) return undefined;
-    const redirectStagingLinks = (event) => {
-      const anchor = event.target.closest("a"); if (!anchor) return;
-      const href = anchor.getAttribute("href");
-      const workspaceSections = { "/workspace/tareas": "tasks", "/workspace/clientes": "clients", "/workspace/equipo": "team" };
-      if (workspaceSections[href]) { event.preventDefault(); window.location.href = workspaceTarget(workspaceSections[href]); }
-      else if (href?.startsWith("/")) { event.preventDefault(); window.location.href = `${legacyBase}${href}`; }
-    };
-    document.addEventListener("click", redirectStagingLinks);
-    return () => document.removeEventListener("click", redirectStagingLinks);
-  }, [staging, legacyBase]);
-
-  return <div className={`render-workspace ${collapsed ? "collapsed" : ""}`}><Toast toast={toast} onClose={() => setToast(null)}/><button className={`ros-backdrop ${mobileOpen ? "show" : ""}`} onClick={() => setMobileOpen(false)} aria-label="Cerrar menú"/><aside className={`ros-sidebar ${mobileOpen ? "open" : ""}`}><div className="ros-brand"><span>R</span><strong>RENDER</strong><b>OS</b><button className="ros-collapse" onClick={() => setCollapsed((value) => !value)}>{collapsed ? "›" : "‹"}</button><button className="ros-close" onClick={() => setMobileOpen(false)}>×</button></div><button className="ros-side-search" onClick={() => document.querySelector(".ros-top-search")?.focus()}><span>⌕</span><em>Buscar</em><kbd>⌘ K</kbd></button><nav><a href="/">⌂ <span>Inicio</span></a><a className={section === "tasks" ? "active" : ""} href="/workspace/tareas">✓ <span>Tareas</span></a>{isAdmin && <a className={section === "clients" ? "active" : ""} href="/workspace/clientes">◌ <span>Clientes</span></a>}{isAdmin && <a className={section === "team" ? "active" : ""} href="/workspace/equipo">♙ <span>Equipo</span></a>}<a href="/reportes-historias">↗ <span>Reportes</span></a></nav><div className="ros-side-label">ESPACIOS DE TRABAJO</div><nav className="ros-areas">{AREAS.slice(1).map((item) => <button key={item.id} className={section === "tasks" && area === item.id ? "active" : ""} onClick={() => { if (section !== "tasks") go("/workspace/tareas"); else setArea(item.id); }}><i style={{ color: item.color }}>{item.icon}</i><span>{item.label}</span></button>)}</nav><div className="ros-side-bottom"><a href="/perfil">?<span>Ayuda y procesos</span></a><div><Avatar name={sesion?.usuario?.nombre}/><span><strong>{sesion?.usuario?.nombre}</strong><small>{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</small></span></div></div></aside><main className="ros-main"><header className="ros-topbar"><button className="ros-menu" onClick={() => setMobileOpen(true)}>☰</button><div><span>RENDER</span><b>/</b><strong>{title}</strong></div><input className="ros-top-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={placeholder}/><span className="ros-live-badge">● DATOS REALES</span></header>{loading || error ? <LoadingState error={error}/> : section === "clients" && isAdmin ? <ClientsView clients={clients} tasks={tasks} query={query}/> : section === "team" && isAdmin ? <TeamView users={users} tasks={tasks} query={query}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} area={area} setArea={setArea} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onDelete={deleteTask}/>}</main><nav className="ros-mobile-nav"><a className={section === "tasks" ? "active" : ""} href="/workspace/tareas"><span>✓</span>Tareas</a>{isAdmin && <a className={section === "clients" ? "active" : ""} href="/workspace/clientes"><span>◌</span>Clientes</a>}{isAdmin && <a className={section === "team" ? "active" : ""} href="/workspace/equipo"><span>♙</span>Equipo</a>}<button onClick={() => setMobileOpen(true)}><span>☰</span>Más</button></nav></div>;
+  return <div className={`render-workspace ${collapsed ? "collapsed" : ""}`}><Toast toast={toast} onClose={() => setToast(null)}/><button className={`ros-backdrop ${mobileOpen ? "show" : ""}`} onClick={() => setMobileOpen(false)} aria-label="Cerrar menú"/><aside className={`ros-sidebar ${mobileOpen ? "open" : ""}`}><div className="ros-brand"><span>R</span><strong>RENDER</strong><b>OS</b><button className="ros-collapse" onClick={() => setCollapsed((value) => !value)}>{collapsed ? "›" : "‹"}</button><button className="ros-close" onClick={() => setMobileOpen(false)}>×</button></div><button className="ros-side-search" onClick={() => document.querySelector(".ros-top-search")?.focus()}><span>⌕</span><em>Buscar</em><kbd>⌘ K</kbd></button><nav><a href="/">⌂ <span>Inicio</span></a><a className={section === "tasks" ? "active" : ""} href="/workspace/tareas">✓ <span>Tareas</span></a>{isAdmin && <a className={section === "clients" ? "active" : ""} href="/clientes">◌ <span>Clientes</span></a>}{isAdmin && <a className={section === "team" ? "active" : ""} href="/empleados">♙ <span>Equipo</span></a>}<a href="/reportes-historias">↗ <span>Reportes</span></a></nav><div className="ros-side-label">ESPACIOS DE TRABAJO</div><nav className="ros-areas">{AREAS.slice(1).map((item) => <button key={item.id} className={section === "tasks" && area === item.id ? "active" : ""} onClick={() => { if (section !== "tasks") go("/workspace/tareas"); else setArea(item.id); }}><i style={{ color: item.color }}>{item.icon}</i><span>{item.label}</span></button>)}</nav><div className="ros-side-bottom"><a href="/perfil">?<span>Ayuda y procesos</span></a><div><Avatar name={sesion?.usuario?.nombre}/><span><strong>{sesion?.usuario?.nombre}</strong><small>{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</small></span></div></div></aside><main className="ros-main"><header className="ros-topbar"><button className="ros-menu" onClick={() => setMobileOpen(true)}>☰</button><div><span>RENDER</span><b>/</b><strong>{title}</strong></div><input className="ros-top-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={placeholder}/><span className="ros-live-badge">● DATOS REALES</span></header>{loading || error ? <LoadingState error={error}/> : section === "clients" && isAdmin ? <ClientsView clients={clients} tasks={tasks} query={query}/> : section === "team" && isAdmin ? <TeamView users={users} tasks={tasks} query={query}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} area={area} setArea={setArea} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onDelete={deleteTask}/>}</main><nav className="ros-mobile-nav"><a className={section === "tasks" ? "active" : ""} href="/workspace/tareas"><span>✓</span>Tareas</a>{isAdmin && <a className={section === "clients" ? "active" : ""} href="/clientes"><span>◌</span>Clientes</a>}{isAdmin && <a className={section === "team" ? "active" : ""} href="/empleados"><span>♙</span>Equipo</a>}<button onClick={() => setMobileOpen(true)}><span>☰</span>Más</button></nav></div>;
 }
