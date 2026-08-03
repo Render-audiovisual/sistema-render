@@ -9,51 +9,13 @@ import { App } from "./App.jsx";
 // una copia estática en Hostinger), VITE_API_BASE define a qué origen
 // redirigir esas llamadas. Sin la variable, el comportamiento no cambia.
 const API_BASE = import.meta.env.VITE_API_BASE || "";
-const fetchOriginal = window.fetch.bind(window);
-
-window.fetch = async (input, init = {}) => {
-  const inputUrl =
-    typeof input === "string"
-      ? input
-      : input instanceof Request
-        ? input.url
-        : String(input);
-  const esApiRelativa = inputUrl.startsWith("/api");
-  const destino = esApiRelativa && API_BASE ? API_BASE + inputUrl : input;
-
-  if (!esApiRelativa) {
-    return fetchOriginal(destino, init);
-  }
-
-  const headers = new Headers(
-    init.headers || (input instanceof Request ? input.headers : undefined),
-  );
-  const esLogin = inputUrl === "/api/login";
-
-  if (!esLogin) {
-    try {
-      const sesion = JSON.parse(localStorage.getItem("render_sesion") || "null");
-      if (sesion?.token && !headers.has("Authorization")) {
-        headers.set("Authorization", `Bearer ${sesion.token}`);
-      }
-    } catch {
-      localStorage.removeItem("render_sesion");
-    }
-  }
-
-  const response = await fetchOriginal(destino, { ...init, headers });
-
-  if (!esLogin && response.status === 401) {
-    localStorage.removeItem("render_sesion");
-    if (window.location.pathname.startsWith("/workspace-staging")) {
-      window.location.reload();
-    } else if (window.location.pathname !== "/login") {
-      window.location.href = "/login";
-    }
-  }
-
-  return response;
-};
+if (API_BASE) {
+  const fetchOriginal = window.fetch.bind(window);
+  window.fetch = (input, init) =>
+    typeof input === "string" && input.startsWith("/api")
+      ? fetchOriginal(API_BASE + input, init)
+      : fetchOriginal(input, init);
+}
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
