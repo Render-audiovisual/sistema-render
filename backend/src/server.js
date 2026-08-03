@@ -1544,8 +1544,12 @@ router.get("/tareas", async (req, res, next) => {
     // RENDER OS comparte usuarios y clientes con el sistema vigente, pero
     // empieza con un tablero de tareas nuevo. El marcador vive en JSONB para
     // conservar intacto el historial anterior sin duplicar ni borrar datos.
+    // Los callers sin workspace=render_os (ej. /piezas) nunca deben ver
+    // tareas de RENDER OS mezcladas con las históricas, y viceversa.
     if (workspace === "render_os") {
       query += ` AND t.propiedades_extra->>'workspace' = 'render_os'`;
+    } else {
+      query += ` AND t.propiedades_extra->>'workspace' IS DISTINCT FROM 'render_os'`;
     }
 
     if (asignado_a) {
