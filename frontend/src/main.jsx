@@ -45,7 +45,9 @@ window.fetch = async (input, init = {}) => {
 
   if (!esLogin && response.status === 401) {
     localStorage.removeItem("render_sesion");
-    if (window.location.pathname !== "/login") {
+    if (window.location.pathname.startsWith("/workspace-staging")) {
+      window.location.reload();
+    } else if (window.location.pathname !== "/login") {
       window.location.href = "/login";
     }
   }

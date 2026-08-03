@@ -62,13 +62,16 @@ export function crearContenidoCorreo({
   destinatario,
   clienteNombre,
   motivo = "creada",
+  detalle = "",
   appUrl = APP_URL_POR_DEFECTO,
 }) {
-  const tituloAccion =
-    motivo === "reasignada"
-      ? "Te reasignaron una tarea"
-      : "Tenés una nueva tarea";
-  const enlace = `${appUrl.replace(/\/$/, "")}/piezas?tarea=${encodeURIComponent(
+  const tituloAccion = ({
+    reasignada: "Te reasignaron una tarea",
+    comentario: "Hay un comentario nuevo en tu tarea",
+    revision: "La tarea pasó a revisión",
+    bloqueada: "Hay un bloqueo en tu tarea",
+  })[motivo] || "Tenés una nueva tarea";
+  const enlace = `${appUrl.replace(/\/$/, "")}/workspace/tareas?task=${encodeURIComponent(
     tarea.id,
   )}`;
   const fecha = tarea.fecha_vencimiento || "Sin fecha definida";
@@ -85,6 +88,7 @@ export function crearContenidoCorreo({
       `Tarea: ${tarea.titulo}`,
       `Fecha de entrega: ${fecha}`,
       `Prioridad: ${prioridad}`,
+      ...(detalle ? [`Detalle: ${detalle}`] : []),
       `Abrir tarea: ${enlace}`,
     ].join("\n"),
     html: `
@@ -98,6 +102,7 @@ export function crearContenidoCorreo({
           <li><strong>Fecha de entrega:</strong> ${escaparHtml(fecha)}</li>
           <li><strong>Prioridad:</strong> ${escaparHtml(prioridad)}</li>
         </ul>
+        ${detalle ? `<p><strong>Detalle:</strong> ${escaparHtml(detalle)}</p>` : ""}
         <p>
           <a href="${escaparHtml(enlace)}"
              style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px">
@@ -155,6 +160,7 @@ export async function notificarAsignacionTarea({
   pool,
   tarea,
   motivo = "creada",
+  detalle = "",
   env = process.env,
   transporter,
 }) {
@@ -181,6 +187,7 @@ export async function notificarAsignacionTarea({
     destinatario,
     clienteNombre,
     motivo,
+    detalle,
     appUrl: env.APP_URL || APP_URL_POR_DEFECTO,
   });
 

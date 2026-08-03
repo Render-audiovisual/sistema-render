@@ -317,8 +317,6 @@ export function TareasTableroPage() {
   );
 }
 
-const URL_EN_TAREA_REGEX = /(https?:\/\/[^\s<>"')\]]+)/gi;
-
 export function TareaDetallePanel({
   tarea,
   clientes,
