@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ESTADO_FINAL_TAREA, ROL_LABELS } from "../constants.js";
 import "./WorkspaceReadOnly.css";
 import "./WorkspaceStagingLogin.css";
@@ -34,6 +34,8 @@ const TASK_TYPES = [
   { id: "community", label: "Community" },
   { id: "administracion", label: "Administración" },
 ];
+
+const GOOGLE_CLIENT_ID = "468370687841-do43hb7rje2t6agcliof3asq5gmbqssv.apps.googleusercontent.com";
 
 async function apiRequest(url, options) {
   const response = await fetch(url, options);
@@ -220,13 +222,68 @@ export function WorkspaceStagingLogin() {
   const [contrasena, setContrasena] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const googleButton = useRef(null);
+
+  const completeLogin = useCallback(async (request) => {
+    setLoading(true);
+    setError("");
+    try {
+      const body = await request;
+      localStorage.setItem("render_sesion", JSON.stringify(body));
+      window.location.reload();
+    } catch (reason) {
+      setError(reason.message || "No se pudo iniciar sesión.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const renderGoogleButton = () => {
+      if (!window.google?.accounts?.id || !googleButton.current) return;
+      googleButton.current.innerHTML = "";
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: ({ credential }) => completeLogin(apiRequest("/api/login/google", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential }),
+        })),
+      });
+      window.google.accounts.id.renderButton(googleButton.current, {
+        type: "standard",
+        theme: "outline",
+        size: "large",
+        shape: "pill",
+        text: "continue_with",
+        locale: "es",
+        width: 320,
+      });
+    };
+
+    if (document.getElementById("google-identity-script")) {
+      renderGoogleButton();
+      return undefined;
+    }
+    const script = document.createElement("script");
+    script.id = "google-identity-script";
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = renderGoogleButton;
+    document.head.appendChild(script);
+    return undefined;
+  }, [completeLogin]);
+
   const submit = async (event) => {
-    event.preventDefault(); setLoading(true); setError("");
-    try { const body = await apiRequest("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ usuario, password: contrasena }) }); localStorage.setItem("render_sesion", JSON.stringify(body)); window.location.reload(); }
-    catch (reason) { setError(reason.message || "No se pudo iniciar sesión."); }
-    finally { setLoading(false); }
+    event.preventDefault();
+    await completeLogin(apiRequest("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usuario, password: contrasena }),
+    }));
   };
-  return <main className="ros-staging-login"><section><div className="ros-staging-brand"><span>R</span><strong>RENDER</strong><b>OS</b></div><div className="ros-operational-pill">● STAGING OPERATIVO</div><h1>Operación con datos reales</h1><p>Ingresá con la misma cuenta del sistema. Los cambios que hagas en tareas se guardan en <strong>sistema.rendercorrientes.com</strong>.</p><form onSubmit={submit}><label>Usuario<input autoComplete="username" value={usuario} onChange={(event) => setUsuario(event.target.value)} required autoFocus/></label><label>Contraseña<input type="password" autoComplete="current-password" value={contrasena} onChange={(event) => setContrasena(event.target.value)} required/></label>{error && <div className="ros-login-error">{error}</div>}<button type="submit" disabled={loading}>{loading ? "Ingresando…" : "Entrar al staging"}</button></form><a href="https://sistema.rendercorrientes.com/login">Volver al sistema actual ↗</a></section></main>;
+  return <main className="ros-staging-login"><section><div className="ros-staging-brand"><span>R</span><strong>RENDER</strong><b>OS</b></div><div className="ros-operational-pill">● STAGING OPERATIVO</div><h1>Operación con datos reales</h1><p>Ingresá con la misma cuenta del sistema. Los cambios que hagas en tareas se guardan en <strong>sistema.rendercorrientes.com</strong>.</p><div className="ros-google-login" ref={googleButton}/><div className="ros-login-divider"><span>o con tu usuario</span></div><form onSubmit={submit}><label>Usuario<input autoComplete="username" value={usuario} onChange={(event) => setUsuario(event.target.value)} required autoFocus/></label><label>Contraseña<input type="password" autoComplete="current-password" value={contrasena} onChange={(event) => setContrasena(event.target.value)} required/></label>{error && <div className="ros-login-error">{error}</div>}<button type="submit" disabled={loading}>{loading ? "Ingresando…" : "Entrar al staging"}</button></form><a href="https://sistema.rendercorrientes.com/login">Volver al sistema actual ↗</a></section></main>;
 }
 
 export function WorkspaceReadOnlyPage({ path, sesion, staging = false }) {
