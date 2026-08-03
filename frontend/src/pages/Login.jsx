@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { getRutaUsuario, guardarSesion } from "../utils.jsx";
 
 // Fallback hardcodeado: el hosting de Hostinger no inyecta las

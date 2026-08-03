@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React from "react";
 import { getRutaUsuario, inicialesUsuario } from "../utils.jsx";
 
 export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
