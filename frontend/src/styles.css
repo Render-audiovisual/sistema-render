@@ -4818,7 +4818,7 @@ tr:hover .sheet-row-actions {
 
 .clientes-admin-table th:nth-child(1),
 .clientes-admin-table td:nth-child(1) {
-  width: 118px;
+  width: 172px;
 }
 
 .clientes-admin-table th:nth-child(2),
@@ -4845,10 +4845,11 @@ tr:hover .sheet-row-actions {
 
 .cliente-status-pill {
   align-items: center;
-  background: #efece5;
-  border: 1px solid #e3dfd6;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
   display: inline-flex;
+  font-size: 11px;
   gap: 6px;
   padding: 5px 8px;
   white-space: nowrap;
