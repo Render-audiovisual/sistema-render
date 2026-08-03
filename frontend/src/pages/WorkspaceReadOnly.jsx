@@ -1,95 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ESTADO_FINAL_TAREA, ROL_LABELS } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea } from "../utils.jsx";
+import { AREAS, STATUSES, TASK_TYPES } from "../features/render-os/constants.js";
+import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
+import { areaForTask, formatDate, formatDateTime, initials, personForTask } from "../features/render-os/utils/task-formatters.js";
 import { mergeRelatedTasks } from "../workspace-task-state.js";
 import "./WorkspaceReadOnly.css";
-
-const STATUSES = [
-  { id: "pendiente", label: "Por hacer", color: "#8d9095" },
-  { id: "en_progreso", label: "En progreso", color: "#3378d4" },
-  { id: "en_revision", label: "En revisión", color: "#df9830" },
-  { id: "programada", label: "Programada", color: "#8d63c7" },
-  { id: "publicada", label: "Terminado", color: "#34a16f" },
-];
-
-const AREAS = [
-  { id: "all", label: "Todo", icon: "⌘", color: "#242529" },
-  { id: "carruseles", label: "Carruseles", icon: "▦", color: "#7459e8" },
-  { id: "produccion", label: "Visitas / producción", icon: "◉", color: "#e26d45" },
-  { id: "edicion", label: "Edición", icon: "▶", color: "#2d8f75" },
-  { id: "historias", label: "Flyers / historias", icon: "◇", color: "#d34f75" },
-  { id: "web", label: "Páginas web", icon: "◫", color: "#3278cc" },
-  { id: "chatbots", label: "Chatbots", icon: "✦", color: "#9a6a24" },
-  { id: "carteleria", label: "Cartelería", icon: "▱", color: "#68717f" },
-];
-
-const TASK_TYPES = [
-  { id: "diseno", label: "Diseño" },
-  { id: "edicion", label: "Edición" },
-  { id: "produccion", label: "Producción" },
-  { id: "community", label: "Community" },
-  { id: "administracion", label: "Administración" },
-];
-
-async function apiRequest(url, options) {
-  const response = await fetch(url, options);
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || "No se pudo completar la operación.");
-  return body;
-}
-
-function apiJson(url) {
-  return apiRequest(url).then((body) => Array.isArray(body) ? body : []);
-}
-
-async function apiTaskPage(offset = 0) {
-  const response = await fetch(`/api/tareas?workspace=render_os&incluir_archivadas=true&limit=500&offset=${offset}`);
-  const body = await response.json().catch(() => []);
-  if (!response.ok) throw new Error(body.error || "No se pudieron cargar las tareas.");
-  const items = Array.isArray(body) ? body : [];
-  const totalHeader = Number.parseInt(response.headers.get("X-Total-Count"), 10);
-  return { items, total: Number.isFinite(totalHeader) ? totalHeader : offset + items.length };
-}
-
-function apiTaskById(id) {
-  return apiRequest(`/api/tareas/${id}?workspace=render_os`);
-}
-
-function apiSubtasks(id) {
-  return apiJson(`/api/tareas/${id}/subtareas?workspace=render_os`);
-}
-
-function areaForTask(task) {
-  const text = `${task.tipo_tarea || ""} ${task.subtipo || ""} ${task.titulo || ""}`.toLowerCase();
-  if (text.includes("chatbot") || text.includes("bot ")) return "chatbots";
-  if (text.includes("web") || text.includes("landing") || text.includes("página")) return "web";
-  if (text.includes("cartel")) return "carteleria";
-  if (text.includes("carrusel")) return "carruseles";
-  if (text.includes("historia") || text.includes("flyer") || text.includes("community")) return "historias";
-  if (text.includes("produccion") || text.includes("producción") || text.includes("visita") || text.includes("filmar")) return "produccion";
-  if (text.includes("edicion") || text.includes("edición") || text.includes("editar") || text.includes("reel")) return "edicion";
-  return task.tipo_tarea === "diseno" ? "carruseles" : "edicion";
-}
-
-function formatDate(value) {
-  if (!value) return "Sin fecha";
-  const [year, month, day] = String(value).slice(0, 10).split("-");
-  return day && month ? `${day}/${month}/${year}` : value;
-}
-
-function formatDateTime(value) {
-  if (!value) return "";
-  return new Date(value).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-function initials(value = "") {
-  return value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?";
-}
-
-function personForTask(task, users) {
-  const assigned = String(task?.asignado_a || "").toLowerCase();
-  return users.find((user) => user.nombre?.toLowerCase() === assigned || user.usuario?.toLowerCase() === assigned);
-}
 
 function Avatar({ person, name }) {
   const label = person?.nombre || name || "Sin asignar";
