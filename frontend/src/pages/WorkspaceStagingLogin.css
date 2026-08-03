@@ -1,0 +1,62 @@
+.ros-staging-login {
+  align-items: center;
+  background: #f4f4f1;
+  color: #202124;
+  display: flex;
+  font-family: "Poppins", sans-serif;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.ros-staging-login > section {
+  background: #fff;
+  border: 1px solid #e0e0dc;
+  border-radius: 16px;
+  box-shadow: 0 18px 50px #20212412;
+  max-width: 440px;
+  padding: 34px;
+  width: 100%;
+}
+
+.ros-staging-brand {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+
+.ros-staging-brand span {
+  align-items: center;
+  background: #222427;
+  border-radius: 8px;
+  color: #fff;
+  display: flex;
+  font-family: Georgia, serif;
+  font-size: 20px;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.ros-staging-brand strong { font-size: 16px; letter-spacing: .04em; }
+.ros-staging-brand b { background: #222427; border-radius: 5px; color: #fff; font-size: 9px; padding: 3px 5px; }
+.ros-staging-login h1 { font-size: 27px; letter-spacing: -.04em; margin: 16px 0 8px; }
+.ros-staging-login p { color: #777a80; font-size: 12px; line-height: 1.65; margin: 0 0 22px; }
+.ros-google-login { display: flex; justify-content: center; min-height: 44px; }
+.ros-login-divider { align-items: center; color: #9a9ca0; display: flex; font-size: 9px; gap: 10px; margin: 17px 0; }
+.ros-login-divider::before, .ros-login-divider::after { background: #e4e4e0; content: ""; flex: 1; height: 1px; }
+.ros-staging-login form { display: grid; gap: 14px; }
+.ros-staging-login label { color: #57595e; display: grid; font-size: 10px; font-weight: 600; gap: 6px; }
+.ros-staging-login input { border: 1px solid #d8d8d4; border-radius: 8px; font: inherit; font-size: 13px; padding: 12px; }
+.ros-staging-login input:focus { border-color: #8da850; box-shadow: 0 0 0 3px #a9d95722; outline: none; }
+.ros-staging-login form button { background: #242529; border: 0; border-radius: 8px; color: #fff; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; margin-top: 4px; padding: 13px; }
+.ros-staging-login form button:disabled { cursor: wait; opacity: .65; }
+.ros-login-error { background: #fff1ef; border: 1px solid #f1d0cb; border-radius: 7px; color: #a8483e; font-size: 10px; padding: 9px; }
+.ros-staging-login > section > a { color: #66696e; display: inline-block; font-size: 10px; margin-top: 20px; text-decoration: none; }
+
+@media (max-width: 520px) {
+  .ros-staging-login { padding: 14px; }
+  .ros-staging-login > section { border-radius: 12px; padding: 25px 20px; }
+  .ros-staging-login h1 { font-size: 24px; }
+}
