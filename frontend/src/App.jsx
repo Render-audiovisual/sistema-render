@@ -20,11 +20,18 @@ import { TareasDisenioPage } from "./pages/TareasWorkspace.jsx";
 import { TareasEdicionPage } from "./pages/TareasWorkspace.jsx";
 import { TareasProduccionPage } from "./pages/TareasWorkspace.jsx";
 import { TareasTableroPage } from "./pages/TareasTablero.jsx";
-import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
+import { WorkspaceReadOnlyPage, WorkspaceStagingLogin } from "./pages/WorkspaceReadOnly.jsx";
 
 export function App() {
   const path = window.location.pathname;
   let sesion = getSesion();
+  const esWorkspaceStaging = import.meta.env.VITE_WORKSPACE_STAGING === "true" &&
+    ["/workspace-staging", "/workspace-staging/", "/workspace-staging/index.html"].includes(path);
+
+  if (esWorkspaceStaging) {
+    if (!sesion) return <WorkspaceStagingLogin />;
+    return <WorkspaceReadOnlyPage path={path} sesion={sesion} staging />;
+  }
 
   if (path === "/agustin" || path === "/franco") {
     window.location.href = "/lider";
