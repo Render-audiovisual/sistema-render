@@ -604,6 +604,8 @@ export function limpiarUrlTarea(url = "") {
   return url.replace(/[.,;:!?]+$/, "");
 }
 
+const URL_EN_TAREA_REGEX = /(https?:\/\/[^\s<>"')\]]+)/gi;
+
 export function extraerUrlsTarea(texto = "") {
   return [...texto.matchAll(URL_EN_TAREA_REGEX)]
     .map((coincidencia) => limpiarUrlTarea(coincidencia[0]))

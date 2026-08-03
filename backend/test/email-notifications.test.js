@@ -74,7 +74,21 @@ test("arma el aviso con los datos operativos y enlace directo", () => {
   assert.match(contenido.subject, /Carrusel de prueba/);
   assert.match(contenido.text, /Cliente: Luzin/);
   assert.match(contenido.text, /Fecha de entrega: 2026-07-25/);
-  assert.match(contenido.text, /piezas\?tarea=42/);
+  assert.match(contenido.text, /workspace\/tareas\?task=42/);
+});
+
+test("distingue comentarios, revisión y bloqueos en las notificaciones", () => {
+  const base = {
+    tarea: { id: 42, titulo: "Carrusel de prueba", prioridad: "alta" },
+    destinatario: usuarios[1],
+    detalle: "Agustín: falta el material",
+  };
+
+  assert.match(crearContenidoCorreo({ ...base, motivo: "comentario" }).subject, /comentario nuevo/i);
+  assert.match(crearContenidoCorreo({ ...base, motivo: "revision" }).subject, /pasó a revisión/i);
+  const bloqueo = crearContenidoCorreo({ ...base, motivo: "bloqueada" });
+  assert.match(bloqueo.subject, /bloqueo/i);
+  assert.match(bloqueo.text, /Agustín: falta el material/);
 });
 
 test("resuelve SMTP a IPv4 sin perder el hostname usado por TLS", async () => {
