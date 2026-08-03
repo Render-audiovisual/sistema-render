@@ -1185,6 +1185,7 @@ const ESTADOS_TAREA_VALIDOS = [
   "pendiente",
   "en_progreso",
   "en_revision",
+  "programada",
   "publicada",
 ];
 const TIPOS_TAREA_VALIDOS = [
@@ -1222,6 +1223,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
     const { id } = req.params;
     const body = req.body;
     let asignadoAnterior = null;
+    let estadoAnterior = null;
 
     if (Object.prototype.hasOwnProperty.call(body, "estado")) {
       if (body.estado === null || !ESTADOS_TAREA_VALIDOS.includes(body.estado)) {
@@ -1237,11 +1239,17 @@ router.patch("/tareas/:id", async (req, res, next) => {
       if (body.asignado_a === null || !String(body.asignado_a).trim()) {
         return res.status(400).json({ error: "El responsable no puede quedar vacío." });
       }
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(body, "asignado_a") ||
+      Object.prototype.hasOwnProperty.call(body, "estado")
+    ) {
       const tareaAnterior = await pool.query(
-        "SELECT asignado_a FROM tareas WHERE id = $1",
+        "SELECT asignado_a, estado FROM tareas WHERE id = $1",
         [id],
       );
       asignadoAnterior = tareaAnterior.rows[0]?.asignado_a || null;
+      estadoAnterior = tareaAnterior.rows[0]?.estado || null;
     }
     if (Object.prototype.hasOwnProperty.call(body, "tipo_tarea")) {
       if (body.tipo_tarea !== null && !TIPOS_TAREA_VALIDOS.includes(body.tipo_tarea)) {
@@ -1276,15 +1284,28 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
     sets.push("updated_at = now()");
     valores.push(id);
+    const idPlaceholder = i;
+    let where = `id = $${idPlaceholder}`;
+    if (body.expected_updated_at) {
+      i++;
+      where += ` AND updated_at = $${i}::timestamptz`;
+      valores.push(body.expected_updated_at);
+    }
 
     const result = await pool.query(
       `UPDATE tareas SET ${sets.join(", ")}
-       WHERE id = $${i}
+       WHERE ${where}
        RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
       valores,
     );
 
     if (result.rows.length === 0) {
+      if (body.expected_updated_at) {
+        const existente = await pool.query("SELECT id FROM tareas WHERE id = $1", [id]);
+        if (existente.rows.length > 0) {
+          return res.status(409).json({ error: "La tarea cambió mientras la estabas editando. Recargá y revisá la última versión." });
+        }
+      }
       return res.status(404).json({ error: "Tarea no encontrada." });
     }
 
@@ -1300,6 +1321,13 @@ router.patch("/tareas/:id", async (req, res, next) => {
         pool,
         tarea: tareaActualizada,
         motivo: "reasignada",
+      });
+    }
+    if (body.estado === "en_revision" && estadoAnterior !== "en_revision") {
+      notificarAsignacionSinInterrumpir({
+        pool,
+        tarea: tareaActualizada,
+        motivo: "revision",
       });
     }
   } catch (error) {
@@ -1333,7 +1361,14 @@ router.get("/tareas", async (req, res, next) => {
       cliente_id,
       prioridad,
       estado,
+      incluir_archivadas,
+      solo_archivadas,
+      limit,
+      offset,
     } = req.query;
+
+    const limite = Math.min(Math.max(Number.parseInt(limit, 10) || 0, 0), 500);
+    const desplazamiento = Math.max(Number.parseInt(offset, 10) || 0, 0);
 
     let query = `
       SELECT
@@ -1357,6 +1392,7 @@ router.get("/tareas", async (req, res, next) => {
         t.prioridad,
         t.created_at,
         t.updated_at,
+        COUNT(*) OVER()::int AS total_count,
         to_char(h.fecha_programada, 'YYYY-MM-DD') AS historia_fecha_programada,
         h.estado AS historia_estado,
         to_char(p.fecha_programada, 'YYYY-MM-DD') AS publicacion_fecha_programada,
@@ -1409,10 +1445,23 @@ router.get("/tareas", async (req, res, next) => {
       paramCount++;
     }
 
+    if (solo_archivadas === "true") {
+      query += ` AND t.propiedades_extra->>'archivada_render_os' = 'true'`;
+    } else if (incluir_archivadas !== "true") {
+      query += ` AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'`;
+    }
+
     query += ` ORDER BY t.fecha_vencimiento ASC NULLS LAST, t.id DESC`;
 
+    if (limite > 0) {
+      query += ` LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+      params.push(limite, desplazamiento);
+    }
+
     const result = await pool.query(query, params);
-    res.json(result.rows);
+    const total = result.rows[0]?.total_count || 0;
+    res.set("X-Total-Count", String(total));
+    res.json(result.rows.map(({ total_count, ...tarea }) => tarea));
   } catch (error) {
     next(error);
   }
@@ -1449,7 +1498,28 @@ router.post("/tareas/:id/comentarios", async (req, res, next) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Tarea no encontrada." });
     }
-    res.status(201).json(result.rows[0]);
+    const comentario = result.rows[0];
+    res.status(201).json(comentario);
+
+    if (!contenido.startsWith("[Actividad]")) {
+      void pool.query(
+        `SELECT id, titulo, asignado_a, cliente_id, prioridad,
+                to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento
+         FROM tareas WHERE id = $1`,
+        [req.params.id],
+      ).then((tarea) => {
+        if (!tarea.rows[0]) return;
+        const esBloqueo = /\bbloque(?:o|ado|ada|ante)?\b/i.test(contenido);
+        notificarAsignacionSinInterrumpir({
+          pool,
+          tarea: tarea.rows[0],
+          motivo: esBloqueo ? "bloqueada" : "comentario",
+          detalle: `${autor}: ${contenido.slice(0, 280)}`,
+        });
+      }).catch((error) => {
+        console.error(`No se pudo preparar la notificación del comentario de la tarea ${req.params.id}:`, error.message);
+      });
+    }
   } catch (error) {
     next(error);
   }
