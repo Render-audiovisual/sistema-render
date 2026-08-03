@@ -1,5 +1,25 @@
 import React from "react";
 import {
+  esDeEstaSemana,
+  esDelMesActual,
+  fechaISODesde,
+  getGrillaMes,
+  getHoyLocalISO,
+  getInicioSemanaISO,
+  getMesActualISO,
+  sumarDiasISO,
+} from "./shared/date/date-utils.js";
+export {
+  esDeEstaSemana,
+  esDelMesActual,
+  fechaISODesde,
+  getGrillaMes,
+  getHoyLocalISO,
+  getInicioSemanaISO,
+  getMesActualISO,
+  sumarDiasISO,
+} from "./shared/date/date-utils.js";
+import {
   PRIORIDAD_CLIENTES_ADMIN,
   SECTORES_TAREA,
   ESTADOS_TAREA,
@@ -25,35 +45,6 @@ export function calcularPorcentajePublicadas(items) {
 export function calcularPorcentajeCuota(publicadas, cuota) {
   if (cuota <= 0) return 0;
   return Math.min(100, Math.round((publicadas / cuota) * 100));
-}
-
-export function getMesActualISO() {
-  const hoy = new Date();
-  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
-}
-
-export function esDelMesActual(fechaISO) {
-  return typeof fechaISO === "string" && fechaISO.startsWith(getMesActualISO());
-}
-
-export function getInicioSemanaISO() {
-  const hoy = new Date();
-  const dia = hoy.getDay();
-  const diffLunes = dia === 0 ? -6 : 1 - dia;
-  const lunes = new Date(hoy);
-  lunes.setDate(hoy.getDate() + diffLunes);
-  const year = lunes.getFullYear();
-  const month = String(lunes.getMonth() + 1).padStart(2, "0");
-  const day = String(lunes.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-export function esDeEstaSemana(fechaISO) {
-  return (
-    typeof fechaISO === "string" &&
-    fechaISO >= getInicioSemanaISO() &&
-    fechaISO <= getHoyLocalISO()
-  );
 }
 
 export function getClaveFeed(cliente) {
@@ -451,14 +442,6 @@ export function getEstadoLabel(estado) {
   return estado.charAt(0).toUpperCase() + estado.slice(1);
 }
 
-export function getHoyLocalISO() {
-  const hoy = new Date();
-  const year = hoy.getFullYear();
-  const month = String(hoy.getMonth() + 1).padStart(2, "0");
-  const day = String(hoy.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 export function getEstadoHistoriaLabel(estado) {
   return estado.replace("_", " ");
 }
@@ -666,37 +649,6 @@ export function formatearFechaTarea(fecha) {
   }).format(new Date(anio, mes - 1, dia));
 }
 
-export function getGrillaMes(year, month) {
-  const primerDia = new Date(year, month, 1);
-  const totalDias = new Date(year, month + 1, 0).getDate();
-  let offset = primerDia.getDay();
-  offset = offset === 0 ? 6 : offset - 1;
-
-  const celdas = [];
-  for (let i = 0; i < offset; i += 1) celdas.push(null);
-  for (let d = 1; d <= totalDias; d += 1) celdas.push(d);
-  while (celdas.length % 7 !== 0) celdas.push(null);
-
-  const semanas = [];
-  for (let i = 0; i < celdas.length; i += 7) {
-    semanas.push(celdas.slice(i, i + 7));
-  }
-  return semanas;
-}
-
-export function fechaISODesde(year, month, day) {
-  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-export function sumarDiasISO(fechaISO, dias) {
-  const fecha = new Date(`${fechaISO}T00:00:00`);
-  fecha.setDate(fecha.getDate() + dias);
-  const year = fecha.getFullYear();
-  const month = String(fecha.getMonth() + 1).padStart(2, "0");
-  const day = String(fecha.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 export function abreviarClientePublicacion(nombre = "") {
   const limpio = nombre.replace(/^El Ángel Azul\s+/i, "Ángel ").trim();
   const abreviaturas = {
@@ -793,4 +745,3 @@ export function payloadColumnaPublicacion(columna, valorCrudo) {
       return null;
   }
 }
-
