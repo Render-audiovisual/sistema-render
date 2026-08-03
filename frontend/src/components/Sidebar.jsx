@@ -14,15 +14,15 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
       { href: "/planificacion-publicaciones", label: "Publicaciones" },
     ],
     gestion: [
-      { href: "/piezas", label: "Tareas" },
+      { href: "/workspace/tareas", label: "Tareas" },
       { href: "/reportes-historias", label: "Reporte" },
     ],
     admin: esAdmin ? [
-      { href: "/clientes", label: "Clientes" },
+      { href: "/workspace/clientes", label: "Clientes" },
     ] : [],
     cuenta: [
       { href: "/perfil", label: "Perfil" },
-      ...(esAdmin ? [{ href: "/empleados", label: "Usuarios" }] : []),
+      ...(esAdmin ? [{ href: "/workspace/equipo", label: "Usuarios" }] : []),
     ],
   };
 

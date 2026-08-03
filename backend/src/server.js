@@ -1240,6 +1240,7 @@ router.post("/tareas", async (req, res, next) => {
       resumen,
       etiquetas,
       colaboradores,
+      workspace,
     } = req.body;
 
     if (!titulo || !asignado_a) {
@@ -1271,6 +1272,9 @@ router.post("/tareas", async (req, res, next) => {
     }
     if (Array.isArray(colaboradores)) {
       propiedadesExtra.colaboradores = colaboradores.map(String).map((item) => item.trim()).filter(Boolean);
+    }
+    if (workspace === "render_os") {
+      propiedadesExtra.workspace = "render_os";
     }
 
     const result = await pool.query(
@@ -1492,6 +1496,7 @@ router.get("/tareas", async (req, res, next) => {
       solo_archivadas,
       limit,
       offset,
+      workspace,
     } = req.query;
 
     const limite = Math.min(Math.max(Number.parseInt(limit, 10) || 0, 0), 500);
@@ -1535,6 +1540,13 @@ router.get("/tareas", async (req, res, next) => {
 
     const params = [];
     let paramCount = 1;
+
+    // RENDER OS comparte usuarios y clientes con el sistema vigente, pero
+    // empieza con un tablero de tareas nuevo. El marcador vive en JSONB para
+    // conservar intacto el historial anterior sin duplicar ni borrar datos.
+    if (workspace === "render_os") {
+      query += ` AND t.propiedades_extra->>'workspace' = 'render_os'`;
+    }
 
     if (asignado_a) {
       query += ` AND t.asignado_a = $${paramCount}`;

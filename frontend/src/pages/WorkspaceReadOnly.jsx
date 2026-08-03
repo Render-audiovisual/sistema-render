@@ -51,7 +51,7 @@ function apiJson(url) {
 }
 
 async function apiTaskPage(offset = 0) {
-  const response = await fetch(`/api/tareas?incluir_archivadas=true&limit=500&offset=${offset}`);
+  const response = await fetch(`/api/tareas?workspace=render_os&incluir_archivadas=true&limit=500&offset=${offset}`);
   const body = await response.json().catch(() => []);
   if (!response.ok) throw new Error(body.error || "No se pudieron cargar las tareas.");
   const items = Array.isArray(body) ? body : [];
@@ -553,7 +553,7 @@ export function WorkspaceReadOnlyPage({ path, sesion, staging = false }) {
   };
   const createTask = async (draft) => {
     try {
-      const created = await apiRequest("/api/tareas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });
+      const created = await apiRequest("/api/tareas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...draft, workspace: "render_os" }) });
       const client = clients.find((item) => String(item.id) === String(created.cliente_id));
       const complete = { ...created, cliente_nombre: client?.nombre || null };
       setTasks((current) => [complete, ...current]);
