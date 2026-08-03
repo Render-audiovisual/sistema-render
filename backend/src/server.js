@@ -1688,6 +1688,54 @@ router.get("/tareas/:id", async (req, res, next) => {
   }
 });
 
+router.get("/tareas/:id/subtareas", async (req, res, next) => {
+  try {
+    if (req.query.workspace !== "render_os") {
+      return res.status(400).json({ error: "Falta un workspace válido." });
+    }
+
+    const padre = await pool.query(
+      `SELECT id FROM tareas
+       WHERE id = $1
+         AND propiedades_extra->>'workspace' = 'render_os'`,
+      [req.params.id],
+    );
+    if (padre.rows.length === 0) {
+      return res.status(404).json({ error: "Tarea no encontrada." });
+    }
+
+    const result = await pool.query(
+      `SELECT
+         t.id, t.titulo, t.estado, t.asignado_a, t.requiere_aprobacion,
+         t.tarea_padre_id, padre.estado AS tarea_padre_estado,
+         t.propiedades_extra, t.cliente_id, c.nombre AS cliente_nombre,
+         to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
+         t.historia_id, t.publicacion_id,
+         COALESCE(t.material_referencia, h.material_referencia, p.material_referencia) AS material_referencia,
+         COALESCE(t.aclaraciones, h.aclaraciones, p.aclaraciones) AS aclaraciones,
+         t.tipo_tarea, t.subtipo, t.prioridad, t.created_at, t.updated_at,
+         to_char(h.fecha_programada, 'YYYY-MM-DD') AS historia_fecha_programada,
+         h.estado AS historia_estado,
+         to_char(p.fecha_programada, 'YYYY-MM-DD') AS publicacion_fecha_programada,
+         p.estado AS publicacion_estado, p.tipo AS publicacion_tipo
+       FROM tareas t
+       LEFT JOIN clientes c ON c.id = t.cliente_id
+       LEFT JOIN tareas padre
+         ON padre.id = t.tarea_padre_id
+        AND padre.propiedades_extra->>'workspace' = 'render_os'
+       LEFT JOIN historias h ON h.id = t.historia_id
+       LEFT JOIN publicaciones p ON p.id = t.publicacion_id
+       WHERE t.tarea_padre_id = $1
+         AND t.propiedades_extra->>'workspace' = 'render_os'
+       ORDER BY t.id`,
+      [req.params.id],
+    );
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/tareas/:id/comentarios", async (req, res, next) => {
   try {
     const esRenderOS = req.query.workspace === "render_os";
@@ -1738,7 +1786,7 @@ router.post("/tareas/:id/comentarios", async (req, res, next) => {
 
     if (!contenido.startsWith("[Actividad]")) {
       void pool.query(
-        `SELECT id, titulo, asignado_a, cliente_id, prioridad,
+        `SELECT id, titulo, asignado_a, cliente_id, prioridad, propiedades_extra,
                 to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento
          FROM tareas WHERE id = $1`,
         [req.params.id],

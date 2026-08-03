@@ -71,9 +71,11 @@ export function crearContenidoCorreo({
     revision: "La tarea pasó a revisión",
     bloqueada: "Hay un bloqueo en tu tarea",
   })[motivo] || "Tenés una nueva tarea";
-  const enlace = `${appUrl.replace(/\/$/, "")}/workspace/tareas?task=${encodeURIComponent(
-    tarea.id,
-  )}`;
+  const esRenderOS = tarea.propiedades_extra?.workspace === "render_os";
+  const rutaTarea = esRenderOS
+    ? `/workspace/tareas?task=${encodeURIComponent(tarea.id)}`
+    : `/piezas?tarea=${encodeURIComponent(tarea.id)}`;
+  const enlace = `${appUrl.replace(/\/$/, "")}${rutaTarea}`;
   const fecha = tarea.fecha_vencimiento || "Sin fecha definida";
   const prioridad = tarea.prioridad || "media";
   const cliente = clienteNombre || "Sin cliente";

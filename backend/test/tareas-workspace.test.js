@@ -78,6 +78,16 @@ test(
       assert.equal(secondResponse.response.status, 201);
       ids.push(secondResponse.body.id);
 
+      await pool.query("UPDATE tareas SET tarea_padre_id = $1 WHERE id = $2", [taskId, historicalId]);
+
+      const subtasks = await request(`/tareas/${taskId}/subtareas?workspace=render_os`);
+      assert.equal(subtasks.response.status, 200);
+      assert.deepEqual(subtasks.body.map((item) => item.id), [secondResponse.body.id]);
+      assert.ok(subtasks.body.every((item) => item.propiedades_extra.workspace === "render_os"));
+
+      const historicalSubtasks = await request(`/tareas/${historicalId}/subtareas?workspace=render_os`);
+      assert.equal(historicalSubtasks.response.status, 404);
+
       const direct = await request(`/tareas/${taskId}?workspace=render_os`);
       assert.equal(direct.response.status, 200);
       assert.equal(direct.body.id, taskId);

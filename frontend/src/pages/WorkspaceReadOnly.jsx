@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ESTADO_FINAL_TAREA, ROL_LABELS } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea } from "../utils.jsx";
+import { mergeRelatedTasks } from "../workspace-task-state.js";
 import "./WorkspaceReadOnly.css";
 
 const STATUSES = [
@@ -54,6 +55,10 @@ function apiTaskById(id) {
   return apiRequest(`/api/tareas/${id}?workspace=render_os`);
 }
 
+function apiSubtasks(id) {
+  return apiJson(`/api/tareas/${id}/subtareas?workspace=render_os`);
+}
+
 function areaForTask(task) {
   const text = `${task.tipo_tarea || ""} ${task.subtipo || ""} ${task.titulo || ""}`.toLowerCase();
   if (text.includes("chatbot") || text.includes("bot ")) return "chatbots";
@@ -105,7 +110,7 @@ function Toast({ toast, onClose }) {
   return <button type="button" className={`ros-toast ${toast.type || "success"}`} onClick={onClose}><span>{toast.type === "error" ? "!" : "✓"}</span>{toast.message}</button>;
 }
 
-function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onUpdate, onArchive, onDelete, onCreateSubtask }) {
+function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onArchive, onDelete, onCreateSubtask }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task || {});
   const [comments, setComments] = useState([]);
@@ -130,7 +135,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onUp
     apiJson(`/api/tareas/${task.id}/comentarios?workspace=render_os`)
       .then(setComments)
       .catch((reason) => setCommentError(reason.message || "No se pudieron cargar los comentarios."));
-  }, [task?.id, task?.updated_at]);
+    onLoadSubtasks(task.id).catch((reason) => setCommentError(reason.message || "No se pudieron cargar las subtareas."));
+  }, [task?.id, task?.updated_at, onLoadSubtasks]);
 
   useEffect(() => {
     if (!task) return undefined;
@@ -191,7 +197,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onUp
     setCommenting(true);
     setCommentError("");
     try {
-      const created = await apiRequest(`/api/tareas/${task.id}/comentarios`, {
+      const created = await apiRequest(`/api/tareas/${task.id}/comentarios?workspace=render_os`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER", contenido: content }),
@@ -360,12 +366,29 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const paginatedTaskCount = tasks.filter((task) => !task.__renderOsDirectOnly).length;
   const hasFilters = responsible !== "all" || client !== "all" || sector !== "all" || priority !== "all" || area !== "all";
 
-  const openTask = useCallback((id) => {
-    setSelectedId(id);
-    const url = new URL(window.location.href);
-    url.searchParams.set("task", String(id));
-    window.history.pushState({ task: id }, "", url);
+  const incorporateRelatedTasks = useCallback((items) => {
+    window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: items }));
   }, []);
+  const loadSubtasks = useCallback(async (id) => {
+    const items = await apiSubtasks(id);
+    incorporateRelatedTasks(items);
+    return items;
+  }, [incorporateRelatedTasks]);
+
+  const openTask = useCallback(async (id) => {
+    try {
+      if (!tasks.some((task) => task.id === id)) {
+        const task = await apiTaskById(id);
+        incorporateRelatedTasks([task]);
+      }
+      setSelectedId(id);
+      const url = new URL(window.location.href);
+      url.searchParams.set("task", String(id));
+      window.history.pushState({ task: id }, "", url);
+    } catch {
+      // El contenedor informa el rechazo seguro sin abrir un detalle inválido.
+    }
+  }, [tasks, incorporateRelatedTasks]);
   const closeTask = useCallback(() => {
     setSelectedId(null);
     const url = new URL(window.location.href);
@@ -400,7 +423,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     {view === "calendar" && <TaskCalendar tasks={visible} onOpen={openTask}/>} {view === "clients" && <TasksByClient tasks={visible} onOpen={openTask}/>} {visible.length === 0 && <div className="ros-no-results">No hay tareas con estos filtros.</div>}
     {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
-  <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onUpdate={onUpdate} onArchive={archiveTask} onDelete={async (id) => { await onDelete(id); closeTask(); }} onCreateSubtask={createSubtask}/>
+  <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onArchive={archiveTask} onDelete={async (id) => { await onDelete(id); closeTask(); }} onCreateSubtask={createSubtask}/>
   {creating && <NewTaskModal users={users} clients={clients} onClose={() => setCreating(false)} onCreate={async (draft) => { const created = await onCreate(draft); setCreating(false); openTask(created.id); }}/>}</>;
 }
 
@@ -438,6 +461,15 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [isAdmin]);
+
+  useEffect(() => {
+    const incorporate = (event) => {
+      const items = Array.isArray(event.detail) ? event.detail : [];
+      setTasks((current) => mergeRelatedTasks(current, items));
+    };
+    window.addEventListener("render-os:related-tasks", incorporate);
+    return () => window.removeEventListener("render-os:related-tasks", incorporate);
+  }, []);
 
   const loadMoreTasks = async () => {
     const paginatedTaskCount = tasks.filter((task) => !task.__renderOsDirectOnly).length;
