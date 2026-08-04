@@ -5957,15 +5957,15 @@ tr:hover .sheet-row-actions {
 }
 
 .report-filmmaker-card {
-  background: #172330;
-  border-color: #26384a!important;
-  color: #fff;
-  grid-column: span 2;
+  background: #f3f6f8;
+  border-color: #d8e0e6!important;
+  color: #1d2d3d;
+  grid-column: span 1;
 }
 
 .report-filmmaker-header {
   align-items: center;
-  border-bottom: 1px solid rgba(255,255,255,.10);
+  border-bottom: 1px solid #dce3e8;
   display: flex;
   gap: 11px;
   padding-bottom: 15px;
@@ -5994,7 +5994,7 @@ tr:hover .sheet-row-actions {
 }
 
 .report-filmmaker-header small {
-  color: #99a9ba;
+  color: #73808c;
   font-size: 10px;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -6004,11 +6004,12 @@ tr:hover .sheet-row-actions {
   align-items: center;
   display: flex;
   gap: 13px;
-  padding: 17px 0;
+  padding: 14px 0;
 }
 
 .report-filmmaker-total > strong {
-  font-size: 38px;
+  color: #1d3145;
+  font-size: 31px;
   letter-spacing: -.04em;
   line-height: 1;
 }
@@ -6024,20 +6025,20 @@ tr:hover .sheet-row-actions {
 }
 
 .report-filmmaker-total small {
-  color: #9dabb9;
+  color: #77838e;
   font-size: 10px;
 }
 
 .report-filmmaker-locations {
-  background: rgba(255,255,255,.055);
-  border: 1px solid rgba(255,255,255,.08);
+  background: #fff;
+  border: 1px solid #dce3e8;
   border-radius: 10px;
   display: grid;
   overflow: hidden;
 }
 
 .report-filmmaker-label {
-  color: #9eacbb;
+  color: #77838e;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: .08em;
@@ -6047,7 +6048,7 @@ tr:hover .sheet-row-actions {
 
 .report-filmmaker-location {
   align-items: center;
-  border-top: 1px solid rgba(255,255,255,.08);
+  border-top: 1px solid #e5eaee;
   display: flex;
   gap: 12px;
   justify-content: space-between;
@@ -6070,14 +6071,14 @@ tr:hover .sheet-row-actions {
 }
 
 .report-filmmaker-location small {
-  color: #a6b4c2;
+  color: #77838e;
   font-size: 9px;
 }
 
 .report-filmmaker-location b {
-  background: #503c2b;
+  background: #f5e8d8;
   border-radius: 999px;
-  color: #eac79f;
+  color: #8a5822;
   font-size: 8px;
   font-weight: 600;
   margin-left: 5px;
@@ -6085,16 +6086,12 @@ tr:hover .sheet-row-actions {
 }
 
 .report-filmmaker-locations > p {
-  border-top: 1px solid rgba(255,255,255,.08);
-  color: #a6b4c2;
+  border-top: 1px solid #e5eaee;
+  color: #77838e;
   font-size: 11px;
   line-height: 1.5;
   margin: 0;
-  padding: 15px 12px;
-}
-
-@media (max-width: 900px) {
-  .report-filmmaker-card { grid-column:span 1; }
+  padding: 12px;
 }
 
 @media (max-width: 560px) {
