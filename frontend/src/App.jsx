@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React from "react";
 import { cerrarSesion, getRutaUsuario, getSesion, getSesionDelPath } from "./utils.jsx";
 import { ROL_LABELS, USUARIO_A_RUTA } from "./constants.js";
 import { AugustoDashboard } from "./pages/dashboards/Augusto.jsx";
@@ -15,6 +15,7 @@ import { PublicacionesPage } from "./pages/Publicaciones.jsx";
 import { ReportesEquipoPage } from "./pages/Reportes.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { TareasTableroPage } from "./pages/TareasTablero.jsx";
+import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
 
 export function App() {
   const path = window.location.pathname;
@@ -51,13 +52,17 @@ export function App() {
     return null;
   }
 
-  const rutasCompartidas = ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil", "/piezas"];
+  const rutasCompartidas = ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil", "/piezas", "/workspace/tareas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
 
   if (!rutaPermitida) {
     window.location.href = rutaPropia || "/";
     return null;
+  }
+
+  if (path === "/workspace/tareas") {
+    return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
   }
 
   const dashboard = (() => {

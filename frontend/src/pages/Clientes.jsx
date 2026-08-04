@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { calcularPorcentajeCuota, getClaveFeed, getCuotaCarruselesMensual, getCuotaReelsMensual, getMesActualISO, getPublicacionesDelMismoFeed, getResumenClientesActivos } from "../utils.jsx";
 import { EditarCuotaClienteModal, DetalleClienteModal } from "../components/ClienteModals.jsx";
 import { Modal } from "../components/Modal.jsx";

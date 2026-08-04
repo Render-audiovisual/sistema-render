@@ -58,13 +58,14 @@ test("solo considera configurado el correo con credenciales completas", () => {
   );
 });
 
-test("arma el aviso con los datos operativos y enlace directo", () => {
+test("arma el aviso RENDER OS con los datos operativos y enlace directo", () => {
   const contenido = crearContenidoCorreo({
     tarea: {
       id: 42,
       titulo: "Carrusel de prueba",
       fecha_vencimiento: "2026-07-25",
       prioridad: "alta",
+      propiedades_extra: { workspace: "render_os" },
     },
     destinatario: usuarios[1],
     clienteNombre: "Luzin",
@@ -74,7 +75,36 @@ test("arma el aviso con los datos operativos y enlace directo", () => {
   assert.match(contenido.subject, /Carrusel de prueba/);
   assert.match(contenido.text, /Cliente: Luzin/);
   assert.match(contenido.text, /Fecha de entrega: 2026-07-25/);
-  assert.match(contenido.text, /piezas\?tarea=42/);
+  assert.match(contenido.text, /workspace\/tareas\?task=42/);
+});
+
+test("conserva el enlace histórico para tareas sin workspace RENDER OS", () => {
+  const contenido = crearContenidoCorreo({
+    tarea: {
+      id: 43,
+      titulo: "Tarea histórica",
+      propiedades_extra: {},
+    },
+    destinatario: usuarios[1],
+    appUrl: "https://plataforma.example.com/",
+  });
+
+  assert.match(contenido.text, /\/piezas\?tarea=43/);
+  assert.doesNotMatch(contenido.text, /workspace\/tareas/);
+});
+
+test("distingue comentarios, revisión y bloqueos en las notificaciones", () => {
+  const base = {
+    tarea: { id: 42, titulo: "Carrusel de prueba", prioridad: "alta", propiedades_extra: { workspace: "render_os" } },
+    destinatario: usuarios[1],
+    detalle: "Agustín: falta el material",
+  };
+
+  assert.match(crearContenidoCorreo({ ...base, motivo: "comentario" }).subject, /comentario nuevo/i);
+  assert.match(crearContenidoCorreo({ ...base, motivo: "revision" }).subject, /pasó a revisión/i);
+  const bloqueo = crearContenidoCorreo({ ...base, motivo: "bloqueada" });
+  assert.match(bloqueo.subject, /bloqueo/i);
+  assert.match(bloqueo.text, /Agustín: falta el material/);
 });
 
 test("resuelve SMTP a IPv4 sin perder el hostname usado por TLS", async () => {

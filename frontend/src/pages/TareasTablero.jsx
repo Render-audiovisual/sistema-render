@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { esperandoMaterial, extraerUrlsTarea, fechaISODesde, formatearFechaTarea, getEstadoTarea, getGrillaMes, getHoyLocalISO, getPrioridadTarea, getSectorTarea, getSesion, getTipoPublicacionLabel, getUsuarioKey, obtenerInfoLinkTarea, ordenarTareasPorPrioridad, renderizarTextoTarea } from "../utils.jsx";
 import { DIAS_SEMANA, ESTADO_FINAL_TAREA, ESTADOS_TAREA, MESES, PRIORIDADES_TAREA, RESPONSABLES_EQUIPO, SECTORES_TAREA, SUBTIPOS_SUGERIDOS } from "../constants.js";
 import { Modal } from "../components/Modal.jsx";
@@ -316,8 +316,6 @@ export function TareasTableroPage() {
     </main>
   );
 }
-
-const URL_EN_TAREA_REGEX = /(https?:\/\/[^\s<>"')\]]+)/gi;
 
 export function TareaDetallePanel({
   tarea,

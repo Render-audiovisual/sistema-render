@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { getAprobacionesLider, getCumplimientoGeneral, getEdicionesEsperandoMaterial, getEstadoLabel, getEstadoPorObjetivo, getHoyLocalISO, getMesActualISO, getPanoramaClientes, getPiezasAtrasadas, getPiezasBloqueadas, getPorcentajesCliente, getPublicacionesDeHoy, getPublicacionesDelMismoFeed, getResumenEquipo, getTareasParaAsignar, getTipoPublicacionLabel } from "../../utils.jsx";
 import { ESTADO_FINAL_TAREA } from "../../constants.js";
 import { EditarCuotaClienteModal, DetalleClienteModal } from "../../components/ClienteModals.jsx";
@@ -967,4 +967,3 @@ export function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) 
     </Modal>
   );
 }
-
