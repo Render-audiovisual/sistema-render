@@ -1474,8 +1474,8 @@ export function HistoriasPage({ initialTab = "planilla" }) {
                 <details className={`stories-tools-menu ${["estructura", "fechas"].includes(vista) ? "active" : ""}`}>
                   <summary>Herramientas <span aria-hidden="true">⌄</span></summary>
                   <div className="stories-tools-panel">
-                    <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => cambiarVista("estructura")}><strong>Estructura semanal</strong><small>Configurá temas y horarios sugeridos.</small></button>
-                    <button type="button" className={vista === "fechas" ? "active" : ""} onClick={() => cambiarVista("fechas")}><strong>Fechas especiales</strong><small>Consultá oportunidades del calendario.</small></button>
+                    <button type="button" className={vista === "estructura" ? "active" : ""} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); cambiarVista("estructura"); }}><strong>Estructura semanal</strong><small>Configurá temas y horarios sugeridos.</small></button>
+                    <button type="button" className={vista === "fechas" ? "active" : ""} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); cambiarVista("fechas"); }}><strong>Fechas especiales</strong><small>Consultá oportunidades del calendario.</small></button>
                   </div>
                 </details>
 
