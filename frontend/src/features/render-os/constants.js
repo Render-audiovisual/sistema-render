@@ -1,11 +1,11 @@
 export const RENDER_OS_WORKSPACE = "render_os";
 
 export const STATUSES = [
-  { id: "pendiente", label: "Por hacer", color: "#8d9095" },
-  { id: "en_progreso", label: "En progreso", color: "#3378d4" },
-  { id: "en_revision", label: "En revisión", color: "#df9830" },
+  { id: "pendiente", label: "Pendientes", color: "#8d9095" },
+  { id: "en_progreso", label: "En proceso", color: "#3378d4" },
+  { id: "en_revision", label: "Terminadas / revisión", color: "#df9830" },
   { id: "programada", label: "Programada", color: "#8d63c7" },
-  { id: "publicada", label: "Terminado", color: "#34a16f" },
+  { id: "publicada", label: "Publicadas", color: "#34a16f" },
 ];
 
 export const AREAS = [
