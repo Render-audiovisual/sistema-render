@@ -6279,7 +6279,7 @@ tr:hover .sheet-row-actions {
   text-decoration: none;
 }
 
-.brand-mark > span {
+.brand-initial {
   align-items: center;
   background: #fff;
   border-radius: 9px;
@@ -6300,7 +6300,7 @@ tr:hover .sheet-row-actions {
 
 .brand-greeting > strong {
   color: #fff;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1.2;
   overflow: hidden;
@@ -6309,8 +6309,8 @@ tr:hover .sheet-row-actions {
 }
 
 .brand-greeting > small {
-  color: #8f9bad;
-  font-size: 9px;
+  color: #b4becb;
+  font-size: 10px;
   line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6455,7 +6455,7 @@ tr:hover .sheet-row-actions {
     padding: 0;
   }
 
-  .brand-mark > span {
+  .brand-initial {
     height: 30px;
     width: 30px;
   }
@@ -6465,8 +6465,8 @@ tr:hover .sheet-row-actions {
   }
 
   .brand-greeting > small {
-    font-size: 8px;
-    max-width: 190px;
+    font-size: 9px;
+    max-width: 205px;
   }
 
   .sidebar-drawer {
