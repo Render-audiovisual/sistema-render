@@ -1442,6 +1442,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
     const body = req.body;
     let asignadoAnterior = null;
     let estadoAnterior = null;
+    let colaboradoresAnteriores = [];
     const esRenderOS = req.query.workspace === "render_os";
 
     if (Object.prototype.hasOwnProperty.call(body, "estado")) {
@@ -1461,14 +1462,18 @@ router.patch("/tareas/:id", async (req, res, next) => {
     }
     if (
       Object.prototype.hasOwnProperty.call(body, "asignado_a") ||
-      Object.prototype.hasOwnProperty.call(body, "estado")
+      Object.prototype.hasOwnProperty.call(body, "estado") ||
+      Object.prototype.hasOwnProperty.call(body.propiedades_extra || {}, "colaboradores")
     ) {
       const tareaAnterior = await pool.query(
-        "SELECT asignado_a, estado FROM tareas WHERE id = $1",
+        "SELECT asignado_a, estado, propiedades_extra FROM tareas WHERE id = $1",
         [id],
       );
       asignadoAnterior = tareaAnterior.rows[0]?.asignado_a || null;
       estadoAnterior = tareaAnterior.rows[0]?.estado || null;
+      colaboradoresAnteriores = Array.isArray(tareaAnterior.rows[0]?.propiedades_extra?.colaboradores)
+        ? tareaAnterior.rows[0].propiedades_extra.colaboradores
+        : [];
     }
     if (Object.prototype.hasOwnProperty.call(body, "tipo_tarea")) {
       if (body.tipo_tarea !== null && !TIPOS_TAREA_VALIDOS.includes(body.tipo_tarea)) {
@@ -1556,6 +1561,18 @@ router.patch("/tareas/:id", async (req, res, next) => {
       normalizarNombre(asignadoAnterior) !==
         normalizarNombre(tareaActualizada.asignado_a)
     ) {
+      notificarAsignacionSinInterrumpir({
+        pool,
+        tarea: tareaActualizada,
+        motivo: "reasignada",
+      });
+    }
+    const colaboradoresActuales = Array.isArray(tareaActualizada.propiedades_extra?.colaboradores)
+      ? tareaActualizada.propiedades_extra.colaboradores
+      : [];
+    const cambiaronColaboradores = Object.prototype.hasOwnProperty.call(body.propiedades_extra || {}, "colaboradores")
+      && JSON.stringify(colaboradoresAnteriores.map(normalizarNombre).sort()) !== JSON.stringify(colaboradoresActuales.map(normalizarNombre).sort());
+    if (cambiaronColaboradores && normalizarNombre(asignadoAnterior) === normalizarNombre(tareaActualizada.asignado_a)) {
       notificarAsignacionSinInterrumpir({
         pool,
         tarea: tareaActualizada,

@@ -6,6 +6,8 @@ import {
   crearContenidoCorreo,
   enviarInstruccionesAcceso,
   normalizarNombre,
+  notificarAsignacionTarea,
+  responsablesNotificables,
   resolverSMTPIPv4,
 } from "../src/email-notifications.js";
 
@@ -45,6 +47,30 @@ test("resuelve Germán por nombre y Líder para Agus o Franco", async () => {
     (await buscarDestinatario(pool, "Franco")).email_notificaciones,
     "lider@example.com",
   );
+});
+
+test("RENDER OS notifica al responsable principal y a colaboradores sin duplicados", async () => {
+  const tarea = {
+    id: 45,
+    titulo: "Tarea compartida",
+    asignado_a: "Germán",
+    propiedades_extra: { workspace: "render_os", colaboradores: ["Agus", "GERMÁN"] },
+  };
+  assert.deepEqual(responsablesNotificables(tarea), ["Germán", "Agus"]);
+  const enviados = [];
+  const result = await notificarAsignacionTarea({
+    pool,
+    tarea,
+    env: { SMTP_HOST: "smtp.example.com", SMTP_USER: "render@example.com", SMTP_PASS: "secret" },
+    transporter: {
+      async sendMail(options) {
+        enviados.push(options.to);
+        return { messageId: `mail-${enviados.length}` };
+      },
+    },
+  });
+  assert.equal(result.enviado, true);
+  assert.deepEqual(enviados.sort(), ["german@example.com", "lider@example.com"]);
 });
 
 test("solo considera configurado el correo con credenciales completas", () => {

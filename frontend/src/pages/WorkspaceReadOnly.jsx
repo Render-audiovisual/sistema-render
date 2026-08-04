@@ -269,12 +269,13 @@ function NewTaskModal({ users, clients, onClose, onCreate }) {
 function TaskCard({ task, users, today, onOpen, onMove }) {
   const person = personForTask(task, users);
   const tags = Array.isArray(task.propiedades_extra?.etiquetas) ? task.propiedades_extra.etiquetas : [];
+  const collaborators = Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [];
   return <article role="button" tabIndex={0} draggable className="ros-task-card" onDragStart={(event) => { event.dataTransfer.setData("text/task-id", String(task.id)); event.dataTransfer.effectAllowed = "move"; }} onClick={() => onOpen(task.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onOpen(task.id); }}>
     <AreaBadge task={task}/><h3>{task.titulo}</h3><p>{task.cliente_nombre || "Sin cliente"}</p>
     {task.propiedades_extra?.resumen && <div className="ros-card-summary">{task.propiedades_extra.resumen}</div>}
     {tags.length > 0 && <div className="ros-card-tags">{tags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}
     {esperandoMaterial(task) && <div className="ros-card-warning">Esperando material</div>}
-    <footer><Avatar person={person} name={task.asignado_a}/><span>{task.asignado_a || "Sin asignar"}</span><b className={task.fecha_vencimiento && task.fecha_vencimiento < today && task.estado !== ESTADO_FINAL_TAREA ? "urgent" : ""}>□ {formatDate(task.fecha_vencimiento)}</b></footer>
+    <footer><Avatar person={person} name={task.asignado_a}/><span title={collaborators.length ? `Colaboran: ${collaborators.join(", ")}` : ""}>{task.asignado_a || "Sin asignar"}{collaborators.length ? ` +${collaborators.length}` : ""}</span><b className={task.fecha_vencimiento && task.fecha_vencimiento < today && task.estado !== ESTADO_FINAL_TAREA ? "urgent" : ""}>□ {formatDate(task.fecha_vencimiento)}</b></footer>
     <select className="ros-mobile-state" aria-label={`Cambiar estado de ${task.titulo}`} value={task.estado} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.stopPropagation(); onMove(task, event.target.value); }}>{STATUSES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select>
   </article>;
 }
@@ -409,7 +410,11 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   const [sector, setSector] = useState(initialViewState.sector);
   const [priority, setPriority] = useState(initialViewState.priority);
   const [archiveMode, setArchiveMode] = useState(initialViewState.archiveMode);
+  const tasksRef = useRef(tasks);
+  const updateQueuesRef = useRef(new Map());
   const isAdmin = sesion?.usuario?.rol === "admin";
+
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
 
   useEffect(() => {
     let active = true;
@@ -484,25 +489,46 @@ export function WorkspaceReadOnlyPage({ sesion }) {
 
   const notify = (message, type = "success") => { setToast({ message, type }); window.clearTimeout(window.__rosToastTimer); window.__rosToastTimer = window.setTimeout(() => setToast(null), 3500); };
   const logActivity = (taskId, message) => apiRequest(`/api/tareas/${taskId}/comentarios?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER", contenido: `[Actividad] ${message}` }) });
-  const updateTask = async (id, changes, activity) => {
-    const previous = tasks.find((task) => task.id === id);
-    setTasks((current) => current.map((task) => task.id === id ? { ...task, ...changes } : task));
-    try {
-      const updated = await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_updated_at: previous?.updated_at || undefined }) });
-      const client = clients.find((item) => String(item.id) === String(updated.cliente_id));
-      setTasks((current) => current.map((task) => task.id === id ? { ...task, ...updated, cliente_nombre: client?.nombre || null } : task));
-      let historyFailed = false;
-      if (activity) {
-        try { await logActivity(id, activity); }
-        catch { historyFailed = true; }
+  const updateTask = (id, changes, activity) => {
+    const run = async () => {
+      const previous = tasksRef.current.find((task) => task.id === id);
+      if (!previous) throw new Error("La tarea ya no está disponible.");
+      setTasks((current) => current.map((task) => task.id === id ? { ...task, ...changes } : task));
+      try {
+        const updated = await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_updated_at: previous.updated_at || undefined }) });
+        const selectedClient = clients.find((item) => String(item.id) === String(updated.cliente_id));
+        const complete = { ...previous, ...updated, cliente_nombre: selectedClient?.nombre || null };
+        tasksRef.current = tasksRef.current.map((task) => task.id === id ? complete : task);
+        setTasks((current) => current.map((task) => task.id === id ? complete : task));
+        let historyFailed = false;
+        if (activity) {
+          try { await logActivity(id, activity); }
+          catch { historyFailed = true; }
+        }
+        notify(historyFailed ? "Cambio guardado, pero no se pudo registrar la actividad." : "Cambio guardado en la tarea real.", historyFailed ? "error" : "success");
+        return complete;
+      } catch (reason) {
+        if (reason.status === 409) {
+          try {
+            const currentTask = await apiTaskById(id);
+            tasksRef.current = tasksRef.current.map((task) => task.id === id ? currentTask : task);
+            setTasks((current) => current.map((task) => task.id === id ? currentTask : task));
+          } catch {
+            setTasks((current) => current.filter((task) => task.id !== id));
+          }
+        } else {
+          tasksRef.current = tasksRef.current.map((task) => task.id === id ? previous : task);
+          setTasks((current) => current.map((task) => task.id === id ? previous : task));
+        }
+        notify(reason.message || "No se pudo guardar el cambio.", "error");
+        throw reason;
       }
-      notify(historyFailed ? "Cambio guardado, pero no se pudo registrar la actividad." : "Cambio guardado en la tarea real.", historyFailed ? "error" : "success");
-      return updated;
-    } catch (reason) {
-      setTasks((current) => current.map((task) => task.id === id ? previous : task));
-      notify(reason.message || "No se pudo guardar el cambio.", "error");
-      throw reason;
-    }
+    };
+    const previousQueue = updateQueuesRef.current.get(id) || Promise.resolve();
+    const queued = previousQueue.catch(() => {}).then(run);
+    updateQueuesRef.current.set(id, queued);
+    void queued.finally(() => { if (updateQueuesRef.current.get(id) === queued) updateQueuesRef.current.delete(id); }).catch(() => {});
+    return queued;
   };
   const createTask = async (draft) => {
     try {

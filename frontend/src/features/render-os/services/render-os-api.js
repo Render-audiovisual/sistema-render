@@ -3,7 +3,11 @@ const WORKSPACE_QUERY = "workspace=render_os";
 export async function apiRequest(url, options) {
   const response = await fetch(url, options);
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || "No se pudo completar la operación.");
+  if (!response.ok) {
+    const error = new Error(body.error || "No se pudo completar la operación.");
+    error.status = response.status;
+    throw error;
+  }
   return body;
 }
 

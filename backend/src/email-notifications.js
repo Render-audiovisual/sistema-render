@@ -57,6 +57,15 @@ export async function buscarDestinatario(pool, asignadoA) {
   );
 }
 
+export function responsablesNotificables(tarea) {
+  const colaboradores = tarea?.propiedades_extra?.workspace === "render_os" && Array.isArray(tarea.propiedades_extra.colaboradores)
+    ? tarea.propiedades_extra.colaboradores
+    : [];
+  return [tarea?.asignado_a, ...colaboradores]
+    .map((name) => String(name || "").trim())
+    .filter((name, index, items) => name && items.findIndex((item) => normalizarNombre(item) === normalizarNombre(name)) === index);
+}
+
 export function crearContenidoCorreo({
   tarea,
   destinatario,
@@ -170,8 +179,9 @@ export async function notificarAsignacionTarea({
     return { enviado: false, razon: "correo_no_configurado" };
   }
 
-  const destinatario = await buscarDestinatario(pool, tarea.asignado_a);
-  if (!destinatario?.email_notificaciones) {
+  const candidatos = await Promise.all(responsablesNotificables(tarea).map((name) => buscarDestinatario(pool, name)));
+  const destinatarios = candidatos.filter((candidate, index, items) => candidate?.email_notificaciones && items.findIndex((item) => item?.email_notificaciones === candidate.email_notificaciones) === index);
+  if (destinatarios.length === 0) {
     return { enviado: false, razon: "responsable_sin_correo" };
   }
 
@@ -184,27 +194,30 @@ export async function notificarAsignacionTarea({
     clienteNombre = cliente.rows[0]?.nombre || null;
   }
 
-  const contenido = crearContenidoCorreo({
-    tarea,
-    destinatario,
-    clienteNombre,
-    motivo,
-    detalle,
-    appUrl: env.APP_URL || APP_URL_POR_DEFECTO,
-  });
-
   const mailer = transporter || (await crearTransporter(env));
-  const info = await mailer.sendMail({
-    from: env.EMAIL_FROM || env.SMTP_USER,
-    to: destinatario.email_notificaciones,
-    replyTo: env.EMAIL_REPLY_TO || undefined,
-    ...contenido,
-  });
+  const deliveries = await Promise.all(destinatarios.map(async (destinatario) => {
+    const contenido = crearContenidoCorreo({
+      tarea,
+      destinatario,
+      clienteNombre,
+      motivo,
+      detalle,
+      appUrl: env.APP_URL || APP_URL_POR_DEFECTO,
+    });
+    const info = await mailer.sendMail({
+      from: env.EMAIL_FROM || env.SMTP_USER,
+      to: destinatario.email_notificaciones,
+      replyTo: env.EMAIL_REPLY_TO || undefined,
+      ...contenido,
+    });
+    return { destinatario: destinatario.email_notificaciones, messageId: info.messageId };
+  }));
 
   return {
     enviado: true,
-    destinatario: destinatario.email_notificaciones,
-    messageId: info.messageId,
+    destinatario: deliveries[0].destinatario,
+    destinatarios: deliveries.map((item) => item.destinatario),
+    messageId: deliveries[0].messageId,
   };
 }
 
