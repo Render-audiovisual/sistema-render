@@ -410,14 +410,6 @@ export function HistoriasPlanillaTab({
                   </tr>
                 );
               })}
-              <tr>
-                <td className="sheet-row-number">{filasVisibles.length + 1}</td>
-                <td colSpan={11} style={{ padding: 0 }}>
-                  <button type="button" className="sheet-add-row" onClick={onAgregar}>
-                    <span style={{ fontSize: "15px" }}>+</span> Agregar historia
-                  </button>
-                </td>
-              </tr>
             </tbody>
           </table>
         </div>
@@ -1211,7 +1203,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   const initialContext = readUrlContext(window.location.search, { vista: initialTab, cliente: "", mes: "" });
   const initialDate = readMonthContext(initialContext.mes, new Date().getFullYear(), new Date().getMonth());
   const [vista, setVista] = useState(
-    ["estructura", "checklist", "fechas"].includes(initialContext.vista) ? initialContext.vista : "estructura",
+    ["planilla", "estructura", "checklist", "fechas"].includes(initialContext.vista) ? initialContext.vista : "estructura",
   );
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(Number(initialContext.cliente) || null);
@@ -1241,7 +1233,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     const restoreContext = () => {
       const context = readUrlContext(window.location.search, { vista: "estructura", cliente: "", mes: "" });
       const date = readMonthContext(context.mes, hoyDate.getFullYear(), hoyDate.getMonth());
-      setVista(["estructura", "checklist", "fechas"].includes(context.vista) ? context.vista : "estructura");
+      setVista(["planilla", "estructura", "checklist", "fechas"].includes(context.vista) ? context.vista : "estructura");
       setClienteSeleccionado(Number(context.cliente) || null);
       setYear(date.year);
       setMonth(date.month);
@@ -1453,6 +1445,9 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     <main aria-label="Render platform historias" className="historias-viewport">
       <div className="frame">
         <div className="content">
+          <header className="module-intro">
+            <div><div className="section-label">Historias</div><h2>¿Qué historias están planificadas?</h2><p>Organizá el contenido por cliente y período sin perder el contexto.</p></div>
+          </header>
           {(errorClientes || errorHistorias) && (
             <div style={{ padding: "10px", background: "#ffebee", color: "#c62828" }}>
               {errorClientes || errorHistorias}
@@ -1487,6 +1482,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
                 )}
 
                 <div className="sheet-view-tabs" style={{ margin: 0 }}>
+                  <button type="button" className={vista === "planilla" ? "active" : ""} onClick={() => { pushUrlContext({ vista: "planilla" }); setVista("planilla"); }}>Planificación</button>
                   <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => { pushUrlContext({ vista: "estructura" }); setVista("estructura"); }}>Estructura</button>
                   <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => { pushUrlContext({ vista: "checklist" }); setVista("checklist"); }}>Checklist</button>
                   <button type="button" className={vista === "fechas" ? "active" : ""} onClick={() => { pushUrlContext({ vista: "fechas" }); setVista("fechas"); }}>Fechas especiales</button>

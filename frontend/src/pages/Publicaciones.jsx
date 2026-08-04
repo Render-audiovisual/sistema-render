@@ -1046,14 +1046,17 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
 
   const TABS_PRINCIPALES = [
     { id: "calendario", label: "Calendario" },
-    { id: "lista", label: "Control" },
-    { id: "planilla", label: "Planilla" },
+    { id: "lista", label: "Seguimiento" },
+    { id: "planilla", label: "Planificación" },
   ];
 
   return (
     <main aria-label="Render platform publicaciones" className="publicaciones-viewport">
       <div className="frame">
         <div className="content">
+          <header className="module-intro">
+            <div><div className="section-label">Publicaciones</div><h2>¿Qué se publica y cuándo?</h2><p>Consultá el calendario o planificá por cliente manteniendo período y vista.</p></div>
+          </header>
           {errorClientes && (
             <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
               {errorClientes}
