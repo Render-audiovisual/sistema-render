@@ -216,8 +216,13 @@ export function HistoriasPlanillaTab({
             <tbody>
               {filasVisibles.length === 0 && (
                 <tr>
-                  <td colSpan={12} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
-                    Sin historias planificadas este mes todavía.
+                  <td colSpan={12} className="stories-empty-cell">
+                    <div className="stories-empty-state">
+                      <span className="stories-empty-icon" aria-hidden="true">○</span>
+                      <strong>No hay historias planificadas para este período</strong>
+                      <small>Creá la primera historia y completá los datos directamente en la planilla.</small>
+                      <button type="button" className="btn primary" onClick={onAgregar}>+ Nueva historia</button>
+                    </div>
                   </td>
                 </tr>
               )}
@@ -1200,11 +1205,11 @@ export function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atr
   );
 }
 
-export function HistoriasPage({ initialTab = "estructura" }) {
-  const initialContext = readUrlContext(window.location.search, { vista: initialTab, cliente: "", mes: "" });
+export function HistoriasPage({ initialTab = "planilla" }) {
+  const initialContext = readUrlContext(window.location.search, { vista: initialTab, cliente: "", filtro: "", mes: "" });
   const initialDate = readMonthContext(initialContext.mes, new Date().getFullYear(), new Date().getMonth());
   const [vista, setVista] = useState(
-    ["planilla", "estructura", "checklist", "fechas"].includes(initialContext.vista) ? initialContext.vista : "estructura",
+    ["planilla", "estructura", "checklist", "fechas"].includes(initialContext.vista) ? initialContext.vista : "planilla",
   );
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(Number(initialContext.cliente) || null);
@@ -1212,7 +1217,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   // clienteSeleccionado (que ya se usaba como destino por default de
   // "+ Nueva historia" en otras pestañas) para no cambiar ese comportamiento
   // existente. Vacío = "Hoja general" (todos los clientes), como hoy.
-  const [filtroClientePlanilla, setFiltroClientePlanilla] = useState("");
+  const [filtroClientePlanilla, setFiltroClientePlanilla] = useState(initialContext.filtro || "");
   const [errorClientes, setErrorClientes] = useState(null);
   const [refrescarKey, setRefrescarKey] = useState(0);
 
@@ -1227,15 +1232,16 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   const [month, setMonth] = useState(initialDate.month);
 
   useEffect(() => {
-    replaceUrlContext({ vista, cliente: clienteSeleccionado, mes: formatMonthContext(year, month) });
-  }, [vista, clienteSeleccionado, year, month]);
+    replaceUrlContext({ vista, cliente: clienteSeleccionado, filtro: filtroClientePlanilla, mes: formatMonthContext(year, month) });
+  }, [vista, clienteSeleccionado, filtroClientePlanilla, year, month]);
 
   useEffect(() => {
     const restoreContext = () => {
-      const context = readUrlContext(window.location.search, { vista: "estructura", cliente: "", mes: "" });
+      const context = readUrlContext(window.location.search, { vista: "planilla", cliente: "", filtro: "", mes: "" });
       const date = readMonthContext(context.mes, hoyDate.getFullYear(), hoyDate.getMonth());
-      setVista(["planilla", "estructura", "checklist", "fechas"].includes(context.vista) ? context.vista : "estructura");
+      setVista(["planilla", "estructura", "checklist", "fechas"].includes(context.vista) ? context.vista : "planilla");
       setClienteSeleccionado(Number(context.cliente) || null);
+      setFiltroClientePlanilla(context.filtro || "");
       setYear(date.year);
       setMonth(date.month);
     };
@@ -1440,70 +1446,78 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     : historias;
   const historiasMes = historiasPlanillaVisibles.filter((h) => h.fecha_programada?.startsWith(mesPrefix));
   const publicadasMes = historiasMes.filter((h) => h.estado === "publicada").length;
+  const pendientesMes = historiasMes.length - publicadasMes;
   const atrasadasMes = historiasMes.filter((h) => h.fecha_programada < hoyISO && h.estado !== "publicada").length;
+
+  const cambiarVista = (siguienteVista) => {
+    pushUrlContext({ vista: siguienteVista });
+    setVista(siguienteVista);
+  };
 
   return (
     <main aria-label="Render platform historias" className="historias-viewport">
       <div className="frame">
         <div className="content">
           <header className="module-intro">
-            <div><div className="section-label">Historias</div><h2>¿Qué historias están planificadas?</h2><p>Organizá el contenido por cliente y período sin perder el contexto.</p></div>
+            <div><div className="section-label">Historias</div><h2>¿Qué historias tenemos que preparar y publicar?</h2><p>Planificá el contenido del mes y detectá rápidamente qué necesita atención.</p></div>
           </header>
           {(errorClientes || errorHistorias) && <PageState compact type="error" title={errorClientes || errorHistorias} description="La vista y el período siguen guardados." onRetry={() => window.location.reload()} />}
 
           <div className="h-workspace">
             <div className="h-main">
               <div className="h-toolbar">
-                {vista === "planilla" && (
-                  <select
-                    className="h-toolbar-client-select"
-                    value={filtroClientePlanilla}
-                    onChange={(e) => setFiltroClientePlanilla(e.target.value)}
-                    aria-label="Filtrar planilla por cliente"
-                  >
-                    <option value="">Hoja general (todos los clientes)</option>
-                    {clientes.map((c) => (
-                      <option key={c.id} value={c.id}>{c.nombre}</option>
-                    ))}
-                  </select>
-                )}
-                {["planilla", "checklist"].includes(vista) && (
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
-                    <strong className="sheet-title">{MESES[month]} {year}</strong>
-                    <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
-                  </div>
-                )}
-                {["planilla", "checklist"].includes(vista) && (
-                  <button className="h-today-btn" type="button" onClick={irAHoy}>Ir a hoy</button>
-                )}
-
-                <div className="sheet-view-tabs" style={{ margin: 0 }}>
-                  <button type="button" className={vista === "planilla" ? "active" : ""} onClick={() => { pushUrlContext({ vista: "planilla" }); setVista("planilla"); }}>Planificación</button>
-                  <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => { pushUrlContext({ vista: "estructura" }); setVista("estructura"); }}>Estructura</button>
-                  <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => { pushUrlContext({ vista: "checklist" }); setVista("checklist"); }}>Checklist</button>
-                  <button type="button" className={vista === "fechas" ? "active" : ""} onClick={() => { pushUrlContext({ vista: "fechas" }); setVista("fechas"); }}>Fechas especiales</button>
+                <div className="stories-view-switch" aria-label="Vistas de Historias">
+                  <button type="button" className={vista === "planilla" ? "active" : ""} onClick={() => cambiarVista("planilla")}>Planificación</button>
+                  <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => cambiarVista("checklist")}>Control de publicación</button>
                 </div>
 
-                {vista === "planilla" && (
-                  <div className="sheet-stats" style={{ marginLeft: "auto" }}>
-                    <span>{historiasMes.length} historias</span>
-                    <span className="ok">{publicadasMes} publicadas</span>
-                    {atrasadasMes > 0 && <span className="danger">{atrasadasMes} atrasadas</span>}
+                <details className={`stories-tools-menu ${["estructura", "fechas"].includes(vista) ? "active" : ""}`}>
+                  <summary>Herramientas <span aria-hidden="true">⌄</span></summary>
+                  <div className="stories-tools-panel">
+                    <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => cambiarVista("estructura")}><strong>Estructura semanal</strong><small>Configurá temas y horarios sugeridos.</small></button>
+                    <button type="button" className={vista === "fechas" ? "active" : ""} onClick={() => cambiarVista("fechas")}><strong>Fechas especiales</strong><small>Consultá oportunidades del calendario.</small></button>
                   </div>
-                )}
+                </details>
 
-                {vista === "planilla" && clientes.length > 0 && (
-                  <button
-                    className="add-btn"
-                    type="button"
-                    style={{ background: "#202124", color: "#fff", border: "none", borderRadius: "6px", padding: "8px 14px", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}
-                    onClick={agregarHistoriaEnMesActual}
-                  >
-                    + Nueva historia
-                  </button>
-                )}
+                {vista === "planilla" && clientes.length > 0 && <button className="stories-primary-action" type="button" onClick={agregarHistoriaEnMesActual}>+ Nueva historia</button>}
               </div>
+
+              {["planilla", "checklist"].includes(vista) && (
+                <div className="stories-context-bar">
+                  {vista === "planilla" && (
+                    <label className="stories-context-field">
+                      <span>Cliente</span>
+                      <select
+                        className="h-toolbar-client-select"
+                        value={filtroClientePlanilla}
+                        onChange={(e) => {
+                          pushUrlContext({ filtro: e.target.value });
+                          setFiltroClientePlanilla(e.target.value);
+                        }}
+                        aria-label="Filtrar planilla por cliente"
+                      >
+                        <option value="">Todos los clientes</option>
+                        {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  <div className="stories-month-control" aria-label="Período de planificación">
+                    <button type="button" onClick={() => irMes(-1)} aria-label="Mes anterior">‹</button>
+                    <strong>{MESES[month]} {year}</strong>
+                    <button type="button" onClick={() => irMes(1)} aria-label="Mes siguiente">›</button>
+                  </div>
+                  <button className="h-today-btn" type="button" onClick={irAHoy}>Mes actual</button>
+                </div>
+              )}
+
+              {vista === "planilla" && (
+                <div className="stories-overview" aria-label="Resumen del período">
+                  <div><span>Planificadas</span><strong>{historiasMes.length}</strong></div>
+                  <div><span>Pendientes</span><strong>{pendientesMes}</strong></div>
+                  <div className="is-success"><span>Publicadas</span><strong>{publicadasMes}</strong></div>
+                  <div className={atrasadasMes > 0 ? "is-danger" : ""}><span>Atrasadas</span><strong>{atrasadasMes}</strong></div>
+                </div>
+              )}
 
               <div className="h-body">
                 <FlyersMigrarBanner onMigrado={() => setRefrescarKey((k) => k + 1)} />

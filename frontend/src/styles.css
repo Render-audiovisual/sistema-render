@@ -3484,11 +3484,274 @@ textarea:disabled {
 .h-toolbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 20px;
+  gap: 10px;
+  padding: 14px 20px;
   border-bottom: 1px solid #dadce0;
   flex-wrap: wrap;
   flex-shrink: 0;
+}
+
+.stories-view-switch {
+  align-items: center;
+  background: #f1f3f4;
+  border-radius: 10px;
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+}
+
+.stories-view-switch button {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #5f6368;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  min-height: 36px;
+  padding: 8px 13px;
+}
+
+.stories-view-switch button.active {
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(60,64,67,.18);
+  color: #202124;
+}
+
+.stories-tools-menu {
+  position: relative;
+}
+
+.stories-tools-menu > summary {
+  align-items: center;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  color: #5f6368;
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  font-weight: 650;
+  gap: 7px;
+  min-height: 42px;
+  padding: 8px 12px;
+  user-select: none;
+}
+
+.stories-tools-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.stories-tools-menu.active > summary,
+.stories-tools-menu[open] > summary {
+  background: #f8f9fa;
+  border-color: #9aa0a6;
+  color: #202124;
+}
+
+.stories-tools-menu[open] > summary span {
+  transform: rotate(180deg);
+}
+
+.stories-tools-panel {
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 10px;
+  box-shadow: 0 14px 34px rgba(60,64,67,.18);
+  display: grid;
+  gap: 4px;
+  left: 0;
+  min-width: 270px;
+  padding: 6px;
+  position: absolute;
+  top: calc(100% + 7px);
+  z-index: 30;
+}
+
+.stories-tools-panel button {
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #3c4043;
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.stories-tools-panel button:hover,
+.stories-tools-panel button.active {
+  background: #f1f5fb;
+}
+
+.stories-tools-panel strong {
+  font-size: 12px;
+}
+
+.stories-tools-panel small {
+  color: #737980;
+  font-size: 10px;
+}
+
+.stories-primary-action {
+  background: #202124;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  margin-left: auto;
+  min-height: 42px;
+  padding: 9px 17px;
+}
+
+.stories-primary-action:hover {
+  background: #111315;
+}
+
+.stories-context-bar {
+  align-items: flex-end;
+  background: #fbfcfd;
+  border-bottom: 1px solid #e3e6ea;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 20px;
+}
+
+.stories-context-field {
+  display: grid;
+  gap: 4px;
+}
+
+.stories-context-field > span {
+  color: #6d737a;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.stories-context-bar .h-toolbar-client-select {
+  background: #fff;
+  border-color: #d7dbe0;
+  border-radius: 8px;
+  font-size: 13px;
+  min-height: 38px;
+  min-width: 230px;
+}
+
+.stories-month-control {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d7dbe0;
+  border-radius: 8px;
+  display: flex;
+  min-height: 38px;
+}
+
+.stories-month-control button {
+  align-items: center;
+  align-self: stretch;
+  background: transparent;
+  border: 0;
+  color: #5f6368;
+  cursor: pointer;
+  display: flex;
+  font-size: 22px;
+  justify-content: center;
+  width: 38px;
+}
+
+.stories-month-control strong {
+  border-left: 1px solid #edf0f2;
+  border-right: 1px solid #edf0f2;
+  font-size: 13px;
+  min-width: 138px;
+  padding: 8px 12px;
+  text-align: center;
+}
+
+.stories-overview {
+  border-bottom: 1px solid #e3e6ea;
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  padding: 0 20px;
+}
+
+.stories-overview > div {
+  align-items: baseline;
+  border-right: 1px solid #edf0f2;
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.stories-overview > div:first-child {
+  padding-left: 0;
+}
+
+.stories-overview > div:last-child {
+  border-right: 0;
+}
+
+.stories-overview span {
+  color: #70757a;
+  font-size: 11px;
+}
+
+.stories-overview strong {
+  color: #202124;
+  font-size: 17px;
+}
+
+.stories-overview .is-success strong {
+  color: #188038;
+}
+
+.stories-overview .is-danger strong {
+  color: #c5221f;
+}
+
+.stories-empty-cell {
+  padding: 0 !important;
+}
+
+.stories-empty-state {
+  align-items: center;
+  color: #5f6368;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  justify-content: center;
+  min-height: 220px;
+  padding: 30px;
+  text-align: center;
+}
+
+.stories-empty-icon {
+  align-items: center;
+  background: #f1f3f4;
+  border-radius: 50%;
+  color: #80868b;
+  display: flex;
+  font-size: 25px;
+  height: 46px;
+  justify-content: center;
+  width: 46px;
+}
+
+.stories-empty-state strong {
+  color: #303134;
+  font-size: 15px;
+}
+
+.stories-empty-state small {
+  font-size: 11px;
+  margin-bottom: 7px;
 }
 
 .h-toolbar-client {
@@ -3562,6 +3825,67 @@ textarea:disabled {
 }
 
 @media (max-width: 768px) {
+  .historias-viewport .module-intro h2 {
+    font-size: 23px;
+  }
+
+  .historias-viewport .h-toolbar {
+    align-items: stretch;
+    padding: 12px;
+  }
+
+  .stories-view-switch {
+    flex: 1;
+  }
+
+  .stories-view-switch button {
+    flex: 1;
+    padding-inline: 9px;
+  }
+
+  .stories-tools-menu {
+    order: 3;
+  }
+
+  .stories-tools-panel {
+    left: auto;
+    right: 0;
+  }
+
+  .stories-primary-action {
+    margin-left: 0;
+    order: 2;
+    width: 100%;
+  }
+
+  .stories-context-bar {
+    align-items: stretch;
+    padding: 11px 12px;
+  }
+
+  .stories-context-field,
+  .stories-context-bar .h-toolbar-client-select,
+  .stories-month-control {
+    width: 100%;
+  }
+
+  .stories-month-control strong {
+    flex: 1;
+  }
+
+  .stories-overview {
+    grid-template-columns: 1fr 1fr;
+    padding: 0 12px;
+  }
+
+  .stories-overview > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .stories-overview > div:nth-child(-n+2) {
+    border-bottom: 1px solid #edf0f2;
+  }
+
   .h-body {
     padding: 10px 12px 12px;
   }
