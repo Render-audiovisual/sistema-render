@@ -297,28 +297,27 @@ function TasksByClient({ tasks, onOpen }) {
   return <div className="ros-project-grid">{groups.map((group) => <section className="ros-project-card" key={group.name}><header><div><span>{initials(group.name)}</span><strong>{group.name}</strong></div><small>{group.tasks.length} tareas</small></header><div>{group.tasks.map((task) => <button type="button" key={task.id} onClick={() => onOpen(task.id)}><span>{task.titulo}</span><b>{STATUSES.find((item) => item.id === task.estado)?.label || task.estado}</b><small>{task.asignado_a} · {formatDate(task.fecha_vencimiento)}</small></button>)}</div></section>)}</div>;
 }
 
-function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, sesion, onCreate, onUpdate, onDelete, onError }) {
+function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, responsible, setResponsible, client, setClient, sector, setSector, priority, setPriority, archiveMode, setArchiveMode, sesion, onCreate, onUpdate, onDelete, onError }) {
   const initialViewState = useMemo(() => getTaskViewState(window.location.search), []);
   const initialTask = Number(new URLSearchParams(window.location.search).get("task")) || null;
   const [view, setView] = useState(initialViewState.view);
   const [selectedId, setSelectedId] = useState(initialTask);
   const [creating, setCreating] = useState(false);
   const [dragOver, setDragOver] = useState("");
-  const [responsible, setResponsible] = useState(initialViewState.responsible);
-  const [client, setClient] = useState(initialViewState.client);
-  const [sector, setSector] = useState(initialViewState.sector);
-  const [priority, setPriority] = useState(initialViewState.priority);
-  const [archiveMode, setArchiveMode] = useState(initialViewState.archiveMode);
   const isAdmin = sesion?.usuario?.rol === "admin";
   const today = new Date().toISOString().slice(0, 10);
   const selected = tasks.find((task) => task.id === selectedId) || null;
-  const responsibleOptions = [...new Set(tasks.map((task) => task.asignado_a).filter(Boolean))].sort();
+  const responsibleOptions = [...new Set([
+    ...users.map((user) => user.nombre),
+    ...tasks.flatMap((task) => [task.asignado_a, ...(Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [])]),
+  ].filter(Boolean))].sort();
   const visible = useMemo(() => tasks.filter((task) => {
-    const text = `${task.titulo} ${task.cliente_nombre || ""} ${task.asignado_a || ""} ${task.propiedades_extra?.resumen || ""}`.toLowerCase();
+    const collaborators = Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [];
+    const text = `${task.titulo} ${task.cliente_nombre || ""} ${task.asignado_a || ""} ${collaborators.join(" ")} ${task.propiedades_extra?.resumen || ""}`.toLowerCase();
     const isArchived = task.propiedades_extra?.archivada_render_os === true;
     return (archiveMode === "archived" ? isArchived : !isArchived)
       && (area === "all" || areaForTask(task) === area)
-      && (responsible === "all" || task.asignado_a === responsible)
+      && (responsible === "all" || task.asignado_a === responsible || collaborators.includes(responsible))
       && (client === "all" || String(task.cliente_id || "none") === client)
       && (sector === "all" || String(task.tipo_tarea || "none") === sector)
       && (priority === "all" || task.prioridad === priority)
@@ -405,41 +404,55 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [query, setQuery] = useState(initialViewState.query);
   const [area, setArea] = useState(initialViewState.area);
+  const [responsible, setResponsible] = useState(initialViewState.responsible);
+  const [client, setClient] = useState(initialViewState.client);
+  const [sector, setSector] = useState(initialViewState.sector);
+  const [priority, setPriority] = useState(initialViewState.priority);
+  const [archiveMode, setArchiveMode] = useState(initialViewState.archiveMode);
   const isAdmin = sesion?.usuario?.rol === "admin";
 
   useEffect(() => {
     let active = true;
-    Promise.all([apiTaskPage(0), apiJson("/api/clientes"), isAdmin ? apiJson("/api/usuarios") : Promise.resolve([])])
-      .then(([taskPage, clientData, userData]) => {
+    Promise.all([apiJson("/api/clientes"), isAdmin ? apiJson("/api/usuarios") : Promise.resolve([])])
+      .then(([clientData, userData]) => {
         if (!active) return;
-        setTasks(taskPage.items);
-        setTotalTasks(taskPage.total);
         setClients(clientData);
         setUsers(userData);
-        setError("");
       })
       .catch((reason) => { if (active) setError(reason.message || "No se pudieron cargar los datos reales."); })
-      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [isAdmin, reloadKey]);
 
   useEffect(() => {
-    if (loading) return undefined;
-    const directTaskId = Number(new URLSearchParams(window.location.search).get("task")) || null;
-    if (!directTaskId || tasks.some((task) => task.id === directTaskId)) return undefined;
     let active = true;
-    apiTaskById(directTaskId)
-      .then((task) => { if (active) setTasks((current) => mergeRelatedTasks(current, [{ ...task, __renderOsDirectOnly: true }])); })
-      .catch((reason) => {
-        if (!active) return;
-        notify(reason.message || "La tarea enlazada no está disponible.", "error");
-        const url = new URL(window.location.href);
-        url.searchParams.delete("task");
-        window.history.replaceState(window.history.state, "", url);
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      });
-    return () => { active = false; };
-  }, [loading]);
+    const timer = window.setTimeout(() => {
+      apiTaskPage({ offset: 0, query, area, responsible, client, sector, priority, archiveMode })
+        .then(async (taskPage) => {
+          if (!active) return;
+          let items = taskPage.items;
+          const directTaskId = Number(new URLSearchParams(window.location.search).get("task")) || null;
+          if (directTaskId && !items.some((task) => task.id === directTaskId)) {
+            try {
+              const directTask = await apiTaskById(directTaskId);
+              items = mergeRelatedTasks(items, [{ ...directTask, __renderOsDirectOnly: true }]);
+            } catch (reason) {
+              notify(reason.message || "La tarea enlazada no está disponible.", "error");
+              const url = new URL(window.location.href);
+              url.searchParams.delete("task");
+              window.history.replaceState(window.history.state, "", url);
+              window.dispatchEvent(new PopStateEvent("popstate"));
+            }
+          }
+          if (!active) return;
+          setTasks(items);
+          setTotalTasks(taskPage.total);
+          setError("");
+        })
+        .catch((reason) => { if (active) setError(reason.message || "No se pudieron cargar las tareas."); })
+        .finally(() => { if (active) setLoading(false); });
+    }, query ? 250 : 0);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [query, area, responsible, client, sector, priority, archiveMode, reloadKey]);
 
   useEffect(() => {
     const incorporate = (event) => {
@@ -455,7 +468,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
     if (loadingMore || paginatedTaskCount >= totalTasks) return;
     setLoadingMore(true);
     try {
-      const page = await apiTaskPage(paginatedTaskCount);
+      const page = await apiTaskPage({ offset: paginatedTaskCount, query, area, responsible, client, sector, priority, archiveMode });
       setTasks((current) => {
         const pageIds = new Set(page.items.map((item) => item.id));
         const retained = current.filter((task) => !task.__renderOsDirectOnly || !pageIds.has(task.id));
@@ -523,5 +536,5 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   };
 
   const retry = () => { setError(""); setLoading(true); setReloadKey((current) => current + 1); };
-  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} setQuery={setQuery} area={area} setArea={setArea} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onDelete={deleteTask} onError={(message) => notify(message, "error")}/>}</main></div>;
+  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} setQuery={setQuery} area={area} setArea={setArea} responsible={responsible} setResponsible={setResponsible} client={client} setClient={setClient} sector={sector} setSector={setSector} priority={priority} setPriority={setPriority} archiveMode={archiveMode} setArchiveMode={setArchiveMode} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onDelete={deleteTask} onError={(message) => notify(message, "error")}/>}</main></div>;
 }

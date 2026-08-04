@@ -1608,6 +1608,8 @@ router.get("/tareas", async (req, res, next) => {
       limit,
       offset,
       workspace,
+      q,
+      area,
     } = req.query;
 
     const limite = Math.min(Math.max(Number.parseInt(limit, 10) || 0, 0), 500);
@@ -1666,13 +1668,34 @@ router.get("/tareas", async (req, res, next) => {
     }
 
     if (asignado_a) {
-      query += ` AND t.asignado_a = $${paramCount}`;
+      query += ` AND (t.asignado_a = $${paramCount} OR COALESCE(t.propiedades_extra->'colaboradores', '[]'::jsonb) ? $${paramCount})`;
       params.push(asignado_a);
       paramCount++;
     }
     if (tipo_tarea) {
-      query += ` AND t.tipo_tarea = $${paramCount}`;
-      params.push(tipo_tarea);
+      query += tipo_tarea === "none"
+        ? ` AND t.tipo_tarea IS NULL`
+        : ` AND t.tipo_tarea = $${paramCount}`;
+      if (tipo_tarea !== "none") {
+        params.push(tipo_tarea);
+        paramCount++;
+      }
+    }
+    if (area) {
+      const areaText = `LOWER(CONCAT_WS(' ', t.tipo_tarea, t.subtipo, t.titulo))`;
+      const areaExpression = `CASE
+        WHEN ${areaText} LIKE '%chatbot%' OR ${areaText} LIKE '%bot %' THEN 'chatbots'
+        WHEN ${areaText} LIKE '%web%' OR ${areaText} LIKE '%landing%' OR ${areaText} LIKE '%página%' THEN 'web'
+        WHEN ${areaText} LIKE '%cartel%' THEN 'carteleria'
+        WHEN ${areaText} LIKE '%carrusel%' THEN 'carruseles'
+        WHEN ${areaText} LIKE '%historia%' OR ${areaText} LIKE '%flyer%' OR ${areaText} LIKE '%community%' THEN 'historias'
+        WHEN ${areaText} LIKE '%produccion%' OR ${areaText} LIKE '%producción%' OR ${areaText} LIKE '%visita%' OR ${areaText} LIKE '%filmar%' THEN 'produccion'
+        WHEN ${areaText} LIKE '%edicion%' OR ${areaText} LIKE '%edición%' OR ${areaText} LIKE '%editar%' OR ${areaText} LIKE '%reel%' THEN 'edicion'
+        WHEN t.tipo_tarea = 'diseno' THEN 'carruseles'
+        ELSE 'edicion'
+      END`;
+      query += ` AND (${areaExpression}) = $${paramCount}`;
+      params.push(area);
       paramCount++;
     }
     if (historia_id) {
@@ -1686,9 +1709,12 @@ router.get("/tareas", async (req, res, next) => {
       paramCount++;
     }
     if (cliente_id) {
-      query += ` AND t.cliente_id = $${paramCount}`;
-      params.push(cliente_id);
-      paramCount++;
+      if (cliente_id === "none") query += ` AND t.cliente_id IS NULL`;
+      else {
+        query += ` AND t.cliente_id = $${paramCount}`;
+        params.push(cliente_id);
+        paramCount++;
+      }
     }
     if (prioridad) {
       query += ` AND t.prioridad = $${paramCount}`;
@@ -1698,6 +1724,18 @@ router.get("/tareas", async (req, res, next) => {
     if (estado) {
       query += ` AND t.estado = $${paramCount}`;
       params.push(estado);
+      paramCount++;
+    }
+
+    if (q && String(q).trim()) {
+      query += ` AND (
+        t.titulo ILIKE $${paramCount}
+        OR COALESCE(c.nombre, '') ILIKE $${paramCount}
+        OR COALESCE(t.asignado_a, '') ILIKE $${paramCount}
+        OR COALESCE(t.propiedades_extra->>'resumen', '') ILIKE $${paramCount}
+        OR COALESCE(t.propiedades_extra->'colaboradores', '[]'::jsonb)::text ILIKE $${paramCount}
+      )`;
+      params.push(`%${String(q).trim()}%`);
       paramCount++;
     }
 

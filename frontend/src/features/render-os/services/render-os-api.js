@@ -11,8 +11,22 @@ export function apiJson(url) {
   return apiRequest(url).then((body) => Array.isArray(body) ? body : []);
 }
 
-export async function apiTaskPage(offset = 0) {
-  const response = await fetch(`/api/tareas?${WORKSPACE_QUERY}&incluir_archivadas=true&limit=500&offset=${offset}`);
+export function buildTaskPageUrl(options = {}) {
+  const settings = typeof options === "number" ? { offset: options } : options;
+  const params = new URLSearchParams({ workspace: "render_os", limit: "100", offset: String(settings.offset || 0) });
+  if (settings.archiveMode === "archived") params.set("solo_archivadas", "true");
+  if (settings.responsible && settings.responsible !== "all") params.set("asignado_a", settings.responsible);
+  if (settings.client && settings.client !== "all") params.set("cliente_id", settings.client === "none" ? "none" : settings.client);
+  if (settings.sector && settings.sector !== "all") params.set("tipo_tarea", settings.sector === "none" ? "none" : settings.sector);
+  if (settings.priority && settings.priority !== "all") params.set("prioridad", settings.priority);
+  if (settings.area && settings.area !== "all") params.set("area", settings.area);
+  if (settings.query?.trim()) params.set("q", settings.query.trim());
+  return `/api/tareas?${params.toString()}`;
+}
+
+export async function apiTaskPage(options = {}) {
+  const settings = typeof options === "number" ? { offset: options } : options;
+  const response = await fetch(buildTaskPageUrl(settings));
   const body = await response.json().catch(() => []);
   if (!response.ok) throw new Error(body.error || "No se pudieron cargar las tareas.");
   const items = Array.isArray(body) ? body : [];

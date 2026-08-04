@@ -72,6 +72,7 @@ test(
         asignado_a: "QA",
         estado: "pendiente",
         prioridad: "media",
+        colaboradores: ["QA Colaborador"],
         workspace: "render_os",
       }));
       assert.equal(createdResponse.response.status, 201);
@@ -84,6 +85,7 @@ test(
         asignado_a: "QA",
         estado: "pendiente",
         prioridad: "baja",
+        tipo_tarea: "produccion",
         workspace: "render_os",
         tarea_padre_id: taskId,
       }));
@@ -113,6 +115,13 @@ test(
       assert.equal(paged.body.length, 1);
       assert.equal(paged.response.headers.get("x-total-count"), "2");
 
+      const byCollaborator = await request("/tareas?workspace=render_os&asignado_a=QA%20Colaborador&limit=10");
+      assert.deepEqual(byCollaborator.body.map((item) => item.id), [taskId]);
+      const bySearch = await request("/tareas?workspace=render_os&q=principal&limit=10");
+      assert.deepEqual(bySearch.body.map((item) => item.id), [taskId]);
+      const byArea = await request("/tareas?workspace=render_os&area=produccion&limit=10");
+      assert.deepEqual(byArea.body.map((item) => item.id), [secondResponse.body.id]);
+
       const edited = await request(`/tareas/${taskId}?workspace=render_os`, jsonOptions("PATCH", {
         titulo: `${marker} editada`,
         expected_updated_at: direct.body.updated_at,
@@ -134,6 +143,9 @@ test(
       assert.equal(archived.response.status, 200);
       assert.equal(archived.body.propiedades_extra.archivada_render_os, true);
       assert.equal(archived.body.propiedades_extra.workspace, "render_os");
+
+      const archivedOnly = await request("/tareas?workspace=render_os&solo_archivadas=true&limit=10");
+      assert.deepEqual(archivedOnly.body.map((item) => item.id), [taskId]);
 
       const restored = await request(`/tareas/${taskId}?workspace=render_os`, jsonOptions("PATCH", {
         propiedades_extra: { archivada_render_os: false },
