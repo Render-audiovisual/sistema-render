@@ -12,6 +12,7 @@ export function getTaskViewState(search = "") {
   const params = new URLSearchParams(search);
   const view = params.get("view");
   const archiveMode = params.get("mode");
+  const calendarMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(params.get("month") || "") ? params.get("month") : "";
   return {
     view: VALID_VIEWS.has(view) ? view : "board",
     archiveMode: VALID_ARCHIVE_MODES.has(archiveMode) ? archiveMode : "active",
@@ -21,6 +22,7 @@ export function getTaskViewState(search = "") {
     priority: params.get("priority") || "all",
     area: params.get("area") || "all",
     query: params.get("q") || "",
+    calendarMonth,
   };
 }
 
@@ -35,6 +37,7 @@ export function updateTaskViewUrl(currentUrl, state) {
     priority: state.priority === "all" ? null : state.priority,
     area: state.area === "all" ? null : state.area,
     q: state.query?.trim() ? state.query : null,
+    month: state.calendarMonth || null,
   };
   Object.entries(values).forEach(([key, value]) => {
     if (value == null) url.searchParams.delete(key);

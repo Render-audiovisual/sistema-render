@@ -28,11 +28,12 @@ test("getTasksEmptyMessage diferencia tablero vacío, archivadas y filtros", () 
 });
 
 test("el estado de Tareas se conserva en la URL sin perder el enlace directo", () => {
-  const state = getTaskViewState("?task=42&view=list&mode=archived&responsible=Augusto&q=urgente");
+  const state = getTaskViewState("?task=42&view=list&mode=archived&responsible=Augusto&q=urgente&month=2026-08");
   assert.equal(state.view, "list");
   assert.equal(state.archiveMode, "archived");
   assert.equal(state.responsible, "Augusto");
   assert.equal(state.query, "urgente");
+  assert.equal(state.calendarMonth, "2026-08");
 
   const url = updateTaskViewUrl("https://sistema.rendercorrientes.com/workspace/tareas?task=42", {
     ...state,
@@ -41,6 +42,8 @@ test("el estado de Tareas se conserva en la URL sin perder el enlace directo", (
   assert.equal(url.searchParams.get("task"), "42");
   assert.equal(url.searchParams.get("view"), "list");
   assert.equal(url.searchParams.get("area"), "diseno");
+  assert.equal(url.searchParams.get("month"), "2026-08");
+  assert.equal(getTaskViewState("?month=2026-99").calendarMonth, "");
 });
 
 test("solo advierte al cerrar una tarea nueva cuando hay contenido", () => {

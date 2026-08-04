@@ -3,7 +3,7 @@ export const RENDER_OS_WORKSPACE = "render_os";
 export const STATUSES = [
   { id: "pendiente", label: "Pendientes", color: "#8d9095" },
   { id: "en_progreso", label: "En proceso", color: "#3378d4" },
-  { id: "en_revision", label: "Terminadas / revisión", color: "#df9830" },
+  { id: "en_revision", label: "Para revisar", color: "#df9830" },
   { id: "programada", label: "Programada", color: "#8d63c7" },
   { id: "publicada", label: "Publicadas", color: "#34a16f" },
 ];

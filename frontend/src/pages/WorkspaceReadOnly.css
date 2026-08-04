@@ -409,8 +409,17 @@
 .render-workspace .ros-controls button.active{border-bottom-color:#242724;color:#242724;font-weight:700}
 .render-workspace .ros-filter-bar button,.render-workspace .ros-load-more button,.render-workspace .ros-comment-create button,.render-workspace .ros-detail-actions button{border-radius:8px;min-height:38px}
 .render-workspace button:disabled{box-shadow:none!important;cursor:not-allowed!important;opacity:.48;transform:none!important}
+.render-workspace .ros-state>button{background:#fff;border:1px solid #d7d8d2;border-radius:8px;color:#3f423d;font-size:10px;font-weight:700;margin-top:14px;min-height:38px;padding:8px 14px}
+.render-workspace .ros-empty-column:is(button){background:transparent;border:0;cursor:pointer;width:100%}
+.render-workspace .ros-empty-column:is(button):hover{background:#eceee8;color:#555852}
+.render-workspace .ros-filter-toggle{display:none}
 
 @media(max-width:640px){
+  .render-workspace .ros-filter-toggle{align-items:center;background:#fafaf8;border:0;border-bottom:1px solid #ecece8;color:#565954;display:flex;font-size:10px;font-weight:700;gap:7px;justify-content:flex-start;padding:11px 14px;width:100%}
+  .render-workspace .ros-filter-toggle b{align-items:center;background:#242724;border-radius:50%;color:#fff;display:inline-flex;font-size:7px;height:18px;justify-content:center;width:18px}
+  .render-workspace .ros-filter-toggle span{color:#858881;font-size:8px;font-weight:500;margin-left:auto}
+  .render-workspace .ros-filter-bar{display:none}
+  .render-workspace .ros-filter-bar.open{display:grid;grid-template-columns:1fr}
   .ros-people-picker-label{align-items:start;flex-direction:column;gap:3px}
   .ros-selected-people>button{flex:1 1 145px}
   .ros-people-options{max-height:190px;position:static}
