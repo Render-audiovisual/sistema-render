@@ -18,8 +18,8 @@ function AreaBadge({ task }) {
   return <span className="ros-area-badge" style={{ "--area": area.color }}>{area.icon} {area.label}</span>;
 }
 
-function LoadingState({ error }) {
-  return <div className={`ros-state ${error ? "error" : ""}`}><span>{error ? "!" : "◌"}</span><strong>{error || "Conectando con los datos reales…"}</strong><small>{error ? "No pudimos cargar las tareas. Reintentá en unos segundos." : "Cargando tareas, clientes y responsables."}</small></div>;
+function LoadingState({ error, onRetry }) {
+  return <div className={`ros-state ${error ? "error" : ""}`}><span>{error ? "!" : "◌"}</span><strong>{error || "Conectando con los datos reales…"}</strong><small>{error ? "No pudimos cargar las tareas. Podés reintentar sin salir del tablero." : "Cargando tareas, clientes y responsables."}</small>{error && <button type="button" onClick={onRetry}>Reintentar</button>}</div>;
 }
 
 function Toast({ toast, onClose }) {
@@ -297,7 +297,7 @@ function TasksByClient({ tasks, onOpen }) {
   return <div className="ros-project-grid">{groups.map((group) => <section className="ros-project-card" key={group.name}><header><div><span>{initials(group.name)}</span><strong>{group.name}</strong></div><small>{group.tasks.length} tareas</small></header><div>{group.tasks.map((task) => <button type="button" key={task.id} onClick={() => onOpen(task.id)}><span>{task.titulo}</span><b>{STATUSES.find((item) => item.id === task.estado)?.label || task.estado}</b><small>{task.asignado_a} · {formatDate(task.fecha_vencimiento)}</small></button>)}</div></section>)}</div>;
 }
 
-function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, sesion, onCreate, onUpdate, onDelete }) {
+function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, sesion, onCreate, onUpdate, onDelete, onError }) {
   const initialViewState = useMemo(() => getTaskViewState(window.location.search), []);
   const initialTask = Number(new URLSearchParams(window.location.search).get("task")) || null;
   const [view, setView] = useState(initialViewState.view);
@@ -347,8 +347,8 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
       const url = new URL(window.location.href);
       url.searchParams.set("task", String(id));
       window.history.pushState({ task: id }, "", url);
-    } catch {
-      // El contenedor informa el rechazo seguro sin abrir un detalle inválido.
+    } catch (reason) {
+      onError(reason.message || "No se pudo abrir la tarea.");
     }
   }, [tasks, incorporateRelatedTasks]);
   const closeTask = useCallback(() => {
@@ -402,20 +402,17 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   const [totalTasks, setTotalTasks] = useState(0);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [query, setQuery] = useState(initialViewState.query);
   const [area, setArea] = useState(initialViewState.area);
   const isAdmin = sesion?.usuario?.rol === "admin";
 
   useEffect(() => {
     let active = true;
-    const directTaskId = Number(new URLSearchParams(window.location.search).get("task")) || null;
-    Promise.all([apiTaskPage(0), apiJson("/api/clientes"), isAdmin ? apiJson("/api/usuarios") : Promise.resolve([]), directTaskId ? apiTaskById(directTaskId) : Promise.resolve(null)])
-      .then(([taskPage, clientData, userData, directTask]) => {
+    Promise.all([apiTaskPage(0), apiJson("/api/clientes"), isAdmin ? apiJson("/api/usuarios") : Promise.resolve([])])
+      .then(([taskPage, clientData, userData]) => {
         if (!active) return;
-        const items = directTask && !taskPage.items.some((task) => task.id === directTask.id)
-          ? [...taskPage.items, { ...directTask, __renderOsDirectOnly: true }]
-          : taskPage.items;
-        setTasks(items);
+        setTasks(taskPage.items);
         setTotalTasks(taskPage.total);
         setClients(clientData);
         setUsers(userData);
@@ -424,7 +421,25 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       .catch((reason) => { if (active) setError(reason.message || "No se pudieron cargar los datos reales."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [isAdmin]);
+  }, [isAdmin, reloadKey]);
+
+  useEffect(() => {
+    if (loading) return undefined;
+    const directTaskId = Number(new URLSearchParams(window.location.search).get("task")) || null;
+    if (!directTaskId || tasks.some((task) => task.id === directTaskId)) return undefined;
+    let active = true;
+    apiTaskById(directTaskId)
+      .then((task) => { if (active) setTasks((current) => mergeRelatedTasks(current, [{ ...task, __renderOsDirectOnly: true }])); })
+      .catch((reason) => {
+        if (!active) return;
+        notify(reason.message || "La tarea enlazada no está disponible.", "error");
+        const url = new URL(window.location.href);
+        url.searchParams.delete("task");
+        window.history.replaceState(window.history.state, "", url);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      });
+    return () => { active = false; };
+  }, [loading]);
 
   useEffect(() => {
     const incorporate = (event) => {
@@ -507,5 +522,6 @@ export function WorkspaceReadOnlyPage({ sesion }) {
     }
   };
 
-  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} setQuery={setQuery} area={area} setArea={setArea} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onDelete={deleteTask}/>}</main></div>;
+  const retry = () => { setError(""); setLoading(true); setReloadKey((current) => current + 1); };
+  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} setQuery={setQuery} area={area} setArea={setArea} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onDelete={deleteTask} onError={(message) => notify(message, "error")}/>}</main></div>;
 }
