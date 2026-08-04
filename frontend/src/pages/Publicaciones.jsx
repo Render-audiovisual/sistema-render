@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { etiquetaCortaPublicacion, fechaISODesde, getCheckPublicacionLabel, getEstadoHistoriaLabel, getGrillaMes, getHoyLocalISO, getTipoPublicacionLabel, payloadColumnaPublicacion, sumarDiasISO } from "../utils.jsx";
 import { COLUMNAS_PUBLICACION, DIAS_SEMANA, ESTADOS_PUBLICACION, MESES, RESPONSABLES_EQUIPO, TIPOS_PUBLICACION } from "../constants.js";
-import { ClientesRail } from "../pages/Historias.jsx";
 import { Modal } from "../components/Modal.jsx";
 import { PageState } from "../components/PageState.jsx";
 import { formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
@@ -1015,12 +1014,6 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
   const clienteNombre = clienteActual?.nombre || "";
 
   const hoyISO = getHoyLocalISO();
-  const atrasadasPorCliente = {};
-  publicaciones.forEach((p) => {
-    if (p.fecha_programada < hoyISO && p.estado !== "publicada") {
-      atrasadasPorCliente[p.cliente_id] = (atrasadasPorCliente[p.cliente_id] || 0) + 1;
-    }
-  });
 
   const irMes = (delta) => {
     let m = month + delta;
@@ -1041,6 +1034,7 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
     (p) => p.cliente_id === clienteSeleccionado && p.fecha_programada?.startsWith(mesPrefix),
   );
   const publicadasCliente = publicacionesClienteMes.filter((p) => p.estado === "publicada").length;
+  const pendientesCliente = publicacionesClienteMes.length - publicadasCliente;
   const atrasadasCliente = publicacionesClienteMes.filter(
     (p) => p.fecha_programada < hoyISO && p.estado !== "publicada",
   ).length;
@@ -1048,63 +1042,76 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
   const TABS_PRINCIPALES = [
     { id: "calendario", label: "Calendario" },
     { id: "lista", label: "Seguimiento" },
-    { id: "planilla", label: "Planificación" },
   ];
+
+  const cambiarVista = (tab) => {
+    pushUrlContext({ tab });
+    setTabPrincipal(tab);
+  };
 
   return (
     <main aria-label="Render platform publicaciones" className="publicaciones-viewport">
       <div className="frame">
         <div className="content">
           <header className="module-intro">
-            <div><div className="section-label">Publicaciones</div><h2>¿Qué se publica y cuándo?</h2><p>Consultá el calendario o planificá por cliente manteniendo período y vista.</p></div>
+            <div><div className="section-label">Publicaciones</div><h2>¿Qué tenemos que publicar y cuándo?</h2><p>Revisá el calendario, detectá pendientes y organizá cada cliente sin perder el contexto.</p></div>
           </header>
           {errorClientes && <PageState compact type="error" title={errorClientes} description="La vista, el cliente y el mes siguen guardados." onRetry={() => window.location.reload()} />}
 
           <div className="h-workspace">
-            <ClientesRail
-              clientes={clientes}
-              clienteSeleccionado={clienteSeleccionado}
-              onSeleccionar={irAPlanillaDeCliente}
-              atrasadasPorCliente={atrasadasPorCliente}
-            />
-
             <div className="h-main">
-              <div className="h-toolbar">
-                {tabPrincipal === "planilla" && (
-                  <div className="h-toolbar-client">{clienteNombre || "…"}</div>
-                )}
-                {tabPrincipal === "planilla" && (
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <button className="btn" type="button" onClick={() => irMes(-1)}>◀</button>
-                    <strong className="sheet-title">{MESES[month]} {year}</strong>
-                    <button className="btn" type="button" onClick={() => irMes(1)}>▶</button>
-                  </div>
-                )}
-                {tabPrincipal === "planilla" && (
-                  <button className="h-today-btn" type="button" onClick={irAHoy}>Ir a hoy</button>
-                )}
-
-                <div className="sheet-view-tabs" style={{ margin: 0 }}>
+              <div className="h-toolbar publications-main-toolbar">
+                <div className="stories-view-switch publications-view-switch" aria-label="Vistas de Publicaciones">
                   {TABS_PRINCIPALES.map((t) => (
                     <button
                       key={t.id}
                       type="button"
                       className={tabPrincipal === t.id ? "active" : ""}
-                      onClick={() => { pushUrlContext({ tab: t.id }); setTabPrincipal(t.id); }}
+                      onClick={() => cambiarVista(t.id)}
                     >
                       {t.label}
                     </button>
                   ))}
                 </div>
-
-                {tabPrincipal === "planilla" && (
-                  <div className="sheet-stats" style={{ marginLeft: "auto" }}>
-                    <span>{publicacionesClienteMes.length} publicaciones</span>
-                    <span className="ok">{publicadasCliente} publicadas</span>
-                    {atrasadasCliente > 0 && <span className="danger">{atrasadasCliente} atrasadas</span>}
-                  </div>
-                )}
+                <button
+                  type="button"
+                  className={`stories-primary-action publications-plan-action ${tabPrincipal === "planilla" ? "active" : ""}`}
+                  onClick={() => cambiarVista("planilla")}
+                  aria-current={tabPrincipal === "planilla" ? "page" : undefined}
+                >
+                  Planificar por cliente
+                </button>
               </div>
+
+              {tabPrincipal === "planilla" && (
+                <>
+                  <div className="stories-context-bar publications-context-bar">
+                    <label className="stories-context-field">
+                      <span>Cliente</span>
+                      <select
+                        className="h-toolbar-client-select"
+                        value={clienteSeleccionado || ""}
+                        onChange={(event) => irAPlanillaDeCliente(Number(event.target.value))}
+                        aria-label="Elegir cliente para planificar publicaciones"
+                      >
+                        {clientes.map((cliente) => <option key={cliente.id} value={cliente.id}>{cliente.nombre}</option>)}
+                      </select>
+                    </label>
+                    <div className="stories-month-control" aria-label="Período de planificación">
+                      <button type="button" onClick={() => irMes(-1)} aria-label="Mes anterior">‹</button>
+                      <strong>{MESES[month]} {year}</strong>
+                      <button type="button" onClick={() => irMes(1)} aria-label="Mes siguiente">›</button>
+                    </div>
+                    <button className="h-today-btn" type="button" onClick={irAHoy}>Mes actual</button>
+                  </div>
+                  <div className="stories-overview publications-overview" aria-label="Resumen del cliente y período">
+                    <div><span>Planificadas</span><strong>{publicacionesClienteMes.length}</strong></div>
+                    <div><span>Pendientes</span><strong>{pendientesCliente}</strong></div>
+                    <div className="is-success"><span>Publicadas</span><strong>{publicadasCliente}</strong></div>
+                    <div className={atrasadasCliente > 0 ? "is-danger" : ""}><span>Atrasadas</span><strong>{atrasadasCliente}</strong></div>
+                  </div>
+                </>
+              )}
 
               <div className="h-body">
                 {tabPrincipal === "calendario" && (

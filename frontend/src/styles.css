@@ -3612,6 +3612,46 @@ textarea:disabled {
   background: #111315;
 }
 
+.publications-main-toolbar {
+  justify-content: space-between;
+}
+
+.publications-plan-action {
+  margin-left: auto;
+}
+
+.publications-plan-action.active {
+  background: #174ea6;
+}
+
+.publicaciones-viewport .h-workspace {
+  display: block;
+}
+
+.publicaciones-viewport .h-main {
+  width: 100%;
+}
+
+.publicaciones-context-bar {
+  background: #fbfcfd;
+}
+
+.publicaciones-overview {
+  background: #fff;
+}
+
+.publicaciones-viewport .cal-toolbar {
+  background: #fbfcfd;
+  border: 1px solid #e3e6ea;
+  border-radius: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+}
+
+.publicaciones-viewport .calendar-summary {
+  gap: 8px;
+}
+
 .stories-context-bar {
   align-items: flex-end;
   background: #fbfcfd;
@@ -3856,6 +3896,15 @@ textarea:disabled {
     margin-left: 0;
     order: 2;
     width: 100%;
+  }
+
+  .publications-main-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .publications-plan-action {
+    order: initial;
   }
 
   .stories-context-bar {
