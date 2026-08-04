@@ -6273,8 +6273,9 @@ tr:hover .sheet-row-actions {
   align-items: center;
   color: #fff;
   display: flex;
-  gap: 9px;
+  gap: 10px;
   letter-spacing: 0;
+  min-width: 0;
   text-decoration: none;
 }
 
@@ -6291,19 +6292,29 @@ tr:hover .sheet-row-actions {
   width: 32px;
 }
 
-.brand-mark > strong {
-  font-size: 14px;
-  letter-spacing: .08em;
+.brand-greeting {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
-.brand-mark > small {
-  background: rgba(255,255,255,.09);
-  border: 1px solid rgba(255,255,255,.09);
-  border-radius: 5px;
-  color: #9ca8b8;
-  font-size: 8px;
+.brand-greeting > strong {
+  color: #fff;
+  font-size: 14px;
   font-weight: 700;
-  padding: 3px 5px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-greeting > small {
+  color: #8f9bad;
+  font-size: 9px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-drawer {
@@ -6447,6 +6458,15 @@ tr:hover .sheet-row-actions {
   .brand-mark > span {
     height: 30px;
     width: 30px;
+  }
+
+  .brand-greeting > strong {
+    font-size: 13px;
+  }
+
+  .brand-greeting > small {
+    font-size: 8px;
+    max-width: 190px;
   }
 
   .sidebar-drawer {

@@ -18,6 +18,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const esAdmin = sesion?.usuario?.rol === "admin";
   const rutaTablero = getRutaUsuario(sesion?.usuario?.usuario, sesion?.usuario?.rol);
+  const primerNombre = sesion?.usuario?.nombre?.trim().split(/\s+/)[0] || "equipo";
 
   const seccionesNav = {
     inicio: [
@@ -84,8 +85,10 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
       <div className="sidebar-header">
         <a className="brand-mark" href={rutaTablero || "/"} aria-label="Ir al Inicio">
           <span>R</span>
-          <strong>RENDER</strong>
-          <small>OS</small>
+          <span className="brand-greeting">
+            <strong>Hola, {primerNombre}</strong>
+            <small>¡Vamos equipo, a cerrar un gran mes!</small>
+          </span>
         </a>
         <button
           type="button"
