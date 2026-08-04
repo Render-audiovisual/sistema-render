@@ -5426,6 +5426,243 @@ tr:hover .sheet-row-actions {
   .cliente-metric { min-height:112px; }
 }
 
+/* Reportes · lectura del equipo y producción audiovisual */
+.reportes-page {
+  display: grid;
+  gap: 18px;
+}
+
+.reportes-page .module-intro {
+  margin-bottom: 0;
+}
+
+.reportes-page .module-intro h2 {
+  font-size: clamp(27px,3vw,38px);
+  letter-spacing: -.035em;
+}
+
+.reportes-page .module-intro p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.reportes-periods {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #e1e5e9;
+  border-radius: 11px;
+  display: inline-flex;
+  gap: 4px;
+  justify-self: start;
+  margin: 0!important;
+  padding: 5px;
+}
+
+.reportes-periods button {
+  border: 0;
+  border-radius: 8px;
+  color: #6b7480;
+  font-size: 12px;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.reportes-periods button.active {
+  background: #25364a;
+  border: 0;
+  color: #fff;
+}
+
+.reportes-team-grid {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+
+.report-employee-card {
+  border-color: #e0e4e8!important;
+  border-radius: 14px!important;
+  box-shadow: 0 7px 22px rgba(15,23,42,.04);
+  padding: 19px!important;
+}
+
+.report-employee-card > div:first-child {
+  margin-bottom: 17px!important;
+}
+
+.report-employee-card > div:first-child > div > div:last-child {
+  color: #6f7884!important;
+  font-size: 10px!important;
+}
+
+.report-metric {
+  padding-top: 15px!important;
+}
+
+.report-metric > div:first-child > div:first-child {
+  font-size: 13px!important;
+}
+
+.report-metric > div:last-child {
+  color: #707985!important;
+  font-size: 11px!important;
+  line-height: 1.4;
+}
+
+.report-filmmaker-card {
+  background: #172330;
+  border-color: #26384a!important;
+  color: #fff;
+  grid-column: span 2;
+}
+
+.report-filmmaker-header {
+  align-items: center;
+  border-bottom: 1px solid rgba(255,255,255,.10);
+  display: flex;
+  gap: 11px;
+  padding-bottom: 15px;
+}
+
+.report-employee-avatar {
+  align-items: center;
+  background: #dce7f2;
+  border-radius: 10px;
+  color: #1d3145;
+  display: flex;
+  flex: 0 0 38px;
+  font-size: 14px;
+  font-weight: 800;
+  height: 38px;
+  justify-content: center;
+}
+
+.report-filmmaker-header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.report-filmmaker-header strong {
+  font-size: 15px;
+}
+
+.report-filmmaker-header small {
+  color: #99a9ba;
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.report-filmmaker-total {
+  align-items: center;
+  display: flex;
+  gap: 13px;
+  padding: 17px 0;
+}
+
+.report-filmmaker-total > strong {
+  font-size: 38px;
+  letter-spacing: -.04em;
+  line-height: 1;
+}
+
+.report-filmmaker-total > div {
+  display: grid;
+  gap: 3px;
+}
+
+.report-filmmaker-total span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.report-filmmaker-total small {
+  color: #9dabb9;
+  font-size: 10px;
+}
+
+.report-filmmaker-locations {
+  background: rgba(255,255,255,.055);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px;
+  display: grid;
+  overflow: hidden;
+}
+
+.report-filmmaker-label {
+  color: #9eacbb;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  padding: 10px 12px;
+  text-transform: uppercase;
+}
+
+.report-filmmaker-location {
+  align-items: center;
+  border-top: 1px solid rgba(255,255,255,.08);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.report-filmmaker-location > span {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.report-filmmaker-location > div {
+  align-items: baseline;
+  display: flex;
+  gap: 5px;
+}
+
+.report-filmmaker-location strong {
+  font-size: 18px;
+}
+
+.report-filmmaker-location small {
+  color: #a6b4c2;
+  font-size: 9px;
+}
+
+.report-filmmaker-location b {
+  background: #503c2b;
+  border-radius: 999px;
+  color: #eac79f;
+  font-size: 8px;
+  font-weight: 600;
+  margin-left: 5px;
+  padding: 4px 6px;
+}
+
+.report-filmmaker-locations > p {
+  border-top: 1px solid rgba(255,255,255,.08);
+  color: #a6b4c2;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 15px 12px;
+}
+
+@media (max-width: 900px) {
+  .report-filmmaker-card { grid-column:span 1; }
+}
+
+@media (max-width: 560px) {
+  .reportes-periods {
+    display: grid;
+    grid-template-columns:1fr;
+    justify-self: stretch;
+  }
+  .reportes-team-grid { grid-template-columns:1fr!important; }
+  .report-filmmaker-location {
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
+
 /* ====================================================================
    Tareas — tema oscuro
    Único módulo oscuro de Sistema Render (decisión explícita: el resto

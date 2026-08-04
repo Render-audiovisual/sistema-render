@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
 import { pushUrlContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+import { groupFilmingTasksByClient } from "../shared/reports/report-utils.js";
 
 export function ResumenEntregableEquipo({
   etiqueta,
@@ -33,7 +34,7 @@ export function ResumenEntregableEquipo({
   const porcentaje = total > 0 ? Math.round((realizados / total) * 100) : 0;
   const colorBarra = porcentaje >= 80 ? "var(--success)" : porcentaje >= 50 ? "var(--warning)" : "var(--danger)";
   return (
-    <div style={{ paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+    <div className="report-metric" style={{ paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px" }}>
         <div style={{ fontWeight: "600", fontSize: "13px", color: "var(--text)" }}>{etiqueta}</div>
         <div style={{ fontSize: "12px", color: "var(--muted)", whiteSpace: "nowrap" }}>
@@ -62,6 +63,7 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
   const inicial = (nombre || "?").trim().charAt(0).toUpperCase();
   return (
     <article
+      className="report-employee-card"
       style={{
         background: "#fff",
         border: "1px solid var(--border)",
@@ -111,6 +113,32 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
           ))}
         </div>
       )}
+    </article>
+  );
+}
+
+function TarjetaFilmacionesGerman({ clientes }) {
+  const totalGrabados = clientes.reduce((sum, item) => sum + item.grabados, 0);
+  const totalPlanificados = clientes.reduce((sum, item) => sum + item.total, 0);
+  return (
+    <article className="report-employee-card report-filmmaker-card">
+      <header className="report-filmmaker-header">
+        <span className="report-employee-avatar">G</span>
+        <div><strong>Germán</strong><small>Filmmaker · Producción audiovisual</small></div>
+      </header>
+      <div className="report-filmmaker-total">
+        <strong>{totalGrabados}</strong>
+        <div><span>videos grabados</span><small>{totalPlanificados - totalGrabados} pendientes · {totalPlanificados} planificados</small></div>
+      </div>
+      <div className="report-filmmaker-locations">
+        <div className="report-filmmaker-label">Grabaciones por cliente</div>
+        {clientes.length > 0 ? clientes.map((cliente) => (
+          <div className="report-filmmaker-location" key={cliente.nombre}>
+            <span>{cliente.nombre}</span>
+            <div><strong>{cliente.grabados}</strong><small>grabados</small>{cliente.pendientes > 0 && <b>{cliente.pendientes} pendientes</b>}</div>
+          </div>
+        )) : <p>No hay filmaciones registradas para este período.</p>}
+      </div>
     </article>
   );
 }
@@ -389,6 +417,10 @@ export function ReportesEquipoPage() {
   const videosLuciano = resumenEntregas(
     tareasDelPeriodoPorPersona("Luciano").filter((t) => t.tipo_tarea === "edicion"),
   );
+  const filmacionesGerman = groupFilmingTasksByClient(
+    tareasDelPeriodoPorPersona("Germán"),
+    ESTADO_FINAL_TAREA,
+  );
   const historiasDelPeriodo = historias.filter((h) => enPeriodo(h.fecha_programada || ""));
   const reelsDelPeriodo = publicaciones.filter(
     (p) => p.tipo === "video" && enPeriodo(p.fecha_programada || ""),
@@ -422,14 +454,9 @@ export function ReportesEquipoPage() {
     },
     {
       nombre: "Germán",
-      rol: "Producción",
-      metricas: [
-        {
-          etiqueta: "Videos útiles a grabar",
-          total: 40,
-          enRevision: true,
-        },
-      ],
+      rol: "Filmmaker",
+      tipo: "filmaciones",
+      clientes: filmacionesGerman,
     },
     {
       nombre: "Oriana",
@@ -462,7 +489,7 @@ export function ReportesEquipoPage() {
   return (
     <main aria-label="Render platform reportes equipo">
       <div className="frame">
-        <div className="content">
+        <div className="content reportes-page">
           <header className="module-intro"><div><div className="section-label">Reportes</div><h2>¿Cómo viene el rendimiento?</h2><p>{esVistaAdmin ? "Entregas realizadas y pendientes del equipo." : "Tu objetivo, tareas completadas y pendientes."}</p></div></header>
 
           {error && (
@@ -471,7 +498,7 @@ export function ReportesEquipoPage() {
             </div>
           )}
 
-          <div className="tabs" style={{ marginBottom: "16px" }}>
+          <div className="tabs reportes-periods" style={{ marginBottom: "16px" }}>
             {PERIODOS.map((p) => (
               <button
                 type="button"
@@ -491,10 +518,12 @@ export function ReportesEquipoPage() {
               <div className="section-label">
                 {esVistaAdmin ? "Producción del mes" : "Mi objetivo mensual — vista rápida"}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${esVistaAdmin ? "230px" : "150px"}, 1fr))`, gap: "14px", marginBottom: "12px" }}>
+              <div className="reportes-team-grid" style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${esVistaAdmin ? "230px" : "150px"}, 1fr))` }}>
                 {esVistaAdmin ? (
                   tarjetasEntregables.map((tarjeta) => (
-                    <TarjetaEntregablesEquipo key={tarjeta.nombre} {...tarjeta} />
+                    tarjeta.tipo === "filmaciones"
+                      ? <TarjetaFilmacionesGerman key={tarjeta.nombre} clientes={tarjeta.clientes}/>
+                      : <TarjetaEntregablesEquipo key={tarjeta.nombre} {...tarjeta} />
                   ))
                 ) : (
                   <>
