@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { getHoyLocalISO, getInicialesCliente, getSesion, payloadColumnaPlanilla } from "../utils.jsx";
 import { COLUMNAS_MULTILINEA, COLUMNAS_PLANILLA, DIAS_SEMANA, DIAS_SEMANA_CLIENTE, ESTADOS_HISTORIA, MESES, MESES_CLIENTE, RESPONSABLES_EQUIPO } from "../constants.js";
 import { parseJsonArrayResponse } from "../shared/http/response-utils.js";
+import { PageState } from "../components/PageState.jsx";
 import { formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
 export function HistoriasPlanillaTab({
@@ -1448,11 +1449,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
           <header className="module-intro">
             <div><div className="section-label">Historias</div><h2>¿Qué historias están planificadas?</h2><p>Organizá el contenido por cliente y período sin perder el contexto.</p></div>
           </header>
-          {(errorClientes || errorHistorias) && (
-            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828" }}>
-              {errorClientes || errorHistorias}
-            </div>
-          )}
+          {(errorClientes || errorHistorias) && <PageState compact type="error" title={errorClientes || errorHistorias} description="La vista y el período siguen guardados." onRetry={() => window.location.reload()} />}
 
           <div className="h-workspace">
             <div className="h-main">

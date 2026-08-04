@@ -1703,6 +1703,9 @@ select:focus {
 .module-intro{align-items:flex-end;display:flex;justify-content:space-between;margin-bottom:18px}.module-intro h2{font-size:24px;letter-spacing:-.025em;margin:3px 0 5px}.module-intro p{color:var(--muted);font-size:12px;margin:0}
 
 /* ---- USUARIOS / ADMINISTRACION ---- */
+.page-state{align-items:center;background:var(--surface-soft);border:1px solid var(--border);border-radius:12px;color:var(--text);display:flex;gap:12px;justify-content:center;margin:12px 0;padding:24px;text-align:left}.page-state>span{align-items:center;background:#e5e7eb;border-radius:50%;display:flex;flex:0 0 32px;height:32px;justify-content:center}.page-state>div{display:grid;gap:3px}.page-state strong{font-size:13px}.page-state p{color:var(--muted);font-size:11px;margin:0}.page-state.is-error{background:#fff5f5;border-color:#f1caca}.page-state.is-error>span{background:#f8dddd;color:#9e3232}.page-state.is-compact{justify-content:flex-start;padding:12px 14px}.page-state>.btn{margin-left:auto}
+
+/* ---- USUARIOS / ADMINISTRACION ---- */
 .usuarios-page {
   display: grid;
   gap: 22px;

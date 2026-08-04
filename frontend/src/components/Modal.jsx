@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 
 /*
  * Chrome compartido de los modales: overlay + contenedor + fila de header
@@ -15,6 +15,24 @@ export function Modal({
   closeOnBackdropClick = false,
   closeLabel = "Cerrar",
 }) {
+  const closeButtonRef = useRef(null);
+  const previousFocusRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement;
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onCloseRef.current?.();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      previousFocusRef.current?.focus?.();
+    };
+  }, []);
+
   const handleBackdropMouseDown = (event) => {
     if (closeOnBackdropClick && event.target === event.currentTarget) {
       onClose?.();
@@ -33,12 +51,13 @@ export function Modal({
         <div className="modal-header">
           {title}
           <button
+            ref={closeButtonRef}
             className="modal-close"
             type="button"
             onClick={onClose}
             aria-label={closeLabel}
           >
-            X
+            ×
           </button>
         </div>
         {children}

@@ -3,6 +3,7 @@ import { etiquetaCortaPublicacion, fechaISODesde, getCheckPublicacionLabel, getE
 import { COLUMNAS_PUBLICACION, DIAS_SEMANA, ESTADOS_PUBLICACION, MESES, RESPONSABLES_EQUIPO, TIPOS_PUBLICACION } from "../constants.js";
 import { ClientesRail } from "../pages/Historias.jsx";
 import { Modal } from "../components/Modal.jsx";
+import { PageState } from "../components/PageState.jsx";
 import { formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
 export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, contextMonth, onMonthChange }) {
@@ -1057,11 +1058,7 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
           <header className="module-intro">
             <div><div className="section-label">Publicaciones</div><h2>¿Qué se publica y cuándo?</h2><p>Consultá el calendario o planificá por cliente manteniendo período y vista.</p></div>
           </header>
-          {errorClientes && (
-            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
-              {errorClientes}
-            </div>
-          )}
+          {errorClientes && <PageState compact type="error" title={errorClientes} description="La vista, el cliente y el mes siguen guardados." onRetry={() => window.location.reload()} />}
 
           <div className="h-workspace">
             <ClientesRail

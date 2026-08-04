@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { calcularPorcentajeCuota, getClaveFeed, getCuotaCarruselesMensual, getCuotaReelsMensual, getMesActualISO, getPublicacionesDelMismoFeed, getResumenClientesActivos } from "../utils.jsx";
 import { EditarCuotaClienteModal, DetalleClienteModal } from "../components/ClienteModals.jsx";
 import { Modal } from "../components/Modal.jsx";
+import { PageState } from "../components/PageState.jsx";
 import { readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
 export function ClienteCuotaResumen({ etiqueta, publicados, cuota }) {
@@ -296,9 +297,9 @@ export function ClientesAdminPage() {
               </div>
             </div>
 
-            {error && <div className="caption login-error">{error}</div>}
+            {error && <PageState compact type="error" title={error} description="Tus datos no fueron modificados." onRetry={() => cargarClientes()} />}
             {cargando ? (
-              <div className="state-empty">Cargando clientes...</div>
+              <PageState title="Cargando clientes…" description="Conservamos el cliente y período seleccionados." />
             ) : (
               <>
               <div className="clientes-desktop-table-wrap">
