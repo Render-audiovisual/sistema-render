@@ -72,7 +72,7 @@ test(
         asignado_a: "QA",
         estado: "pendiente",
         prioridad: "media",
-        colaboradores: ["QA Colaborador"],
+        colaboradores: ["QA Colaborador", "QA Diseño"],
         workspace: "render_os",
       }));
       assert.equal(createdResponse.response.status, 201);
@@ -106,6 +106,29 @@ test(
       assert.equal(direct.response.status, 200);
       assert.equal(direct.body.id, taskId);
       assert.equal(direct.body.propiedades_extra.workspace, "render_os");
+
+      const employeeList = await request("/tareas?workspace=render_os&limit=10", {}, employeeToken);
+      assert.deepEqual(employeeList.body.map((item) => item.id), [taskId]);
+      const employeeDirect = await request(`/tareas/${taskId}?workspace=render_os`, {}, employeeToken);
+      assert.equal(employeeDirect.response.status, 200);
+      const employeeOtherTask = await request(`/tareas/${secondResponse.body.id}?workspace=render_os`, {}, employeeToken);
+      assert.equal(employeeOtherTask.response.status, 404);
+      const employeeCreate = await request("/tareas", jsonOptions("POST", {
+        titulo: `${marker} no autorizada`, asignado_a: "QA Diseño", workspace: "render_os",
+      }), employeeToken);
+      assert.equal(employeeCreate.response.status, 403);
+      const employeeRename = await request(`/tareas/${taskId}?workspace=render_os`, jsonOptions("PATCH", {
+        titulo: `${marker} no autorizada`,
+      }), employeeToken);
+      assert.equal(employeeRename.response.status, 403);
+      const employeeDelete = await request(`/tareas/${taskId}?workspace=render_os`, { method: "DELETE" }, employeeToken);
+      assert.equal(employeeDelete.response.status, 403);
+      const employeeComment = await request(`/tareas/${taskId}/comentarios?workspace=render_os`, jsonOptions("POST", {
+        autor: "Nombre falsificado",
+        contenido: "Comentario del colaborador",
+      }), employeeToken);
+      assert.equal(employeeComment.response.status, 201);
+      assert.equal(employeeComment.body.autor, "QA Diseño");
 
       const historicalDirect = await request(`/tareas/${historicalId}?workspace=render_os`);
       assert.equal(historicalDirect.response.status, 404);

@@ -26,7 +26,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
     trabajo: [
       { href: "/workspace/tareas", label: "Tareas", icon: "tasks" },
     ],
-    planificacion: [
+    planificacion: esAdmin ? [
       {
         href: "/planificacion-historias",
         label: "Historias",
@@ -37,10 +37,10 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
         label: "Publicaciones",
         description: "Organizá y seguí las publicaciones.",
       },
-    ],
-    gestion: [
+    ] : [],
+    gestion: esAdmin ? [
       { href: "/reportes-historias", label: "Reportes", icon: "reports" },
-    ],
+    ] : [],
     admin: esAdmin ? [
       { href: "/clientes", label: "Clientes", icon: "clients" },
     ] : [],
@@ -105,7 +105,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
         <div className="sidebar-content">
           {renderLinksSección(seccionesNav.inicio)}
           {renderLinksSección(seccionesNav.trabajo)}
-          <details className={`nav-menu ${seccionesNav.planificacion.some((item) => item.href === path) ? "active" : ""}`}>
+          {esAdmin && <details className={`nav-menu ${seccionesNav.planificacion.some((item) => item.href === path) ? "active" : ""}`}>
             <summary className="sidebar-link" aria-label="Abrir opciones de Contenido">
               <span className="sidebar-link-label"><SidebarIcon name="content"/><span>Contenido</span></span>
               <span className="nav-menu-chevron" aria-hidden="true">⌄</span>
@@ -114,7 +114,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
               <div className="nav-menu-heading">¿Qué querés planificar?</div>
               {renderLinksSección(seccionesNav.planificacion)}
             </div>
-          </details>
+          </details>}
           {renderLinksSección(seccionesNav.admin)}
           {renderLinksSección(seccionesNav.gestion)}
         </div>

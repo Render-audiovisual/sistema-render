@@ -435,7 +435,9 @@ export function WorkspaceReadOnlyPage({ sesion }) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([apiJson("/api/clientes"), isAdmin ? apiJson("/api/usuarios") : Promise.resolve([])])
+    Promise.all(isAdmin
+      ? [apiJson("/api/clientes"), apiJson("/api/usuarios")]
+      : [Promise.resolve([]), Promise.resolve([])])
       .then(([clientData, userData]) => {
         if (!active) return;
         setClients(clientData);
@@ -578,6 +580,8 @@ export function WorkspaceReadOnlyPage({ sesion }) {
     }
   };
 
+  const taskClients = isAdmin ? clients : [...new Map(tasks.filter((task) => task.cliente_id).map((task) => [String(task.cliente_id), { id: task.cliente_id, nombre: task.cliente_nombre }])).values()];
+  const taskUsers = isAdmin ? users : [{ id: sesion?.usuario?.usuario, ...sesion?.usuario }];
   const retry = () => { setError(""); setLoading(true); setReloadKey((current) => current + 1); };
-  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} setQuery={setQuery} area={area} setArea={setArea} responsible={responsible} setResponsible={setResponsible} client={client} setClient={setClient} sector={sector} setSector={setSector} priority={priority} setPriority={setPriority} archiveMode={archiveMode} setArchiveMode={setArchiveMode} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onDelete={deleteTask} onError={(message) => notify(message, "error")}/>}</main></div>;
+  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={taskUsers} clients={taskClients} query={query} setQuery={setQuery} area={area} setArea={setArea} responsible={responsible} setResponsible={setResponsible} client={client} setClient={setClient} sector={sector} setSector={setSector} priority={priority} setPriority={setPriority} archiveMode={archiveMode} setArchiveMode={setArchiveMode} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onDelete={deleteTask} onError={(message) => notify(message, "error")}/>}</main></div>;
 }

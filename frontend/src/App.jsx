@@ -46,7 +46,9 @@ export function App() {
     return null;
   }
 
-  const rutasCompartidas = ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil", "/piezas", "/workspace/tareas"];
+  const rutasCompartidas = esAdmin
+    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil", "/piezas", "/workspace/tareas"]
+    : ["/perfil", "/workspace/tareas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
 

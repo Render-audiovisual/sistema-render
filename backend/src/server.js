@@ -17,6 +17,7 @@ import {
 import { setupDemoClientes } from "./setup-demo-data.js";
 import { shouldSetupDemoData } from "./hosting-config.js";
 import { requireAuthentication, requireRole } from "./auth.js";
+import { buildTaskAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -1293,7 +1294,7 @@ router.get("/publicaciones", async (req, res, next) => {
   }
 });
 
-router.post("/tareas", async (req, res, next) => {
+router.post("/tareas", requireRole("admin"), async (req, res, next) => {
   try {
     const {
       titulo,
@@ -1445,6 +1446,10 @@ router.patch("/tareas/:id", async (req, res, next) => {
     let colaboradoresAnteriores = [];
     const esRenderOS = req.query.workspace === "render_os";
 
+    if (req.auth.rol !== "admin" && !canEmployeePatchTask(body, { workspace: esRenderOS ? "render_os" : "historical", role: req.auth.rol })) {
+      return res.status(403).json({ error: "Solo podés actualizar el estado de tus tareas." });
+    }
+
     if (Object.prototype.hasOwnProperty.call(body, "estado")) {
       if (body.estado === null || !ESTADOS_TAREA_VALIDOS.includes(body.estado)) {
         return res.status(400).json({ error: "Estado inválido." });
@@ -1522,18 +1527,25 @@ router.patch("/tareas/:id", async (req, res, next) => {
     sets.push("updated_at = now()");
     valores.push(id);
     const idPlaceholder = i;
-    let where = `id = $${idPlaceholder}`;
+    let where = `t.id = $${idPlaceholder}`;
     if (esRenderOS) {
-      where += ` AND propiedades_extra->>'workspace' = 'render_os'`;
+      where += ` AND t.propiedades_extra->>'workspace' = 'render_os'`;
     }
     if (body.expected_updated_at) {
       i++;
-      where += ` AND updated_at = $${i}::timestamptz`;
+      where += ` AND t.updated_at = $${i}::timestamptz`;
       valores.push(body.expected_updated_at);
     }
 
+    const acceso = buildTaskAccessClause(req.auth, "t", `$${i + 1}`);
+    where += acceso.sql;
+    if (acceso.value) {
+      i++;
+      valores.push(acceso.value);
+    }
+
     const result = await pool.query(
-      `UPDATE tareas SET ${sets.join(", ")}
+      `UPDATE tareas AS t SET ${sets.join(", ")}
        WHERE ${where}
        RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
       valores,
@@ -1541,10 +1553,13 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
     if (result.rows.length === 0) {
       if (body.expected_updated_at) {
+        const accesoExistente = buildTaskAccessClause(req.auth, "t", "$2");
+        const paramsExistente = [id];
+        if (accesoExistente.value) paramsExistente.push(accesoExistente.value);
         const existente = await pool.query(
-          `SELECT id FROM tareas
-           WHERE id = $1${esRenderOS ? " AND propiedades_extra->>'workspace' = 'render_os'" : ""}`,
-          [id],
+          `SELECT t.id FROM tareas AS t
+           WHERE t.id = $1${esRenderOS ? " AND t.propiedades_extra->>'workspace' = 'render_os'" : ""}${accesoExistente.sql}`,
+          paramsExistente,
         );
         if (existente.rows.length > 0) {
           return res.status(409).json({ error: "La tarea cambió mientras la estabas editando. Recargá y revisá la última versión." });
@@ -1591,7 +1606,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
   }
 });
 
-router.delete("/tareas/:id", async (req, res, next) => {
+router.delete("/tareas/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const esRenderOS = req.query.workspace === "render_os";
@@ -1682,6 +1697,13 @@ router.get("/tareas", async (req, res, next) => {
       query += ` AND t.propiedades_extra->>'workspace' = 'render_os'`;
     } else {
       query += ` AND t.propiedades_extra->>'workspace' IS DISTINCT FROM 'render_os'`;
+    }
+
+    const acceso = buildTaskAccessClause(req.auth, "t", `$${paramCount}`);
+    query += acceso.sql;
+    if (acceso.value) {
+      params.push(acceso.value);
+      paramCount++;
     }
 
     if (asignado_a) {
@@ -1784,6 +1806,9 @@ router.get("/tareas/:id", async (req, res, next) => {
       return res.status(400).json({ error: "Falta un workspace válido." });
     }
 
+    const acceso = buildTaskAccessClause(req.auth, "t", "$2");
+    const params = [req.params.id];
+    if (acceso.value) params.push(acceso.value);
     const result = await pool.query(
       `SELECT
          t.id, t.titulo, t.estado, t.asignado_a, t.requiere_aprobacion,
@@ -1806,8 +1831,8 @@ router.get("/tareas/:id", async (req, res, next) => {
        LEFT JOIN historias h ON h.id = t.historia_id
        LEFT JOIN publicaciones p ON p.id = t.publicacion_id
        WHERE t.id = $1
-         AND t.propiedades_extra->>'workspace' = 'render_os'`,
-      [req.params.id],
+         AND t.propiedades_extra->>'workspace' = 'render_os'${acceso.sql}`,
+      params,
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Tarea no encontrada." });
@@ -1824,16 +1849,22 @@ router.get("/tareas/:id/subtareas", async (req, res, next) => {
       return res.status(400).json({ error: "Falta un workspace válido." });
     }
 
+    const accesoPadre = buildTaskAccessClause(req.auth, "t", "$2");
+    const paramsPadre = [req.params.id];
+    if (accesoPadre.value) paramsPadre.push(accesoPadre.value);
     const padre = await pool.query(
-      `SELECT id FROM tareas
-       WHERE id = $1
-         AND propiedades_extra->>'workspace' = 'render_os'`,
-      [req.params.id],
+      `SELECT t.id FROM tareas AS t
+       WHERE t.id = $1
+         AND t.propiedades_extra->>'workspace' = 'render_os'${accesoPadre.sql}`,
+      paramsPadre,
     );
     if (padre.rows.length === 0) {
       return res.status(404).json({ error: "Tarea no encontrada." });
     }
 
+    const accesoSubtarea = buildTaskAccessClause(req.auth, "t", "$2");
+    const paramsSubtareas = [req.params.id];
+    if (accesoSubtarea.value) paramsSubtareas.push(accesoSubtarea.value);
     const result = await pool.query(
       `SELECT
          t.id, t.titulo, t.estado, t.asignado_a, t.requiere_aprobacion,
@@ -1856,9 +1887,9 @@ router.get("/tareas/:id/subtareas", async (req, res, next) => {
        LEFT JOIN historias h ON h.id = t.historia_id
        LEFT JOIN publicaciones p ON p.id = t.publicacion_id
        WHERE t.tarea_padre_id = $1
-         AND t.propiedades_extra->>'workspace' = 'render_os'
+         AND t.propiedades_extra->>'workspace' = 'render_os'${accesoSubtarea.sql}
        ORDER BY t.id`,
-      [req.params.id],
+      paramsSubtareas,
     );
     res.json(result.rows);
   } catch (error) {
@@ -1869,16 +1900,17 @@ router.get("/tareas/:id/subtareas", async (req, res, next) => {
 router.get("/tareas/:id/comentarios", async (req, res, next) => {
   try {
     const esRenderOS = req.query.workspace === "render_os";
-    if (esRenderOS) {
-      const tarea = await pool.query(
-        `SELECT id FROM tareas
-         WHERE id = $1
-           AND propiedades_extra->>'workspace' = 'render_os'`,
-        [req.params.id],
-      );
-      if (tarea.rows.length === 0) {
-        return res.status(404).json({ error: "Tarea no encontrada." });
-      }
+    const acceso = buildTaskAccessClause(req.auth, "t", "$2");
+    const params = [req.params.id];
+    if (acceso.value) params.push(acceso.value);
+    const tarea = await pool.query(
+      `SELECT t.id FROM tareas AS t
+       WHERE t.id = $1
+         AND t.propiedades_extra->>'workspace' ${esRenderOS ? "= 'render_os'" : "IS DISTINCT FROM 'render_os'"}${acceso.sql}`,
+      params,
+    );
+    if (tarea.rows.length === 0) {
+      return res.status(404).json({ error: "Tarea no encontrada." });
     }
     const result = await pool.query(
       `SELECT id, tarea_id, autor, contenido, created_at
@@ -1896,17 +1928,23 @@ router.get("/tareas/:id/comentarios", async (req, res, next) => {
 router.post("/tareas/:id/comentarios", async (req, res, next) => {
   try {
     const esRenderOS = req.query.workspace === "render_os";
-    const autor = String(req.body.autor || "").trim();
+    const autor = req.auth.rol === "admin"
+      ? String(req.body.autor || "").trim()
+      : getTaskActor(req.auth);
     const contenido = String(req.body.contenido || "").trim();
     if (!autor || !contenido) {
       return res.status(400).json({ error: "Faltan autor o comentario." });
     }
+    const acceso = buildTaskAccessClause(req.auth, "t", "$4");
+    const params = [req.params.id, autor, contenido];
+    if (acceso.value) params.push(acceso.value);
     const result = await pool.query(
       `INSERT INTO tarea_comentarios (tarea_id, autor, contenido)
-       SELECT id, $2, $3 FROM tareas
-       WHERE id = $1${esRenderOS ? " AND propiedades_extra->>'workspace' = 'render_os'" : ""}
+       SELECT t.id, $2, $3 FROM tareas AS t
+       WHERE t.id = $1
+         AND t.propiedades_extra->>'workspace' ${esRenderOS ? "= 'render_os'" : "IS DISTINCT FROM 'render_os'"}${acceso.sql}
        RETURNING id, tarea_id, autor, contenido, created_at`,
-      [req.params.id, autor, contenido],
+      params,
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Tarea no encontrada." });

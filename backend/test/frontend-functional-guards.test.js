@@ -66,6 +66,15 @@ test("Tareas conserva una sola interfaz y navega en la misma pestaña", () => {
   assert.match(sidebarSource, /href=\{enlace\.href\}[\s\S]*?target="_self"/);
 });
 
+test("la navegación de empleados solo expone su inicio, tareas y perfil", () => {
+  const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
+  const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
+  assert.match(appSource, /: \["\/perfil", "\/workspace\/tareas"\]/);
+  assert.match(sidebarSource, /planificacion: esAdmin \?/);
+  assert.match(sidebarSource, /gestion: esAdmin \?/);
+  assert.match(sidebarSource, /\{esAdmin && <details/);
+});
+
 test("el archivo de Tareas se presenta como una única acción secundaria", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   assert.match(workspaceSource, /Ver archivadas/);
