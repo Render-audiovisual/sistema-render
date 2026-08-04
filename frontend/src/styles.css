@@ -2981,6 +2981,38 @@ textarea:disabled {
   }
 }
 
+/* ── Sueldos: lectura operativa exclusiva del Líder ─────────────────────── */
+.salary-page { padding: 40px clamp(20px, 4vw, 64px) 70px; max-width: 1500px; }
+.salary-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; margin-bottom: 26px; }
+.salary-hero h1 { margin: 7px 0 8px; font-size: clamp(28px, 4vw, 44px); letter-spacing: -.035em; color: var(--text); }
+.salary-hero p { margin: 0; color: var(--muted); font-size: 15px; }
+.salary-period-control { display: flex; align-items: center; gap: 5px; border: 1px solid var(--border); background: #fff; border-radius: 12px; padding: 5px; box-shadow: 0 4px 14px rgba(31, 27, 20, .05); }
+.salary-period-control strong { min-width: 150px; text-align: center; text-transform: capitalize; color: var(--text); }
+.salary-period-control button { width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; font-size: 18px; }
+.salary-period-control button:hover { background: var(--surface-soft); color: var(--text); }
+.salary-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+.salary-summary > div { background: #fff; border: 1px solid var(--border); border-radius: 13px; padding: 17px 19px; display: grid; gap: 7px; }
+.salary-summary span { color: var(--muted); font-size: 12px; }
+.salary-summary strong { color: var(--text); font: 700 25px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: -.04em; }
+.salary-banner { margin: 0 0 18px; border: 1px solid #e7c99e; background: #fff7e9; color: #81511d; border-radius: 11px; padding: 12px 15px; font-size: 13px; }
+.salary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.salary-card { background: #fff; border: 1px solid var(--border); border-radius: 15px; padding: 19px; min-width: 0; box-shadow: 0 6px 20px rgba(31, 27, 20, .035); }
+.salary-card-header { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; }
+.salary-avatar { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: #1d3937; color: #fff; font-weight: 750; }
+.salary-card h3 { margin: 0; font-size: 16px; color: var(--text); }.salary-card header p { margin: 3px 0 0; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.salary-percent { color: #187c73; font: 700 21px/1 ui-monospace, "SF Mono", Menlo, monospace; }
+.salary-progress { height: 7px; overflow: hidden; border-radius: 999px; background: var(--surface-soft); margin: 17px 0 14px; }.salary-progress span { display: block; height: 100%; border-radius: inherit; background: #218d82; transition: width .25s ease; }
+.salary-work-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 15px; }.salary-work-summary div { background: #f7f6f2; border-radius: 9px; padding: 10px; display: grid; gap: 3px; }.salary-work-summary strong { color: var(--text); font: 700 18px/1 ui-monospace, "SF Mono", Menlo, monospace; }.salary-work-summary span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+.salary-money { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 13px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }.salary-money div { display: grid; gap: 4px; }.salary-money span,.salary-money small { color: var(--muted); font-size: 11px; }.salary-money strong { color: var(--text); font: 650 16px/1.2 ui-monospace, "SF Mono", Menlo, monospace; }.salary-money small { grid-column: 1/-1; margin-top: 3px; }
+.salary-config-warning { border: 1px solid #e7c99e; background: #fff8ec; border-radius: 9px; padding: 11px 12px; display: grid; gap: 4px; color: #81511d; font-size: 12px; }.salary-config-warning span { line-height: 1.4; }
+.salary-daily { padding: 14px 0 4px; }.salary-daily > div:first-child { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }.salary-daily > div:first-child strong { color: var(--text); }
+.salary-daily-bars { height: 42px; display: flex; align-items: flex-end; gap: 2px; margin-top: 9px; }.salary-daily-bars i { flex: 1; min-width: 2px; max-height: 100%; background: #b8d8d3; border-radius: 2px 2px 0 0; }
+.salary-detail { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 11px; }.salary-detail summary { cursor: pointer; color: #196f68; font-size: 12px; font-weight: 650; }.salary-detail-list { display: grid; gap: 1px; margin-top: 10px; }.salary-detail-list > div { display: grid; grid-template-columns: 18px 1fr auto; gap: 7px; align-items: center; padding: 8px 3px; border-bottom: 1px solid #efede7; }.salary-detail-list > div > span { color: #a16b2e; }.salary-detail-list > div > span.is-complete { color: #27806b; }.salary-detail-list strong { display: block; font-size: 12px; color: var(--text); }.salary-detail-list small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }.salary-detail-list b { color: var(--muted); font-size: 10px; font-weight: 500; }.salary-empty { color: var(--muted); font-size: 12px; }
+.salary-notes { margin-top: 18px; color: var(--muted); font-size: 11px; line-height: 1.5; }.salary-notes strong { color: var(--text); }.salary-notes p { margin: 3px 0; }
+.salary-state { border: 1px solid var(--border); border-radius: 13px; background: #fff; padding: 30px; color: var(--muted); display: grid; gap: 6px; }.salary-state.is-error { border-color: #e7b9b3; color: #9d3028; }
+@media (max-width: 900px) { .salary-page { margin-left: 0; padding-top: 95px; }.salary-grid { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .salary-hero { align-items: stretch; flex-direction: column; }.salary-period-control { justify-content: space-between; }.salary-summary { grid-template-columns: 1fr; }.salary-card { padding: 15px; }.salary-summary > div { padding: 14px 16px; }.salary-detail-list > div { grid-template-columns: 18px 1fr; }.salary-detail-list b { grid-column: 2; } }
+
 .day-modal {
   max-width: 560px;
 }

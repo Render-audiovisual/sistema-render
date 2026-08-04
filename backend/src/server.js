@@ -19,6 +19,7 @@ import { shouldSetupDemoData } from "./hosting-config.js";
 import { requireAuthentication, requireRole } from "./auth.js";
 import { buildTaskAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks } from "./piece-task-linking.js";
+import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -227,6 +228,50 @@ router.get("/usuarios", async (req, res, next) => {
       : "id, usuario, nombre, rol, foto_perfil, created_at";
     const result = await pool.query(`SELECT ${fields} FROM usuarios ORDER BY id`);
     res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
+  try {
+    const period = String(req.query.periodo || "");
+    if (!isValidSalaryPeriod(period)) {
+      return res.status(400).json({ error: "Usá un período válido con formato YYYY-MM." });
+    }
+    const [tasksResult, historiesResult, publicationsResult] = await Promise.all([
+      pool.query(`
+        SELECT t.id, t.titulo, t.asignado_a, t.estado, t.tipo_tarea, t.subtipo,
+               to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
+               t.propiedades_extra, t.created_at, t.updated_at, c.nombre AS cliente_nombre
+        FROM tareas t
+        LEFT JOIN clientes c ON c.id = t.cliente_id
+        WHERE t.propiedades_extra->>'workspace' = 'render_os'
+          AND (to_char(t.fecha_vencimiento, 'YYYY-MM') = $1
+            OR t.propiedades_extra->>'reporte_periodo' = $1
+            OR (t.fecha_vencimiento IS NULL AND to_char(t.updated_at, 'YYYY-MM') = $1))
+      `, [period]),
+      pool.query(`
+        SELECT h.id, h.estado, to_char(h.fecha_programada, 'YYYY-MM-DD') AS fecha_programada,
+               h.idea, h.copy, h.fecha_publicación_real, h.updated_at, c.nombre AS cliente_nombre
+        FROM historias h JOIN clientes c ON c.id = h.cliente_id
+        WHERE to_char(h.fecha_programada, 'YYYY-MM') = $1
+          AND h.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
+      `, [period]),
+      pool.query(`
+        SELECT p.id, p.tipo, p.estado, to_char(p.fecha_programada, 'YYYY-MM-DD') AS fecha_programada,
+               p.idea, p.copy, p.fecha_publicación_real, p.updated_at, c.nombre AS cliente_nombre
+        FROM publicaciones p JOIN clientes c ON c.id = p.cliente_id
+        WHERE to_char(p.fecha_programada, 'YYYY-MM') = $1
+          AND p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
+      `, [period]),
+    ]);
+    res.json(calculateSalaryDashboard({
+      period,
+      tasks: tasksResult.rows,
+      histories: historiesResult.rows,
+      publications: publicationsResult.rows,
+    }));
   } catch (error) {
     next(error);
   }

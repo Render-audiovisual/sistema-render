@@ -13,6 +13,7 @@ import { OrianaDashboard } from "./pages/dashboards/Oriana.jsx";
 import { PerfilPage } from "./pages/Perfil.jsx";
 import { PublicacionesPage } from "./pages/Publicaciones.jsx";
 import { ReportesEquipoPage } from "./pages/Reportes.jsx";
+import { SueldosPage } from "./pages/Sueldos.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
 
@@ -47,7 +48,7 @@ export function App() {
   }
 
   const rutasCompartidas = esAdmin
-    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil", "/piezas", "/workspace/tareas"]
+    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas"]
     : ["/perfil", "/workspace/tareas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
@@ -101,6 +102,9 @@ export function App() {
     }
     if (path === "/reportes-historias") {
       return <ReportesEquipoPage />;
+    }
+    if (path === "/sueldos") {
+      return <SueldosPage />;
     }
     if (path === "/perfil") {
       return <PerfilPage />;
