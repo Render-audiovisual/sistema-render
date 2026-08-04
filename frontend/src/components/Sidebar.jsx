@@ -87,7 +87,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
           <span className="brand-initial">R</span>
           <span className="brand-greeting">
             <strong>Hola, {primerNombre}</strong>
-            <small>Vamos equipo, ¡a cerrar un gran mes!</small>
+            <small>¡Vamos por un gran mes!</small>
           </span>
         </a>
         <button
