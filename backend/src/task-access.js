@@ -26,6 +26,14 @@ export function buildTaskAccessClause(auth, alias, placeholder) {
   };
 }
 
+export function buildTaskReadAccessClause(auth, alias, placeholder, workspace) {
+  // RENDER OS funciona como tablero compartido: cualquier integrante con una
+  // sesión válida puede consultar el trabajo del equipo. Las operaciones de
+  // escritura siguen usando buildTaskAccessClause y conservan sus permisos.
+  if (workspace === "render_os") return { sql: "", value: null };
+  return buildTaskAccessClause(auth, alias, placeholder);
+}
+
 export function canEmployeePatchTask(body = {}, { workspace, role } = {}) {
   const keys = Object.keys(body);
   if (keys.every((key) => ["estado", "expected_updated_at"].includes(key))) return true;

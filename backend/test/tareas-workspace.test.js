@@ -108,11 +108,11 @@ test(
       assert.equal(direct.body.propiedades_extra.workspace, "render_os");
 
       const employeeList = await request("/tareas?workspace=render_os&limit=10", {}, employeeToken);
-      assert.deepEqual(employeeList.body.map((item) => item.id), [taskId]);
+      assert.deepEqual(employeeList.body.map((item) => item.id), [taskId, secondResponse.body.id]);
       const employeeDirect = await request(`/tareas/${taskId}?workspace=render_os`, {}, employeeToken);
       assert.equal(employeeDirect.response.status, 200);
       const employeeOtherTask = await request(`/tareas/${secondResponse.body.id}?workspace=render_os`, {}, employeeToken);
-      assert.equal(employeeOtherTask.response.status, 404);
+      assert.equal(employeeOtherTask.response.status, 200);
       const employeeCreate = await request("/tareas", jsonOptions("POST", {
         titulo: `${marker} no autorizada`, asignado_a: "QA Diseño", workspace: "render_os",
       }), employeeToken);

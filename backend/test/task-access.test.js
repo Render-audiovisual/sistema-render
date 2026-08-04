@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildTaskAccessClause, canEmployeePatchTask, getTaskActor } from "../src/task-access.js";
+import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "../src/task-access.js";
 
 test("el administrador conserva acceso global a tareas", () => {
   assert.deepEqual(buildTaskAccessClause({ rol: "admin", nombre: "Líder" }, "t", "$1"), { sql: "", value: null });
@@ -13,6 +13,21 @@ test("el empleado queda limitado a tareas propias o colaboraciones", () => {
   assert.match(access.sql, /t\.asignado_a/);
   assert.match(access.sql, /colaboradores/);
   assert.match(access.sql, /translate\(lower/);
+});
+
+test("todo usuario autenticado puede consultar el tablero compartido de RENDER OS", () => {
+  assert.deepEqual(
+    buildTaskReadAccessClause({ rol: "diseno", nombre: "Leo Aragon" }, "t", "$3", "render_os"),
+    { sql: "", value: null },
+  );
+  const historicalAccess = buildTaskReadAccessClause(
+    { rol: "diseno", nombre: "Leo Aragon" },
+    "t",
+    "$3",
+    "historical",
+  );
+  assert.equal(historicalAccess.value, "Leo Aragon");
+  assert.match(historicalAccess.sql, /t\.asignado_a/);
 });
 
 test("la identidad de tareas usa el nombre firmado y admite usuario como respaldo", () => {

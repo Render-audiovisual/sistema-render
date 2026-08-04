@@ -17,7 +17,7 @@ import {
 import { setupDemoClientes } from "./setup-demo-data.js";
 import { shouldSetupDemoData } from "./hosting-config.js";
 import { requireAuthentication, requireRole } from "./auth.js";
-import { buildTaskAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
+import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks } from "./piece-task-linking.js";
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
 
@@ -1747,7 +1747,7 @@ router.get("/tareas", async (req, res, next) => {
       query += ` AND t.propiedades_extra->>'workspace' IS DISTINCT FROM 'render_os'`;
     }
 
-    const acceso = buildTaskAccessClause(req.auth, "t", `$${paramCount}`);
+    const acceso = buildTaskReadAccessClause(req.auth, "t", `$${paramCount}`, workspace);
     query += acceso.sql;
     if (acceso.value) {
       params.push(acceso.value);
@@ -1855,7 +1855,7 @@ router.get("/tareas/:id", async (req, res, next) => {
       return res.status(400).json({ error: "Falta un workspace válido." });
     }
 
-    const acceso = buildTaskAccessClause(req.auth, "t", "$2");
+    const acceso = buildTaskReadAccessClause(req.auth, "t", "$2", "render_os");
     const params = [req.params.id];
     if (acceso.value) params.push(acceso.value);
     const result = await pool.query(
@@ -1898,7 +1898,7 @@ router.get("/tareas/:id/subtareas", async (req, res, next) => {
       return res.status(400).json({ error: "Falta un workspace válido." });
     }
 
-    const accesoPadre = buildTaskAccessClause(req.auth, "t", "$2");
+    const accesoPadre = buildTaskReadAccessClause(req.auth, "t", "$2", "render_os");
     const paramsPadre = [req.params.id];
     if (accesoPadre.value) paramsPadre.push(accesoPadre.value);
     const padre = await pool.query(
@@ -1911,7 +1911,7 @@ router.get("/tareas/:id/subtareas", async (req, res, next) => {
       return res.status(404).json({ error: "Tarea no encontrada." });
     }
 
-    const accesoSubtarea = buildTaskAccessClause(req.auth, "t", "$2");
+    const accesoSubtarea = buildTaskReadAccessClause(req.auth, "t", "$2", "render_os");
     const paramsSubtareas = [req.params.id];
     if (accesoSubtarea.value) paramsSubtareas.push(accesoSubtarea.value);
     const result = await pool.query(
@@ -1949,7 +1949,7 @@ router.get("/tareas/:id/subtareas", async (req, res, next) => {
 router.get("/tareas/:id/comentarios", async (req, res, next) => {
   try {
     const esRenderOS = req.query.workspace === "render_os";
-    const acceso = buildTaskAccessClause(req.auth, "t", "$2");
+    const acceso = buildTaskReadAccessClause(req.auth, "t", "$2", esRenderOS ? "render_os" : "historical");
     const params = [req.params.id];
     if (acceso.value) params.push(acceso.value);
     const tarea = await pool.query(
