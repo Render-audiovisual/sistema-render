@@ -3822,12 +3822,23 @@ textarea:disabled {
 
 .stories-sheet-guide {
   align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e1e7ee;
+  border-radius: 9px;
   color: #69717a;
   display: flex;
-  flex-wrap: wrap;
   font-size: 11px;
-  gap: 8px;
-  padding: 10px 2px 0;
+  gap: 14px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 9px 11px;
+}
+
+.stories-sheet-guide > div {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+  min-width: 0;
 }
 
 .stories-sheet-guide span {
@@ -3844,7 +3855,7 @@ textarea:disabled {
 
 .stories-sheet-guide strong {
   color: #3f4852;
-  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .stories-empty-cell {
@@ -3969,6 +3980,59 @@ textarea:disabled {
   box-shadow: inset -14px 0 10px -10px rgba(60, 64, 67, 0.16), 0 1px 2px rgba(31, 41, 55, 0.04);
 }
 
+.historias-viewport .sheet-planning-table {
+  min-width: 1440px;
+}
+
+.historias-viewport .sheet-rownum-col { width: 38px; }
+.historias-viewport .sheet-client-col { width: 160px; }
+.historias-viewport .sheet-day-col { width: 48px; }
+.historias-viewport .sheet-date-col { width: 110px; }
+.historias-viewport .sheet-time-col { width: 86px; }
+.historias-viewport .sheet-type-col { width: 160px; }
+.historias-viewport .sheet-copy-col { width: 220px; }
+.historias-viewport .sheet-material-col { width: 130px; }
+.historias-viewport .sheet-notes-col { width: 170px; }
+.historias-viewport .sheet-owner-col { width: 115px; }
+.historias-viewport .sheet-status-col { width: 115px; }
+.historias-viewport .sheet-actions-col { width: 88px; }
+
+.historias-viewport .sheet-client-cell,
+.historias-viewport .sheet-planning-table thead tr:nth-child(2) th:nth-child(2) { left: 38px; }
+.historias-viewport .sheet-day-cell,
+.historias-viewport .sheet-planning-table thead tr:nth-child(2) th:nth-child(3) { left: 198px; }
+.historias-viewport .sheet-date-cell,
+.historias-viewport .sheet-planning-table thead tr:nth-child(2) th:nth-child(4) { left: 246px; }
+
+.historias-viewport .sheet-planning-table th:last-child,
+.historias-viewport .sheet-planning-table td:last-child {
+  background: #fff;
+  box-shadow: -8px 0 12px -12px rgba(31, 41, 55, .65);
+  position: sticky;
+  right: 0;
+  z-index: 4;
+}
+
+.historias-viewport .sheet-planning-table th:last-child {
+  background: #f8fafd;
+  z-index: 12;
+}
+
+.historias-viewport .sheet-frame::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.historias-viewport .sheet-frame::-webkit-scrollbar-thumb {
+  background: #c4cad2;
+  border: 2px solid #fff;
+  border-radius: 999px;
+}
+
+.historias-viewport .sheet-frame::-webkit-scrollbar-track {
+  background: #f5f7f9;
+}
+
 .historias-viewport .sheet-table tbody tr:nth-child(even) td:not(.sheet-row-number) {
   background-color: #fbfcfe;
 }
@@ -4065,8 +4129,13 @@ textarea:disabled {
     flex-direction: column;
   }
 
-  .stories-sheet-guide strong {
-    margin-left: 0;
+  .stories-sheet-guide > div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .historias-viewport .sheet-planning-table {
+    min-width: 1320px;
   }
 
   .historias-viewport .sheet-day-cell,

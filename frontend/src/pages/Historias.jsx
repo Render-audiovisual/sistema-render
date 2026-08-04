@@ -172,11 +172,19 @@ export function HistoriasPlanillaTab({
         <div className="alert is-error">{error}</div>
       )}
 
+      <div className="stories-sheet-guide">
+        <div>
+          <span>Edición directa</span>
+          <p>Completá la fila de izquierda a derecha. Los cambios se guardan al salir de cada campo.</p>
+        </div>
+        <strong>{clienteFiltradoNombre ? `Cliente: ${clienteFiltradoNombre}` : "Todos los clientes"}</strong>
+      </div>
+
       {cargando ? (
         <div className="state-empty">Cargando planilla…</div>
       ) : (
         <div className="sheet-frame" ref={gridRef}>
-          <table className="sheet-table sheet-planning-table">
+          <table className="sheet-table sheet-planning-table" aria-label="Planificación editable de historias">
             <colgroup>
               <col className="sheet-rownum-col" />
               <col className="sheet-client-col" />
@@ -424,11 +432,6 @@ export function HistoriasPlanillaTab({
         </div>
       )}
 
-      <div className="stories-sheet-guide">
-        <span>Edición directa</span>
-        <p>Los cambios se guardan al salir de cada campo.</p>
-        <strong>{clienteFiltradoNombre ? `Cliente: ${clienteFiltradoNombre}` : "Todos los clientes"}</strong>
-      </div>
     </>
   );
 }
