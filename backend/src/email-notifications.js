@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 import { promises as dns } from "node:dns";
 
-const APP_URL_POR_DEFECTO = "https://sistema-render-xuwo.onrender.com";
+const APP_URL_POR_DEFECTO = "https://sistema.rendercorrientes.com";
 
 const USUARIO_POR_RESPONSABLE = new Map([
   ["agus", "lider"],
@@ -206,6 +206,52 @@ export async function notificarAsignacionTarea({
     destinatario: destinatario.email_notificaciones,
     messageId: info.messageId,
   };
+}
+
+export async function enviarInstruccionesAcceso({ usuario, env = process.env, transporter }) {
+  if (!configuracionCorreoDisponible(env)) {
+    return { enviado: false, razon: "correo_no_configurado" };
+  }
+  if (!usuario?.email_notificaciones) {
+    return { enviado: false, razon: "usuario_sin_correo" };
+  }
+
+  const appUrl = (env.APP_URL || APP_URL_POR_DEFECTO).replace(/\/$/, "");
+  const googleDisponible = Boolean(usuario.google_email);
+  const contenido = {
+    subject: "Tu acceso a RENDER Platform",
+    text: [
+      `Hola ${usuario.nombre},`,
+      "",
+      "Tu cuenta de RENDER Platform está preparada.",
+      `Ingresá desde: ${appUrl}/login`,
+      googleDisponible
+        ? `Podés continuar con la cuenta de Google ${usuario.google_email}.`
+        : `Podés ingresar con ${usuario.email_notificaciones} y tu contraseña actual.`,
+      "Si no conocés tu contraseña, pedile al Líder que coordine una recuperación segura.",
+    ].join("\n"),
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;color:#202124;line-height:1.5">
+        <h2>Tu acceso a RENDER Platform</h2>
+        <p>Hola ${escaparHtml(usuario.nombre)},</p>
+        <p>Tu cuenta está preparada.</p>
+        <p>${googleDisponible
+          ? `Podés continuar con la cuenta de Google <strong>${escaparHtml(usuario.google_email)}</strong>.`
+          : `Podés ingresar con <strong>${escaparHtml(usuario.email_notificaciones)}</strong> y tu contraseña actual.`}</p>
+        <p><a href="${escaparHtml(`${appUrl}/login`)}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px">Ingresar a RENDER</a></p>
+        <p style="color:#667085;font-size:13px">Si no conocés tu contraseña, pedile al Líder que coordine una recuperación segura.</p>
+      </div>
+    `,
+  };
+
+  const mailer = transporter || (await crearTransporter(env));
+  const info = await mailer.sendMail({
+    from: env.EMAIL_FROM || env.SMTP_USER,
+    to: usuario.email_notificaciones,
+    replyTo: env.EMAIL_REPLY_TO || undefined,
+    ...contenido,
+  });
+  return { enviado: true, destinatario: usuario.email_notificaciones, messageId: info.messageId };
 }
 
 export function notificarAsignacionSinInterrumpir(opciones) {

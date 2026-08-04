@@ -4,6 +4,7 @@ import {
   buscarDestinatario,
   configuracionCorreoDisponible,
   crearContenidoCorreo,
+  enviarInstruccionesAcceso,
   normalizarNombre,
   resolverSMTPIPv4,
 } from "../src/email-notifications.js";
@@ -122,4 +123,32 @@ test("resuelve SMTP a IPv4 sin perder el hostname usado por TLS", async () => {
     address: "142.250.0.108",
     servername: "smtp.gmail.com",
   });
+});
+
+test("las instrucciones de acceso usan Hostinger y nunca incluyen contraseñas", async () => {
+  let correo = null;
+  const result = await enviarInstruccionesAcceso({
+    usuario: {
+      nombre: "Augusto",
+      email_notificaciones: "augusto@example.com",
+      google_email: "augusto@example.com",
+    },
+    env: {
+      SMTP_HOST: "smtp.example.com",
+      SMTP_USER: "render@example.com",
+      SMTP_PASS: "secret",
+    },
+    transporter: {
+      async sendMail(options) {
+        correo = options;
+        return { messageId: "test-message" };
+      },
+    },
+  });
+
+  assert.equal(result.enviado, true);
+  assert.equal(correo.to, "augusto@example.com");
+  assert.match(correo.text, /https:\/\/sistema\.rendercorrientes\.com\/login/);
+  assert.doesNotMatch(correo.text, /onrender\.com/);
+  assert.doesNotMatch(correo.text, /contraseña temporal/i);
 });

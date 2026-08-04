@@ -8,7 +8,7 @@
 # La API_URL se puede pisar: API_URL=https://otra-url ./scripts/build-hosting.sh
 set -euo pipefail
 
-API_URL="${API_URL:-https://sistema-render-xuwo.onrender.com}"
+API_URL="${API_URL:-https://sistema.rendercorrientes.com}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 

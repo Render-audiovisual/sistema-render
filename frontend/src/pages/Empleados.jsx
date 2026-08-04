@@ -19,6 +19,7 @@ export function EmpleadosPage() {
   const [googleEmailEdicion, setGoogleEmailEdicion] = useState("");
   const [editandoGoogleEmail, setEditandoGoogleEmail] = useState(false);
   const [guardandoGoogleEmail, setGuardandoGoogleEmail] = useState(false);
+  const [enviandoInvitacion, setEnviandoInvitacion] = useState(false);
   const [editandoDatos, setEditandoDatos] = useState(false);
   const [guardandoDatos, setGuardandoDatos] = useState(false);
   const [nombreEdicion, setNombreEdicion] = useState("");
@@ -185,10 +186,25 @@ export function EmpleadosPage() {
   };
 
   const iniciarEdicionGoogleEmail = () => {
-    setGoogleEmailEdicion(usuarioAdministrado?.google_email || "");
+    setGoogleEmailEdicion(usuarioAdministrado?.google_email || usuarioAdministrado?.email_notificaciones || "");
     setEditandoGoogleEmail(true);
     setFormError(null);
     setMensaje(null);
+  };
+
+  const enviarInvitacion = (u) => {
+    setEnviandoInvitacion(true);
+    setFormError(null);
+    setMensaje(null);
+    fetch(`/api/usuarios/${u.id}/invitacion`, { method: "POST" })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "No se pudo enviar la invitación.");
+        return data;
+      })
+      .then((data) => setMensaje(`Instrucciones enviadas a ${data.destinatario}.`))
+      .catch((error) => setFormError(error.message))
+      .finally(() => setEnviandoInvitacion(false));
   };
 
   const guardarGoogleEmail = (u) => {
@@ -749,8 +765,16 @@ export function EmpleadosPage() {
                 <div className="usuarios-panel-section-title">
                   <div>
                     <strong>Seguridad</strong>
-                    <span>Contraseña y acceso personal</span>
+                    <span>Acceso personal e instrucciones</span>
                   </div>
+                  <button
+                    className="btn primary"
+                    type="button"
+                    disabled={!usuarioAdministrado.email_notificaciones || enviandoInvitacion}
+                    onClick={() => enviarInvitacion(usuarioAdministrado)}
+                  >
+                    {enviandoInvitacion ? "Enviando..." : "Enviar instrucciones"}
+                  </button>
                 </div>
                 <div className="usuarios-security-note">
                   La contraseña no se muestra. Cada persona puede cambiarla

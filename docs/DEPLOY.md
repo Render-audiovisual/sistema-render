@@ -34,7 +34,7 @@ reproducible, sin depender de que alguien recuerde comandos sueltos.
 | `SMTP_PASS` | Contraseña de aplicación del correo | secreto del proveedor |
 | `EMAIL_FROM` | Remitente visible (opcional si coincide con `SMTP_USER`) | `RENDER <notificaciones@ejemplo.com>` |
 | `EMAIL_REPLY_TO` | Dirección para respuestas (opcional) | `equipo@ejemplo.com` |
-| `APP_URL` | URL usada en el botón “Abrir tarea” | `https://sistema-render-xuwo.onrender.com` |
+| `APP_URL` | URL usada en el botón “Abrir tarea” | `https://sistema.rendercorrientes.com` |
 
 **`JWT_SECRET` es obligatorio.** Sin él, el login no genera tokens válidos.
 Nunca lo dejes vacío ni reutilices uno de otro proyecto.

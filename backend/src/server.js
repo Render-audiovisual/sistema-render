@@ -10,6 +10,7 @@ import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import { checkDatabaseConnection, pool } from "./db.js";
 import {
+  enviarInstruccionesAcceso,
   normalizarNombre,
   notificarAsignacionSinInterrumpir,
 } from "./email-notifications.js";
@@ -333,6 +334,31 @@ router.patch("/usuarios/:id/google-email", requireRole("admin"), async (req, res
       return res.status(409).json({ error: "Ese email de Google ya está asignado a otra persona." });
     }
     next(error);
+  }
+});
+
+router.post("/usuarios/:id/invitacion", requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, usuario, nombre, rol, email_notificaciones, google_email
+       FROM usuarios WHERE id = $1`,
+      [req.params.id],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado." });
+    }
+
+    const delivery = await enviarInstruccionesAcceso({ usuario: result.rows[0] });
+    if (!delivery.enviado) {
+      const messages = {
+        correo_no_configurado: "El servidor de correo no está configurado.",
+        usuario_sin_correo: "El usuario no tiene correo de notificaciones.",
+      };
+      return res.status(409).json({ error: messages[delivery.razon] || "No se pudo enviar la invitación." });
+    }
+    return res.json({ ok: true, destinatario: delivery.destinatario });
+  } catch (error) {
+    return next(error);
   }
 });
 
