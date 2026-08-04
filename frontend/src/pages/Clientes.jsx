@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { calcularPorcentajeCuota, getClaveFeed, getCuotaCarruselesMensual, getCuotaReelsMensual, getMesActualISO, getPublicacionesDelMismoFeed, getResumenClientesActivos } from "../utils.jsx";
 import { EditarCuotaClienteModal, DetalleClienteModal } from "../components/ClienteModals.jsx";
 import { Modal } from "../components/Modal.jsx";
+import { readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
 export function ClienteCuotaResumen({ etiqueta, publicados, cuota }) {
   const cuotaNumero = Number(cuota) || 0;
@@ -30,6 +31,10 @@ export function ClienteCuotaResumen({ etiqueta, publicados, cuota }) {
 }
 
 export function ClientesAdminPage() {
+  const [initialClientId] = useState(
+    () => Number(readUrlContext(window.location.search, { cliente: "" }).cliente) || null,
+  );
+  const [contextRestored, setContextRestored] = useState(false);
   const [clientes, setClientes] = useState([]);
   const [historias, setHistorias] = useState([]);
   const [publicaciones, setPublicaciones] = useState([]);
@@ -72,6 +77,20 @@ export function ClientesAdminPage() {
         if (!silencioso) setCargando(false);
       });
   };
+
+  useEffect(() => {
+    if (contextRestored || clientes.length === 0) return;
+    if (initialClientId) {
+      const requestedClient = clientes.find((client) => client.id === initialClientId);
+      if (requestedClient) setClienteSeleccionado(requestedClient);
+    }
+    setContextRestored(true);
+  }, [clientes, contextRestored, initialClientId]);
+
+  useEffect(() => {
+    if (!contextRestored) return;
+    replaceUrlContext({ cliente: clienteSeleccionado?.id || null });
+  }, [clienteSeleccionado, contextRestored]);
 
   // % de historias/publicaciones en tiempo real: el equipo marca cosas como
   // publicadas desde Historias/Publicaciones mientras alguien tiene este

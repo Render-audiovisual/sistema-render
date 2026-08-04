@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
+import { readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
 export function ResumenEntregableEquipo({
   etiqueta,
@@ -123,10 +124,15 @@ export function ReportesEquipoPage() {
   const [historias, setHistorias] = useState([]);
   const [publicaciones, setPublicaciones] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
-  const [periodo, setPeriodo] = useState("mes_actual");
+  const initialPeriod = readUrlContext(window.location.search, { periodo: "mes_actual" }).periodo;
+  const [periodo, setPeriodo] = useState(
+    ["mes_actual", "mes_pasado", "ultimos_30"].includes(initialPeriod) ? initialPeriod : "mes_actual",
+  );
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
   const [detalleDe, setDetalleDe] = useState(null);
+
+  useEffect(() => replaceUrlContext({ periodo }), [periodo]);
 
   useEffect(() => {
     const tareasUrl =

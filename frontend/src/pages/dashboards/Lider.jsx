@@ -19,6 +19,7 @@ export function LiderDashboard() {
   const [tareasRaw, setTareasRaw] = useState([]);
   const [busquedaCliente, setBusquedaCliente] = useState("");
   const [vistaLider, setVistaLider] = useState("gestion");
+  const [cargandoInicio, setCargandoInicio] = useState(true);
 
   const cargarPanorama = () => {
     Promise.all([
@@ -44,7 +45,8 @@ export function LiderDashboard() {
         setPanoramaError("No se pudo cargar el panorama de clientes.");
         setResumenEquipoError("No se pudo cargar el resumen de equipo.");
         setAprobacionesLiderError("No se pudieron cargar las aprobaciones.");
-      });
+      })
+      .finally(() => setCargandoInicio(false));
   };
 
   useEffect(cargarPanorama, []);
@@ -53,6 +55,82 @@ export function LiderDashboard() {
     cliente.nombre.toLowerCase().includes(busquedaCliente.toLowerCase()),
   );
 
+  const piezasAtrasadas = getPiezasAtrasadas(historiasRaw, publicacionesRaw);
+  const piezasBloqueadas = getPiezasBloqueadas(historiasRaw, publicacionesRaw);
+  const publicacionesDeHoy = getPublicacionesDeHoy(historiasRaw, publicacionesRaw);
+  const tareasVencidas = tareasRaw.filter(
+    (tarea) => tarea.fecha_vencimiento && tarea.fecha_vencimiento < getHoyLocalISO() && tarea.estado !== ESTADO_FINAL_TAREA,
+  );
+  const errorInicio = panoramaError || resumenEquipoError || aprobacionesLiderError;
+
+  return (
+    <main aria-label="Inicio operativo del Líder">
+      <div className="frame">
+        <div className="content lider-home">
+          <header className="lider-home-header">
+            <div className="section-label">Inicio</div>
+            <h2>¿Qué requiere tu atención ahora?</h2>
+            <p>Un resumen breve para decidir y continuar trabajando.</p>
+          </header>
+
+          {cargandoInicio ? (
+            <div className="state-empty">Preparando tus pendientes…</div>
+          ) : errorInicio ? (
+            <div className="alert is-error">{errorInicio}</div>
+          ) : (
+            <>
+              <section className="lider-home-section" aria-labelledby="atencion-title">
+                <div className="lider-home-section-title">
+                  <div><span>⚠</span><div><h3 id="atencion-title">Requieren atención</h3><p>Excepciones que necesitan una decisión.</p></div></div>
+                </div>
+                <div className="lider-home-list">
+                  <a href="/workspace/tareas?archive=active"><strong>{tareasVencidas.length}</strong><span>Tareas vencidas</span><b>Ver tareas →</b></a>
+                  <a href="/planificacion-historias?vista=checklist"><strong>{aprobacionesLider.length}</strong><span>Aprobaciones pendientes</span><b>Revisar →</b></a>
+                  <a href="/planificacion-publicaciones?tab=lista"><strong>{piezasAtrasadas.length}</strong><span>Publicaciones atrasadas</span><b>Ver control →</b></a>
+                  <a href="/planificacion-publicaciones?tab=lista"><strong>{piezasBloqueadas.length}</strong><span>Piezas bloqueadas</span><b>Resolver →</b></a>
+                </div>
+              </section>
+
+              <section className="lider-home-section" aria-labelledby="hoy-title">
+                <div className="lider-home-section-title">
+                  <div><span>◫</span><div><h3 id="hoy-title">Hoy</h3><p>Contenido programado para la jornada.</p></div></div>
+                  <a href="/planificacion-publicaciones?tab=calendario">Abrir calendario →</a>
+                </div>
+                {publicacionesDeHoy.length === 0 ? (
+                  <div className="lider-home-empty">No hay publicaciones programadas para hoy.</div>
+                ) : (
+                  <div className="lider-home-today">
+                    {publicacionesDeHoy.slice(0, 6).map((pieza) => (
+                      <article key={`${pieza.origen}-${pieza.id}`}>
+                        <time>{pieza.fecha_programada?.split(" ")[1] || "Hoy"}</time>
+                        <div><strong>{pieza.idea || pieza.titulo || "Contenido sin título"}</strong><span>{pieza.cliente_nombre || "Sin cliente"} · {pieza.tipo}</span></div>
+                        <b>{pieza.estado}</b>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="lider-home-section" aria-labelledby="equipo-title">
+                <div className="lider-home-section-title">
+                  <div><span>◉</span><div><h3 id="equipo-title">Equipo</h3><p>Carga activa, sin convertir Inicio en un reporte.</p></div></div>
+                  <a href="/reportes-historias">Ver reportes →</a>
+                </div>
+                <div className="lider-home-team">
+                  {resumenEquipo.map((persona) => (
+                    <article key={persona.nombre}><strong>{persona.nombre}</strong><span>{persona.cargaTotal} pendientes</span><small className={persona.alerta ? "atraso" : ""}>{persona.estado}</small></article>
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
+        </div>
+      </div>
+    </main>
+  );
+
+  /* Panel anterior conservado temporalmente en código para comparar cálculos
+     durante esta fase; ya no forma parte de la experiencia visible. */
   return (
     <main aria-label="Render platform">
       <div className="frame">

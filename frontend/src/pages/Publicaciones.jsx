@@ -3,11 +3,14 @@ import { etiquetaCortaPublicacion, fechaISODesde, getCheckPublicacionLabel, getE
 import { COLUMNAS_PUBLICACION, DIAS_SEMANA, ESTADOS_PUBLICACION, MESES, RESPONSABLES_EQUIPO, TIPOS_PUBLICACION } from "../constants.js";
 import { ClientesRail } from "../pages/Historias.jsx";
 import { Modal } from "../components/Modal.jsx";
+import { formatMonthContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
-export function PublicacionesCalendarioTab({ onIrAPlanilla }) {
+export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, contextMonth, onMonthChange }) {
   const hoy = new Date();
-  const [year, setYear] = useState(hoy.getFullYear());
-  const [month, setMonth] = useState(hoy.getMonth());
+  const [localYear, setLocalYear] = useState(hoy.getFullYear());
+  const [localMonth, setLocalMonth] = useState(hoy.getMonth());
+  const year = contextYear ?? localYear;
+  const month = contextMonth ?? localMonth;
   const [piezas, setPiezas] = useState([]);
   const [error, setError] = useState(null);
   const [filtroTipo, setFiltroTipo] = useState("todos");
@@ -99,8 +102,11 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla }) {
       m = 0;
       y += 1;
     }
-    setMonth(m);
-    setYear(y);
+    if (onMonthChange) onMonthChange(y, m);
+    else {
+      setLocalMonth(m);
+      setLocalYear(y);
+    }
   }, [month, year]);
 
   const FILTROS = useMemo(() => [
@@ -944,15 +950,23 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
 }
 
 export function PublicacionesPage({ tabInicial = "calendario" }) {
-  const [tabPrincipal, setTabPrincipal] = useState(tabInicial);
-  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const initialContext = readUrlContext(window.location.search, { tab: tabInicial, cliente: "", mes: "" });
+  const initialDate = readMonthContext(initialContext.mes, new Date().getFullYear(), new Date().getMonth());
+  const [tabPrincipal, setTabPrincipal] = useState(
+    ["calendario", "lista", "planilla"].includes(initialContext.tab) ? initialContext.tab : tabInicial,
+  );
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(Number(initialContext.cliente) || null);
   const [clientes, setClientes] = useState([]);
   const [errorClientes, setErrorClientes] = useState(null);
   const [publicaciones, setPublicaciones] = useState([]);
 
   const hoyDate = new Date();
-  const [year, setYear] = useState(hoyDate.getFullYear());
-  const [month, setMonth] = useState(hoyDate.getMonth());
+  const [year, setYear] = useState(initialDate.year);
+  const [month, setMonth] = useState(initialDate.month);
+
+  useEffect(() => {
+    replaceUrlContext({ tab: tabPrincipal, cliente: clienteSeleccionado, mes: formatMonthContext(year, month) });
+  }, [tabPrincipal, clienteSeleccionado, year, month]);
 
   useEffect(() => {
     fetch("/api/clientes")
@@ -1078,7 +1092,12 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
 
               <div className="h-body">
                 {tabPrincipal === "calendario" && (
-                  <PublicacionesCalendarioTab onIrAPlanilla={irAPlanillaDeCliente} />
+                  <PublicacionesCalendarioTab
+                    onIrAPlanilla={irAPlanillaDeCliente}
+                    contextYear={year}
+                    contextMonth={month}
+                    onMonthChange={(nextYear, nextMonth) => { setYear(nextYear); setMonth(nextMonth); }}
+                  />
                 )}
 
                 {tabPrincipal === "lista" && (

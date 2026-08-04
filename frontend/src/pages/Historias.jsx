@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { getHoyLocalISO, getInicialesCliente, getSesion, payloadColumnaPlanilla } from "../utils.jsx";
 import { COLUMNAS_MULTILINEA, COLUMNAS_PLANILLA, DIAS_SEMANA, DIAS_SEMANA_CLIENTE, ESTADOS_HISTORIA, MESES, MESES_CLIENTE, RESPONSABLES_EQUIPO } from "../constants.js";
 import { parseJsonArrayResponse } from "../shared/http/response-utils.js";
+import { formatMonthContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
 export function HistoriasPlanillaTab({
   clientes,
@@ -1207,11 +1208,13 @@ export function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atr
 }
 
 export function HistoriasPage({ initialTab = "estructura" }) {
+  const initialContext = readUrlContext(window.location.search, { vista: initialTab, cliente: "", mes: "" });
+  const initialDate = readMonthContext(initialContext.mes, new Date().getFullYear(), new Date().getMonth());
   const [vista, setVista] = useState(
-    ["estructura", "checklist", "fechas"].includes(initialTab) ? initialTab : "estructura",
+    ["estructura", "checklist", "fechas"].includes(initialContext.vista) ? initialContext.vista : "estructura",
   );
   const [clientes, setClientes] = useState([]);
-  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+  const [clienteSeleccionado, setClienteSeleccionado] = useState(Number(initialContext.cliente) || null);
   // Filtro de cliente propio de la pestaña Planilla — separado de
   // clienteSeleccionado (que ya se usaba como destino por default de
   // "+ Nueva historia" en otras pestañas) para no cambiar ese comportamiento
@@ -1227,15 +1230,19 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   const [ultimoIdCreado, setUltimoIdCreado] = useState(null);
 
   const hoyDate = new Date();
-  const [year, setYear] = useState(hoyDate.getFullYear());
-  const [month, setMonth] = useState(hoyDate.getMonth());
+  const [year, setYear] = useState(initialDate.year);
+  const [month, setMonth] = useState(initialDate.month);
+
+  useEffect(() => {
+    replaceUrlContext({ vista, cliente: clienteSeleccionado, mes: formatMonthContext(year, month) });
+  }, [vista, clienteSeleccionado, year, month]);
 
   useEffect(() => {
     fetch("/api/clientes")
       .then((r) => r.json())
       .then((data) => {
         setClientes(data);
-        if (data.length > 0) setClienteSeleccionado(data[0].id);
+        if (data.length > 0) setClienteSeleccionado((current) => current ?? data[0].id);
       })
       .catch((err) => {
         console.error("No se pudieron cargar clientes", err);

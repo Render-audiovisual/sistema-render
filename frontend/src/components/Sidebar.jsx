@@ -9,13 +9,15 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
     inicio: [
       { href: rutaTablero || "/", label: "Inicio" },
     ],
+    trabajo: [
+      { href: "/workspace/tareas", label: "Tareas" },
+    ],
     planificacion: [
       { href: "/planificacion-historias", label: "Historias" },
       { href: "/planificacion-publicaciones", label: "Publicaciones" },
     ],
     gestion: [
-      { href: "/workspace/tareas", label: "Tareas" },
-      { href: "/reportes-historias", label: "Reporte" },
+      { href: "/reportes-historias", label: "Reportes" },
     ],
     admin: esAdmin ? [
       { href: "/clientes", label: "Clientes" },
@@ -28,9 +30,10 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
 
   const enlacesPrincipales = [
     ...seccionesNav.inicio,
+    ...seccionesNav.trabajo,
     ...seccionesNav.planificacion,
-    ...seccionesNav.gestion,
     ...seccionesNav.admin,
+    ...seccionesNav.gestion,
   ];
   const enlacesCuenta = seccionesNav.cuenta;
   const cuentaActiva = enlacesCuenta.some((enlace) => path === enlace.href);
