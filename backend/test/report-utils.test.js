@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { groupFilmingTasksByClient, isFilmingTask } from "../../frontend/src/shared/reports/report-utils.js";
+import { belongsToPerson, filterItemsByPeriod, groupFilmingTasksByClient, isFilmingTask } from "../../frontend/src/shared/reports/report-utils.js";
 
 test("identifica filmaciones sin contar tareas de edición", () => {
   assert.equal(isFilmingTask({ tipo_tarea: "produccion", titulo: "Visita al local" }), true);
@@ -21,4 +21,22 @@ test("agrupa los videos de Germán por cliente y separa grabados de pendientes",
     { nombre: "Moketa", total: 2, grabados: 1, pendientes: 1 },
     { nombre: "Luzin", total: 1, grabados: 1, pendientes: 0 },
   ]);
+});
+
+test("reconoce a la misma persona aunque la tarea use nombre completo o no tenga acento", () => {
+  assert.equal(belongsToPerson("Mariano Meza", "Mariano"), true);
+  assert.equal(belongsToPerson("German", "Germán"), true);
+  assert.equal(belongsToPerson("Luciano", "Augusto"), false);
+});
+
+test("los indicadores de piezas respetan el período elegido", () => {
+  const result = filterItemsByPeriod(
+    [
+      { id: 1, fecha_programada: "2026-08-04" },
+      { id: 2, fecha_programada: "2026-07-31" },
+      { id: 3, fecha_programada: null },
+    ],
+    (fecha) => fecha >= "2026-08-01" && fecha < "2026-09-01",
+  );
+  assert.deepEqual(result.map((item) => item.id), [1]);
 });

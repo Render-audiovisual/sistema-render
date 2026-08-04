@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
 import { pushUrlContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
-import { groupFilmingTasksByClient } from "../shared/reports/report-utils.js";
+import { belongsToPerson, filterItemsByPeriod, groupFilmingTasksByClient } from "../shared/reports/report-utils.js";
 
 export function ResumenEntregableEquipo({
   etiqueta,
@@ -240,15 +240,21 @@ export function ReportesEquipoPage() {
   const empleados = useMemo(() => {
     const nombresConTareas = [...new Set(tareas.map((t) => t.asignado_a).filter(Boolean))];
     const nombresUsuarios = usuarios
-      .filter((u) => u.rol !== "admin" || nombresConTareas.includes(u.nombre))
+      .filter((u) => u.rol !== "admin" || nombresConTareas.some((nombre) => belongsToPerson(nombre, u.nombre)))
       .map((u) => u.nombre);
+    const nombresUnificados = [...nombresUsuarios];
+    nombresConTareas.forEach((nombre) => {
+      if (!nombresUnificados.some((existente) => belongsToPerson(existente, nombre))) {
+        nombresUnificados.push(nombre);
+      }
+    });
     return esVistaAdmin
-      ? [...new Set([...nombresUsuarios, ...nombresConTareas])]
+      ? nombresUnificados
       : [nombrePropio].filter(Boolean);
   }, [tareas, usuarios, esVistaAdmin, nombrePropio]);
 
   const filas = useMemo(() => empleados.map((nombre) => {
-    const propias = tareas.filter((t) => t.asignado_a === nombre);
+    const propias = tareas.filter((t) => belongsToPerson(t.asignado_a, nombre));
     // Cuando una persona tiene una base mensual auditada desde ClickUp, esa
     // fuente es la que gobierna el reporte del mes. Así no se mezclan tareas
     // operativas reales con backfills automáticos o registros históricos que
@@ -299,7 +305,7 @@ export function ReportesEquipoPage() {
 
     const productividad = (terminadasPeriodo.length / (rangoPeriodo.dias / 7)).toFixed(1);
 
-    const rol = usuarios.find((u) => u.nombre === nombre)?.rol;
+    const rol = usuarios.find((u) => belongsToPerson(u.nombre, nombre))?.rol;
     const objetivoMensual = OBJETIVOS_MENSUALES_EQUIPO[rol] || null;
     const objetivoAlDia = objetivoMensual
       ? Math.max(
@@ -362,10 +368,12 @@ export function ReportesEquipoPage() {
   const piezasPorResponsable = useMemo(() =>
     empleados
       .map((nombre) => {
-        const hs = historias.filter(
-          (h) => (h.responsable_diseño || h.responsable) === nombre,
+        const hs = filterItemsByPeriod(historias, enPeriodo).filter(
+          (h) => belongsToPerson(h.responsable_diseño || h.responsable, nombre),
         );
-        const ps = publicaciones.filter((p) => p.responsable === nombre);
+        const ps = filterItemsByPeriod(publicaciones, enPeriodo).filter(
+          (p) => belongsToPerson(p.responsable_diseño || p.responsable, nombre),
+        );
         const total = hs.length + ps.length;
         const publicadas =
           hs.filter((h) => h.estado === "publicada").length +
@@ -374,14 +382,14 @@ export function ReportesEquipoPage() {
       })
       .filter((f) => f.total > 0)
       .sort((a, b) => b.total - a.total),
-    [empleados, historias, publicaciones]
+    [empleados, historias, publicaciones, enPeriodo]
   );
 
   const periodoMensualReporte = periodo === "mes_actual" || periodo === "mes_pasado"
     ? rangoPeriodo.desde.slice(0, 7)
     : null;
   const tareasDelPeriodoPorPersona = (nombre) => {
-    const propias = tareas.filter((t) => t.asignado_a === nombre);
+    const propias = tareas.filter((t) => belongsToPerson(t.asignado_a, nombre));
     const fuenteMensual = periodoMensualReporte
       ? propias.filter(
           (t) =>
@@ -437,7 +445,7 @@ export function ReportesEquipoPage() {
   );
   const historiasMariano = resumenEntregas(
     historiasDelPeriodo.filter(
-      (h) => (h.responsable_diseño || h.responsable || "").toLocaleLowerCase("es") === "mariano",
+      (h) => belongsToPerson(h.responsable_diseño || h.responsable, "Mariano"),
     ),
   );
 

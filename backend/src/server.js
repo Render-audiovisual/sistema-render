@@ -18,6 +18,7 @@ import { setupDemoClientes } from "./setup-demo-data.js";
 import { shouldSetupDemoData } from "./hosting-config.js";
 import { requireAuthentication, requireRole } from "./auth.js";
 import { buildTaskAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
+import { buildAutoTaskProperties, completeLinkedAutoTasks } from "./piece-task-linking.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -1054,6 +1055,7 @@ router.patch("/historias/:id", async (req, res, next) => {
       return res.status(404).json({ error: "Historia no encontrada." });
     }
 
+    await completeLinkedAutoTasks(pool, { estado: result.rows[0].estado, historiaId: Number(id) });
     res.json(result.rows[0]);
   } catch (error) {
     next(error);
@@ -1231,6 +1233,7 @@ router.patch("/publicaciones/:id", async (req, res, next) => {
       return res.status(404).json({ error: "Publicación no encontrada." });
     }
 
+    await completeLinkedAutoTasks(pool, { estado: result.rows[0].estado, publicacionId: Number(id) });
     res.json(result.rows[0]);
   } catch (error) {
     next(error);
@@ -2121,7 +2124,7 @@ async function crearTareaAuto({ titulo, asignado_a, cliente_id, fecha_vencimient
       titulo,
       asignado_a,
       cliente_id,
-      JSON.stringify({ Origen: "Generada automáticamente al crear la pieza" }),
+      JSON.stringify(buildAutoTaskProperties()),
       fecha_vencimiento,
       historia_id || null,
       publicacion_id || null,
@@ -2354,6 +2357,7 @@ router.patch("/piezas/:id", async (req, res, next) => {
     );
 
     if (resultP.rows.length > 0) {
+      await completeLinkedAutoTasks(pool, { estado: resultP.rows[0].estado, publicacionId: Number(id) });
       return res.json(resultP.rows[0]);
     }
 
@@ -2383,6 +2387,8 @@ router.patch("/piezas/:id", async (req, res, next) => {
     if (resultH.rows.length === 0) {
       return res.status(404).json({ error: "Pieza no encontrada." });
     }
+
+    await completeLinkedAutoTasks(pool, { estado: resultH.rows[0].estado, historiaId: Number(id) });
 
     res.json(resultH.rows[0]);
   } catch (error) {

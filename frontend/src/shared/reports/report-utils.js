@@ -15,3 +15,23 @@ export function groupFilmingTasksByClient(tasks = [], finalState = "publicada") 
     }, {}),
   ).sort((a, b) => b.grabados - a.grabados || b.total - a.total || a.nombre.localeCompare(b.nombre));
 }
+
+export function normalizePersonName(value = "") {
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("es")
+    .split(/\s+/)[0] || "";
+}
+
+export function belongsToPerson(value, personName) {
+  const valueKey = normalizePersonName(value);
+  const personKey = normalizePersonName(personName);
+  return Boolean(valueKey && personKey && valueKey === personKey);
+}
+
+export function filterItemsByPeriod(items = [], isInPeriod, dateField = "fecha_programada") {
+  if (typeof isInPeriod !== "function") return [];
+  return items.filter((item) => isInPeriod(item?.[dateField] || ""));
+}
