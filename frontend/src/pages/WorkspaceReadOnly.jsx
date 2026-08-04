@@ -290,7 +290,11 @@ function TaskCalendar({ tasks, onOpen, monthValue, onMonthChange }) {
   const month = cursor.getMonth();
   const firstOffset = (new Date(year, month, 1).getDay() + 6) % 7;
   const days = new Date(year, month + 1, 0).getDate();
-  const cells = Array.from({ length: firstOffset + days }, (_, index) => index < firstOffset ? null : index - firstOffset + 1);
+  const totalCells = Math.ceil((firstOffset + days) / 7) * 7;
+  const cells = Array.from({ length: totalCells }, (_, index) => {
+    const day = index - firstOffset + 1;
+    return day > 0 && day <= days ? day : null;
+  });
   const byDate = new Map();
   tasks.forEach((task) => { if (!task.fecha_vencimiento) return; const key = String(task.fecha_vencimiento).slice(0, 10); byDate.set(key, [...(byDate.get(key) || []), task]); });
   const label = cursor.toLocaleDateString("es-AR", { month: "long", year: "numeric" });

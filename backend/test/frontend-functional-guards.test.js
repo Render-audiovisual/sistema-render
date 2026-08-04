@@ -51,6 +51,12 @@ test("solo advierte al cerrar una tarea nueva cuando hay contenido", () => {
   assert.equal(isNewTaskDraftDirty({ titulo: "Preparar carrusel", asignado_a: "", colaboradores: [] }), true);
 });
 
+test("el calendario completa la última semana para conservar toda la cuadrícula", () => {
+  const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  assert.match(workspaceSource, /Math\.ceil\(\(firstOffset \+ days\) \/ 7\) \* 7/);
+  assert.match(workspaceSource, /day > 0 && day <= days \? day : null/);
+});
+
 test("Tareas conserva una sola interfaz y navega en la misma pestaña", () => {
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
