@@ -286,6 +286,7 @@
   .ros-title-actions{flex-direction:column}
   .render-workspace .ros-top-search,
   .render-workspace .ros-primary-button{width:100%}
+  .render-workspace .ros-top-search{display:block}
   .render-workspace .ros-summary{grid-template-columns:repeat(2,1fr)}
   .render-workspace .ros-summary article{min-height:68px;padding:12px}
   .render-workspace .ros-summary strong{font-size:20px}
