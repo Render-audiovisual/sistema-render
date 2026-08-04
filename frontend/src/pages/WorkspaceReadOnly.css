@@ -300,3 +300,37 @@
   .render-workspace .ros-drawer-body{padding:22px 18px}
   .render-workspace .ros-properties label{align-items:start;gap:5px;grid-template-columns:1fr}
 }
+
+/* Base de trabajo tipo Notion, integrada a la navegación principal. */
+.render-workspace .ros-page{background:#fff;border:1px solid #e7e7e4;border-radius:14px;box-shadow:0 1px 2px #20212408;overflow:hidden}
+.render-workspace .ros-title-row{align-items:flex-end;border-bottom:1px solid #ecece8;margin:0;padding:28px 30px 24px}
+.render-workspace .ros-title-row>div:first-child{display:grid;grid-template-columns:auto 1fr;min-width:0}
+.render-workspace .ros-page-icon{align-items:center;background:#f1f1ee;border:1px solid #e3e3df;border-radius:8px;color:#555854;display:flex;font-size:18px;grid-row:1/4;height:40px;justify-content:center;margin-right:13px;width:40px}
+.render-workspace .ros-eyebrow{align-self:end;font-size:9px;margin:0 0 3px}
+.render-workspace .ros-title-row h1{font-size:30px;letter-spacing:-.035em;line-height:1.05}
+.render-workspace .ros-title-row p{font-size:11px;margin-top:7px}
+.render-workspace .ros-title-actions{flex-basis:500px}
+.render-workspace .ros-controls{border:0;border-bottom:1px solid #ecece8;border-radius:0;padding:7px 22px 0}
+.render-workspace .ros-controls button{border-radius:6px 6px 0 0;font-size:11px;min-height:38px;padding:9px 11px}
+.render-workspace .ros-controls button:hover{background:#f6f6f3;color:#343632}
+.render-workspace .ros-controls button.active{background:#f8f8f6}
+.render-workspace .ros-filter-bar{background:#fafaf8;border:0;border-bottom:1px solid #ecece8;border-radius:0;margin:0;padding:12px 22px}
+.render-workspace .ros-board,.render-workspace .ros-task-list,.render-workspace .ros-calendar,.render-workspace .ros-project-grid,.render-workspace .ros-no-results{margin:20px 22px 24px}
+.render-workspace .ros-board{width:calc(100% - 44px)}
+.render-workspace .ros-column>div{background:#f6f6f3;border-color:#e8e8e3}
+.render-workspace .ros-task-card{box-shadow:0 1px 2px #20212408;transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease}
+.render-workspace .ros-task-card:hover{box-shadow:0 5px 18px #2021240d}
+
+@media(max-width:700px){
+  .render-workspace .ros-page{border-radius:10px}
+  .render-workspace .ros-title-row{align-items:stretch;padding:20px 16px 17px}
+  .render-workspace .ros-page-icon{height:36px;width:36px}
+  .render-workspace .ros-title-row h1{font-size:26px}
+  .render-workspace .ros-title-row p{font-size:10px;max-width:none}
+  .render-workspace .ros-title-actions{display:grid;grid-template-columns:1fr auto;width:100%}
+  .render-workspace .ros-top-search{display:block;min-width:0;width:100%}
+  .render-workspace .ros-controls{padding-left:10px;padding-right:10px}
+  .render-workspace .ros-filter-bar{padding:10px}
+  .render-workspace .ros-board,.render-workspace .ros-task-list,.render-workspace .ros-calendar,.render-workspace .ros-project-grid,.render-workspace .ros-no-results{margin:14px 10px 18px}
+  .render-workspace .ros-board{width:calc(100% - 20px)}
+}
