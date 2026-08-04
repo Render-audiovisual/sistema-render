@@ -424,3 +424,58 @@
   .ros-selected-people>button{flex:1 1 145px}
   .ros-people-options{max-height:190px;position:static}
 }
+
+/* Cabecera operativa: mantiene el contexto y la acción principal cerca del tablero. */
+@media(min-width:701px){
+  .render-workspace .ros-title-row{
+    align-items:center;
+    display:grid;
+    gap:24px;
+    grid-template-columns:minmax(250px,.85fr) minmax(320px,1.15fr);
+    padding:22px 26px;
+  }
+  .render-workspace .ros-title-row>div:first-child{
+    align-items:center;
+    width:100%;
+  }
+  .render-workspace .ros-page-icon{
+    height:38px;
+    width:38px;
+  }
+  .render-workspace .ros-title-row h1{font-size:28px}
+  .render-workspace .ros-title-row p{
+    font-size:10px;
+    line-height:1.45;
+    margin-top:5px;
+  }
+  .render-workspace .ros-eyebrow{
+    font-size:8px;
+    margin-bottom:4px;
+  }
+  .render-workspace .ros-title-actions{
+    display:grid;
+    flex:initial;
+    gap:10px;
+    grid-template-columns:minmax(0,1fr) auto;
+    min-height:0;
+    width:100%;
+  }
+  .render-workspace .ros-top-search{
+    max-width:none;
+    min-height:42px;
+    width:100%;
+  }
+  .render-workspace .ros-primary-button{
+    align-items:center;
+    display:inline-flex;
+    justify-content:center;
+    min-height:42px;
+    padding-inline:16px;
+    white-space:nowrap;
+  }
+}
+
+@media(max-width:700px){
+  .render-workspace .ros-title-row{gap:15px}
+  .render-workspace .ros-title-row>div:first-child{align-items:center;width:100%}
+}
