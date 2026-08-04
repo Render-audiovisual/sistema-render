@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { getHoyLocalISO, getInicialesCliente, getSesion, payloadColumnaPlanilla } from "../utils.jsx";
 import { COLUMNAS_MULTILINEA, COLUMNAS_PLANILLA, DIAS_SEMANA, DIAS_SEMANA_CLIENTE, ESTADOS_HISTORIA, MESES, MESES_CLIENTE, RESPONSABLES_EQUIPO } from "../constants.js";
 import { parseJsonArrayResponse } from "../shared/http/response-utils.js";
-import { formatMonthContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+import { formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
 export function HistoriasPlanillaTab({
   clientes,
@@ -1238,6 +1238,19 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   }, [vista, clienteSeleccionado, year, month]);
 
   useEffect(() => {
+    const restoreContext = () => {
+      const context = readUrlContext(window.location.search, { vista: "estructura", cliente: "", mes: "" });
+      const date = readMonthContext(context.mes, hoyDate.getFullYear(), hoyDate.getMonth());
+      setVista(["estructura", "checklist", "fechas"].includes(context.vista) ? context.vista : "estructura");
+      setClienteSeleccionado(Number(context.cliente) || null);
+      setYear(date.year);
+      setMonth(date.month);
+    };
+    window.addEventListener("popstate", restoreContext);
+    return () => window.removeEventListener("popstate", restoreContext);
+  }, []);
+
+  useEffect(() => {
     fetch("/api/clientes")
       .then((r) => r.json())
       .then((data) => {
@@ -1282,10 +1295,12 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     let m = month + delta;
     let y = year;
     if (m < 0) { m = 11; y -= 1; } else if (m > 11) { m = 0; y += 1; }
+    pushUrlContext({ mes: formatMonthContext(y, m) });
     setMonth(m);
     setYear(y);
   };
   const irAHoy = () => {
+    pushUrlContext({ mes: formatMonthContext(hoyDate.getFullYear(), hoyDate.getMonth()) });
     setMonth(hoyDate.getMonth());
     setYear(hoyDate.getFullYear());
   };
@@ -1472,9 +1487,9 @@ export function HistoriasPage({ initialTab = "estructura" }) {
                 )}
 
                 <div className="sheet-view-tabs" style={{ margin: 0 }}>
-                  <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => setVista("estructura")}>Estructura</button>
-                  <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => setVista("checklist")}>Checklist</button>
-                  <button type="button" className={vista === "fechas" ? "active" : ""} onClick={() => setVista("fechas")}>Fechas especiales</button>
+                  <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => { pushUrlContext({ vista: "estructura" }); setVista("estructura"); }}>Estructura</button>
+                  <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => { pushUrlContext({ vista: "checklist" }); setVista("checklist"); }}>Checklist</button>
+                  <button type="button" className={vista === "fechas" ? "active" : ""} onClick={() => { pushUrlContext({ vista: "fechas" }); setVista("fechas"); }}>Fechas especiales</button>
                 </div>
 
                 {vista === "planilla" && (

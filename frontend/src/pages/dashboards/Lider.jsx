@@ -26,7 +26,7 @@ export function LiderDashboard() {
       fetch("/api/clientes").then((response) => response.json()),
       fetch("/api/historias").then((response) => response.json()),
       fetch("/api/publicaciones").then((response) => response.json()),
-      fetch("/api/tareas").then((response) => response.json()),
+      fetch("/api/tareas?workspace=render_os").then((response) => response.json()),
     ])
       .then(([clientesApi, historiasApi, publicacionesApi, tareasApi]) => {
         setClientes(
@@ -62,6 +62,7 @@ export function LiderDashboard() {
     (tarea) => tarea.fecha_vencimiento && tarea.fecha_vencimiento < getHoyLocalISO() && tarea.estado !== ESTADO_FINAL_TAREA,
   );
   const errorInicio = panoramaError || resumenEquipoError || aprobacionesLiderError;
+  const totalAtencion = tareasVencidas.length + aprobacionesLider.length + piezasAtrasadas.length + piezasBloqueadas.length;
 
   return (
     <main aria-label="Inicio operativo del Líder">
@@ -83,9 +84,12 @@ export function LiderDashboard() {
                 <div className="lider-home-section-title">
                   <div><span>⚠</span><div><h3 id="atencion-title">Requieren atención</h3><p>Excepciones que necesitan una decisión.</p></div></div>
                 </div>
+                {totalAtencion === 0 && (
+                  <div className="lider-home-all-clear"><span>✓</span><div><strong>Todo al día</strong><p>No hay excepciones que requieran una decisión inmediata.</p></div></div>
+                )}
                 <div className="lider-home-list">
                   <a href="/workspace/tareas?archive=active"><strong>{tareasVencidas.length}</strong><span>Tareas vencidas</span><b>Ver tareas →</b></a>
-                  <a href="/planificacion-historias?vista=checklist"><strong>{aprobacionesLider.length}</strong><span>Aprobaciones pendientes</span><b>Revisar →</b></a>
+                  <a href="/workspace/tareas?view=list"><strong>{aprobacionesLider.length}</strong><span>Tareas esperando aprobación</span><b>Revisar →</b></a>
                   <a href="/planificacion-publicaciones?tab=lista"><strong>{piezasAtrasadas.length}</strong><span>Publicaciones atrasadas</span><b>Ver control →</b></a>
                   <a href="/planificacion-publicaciones?tab=lista"><strong>{piezasBloqueadas.length}</strong><span>Piezas bloqueadas</span><b>Resolver →</b></a>
                 </div>

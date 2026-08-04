@@ -3,7 +3,7 @@ import { etiquetaCortaPublicacion, fechaISODesde, getCheckPublicacionLabel, getE
 import { COLUMNAS_PUBLICACION, DIAS_SEMANA, ESTADOS_PUBLICACION, MESES, RESPONSABLES_EQUIPO, TIPOS_PUBLICACION } from "../constants.js";
 import { ClientesRail } from "../pages/Historias.jsx";
 import { Modal } from "../components/Modal.jsx";
-import { formatMonthContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+import { formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
 export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, contextMonth, onMonthChange }) {
   const hoy = new Date();
@@ -969,6 +969,19 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
   }, [tabPrincipal, clienteSeleccionado, year, month]);
 
   useEffect(() => {
+    const restoreContext = () => {
+      const context = readUrlContext(window.location.search, { tab: "calendario", cliente: "", mes: "" });
+      const date = readMonthContext(context.mes, hoyDate.getFullYear(), hoyDate.getMonth());
+      setTabPrincipal(["calendario", "lista", "planilla"].includes(context.tab) ? context.tab : "calendario");
+      setClienteSeleccionado(Number(context.cliente) || null);
+      setYear(date.year);
+      setMonth(date.month);
+    };
+    window.addEventListener("popstate", restoreContext);
+    return () => window.removeEventListener("popstate", restoreContext);
+  }, []);
+
+  useEffect(() => {
     fetch("/api/clientes")
       .then((r) => r.json())
       .then((data) => {
@@ -992,6 +1005,7 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
   }, []);
 
   const irAPlanillaDeCliente = (clienteId) => {
+    pushUrlContext({ tab: "planilla", cliente: clienteId, mes: formatMonthContext(year, month) });
     setClienteSeleccionado(clienteId);
     setTabPrincipal("planilla");
   };
@@ -1011,10 +1025,12 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
     let m = month + delta;
     let y = year;
     if (m < 0) { m = 11; y -= 1; } else if (m > 11) { m = 0; y += 1; }
+    pushUrlContext({ mes: formatMonthContext(y, m) });
     setMonth(m);
     setYear(y);
   };
   const irAHoy = () => {
+    pushUrlContext({ mes: formatMonthContext(hoyDate.getFullYear(), hoyDate.getMonth()) });
     setMonth(hoyDate.getMonth());
     setYear(hoyDate.getFullYear());
   };
@@ -1074,7 +1090,7 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
                       key={t.id}
                       type="button"
                       className={tabPrincipal === t.id ? "active" : ""}
-                      onClick={() => setTabPrincipal(t.id)}
+                      onClick={() => { pushUrlContext({ tab: t.id }); setTabPrincipal(t.id); }}
                     >
                       {t.label}
                     </button>
@@ -1096,7 +1112,7 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
                     onIrAPlanilla={irAPlanillaDeCliente}
                     contextYear={year}
                     contextMonth={month}
-                    onMonthChange={(nextYear, nextMonth) => { setYear(nextYear); setMonth(nextMonth); }}
+                    onMonthChange={(nextYear, nextMonth) => { pushUrlContext({ mes: formatMonthContext(nextYear, nextMonth) }); setYear(nextYear); setMonth(nextMonth); }}
                   />
                 )}
 
