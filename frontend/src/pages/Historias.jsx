@@ -192,7 +192,7 @@ export function HistoriasPlanillaTab({
               <col className="sheet-actions-col" />
             </colgroup>
             <thead>
-              <tr className="sheet-column-letters">
+              <tr className="sheet-column-letters" aria-hidden="true">
                 <th className="sheet-corner"></th>
                 {["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"].map((letra) => (
                   <th key={letra}>{letra}</th>
@@ -200,14 +200,14 @@ export function HistoriasPlanillaTab({
               </tr>
               <tr>
                 <th className="sheet-rownum-head"></th>
-                <th>Local</th>
+                <th>Cliente</th>
                 <th>Día</th>
                 <th>Fecha</th>
                 <th>Hora</th>
-                <th>Tipo</th>
-                <th>Copy</th>
-                <th>Material</th>
-                <th>Observaciones</th>
+                <th>Tema / formato</th>
+                <th>Texto / copy</th>
+                <th>Enlace</th>
+                <th>Notas</th>
                 <th>Responsable</th>
                 <th>Estado</th>
                 <th></th>
@@ -392,6 +392,7 @@ export function HistoriasPlanillaTab({
                           className="sheet-icon-btn"
                           onClick={() => copiarFila(h)}
                           title="Copiar fila (para pegar en otra fila o en Sheets)"
+                          aria-label={`Copiar historia de ${h.cliente_nombre || "este cliente"}`}
                         >
                           ⧉
                         </button>
@@ -400,6 +401,7 @@ export function HistoriasPlanillaTab({
                           className="sheet-icon-btn"
                           onClick={() => onDuplicar(h)}
                           title="Duplicar historia"
+                          aria-label={`Duplicar historia de ${h.cliente_nombre || "este cliente"}`}
                         >
                           ⎘
                         </button>
@@ -408,6 +410,7 @@ export function HistoriasPlanillaTab({
                           className="sheet-icon-btn"
                           onClick={() => onEliminar(h.id)}
                           title="Eliminar"
+                          aria-label={`Eliminar historia de ${h.cliente_nombre || "este cliente"}`}
                         >
                           🗑
                         </button>
@@ -421,10 +424,10 @@ export function HistoriasPlanillaTab({
         </div>
       )}
 
-      <div className="caption" style={{ marginTop: "10px" }}>
-        {clienteFiltradoNombre
-          ? `Planilla de ${clienteFiltradoNombre}.`
-          : "Planilla general de historias: todos los locales en una sola hoja."}
+      <div className="stories-sheet-guide">
+        <span>Edición directa</span>
+        <p>Los cambios se guardan al salir de cada campo.</p>
+        <strong>{clienteFiltradoNombre ? `Cliente: ${clienteFiltradoNombre}` : "Todos los clientes"}</strong>
       </div>
     </>
   );
@@ -1217,7 +1220,9 @@ export function HistoriasPage({ initialTab = "planilla" }) {
   // clienteSeleccionado (que ya se usaba como destino por default de
   // "+ Nueva historia" en otras pestañas) para no cambiar ese comportamiento
   // existente. Vacío = "Hoja general" (todos los clientes), como hoy.
-  const [filtroClientePlanilla, setFiltroClientePlanilla] = useState(initialContext.filtro || "");
+  const [filtroClientePlanilla, setFiltroClientePlanilla] = useState(
+    initialContext.filtro || (initialContext.vista === "planilla" ? initialContext.cliente : "") || "",
+  );
   const [errorClientes, setErrorClientes] = useState(null);
   const [refrescarKey, setRefrescarKey] = useState(0);
 
@@ -1459,7 +1464,7 @@ export function HistoriasPage({ initialTab = "planilla" }) {
       <div className="frame">
         <div className="content">
           <header className="module-intro">
-            <div><div className="section-label">Historias</div><h2>¿Qué historias tenemos que preparar y publicar?</h2><p>Planificá el contenido del mes y detectá rápidamente qué necesita atención.</p></div>
+            <div><div className="section-label">Historias</div><h2>¿Qué historias tenemos que preparar y publicar?</h2><p>Elegí cliente y mes. Después editá cada historia sin salir de esta pantalla.</p></div>
           </header>
           {(errorClientes || errorHistorias) && <PageState compact type="error" title={errorClientes || errorHistorias} description="La vista y el período siguen guardados." onRetry={() => window.location.reload()} />}
 
