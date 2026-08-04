@@ -396,6 +396,9 @@
 .ros-people-options strong{font-size:9px}
 .ros-people-options small{color:#8b8d87;font-size:7px;margin-top:2px}
 .ros-people-options>button>b{color:#5d7750;font-size:12px}
+.ros-selected-people>button>.ros-avatar,.ros-people-options>button>.ros-avatar{display:inline-flex;flex:0 0 24px;flex-direction:row;height:24px;width:24px}
+.ros-people-options>button>span:not(.ros-avatar){display:flex;flex:1;flex-direction:column}
+.ros-selected-people>button>span:not(.ros-avatar){display:flex;flex-direction:column;line-height:1.2}
 
 /* Sistema común de botones dentro del módulo Tareas. */
 .render-workspace button{transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease,transform .15s ease}
