@@ -250,7 +250,8 @@ export function ClientesAdminPage() {
           <div className="clientes-command-bar">
             <div className="clientes-heading">
               <div className="section-label">Clientes — {getMesActualISO()}</div>
-              <h2>Control mensual de cartera</h2>
+              <h2>¿Cómo está cada cliente este mes?</h2>
+              <p>Revisá el avance acordado y detectá rápidamente qué necesita atención.</p>
             </div>
             <div className="clientes-top-actions">
               <div className="clientes-heading-meta">
@@ -266,25 +267,25 @@ export function ClientesAdminPage() {
             </div>
           </div>
 
-          <div className="clientes-metrics">
-            <div className="cliente-metric">
-              <span>Historias</span>
-              <strong>{avanceHistorias}%</strong>
+          <div className="clientes-metrics" aria-label="Avance mensual de la cartera">
+            <div className="cliente-metric historias">
+              <div><span>Historias</span><strong>{avanceHistorias}%</strong></div>
+              <div className="cliente-metric-progress" aria-label={`${avanceHistorias}% de historias publicadas`}><i style={{ width: `${avanceHistorias}%` }}/></div>
               <small>{totalHistoriasPublicadas} / {totalHistorias} publicadas</small>
             </div>
-            <div className="cliente-metric">
-              <span>Reels</span>
-              <strong>{avanceReels}%</strong>
+            <div className="cliente-metric reels">
+              <div><span>Reels</span><strong>{avanceReels}%</strong></div>
+              <div className="cliente-metric-progress" aria-label={`${avanceReels}% de reels publicados`}><i style={{ width: `${avanceReels}%` }}/></div>
               <small>{totalReelsPublicados} / {totalCuotaReels} publicados</small>
             </div>
-            <div className="cliente-metric">
-              <span>Carruseles</span>
-              <strong>{avanceCarruseles}%</strong>
+            <div className="cliente-metric carruseles">
+              <div><span>Carruseles</span><strong>{avanceCarruseles}%</strong></div>
+              <div className="cliente-metric-progress" aria-label={`${avanceCarruseles}% de carruseles publicados`}><i style={{ width: `${avanceCarruseles}%` }}/></div>
               <small>{totalCarruselesPublicados} / {totalCuotaCarruseles} publicados</small>
             </div>
-            <div className="cliente-metric">
-              <span>Total</span>
-              <strong>{avanceTotal}%</strong>
+            <div className="cliente-metric total">
+              <div><span>Avance total</span><strong>{avanceTotal}%</strong></div>
+              <div className="cliente-metric-progress" aria-label={`${avanceTotal}% del total mensual publicado`}><i style={{ width: `${avanceTotal}%` }}/></div>
               <small>{totalPiezasPublicadas} / {totalPiezasComprometidas} piezas del mes</small>
             </div>
           </div>
