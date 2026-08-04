@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import jwt from "jsonwebtoken";
 import { pool } from "../src/db.js";
 
 const qaDisponible = Boolean(process.env.DATABASE_URL) && process.env.RENDER_OS_TEST_DATABASE === "true";
@@ -11,6 +12,7 @@ test(
   async () => {
     process.env.RENDER_DISABLE_SERVER_START = "true";
     process.env.SETUP_DEMO_DATA = "false";
+    process.env.JWT_SECRET = "render-os-qa-test-only";
     delete process.env.SMTP_HOST;
     delete process.env.SMTP_USER;
     delete process.env.SMTP_PASS;
@@ -26,8 +28,12 @@ test(
     const ids = [];
     let historicalId = null;
 
-    const request = async (path, options = {}) => {
-      const response = await fetch(`${baseUrl}${path}`, options);
+    const adminToken = jwt.sign({ id: -1, usuario: "qa-admin", nombre: "QA Admin", rol: "admin" }, process.env.JWT_SECRET);
+    const employeeToken = jwt.sign({ id: -2, usuario: "qa-diseno", nombre: "QA Diseño", rol: "diseno" }, process.env.JWT_SECRET);
+    const request = async (path, options = {}, token = adminToken) => {
+      const headers = { ...(options.headers || {}) };
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const response = await fetch(`${baseUrl}${path}`, { ...options, headers });
       const body = await response.json().catch(() => ({}));
       return { response, body };
     };
@@ -38,6 +44,12 @@ test(
     });
 
     try {
+      const anonymous = await request("/tareas?workspace=render_os", {}, null);
+      assert.equal(anonymous.response.status, 401);
+
+      const forbiddenAdminAction = await request("/clientes", jsonOptions("POST", { nombre: "No crear" }), employeeToken);
+      assert.equal(forbiddenAdminAction.response.status, 403);
+
       const initiallyEmpty = await request("/tareas?workspace=render_os&limit=10&offset=0");
       assert.equal(initiallyEmpty.response.status, 200);
       assert.deepEqual(initiallyEmpty.body, [], "la base QA debe comenzar sin tareas render_os");
