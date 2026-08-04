@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { getHoyLocalISO, getInicialesCliente, getSesion, payloadColumnaPlanilla } from "../utils.jsx";
 import { COLUMNAS_MULTILINEA, COLUMNAS_PLANILLA, DIAS_SEMANA, DIAS_SEMANA_CLIENTE, ESTADOS_HISTORIA, MESES, MESES_CLIENTE, RESPONSABLES_EQUIPO } from "../constants.js";
+import { parseJsonArrayResponse } from "../shared/http/response-utils.js";
 
 export function HistoriasPlanillaTab({
   clientes,
@@ -897,7 +898,7 @@ export function HistoriasEstructuraTab({ clientes }) {
   useEffect(() => {
     setCargando(true);
     fetch("/api/estructura")
-      .then((r) => r.json())
+      .then((response) => parseJsonArrayResponse(response, "No se pudo cargar la estructura."))
       .then((data) => {
         setEstructura(data);
         setError(null);
@@ -1260,9 +1261,12 @@ export function HistoriasPage({ initialTab = "estructura" }) {
 
   useEffect(() => {
     fetch("/api/estructura")
-      .then((r) => r.json())
+      .then((response) => parseJsonArrayResponse(response, "No se pudo cargar la estructura semanal."))
       .then((data) => setEstructura(data))
-      .catch((err) => console.error("No se pudo cargar la estructura semanal", err));
+      .catch((err) => {
+        setEstructura([]);
+        console.error("No se pudo cargar la estructura semanal", err);
+      });
   }, []);
 
   const hoyISO = getHoyLocalISO();
@@ -1555,4 +1559,3 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     </main>
   );
 }
-

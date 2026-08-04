@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ESTADO_FINAL_TAREA, ROL_LABELS } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea } from "../utils.jsx";
 import { AREAS, STATUSES, TASK_TYPES } from "../features/render-os/constants.js";
 import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
 import { areaForTask, formatDate, formatDateTime, initials, personForTask } from "../features/render-os/utils/task-formatters.js";
 import { mergeRelatedTasks } from "../workspace-task-state.js";
+import { getTasksEmptyMessage } from "../features/render-os/utils/task-view-state.js";
 import "./WorkspaceReadOnly.css";
 
 function Avatar({ person, name }) {
@@ -18,7 +19,7 @@ function AreaBadge({ task }) {
 }
 
 function LoadingState({ error }) {
-  return <div className={`ros-state ${error ? "error" : ""}`}><span>{error ? "!" : "◌"}</span><strong>{error || "Conectando con los datos reales…"}</strong><small>{error ? "La interfaz anterior sigue disponible." : "Cargando tareas, clientes y responsables."}</small></div>;
+  return <div className={`ros-state ${error ? "error" : ""}`}><span>{error ? "!" : "◌"}</span><strong>{error || "Conectando con los datos reales…"}</strong><small>{error ? "No pudimos cargar las tareas. Reintentá en unos segundos." : "Cargando tareas, clientes y responsables."}</small></div>;
 }
 
 function Toast({ toast, onClose }) {
@@ -38,6 +39,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [creatingSubtask, setCreatingSubtask] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const archivePendingRef = useRef(false);
   const isAdmin = sesion?.usuario?.rol === "admin";
 
   useEffect(() => {
@@ -144,6 +147,18 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     finally { setDeleting(false); }
   };
 
+  const archiveTask = async () => {
+    if (archivePendingRef.current) return;
+    archivePendingRef.current = true;
+    setArchiving(true);
+    try {
+      await onArchive(task, !isArchived);
+    } finally {
+      archivePendingRef.current = false;
+      setArchiving(false);
+    }
+  };
+
   return <div className="ros-drawer-backdrop" onClick={onClose}>
     <aside className="ros-drawer" onClick={(event) => event.stopPropagation()}>
       <header><AreaBadge task={task}/><button onClick={onClose}>×</button></header>
@@ -181,7 +196,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         <div className="ros-comment-create"><textarea rows={3} value={comment} placeholder="Escribí una actualización, consulta o bloqueo…" onChange={(event) => setComment(event.target.value)}/><button type="button" disabled={!comment.trim() || commenting} onClick={addComment}>{commenting ? "Enviando…" : "Comentar"}</button></div>
         <h4>Datos de origen</h4>
         <div className="ros-origin"><span>ID #{task.id}</span><span>Creada: {formatDate(task.created_at)}</span><span>Actualizada: {formatDate(task.updated_at)}</span></div>
-        {isAdmin && <div className="ros-danger-zone"><strong>Administrar tarea</strong><p>{isArchived ? "Podés restaurarla al tablero o eliminarla definitivamente." : "Archivala para sacarla del tablero sin perder su historial."}</p><div><button type="button" onClick={() => onArchive(task, !isArchived)}>{isArchived ? "Restaurar tarea" : "Archivar tarea"}</button>{confirmDelete ? <><button type="button" onClick={() => setConfirmDelete(false)}>Cancelar</button><button className="danger" type="button" disabled={deleting} onClick={deleteTask}>{deleting ? "Eliminando…" : "Eliminar definitivamente"}</button></> : <button className="danger" type="button" onClick={() => setConfirmDelete(true)}>Eliminar…</button>}</div></div>}
+        {isAdmin && <div className="ros-danger-zone"><strong>Administrar tarea</strong><p>{isArchived ? "Podés restaurarla al tablero o eliminarla definitivamente." : "Archivala para sacarla del tablero sin perder su historial."}</p><div><button type="button" disabled={archiving} onClick={archiveTask}>{archiving ? (isArchived ? "Restaurando…" : "Archivando…") : (isArchived ? "Restaurar tarea" : "Archivar tarea")}</button>{confirmDelete ? <><button type="button" onClick={() => setConfirmDelete(false)}>Cancelar</button><button className="danger" type="button" disabled={deleting} onClick={deleteTask}>{deleting ? "Eliminando…" : "Eliminar definitivamente"}</button></> : <button className="danger" type="button" onClick={() => setConfirmDelete(true)}>Eliminar…</button>}</div></div>}
       </div>
     </aside>
   </div>;
@@ -281,6 +296,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const active = visible.filter((task) => task.estado !== ESTADO_FINAL_TAREA).length;
   const paginatedTaskCount = tasks.filter((task) => !task.__renderOsDirectOnly).length;
   const hasFilters = responsible !== "all" || client !== "all" || sector !== "all" || priority !== "all" || area !== "all";
+  const emptyMessage = getTasksEmptyMessage({ hasFilters, query, totalTasks, archiveMode });
 
   const incorporateRelatedTasks = useCallback((items) => {
     window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: items }));
@@ -336,7 +352,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     <div className="ros-filter-bar"><label><span>Responsable</span><select value={responsible} onChange={(event) => setResponsible(event.target.value)}><option value="all">Todos</option>{responsibleOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label><label><span>Cliente</span><select value={client} onChange={(event) => setClient(event.target.value)}><option value="all">Todos</option><option value="none">Sin cliente</option>{clients.map((item) => <option key={item.id} value={String(item.id)}>{item.nombre}</option>)}</select></label><label><span>Sector</span><select value={sector} onChange={(event) => setSector(event.target.value)}><option value="all">Todos</option><option value="none">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Prioridad</span><select value={priority} onChange={(event) => setPriority(event.target.value)}><option value="all">Todas</option><option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option></select></label>{hasFilters && <button type="button" onClick={clearFilters}>Limpiar filtros</button>}</div>
     {view === "board" && <div className="ros-board">{STATUSES.map((status) => { const items = visible.filter((task) => task.estado === status.id); return <section className={`ros-column ${dragOver === status.id ? "drag-over" : ""}`} key={status.id} onDragOver={(event) => { event.preventDefault(); setDragOver(status.id); }} onDragLeave={() => setDragOver("")} onDrop={(event) => { event.preventDefault(); setDragOver(""); const task = tasks.find((item) => String(item.id) === event.dataTransfer.getData("text/task-id")); if (task) move(task, status.id); }}><header><span style={{ color: status.color }}>●</span><strong>{status.label}</strong><small>{items.length}</small></header><div>{items.slice(0, 250).map((task) => <TaskCard key={task.id} task={task} users={users} today={today} onOpen={openTask} onMove={move}/>)}{items.length > 250 && <div className="ros-column-limit">Mostrando 250 de {items.length}. Usá los filtros para acotar.</div>}{items.length === 0 && <div className="ros-empty-column">Soltá una tarea acá</div>}</div></section>; })}</div>}
     {view === "list" && <div className="ros-task-list"><div className="ros-task-list-head"><span>TAREA</span><span>ÁREA</span><span>CLIENTE</span><span>RESPONSABLE</span><span>ESTADO</span><span>FECHA</span></div>{visible.slice(0, 500).map((task) => <button key={task.id} onClick={() => openTask(task.id)}><strong>{task.titulo}</strong><AreaBadge task={task}/><span>{task.cliente_nombre || "Sin cliente"}</span><span>{task.asignado_a || "Sin asignar"}</span><span>{STATUSES.find((item) => item.id === task.estado)?.label || task.estado}</span><span>{formatDate(task.fecha_vencimiento)}</span></button>)}{visible.length > 500 && <div className="ros-list-limit">Mostrando 500 de {visible.length}. Usá los filtros para acotar.</div>}</div>}
-    {view === "calendar" && <TaskCalendar tasks={visible} onOpen={openTask}/>} {view === "clients" && <TasksByClient tasks={visible} onOpen={openTask}/>} {visible.length === 0 && <div className="ros-no-results">No hay tareas con estos filtros.</div>}
+    {view === "calendar" && <TaskCalendar tasks={visible} onOpen={openTask}/>} {view === "clients" && <TasksByClient tasks={visible} onOpen={openTask}/>} {visible.length === 0 && <div className="ros-no-results">{emptyMessage}</div>}
     {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
   <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onArchive={archiveTask} onDelete={async (id) => { await onDelete(id); closeTask(); }} onCreateSubtask={createSubtask}/>
