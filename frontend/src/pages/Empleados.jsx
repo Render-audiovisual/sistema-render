@@ -308,7 +308,7 @@ export function EmpleadosPage() {
           <div className="usuarios-header">
             <div>
               <div className="section-label">Administración del equipo</div>
-              <h2>Usuarios</h2>
+              <h2>¿Quién tiene acceso y con qué rol?</h2>
               <p>
                 Administrá accesos, roles y correos de notificación desde un
                 solo lugar.

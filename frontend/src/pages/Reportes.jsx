@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
-import { readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+import { pushUrlContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
 export function ResumenEntregableEquipo({
   etiqueta,
@@ -133,6 +133,14 @@ export function ReportesEquipoPage() {
   const [detalleDe, setDetalleDe] = useState(null);
 
   useEffect(() => replaceUrlContext({ periodo }), [periodo]);
+  useEffect(() => {
+    const restorePeriod = () => {
+      const value = readUrlContext(window.location.search, { periodo: "mes_actual" }).periodo;
+      setPeriodo(["mes_actual", "mes_pasado", "ultimos_30"].includes(value) ? value : "mes_actual");
+    };
+    window.addEventListener("popstate", restorePeriod);
+    return () => window.removeEventListener("popstate", restorePeriod);
+  }, []);
 
   useEffect(() => {
     const tareasUrl =
@@ -455,14 +463,7 @@ export function ReportesEquipoPage() {
     <main aria-label="Render platform reportes equipo">
       <div className="frame">
         <div className="content">
-          <div className="section-label">
-            {esVistaAdmin ? "Rendimiento mensual del equipo" : "Mi rendimiento mensual"}
-          </div>
-          <div className="caption" style={{ marginBottom: "16px" }}>
-            {esVistaAdmin
-              ? "Entregas realizadas y pendientes según el trabajo concreto de cada persona."
-              : "Seguimiento de tu objetivo, tareas completadas y pendientes."}
-          </div>
+          <header className="module-intro"><div><div className="section-label">Reportes</div><h2>¿Cómo viene el rendimiento?</h2><p>{esVistaAdmin ? "Entregas realizadas y pendientes del equipo." : "Tu objetivo, tareas completadas y pendientes."}</p></div></header>
 
           {error && (
             <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
@@ -472,14 +473,14 @@ export function ReportesEquipoPage() {
 
           <div className="tabs" style={{ marginBottom: "16px" }}>
             {PERIODOS.map((p) => (
-              <span
+              <button
+                type="button"
                 key={p.id}
                 className={periodo === p.id ? "active" : ""}
-                onClick={() => setPeriodo(p.id)}
-                style={{ cursor: "pointer" }}
+                onClick={() => { pushUrlContext({ periodo: p.id }); setPeriodo(p.id); }}
               >
                 {p.label}
-              </span>
+              </button>
             ))}
           </div>
 

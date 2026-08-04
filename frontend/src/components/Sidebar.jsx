@@ -28,13 +28,6 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
     ],
   };
 
-  const enlacesPrincipales = [
-    ...seccionesNav.inicio,
-    ...seccionesNav.trabajo,
-    ...seccionesNav.planificacion,
-    ...seccionesNav.admin,
-    ...seccionesNav.gestion,
-  ];
   const enlacesCuenta = seccionesNav.cuenta;
   const cuentaActiva = enlacesCuenta.some((enlace) => path === enlace.href);
 
@@ -57,7 +50,14 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
       </div>
 
       <div className="sidebar-content">
-        {renderLinksSección(enlacesPrincipales)}
+        {renderLinksSección(seccionesNav.inicio)}
+        {renderLinksSección(seccionesNav.trabajo)}
+        <details className={`nav-menu ${seccionesNav.planificacion.some((item) => item.href === path) ? "active" : ""}`}>
+          <summary className="sidebar-link">Contenido</summary>
+          <div className="nav-menu-panel">{renderLinksSección(seccionesNav.planificacion)}</div>
+        </details>
+        {renderLinksSección(seccionesNav.admin)}
+        {renderLinksSección(seccionesNav.gestion)}
       </div>
 
       <details className={`account-menu ${cuentaActiva ? "active" : ""}`}>
