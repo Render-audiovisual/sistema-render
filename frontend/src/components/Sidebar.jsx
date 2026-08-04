@@ -1,6 +1,19 @@
 import React, { useEffect, useState } from "react";
 import { getRutaUsuario, inicialesUsuario } from "../utils.jsx";
 
+function SidebarIcon({ name }) {
+  const paths = {
+    home: <><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.5 21v-7h5v7"/></>,
+    tasks: <><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 8 1.5 1.5L12 7"/><path d="M14 8h3"/><path d="m8 14 1.5 1.5L12 13"/><path d="M14 14h3"/></>,
+    content: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6M7 16h8"/></>,
+    clients: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
+    reports: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,
+    profile: <><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></>,
+    users: <><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M14 15a5 5 0 0 1 7 4.5"/></>,
+  };
+  return <svg className="sidebar-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name] || paths.content}</svg>;
+}
+
 export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const esAdmin = sesion?.usuario?.rol === "admin";
@@ -8,10 +21,10 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
 
   const seccionesNav = {
     inicio: [
-      { href: rutaTablero || "/", label: "Inicio" },
+      { href: rutaTablero || "/", label: "Inicio", icon: "home" },
     ],
     trabajo: [
-      { href: "/workspace/tareas", label: "Tareas" },
+      { href: "/workspace/tareas", label: "Tareas", icon: "tasks" },
     ],
     planificacion: [
       {
@@ -26,14 +39,14 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
       },
     ],
     gestion: [
-      { href: "/reportes-historias", label: "Reportes" },
+      { href: "/reportes-historias", label: "Reportes", icon: "reports" },
     ],
     admin: esAdmin ? [
-      { href: "/clientes", label: "Clientes" },
+      { href: "/clientes", label: "Clientes", icon: "clients" },
     ] : [],
     cuenta: [
-      { href: "/perfil", label: "Perfil" },
-      ...(esAdmin ? [{ href: "/empleados", label: "Usuarios" }] : []),
+      { href: "/perfil", label: "Perfil", icon: "profile" },
+      ...(esAdmin ? [{ href: "/empleados", label: "Usuarios", icon: "users" }] : []),
     ],
   };
 
@@ -56,6 +69,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
         target="_self"
         className={`sidebar-link ${path === enlace.href ? "active" : ""}`}
       >
+        {enlace.icon && <SidebarIcon name={enlace.icon}/>}
         {enlace.description ? (
           <span className="sidebar-link-copy">
             <strong>{enlace.label}</strong>
@@ -68,7 +82,11 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
   return (
     <nav className="sidebar" aria-label="Navegación principal">
       <div className="sidebar-header">
-        <div className="brand-mark">RENDER</div>
+        <a className="brand-mark" href={rutaTablero || "/"} aria-label="Ir al Inicio">
+          <span>R</span>
+          <strong>RENDER</strong>
+          <small>OS</small>
+        </a>
         <button
           type="button"
           className="sidebar-menu-toggle"
@@ -89,7 +107,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
           {renderLinksSección(seccionesNav.trabajo)}
           <details className={`nav-menu ${seccionesNav.planificacion.some((item) => item.href === path) ? "active" : ""}`}>
             <summary className="sidebar-link" aria-label="Abrir opciones de Contenido">
-              <span>Contenido</span>
+              <span className="sidebar-link-label"><SidebarIcon name="content"/><span>Contenido</span></span>
               <span className="nav-menu-chevron" aria-hidden="true">⌄</span>
             </summary>
             <div className="nav-menu-panel" aria-label="Opciones de Contenido">
