@@ -327,10 +327,17 @@
   .render-workspace .ros-page-icon{height:36px;width:36px}
   .render-workspace .ros-title-row h1{font-size:26px}
   .render-workspace .ros-title-row p{font-size:10px;max-width:none}
-  .render-workspace .ros-title-actions{display:grid;grid-template-columns:1fr auto;width:100%}
+  .render-workspace .ros-title-actions{display:grid;flex:0 0 auto;grid-template-columns:minmax(0,1fr) auto;min-height:0;width:100%}
   .render-workspace .ros-top-search{display:block;min-width:0;width:100%}
   .render-workspace .ros-controls{padding-left:10px;padding-right:10px}
   .render-workspace .ros-filter-bar{padding:10px}
   .render-workspace .ros-board,.render-workspace .ros-task-list,.render-workspace .ros-calendar,.render-workspace .ros-project-grid,.render-workspace .ros-no-results{margin:14px 10px 18px}
   .render-workspace .ros-board{width:calc(100% - 20px)}
+}
+
+@media(max-width:480px){
+  .render-workspace .ros-title-actions{grid-template-columns:1fr}
+  .render-workspace .ros-controls{align-items:stretch;flex-direction:column;gap:0;padding-top:5px}
+  .render-workspace .ros-controls>div{width:100%}
+  .render-workspace .ros-controls>span{align-self:flex-start;margin:6px 0 8px}
 }
