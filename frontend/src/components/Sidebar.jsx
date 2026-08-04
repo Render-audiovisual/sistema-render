@@ -40,6 +40,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
       <a
         key={enlace.href}
         href={enlace.href}
+        target="_self"
         className={`sidebar-link ${path === enlace.href ? "active" : ""}`}
       >
         {enlace.label}

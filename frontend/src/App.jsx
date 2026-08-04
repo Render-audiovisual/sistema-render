@@ -14,7 +14,6 @@ import { PerfilPage } from "./pages/Perfil.jsx";
 import { PublicacionesPage } from "./pages/Publicaciones.jsx";
 import { ReportesEquipoPage } from "./pages/Reportes.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
-import { TareasTableroPage } from "./pages/TareasTablero.jsx";
 import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
 
 export function App() {
@@ -65,6 +64,11 @@ export function App() {
     return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
   }
 
+  if (path === "/piezas") {
+    window.location.replace("/workspace/tareas");
+    return null;
+  }
+
   const dashboard = (() => {
     if (path === "/lider") {
       return <LiderDashboard />;
@@ -107,9 +111,6 @@ export function App() {
     }
     if (path === "/empleados") {
       return <EmpleadosPage />;
-    }
-    if (path === "/piezas") {
-      return <TareasTableroPage />;
     }
     if (path === "/planificacion-publicaciones") {
       return <PublicacionesPage />;
