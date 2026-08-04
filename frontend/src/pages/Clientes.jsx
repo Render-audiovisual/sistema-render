@@ -47,7 +47,6 @@ export function ClientesAdminPage() {
     cuota_carruseles: "",
   });
   const [guardandoCliente, setGuardandoCliente] = useState(false);
-  const [clienteDrafts, setClienteDrafts] = useState({});
   const [altaClienteAbierta, setAltaClienteAbierta] = useState(false);
   const [clienteCuotaEnEdicion, setClienteCuotaEnEdicion] = useState(null);
   const [errorAltaCliente, setErrorAltaCliente] = useState(null);
@@ -185,78 +184,6 @@ export function ClientesAdminPage() {
     setClienteSeleccionado((actual) =>
       actual?.id === id ? { ...actual, ...campos } : actual,
     );
-  };
-
-  const actualizarDraftCliente = (id, campo, valor) => {
-    setClienteDrafts((prev) => ({
-      ...prev,
-      [id]: {
-        ...(prev[id] || {}),
-        [campo]: valor,
-      },
-    }));
-  };
-
-  const limpiarDraftCliente = (id, campos) => {
-    setClienteDrafts((prev) => {
-      if (!prev[id]) return prev;
-      const siguienteDraft = { ...prev[id] };
-      campos.forEach((campo) => delete siguienteDraft[campo]);
-      if (Object.keys(siguienteDraft).length === 0) {
-        const { [id]: _omitido, ...resto } = prev;
-        return resto;
-      }
-      return { ...prev, [id]: siguienteDraft };
-    });
-  };
-
-  const valorClienteEditable = (cliente, campo) =>
-    clienteDrafts[cliente.id]?.[campo] ?? cliente[campo] ?? "";
-
-  const guardarCliente = (id, campos) => {
-    const payload = { ...campos };
-    if (Object.prototype.hasOwnProperty.call(payload, "nombre")) {
-      payload.nombre = payload.nombre.trim();
-      if (!payload.nombre) {
-        setError("El nombre del cliente no puede quedar vacío.");
-        cargarClientes({ silencioso: true });
-        return;
-      }
-    }
-    for (const key of ["cuota_reels", "cuota_carruseles"]) {
-      if (Object.prototype.hasOwnProperty.call(payload, key)) {
-        const numero = Number(payload[key]);
-        if (!validarCuota(numero)) {
-          setError("Las cuotas deben ser números enteros ≥ 0.");
-          cargarClientes({ silencioso: true });
-          return;
-        }
-        payload[key] = numero;
-      }
-    }
-
-    setError(null);
-    fetch(`/api/clientes/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || "No se pudo guardar el cliente.");
-        }
-        return data;
-      })
-      .then((cliente) => {
-        actualizarClienteLocal(id, cliente);
-        limpiarDraftCliente(id, Object.keys(payload));
-      })
-      .catch((err) => {
-        setError(err.message);
-        cargarClientes({ silencioso: true });
-        limpiarDraftCliente(id, Object.keys(payload));
-      });
   };
 
   const filas = getResumenClientesActivos(clientes, historias, publicaciones);
@@ -400,18 +327,7 @@ export function ClientesAdminPage() {
                           </span>
                         </td>
                         <td>
-                          <input
-                            className="cliente-inline-input cliente-name-input"
-                            onBlur={(e) => guardarCliente(cliente.id, { nombre: e.target.value })}
-                            onChange={(e) =>
-                              actualizarDraftCliente(cliente.id, "nombre", e.target.value)
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") e.currentTarget.blur();
-                            }}
-                            value={valorClienteEditable(cliente, "nombre")}
-                          />
+                          <strong>{cliente.nombre}</strong>
                           <div className="caption">Activo</div>
                         </td>
                         {cliente.feedCompartido ? (
@@ -687,6 +603,7 @@ export function ClientesAdminPage() {
           )}
           onClose={() => setClienteSeleccionado(null)}
           onCuotaActualizada={cargarClientes}
+          onClienteActualizado={(clienteActualizado) => actualizarClienteLocal(clienteActualizado.id, clienteActualizado)}
           onClienteEliminado={(id) => {
             setClientes((prev) => prev.filter((cliente) => cliente.id !== id));
             setClienteSeleccionado(null);

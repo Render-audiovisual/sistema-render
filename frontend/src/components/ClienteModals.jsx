@@ -15,6 +15,7 @@ import { Modal } from "./Modal.jsx";
 
 export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
   const esFeedCompartido = Boolean(cliente.grupo_feed_id);
+  const [nombre, setNombre] = useState(cliente.nombre || "");
   const [cuotaReels, setCuotaReels] = useState(String(cliente.cuota_reels ?? 0));
   const [cuotaCarruseles, setCuotaCarruseles] = useState(
     String(cliente.cuota_carruseles ?? 0),
@@ -30,9 +31,9 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
 
   const esCuotaValida = (valor) =>
     valor !== "" && Number.isInteger(Number(valor)) && Number(valor) >= 0;
-  const formularioValido = esFeedCompartido
+  const formularioValido = nombre.trim().length > 0 && (esFeedCompartido
     ? esCuotaValida(cuotaFeedReels) && esCuotaValida(cuotaFeedCarruseles)
-    : esCuotaValida(cuotaReels) && esCuotaValida(cuotaCarruseles);
+    : esCuotaValida(cuotaReels) && esCuotaValida(cuotaCarruseles));
   const totalMensual = formularioValido
     ? esFeedCompartido
       ? Number(cuotaFeedReels) + Number(cuotaFeedCarruseles)
@@ -53,10 +54,12 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
       body: JSON.stringify(
         esFeedCompartido
           ? {
+              nombre: nombre.trim(),
               cuota_feed_reels: Number(cuotaFeedReels),
               cuota_feed_carruseles: Number(cuotaFeedCarruseles),
             }
           : {
+              nombre: nombre.trim(),
               cuota_reels: Number(cuotaReels),
               cuota_carruseles: Number(cuotaCarruseles),
             },
@@ -75,7 +78,7 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
   return (
     <Modal
       onClose={onClose}
-      title={<span>Editar cuota mensual</span>}
+      title={<span>Editar cliente</span>}
       className="cliente-create-modal"
       overlayAriaLabel="Editar cuota mensual"
     >
@@ -88,6 +91,11 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
                 : "Definí la cantidad contratada de cada formato para un mes."}
             </span>
           </div>
+          <label className="cliente-service-field">
+            <span>Nombre del cliente</span>
+            <input value={nombre} onChange={(event) => setNombre(event.target.value)} />
+            <small>Se guarda únicamente al confirmar los cambios.</small>
+          </label>
           {esFeedCompartido ? (
             <div className="cliente-create-modal-grid">
               <label className="cliente-service-field">
@@ -154,7 +162,7 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
               Cancelar
             </button>
             <button className="btn primary" type="submit" disabled={guardando || !formularioValido}>
-              {guardando ? "Guardando..." : "Guardar cuota"}
+              {guardando ? "Guardando..." : "Guardar cambios"}
             </button>
           </div>
         </form>
@@ -169,11 +177,13 @@ export function DetalleClienteModal({
   publicaciones,
   onClose,
   onCuotaActualizada,
+  onClienteActualizado,
   onClienteEliminado,
 }) {
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
   const [editandoCuota, setEditandoCuota] = useState(false);
+  const [mensajeExito, setMensajeExito] = useState("");
   const porcentajes = getPorcentajesCliente(cliente);
   const estado = getEstadoPorObjetivo(porcentajes.objetivo);
 
@@ -193,6 +203,7 @@ export function DetalleClienteModal({
         cliente_id: cliente.id,
         estado: "pendiente",
         motivo: mensaje,
+        workspace: "render_os",
       }),
     })
       .then((response) => {
@@ -202,7 +213,8 @@ export function DetalleClienteModal({
         return response.json();
       })
       .then(() => {
-        onClose();
+        setMensajeExito(`Tarea creada para ${destinatario} sin cerrar el cliente.`);
+        setEnviando(null);
       })
       .catch(() => {
         setError("No se pudo enviar el aviso. Intentá de nuevo.");
@@ -313,6 +325,7 @@ export function DetalleClienteModal({
           </div>
 
           {error && <div className="caption login-error">{error}</div>}
+          {mensajeExito && <div className="caption cliente-success">{mensajeExito}</div>}
 
           <table className="cliente-detail-table">
             <thead>
@@ -363,7 +376,7 @@ export function DetalleClienteModal({
               disabled={enviando !== null}
               onClick={() => setEditandoCuota(true)}
             >
-              Editar cuota
+              Editar cliente
             </button>
             <button
               className="btn danger"
@@ -380,10 +393,10 @@ export function DetalleClienteModal({
       <EditarCuotaClienteModal
         cliente={cliente}
         onClose={() => setEditandoCuota(false)}
-        onGuardado={() => {
+        onGuardado={(clienteActualizado) => {
+          onClienteActualizado?.(clienteActualizado);
           onCuotaActualizada?.();
           setEditandoCuota(false);
-          onClose();
         }}
       />
     )}
