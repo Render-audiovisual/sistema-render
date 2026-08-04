@@ -20,7 +20,6 @@ import { requireAuthentication, requireRole } from "./auth.js";
 import { buildTaskAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks } from "./piece-task-linking.js";
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
-import { AUGUST_PLAN_BATCH, buildAugust2026Plan, summarizeAugustPlan } from "./august-2026-plan.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -275,92 +274,6 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
     }));
   } catch (error) {
     next(error);
-  }
-});
-
-async function getMissingAugustPlan(db = pool) {
-  const plan = buildAugust2026Plan();
-  const existingResult = await db.query(`
-    SELECT cliente_id, tipo, count(*)::int AS cantidad
-    FROM publicaciones
-    WHERE fecha_programada >= '2026-08-01'::date
-      AND fecha_programada < '2026-09-01'::date
-      AND tipo IN ('video', 'carrusel')
-      AND metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
-    GROUP BY cliente_id, tipo
-  `);
-  const existingCounts = new Map(existingResult.rows.map((row) => [`${row.cliente_id}|${row.tipo}`, row.cantidad]));
-  const seen = new Map();
-  const missing = plan.filter((row) => {
-    const key = `${row.clientId}|${row.type}`;
-    const position = (seen.get(key) || 0) + 1;
-    seen.set(key, position);
-    return position > (existingCounts.get(key) || 0);
-  });
-  return { plan, missing, existingCounts: Object.fromEntries(existingCounts) };
-}
-
-router.get("/planificacion-agosto-2026", requireRole("admin"), async (_req, res, next) => {
-  try {
-    const { plan, missing, existingCounts } = await getMissingAugustPlan();
-    res.json({ summary: summarizeAugustPlan(plan), missing: summarizeAugustPlan(missing), existingCounts, rows: missing });
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.post("/planificacion-agosto-2026", requireRole("admin"), async (req, res, next) => {
-  if (req.body?.confirmacion !== "CARGAR_AGOSTO_2026") {
-    return res.status(400).json({ error: "Falta la confirmación explícita de la carga." });
-  }
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [AUGUST_PLAN_BATCH]);
-    const { missing } = await getMissingAugustPlan(client);
-    const created = [];
-    for (const row of missing) {
-      const publicationResult = await client.query(`
-        INSERT INTO publicaciones (
-          cliente_id, tipo, estado, fecha_programada, responsable, responsable_diseño,
-          idea, copy, material_referencia, aclaraciones, prioridad, metadata
-        ) VALUES ($1, $2, 'pendiente', $3, $4, $5, $6, '', $7, '', 'media', $8::jsonb)
-        RETURNING id
-      `, [
-        row.clientId,
-        row.type,
-        row.date,
-        row.assignee,
-        row.type === "carrusel" ? row.assignee : null,
-        row.idea,
-        row.reference,
-        JSON.stringify({ planificacion_lote: AUGUST_PLAN_BATCH, plan_numero: row.number, plan_label: row.label }),
-      ]);
-      const publicationId = publicationResult.rows[0].id;
-      await client.query(`
-        INSERT INTO tareas (
-          titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra,
-          fecha_vencimiento, publicacion_id, tipo_tarea, subtipo, prioridad
-        ) VALUES ($1, $2, $3, 'pendiente', false, $4::jsonb, $5, $6, $7, $8, 'media')
-      `, [
-        row.label,
-        row.assignee,
-        row.clientId,
-        JSON.stringify({ ...buildAutoTaskProperties(), planificacion_lote: AUGUST_PLAN_BATCH, plan_numero: row.number, plan_label: row.label }),
-        row.date,
-        publicationId,
-        row.type === "carrusel" ? "diseno" : "administracion",
-        row.type,
-      ]);
-      created.push({ ...row, publicationId });
-    }
-    await client.query("COMMIT");
-    res.status(201).json({ created: created.length, summary: summarizeAugustPlan(created), rows: created });
-  } catch (error) {
-    await client.query("ROLLBACK");
-    next(error);
-  } finally {
-    client.release();
   }
 });
 
@@ -1858,6 +1771,7 @@ router.get("/tareas", async (req, res, next) => {
     if (area) {
       const areaText = `LOWER(CONCAT_WS(' ', t.tipo_tarea, t.subtipo, t.titulo))`;
       const areaExpression = `CASE
+        WHEN t.tipo_tarea = 'administracion' AND (${areaText} LIKE '%video%' OR ${areaText} LIKE '%reel%') THEN 'planificacion'
         WHEN ${areaText} LIKE '%chatbot%' OR ${areaText} LIKE '%bot %' THEN 'chatbots'
         WHEN ${areaText} LIKE '%web%' OR ${areaText} LIKE '%landing%' OR ${areaText} LIKE '%página%' THEN 'web'
         WHEN ${areaText} LIKE '%cartel%' THEN 'carteleria'

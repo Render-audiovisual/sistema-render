@@ -5,6 +5,7 @@ import { areaForTask, formatDate, initials, personForTask } from "../../frontend
 test("los formateadores puros de RENDER OS conservan sus resultados", () => {
   assert.equal(areaForTask({ titulo: "Landing institucional" }), "web");
   assert.equal(areaForTask({ titulo: "Pieza", tipo_tarea: "diseno" }), "carruseles");
+  assert.equal(areaForTask({ titulo: "Video 1", subtipo: "video", tipo_tarea: "administracion" }), "planificacion");
   assert.equal(formatDate("2026-08-03"), "03/08/2026");
   assert.equal(formatDate(null), "Sin fecha");
   assert.equal(initials("Render Audiovisual"), "RA");

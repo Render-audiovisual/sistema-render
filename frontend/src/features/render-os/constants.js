@@ -10,6 +10,7 @@ export const STATUSES = [
 
 export const AREAS = [
   { id: "all", label: "Todo", icon: "⌘", color: "#242529" },
+  { id: "planificacion", label: "Planificación", icon: "□", color: "#6b7280" },
   { id: "carruseles", label: "Carruseles", icon: "▦", color: "#7459e8" },
   { id: "produccion", label: "Visitas / producción", icon: "◉", color: "#e26d45" },
   { id: "edicion", label: "Edición", icon: "▶", color: "#2d8f75" },

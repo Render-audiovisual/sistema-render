@@ -14,7 +14,6 @@ import { PerfilPage } from "./pages/Perfil.jsx";
 import { PublicacionesPage } from "./pages/Publicaciones.jsx";
 import { ReportesEquipoPage } from "./pages/Reportes.jsx";
 import { SueldosPage } from "./pages/Sueldos.jsx";
-import { CargaAgostoPage } from "./pages/CargaAgosto.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
 
@@ -49,7 +48,7 @@ export function App() {
   }
 
   const rutasCompartidas = esAdmin
-    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/carga-agosto-2026", "/perfil", "/piezas", "/workspace/tareas"]
+    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas"]
     : ["/perfil", "/workspace/tareas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
@@ -106,9 +105,6 @@ export function App() {
     }
     if (path === "/sueldos") {
       return <SueldosPage />;
-    }
-    if (path === "/carga-agosto-2026") {
-      return <CargaAgostoPage />;
     }
     if (path === "/perfil") {
       return <PerfilPage />;

@@ -1,5 +1,6 @@
 export function areaForTask(task) {
   const text = `${task.tipo_tarea || ""} ${task.subtipo || ""} ${task.titulo || ""}`.toLowerCase();
+  if (task.tipo_tarea === "administracion" && (text.includes("video") || text.includes("reel"))) return "planificacion";
   if (text.includes("chatbot") || text.includes("bot ")) return "chatbots";
   if (text.includes("web") || text.includes("landing") || text.includes("página")) return "web";
   if (text.includes("cartel")) return "carteleria";
