@@ -479,3 +479,40 @@
   .render-workspace .ros-title-row{gap:15px}
   .render-workspace .ros-title-row>div:first-child{align-items:center;width:100%}
 }
+
+/* El archivo es una acción secundaria, no una vista paralela del tablero. */
+.render-workspace .ros-controls .ros-controls-meta{
+  align-items:center;
+  display:flex;
+  gap:12px;
+  margin-left:auto;
+}
+.render-workspace .ros-controls-meta>span{
+  color:#8a8c87;
+  font-size:8px;
+  white-space:nowrap;
+}
+.render-workspace .ros-controls .ros-archive-link{
+  border:1px solid #e0e1dc;
+  border-radius:7px;
+  color:#696c66;
+  font-size:9px;
+  margin-bottom:7px;
+  min-height:30px;
+  padding:6px 9px;
+}
+.render-workspace .ros-controls .ros-archive-link:hover{
+  background:#f2f2ef;
+  border-color:#cfd1ca;
+  color:#363934;
+}
+
+@media(max-width:700px){
+  .render-workspace .ros-controls .ros-controls-meta{
+    justify-content:space-between;
+    margin-left:0;
+    padding:4px 2px 7px;
+    width:100%;
+  }
+  .render-workspace .ros-controls .ros-archive-link{margin:0}
+}

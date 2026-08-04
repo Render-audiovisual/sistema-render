@@ -66,6 +66,13 @@ test("Tareas conserva una sola interfaz y navega en la misma pestaña", () => {
   assert.match(sidebarSource, /href=\{enlace\.href\}[\s\S]*?target="_self"/);
 });
 
+test("el archivo de Tareas se presenta como una única acción secundaria", () => {
+  const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  assert.match(workspaceSource, /Ver archivadas/);
+  assert.match(workspaceSource, /Volver a tareas activas/);
+  assert.doesNotMatch(workspaceSource, />Activas<\/button><button[^>]*>Archivadas</);
+});
+
 test("el frontend no fabrica sesiones y adjunta el JWT a la API", () => {
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const mainSource = readFileSync(new URL("../../frontend/src/main.jsx", import.meta.url), "utf8");
