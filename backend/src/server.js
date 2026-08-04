@@ -20,6 +20,7 @@ import { requireAuthentication, requireRole } from "./auth.js";
 import { buildTaskAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks } from "./piece-task-linking.js";
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
+import { AUGUST_PLAN_BATCH, buildAugust2026Plan, summarizeAugustPlan } from "./august-2026-plan.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -274,6 +275,92 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
     }));
   } catch (error) {
     next(error);
+  }
+});
+
+async function getMissingAugustPlan(db = pool) {
+  const plan = buildAugust2026Plan();
+  const existingResult = await db.query(`
+    SELECT cliente_id, tipo, count(*)::int AS cantidad
+    FROM publicaciones
+    WHERE fecha_programada >= '2026-08-01'::date
+      AND fecha_programada < '2026-09-01'::date
+      AND tipo IN ('video', 'carrusel')
+      AND metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
+    GROUP BY cliente_id, tipo
+  `);
+  const existingCounts = new Map(existingResult.rows.map((row) => [`${row.cliente_id}|${row.tipo}`, row.cantidad]));
+  const seen = new Map();
+  const missing = plan.filter((row) => {
+    const key = `${row.clientId}|${row.type}`;
+    const position = (seen.get(key) || 0) + 1;
+    seen.set(key, position);
+    return position > (existingCounts.get(key) || 0);
+  });
+  return { plan, missing, existingCounts: Object.fromEntries(existingCounts) };
+}
+
+router.get("/planificacion-agosto-2026", requireRole("admin"), async (_req, res, next) => {
+  try {
+    const { plan, missing, existingCounts } = await getMissingAugustPlan();
+    res.json({ summary: summarizeAugustPlan(plan), missing: summarizeAugustPlan(missing), existingCounts, rows: missing });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/planificacion-agosto-2026", requireRole("admin"), async (req, res, next) => {
+  if (req.body?.confirmacion !== "CARGAR_AGOSTO_2026") {
+    return res.status(400).json({ error: "Falta la confirmación explícita de la carga." });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [AUGUST_PLAN_BATCH]);
+    const { missing } = await getMissingAugustPlan(client);
+    const created = [];
+    for (const row of missing) {
+      const publicationResult = await client.query(`
+        INSERT INTO publicaciones (
+          cliente_id, tipo, estado, fecha_programada, responsable, responsable_diseño,
+          idea, copy, material_referencia, aclaraciones, prioridad, metadata
+        ) VALUES ($1, $2, 'pendiente', $3, $4, $5, $6, '', $7, '', 'media', $8::jsonb)
+        RETURNING id
+      `, [
+        row.clientId,
+        row.type,
+        row.date,
+        row.assignee,
+        row.type === "carrusel" ? row.assignee : null,
+        row.idea,
+        row.reference,
+        JSON.stringify({ planificacion_lote: AUGUST_PLAN_BATCH, plan_numero: row.number, plan_label: row.label }),
+      ]);
+      const publicationId = publicationResult.rows[0].id;
+      await client.query(`
+        INSERT INTO tareas (
+          titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra,
+          fecha_vencimiento, publicacion_id, tipo_tarea, subtipo, prioridad
+        ) VALUES ($1, $2, $3, 'pendiente', false, $4::jsonb, $5, $6, $7, $8, 'media')
+      `, [
+        row.label,
+        row.assignee,
+        row.clientId,
+        JSON.stringify({ ...buildAutoTaskProperties(), planificacion_lote: AUGUST_PLAN_BATCH, plan_numero: row.number, plan_label: row.label }),
+        row.date,
+        publicationId,
+        row.type === "carrusel" ? "diseno" : "administracion",
+        row.type,
+      ]);
+      created.push({ ...row, publicationId });
+    }
+    await client.query("COMMIT");
+    res.status(201).json({ created: created.length, summary: summarizeAugustPlan(created), rows: created });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    next(error);
+  } finally {
+    client.release();
   }
 });
 
@@ -2149,11 +2236,6 @@ router.get("/piezas/:id", async (req, res, next) => {
 });
 
 // Un día antes de fecha_programada, sin bajar de la fecha de hoy.
-// Clientes que Germán filma hoy (confirmado con el dueño del sistema al
-// definir responsabilidades — el resto de los clientes con video
-// programado todavía no tiene productor asignado, se revisa más adelante).
-const CLIENTES_PRODUCCION_GERMAN = ["Luzin", "Moketa", "Búnker Training", "Bohle", "Capital Motos"];
-
 function fechaVencimientoTarea(fechaProgramada, diasAntes = 1) {
   const f = new Date(`${fechaProgramada}T00:00:00`);
   f.setDate(f.getDate() - diasAntes);
@@ -2257,10 +2339,11 @@ router.post("/piezas", async (req, res, next) => {
       const publicacion = result.rows[0];
 
       if (tipo === "carrusel") {
-        // Carruseles/flyers: diseño de Augusto, sin filmación ni edición.
+        // El responsable elegido define el diseñador; no todos los clientes
+        // pertenecen a la misma persona.
         await crearTareaAuto({
           titulo: `Diseñar assets - ${idea || "sin idea"}`,
-          asignado_a: "Augusto",
+          asignado_a: responsable,
           cliente_id,
           fecha_vencimiento: fechaVencimientoTarea(fecha_programada, 1),
           publicacion_id: publicacion.id,
@@ -2268,42 +2351,17 @@ router.post("/piezas", async (req, res, next) => {
           subtipo: "diseñar",
         });
       } else {
-        // Video: Germán filma (solo clientes confirmados) y Luciano edita.
-        // Augusto no interviene acá — diseño de video no existe como paso.
-        const { rows: clienteRows } = await pool.query(
-          "SELECT nombre FROM clientes WHERE id = $1",
-          [cliente_id],
-        );
-        const nombreCliente = clienteRows[0]?.nombre;
-
-        if (nombreCliente && CLIENTES_PRODUCCION_GERMAN.includes(nombreCliente)) {
-          const tareaFilmarId = await crearTareaAuto({
-            titulo: `Filmar video - ${idea || "sin idea"}`,
-            asignado_a: "Germán",
-            cliente_id,
-            fecha_vencimiento: fechaVencimientoTarea(fecha_programada, 3),
-            publicacion_id: publicacion.id,
-            tipo_tarea: "produccion",
-            subtipo: "filmar",
-          });
-
-          // tarea_padre_id conecta la edición a la filmación: mientras
-          // Germán no la marque publicada, Luciano ve "esperando material" en
-          // vez de una tarea suelta sin indicar si ya hay algo para editar.
-          await crearTareaAuto({
-            titulo: `Editar video - ${idea || "sin idea"}`,
-            asignado_a: "Luciano",
-            cliente_id,
-            fecha_vencimiento: fechaVencimientoTarea(fecha_programada, 1),
-            publicacion_id: publicacion.id,
-            tipo_tarea: "edicion",
-            subtipo: "editar",
-            tarea_padre_id: tareaFilmarId,
-          });
-        }
-        // Si el cliente no tiene productor asignado todavía, no se generan
-        // tareas automáticas — evita que Luciano reciba una edición sin
-        // material filmado por alguien.
+        // Un video nace como una sola tarea simple del Líder. Filmación y
+        // edición se asignan después, cuando ya existen idea, guion y material.
+        await crearTareaAuto({
+          titulo: `Video - ${idea || "por definir"}`,
+          asignado_a: responsable,
+          cliente_id,
+          fecha_vencimiento: fecha_programada,
+          publicacion_id: publicacion.id,
+          tipo_tarea: "administracion",
+          subtipo: "video",
+        });
       }
 
       return res.status(201).json(publicacion);
