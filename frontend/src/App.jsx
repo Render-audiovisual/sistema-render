@@ -55,16 +55,15 @@ export function App() {
     return null;
   }
 
-  if (path === "/workspace/tareas") {
-    return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
-  }
-
   if (path === "/piezas") {
     window.location.replace("/workspace/tareas");
     return null;
   }
 
   const dashboard = (() => {
+    if (path === "/workspace/tareas") {
+      return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
+    }
     if (path === "/lider") {
       return <LiderDashboard />;
     }
