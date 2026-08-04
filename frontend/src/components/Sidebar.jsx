@@ -3,7 +3,7 @@ import { getRutaUsuario, inicialesUsuario } from "../utils.jsx";
 
 export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
   const esAdmin = sesion?.usuario?.rol === "admin";
-  const rutaTablero = getRutaUsuario(sesion?.usuario?.usuario);
+  const rutaTablero = getRutaUsuario(sesion?.usuario?.usuario, sesion?.usuario?.rol);
 
   const seccionesNav = {
     inicio: [

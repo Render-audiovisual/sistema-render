@@ -15,6 +15,7 @@ import {
 } from "./email-notifications.js";
 import { setupDemoClientes } from "./setup-demo-data.js";
 import { shouldSetupDemoData } from "./hosting-config.js";
+import { requireAuthentication, requireRole } from "./auth.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -64,18 +65,24 @@ router.get("/health", (_req, res) => {
 
 router.post("/login", async (req, res, next) => {
   try {
-    const { usuario, password } = req.body;
+    const identificador = typeof req.body.usuario === "string" ? req.body.usuario.trim() : "";
+    const { password } = req.body;
 
-    if (!usuario || !password) {
+    if (!identificador || !password) {
       return res.status(400).json({ error: "Faltan usuario o contraseña." });
     }
 
     const result = await pool.query(
-      "SELECT id, usuario, nombre, rol, foto_perfil, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
-      [usuario],
+      `SELECT id, usuario, nombre, rol, foto_perfil, password_hash
+       FROM usuarios
+       WHERE lower(usuario) = lower($1)
+          OR lower(google_email) = lower($1)
+          OR lower(email_notificaciones) = lower($1)
+       LIMIT 2`,
+      [identificador],
     );
 
-    if (result.rows.length === 0) {
+    if (result.rows.length !== 1) {
       return res.status(401).json({ error: "Usuario o contraseña incorrectos." });
     }
 
@@ -200,6 +207,8 @@ router.post("/login/google", async (req, res, next) => {
   }
 });
 
+router.use(requireAuthentication);
+
 const ROLES_VALIDOS = [
   "admin",
   "diseno",
@@ -208,18 +217,19 @@ const ROLES_VALIDOS = [
   "community",
 ];
 
-router.get("/usuarios", async (_req, res, next) => {
+router.get("/usuarios", async (req, res, next) => {
   try {
-    const result = await pool.query(
-      "SELECT id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at FROM usuarios ORDER BY id",
-    );
+    const fields = req.auth.rol === "admin"
+      ? "id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at"
+      : "id, usuario, nombre, rol, foto_perfil, created_at";
+    const result = await pool.query(`SELECT ${fields} FROM usuarios ORDER BY id`);
     res.json(result.rows);
   } catch (error) {
     next(error);
   }
 });
 
-router.post("/usuarios", async (req, res, next) => {
+router.post("/usuarios", requireRole("admin"), async (req, res, next) => {
   try {
     const { usuario, nombre, rol, password, email_notificaciones } = req.body;
     const email = normalizarEmailNotificaciones(email_notificaciones);
@@ -259,7 +269,7 @@ function normalizarEmailNotificaciones(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
 }
 
-router.patch("/usuarios/:id/email-notificaciones", async (req, res, next) => {
+router.patch("/usuarios/:id/email-notificaciones", requireRole("admin"), async (req, res, next) => {
   try {
     const emailIngresado =
       typeof req.body.email_notificaciones === "string"
@@ -292,7 +302,7 @@ router.patch("/usuarios/:id/email-notificaciones", async (req, res, next) => {
   }
 });
 
-router.patch("/usuarios/:id/google-email", async (req, res, next) => {
+router.patch("/usuarios/:id/google-email", requireRole("admin"), async (req, res, next) => {
   try {
     const emailIngresado =
       typeof req.body.google_email === "string" ? req.body.google_email.trim() : "";
@@ -326,7 +336,7 @@ router.patch("/usuarios/:id/google-email", async (req, res, next) => {
   }
 });
 
-router.delete("/usuarios/:id", async (req, res, next) => {
+router.delete("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -353,6 +363,9 @@ router.patch("/usuarios/perfil", async (req, res, next) => {
       return res
         .status(400)
         .json({ error: "Faltan el usuario actual, la contraseña actual y el usuario nuevo." });
+    }
+    if (String(req.auth.usuario).toLowerCase() !== String(usuario_actual).toLowerCase()) {
+      return res.status(403).json({ error: "No podés modificar otro usuario." });
     }
 
     const found = await pool.query(
@@ -402,6 +415,9 @@ router.patch("/usuarios/foto", async (req, res, next) => {
     if (!usuario) {
       return res.status(400).json({ error: "Falta el usuario." });
     }
+    if (String(req.auth.usuario).toLowerCase() !== String(usuario).toLowerCase()) {
+      return res.status(403).json({ error: "No podés modificar otro usuario." });
+    }
     if (foto && !foto.startsWith("data:image/")) {
       return res.status(400).json({ error: "La foto debe ser una imagen válida." });
     }
@@ -436,6 +452,9 @@ router.patch("/usuarios/password", async (req, res, next) => {
         .status(400)
         .json({ error: "Faltan la contraseña actual y la nueva." });
     }
+    if (String(req.auth.usuario).toLowerCase() !== String(usuario).toLowerCase()) {
+      return res.status(403).json({ error: "No podés modificar otro usuario." });
+    }
 
     const found = await pool.query(
       "SELECT id, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
@@ -462,6 +481,36 @@ router.patch("/usuarios/password", async (req, res, next) => {
     res.json({ ok: true });
   } catch (error) {
     next(error);
+  }
+});
+
+router.patch("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
+  try {
+    const nombre = typeof req.body.nombre === "string" ? req.body.nombre.trim() : "";
+    const usuario = typeof req.body.usuario === "string" ? req.body.usuario.trim() : "";
+    const { rol } = req.body;
+
+    if (!nombre || !usuario || !ROLES_VALIDOS.includes(rol)) {
+      return res.status(400).json({ error: "Los datos del empleado no son válidos." });
+    }
+
+    const updated = await pool.query(
+      `UPDATE usuarios
+       SET nombre = $1, usuario = $2, rol = $3
+       WHERE id = $4
+       RETURNING id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at`,
+      [nombre, usuario, rol, req.params.id],
+    );
+
+    if (updated.rows.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado." });
+    }
+    return res.json(updated.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "Ya existe ese usuario." });
+    }
+    return next(error);
   }
 });
 
@@ -685,7 +734,7 @@ router.get("/clientes", async (_req, res, next) => {
   }
 });
 
-router.post("/clientes", async (req, res, next) => {
+router.post("/clientes", requireRole("admin"), async (req, res, next) => {
   try {
     const nombre = (req.body.nombre || "").trim();
     const cuota_reels = Number(req.body.cuota_reels ?? 0);
@@ -728,7 +777,7 @@ router.post("/clientes", async (req, res, next) => {
   }
 });
 
-router.patch("/clientes/:id", async (req, res, next) => {
+router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
@@ -841,7 +890,7 @@ router.patch("/clientes/:id", async (req, res, next) => {
   }
 });
 
-router.delete("/clientes/:id", async (req, res, next) => {
+router.delete("/clientes/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const dependencias = await pool.query(

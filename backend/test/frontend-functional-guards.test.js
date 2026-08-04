@@ -35,3 +35,12 @@ test("Tareas conserva una sola interfaz y navega en la misma pestaña", () => {
   assert.doesNotMatch(appSource, /TareasTableroPage/);
   assert.match(sidebarSource, /href=\{enlace\.href\}[\s\S]*?target="_self"/);
 });
+
+test("el frontend no fabrica sesiones y adjunta el JWT a la API", () => {
+  const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
+  const mainSource = readFileSync(new URL("../../frontend/src/main.jsx", import.meta.url), "utf8");
+
+  assert.doesNotMatch(appSource, /getSesionDelPath/);
+  assert.match(mainSource, /headers\.set\("Authorization", `Bearer \$\{session\.token\}`\)/);
+  assert.match(mainSource, /response\.status === 401/);
+});

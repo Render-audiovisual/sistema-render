@@ -31,7 +31,7 @@ export function LoginPage() {
       })
       .then((data) => {
         guardarSesion(data.token, data.usuario);
-        const destino = getRutaUsuario(data.usuario.usuario) || "/";
+        const destino = getRutaUsuario(data.usuario.usuario, data.usuario.rol);
         window.location.href = destino;
       })
       .catch((err) => {
@@ -118,14 +118,14 @@ export function LoginPage() {
 
         <form onSubmit={handleSubmit} className="login-form login-form-card">
           <label className="login-field">
-            <span className="detail-label">Usuario</span>
+            <span className="detail-label">Usuario o correo</span>
             <input
               type="text"
               value={usuario}
               onChange={(e) => setUsuario(e.target.value)}
               autoCapitalize="none"
               autoComplete="username"
-              placeholder="lider"
+              placeholder="nombre@correo.com"
               required
               spellCheck={false}
             />

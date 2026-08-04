@@ -32,8 +32,8 @@ import {
   ESTADO_TAREA_LABELS,
   TIPO_PUBLICACION_LABELS,
   USUARIO_A_RUTA,
-  USUARIO_INFO,
 } from "./constants.js";
+import { getDefaultUserRoute, normalizeUserKey } from "./shared/session/route-utils.js";
 
 export function calcularPorcentajePublicadas(items) {
   if (items.length === 0) return 0;
@@ -483,16 +483,11 @@ export function getPublicacionesKanban(publicaciones) {
 }
 
 export function getUsuarioKey(usuario) {
-  return (usuario || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+  return normalizeUserKey(usuario);
 }
 
-export function getRutaUsuario(usuario) {
-  const usuarioKey = getUsuarioKey(usuario);
-  if (usuarioKey === "agustin") return "/lider";
-  return USUARIO_A_RUTA[usuarioKey];
+export function getRutaUsuario(usuario, rol) {
+  return getDefaultUserRoute({ usuario, rol }, USUARIO_A_RUTA);
 }
 
 export function getSesion() {
@@ -502,6 +497,10 @@ export function getSesion() {
   }
   try {
     const sesion = JSON.parse(raw);
+    if (!sesion?.token || !sesion?.usuario) {
+      localStorage.removeItem("render_sesion");
+      return null;
+    }
     if (getUsuarioKey(sesion?.usuario?.usuario) === "franco") {
       localStorage.removeItem("render_sesion");
       return null;
@@ -516,26 +515,6 @@ export function getSesion() {
   } catch {
     return null;
   }
-}
-
-export function getSesionDelPath(path) {
-  const usuarioMatch = Object.entries(USUARIO_A_RUTA).find(([, ruta]) => ruta === path);
-  if (!usuarioMatch) {
-    return getSesion();
-  }
-  const usuario = usuarioMatch[0];
-  const info = USUARIO_INFO[usuario];
-  if (!info) {
-    return getSesion();
-  }
-  return {
-    token: null,
-    usuario: {
-      usuario: usuario,
-      nombre: info.nombre,
-      rol: info.rol,
-    },
-  };
 }
 
 export function guardarSesion(token, usuario) {

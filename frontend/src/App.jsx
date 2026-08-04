@@ -1,6 +1,6 @@
 import React from "react";
-import { cerrarSesion, getRutaUsuario, getSesion, getSesionDelPath } from "./utils.jsx";
-import { ROL_LABELS, USUARIO_A_RUTA } from "./constants.js";
+import { cerrarSesion, getRutaUsuario, getSesion } from "./utils.jsx";
+import { ROL_LABELS } from "./constants.js";
 import { AugustoDashboard } from "./pages/dashboards/Augusto.jsx";
 import { ClientesAdminPage } from "./pages/Clientes.jsx";
 import { EmpleadosPage } from "./pages/Empleados.jsx";
@@ -25,14 +25,9 @@ export function App() {
     return null;
   }
 
-  // Si estamos en una ruta de usuario específica, usar esa sesión
-  if (Object.values(USUARIO_A_RUTA).includes(path)) {
-    sesion = getSesionDelPath(path);
-  }
-
   if (path === "/login") {
     if (sesion) {
-      window.location.href = getRutaUsuario(sesion.usuario.usuario) || "/";
+      window.location.href = getRutaUsuario(sesion.usuario.usuario, sesion.usuario.rol);
       return null;
     }
     return <LoginPage />;
@@ -44,7 +39,7 @@ export function App() {
   }
 
   const esAdmin = sesion.usuario.rol === "admin";
-  const rutaPropia = getRutaUsuario(sesion.usuario.usuario);
+  const rutaPropia = getRutaUsuario(sesion.usuario.usuario, sesion.usuario.rol);
 
   if (path === "/") {
     window.location.href = rutaPropia || "/login";
