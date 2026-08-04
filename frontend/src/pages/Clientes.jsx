@@ -5,6 +5,17 @@ import { Modal } from "../components/Modal.jsx";
 import { PageState } from "../components/PageState.jsx";
 import { readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
+const CLIENT_COLORS = ["#547aa5", "#6f72a8", "#4f8a7a", "#a36d5d", "#8a6fa5", "#647c99"];
+
+function getClienteColor(nombre = "") {
+  const index = [...nombre].reduce((sum, character) => sum + character.charCodeAt(0), 0);
+  return CLIENT_COLORS[index % CLIENT_COLORS.length];
+}
+
+function getClienteInicial(nombre = "") {
+  return nombre.trim().charAt(0).toUpperCase() || "C";
+}
+
 export function ClienteCuotaResumen({ etiqueta, publicados, cuota }) {
   const cuotaNumero = Number(cuota) || 0;
   const porcentaje = calcularPorcentajeCuota(publicados, cuotaNumero);
@@ -320,6 +331,7 @@ export function ClientesAdminPage() {
                       <tr
                         className="row-clickable"
                         key={cliente.id}
+                        style={{ "--cliente-accent": getClienteColor(cliente.nombre) }}
                         onClick={() => setClienteSeleccionado(cliente)}
                       >
                         <td>
@@ -329,8 +341,10 @@ export function ClientesAdminPage() {
                           </span>
                         </td>
                         <td>
-                          <strong>{cliente.nombre}</strong>
-                          <div className="caption">Activo</div>
+                          <div className="cliente-table-identity">
+                            <span className="cliente-initial">{getClienteInicial(cliente.nombre)}</span>
+                            <div><strong>{cliente.nombre}</strong><span>Activo</span></div>
+                          </div>
                         </td>
                         {cliente.feedCompartido ? (
                           <>
@@ -410,11 +424,14 @@ export function ClientesAdminPage() {
               </div>
               <div className="clientes-mobile-list">
                 {filas.map((cliente) => (
-                  <article className="cliente-mobile-card" key={cliente.id}>
+                  <article className="cliente-mobile-card" key={cliente.id} style={{ "--cliente-accent": getClienteColor(cliente.nombre) }}>
                     <div className="cliente-mobile-card-head">
-                      <div>
-                        <strong>{cliente.nombre}</strong>
-                        <small>Cliente activo</small>
+                      <div className="cliente-mobile-identity">
+                        <span className="cliente-initial">{getClienteInicial(cliente.nombre)}</span>
+                        <div>
+                          <strong>{cliente.nombre}</strong>
+                          <small>Cliente activo</small>
+                        </div>
                       </div>
                       <span className={`cliente-status-pill ${cliente.estadoHistorias.color}`}>
                         <span className={`semaforo ${cliente.estadoHistorias.color}`}></span>

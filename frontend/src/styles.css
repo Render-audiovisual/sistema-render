@@ -5245,6 +5245,14 @@ tr:hover .sheet-row-actions {
   background: #fafbfd;
 }
 
+.clientes-admin-table tbody tr:nth-child(even) td {
+  background: #f7f9fb;
+}
+
+.clientes-admin-table tbody tr td:first-child {
+  border-left: 3px solid var(--cliente-accent,#7397c8);
+}
+
 .clientes-admin-table th:nth-child(1),
 .clientes-admin-table td:nth-child(1) { width: 13%; }
 .clientes-admin-table th:nth-child(2),
@@ -5262,6 +5270,46 @@ tr:hover .sheet-row-actions {
   display: block;
   font-size: 12px;
   line-height: 1.35;
+}
+
+.cliente-table-identity,
+.cliente-mobile-identity {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+  min-width: 0;
+}
+
+.cliente-table-identity > div,
+.cliente-mobile-identity > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cliente-table-identity strong,
+.cliente-mobile-identity strong {
+  overflow-wrap: anywhere;
+}
+
+.cliente-table-identity > div > span {
+  color: #78818c;
+  font-size: 10px;
+}
+
+.cliente-initial {
+  align-items: center;
+  background: color-mix(in srgb,var(--cliente-accent) 16%,white);
+  border: 1px solid color-mix(in srgb,var(--cliente-accent) 28%,white);
+  border-radius: 9px;
+  color: var(--cliente-accent);
+  display: flex;
+  flex: 0 0 31px;
+  font-size: 12px;
+  font-weight: 800;
+  height: 31px;
+  justify-content: center;
+  width: 31px;
 }
 
 .cliente-status-pill {
@@ -5299,10 +5347,16 @@ tr:hover .sheet-row-actions {
 }
 
 .cliente-edit-quota-btn {
+  align-items: center;
   background: #fff;
   border-color: #dfe3e7;
   border-radius: 8px;
+  display: inline-flex;
+  line-height: 1.25;
   margin-top: 9px;
+  min-height: 34px;
+  padding: 7px 10px;
+  white-space: normal;
 }
 
 .clientes-table-panel > .caption {
@@ -5313,19 +5367,37 @@ tr:hover .sheet-row-actions {
 }
 
 .cliente-mobile-card {
-  border-color: #e0e4e8;
+  background: #eef2f6;
+  border-color: color-mix(in srgb,var(--cliente-accent) 28%,#dce2e8);
+  border-left: 4px solid var(--cliente-accent);
   border-radius: 14px;
-  box-shadow: 0 6px 20px rgba(15,23,42,.035);
+  box-shadow: 0 7px 22px rgba(15,23,42,.055);
   gap: 16px;
   padding: 16px;
 }
 
 .cliente-mobile-quotas .cliente-quota-summary,
 .cliente-mobile-status-grid > div {
-  background: #f8f9fb;
+  background: #fff;
   border-color: #e5e8ec;
   border-radius: 10px;
   padding: 12px;
+}
+
+.cliente-mobile-actions .btn {
+  align-items: center;
+  border-radius: 9px;
+  display: inline-flex;
+  justify-content: center;
+  line-height: 1.3;
+  min-height: 44px;
+  padding: 10px 12px;
+  white-space: normal;
+}
+
+.cliente-mobile-actions .btn.primary {
+  background: #25364a;
+  border-color: #25364a;
 }
 
 @media (max-width: 1180px) {
