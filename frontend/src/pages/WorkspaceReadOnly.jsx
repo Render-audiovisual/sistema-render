@@ -5,7 +5,7 @@ import { AREAS, STATUSES, TASK_TYPES } from "../features/render-os/constants.js"
 import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
 import { areaForTask, formatDate, formatDateTime, initials, personForTask } from "../features/render-os/utils/task-formatters.js";
 import { mergeRelatedTasks } from "../workspace-task-state.js";
-import { getTasksEmptyMessage } from "../features/render-os/utils/task-view-state.js";
+import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
 import "./WorkspaceReadOnly.css";
 
 function Avatar({ person, name }) {
@@ -110,6 +110,11 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     setEditing(true);
   };
 
+  const closeDetail = () => {
+    if (editing && !window.confirm("Hay cambios sin guardar. ¿Querés descartarlos?")) return;
+    onClose();
+  };
+
   const addComment = async () => {
     const content = comment.trim();
     if (!content || commenting) return;
@@ -159,9 +164,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     }
   };
 
-  return <div className="ros-drawer-backdrop" onClick={onClose}>
+  return <div className="ros-drawer-backdrop" onClick={closeDetail}>
     <aside className="ros-drawer" onClick={(event) => event.stopPropagation()}>
-      <header><AreaBadge task={task}/><button onClick={onClose}>×</button></header>
+      <header><AreaBadge task={task}/><button onClick={closeDetail}>×</button></header>
       <div className="ros-drawer-body">
         <div className="ros-eyebrow">{task.cliente_nombre || "SIN CLIENTE"}</div>
         {editing ? <input className="ros-title-input" value={draft.titulo || ""} onChange={(event) => setDraft({ ...draft, titulo: event.target.value })}/> : <><h2>{task.titulo}</h2>{metadata.resumen && <p className="ros-task-summary">{metadata.resumen}</p>}{tags.length > 0 && <div className="ros-tags">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div>}</>}
@@ -203,7 +208,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
 }
 
 function NewTaskModal({ users, clients, onClose, onCreate }) {
-  const [draft, setDraft] = useState({ titulo: "", asignado_a: users[0]?.nombre || "", cliente_id: "", estado: "pendiente", tipo_tarea: "", subtipo: "", prioridad: "media", fecha_vencimiento: "", aclaraciones: "", material_referencia: "", resumen: "", etiquetas: "", colaboradores: [] });
+  const [draft, setDraft] = useState({ titulo: "", asignado_a: "", cliente_id: "", estado: "pendiente", tipo_tarea: "", subtipo: "", prioridad: "media", fecha_vencimiento: "", aclaraciones: "", material_referencia: "", resumen: "", etiquetas: "", colaboradores: [] });
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     const previous = document.body.style.overflow;
@@ -231,7 +236,11 @@ function NewTaskModal({ users, clients, onClose, onCreate }) {
       setSaving(false);
     }
   };
-  return <div className="ros-drawer-backdrop" onClick={onClose}><section className="ros-modal" onClick={(event) => event.stopPropagation()}><header><div><div className="ros-eyebrow">NUEVA TAREA</div><h2>Crear y asignar</h2></div><button type="button" onClick={onClose}>×</button></header><form onSubmit={submit}><label className="wide"><span>Título *</span><input autoFocus required value={draft.titulo} onChange={(event) => setDraft({ ...draft, titulo: event.target.value })}/></label><label><span>Responsable *</span><select required value={draft.asignado_a} onChange={(event) => setDraft({ ...draft, asignado_a: event.target.value })}><option value="">Seleccionar…</option>{users.map((user) => <option key={user.id} value={user.nombre}>{user.nombre} · @{user.usuario}{user.email_notificaciones ? ` · ${user.email_notificaciones}` : ""}</option>)}</select></label><label><span>Cliente</span><select value={draft.cliente_id} onChange={(event) => setDraft({ ...draft, cliente_id: event.target.value })}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label><label><span>Sector</span><select value={draft.tipo_tarea} onChange={(event) => setDraft({ ...draft, tipo_tarea: event.target.value })}><option value="">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Subtipo</span><input placeholder="Reel, carrusel, visita…" value={draft.subtipo} onChange={(event) => setDraft({ ...draft, subtipo: event.target.value })}/></label><label><span>Vencimiento</span><input type="date" value={draft.fecha_vencimiento} onChange={(event) => setDraft({ ...draft, fecha_vencimiento: event.target.value })}/></label><label><span>Prioridad</span><select value={draft.prioridad} onChange={(event) => setDraft({ ...draft, prioridad: event.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select></label><label><span>Resumen corto</span><input value={draft.resumen} placeholder="Qué hay que resolver" onChange={(event) => setDraft({ ...draft, resumen: event.target.value })}/></label><label className="wide"><span>Indicaciones</span><textarea rows={4} value={draft.aclaraciones} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/></label><label className="wide"><span>Material o enlace</span><input placeholder="https://…" value={draft.material_referencia} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/></label><label className="wide"><span>Etiquetas</span><input placeholder="Urgente, web, corrección" value={draft.etiquetas} onChange={(event) => setDraft({ ...draft, etiquetas: event.target.value })}/></label><fieldset className="wide ros-modal-collaborators"><legend>Colaboradores opcionales</legend>{users.filter((user) => user.nombre !== draft.asignado_a).map((user) => <label key={user.id}><input type="checkbox" checked={draft.colaboradores.includes(user.nombre)} onChange={(event) => setDraft({ ...draft, colaboradores: event.target.checked ? [...draft.colaboradores, user.nombre] : draft.colaboradores.filter((name) => name !== user.nombre) })}/><span>{user.nombre}</span></label>)}</fieldset><footer><button type="button" onClick={onClose}>Cancelar</button><button className="primary" type="submit" disabled={saving || !draft.asignado_a}>{saving ? "Creando…" : "Crear tarea"}</button></footer></form></section></div>;
+  const closeModal = () => {
+    if (isNewTaskDraftDirty(draft) && !window.confirm("La tarea todavía no fue creada. ¿Querés descartarla?")) return;
+    onClose();
+  };
+  return <div className="ros-drawer-backdrop" onClick={closeModal}><section className="ros-modal" onClick={(event) => event.stopPropagation()}><header><div><div className="ros-eyebrow">NUEVA TAREA</div><h2>Crear y asignar</h2></div><button type="button" onClick={closeModal}>×</button></header><form onSubmit={submit}><label className="wide"><span>Título *</span><input autoFocus required value={draft.titulo} onChange={(event) => setDraft({ ...draft, titulo: event.target.value })}/></label><label><span>Responsable *</span><select required value={draft.asignado_a} onChange={(event) => setDraft({ ...draft, asignado_a: event.target.value })}><option value="">Seleccionar…</option>{users.map((user) => <option key={user.id} value={user.nombre}>{user.nombre} · @{user.usuario}{user.email_notificaciones ? ` · ${user.email_notificaciones}` : ""}</option>)}</select></label><label><span>Cliente</span><select value={draft.cliente_id} onChange={(event) => setDraft({ ...draft, cliente_id: event.target.value })}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label><label><span>Sector</span><select value={draft.tipo_tarea} onChange={(event) => setDraft({ ...draft, tipo_tarea: event.target.value })}><option value="">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Subtipo</span><input placeholder="Reel, carrusel, visita…" value={draft.subtipo} onChange={(event) => setDraft({ ...draft, subtipo: event.target.value })}/></label><label><span>Vencimiento</span><input type="date" value={draft.fecha_vencimiento} onChange={(event) => setDraft({ ...draft, fecha_vencimiento: event.target.value })}/></label><label><span>Prioridad</span><select value={draft.prioridad} onChange={(event) => setDraft({ ...draft, prioridad: event.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select></label><label><span>Resumen corto</span><input value={draft.resumen} placeholder="Qué hay que resolver" onChange={(event) => setDraft({ ...draft, resumen: event.target.value })}/></label><label className="wide"><span>Indicaciones</span><textarea rows={4} value={draft.aclaraciones} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/></label><label className="wide"><span>Material o enlace</span><input placeholder="https://…" value={draft.material_referencia} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/></label><label className="wide"><span>Etiquetas</span><input placeholder="Urgente, web, corrección" value={draft.etiquetas} onChange={(event) => setDraft({ ...draft, etiquetas: event.target.value })}/></label><fieldset className="wide ros-modal-collaborators"><legend>Colaboradores opcionales</legend>{users.filter((user) => user.nombre !== draft.asignado_a).map((user) => <label key={user.id}><input type="checkbox" checked={draft.colaboradores.includes(user.nombre)} onChange={(event) => setDraft({ ...draft, colaboradores: event.target.checked ? [...draft.colaboradores, user.nombre] : draft.colaboradores.filter((name) => name !== user.nombre) })}/><span>{user.nombre}</span></label>)}</fieldset><footer><button type="button" onClick={closeModal}>Cancelar</button><button className="primary" type="submit" disabled={saving || !draft.asignado_a}>{saving ? "Creando…" : "Crear tarea"}</button></footer></form></section></div>;
 }
 
 function TaskCard({ task, users, today, onOpen, onMove }) {
@@ -266,16 +275,17 @@ function TasksByClient({ tasks, onOpen }) {
 }
 
 function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, area, setArea, sesion, onCreate, onUpdate, onDelete }) {
+  const initialViewState = useMemo(() => getTaskViewState(window.location.search), []);
   const initialTask = Number(new URLSearchParams(window.location.search).get("task")) || null;
-  const [view, setView] = useState("board");
+  const [view, setView] = useState(initialViewState.view);
   const [selectedId, setSelectedId] = useState(initialTask);
   const [creating, setCreating] = useState(false);
   const [dragOver, setDragOver] = useState("");
-  const [responsible, setResponsible] = useState("all");
-  const [client, setClient] = useState("all");
-  const [sector, setSector] = useState("all");
-  const [priority, setPriority] = useState("all");
-  const [archiveMode, setArchiveMode] = useState("active");
+  const [responsible, setResponsible] = useState(initialViewState.responsible);
+  const [client, setClient] = useState(initialViewState.client);
+  const [sector, setSector] = useState(initialViewState.sector);
+  const [priority, setPriority] = useState(initialViewState.priority);
+  const [archiveMode, setArchiveMode] = useState(initialViewState.archiveMode);
   const isAdmin = sesion?.usuario?.rol === "admin";
   const today = new Date().toISOString().slice(0, 10);
   const selected = tasks.find((task) => task.id === selectedId) || null;
@@ -332,6 +342,10 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
+  useEffect(() => {
+    const url = updateTaskViewUrl(window.location.href, { view, archiveMode, responsible, client, sector, priority, area, query });
+    window.history.replaceState(window.history.state, "", url);
+  }, [view, archiveMode, responsible, client, sector, priority, area, query]);
 
   const move = (task, status) => {
     if (status === task.estado) return;
@@ -360,6 +374,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
 }
 
 export function WorkspaceReadOnlyPage({ sesion }) {
+  const initialViewState = useMemo(() => getTaskViewState(window.location.search), []);
   const [tasks, setTasks] = useState([]);
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
@@ -368,8 +383,8 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   const [totalTasks, setTotalTasks] = useState(0);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
-  const [query, setQuery] = useState("");
-  const [area, setArea] = useState("all");
+  const [query, setQuery] = useState(initialViewState.query);
+  const [area, setArea] = useState(initialViewState.area);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const isAdmin = sesion?.usuario?.rol === "admin";

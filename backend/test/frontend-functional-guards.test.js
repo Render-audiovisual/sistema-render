@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { getTasksEmptyMessage } from "../../frontend/src/features/render-os/utils/task-view-state.js";
+import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../../frontend/src/features/render-os/utils/task-view-state.js";
 import { parseJsonArrayResponse } from "../../frontend/src/shared/http/response-utils.js";
 
 test("parseJsonArrayResponse acepta únicamente respuestas HTTP exitosas con listas", async () => {
@@ -25,6 +25,27 @@ test("getTasksEmptyMessage diferencia tablero vacío, archivadas y filtros", () 
   assert.equal(getTasksEmptyMessage({ hasFilters: false, query: "", totalTasks: 4, archiveMode: "archived" }), "No hay tareas archivadas.");
   assert.equal(getTasksEmptyMessage({ hasFilters: true, query: "", totalTasks: 4, archiveMode: "active" }), "No hay tareas con estos filtros.");
   assert.equal(getTasksEmptyMessage({ hasFilters: false, query: "sin resultados", totalTasks: 4, archiveMode: "active" }), "No hay tareas con estos filtros.");
+});
+
+test("el estado de Tareas se conserva en la URL sin perder el enlace directo", () => {
+  const state = getTaskViewState("?task=42&view=list&mode=archived&responsible=Augusto&q=urgente");
+  assert.equal(state.view, "list");
+  assert.equal(state.archiveMode, "archived");
+  assert.equal(state.responsible, "Augusto");
+  assert.equal(state.query, "urgente");
+
+  const url = updateTaskViewUrl("https://sistema.rendercorrientes.com/workspace/tareas?task=42", {
+    ...state,
+    area: "diseno",
+  });
+  assert.equal(url.searchParams.get("task"), "42");
+  assert.equal(url.searchParams.get("view"), "list");
+  assert.equal(url.searchParams.get("area"), "diseno");
+});
+
+test("solo advierte al cerrar una tarea nueva cuando hay contenido", () => {
+  assert.equal(isNewTaskDraftDirty({ titulo: "", asignado_a: "", colaboradores: [] }), false);
+  assert.equal(isNewTaskDraftDirty({ titulo: "Preparar carrusel", asignado_a: "", colaboradores: [] }), true);
 });
 
 test("Tareas conserva una sola interfaz y navega en la misma pestaña", () => {
