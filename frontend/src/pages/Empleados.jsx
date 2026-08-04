@@ -29,6 +29,8 @@ export function EmpleadosPage() {
   const [formError, setFormError] = useState(null);
   const [mensaje, setMensaje] = useState(null);
   const [enviando, setEnviando] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroAcceso, setFiltroAcceso] = useState("todos");
 
   const handleNombreChange = (event) => {
     const nuevoNombre = event.target.value;
@@ -309,6 +311,13 @@ export function EmpleadosPage() {
   ).length;
   const usuariosSinCorreo = usuarios.length - usuariosConCorreo;
   const usuariosConGoogle = usuarios.filter((u) => Boolean(u.google_email)).length;
+  const usuariosVisibles = usuarios.filter((u) => {
+    const texto = `${u.nombre} ${u.usuario} ${u.email_notificaciones || ""} ${u.google_email || ""} ${ROL_LABELS[u.rol] || u.rol}`.toLowerCase();
+    const coincideBusqueda = texto.includes(busqueda.trim().toLowerCase());
+    const requiereAtencion = !u.email_notificaciones || !u.google_email;
+    return coincideBusqueda && (filtroAcceso === "atencion" ? requiereAtencion : true);
+  });
+  const usuariosConAtencion = usuarios.filter((u) => !u.email_notificaciones || !u.google_email).length;
 
   return (
     <main aria-label="Render platform empleados">
@@ -350,11 +359,17 @@ export function EmpleadosPage() {
             <div className="usuarios-listado-header">
               <div>
                 <strong>Personas</strong>
-                <span>{usuarios.length} cuentas activas</span>
+                <span>{usuariosVisibles.length} de {usuarios.length} cuentas</span>
               </div>
-              <div className="usuarios-leyenda">
-                <span><i className="usuarios-dot is-ready" /> Listo</span>
-                <span><i className="usuarios-dot is-pending" /> Requiere atención</span>
+              <div className="usuarios-list-controls">
+                <label className="usuarios-search">
+                  <span aria-hidden="true">⌕</span>
+                  <input value={busqueda} onChange={(event) => setBusqueda(event.target.value)} placeholder="Buscar persona o correo" aria-label="Buscar persona o correo" />
+                </label>
+                <div className="usuarios-access-filter" aria-label="Filtrar cuentas">
+                  <button type="button" className={filtroAcceso === "todos" ? "active" : ""} onClick={() => setFiltroAcceso("todos")}>Todos</button>
+                  <button type="button" className={filtroAcceso === "atencion" ? "active" : ""} onClick={() => setFiltroAcceso("atencion")}>Atención {usuariosConAtencion > 0 && <b>{usuariosConAtencion}</b>}</button>
+                </div>
               </div>
             </div>
 
@@ -367,7 +382,7 @@ export function EmpleadosPage() {
             </div>
 
             <div className="usuarios-list">
-              {usuarios.map((u) => (
+              {usuariosVisibles.map((u) => (
                 <article className="usuarios-row" key={u.id}>
                   <div className="usuarios-persona">
                     <div className="usuarios-avatar">
@@ -408,7 +423,7 @@ export function EmpleadosPage() {
                     type="button"
                     onClick={() => abrirAdministracion(u)}
                   >
-                    Ver y editar <span aria-hidden="true">→</span>
+                    Administrar <span aria-hidden="true">→</span>
                   </button>
                 </article>
               ))}
@@ -418,6 +433,9 @@ export function EmpleadosPage() {
                 <div className="usuarios-empty">
                   No hay usuarios cargados todavía.
                 </div>
+              )}
+              {usuarios.length > 0 && usuariosVisibles.length === 0 && !cargandoUsuarios && (
+                <div className="usuarios-empty">No hay cuentas que coincidan con esta búsqueda.</div>
               )}
             </div>
           </section>
