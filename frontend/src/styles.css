@@ -2596,6 +2596,7 @@ textarea:disabled {
   }
 
   .usuarios-list-controls { align-items: stretch; flex-direction: column; width: 100%; }
+  .usuarios-search,.usuarios-access-filter { width: 100%; }
   .usuarios-search input { flex: 1; width: auto; }
   .usuarios-access-filter button { flex: 1; justify-content: center; }
 
