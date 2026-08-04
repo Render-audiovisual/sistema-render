@@ -5,6 +5,7 @@ import { ROL_LABELS } from "../constants.js";
 
 export function EmpleadosPage() {
   const [usuarios, setUsuarios] = useState([]);
+  const [cargandoUsuarios, setCargandoUsuarios] = useState(true);
   const [error, setError] = useState(null);
   const [modalAltaAbierto, setModalAltaAbierto] = useState(false);
   const [usuarioAdministrado, setUsuarioAdministrado] = useState(null);
@@ -45,16 +46,23 @@ export function EmpleadosPage() {
   };
 
   const cargarUsuarios = () => {
+    setCargandoUsuarios(true);
     fetch("/api/usuarios")
-      .then((r) => r.json())
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "No se pudieron cargar los empleados.");
+        return data;
+      })
       .then((data) => {
+        setError(null);
         setUsuarios(data);
         setUsuarioAdministrado((actual) => {
           if (!actual) return null;
           return data.find((item) => item.id === actual.id) || null;
         });
       })
-      .catch(() => setError("No se pudieron cargar los empleados."));
+      .catch(() => setError("No se pudieron cargar los empleados."))
+      .finally(() => setCargandoUsuarios(false));
   };
 
   useEffect(cargarUsuarios, []);
@@ -300,6 +308,7 @@ export function EmpleadosPage() {
     (u) => Boolean(u.email_notificaciones),
   ).length;
   const usuariosSinCorreo = usuarios.length - usuariosConCorreo;
+  const usuariosConGoogle = usuarios.filter((u) => Boolean(u.google_email)).length;
 
   return (
     <main aria-label="Render platform empleados">
@@ -307,12 +316,9 @@ export function EmpleadosPage() {
         <div className="content usuarios-page">
           <div className="usuarios-header">
             <div>
-              <div className="section-label">Administración del equipo</div>
-              <h2>¿Quién tiene acceso y con qué rol?</h2>
-              <p>
-                Administrá accesos, roles y correos de notificación desde un
-                solo lugar.
-              </p>
+              <div className="section-label">Equipo</div>
+              <h2>Usuarios y accesos</h2>
+              <p>Revisá quién puede ingresar, su rol y cómo recibe el acceso.</p>
             </div>
             <button className="btn primary usuarios-add" type="button" onClick={abrirAlta}>
               + Agregar usuario
@@ -321,42 +327,42 @@ export function EmpleadosPage() {
 
           <div className="usuarios-stats" aria-label="Resumen de usuarios">
             <div className="usuarios-stat">
-              <span>Usuarios activos</span>
+              <span>Personas con acceso</span>
               <strong>{usuarios.length}</strong>
-              <small>Con acceso a la plataforma</small>
+              <small>Cuentas activas</small>
             </div>
             <div className="usuarios-stat is-ready">
-              <span>Con correo configurado</span>
+              <span>Correo configurado</span>
               <strong>{usuariosConCorreo}</strong>
-              <small>Pueden recibir notificaciones</small>
+              <small>{usuariosSinCorreo ? `${usuariosSinCorreo} pendiente` : "Equipo completo"}</small>
             </div>
-            <div className={`usuarios-stat ${usuariosSinCorreo ? "is-pending" : "is-ready"}`}>
-              <span>Sin correo</span>
-              <strong>{usuariosSinCorreo}</strong>
-              <small>{usuariosSinCorreo ? "Requieren configuración" : "Equipo completo"}</small>
+            <div className={`usuarios-stat ${usuariosConGoogle === usuarios.length ? "is-ready" : "is-pending"}`}>
+              <span>Acceso con Google</span>
+              <strong>{usuariosConGoogle}</strong>
+              <small>{usuarios.length - usuariosConGoogle ? `${usuarios.length - usuariosConGoogle} sin vincular` : "Todos vinculados"}</small>
             </div>
           </div>
 
-          {error && <div className="usuarios-alert is-error">{error}</div>}
+          {error && <div className="usuarios-alert is-error"><span>{error}</span><button type="button" onClick={cargarUsuarios}>Reintentar</button></div>}
           {mensaje && <div className="usuarios-alert is-success">{mensaje}</div>}
 
           <section className="usuarios-listado" aria-label="Listado de usuarios">
             <div className="usuarios-listado-header">
               <div>
-                <strong>Equipo con acceso</strong>
-                <span>{usuarios.length} usuarios registrados</span>
+                <strong>Personas</strong>
+                <span>{usuarios.length} cuentas activas</span>
               </div>
               <div className="usuarios-leyenda">
-                <span><i className="usuarios-dot is-ready" /> Correo configurado</span>
-                <span><i className="usuarios-dot is-pending" /> Falta correo</span>
+                <span><i className="usuarios-dot is-ready" /> Listo</span>
+                <span><i className="usuarios-dot is-pending" /> Requiere atención</span>
               </div>
             </div>
 
             <div className="usuarios-columns" aria-hidden="true">
               <span>Persona</span>
               <span>Rol</span>
-              <span>Acceso</span>
-              <span>Notificaciones</span>
+              <span>Correo</span>
+              <span>Estado de acceso</span>
               <span />
             </div>
 
@@ -373,7 +379,7 @@ export function EmpleadosPage() {
                     </div>
                     <div>
                       <strong>{u.nombre}</strong>
-                      <span>Usuario activo</span>
+                      <span>@{u.usuario}</span>
                     </div>
                   </div>
 
@@ -382,16 +388,18 @@ export function EmpleadosPage() {
                   </div>
 
                   <div className="usuarios-access">
-                    <span className="usuarios-mobile-label">Usuario de acceso</span>
-                    <strong>{u.usuario}</strong>
+                    <span className="usuarios-mobile-label">Correo</span>
+                    <strong>{u.email_notificaciones || "Sin correo configurado"}</strong>
                   </div>
 
-                  <div className="usuarios-email">
-                    <span className="usuarios-mobile-label">Notificaciones</span>
-                    <strong>{u.email_notificaciones || "Sin correo configurado"}</strong>
-                    <span className={u.email_notificaciones ? "status-ready" : "status-pending"}>
+                  <div className="usuarios-access-status">
+                    <span className={u.email_notificaciones ? "is-ready" : "is-pending"}>
                       <i className={`usuarios-dot ${u.email_notificaciones ? "is-ready" : "is-pending"}`} />
-                      {u.email_notificaciones ? "Configurado" : "Falta correo"}
+                      {u.email_notificaciones ? "Correo listo" : "Falta correo"}
+                    </span>
+                    <span className={u.google_email ? "is-ready" : "is-pending"}>
+                      <i className={`usuarios-dot ${u.google_email ? "is-ready" : "is-pending"}`} />
+                      {u.google_email ? "Google vinculado" : "Google sin vincular"}
                     </span>
                   </div>
 
@@ -400,12 +408,13 @@ export function EmpleadosPage() {
                     type="button"
                     onClick={() => abrirAdministracion(u)}
                   >
-                    Administrar
+                    Ver y editar <span aria-hidden="true">→</span>
                   </button>
                 </article>
               ))}
 
-              {usuarios.length === 0 && !error && (
+              {cargandoUsuarios && <div className="usuarios-loading"><span aria-hidden="true" />Cargando usuarios…</div>}
+              {usuarios.length === 0 && !error && !cargandoUsuarios && (
                 <div className="usuarios-empty">
                   No hay usuarios cargados todavía.
                 </div>
@@ -457,7 +466,7 @@ export function EmpleadosPage() {
                 </label>
                 <label className="form-field">
                   <span>Contraseña inicial * <small style={{fontWeight: 400, color: 'var(--muted)'}}>(mín. 8 caracteres)</small></span>
-                  <div style={{display: 'flex', gap: '8px'}}>
+                  <div className="usuarios-password-field">
                     <input
                       type="text"
                       value={password}
@@ -475,7 +484,7 @@ export function EmpleadosPage() {
                       }}
                       title="Generar contraseña segura"
                     >
-                      🔐 Generar
+                      Generar
                     </button>
                   </div>
                   <small>La persona puede cambiarla en su primer login.</small>
@@ -533,7 +542,7 @@ export function EmpleadosPage() {
                   )}
                 </div>
                 <div>
-                  <span className="usuarios-eyebrow">Administrar usuario</span>
+                  <span className="usuarios-eyebrow">Cuenta del equipo</span>
                   <h3 id="administrar-usuario-title">{usuarioAdministrado.nombre}</h3>
                   <div className={`usuarios-role role-${usuarioAdministrado.rol}`}>
                     {ROL_LABELS[usuarioAdministrado.rol] || usuarioAdministrado.rol}
@@ -548,12 +557,12 @@ export function EmpleadosPage() {
               <section className="usuarios-panel-section">
                 <div className="usuarios-panel-section-title">
                   <div>
-                    <strong>Datos de acceso</strong>
-                    <span>Información de la cuenta</span>
+                    <strong>Identidad y rol</strong>
+                    <span>Nombre, usuario y permisos</span>
                   </div>
                   {!editandoDatos && (
                     <button className="btn" type="button" onClick={iniciarEdicionDatos}>
-                      Editar datos
+                      Editar
                     </button>
                   )}
                 </div>
@@ -636,12 +645,12 @@ export function EmpleadosPage() {
               <section className="usuarios-panel-section">
                 <div className="usuarios-panel-section-title">
                   <div>
-                    <strong>Notificaciones por correo</strong>
-                    <span>Destino de los avisos de nuevas tareas</span>
+                    <strong>Correo de avisos</strong>
+                    <span>Destino de las notificaciones</span>
                   </div>
                   {!editandoCorreo && (
                     <button className="btn" type="button" onClick={iniciarEdicionCorreo}>
-                      {usuarioAdministrado.email_notificaciones ? "Editar correo" : "Agregar correo"}
+                      {usuarioAdministrado.email_notificaciones ? "Cambiar" : "Agregar"}
                     </button>
                   )}
                 </div>
@@ -700,12 +709,12 @@ export function EmpleadosPage() {
               <section className="usuarios-panel-section">
                 <div className="usuarios-panel-section-title">
                   <div>
-                    <strong>Cuenta de Google</strong>
-                    <span>Para login sin contraseña</span>
+                    <strong>Acceso con Google</strong>
+                    <span>Ingreso directo sin contraseña</span>
                   </div>
                   {!editandoGoogleEmail && (
                     <button className="btn" type="button" onClick={iniciarEdicionGoogleEmail}>
-                      {usuarioAdministrado.google_email ? "Editar email" : "Vincular email"}
+                      {usuarioAdministrado.google_email ? "Cambiar" : "Vincular"}
                     </button>
                   )}
                 </div>
@@ -764,8 +773,8 @@ export function EmpleadosPage() {
               <section className="usuarios-panel-section">
                 <div className="usuarios-panel-section-title">
                   <div>
-                    <strong>Seguridad</strong>
-                    <span>Acceso personal e instrucciones</span>
+                    <strong>Enviar acceso</strong>
+                    <span>Instrucciones para iniciar sesión</span>
                   </div>
                   <button
                     className="btn primary"
