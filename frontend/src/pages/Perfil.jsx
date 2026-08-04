@@ -199,13 +199,13 @@ export function PerfilPage() {
   return (
     <main aria-label="Render platform perfil">
       <div className="frame">
-        <div className="content">
-          <div className="section-label">Cuenta</div>
-          <h2>Mi perfil</h2>
+        <div className="content profile-page">
+          <header className="profile-heading">
+            <div><div className="section-label">Cuenta</div><h2>Mi perfil</h2><p>Administrá tu identidad y las opciones de acceso.</p></div>
+          </header>
 
-          <div className="section-label">Mis datos</div>
-          <div className="box">
-            <div className="profile-photo-row">
+          <div className="profile-layout">
+            <section className="profile-identity-card" aria-label="Identidad de la cuenta">
               <div className="profile-photo-preview">
                 {fotoPerfil ? (
                   <img src={fotoPerfil} alt="" />
@@ -213,8 +213,12 @@ export function PerfilPage() {
                   inicialesUsuario(perfilUsuario?.nombre)
                 )}
               </div>
+              <div className="profile-identity-copy">
+                <h3>{perfilUsuario?.nombre}</h3>
+                <p>@{perfilUsuario?.usuario}</p>
+                <span>{ROL_LABELS[perfilUsuario?.rol] || perfilUsuario?.rol}</span>
+              </div>
               <div className="profile-photo-actions">
-                <div className="detail-label">Foto de perfil</div>
                 <label className={`btn primary ${enviandoFoto ? "disabled" : ""}`}>
                   {enviandoFoto ? "Guardando..." : fotoPerfil ? "Cambiar foto" : "Subir foto"}
                   <input
@@ -235,115 +239,42 @@ export function PerfilPage() {
                     Quitar foto
                   </button>
                 )}
-                {errorFoto && <div className="caption login-error">{errorFoto}</div>}
-                {mensajeFoto && (
-                  <div className="caption" style={{ color: "var(--success)", fontWeight: 600 }}>
-                    {mensajeFoto}
-                  </div>
-                )}
               </div>
-            </div>
-            <div className="detail-grid">
-              <div className="detail-field">
-                <div className="detail-label">Nombre</div>
-                <div>{perfilUsuario?.nombre}</div>
+              {errorFoto && <div className="profile-feedback is-error">{errorFoto}</div>}
+              {mensajeFoto && <div className="profile-feedback is-success">{mensajeFoto}</div>}
+              <div className="profile-account-data">
+                <div><span>Nombre</span><strong>{perfilUsuario?.nombre}</strong></div>
+                <div><span>Usuario de acceso</span><strong>{perfilUsuario?.usuario}</strong></div>
+                <div><span>Rol</span><strong>{ROL_LABELS[perfilUsuario?.rol] || perfilUsuario?.rol}</strong></div>
               </div>
-              <div className="detail-field">
-                <div className="detail-label">Usuario de acceso</div>
-                <div>{perfilUsuario?.usuario}</div>
-              </div>
-              <div className="detail-field">
-                <div className="detail-label">Rol</div>
-                <div>{ROL_LABELS[perfilUsuario?.rol] || perfilUsuario?.rol}</div>
-              </div>
-            </div>
-          </div>
+              <small className="profile-readonly-note">El nombre y el rol los administra el Líder.</small>
+            </section>
 
-          <div className="section-label">Cambiar mi usuario</div>
-          <div className="box">
-            <form onSubmit={handleCambiarUsuario} className="login-form">
-              <label className="login-field">
-                <span className="detail-label">Nuevo usuario</span>
-                <input
-                  type="text"
-                  value={usuarioNuevo}
-                  onChange={(e) => setUsuarioNuevo(e.target.value)}
-                  autoComplete="username"
-                  required
-                />
-              </label>
-              <label className="login-field">
-                <span className="detail-label">Contraseña actual</span>
-                <input
-                  type="password"
-                  value={passwordUsuario}
-                  onChange={(e) => setPasswordUsuario(e.target.value)}
-                  autoComplete="current-password"
-                  required
-                />
-              </label>
-
-              {errorUsuario && <div className="caption login-error">{errorUsuario}</div>}
-              {mensajeUsuario && (
-                <div className="caption" style={{ color: "var(--success)", fontWeight: 600 }}>
-                  {mensajeUsuario}
-                </div>
-              )}
-
-              <button className="btn primary" type="submit" disabled={enviandoUsuario}>
-                {enviandoUsuario ? "Guardando..." : "Cambiar usuario"}
-              </button>
-            </form>
-            <div className="caption">
-              El rol es solo de lectura y no se puede cambiar desde el perfil.
-            </div>
-          </div>
-
-          <div className="section-label">Cambiar mi contraseña</div>
-          <div className="box">
-            <form onSubmit={handleSubmit} className="login-form">
-              <label className="login-field">
-                <span className="detail-label">Contraseña actual</span>
-                <input
-                  type="password"
-                  value={actual}
-                  onChange={(e) => setActual(e.target.value)}
-                  autoComplete="current-password"
-                  required
-                />
-              </label>
-              <label className="login-field">
-                <span className="detail-label">Nueva contraseña</span>
-                <input
-                  type="password"
-                  value={nueva}
-                  onChange={(e) => setNueva(e.target.value)}
-                  autoComplete="new-password"
-                  required
-                />
-              </label>
-              <label className="login-field">
-                <span className="detail-label">Repetir nueva contraseña</span>
-                <input
-                  type="password"
-                  value={confirmar}
-                  onChange={(e) => setConfirmar(e.target.value)}
-                  autoComplete="new-password"
-                  required
-                />
-              </label>
-
-              {error && <div className="caption login-error">{error}</div>}
-              {mensaje && (
-                <div className="caption" style={{ color: "var(--success)", fontWeight: 600 }}>
-                  {mensaje}
-                </div>
-              )}
-
-              <button className="btn primary" type="submit" disabled={enviando}>
-                {enviando ? "Guardando..." : "Cambiar contraseña"}
-              </button>
-            </form>
+            <section className="profile-settings" aria-label="Acceso y seguridad">
+              <header><span className="section-label">Configuración</span><h3>Acceso y seguridad</h3><p>Abrí únicamente la opción que necesitás cambiar.</p></header>
+              <details className="profile-setting-panel">
+                <summary><span><strong>Usuario de acceso</strong><small>Cambiá el nombre que usás para iniciar sesión.</small></span><b>Editar</b></summary>
+                <form onSubmit={handleCambiarUsuario} className="profile-setting-form">
+                  <label className="login-field"><span className="detail-label">Nuevo usuario</span><input type="text" value={usuarioNuevo} onChange={(e) => setUsuarioNuevo(e.target.value)} autoComplete="username" required /></label>
+                  <label className="login-field"><span className="detail-label">Contraseña actual</span><input type="password" value={passwordUsuario} onChange={(e) => setPasswordUsuario(e.target.value)} autoComplete="current-password" required /></label>
+                  {errorUsuario && <div className="profile-feedback is-error">{errorUsuario}</div>}
+                  {mensajeUsuario && <div className="profile-feedback is-success">{mensajeUsuario}</div>}
+                  <button className="btn primary" type="submit" disabled={enviandoUsuario}>{enviandoUsuario ? "Guardando..." : "Guardar usuario"}</button>
+                </form>
+              </details>
+              <details className="profile-setting-panel">
+                <summary><span><strong>Contraseña</strong><small>Actualizala sin cerrar tu sesión actual.</small></span><b>Cambiar</b></summary>
+                <form onSubmit={handleSubmit} className="profile-setting-form">
+                  <label className="login-field"><span className="detail-label">Contraseña actual</span><input type="password" value={actual} onChange={(e) => setActual(e.target.value)} autoComplete="current-password" required /></label>
+                  <label className="login-field"><span className="detail-label">Nueva contraseña</span><input type="password" value={nueva} onChange={(e) => setNueva(e.target.value)} autoComplete="new-password" required /></label>
+                  <label className="login-field"><span className="detail-label">Repetir nueva contraseña</span><input type="password" value={confirmar} onChange={(e) => setConfirmar(e.target.value)} autoComplete="new-password" required /></label>
+                  {error && <div className="profile-feedback is-error">{error}</div>}
+                  {mensaje && <div className="profile-feedback is-success">{mensaje}</div>}
+                  <button className="btn primary" type="submit" disabled={enviando}>{enviando ? "Guardando..." : "Guardar contraseña"}</button>
+                </form>
+              </details>
+              <div className="profile-security-note"><strong>Tu cuenta sigue activa</strong><span>Estos cambios no alteran tu rol ni los permisos del sistema.</span></div>
+            </section>
           </div>
         </div>
       </div>
