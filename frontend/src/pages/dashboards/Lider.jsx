@@ -18,7 +18,7 @@ export function LiderDashboard() {
   const [publicacionesRaw, setPublicacionesRaw] = useState([]);
   const [tareasRaw, setTareasRaw] = useState([]);
   const [busquedaCliente, setBusquedaCliente] = useState("");
-  const [vistaLider, setVistaLider] = useState("panorama");
+  const [vistaLider, setVistaLider] = useState("gestion");
 
   const cargarPanorama = () => {
     Promise.all([
@@ -74,7 +74,7 @@ export function LiderDashboard() {
                 role="tab"
                 type="button"
               >
-                Panorama y estadísticas
+                Panorama
               </button>
               <button
                 aria-selected={vistaLider === "gestion"}
@@ -83,7 +83,7 @@ export function LiderDashboard() {
                 role="tab"
                 type="button"
               >
-                Gestión y aprobaciones
+                Hoy y pendientes
               </button>
             </div>
           </div>
@@ -405,8 +405,8 @@ export function LiderDashboard() {
           {vistaLider === "gestion" && (
             <div className="lider-dashboard-view" role="tabpanel">
               <div className="lider-dashboard-divider">
-                <span>Gestión y aprobaciones</span>
-                <strong>Decisiones operativas del Líder</strong>
+                <span>Hoy y pendientes</span>
+                <strong>Decisiones y tareas que requieren tu intervención</strong>
               </div>
               <GestionLiderPanel />
 
