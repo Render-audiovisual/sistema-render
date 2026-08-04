@@ -13,8 +13,16 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
       { href: "/workspace/tareas", label: "Tareas" },
     ],
     planificacion: [
-      { href: "/planificacion-historias", label: "Historias" },
-      { href: "/planificacion-publicaciones", label: "Publicaciones" },
+      {
+        href: "/planificacion-historias",
+        label: "Historias",
+        description: "Planificá historias por cliente y período.",
+      },
+      {
+        href: "/planificacion-publicaciones",
+        label: "Publicaciones",
+        description: "Organizá y seguí las publicaciones.",
+      },
     ],
     gestion: [
       { href: "/reportes-historias", label: "Reportes" },
@@ -39,7 +47,12 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
         target="_self"
         className={`sidebar-link ${path === enlace.href ? "active" : ""}`}
       >
-        {enlace.label}
+        {enlace.description ? (
+          <span className="sidebar-link-copy">
+            <strong>{enlace.label}</strong>
+            <small>{enlace.description}</small>
+          </span>
+        ) : enlace.label}
       </a>
     ));
 
@@ -53,8 +66,14 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
         {renderLinksSección(seccionesNav.inicio)}
         {renderLinksSección(seccionesNav.trabajo)}
         <details className={`nav-menu ${seccionesNav.planificacion.some((item) => item.href === path) ? "active" : ""}`}>
-          <summary className="sidebar-link">Contenido</summary>
-          <div className="nav-menu-panel">{renderLinksSección(seccionesNav.planificacion)}</div>
+          <summary className="sidebar-link" aria-label="Abrir opciones de Contenido">
+            <span>Contenido</span>
+            <span className="nav-menu-chevron" aria-hidden="true">⌄</span>
+          </summary>
+          <div className="nav-menu-panel" aria-label="Opciones de Contenido">
+            <div className="nav-menu-heading">¿Qué querés planificar?</div>
+            {renderLinksSección(seccionesNav.planificacion)}
+          </div>
         </details>
         {renderLinksSección(seccionesNav.admin)}
         {renderLinksSección(seccionesNav.gestion)}
