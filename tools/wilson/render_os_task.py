@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 
@@ -71,7 +72,8 @@ def sign_request(method, path, telegram_user_id, payload):
 
 def request(method, path, *, telegram_user_id, confirmed_by, payload=None, idempotency_key=None):
     base_url = os.environ.get("RENDER_OS_API_URL", DEFAULT_BASE_URL).rstrip("/")
-    timestamp, nonce, signature, body = sign_request(method, path, telegram_user_id, payload)
+    signature_path = f"{urllib.parse.urlparse(base_url).path}{path}"
+    timestamp, nonce, signature, body = sign_request(method, signature_path, telegram_user_id, payload)
     headers = {
         "Content-Type": "application/json",
         "X-Telegram-User-Id": str(telegram_user_id),
