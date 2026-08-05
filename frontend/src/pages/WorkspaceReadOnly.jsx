@@ -4,7 +4,7 @@ import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerIn
 import { AREAS, STATUSES, TASK_TYPES } from "../features/render-os/constants.js";
 import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
 import { areaForTask, formatDate, formatDateTime, initials, personForTask } from "../features/render-os/utils/task-formatters.js";
-import { mergeRelatedTasks } from "../workspace-task-state.js";
+import { canRetryTaskUpdate, mergeRelatedTasks } from "../workspace-task-state.js";
 import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
 import { getHoyLocalISO } from "../shared/date/date-utils.js";
 import "./WorkspaceReadOnly.css";
@@ -528,12 +528,32 @@ export function WorkspaceReadOnlyPage({ sesion }) {
         return complete;
       } catch (reason) {
         if (reason.status === 409) {
+          let currentTask = null;
           try {
-            const currentTask = await apiTaskById(id);
+            currentTask = await apiTaskById(id);
+            if (canRetryTaskUpdate(previous, currentTask, changes)) {
+              const retried = await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_updated_at: currentTask.updated_at || undefined }) });
+              const selectedClient = clients.find((item) => String(item.id) === String(retried.cliente_id));
+              const complete = { ...currentTask, ...retried, cliente_nombre: selectedClient?.nombre || currentTask.cliente_nombre || null };
+              tasksRef.current = tasksRef.current.map((task) => task.id === id ? complete : task);
+              setTasks((current) => current.map((task) => task.id === id ? complete : task));
+              let historyFailed = false;
+              if (activity) {
+                try { await logActivity(id, activity); }
+                catch { historyFailed = true; }
+              }
+              notify(historyFailed ? "Cambio guardado, pero no se pudo registrar la actividad." : "Cambio guardado en la tarea real.", historyFailed ? "error" : "success");
+              return complete;
+            }
             tasksRef.current = tasksRef.current.map((task) => task.id === id ? currentTask : task);
             setTasks((current) => current.map((task) => task.id === id ? currentTask : task));
           } catch {
-            setTasks((current) => current.filter((task) => task.id !== id));
+            if (currentTask) {
+              tasksRef.current = tasksRef.current.map((task) => task.id === id ? currentTask : task);
+              setTasks((current) => current.map((task) => task.id === id ? currentTask : task));
+            } else {
+              setTasks((current) => current.filter((task) => task.id !== id));
+            }
           }
         } else {
           tasksRef.current = tasksRef.current.map((task) => task.id === id ? previous : task);

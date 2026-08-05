@@ -1,1 +1,1 @@
-export { mergeRelatedTasks } from "./features/render-os/utils/task-state.js";
+export { canRetryTaskUpdate, mergeRelatedTasks } from "./features/render-os/utils/task-state.js";

@@ -7,3 +7,19 @@ export function mergeRelatedTasks(current, incoming) {
   }
   return merged;
 }
+
+function sameValue(left, right) {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+export function canRetryTaskUpdate(previous, current, changes) {
+  if (!previous || !current || !changes) return false;
+  return Object.entries(changes).every(([field, value]) => {
+    if (field === "propiedades_extra" && value && typeof value === "object") {
+      const previousMetadata = previous.propiedades_extra || {};
+      const currentMetadata = current.propiedades_extra || {};
+      return Object.keys(value).every((key) => sameValue(previousMetadata[key], currentMetadata[key]));
+    }
+    return sameValue(previous[field], current[field]);
+  });
+}
