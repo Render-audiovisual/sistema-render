@@ -20,6 +20,7 @@ import { requireAuthentication, requireRole } from "./auth.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks } from "./piece-task-linking.js";
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
+import { createWilsonRouter } from "./wilson-integration.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -66,6 +67,11 @@ router.use((req, res, next) => {
 router.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
+
+router.use("/integraciones/wilson", createWilsonRouter({
+  pool,
+  notifyAssignment: notificarAsignacionSinInterrumpir,
+}));
 
 router.post("/login", async (req, res, next) => {
   try {
