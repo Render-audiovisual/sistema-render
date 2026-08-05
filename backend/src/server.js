@@ -1587,7 +1587,10 @@ router.patch("/tareas/:id", async (req, res, next) => {
     }
     if (body.expected_updated_at) {
       i++;
-      where += ` AND t.updated_at = $${i}::timestamptz`;
+      // node-postgres serializa Date con milisegundos, mientras PostgreSQL
+      // conserva microsegundos. Comparar el timestamp crudo provoca un 409
+      // falso incluso cuando nadie modificó la tarea.
+      where += ` AND date_trunc('milliseconds', t.updated_at) = date_trunc('milliseconds', $${i}::timestamptz)`;
       valores.push(body.expected_updated_at);
     }
 
