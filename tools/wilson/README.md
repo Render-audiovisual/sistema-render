@@ -14,14 +14,7 @@ El alta siempre queda en estado `pendiente` y en
 duplicado, Wilson no debe usar `--allow-duplicate` hasta recibir una nueva
 confirmación explícita que identifique la tarea encontrada.
 
-La credencial se lee desde `RENDER_OS_WILSON_TOKEN` o desde el archivo privado
-`~/.openclaw/credentials/render_os.json`:
-
-```json
-{
-  "api_token": "secreto",
-  "base_url": "https://sistema.rendercorrientes.com/api/integraciones/wilson"
-}
-```
-
-Ese archivo no pertenece al repositorio y debe tener permisos `0600`.
+Cada solicitud se firma con la clave privada
+`~/.openclaw/credentials/render_os_private.pem`. La clave nunca sale del VPS;
+Hostinger conserva solo la clave pública. El archivo privado no pertenece al
+repositorio y debe tener permisos `0600`.

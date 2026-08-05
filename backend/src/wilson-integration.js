@@ -1,5 +1,11 @@
 import crypto from "node:crypto";
 import express from "express";
+import fs from "node:fs";
+
+const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
+const DEFAULT_ALLOWED_TELEGRAM_IDS = ["1826333320", "1890547269"];
+const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
+const usedNonces = new Map();
 
 const SECTORS = new Map([
   ["diseno", "diseno"], ["diseño", "diseno"],
@@ -15,23 +21,44 @@ export function normalizeWilsonText(value) {
     .trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-function secureTokenMatches(received, expected) {
-  const left = Buffer.from(String(received || ""));
-  const right = Buffer.from(String(expected || ""));
-  return left.length > 0 && left.length === right.length && crypto.timingSafeEqual(left, right);
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
-export function requireWilsonService(env = process.env) {
+export function buildWilsonSignatureMessage({ timestamp, nonce, telegramUserId, method, path, body }) {
+  const bodyHash = crypto.createHash("sha256").update(body === undefined ? "" : canonicalJson(body)).digest("hex");
+  return [timestamp, nonce, telegramUserId, method.toUpperCase(), path, bodyHash].join("\n");
+}
+
+export function requireWilsonService(env = process.env, now = () => Date.now()) {
   return (req, res, next) => {
-    if (!env.WILSON_API_TOKEN) return res.status(503).json({ error: "La integración de Wilson no está configurada." });
-    const [scheme, token] = String(req.headers?.authorization || "").split(/\s+/, 2);
-    if (scheme?.toLowerCase() !== "bearer" || !secureTokenMatches(token, env.WILSON_API_TOKEN)) {
-      return res.status(401).json({ error: "Credencial de Wilson inválida." });
-    }
+    const timestamp = String(req.headers?.["x-wilson-timestamp"] || "").trim();
+    const nonce = String(req.headers?.["x-wilson-nonce"] || "").trim();
+    const signature = String(req.headers?.["x-wilson-signature"] || "").trim();
     const telegramUserId = String(req.headers?.["x-telegram-user-id"] || req.body?.telegram_user_id || "").trim();
-    const allowedIds = String(env.WILSON_ALLOWED_TELEGRAM_IDS || "").split(",").map((item) => item.trim()).filter(Boolean);
-    if (allowedIds.length === 0) return res.status(503).json({ error: "No hay usuarios de Telegram autorizados." });
+    const allowedIds = String(env.WILSON_ALLOWED_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(","))
+      .split(",").map((item) => item.trim()).filter(Boolean);
     if (!allowedIds.includes(telegramUserId)) return res.status(403).json({ error: "Esta cuenta de Telegram no puede crear tareas." });
+    const timestampMs = Number(timestamp) * 1000;
+    if (!timestamp || !nonce || !signature || !Number.isFinite(timestampMs)
+      || Math.abs(now() - timestampMs) > SIGNATURE_MAX_AGE_MS) {
+      return res.status(401).json({ error: "Firma de Wilson ausente o vencida." });
+    }
+    for (const [savedNonce, expiresAt] of usedNonces) if (expiresAt <= now()) usedNonces.delete(savedNonce);
+    if (usedNonces.has(nonce)) return res.status(409).json({ error: "La solicitud de Wilson ya fue utilizada." });
+    const path = `${req.baseUrl}${req.path}`;
+    const message = buildWilsonSignatureMessage({ timestamp, nonce, telegramUserId, method: req.method, path, body: req.body });
+    const publicKey = env.WILSON_PUBLIC_KEY || DEFAULT_PUBLIC_KEY;
+    let valid = false;
+    try {
+      valid = crypto.verify("sha256", Buffer.from(message), publicKey, Buffer.from(signature, "base64"));
+    } catch { valid = false; }
+    if (!valid) return res.status(401).json({ error: "Firma de Wilson inválida." });
+    usedNonces.set(nonce, now() + SIGNATURE_MAX_AGE_MS);
     req.wilson = {
       telegramUserId,
       confirmedBy: String(req.headers?.["x-wilson-confirmed-by"] || req.body?.confirmado_por || "").trim() || "Franco o Agustín",

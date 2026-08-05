@@ -8,15 +8,20 @@ idempotency key; el backend vuelve a validar catálogo y duplicados.
 
 import argparse
 import json
+import base64
+import hashlib
 import os
 import pathlib
+import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
+import uuid
 
 
 DEFAULT_BASE_URL = "https://sistema.rendercorrientes.com/api/integraciones/wilson"
-CREDENTIALS_PATH = pathlib.Path.home() / ".openclaw" / "credentials" / "render_os.json"
+PRIVATE_KEY_PATH = pathlib.Path.home() / ".openclaw" / "credentials" / "render_os_private.pem"
 
 SECTORS = {
     "carrusel": "diseno",
@@ -45,28 +50,39 @@ SECTORS = {
 PRIORITIES = {1: "alta", 2: "alta", 3: "media", 4: "baja"}
 
 
-def load_credentials():
-    data = {}
-    if CREDENTIALS_PATH.exists():
-        data = json.loads(CREDENTIALS_PATH.read_text(encoding="utf-8"))
-    token = os.environ.get("RENDER_OS_WILSON_TOKEN") or data.get("api_token")
-    base_url = os.environ.get("RENDER_OS_API_URL") or data.get("base_url") or DEFAULT_BASE_URL
-    if not token:
-        raise RuntimeError("Falta configurar la credencial técnica de RENDER OS para Wilson.")
-    return token, base_url.rstrip("/")
+def canonical_json(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def sign_request(method, path, telegram_user_id, payload):
+    if not PRIVATE_KEY_PATH.exists():
+        raise RuntimeError("Falta la clave privada de RENDER OS para Wilson.")
+    timestamp = str(int(time.time()))
+    nonce = str(uuid.uuid4())
+    body = "" if payload is None else canonical_json(payload)
+    body_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    message = "\n".join((timestamp, nonce, str(telegram_user_id), method.upper(), path, body_hash))
+    signed = subprocess.run(
+        ["openssl", "dgst", "-sha256", "-sign", str(PRIVATE_KEY_PATH)],
+        input=message.encode("utf-8"), capture_output=True, check=True,
+    ).stdout
+    return timestamp, nonce, base64.b64encode(signed).decode("ascii"), body
 
 
 def request(method, path, *, telegram_user_id, confirmed_by, payload=None, idempotency_key=None):
-    token, base_url = load_credentials()
+    base_url = os.environ.get("RENDER_OS_API_URL", DEFAULT_BASE_URL).rstrip("/")
+    timestamp, nonce, signature, body = sign_request(method, path, telegram_user_id, payload)
     headers = {
-        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
         "X-Telegram-User-Id": str(telegram_user_id),
         "X-Wilson-Confirmed-By": confirmed_by,
+        "X-Wilson-Timestamp": timestamp,
+        "X-Wilson-Nonce": nonce,
+        "X-Wilson-Signature": signature,
     }
     if idempotency_key:
         headers["Idempotency-Key"] = idempotency_key
-    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    data = None if payload is None else body.encode("utf-8")
     req = urllib.request.Request(f"{base_url}{path}", data=data, method=method, headers=headers)
     with urllib.request.urlopen(req, timeout=30) as response:
         return json.load(response)

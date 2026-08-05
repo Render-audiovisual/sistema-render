@@ -35,8 +35,8 @@ reproducible, sin depender de que alguien recuerde comandos sueltos.
 | `EMAIL_FROM` | Remitente visible (opcional si coincide con `SMTP_USER`) | `RENDER <notificaciones@ejemplo.com>` |
 | `EMAIL_REPLY_TO` | Dirección para respuestas (opcional) | `equipo@ejemplo.com` |
 | `APP_URL` | URL usada en el botón “Abrir tarea” | `https://sistema.rendercorrientes.com` |
-| `WILSON_API_TOKEN` | Token técnico exclusivo para Wilson; no reutilizar JWT ni contraseñas | secreto aleatorio largo |
 | `WILSON_ALLOWED_TELEGRAM_IDS` | IDs numéricos autorizados para confirmar altas, separados por coma | `123,456` |
+| `WILSON_PUBLIC_KEY` | Clave pública alternativa para rotar la firma de Wilson sin cambiar código | PEM pública |
 
 **`JWT_SECRET` es obligatorio.** Sin él, el login no genera tokens válidos.
 Nunca lo dejes vacío ni reutilices uno de otro proyecto.

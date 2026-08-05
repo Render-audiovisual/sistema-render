@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import test from "node:test";
-import { buildWilsonTask, findWilsonDuplicates, normalizeWilsonText, requireWilsonService } from "../src/wilson-integration.js";
+import { buildWilsonSignatureMessage, buildWilsonTask, findWilsonDuplicates, normalizeWilsonText, requireWilsonService } from "../src/wilson-integration.js";
 
 const catalog = {
   clients: [{ id: 11, nombre: "Búnker Training" }],
@@ -40,14 +41,20 @@ test("Wilson detecta tareas con el mismo material o contexto operativo", () => {
   assert.match(duplicates[0].url, /task=99/);
 });
 
-test("la API técnica valida token e ID autorizado de Telegram", () => {
-  const middleware = requireWilsonService({ WILSON_API_TOKEN: "token-seguro", WILSON_ALLOWED_TELEGRAM_IDS: "111,222" });
+test("la API técnica valida firma e ID autorizado de Telegram", () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const now = 1785960000000;
+  const timestamp = String(now / 1000);
+  const headers = { "x-telegram-user-id": "111", "x-wilson-timestamp": timestamp, "x-wilson-nonce": "nonce-prueba" };
+  const message = buildWilsonSignatureMessage({ timestamp, nonce: "nonce-prueba", telegramUserId: "111", method: "GET", path: "/api/integraciones/wilson/catalogo", body: undefined });
+  headers["x-wilson-signature"] = crypto.sign("sha256", Buffer.from(message), privateKey).toString("base64");
+  const middleware = requireWilsonService({ WILSON_PUBLIC_KEY: publicKey.export({ type: "spki", format: "pem" }), WILSON_ALLOWED_TELEGRAM_IDS: "111,222" }, () => now);
   const response = () => ({ statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } });
   const denied = response();
-  middleware({ headers: { authorization: "Bearer token-seguro", "x-telegram-user-id": "999" }, body: {} }, denied, () => assert.fail());
+  middleware({ headers: { ...headers, "x-telegram-user-id": "999" }, body: undefined, method: "GET", baseUrl: "/api/integraciones/wilson", path: "/catalogo" }, denied, () => assert.fail());
   assert.equal(denied.statusCode, 403);
   let continued = false;
-  const request = { headers: { authorization: "Bearer token-seguro", "x-telegram-user-id": "111" }, body: {} };
+  const request = { headers, body: undefined, method: "GET", baseUrl: "/api/integraciones/wilson", path: "/catalogo" };
   middleware(request, response(), () => { continued = true; });
   assert.equal(continued, true);
   assert.equal(request.wilson.telegramUserId, "111");
