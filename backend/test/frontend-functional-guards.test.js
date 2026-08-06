@@ -59,7 +59,11 @@ test("el calendario completa la última semana para conservar toda la cuadrícul
   assert.match(workspaceSource, /key === today \? "today"/);
   assert.match(workspaceSource, /task\.cliente_nombre \|\| "Sin cliente"/);
   assert.match(workspaceStyles, /\.ros-calendar-task\.area-carruseles/);
-  assert.match(workspaceStyles, /\.ros-calendar-day\.today>b/);
+  assert.match(workspaceSource, /ros-day-preview/);
+  assert.match(workspaceSource, /Resumen del día/);
+  assert.match(workspaceSource, /No hay tareas para este día/);
+  assert.match(workspaceStyles, /\.ros-calendar-day\.today>\.ros-calendar-day-number/);
+  assert.match(workspaceStyles, /\.ros-day-preview-backdrop/);
 });
 
 test("Tareas conserva una sola interfaz y navega en la misma pestaña", () => {

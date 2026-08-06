@@ -422,6 +422,7 @@ function TaskCalendar({ tasks, onOpen, monthValue, onMonthChange }) {
     if (monthValue) { const [year, month] = monthValue.split("-").map(Number); return new Date(year, month - 1, 1); }
     const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  const [selectedDate, setSelectedDate] = useState("");
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const firstOffset = (new Date(year, month, 1).getDay() + 6) % 7;
@@ -435,8 +436,38 @@ function TaskCalendar({ tasks, onOpen, monthValue, onMonthChange }) {
   tasks.forEach((task) => { if (!task.fecha_vencimiento) return; const key = String(task.fecha_vencimiento).slice(0, 10); byDate.set(key, [...(byDate.get(key) || []), task]); });
   const today = getHoyLocalISO();
   const label = cursor.toLocaleDateString("es-AR", { month: "long", year: "numeric" });
-  const moveMonth = (delta) => { const next = new Date(year, month + delta, 1); setCursor(next); onMonthChange(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`); };
-  return <section className="ros-calendar"><header><button type="button" aria-label="Mes anterior" onClick={() => moveMonth(-1)}>‹</button><strong>{label}</strong><button type="button" aria-label="Mes siguiente" onClick={() => moveMonth(1)}>›</button></header><div className="ros-calendar-week"><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span></div><div className="ros-calendar-grid">{cells.map((day, index) => { if (!day) return <div className="ros-calendar-day muted" key={`empty-${index}`}/>; const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`; const items = byDate.get(key) || []; return <div className={`ros-calendar-day ${key === today ? "today" : ""}`} key={key}><b>{day}</b><div className="ros-calendar-day-tasks">{items.slice(0, 3).map((task) => <button className={`ros-calendar-task area-${areaForTask(task)}`} title={`${task.titulo} · ${task.cliente_nombre || "Sin cliente"}`} type="button" key={task.id} onClick={() => onOpen(task.id)}><strong>{task.titulo}</strong><small>{task.cliente_nombre || "Sin cliente"}</small></button>)}{items.length > 3 && <small className="ros-calendar-more">+{items.length - 3} más</small>}</div></div>; })}</div>{tasks.some((task) => !task.fecha_vencimiento) && <p className="ros-calendar-note">{tasks.filter((task) => !task.fecha_vencimiento).length} tareas sin fecha no aparecen en el calendario.</p>}</section>;
+  const moveMonth = (delta) => { const next = new Date(year, month + delta, 1); setSelectedDate(""); setCursor(next); onMonthChange(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`); };
+  const selectedTasks = selectedDate ? byDate.get(selectedDate) || [] : [];
+  const selectedDateLabel = selectedDate ? new Date(`${selectedDate}T12:00:00`).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" }) : "";
+  useEffect(() => {
+    if (!selectedDate) return undefined;
+    const closeOnEscape = (event) => { if (event.key === "Escape") setSelectedDate(""); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [selectedDate]);
+  const openFromSummary = (taskId) => { setSelectedDate(""); onOpen(taskId); };
+  return <>
+    <section className="ros-calendar">
+      <header><button type="button" aria-label="Mes anterior" onClick={() => moveMonth(-1)}>‹</button><strong>{label}</strong><button type="button" aria-label="Mes siguiente" onClick={() => moveMonth(1)}>›</button></header>
+      <div className="ros-calendar-week"><span>Lun</span><span>Mar</span><span>Mié</span><span>Jue</span><span>Vie</span><span>Sáb</span><span>Dom</span></div>
+      <div className="ros-calendar-grid">{cells.map((day, index) => {
+        if (!day) return <div className="ros-calendar-day muted" key={`empty-${index}`}/>;
+        const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const items = byDate.get(key) || [];
+        return <div className={`ros-calendar-day ${key === today ? "today" : ""}`} key={key}>
+          <button className="ros-calendar-day-number" type="button" aria-label={`Ver resumen del ${day}`} onClick={() => setSelectedDate(key)}>{day}</button>
+          <div className="ros-calendar-day-tasks">{items.slice(0, 3).map((task) => <button className={`ros-calendar-task area-${areaForTask(task)}`} title={`${task.titulo} · ${task.cliente_nombre || "Sin cliente"}`} type="button" key={task.id} onClick={() => onOpen(task.id)}><strong>{task.titulo}</strong><small>{task.cliente_nombre || "Sin cliente"}</small></button>)}{items.length > 3 && <button className="ros-calendar-more" type="button" onClick={() => setSelectedDate(key)}>+{items.length - 3} más</button>}</div>
+        </div>;
+      })}</div>
+      {tasks.some((task) => !task.fecha_vencimiento) && <p className="ros-calendar-note">{tasks.filter((task) => !task.fecha_vencimiento).length} tareas sin fecha no aparecen en el calendario.</p>}
+    </section>
+    {selectedDate && <div className="ros-day-preview-backdrop" role="presentation" onMouseDown={() => setSelectedDate("")}>
+      <section className="ros-day-preview" role="dialog" aria-modal="true" aria-labelledby="ros-day-preview-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header><div><small>Resumen del día</small><h2 id="ros-day-preview-title">{selectedDateLabel}</h2><span>{selectedTasks.length} {selectedTasks.length === 1 ? "tarea" : "tareas"}</span></div><button type="button" aria-label="Cerrar resumen" onClick={() => setSelectedDate("")}>×</button></header>
+        <div className="ros-day-preview-list">{selectedTasks.map((task) => { const state = STATUSES.find((item) => item.id === task.estado); return <button type="button" key={task.id} onClick={() => openFromSummary(task.id)}><i style={{ background: state?.color || "#8d9095" }}/><div><strong>{task.titulo}</strong><span>{task.cliente_nombre || "Sin cliente"} · {task.asignado_a || "Sin responsable"}</span></div><b>{state?.label || task.estado}</b><em>›</em></button>; })}{selectedTasks.length === 0 && <div className="ros-day-preview-empty"><span>○</span><strong>No hay tareas para este día</strong><small>Podés elegir otra fecha o cerrar el resumen.</small></div>}</div>
+      </section>
+    </div>}
+  </>;
 }
 
 function TasksByClient({ tasks, onOpen }) {
