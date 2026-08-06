@@ -25,6 +25,12 @@ import { runMigrations } from "./migrations.js";
 import { resolveUserRole } from "./user-roles.js";
 import { canRecordProduction, getProductionProgress, isProductionVisitTask, isValidProductionDate } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
+import {
+  getStateNotification,
+  isTaskLeader,
+  isVideoEditingTask,
+  validateProductionHandoff,
+} from "./task-workflow.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -1561,6 +1567,7 @@ router.post("/tareas", requireRole("admin"), async (req, res, next) => {
       pool,
       tarea: tareaCreada,
       motivo: "creada",
+      actor: getTaskActor(req.auth),
     });
   } catch (error) {
     next(error);
@@ -1604,6 +1611,50 @@ const TAREA_COLUMNAS_EDITABLES = [
   "tarea_padre_id",
 ];
 
+async function crearTareaEdicionDesdeVisita(visita) {
+  const cliente = visita.cliente_id
+    ? await pool.query("SELECT nombre FROM clientes WHERE id = $1", [visita.cliente_id])
+    : { rows: [] };
+  const clienteNombre = cliente.rows[0]?.nombre || "Sin cliente";
+  const cantidad = getProductionProgress(visita).planned;
+  const propiedades = {
+    workspace: "render_os",
+    origen_visita_id: String(visita.id),
+    automatica_render_os: true,
+    resumen: `Editar los ${cantidad} videos grabados en la visita de ${clienteNombre}.`,
+  };
+  const indicaciones = [
+    `Tarea creada automáticamente desde la visita #${visita.id}.`,
+    `Cantidad esperada: ${cantidad} videos.`,
+    "Revisar la carpeta completa, separar el material por pieza y pasar cada entrega a revisión.",
+  ].join("\n");
+  const result = await pool.query(
+    `INSERT INTO tareas (
+       titulo, asignado_a, cliente_id, estado, propiedades_extra, fecha_vencimiento,
+       tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id
+     ) VALUES ($1, 'Luciano', $2, 'pendiente', $3::jsonb, $4, 'edicion', 'video', $5, $6, $7, $8)
+     ON CONFLICT ((propiedades_extra->>'origen_visita_id'))
+       WHERE propiedades_extra->>'workspace' = 'render_os'
+         AND propiedades_extra->>'origen_visita_id' IS NOT NULL
+     DO NOTHING
+     RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion,
+       propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
+       historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones,
+       material_referencia, tarea_padre_id, created_at, updated_at`,
+    [
+      `${clienteNombre} | Edición de ${cantidad} video${cantidad === 1 ? "" : "s"}`,
+      visita.cliente_id || null,
+      JSON.stringify(propiedades),
+      visita.fecha_vencimiento || null,
+      visita.prioridad || "media",
+      indicaciones,
+      visita.material_referencia,
+      visita.id,
+    ],
+  );
+  return result.rows[0] || null;
+}
+
 router.patch("/tareas/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -1611,6 +1662,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
     let asignadoAnterior = null;
     let estadoAnterior = null;
     let colaboradoresAnteriores = [];
+    let tareaAnteriorCompleta = null;
     const esRenderOS = req.query.workspace === "render_os";
 
     if (req.auth.rol !== "admin" && !canEmployeePatchTask(body, { workspace: esRenderOS ? "render_os" : "historical", role: req.auth.rol })) {
@@ -1638,14 +1690,31 @@ router.patch("/tareas/:id", async (req, res, next) => {
       Object.prototype.hasOwnProperty.call(body.propiedades_extra || {}, "colaboradores")
     ) {
       const tareaAnterior = await pool.query(
-        "SELECT asignado_a, estado, propiedades_extra FROM tareas WHERE id = $1",
+        `SELECT id, titulo, asignado_a, cliente_id, estado, propiedades_extra,
+                to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
+                tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia,
+                tarea_padre_id, updated_at
+         FROM tareas WHERE id = $1`,
         [id],
       );
+      tareaAnteriorCompleta = tareaAnterior.rows[0] || null;
       asignadoAnterior = tareaAnterior.rows[0]?.asignado_a || null;
       estadoAnterior = tareaAnterior.rows[0]?.estado || null;
       colaboradoresAnteriores = Array.isArray(tareaAnterior.rows[0]?.propiedades_extra?.colaboradores)
         ? tareaAnterior.rows[0].propiedades_extra.colaboradores
         : [];
+    }
+    if (esRenderOS && body.estado === "en_revision" && estadoAnterior !== "en_revision" && tareaAnteriorCompleta) {
+      const visitaParaEntregar = {
+        ...tareaAnteriorCompleta,
+        ...body,
+        propiedades_extra: {
+          ...(tareaAnteriorCompleta.propiedades_extra || {}),
+          ...(body.propiedades_extra || {}),
+        },
+      };
+      const errorEntrega = validateProductionHandoff(visitaParaEntregar);
+      if (errorEntrega) return res.status(400).json({ error: errorEntrega });
     }
     if (Object.prototype.hasOwnProperty.call(body, "tipo_tarea")) {
       if (body.tipo_tarea !== null && !TIPOS_TAREA_VALIDOS.includes(body.tipo_tarea)) {
@@ -1757,6 +1826,8 @@ router.patch("/tareas/:id", async (req, res, next) => {
     const tareaActualizada = result.rows[0];
     res.json(tareaActualizada);
 
+    const actor = getTaskActor(req.auth);
+
     if (
       Object.prototype.hasOwnProperty.call(body, "asignado_a") &&
       normalizarNombre(asignadoAnterior) !==
@@ -1766,6 +1837,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
         pool,
         tarea: tareaActualizada,
         motivo: "reasignada",
+        actor,
       });
     }
     const colaboradoresActuales = Array.isArray(tareaActualizada.propiedades_extra?.colaboradores)
@@ -1778,15 +1850,84 @@ router.patch("/tareas/:id", async (req, res, next) => {
         pool,
         tarea: tareaActualizada,
         motivo: "reasignada",
+        actor,
       });
     }
-    if (body.estado === "en_revision" && estadoAnterior !== "en_revision") {
+    const eventoEstado = getStateNotification(tareaActualizada, estadoAnterior);
+    if (eventoEstado) {
       notificarAsignacionSinInterrumpir({
         pool,
         tarea: tareaActualizada,
-        motivo: "revision",
+        motivo: eventoEstado.motivo,
+        nombresDestinatarios: eventoEstado.recipients,
+        actor,
       });
     }
+    if (body.estado === "en_revision" && estadoAnterior !== "en_revision" && isProductionVisitTask(tareaActualizada)) {
+      crearTareaEdicionDesdeVisita(tareaActualizada)
+        .then((tareaEdicion) => {
+          if (!tareaEdicion) return;
+          notificarAsignacionSinInterrumpir({ pool, tarea: tareaEdicion, motivo: "creada", actor });
+        })
+        .catch((error) => console.error(`No se pudo crear la edición para la visita ${tareaActualizada.id}:`, error.message));
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
+  try {
+    if (!isTaskLeader(req.auth)) {
+      return res.status(403).json({ error: "Solo Franco o Agustín pueden aprobar una tarea para publicación." });
+    }
+    if (req.query.workspace !== "render_os") {
+      return res.status(400).json({ error: "Esta acción solo está disponible en RENDER OS." });
+    }
+    const actual = await pool.query(
+      `SELECT id, titulo, asignado_a, cliente_id, estado, propiedades_extra,
+              to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
+              tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia,
+              tarea_padre_id, updated_at
+       FROM tareas
+       WHERE id = $1 AND propiedades_extra->>'workspace' = 'render_os'`,
+      [req.params.id],
+    );
+    const tarea = actual.rows[0];
+    if (!tarea) return res.status(404).json({ error: "Tarea no encontrada." });
+    if (tarea.estado !== "en_revision" || !isVideoEditingTask(tarea)) {
+      return res.status(400).json({ error: "Solo se pueden aprobar videos que estén Para revisar." });
+    }
+    if (tarea.propiedades_extra?.revision_aprobada === true) {
+      return res.status(409).json({ error: "Esta tarea ya fue aprobada y enviada a Oriana." });
+    }
+    const actor = getTaskActor(req.auth);
+    const result = await pool.query(
+      `UPDATE tareas
+       SET asignado_a = 'Oriana',
+           propiedades_extra = propiedades_extra || $2::jsonb,
+           updated_at = now()
+       WHERE id = $1
+         AND propiedades_extra->>'workspace' = 'render_os'
+         AND estado = 'en_revision'
+         AND propiedades_extra->>'revision_aprobada' IS DISTINCT FROM 'true'
+       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion,
+         propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
+         historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones,
+         material_referencia, tarea_padre_id, created_at, updated_at`,
+      [req.params.id, JSON.stringify({ revision_aprobada: true, revision_aprobada_por: actor, revision_aprobada_at: new Date().toISOString(), workspace: "render_os" })],
+    );
+    if (!result.rows[0]) return res.status(409).json({ error: "La tarea ya fue aprobada o cambió de estado." });
+    const aprobada = result.rows[0];
+    res.json(aprobada);
+    notificarAsignacionSinInterrumpir({
+      pool,
+      tarea: aprobada,
+      motivo: "aprobada",
+      nombresDestinatarios: ["Oriana"],
+      actor,
+      detalle: `${actor} aprobó el material. Oriana puede programarlo o publicarlo.`,
+    });
   } catch (error) {
     next(error);
   }

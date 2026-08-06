@@ -6,7 +6,6 @@ const APP_URL_POR_DEFECTO = "https://sistema.rendercorrientes.com";
 const USUARIO_POR_RESPONSABLE = new Map([
   ["agus", "lider"],
   ["agustin", "lider"],
-  ["franco", "lider"],
   ["lider", "lider"],
 ]);
 
@@ -79,6 +78,9 @@ export function crearContenidoCorreo({
     comentario: "Hay un comentario nuevo en tu tarea",
     revision: "La tarea pasó a revisión",
     bloqueada: "Hay un bloqueo en tu tarea",
+    en_progreso: "La tarea comenzó",
+    publicada: "La tarea fue publicada",
+    aprobada: "Una tarea aprobada está lista para publicar",
   })[motivo] || "Tenés una nueva tarea";
   const esRenderOS = tarea.propiedades_extra?.workspace === "render_os";
   const rutaTarea = esRenderOS
@@ -172,6 +174,8 @@ export async function notificarAsignacionTarea({
   tarea,
   motivo = "creada",
   detalle = "",
+  nombresDestinatarios,
+  actor = "",
   env = process.env,
   transporter,
 }) {
@@ -179,8 +183,14 @@ export async function notificarAsignacionTarea({
     return { enviado: false, razon: "correo_no_configurado" };
   }
 
-  const candidatos = await Promise.all(responsablesNotificables(tarea).map((name) => buscarDestinatario(pool, name)));
-  const destinatarios = candidatos.filter((candidate, index, items) => candidate?.email_notificaciones && items.findIndex((item) => item?.email_notificaciones === candidate.email_notificaciones) === index);
+  const nombres = Array.isArray(nombresDestinatarios) ? nombresDestinatarios : responsablesNotificables(tarea);
+  const candidatos = await Promise.all(nombres.map((name) => buscarDestinatario(pool, name)));
+  const actorNormalizado = normalizarNombre(actor);
+  const destinatarios = candidatos.filter((candidate, index, items) => {
+    if (!candidate?.email_notificaciones) return false;
+    const esActor = actorNormalizado && [candidate.nombre, candidate.usuario].some((value) => normalizarNombre(value) === actorNormalizado);
+    return !esActor && items.findIndex((item) => item?.email_notificaciones === candidate.email_notificaciones) === index;
+  });
   if (destinatarios.length === 0) {
     return { enviado: false, razon: "responsable_sin_correo" };
   }

@@ -22,6 +22,11 @@ const usuarios = [
     nombre: "Germán",
     email_notificaciones: "german@example.com",
   },
+  {
+    usuario: "Franco",
+    nombre: "Franco Romero",
+    email_notificaciones: "franco@example.com",
+  },
 ];
 
 const pool = {
@@ -34,7 +39,7 @@ test("normaliza acentos y mayúsculas", () => {
   assert.equal(normalizarNombre("  GERMÁN "), "german");
 });
 
-test("resuelve Germán por nombre y Líder para Agus o Franco", async () => {
+test("resuelve Germán, el Líder y Franco sin mezclar sus cuentas", async () => {
   assert.equal(
     (await buscarDestinatario(pool, "Germán")).email_notificaciones,
     "german@example.com",
@@ -45,8 +50,23 @@ test("resuelve Germán por nombre y Líder para Agus o Franco", async () => {
   );
   assert.equal(
     (await buscarDestinatario(pool, "Franco")).email_notificaciones,
-    "lider@example.com",
+    "franco@example.com",
   );
+});
+
+test("los avisos de flujo excluyen a la persona que realizó la acción", async () => {
+  const enviados = [];
+  const result = await notificarAsignacionTarea({
+    pool,
+    tarea: { id: 48, titulo: "Video para revisar", propiedades_extra: { workspace: "render_os" } },
+    motivo: "revision",
+    nombresDestinatarios: ["Agustín", "Franco"],
+    actor: "Franco Romero",
+    env: { SMTP_HOST: "smtp.example.com", SMTP_USER: "render@example.com", SMTP_PASS: "secret" },
+    transporter: { async sendMail(options) { enviados.push(options.to); return { messageId: "mail-flow" }; } },
+  });
+  assert.equal(result.enviado, true);
+  assert.deepEqual(enviados, ["lider@example.com"]);
 });
 
 test("RENDER OS notifica al responsable principal y a colaboradores sin duplicados", async () => {
@@ -129,6 +149,9 @@ test("distingue comentarios, revisión y bloqueos en las notificaciones", () => 
 
   assert.match(crearContenidoCorreo({ ...base, motivo: "comentario" }).subject, /comentario nuevo/i);
   assert.match(crearContenidoCorreo({ ...base, motivo: "revision" }).subject, /pasó a revisión/i);
+  assert.match(crearContenidoCorreo({ ...base, motivo: "en_progreso" }).subject, /comenzó/i);
+  assert.match(crearContenidoCorreo({ ...base, motivo: "publicada" }).subject, /publicada/i);
+  assert.match(crearContenidoCorreo({ ...base, motivo: "aprobada" }).subject, /lista para publicar/i);
   const bloqueo = crearContenidoCorreo({ ...base, motivo: "bloqueada" });
   assert.match(bloqueo.subject, /bloqueo/i);
   assert.match(bloqueo.text, /Agustín: falta el material/);

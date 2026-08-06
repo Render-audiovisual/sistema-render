@@ -51,5 +51,7 @@ test("un empleado solo puede cambiar estado con control de concurrencia", () => 
 test("producción conserva únicamente la coordinación de sus tareas históricas", () => {
   assert.equal(canEmployeePatchTask({ propiedades_extra: { horario: "10:00", coordinada: true } }, { workspace: "historical", role: "produccion" }), true);
   assert.equal(canEmployeePatchTask({ propiedades_extra: { archivada_render_os: true } }, { workspace: "historical", role: "produccion" }), false);
+  assert.equal(canEmployeePatchTask({ material_referencia: "https://drive.google.com/folder" }, { workspace: "render_os", role: "produccion" }), true);
+  assert.equal(canEmployeePatchTask({ titulo: "No permitido" }, { workspace: "render_os", role: "produccion" }), false);
   assert.equal(canEmployeePatchTask({ propiedades_extra: { horario: "10:00" } }, { workspace: "render_os", role: "produccion" }), false);
 });

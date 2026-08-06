@@ -29,7 +29,7 @@ function Toast({ toast, onClose }) {
   return <button type="button" className={`ros-toast ${toast.type || "success"}`} onClick={onClose}><span>{toast.type === "error" ? "!" : "✓"}</span>{toast.message}</button>;
 }
 
-function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onArchive, onDelete, onCreateSubtask }) {
+function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onApprove, onArchive, onDelete, onCreateSubtask }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task || {});
   const [comments, setComments] = useState([]);
@@ -44,7 +44,10 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [archiving, setArchiving] = useState(false);
   const [productionAmount, setProductionAmount] = useState(1);
   const [productionDate, setProductionDate] = useState(getHoyLocalISO());
+  const [productionDriveLink, setProductionDriveLink] = useState("");
   const [registeringProduction, setRegisteringProduction] = useState(false);
+  const [savingProductionDrive, setSavingProductionDrive] = useState(false);
+  const [approving, setApproving] = useState(false);
   const archivePendingRef = useRef(false);
   const isAdmin = sesion?.usuario?.rol === "admin";
 
@@ -58,6 +61,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     setConfirmDelete(false);
     setProductionAmount(1);
     setProductionDate(getHoyLocalISO());
+    setProductionDriveLink(task.material_referencia || "");
     apiJson(`/api/tareas/${task.id}/comentarios?workspace=render_os`)
       .then(setComments)
       .catch((reason) => setCommentError(reason.message || "No se pudieron cargar los comentarios."));
@@ -76,6 +80,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const status = STATUSES.find((item) => item.id === task.estado) || { label: task.estado, color: "#777" };
   const metadata = task.propiedades_extra || {};
   const isProductionVisit = isProductionVisitTask(task);
+  const userIdentity = `${sesion?.usuario?.nombre || ""} ${sesion?.usuario?.usuario || ""}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const isLeader = isAdmin || userIdentity.includes("franco") || userIdentity.includes("agustin") || userIdentity.includes("lider");
+  const canApproveForOriana = isLeader && task.estado === "en_revision" && areaForTask(task) === "edicion" && metadata.revision_aprobada !== true;
   const productionProgress = getProductionVisitProgress(task);
   const canRegisterProduction = isAdmin || String(sesion?.usuario?.nombre || sesion?.usuario?.usuario || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().startsWith("german");
   const isArchived = metadata.archivada_render_os === true;
@@ -196,6 +203,21 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     }
   };
 
+  const approveForOriana = async () => {
+    if (approving) return;
+    setApproving(true);
+    try { await onApprove(task); }
+    finally { setApproving(false); }
+  };
+
+  const saveProductionDrive = async () => {
+    const link = productionDriveLink.trim();
+    if (!link || savingProductionDrive) return;
+    setSavingProductionDrive(true);
+    try { await onUpdate(task.id, { material_referencia: link }, "vinculó la carpeta de producción en Google Drive"); }
+    finally { setSavingProductionDrive(false); }
+  };
+
   return <div className="ros-drawer-backdrop" onClick={closeDetail}>
     <aside className="ros-drawer ros-task-workspace" onClick={(event) => event.stopPropagation()}>
       <header className="ros-task-workspace-header">
@@ -206,6 +228,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
       </header>
       <div className="ros-drawer-body ros-task-workspace-body">
         {esperandoMaterial(task) && <div className="ros-warning-banner">Esperando material: la tarea de origen todavía no está terminada.</div>}
+        {canApproveForOriana && <section className="ros-approval-handoff"><div><strong>El video está esperando aprobación</strong><span>Revisá el material y, si está listo, entregáselo a Oriana para programar o publicar.</span></div><button type="button" disabled={approving} onClick={approveForOriana}>{approving ? "Enviando…" : "Aprobar y enviar a Oriana"}</button></section>}
+        {metadata.revision_aprobada === true && task.estado === "en_revision" && <div className="ros-approved-banner">✓ Aprobada por {metadata.revision_aprobada_por || "Líder"}. Oriana decide si programarla o publicarla.</div>}
         {!editing && <section className="ros-work-block ros-objective-block"><h3>Objetivo</h3><p>{objectiveText}</p><div className="ros-latest-progress">{lastActivity ? <><strong>Último avance</strong><span>{lastActivity.contenido.replace(/^\[Actividad\]\s*/, "")}</span><time>{formatDateTime(lastActivity.created_at)}</time></> : <><strong>Situación actual</strong><span>{status.label} · {task.asignado_a || "Sin responsable"}</span></>}</div></section>}
         {isProductionVisit && <section className="ros-production-visit">
           <header><div><span>VISITA DE PRODUCCIÓN</span><strong>{productionProgress.recorded} de {productionProgress.planned || "—"} videos grabados</strong></div>{productionProgress.complete ? <b>Completa</b> : <b className="pending">Faltan {productionProgress.remaining || "—"}</b>}</header>
@@ -216,11 +240,12 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
             <label><span>Fecha de grabación</span><input type="date" value={productionDate} max={getHoyLocalISO()} onChange={(event) => setProductionDate(event.target.value)}/></label>
             <button type="button" disabled={registeringProduction || !productionDate} onClick={registerProduction}>{registeringProduction ? "Guardando…" : `Registrar ${productionAmount} video${Number(productionAmount) === 1 ? "" : "s"}`}</button>
           </div>}
+          {!editing && canRegisterProduction && <div className="ros-production-drive"><label><span>Carpeta de material en Google Drive</span><input inputMode="url" placeholder="https://drive.google.com/…" value={productionDriveLink} onChange={(event) => setProductionDriveLink(event.target.value)}/></label><button type="button" disabled={savingProductionDrive || !productionDriveLink.trim() || productionDriveLink.trim() === String(task.material_referencia || "").trim()} onClick={saveProductionDrive}>{savingProductionDrive ? "Guardando…" : task.material_referencia ? "Actualizar enlace" : "Vincular Drive"}</button></div>}
           {productionProgress.planned === 0 && !editing && <p>Un Líder debe editar esta visita e indicar cuántos videos están previstos.</p>}
           {Array.isArray(metadata.produccion_registros) && metadata.produccion_registros.length > 0 && <details><summary>Ver registros</summary>{metadata.produccion_registros.slice().reverse().map((record) => <div key={record.id || `${record.fecha}-${record.created_at}`}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario || "Equipo"}</span></div>)}</details>}
         </section>}
         <section className="ros-work-block ros-instructions-block"><h3>Indicaciones</h3>{editing ? <textarea className="ros-detail-textarea" rows={8} value={draft.aclaraciones || ""} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/> : task.aclaraciones ? (longInstructions ? <details><summary>Ver indicaciones completas</summary><div className="ros-description">{renderizarTextoTarea(task.aclaraciones)}</div></details> : <div className="ros-description">{renderizarTextoTarea(task.aclaraciones)}</div>) : <p className="ros-empty-copy">Esta tarea todavía no tiene indicaciones cargadas.</p>}</section>
-        <section className="ros-work-block"><h3>Material y referencias</h3>{editing ? <input className="ros-detail-input" placeholder="https://…" value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/> : <div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{materialInfo?.etiqueta || "Material de referencia"}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{!task.material_referencia && links.length === 0 && <p className="ros-empty-copy">No hay material ni referencias vinculadas.</p>}</div>}</section>
+        <section className="ros-work-block"><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3>{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{!task.material_referencia && links.length === 0 && <p className="ros-empty-copy">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "No hay material ni referencias vinculadas."}</p>}</div>}</section>
         {(origin || task.tarea_padre_id || subtasks.length > 0 || isAdmin) && <section className="ros-work-block"><h3>Organización del trabajo</h3>{(origin || task.tarea_padre_id) && <div className="ros-context-list">{origin && <a href={origin.href}><strong>{origin.label}</strong><span>{formatDate(origin.date)} · {origin.state || "Sin estado"}</span><b>↗</b></a>}{task.tarea_padre_id && <button type="button" onClick={() => onOpen(Number(task.tarea_padre_id))}><strong>Depende de la tarea #{task.tarea_padre_id}</strong><span>Estado: {task.tarea_padre_estado || "Sin datos"}</span></button>}</div>}<div className="ros-subtasks">{subtasks.map((subtask) => <button type="button" key={subtask.id} onClick={() => onOpen(subtask.id)}><span>{subtask.titulo}</span><b>{STATUSES.find((item) => item.id === subtask.estado)?.label || subtask.estado}</b></button>)}{subtasks.length === 0 && !isAdmin && <p className="ros-empty-copy">No hay subtareas cargadas.</p>}</div>{isAdmin && <div className="ros-subtask-create"><input value={subtaskTitle} placeholder="Agregar una subtarea" onChange={(event) => setSubtaskTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createSubtask(); }}/><button type="button" disabled={!subtaskTitle.trim() || creatingSubtask} onClick={createSubtask}>{creatingSubtask ? "Creando…" : "+ Agregar"}</button></div>}</section>}
         <section className="ros-work-block"><h3>Últimos avances</h3><div className="ros-comments ros-activity-feed"><article className="activity"><div><strong>Sistema</strong><time>{formatDateTime(task.created_at)}</time></div><p>Creó la tarea.</p></article>{activityComments.map((item) => <article className="activity" key={item.id}><div><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></div><p>{item.contenido.replace(/^\[Actividad\]\s*/, "")}</p></article>)}</div></section>
         <section className="ros-work-block"><h3>Comentarios</h3>
@@ -336,7 +361,7 @@ function TasksByClient({ tasks, onOpen }) {
   return <div className="ros-project-grid">{groups.map((group) => <section className="ros-project-card" key={group.name}><header><div><span>{initials(group.name)}</span><strong>{group.name}</strong></div><small>{group.tasks.length} tareas</small></header><div>{group.tasks.map((task) => <button type="button" key={task.id} onClick={() => onOpen(task.id)}><span>{task.titulo}</span><b>{STATUSES.find((item) => item.id === task.estado)?.label || task.estado}</b><small>{task.asignado_a} · {formatDate(task.fecha_vencimiento)}</small></button>)}</div></section>)}</div>;
 }
 
-function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, responsible, setResponsible, client, setClient, sector, setSector, priority, setPriority, archiveMode, setArchiveMode, sesion, onCreate, onUpdate, onRegisterProduction, onDelete, onError }) {
+function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, responsible, setResponsible, client, setClient, sector, setSector, priority, setPriority, archiveMode, setArchiveMode, sesion, onCreate, onUpdate, onRegisterProduction, onApprove, onDelete, onError }) {
   const initialViewState = useMemo(() => getTaskViewState(window.location.search), []);
   const initialTask = Number(new URLSearchParams(window.location.search).get("task")) || null;
   const [view, setView] = useState(initialViewState.view);
@@ -434,7 +459,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     {view === "calendar" && <TaskCalendar tasks={visible} onOpen={openTask} monthValue={calendarMonth} onMonthChange={setCalendarMonth}/>} {view === "clients" && <TasksByClient tasks={visible} onOpen={openTask}/>} {view !== "board" && visible.length === 0 && <div className="ros-no-results">{emptyMessage}</div>}
     {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
-  <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onArchive={archiveTask} onDelete={async (id) => { await onDelete(id); closeTask(); }} onCreateSubtask={createSubtask}/>
+  <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onApprove={onApprove} onArchive={archiveTask} onDelete={async (id) => { await onDelete(id); closeTask(); }} onCreateSubtask={createSubtask}/>
   {creatingStatus && <NewTaskModal users={users} clients={clients} initialStatus={creatingStatus} onClose={() => setCreatingStatus(null)} onCreate={async (draft) => { const created = await onCreate(draft); setCreatingStatus(null); openTask(created.id); }}/>}</>;
 }
 
@@ -643,6 +668,21 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       throw reason;
     }
   };
+  const approveTask = async (task) => {
+    try {
+      const updated = await apiRequest(`/api/tareas/${task.id}/aprobar-publicacion?workspace=render_os`, { method: "POST" });
+      const complete = { ...task, ...updated, cliente_nombre: task.cliente_nombre || null };
+      tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? complete : item);
+      setTasks((current) => current.map((item) => item.id === task.id ? complete : item));
+      try { await logActivity(task.id, "aprobó el material y lo envió a Oriana"); }
+      catch { /* La aprobación ya quedó guardada. */ }
+      notify("Tarea aprobada y enviada a Oriana.");
+      return complete;
+    } catch (reason) {
+      notify(reason.message || "No se pudo aprobar la tarea.", "error");
+      throw reason;
+    }
+  };
   const deleteTask = async (id) => {
     try {
       await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "DELETE" });
@@ -658,5 +698,5 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   const taskClients = isAdmin ? clients : [...new Map(tasks.filter((task) => task.cliente_id).map((task) => [String(task.cliente_id), { id: task.cliente_id, nombre: task.cliente_nombre }])).values()];
   const taskUsers = isAdmin ? users : [{ id: sesion?.usuario?.usuario, ...sesion?.usuario }];
   const retry = () => { setError(""); setLoading(true); setReloadKey((current) => current + 1); };
-  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={taskUsers} clients={taskClients} query={query} setQuery={setQuery} area={area} setArea={setArea} responsible={responsible} setResponsible={setResponsible} client={client} setClient={setClient} sector={sector} setSector={setSector} priority={priority} setPriority={setPriority} archiveMode={archiveMode} setArchiveMode={setArchiveMode} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onRegisterProduction={registerProduction} onDelete={deleteTask} onError={(message) => notify(message, "error")}/>}</main></div>;
+  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={taskUsers} clients={taskClients} query={query} setQuery={setQuery} area={area} setArea={setArea} responsible={responsible} setResponsible={setResponsible} client={client} setClient={setClient} sector={sector} setSector={setSector} priority={priority} setPriority={setPriority} archiveMode={archiveMode} setArchiveMode={setArchiveMode} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onRegisterProduction={registerProduction} onApprove={approveTask} onDelete={deleteTask} onError={(message) => notify(message, "error")}/>}</main></div>;
 }

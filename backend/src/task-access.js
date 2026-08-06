@@ -46,6 +46,9 @@ export function buildTaskReadAccessClause(auth, alias, placeholder, workspace) {
 export function canEmployeePatchTask(body = {}, { workspace, role } = {}) {
   const keys = Object.keys(body);
   if (keys.every((key) => ["estado", "expected_updated_at"].includes(key))) return true;
+  if (workspace === "render_os" && role === "produccion") {
+    return keys.every((key) => ["estado", "material_referencia", "expected_updated_at"].includes(key));
+  }
   if (workspace !== "render_os" && role === "produccion") {
     const allowedTopLevel = keys.every((key) => ["propiedades_extra", "expected_updated_at"].includes(key));
     const allowedMetadata = Object.keys(body.propiedades_extra || {}).every((key) => ["horario", "coordinada"].includes(key));

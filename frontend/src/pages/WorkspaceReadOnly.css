@@ -729,6 +729,12 @@
 .render-workspace .ros-people-options{border-color:#d8dbd1;box-shadow:0 14px 36px #20241824}
 .render-workspace .ros-people-options>button:hover,.render-workspace .ros-people-options>button.selected{background:#eff7db!important}
 .render-workspace button:focus-visible{outline-color:#a0d22388}
+.render-workspace .ros-approval-handoff{align-items:center;background:#202418;border:1px solid #343a2c;border-radius:12px;color:#f5f6ef;display:flex;gap:14px;justify-content:space-between;padding:14px 16px}
+.render-workspace .ros-approval-handoff>div{display:grid;gap:4px}.render-workspace .ros-approval-handoff strong{font-size:10px}.render-workspace .ros-approval-handoff span{color:#c9ccbf;font-size:8px;line-height:1.45}
+.render-workspace .ros-approval-handoff button{background:#b5fc00;border:0;border-radius:8px;color:#202418;font-size:8px;font-weight:800;padding:10px 13px;white-space:nowrap}.render-workspace .ros-approval-handoff button:disabled{opacity:.6}
+.render-workspace .ros-approved-banner{background:#eff7db;border:1px solid #d5e5af;border-radius:9px;color:#4e641d;font-size:8px;font-weight:700;padding:10px 12px}
+.render-workspace .ros-drive-help{color:#747a6f;display:block;font-size:7px;line-height:1.5;margin-top:6px}
+.render-workspace .ros-production-drive{background:#fff;border:1px solid #dfe4d5;border-radius:10px;display:grid;gap:8px;margin-top:10px;padding:11px}.render-workspace .ros-production-drive label{display:grid;gap:5px}.render-workspace .ros-production-drive span{color:#62695b;font-size:7px;font-weight:700}.render-workspace .ros-production-drive input{background:#fff;border:1px solid #d4d9cd;border-radius:7px;color:#202418;font-size:8px;min-height:40px;padding:8px;width:100%}.render-workspace .ros-production-drive button{background:#202418;border:0;border-radius:8px;color:#b5fc00;font-size:8px;font-weight:800;min-height:40px}.render-workspace .ros-production-drive button:disabled{opacity:.45}
 
 @media(max-width:700px){
   .render-workspace .ros-page{border-radius:12px}
@@ -741,4 +747,5 @@
   .render-workspace .ros-filter-bar{border-radius:0 0 11px 11px;margin:0 10px;padding:10px}
   .render-workspace .ros-board{margin-inline:10px;width:calc(100% - 20px)}
   .render-workspace .ros-column>div{border-radius:12px}
+  .render-workspace .ros-approval-handoff{align-items:stretch;flex-direction:column}.render-workspace .ros-approval-handoff button{min-height:44px;width:100%}
 }

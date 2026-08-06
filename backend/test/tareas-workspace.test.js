@@ -193,6 +193,58 @@ test(
       }));
       assert.equal(historicalComment.response.status, 404);
 
+      const visitResponse = await request("/tareas", jsonOptions("POST", {
+        titulo: `${marker} Visita producción`,
+        asignado_a: "QA",
+        cliente_id: null,
+        estado: "pendiente",
+        tipo_tarea: "produccion",
+        subtipo: "visita",
+        produccion_videos_previstos: 2,
+        material_referencia: "https://drive.google.com/qa-material",
+        workspace: "render_os",
+      }));
+      assert.equal(visitResponse.response.status, 201);
+      ids.push(visitResponse.body.id);
+      const productionRecord = await request(`/tareas/${visitResponse.body.id}/produccion/registros?workspace=render_os`, jsonOptions("POST", {
+        cantidad: 2,
+        fecha: "2026-08-06",
+        expected_updated_at: visitResponse.body.updated_at,
+      }));
+      assert.equal(productionRecord.response.status, 201);
+      const visitReview = await request(`/tareas/${visitResponse.body.id}?workspace=render_os`, jsonOptions("PATCH", {
+        estado: "en_revision",
+        expected_updated_at: productionRecord.body.updated_at,
+      }));
+      assert.equal(visitReview.response.status, 200);
+      let generatedEditingTask = null;
+      for (let attempt = 0; attempt < 20 && !generatedEditingTask; attempt += 1) {
+        const generated = await pool.query("SELECT id, asignado_a, material_referencia FROM tareas WHERE propiedades_extra->>'origen_visita_id' = $1", [String(visitResponse.body.id)]);
+        generatedEditingTask = generated.rows[0] || null;
+        if (!generatedEditingTask) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.equal(generatedEditingTask?.asignado_a, "Luciano");
+      assert.equal(generatedEditingTask?.material_referencia, "https://drive.google.com/qa-material");
+      ids.push(generatedEditingTask.id);
+      const generatedCount = await pool.query("SELECT count(*)::int AS total FROM tareas WHERE propiedades_extra->>'origen_visita_id' = $1", [String(visitResponse.body.id)]);
+      assert.equal(generatedCount.rows[0].total, 1);
+
+      const reviewVideoResponse = await request("/tareas", jsonOptions("POST", {
+        titulo: `${marker} Editar video`,
+        asignado_a: "QA",
+        estado: "en_revision",
+        tipo_tarea: "edicion",
+        workspace: "render_os",
+      }));
+      assert.equal(reviewVideoResponse.response.status, 201);
+      ids.push(reviewVideoResponse.body.id);
+      const approvedVideo = await request(`/tareas/${reviewVideoResponse.body.id}/aprobar-publicacion?workspace=render_os`, { method: "POST" });
+      assert.equal(approvedVideo.response.status, 200);
+      assert.equal(approvedVideo.body.asignado_a, "Oriana");
+      assert.equal(approvedVideo.body.propiedades_extra.revision_aprobada, true);
+      const duplicateApproval = await request(`/tareas/${reviewVideoResponse.body.id}/aprobar-publicacion?workspace=render_os`, { method: "POST" });
+      assert.equal(duplicateApproval.response.status, 409);
+
       const concurrentWinner = await request(`/tareas/${taskId}?workspace=render_os`, jsonOptions("PATCH", {
         titulo: `${marker} versión vigente`,
         expected_updated_at: restored.body.updated_at,

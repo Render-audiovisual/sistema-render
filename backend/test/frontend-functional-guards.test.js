@@ -90,6 +90,13 @@ test("el archivo de Tareas se presenta como una única acción secundaria", () =
   assert.doesNotMatch(workspaceSource, />Activas<\/button><button[^>]*>Archivadas</);
 });
 
+test("la revisión de videos permite al Líder entregarlos a Oriana", () => {
+  const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  assert.match(workspaceSource, /Aprobar y enviar a Oriana/);
+  assert.match(workspaceSource, /\/aprobar-publicacion\?workspace=render_os/);
+  assert.match(workspaceSource, /Pegá el enlace de la carpeta de Google Drive/);
+});
+
 test("el frontend no fabrica sesiones y adjunta el JWT a la API", () => {
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const mainSource = readFileSync(new URL("../../frontend/src/main.jsx", import.meta.url), "utf8");
