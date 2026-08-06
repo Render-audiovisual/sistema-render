@@ -106,7 +106,9 @@ test("el detalle de todas las tareas conserva guion, copy e indicaciones en un Ã
   assert.match(workspaceSource, /field: "aclaraciones"/);
   assert.match(workspaceSource, /copy_trabajo: String\(draft\.copy_trabajo/);
   assert.match(workspaceSource, /Los cambios se guardan Ãºnicamente al presionar/);
-  assert.match(workspaceStyles, /\.ros-task-main-column\{[^}]*margin:0;[^}]*max-width:none;[^}]*min-height:0;[^}]*padding:/);
+  assert.match(workspaceSource, /ros-task-document-properties/);
+  assert.match(workspaceStyles, /\.ros-task-main-column\{[^}]*margin:0(?: auto)?;[^}]*max-width:[^;]+;[^}]*min-height:0;[^}]*padding:/);
+  assert.match(workspaceStyles, /\.ros-task-layout\{display:block;/);
 });
 
 test("el frontend no fabrica sesiones y adjunta el JWT a la API", () => {
