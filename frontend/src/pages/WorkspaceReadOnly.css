@@ -401,6 +401,18 @@
 .render-workspace .ros-instructions-block details>summary{background:#f4f6f0;border:1px solid #dfe2d9;border-radius:8px;color:#52611e;cursor:pointer;font-size:11px;font-weight:700;padding:10px 12px}
 .render-workspace .ros-instructions-block details[open]>summary{margin-bottom:13px}
 .render-workspace .ros-instructions-block .ros-description{font-size:12px;line-height:1.75;margin:0;overflow-wrap:anywhere}
+.render-workspace .ros-scripts-block{border-color:#d8dec9}
+.render-workspace .ros-script-editor{display:grid;gap:9px}
+.render-workspace .ros-script-toolbar{align-items:center;background:#f2f4ed;border:1px solid #e0e3d9;border-radius:9px;display:flex;flex-wrap:wrap;gap:5px;padding:6px}
+.render-workspace .ros-script-toolbar button{background:#fff;border:1px solid #d8dcd1;border-radius:7px;color:#4d5448;cursor:pointer;font-size:9px;font-weight:700;min-height:32px;padding:6px 9px}
+.render-workspace .ros-script-toolbar button:hover{background:#eaf4d0;border-color:#c9db99;color:#344115}
+.render-workspace .ros-script-textarea{font-family:inherit;font-size:12px;line-height:1.7;min-height:300px;padding:14px;resize:vertical}
+.render-workspace .ros-script-editor>small{color:#7d8378;font-size:9px;line-height:1.45}
+.render-workspace .ros-script-content{background:#fafbf7;border-left:3px solid #a0d223;border-radius:0 9px 9px 0;color:#30342d;font-size:12px;line-height:1.75;overflow-wrap:anywhere;padding:14px 16px;white-space:pre-wrap}
+.render-workspace .ros-script-empty{align-items:flex-start;background:#fafbf7;border:1px dashed #d5dacd;border-radius:9px;color:#71776d;display:flex;gap:10px;padding:13px}
+.render-workspace .ros-script-empty>span{align-items:center;background:#edf4dc;border-radius:7px;color:#617535;display:flex;flex:0 0 28px;font-size:14px;height:28px;justify-content:center}
+.render-workspace .ros-script-empty strong{color:#4b5147;display:block;font-size:11px;margin-bottom:3px}
+.render-workspace .ros-script-empty p{font-size:10px;line-height:1.5;margin:0}
 .render-workspace .ros-material-grid{display:grid;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr))}
 .render-workspace .ros-material-grid .ros-file{background:#f8f9f5;min-width:0}
 .render-workspace .ros-material-grid .ros-file>span{background:#eaf2d6;color:#52611e}
@@ -441,6 +453,8 @@
   .render-workspace .ros-block-heading{align-items:flex-start}
   .render-workspace .ros-block-heading>small{padding-top:5px}
   .render-workspace .ros-material-grid{grid-template-columns:1fr}
+  .render-workspace .ros-script-toolbar button{flex:1 1 auto;min-height:38px}
+  .render-workspace .ros-script-textarea{font-size:12px;min-height:260px}
   .render-workspace .ros-more-information .ros-properties{grid-template-columns:1fr}
   .render-workspace .ros-edit-footer{bottom:-28px;margin:13px -12px -28px;padding:11px 12px}
 }

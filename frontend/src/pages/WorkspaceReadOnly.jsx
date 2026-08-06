@@ -49,6 +49,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [savingProductionDrive, setSavingProductionDrive] = useState(false);
   const [approving, setApproving] = useState(false);
   const archivePendingRef = useRef(false);
+  const scriptEditorRef = useRef(null);
   const isAdmin = sesion?.usuario?.rol === "admin";
 
   useEffect(() => {
@@ -122,9 +123,10 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
       resumen: String(draft.resumen || "").trim(),
       etiquetas: String(draft.etiquetas || "").split(",").map((item) => item.trim()).filter(Boolean),
       colaboradores: Array.isArray(draft.colaboradores) ? draft.colaboradores : [],
+      guiones: String(draft.guiones || "").trim(),
     };
     if (isProductionVisit) nextMetadata.produccion_videos_previstos = Math.max(0, Number(draft.produccion_videos_previstos) || 0);
-    const previousEditableMetadata = { resumen: metadata.resumen || "", etiquetas: tags, colaboradores: collaborators };
+    const previousEditableMetadata = { resumen: metadata.resumen || "", etiquetas: tags, colaboradores: collaborators, guiones: metadata.guiones || "" };
     if (isProductionVisit) previousEditableMetadata.produccion_videos_previstos = productionProgress.planned;
     if (JSON.stringify(nextMetadata) !== JSON.stringify(previousEditableMetadata)) {
       changes.propiedades_extra = nextMetadata;
@@ -140,8 +142,24 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const startEditing = () => {
-    setDraft({ ...task, resumen: metadata.resumen || "", etiquetas: tags.join(", "), colaboradores: collaborators, produccion_videos_previstos: productionProgress.planned || "" });
+    setDraft({ ...task, resumen: metadata.resumen || "", etiquetas: tags.join(", "), colaboradores: collaborators, guiones: metadata.guiones || "", produccion_videos_previstos: productionProgress.planned || "" });
     setEditing(true);
+  };
+
+  const insertScriptTemplate = (template) => {
+    const textarea = scriptEditorRef.current;
+    const current = String(draft.guiones || "");
+    const start = textarea?.selectionStart ?? current.length;
+    const end = textarea?.selectionEnd ?? current.length;
+    const separator = current && start === current.length && !current.endsWith("\n") ? "\n\n" : "";
+    const nextValue = `${current.slice(0, start)}${separator}${template}${current.slice(end)}`;
+    setDraft({ ...draft, guiones: nextValue });
+    requestAnimationFrame(() => {
+      if (!textarea) return;
+      const cursor = start + separator.length + template.length;
+      textarea.focus();
+      textarea.setSelectionRange(cursor, cursor);
+    });
   };
 
   const closeDetail = () => {
@@ -254,7 +272,19 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {Array.isArray(metadata.produccion_registros) && metadata.produccion_registros.length > 0 && <details><summary>Ver registros</summary>{metadata.produccion_registros.slice().reverse().map((record) => <div key={record.id || `${record.fecha}-${record.created_at}`}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario || "Equipo"}</span></div>)}</details>}
         </section>}
         <section className="ros-work-block ros-instructions-block"><div className="ros-block-heading"><div><span>02</span><h3>Qué tiene que incluir</h3></div><small>Indicaciones</small></div>{editing ? <textarea className="ros-detail-textarea" rows={8} value={draft.aclaraciones || ""} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/> : task.aclaraciones ? (longInstructions ? <details><summary>Ver indicaciones completas</summary><div className="ros-description">{renderizarTextoTarea(task.aclaraciones)}</div></details> : <div className="ros-description">{renderizarTextoTarea(task.aclaraciones)}</div>) : <p className="ros-empty-copy">Esta tarea todavía no tiene indicaciones cargadas.</p>}</section>
-        <section className="ros-work-block"><div className="ros-block-heading"><div><span>03</span><h3>{isProductionVisit ? "Material de producción" : "Material para trabajar"}</h3></div><small>Referencias</small></div>{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{!task.material_referencia && links.length === 0 && <p className="ros-empty-copy">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "No hay material ni referencias vinculadas."}</p>}</div>}</section>
+        <section className="ros-work-block ros-scripts-block">
+          <div className="ros-block-heading"><div><span>03</span><h3>Guiones</h3></div><small>Texto de trabajo</small></div>
+          {editing ? <div className="ros-script-editor">
+            <div className="ros-script-toolbar" aria-label="Ayudas para escribir el guion">
+              <button type="button" onClick={() => insertScriptTemplate("VIDEO 1\nIdea:\nGuion:\nReferencia:")}>+ Video</button>
+              <button type="button" onClick={() => insertScriptTemplate("ESCENA\nVisual:\nTexto / diálogo:")}>+ Escena</button>
+              <button type="button" onClick={() => insertScriptTemplate("• ")}>• Lista</button>
+            </div>
+            <textarea ref={scriptEditorRef} className="ros-detail-textarea ros-script-textarea" rows={14} value={draft.guiones || ""} placeholder={"VIDEO 1\nIdea principal…\n\nESCENA 1\nVisual…\nTexto o diálogo…"} onChange={(event) => setDraft({ ...draft, guiones: event.target.value })}/>
+            <small>Separá cada video o escena para que el equipo pueda leerlo rápidamente.</small>
+          </div> : metadata.guiones ? <div className="ros-script-content">{renderizarTextoTarea(metadata.guiones)}</div> : <div className="ros-script-empty"><span>✎</span><div><strong>Todavía no hay un guion cargado</strong><p>Al editar la tarea podés escribir acá los videos, escenas, diálogos y referencias.</p></div></div>}
+        </section>
+        <section className="ros-work-block"><div className="ros-block-heading"><div><span>04</span><h3>{isProductionVisit ? "Material de producción" : "Material para trabajar"}</h3></div><small>Referencias</small></div>{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{!task.material_referencia && links.length === 0 && <p className="ros-empty-copy">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "No hay material ni referencias vinculadas."}</p>}</div>}</section>
         {(origin || task.tarea_padre_id || subtasks.length > 0 || isAdmin) && <section className="ros-work-block"><h3>Organización del trabajo</h3>{(origin || task.tarea_padre_id) && <div className="ros-context-list">{origin && <a href={origin.href}><strong>{origin.label}</strong><span>{formatDate(origin.date)} · {origin.state || "Sin estado"}</span><b>↗</b></a>}{task.tarea_padre_id && <button type="button" onClick={() => onOpen(Number(task.tarea_padre_id))}><strong>Depende de la tarea #{task.tarea_padre_id}</strong><span>Estado: {task.tarea_padre_estado || "Sin datos"}</span></button>}</div>}<div className="ros-subtasks">{subtasks.map((subtask) => <button type="button" key={subtask.id} onClick={() => onOpen(subtask.id)}><span>{subtask.titulo}</span><b>{STATUSES.find((item) => item.id === subtask.estado)?.label || subtask.estado}</b></button>)}{subtasks.length === 0 && !isAdmin && <p className="ros-empty-copy">No hay subtareas cargadas.</p>}</div>{isAdmin && <div className="ros-subtask-create"><input value={subtaskTitle} placeholder="Agregar una subtarea" onChange={(event) => setSubtaskTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createSubtask(); }}/><button type="button" disabled={!subtaskTitle.trim() || creatingSubtask} onClick={createSubtask}>{creatingSubtask ? "Creando…" : "+ Agregar"}</button></div>}</section>}
         <section className="ros-work-block"><h3>Últimos avances</h3><div className="ros-comments ros-activity-feed"><article className="activity"><div><strong>Sistema</strong><time>{formatDateTime(task.created_at)}</time></div><p>Creó la tarea.</p></article>{activityComments.map((item) => <article className="activity" key={item.id}><div><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></div><p>{item.contenido.replace(/^\[Actividad\]\s*/, "")}</p></article>)}</div></section>
         <section className="ros-work-block"><h3>Comentarios</h3>
