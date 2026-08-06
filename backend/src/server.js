@@ -23,6 +23,7 @@ import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculat
 import { createWilsonRouter } from "./wilson-integration.js";
 import { runMigrations } from "./migrations.js";
 import { resolveUserRole } from "./user-roles.js";
+import { canRecordProduction, getProductionProgress, isProductionVisitTask, isValidProductionDate } from "./production-visits.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -1472,6 +1473,7 @@ router.post("/tareas", requireRole("admin"), async (req, res, next) => {
       etiquetas,
       colaboradores,
       workspace,
+      produccion_videos_previstos,
     } = req.body;
 
     if (!titulo || !asignado_a) {
@@ -1518,6 +1520,15 @@ router.post("/tareas", requireRole("admin"), async (req, res, next) => {
     }
     if (workspace === "render_os") {
       propiedadesExtra.workspace = "render_os";
+    }
+    const nuevaTarea = { titulo, subtipo, tipo_tarea, propiedades_extra: propiedadesExtra };
+    if (isProductionVisitTask(nuevaTarea)) {
+      const planned = Number(produccion_videos_previstos);
+      if (!Number.isInteger(planned) || planned <= 0) {
+        return res.status(400).json({ error: "Una visita de producción necesita indicar cuántos videos están previstos." });
+      }
+      propiedadesExtra.produccion_videos_previstos = planned;
+      propiedadesExtra.produccion_registros = [];
     }
 
     const result = await pool.query(
@@ -1645,6 +1656,22 @@ router.patch("/tareas/:id", async (req, res, next) => {
         return res.status(400).json({ error: "Prioridad inválida." });
       }
     }
+    if (esRenderOS && body.estado === "publicada") {
+      const visita = await pool.query(
+        `SELECT titulo, subtipo, tipo_tarea, propiedades_extra
+         FROM tareas
+         WHERE id = $1 AND propiedades_extra->>'workspace' = 'render_os'`,
+        [id],
+      );
+      if (visita.rows[0] && isProductionVisitTask(visita.rows[0])) {
+        const progress = getProductionProgress(visita.rows[0]);
+        if (progress.planned === 0 || progress.recorded < progress.planned) {
+          return res.status(400).json({ error: progress.planned === 0
+            ? "Indicá cuántos videos tiene la visita antes de finalizarla."
+            : `Todavía faltan ${progress.remaining} videos para finalizar esta visita.` });
+        }
+      }
+    }
     if (esRenderOS && Object.prototype.hasOwnProperty.call(body, "tarea_padre_id") && body.tarea_padre_id) {
       const padreRenderOS = await pool.query(
         `SELECT id FROM tareas
@@ -1761,6 +1788,87 @@ router.patch("/tareas/:id", async (req, res, next) => {
     }
   } catch (error) {
     next(error);
+  }
+});
+
+router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
+  if (!canRecordProduction(req.auth)) {
+    return res.status(403).json({ error: "Solo Germán o un Líder pueden registrar videos de una visita." });
+  }
+  const amount = Number(req.body.cantidad);
+  const date = String(req.body.fecha || "");
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return res.status(400).json({ error: "La cantidad debe ser un número entero mayor que cero." });
+  }
+  if (!isValidProductionDate(date)) {
+    return res.status(400).json({ error: "La fecha de grabación no es válida." });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const params = [req.params.id];
+    const access = buildTaskAccessClause(req.auth, "t", "$2");
+    if (access.value) params.push(access.value);
+    const currentResult = await client.query(
+      `SELECT t.id, t.titulo, t.asignado_a, t.cliente_id, t.estado, t.requiere_aprobacion,
+              t.propiedades_extra, to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
+              t.historia_id, t.publicacion_id, t.tipo_tarea, t.subtipo, t.prioridad,
+              t.aclaraciones, t.material_referencia, t.tarea_padre_id, t.created_at, t.updated_at
+       FROM tareas AS t
+       WHERE t.id = $1 AND t.propiedades_extra->>'workspace' = 'render_os'${access.sql}
+       FOR UPDATE`,
+      params,
+    );
+    const task = currentResult.rows[0];
+    if (!task) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Visita no encontrada o no asignada a este usuario." });
+    }
+    if (!isProductionVisitTask(task)) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "El registro de videos solo está disponible en tareas de visitas de producción." });
+    }
+    if (req.body.expected_updated_at && new Date(task.updated_at).getTime() !== new Date(req.body.expected_updated_at).getTime()) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ error: "La tarea cambió mientras registrabas los videos. Revisá la última versión." });
+    }
+    const progress = getProductionProgress(task);
+    if (progress.planned === 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Primero un Líder debe indicar cuántos videos están previstos en la visita." });
+    }
+    if (amount > progress.remaining) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: `Solo quedan ${progress.remaining} videos por registrar.` });
+    }
+    const records = Array.isArray(task.propiedades_extra?.produccion_registros)
+      ? task.propiedades_extra.produccion_registros
+      : [];
+    const record = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      cantidad: amount,
+      fecha: date,
+      usuario: getTaskActor(req.auth),
+      created_at: new Date().toISOString(),
+    };
+    const updated = await client.query(
+      `UPDATE tareas
+       SET propiedades_extra = propiedades_extra || $2::jsonb, updated_at = now()
+       WHERE id = $1
+       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra,
+                 to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id,
+                 publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia,
+                 tarea_padre_id, created_at, updated_at`,
+      [task.id, JSON.stringify({ produccion_registros: [...records, record], workspace: "render_os" })],
+    );
+    await client.query("COMMIT");
+    return res.status(201).json(updated.rows[0]);
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    return next(error);
+  } finally {
+    client.release();
   }
 });
 

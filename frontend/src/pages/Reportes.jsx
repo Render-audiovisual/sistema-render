@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
 import { pushUrlContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
-import { belongsToPerson, filterItemsByPeriod, groupFilmingTasksByClient } from "../shared/reports/report-utils.js";
+import { belongsToPerson, filterItemsByPeriod } from "../shared/reports/report-utils.js";
+import { groupProductionByClient } from "../features/render-os/utils/production-visits.js";
 
 export function ResumenEntregableEquipo({
   etiqueta,
@@ -119,7 +120,7 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
 
 function TarjetaFilmacionesGerman({ clientes }) {
   const totalGrabados = clientes.reduce((sum, item) => sum + item.grabados, 0);
-  const totalPlanificados = clientes.reduce((sum, item) => sum + item.total, 0);
+  const totalPlanificados = clientes.reduce((sum, item) => sum + item.objetivo, 0);
   return (
     <article className="report-employee-card report-filmmaker-card">
       <header className="report-filmmaker-header">
@@ -135,7 +136,7 @@ function TarjetaFilmacionesGerman({ clientes }) {
         {clientes.length > 0 ? clientes.map((cliente) => (
           <div className="report-filmmaker-location" key={cliente.nombre}>
             <span>{cliente.nombre}</span>
-            <div><strong>{cliente.grabados}</strong><small>grabados</small>{cliente.pendientes > 0 && <b>{cliente.pendientes} pendientes</b>}</div>
+            <div><strong>{cliente.grabados} / {cliente.objetivo}</strong><small>videos</small>{cliente.pendientes > 0 && <b>{cliente.pendientes} pendientes</b>}</div>
           </div>
         )) : <p>No hay filmaciones registradas para este período.</p>}
       </div>
@@ -149,6 +150,7 @@ export function ReportesEquipoPage() {
   const esVistaAdmin = usuarioSesion?.rol === "admin";
   const nombrePropio = usuarioSesion?.nombre;
   const [tareas, setTareas] = useState([]);
+  const [tareasRenderOs, setTareasRenderOs] = useState([]);
   const [historias, setHistorias] = useState([]);
   const [publicaciones, setPublicaciones] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
@@ -180,12 +182,14 @@ export function ReportesEquipoPage() {
       fetch("/api/historias").then((r) => r.json()),
       fetch("/api/publicaciones").then((r) => r.json()),
       fetch("/api/usuarios").then((r) => r.json()),
+      fetch("/api/tareas?workspace=render_os&limit=500").then((r) => r.json()),
     ])
-      .then(([t, h, p, u]) => {
+      .then(([t, h, p, u, tareasOs]) => {
         setTareas(Array.isArray(t) ? t : []);
         setHistorias(Array.isArray(h) ? h : []);
         setPublicaciones(Array.isArray(p) ? p : []);
         setUsuarios(Array.isArray(u) ? u : []);
+        setTareasRenderOs(Array.isArray(tareasOs) ? tareasOs : []);
         setError(null);
       })
       .catch((err) => {
@@ -425,9 +429,10 @@ export function ReportesEquipoPage() {
   const videosLuciano = resumenEntregas(
     tareasDelPeriodoPorPersona("Luciano").filter((t) => t.tipo_tarea === "edicion"),
   );
-  const filmacionesGerman = groupFilmingTasksByClient(
-    tareasDelPeriodoPorPersona("Germán"),
-    ESTADO_FINAL_TAREA,
+  const filmacionesGerman = groupProductionByClient(
+    tareasRenderOs.filter((tarea) => belongsToPerson(tarea.asignado_a, "Germán")),
+    rangoPeriodo.desde,
+    rangoPeriodo.hasta,
   );
   const historiasDelPeriodo = historias.filter((h) => enPeriodo(h.fecha_programada || ""));
   const reelsDelPeriodo = publicaciones.filter(
@@ -533,6 +538,8 @@ export function ReportesEquipoPage() {
                       ? <TarjetaFilmacionesGerman key={tarjeta.nombre} clientes={tarjeta.clientes}/>
                       : <TarjetaEntregablesEquipo key={tarjeta.nombre} {...tarjeta} />
                   ))
+                ) : belongsToPerson(nombrePropio, "Germán") ? (
+                  <TarjetaFilmacionesGerman clientes={filmacionesGerman}/>
                 ) : (
                   <>
                     <div style={{ ...cardStyle, background: filaPropia?.estadoObjetivo?.bg || "var(--surface-soft)" }}>

@@ -6,6 +6,7 @@ import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../f
 import { areaForTask, formatDate, formatDateTime, initials, personForTask } from "../features/render-os/utils/task-formatters.js";
 import { canRetryTaskUpdate, mergeRelatedTasks } from "../workspace-task-state.js";
 import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
+import { getProductionVisitProgress, isProductionVisitTask } from "../features/render-os/utils/production-visits.js";
 import { getHoyLocalISO } from "../shared/date/date-utils.js";
 import "./WorkspaceReadOnly.css";
 
@@ -28,7 +29,7 @@ function Toast({ toast, onClose }) {
   return <button type="button" className={`ros-toast ${toast.type || "success"}`} onClick={onClose}><span>{toast.type === "error" ? "!" : "✓"}</span>{toast.message}</button>;
 }
 
-function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onArchive, onDelete, onCreateSubtask }) {
+function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onArchive, onDelete, onCreateSubtask }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task || {});
   const [comments, setComments] = useState([]);
@@ -41,6 +42,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [productionAmount, setProductionAmount] = useState(1);
+  const [productionDate, setProductionDate] = useState(getHoyLocalISO());
+  const [registeringProduction, setRegisteringProduction] = useState(false);
   const archivePendingRef = useRef(false);
   const isAdmin = sesion?.usuario?.rol === "admin";
 
@@ -52,6 +56,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     setCommentError("");
     setSubtaskTitle("");
     setConfirmDelete(false);
+    setProductionAmount(1);
+    setProductionDate(getHoyLocalISO());
     apiJson(`/api/tareas/${task.id}/comentarios?workspace=render_os`)
       .then(setComments)
       .catch((reason) => setCommentError(reason.message || "No se pudieron cargar los comentarios."));
@@ -69,6 +75,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const person = personForTask(task, users);
   const status = STATUSES.find((item) => item.id === task.estado) || { label: task.estado, color: "#777" };
   const metadata = task.propiedades_extra || {};
+  const isProductionVisit = isProductionVisitTask(task);
+  const productionProgress = getProductionVisitProgress(task);
+  const canRegisterProduction = isAdmin || String(sesion?.usuario?.nombre || sesion?.usuario?.usuario || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().startsWith("german");
   const isArchived = metadata.archivada_render_os === true;
   const tags = Array.isArray(metadata.etiquetas) ? metadata.etiquetas : [];
   const collaborators = Array.isArray(metadata.colaboradores) ? metadata.colaboradores : [];
@@ -93,7 +102,10 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
       etiquetas: String(draft.etiquetas || "").split(",").map((item) => item.trim()).filter(Boolean),
       colaboradores: Array.isArray(draft.colaboradores) ? draft.colaboradores : [],
     };
-    if (JSON.stringify(nextMetadata) !== JSON.stringify({ resumen: metadata.resumen || "", etiquetas: tags, colaboradores: collaborators })) {
+    if (isProductionVisit) nextMetadata.produccion_videos_previstos = Math.max(0, Number(draft.produccion_videos_previstos) || 0);
+    const previousEditableMetadata = { resumen: metadata.resumen || "", etiquetas: tags, colaboradores: collaborators };
+    if (isProductionVisit) previousEditableMetadata.produccion_videos_previstos = productionProgress.planned;
+    if (JSON.stringify(nextMetadata) !== JSON.stringify(previousEditableMetadata)) {
       changes.propiedades_extra = nextMetadata;
     }
     try {
@@ -107,7 +119,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const startEditing = () => {
-    setDraft({ ...task, resumen: metadata.resumen || "", etiquetas: tags.join(", "), colaboradores: collaborators });
+    setDraft({ ...task, resumen: metadata.resumen || "", etiquetas: tags.join(", "), colaboradores: collaborators, produccion_videos_previstos: productionProgress.planned || "" });
     setEditing(true);
   };
 
@@ -165,6 +177,17 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     }
   };
 
+  const registerProduction = async () => {
+    if (registeringProduction || productionProgress.remaining <= 0) return;
+    setRegisteringProduction(true);
+    try {
+      await onRegisterProduction(task, Number(productionAmount), productionDate);
+      setProductionAmount(1);
+    } finally {
+      setRegisteringProduction(false);
+    }
+  };
+
   return <div className="ros-drawer-backdrop" onClick={closeDetail}>
     <aside className="ros-drawer" onClick={(event) => event.stopPropagation()}>
       <header><AreaBadge task={task}/><button onClick={closeDetail}>×</button></header>
@@ -174,13 +197,25 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         <div className="ros-operational-pill">● Operativa · cambios reales</div>
         {esperandoMaterial(task) && <div className="ros-warning-banner">Esperando material: la tarea de origen todavía no está terminada.</div>}
         <div className={`ros-properties ${editing ? "editing" : ""}`}>
-          <label><span>Estado</span>{editing ? <select value={draft.estado || "pendiente"} onChange={(event) => setDraft({ ...draft, estado: event.target.value })}>{STATUSES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select> : <strong><i style={{ color: status.color }}>●</i>{status.label}</strong>}</label>
+          <label><span>Estado</span>{editing ? <select value={draft.estado || "pendiente"} onChange={(event) => setDraft({ ...draft, estado: event.target.value })}>{STATUSES.map((item) => <option key={item.id} value={item.id} disabled={isProductionVisit && item.id === "publicada" && !productionProgress.complete}>{item.label}</option>)}</select> : <strong><i style={{ color: status.color }}>●</i>{status.label}</strong>}</label>
           <label><span>Responsable</span>{editing ? <select value={draft.asignado_a || ""} onChange={(event) => setDraft({ ...draft, asignado_a: event.target.value })}>{users.map((user) => <option key={user.id} value={user.nombre}>{user.nombre} · @{user.usuario}{user.email_notificaciones ? ` · ${user.email_notificaciones}` : ""}</option>)}</select> : <strong><Avatar person={person} name={task.asignado_a}/>{task.asignado_a || "Sin asignar"}</strong>}</label>
           <label><span>Cliente</span>{editing ? <select value={draft.cliente_id || ""} onChange={(event) => setDraft({ ...draft, cliente_id: event.target.value ? Number(event.target.value) : "" })}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select> : <strong>{task.cliente_nombre || "Sin cliente"}</strong>}</label>
           <label><span>Vencimiento</span>{editing ? <input type="date" value={draft.fecha_vencimiento || ""} onChange={(event) => setDraft({ ...draft, fecha_vencimiento: event.target.value })}/> : <strong>{formatDate(task.fecha_vencimiento)}</strong>}</label>
           <label><span>Prioridad</span>{editing ? <select value={draft.prioridad || "media"} onChange={(event) => setDraft({ ...draft, prioridad: event.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select> : <strong>{task.prioridad || "Media"}</strong>}</label>
           <label><span>Sector</span>{editing ? <select value={draft.tipo_tarea || ""} onChange={(event) => setDraft({ ...draft, tipo_tarea: event.target.value })}><option value="">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select> : <strong>{task.tipo_tarea || "Sin definir"}</strong>}</label>
         </div>
+        {isProductionVisit && <section className="ros-production-visit">
+          <header><div><span>VISITA DE PRODUCCIÓN</span><strong>{productionProgress.recorded} de {productionProgress.planned || "—"} videos grabados</strong></div>{productionProgress.complete ? <b>Completa</b> : <b className="pending">Faltan {productionProgress.remaining || "—"}</b>}</header>
+          <div className="ros-production-progress"><i style={{ width: `${productionProgress.planned ? Math.min(100, (productionProgress.recorded / productionProgress.planned) * 100) : 0}%` }}/></div>
+          {editing && isAdmin && <label className="ros-production-planned"><span>Videos previstos</span><input type="number" min="1" step="1" value={draft.produccion_videos_previstos || ""} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}
+          {!editing && canRegisterProduction && productionProgress.planned > 0 && !productionProgress.complete && <div className="ros-production-entry">
+            <label><span>¿Cuántos grabaste hoy?</span><div><button type="button" onClick={() => setProductionAmount((current) => Math.max(1, Number(current) - 1))}>−</button><input inputMode="numeric" type="number" min="1" max={productionProgress.remaining} value={productionAmount} onChange={(event) => setProductionAmount(Math.min(productionProgress.remaining, Math.max(1, Number(event.target.value) || 1)))}/><button type="button" onClick={() => setProductionAmount((current) => Math.min(productionProgress.remaining, Number(current) + 1))}>+</button></div></label>
+            <label><span>Fecha de grabación</span><input type="date" value={productionDate} max={getHoyLocalISO()} onChange={(event) => setProductionDate(event.target.value)}/></label>
+            <button type="button" disabled={registeringProduction || !productionDate} onClick={registerProduction}>{registeringProduction ? "Guardando…" : `Registrar ${productionAmount} video${Number(productionAmount) === 1 ? "" : "s"}`}</button>
+          </div>}
+          {productionProgress.planned === 0 && !editing && <p>Un Líder debe editar esta visita e indicar cuántos videos están previstos.</p>}
+          {Array.isArray(metadata.produccion_registros) && metadata.produccion_registros.length > 0 && <details><summary>Ver registros</summary>{metadata.produccion_registros.slice().reverse().map((record) => <div key={record.id || `${record.fecha}-${record.created_at}`}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario || "Equipo"}</span></div>)}</details>}
+        </section>}
         {person && <div className="ros-person-card"><Avatar person={person}/><div><strong>{person.nombre}</strong><span>@{person.usuario} · {getRolLabel(person.rol)}</span><small>{person.email_notificaciones || "Sin correo de notificaciones"}</small></div></div>}
         {collaborators.length > 0 && !editing && <div className="ros-collaborators"><strong>Colaboran</strong><span>{collaborators.join(", ")}</span></div>}
         {editing && <div className="ros-edit-extras"><label><span>Subtipo</span><input value={draft.subtipo || ""} onChange={(event) => setDraft({ ...draft, subtipo: event.target.value })}/></label><label><span>Resumen corto</span><input value={draft.resumen || ""} onChange={(event) => setDraft({ ...draft, resumen: event.target.value })}/></label><label><span>Etiquetas</span><input value={draft.etiquetas || ""} onChange={(event) => setDraft({ ...draft, etiquetas: event.target.value })}/></label><fieldset><legend>Colaboradores</legend>{users.filter((user) => user.nombre !== draft.asignado_a).map((user) => <label key={user.id}><input type="checkbox" checked={(draft.colaboradores || []).includes(user.nombre)} onChange={(event) => setDraft({ ...draft, colaboradores: event.target.checked ? [...(draft.colaboradores || []), user.nombre] : (draft.colaboradores || []).filter((name) => name !== user.nombre) })}/><span>{user.nombre}</span></label>)}</fieldset></div>}
@@ -224,7 +259,7 @@ function TaskPeoplePicker({ users, primary, collaborators, onChange }) {
 }
 
 function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, onCreate }) {
-  const [draft, setDraft] = useState({ titulo: "", asignado_a: "", cliente_id: "", estado: initialStatus, tipo_tarea: "", subtipo: "", prioridad: "media", fecha_vencimiento: "", aclaraciones: "", material_referencia: "", resumen: "", etiquetas: "", colaboradores: [] });
+  const [draft, setDraft] = useState({ titulo: "", asignado_a: "", cliente_id: "", estado: initialStatus, tipo_tarea: "", subtipo: "", prioridad: "media", fecha_vencimiento: "", aclaraciones: "", material_referencia: "", resumen: "", etiquetas: "", colaboradores: [], produccion_videos_previstos: "" });
   const [saving, setSaving] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   useEffect(() => {
@@ -246,6 +281,7 @@ function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, on
         material_referencia: draft.material_referencia || null,
         resumen: draft.resumen.trim() || null,
         etiquetas: draft.etiquetas.split(",").map((item) => item.trim()).filter(Boolean),
+        produccion_videos_previstos: isProductionVisitTask(draft) ? Number(draft.produccion_videos_previstos) : undefined,
       });
     } catch {
       // El modal permanece abierto y el contenedor muestra el error.
@@ -262,7 +298,7 @@ function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, on
     <TaskPeoplePicker users={users} primary={draft.asignado_a} collaborators={draft.colaboradores} onChange={({ primary, collaborators }) => setDraft({ ...draft, asignado_a: primary, colaboradores: collaborators })}/>
     <div className="wide ros-quick-grid"><label><span>Cliente</span><select value={draft.cliente_id} onChange={(event) => setDraft({ ...draft, cliente_id: event.target.value })}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label><label><span>Fecha</span><input type="date" value={draft.fecha_vencimiento} onChange={(event) => setDraft({ ...draft, fecha_vencimiento: event.target.value })}/></label><label><span>Prioridad</span><select value={draft.prioridad} onChange={(event) => setDraft({ ...draft, prioridad: event.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select></label></div>
     <button className="wide ros-more-details" type="button" aria-expanded={showDetails} onClick={() => setShowDetails((current) => !current)}><span>{showDetails ? "−" : "+"}</span>{showDetails ? "Ocultar detalles" : "Agregar indicaciones, material o colaboradores"}</button>
-    {showDetails && <div className="wide ros-optional-fields"><label><span>Sector</span><select value={draft.tipo_tarea} onChange={(event) => setDraft({ ...draft, tipo_tarea: event.target.value })}><option value="">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Tipo de pieza</span><input placeholder="Reel, carrusel, visita…" value={draft.subtipo} onChange={(event) => setDraft({ ...draft, subtipo: event.target.value })}/></label><label className="wide"><span>Resumen corto</span><input value={draft.resumen} placeholder="Resultado esperado" onChange={(event) => setDraft({ ...draft, resumen: event.target.value })}/></label><label className="wide"><span>Indicaciones</span><textarea rows={3} placeholder="Datos necesarios para poder resolverla" value={draft.aclaraciones} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/></label><label className="wide"><span>Material o enlace</span><input placeholder="https://…" value={draft.material_referencia} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/></label><label className="wide"><span>Etiquetas</span><input placeholder="Urgente, web, corrección" value={draft.etiquetas} onChange={(event) => setDraft({ ...draft, etiquetas: event.target.value })}/></label></div>}
+    {showDetails && <div className="wide ros-optional-fields"><label><span>Sector</span><select value={draft.tipo_tarea} onChange={(event) => setDraft({ ...draft, tipo_tarea: event.target.value })}><option value="">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Tipo de pieza</span><input placeholder="Reel, carrusel, visita…" value={draft.subtipo} onChange={(event) => setDraft({ ...draft, subtipo: event.target.value })}/></label>{isProductionVisitTask(draft) && <label className="wide ros-visit-planned-field"><span>¿Cuántos videos incluye esta visita? *</span><input type="number" min="1" step="1" required value={draft.produccion_videos_previstos} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}<label className="wide"><span>Resumen corto</span><input value={draft.resumen} placeholder="Resultado esperado" onChange={(event) => setDraft({ ...draft, resumen: event.target.value })}/></label><label className="wide"><span>Indicaciones</span><textarea rows={3} placeholder="Datos necesarios para poder resolverla" value={draft.aclaraciones} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/></label><label className="wide"><span>Material o enlace</span><input placeholder="https://…" value={draft.material_referencia} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/></label><label className="wide"><span>Etiquetas</span><input placeholder="Urgente, web, corrección" value={draft.etiquetas} onChange={(event) => setDraft({ ...draft, etiquetas: event.target.value })}/></label></div>}
     <footer><button type="button" onClick={closeModal}>Cancelar</button><button className="primary" type="submit" disabled={saving || !draft.titulo.trim() || !draft.asignado_a}>{saving ? "Creando…" : "Crear tarea"}</button></footer>
   </form></section></div>;
 }
@@ -307,7 +343,7 @@ function TasksByClient({ tasks, onOpen }) {
   return <div className="ros-project-grid">{groups.map((group) => <section className="ros-project-card" key={group.name}><header><div><span>{initials(group.name)}</span><strong>{group.name}</strong></div><small>{group.tasks.length} tareas</small></header><div>{group.tasks.map((task) => <button type="button" key={task.id} onClick={() => onOpen(task.id)}><span>{task.titulo}</span><b>{STATUSES.find((item) => item.id === task.estado)?.label || task.estado}</b><small>{task.asignado_a} · {formatDate(task.fecha_vencimiento)}</small></button>)}</div></section>)}</div>;
 }
 
-function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, responsible, setResponsible, client, setClient, sector, setSector, priority, setPriority, archiveMode, setArchiveMode, sesion, onCreate, onUpdate, onDelete, onError }) {
+function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, responsible, setResponsible, client, setClient, sector, setSector, priority, setPriority, archiveMode, setArchiveMode, sesion, onCreate, onUpdate, onRegisterProduction, onDelete, onError }) {
   const initialViewState = useMemo(() => getTaskViewState(window.location.search), []);
   const initialTask = Number(new URLSearchParams(window.location.search).get("task")) || null;
   const [view, setView] = useState(initialViewState.view);
@@ -405,7 +441,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     {view === "calendar" && <TaskCalendar tasks={visible} onOpen={openTask} monthValue={calendarMonth} onMonthChange={setCalendarMonth}/>} {view === "clients" && <TasksByClient tasks={visible} onOpen={openTask}/>} {view !== "board" && visible.length === 0 && <div className="ros-no-results">{emptyMessage}</div>}
     {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
-  <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onArchive={archiveTask} onDelete={async (id) => { await onDelete(id); closeTask(); }} onCreateSubtask={createSubtask}/>
+  <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onArchive={archiveTask} onDelete={async (id) => { await onDelete(id); closeTask(); }} onCreateSubtask={createSubtask}/>
   {creatingStatus && <NewTaskModal users={users} clients={clients} initialStatus={creatingStatus} onClose={() => setCreatingStatus(null)} onCreate={async (draft) => { const created = await onCreate(draft); setCreatingStatus(null); openTask(created.id); }}/>}</>;
 }
 
@@ -588,6 +624,32 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       throw reason;
     }
   };
+  const registerProduction = async (task, cantidad, fecha) => {
+    try {
+      const updated = await apiRequest(`/api/tareas/${task.id}/produccion/registros?workspace=render_os`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cantidad, fecha, expected_updated_at: task.updated_at || undefined }),
+      });
+      const complete = { ...task, ...updated, cliente_nombre: task.cliente_nombre || null };
+      tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? complete : item);
+      setTasks((current) => current.map((item) => item.id === task.id ? complete : item));
+      notify(`${cantidad} video${cantidad === 1 ? "" : "s"} registrado${cantidad === 1 ? "" : "s"} en la visita.`);
+      return complete;
+    } catch (reason) {
+      if (reason.status === 409) {
+        try {
+          const currentTask = await apiTaskById(task.id);
+          tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? currentTask : item);
+          setTasks((current) => current.map((item) => item.id === task.id ? currentTask : item));
+        } catch {
+          // Se conserva la tarea actual si la recarga también falla.
+        }
+      }
+      notify(reason.message || "No se pudo registrar la grabación.", "error");
+      throw reason;
+    }
+  };
   const deleteTask = async (id) => {
     try {
       await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "DELETE" });
@@ -603,5 +665,5 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   const taskClients = isAdmin ? clients : [...new Map(tasks.filter((task) => task.cliente_id).map((task) => [String(task.cliente_id), { id: task.cliente_id, nombre: task.cliente_nombre }])).values()];
   const taskUsers = isAdmin ? users : [{ id: sesion?.usuario?.usuario, ...sesion?.usuario }];
   const retry = () => { setError(""); setLoading(true); setReloadKey((current) => current + 1); };
-  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={taskUsers} clients={taskClients} query={query} setQuery={setQuery} area={area} setArea={setArea} responsible={responsible} setResponsible={setResponsible} client={client} setClient={setClient} sector={sector} setSector={setSector} priority={priority} setPriority={setPriority} archiveMode={archiveMode} setArchiveMode={setArchiveMode} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onDelete={deleteTask} onError={(message) => notify(message, "error")}/>}</main></div>;
+  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={taskUsers} clients={taskClients} query={query} setQuery={setQuery} area={area} setArea={setArea} responsible={responsible} setResponsible={setResponsible} client={client} setClient={setClient} sector={sector} setSector={setSector} priority={priority} setPriority={setPriority} archiveMode={archiveMode} setArchiveMode={setArchiveMode} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onRegisterProduction={registerProduction} onDelete={deleteTask} onError={(message) => notify(message, "error")}/>}</main></div>;
 }
