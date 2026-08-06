@@ -110,6 +110,9 @@ test("el detalle de todas las tareas conserva guion, copy e indicaciones en un √
   assert.match(workspaceSource, /ros-activity-history/);
   assert.match(workspaceSource, /Ver historial/);
   assert.doesNotMatch(workspaceSource, /ros-latest-progress/);
+  assert.match(workspaceSource, /Acciones de tarea/);
+  assert.match(workspaceSource, /Sin material vinculado/);
+  assert.doesNotMatch(workspaceSource, /Todav√≠a no hay comentarios del equipo/);
   assert.match(workspaceStyles, /\.ros-task-main-column\{[^}]*margin:0(?: auto)?;[^}]*max-width:[^;]+;[^}]*min-height:0;[^}]*padding:/);
   assert.match(workspaceStyles, /\.ros-task-layout\{display:block;/);
 });

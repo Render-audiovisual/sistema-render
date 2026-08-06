@@ -369,7 +369,6 @@
 .render-workspace .ros-block-heading h3{color:#343931;font-size:12px;letter-spacing:0;margin:0;text-transform:none}
 .render-workspace .ros-block-heading>small{color:#8a8f85;font-size:9px;font-weight:700}
 .render-workspace .ros-task-document-kind{align-items:center;display:flex;gap:8px;margin-bottom:17px}
-.render-workspace .ros-task-document-kind>span{background:#edf7d5;border:1px solid #d4e8a4;border-radius:7px;color:#586b2b;font-size:10px;font-weight:700;padding:6px 9px}
 .render-workspace .ros-task-document-heading{align-items:flex-start;display:flex;gap:16px;margin-bottom:22px}
 .render-workspace .ros-task-document-heading h2{color:#202418;font-size:clamp(27px,4vw,38px);letter-spacing:-.035em;line-height:1.14;margin:0}
 .render-workspace .ros-task-document-heading .ros-title-input{font-size:28px;margin:0;min-width:0}
@@ -431,6 +430,7 @@
 .render-workspace .ros-material-grid{display:grid;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr))}
 .render-workspace .ros-material-grid .ros-file{background:#f8f9f5;min-width:0}
 .render-workspace .ros-material-grid .ros-file>span{background:#eaf2d6;color:#52611e}
+.render-workspace .ros-compact-empty{color:#8a9085;font-size:9px;margin:0;padding:4px 0}
 .render-workspace .ros-context-list{margin-bottom:8px}
 .render-workspace .ros-subtasks button{grid-template-columns:1fr auto}
 .render-workspace .ros-activity-feed{max-height:260px;overflow:auto}
@@ -471,6 +471,12 @@
 .render-workspace .ros-edit-footer{background:#f5f6ef;border-top:1px solid #daddd3;bottom:0;margin:0;padding:12px 24px;position:sticky;z-index:3}
 .render-workspace .ros-danger-zone{margin-top:0;padding:12px}
 .render-workspace .ros-danger-zone>div{display:flex;flex-wrap:wrap;gap:6px}
+.render-workspace .ros-task-admin-actions{border-top:1px solid #e5e8df;padding-top:10px}
+.render-workspace .ros-task-admin-actions>summary{color:#858b80;cursor:pointer;font-size:9px;list-style:none;padding:8px 0}
+.render-workspace .ros-task-admin-actions>summary::-webkit-details-marker{display:none}
+.render-workspace .ros-task-admin-actions>summary::before{content:"⋯";font-size:14px;margin-right:8px}
+.render-workspace .ros-task-admin-actions[open]>summary{color:#6e3d39}
+.render-workspace .ros-task-admin-actions .ros-danger-zone{margin-top:6px}
 
 @media(max-width:640px){
   .render-workspace .ros-task-workspace-header{min-height:58px;padding:10px 9px}
