@@ -9146,6 +9146,7 @@ tr:hover .sheet-row-actions {
 
 @media (max-width:980px) {
   .sidebar{background:#171a13}
+  .sidebar-drawer{background:#171a13}
   .sidebar-menu-toggle{background:#292c26;border-color:rgba(181,252,0,.2)}
   .sidebar-menu-toggle:hover,.sidebar-menu-toggle:focus-visible{background:#34382f;border-color:rgba(181,252,0,.4)}
   .sidebar-backdrop{background:rgba(23,26,19,.54)}
