@@ -24,6 +24,7 @@ import { createWilsonRouter } from "./wilson-integration.js";
 import { runMigrations } from "./migrations.js";
 import { resolveUserRole } from "./user-roles.js";
 import { canRecordProduction, getProductionProgress, isProductionVisitTask, isValidProductionDate } from "./production-visits.js";
+import { getTaskSearchTerms } from "./task-search.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -2033,15 +2034,15 @@ router.get("/tareas", async (req, res, next) => {
       paramCount++;
     }
 
-    if (q && String(q).trim()) {
-      query += ` AND (
-        t.titulo ILIKE $${paramCount}
-        OR COALESCE(c.nombre, '') ILIKE $${paramCount}
-        OR COALESCE(t.asignado_a, '') ILIKE $${paramCount}
-        OR COALESCE(t.propiedades_extra->>'resumen', '') ILIKE $${paramCount}
-        OR COALESCE(t.propiedades_extra->'colaboradores', '[]'::jsonb)::text ILIKE $${paramCount}
-      )`;
-      params.push(`%${String(q).trim()}%`);
+    for (const term of getTaskSearchTerms(q)) {
+      query += ` AND CONCAT_WS(' ',
+        t.titulo,
+        COALESCE(c.nombre, ''),
+        COALESCE(t.asignado_a, ''),
+        COALESCE(t.propiedades_extra->>'resumen', ''),
+        COALESCE(t.propiedades_extra->'colaboradores', '[]'::jsonb)::text
+      ) ILIKE $${paramCount}`;
+      params.push(`%${term}%`);
       paramCount++;
     }
 

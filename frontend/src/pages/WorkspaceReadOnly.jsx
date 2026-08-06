@@ -417,7 +417,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     void onUpdate(task.id, { estado: status }, `movió la tarea de ${STATUSES.find((item) => item.id === task.estado)?.label || task.estado} a ${STATUSES.find((item) => item.id === status)?.label || status}`).catch(() => {});
   };
   const createSubtask = async (parent, title) => onCreate({ titulo: title, asignado_a: parent.asignado_a, cliente_id: parent.cliente_id || null, estado: "pendiente", tipo_tarea: parent.tipo_tarea || null, subtipo: parent.subtipo || null, prioridad: parent.prioridad || "media", fecha_vencimiento: parent.fecha_vencimiento || null, tarea_padre_id: parent.id });
-  const clearFilters = () => { setResponsible("all"); setClient("all"); setSector("all"); setPriority("all"); setArea("all"); };
+  const clearFilters = () => { setQuery(""); setResponsible("all"); setClient("all"); setSector("all"); setPriority("all"); setArea("all"); };
 
   const archiveTask = async (task, archived) => {
     await onUpdate(task.id, { propiedades_extra: { archivada_render_os: archived } }, archived ? "archivó la tarea" : "restauró la tarea");

@@ -142,6 +142,8 @@ test(
       assert.deepEqual(byCollaborator.body.map((item) => item.id), [taskId]);
       const bySearch = await request("/tareas?workspace=render_os&q=principal&limit=10");
       assert.deepEqual(bySearch.body.map((item) => item.id), [taskId]);
+      const byCombinedSearch = await request(`/tareas?workspace=render_os&q=${encodeURIComponent(`${marker} principal QA`)}&limit=10`);
+      assert.deepEqual(byCombinedSearch.body.map((item) => item.id), [taskId]);
       const byArea = await request("/tareas?workspace=render_os&area=produccion&limit=10");
       assert.deepEqual(byArea.body.map((item) => item.id), [secondResponse.body.id]);
 
