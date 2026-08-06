@@ -97,6 +97,16 @@ test("la revisión de videos permite al Líder entregarlos a Oriana", () => {
   assert.match(workspaceSource, /Pegá el enlace de la carpeta de Google Drive/);
 });
 
+test("el detalle de todas las tareas conserva guion, copy e indicaciones en un único espacio", () => {
+  const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  assert.match(workspaceSource, /Contenido de trabajo/);
+  assert.match(workspaceSource, /metadataField: "guiones"/);
+  assert.match(workspaceSource, /metadataField: "copy_trabajo"/);
+  assert.match(workspaceSource, /field: "aclaraciones"/);
+  assert.match(workspaceSource, /copy_trabajo: String\(draft\.copy_trabajo/);
+  assert.match(workspaceSource, /Los cambios se guardan únicamente al presionar/);
+});
+
 test("el frontend no fabrica sesiones y adjunta el JWT a la API", () => {
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const mainSource = readFileSync(new URL("../../frontend/src/main.jsx", import.meta.url), "utf8");
