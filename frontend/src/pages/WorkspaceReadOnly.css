@@ -683,6 +683,9 @@
   padding:12px;
 }
 .render-workspace .ros-task-card:hover{border-color:var(--ros-lime-muted);box-shadow:0 8px 20px #20241816}
+.render-workspace .ros-task-card.can-move{cursor:grab}
+.render-workspace .ros-task-card.can-move:active{cursor:grabbing}
+.render-workspace .ros-task-card.view-only{cursor:pointer}
 .render-workspace .ros-task-card h3{color:var(--ros-graphite);font-size:10px;font-weight:700}
 .render-workspace .ros-task-card>p,.render-workspace .ros-task-card footer>span,.render-workspace .ros-task-card footer>b{color:#777d72}
 .render-workspace .ros-area-badge{background:#eff7db;border-color:#dce8bd;color:#52651d}

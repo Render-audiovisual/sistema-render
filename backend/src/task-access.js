@@ -2,14 +2,23 @@ export function getTaskActor(auth = {}) {
   return String(auth.nombre || auth.usuario || "").trim();
 }
 
+export function getTaskActorAliases(auth = {}) {
+  return [...new Set([auth.nombre, auth.usuario]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean))];
+}
+
 export function buildTaskAccessClause(auth, alias, placeholder) {
   if (auth?.rol === "admin") return { sql: "", value: null };
-  const actor = getTaskActor(auth);
-  if (!actor) return { sql: " AND FALSE", value: null };
-  const normalizedActor = `translate(lower(${placeholder}), 'áéíóúüñ', 'aeiouun')`;
+  const actors = getTaskActorAliases(auth);
+  if (actors.length === 0) return { sql: " AND FALSE", value: null };
+  const normalizedActors = `(
+    SELECT translate(lower(actor.nombre), 'áéíóúüñ', 'aeiouun')
+    FROM jsonb_array_elements_text(${placeholder}::jsonb) AS actor(nombre)
+  )`;
   return {
     sql: ` AND (
-      translate(lower(${alias}.asignado_a), 'áéíóúüñ', 'aeiouun') = ${normalizedActor}
+      translate(lower(${alias}.asignado_a), 'áéíóúüñ', 'aeiouun') IN ${normalizedActors}
       OR EXISTS (
         SELECT 1
         FROM jsonb_array_elements_text(
@@ -19,10 +28,10 @@ export function buildTaskAccessClause(auth, alias, placeholder) {
             ELSE '[]'::jsonb
           END
         ) AS colaborador(nombre)
-        WHERE translate(lower(colaborador.nombre), 'áéíóúüñ', 'aeiouun') = ${normalizedActor}
+        WHERE translate(lower(colaborador.nombre), 'áéíóúüñ', 'aeiouun') IN ${normalizedActors}
       )
     )`,
-    value: actor,
+    value: JSON.stringify(actors),
   };
 }
 

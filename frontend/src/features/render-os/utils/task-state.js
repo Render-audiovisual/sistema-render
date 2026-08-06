@@ -12,6 +12,26 @@ function sameValue(left, right) {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
+function normalizeActor(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim()
+    .toLowerCase();
+}
+
+export function canUserMoveTask(task, user) {
+  if (user?.rol === "admin") return true;
+  const actorNames = new Set([user?.nombre, user?.usuario].map(normalizeActor).filter(Boolean));
+  if (actorNames.size === 0) return false;
+  const collaborators = Array.isArray(task?.propiedades_extra?.colaboradores)
+    ? task.propiedades_extra.colaboradores
+    : [];
+  return [task?.asignado_a, ...collaborators]
+    .map(normalizeActor)
+    .some((name) => actorNames.has(name));
+}
+
 export function canRetryTaskUpdate(previous, current, changes) {
   if (!previous || !current || !changes) return false;
   return Object.entries(changes).every(([field, value]) => {

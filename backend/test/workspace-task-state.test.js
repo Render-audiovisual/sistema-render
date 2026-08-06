@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canRetryTaskUpdate, mergeRelatedTasks } from "../../frontend/src/workspace-task-state.js";
+import { canRetryTaskUpdate, canUserMoveTask, mergeRelatedTasks } from "../../frontend/src/workspace-task-state.js";
 
 test("incorpora tareas por ID sin duplicarlas y conserva datos locales", () => {
   const current = [{ id: 10, titulo: "Anterior", cliente_nombre: "Cliente QA" }];
@@ -29,4 +29,12 @@ test("no reintenta si otra persona modificó el mismo campo", () => {
   const current = { id: 10, estado: "revision", propiedades_extra: { resumen: "B" } };
   assert.equal(canRetryTaskUpdate(previous, current, { estado: "en_proceso" }), false);
   assert.equal(canRetryTaskUpdate(previous, current, { propiedades_extra: { resumen: "C" } }), false);
+});
+
+test("permite mover por nombre, usuario o colaboración sin habilitar tareas ajenas", () => {
+  const task = { asignado_a: "Mariano", propiedades_extra: { colaboradores: ["Germán"] } };
+  assert.equal(canUserMoveTask(task, { nombre: "Mariano Meza", usuario: "Mariano", rol: "diseno" }), true);
+  assert.equal(canUserMoveTask(task, { nombre: "Germán", usuario: "German", rol: "produccion" }), true);
+  assert.equal(canUserMoveTask(task, { nombre: "Augusto", usuario: "Augusto", rol: "diseno" }), false);
+  assert.equal(canUserMoveTask(task, { nombre: "Líder", usuario: "lider", rol: "admin" }), true);
 });

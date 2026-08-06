@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "../src/task-access.js";
+import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor, getTaskActorAliases } from "../src/task-access.js";
 
 test("el administrador conserva acceso global a tareas", () => {
   assert.deepEqual(buildTaskAccessClause({ rol: "admin", nombre: "Líder" }, "t", "$1"), { sql: "", value: null });
@@ -9,7 +9,7 @@ test("el administrador conserva acceso global a tareas", () => {
 
 test("el empleado queda limitado a tareas propias o colaboraciones", () => {
   const access = buildTaskAccessClause({ rol: "produccion", nombre: "Germán" }, "t", "$3");
-  assert.equal(access.value, "Germán");
+  assert.equal(access.value, JSON.stringify(["Germán"]));
   assert.match(access.sql, /t\.asignado_a/);
   assert.match(access.sql, /colaboradores/);
   assert.match(access.sql, /translate\(lower/);
@@ -26,13 +26,20 @@ test("todo usuario autenticado puede consultar el tablero compartido de RENDER O
     "$3",
     "historical",
   );
-  assert.equal(historicalAccess.value, "Leo Aragon");
+  assert.equal(historicalAccess.value, JSON.stringify(["Leo Aragon"]));
   assert.match(historicalAccess.sql, /t\.asignado_a/);
 });
 
 test("la identidad de tareas usa el nombre firmado y admite usuario como respaldo", () => {
   assert.equal(getTaskActor({ nombre: " Germán ", usuario: "German" }), "Germán");
   assert.equal(getTaskActor({ usuario: "Mariano" }), "Mariano");
+  assert.deepEqual(getTaskActorAliases({ nombre: "Mariano Meza", usuario: "Mariano" }), ["Mariano Meza", "Mariano"]);
+});
+
+test("la escritura reconoce tanto el nombre visible como el usuario", () => {
+  const access = buildTaskAccessClause({ rol: "diseno", nombre: "Mariano Meza", usuario: "Mariano" }, "t", "$2");
+  assert.equal(access.value, JSON.stringify(["Mariano Meza", "Mariano"]));
+  assert.match(access.sql, /jsonb_array_elements_text\(\$2::jsonb\)/);
 });
 
 test("un empleado solo puede cambiar estado con control de concurrencia", () => {
