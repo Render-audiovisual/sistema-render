@@ -53,8 +53,13 @@ test("solo advierte al cerrar una tarea nueva cuando hay contenido", () => {
 
 test("el calendario completa la última semana para conservar toda la cuadrícula", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");
   assert.match(workspaceSource, /Math\.ceil\(\(firstOffset \+ days\) \/ 7\) \* 7/);
   assert.match(workspaceSource, /day > 0 && day <= days \? day : null/);
+  assert.match(workspaceSource, /key === today \? "today"/);
+  assert.match(workspaceSource, /task\.cliente_nombre \|\| "Sin cliente"/);
+  assert.match(workspaceStyles, /\.ros-calendar-task\.area-carruseles/);
+  assert.match(workspaceStyles, /\.ros-calendar-day\.today>b/);
 });
 
 test("Tareas conserva una sola interfaz y navega en la misma pestaña", () => {
