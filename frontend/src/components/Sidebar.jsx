@@ -5,6 +5,7 @@ function SidebarIcon({ name }) {
   const paths = {
     home: <><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.5 21v-7h5v7"/></>,
     tasks: <><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 8 1.5 1.5L12 7"/><path d="M14 8h3"/><path d="m8 14 1.5 1.5L12 13"/><path d="M14 14h3"/></>,
+    notes: <><path d="M5 3h11l3 3v15H5z"/><path d="M16 3v4h4M8 11h8M8 15h8"/></>,
     content: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6M7 16h8"/></>,
     clients: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
     reports: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,
@@ -27,6 +28,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
     ],
     trabajo: [
       { href: "/workspace/tareas", label: "Tareas", icon: "tasks" },
+      { href: "/bloc-notas", label: "Bloc de notas", icon: "notes" },
     ],
     planificacion: esAdmin ? [
       {

@@ -2,6 +2,7 @@ import React from "react";
 import { cerrarSesion, getRutaUsuario, getSesion } from "./utils.jsx";
 import { ROL_LABELS } from "./constants.js";
 import { AugustoDashboard } from "./pages/dashboards/Augusto.jsx";
+import { BlocNotasPage } from "./pages/BlocNotas.jsx";
 import { ClientesAdminPage } from "./pages/Clientes.jsx";
 import { EmpleadosPage } from "./pages/Empleados.jsx";
 import { GermanDashboard } from "./pages/dashboards/German.jsx";
@@ -48,8 +49,8 @@ export function App() {
   }
 
   const rutasCompartidas = esAdmin
-    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas"]
-    : ["/perfil", "/workspace/tareas"];
+    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/bloc-notas"]
+    : ["/perfil", "/workspace/tareas", "/bloc-notas"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -66,6 +67,9 @@ export function App() {
   const dashboard = (() => {
     if (path === "/workspace/tareas") {
       return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
+    }
+    if (path === "/bloc-notas") {
+      return <BlocNotasPage />;
     }
     if (path === "/lider") {
       return <LiderDashboard />;

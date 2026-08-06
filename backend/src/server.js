@@ -219,6 +219,111 @@ router.post("/login/google", async (req, res, next) => {
 
 router.use(requireAuthentication);
 
+router.get("/notas", async (req, res, next) => {
+  try {
+    const papelera = req.query.papelera === "true";
+    const busqueda = String(req.query.q || "").trim();
+    const params = [];
+    let where = papelera ? "eliminado_at IS NOT NULL" : "eliminado_at IS NULL";
+    if (busqueda) {
+      params.push(`%${busqueda}%`);
+      where += ` AND (titulo ILIKE $${params.length} OR contenido ILIKE $${params.length})`;
+    }
+    const result = await pool.query(
+      `SELECT id,titulo,contenido,creado_por,modificado_por,eliminado_at,created_at,updated_at
+       FROM notas_compartidas WHERE ${where}
+       ORDER BY updated_at DESC,id DESC LIMIT 500`,
+      params,
+    );
+    res.json(result.rows);
+  } catch (error) { next(error); }
+});
+
+router.post("/notas", async (req, res, next) => {
+  try {
+    const actor = getTaskActor(req.auth);
+    const titulo = String(req.body?.titulo || "Nueva nota").trim() || "Nueva nota";
+    const contenido = String(req.body?.contenido || "");
+    const result = await pool.query(
+      `INSERT INTO notas_compartidas (titulo,contenido,creado_por,modificado_por)
+       VALUES ($1,$2,$3,$3)
+       RETURNING id,titulo,contenido,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
+      [titulo, contenido, actor],
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) { next(error); }
+});
+
+router.patch("/notas/:id", async (req, res, next) => {
+  try {
+    const actor = getTaskActor(req.auth);
+    const sets = [];
+    const params = [];
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "titulo")) {
+      params.push(String(req.body.titulo || "").trim() || "Nueva nota");
+      sets.push(`titulo=$${params.length}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "contenido")) {
+      params.push(String(req.body.contenido || ""));
+      sets.push(`contenido=$${params.length}`);
+    }
+    if (!sets.length) return res.status(400).json({ error: "No se enviaron cambios." });
+    params.push(actor);
+    sets.push(`modificado_por=$${params.length}`, "updated_at=now()");
+    params.push(req.params.id);
+    let where = `id=$${params.length} AND eliminado_at IS NULL`;
+    if (req.body.expected_updated_at) {
+      params.push(req.body.expected_updated_at);
+      where += ` AND date_trunc('milliseconds',updated_at)=date_trunc('milliseconds',$${params.length}::timestamptz)`;
+    }
+    const result = await pool.query(
+      `UPDATE notas_compartidas SET ${sets.join(",")} WHERE ${where}
+       RETURNING id,titulo,contenido,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
+      params,
+    );
+    if (!result.rows[0]) {
+      const exists = await pool.query("SELECT id FROM notas_compartidas WHERE id=$1 AND eliminado_at IS NULL", [req.params.id]);
+      if (exists.rows[0] && req.body.expected_updated_at) {
+        return res.status(409).json({ error: "Otra persona modificó esta nota. Conservamos tu texto para que puedas revisarlo." });
+      }
+      return res.status(404).json({ error: "Nota no encontrada." });
+    }
+    res.json(result.rows[0]);
+  } catch (error) { next(error); }
+});
+
+router.delete("/notas/:id", async (req, res, next) => {
+  try {
+    if (req.query.permanente === "true") {
+      const result = await pool.query("DELETE FROM notas_compartidas WHERE id=$1 AND eliminado_at IS NOT NULL RETURNING id", [req.params.id]);
+      if (!result.rows[0]) return res.status(404).json({ error: "Nota no encontrada en la Papelera." });
+      return res.json({ ok: true });
+    }
+    const actor = getTaskActor(req.auth);
+    const result = await pool.query(
+      `UPDATE notas_compartidas SET eliminado_at=now(),modificado_por=$2,updated_at=now()
+       WHERE id=$1 AND eliminado_at IS NULL RETURNING id`,
+      [req.params.id, actor],
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "Nota no encontrada." });
+    return res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+router.post("/notas/:id/restaurar", async (req, res, next) => {
+  try {
+    const actor = getTaskActor(req.auth);
+    const result = await pool.query(
+      `UPDATE notas_compartidas SET eliminado_at=NULL,modificado_por=$2,updated_at=now()
+       WHERE id=$1 AND eliminado_at IS NOT NULL
+       RETURNING id,titulo,contenido,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
+      [req.params.id, actor],
+    );
+    if (!result.rows[0]) return res.status(404).json({ error: "Nota no encontrada en la Papelera." });
+    res.json(result.rows[0]);
+  } catch (error) { next(error); }
+});
+
 const ROLES_VALIDOS = [
   "admin",
   "diseno",
