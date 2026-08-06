@@ -16,7 +16,7 @@ function SidebarIcon({ name }) {
   return <svg className="sidebar-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name] || paths.content}</svg>;
 }
 
-export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
+export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const esAdmin = sesion?.usuario?.rol === "admin";
   const rutaTablero = getRutaUsuario(sesion?.usuario?.usuario, sesion?.usuario?.rol);
@@ -138,7 +138,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS }) {
               </div>
               <div className="user-info">
                 <div className="user-name">{sesion?.usuario?.nombre}</div>
-                <div className="user-role">{ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>
+                <div className="user-role">{getRolLabel?.(sesion?.usuario?.rol) || ROL_LABELS[sesion?.usuario?.rol] || sesion?.usuario?.rol}</div>
               </div>
             </div>
           </summary>

@@ -22,6 +22,7 @@ import { buildAutoTaskProperties, completeLinkedAutoTasks } from "./piece-task-l
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
 import { createWilsonRouter } from "./wilson-integration.js";
 import { runMigrations } from "./migrations.js";
+import { resolveUserRole } from "./user-roles.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -325,14 +326,6 @@ router.post("/notas/:id/restaurar", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-const ROLES_VALIDOS = [
-  "admin",
-  "diseno",
-  "edicion",
-  "produccion",
-  "community",
-];
-
 router.get("/usuarios", async (req, res, next) => {
   try {
     const fields = req.auth.rol === "admin"
@@ -392,13 +385,14 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
 router.post("/usuarios", requireRole("admin"), async (req, res, next) => {
   try {
     const { usuario, nombre, rol, password, email_notificaciones } = req.body;
+    const rolNormalizado = resolveUserRole(rol);
     const email = normalizarEmailNotificaciones(email_notificaciones);
 
     if (!usuario || !nombre || !rol || !password) {
       return res.status(400).json({ error: "Faltan datos del empleado." });
     }
-    if (!ROLES_VALIDOS.includes(rol)) {
-      return res.status(400).json({ error: "Rol inválido." });
+    if (!rolNormalizado) {
+      return res.status(400).json({ error: "La categoría laboral no es válida." });
     }
     if (email_notificaciones && !email) {
       return res.status(400).json({ error: "El correo para notificaciones no es válido." });
@@ -409,7 +403,7 @@ router.post("/usuarios", requireRole("admin"), async (req, res, next) => {
       `INSERT INTO usuarios (usuario, nombre, rol, password_hash, email_notificaciones)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, usuario, nombre, rol, email_notificaciones, foto_perfil, created_at`,
-      [usuario, nombre, rol, passwordHash, email],
+      [usuario, nombre, rolNormalizado, passwordHash, email],
     );
 
     res.status(201).json(result.rows[0]);
@@ -674,8 +668,9 @@ router.patch("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
     const nombre = typeof req.body.nombre === "string" ? req.body.nombre.trim() : "";
     const usuario = typeof req.body.usuario === "string" ? req.body.usuario.trim() : "";
     const { rol } = req.body;
+    const rolNormalizado = resolveUserRole(rol);
 
-    if (!nombre || !usuario || !ROLES_VALIDOS.includes(rol)) {
+    if (!nombre || !usuario || !rolNormalizado) {
       return res.status(400).json({ error: "Los datos del empleado no son válidos." });
     }
 
@@ -684,7 +679,7 @@ router.patch("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
        SET nombre = $1, usuario = $2, rol = $3
        WHERE id = $4
        RETURNING id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at`,
-      [nombre, usuario, rol, req.params.id],
+      [nombre, usuario, rolNormalizado, req.params.id],
     );
 
     if (updated.rows.length === 0) {

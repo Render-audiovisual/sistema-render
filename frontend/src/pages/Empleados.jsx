@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { normalizarPrimerNombre } from "../utils.jsx";
 import { Modal } from "../components/Modal.jsx";
-import { ROL_LABELS } from "../constants.js";
+import { getRolLabel, ROL_LABELS } from "../constants.js";
 
 export function EmpleadosPage() {
   const [usuarios, setUsuarios] = useState([]);
@@ -12,6 +12,7 @@ export function EmpleadosPage() {
   const [nombre, setNombre] = useState("");
   const [usuario, setUsuario] = useState("");
   const [rol, setRol] = useState("diseno");
+  const [rolPersonalizado, setRolPersonalizado] = useState("");
   const [password, setPassword] = useState("");
   const [emailNotificaciones, setEmailNotificaciones] = useState("");
   const [correoEdicion, setCorreoEdicion] = useState("");
@@ -26,6 +27,7 @@ export function EmpleadosPage() {
   const [nombreEdicion, setNombreEdicion] = useState("");
   const [usuarioEdicion, setUsuarioEdicion] = useState("");
   const [rolEdicion, setRolEdicion] = useState("");
+  const [rolPersonalizadoEdicion, setRolPersonalizadoEdicion] = useState("");
   const [formError, setFormError] = useState(null);
   const [mensaje, setMensaje] = useState(null);
   const [enviando, setEnviando] = useState(false);
@@ -73,6 +75,7 @@ export function EmpleadosPage() {
     setNombre("");
     setUsuario("");
     setRol("diseno");
+    setRolPersonalizado("");
     setPassword("");
     setEmailNotificaciones("");
     setFormError(null);
@@ -113,7 +116,7 @@ export function EmpleadosPage() {
       body: JSON.stringify({
         nombre,
         usuario,
-        rol,
+        rol: rol === "__otra__" ? rolPersonalizado : rol,
         password,
         email_notificaciones: emailNotificaciones,
       }),
@@ -130,6 +133,7 @@ export function EmpleadosPage() {
         setNombre("");
         setUsuario("");
         setRol("diseno");
+        setRolPersonalizado("");
         setPassword("");
         setEmailNotificaciones("");
         setModalAltaAbierto(false);
@@ -251,7 +255,14 @@ export function EmpleadosPage() {
   const iniciarEdicionDatos = () => {
     setNombreEdicion(usuarioAdministrado?.nombre || "");
     setUsuarioEdicion(usuarioAdministrado?.usuario || "");
-    setRolEdicion(usuarioAdministrado?.rol || "diseno");
+    const rolActual = usuarioAdministrado?.rol || "diseno";
+    if (ROL_LABELS[rolActual]) {
+      setRolEdicion(rolActual);
+      setRolPersonalizadoEdicion("");
+    } else {
+      setRolEdicion("__otra__");
+      setRolPersonalizadoEdicion(getRolLabel(rolActual));
+    }
     setEditandoDatos(true);
     setFormError(null);
     setMensaje(null);
@@ -277,7 +288,7 @@ export function EmpleadosPage() {
       body: JSON.stringify({
         nombre: nombreEdicion,
         usuario: usuarioEdicion,
-        rol: rolEdicion
+        rol: rolEdicion === "__otra__" ? rolPersonalizadoEdicion : rolEdicion
       }),
     })
       .then(async (response) => {
@@ -312,7 +323,7 @@ export function EmpleadosPage() {
   const usuariosSinCorreo = usuarios.length - usuariosConCorreo;
   const usuariosConGoogle = usuarios.filter((u) => Boolean(u.google_email)).length;
   const usuariosVisibles = usuarios.filter((u) => {
-    const texto = `${u.nombre} ${u.usuario} ${u.email_notificaciones || ""} ${u.google_email || ""} ${ROL_LABELS[u.rol] || u.rol}`.toLowerCase();
+    const texto = `${u.nombre} ${u.usuario} ${u.email_notificaciones || ""} ${u.google_email || ""} ${getRolLabel(u.rol)}`.toLowerCase();
     const coincideBusqueda = texto.includes(busqueda.trim().toLowerCase());
     const requiereAtencion = !u.email_notificaciones || !u.google_email;
     return coincideBusqueda && (filtroAcceso === "atencion" ? requiereAtencion : true);
@@ -399,7 +410,7 @@ export function EmpleadosPage() {
                   </div>
 
                   <div className={`usuarios-role role-${u.rol}`}>
-                    {ROL_LABELS[u.rol] || u.rol}
+                    {getRolLabel(u.rol)}
                   </div>
 
                   <div className="usuarios-access">
@@ -465,13 +476,26 @@ export function EmpleadosPage() {
                   <input type="text" value={nombre} onChange={handleNombreChange} required autoFocus />
                 </label>
                 <label className="form-field">
-                  <span>Rol *</span>
+                  <span>Categoría laboral *</span>
                   <select value={rol} onChange={(e) => setRol(e.target.value)}>
                     {Object.entries(ROL_LABELS).map(([key, label]) => (
                       <option key={key} value={key}>{label}</option>
                     ))}
+                    <option value="__otra__">Otra categoría…</option>
                   </select>
                 </label>
+                {rol === "__otra__" && (
+                  <label className="form-field">
+                    <span>Nombre de la categoría *</span>
+                    <input
+                      type="text"
+                      value={rolPersonalizado}
+                      placeholder="Ej. Fotografía, Ventas…"
+                      onChange={(e) => setRolPersonalizado(e.target.value)}
+                      required
+                    />
+                  </label>
+                )}
                 <label className="form-field">
                   <span>Usuario de acceso *</span>
                   <input
@@ -563,7 +587,7 @@ export function EmpleadosPage() {
                   <span className="usuarios-eyebrow">Cuenta del equipo</span>
                   <h3 id="administrar-usuario-title">{usuarioAdministrado.nombre}</h3>
                   <div className={`usuarios-role role-${usuarioAdministrado.rol}`}>
-                    {ROL_LABELS[usuarioAdministrado.rol] || usuarioAdministrado.rol}
+                    {getRolLabel(usuarioAdministrado.rol)}
                   </div>
                 </div>
               </div>
@@ -575,8 +599,8 @@ export function EmpleadosPage() {
               <section className="usuarios-panel-section">
                 <div className="usuarios-panel-section-title">
                   <div>
-                    <strong>Identidad y rol</strong>
-                    <span>Nombre, usuario y permisos</span>
+                    <strong>Identidad y categoría</strong>
+                    <span>Nombre, usuario y función dentro del equipo</span>
                   </div>
                   {!editandoDatos && (
                     <button className="btn" type="button" onClick={iniciarEdicionDatos}>
@@ -608,13 +632,25 @@ export function EmpleadosPage() {
                         />
                       </label>
                       <label className="form-field">
-                        <span>Rol</span>
+                        <span>Categoría laboral</span>
                         <select value={rolEdicion} onChange={(e) => setRolEdicion(e.target.value)} disabled={guardandoDatos}>
                           {Object.entries(ROL_LABELS).map(([key, label]) => (
                             <option key={key} value={key}>{label}</option>
                           ))}
+                          <option value="__otra__">Otra categoría…</option>
                         </select>
                       </label>
+                      {rolEdicion === "__otra__" && (
+                        <label className="form-field">
+                          <span>Nombre de la categoría</span>
+                          <input
+                            type="text"
+                            value={rolPersonalizadoEdicion}
+                            onChange={(e) => setRolPersonalizadoEdicion(e.target.value)}
+                            disabled={guardandoDatos}
+                          />
+                        </label>
+                      )}
                     </div>
                     <div className="usuarios-inline-actions">
                       <button
@@ -649,8 +685,8 @@ export function EmpleadosPage() {
                       <strong>{usuarioAdministrado.usuario}</strong>
                     </div>
                     <div>
-                      <span>Rol</span>
-                      <strong>{ROL_LABELS[usuarioAdministrado.rol] || usuarioAdministrado.rol}</strong>
+                      <span>Categoría</span>
+                      <strong>{getRolLabel(usuarioAdministrado.rol)}</strong>
                     </div>
                     <div>
                       <span>Estado</span>

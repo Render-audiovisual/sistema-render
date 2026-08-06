@@ -35,7 +35,17 @@ export const ROL_LABELS = {
   edicion: "Edición",
   produccion: "Producción",
   community: "Comunidad",
+  programacion: "Programación",
 };
+
+export function getRolLabel(rol) {
+  if (ROL_LABELS[rol]) return ROL_LABELS[rol];
+  return String(rol || "Sin categoría")
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((parte) => parte.charAt(0).toUpperCase() + parte.slice(1))
+    .join(" ");
+}
 
 // Paleta compartida por Reportes y Clientes: acento teal cálido,
 // bordes con tinte cálido, números en fuente monoespaciada.
@@ -152,4 +162,3 @@ export const TIPOS_PUBLICACION = [
 ];
 
 export const COLUMNAS_PUBLICACION = ["fecha", "tipo", "idea", "copy", "material", "aclaraciones", "responsable", "estado"];
-

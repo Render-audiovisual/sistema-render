@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getSesion, guardarSesion, inicialesUsuario } from "../utils.jsx";
-import { ROL_LABELS } from "../constants.js";
+import { getRolLabel } from "../constants.js";
 
 export function PerfilPage() {
   const sesion = getSesion();
@@ -216,7 +216,7 @@ export function PerfilPage() {
               <div className="profile-identity-copy">
                 <h3>{perfilUsuario?.nombre}</h3>
                 <p>@{perfilUsuario?.usuario}</p>
-                <span>{ROL_LABELS[perfilUsuario?.rol] || perfilUsuario?.rol}</span>
+                <span>{getRolLabel(perfilUsuario?.rol)}</span>
               </div>
               <div className="profile-photo-actions">
                 <label className={`btn primary ${enviandoFoto ? "disabled" : ""}`}>
@@ -245,7 +245,7 @@ export function PerfilPage() {
               <div className="profile-account-data">
                 <div><span>Nombre</span><strong>{perfilUsuario?.nombre}</strong></div>
                 <div><span>Usuario de acceso</span><strong>{perfilUsuario?.usuario}</strong></div>
-                <div><span>Rol</span><strong>{ROL_LABELS[perfilUsuario?.rol] || perfilUsuario?.rol}</strong></div>
+                <div><span>Categoría</span><strong>{getRolLabel(perfilUsuario?.rol)}</strong></div>
               </div>
               <small className="profile-readonly-note">El nombre y el rol los administra el Líder.</small>
             </section>

@@ -1,6 +1,6 @@
 import React from "react";
 import { cerrarSesion, getRutaUsuario, getSesion } from "./utils.jsx";
-import { ROL_LABELS } from "./constants.js";
+import { getRolLabel, ROL_LABELS } from "./constants.js";
 import { AugustoDashboard } from "./pages/dashboards/Augusto.jsx";
 import { BlocNotasPage } from "./pages/BlocNotas.jsx";
 import { ClientesAdminPage } from "./pages/Clientes.jsx";
@@ -129,7 +129,7 @@ export function App() {
 
   return (
     <>
-      <Sidebar path={path} sesion={sesion} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} />
+      <Sidebar path={path} sesion={sesion} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
       {dashboard}
     </>
   );

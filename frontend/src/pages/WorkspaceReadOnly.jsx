@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ESTADO_FINAL_TAREA, ROL_LABELS } from "../constants.js";
+import { ESTADO_FINAL_TAREA, getRolLabel } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea } from "../utils.jsx";
 import { AREAS, STATUSES, TASK_TYPES } from "../features/render-os/constants.js";
 import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
@@ -181,7 +181,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           <label><span>Prioridad</span>{editing ? <select value={draft.prioridad || "media"} onChange={(event) => setDraft({ ...draft, prioridad: event.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select> : <strong>{task.prioridad || "Media"}</strong>}</label>
           <label><span>Sector</span>{editing ? <select value={draft.tipo_tarea || ""} onChange={(event) => setDraft({ ...draft, tipo_tarea: event.target.value })}><option value="">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select> : <strong>{task.tipo_tarea || "Sin definir"}</strong>}</label>
         </div>
-        {person && <div className="ros-person-card"><Avatar person={person}/><div><strong>{person.nombre}</strong><span>@{person.usuario} · {ROL_LABELS[person.rol] || person.rol}</span><small>{person.email_notificaciones || "Sin correo de notificaciones"}</small></div></div>}
+        {person && <div className="ros-person-card"><Avatar person={person}/><div><strong>{person.nombre}</strong><span>@{person.usuario} · {getRolLabel(person.rol)}</span><small>{person.email_notificaciones || "Sin correo de notificaciones"}</small></div></div>}
         {collaborators.length > 0 && !editing && <div className="ros-collaborators"><strong>Colaboran</strong><span>{collaborators.join(", ")}</span></div>}
         {editing && <div className="ros-edit-extras"><label><span>Subtipo</span><input value={draft.subtipo || ""} onChange={(event) => setDraft({ ...draft, subtipo: event.target.value })}/></label><label><span>Resumen corto</span><input value={draft.resumen || ""} onChange={(event) => setDraft({ ...draft, resumen: event.target.value })}/></label><label><span>Etiquetas</span><input value={draft.etiquetas || ""} onChange={(event) => setDraft({ ...draft, etiquetas: event.target.value })}/></label><fieldset><legend>Colaboradores</legend>{users.filter((user) => user.nombre !== draft.asignado_a).map((user) => <label key={user.id}><input type="checkbox" checked={(draft.colaboradores || []).includes(user.nombre)} onChange={(event) => setDraft({ ...draft, colaboradores: event.target.checked ? [...(draft.colaboradores || []), user.nombre] : (draft.colaboradores || []).filter((name) => name !== user.nombre) })}/><span>{user.nombre}</span></label>)}</fieldset></div>}
         <hr/>
@@ -219,7 +219,7 @@ function TaskPeoplePicker({ users, primary, collaborators, onChange }) {
     <div className="ros-people-picker-label"><span>Responsables *</span><small>Podés seleccionar una o varias personas.</small></div>
     {selected.length > 0 && <div className="ros-selected-people">{selected.map((name, index) => <button type="button" key={name} onClick={() => toggle(name)}><Avatar person={users.find((user) => user.nombre === name)} name={name}/><span><strong>{name}</strong><small>{index === 0 ? "Responsable principal" : "Colabora"}</small></span><b aria-hidden="true">×</b></button>)}</div>}
     <button className="ros-add-person" type="button" aria-expanded={open} onClick={() => setOpen((current) => !current)}><span>+</span>{selected.length ? "Añadir otra persona" : "Añadir responsable"}<b>{open ? "⌃" : "⌄"}</b></button>
-    {open && <div className="ros-people-options">{users.map((user) => { const active = selected.includes(user.nombre); return <button className={active ? "selected" : ""} type="button" key={user.id} onClick={() => toggle(user.nombre)}><Avatar person={user}/><span><strong>{user.nombre}</strong><small>{ROL_LABELS[user.rol] || user.rol || `@${user.usuario}`}</small></span><b>{active ? "✓" : "+"}</b></button>; })}</div>}
+    {open && <div className="ros-people-options">{users.map((user) => { const active = selected.includes(user.nombre); return <button className={active ? "selected" : ""} type="button" key={user.id} onClick={() => toggle(user.nombre)}><Avatar person={user}/><span><strong>{user.nombre}</strong><small>{getRolLabel(user.rol) || `@${user.usuario}`}</small></span><b>{active ? "✓" : "+"}</b></button>; })}</div>}
   </div>;
 }
 
