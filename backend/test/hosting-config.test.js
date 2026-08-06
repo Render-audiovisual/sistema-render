@@ -23,8 +23,10 @@ test("no se activa el seed demo en producción salvo que se indique explícitame
 
 test("Hostinger aplica migraciones antes de iniciar el servidor", () => {
   const packageJson = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+  const server = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
   assert.equal(
     packageJson.scripts["start:hostinger"],
     "npm run migrate --prefix backend && node backend/src/server.js",
   );
+  assert.match(server, /await runMigrations\(pool\)/);
 });

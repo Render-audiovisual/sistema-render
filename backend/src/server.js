@@ -21,6 +21,7 @@ import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask,
 import { buildAutoTaskProperties, completeLinkedAutoTasks } from "./piece-task-linking.js";
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
 import { createWilsonRouter } from "./wilson-integration.js";
+import { runMigrations } from "./migrations.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -2576,6 +2577,7 @@ app.use((err, _req, res, _next) => {
 if (process.env.RENDER_DISABLE_SERVER_START !== "true") (async () => {
   try {
     await checkDatabaseConnection();
+    await runMigrations(pool);
     if (shouldSetupDemoData()) {
       await setupDemoClientes();
       console.log("Postgres connection OK and demo data prepared");
