@@ -386,10 +386,6 @@
 .render-workspace .ros-task-missing-banner>span{align-items:center;background:#f4d77f;border-radius:50%;color:#5c4309;display:flex;flex:0 0 22px;font-size:12px;font-weight:900;height:22px;justify-content:center}
 .render-workspace .ros-task-missing-banner strong{color:#4d390d;display:block;font-size:11px;margin-bottom:3px}
 .render-workspace .ros-task-missing-banner p{font-size:10px;line-height:1.45;margin:0}
-.render-workspace .ros-latest-progress{background:#f0f5e4;border-left:3px solid #a0d223;border-radius:0 9px 9px 0;display:grid;gap:3px;margin:0;padding:12px 13px}
-.render-workspace .ros-latest-progress strong{color:#52611e;font-size:9px;text-transform:uppercase}
-.render-workspace .ros-latest-progress span{color:#41483a;font-size:11px}
-.render-workspace .ros-latest-progress time{color:#7f8579;font-size:9px}
 .render-workspace .ros-task-context-card{background:#fff;border:1px solid #dfe2d8;border-radius:12px;padding:15px}
 .render-workspace .ros-task-context-title{align-items:center;border-bottom:1px solid #e7e9e2;display:flex;justify-content:space-between;margin-bottom:14px;padding-bottom:11px}
 .render-workspace .ros-task-context-title>span{color:#343931;font-size:11px;font-weight:800}
@@ -438,6 +434,20 @@
 .render-workspace .ros-context-list{margin-bottom:8px}
 .render-workspace .ros-subtasks button{grid-template-columns:1fr auto}
 .render-workspace .ros-activity-feed{max-height:260px;overflow:auto}
+.render-workspace .ros-activity-history{padding:0}
+.render-workspace .ros-activity-history>summary{align-items:center;cursor:pointer;display:flex;gap:18px;justify-content:space-between;list-style:none;padding:17px 0}
+.render-workspace .ros-activity-history>summary::-webkit-details-marker{display:none}
+.render-workspace .ros-activity-history>summary>div{display:grid;gap:3px;min-width:0}
+.render-workspace .ros-activity-history>summary small{color:#7f867a;font-size:8px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.render-workspace .ros-activity-history>summary strong{color:#40463d;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.render-workspace .ros-activity-history>summary>span{color:#78806f;font-size:9px;white-space:nowrap}
+.render-workspace .ros-activity-history[open]>summary{border-bottom:1px solid #e7e9e2;margin-bottom:10px}
+.render-workspace .ros-activity-history[open]>summary>span{color:#52611e}
+.render-workspace .ros-activity-history .ros-activity-feed{margin-bottom:18px}
+@media(max-width:640px){
+  .render-workspace .ros-activity-history>summary{align-items:flex-start;flex-direction:column;gap:7px}
+  .render-workspace .ros-activity-history>summary strong{white-space:normal}
+}
 .render-workspace .ros-comments article{font-size:11px;padding:11px 12px}
 .render-workspace .ros-comments article.activity{background:#f4f7ec}
 .render-workspace .ros-comments strong,.render-workspace .ros-comments p,.render-workspace .ros-comments time{font-size:10px}

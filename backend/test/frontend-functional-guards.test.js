@@ -107,6 +107,9 @@ test("el detalle de todas las tareas conserva guion, copy e indicaciones en un Ã
   assert.match(workspaceSource, /copy_trabajo: String\(draft\.copy_trabajo/);
   assert.match(workspaceSource, /Los cambios se guardan Ãºnicamente al presionar/);
   assert.match(workspaceSource, /ros-task-document-properties/);
+  assert.match(workspaceSource, /ros-activity-history/);
+  assert.match(workspaceSource, /Ver historial/);
+  assert.doesNotMatch(workspaceSource, /ros-latest-progress/);
   assert.match(workspaceStyles, /\.ros-task-main-column\{[^}]*margin:0(?: auto)?;[^}]*max-width:[^;]+;[^}]*min-height:0;[^}]*padding:/);
   assert.match(workspaceStyles, /\.ros-task-layout\{display:block;/);
 });
