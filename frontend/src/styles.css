@@ -9453,3 +9453,232 @@ tr:hover .sheet-row-actions {
     padding:14px;
   }
 }
+
+/* RENDER OS · identidad visual de Reportes (sin cambios funcionales). */
+.reportes-page {
+  --report-ink:#202418;
+  --report-ink-soft:#292c26;
+  --report-lime:#b5fc00;
+  --report-lime-soft:#eef8d5;
+  --report-warm:#f5f6ef;
+  --report-muted:#73796f;
+  --report-line:#dfe2d8;
+  background:var(--report-warm);
+  border:1px solid var(--report-line);
+  border-radius:20px;
+  box-shadow:0 20px 54px rgba(32,36,24,.09);
+  gap:16px;
+  max-width:1120px;
+  min-width:0;
+  padding:28px;
+  width:100%;
+}
+
+.reportes-page .module-intro {
+  border-bottom:1px solid var(--report-line);
+  padding:2px 2px 22px;
+}
+
+.reportes-page .module-intro .section-label,
+.reportes-page>.section-label {
+  color:#6e7469;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.14em;
+}
+
+.reportes-page .module-intro h2 {
+  color:var(--report-ink);
+  font-size:clamp(30px,3.5vw,42px);
+  line-height:1.08;
+  margin:8px 0 9px;
+}
+
+.reportes-page .module-intro p {
+  color:var(--report-muted);
+  margin:0;
+}
+
+.reportes-page .reportes-periods {
+  background:#e9ece4;
+  border-color:#d9ddd3;
+  border-radius:12px;
+  gap:3px;
+  padding:4px;
+}
+
+.reportes-page .reportes-periods button {
+  background:transparent;
+  border-radius:9px;
+  color:#686e64;
+  cursor:pointer;
+  font-weight:650;
+  min-height:38px;
+  transition:background-color .15s ease,color .15s ease,box-shadow .15s ease;
+}
+
+.reportes-page .reportes-periods button:hover {
+  background:#f6f8f2;
+  color:var(--report-ink);
+}
+
+.reportes-page .reportes-periods button.active {
+  background:var(--report-ink);
+  box-shadow:0 5px 12px rgba(32,36,24,.14);
+  color:var(--report-lime);
+}
+
+.reportes-page .reportes-team-grid {
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:14px;
+  min-width:0;
+}
+
+.reportes-page .report-employee-card {
+  background:#fff!important;
+  border-color:var(--report-line)!important;
+  border-radius:14px!important;
+  box-shadow:0 8px 24px rgba(32,36,24,.055);
+  min-height:190px;
+  min-width:0;
+  overflow:hidden;
+  padding:18px!important;
+}
+
+.reportes-page .report-employee-card:hover {
+  border-color:#cfd6c2!important;
+  box-shadow:0 11px 28px rgba(32,36,24,.075);
+}
+
+.reportes-page .report-employee-card>div:first-child>div:first-child>div:first-child {
+  background:var(--report-lime-soft)!important;
+  color:#52651d!important;
+}
+
+.reportes-page .report-employee-card>div:first-child>div>div:last-child {
+  color:#777d72!important;
+  letter-spacing:.06em!important;
+}
+
+.reportes-page .report-metric {
+  border-top-color:#e7e9e2!important;
+  padding-top:14px!important;
+}
+
+.reportes-page .report-metric>div:first-child>div:first-child {
+  color:var(--report-ink)!important;
+  font-size:12px!important;
+}
+
+.reportes-page .report-metric>div:last-child {
+  color:#777d72!important;
+  gap:10px!important;
+}
+
+.reportes-page .report-filmmaker-card {
+  background:linear-gradient(145deg,#f7faef,#fff)!important;
+  border-top:3px solid #a0d223!important;
+  color:var(--report-ink);
+  grid-column:span 1;
+}
+
+.reportes-page .report-filmmaker-header {
+  border-bottom-color:#dde4d1;
+  padding-bottom:13px;
+}
+
+.reportes-page .report-employee-avatar {
+  background:var(--report-lime-soft);
+  border:1px solid #dbe8ba;
+  border-radius:10px;
+  color:#52651d;
+}
+
+.reportes-page .report-filmmaker-header strong,
+.reportes-page .report-filmmaker-total>strong {
+  color:var(--report-ink);
+}
+
+.reportes-page .report-filmmaker-header small,
+.reportes-page .report-filmmaker-total small,
+.reportes-page .report-filmmaker-label,
+.reportes-page .report-filmmaker-location small,
+.reportes-page .report-filmmaker-locations>p {
+  color:#747a70;
+}
+
+.reportes-page .report-filmmaker-total {
+  padding:13px 0;
+}
+
+.reportes-page .report-filmmaker-total>strong {
+  font-size:28px;
+}
+
+.reportes-page .report-filmmaker-locations {
+  border-color:#dde2d7;
+  max-height:210px;
+  overflow:auto;
+}
+
+.reportes-page .report-filmmaker-location {
+  border-top-color:#e7eae3;
+  padding:9px 11px;
+}
+
+.reportes-page .caption {
+  background:#eef1e9;
+  border:1px solid #dfe3da;
+  border-radius:10px;
+  color:#73796f;
+  line-height:1.5;
+  margin-bottom:8px!important;
+  padding:10px 12px;
+}
+
+@media (max-width:860px) {
+  .reportes-page {
+    border-radius:16px;
+    padding:22px 18px;
+  }
+
+  .reportes-page .reportes-team-grid {
+    grid-template-columns:1fr!important;
+  }
+}
+
+@media (max-width:560px) {
+  .reportes-page {
+    border-radius:14px;
+    gap:13px;
+    padding:18px 12px;
+  }
+
+  .reportes-page .module-intro {
+    padding-bottom:17px;
+  }
+
+  .reportes-page .module-intro h2 {
+    font-size:28px;
+  }
+
+  .reportes-page .reportes-periods {
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+
+  .reportes-page .reportes-periods button {
+    font-size:10px;
+    line-height:1.25;
+    padding:7px 5px;
+  }
+
+  .reportes-page .report-employee-card {
+    min-height:0;
+    padding:15px!important;
+  }
+
+  .reportes-page .report-metric>div:last-child {
+    align-items:flex-start;
+    flex-wrap:wrap;
+  }
+}
