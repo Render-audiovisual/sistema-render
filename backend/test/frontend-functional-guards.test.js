@@ -99,12 +99,14 @@ test("la revisión de videos permite al Líder entregarlos a Oriana", () => {
 
 test("el detalle de todas las tareas conserva guion, copy e indicaciones en un único espacio", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");
   assert.match(workspaceSource, /Contenido de trabajo/);
   assert.match(workspaceSource, /metadataField: "guiones"/);
   assert.match(workspaceSource, /metadataField: "copy_trabajo"/);
   assert.match(workspaceSource, /field: "aclaraciones"/);
   assert.match(workspaceSource, /copy_trabajo: String\(draft\.copy_trabajo/);
   assert.match(workspaceSource, /Los cambios se guardan únicamente al presionar/);
+  assert.match(workspaceStyles, /\.ros-task-main-column\{[^}]*margin:0;[^}]*max-width:none;[^}]*min-height:0;[^}]*padding:/);
 });
 
 test("el frontend no fabrica sesiones y adjunta el JWT a la API", () => {
