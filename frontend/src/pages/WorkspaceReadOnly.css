@@ -343,6 +343,67 @@
 
 @media(max-width:640px){.ros-production-visit{margin-inline:-6px;padding:12px}.ros-production-entry{padding:10px}.ros-production-entry input,.ros-production-entry>button{min-height:46px}.ros-production-visit>header{align-items:flex-start;flex-direction:column}.ros-production-visit>header b{align-self:flex-start}.ros-production-visit details>div{align-items:flex-start;flex-direction:column;gap:2px}}
 
+/* Detalle de tarea como espacio de trabajo */
+.render-workspace .ros-task-workspace{background:#f5f6ef;width:min(680px,100vw)}
+.render-workspace .ros-task-workspace-header{align-items:stretch;background:#202418;border:0;color:#f5f6ef;display:block;padding:20px 26px 22px}
+.render-workspace .ros-task-header-top{align-items:center;display:flex;justify-content:space-between;margin-bottom:12px}
+.render-workspace .ros-task-header-top .ros-area-badge{background:#30352b;border-color:#46503a;color:#c7ff3d}
+.render-workspace .ros-task-header-top>button{color:#a6aa9f;font-size:24px;line-height:1}
+.render-workspace .ros-task-client{color:#b5fc00;font-size:10px;font-weight:800;letter-spacing:.12em;margin-bottom:6px;text-transform:uppercase}
+.render-workspace .ros-task-workspace-header h2{color:#f5f6ef;font-size:25px;letter-spacing:-.03em;line-height:1.25;margin:0 0 15px}
+.render-workspace .ros-task-workspace-header .ros-title-input{background:#292c26;border-color:#4b5145;color:#f5f6ef;font-size:22px;margin-bottom:14px}
+.render-workspace .ros-task-header-meta{align-items:center;color:#d6d9cf;display:flex;flex-wrap:wrap;font-size:11px;gap:8px 14px}
+.render-workspace .ros-task-header-meta>span{align-items:center;display:flex;gap:6px}
+.render-workspace .ros-task-status{background:#30352b;border-radius:999px;color:#f5f6ef;padding:6px 9px}
+.render-workspace .ros-task-status i{border-radius:50%;height:7px;width:7px}
+.render-workspace .ros-task-header-meta .ros-avatar{border-color:#4a4e46}
+.render-workspace .ros-task-edit-button{background:#b5fc00;border:0;border-radius:8px;color:#202418;font-size:10px;font-weight:800;margin-left:auto;min-height:36px;padding:8px 13px}
+.render-workspace .ros-task-edit-button:hover{background:#c7ff3d}
+.render-workspace .ros-task-workspace-body{display:grid;gap:13px;padding:18px 24px 34px}
+.render-workspace .ros-work-block{background:#fff;border:1px solid #dfe2d8;border-radius:12px;padding:16px}
+.render-workspace .ros-work-block>h3{color:#69705f;font-size:10px;font-weight:800;letter-spacing:.09em;margin:0 0 11px;text-transform:uppercase}
+.render-workspace .ros-objective-block>p{color:#30342d;font-size:13px;line-height:1.65;margin:0}
+.render-workspace .ros-latest-progress{background:#f0f5e4;border-left:3px solid #a0d223;border-radius:0 8px 8px 0;display:grid;gap:2px;margin-top:13px;padding:10px 12px}
+.render-workspace .ros-latest-progress strong{color:#52611e;font-size:9px;text-transform:uppercase}
+.render-workspace .ros-latest-progress span{color:#41483a;font-size:11px}
+.render-workspace .ros-latest-progress time{color:#7f8579;font-size:9px}
+.render-workspace .ros-production-visit{margin:0;padding:16px}
+.render-workspace .ros-instructions-block details>summary{background:#f4f6f0;border:1px solid #dfe2d9;border-radius:8px;color:#52611e;cursor:pointer;font-size:11px;font-weight:700;padding:10px 12px}
+.render-workspace .ros-instructions-block details[open]>summary{margin-bottom:13px}
+.render-workspace .ros-instructions-block .ros-description{font-size:12px;line-height:1.75;margin:0;overflow-wrap:anywhere}
+.render-workspace .ros-material-grid{display:grid;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.render-workspace .ros-material-grid .ros-file{background:#f8f9f5;min-width:0}
+.render-workspace .ros-material-grid .ros-file>span{background:#eaf2d6;color:#52611e}
+.render-workspace .ros-context-list{margin-bottom:8px}
+.render-workspace .ros-subtasks button{grid-template-columns:1fr auto}
+.render-workspace .ros-activity-feed{max-height:260px;overflow:auto}
+.render-workspace .ros-comments article{font-size:11px;padding:11px 12px}
+.render-workspace .ros-comments article.activity{background:#f4f7ec}
+.render-workspace .ros-comments strong,.render-workspace .ros-comments p,.render-workspace .ros-comments time{font-size:10px}
+.render-workspace .ros-comments p{line-height:1.55}
+.render-workspace .ros-comment-create textarea{background:#fbfcf8;font-size:11px;min-height:78px;padding:11px}
+.render-workspace .ros-comment-create button{background:#202418;border-color:#202418;color:#f5f6ef;font-size:10px;min-height:36px}
+.render-workspace .ros-more-information{background:#fff;border:1px solid #dfe2d8;border-radius:12px;padding:0 16px}
+.render-workspace .ros-more-information>summary{color:#4f564a;cursor:pointer;font-size:11px;font-weight:800;padding:14px 0}
+.render-workspace .ros-more-information[open]>summary{border-bottom:1px solid #e7e9e2}
+.render-workspace .ros-more-information .ros-properties{grid-template-columns:repeat(2,minmax(0,1fr));margin:16px 0}
+.render-workspace .ros-more-information .ros-properties label{align-items:start;gap:5px;grid-template-columns:1fr}
+.render-workspace .ros-more-information .ros-origin{margin:14px 0}
+.render-workspace .ros-edit-footer{background:#f5f6ef;border-top:1px solid #daddd3;bottom:-34px;margin:0 -24px;position:sticky;z-index:3;padding:12px 24px}
+.render-workspace .ros-danger-zone{margin-top:0}
+
+@media(max-width:640px){
+  .render-workspace .ros-task-workspace-header{padding:17px 16px 18px}
+  .render-workspace .ros-task-workspace-header h2{font-size:21px}
+  .render-workspace .ros-task-header-meta{align-items:flex-start;gap:8px 10px}
+  .render-workspace .ros-task-edit-button{margin-left:0;width:100%}
+  .render-workspace .ros-task-workspace-body{padding:13px 12px 28px}
+  .render-workspace .ros-work-block{padding:14px}
+  .render-workspace .ros-material-grid{grid-template-columns:1fr}
+  .render-workspace .ros-more-information .ros-properties{grid-template-columns:1fr}
+  .render-workspace .ros-edit-footer{bottom:-28px;margin-inline:-12px;padding:11px 12px}
+}
+
 @media(max-width:480px){
   .render-workspace .ros-title-actions{grid-template-columns:1fr}
   .render-workspace .ros-controls{align-items:stretch;flex-direction:column;gap:0;padding-top:5px}
