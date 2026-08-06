@@ -12,11 +12,13 @@ export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo })
   const cargarTareas = () => {
     Promise.all(
       responsables.map((responsable) => {
-        const params = new URLSearchParams({ asignado_a: responsable });
+        const params = new URLSearchParams({ workspace: "render_os", asignado_a: responsable });
         if (tipoTarea) params.set("tipo_tarea", tipoTarea);
-        return fetch(`/api/tareas?${params.toString()}`).then((response) =>
-          response.json(),
-        );
+        return fetch(`/api/tareas?${params.toString()}`).then(async (response) => {
+          const body = await response.json().catch(() => []);
+          if (!response.ok) throw new Error(body.error || "No se pudieron cargar las tareas asignadas.");
+          return Array.isArray(body) ? body : [];
+        });
       }),
     )
       .then((listas) => {
@@ -38,7 +40,7 @@ export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo })
   }, [nombre, tipoTarea, nombres?.join("|")]);
 
   const cambiarEstado = (tareaId, nuevoEstado) => {
-    fetch(`/api/tareas/${tareaId}`, {
+    fetch(`/api/tareas/${tareaId}?workspace=render_os`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ estado: nuevoEstado }),
@@ -57,6 +59,9 @@ export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo })
     <>
       <div className="section-label">{titulo || "Tareas asignadas"}</div>
       <div className="box">
+        <div className="row" style={{ justifyContent: "flex-end", marginBottom: "10px" }}>
+          <a className="btn" href="/workspace/tareas">Ver tablero completo</a>
+        </div>
         {error && <div className="caption">{error}</div>}
         {!error &&
           tareas.map((tarea) => {

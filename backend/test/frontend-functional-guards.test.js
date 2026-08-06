@@ -66,6 +66,14 @@ test("Tareas conserva una sola interfaz y navega en la misma pestaña", () => {
   assert.match(sidebarSource, /href=\{enlace\.href\}[\s\S]*?target="_self"/);
 });
 
+test("los dashboards personales leen y actualizan únicamente RENDER OS", () => {
+  const assignedTasksSource = readFileSync(new URL("../../frontend/src/components/TareasAsignadasGenericas.jsx", import.meta.url), "utf8");
+  assert.match(assignedTasksSource, /workspace: "render_os"/);
+  assert.match(assignedTasksSource, /\?workspace=render_os/);
+  assert.match(assignedTasksSource, /href="\/workspace\/tareas"/);
+  assert.doesNotMatch(assignedTasksSource, /fetch\(`\/api\/tareas\?\$\{params\.toString\(\)\}`\)\.then\(\(response\) =>\s*response\.json/);
+});
+
 test("la navegación de empleados solo expone inicio, tareas, notas y perfil", () => {
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
