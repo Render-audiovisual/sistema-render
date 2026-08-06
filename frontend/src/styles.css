@@ -9167,8 +9167,20 @@ tr:hover .sheet-row-actions {
   box-shadow:0 20px 54px rgba(32,36,24,.09);
   gap:16px;
   max-width:1040px;
+  min-width:0;
   padding:28px;
   width:100%;
+}
+
+.lider-home-section,
+.lider-home-list,
+.lider-home-list a {
+  min-width:0;
+}
+
+.lider-home-list span,
+.lider-home-list b {
+  overflow-wrap:anywhere;
 }
 
 .lider-home-header {
@@ -9354,6 +9366,20 @@ tr:hover .sheet-row-actions {
   min-height:150px;
   padding:54px 20px;
   text-align:center;
+}
+
+@media (max-width:1100px) {
+  .lider-home-list {
+    grid-template-columns:1fr;
+  }
+
+  .lider-home-list a {
+    border-right:0!important;
+  }
+
+  .lider-home-list a:not(:last-child) {
+    border-bottom:1px solid var(--home-line);
+  }
 }
 
 @media (max-width:700px) {
