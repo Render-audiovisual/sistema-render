@@ -101,6 +101,8 @@ test("el detalle de todas las tareas conserva guion, copy e indicaciones en un �
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");
   assert.match(workspaceSource, /Contenido de trabajo/);
+  assert.doesNotMatch(workspaceSource, /role="tablist"/);
+  assert.match(workspaceSource, /Escribí el guion, copy o las indicaciones acá/);
   assert.match(workspaceSource, /metadataField: "guiones"/);
   assert.match(workspaceSource, /metadataField: "copy_trabajo"/);
   assert.match(workspaceSource, /field: "aclaraciones"/);

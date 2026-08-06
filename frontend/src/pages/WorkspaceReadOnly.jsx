@@ -50,22 +50,17 @@ const TASK_CONTENT_TEMPLATES = {
   ],
 };
 
-function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, activeType, onTypeChange, editorRef, onInsertTemplate, onEditContent }) {
-  const config = TASK_CONTENT_TYPES.find((item) => item.id === activeType) || TASK_CONTENT_TYPES[0];
-  const value = editing
-    ? String(draft[config.field] || "")
-    : String(config.metadataField ? metadata[config.metadataField] || "" : task[config.field] || "");
+function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, editorRef, onInsertTemplate, onEditContent }) {
+  const savedContent = [...new Set([task.aclaraciones, metadata.guiones, metadata.copy_trabajo].map((item) => String(item || "").trim()).filter(Boolean))].join("\n\n");
+  const value = editing && String(draft.aclaraciones || "") !== String(task.aclaraciones || "") ? String(draft.aclaraciones || "") : savedContent;
   return <section className="ros-work-block ros-content-workspace">
     <div className="ros-block-heading"><div><h3>Contenido de trabajo</h3></div><small>Todo el texto importante en un solo lugar</small></div>
-    <div className="ros-content-tabs" role="tablist" aria-label="Tipo de contenido de la tarea">
-      {TASK_CONTENT_TYPES.map((item) => <button type="button" role="tab" aria-selected={activeType === item.id} className={activeType === item.id ? "active" : ""} key={item.id} onClick={() => onTypeChange(item.id)}>{item.label}</button>)}
-    </div>
     {editing ? <div className="ros-content-editor">
-      <div className="ros-content-editor-header"><div><span>Estás escribiendo</span><strong>{config.label} de la tarea</strong></div><b>{config.label}</b></div>
-      <div className="ros-content-tools"><span>Agregá bloques para ordenar el texto.</span>{(TASK_CONTENT_TEMPLATES[activeType] || []).map((template) => <button type="button" key={template.label} onClick={() => onInsertTemplate(template.value)}>{template.label}</button>)}</div>
-      <textarea ref={editorRef} className="ros-detail-textarea ros-content-textarea" rows={16} value={value} placeholder={`Escribí ${config.label.toLowerCase()} acá…`} onChange={(event) => setDraft({ ...draft, [config.field]: event.target.value })}/>
+      <div className="ros-content-editor-header"><div><span>Contenido de la tarea</span><strong>Escribí todo lo necesario para trabajar</strong></div></div>
+      <div className="ros-content-tools"><span>Usá bloques para ordenar el texto.</span>{TASK_CONTENT_TYPES.flatMap((type) => TASK_CONTENT_TEMPLATES[type.id] || []).map((template) => <button type="button" key={`${template.label}-${template.value}`} onClick={() => onInsertTemplate(template.value)}>{template.label}</button>)}</div>
+      <textarea ref={editorRef} className="ros-detail-textarea ros-content-textarea" rows={16} value={value} placeholder="Escribí el guion, copy o las indicaciones acá…" onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/>
       <small>Los cambios se guardan únicamente al presionar “Guardar cambios”.</small>
-    </div> : value ? <div className="ros-content-editor ros-content-viewer"><div className="ros-content-editor-header"><div><span>Nombre del texto</span><strong>{config.label} de la tarea</strong></div><b>{config.label}</b></div><div className="ros-content-reading">{renderizarTextoTarea(value)}</div></div> : <div className="ros-content-empty"><span>✎</span><div><strong>{config.empty}</strong><p>Crealo dentro de esta tarea para que el equipo encuentre todo en un solo lugar.</p></div>{onEditContent && <button type="button" onClick={onEditContent}>Escribir contenido</button>}</div>}
+    </div> : value ? <div className="ros-content-editor ros-content-viewer"><div className="ros-content-editor-header"><div><span>Contenido de la tarea</span><strong>Información para trabajar</strong></div></div><div className="ros-content-reading">{renderizarTextoTarea(value)}</div></div> : <div className="ros-content-empty"><span>✎</span><div><strong>Todavía no hay contenido cargado.</strong><p>Agregá el guion, copy o las indicaciones en un solo lugar.</p></div>{onEditContent && <button type="button" onClick={onEditContent}>Escribir contenido</button>}</div>}
   </section>;
 }
 
@@ -88,7 +83,6 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [registeringProduction, setRegisteringProduction] = useState(false);
   const [savingProductionDrive, setSavingProductionDrive] = useState(false);
   const [approving, setApproving] = useState(false);
-  const [activeContentType, setActiveContentType] = useState("guion");
   const archivePendingRef = useRef(false);
   const scriptEditorRef = useRef(null);
   const isAdmin = sesion?.usuario?.rol === "admin";
@@ -104,7 +98,6 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     setProductionAmount(1);
     setProductionDate(getHoyLocalISO());
     setProductionDriveLink(task.material_referencia || "");
-    setActiveContentType("guion");
     apiJson(`/api/tareas/${task.id}/comentarios?workspace=render_os`)
       .then(setComments)
       .catch((reason) => setCommentError(reason.message || "No se pudieron cargar los comentarios."));
@@ -187,13 +180,13 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
 
   const insertContentTemplate = (template) => {
     const textarea = scriptEditorRef.current;
-    const config = TASK_CONTENT_TYPES.find((item) => item.id === activeContentType) || TASK_CONTENT_TYPES[0];
-    const current = String(draft[config.field] || "");
+    const savedContent = [...new Set([task.aclaraciones, metadata.guiones, metadata.copy_trabajo].map((item) => String(item || "").trim()).filter(Boolean))].join("\n\n");
+    const current = String(draft.aclaraciones || "") !== String(task.aclaraciones || "") ? String(draft.aclaraciones || "") : savedContent;
     const start = textarea?.selectionStart ?? current.length;
     const end = textarea?.selectionEnd ?? current.length;
     const separator = current && start === current.length && !current.endsWith("\n") ? "\n\n" : "";
     const nextValue = `${current.slice(0, start)}${separator}${template}${current.slice(end)}`;
-    setDraft({ ...draft, [config.field]: nextValue });
+    setDraft({ ...draft, aclaraciones: nextValue });
     requestAnimationFrame(() => {
       if (!textarea) return;
       const cursor = start + separator.length + template.length;
@@ -319,7 +312,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {productionProgress.planned === 0 && !editing && <p>Un Líder debe editar esta visita e indicar cuántos videos están previstos.</p>}
           {Array.isArray(metadata.produccion_registros) && metadata.produccion_registros.length > 0 && <details><summary>Ver registros</summary>{metadata.produccion_registros.slice().reverse().map((record) => <div key={record.id || `${record.fecha}-${record.created_at}`}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario || "Equipo"}</span></div>)}</details>}
         </section>}
-        <TaskContentWorkspace task={task} metadata={metadata} editing={editing} draft={draft} setDraft={setDraft} activeType={activeContentType} onTypeChange={setActiveContentType} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={isAdmin ? startEditing : null}/>
+        <TaskContentWorkspace task={task} metadata={metadata} editing={editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={isAdmin ? startEditing : null}/>
         <section className="ros-work-block"><div className="ros-block-heading"><div><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3></div><small>Archivos y enlaces</small></div>{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{!task.material_referencia && links.length === 0 && <p className="ros-compact-empty">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "Sin material vinculado."}</p>}</div>}</section>
         {(origin || task.tarea_padre_id || subtasks.length > 0 || isAdmin) && <section className="ros-work-block"><h3>Organización del trabajo</h3>{(origin || task.tarea_padre_id) && <div className="ros-context-list">{origin && <a href={origin.href}><strong>{origin.label}</strong><span>{formatDate(origin.date)} · {origin.state || "Sin estado"}</span><b>↗</b></a>}{task.tarea_padre_id && <button type="button" onClick={() => onOpen(Number(task.tarea_padre_id))}><strong>Depende de la tarea #{task.tarea_padre_id}</strong><span>Estado: {task.tarea_padre_estado || "Sin datos"}</span></button>}</div>}<div className="ros-subtasks">{subtasks.map((subtask) => <button type="button" key={subtask.id} onClick={() => onOpen(subtask.id)}><span>{subtask.titulo}</span><b>{STATUSES.find((item) => item.id === subtask.estado)?.label || subtask.estado}</b></button>)}{subtasks.length === 0 && !isAdmin && <p className="ros-empty-copy">No hay subtareas cargadas.</p>}</div>{isAdmin && <div className="ros-subtask-create"><input value={subtaskTitle} placeholder="Agregar una subtarea" onChange={(event) => setSubtaskTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createSubtask(); }}/><button type="button" disabled={!subtaskTitle.trim() || creatingSubtask} onClick={createSubtask}>{creatingSubtask ? "Creando…" : "+ Agregar"}</button></div>}</section>}
         <details className="ros-work-block ros-activity-history">
