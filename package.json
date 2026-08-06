@@ -11,7 +11,7 @@
     "migrate": "npm install --prefix backend && npm run migrate --prefix backend",
     "seed:usuarios": "npm run seed:usuarios --prefix backend",
     "start": "npm start --prefix backend",
-    "start:hostinger": "node backend/src/server.js",
+    "start:hostinger": "npm run migrate --prefix backend && node backend/src/server.js",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
     "build:hosting": "bash scripts/build-hosting.sh"
