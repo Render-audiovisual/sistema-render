@@ -9093,8 +9093,56 @@ tr:hover .sheet-row-actions {
     padding-inline: 7px;
   }
 
-  .tareas-viewport .task-kanban-column {
+.tareas-viewport .task-kanban-column {
     flex-basis: min(84vw, 310px);
     min-width: min(84vw, 310px);
   }
+}
+
+/* RENDER OS · identidad aprobada aplicada al menú principal. */
+.sidebar {
+  background: linear-gradient(180deg,#171a13 0%,#202418 100%);
+  border-right-color: rgba(245,246,239,.08);
+  box-shadow: 12px 0 34px rgba(23,26,19,.13);
+}
+.sidebar-header{border-bottom-color:rgba(245,246,239,.09)}
+.brand-initial {
+  background:#b5fc00;
+  border-color:#c7ff3d;
+  box-shadow:0 7px 18px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.42);
+  color:#202418;
+}
+.brand-greeting>strong,.brand-mark{color:#f5f6ef}
+.brand-greeting>small{color:#a6aa9f}
+.sidebar-content{background:rgba(245,246,239,.018);border-color:rgba(245,246,239,.055)}
+.sidebar-link{color:#b8bcb2}
+.sidebar-link:hover{background:rgba(245,246,239,.065);color:#f5f6ef}
+.sidebar-link.active {
+  background:#292c26;
+  box-shadow:inset 3px 0 #b5fc00,0 7px 18px rgba(0,0,0,.12);
+  color:#f5f6ef;
+}
+.sidebar-link.active .sidebar-icon{color:#b5fc00}
+.nav-menu.active>summary,.nav-menu[open]>summary{background:rgba(245,246,239,.065);color:#f5f6ef}
+.nav-menu.active>summary{box-shadow:inset 3px 0 #b5fc00}
+.nav-menu-panel{border-left-color:rgba(181,252,0,.24)}
+.nav-menu-heading,.sidebar-link-copy small,.nav-menu-chevron{color:#8f9589}
+.nav-menu-panel .sidebar-link:hover .sidebar-link-copy small,
+.nav-menu-panel .sidebar-link.active .sidebar-link-copy small{color:#bfc4b8}
+.account-menu{border-top-color:rgba(245,246,239,.09)}
+.account-trigger:hover,.account-menu[open]>.account-trigger,.account-menu.active>.account-trigger {
+  background:rgba(245,246,239,.065);
+  border-color:rgba(181,252,0,.2);
+}
+.user-avatar{background:#292c26;border:1px solid rgba(181,252,0,.28);color:#b5fc00}
+.user-name{color:#f5f6ef}
+.user-role,.account-trigger::after{color:#8f9589}
+.account-menu-panel{background:#202418;border-color:rgba(245,246,239,.1);box-shadow:0 22px 48px rgba(23,26,19,.34)}
+.sidebar-menu-toggle{color:#f5f6ef}
+
+@media (max-width:980px) {
+  .sidebar{background:#171a13}
+  .sidebar-menu-toggle{background:#292c26;border-color:rgba(181,252,0,.2)}
+  .sidebar-menu-toggle:hover,.sidebar-menu-toggle:focus-visible{background:#34382f;border-color:rgba(181,252,0,.4)}
+  .sidebar-backdrop{background:rgba(23,26,19,.54)}
 }
