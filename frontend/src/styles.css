@@ -9139,6 +9139,10 @@ tr:hover .sheet-row-actions {
 .user-role,.account-trigger::after{color:#8f9589}
 .account-menu-panel{background:#202418;border-color:rgba(245,246,239,.1);box-shadow:0 22px 48px rgba(23,26,19,.34)}
 .sidebar-menu-toggle{color:#f5f6ef}
+.sidebar-link:focus-visible,.nav-menu>summary:focus-visible,.account-trigger:focus-visible,.sidebar-menu-toggle:focus-visible {
+  outline:2px solid #b5fc00;
+  outline-offset:2px;
+}
 
 @media (max-width:980px) {
   .sidebar{background:#171a13}
