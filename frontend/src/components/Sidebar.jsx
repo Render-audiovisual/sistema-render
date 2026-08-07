@@ -42,10 +42,10 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
         description: "Organizá y seguí las publicaciones.",
       },
     ] : [],
-    gestion: esAdmin ? [
+    gestion: [
       { href: "/reportes-historias", label: "Reportes", icon: "reports" },
-      { href: "/sueldos", label: "Sueldos", icon: "salary" },
-    ] : [],
+      ...(esAdmin ? [{ href: "/sueldos", label: "Sueldos", icon: "salary" }] : []),
+    ],
     admin: esAdmin ? [
       { href: "/clientes", label: "Clientes", icon: "clients" },
     ] : [],

@@ -83,12 +83,14 @@ test("los dashboards personales leen y actualizan únicamente RENDER OS", () => 
   assert.doesNotMatch(assignedTasksSource, /fetch\(`\/api\/tareas\?\$\{params\.toString\(\)\}`\)\.then\(\(response\) =>\s*response\.json/);
 });
 
-test("la navegación de empleados solo expone inicio, tareas, notas y perfil", () => {
+test("la navegación de empleados expone inicio, tareas, notas, reportes y perfil", () => {
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
-  assert.match(appSource, /: \["\/perfil", "\/workspace\/tareas", "\/bloc-notas"\]/);
+  assert.match(appSource, /: \["\/perfil", "\/workspace\/tareas", "\/bloc-notas", "\/reportes-historias"\]/);
   assert.match(sidebarSource, /planificacion: esAdmin \?/);
-  assert.match(sidebarSource, /gestion: esAdmin \?/);
+  assert.match(sidebarSource, /gestion: \[/);
+  assert.match(sidebarSource, /href: "\/reportes-historias", label: "Reportes"/);
+  assert.match(sidebarSource, /\.\.\.\(esAdmin \? \[\{ href: "\/sueldos"/);
   assert.match(sidebarSource, /\{esAdmin && <details/);
 });
 
