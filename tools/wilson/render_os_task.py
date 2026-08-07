@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Cliente de Wilson para validar y crear tareas en RENDER OS.
+"""Cliente de Wilson para validar, crear, consultar y editar tareas en RENDER OS.
 
 La credencial se obtiene de RENDER_OS_WILSON_TOKEN o de
 ~/.openclaw/credentials/render_os.json. Crear exige confirmación explícita e
-idempotency key; el backend vuelve a validar catálogo y duplicados.
+idempotency key; el backend vuelve a validar catálogo y duplicados. Editar exige
+la misma confirmación y una clave de idempotencia.
 """
 
 import argparse
@@ -122,6 +123,37 @@ def add_task_arguments(parser, *, creating):
         parser.add_argument("--allow-duplicate", action="store_true")
 
 
+def add_authorization_arguments(parser, *, idempotent=False):
+    parser.add_argument("--telegram-user-id", required=True)
+    parser.add_argument("--confirmed-by", required=True, choices=("Franco", "Agustín"))
+    if idempotent:
+        parser.add_argument("--idempotency-key", required=True)
+
+
+def update_payload(args):
+    payload = {"confirmado": True}
+    values = {
+        "titulo": args.name,
+        "descripcion": args.desc,
+        "append_descripcion": args.append_desc,
+        "cliente": args.client,
+        "responsable": args.assignee_name,
+        "fecha_vencimiento": args.due,
+        "material": args.material,
+        "referencia": args.reference,
+    }
+    for key, value in values.items():
+        if value is not None:
+            payload[key] = value.replace("\\n", "\n").strip() if isinstance(value, str) else value
+    if args.list is not None:
+        payload["sector"] = SECTORS[args.list]
+    if args.priority is not None:
+        payload["prioridad"] = PRIORITIES[args.priority]
+    if len(payload) == 1:
+        raise RuntimeError("La edición no contiene ningún cambio.")
+    return payload
+
+
 def main():
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="cmd", required=True)
@@ -130,6 +162,23 @@ def main():
     add_task_arguments(validate, creating=False)
     create = commands.add_parser("create")
     add_task_arguments(create, creating=True)
+    get_task = commands.add_parser("get")
+    get_task.add_argument("--task-id", required=True, type=int)
+    add_authorization_arguments(get_task)
+    update = commands.add_parser("update")
+    update.add_argument("--task-id", required=True, type=int)
+    update.add_argument("--list", choices=sorted(SECTORS))
+    update.add_argument("--name")
+    description = update.add_mutually_exclusive_group()
+    description.add_argument("--desc", help="Reemplaza la descripción completa.")
+    description.add_argument("--append-desc", help="Agrega un bloque al final sin duplicarlo.")
+    update.add_argument("--client")
+    update.add_argument("--assignee-name")
+    update.add_argument("--due", help="YYYY-MM-DD")
+    update.add_argument("--material")
+    update.add_argument("--reference")
+    update.add_argument("--priority", type=int, choices=sorted(PRIORITIES))
+    add_authorization_arguments(update, idempotent=True)
     args = parser.parse_args()
 
     if args.cmd == "catalog":
@@ -138,7 +187,7 @@ def main():
         if not telegram_user_id:
             raise RuntimeError("Para consultar el catálogo falta WILSON_TELEGRAM_USER_ID.")
         result = request("GET", "/catalogo", telegram_user_id=telegram_user_id, confirmed_by=confirmed_by)
-    else:
+    elif args.cmd in ("validate", "create"):
         payload = task_payload(args)
         if args.cmd == "validate":
             result = request(
@@ -152,6 +201,17 @@ def main():
                 confirmed_by=args.confirmed_by, payload=payload,
                 idempotency_key=args.idempotency_key,
             )
+    elif args.cmd == "get":
+        result = request(
+            "GET", f"/tareas/{args.task_id}", telegram_user_id=args.telegram_user_id,
+            confirmed_by=args.confirmed_by,
+        )
+    else:
+        result = request(
+            "PATCH", f"/tareas/{args.task_id}", telegram_user_id=args.telegram_user_id,
+            confirmed_by=args.confirmed_by, payload=update_payload(args),
+            idempotency_key=args.idempotency_key,
+        )
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
 

@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import test from "node:test";
-import { buildWilsonSignatureMessage, buildWilsonTask, findWilsonDuplicates, normalizeWilsonText, requireWilsonService } from "../src/wilson-integration.js";
+import {
+  appendWilsonDescription,
+  buildWilsonSignatureMessage,
+  buildWilsonTask,
+  buildWilsonTaskUpdate,
+  findWilsonDuplicates,
+  normalizeWilsonText,
+  requireWilsonService,
+} from "../src/wilson-integration.js";
 
 const catalog = {
   clients: [{ id: 11, nombre: "Búnker Training" }],
@@ -62,4 +70,38 @@ test("la API técnica valida firma e ID autorizado de Telegram", () => {
 
 test("normaliza acentos en nombres del sistema", () => {
   assert.equal(normalizeWilsonText(" BÚNKER Training "), "bunker training");
+});
+
+test("Wilson agrega un bloque a la descripción sin duplicarlo", () => {
+  assert.equal(appendWilsonDescription("Bloque uno", "Bloque dos"), "Bloque uno\n\nBloque dos");
+  assert.equal(appendWilsonDescription("Bloque uno\n\nBloque dos", "Bloque dos"), "Bloque uno\n\nBloque dos");
+});
+
+test("Wilson prepara una edición parcial preservando los demás campos", () => {
+  const current = {
+    titulo: "Bunker | Visita producción | 07/08", asignado_a: "Luciano", cliente_id: 11,
+    cliente_nombre: "Búnker Training", fecha_vencimiento: "2026-08-07", tipo_tarea: "edicion",
+    prioridad: "media", aclaraciones: "Brief original", material_referencia: "https://drive.test/material",
+    subtipo: null, propiedades_extra: { referencia: "https://instagram.test/original" },
+  };
+  const result = buildWilsonTaskUpdate({ append_descripcion: "Nuevo bloque" }, current, catalog);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.task.titulo, current.titulo);
+  assert.equal(result.task.asignado_a, current.asignado_a);
+  assert.equal(result.task.aclaraciones, "Brief original\n\nNuevo bloque\nReferencia: https://instagram.test/original");
+  assert.equal(result.task.material_referencia, current.material_referencia);
+});
+
+test("Wilson permite cambiar cliente por nombre en una edición", () => {
+  const extendedCatalog = {
+    clients: [...catalog.clients, { id: 12, nombre: "Bohle" }], users: catalog.users,
+  };
+  const current = {
+    titulo: "Tarea", asignado_a: "Luciano", cliente_id: 11, cliente_nombre: "Búnker Training",
+    fecha_vencimiento: "2026-08-07", tipo_tarea: "edicion", prioridad: "media",
+    aclaraciones: null, material_referencia: null, subtipo: null, propiedades_extra: {},
+  };
+  const result = buildWilsonTaskUpdate({ cliente: "Bohle" }, current, extendedCatalog);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.task.cliente_id, 12);
 });

@@ -42,7 +42,7 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
     const telegramUserId = String(req.headers?.["x-telegram-user-id"] || req.body?.telegram_user_id || "").trim();
     const allowedIds = String(env.WILSON_ALLOWED_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(","))
       .split(",").map((item) => item.trim()).filter(Boolean);
-    if (!allowedIds.includes(telegramUserId)) return res.status(403).json({ error: "Esta cuenta de Telegram no puede crear tareas." });
+    if (!allowedIds.includes(telegramUserId)) return res.status(403).json({ error: "Esta cuenta de Telegram no puede operar tareas." });
     const timestampMs = Number(timestamp) * 1000;
     if (!timestamp || !nonce || !signature || !Number.isFinite(timestampMs)
       || Math.abs(now() - timestampMs) > SIGNATURE_MAX_AGE_MS) {
@@ -173,6 +173,61 @@ function taskWithUrl(task) {
   return { ...task, url: `https://sistema.rendercorrientes.com/workspace/tareas?task=${task.id}` };
 }
 
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(value || {}, key);
+}
+
+export function appendWilsonDescription(currentValue, appendedValue) {
+  const current = String(currentValue || "").trim();
+  const appended = String(appendedValue || "").trim();
+  if (!appended) return current;
+  if (normalizeWilsonText(current).includes(normalizeWilsonText(appended))) return current;
+  return [current, appended].filter(Boolean).join("\n\n");
+}
+
+export function buildWilsonTaskUpdate(input, currentTask, catalog) {
+  const appendDescription = String(input.append_descripcion || "").trim();
+  const description = appendDescription
+    ? appendWilsonDescription(currentTask.aclaraciones, appendDescription)
+    : hasOwn(input, "descripcion")
+      ? input.descripcion
+      : currentTask.aclaraciones;
+  const merged = {
+    titulo: hasOwn(input, "titulo") ? input.titulo : currentTask.titulo,
+    descripcion: description,
+    cliente_id: hasOwn(input, "cliente_id")
+      ? input.cliente_id
+      : hasOwn(input, "cliente") ? undefined : currentTask.cliente_id,
+    cliente: hasOwn(input, "cliente") ? input.cliente : currentTask.cliente_nombre,
+    responsable: hasOwn(input, "responsable") ? input.responsable : currentTask.asignado_a,
+    fecha_vencimiento: hasOwn(input, "fecha_vencimiento") ? input.fecha_vencimiento : currentTask.fecha_vencimiento,
+    sector: hasOwn(input, "sector") ? input.sector : currentTask.tipo_tarea,
+    prioridad: hasOwn(input, "prioridad") ? input.prioridad : currentTask.prioridad,
+    material: hasOwn(input, "material") ? input.material : currentTask.material_referencia,
+    referencia: hasOwn(input, "referencia")
+      ? input.referencia
+      : currentTask.propiedades_extra?.referencia || "",
+    subtipo: hasOwn(input, "subtipo") ? input.subtipo : currentTask.subtipo,
+  };
+  return buildWilsonTask(merged, catalog);
+}
+
+async function loadWilsonTask(db, taskId, { forUpdate = false } = {}) {
+  const result = await db.query(
+    `SELECT t.id,t.titulo,t.asignado_a,t.cliente_id,t.estado,t.propiedades_extra,
+            to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
+            t.tipo_tarea,t.subtipo,t.prioridad,t.aclaraciones,t.material_referencia,
+            t.created_at,t.updated_at,c.nombre AS cliente_nombre
+     FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+     WHERE t.id=$1
+       AND t.propiedades_extra->>'workspace'='render_os'
+       AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+     ${forUpdate ? "FOR UPDATE OF t" : ""}`,
+    [taskId],
+  );
+  return result.rows[0] || null;
+}
+
 export function createWilsonRouter({ pool, notifyAssignment, env = process.env }) {
   const router = express.Router();
   router.use(requireWilsonService(env));
@@ -189,6 +244,95 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
       const result = await validate(pool, req.body);
       res.status(result.errors.length ? 422 : 200).json(result);
     } catch (error) { next(error); }
+  });
+
+  router.get("/tareas/:id", async (req, res, next) => {
+    try {
+      const task = await loadWilsonTask(pool, req.params.id);
+      if (!task) return res.status(404).json({ error: "La tarea no existe en RENDER OS o está archivada." });
+      return res.json({ task: taskWithUrl(task) });
+    } catch (error) { return next(error); }
+  });
+
+  router.patch("/tareas/:id", async (req, res, next) => {
+    if (req.body?.confirmado !== true) return res.status(400).json({ error: "La edición todavía no fue confirmada." });
+    const key = String(req.headers?.["idempotency-key"] || req.body?.idempotency_key || "").trim();
+    if (!key) return res.status(400).json({ error: "Falta idempotency_key." });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`wilson:update:${req.params.id}:${key}`]);
+      const current = await loadWilsonTask(client, req.params.id, { forUpdate: true });
+      if (!current) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "La tarea no existe en RENDER OS o está archivada." });
+      }
+      if (current.propiedades_extra?.wilson_last_update_key === key) {
+        await client.query("COMMIT");
+        return res.json({ updated: false, idempotent: true, changed_fields: [], task: taskWithUrl(current) });
+      }
+
+      const result = buildWilsonTaskUpdate(req.body, current, await loadCatalog(client));
+      if (result.errors.length) {
+        await client.query("ROLLBACK");
+        return res.status(422).json(result);
+      }
+      const task = result.task;
+      const comparisons = {
+        titulo: [current.titulo, task.titulo],
+        asignado_a: [current.asignado_a, task.asignado_a],
+        cliente_id: [String(current.cliente_id), String(task.cliente_id)],
+        fecha_vencimiento: [current.fecha_vencimiento, task.fecha_vencimiento],
+        tipo_tarea: [current.tipo_tarea, task.tipo_tarea],
+        subtipo: [current.subtipo || "", task.subtipo || ""],
+        prioridad: [current.prioridad, task.prioridad],
+        aclaraciones: [current.aclaraciones || "", task.aclaraciones || ""],
+        material_referencia: [current.material_referencia || "", task.material_referencia || ""],
+        referencia: [current.propiedades_extra?.referencia || "", task.referencia || ""],
+      };
+      const changedFields = Object.entries(comparisons)
+        .filter(([, [before, after]]) => before !== after)
+        .map(([field]) => field);
+      if (!changedFields.length) {
+        await client.query("COMMIT");
+        return res.json({ updated: false, idempotent: false, changed_fields: [], task: taskWithUrl(current) });
+      }
+
+      const properties = {
+        ...current.propiedades_extra,
+        origen_integracion: "wilson",
+        wilson_last_update_key: key,
+        wilson_last_update_telegram_user_id: req.wilson.telegramUserId,
+        wilson_last_update_confirmado_por: req.wilson.confirmedBy,
+        wilson_last_update_at: new Date().toISOString(),
+      };
+      if (task.referencia) properties.referencia = task.referencia;
+      else delete properties.referencia;
+      const updated = await client.query(
+        `UPDATE tareas SET titulo=$2,asignado_a=$3,cliente_id=$4,fecha_vencimiento=$5,
+          tipo_tarea=$6,subtipo=$7,prioridad=$8,aclaraciones=$9,material_referencia=$10,
+          propiedades_extra=$11::jsonb,updated_at=NOW()
+         WHERE id=$1
+         RETURNING id,titulo,asignado_a,cliente_id,estado,propiedades_extra,
+          to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,tipo_tarea,subtipo,
+          prioridad,aclaraciones,material_referencia,created_at,updated_at`,
+        [current.id,task.titulo,task.asignado_a,task.cliente_id,task.fecha_vencimiento,
+          task.tipo_tarea,task.subtipo,task.prioridad,task.aclaraciones,task.material_referencia,
+          JSON.stringify(properties)],
+      );
+      await client.query(
+        "INSERT INTO tarea_comentarios (tarea_id,autor,contenido) VALUES ($1,'Wilson',$2)",
+        [current.id, `[Actividad] Actualizó esta tarea desde Telegram. Confirmado por ${req.wilson.confirmedBy}. Campos: ${changedFields.join(", ")}.`],
+      );
+      await client.query("COMMIT");
+      const updatedTask = { ...updated.rows[0], cliente_nombre: task.cliente_nombre };
+      res.json({ updated: true, idempotent: false, changed_fields: changedFields, task: taskWithUrl(updatedTask) });
+      if (changedFields.includes("asignado_a")) notifyAssignment?.({ pool, tarea: updatedTask, motivo: "reasignada" });
+      return undefined;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      return next(error);
+    } finally { client.release(); }
   });
 
   router.post("/tareas", async (req, res, next) => {
