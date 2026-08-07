@@ -50,7 +50,7 @@ export function App() {
 
   const rutasCompartidas = esAdmin
     ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/bloc-notas"]
-    : ["/perfil", "/workspace/tareas", "/bloc-notas"];
+    : ["/perfil", "/workspace/tareas", "/bloc-notas", "/reportes-historias"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
 
