@@ -881,8 +881,20 @@
 .render-workspace .ros-filter-toggle b{font-size:var(--ros-type-badge)}
 .render-workspace .ros-filter-bar label>span{font-size:var(--ros-type-label);font-weight:600}
 .render-workspace .ros-filter-bar select,.render-workspace .ros-filter-bar button{font-size:var(--ros-type-secondary);min-height:40px}
-.render-workspace .ros-column{min-width:230px}
-.render-workspace .ros-board{grid-template-columns:repeat(4,minmax(230px,1fr))}
+.render-workspace .ros-column{min-width:230px;scroll-snap-align:start}
+.render-workspace .ros-board{
+  grid-template-columns:repeat(5,minmax(230px,1fr));
+  overscroll-behavior-inline:contain;
+  overflow-x:auto;
+  scroll-padding-inline:2px;
+  scroll-snap-type:x proximity;
+  scrollbar-color:#b8bdb1 #ecefe7;
+  scrollbar-width:thin;
+}
+.render-workspace .ros-board::-webkit-scrollbar{height:10px}
+.render-workspace .ros-board::-webkit-scrollbar-track{background:#ecefe7;border-radius:999px}
+.render-workspace .ros-board::-webkit-scrollbar-thumb{background:#b8bdb1;border:2px solid #ecefe7;border-radius:999px}
+.render-workspace .ros-board::-webkit-scrollbar-thumb:hover{background:#92998b}
 .render-workspace .ros-column>header span,.render-workspace .ros-column>header strong{font-size:var(--ros-type-body)}
 .render-workspace .ros-column>header small{font-size:var(--ros-type-badge);height:22px;min-width:22px}
 .render-workspace .ros-area-badge{font-size:var(--ros-type-badge);font-weight:700}
@@ -942,7 +954,7 @@
 @media(max-width:700px){
   .render-workspace{--ros-type-page:28px}
   .render-workspace .ros-sidebar nav a,.render-workspace .ros-sidebar nav button{font-size:var(--ros-type-body)}
-  .render-workspace .ros-board{grid-template-columns:repeat(4,82vw)}
+  .render-workspace .ros-board{grid-template-columns:repeat(5,82vw);scroll-snap-type:x mandatory}
   .render-workspace .ros-column{min-width:82vw}
   .render-workspace .ros-task-document-heading h2,.render-workspace .ros-task-document-heading .ros-title-input{font-size:var(--ros-type-page)}
 }
