@@ -94,9 +94,13 @@ test("la navegación de empleados solo expone inicio, tareas, notas y perfil", (
 
 test("el archivo de Tareas se presenta como una única acción secundaria", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");
   assert.match(workspaceSource, /Ver archivadas/);
   assert.match(workspaceSource, /Volver a tareas activas/);
   assert.doesNotMatch(workspaceSource, />Activas<\/button><button[^>]*>Archivadas</);
+  assert.match(workspaceStyles, /grid-template-columns:repeat\(5,minmax\(230px,1fr\)\)/);
+  assert.match(workspaceStyles, /grid-template-columns:repeat\(5,82vw\)/);
+  assert.match(workspaceStyles, /scroll-snap-type:x proximity/);
 });
 
 test("la revisión de videos permite al Líder entregarlos a Oriana", () => {
