@@ -438,8 +438,17 @@ export function ReportesEquipoPage() {
   const reelsDelPeriodo = publicaciones.filter(
     (p) => p.tipo === "video" && enPeriodo(p.fecha_programada || ""),
   );
+  const carruselesDelPeriodo = publicaciones.filter(
+    (p) => p.tipo === "carrusel" && enPeriodo(p.fecha_programada || ""),
+  );
   const historiasOriana = resumenEntregas(historiasDelPeriodo);
   const reelsOriana = resumenEntregas(reelsDelPeriodo);
+  const carruselesOriana = resumenEntregas(carruselesDelPeriodo);
+  const metricasOriana = [
+    { etiqueta: "Carruseles publicados", verbo: "publicados", verboSingular: "publicado", ...carruselesOriana },
+    { etiqueta: "Reels publicados", verbo: "publicados", verboSingular: "publicado", ...reelsOriana },
+    { etiqueta: "Historias publicadas", verbo: "publicadas", verboSingular: "publicada", ...historiasOriana },
+  ];
 
   const inicioMariano = "2026-08-01";
   const marianoActivo = periodo === "ultimos_30"
@@ -474,10 +483,7 @@ export function ReportesEquipoPage() {
     {
       nombre: "Oriana",
       rol: "Publicación",
-      metricas: [
-        { etiqueta: "Historias publicadas", verbo: "publicadas", verboSingular: "publicada", ...historiasOriana },
-        { etiqueta: "Reels publicados", verbo: "publicados", verboSingular: "publicado", ...reelsOriana },
-      ],
+      metricas: metricasOriana,
     },
     {
       nombre: "Mariano",
@@ -538,6 +544,8 @@ export function ReportesEquipoPage() {
                       ? <TarjetaFilmacionesGerman key={tarjeta.nombre} clientes={tarjeta.clientes}/>
                       : <TarjetaEntregablesEquipo key={tarjeta.nombre} {...tarjeta} />
                   ))
+                ) : belongsToPerson(nombrePropio, "Oriana") ? (
+                  <TarjetaEntregablesEquipo nombre="Oriana" rol="Publicación" metricas={metricasOriana}/>
                 ) : belongsToPerson(nombrePropio, "Germán") ? (
                   <TarjetaFilmacionesGerman clientes={filmacionesGerman}/>
                 ) : (
