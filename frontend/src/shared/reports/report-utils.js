@@ -57,6 +57,8 @@ const MARIANO_CLIENTS = new Set([
   "el angel azul estudiantil",
   "angel azul estudiantil",
   "joyeria cristal",
+  "cristal joyeria",
+  "cristal joyerias",
 ]);
 
 export function getCarouselDesignerForClient(client = {}) {
@@ -88,4 +90,11 @@ export function getDesignerCarouselSummary(designer, clients = [], publications 
     pendientes: Math.max(total - realizados, 0),
     total,
   };
+}
+
+export function formatPeriodDeadline(endExclusive = "") {
+  const match = String(endExclusive).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const deadline = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]) - 1);
+  return new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "long" }).format(deadline);
 }

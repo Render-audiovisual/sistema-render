@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
 import { pushUrlContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
-import { belongsToPerson, filterItemsByPeriod, getDesignerCarouselSummary } from "../shared/reports/report-utils.js";
+import { belongsToPerson, filterItemsByPeriod, formatPeriodDeadline, getDesignerCarouselSummary } from "../shared/reports/report-utils.js";
 import { groupProductionByClient } from "../features/render-os/utils/production-visits.js";
 
 export function ResumenEntregableEquipo({
@@ -42,11 +42,11 @@ export function ResumenEntregableEquipo({
           <strong style={{ color: "var(--text)", fontSize: "16px", fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace', fontVariantNumeric: "tabular-nums" }}>{realizados}</strong> de {total}
         </div>
       </div>
-      <div style={{ height: "6px", background: "var(--surface-soft)", borderRadius: "999px", overflow: "hidden", margin: "9px 0 7px" }}>
+      <div className="report-progress-bar">
         <div
+          className="report-progress-fill"
           style={{
             width: `${Math.min(porcentaje, 100)}%`,
-            height: "100%",
             background: colorBarra,
           }}
         />
@@ -60,7 +60,7 @@ export function ResumenEntregableEquipo({
   );
 }
 
-export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMes = false }) {
+export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMes = false, fechaLimite = "" }) {
   const inicial = (nombre || "?").trim().charAt(0).toUpperCase();
   return (
     <article
@@ -103,6 +103,9 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
           </span>
         )}
       </div>
+      {fechaLimite && !proximoMes && (
+        <p className="report-employee-encouragement">Vamos, tenés tiempo de completarlo hasta el <strong>{fechaLimite}</strong>.</p>
+      )}
       {proximoMes ? (
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px", color: "var(--muted)", fontSize: "12px", lineHeight: 1.5 }}>
           Carruseles e historias medidas a partir de agosto.
@@ -118,7 +121,7 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
   );
 }
 
-function TarjetaFilmacionesGerman({ clientes }) {
+function TarjetaFilmacionesGerman({ clientes, fechaLimite = "" }) {
   const totalGrabados = clientes.reduce((sum, item) => sum + item.grabados, 0);
   const totalPlanificados = clientes.reduce((sum, item) => sum + item.objetivo, 0);
   return (
@@ -127,6 +130,7 @@ function TarjetaFilmacionesGerman({ clientes }) {
         <span className="report-employee-avatar">G</span>
         <div><strong>Germán</strong><small>Filmmaker · Producción audiovisual</small></div>
       </header>
+      {fechaLimite && <p className="report-employee-encouragement">Vamos, tenés tiempo de completarlo hasta el <strong>{fechaLimite}</strong>.</p>}
       <div className="report-filmmaker-total">
         <strong>{totalGrabados}</strong>
         <div><span>videos grabados</span><small>{totalPlanificados - totalGrabados} pendientes · {totalPlanificados} planificados</small></div>
@@ -441,7 +445,7 @@ export function ReportesEquipoPage() {
   const reelsOriana = resumenEntregas(reelsDelPeriodo);
   const carruselesOriana = resumenEntregas(carruselesDelPeriodo);
   const metricasOriana = [
-    { etiqueta: "Carruseles publicados", verbo: "publicados", verboSingular: "publicado", ...carruselesOriana },
+    { etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesOriana },
     { etiqueta: "Reels publicados", verbo: "publicados", verboSingular: "publicado", ...reelsOriana },
     { etiqueta: "Historias publicadas", verbo: "publicadas", verboSingular: "publicada", ...historiasOriana },
   ];
@@ -450,11 +454,12 @@ export function ReportesEquipoPage() {
   const marianoActivo = periodo === "ultimos_30"
     ? hoyISO >= inicioMariano
     : rangoPeriodo.desde >= inicioMariano;
+  const fechaLimite = periodo === "mes_actual" ? formatPeriodDeadline(rangoPeriodo.hasta) : "";
   const tarjetasEntregables = [
     {
       nombre: "Augusto",
       rol: "Diseño",
-      metricas: [{ etiqueta: "Carruseles publicados", verbo: "publicados", verboSingular: "publicado", ...carruselesAugusto }],
+      metricas: [{ etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesAugusto }],
     },
     {
       nombre: "Luciano",
@@ -477,7 +482,7 @@ export function ReportesEquipoPage() {
       rol: "Diseño y contenido",
       proximoMes: !marianoActivo,
       metricas: [
-        { etiqueta: "Carruseles publicados", verbo: "publicados", verboSingular: "publicado", ...carruselesMariano },
+        { etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesMariano },
       ],
     },
   ];
@@ -495,7 +500,7 @@ export function ReportesEquipoPage() {
     <main aria-label="Render platform reportes equipo">
       <div className="frame">
         <div className="content reportes-page">
-          <header className="module-intro"><div><div className="section-label">Reportes</div><h2>¿Cómo viene el rendimiento?</h2><p>{esVistaAdmin ? "Entregas realizadas y pendientes del equipo." : "Tu objetivo, tareas completadas y pendientes."}</p></div></header>
+          <header className="module-intro"><div><div className="section-label">Reportes</div><h2>Reporte del equipo</h2><p>{esVistaAdmin ? "Entregas realizadas y pendientes del equipo." : "Tu objetivo, tareas completadas y pendientes."}</p></div></header>
 
           {error && (
             <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
@@ -527,17 +532,17 @@ export function ReportesEquipoPage() {
                 {esVistaAdmin ? (
                   tarjetasEntregables.map((tarjeta) => (
                     tarjeta.tipo === "filmaciones"
-                      ? <TarjetaFilmacionesGerman key={tarjeta.nombre} clientes={tarjeta.clientes}/>
-                      : <TarjetaEntregablesEquipo key={tarjeta.nombre} {...tarjeta} />
+                      ? <TarjetaFilmacionesGerman key={tarjeta.nombre} clientes={tarjeta.clientes} fechaLimite={fechaLimite}/>
+                      : <TarjetaEntregablesEquipo key={tarjeta.nombre} {...tarjeta} fechaLimite={fechaLimite}/>
                   ))
                 ) : belongsToPerson(nombrePropio, "Oriana") ? (
-                  <TarjetaEntregablesEquipo nombre="Oriana" rol="Publicación" metricas={metricasOriana}/>
+                  <TarjetaEntregablesEquipo nombre="Oriana" rol="Publicación" metricas={metricasOriana} fechaLimite={fechaLimite}/>
                 ) : belongsToPerson(nombrePropio, "Augusto") ? (
-                  <TarjetaEntregablesEquipo nombre="Augusto" rol="Diseño" metricas={[{ etiqueta: "Carruseles publicados", verbo: "publicados", verboSingular: "publicado", ...carruselesAugusto }]}/>
+                  <TarjetaEntregablesEquipo nombre="Augusto" rol="Diseño" metricas={[{ etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesAugusto }]} fechaLimite={fechaLimite}/>
                 ) : belongsToPerson(nombrePropio, "Mariano") ? (
-                  <TarjetaEntregablesEquipo nombre="Mariano" rol="Diseño y contenido" metricas={[{ etiqueta: "Carruseles publicados", verbo: "publicados", verboSingular: "publicado", ...carruselesMariano }]}/>
+                  <TarjetaEntregablesEquipo nombre="Mariano" rol="Diseño y contenido" metricas={[{ etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesMariano }]} fechaLimite={fechaLimite}/>
                 ) : belongsToPerson(nombrePropio, "Germán") ? (
-                  <TarjetaFilmacionesGerman clientes={filmacionesGerman}/>
+                  <TarjetaFilmacionesGerman clientes={filmacionesGerman} fechaLimite={fechaLimite}/>
                 ) : (
                   <>
                     <div style={{ ...cardStyle, background: filaPropia?.estadoObjetivo?.bg || "var(--surface-soft)" }}>
