@@ -104,7 +104,7 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
         )}
       </div>
       {fechaLimite && !proximoMes && (
-        <p className="report-employee-encouragement">Vamos, tenés tiempo de completarlo hasta el <strong>{fechaLimite}</strong>.</p>
+        <p className="report-employee-encouragement"><span aria-hidden="true">🚀</span> <strong>¡Vamos!</strong> Tenés tiempo de completarlo hasta el <b>{fechaLimite}</b>.</p>
       )}
       {proximoMes ? (
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px", color: "var(--muted)", fontSize: "12px", lineHeight: 1.5 }}>
@@ -130,7 +130,7 @@ function TarjetaFilmacionesGerman({ clientes, fechaLimite = "" }) {
         <span className="report-employee-avatar">G</span>
         <div><strong>Germán</strong><small>Filmmaker · Producción audiovisual</small></div>
       </header>
-      {fechaLimite && <p className="report-employee-encouragement">Vamos, tenés tiempo de completarlo hasta el <strong>{fechaLimite}</strong>.</p>}
+      {fechaLimite && <p className="report-employee-encouragement"><span aria-hidden="true">🚀</span> <strong>¡Vamos!</strong> Tenés tiempo de completarlo hasta el <b>{fechaLimite}</b>.</p>}
       <div className="report-filmmaker-total">
         <strong>{totalGrabados}</strong>
         <div><span>videos grabados</span><small>{totalPlanificados - totalGrabados} pendientes · {totalPlanificados} planificados</small></div>
