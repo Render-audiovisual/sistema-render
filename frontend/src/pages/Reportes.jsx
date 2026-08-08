@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
 import { pushUrlContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
-import { belongsToPerson, filterItemsByPeriod } from "../shared/reports/report-utils.js";
+import { belongsToPerson, filterItemsByPeriod, getDesignerCarouselSummary } from "../shared/reports/report-utils.js";
 import { groupProductionByClient } from "../features/render-os/utils/production-visits.js";
 
 export function ResumenEntregableEquipo({
@@ -153,6 +153,7 @@ export function ReportesEquipoPage() {
   const [tareasRenderOs, setTareasRenderOs] = useState([]);
   const [historias, setHistorias] = useState([]);
   const [publicaciones, setPublicaciones] = useState([]);
+  const [clientes, setClientes] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const initialPeriod = readUrlContext(window.location.search, { periodo: "mes_actual" }).periodo;
   const [periodo, setPeriodo] = useState(
@@ -181,13 +182,15 @@ export function ReportesEquipoPage() {
       fetch(tareasUrl).then((r) => r.json()),
       fetch("/api/historias").then((r) => r.json()),
       fetch("/api/publicaciones").then((r) => r.json()),
+      fetch("/api/clientes").then((r) => r.json()),
       fetch("/api/usuarios").then((r) => r.json()),
       fetch("/api/tareas?workspace=render_os&limit=500").then((r) => r.json()),
     ])
-      .then(([t, h, p, u, tareasOs]) => {
+      .then(([t, h, p, c, u, tareasOs]) => {
         setTareas(Array.isArray(t) ? t : []);
         setHistorias(Array.isArray(h) ? h : []);
         setPublicaciones(Array.isArray(p) ? p : []);
+        setClientes(Array.isArray(c) ? c : []);
         setUsuarios(Array.isArray(u) ? u : []);
         setTareasRenderOs(Array.isArray(tareasOs) ? tareasOs : []);
         setError(null);
@@ -417,15 +420,6 @@ export function ReportesEquipoPage() {
       total: items.length,
     };
   };
-  const esCarrusel = (tarea) => {
-    const titulo = (tarea.titulo || "").toLocaleLowerCase("es");
-    const lista = (tarea.propiedades_extra?.clickup_lista || "").toLocaleLowerCase("es");
-    return titulo.includes("carrusel") || lista.includes("carrusel");
-  };
-
-  const carruselesAugusto = resumenEntregas(
-    tareasDelPeriodoPorPersona("Augusto").filter(esCarrusel),
-  );
   const videosLuciano = resumenEntregas(
     tareasDelPeriodoPorPersona("Luciano").filter((t) => t.tipo_tarea === "edicion"),
   );
@@ -441,6 +435,8 @@ export function ReportesEquipoPage() {
   const carruselesDelPeriodo = publicaciones.filter(
     (p) => p.tipo === "carrusel" && enPeriodo(p.fecha_programada || ""),
   );
+  const carruselesAugusto = getDesignerCarouselSummary("Augusto", clientes, carruselesDelPeriodo);
+  const carruselesMariano = getDesignerCarouselSummary("Mariano", clientes, carruselesDelPeriodo);
   const historiasOriana = resumenEntregas(historiasDelPeriodo);
   const reelsOriana = resumenEntregas(reelsDelPeriodo);
   const carruselesOriana = resumenEntregas(carruselesDelPeriodo);
@@ -454,20 +450,11 @@ export function ReportesEquipoPage() {
   const marianoActivo = periodo === "ultimos_30"
     ? hoyISO >= inicioMariano
     : rangoPeriodo.desde >= inicioMariano;
-  const carruselesMariano = resumenEntregas(
-    tareasDelPeriodoPorPersona("Mariano").filter(esCarrusel),
-  );
-  const historiasMariano = resumenEntregas(
-    historiasDelPeriodo.filter(
-      (h) => belongsToPerson(h.responsable_diseño || h.responsable, "Mariano"),
-    ),
-  );
-
   const tarjetasEntregables = [
     {
       nombre: "Augusto",
       rol: "Diseño",
-      metricas: [{ etiqueta: "Carruseles", ...carruselesAugusto }],
+      metricas: [{ etiqueta: "Carruseles publicados", verbo: "publicados", verboSingular: "publicado", ...carruselesAugusto }],
     },
     {
       nombre: "Luciano",
@@ -490,8 +477,7 @@ export function ReportesEquipoPage() {
       rol: "Diseño y contenido",
       proximoMes: !marianoActivo,
       metricas: [
-        { etiqueta: "Carruseles", ...carruselesMariano },
-        { etiqueta: "Historias", ...historiasMariano },
+        { etiqueta: "Carruseles publicados", verbo: "publicados", verboSingular: "publicado", ...carruselesMariano },
       ],
     },
   ];
@@ -546,6 +532,10 @@ export function ReportesEquipoPage() {
                   ))
                 ) : belongsToPerson(nombrePropio, "Oriana") ? (
                   <TarjetaEntregablesEquipo nombre="Oriana" rol="Publicación" metricas={metricasOriana}/>
+                ) : belongsToPerson(nombrePropio, "Augusto") ? (
+                  <TarjetaEntregablesEquipo nombre="Augusto" rol="Diseño" metricas={[{ etiqueta: "Carruseles publicados", verbo: "publicados", verboSingular: "publicado", ...carruselesAugusto }]}/>
+                ) : belongsToPerson(nombrePropio, "Mariano") ? (
+                  <TarjetaEntregablesEquipo nombre="Mariano" rol="Diseño y contenido" metricas={[{ etiqueta: "Carruseles publicados", verbo: "publicados", verboSingular: "publicado", ...carruselesMariano }]}/>
                 ) : belongsToPerson(nombrePropio, "Germán") ? (
                   <TarjetaFilmacionesGerman clientes={filmacionesGerman}/>
                 ) : (
