@@ -86,12 +86,14 @@ test("los dashboards personales leen y actualizan únicamente RENDER OS", () => 
 test("la navegación de empleados expone inicio, tareas, notas, reportes y perfil", () => {
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
+  const utilsSource = readFileSync(new URL("../../frontend/src/utils.jsx", import.meta.url), "utf8");
   assert.match(appSource, /: \["\/perfil", "\/workspace\/tareas", "\/bloc-notas", "\/reportes-historias", "\/drive"\]/);
   assert.match(sidebarSource, /planificacion: esAdmin \?/);
   assert.match(sidebarSource, /gestion: \[/);
   assert.match(sidebarSource, /href: "\/reportes-historias", label: "Reportes"/);
   assert.match(sidebarSource, /\.\.\.\(esAdmin \? \[\{ href: "\/sueldos"/);
   assert.match(sidebarSource, /\{esAdmin && <details/);
+  assert.doesNotMatch(utilsSource, /getUsuarioKey\(sesion\?\.usuario\?\.usuario\) === "franco"/);
 });
 
 test("el reporte personal de Oriana separa carruseles, reels e historias publicadas", () => {

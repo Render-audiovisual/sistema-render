@@ -501,10 +501,6 @@ export function getSesion() {
       localStorage.removeItem("render_sesion");
       return null;
     }
-    if (getUsuarioKey(sesion?.usuario?.usuario) === "franco") {
-      localStorage.removeItem("render_sesion");
-      return null;
-    }
     if (getUsuarioKey(sesion?.usuario?.usuario) === "agustin") {
       return {
         ...sesion,
