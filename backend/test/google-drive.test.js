@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DRIVE_ROOTS, normalizeDriveName, resolveDriveRoot } from "../src/google-drive.js";
 
@@ -24,3 +25,9 @@ test("foto, video y destinos no inequívocos usan RENDER_UPLOADS", () => {
   assert.equal(result.child, "RENDER_UPLOADS");
 });
 
+test("Drive usa credenciales separadas del inicio de sesión con Google", () => {
+  const source = readFileSync(new URL("../src/google-drive.js", import.meta.url), "utf8");
+  assert.match(source, /GOOGLE_DRIVE_CLIENT_ID/);
+  assert.match(source, /GOOGLE_DRIVE_CLIENT_SECRET/);
+  assert.doesNotMatch(source, /new OAuth2Client\(process\.env\.GOOGLE_CLIENT_ID/);
+});

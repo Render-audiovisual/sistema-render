@@ -25,8 +25,8 @@ export function resolveDriveRoot(task = {}) {
 
 function driveClient() {
   const redirectUri = process.env.GOOGLE_DRIVE_REDIRECT_URI || "https://sistema.rendercorrientes.com/api/drive/oauth/callback";
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) return null;
-  return new OAuth2Client(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, redirectUri);
+  if (!process.env.GOOGLE_DRIVE_CLIENT_ID || !process.env.GOOGLE_DRIVE_CLIENT_SECRET) return null;
+  return new OAuth2Client(process.env.GOOGLE_DRIVE_CLIENT_ID, process.env.GOOGLE_DRIVE_CLIENT_SECRET, redirectUri);
 }
 
 async function savedCredentials(pool) {
@@ -142,7 +142,7 @@ export function createGoogleDriveRouter({ express, pool, requireRole }) {
   router.post("/connect", requireRole("admin"), async (req, res, next) => {
     try {
       const client = driveClient();
-      if (!client) return res.status(503).json({ error: "Faltan GOOGLE_CLIENT_SECRET y GOOGLE_DRIVE_REDIRECT_URI en Hostinger." });
+      if (!client) return res.status(503).json({ error: "Faltan GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET y GOOGLE_DRIVE_REDIRECT_URI en Hostinger." });
       const state = jwt.sign({ purpose: "google_drive", role: req.auth.rol, name: req.auth.nombre }, process.env.JWT_SECRET, { expiresIn: "10m" });
       res.json({ url: client.generateAuthUrl({ access_type: "offline", prompt: "consent", scope: [DRIVE_SCOPE], state }) });
     } catch (error) { next(error); }

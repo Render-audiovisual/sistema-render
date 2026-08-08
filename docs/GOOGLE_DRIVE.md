@@ -8,8 +8,8 @@ Render OS no guarda copias de los archivos: usa Google Drive como fuente de verd
 2. En el cliente OAuth web agregar como URI de redirección autorizada:
    `https://sistema.rendercorrientes.com/api/drive/oauth/callback`
 3. En Hostinger configurar, sin publicar sus valores:
-   - `GOOGLE_CLIENT_ID`
-   - `GOOGLE_CLIENT_SECRET`
+   - `GOOGLE_DRIVE_CLIENT_ID`
+   - `GOOGLE_DRIVE_CLIENT_SECRET`
    - `GOOGLE_DRIVE_REDIRECT_URI`
 4. Desplegar y aplicar las migraciones.
 5. Entrar como Líder a `/drive` y pulsar **Conectar Google Drive**.
@@ -23,4 +23,3 @@ Render OS no guarda copias de los archivos: usa Google Drive como fuente de verd
 - Diseños de Augusto y Mariano se resuelven dentro de sus respectivos directorios.
 - Producción y destinos no inequívocos usan `RENDER_UPLOADS`.
 - Si la carpeta del cliente no coincide claramente, el sistema exige elegirla manualmente.
-
