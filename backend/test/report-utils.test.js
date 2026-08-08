@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { belongsToPerson, filterItemsByPeriod, getClientCarouselTarget, getDesignerCarouselSummary, groupFilmingTasksByClient, isFilmingTask } from "../../frontend/src/shared/reports/report-utils.js";
+import { belongsToPerson, filterItemsByPeriod, formatPeriodDeadline, getClientCarouselTarget, getDesignerCarouselSummary, groupFilmingTasksByClient, isFilmingTask } from "../../frontend/src/shared/reports/report-utils.js";
 
 test("identifica filmaciones sin contar tareas de edición", () => {
   assert.equal(isFilmingTask({ tipo_tarea: "produccion", titulo: "Visita al local" }), true);
@@ -76,4 +76,14 @@ test("calcula los carruseles de cada diseñador desde clientes, cuotas y publica
     pendientes: 4,
     total: 6,
   });
+});
+
+test("reconoce Cristal Joyerias como cliente de Mariano y calcula el cierre mensual", () => {
+  const clients = [{ id: 9, nombre: "Cristal Joyerias", cuota_carruseles: 4 }];
+  assert.deepEqual(getDesignerCarouselSummary("Mariano", clients, []), {
+    realizados: 0,
+    pendientes: 4,
+    total: 4,
+  });
+  assert.equal(formatPeriodDeadline("2026-09-01"), "31 de agosto");
 });

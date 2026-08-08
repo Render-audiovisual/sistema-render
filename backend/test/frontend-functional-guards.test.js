@@ -98,10 +98,20 @@ test("el reporte personal de Oriana separa carruseles, reels e historias publica
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
   assert.match(reportesSource, /p\.tipo === "carrusel" && enPeriodo/);
   assert.match(reportesSource, /p\.tipo === "video" && enPeriodo/);
-  assert.match(reportesSource, /etiqueta: "Carruseles publicados"/);
+  assert.match(reportesSource, /etiqueta: "Carruseles entregados"/);
   assert.match(reportesSource, /etiqueta: "Reels publicados"/);
   assert.match(reportesSource, /etiqueta: "Historias publicadas"/);
   assert.match(reportesSource, /belongsToPerson\(nombrePropio, "Oriana"\)/);
+});
+
+test("Reportes muestra cierre mensual y una barra de avance animada accesible", () => {
+  const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
+  const stylesSource = readFileSync(new URL("../../frontend/src/styles.css", import.meta.url), "utf8");
+  assert.match(reportesSource, /<h2>Reporte del equipo<\/h2>/);
+  assert.match(reportesSource, /tenés tiempo de completarlo hasta el/);
+  assert.match(reportesSource, /formatPeriodDeadline\(rangoPeriodo\.hasta\)/);
+  assert.match(stylesSource, /@keyframes report-progress-shine/);
+  assert.match(stylesSource, /@media \(prefers-reduced-motion:reduce\)/);
 });
 
 test("el archivo de Tareas se presenta como una única acción secundaria", () => {

@@ -9575,6 +9575,61 @@ tr:hover .sheet-row-actions {
   gap:10px!important;
 }
 
+.reportes-page .report-progress-bar {
+  height:8px;
+  margin:10px 0 8px;
+  overflow:hidden;
+  border-radius:999px;
+  background:#e9ece3;
+  box-shadow:inset 0 1px 2px rgb(32 36 24 / 9%);
+}
+
+.reportes-page .report-progress-fill {
+  position:relative;
+  height:100%;
+  min-width:0;
+  overflow:hidden;
+  border-radius:inherit;
+  animation:report-progress-grow .7s cubic-bezier(.22,.8,.32,1) both;
+}
+
+.reportes-page .report-progress-fill::after {
+  position:absolute;
+  inset:0;
+  content:"";
+  background:linear-gradient(100deg,transparent 15%,rgb(255 255 255 / 58%) 48%,transparent 78%);
+  transform:translateX(-120%);
+  animation:report-progress-shine 2.8s ease-in-out .55s infinite;
+}
+
+.reportes-page .report-employee-encouragement {
+  margin:-2px 0 14px;
+  padding:9px 11px;
+  border:1px solid #dfe8c8;
+  border-radius:9px;
+  background:#f6faeb;
+  color:#62695d;
+  font-size:12px;
+  line-height:1.45;
+}
+
+.reportes-page .report-employee-encouragement strong { color:#39421e; }
+
+@keyframes report-progress-grow {
+  from { transform:scaleX(0);transform-origin:left; }
+  to { transform:scaleX(1);transform-origin:left; }
+}
+
+@keyframes report-progress-shine {
+  0%,55% { transform:translateX(-120%); }
+  85%,100% { transform:translateX(120%); }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .reportes-page .report-progress-fill,
+  .reportes-page .report-progress-fill::after { animation:none; }
+}
+
 .reportes-page .report-filmmaker-card {
   background:linear-gradient(145deg,#f7faef,#fff)!important;
   border-top:3px solid #a0d223!important;
