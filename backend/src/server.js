@@ -759,7 +759,7 @@ router.get("/estructura", async (_req, res, next) => {
   }
 });
 
-router.post("/estructura", async (req, res, next) => {
+router.post("/estructura", requireRole("admin"), async (req, res, next) => {
   try {
     const { cliente_id, dia_semana, tema, horario, cta_fijo, tipo } = req.body;
 
@@ -810,7 +810,7 @@ router.get("/check-publicacion", async (req, res, next) => {
   }
 });
 
-router.post("/check-publicacion", async (req, res, next) => {
+router.post("/check-publicacion", requireRole("admin"), async (req, res, next) => {
   try {
     const { cliente_id, fecha, publicado, confirmado_por } = req.body;
 
@@ -868,7 +868,7 @@ router.get("/fechas-especiales", async (_req, res, next) => {
   }
 });
 
-router.patch("/fechas-especiales/:id", async (req, res, next) => {
+router.patch("/fechas-especiales/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const { estado, idea } = req.body;
@@ -1117,7 +1117,7 @@ router.delete("/clientes/:id", requireRole("admin"), async (req, res, next) => {
   }
 });
 
-router.patch("/historias/:id", async (req, res, next) => {
+router.patch("/historias/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const {
@@ -1222,7 +1222,7 @@ router.patch("/historias/:id", async (req, res, next) => {
   }
 });
 
-router.delete("/historias/:id", async (req, res, next) => {
+router.delete("/historias/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -1283,7 +1283,7 @@ router.get("/historias", async (_req, res, next) => {
   }
 });
 
-router.patch("/publicaciones/:id", async (req, res, next) => {
+router.patch("/publicaciones/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const {
@@ -1400,7 +1400,7 @@ router.patch("/publicaciones/:id", async (req, res, next) => {
   }
 });
 
-router.delete("/publicaciones/:id", async (req, res, next) => {
+router.delete("/publicaciones/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
@@ -2537,7 +2537,7 @@ async function crearTareaAuto({ titulo, asignado_a, cliente_id, fecha_vencimient
   return rows[0].id;
 }
 
-router.post("/piezas", async (req, res, next) => {
+router.post("/piezas", requireRole("admin"), async (req, res, next) => {
   try {
     const {
       tipo,
@@ -2649,7 +2649,7 @@ router.post("/piezas", async (req, res, next) => {
   }
 });
 
-router.post("/historias/convertir-flyer/:publicacionId", async (req, res, next) => {
+router.post("/historias/convertir-flyer/:publicacionId", requireRole("admin"), async (req, res, next) => {
   try {
     const { publicacionId } = req.params;
 
@@ -2690,7 +2690,7 @@ router.post("/historias/convertir-flyer/:publicacionId", async (req, res, next) 
   }
 });
 
-router.patch("/piezas/:id", async (req, res, next) => {
+router.patch("/piezas/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const { estado, prioridad, idea, copy, material_referencia, aclaraciones } =
