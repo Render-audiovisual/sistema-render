@@ -94,6 +94,16 @@ test("la navegación de empleados expone inicio, tareas, notas, reportes y perfi
   assert.match(sidebarSource, /\{esAdmin && <details/);
 });
 
+test("el reporte personal de Oriana separa carruseles, reels e historias publicadas", () => {
+  const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
+  assert.match(reportesSource, /p\.tipo === "carrusel" && enPeriodo/);
+  assert.match(reportesSource, /p\.tipo === "video" && enPeriodo/);
+  assert.match(reportesSource, /etiqueta: "Carruseles publicados"/);
+  assert.match(reportesSource, /etiqueta: "Reels publicados"/);
+  assert.match(reportesSource, /etiqueta: "Historias publicadas"/);
+  assert.match(reportesSource, /belongsToPerson\(nombrePropio, "Oriana"\)/);
+});
+
 test("el archivo de Tareas se presenta como una única acción secundaria", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");
