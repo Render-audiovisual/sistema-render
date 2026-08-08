@@ -143,7 +143,8 @@ test("el detalle de todas las tareas conserva guion, copy e indicaciones en un Ã
   assert.match(workspaceSource, /metadataField: "guiones"/);
   assert.match(workspaceSource, /metadataField: "copy_trabajo"/);
   assert.match(workspaceSource, /field: "aclaraciones"/);
-  assert.match(workspaceSource, /copy_trabajo: String\(draft\.copy_trabajo/);
+  assert.match(workspaceSource, /getCanonicalTaskContentMetadata/);
+  assert.match(workspaceSource, /getUnifiedTaskContent\(task\)/);
   assert.match(workspaceSource, /Los cambios se guardan Ãºnicamente al presionar/);
   assert.match(workspaceSource, /ros-task-document-properties/);
   assert.match(workspaceSource, /ros-activity-history/);

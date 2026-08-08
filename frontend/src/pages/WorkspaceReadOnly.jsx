@@ -7,6 +7,7 @@ import { areaForTask, formatDate, formatDateTime, initials, personForTask } from
 import { canRetryTaskUpdate, canUserMoveTask, mergeRelatedTasks } from "../workspace-task-state.js";
 import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
 import { getProductionVisitProgress, isProductionVisitTask } from "../features/render-os/utils/production-visits.js";
+import { getCanonicalTaskContentMetadata, getUnifiedTaskContent } from "../features/render-os/utils/task-content.js";
 import { getHoyLocalISO } from "../shared/date/date-utils.js";
 import "./WorkspaceReadOnly.css";
 
@@ -51,7 +52,7 @@ const TASK_CONTENT_TEMPLATES = {
 };
 
 function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, editorRef, onInsertTemplate, onEditContent }) {
-  const savedContent = [...new Set([task.aclaraciones, metadata.guiones, metadata.copy_trabajo].map((item) => String(item || "").trim()).filter(Boolean))].join("\n\n");
+  const savedContent = getUnifiedTaskContent(task);
   const value = editing && String(draft.aclaraciones || "") !== String(task.aclaraciones || "") ? String(draft.aclaraciones || "") : savedContent;
   return <section className="ros-work-block ros-content-workspace">
     <div className="ros-block-heading"><div><h3>Contenido de trabajo</h3></div><small>Todo el texto importante en un solo lugar</small></div>
@@ -150,13 +151,11 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     const changes = Object.fromEntries(fields
       .filter((field) => String(draft[field] ?? "") !== String(task[field] ?? ""))
       .map((field) => [field, draft[field] === "" && nullable.includes(field) ? null : draft[field]]));
-    const nextMetadata = {
+    const nextMetadata = getCanonicalTaskContentMetadata({
       resumen: String(draft.resumen || "").trim(),
       etiquetas: String(draft.etiquetas || "").split(",").map((item) => item.trim()).filter(Boolean),
       colaboradores: Array.isArray(draft.colaboradores) ? draft.colaboradores : [],
-      guiones: String(draft.guiones || "").trim(),
-      copy_trabajo: String(draft.copy_trabajo || "").trim(),
-    };
+    });
     if (isProductionVisit) nextMetadata.produccion_videos_previstos = Math.max(0, Number(draft.produccion_videos_previstos) || 0);
     const previousEditableMetadata = { resumen: metadata.resumen || "", etiquetas: tags, colaboradores: collaborators, guiones: metadata.guiones || "", copy_trabajo: metadata.copy_trabajo || "" };
     if (isProductionVisit) previousEditableMetadata.produccion_videos_previstos = productionProgress.planned;
@@ -174,13 +173,13 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const startEditing = () => {
-    setDraft({ ...task, resumen: metadata.resumen || "", etiquetas: tags.join(", "), colaboradores: collaborators, guiones: metadata.guiones || "", copy_trabajo: metadata.copy_trabajo || "", produccion_videos_previstos: productionProgress.planned || "" });
+    setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task), resumen: metadata.resumen || "", etiquetas: tags.join(", "), colaboradores: collaborators, guiones: "", copy_trabajo: "", produccion_videos_previstos: productionProgress.planned || "" });
     setEditing(true);
   };
 
   const insertContentTemplate = (template) => {
     const textarea = scriptEditorRef.current;
-    const savedContent = [...new Set([task.aclaraciones, metadata.guiones, metadata.copy_trabajo].map((item) => String(item || "").trim()).filter(Boolean))].join("\n\n");
+    const savedContent = getUnifiedTaskContent(task);
     const current = String(draft.aclaraciones || "") !== String(task.aclaraciones || "") ? String(draft.aclaraciones || "") : savedContent;
     const start = textarea?.selectionStart ?? current.length;
     const end = textarea?.selectionEnd ?? current.length;
