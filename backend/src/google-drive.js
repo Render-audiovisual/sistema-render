@@ -43,7 +43,10 @@ async function authorizedClient(pool) {
 }
 
 async function driveRequest(client, url, options = {}) {
-  const headers = await client.getRequestHeaders();
+  const authHeaders = await client.getRequestHeaders();
+  const headers = typeof authHeaders.entries === "function"
+    ? Object.fromEntries(authHeaders.entries())
+    : authHeaders;
   const response = await fetch(url, { ...options, headers: { ...headers, ...(options.headers || {}) } });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -193,7 +196,10 @@ export function createGoogleDriveRouter({ express, pool, requireRole }) {
         const dot = name.lastIndexOf(".");
         name = dot > 0 ? `${name.slice(0, dot)} (copia)${name.slice(dot)}` : `${name} (copia)`;
       }
-      const headers = await client.getRequestHeaders();
+      const authHeaders = await client.getRequestHeaders();
+      const headers = typeof authHeaders.entries === "function"
+        ? Object.fromEntries(authHeaders.entries())
+        : authHeaders;
       const start = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,mimeType,size,modifiedTime,webViewLink,parents", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json; charset=UTF-8", "X-Upload-Content-Type": mimeType, "X-Upload-Content-Length": String(size) },
