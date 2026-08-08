@@ -26,6 +26,7 @@ import { resolveUserRole } from "./user-roles.js";
 import { canRecordProduction, getProductionProgress, isProductionVisitTask, isValidProductionDate } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
 import { filterReportDataForUser } from "./report-access.js";
+import { createGoogleDrivePublicRouter, createGoogleDriveRouter } from "./google-drive.js";
 import {
   getStateNotification,
   isTaskLeader,
@@ -228,7 +229,13 @@ router.post("/login/google", async (req, res, next) => {
   }
 });
 
+// El callback de Google vuelve sin el JWT del navegador. El parámetro state
+// está firmado, vence en diez minutos y limita la conexión a un Líder.
+router.use("/drive", createGoogleDrivePublicRouter({ express, pool }));
+
 router.use(requireAuthentication);
+
+router.use("/drive", createGoogleDriveRouter({ express, pool, requireRole }));
 
 router.get("/notas", async (req, res, next) => {
   try {

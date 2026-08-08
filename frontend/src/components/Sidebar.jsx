@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { getRutaUsuario, inicialesUsuario } from "../utils.jsx";
 
 function SidebarIcon({ name }) {
+  if (name === "drive") return <svg className="sidebar-icon sidebar-drive-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#0F9D58" d="m8.1 3-5.8 10 3.2 5.5 5.8-10z"/><path fill="#4285F4" d="M5.5 18.5h11.6l3.2-5.5H8.7z"/><path fill="#F4B400" d="M8.1 3h6.4l5.8 10h-6.4z"/></svg>;
   const paths = {
     home: <><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.5 21v-7h5v7"/></>,
     tasks: <><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 8 1.5 1.5L12 7"/><path d="M14 8h3"/><path d="m8 14 1.5 1.5L12 13"/><path d="M14 14h3"/></>,
@@ -28,6 +29,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
     ],
     trabajo: [
       { href: "/workspace/tareas", label: "Tareas", icon: "tasks" },
+      { href: "/drive", label: "Drive", icon: "drive" },
       { href: "/bloc-notas", label: "Bloc de notas", icon: "notes" },
     ],
     planificacion: esAdmin ? [

@@ -17,6 +17,7 @@ import { ReportesEquipoPage } from "./pages/Reportes.jsx";
 import { SueldosPage } from "./pages/Sueldos.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
+import { DrivePage } from "./pages/Drive.jsx";
 
 export function App() {
   const path = window.location.pathname;
@@ -49,8 +50,8 @@ export function App() {
   }
 
   const rutasCompartidas = esAdmin
-    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/bloc-notas"]
-    : ["/perfil", "/workspace/tareas", "/bloc-notas", "/reportes-historias"];
+    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/bloc-notas", "/drive"]
+    : ["/perfil", "/workspace/tareas", "/bloc-notas", "/reportes-historias", "/drive"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -70,6 +71,9 @@ export function App() {
     }
     if (path === "/bloc-notas") {
       return <BlocNotasPage />;
+    }
+    if (path === "/drive") {
+      return <DrivePage sesion={sesion} />;
     }
     if (path === "/lider") {
       return <LiderDashboard />;
