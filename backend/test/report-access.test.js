@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { filterReportDataForUser } from "../src/report-access.js";
+import { readFileSync } from "node:fs";
+
+const serverSource = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
 
 const data = {
   tareas: [
@@ -51,4 +54,10 @@ test("community conserva métricas globales de publicación sin usuarios ajenos"
 
 test("el administrador conserva el reporte completo", () => {
   assert.equal(filterReportDataForUser(data, { rol: "admin" }), data);
+});
+
+test("el reporte obtiene la cuota compartida desde grupos_feed", () => {
+  assert.match(serverSource, /gf\.cuota_carruseles AS cuota_feed_carruseles/);
+  assert.match(serverSource, /LEFT JOIN grupos_feed gf ON gf\.id=c\.grupo_feed_id/);
+  assert.doesNotMatch(serverSource, /SELECT id,nombre,cuota_carruseles,cuota_feed_carruseles,grupo_feed_id FROM clientes/);
 });

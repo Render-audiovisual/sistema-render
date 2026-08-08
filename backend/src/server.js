@@ -361,7 +361,10 @@ router.get("/reportes/datos", async (req, res, next) => {
       pool.query(`SELECT id,cliente_id,tipo,estado,to_char(fecha_programada,'YYYY-MM-DD') AS fecha_programada,
         responsable,responsable_diseño FROM publicaciones
         WHERE metadata->>'archivado_tablero' IS DISTINCT FROM 'true'`),
-      pool.query(`SELECT id,nombre,cuota_carruseles,cuota_feed_carruseles,grupo_feed_id FROM clientes ORDER BY nombre`),
+      pool.query(`SELECT c.id,c.nombre,c.cuota_carruseles,c.grupo_feed_id,
+        gf.cuota_carruseles AS cuota_feed_carruseles
+        FROM clientes c LEFT JOIN grupos_feed gf ON gf.id=c.grupo_feed_id
+        ORDER BY c.nombre`),
       pool.query(`SELECT id,usuario,nombre,rol FROM usuarios ORDER BY id`),
       pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
         to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,
