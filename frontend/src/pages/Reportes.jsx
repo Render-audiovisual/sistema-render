@@ -533,7 +533,7 @@ export function ReportesEquipoPage() {
                   tarjetasEntregables.map((tarjeta) => (
                     tarjeta.tipo === "filmaciones"
                       ? <TarjetaFilmacionesGerman key={tarjeta.nombre} clientes={tarjeta.clientes} fechaLimite={fechaLimite}/>
-                      : <TarjetaEntregablesEquipo key={tarjeta.nombre} {...tarjeta} fechaLimite={fechaLimite}/>
+                      : <TarjetaEntregablesEquipo key={tarjeta.nombre} {...tarjeta} fechaLimite={tarjeta.nombre === "Luciano" ? "" : fechaLimite}/>
                   ))
                 ) : belongsToPerson(nombrePropio, "Oriana") ? (
                   <TarjetaEntregablesEquipo nombre="Oriana" rol="Publicación" metricas={metricasOriana} fechaLimite={fechaLimite}/>

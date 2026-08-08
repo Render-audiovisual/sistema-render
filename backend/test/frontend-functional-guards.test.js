@@ -111,6 +111,7 @@ test("Reportes muestra cierre mensual y una barra de avance animada accesible", 
   assert.match(reportesSource, /Tenés tiempo de completarlo hasta el/);
   assert.match(reportesSource, /🚀/);
   assert.match(reportesSource, /formatPeriodDeadline\(rangoPeriodo\.hasta\)/);
+  assert.match(reportesSource, /tarjeta\.nombre === "Luciano" \? "" : fechaLimite/);
   assert.match(stylesSource, /@keyframes report-progress-shine/);
   assert.match(stylesSource, /@media \(prefers-reduced-motion:reduce\)/);
 });
