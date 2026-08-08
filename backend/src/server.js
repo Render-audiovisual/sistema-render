@@ -25,6 +25,7 @@ import { runMigrations } from "./migrations.js";
 import { resolveUserRole } from "./user-roles.js";
 import { canRecordProduction, getProductionProgress, isProductionVisitTask, isValidProductionDate } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
+import { filterReportDataForUser } from "./report-access.js";
 import {
   getStateNotification,
   isTaskLeader,
@@ -341,6 +342,41 @@ router.get("/usuarios", async (req, res, next) => {
       : "id, usuario, nombre, rol, foto_perfil, created_at";
     const result = await pool.query(`SELECT ${fields} FROM usuarios ORDER BY id`);
     res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/reportes/datos", async (req, res, next) => {
+  try {
+    const [tareas, historias, publicaciones, clientes, usuarios, tareasRenderOs] = await Promise.all([
+      pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
+        to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,
+        t.created_at,t.updated_at,c.nombre AS cliente_nombre
+        FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+        WHERE t.propiedades_extra->>'workspace' IS DISTINCT FROM 'render_os'`),
+      pool.query(`SELECT id,cliente_id,estado,to_char(fecha_programada,'YYYY-MM-DD') AS fecha_programada,
+        responsable,responsable_diseño FROM historias
+        WHERE metadata->>'archivado_tablero' IS DISTINCT FROM 'true'`),
+      pool.query(`SELECT id,cliente_id,tipo,estado,to_char(fecha_programada,'YYYY-MM-DD') AS fecha_programada,
+        responsable,responsable_diseño FROM publicaciones
+        WHERE metadata->>'archivado_tablero' IS DISTINCT FROM 'true'`),
+      pool.query(`SELECT id,nombre,cuota_carruseles,cuota_feed_carruseles,grupo_feed_id FROM clientes ORDER BY nombre`),
+      pool.query(`SELECT id,usuario,nombre,rol FROM usuarios ORDER BY id`),
+      pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
+        to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,
+        t.created_at,t.updated_at,c.nombre AS cliente_nombre
+        FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+        WHERE t.propiedades_extra->>'workspace'='render_os'`),
+    ]);
+    res.json(filterReportDataForUser({
+      tareas: tareas.rows,
+      historias: historias.rows,
+      publicaciones: publicaciones.rows,
+      clientes: clientes.rows,
+      usuarios: usuarios.rows,
+      tareasRenderOs: tareasRenderOs.rows,
+    }, req.auth));
   } catch (error) {
     next(error);
   }

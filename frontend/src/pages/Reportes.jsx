@@ -178,25 +178,20 @@ export function ReportesEquipoPage() {
   }, []);
 
   useEffect(() => {
-    const tareasUrl =
-      esVistaAdmin || !nombrePropio
-        ? "/api/tareas"
-        : `/api/tareas?asignado_a=${encodeURIComponent(nombrePropio)}`;
-    Promise.all([
-      fetch(tareasUrl).then((r) => r.json()),
-      fetch("/api/historias").then((r) => r.json()),
-      fetch("/api/publicaciones").then((r) => r.json()),
-      fetch("/api/clientes").then((r) => r.json()),
-      fetch("/api/usuarios").then((r) => r.json()),
-      fetch("/api/tareas?workspace=render_os&limit=500").then((r) => r.json()),
-    ])
-      .then(([t, h, p, c, u, tareasOs]) => {
-        setTareas(Array.isArray(t) ? t : []);
-        setHistorias(Array.isArray(h) ? h : []);
-        setPublicaciones(Array.isArray(p) ? p : []);
-        setClientes(Array.isArray(c) ? c : []);
-        setUsuarios(Array.isArray(u) ? u : []);
-        setTareasRenderOs(Array.isArray(tareasOs) ? tareasOs : []);
+    setCargando(true);
+    fetch("/api/reportes/datos")
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || "No se pudieron cargar los datos del reporte.");
+        return payload;
+      })
+      .then((data) => {
+        setTareas(Array.isArray(data.tareas) ? data.tareas : []);
+        setHistorias(Array.isArray(data.historias) ? data.historias : []);
+        setPublicaciones(Array.isArray(data.publicaciones) ? data.publicaciones : []);
+        setClientes(Array.isArray(data.clientes) ? data.clientes : []);
+        setUsuarios(Array.isArray(data.usuarios) ? data.usuarios : []);
+        setTareasRenderOs(Array.isArray(data.tareasRenderOs) ? data.tareasRenderOs : []);
         setError(null);
       })
       .catch((err) => {
