@@ -178,14 +178,21 @@ export function ReportesEquipoPage() {
   }, []);
 
   useEffect(() => {
-    setCargando(true);
-    fetch("/api/reportes/datos")
+    let active = true;
+    let loading = false;
+
+    const cargarReporte = (silencioso = false) => {
+      if (loading) return;
+      loading = true;
+      if (!silencioso) setCargando(true);
+      fetch("/api/reportes/datos", { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || "No se pudieron cargar los datos del reporte.");
         return payload;
       })
       .then((data) => {
+        if (!active) return;
         setTareas(Array.isArray(data.tareas) ? data.tareas : []);
         setHistorias(Array.isArray(data.historias) ? data.historias : []);
         setPublicaciones(Array.isArray(data.publicaciones) ? data.publicaciones : []);
@@ -195,10 +202,30 @@ export function ReportesEquipoPage() {
         setError(null);
       })
       .catch((err) => {
+        if (!active) return;
         console.error("Error cargando reportes", err);
         setError("No se pudieron cargar los datos del reporte.");
       })
-      .finally(() => setCargando(false));
+      .finally(() => {
+        loading = false;
+        if (active) setCargando(false);
+      });
+    };
+
+    const actualizarAlVolver = () => {
+      if (document.visibilityState === "visible") cargarReporte(true);
+    };
+
+    cargarReporte();
+    const intervalo = window.setInterval(() => cargarReporte(true), 30000);
+    window.addEventListener("focus", actualizarAlVolver);
+    document.addEventListener("visibilitychange", actualizarAlVolver);
+    return () => {
+      active = false;
+      window.clearInterval(intervalo);
+      window.removeEventListener("focus", actualizarAlVolver);
+      document.removeEventListener("visibilitychange", actualizarAlVolver);
+    };
   }, [esVistaAdmin, nombrePropio]);
 
   const hoyISO = getHoyLocalISO();
