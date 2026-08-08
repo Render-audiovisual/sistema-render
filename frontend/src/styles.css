@@ -9604,16 +9604,19 @@ tr:hover .sheet-row-actions {
 
 .reportes-page .report-employee-encouragement {
   margin:-2px 0 14px;
-  padding:9px 11px;
-  border:1px solid #dfe8c8;
-  border-radius:9px;
-  background:#f6faeb;
-  color:#62695d;
+  padding:10px 12px;
+  border:1px solid #f0c66d;
+  border-radius:10px;
+  background:linear-gradient(135deg,#fff5c9,#ffe9a3);
+  color:#76500a;
   font-size:12px;
   line-height:1.45;
+  box-shadow:0 5px 14px rgb(206 146 20 / 12%);
 }
 
-.reportes-page .report-employee-encouragement strong { color:#39421e; }
+.reportes-page .report-employee-encouragement span { margin-right:3px;font-size:15px; }
+.reportes-page .report-employee-encouragement strong { color:#a15d00; }
+.reportes-page .report-employee-encouragement b { color:#513500; }
 
 @keyframes report-progress-grow {
   from { transform:scaleX(0);transform-origin:left; }

@@ -108,7 +108,8 @@ test("Reportes muestra cierre mensual y una barra de avance animada accesible", 
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
   const stylesSource = readFileSync(new URL("../../frontend/src/styles.css", import.meta.url), "utf8");
   assert.match(reportesSource, /<h2>Reporte del equipo<\/h2>/);
-  assert.match(reportesSource, /tenés tiempo de completarlo hasta el/);
+  assert.match(reportesSource, /Tenés tiempo de completarlo hasta el/);
+  assert.match(reportesSource, /🚀/);
   assert.match(reportesSource, /formatPeriodDeadline\(rangoPeriodo\.hasta\)/);
   assert.match(stylesSource, /@keyframes report-progress-shine/);
   assert.match(stylesSource, /@media \(prefers-reduced-motion:reduce\)/);
