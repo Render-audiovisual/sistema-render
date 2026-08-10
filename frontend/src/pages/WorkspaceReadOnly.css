@@ -466,6 +466,8 @@
 .render-workspace .ros-comment-create textarea{background:#fff;border-color:#dce0d7;border-radius:8px;color:#30352d;line-height:1.55;min-height:82px;padding:10px 11px}
 .render-workspace .ros-comment-create button{justify-self:end;min-width:92px}
 .render-workspace .ros-more-information{background:#fff;border:1px solid #dfe2d8;border-radius:12px;padding:0 14px}
+.render-workspace .ros-more-information:not([open]){display:none}
+.render-workspace .ros-more-information .ros-origin{display:none}
 .render-workspace .ros-more-information>summary{color:#4f564a;cursor:pointer;font-size:11px;font-weight:800;padding:14px 0}
 .render-workspace .ros-more-information[open]>summary{border-bottom:1px solid #e7e9e2}
 .render-workspace .ros-more-information .ros-properties{grid-template-columns:1fr;margin:14px 0}
