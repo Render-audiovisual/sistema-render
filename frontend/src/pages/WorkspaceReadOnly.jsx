@@ -8,6 +8,7 @@ import { canRetryTaskUpdate, canUserMoveTask, mergeRelatedTasks } from "../works
 import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
 import { getProductionVisitProgress, isProductionVisitTask } from "../features/render-os/utils/production-visits.js";
 import { getCanonicalTaskContentMetadata, getUnifiedTaskContent } from "../features/render-os/utils/task-content.js";
+import { getNewTaskSuggestions, getTaskDirectUrl } from "../features/render-os/utils/new-task-suggestions.js";
 import { getHoyLocalISO } from "../shared/date/date-utils.js";
 import { DriveUploader } from "../features/drive/DriveUploader.jsx";
 import "./WorkspaceReadOnly.css";
@@ -85,6 +86,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [registeringProduction, setRegisteringProduction] = useState(false);
   const [savingProductionDrive, setSavingProductionDrive] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const archivePendingRef = useRef(false);
   const scriptEditorRef = useRef(null);
   const isAdmin = sesion?.usuario?.rol === "admin";
@@ -97,6 +99,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     setCommentError("");
     setSubtaskTitle("");
     setConfirmDelete(false);
+    setLinkCopied(false);
     setProductionAmount(1);
     setProductionDate(getHoyLocalISO());
     setProductionDriveLink(task.material_referencia || "");
@@ -276,12 +279,35 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     finally { setSavingProductionDrive(false); }
   };
 
+  const copyTaskLink = async () => {
+    const link = getTaskDirectUrl(window.location.origin, task.id);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const input = document.createElement("textarea");
+        input.value = link;
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        input.remove();
+      }
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 2200);
+    } catch {
+      window.prompt("Copiá el enlace de la tarea:", link);
+    }
+  };
+
   return <div className="ros-drawer-backdrop" onClick={closeDetail}>
     <aside className="ros-drawer ros-task-workspace" onClick={(event) => event.stopPropagation()}>
       <header className="ros-task-workspace-header">
         <button type="button" aria-label="Volver al tablero" onClick={closeDetail}>←</button>
         <span className="ros-task-window-icon">✓</span>
         <strong>{task.cliente_nombre || "Sin cliente"} · {task.titulo}</strong>
+        <button className="ros-copy-task-link" type="button" aria-label="Copiar enlace de la tarea" title="Copiar enlace de la tarea" onClick={copyTaskLink}>{linkCopied ? "✓ Copiado" : "↗ Copiar enlace"}</button>
         <button type="button" aria-label="Cerrar tarea" onClick={closeDetail}>×</button>
       </header>
       <div className="ros-drawer-body ros-task-workspace-body">
@@ -363,6 +389,8 @@ function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, on
   const [draft, setDraft] = useState({ titulo: "", asignado_a: "", cliente_id: "", estado: initialStatus, tipo_tarea: "", subtipo: "", prioridad: "media", fecha_vencimiento: "", aclaraciones: "", material_referencia: "", resumen: "", etiquetas: "", colaboradores: [], produccion_videos_previstos: "" });
   const [saving, setSaving] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [suggestionMessage, setSuggestionMessage] = useState("");
+  const manuallyEdited = useRef(new Set());
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -394,12 +422,28 @@ function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, on
     if (isNewTaskDraftDirty(draft) && !window.confirm("La tarea todavía no fue creada. ¿Querés descartarla?")) return;
     onClose();
   };
+  const applySuggestions = (current, { title = current.titulo, clientId = current.cliente_id, clientWasSelected = false } = {}) => {
+    const suggestion = getNewTaskSuggestions({ title, clients, users, clientId: clientWasSelected || manuallyEdited.current.has("client") ? (clientId || "__none__") : "" });
+    const next = { ...current, titulo: title };
+    if (!manuallyEdited.current.has("client")) next.cliente_id = suggestion.client ? String(suggestion.client.id) : "";
+    if (!manuallyEdited.current.has("people")) {
+      next.asignado_a = suggestion.primary;
+      next.colaboradores = suggestion.collaborators;
+    }
+    if (!manuallyEdited.current.has("classification")) {
+      next.tipo_tarea = suggestion.tipo_tarea;
+      next.subtipo = suggestion.subtipo;
+    }
+    setSuggestionMessage(suggestion.message);
+    return next;
+  };
   return <div className="ros-drawer-backdrop" onClick={closeModal}><section className="ros-modal ros-quick-task-modal" onClick={(event) => event.stopPropagation()}><header><div><div className="ros-eyebrow">NUEVA TAREA</div><h2>¿Qué hay que hacer?</h2><p>Cargá lo esencial ahora. Los detalles se pueden completar después.</p></div><button type="button" aria-label="Cerrar" onClick={closeModal}>×</button></header><form onSubmit={submit}>
-    <label className="wide ros-quick-title"><span>Tarea *</span><input autoFocus required placeholder="Ej.: Editar reel de lanzamiento" value={draft.titulo} onChange={(event) => setDraft({ ...draft, titulo: event.target.value })}/></label>
-    <TaskPeoplePicker users={users} primary={draft.asignado_a} collaborators={draft.colaboradores} onChange={({ primary, collaborators }) => setDraft({ ...draft, asignado_a: primary, colaboradores: collaborators })}/>
-    <div className="wide ros-quick-grid"><label><span>Cliente</span><select value={draft.cliente_id} onChange={(event) => setDraft({ ...draft, cliente_id: event.target.value })}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label><label><span>Fecha</span><input type="date" value={draft.fecha_vencimiento} onChange={(event) => setDraft({ ...draft, fecha_vencimiento: event.target.value })}/></label><label><span>Prioridad</span><select value={draft.prioridad} onChange={(event) => setDraft({ ...draft, prioridad: event.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select></label></div>
+    <label className="wide ros-quick-title"><span>Tarea *</span><input autoFocus required placeholder="Ej.: iPhone Shop | Editar reel de lanzamiento" value={draft.titulo} onChange={(event) => setDraft((current) => applySuggestions(current, { title: event.target.value }))}/></label>
+    {suggestionMessage && <div className="wide ros-auto-suggestion"><span>✓</span><div><strong>{suggestionMessage}</strong><small>Es una sugerencia automática: podés cambiar cualquier dato.</small></div></div>}
+    <TaskPeoplePicker users={users} primary={draft.asignado_a} collaborators={draft.colaboradores} onChange={({ primary, collaborators }) => { manuallyEdited.current.add("people"); setDraft({ ...draft, asignado_a: primary, colaboradores: collaborators }); }}/>
+    <div className="wide ros-quick-grid"><label><span>Cliente</span><select value={draft.cliente_id} onChange={(event) => { manuallyEdited.current.add("client"); setDraft((current) => applySuggestions({ ...current, cliente_id: event.target.value }, { clientId: event.target.value, clientWasSelected: true })); }}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label><label><span>Fecha</span><input type="date" value={draft.fecha_vencimiento} onChange={(event) => setDraft({ ...draft, fecha_vencimiento: event.target.value })}/></label><label><span>Prioridad</span><select value={draft.prioridad} onChange={(event) => setDraft({ ...draft, prioridad: event.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select></label></div>
     <button className="wide ros-more-details" type="button" aria-expanded={showDetails} onClick={() => setShowDetails((current) => !current)}><span>{showDetails ? "−" : "+"}</span>{showDetails ? "Ocultar detalles" : "Agregar indicaciones, material o colaboradores"}</button>
-    {showDetails && <div className="wide ros-optional-fields"><label><span>Sector</span><select value={draft.tipo_tarea} onChange={(event) => setDraft({ ...draft, tipo_tarea: event.target.value })}><option value="">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Tipo de pieza</span><input placeholder="Reel, carrusel, visita…" value={draft.subtipo} onChange={(event) => setDraft({ ...draft, subtipo: event.target.value })}/></label>{isProductionVisitTask(draft) && <label className="wide ros-visit-planned-field"><span>¿Cuántos videos incluye esta visita? *</span><input type="number" min="1" step="1" required value={draft.produccion_videos_previstos} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}<label className="wide"><span>Resumen corto</span><input value={draft.resumen} placeholder="Resultado esperado" onChange={(event) => setDraft({ ...draft, resumen: event.target.value })}/></label><label className="wide"><span>Indicaciones</span><textarea rows={3} placeholder="Datos necesarios para poder resolverla" value={draft.aclaraciones} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/></label><label className="wide"><span>Material o enlace</span><input placeholder="https://…" value={draft.material_referencia} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/></label><label className="wide"><span>Etiquetas</span><input placeholder="Urgente, web, corrección" value={draft.etiquetas} onChange={(event) => setDraft({ ...draft, etiquetas: event.target.value })}/></label></div>}
+    {showDetails && <div className="wide ros-optional-fields"><label><span>Sector</span><select value={draft.tipo_tarea} onChange={(event) => { manuallyEdited.current.add("classification"); setDraft({ ...draft, tipo_tarea: event.target.value }); }}><option value="">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Tipo de pieza</span><input placeholder="Reel, carrusel, visita…" value={draft.subtipo} onChange={(event) => { manuallyEdited.current.add("classification"); setDraft({ ...draft, subtipo: event.target.value }); }}/></label>{isProductionVisitTask(draft) && <label className="wide ros-visit-planned-field"><span>¿Cuántos videos incluye esta visita? *</span><input type="number" min="1" step="1" required value={draft.produccion_videos_previstos} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}<label className="wide"><span>Resumen corto</span><input value={draft.resumen} placeholder="Resultado esperado" onChange={(event) => setDraft({ ...draft, resumen: event.target.value })}/></label><label className="wide"><span>Indicaciones</span><textarea rows={3} placeholder="Datos necesarios para poder resolverla" value={draft.aclaraciones} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/></label><label className="wide"><span>Material o enlace</span><input placeholder="https://…" value={draft.material_referencia} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/></label><label className="wide"><span>Etiquetas</span><input placeholder="Urgente, web, corrección" value={draft.etiquetas} onChange={(event) => setDraft({ ...draft, etiquetas: event.target.value })}/></label></div>}
     <footer><button type="button" onClick={closeModal}>Cancelar</button><button className="primary" type="submit" disabled={saving || !draft.titulo.trim() || !draft.asignado_a}>{saving ? "Creando…" : "Crear tarea"}</button></footer>
   </form></section></div>;
 }

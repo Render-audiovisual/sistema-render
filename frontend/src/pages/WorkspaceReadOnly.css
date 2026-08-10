@@ -353,6 +353,9 @@
 .render-workspace .ros-task-workspace-header{align-items:center;background:#171a13;border:0;border-bottom:1px solid #373c31;color:#f5f6ef;display:flex;gap:12px;min-height:66px;padding:12px 20px}
 .render-workspace .ros-task-workspace-header>button{align-items:center;background:transparent;border:0;color:#aeb4a8;display:flex;font-size:22px;height:36px;justify-content:center;padding:0;width:36px}
 .render-workspace .ros-task-workspace-header>button:last-child{margin-left:auto}
+.render-workspace .ros-task-workspace-header>.ros-copy-task-link{border:1px solid #444a3e;border-radius:8px;font-size:12px;font-weight:650;height:34px;margin-left:auto;padding:0 12px;white-space:nowrap;width:auto}
+.render-workspace .ros-task-workspace-header>.ros-copy-task-link:hover{border-color:#b5fc00;color:#b5fc00}
+.render-workspace .ros-task-workspace-header>.ros-copy-task-link+button{margin-left:0}
 .render-workspace .ros-task-window-icon{align-items:center;background:#b5fc00;border-radius:10px;color:#202418;display:flex;flex:0 0 38px;font-size:19px;font-weight:900;height:38px;justify-content:center}
 .render-workspace .ros-task-workspace-header>strong{color:#e9ece4;font-size:14px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .render-workspace .ros-task-edit-button{background:#b5fc00;border:0;border-radius:8px;color:#202418;font-size:10px;font-weight:800;margin-left:auto;min-height:36px;padding:8px 13px;white-space:nowrap}
@@ -525,6 +528,11 @@
 .ros-quick-task-modal>header p{color:#7b7d78;font-size:10px;line-height:1.5;margin:7px 0 0}
 .ros-quick-task-modal form{gap:16px;padding:22px 24px 24px}
 .ros-quick-title input{font-size:16px!important;font-weight:600;padding:13px 14px!important}
+.ros-auto-suggestion{align-items:center;background:#f3f8e8;border:1px solid #d9e9b4;border-radius:9px;color:#35401f;display:flex;gap:10px;padding:10px 12px}
+.ros-auto-suggestion>span{align-items:center;background:#b5fc00;border-radius:50%;color:#202418;display:flex;font-size:10px;font-weight:800;height:24px;justify-content:center;width:24px}
+.ros-auto-suggestion>div{display:grid;gap:2px}
+.ros-auto-suggestion strong{font-size:10px;font-weight:700}
+.ros-auto-suggestion small{color:#69705e;font-size:8px}
 .ros-quick-grid,.ros-optional-fields{display:grid;gap:12px;grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr))}
 .ros-quick-grid label,.ros-optional-fields label{display:grid;gap:5px}
 .ros-quick-grid label>span,.ros-optional-fields label>span{color:#777;font-size:8px;font-weight:600}
@@ -540,6 +548,8 @@
   .ros-quick-task-modal form{padding:18px}
   .ros-quick-grid,.ros-optional-fields{grid-template-columns:1fr}
   .ros-quick-task-modal footer{position:sticky;bottom:-18px;background:#fff;padding:13px 0 0}
+  .render-workspace .ros-task-workspace-header>.ros-copy-task-link{font-size:0;padding:0;width:36px}
+  .render-workspace .ros-task-workspace-header>.ros-copy-task-link::after{content:"↗";font-size:18px}
 }
 
 /* Selector múltiple de responsables. El primero conserva el contrato de
