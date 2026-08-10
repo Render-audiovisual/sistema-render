@@ -317,6 +317,13 @@ function isWilsonLeader(req, env) {
 
 export function createWilsonRouter({ pool, notifyAssignment, env = process.env }) {
   const router = express.Router();
+  if (env.NODE_ENV !== "test") {
+    console.info("Wilson WhatsApp config", {
+      allowedAccounts: csv(env.WILSON_ALLOWED_WHATSAPP_IDS).length,
+      allowedGroups: csv(env.WILSON_ALLOWED_WHATSAPP_GROUP_IDS).length,
+      leaderAccounts: csv(env.WILSON_LEADER_WHATSAPP_IDS).length,
+    });
+  }
   router.use(requireWilsonService(env));
 
   router.get("/catalogo", async (_req, res, next) => {
