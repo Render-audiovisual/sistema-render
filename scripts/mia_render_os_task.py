@@ -8,7 +8,6 @@ quedan incluidos en la firma v2.
 
 import argparse
 import base64
-import datetime
 import hashlib
 import json
 import os
@@ -84,12 +83,8 @@ def request(method, path, args, *, payload=None, idempotency_key=None):
         return json.load(response)
 
 
-def confirmed_payload(extra=None):
-    return {
-        **(extra or {}),
-        "confirmado": True,
-        "confirmado_en": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
-    }
+def operation_payload(extra, confirmation_token):
+    return {**(extra or {}), "confirmacion_token": confirmation_token}
 
 
 def add_identity_arguments(parser):
@@ -108,18 +103,26 @@ def main():
     get_task.add_argument("--task-id", required=True, type=int)
     validate = commands.add_parser("validate")
     validate.add_argument("--payload", required=True)
+    propose = commands.add_parser("propose")
+    propose.add_argument("--operation", required=True, choices=("crear", "editar", "archivar", "eliminar"))
+    propose.add_argument("--task-id", type=int)
+    propose.add_argument("--payload", default="{}")
     create = commands.add_parser("create")
     create.add_argument("--payload", required=True)
+    create.add_argument("--confirmation-token", required=True)
     create.add_argument("--idempotency-key", required=True)
     update = commands.add_parser("update")
     update.add_argument("--task-id", required=True, type=int)
     update.add_argument("--payload", required=True)
+    update.add_argument("--confirmation-token", required=True)
     update.add_argument("--idempotency-key", required=True)
     archive = commands.add_parser("archive")
     archive.add_argument("--task-id", required=True, type=int)
     archive.add_argument("--idempotency-key", required=True)
+    archive.add_argument("--confirmation-token", required=True)
     delete = commands.add_parser("delete")
     delete.add_argument("--task-id", required=True, type=int)
+    delete.add_argument("--confirmation-token", required=True)
 
     args = parser.parse_args()
     if args.cmd == "list":
@@ -128,14 +131,22 @@ def main():
         result = request("GET", f"/tareas/{args.task_id}", args)
     elif args.cmd == "validate":
         result = request("POST", "/tareas/validar", args, payload=json.loads(args.payload))
+    elif args.cmd == "propose":
+        if args.operation != "crear" and not args.task_id:
+            raise RuntimeError("Esta operación necesita --task-id.")
+        result = request("POST", "/confirmaciones", args, payload={
+            "operacion": args.operation,
+            "tarea_id": args.task_id,
+            "payload": json.loads(args.payload),
+        })
     elif args.cmd == "create":
-        result = request("POST", "/tareas", args, payload=confirmed_payload(json.loads(args.payload)), idempotency_key=args.idempotency_key)
+        result = request("POST", "/tareas", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token), idempotency_key=args.idempotency_key)
     elif args.cmd == "update":
-        result = request("PATCH", f"/tareas/{args.task_id}", args, payload=confirmed_payload(json.loads(args.payload)), idempotency_key=args.idempotency_key)
+        result = request("PATCH", f"/tareas/{args.task_id}", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token), idempotency_key=args.idempotency_key)
     elif args.cmd == "archive":
-        result = request("POST", f"/tareas/{args.task_id}/archivar", args, payload=confirmed_payload(), idempotency_key=args.idempotency_key)
+        result = request("POST", f"/tareas/{args.task_id}/archivar", args, payload=operation_payload({}, args.confirmation_token), idempotency_key=args.idempotency_key)
     else:
-        result = request("DELETE", f"/tareas/{args.task_id}", args, payload=confirmed_payload())
+        result = request("DELETE", f"/tareas/{args.task_id}", args, payload=operation_payload({}, args.confirmation_token))
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

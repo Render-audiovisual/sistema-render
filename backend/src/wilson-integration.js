@@ -30,6 +30,17 @@ function canonicalJson(value) {
   return JSON.stringify(value);
 }
 
+const CONFIRMABLE_OPERATIONS = new Set(["crear", "editar", "archivar", "eliminar"]);
+
+export function buildWilsonConfirmationHash({ operation, taskId = null, payload = {} }) {
+  const cleanPayload = Object.fromEntries(Object.entries(payload || {}).filter(([key]) => ![
+    "confirmado", "confirmado_en", "confirmacion_token", "idempotency_key",
+  ].includes(key)));
+  return crypto.createHash("sha256").update(canonicalJson({
+    operation, taskId: taskId === null || taskId === undefined ? null : String(taskId), payload: cleanPayload,
+  })).digest("hex");
+}
+
 export function buildWilsonSignatureMessage({ timestamp, nonce, telegramUserId, channel, actorId, groupId, actorName, method, path, body }) {
   const bodyHash = crypto.createHash("sha256").update(body === undefined ? "" : canonicalJson(body)).digest("hex");
   if (channel || actorId || groupId || actorName) {
@@ -268,15 +279,34 @@ async function writeWilsonAudit(db, req, { action, taskId = null, outcome = "ok"
   );
 }
 
-function requireRecentConfirmation(req, res) {
+function requireLegacyConfirmation(req, res) {
   if (req.wilson.channel !== "whatsapp") {
     if (req.body?.confirmado === true) return true;
     res.status(400).json({ error: "La operación todavía no fue confirmada." });
     return false;
   }
-  const error = validateWilsonConfirmation({ confirmed: req.body?.confirmado, confirmedAt: req.body?.confirmado_en });
-  if (!error) return true;
-  res.status(400).json({ error });
+  return true;
+}
+
+async function consumeWilsonConfirmation(db, req, res, operation, taskId = null) {
+  if (req.wilson.channel !== "whatsapp") return requireLegacyConfirmation(req, res);
+  const token = String(req.body?.confirmacion_token || "").trim();
+  if (!token) {
+    res.status(400).json({ error: "Falta confirmar esta operación exacta en WhatsApp." });
+    return false;
+  }
+  const payloadHash = buildWilsonConfirmationHash({ operation, taskId, payload: req.body });
+  const result = await db.query(
+    `UPDATE integracion_confirmaciones SET used_at=NOW()
+     WHERE token=$1 AND integracion='wilson' AND canal='whatsapp'
+       AND actor_id=$2 AND grupo_id=$3 AND operacion=$4
+       AND tarea_id IS NOT DISTINCT FROM $5::integer AND payload_hash=$6
+       AND used_at IS NULL AND expires_at>NOW()
+     RETURNING token`,
+    [token, req.wilson.actorId, req.wilson.groupId, operation, taskId, payloadHash],
+  );
+  if (result.rows[0]) return true;
+  res.status(409).json({ error: "La confirmación no corresponde a esta operación, ya fue usada o venció." });
   return false;
 }
 
@@ -301,6 +331,32 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
       const result = await validate(pool, req.body);
       res.status(result.errors.length ? 422 : 200).json(result);
     } catch (error) { next(error); }
+  });
+
+  router.post("/confirmaciones", async (req, res, next) => {
+    try {
+      if (req.wilson.channel !== "whatsapp") return res.status(400).json({ error: "Esta confirmación es exclusiva de WhatsApp." });
+      const operation = String(req.body?.operacion || "").trim().toLowerCase();
+      if (!CONFIRMABLE_OPERATIONS.has(operation)) return res.status(422).json({ error: "Operación no confirmable." });
+      const taskId = operation === "crear" ? null : Number(req.body?.tarea_id);
+      if (operation !== "crear" && (!Number.isInteger(taskId) || taskId <= 0)) {
+        return res.status(422).json({ error: "Falta una tarea válida para confirmar." });
+      }
+      if (operation === "eliminar" && !isWilsonLeader(req, env)) {
+        return res.status(403).json({ error: "Solo Agustín o Franco pueden eliminar definitivamente una tarea." });
+      }
+      const payload = req.body?.payload && typeof req.body.payload === "object" ? req.body.payload : {};
+      const token = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + CONFIRMATION_MAX_AGE_MS);
+      await pool.query(
+        `INSERT INTO integracion_confirmaciones
+          (token,integracion,canal,actor_id,grupo_id,operacion,tarea_id,payload_hash,expires_at)
+         VALUES ($1,'wilson','whatsapp',$2,$3,$4,$5,$6,$7)`,
+        [token, req.wilson.actorId, req.wilson.groupId, operation, taskId,
+          buildWilsonConfirmationHash({ operation, taskId, payload }), expiresAt],
+      );
+      return res.status(201).json({ confirmacion_token: token, operacion: operation, tarea_id: taskId, expires_at: expiresAt.toISOString() });
+    } catch (error) { return next(error); }
   });
 
   router.get("/tareas", async (req, res, next) => {
@@ -330,7 +386,6 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
   });
 
   router.patch("/tareas/:id", async (req, res, next) => {
-    if (!requireRecentConfirmation(req, res)) return undefined;
     const key = String(req.headers?.["idempotency-key"] || req.body?.idempotency_key || "").trim();
     if (!key) return res.status(400).json({ error: "Falta idempotency_key." });
     const client = await pool.connect();
@@ -345,6 +400,10 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
       if (current.propiedades_extra?.wilson_last_update_key === key) {
         await client.query("COMMIT");
         return res.json({ updated: false, idempotent: true, changed_fields: [], task: taskWithUrl(current) });
+      }
+      if (!await consumeWilsonConfirmation(client, req, res, "editar", Number(req.params.id))) {
+        await client.query("ROLLBACK");
+        return undefined;
       }
 
       const result = buildWilsonTaskUpdate(req.body, current, await loadCatalog(client));
@@ -409,7 +468,6 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
   });
 
   router.post("/tareas", async (req, res, next) => {
-    if (!requireRecentConfirmation(req, res)) return undefined;
     const key = String(req.headers?.["idempotency-key"] || req.body?.idempotency_key || "").trim();
     if (!key) return res.status(400).json({ error: "Falta idempotency_key." });
     const client = await pool.connect();
@@ -425,6 +483,10 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
       if (prior.rows[0]) {
         await client.query("COMMIT");
         return res.json({ created: false, idempotent: true, task: taskWithUrl(prior.rows[0]) });
+      }
+      if (!await consumeWilsonConfirmation(client, req, res, "crear")) {
+        await client.query("ROLLBACK");
+        return undefined;
       }
       const result = await validate(client, req.body);
       if (result.errors.length) { await client.query("ROLLBACK"); return res.status(422).json(result); }
@@ -460,12 +522,15 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
   });
 
   router.post("/tareas/:id/archivar", async (req, res, next) => {
-    if (!requireRecentConfirmation(req, res)) return undefined;
     const key = String(req.headers?.["idempotency-key"] || req.body?.idempotency_key || "").trim();
     if (!key) return res.status(400).json({ error: "Falta idempotency_key." });
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      if (!await consumeWilsonConfirmation(client, req, res, "archivar", Number(req.params.id))) {
+        await client.query("ROLLBACK");
+        return undefined;
+      }
       await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`wilson:archive:${req.params.id}:${key}`]);
       const current = await loadWilsonTask(client, req.params.id, { forUpdate: true });
       if (!current) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La tarea no existe en RENDER OS o ya está archivada." }); }
@@ -485,10 +550,13 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
 
   router.delete("/tareas/:id", async (req, res, next) => {
     if (!isWilsonLeader(req, env)) return res.status(403).json({ error: "Solo Agustín o Franco pueden eliminar definitivamente una tarea." });
-    if (!requireRecentConfirmation(req, res)) return undefined;
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      if (!await consumeWilsonConfirmation(client, req, res, "eliminar", Number(req.params.id))) {
+        await client.query("ROLLBACK");
+        return undefined;
+      }
       const result = await client.query(
         `SELECT id,titulo FROM tareas WHERE id=$1
            AND propiedades_extra->>'workspace'='render_os'

@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import test from "node:test";
 import {
   appendWilsonDescription,
+  buildWilsonConfirmationHash,
   buildWilsonSignatureMessage,
   buildWilsonTask,
   buildWilsonTaskUpdate,
@@ -117,6 +118,17 @@ test("las confirmaciones de WhatsApp vencen a los 10 minutos", () => {
   assert.match(validateWilsonConfirmation({ confirmed: true, confirmedAt: "2026-08-10T11:49:59.000Z", now }), /venció/);
   assert.match(validateWilsonConfirmation({ confirmed: false, confirmedAt: "2026-08-10T11:59:00.000Z", now }), /todavía no fue confirmada/);
   assert.match(validateWilsonConfirmation({ confirmed: true, confirmedAt: "sin fecha", now }), /Falta la fecha/);
+});
+
+test("la confirmación queda vinculada a operación, tarea y contenido exactos", () => {
+  const base = buildWilsonConfirmationHash({ operation: "editar", taskId: 42, payload: { titulo: "Versión aprobada" } });
+  assert.equal(base, buildWilsonConfirmationHash({
+    operation: "editar", taskId: 42,
+    payload: { titulo: "Versión aprobada", confirmacion_token: "token-no-influye", confirmado_en: "otra-fecha" },
+  }));
+  assert.notEqual(base, buildWilsonConfirmationHash({ operation: "editar", taskId: 43, payload: { titulo: "Versión aprobada" } }));
+  assert.notEqual(base, buildWilsonConfirmationHash({ operation: "editar", taskId: 42, payload: { titulo: "Contenido cambiado" } }));
+  assert.notEqual(base, buildWilsonConfirmationHash({ operation: "eliminar", taskId: 42, payload: { titulo: "Versión aprobada" } }));
 });
 
 test("normaliza acentos en nombres del sistema", () => {
