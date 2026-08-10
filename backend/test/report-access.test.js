@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterReportDataForUser } from "../src/report-access.js";
+import { filterReportDataForUser, summarizeRenderOsByDay } from "../src/report-access.js";
 import { readFileSync } from "node:fs";
 
 const serverSource = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
@@ -35,6 +35,7 @@ test("el reporte de un diseñador contiene solo sus carruseles", () => {
   assert.deepEqual(result.tareas.map((item) => item.id), [1]);
   assert.deepEqual(result.publicaciones.map((item) => item.id), [7]);
   assert.deepEqual(result.historias, []);
+  assert.deepEqual(result.tareasRenderOs.map((item) => item.id), [4]);
   assert.deepEqual(result.usuarios.map((item) => item.id), [1]);
 });
 
@@ -50,10 +51,29 @@ test("community conserva métricas globales de publicación sin usuarios ajenos"
   assert.deepEqual(result.historias.map((item) => item.id), [5]);
   assert.deepEqual(result.publicaciones.map((item) => item.id), [6, 7, 8]);
   assert.deepEqual(result.usuarios, []);
+  assert.deepEqual(result.tareasRenderOs, []);
 });
 
 test("el administrador conserva el reporte completo", () => {
-  assert.equal(filterReportDataForUser(data, { rol: "admin" }), data);
+  const result = filterReportDataForUser(data, { rol: "admin" });
+  assert.deepEqual(result.tareasRenderOs, data.tareasRenderOs);
+});
+
+test("el resumen compartido expone solo totales diarios y no detalles de tareas", () => {
+  const result = summarizeRenderOsByDay([
+    { titulo: "Carrusel 1", estado: "publicada", fecha_vencimiento: "2026-08-06", propiedades_extra: {} },
+    { titulo: "Video 1", estado: "pendiente", fecha_vencimiento: "2026-08-07", propiedades_extra: {} },
+    { titulo: "Editar video", tipo_tarea: "edicion", estado: "publicada", fecha_vencimiento: "2026-08-07", propiedades_extra: {} },
+    { titulo: "Carrusel archivado", estado: "publicada", fecha_vencimiento: "2026-08-08", propiedades_extra: { archivada_render_os: true } },
+  ]);
+  assert.deepEqual(result, {
+    "2026-08-06": { carruseles: { total: 1, publicadas: 1 } },
+    "2026-08-07": {
+      reels_planificados: { total: 1, publicadas: 0 },
+      ediciones: { total: 1, publicadas: 1 },
+    },
+  });
+  assert.equal(JSON.stringify(result).includes("Carrusel 1"), false);
 });
 
 test("el reporte obtiene la cuota compartida desde grupos_feed", () => {

@@ -358,7 +358,7 @@ router.get("/reportes/datos", async (req, res, next) => {
   try {
     const [tareas, historias, publicaciones, clientes, usuarios, tareasRenderOs] = await Promise.all([
       pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
-        to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,
+        to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,t.subtipo,
         t.created_at,t.updated_at,c.nombre AS cliente_nombre
         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
         WHERE t.propiedades_extra->>'workspace' IS DISTINCT FROM 'render_os'`),
@@ -374,10 +374,11 @@ router.get("/reportes/datos", async (req, res, next) => {
         ORDER BY c.nombre`),
       pool.query(`SELECT id,usuario,nombre,rol FROM usuarios ORDER BY id`),
       pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
-        to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,
+        to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,t.subtipo,
         t.created_at,t.updated_at,c.nombre AS cliente_nombre
         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
-        WHERE t.propiedades_extra->>'workspace'='render_os'`),
+        WHERE t.propiedades_extra->>'workspace'='render_os'
+          AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'`),
     ]);
     res.json(filterReportDataForUser({
       tareas: tareas.rows,

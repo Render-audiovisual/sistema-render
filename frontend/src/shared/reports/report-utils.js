@@ -36,6 +36,44 @@ export function filterItemsByPeriod(items = [], isInPeriod, dateField = "fecha_p
   return items.filter((item) => isInPeriod(item?.[dateField] || ""));
 }
 
+function taskSearchText(task = {}) {
+  return `${task.titulo || ""} ${task.subtipo || ""} ${task.tipo_tarea || ""}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es");
+}
+
+export function isCarouselTask(task = {}) {
+  return taskSearchText(task).includes("carrusel");
+}
+
+export function isEditingTask(task = {}) {
+  const text = taskSearchText(task);
+  return task.tipo_tarea === "edicion" || text.includes("edicion") || text.includes("editar reel") || text.includes("editar video");
+}
+
+export function isPlannedReelTask(task = {}) {
+  const text = taskSearchText(task);
+  if (isCarouselTask(task) || task.tipo_tarea === "produccion" || isEditingTask(task)) return false;
+  return /^video\b/.test(String(task.titulo || "").trim().toLocaleLowerCase("es"))
+    || text.includes(" reel")
+    || text.includes("video ");
+}
+
+export function filterRenderOsTasksByPeriod(tasks = [], isInPeriod) {
+  if (typeof isInPeriod !== "function") return [];
+  return tasks.filter((task) => {
+    if (task.propiedades_extra?.archivada_render_os === true) return false;
+    const date = task.fecha_vencimiento || task.propiedades_extra?.clickup_cerrada_at || task.updated_at || "";
+    return isInPeriod(date);
+  });
+}
+
+export function summarizeTaskDeliveries(tasks = []) {
+  const realizados = tasks.filter((task) => task.estado === "publicada").length;
+  return { realizados, pendientes: Math.max(tasks.length - realizados, 0), total: tasks.length };
+}
+
 export function normalizeClientName(value = "") {
   return String(value)
     .normalize("NFD")
@@ -90,6 +128,19 @@ export function getDesignerCarouselSummary(designer, clients = [], publications 
     pendientes: Math.max(total - realizados, 0),
     total,
   };
+}
+
+export function getDesignerCarouselTaskSummary(designer, clients = [], tasks = []) {
+  const assignedClients = clients.filter((client) => getCarouselDesignerForClient(client) === designer);
+  const assignedNames = new Set(assignedClients.map((client) => normalizeClientName(client.nombre)));
+  const total = assignedClients.reduce((sum, client) => sum + getClientCarouselTarget(client, clients), 0);
+  const realizados = tasks.filter((task) =>
+    isCarouselTask(task)
+    && assignedNames.has(normalizeClientName(task.cliente_nombre))
+    && belongsToPerson(task.asignado_a, designer)
+    && task.estado === "publicada"
+  ).length;
+  return { realizados, pendientes: Math.max(total - realizados, 0), total };
 }
 
 export function formatPeriodDeadline(endExclusive = "") {

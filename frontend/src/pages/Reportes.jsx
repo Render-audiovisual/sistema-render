@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
 import { pushUrlContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
-import { belongsToPerson, filterItemsByPeriod, formatPeriodDeadline, getDesignerCarouselSummary } from "../shared/reports/report-utils.js";
+import { belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getDesignerCarouselTaskSummary, isCarouselTask, isEditingTask, summarizeTaskDeliveries } from "../shared/reports/report-utils.js";
 import { groupProductionByClient } from "../features/render-os/utils/production-visits.js";
 
 export function ResumenEntregableEquipo({
@@ -159,6 +159,7 @@ export function ReportesEquipoPage() {
   const [publicaciones, setPublicaciones] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
+  const [resumenRenderOsPorDia, setResumenRenderOsPorDia] = useState({});
   const initialPeriod = readUrlContext(window.location.search, { periodo: "mes_actual" }).periodo;
   const [periodo, setPeriodo] = useState(
     ["mes_actual", "mes_pasado", "ultimos_30"].includes(initialPeriod) ? initialPeriod : "mes_actual",
@@ -199,6 +200,7 @@ export function ReportesEquipoPage() {
         setClientes(Array.isArray(data.clientes) ? data.clientes : []);
         setUsuarios(Array.isArray(data.usuarios) ? data.usuarios : []);
         setTareasRenderOs(Array.isArray(data.tareasRenderOs) ? data.tareasRenderOs : []);
+        setResumenRenderOsPorDia(data.resumenRenderOsPorDia && typeof data.resumenRenderOsPorDia === "object" ? data.resumenRenderOsPorDia : {});
         setError(null);
       })
       .catch((err) => {
@@ -418,26 +420,6 @@ export function ReportesEquipoPage() {
     [empleados, historias, publicaciones, enPeriodo]
   );
 
-  const periodoMensualReporte = periodo === "mes_actual" || periodo === "mes_pasado"
-    ? rangoPeriodo.desde.slice(0, 7)
-    : null;
-  const tareasDelPeriodoPorPersona = (nombre) => {
-    const propias = tareas.filter((t) => belongsToPerson(t.asignado_a, nombre));
-    const fuenteMensual = periodoMensualReporte
-      ? propias.filter(
-          (t) =>
-            t.propiedades_extra?.reporte_fuente === "clickup" &&
-            t.propiedades_extra?.reporte_periodo === periodoMensualReporte,
-        )
-      : [];
-    if (fuenteMensual.length > 0) return fuenteMensual;
-    return propias.filter((t) => {
-      const cerradaEnPeriodo =
-        t.estado === ESTADO_FINAL_TAREA &&
-        enPeriodo(t.propiedades_extra?.clickup_cerrada_at || t.updated_at || "");
-      return cerradaEnPeriodo || enPeriodo(t.fecha_vencimiento || "");
-    });
-  };
   const resumenEntregas = (items) => {
     const realizados = items.filter((item) => item.estado === ESTADO_FINAL_TAREA).length;
     return {
@@ -446,8 +428,9 @@ export function ReportesEquipoPage() {
       total: items.length,
     };
   };
-  const videosLuciano = resumenEntregas(
-    tareasDelPeriodoPorPersona("Luciano").filter((t) => t.tipo_tarea === "edicion"),
+  const tareasRenderOsDelPeriodo = filterRenderOsTasksByPeriod(tareasRenderOs, enPeriodo);
+  const videosLuciano = summarizeTaskDeliveries(
+    tareasRenderOsDelPeriodo.filter((task) => belongsToPerson(task.asignado_a, "Luciano") && isEditingTask(task)),
   );
   const filmacionesGerman = groupProductionByClient(
     tareasRenderOs.filter((tarea) => belongsToPerson(tarea.asignado_a, "Germán")),
@@ -455,17 +438,33 @@ export function ReportesEquipoPage() {
     rangoPeriodo.hasta,
   );
   const historiasDelPeriodo = historias.filter((h) => enPeriodo(h.fecha_programada || ""));
-  const reelsDelPeriodo = publicaciones.filter(
-    (p) => p.tipo === "video" && enPeriodo(p.fecha_programada || ""),
-  );
-  const carruselesDelPeriodo = publicaciones.filter(
-    (p) => p.tipo === "carrusel" && enPeriodo(p.fecha_programada || ""),
-  );
-  const carruselesAugusto = getDesignerCarouselSummary("Augusto", clientes, carruselesDelPeriodo);
-  const carruselesMariano = getDesignerCarouselSummary("Mariano", clientes, carruselesDelPeriodo);
+  const carruselesRenderOs = tareasRenderOsDelPeriodo.filter(isCarouselTask);
+  const carruselesAugusto = getDesignerCarouselTaskSummary("Augusto", clientes, carruselesRenderOs);
+  const carruselesMariano = getDesignerCarouselTaskSummary("Mariano", clientes, carruselesRenderOs);
+  const resumenOperativoPeriodo = Object.entries(resumenRenderOsPorDia).reduce((summary, [date, values]) => {
+    if (!enPeriodo(date)) return summary;
+    for (const [category, metric] of Object.entries(values || {})) {
+      if (!summary[category]) summary[category] = { total: 0, publicadas: 0 };
+      summary[category].total += Number(metric?.total) || 0;
+      summary[category].publicadas += Number(metric?.publicadas) || 0;
+    }
+    return summary;
+  }, {});
+  const resumenOperativo = (category) => {
+    const metric = resumenOperativoPeriodo[category] || { total: 0, publicadas: 0 };
+    return {
+      realizados: metric.publicadas,
+      pendientes: Math.max(metric.total - metric.publicadas, 0),
+      total: metric.total,
+    };
+  };
   const historiasOriana = resumenEntregas(historiasDelPeriodo);
-  const reelsOriana = resumenEntregas(reelsDelPeriodo);
-  const carruselesOriana = resumenEntregas(carruselesDelPeriodo);
+  const reelsOriana = {
+    realizados: resumenOperativo("ediciones").realizados,
+    pendientes: Math.max(resumenOperativo("reels_planificados").total - resumenOperativo("ediciones").realizados, 0),
+    total: Math.max(resumenOperativo("reels_planificados").total, resumenOperativo("ediciones").realizados),
+  };
+  const carruselesOriana = resumenOperativo("carruseles");
   const metricasOriana = [
     { etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesOriana },
     { etiqueta: "Reels publicados", verbo: "publicados", verboSingular: "publicado", ...reelsOriana },

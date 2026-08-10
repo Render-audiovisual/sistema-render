@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { belongsToPerson, filterItemsByPeriod, formatPeriodDeadline, getClientCarouselTarget, getDesignerCarouselSummary, groupFilmingTasksByClient, isFilmingTask } from "../../frontend/src/shared/reports/report-utils.js";
+import { belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getClientCarouselTarget, getDesignerCarouselSummary, getDesignerCarouselTaskSummary, groupFilmingTasksByClient, isCarouselTask, isEditingTask, isFilmingTask, isPlannedReelTask, summarizeTaskDeliveries } from "../../frontend/src/shared/reports/report-utils.js";
 
 test("identifica filmaciones sin contar tareas de edición", () => {
   assert.equal(isFilmingTask({ tipo_tarea: "produccion", titulo: "Visita al local" }), true);
@@ -86,4 +86,36 @@ test("reconoce Cristal Joyerias como cliente de Mariano y calcula el cierre mens
     total: 4,
   });
   assert.equal(formatPeriodDeadline("2026-09-01"), "31 de agosto");
+});
+
+test("clasifica las tareas operativas de RENDER OS sin mezclar planificación y edición", () => {
+  assert.equal(isCarouselTask({ titulo: "Carrusel 1", tipo_tarea: "diseno" }), true);
+  assert.equal(isEditingTask({ titulo: "Luzin | Edición reel", tipo_tarea: "edicion" }), true);
+  assert.equal(isPlannedReelTask({ titulo: "Video 1" }), true);
+  assert.equal(isPlannedReelTask({ titulo: "Editar video", tipo_tarea: "edicion" }), false);
+});
+
+test("el reporte mensual usa tareas RENDER OS activas del período", () => {
+  const inAugust = (date) => date >= "2026-08-01" && date < "2026-09-01";
+  const result = filterRenderOsTasksByPeriod([
+    { id: 1, fecha_vencimiento: "2026-08-06", propiedades_extra: {} },
+    { id: 2, fecha_vencimiento: "2026-07-31", propiedades_extra: {} },
+    { id: 3, fecha_vencimiento: "2026-08-07", propiedades_extra: { archivada_render_os: true } },
+  ], inAugust);
+  assert.deepEqual(result.map((task) => task.id), [1]);
+});
+
+test("cuenta carruseles publicados desde RENDER OS para cada diseñador", () => {
+  const clients = [
+    { id: 1, nombre: "RPM Chevrolet", cuota_carruseles: 2 },
+    { id: 2, nombre: "Bendita", cuota_carruseles: 3 },
+  ];
+  const tasks = [
+    { titulo: "Carrusel 1", cliente_nombre: "RPM Chevrolet", asignado_a: "Mariano Meza", estado: "publicada" },
+    { titulo: "Carrusel 1", cliente_nombre: "Bendita", asignado_a: "Augusto", estado: "publicada" },
+    { titulo: "Carrusel 2", cliente_nombre: "Bendita", asignado_a: "Augusto", estado: "pendiente" },
+  ];
+  assert.deepEqual(getDesignerCarouselTaskSummary("Mariano", clients, tasks), { realizados: 1, pendientes: 1, total: 2 });
+  assert.deepEqual(getDesignerCarouselTaskSummary("Augusto", clients, tasks), { realizados: 1, pendientes: 2, total: 3 });
+  assert.deepEqual(summarizeTaskDeliveries(tasks), { realizados: 2, pendientes: 1, total: 3 });
 });

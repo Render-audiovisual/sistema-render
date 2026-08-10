@@ -109,8 +109,10 @@ test("la navegación de empleados expone inicio, tareas, notas, reportes y perfi
 
 test("el reporte personal de Oriana separa carruseles, reels e historias publicadas", () => {
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
-  assert.match(reportesSource, /p\.tipo === "carrusel" && enPeriodo/);
-  assert.match(reportesSource, /p\.tipo === "video" && enPeriodo/);
+  assert.match(reportesSource, /resumenOperativo\("carruseles"\)/);
+  assert.match(reportesSource, /resumenOperativo\("ediciones"\)/);
+  assert.match(reportesSource, /resumenOperativo\("reels_planificados"\)/);
+  assert.match(reportesSource, /resumenRenderOsPorDia/);
   assert.match(reportesSource, /etiqueta: "Carruseles entregados"/);
   assert.match(reportesSource, /etiqueta: "Reels publicados"/);
   assert.match(reportesSource, /etiqueta: "Historias publicadas"/);

@@ -26,8 +26,31 @@ function clientBelongsToDesigner(client, identity) {
   return isMariano ? belongsToMariano : !belongsToMariano;
 }
 
+function renderOsCategory(task = {}) {
+  const text = normalize(`${task.titulo || ""} ${task.subtipo || ""} ${task.tipo_tarea || ""}`);
+  if (text.includes("carrusel")) return "carruseles";
+  if (task.tipo_tarea === "edicion" || text.includes("edicion") || text.includes("editar reel") || text.includes("editar video")) return "ediciones";
+  if (task.tipo_tarea !== "produccion" && (/^video\b/.test(normalize(task.titulo)) || text.includes(" reel") || text.includes("video "))) return "reels_planificados";
+  return null;
+}
+
+export function summarizeRenderOsByDay(tasks = []) {
+  return tasks.reduce((summary, task) => {
+    if (task.propiedades_extra?.archivada_render_os === true) return summary;
+    const category = renderOsCategory(task);
+    const date = String(task.fecha_vencimiento || task.updated_at || "").slice(0, 10);
+    if (!category || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return summary;
+    if (!summary[date]) summary[date] = {};
+    if (!summary[date][category]) summary[date][category] = { total: 0, publicadas: 0 };
+    summary[date][category].total += 1;
+    if (task.estado === "publicada") summary[date][category].publicadas += 1;
+    return summary;
+  }, {});
+}
+
 export function filterReportDataForUser(data, auth = {}) {
-  if (auth.rol === "admin") return data;
+  const reportData = { ...data, resumenRenderOsPorDia: summarizeRenderOsByDay(data.tareasRenderOs) };
+  if (auth.rol === "admin") return reportData;
   const identity = auth.nombre || auth.usuario || "";
   const ownTask = (task) => belongsTo(task.asignado_a, identity)
     || (Array.isArray(task.propiedades_extra?.colaboradores)
@@ -35,14 +58,14 @@ export function filterReportDataForUser(data, auth = {}) {
   const ownUsers = data.usuarios.filter((user) => belongsTo(user.nombre || user.usuario, identity));
 
   if (auth.rol === "community") {
-    return { ...data, tareas: data.tareas.filter(ownTask), tareasRenderOs: [], clientes: [], usuarios: ownUsers };
+    return { ...reportData, tareas: data.tareas.filter(ownTask), tareasRenderOs: [], clientes: [], usuarios: ownUsers };
   }
   if (auth.rol === "diseno") {
     const assignedIds = new Set(data.clientes.filter((client) => clientBelongsToDesigner(client, identity)).map((client) => Number(client.id)));
     return {
-      ...data,
+      ...reportData,
       tareas: data.tareas.filter(ownTask),
-      tareasRenderOs: [],
+      tareasRenderOs: data.tareasRenderOs.filter(ownTask),
       historias: [],
       publicaciones: data.publicaciones.filter((item) => item.tipo === "carrusel" && assignedIds.has(Number(item.cliente_id))),
       usuarios: ownUsers,
@@ -50,15 +73,15 @@ export function filterReportDataForUser(data, auth = {}) {
   }
   if (auth.rol === "produccion") {
     return {
-      ...data,
+      ...reportData,
       tareas: data.tareas.filter(ownTask),
       tareasRenderOs: data.tareasRenderOs.filter(ownTask),
       historias: [], publicaciones: [], clientes: [], usuarios: ownUsers,
     };
   }
   return {
-    ...data,
+    ...reportData,
     tareas: data.tareas.filter(ownTask),
-    tareasRenderOs: [], historias: [], publicaciones: [], clientes: [], usuarios: ownUsers,
+    tareasRenderOs: data.tareasRenderOs.filter(ownTask), historias: [], publicaciones: [], clientes: [], usuarios: ownUsers,
   };
 }
