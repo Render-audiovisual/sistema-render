@@ -53,6 +53,23 @@ function csv(value) {
   return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
 }
 
+function whatsappConfig(env) {
+  try {
+    const value = JSON.parse(String(env.WILSON_WHATSAPP_CONFIG || "{}"));
+    return {
+      allowedIds: Array.isArray(value.allowedIds) ? value.allowedIds.map(String) : csv(env.WILSON_ALLOWED_WHATSAPP_IDS),
+      groupIds: Array.isArray(value.groupIds) ? value.groupIds.map(String) : csv(env.WILSON_ALLOWED_WHATSAPP_GROUP_IDS),
+      leaderIds: Array.isArray(value.leaderIds) ? value.leaderIds.map(String) : csv(env.WILSON_LEADER_WHATSAPP_IDS),
+    };
+  } catch {
+    return {
+      allowedIds: csv(env.WILSON_ALLOWED_WHATSAPP_IDS),
+      groupIds: csv(env.WILSON_ALLOWED_WHATSAPP_GROUP_IDS),
+      leaderIds: csv(env.WILSON_LEADER_WHATSAPP_IDS),
+    };
+  }
+}
+
 export function validateWilsonConfirmation({ confirmed, confirmedAt, now = Date.now(), maxAgeMs = CONFIRMATION_MAX_AGE_MS }) {
   if (confirmed !== true) return "La operación todavía no fue confirmada.";
   const timestamp = Date.parse(String(confirmedAt || ""));
@@ -72,11 +89,12 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
     const actorId = String(req.headers?.["x-wilson-actor-id"] || req.headers?.["x-telegram-user-id"] || req.body?.telegram_user_id || "").trim();
     const groupId = String(req.headers?.["x-wilson-group-id"] || "").trim();
     const actorName = String(req.headers?.["x-wilson-actor-name"] || "").trim();
+    const whatsapp = whatsappConfig(env);
     const allowedIds = channel === "whatsapp"
-      ? csv(env.WILSON_ALLOWED_WHATSAPP_IDS)
+      ? whatsapp.allowedIds
       : csv(env.WILSON_ALLOWED_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(","));
     if (!allowedIds.includes(actorId)) return res.status(403).json({ error: `Esta cuenta de ${channel === "whatsapp" ? "WhatsApp" : "Telegram"} no puede operar tareas.` });
-    if (channel === "whatsapp" && !csv(env.WILSON_ALLOWED_WHATSAPP_GROUP_IDS).includes(groupId)) {
+    if (channel === "whatsapp" && !whatsapp.groupIds.includes(groupId)) {
       return res.status(403).json({ error: "Este grupo de WhatsApp no puede operar tareas." });
     }
     const timestampMs = Number(timestamp) * 1000;
@@ -312,16 +330,17 @@ async function consumeWilsonConfirmation(db, req, res, operation, taskId = null)
 
 function isWilsonLeader(req, env) {
   if (req.wilson.channel === "telegram") return csv(env.WILSON_LEADER_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(",")).includes(req.wilson.actorId);
-  return csv(env.WILSON_LEADER_WHATSAPP_IDS).includes(req.wilson.actorId);
+  return whatsappConfig(env).leaderIds.includes(req.wilson.actorId);
 }
 
 export function createWilsonRouter({ pool, notifyAssignment, env = process.env }) {
   const router = express.Router();
   if (env.NODE_ENV !== "test") {
+    const whatsapp = whatsappConfig(env);
     console.info("Wilson WhatsApp config", {
-      allowedAccounts: csv(env.WILSON_ALLOWED_WHATSAPP_IDS).length,
-      allowedGroups: csv(env.WILSON_ALLOWED_WHATSAPP_GROUP_IDS).length,
-      leaderAccounts: csv(env.WILSON_LEADER_WHATSAPP_IDS).length,
+      allowedAccounts: whatsapp.allowedIds.length,
+      allowedGroups: whatsapp.groupIds.length,
+      leaderAccounts: whatsapp.leaderIds.length,
     });
   }
   router.use(requireWilsonService(env));

@@ -91,8 +91,11 @@ test("la API técnica de WhatsApp exige usuario y grupo permitidos dentro de la 
   };
   const middleware = requireWilsonService({
     WILSON_PUBLIC_KEY: publicKey.export({ type: "spki", format: "pem" }),
-    WILSON_ALLOWED_WHATSAPP_IDS: "persona-1,persona-2",
-    WILSON_ALLOWED_WHATSAPP_GROUP_IDS: "grupo-render",
+    WILSON_WHATSAPP_CONFIG: JSON.stringify({
+      allowedIds: ["persona-1", "persona-2"],
+      groupIds: ["grupo-render"],
+      leaderIds: ["persona-1"],
+    }),
   }, () => now);
   const response = () => ({ statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } });
   const request = { headers: sign("nonce-wa-ok"), body: undefined, method: "GET", baseUrl: "/api/integraciones/wilson", path: "/catalogo" };
