@@ -1503,7 +1503,7 @@ router.get("/publicaciones", async (req, res, next) => {
   }
 });
 
-router.post("/tareas", requireRole("admin"), async (req, res, next) => {
+router.post("/tareas", async (req, res, next) => {
   try {
     const {
       titulo,
@@ -1528,6 +1528,10 @@ router.post("/tareas", requireRole("admin"), async (req, res, next) => {
       workspace,
       produccion_videos_previstos,
     } = req.body;
+
+    if (req.auth?.rol !== "admin" && workspace !== "render_os") {
+      return res.status(403).json({ error: "Solo podés crear tareas dentro de RENDER OS." });
+    }
 
     if (!titulo || !asignado_a) {
       return res.status(400).json({ error: "Faltan título o asignado_a." });

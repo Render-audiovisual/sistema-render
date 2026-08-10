@@ -114,9 +114,15 @@ test(
       const employeeOtherTask = await request(`/tareas/${secondResponse.body.id}?workspace=render_os`, {}, employeeToken);
       assert.equal(employeeOtherTask.response.status, 200);
       const employeeCreate = await request("/tareas", jsonOptions("POST", {
-        titulo: `${marker} no autorizada`, asignado_a: "QA Diseño", workspace: "render_os",
+        titulo: `${marker} creada por equipo`, asignado_a: "QA Diseño", workspace: "render_os",
       }), employeeToken);
-      assert.equal(employeeCreate.response.status, 403);
+      assert.equal(employeeCreate.response.status, 201);
+      assert.equal(employeeCreate.body.propiedades_extra.workspace, "render_os");
+      ids.push(employeeCreate.body.id);
+      const employeeHistoricalCreate = await request("/tareas", jsonOptions("POST", {
+        titulo: `${marker} histórica no autorizada`, asignado_a: "QA Diseño",
+      }), employeeToken);
+      assert.equal(employeeHistoricalCreate.response.status, 403);
       const employeeRename = await request(`/tareas/${taskId}?workspace=render_os`, jsonOptions("PATCH", {
         titulo: `${marker} no autorizada`,
       }), employeeToken);
@@ -136,7 +142,7 @@ test(
       const paged = await request("/tareas?workspace=render_os&limit=1&offset=0&incluir_archivadas=true");
       assert.equal(paged.response.status, 200);
       assert.equal(paged.body.length, 1);
-      assert.equal(paged.response.headers.get("x-total-count"), "2");
+      assert.equal(paged.response.headers.get("x-total-count"), "3");
 
       const byCollaborator = await request("/tareas?workspace=render_os&asignado_a=QA%20Colaborador&limit=10");
       assert.deepEqual(byCollaborator.body.map((item) => item.id), [taskId]);

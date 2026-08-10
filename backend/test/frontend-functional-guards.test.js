@@ -75,6 +75,17 @@ test("Tareas conserva una sola interfaz y navega en la misma pestaña", () => {
   assert.match(sidebarSource, /href=\{enlace\.href\}[\s\S]*?target="_self"/);
 });
 
+test("todo el equipo puede abrir el formulario y crear únicamente tareas RENDER OS", () => {
+  const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  const serverSource = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+
+  assert.doesNotMatch(serverSource, /router\.post\("\/tareas", requireRole\("admin"\)/);
+  assert.match(serverSource, /req\.auth\?\.rol !== "admin" && workspace !== "render_os"/);
+  assert.match(workspaceSource, /Promise\.all\(\[apiJson\("\/api\/clientes"\), apiJson\("\/api\/usuarios"\)\]\)/);
+  assert.doesNotMatch(workspaceSource, /\{isAdmin && <button className="ros-primary-button"/);
+  assert.match(workspaceSource, /body: JSON\.stringify\(\{ \.\.\.draft, workspace: "render_os" \}\)/);
+});
+
 test("los dashboards personales leen y actualizan únicamente RENDER OS", () => {
   const assignedTasksSource = readFileSync(new URL("../../frontend/src/components/TareasAsignadasGenericas.jsx", import.meta.url), "utf8");
   assert.match(assignedTasksSource, /workspace: "render_os"/);
