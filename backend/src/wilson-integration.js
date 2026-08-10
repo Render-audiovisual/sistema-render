@@ -4,6 +4,16 @@ import fs from "node:fs";
 
 const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
 const DEFAULT_ALLOWED_TELEGRAM_IDS = ["1826333320", "1890547269"];
+const DEFAULT_ALLOWED_WHATSAPP_ID_HASHES = [
+  "6dcb148275f19084819c4428ce778efde4141d5e42d16ce95aacbec52f88e36a",
+  "82dbca966460791f7150fbab9343d1a8418686a0f0d393777c487be1cd7c7893",
+  "778f6cd718a5c563208520131273c07812deaa72272a9d8a4503383a1eb4bfd2",
+  "2e945d6cb00e0f5f616176c007825af691f1398ead3e12787800bd8e6c6968c6",
+];
+const DEFAULT_WHATSAPP_GROUP_HASHES = [
+  "2e0c668340e7a99aede30b6867a22268a59590fa5fc8f930f1897dc53b88de41",
+];
+const DEFAULT_LEADER_WHATSAPP_ID_HASHES = DEFAULT_ALLOWED_WHATSAPP_ID_HASHES.slice(0, 3);
 const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
 const CONFIRMATION_MAX_AGE_MS = 10 * 60 * 1000;
 const usedNonces = new Map();
@@ -70,6 +80,12 @@ function whatsappConfig(env) {
   }
 }
 
+function matchesIdentifier(value, configuredValues, defaultHashes) {
+  if (configuredValues.length) return configuredValues.includes(value);
+  const hash = crypto.createHash("sha256").update(String(value || "")).digest("hex");
+  return defaultHashes.includes(hash);
+}
+
 export function validateWilsonConfirmation({ confirmed, confirmedAt, now = Date.now(), maxAgeMs = CONFIRMATION_MAX_AGE_MS }) {
   if (confirmed !== true) return "La operación todavía no fue confirmada.";
   const timestamp = Date.parse(String(confirmedAt || ""));
@@ -93,8 +109,11 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
     const allowedIds = channel === "whatsapp"
       ? whatsapp.allowedIds
       : csv(env.WILSON_ALLOWED_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(","));
-    if (!allowedIds.includes(actorId)) return res.status(403).json({ error: `Esta cuenta de ${channel === "whatsapp" ? "WhatsApp" : "Telegram"} no puede operar tareas.` });
-    if (channel === "whatsapp" && !whatsapp.groupIds.includes(groupId)) {
+    const actorAllowed = channel === "whatsapp"
+      ? matchesIdentifier(actorId, allowedIds, DEFAULT_ALLOWED_WHATSAPP_ID_HASHES)
+      : allowedIds.includes(actorId);
+    if (!actorAllowed) return res.status(403).json({ error: `Esta cuenta de ${channel === "whatsapp" ? "WhatsApp" : "Telegram"} no puede operar tareas.` });
+    if (channel === "whatsapp" && !matchesIdentifier(groupId, whatsapp.groupIds, DEFAULT_WHATSAPP_GROUP_HASHES)) {
       return res.status(403).json({ error: "Este grupo de WhatsApp no puede operar tareas." });
     }
     const timestampMs = Number(timestamp) * 1000;
@@ -330,7 +349,7 @@ async function consumeWilsonConfirmation(db, req, res, operation, taskId = null)
 
 function isWilsonLeader(req, env) {
   if (req.wilson.channel === "telegram") return csv(env.WILSON_LEADER_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(",")).includes(req.wilson.actorId);
-  return whatsappConfig(env).leaderIds.includes(req.wilson.actorId);
+  return matchesIdentifier(req.wilson.actorId, whatsappConfig(env).leaderIds, DEFAULT_LEADER_WHATSAPP_ID_HASHES);
 }
 
 export function createWilsonRouter({ pool, notifyAssignment, env = process.env }) {
@@ -338,9 +357,9 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
   if (env.NODE_ENV !== "test") {
     const whatsapp = whatsappConfig(env);
     console.info("Wilson WhatsApp config", {
-      allowedAccounts: whatsapp.allowedIds.length,
-      allowedGroups: whatsapp.groupIds.length,
-      leaderAccounts: whatsapp.leaderIds.length,
+      allowedAccounts: whatsapp.allowedIds.length || DEFAULT_ALLOWED_WHATSAPP_ID_HASHES.length,
+      allowedGroups: whatsapp.groupIds.length || DEFAULT_WHATSAPP_GROUP_HASHES.length,
+      leaderAccounts: whatsapp.leaderIds.length || DEFAULT_LEADER_WHATSAPP_ID_HASHES.length,
     });
   }
   router.use(requireWilsonService(env));
