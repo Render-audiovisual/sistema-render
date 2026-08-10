@@ -1,0 +1,80 @@
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import http from "node:http";
+import os from "node:os";
+import path from "node:path";
+import { spawn } from "node:child_process";
+import test from "node:test";
+import { buildWilsonSignatureMessage } from "../src/wilson-integration.js";
+
+function runClient(args, env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("python3", ["scripts/mia_render_os_task.py", ...args], { env: { ...process.env, ...env } });
+    let stdout = ""; let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", reject);
+    child.on("close", (code) => code === 0 ? resolve(JSON.parse(stdout)) : reject(new Error(stderr)));
+  });
+}
+
+test("el cliente sombra firma identidad, grupo, confirmación e idempotencia sin tocar producción", async (context) => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mia-shadow-"));
+  const keyPath = path.join(tempDir, "private.pem");
+  fs.writeFileSync(keyPath, privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600 });
+  const received = [];
+  const server = http.createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      const rawBody = Buffer.concat(chunks).toString();
+      const body = rawBody ? JSON.parse(rawBody) : undefined;
+      const url = new URL(req.url, "http://127.0.0.1");
+      const message = buildWilsonSignatureMessage({
+        timestamp: req.headers["x-wilson-timestamp"], nonce: req.headers["x-wilson-nonce"],
+        channel: req.headers["x-wilson-channel"], actorId: req.headers["x-wilson-actor-id"],
+        groupId: req.headers["x-wilson-group-id"], actorName: req.headers["x-wilson-actor-name"],
+        method: req.method, path: url.pathname, body,
+      });
+      const valid = crypto.verify("sha256", Buffer.from(message), publicKey, Buffer.from(req.headers["x-wilson-signature"], "base64"));
+      received.push({ req, body, valid });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ shadow: true }));
+    });
+  });
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+  } catch (error) {
+    if (error?.code === "EPERM") {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      context.skip("el sandbox no permite abrir un servidor HTTP local");
+      return;
+    }
+    throw error;
+  }
+  const port = server.address().port;
+  const env = {
+    RENDER_OS_API_URL: `http://127.0.0.1:${port}/api/integraciones/wilson`,
+    RENDER_OS_PRIVATE_KEY_PATH: keyPath,
+    MIA_WHATSAPP_ACTOR_ID: "actor-qa", MIA_WHATSAPP_ACTOR_NAME: "Usuario QA",
+    MIA_WHATSAPP_GROUP_ID: "grupo-render-qa",
+  };
+  try {
+    await runClient(["create", "--payload", JSON.stringify({ titulo: "Tarea QA" }), "--idempotency-key", "mensaje-qa-1"], env);
+    await runClient(["archive", "--task-id", "42", "--idempotency-key", "mensaje-qa-2"], env);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+  assert.equal(received.length, 2);
+  assert.ok(received.every((entry) => entry.valid));
+  assert.ok(received.every((entry) => entry.req.headers["x-wilson-signature-version"] === "2"));
+  assert.ok(received.every((entry) => entry.body.confirmado === true));
+  assert.ok(received.every((entry) => Date.parse(entry.body.confirmado_en)));
+  assert.deepEqual(received.map((entry) => entry.req.headers["idempotency-key"]), ["mensaje-qa-1", "mensaje-qa-2"]);
+});
