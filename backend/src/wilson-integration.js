@@ -5,6 +5,7 @@ import fs from "node:fs";
 const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
 const DEFAULT_ALLOWED_TELEGRAM_IDS = ["1826333320", "1890547269"];
 const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
+const CONFIRMATION_MAX_AGE_MS = 10 * 60 * 1000;
 const usedNonces = new Map();
 
 const SECTORS = new Map([
@@ -29,9 +30,26 @@ function canonicalJson(value) {
   return JSON.stringify(value);
 }
 
-export function buildWilsonSignatureMessage({ timestamp, nonce, telegramUserId, method, path, body }) {
+export function buildWilsonSignatureMessage({ timestamp, nonce, telegramUserId, channel, actorId, groupId, actorName, method, path, body }) {
   const bodyHash = crypto.createHash("sha256").update(body === undefined ? "" : canonicalJson(body)).digest("hex");
+  if (channel || actorId || groupId || actorName) {
+    return ["v2", timestamp, nonce, channel || "telegram", actorId || telegramUserId || "", groupId || "", actorName || "", method.toUpperCase(), path, bodyHash].join("\n");
+  }
   return [timestamp, nonce, telegramUserId, method.toUpperCase(), path, bodyHash].join("\n");
+}
+
+function csv(value) {
+  return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+export function validateWilsonConfirmation({ confirmed, confirmedAt, now = Date.now(), maxAgeMs = CONFIRMATION_MAX_AGE_MS }) {
+  if (confirmed !== true) return "La operación todavía no fue confirmada.";
+  const timestamp = Date.parse(String(confirmedAt || ""));
+  if (!Number.isFinite(timestamp)) return "Falta la fecha de confirmación.";
+  if (timestamp > now + 30_000 || now - timestamp > maxAgeMs) {
+    return "La confirmación venció. Volvé a revisar y confirmar la operación.";
+  }
+  return null;
 }
 
 export function requireWilsonService(env = process.env, now = () => Date.now()) {
@@ -39,10 +57,17 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
     const timestamp = String(req.headers?.["x-wilson-timestamp"] || "").trim();
     const nonce = String(req.headers?.["x-wilson-nonce"] || "").trim();
     const signature = String(req.headers?.["x-wilson-signature"] || "").trim();
-    const telegramUserId = String(req.headers?.["x-telegram-user-id"] || req.body?.telegram_user_id || "").trim();
-    const allowedIds = String(env.WILSON_ALLOWED_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(","))
-      .split(",").map((item) => item.trim()).filter(Boolean);
-    if (!allowedIds.includes(telegramUserId)) return res.status(403).json({ error: "Esta cuenta de Telegram no puede operar tareas." });
+    const channel = String(req.headers?.["x-wilson-channel"] || "telegram").trim().toLowerCase();
+    const actorId = String(req.headers?.["x-wilson-actor-id"] || req.headers?.["x-telegram-user-id"] || req.body?.telegram_user_id || "").trim();
+    const groupId = String(req.headers?.["x-wilson-group-id"] || "").trim();
+    const actorName = String(req.headers?.["x-wilson-actor-name"] || "").trim();
+    const allowedIds = channel === "whatsapp"
+      ? csv(env.WILSON_ALLOWED_WHATSAPP_IDS)
+      : csv(env.WILSON_ALLOWED_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(","));
+    if (!allowedIds.includes(actorId)) return res.status(403).json({ error: `Esta cuenta de ${channel === "whatsapp" ? "WhatsApp" : "Telegram"} no puede operar tareas.` });
+    if (channel === "whatsapp" && !csv(env.WILSON_ALLOWED_WHATSAPP_GROUP_IDS).includes(groupId)) {
+      return res.status(403).json({ error: "Este grupo de WhatsApp no puede operar tareas." });
+    }
     const timestampMs = Number(timestamp) * 1000;
     if (!timestamp || !nonce || !signature || !Number.isFinite(timestampMs)
       || Math.abs(now() - timestampMs) > SIGNATURE_MAX_AGE_MS) {
@@ -51,7 +76,10 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
     for (const [savedNonce, expiresAt] of usedNonces) if (expiresAt <= now()) usedNonces.delete(savedNonce);
     if (usedNonces.has(nonce)) return res.status(409).json({ error: "La solicitud de Wilson ya fue utilizada." });
     const path = `${req.baseUrl}${req.path}`;
-    const message = buildWilsonSignatureMessage({ timestamp, nonce, telegramUserId, method: req.method, path, body: req.body });
+    const signatureVersion = String(req.headers?.["x-wilson-signature-version"] || "").trim();
+    const message = signatureVersion === "2"
+      ? buildWilsonSignatureMessage({ timestamp, nonce, channel, actorId, groupId, actorName, method: req.method, path, body: req.body })
+      : buildWilsonSignatureMessage({ timestamp, nonce, telegramUserId: actorId, method: req.method, path, body: req.body });
     const publicKey = env.WILSON_PUBLIC_KEY || DEFAULT_PUBLIC_KEY;
     let valid = false;
     try {
@@ -60,8 +88,10 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
     if (!valid) return res.status(401).json({ error: "Firma de Wilson inválida." });
     usedNonces.set(nonce, now() + SIGNATURE_MAX_AGE_MS);
     req.wilson = {
-      telegramUserId,
-      confirmedBy: String(req.headers?.["x-wilson-confirmed-by"] || req.body?.confirmado_por || "").trim() || "Franco o Agustín",
+      channel, actorId, groupId,
+      actorName: actorName || (channel === "telegram" ? "Usuario de Telegram" : "Usuario de WhatsApp"),
+      telegramUserId: channel === "telegram" ? actorId : "",
+      confirmedBy: actorName || (channel === "telegram" ? "Usuario de Telegram" : "Usuario de WhatsApp"),
     };
     return next();
   };
@@ -228,6 +258,33 @@ async function loadWilsonTask(db, taskId, { forUpdate = false } = {}) {
   return result.rows[0] || null;
 }
 
+async function writeWilsonAudit(db, req, { action, taskId = null, outcome = "ok", details = {} }) {
+  await db.query(
+    `INSERT INTO integracion_auditoria
+      (integracion,canal,actor_id,actor_nombre,grupo_id,accion,tarea_id,resultado,detalles)
+     VALUES ('wilson',$1,$2,$3,$4,$5,$6,$7,$8::jsonb)`,
+    [req.wilson.channel, req.wilson.actorId, req.wilson.actorName, req.wilson.groupId || null,
+      action, taskId, outcome, JSON.stringify(details)],
+  );
+}
+
+function requireRecentConfirmation(req, res) {
+  if (req.wilson.channel !== "whatsapp") {
+    if (req.body?.confirmado === true) return true;
+    res.status(400).json({ error: "La operación todavía no fue confirmada." });
+    return false;
+  }
+  const error = validateWilsonConfirmation({ confirmed: req.body?.confirmado, confirmedAt: req.body?.confirmado_en });
+  if (!error) return true;
+  res.status(400).json({ error });
+  return false;
+}
+
+function isWilsonLeader(req, env) {
+  if (req.wilson.channel === "telegram") return csv(env.WILSON_LEADER_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(",")).includes(req.wilson.actorId);
+  return csv(env.WILSON_LEADER_WHATSAPP_IDS).includes(req.wilson.actorId);
+}
+
 export function createWilsonRouter({ pool, notifyAssignment, env = process.env }) {
   const router = express.Router();
   router.use(requireWilsonService(env));
@@ -246,6 +303,24 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
     } catch (error) { next(error); }
   });
 
+  router.get("/tareas", async (req, res, next) => {
+    try {
+      const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 100));
+      const result = await pool.query(
+        `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,t.prioridad,
+                t.propiedades_extra,t.aclaraciones,t.material_referencia,
+                to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
+                t.created_at,t.updated_at,c.nombre AS cliente_nombre
+         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+         WHERE t.propiedades_extra->>'workspace'='render_os'
+           AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+         ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC LIMIT $1`,
+        [limit],
+      );
+      return res.json({ tasks: result.rows.map(taskWithUrl), limit });
+    } catch (error) { return next(error); }
+  });
+
   router.get("/tareas/:id", async (req, res, next) => {
     try {
       const task = await loadWilsonTask(pool, req.params.id);
@@ -255,7 +330,7 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
   });
 
   router.patch("/tareas/:id", async (req, res, next) => {
-    if (req.body?.confirmado !== true) return res.status(400).json({ error: "La edición todavía no fue confirmada." });
+    if (!requireRecentConfirmation(req, res)) return undefined;
     const key = String(req.headers?.["idempotency-key"] || req.body?.idempotency_key || "").trim();
     if (!key) return res.status(400).json({ error: "Falta idempotency_key." });
     const client = await pool.connect();
@@ -302,7 +377,8 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
         ...current.propiedades_extra,
         origen_integracion: "wilson",
         wilson_last_update_key: key,
-        wilson_last_update_telegram_user_id: req.wilson.telegramUserId,
+        wilson_last_update_channel: req.wilson.channel,
+        wilson_last_update_actor_id: req.wilson.actorId,
         wilson_last_update_confirmado_por: req.wilson.confirmedBy,
         wilson_last_update_at: new Date().toISOString(),
       };
@@ -320,10 +396,7 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
           task.tipo_tarea,task.subtipo,task.prioridad,task.aclaraciones,task.material_referencia,
           JSON.stringify(properties)],
       );
-      await client.query(
-        "INSERT INTO tarea_comentarios (tarea_id,autor,contenido) VALUES ($1,'Wilson',$2)",
-        [current.id, `[Actividad] Actualizó esta tarea desde Telegram. Confirmado por ${req.wilson.confirmedBy}. Campos: ${changedFields.join(", ")}.`],
-      );
+      await writeWilsonAudit(client, req, { action: "editar_tarea", taskId: current.id, details: { changedFields, idempotencyKey: key } });
       await client.query("COMMIT");
       const updatedTask = { ...updated.rows[0], cliente_nombre: task.cliente_nombre };
       res.json({ updated: true, idempotent: false, changed_fields: changedFields, task: taskWithUrl(updatedTask) });
@@ -336,7 +409,7 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
   });
 
   router.post("/tareas", async (req, res, next) => {
-    if (req.body?.confirmado !== true) return res.status(400).json({ error: "La tarea todavía no fue confirmada." });
+    if (!requireRecentConfirmation(req, res)) return undefined;
     const key = String(req.headers?.["idempotency-key"] || req.body?.idempotency_key || "").trim();
     if (!key) return res.status(400).json({ error: "Falta idempotency_key." });
     const client = await pool.connect();
@@ -361,8 +434,8 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
       }
       const task = result.task;
       const properties = {
-        workspace: "render_os", Origen: "Creada por Wilson desde Telegram", origen_integracion: "wilson",
-        wilson_idempotency_key: key, wilson_telegram_user_id: req.wilson.telegramUserId,
+        workspace: "render_os", Origen: `Creada por Wilson desde ${req.wilson.channel === "whatsapp" ? "WhatsApp" : "Telegram"}`, origen_integracion: "wilson",
+        wilson_idempotency_key: key, wilson_channel: req.wilson.channel, wilson_actor_id: req.wilson.actorId,
         wilson_confirmado_por: req.wilson.confirmedBy, ...(task.referencia ? { referencia: task.referencia } : {}),
       };
       const inserted = await client.query(
@@ -375,10 +448,7 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
         [task.titulo,task.asignado_a,task.cliente_id,JSON.stringify(properties),task.fecha_vencimiento,
           task.tipo_tarea,task.subtipo,task.prioridad,task.aclaraciones,task.material_referencia],
       );
-      await client.query(
-        "INSERT INTO tarea_comentarios (tarea_id,autor,contenido) VALUES ($1,'Wilson',$2)",
-        [inserted.rows[0].id, `[Actividad] Creó esta tarea desde Telegram. Confirmado por ${req.wilson.confirmedBy}.`],
-      );
+      await writeWilsonAudit(client, req, { action: "crear_tarea", taskId: inserted.rows[0].id, details: { idempotencyKey: key } });
       await client.query("COMMIT");
       const createdTask = { ...inserted.rows[0], cliente_nombre: task.cliente_nombre };
       res.status(201).json({ created: true, idempotent: false, task: taskWithUrl(createdTask) });
@@ -386,6 +456,54 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       next(error);
+    } finally { client.release(); }
+  });
+
+  router.post("/tareas/:id/archivar", async (req, res, next) => {
+    if (!requireRecentConfirmation(req, res)) return undefined;
+    const key = String(req.headers?.["idempotency-key"] || req.body?.idempotency_key || "").trim();
+    if (!key) return res.status(400).json({ error: "Falta idempotency_key." });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`wilson:archive:${req.params.id}:${key}`]);
+      const current = await loadWilsonTask(client, req.params.id, { forUpdate: true });
+      if (!current) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La tarea no existe en RENDER OS o ya está archivada." }); }
+      const properties = { ...current.propiedades_extra, archivada_render_os: true, wilson_archive_key: key };
+      const updated = await client.query(
+        `UPDATE tareas SET propiedades_extra=$2::jsonb,updated_at=NOW() WHERE id=$1 RETURNING id,titulo,estado,propiedades_extra,updated_at`,
+        [current.id, JSON.stringify(properties)],
+      );
+      await writeWilsonAudit(client, req, { action: "archivar_tarea", taskId: current.id, details: { idempotencyKey: key } });
+      await client.query("COMMIT");
+      return res.json({ archived: true, task: taskWithUrl(updated.rows[0]) });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      return next(error);
+    } finally { client.release(); }
+  });
+
+  router.delete("/tareas/:id", async (req, res, next) => {
+    if (!isWilsonLeader(req, env)) return res.status(403).json({ error: "Solo Agustín o Franco pueden eliminar definitivamente una tarea." });
+    if (!requireRecentConfirmation(req, res)) return undefined;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `SELECT id,titulo FROM tareas WHERE id=$1
+           AND propiedades_extra->>'workspace'='render_os'
+           AND propiedades_extra->>'archivada_render_os'='true' FOR UPDATE`,
+        [req.params.id],
+      );
+      const task = result.rows[0];
+      if (!task) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La tarea no existe en la Papelera de RENDER OS." }); }
+      await writeWilsonAudit(client, req, { action: "eliminar_tarea", taskId: task.id, details: { titulo: task.titulo } });
+      await client.query("DELETE FROM tareas WHERE id=$1", [task.id]);
+      await client.query("COMMIT");
+      return res.json({ deleted: true, id: task.id });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      return next(error);
     } finally { client.release(); }
   });
 

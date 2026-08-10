@@ -9,6 +9,7 @@ import {
   findWilsonDuplicates,
   normalizeWilsonText,
   requireWilsonService,
+  validateWilsonConfirmation,
 } from "../src/wilson-integration.js";
 
 const catalog = {
@@ -66,6 +67,56 @@ test("la API técnica valida firma e ID autorizado de Telegram", () => {
   middleware(request, response(), () => { continued = true; });
   assert.equal(continued, true);
   assert.equal(request.wilson.telegramUserId, "111");
+});
+
+test("la API técnica de WhatsApp exige usuario y grupo permitidos dentro de la firma", () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const now = 1785960000000;
+  const timestamp = String(now / 1000);
+  const baseHeaders = {
+    "x-wilson-channel": "whatsapp", "x-wilson-actor-id": "persona-1",
+    "x-wilson-group-id": "grupo-render", "x-wilson-actor-name": "Augusto",
+    "x-wilson-signature-version": "2", "x-wilson-timestamp": timestamp,
+  };
+  const sign = (nonce, overrides = {}) => {
+    const headers = { ...baseHeaders, ...overrides, "x-wilson-nonce": nonce };
+    const message = buildWilsonSignatureMessage({
+      timestamp, nonce, channel: headers["x-wilson-channel"], actorId: headers["x-wilson-actor-id"],
+      groupId: headers["x-wilson-group-id"], actorName: headers["x-wilson-actor-name"],
+      method: "GET", path: "/api/integraciones/wilson/catalogo", body: undefined,
+    });
+    headers["x-wilson-signature"] = crypto.sign("sha256", Buffer.from(message), privateKey).toString("base64");
+    return headers;
+  };
+  const middleware = requireWilsonService({
+    WILSON_PUBLIC_KEY: publicKey.export({ type: "spki", format: "pem" }),
+    WILSON_ALLOWED_WHATSAPP_IDS: "persona-1,persona-2",
+    WILSON_ALLOWED_WHATSAPP_GROUP_IDS: "grupo-render",
+  }, () => now);
+  const response = () => ({ statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } });
+  const request = { headers: sign("nonce-wa-ok"), body: undefined, method: "GET", baseUrl: "/api/integraciones/wilson", path: "/catalogo" };
+  let continued = false;
+  middleware(request, response(), () => { continued = true; });
+  assert.equal(continued, true);
+  assert.equal(request.wilson.actorName, "Augusto");
+  assert.equal(request.wilson.groupId, "grupo-render");
+
+  const otherGroup = response();
+  middleware({ ...request, headers: sign("nonce-wa-other", { "x-wilson-group-id": "grupo-ajeno" }) }, otherGroup, () => assert.fail());
+  assert.equal(otherGroup.statusCode, 403);
+
+  const unsignedIdentityChange = response();
+  const changedHeaders = { ...sign("nonce-wa-tamper"), "x-wilson-actor-name": "Franco" };
+  middleware({ ...request, headers: changedHeaders }, unsignedIdentityChange, () => assert.fail());
+  assert.equal(unsignedIdentityChange.statusCode, 401);
+});
+
+test("las confirmaciones de WhatsApp vencen a los 10 minutos", () => {
+  const now = Date.parse("2026-08-10T12:00:00.000Z");
+  assert.equal(validateWilsonConfirmation({ confirmed: true, confirmedAt: "2026-08-10T11:51:00.000Z", now }), null);
+  assert.match(validateWilsonConfirmation({ confirmed: true, confirmedAt: "2026-08-10T11:49:59.000Z", now }), /venció/);
+  assert.match(validateWilsonConfirmation({ confirmed: false, confirmedAt: "2026-08-10T11:59:00.000Z", now }), /todavía no fue confirmada/);
+  assert.match(validateWilsonConfirmation({ confirmed: true, confirmedAt: "sin fecha", now }), /Falta la fecha/);
 });
 
 test("normaliza acentos en nombres del sistema", () => {
