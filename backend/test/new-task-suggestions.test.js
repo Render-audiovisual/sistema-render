@@ -19,6 +19,8 @@ const users = [
   { id: 2, nombre: "Líder", usuario: "lider", rol: "admin" },
   { id: 3, nombre: "Augusto Aguirre", usuario: "augusto", rol: "usuario" },
   { id: 4, nombre: "Mariano Mesa", usuario: "mariano", rol: "usuario" },
+  { id: 5, nombre: "Germán Beltzer", usuario: "german", rol: "usuario" },
+  { id: 6, nombre: "Oriana", usuario: "oriana", rol: "usuario" },
 ];
 
 test("detecta el cliente escrito en el título sin confundir nombres parecidos", () => {
@@ -39,12 +41,29 @@ test("una edición de video sugiere Luciano y Líder sin impedir cambios manuale
 test("carruseles, historias y diseños respetan el diseñador definido para cada cliente", () => {
   const mariano = getNewTaskSuggestions({ title: "iPhone Shop | Carrusel de ofertas", clients, users });
   assert.equal(mariano.primary, "Mariano Mesa");
+  assert.deepEqual(mariano.collaborators, ["Oriana"]);
   assert.equal(mariano.tipo_tarea, "diseno");
   assert.equal(mariano.subtipo, "carrusel");
 
   const augusto = getNewTaskSuggestions({ title: "Bendita Burger | Historia del día", clients, users });
   assert.equal(augusto.primary, "Augusto Aguirre");
+  assert.deepEqual(augusto.collaborators, ["Oriana"]);
   assert.equal(augusto.subtipo, "historia");
+});
+
+test("una visita de local se asigna a Germán y Líder", () => {
+  const suggestion = getNewTaskSuggestions({ title: "Bendita Burger | Visita del local", clients, users });
+  assert.equal(suggestion.primary, "Germán Beltzer");
+  assert.deepEqual(suggestion.collaborators, ["Líder"]);
+  assert.equal(suggestion.tipo_tarea, "produccion");
+  assert.equal(suggestion.subtipo, "visita");
+});
+
+test("un aviso importante se asigna al diseñador del cliente y a Oriana", () => {
+  const suggestion = getNewTaskSuggestions({ title: "iPhone Shop | Aviso importante", clients, users });
+  assert.equal(suggestion.primary, "Mariano Mesa");
+  assert.deepEqual(suggestion.collaborators, ["Oriana"]);
+  assert.equal(suggestion.subtipo, "aviso importante");
 });
 
 test("no inventa responsables ni clientes cuando el título es ambiguo", () => {
@@ -57,7 +76,8 @@ test("no inventa responsables ni clientes cuando el título es ambiguo", () => {
 test("la selección explícita de sin cliente no se reemplaza desde el título", () => {
   const suggestion = getNewTaskSuggestions({ title: "iPhone Shop | Carrusel", clients, users, clientId: "__none__" });
   assert.equal(suggestion.client, null);
-  assert.equal(suggestion.primary, "");
+  assert.equal(suggestion.primary, "Oriana");
+  assert.deepEqual(suggestion.collaborators, []);
 });
 
 test("genera un enlace directo canónico que abre una única tarea", () => {
