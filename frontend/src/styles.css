@@ -10722,6 +10722,11 @@ tr:hover .sheet-row-actions {
     left: auto !important;
   }
 
+  .historias-viewport .sheet-planning-table thead th {
+    left: auto !important;
+    right: auto !important;
+  }
+
   .historias-viewport .sheet-planning-table .sheet-cell {
     background: transparent;
     border: 0;
