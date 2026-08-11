@@ -235,6 +235,8 @@ main {
     height: 48px;
     padding: 0 !important;
     position: relative !important;
+    left: auto !important;
+    right: auto !important;
     vertical-align: middle;
   }
 
@@ -257,14 +259,14 @@ main {
     position: sticky !important;
     text-align: center;
     width: auto;
-    left: 0;
+    left: 0 !important;
     z-index: 4;
   }
 
   .historias-viewport .sheet-planning-table .sheet-client-cell {
     background: #fff !important;
     position: sticky !important;
-    left: 38px;
+    left: 38px !important;
     z-index: 3;
   }
 
@@ -10679,6 +10681,18 @@ tr:hover .sheet-row-actions {
 
   .historias-viewport .sheet-planning-table thead th:nth-child(1) { left: 0; z-index: 7; }
   .historias-viewport .sheet-planning-table thead th:nth-child(2) { left: 38px; z-index: 6; }
+  .historias-viewport .sheet-planning-table thead th:last-child {
+    left: auto !important;
+    right: auto !important;
+  }
+
+  .historias-viewport .sheet-planning-table tbody > tr > td:not(.sheet-row-number):not(.sheet-client-cell) {
+    left: auto !important;
+    right: auto !important;
+  }
+
+  .historias-viewport .sheet-planning-table .sheet-row-number { left: 0 !important; }
+  .historias-viewport .sheet-planning-table .sheet-client-cell { left: 38px !important; }
 
   .historias-viewport .sheet-planning-table .sheet-cell {
     background: transparent;
