@@ -247,7 +247,7 @@ export function HistoriasPlanillaTab({
                 return (
                   <tr key={h.id} style={{ background: bgFila, borderTop: esNuevoDia && rowIndex > 0 ? "2px solid #dadce0" : undefined }}>
                     <td className="sheet-row-number">{rowIndex + 1}</td>
-                    <td className="sheet-client-cell">
+                    <td className="sheet-client-cell" data-label="Cliente">
                       <select
                         className="sheet-cell"
                         data-cell={`${rowIndex}:cliente`}
@@ -264,7 +264,7 @@ export function HistoriasPlanillaTab({
                         ))}
                       </select>
                     </td>
-                    <td className="sheet-date-cell">
+                    <td className="sheet-date-cell" data-label="Fecha">
                       <input
                         type="date"
                         className="sheet-cell"
@@ -276,7 +276,7 @@ export function HistoriasPlanillaTab({
                         onPaste={(e) => manejarPaste(e, rowIndex, "fecha")}
                       />
                     </td>
-                    <td>
+                    <td data-label="Hora">
                       <input
                         type="text"
                         className="sheet-cell"
@@ -289,7 +289,7 @@ export function HistoriasPlanillaTab({
                         onPaste={(e) => manejarPaste(e, rowIndex, "hora")}
                       />
                     </td>
-                    <td>
+                    <td data-label="Tema / formato">
                       <input
                         type="text"
                         className="sheet-cell"
@@ -302,7 +302,7 @@ export function HistoriasPlanillaTab({
                         onPaste={(e) => manejarPaste(e, rowIndex, "tipo")}
                       />
                     </td>
-                    <td className="h-copy-cell">
+                    <td className="h-copy-cell" data-label="Texto / copy">
                       <textarea
                         className="sheet-cell sheet-cell-textarea"
                         data-cell={`${rowIndex}:copy`}
@@ -319,7 +319,7 @@ export function HistoriasPlanillaTab({
                         onPaste={(e) => manejarPaste(e, rowIndex, "copy")}
                       />
                     </td>
-                    <td>
+                    <td data-label="Enlace">
                       <input
                         type="text"
                         className="sheet-cell"
@@ -332,7 +332,7 @@ export function HistoriasPlanillaTab({
                         onPaste={(e) => manejarPaste(e, rowIndex, "material")}
                       />
                     </td>
-                    <td>
+                    <td data-label="Notas">
                       <textarea
                         className="sheet-cell sheet-cell-textarea"
                         data-cell={`${rowIndex}:aclaraciones`}
@@ -349,7 +349,7 @@ export function HistoriasPlanillaTab({
                         onPaste={(e) => manejarPaste(e, rowIndex, "aclaraciones")}
                       />
                     </td>
-                    <td>
+                    <td data-label="Responsable">
                       <select
                         className="sheet-cell"
                         data-cell={`${rowIndex}:responsable`}
@@ -366,7 +366,7 @@ export function HistoriasPlanillaTab({
                         ))}
                       </select>
                     </td>
-                    <td>
+                    <td data-label="Estado">
                       <select
                         className="sheet-cell"
                         data-cell={`${rowIndex}:estado`}
@@ -383,7 +383,7 @@ export function HistoriasPlanillaTab({
                         ))}
                       </select>
                     </td>
-                    <td>
+                    <td data-label="Acciones">
                       <div className="sheet-row-actions">
                         <button
                           type="button"
