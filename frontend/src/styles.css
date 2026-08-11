@@ -326,6 +326,22 @@ main {
   }
 }
 
+/* Evita solapamientos al desplazar la planilla horizontalmente: encabezados
+   y celdas recorren exactamente la misma distancia. */
+@media (max-width: 1760px) {
+  .historias-viewport .sheet-planning-table .sheet-row-number,
+  .historias-viewport .sheet-planning-table .sheet-client-cell {
+    left: auto !important;
+    position: relative !important;
+    z-index: auto;
+  }
+
+  .historias-viewport .sheet-planning-table thead th:nth-child(1),
+  .historias-viewport .sheet-planning-table thead th:nth-child(2) {
+    left: auto !important;
+  }
+}
+
 /* Historias · sector 2: control de publicación. Se conserva una única
    matriz mensual; solo mejora la jerarquía de semanas, días y estados. */
 .historias-viewport .sheet-toolbar {
@@ -10693,6 +10709,18 @@ tr:hover .sheet-row-actions {
 
   .historias-viewport .sheet-planning-table .sheet-row-number { left: 0 !important; }
   .historias-viewport .sheet-planning-table .sheet-client-cell { left: 38px !important; }
+
+  .historias-viewport .sheet-planning-table .sheet-row-number,
+  .historias-viewport .sheet-planning-table .sheet-client-cell {
+    left: auto !important;
+    position: relative !important;
+    z-index: auto;
+  }
+
+  .historias-viewport .sheet-planning-table thead th:nth-child(1),
+  .historias-viewport .sheet-planning-table thead th:nth-child(2) {
+    left: auto !important;
+  }
 
   .historias-viewport .sheet-planning-table .sheet-cell {
     background: transparent;
