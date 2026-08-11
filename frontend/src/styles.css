@@ -163,6 +163,210 @@ main {
   }
 }
 
+/* Historias · sector 2: control de publicación. Se conserva una única
+   matriz mensual; solo mejora la jerarquía de semanas, días y estados. */
+.historias-viewport .sheet-toolbar {
+  margin: 0 0 10px;
+}
+
+.historias-viewport .sheet-stats {
+  gap: 6px;
+}
+
+.historias-viewport .sheet-stats span {
+  background: #f1f3ee;
+  border: 1px solid #e0e4da;
+  border-radius: 999px;
+  color: #62685d;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 6px 10px;
+}
+
+.historias-viewport .sheet-stats .ok {
+  background: #eff9d8;
+  border-color: #d8eab2;
+  color: #526b19;
+}
+
+.historias-viewport .sheet-stats .warn {
+  background: #fff9e9;
+  border-color: #eee0b5;
+  color: #806b2a;
+}
+
+.historias-viewport .sheet-stats .danger {
+  background: #fff1ef;
+  border-color: #efcfca;
+  color: #a33d35;
+}
+
+.historias-viewport .check-sheet-frame {
+  background: #f7f8f3;
+  border-color: #dce1d6;
+  border-radius: 12px;
+  max-height: 72vh;
+  padding: 0 10px 12px;
+}
+
+.historias-viewport .sheet-namebar {
+  background: #f7f8f3;
+  border-bottom-color: #dfe3d9;
+  color: #69705f;
+  font-size: 10px;
+  letter-spacing: .09em;
+  padding: 11px 3px 9px;
+  text-transform: uppercase;
+}
+
+.historias-viewport .check-sheet-table {
+  background: #fff;
+  border-collapse: separate;
+  border-radius: 10px;
+  border-spacing: 0;
+  box-shadow: 0 0 0 1px #dce1d6;
+  margin: 10px 0 14px;
+  overflow: hidden;
+}
+
+.historias-viewport .check-sheet-table th,
+.historias-viewport .check-sheet-table td {
+  border-color: #e6e9e1;
+  height: 43px;
+  padding: 6px 8px;
+}
+
+.historias-viewport .check-sheet-table tr > :last-child {
+  border-right: 0;
+}
+
+.historias-viewport .check-week-title {
+  background: #e8ebe3;
+  color: #596054;
+  font-size: 11px;
+  letter-spacing: .025em;
+  padding: 10px 12px !important;
+}
+
+.historias-viewport .check-sheet-table.is-current-week .check-week-title {
+  background: #202418;
+  color: #f5f6ef;
+}
+
+.historias-viewport .check-client-col {
+  color: #30352c;
+  font-size: 11.5px;
+  min-width: 180px;
+  padding-left: 12px !important;
+}
+
+.historias-viewport th.check-client-col,
+.historias-viewport .check-day,
+.historias-viewport .check-total-col {
+  background: #f3f5ef;
+  color: #71776c;
+  font-size: 9.5px;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.historias-viewport .check-day {
+  min-width: 86px;
+}
+
+.historias-viewport .check-day.today {
+  background: #f1f9dc;
+  color: #526b19;
+  box-shadow: inset 0 3px 0 #b5fc00;
+}
+
+.historias-viewport .check-day-cell {
+  background: #fff;
+}
+
+.historias-viewport .check-day-cell.empty {
+  background: #f6f7f3;
+}
+
+.historias-viewport .check-day-cell.ok {
+  background: #f3fbdc;
+}
+
+.historias-viewport .check-day-cell.partial {
+  background: #fff8e8;
+}
+
+.historias-viewport .check-sheet-toggle,
+.historias-viewport .check-day-cell.ok .check-sheet-toggle {
+  border-radius: 7px;
+  height: 27px;
+  min-height: 27px;
+  min-width: 27px;
+  width: 27px;
+}
+
+.historias-viewport .check-day-cell.ok .check-sheet-toggle {
+  background: #b5fc00;
+  border-color: #94cc08;
+  color: #202418;
+  box-shadow: 0 2px 6px rgba(160, 210, 35, .2);
+}
+
+.historias-viewport .check-day-cell:not(.empty):not(.ok):not(.partial) .check-sheet-toggle:hover {
+  background: #f5f9ea;
+  border-color: #94b52b;
+}
+
+.historias-viewport .check-sheet-toggle:focus {
+  box-shadow: 0 0 0 3px rgba(181, 252, 0, .24);
+}
+
+.historias-viewport .check-total-row td {
+  background: #eef1e9;
+  color: #596054;
+  font-size: 10.5px;
+}
+
+.historias-viewport .caption {
+  color: #777d72;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .historias-viewport .sheet-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .historias-viewport .sheet-stats span {
+    overflow: hidden;
+    padding: 6px 4px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .historias-viewport .check-sheet-frame {
+    max-height: 62vh;
+    padding-inline: 7px;
+  }
+
+  .historias-viewport .check-client-col {
+    min-width: 140px;
+  }
+
+  .historias-viewport .check-day {
+    min-width: 70px;
+  }
+
+  .historias-viewport .check-week-title {
+    position: sticky;
+    left: 0;
+  }
+}
+
 .note {
   color: #888;
   font-size: 12px;
@@ -3981,12 +4185,11 @@ textarea:disabled {
 }
 
 .historias-viewport .sheet-planning-table {
-  min-width: 1440px;
+  min-width: 1392px;
 }
 
 .historias-viewport .sheet-rownum-col { width: 38px; }
 .historias-viewport .sheet-client-col { width: 160px; }
-.historias-viewport .sheet-day-col { width: 48px; }
 .historias-viewport .sheet-date-col { width: 110px; }
 .historias-viewport .sheet-time-col { width: 86px; }
 .historias-viewport .sheet-type-col { width: 160px; }
@@ -3999,10 +4202,14 @@ textarea:disabled {
 
 .historias-viewport .sheet-client-cell,
 .historias-viewport .sheet-planning-table thead tr:nth-child(2) th:nth-child(2) { left: 38px; }
-.historias-viewport .sheet-day-cell,
 .historias-viewport .sheet-planning-table thead tr:nth-child(2) th:nth-child(3) { left: 198px; }
-.historias-viewport .sheet-date-cell,
-.historias-viewport .sheet-planning-table thead tr:nth-child(2) th:nth-child(4) { left: 246px; }
+.historias-viewport .sheet-date-cell { left: 198px; }
+
+.historias-viewport .sheet-planning-table thead tr:nth-child(2) th:nth-child(4),
+.historias-viewport .sheet-planning-table thead tr:first-child th:nth-child(4) {
+  left: auto;
+  position: sticky;
+}
 
 .historias-viewport .sheet-planning-table th:last-child,
 .historias-viewport .sheet-planning-table td:last-child {
@@ -4135,13 +4342,11 @@ textarea:disabled {
   }
 
   .historias-viewport .sheet-planning-table {
-    min-width: 1320px;
+    min-width: 1272px;
   }
 
-  .historias-viewport .sheet-day-cell,
   .historias-viewport .sheet-date-cell,
-  .historias-viewport .sheet-planning-table thead tr:nth-child(2) th:nth-child(3),
-  .historias-viewport .sheet-planning-table thead tr:nth-child(2) th:nth-child(4) {
+  .historias-viewport .sheet-planning-table thead tr:nth-child(2) th:nth-child(3) {
     position: static;
   }
 
@@ -4161,6 +4366,266 @@ textarea:disabled {
   .publicaciones-viewport .sheet-frame,
   .tareas-viewport .sheet-frame {
     max-height: 58vh;
+  }
+}
+
+/* Historias · mejora visual incremental — sector 1: cabecera operativa.
+   Solo reorganiza jerarquía, espaciado y responsive; no cambia eventos,
+   estados, rutas ni contratos de la planificación. */
+.historias-viewport .module-intro {
+  align-items: flex-start;
+  border-top: 3px solid #b5fc00;
+  margin: 0;
+  padding: 24px 28px 20px;
+}
+
+.historias-viewport .module-intro > div {
+  max-width: 760px;
+}
+
+.historias-viewport .module-intro h2 {
+  font-size: clamp(25px, 2vw, 30px);
+  line-height: 1.12;
+  margin: 5px 0 7px;
+}
+
+.historias-viewport .module-intro p {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.historias-viewport .h-toolbar {
+  background: #fdfefb;
+  border-top: 1px solid #e6e9e2;
+  gap: 8px;
+  padding: 12px 20px;
+}
+
+.historias-viewport .stories-view-switch {
+  background: #f1f2ed;
+  border: 1px solid #e2e5dc;
+}
+
+.historias-viewport .stories-view-switch button {
+  color: #73786d;
+  min-height: 38px;
+}
+
+.historias-viewport .stories-view-switch button.active {
+  background: #202418;
+  box-shadow: none;
+  color: #f5f6ef;
+}
+
+.historias-viewport .stories-primary-action {
+  background: #b5fc00;
+  border-radius: 9px;
+  min-height: 40px;
+  color: #202418;
+  padding-inline: 18px;
+  box-shadow: 0 4px 12px rgba(160, 210, 35, .2);
+}
+
+.historias-viewport .stories-primary-action:hover {
+  background: #c7ff3d;
+  color: #171a13;
+}
+
+.historias-viewport .stories-context-bar {
+  align-items: end;
+  background: #f7f8f3;
+  display: grid;
+  grid-template-columns: minmax(230px, 320px) auto auto;
+  justify-content: start;
+  padding: 13px 20px;
+}
+
+.historias-viewport .stories-context-field > span {
+  color: #777d70;
+  font-size: 10px;
+}
+
+.historias-viewport .stories-context-bar .h-toolbar-client-select,
+.historias-viewport .stories-month-control {
+  border-color: #d9ddd2;
+  min-height: 42px;
+}
+
+.historias-viewport .h-today-btn {
+  align-self: end;
+  background: #e9efdc;
+  border-radius: 8px;
+  color: #52651d;
+  min-height: 42px;
+  padding-inline: 14px;
+}
+
+.historias-viewport .stories-overview {
+  background: #f7f8f3;
+  gap: 7px;
+  padding: 0 20px 13px;
+}
+
+.historias-viewport .stories-overview > div {
+  background: rgba(255, 255, 255, .72);
+  border-color: #e1e5da;
+  min-height: 44px;
+  padding: 8px 11px;
+  position: relative;
+}
+
+.historias-viewport .stories-overview > div::before {
+  background: #c8cec0;
+  border-radius: 999px;
+  content: "";
+  height: 5px;
+  margin-right: 1px;
+  width: 5px;
+}
+
+.historias-viewport .stories-overview > div.is-success::before {
+  background: #5b9f55;
+}
+
+.historias-viewport .stories-overview > div.is-danger::before {
+  background: #bd4c43;
+}
+
+.historias-viewport .stories-overview span {
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.historias-viewport .stories-overview strong {
+  font-size: 16px;
+}
+
+.historias-viewport .h-body {
+  padding: 12px 20px 20px;
+}
+
+@media (max-width: 768px) {
+  .historias-viewport .module-intro {
+    padding: 18px 18px 16px;
+  }
+
+  .historias-viewport .module-intro h2 {
+    font-size: 24px;
+    line-height: 1.16;
+    max-width: 330px;
+  }
+
+  .historias-viewport .module-intro p {
+    font-size: 12px;
+  }
+
+  .historias-viewport .h-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 11px 14px;
+  }
+
+  .historias-viewport .stories-view-switch {
+    grid-column: 1 / -1;
+  }
+
+  .historias-viewport .stories-tools-menu {
+    order: initial;
+  }
+
+  .historias-viewport .stories-tools-menu > summary {
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  .historias-viewport .stories-primary-action {
+    margin: 0;
+    order: initial;
+    width: auto;
+  }
+
+  .historias-viewport .stories-context-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 12px 14px;
+  }
+
+  .historias-viewport .stories-context-field {
+    grid-column: 1 / -1;
+  }
+
+  .historias-viewport .stories-context-field,
+  .historias-viewport .stories-context-bar .h-toolbar-client-select {
+    width: 100%;
+  }
+
+  .historias-viewport .stories-month-control {
+    width: auto;
+  }
+
+  .historias-viewport .stories-overview {
+    gap: 5px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 0 14px 12px;
+  }
+
+  .historias-viewport .stories-overview > div {
+    align-items: center;
+    border: 1px solid #e1e5da !important;
+    display: grid;
+    gap: 2px;
+    justify-items: center;
+    min-width: 0;
+    padding: 8px 4px;
+    text-align: center;
+  }
+
+  .historias-viewport .stories-overview > div::before {
+    height: 4px;
+    margin: 0;
+    left: 6px;
+    position: absolute;
+    top: 6px;
+    width: 4px;
+  }
+
+  .historias-viewport .stories-overview span {
+    font-size: 9px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 100%;
+  }
+
+  .historias-viewport .stories-overview strong {
+    font-size: 16px;
+  }
+
+  .historias-viewport .h-body {
+    padding: 10px 14px 14px;
+  }
+
+  .historias-viewport .stories-sheet-guide {
+    align-items: center;
+    flex-direction: row;
+    padding: 9px 10px;
+  }
+
+  .historias-viewport .stories-sheet-guide > div {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .historias-viewport .stories-sheet-guide p {
+    display: none;
+  }
+
+  .historias-viewport .stories-sheet-guide strong {
+    margin-left: auto;
+    max-width: 48%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

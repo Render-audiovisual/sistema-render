@@ -24,10 +24,6 @@ export function HistoriasPlanillaTab({
 
   const hoyISO = getHoyLocalISO();
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
-  // Nombre corto pero inequívoco del día — antes era una sola letra
-  // (M, X, J...) que obligaba a memorizar a qué día correspondía cada una.
-  const LETRAS_DIA = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
-
   const clientesPorId = useMemo(() => Object.fromEntries(clientes.map((c) => [c.id, c.nombre])), [clientes]);
 
   // Memoizar mapeo de estados para búsqueda rápida
@@ -188,7 +184,6 @@ export function HistoriasPlanillaTab({
             <colgroup>
               <col className="sheet-rownum-col" />
               <col className="sheet-client-col" />
-              <col className="sheet-day-col" />
               <col className="sheet-date-col" />
               <col className="sheet-time-col" />
               <col className="sheet-type-col" />
@@ -202,14 +197,13 @@ export function HistoriasPlanillaTab({
             <thead>
               <tr className="sheet-column-letters" aria-hidden="true">
                 <th className="sheet-corner"></th>
-                {["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"].map((letra) => (
+                {["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"].map((letra) => (
                   <th key={letra}>{letra}</th>
                 ))}
               </tr>
               <tr>
                 <th className="sheet-rownum-head"></th>
                 <th>Cliente</th>
-                <th>Día</th>
                 <th>Fecha</th>
                 <th>Hora</th>
                 <th>Tema / formato</th>
@@ -224,7 +218,7 @@ export function HistoriasPlanillaTab({
             <tbody>
               {filasVisibles.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="stories-empty-cell">
+                  <td colSpan={11} className="stories-empty-cell">
                     <div className="stories-empty-state">
                       <span className="stories-empty-icon" aria-hidden="true">○</span>
                       <strong>No hay historias planificadas para este período</strong>
@@ -269,10 +263,6 @@ export function HistoriasPlanillaTab({
                           <option key={cliente.id} value={cliente.id}>{cliente.nombre}</option>
                         ))}
                       </select>
-                    </td>
-                    <td className="sheet-day-cell" style={{ fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "#c62828" : esFinde ? "#999" : "#333" }}>
-                      {esNuevoDia ? LETRAS_DIA[dow] : ""}
-                      {estaAtrasada && esNuevoDia && <span title="Atrasada" style={{ marginLeft: "2px" }}>⚠</span>}
                     </td>
                     <td className="sheet-date-cell">
                       <input
@@ -773,6 +763,7 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
           {semanas.map((dias, semanaIndex) => {
             const desde = dias[0];
             const hasta = dias[6];
+            const esSemanaActual = dias.some((dia) => dia.iso === hoyISO);
             const totalSemana = clientes.reduce(
               (acc, c) =>
                 acc +
@@ -794,7 +785,7 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
             );
 
             return (
-              <table className="check-sheet-table" key={desde.iso}>
+              <table className={`check-sheet-table ${esSemanaActual ? "is-current-week" : ""}`} key={desde.iso}>
                 <thead>
                   <tr>
                     <th colSpan={9} className="check-week-title">
