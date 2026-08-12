@@ -322,113 +322,43 @@ export function ClientesAdminPage() {
               <PageState title="Cargando clientes…" description="Conservamos el cliente y período seleccionados." />
             ) : (
               <>
-              <div className="clientes-desktop-table-wrap">
-                <table className="clientes-admin-table">
-                  <thead>
-                    <tr>
-                      <th>Estado</th>
-                      <th>Cliente</th>
-                      <th>Reels / mes</th>
-                      <th>Carruseles / mes</th>
-                      <th>Historias</th>
-                      <th>Próxima acción</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filas.map((cliente) => (
-                      <tr
-                        className="row-clickable"
-                        key={cliente.id}
-                        style={{ "--cliente-accent": getClienteColor(cliente.nombre) }}
-                        onClick={() => setClienteSeleccionado(cliente)}
-                      >
-                        <td>
-                          <span className={`cliente-status-pill ${cliente.estadoHistorias.color}`}>
-                            <span className={`semaforo ${cliente.estadoHistorias.color}`}></span>
-                            {cliente.estadoHistorias.label}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="cliente-table-identity">
-                            <span className="cliente-initial">{getClienteInicial(cliente.nombre)}</span>
-                            <div><strong>{cliente.nombre}</strong><span>Activo</span></div>
-                          </div>
-                        </td>
-                        {cliente.feedCompartido ? (
-                          <>
-                          <td>
-                            <ClienteCuotaResumen
-                              etiqueta={`Reels compartidos · ${cliente.grupo_feed_nombre}`}
-                              publicados={cliente.reelsPublicados}
-                              cuota={cliente.cuota_feed_reels}
-                            />
-                          </td>
-                          <td>
-                            <ClienteCuotaResumen
-                              etiqueta={`Carruseles compartidos · ${cliente.grupo_feed_nombre}`}
-                              publicados={cliente.carruselesPublicados}
-                              cuota={cliente.cuota_feed_carruseles}
-                            />
-                          </td>
-                          </>
-                        ) : (
-                          <>
-                            <td>
-                              <ClienteCuotaResumen
-                                etiqueta="Reels"
-                                publicados={cliente.reelsPublicados}
-                                cuota={cliente.cuota_reels}
-                              />
-                            </td>
-                            <td>
-                              <ClienteCuotaResumen
-                                etiqueta="Carruseles"
-                                publicados={cliente.carruselesPublicados}
-                                cuota={cliente.cuota_carruseles}
-                              />
-                            </td>
-                          </>
-                        )}
-                        <td>
-                          <strong>{cliente.porcentajeHistorias}%</strong>
-                          <div className="caption">
-                            {cliente.historiasPublicadas} / {cliente.historiasMes} OK
-                          </div>
-                          <div className="caption">
-                            Último: {cliente.ultimaHistoriaOk || "-"}
-                          </div>
-                        </td>
-                        <td className="cliente-action-cell">
-                          <strong>{getAlertaCliente(cliente)}</strong>
-                          <span>
-                            {cliente.historiasMes === 0
-                              ? "No hay historias planificadas."
-                              : `${cliente.historiasMes - cliente.historiasPublicadas} historia${
-                                  cliente.historiasMes - cliente.historiasPublicadas === 1 ? "" : "s"
-                                } pendiente${
-                                  cliente.historiasMes - cliente.historiasPublicadas === 1 ? "" : "s"
-                                }.`}
-                          </span>
-                          <button
-                            className="btn cliente-detail-btn"
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setClienteSeleccionado(cliente);
-                            }}
-                          >
-                            Ver detalle
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {filas.length === 0 && (
-                      <tr>
-                        <td colSpan="6">No hay clientes con ese criterio.</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+              <div className="clientes-portfolio-list">
+                {filas.map((cliente) => {
+                  const cuotaReels = getCuotaReelsMensual(cliente);
+                  const cuotaCarruseles = getCuotaCarruselesMensual(cliente);
+                  const comprometidas = cuotaReels + cuotaCarruseles + cliente.historiasMes;
+                  const publicadas = cliente.reelsPublicados + cliente.carruselesPublicados + cliente.historiasPublicadas;
+                  const progreso = calcularPorcentajeCuota(publicadas, comprometidas);
+                  const pendientes = Math.max(0, comprometidas - publicadas);
+                  return (
+                    <article className="clientes-portfolio-row" key={cliente.id}
+                      style={{ "--cliente-accent": getClienteColor(cliente.nombre) }}
+                      onClick={() => setClienteSeleccionado(cliente)}>
+                      <div className="clientes-portfolio-identity">
+                        <span className="cliente-initial">{getClienteInicial(cliente.nombre)}</span>
+                        <div><strong>{cliente.nombre}</strong><small>{cliente.rubro || "Sin rubro cargado"} · Activo</small></div>
+                      </div>
+                      <div className="clientes-portfolio-contract">
+                        <strong>{cuotaReels} reels · {cuotaCarruseles} carruseles</strong>
+                        <small>{cliente.historiasMes ? `${cliente.historiasMes} historias planificadas` : "Historias sin frecuencia cargada"}</small>
+                      </div>
+                      <div className="clientes-portfolio-progress">
+                        <strong>{publicadas} de {comprometidas} publicados</strong>
+                        <span><i style={{ width: `${Math.min(progreso, 100)}%` }} /></span>
+                        <small>{progreso}% del acuerdo mensual</small>
+                      </div>
+                      <div className="clientes-portfolio-status">
+                        <strong className={cliente.estadoHistorias.color === "rojo" ? "attention" : ""}>{getAlertaCliente(cliente)}</strong>
+                        <small>{pendientes ? `${pendientes} pendientes` : "Sin pendientes"}</small>
+                      </div>
+                      <button className="btn clientes-portfolio-action" type="button"
+                        onClick={(event) => { event.stopPropagation(); setClienteSeleccionado(cliente); }}>
+                        Ver detalle
+                      </button>
+                    </article>
+                  );
+                })}
+                {filas.length === 0 && <div className="cliente-mobile-empty">No hay clientes con ese criterio.</div>}
               </div>
               <div className="clientes-mobile-list">
                 {filas.map((cliente) => (

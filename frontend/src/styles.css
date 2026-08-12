@@ -10779,6 +10779,95 @@ tr:hover .sheet-row-actions {
   justify-content: center;
 }
 
+.clientes-portfolio-list {
+  border: 1px solid #dfe3da;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.clientes-portfolio-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.35fr) minmax(170px, 1fr) minmax(190px, 1.15fr) minmax(145px, .85fr) 112px;
+  gap: 18px;
+  min-height: 94px;
+  padding: 16px 18px;
+  align-items: center;
+  border-bottom: 1px solid #e6e9e2;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+
+.clientes-portfolio-row:last-child { border-bottom: 0; }
+.clientes-portfolio-row:hover { background: #fafbf8; }
+
+.clientes-portfolio-identity {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.clientes-portfolio-identity strong,
+.clientes-portfolio-contract strong,
+.clientes-portfolio-progress strong,
+.clientes-portfolio-status strong {
+  display: block;
+  color: #202418;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.clientes-portfolio-identity small,
+.clientes-portfolio-contract small,
+.clientes-portfolio-progress small,
+.clientes-portfolio-status small {
+  display: block;
+  margin-top: 4px;
+  color: #7d8278;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.clientes-portfolio-progress > span {
+  display: block;
+  height: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #ecefe9;
+}
+
+.clientes-portfolio-progress > span i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #687364;
+}
+
+.clientes-portfolio-status strong::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: #d8aa45;
+}
+
+.clientes-portfolio-status strong.attention::before { background: #c34b43; }
+
+.clientes-portfolio-action {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 12px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.clientes-mobile-list { display: none !important; }
+
 .cliente-action-cell {
   height: 100%;
   min-height: 148px;
@@ -10861,4 +10950,16 @@ tr:hover .sheet-row-actions {
   .cliente-weekdays > div {
     grid-template-columns: repeat(4, 1fr);
   }
+
+  .clientes-portfolio-row {
+    grid-template-columns: minmax(0, 1fr) 108px;
+    gap: 12px;
+    padding: 15px;
+  }
+
+  .clientes-portfolio-identity { grid-column: 1 / -1; padding-bottom: 12px; border-bottom: 1px solid #e6e9e2; }
+  .clientes-portfolio-contract { display: none; }
+  .clientes-portfolio-progress { grid-column: 1; }
+  .clientes-portfolio-status { grid-column: 1; }
+  .clientes-portfolio-action { grid-column: 2; grid-row: 2 / span 2; align-self: center; }
 }
