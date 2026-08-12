@@ -10780,32 +10780,45 @@ tr:hover .sheet-row-actions {
 }
 
 .clientes-portfolio-list {
-  border: 1px solid #dfe3da;
-  border-radius: 14px;
-  overflow: hidden;
-  background: #fff;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
 }
 
 .clientes-portfolio-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.35fr) minmax(170px, 1fr) minmax(190px, 1.15fr) minmax(145px, .85fr) 112px;
-  gap: 18px;
-  min-height: 94px;
-  padding: 16px 18px;
-  align-items: center;
-  border-bottom: 1px solid #e6e9e2;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px 20px;
+  min-height: 230px;
+  padding: 22px;
+  align-items: start;
+  border: 1px solid #dfe3da;
+  border-radius: 16px;
+  background: #fff;
   cursor: pointer;
-  transition: background .15s ease;
+  box-shadow: 0 8px 22px rgba(32, 36, 24, .035);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
 
-.clientes-portfolio-row:last-child { border-bottom: 0; }
-.clientes-portfolio-row:hover { background: #fafbf8; }
+.clientes-portfolio-row:last-child { border-bottom: 1px solid #dfe3da; }
+.clientes-portfolio-row:hover {
+  border-color: #cbd1c5;
+  box-shadow: 0 12px 28px rgba(32, 36, 24, .075);
+  transform: translateY(-1px);
+}
 
 .clientes-portfolio-identity {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 11px;
   min-width: 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e7eae3;
 }
 
 .clientes-portfolio-identity strong,
@@ -10814,7 +10827,7 @@ tr:hover .sheet-row-actions {
 .clientes-portfolio-status strong {
   display: block;
   color: #202418;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.35;
 }
 
@@ -10825,7 +10838,7 @@ tr:hover .sheet-row-actions {
   display: block;
   margin-top: 4px;
   color: #7d8278;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -10836,6 +10849,16 @@ tr:hover .sheet-row-actions {
   overflow: hidden;
   border-radius: 99px;
   background: #ecefe9;
+}
+
+.clientes-portfolio-contract {
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.clientes-portfolio-progress {
+  min-width: 180px;
+  padding: 2px 0;
 }
 
 .clientes-portfolio-progress > span i {
@@ -10857,13 +10880,33 @@ tr:hover .sheet-row-actions {
 
 .clientes-portfolio-status strong.attention::before { background: #c34b43; }
 
+.clientes-portfolio-status {
+  align-self: end;
+  padding-top: 14px;
+  border-top: 1px solid #e7eae3;
+}
+
 .clientes-portfolio-action {
-  width: 100%;
-  min-width: 0;
-  min-height: 38px;
-  padding: 0 12px;
+  align-self: end;
+  width: auto;
+  min-width: 118px;
+  min-height: 42px;
+  padding: 0 16px;
   justify-content: center;
   white-space: nowrap;
+}
+
+.clientes-table-panel {
+  padding: 24px !important;
+}
+
+.clientes-table-toolbar {
+  margin-bottom: 20px;
+}
+
+.clientes-metrics-compact .cliente-metric {
+  min-height: 142px;
+  padding: 22px 24px;
 }
 
 .clientes-mobile-list { display: none !important; }
@@ -10941,6 +10984,10 @@ tr:hover .sheet-row-actions {
   pointer-events: none;
 }
 
+@media (max-width: 1180px) {
+  .clientes-portfolio-list { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 760px) {
   .clientes-metrics-compact,
   .cliente-weekdays > div {
@@ -10954,12 +11001,14 @@ tr:hover .sheet-row-actions {
   .clientes-portfolio-row {
     grid-template-columns: minmax(0, 1fr) 108px;
     gap: 12px;
-    padding: 15px;
+    min-height: 0;
+    padding: 18px;
   }
 
-  .clientes-portfolio-identity { grid-column: 1 / -1; padding-bottom: 12px; border-bottom: 1px solid #e6e9e2; }
-  .clientes-portfolio-contract { display: none; }
-  .clientes-portfolio-progress { grid-column: 1; }
+  .clientes-portfolio-identity { padding-bottom: 14px; }
+  .clientes-portfolio-contract { grid-column: 1 / -1; }
+  .clientes-portfolio-progress { grid-column: 1 / -1; min-width: 0; }
   .clientes-portfolio-status { grid-column: 1; }
-  .clientes-portfolio-action { grid-column: 2; grid-row: 2 / span 2; align-self: center; }
+  .clientes-portfolio-action { grid-column: 2; grid-row: 4; align-self: end; min-width: 104px; padding-inline: 10px; }
+  .clientes-table-panel { padding: 16px !important; }
 }
