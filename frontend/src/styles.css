@@ -10768,3 +10768,97 @@ tr:hover .sheet-row-actions {
     padding: 0 !important;
   }
 }
+.clientes-metrics-compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cliente-detail-btn {
+  width: 100%;
+  min-height: 42px;
+  margin-top: auto;
+  justify-content: center;
+}
+
+.cliente-action-cell {
+  height: 100%;
+  min-height: 148px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.cliente-action-cell > strong,
+.cliente-action-cell > span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cliente-create-modal {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.cliente-create-modal-body {
+  gap: 22px;
+}
+
+.cliente-weekdays {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cliente-weekdays legend {
+  margin-bottom: 4px;
+  color: var(--text, #202418);
+  font-weight: 700;
+}
+
+.cliente-weekdays > small {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--muted, #74786f);
+}
+
+.cliente-weekdays > div {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+
+.cliente-weekdays label {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d9ddd2;
+  border-radius: 10px;
+  background: #f8f9f4;
+  color: #64685f;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.cliente-weekdays label.selected {
+  border-color: #94c91b;
+  background: #eef8d7;
+  color: #35440f;
+}
+
+.cliente-weekdays input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 760px) {
+  .clientes-metrics-compact,
+  .cliente-weekdays > div {
+    grid-template-columns: 1fr;
+  }
+
+  .cliente-weekdays > div {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

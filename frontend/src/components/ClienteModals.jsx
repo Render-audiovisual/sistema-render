@@ -48,11 +48,26 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
     }
     setGuardando(true);
     setError(null);
-    fetch(`/api/clientes/${cliente.id}`, {
-      method: "PATCH",
+    const usaConfiguracionMensual = cliente.configuracion_completa && !esFeedCompartido;
+    const configuracionMensual = {
+      vigente_desde: getMesActualISO(),
+      cuota_reels: Number(cuotaReels),
+      cuota_carruseles: Number(cuotaCarruseles),
+      dias_historias: cliente.dias_historias,
+      disenador_responsable: cliente.disenador_responsable,
+      abono_mensual: Number(cliente.abono_mensual),
+    };
+    fetch(
+      usaConfiguracionMensual
+        ? `/api/clientes/${cliente.id}/configuraciones`
+        : `/api/clientes/${cliente.id}`,
+      {
+      method: usaConfiguracionMensual ? "POST" : "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(
-        esFeedCompartido
+        usaConfiguracionMensual
+          ? configuracionMensual
+          : esFeedCompartido
           ? {
               nombre: nombre.trim(),
               cuota_feed_reels: Number(cuotaFeedReels),
@@ -70,7 +85,18 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
         if (!response.ok) throw new Error(data.error || "No se pudo actualizar la cuota.");
         return data;
       })
-      .then(onGuardado)
+      .then(async (data) => {
+        if (!usaConfiguracionMensual || nombre.trim() === cliente.nombre) return data;
+        const response = await fetch(`/api/clientes/${cliente.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nombre: nombre.trim() }),
+        });
+        const renamed = await response.json();
+        if (!response.ok) throw new Error(renamed.error || "La cuota se guardó, pero no se pudo cambiar el nombre.");
+        return { ...renamed, ...data, nombre: renamed.nombre };
+      })
+      .then((data) => onGuardado({ ...cliente, ...data }))
       .catch((err) => setError(err.message))
       .finally(() => setGuardando(false));
   };

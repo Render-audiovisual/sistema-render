@@ -27,6 +27,7 @@ import { canRecordProduction, getProductionProgress, isProductionVisitTask, isVa
 import { getTaskSearchTerms } from "./task-search.js";
 import { filterReportDataForUser } from "./report-access.js";
 import { createGoogleDrivePublicRouter, createGoogleDriveRouter } from "./google-drive.js";
+import { normalizeClientConfiguration, normalizePeriod } from "./client-config.js";
 import {
   getStateNotification,
   isTaskLeader,
@@ -399,7 +400,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
     if (!isValidSalaryPeriod(period)) {
       return res.status(400).json({ error: "Usá un período válido con formato YYYY-MM." });
     }
-    const [tasksResult, historiesResult, publicationsResult] = await Promise.all([
+    const [tasksResult, historiesResult, publicationsResult, clientIncomeResult] = await Promise.all([
       pool.query(`
         SELECT t.id, t.titulo, t.asignado_a, t.estado, t.tipo_tarea, t.subtipo,
                to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
@@ -425,13 +426,33 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
         WHERE to_char(p.fecha_programada, 'YYYY-MM') = $1
           AND p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
       `, [period]),
+      pool.query(`
+        SELECT COALESCE(SUM(config.abono_mensual), 0)::numeric AS total,
+               COUNT(config.id)::int AS clientes_configurados
+        FROM clientes c
+        LEFT JOIN LATERAL (
+          SELECT cc.id, cc.abono_mensual
+          FROM cliente_configuraciones cc
+          WHERE cc.cliente_id = c.id AND cc.vigente_desde <= ($1 || '-01')::date
+          ORDER BY cc.vigente_desde DESC
+          LIMIT 1
+        ) config ON TRUE
+        WHERE c.activo = TRUE
+      `, [period]),
     ]);
-    res.json(calculateSalaryDashboard({
+    const dashboard = calculateSalaryDashboard({
       period,
       tasks: tasksResult.rows,
       histories: historiesResult.rows,
       publications: publicationsResult.rows,
-    }));
+    });
+    res.json({
+      ...dashboard,
+      clientIncome: {
+        total: Number(clientIncomeResult.rows[0].total || 0),
+        configuredClients: clientIncomeResult.rows[0].clientes_configurados,
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -946,23 +967,40 @@ router.patch("/fechas-especiales/:id", requireRole("admin"), async (req, res, ne
   }
 });
 
-router.get("/clientes", async (_req, res, next) => {
+router.get("/clientes", async (req, res, next) => {
   try {
+    const periodo = normalizePeriod(req.query.periodo);
     const result = await pool.query(`
       SELECT
         c.id,
         c.nombre,
-        c.cuota_reels,
-        c.cuota_carruseles,
+        COALESCE(cfg.cuota_reels, c.cuota_reels) AS cuota_reels,
+        COALESCE(cfg.cuota_carruseles, c.cuota_carruseles) AS cuota_carruseles,
+        c.rubro,
+        c.activo,
+        to_char(c.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
+        to_char(c.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
+        cfg.dias_historias,
+        cfg.disenador_responsable,
+        cfg.abono_mensual,
+        to_char(cfg.vigente_desde, 'YYYY-MM-DD') AS configuracion_vigente_desde,
+        (cfg.id IS NOT NULL) AS configuracion_completa,
         c.grupo_feed_id,
         gf.nombre AS grupo_feed_nombre,
         gf.cuota_reels AS cuota_feed_reels,
         gf.cuota_carruseles AS cuota_feed_carruseles,
         (gf.cuota_reels + gf.cuota_carruseles) AS cuota_feed_compartida
       FROM clientes c
+      LEFT JOIN LATERAL (
+        SELECT cc.*
+        FROM cliente_configuraciones cc
+        WHERE cc.cliente_id = c.id AND cc.vigente_desde <= $1::date
+        ORDER BY cc.vigente_desde DESC
+        LIMIT 1
+      ) cfg ON TRUE
       LEFT JOIN grupos_feed gf ON gf.id = c.grupo_feed_id
       ORDER BY c.id
-    `);
+    `, [periodo]);
     res.json(result.rows);
   } catch (error) {
     next(error);
@@ -970,8 +1008,11 @@ router.get("/clientes", async (_req, res, next) => {
 });
 
 router.post("/clientes", requireRole("admin"), async (req, res, next) => {
+  const client = await pool.connect();
   try {
     const nombre = (req.body.nombre || "").trim();
+    const esAltaCompleta = ["rubro", "vigente_desde", "dias_historias", "disenador_responsable", "abono_mensual"]
+      .some((field) => Object.hasOwn(req.body, field));
     const cuota_reels = Number(req.body.cuota_reels ?? 0);
     const cuota_carruseles = Number(req.body.cuota_carruseles ?? 0);
 
@@ -989,12 +1030,32 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
       });
     }
 
-    const result = await pool.query(
-      `INSERT INTO clientes (nombre, cuota_reels, cuota_carruseles)
-       VALUES ($1, $2, $3)
-       RETURNING id, nombre, cuota_reels, cuota_carruseles`,
-      [nombre, cuota_reels, cuota_carruseles],
+    let config = null;
+    const rubro = String(req.body.rubro || "").trim();
+    const vigenteDesde = normalizePeriod(req.body.vigente_desde);
+    if (esAltaCompleta) {
+      if (!rubro) return res.status(400).json({ error: "El rubro es obligatorio." });
+      config = normalizeClientConfiguration(req.body);
+    }
+
+    await client.query("BEGIN");
+    const result = await client.query(
+      `INSERT INTO clientes (nombre, cuota_reels, cuota_carruseles, rubro, activo, fecha_inicio)
+       VALUES ($1, $2, $3, $4, TRUE, $5)
+       RETURNING id, nombre, cuota_reels, cuota_carruseles, rubro, activo,
+         to_char(fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio`,
+      [nombre, cuota_reels, cuota_carruseles, esAltaCompleta ? rubro : null, esAltaCompleta ? vigenteDesde : null],
     );
+    if (config) {
+      await client.query(
+        `INSERT INTO cliente_configuraciones
+          (cliente_id, vigente_desde, cuota_reels, cuota_carruseles, dias_historias, disenador_responsable, abono_mensual)
+         VALUES ($1, $2, $3, $4, $5::smallint[], $6, $7)`,
+        [result.rows[0].id, vigenteDesde, config.cuota_reels, config.cuota_carruseles,
+          config.dias_historias, config.disenador_responsable, config.abono_mensual],
+      );
+    }
+    await client.query("COMMIT");
 
     res.status(201).json({
       ...result.rows[0],
@@ -1003,12 +1064,62 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
       cuota_feed_reels: null,
       cuota_feed_carruseles: null,
       cuota_feed_compartida: null,
+      ...(config || {}),
+      configuracion_vigente_desde: config ? vigenteDesde : null,
+      configuracion_completa: Boolean(config),
     });
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     if (error.code === "23505") {
       return res.status(409).json({ error: "Ya existe un cliente con ese nombre." });
     }
+    if (/cuotas|abono mensual|día válido|diseñador responsable/i.test(error.message || "")) {
+      return res.status(400).json({ error: error.message });
+    }
     next(error);
+  } finally {
+    client.release();
+  }
+});
+
+router.post("/clientes/:id/configuraciones", requireRole("admin"), async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const config = normalizeClientConfiguration(req.body);
+    const vigenteDesde = normalizePeriod(req.body.vigente_desde);
+    await client.query("BEGIN");
+    const exists = await client.query("SELECT id FROM clientes WHERE id = $1 FOR UPDATE", [req.params.id]);
+    if (!exists.rowCount) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ error: "Cliente no encontrado." });
+    }
+    await client.query(
+      `INSERT INTO cliente_configuraciones
+        (cliente_id, vigente_desde, cuota_reels, cuota_carruseles, dias_historias, disenador_responsable, abono_mensual)
+       VALUES ($1, $2, $3, $4, $5::smallint[], $6, $7)
+       ON CONFLICT (cliente_id, vigente_desde) DO UPDATE SET
+         cuota_reels = EXCLUDED.cuota_reels,
+         cuota_carruseles = EXCLUDED.cuota_carruseles,
+         dias_historias = EXCLUDED.dias_historias,
+         disenador_responsable = EXCLUDED.disenador_responsable,
+         abono_mensual = EXCLUDED.abono_mensual`,
+      [req.params.id, vigenteDesde, config.cuota_reels, config.cuota_carruseles,
+        config.dias_historias, config.disenador_responsable, config.abono_mensual],
+    );
+    await client.query(
+      "UPDATE clientes SET cuota_reels = $1, cuota_carruseles = $2 WHERE id = $3",
+      [config.cuota_reels, config.cuota_carruseles, req.params.id],
+    );
+    await client.query("COMMIT");
+    res.json({ id: Number(req.params.id), ...config, configuracion_vigente_desde: vigenteDesde, configuracion_completa: true });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    if (/cuotas|abono mensual|día válido|diseñador responsable/i.test(error.message || "")) {
+      return res.status(400).json({ error: error.message });
+    }
+    next(error);
+  } finally {
+    client.release();
   }
 });
 

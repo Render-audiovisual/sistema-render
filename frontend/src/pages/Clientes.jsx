@@ -6,6 +6,18 @@ import { PageState } from "../components/PageState.jsx";
 import { readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
 const CLIENT_COLORS = ["#547aa5", "#6f72a8", "#4f8a7a", "#a36d5d", "#8a6fa5", "#647c99"];
+const RUBROS = ["Gastronomía", "Tecnología", "Turismo", "Educación", "Automotor", "Comercio", "Salud", "Servicios"];
+const WEEKDAYS = [
+  [1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"],
+];
+
+function emptyClientForm() {
+  return {
+    nombre: "", rubro: "", cuota_reels: "", cuota_carruseles: "",
+    dias_historias: [], disenador_responsable: "", abono_mensual: "",
+    vigente_desde: getMesActualISO(),
+  };
+}
 
 function getClienteColor(nombre = "") {
   const index = [...nombre].reduce((sum, character) => sum + character.charCodeAt(0), 0);
@@ -53,11 +65,7 @@ export function ClientesAdminPage() {
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(true);
-  const [nuevoCliente, setNuevoCliente] = useState({
-    nombre: "",
-    cuota_reels: "",
-    cuota_carruseles: "",
-  });
+  const [nuevoCliente, setNuevoCliente] = useState(emptyClientForm);
   const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [altaClienteAbierta, setAltaClienteAbierta] = useState(false);
   const [clienteCuotaEnEdicion, setClienteCuotaEnEdicion] = useState(null);
@@ -130,14 +138,19 @@ export function ClientesAdminPage() {
 
   const altaClienteValida =
     nuevoCliente.nombre.trim().length > 0 &&
+    nuevoCliente.rubro.trim().length > 0 &&
     validarCuota(nuevoCliente.cuota_reels) &&
-    validarCuota(nuevoCliente.cuota_carruseles);
+    validarCuota(nuevoCliente.cuota_carruseles) &&
+    nuevoCliente.dias_historias.length > 0 &&
+    nuevoCliente.disenador_responsable &&
+    nuevoCliente.abono_mensual !== "" && Number(nuevoCliente.abono_mensual) >= 0 &&
+    /^\d{4}-\d{2}$/.test(nuevoCliente.vigente_desde);
   const totalPiezasNuevoCliente = altaClienteValida
     ? Number(nuevoCliente.cuota_reels) + Number(nuevoCliente.cuota_carruseles)
     : 0;
 
   const abrirAltaCliente = () => {
-    setNuevoCliente({ nombre: "", cuota_reels: "", cuota_carruseles: "" });
+    setNuevoCliente(emptyClientForm());
     setErrorAltaCliente(null);
     setAltaClienteAbierta(true);
   };
@@ -171,7 +184,7 @@ export function ClientesAdminPage() {
     fetch("/api/clientes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre, cuota_reels, cuota_carruseles }),
+      body: JSON.stringify({ ...nuevoCliente, nombre, cuota_reels, cuota_carruseles }),
     })
       .then(async (response) => {
         const data = await response.json();
@@ -182,7 +195,7 @@ export function ClientesAdminPage() {
       })
       .then((cliente) => {
         setClientes((prev) => [...prev, cliente]);
-        setNuevoCliente({ nombre: "", cuota_reels: "", cuota_carruseles: "" });
+        setNuevoCliente(emptyClientForm());
         setAltaClienteAbierta(false);
       })
       .catch((err) => setErrorAltaCliente(err.message))
@@ -278,12 +291,7 @@ export function ClientesAdminPage() {
             </div>
           </div>
 
-          <div className="clientes-metrics" aria-label="Avance mensual de la cartera">
-            <div className="cliente-metric historias">
-              <div><span>Historias</span><strong>{avanceHistorias}%</strong></div>
-              <div className="cliente-metric-progress" aria-label={`${avanceHistorias}% de historias publicadas`}><i style={{ width: `${avanceHistorias}%` }}/></div>
-              <small>{totalHistoriasPublicadas} / {totalHistorias} publicadas</small>
-            </div>
+          <div className="clientes-metrics clientes-metrics-compact" aria-label="Avance mensual de la cartera">
             <div className="cliente-metric reels">
               <div><span>Reels</span><strong>{avanceReels}%</strong></div>
               <div className="cliente-metric-progress" aria-label={`${avanceReels}% de reels publicados`}><i style={{ width: `${avanceReels}%` }}/></div>
@@ -402,14 +410,14 @@ export function ClientesAdminPage() {
                                 }.`}
                           </span>
                           <button
-                            className="btn cliente-edit-quota-btn"
+                            className="btn cliente-detail-btn"
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              setClienteCuotaEnEdicion(cliente);
+                              setClienteSeleccionado(cliente);
                             }}
                           >
-                            Editar cuota
+                            Ver detalle
                           </button>
                         </td>
                       </tr>
@@ -520,28 +528,31 @@ export function ClientesAdminPage() {
       {altaClienteAbierta && (
         <Modal
           onClose={cerrarAltaCliente}
-          title={<span>Agregar cliente</span>}
+          title={<span>Nuevo cliente</span>}
           className="cliente-create-modal"
         >
             <form className="modal-body cliente-create-modal-body" onSubmit={crearCliente}>
               <div className="clientes-panel-copy">
-                <strong>Nuevo acuerdo mensual</strong>
-                <span>Registrá la identidad del cliente y el contenido contratado antes de confirmar.</span>
+                <strong>Configuración inicial</strong>
+                <span>Completá el acuerdo una sola vez. Las cuotas anteriores nunca se sobrescriben.</span>
               </div>
-              <label className="cliente-service-field">
-                <span>Nombre del cliente</span>
-                <input
-                  autoFocus
-                  type="text"
-                  placeholder="Ej. RENDER Motors"
-                  value={nuevoCliente.nombre}
-                  onChange={(e) =>
-                    setNuevoCliente((prev) => ({ ...prev, nombre: e.target.value }))
-                  }
-                />
-                <small>Usá el nombre oficial con el que se identifica en la cartera.</small>
-              </label>
               <div className="cliente-create-modal-grid">
+                <label className="cliente-service-field">
+                  <span>Nombre del cliente</span>
+                  <input autoFocus type="text" placeholder="Ej. RENDER Motors" value={nuevoCliente.nombre}
+                    onChange={(e) => setNuevoCliente((prev) => ({ ...prev, nombre: e.target.value }))} />
+                </label>
+                <label className="cliente-service-field">
+                  <span>Rubro</span>
+                  <input list="rubros-clientes" placeholder="Ej. Gastronomía" value={nuevoCliente.rubro}
+                    onChange={(e) => setNuevoCliente((prev) => ({ ...prev, rubro: e.target.value }))} />
+                  <datalist id="rubros-clientes">{RUBROS.map((rubro) => <option key={rubro} value={rubro} />)}</datalist>
+                </label>
+                <label className="cliente-service-field">
+                  <span>Configuración desde</span>
+                  <input type="month" value={nuevoCliente.vigente_desde}
+                    onChange={(e) => setNuevoCliente((prev) => ({ ...prev, vigente_desde: e.target.value }))} />
+                </label>
                 <label className="cliente-service-field">
                   <span>Reels mensuales</span>
                   <input
@@ -571,12 +582,46 @@ export function ClientesAdminPage() {
                   <small>Usá 0 si el acuerdo no incluye carruseles.</small>
                 </label>
               </div>
+              <fieldset className="cliente-weekdays">
+                <legend>Días de historias</legend>
+                <small>Marcá los días en los que normalmente se publican historias.</small>
+                <div>{WEEKDAYS.map(([value, label]) => (
+                  <label key={value} className={nuevoCliente.dias_historias.includes(value) ? "selected" : ""}>
+                    <input type="checkbox" checked={nuevoCliente.dias_historias.includes(value)}
+                      onChange={() => setNuevoCliente((prev) => ({
+                        ...prev,
+                        dias_historias: prev.dias_historias.includes(value)
+                          ? prev.dias_historias.filter((day) => day !== value)
+                          : [...prev.dias_historias, value],
+                      }))} />
+                    {label}
+                  </label>
+                ))}</div>
+              </fieldset>
+              <div className="cliente-create-modal-grid">
+                <label className="cliente-service-field">
+                  <span>Diseñador responsable</span>
+                  <select value={nuevoCliente.disenador_responsable}
+                    onChange={(e) => setNuevoCliente((prev) => ({ ...prev, disenador_responsable: e.target.value }))}>
+                    <option value="">Elegir diseñador</option>
+                    <option value="Augusto">Augusto</option>
+                    <option value="Mariano">Mariano</option>
+                  </select>
+                </label>
+                <label className="cliente-service-field">
+                  <span>Abono mensual</span>
+                  <input min="0" step="1" type="number" placeholder="$ 0" value={nuevoCliente.abono_mensual}
+                    onChange={(e) => setNuevoCliente((prev) => ({ ...prev, abono_mensual: e.target.value }))} />
+                  <small>Importe fijo en pesos argentinos.</small>
+                </label>
+              </div>
               <div className="cliente-contract-summary">
                 <span>Resumen del acuerdo</span>
                 <strong>{totalPiezasNuevoCliente} piezas mensuales</strong>
                 <small>
-                  {nuevoCliente.cuota_reels || 0} reels · {nuevoCliente.cuota_carruseles || 0} carruseles
+                  {nuevoCliente.cuota_reels || 0} reels · {nuevoCliente.cuota_carruseles || 0} carruseles · {nuevoCliente.dias_historias.length} días de historias
                 </small>
+                <small>{nuevoCliente.disenador_responsable || "Sin diseñador"} · {Number(nuevoCliente.abono_mensual || 0).toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 })}</small>
               </div>
               {errorAltaCliente && <div className="caption login-error">{errorAltaCliente}</div>}
               <div className="modal-actions">

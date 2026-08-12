@@ -106,6 +106,7 @@ export function SueldosPage() {
       {error && <div className="salary-state is-error"><strong>No se pudo cargar Sueldos.</strong><span>{error}</span></div>}
       {!loading && !error && data && <>
         <section className="salary-summary" aria-label="Resumen mensual">
+          <div><span>Ingresos configurados</span><strong>{money.format(data.clientIncome?.total || 0)}</strong><small>{data.clientIncome?.configuredClients || 0} clientes con abono cargado</small></div>
           <div><span>Devengado calculable</span><strong>{money.format(summary.earned)}</strong></div>
           <div><span>Resta para completar</span><strong>{money.format(summary.remaining)}</strong></div>
           <div><span>Avance promedio</span><strong>{summary.averageProgress}%</strong></div>
