@@ -10792,9 +10792,9 @@ tr:hover .sheet-row-actions {
 .clientes-portfolio-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px 20px;
-  min-height: 230px;
-  padding: 22px;
+  gap: 14px 20px;
+  min-height: 0;
+  padding: 20px;
   align-items: start;
   border: 1px solid #dfe3da;
   border-radius: 16px;
@@ -10882,17 +10882,22 @@ tr:hover .sheet-row-actions {
 
 .clientes-portfolio-status {
   align-self: end;
-  padding-top: 14px;
-  border-top: 1px solid #e7eae3;
+  padding-top: 4px;
+  border-top: 0;
 }
 
 .clientes-portfolio-action {
   align-self: end;
   width: auto;
   min-width: 118px;
+  height: 42px !important;
+  max-height: 42px;
   min-height: 42px;
   padding: 0 16px;
+  margin: 0;
+  align-items: center;
   justify-content: center;
+  line-height: 1;
   white-space: nowrap;
 }
 
