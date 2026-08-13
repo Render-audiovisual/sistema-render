@@ -99,6 +99,10 @@ def main():
     commands = parser.add_subparsers(dest="cmd", required=True)
     listing = commands.add_parser("list")
     listing.add_argument("--limit", type=int, default=50)
+    commands.add_parser("events")
+    ack_event = commands.add_parser("ack-event")
+    ack_event.add_argument("--task-id", required=True, type=int)
+    ack_event.add_argument("--event-id", required=True)
     get_task = commands.add_parser("get")
     get_task.add_argument("--task-id", required=True, type=int)
     validate = commands.add_parser("validate")
@@ -130,6 +134,10 @@ def main():
     args = parser.parse_args()
     if args.cmd == "list":
         result = request("GET", f"/tareas?limit={max(1, min(args.limit, 100))}", args)
+    elif args.cmd == "events":
+        result = request("GET", "/eventos-pendientes", args)
+    elif args.cmd == "ack-event":
+        result = request("POST", f"/eventos/{args.task_id}/entregado", args, payload={"evento_id": args.event_id})
     elif args.cmd == "get":
         result = request("GET", f"/tareas/{args.task_id}", args)
     elif args.cmd == "validate":

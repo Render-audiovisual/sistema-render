@@ -109,8 +109,10 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
     const allowedIds = channel === "whatsapp"
       ? whatsapp.allowedIds
       : csv(env.WILSON_ALLOWED_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(","));
+    const systemActorId = String(env.WILSON_SYSTEM_ACTOR_ID || "").trim();
     const actorAllowed = channel === "whatsapp"
-      ? matchesIdentifier(actorId, allowedIds, DEFAULT_ALLOWED_WHATSAPP_ID_HASHES)
+      ? (Boolean(systemActorId) && actorId === systemActorId)
+        || matchesIdentifier(actorId, allowedIds, DEFAULT_ALLOWED_WHATSAPP_ID_HASHES)
       : allowedIds.includes(actorId);
     if (!actorAllowed) return res.status(403).json({ error: `Esta cuenta de ${channel === "whatsapp" ? "WhatsApp" : "Telegram"} no puede operar tareas.` });
     if (channel === "whatsapp" && !matchesIdentifier(groupId, whatsapp.groupIds, DEFAULT_WHATSAPP_GROUP_HASHES)) {
@@ -263,6 +265,41 @@ export function appendWilsonDescription(currentValue, appendedValue) {
   return [current, appended].filter(Boolean).join("\n\n");
 }
 
+const MIA_EVENT_DESTINATIONS = Object.freeze({
+  confirmar_grabacion: "render_brain",
+  avance_grabacion: "visitas",
+  correccion_grabacion: "visitas",
+});
+
+const MIA_STATE_EVENT_LABELS = Object.freeze({
+  tarea_iniciada: "Tarea iniciada",
+  tarea_en_revision: "Lista para revisar",
+  tarea_publicada: "Contenido publicado",
+});
+const MIA_EVENT_GROUPS = new Set(["render_brain", "visitas", "edicion", "comunicacion"]);
+
+export function buildMiaPendingEvent(task) {
+  const pending = task?.propiedades_extra?.mia_notificacion_pendiente;
+  if (!task?.id || !pending?.tipo || !pending?.creado_en) return null;
+  const type = String(pending.tipo);
+  const destination = MIA_EVENT_DESTINATIONS[type] || (MIA_STATE_EVENT_LABELS[type] ? String(pending.destino || "") : "");
+  if (!MIA_EVENT_GROUPS.has(destination)) return null;
+  const eventId = `${task.id}:${pending.creado_en}:${type}`;
+  const url = `https://sistema.rendercorrientes.com/workspace/tareas?task=${task.id}`;
+  let text;
+  if (MIA_STATE_EVENT_LABELS[type]) {
+    text = `${MIA_STATE_EVENT_LABELS[type]}: ${task.titulo}`;
+  } else if (type === "confirmar_grabacion") {
+    text = `Visita completa: ${task.titulo}\nFranco o Agustín deben confirmar el traspaso a Edición.`;
+  } else if (type === "correccion_grabacion") {
+    text = `Se corrigió la producción de ${task.titulo}: ${pending.anterior} → ${pending.nuevo}.`;
+  } else {
+    const amount = Number(pending.cantidad) || 0;
+    text = `Avance de producción: ${task.titulo}\nSe registraron ${amount} video${amount === 1 ? "" : "s"}. La visita continúa En proceso.`;
+  }
+  return { id: eventId, task_id: Number(task.id), type, destination, created_at: pending.creado_en, text, task_url: url };
+}
+
 export function buildWilsonTaskUpdate(input, currentTask, catalog) {
   const appendDescription = String(input.append_descripcion || "").trim();
   const description = appendDescription
@@ -352,6 +389,11 @@ function isWilsonLeader(req, env) {
   return matchesIdentifier(req.wilson.actorId, whatsappConfig(env).leaderIds, DEFAULT_LEADER_WHATSAPP_ID_HASHES);
 }
 
+function isWilsonSystemActor(req, env) {
+  const systemActorId = String(env.WILSON_SYSTEM_ACTOR_ID || "").trim();
+  return Boolean(systemActorId) && req.wilson.actorId === systemActorId;
+}
+
 export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, env = process.env }) {
   const router = express.Router();
   if (env.NODE_ENV !== "test") {
@@ -428,6 +470,61 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
       if (!task) return res.status(404).json({ error: "La tarea no existe en RENDER OS o está archivada." });
       return res.json({ task: taskWithUrl(task) });
     } catch (error) { return next(error); }
+  });
+
+  router.get("/eventos-pendientes", async (req, res, next) => {
+    if (!isWilsonSystemActor(req, env)) return res.status(403).json({ error: "Esta cola es exclusiva del proceso automático de MIA." });
+    try {
+      const result = await pool.query(
+        `SELECT id,titulo,propiedades_extra
+         FROM tareas
+         WHERE propiedades_extra->>'workspace'='render_os'
+           AND propiedades_extra->'mia_notificacion_pendiente' IS NOT NULL
+           AND jsonb_typeof(propiedades_extra->'mia_notificacion_pendiente')='object'
+         ORDER BY updated_at ASC,id ASC LIMIT 50`,
+      );
+      return res.json({ events: result.rows.map(buildMiaPendingEvent).filter(Boolean) });
+    } catch (error) { return next(error); }
+  });
+
+  router.post("/eventos/:taskId/entregado", async (req, res, next) => {
+    if (!isWilsonSystemActor(req, env)) return res.status(403).json({ error: "Esta cola es exclusiva del proceso automático de MIA." });
+    const taskId = Number(req.params.taskId);
+    const eventId = String(req.body?.evento_id || "").trim();
+    if (!Number.isInteger(taskId) || taskId <= 0 || !eventId) return res.status(400).json({ error: "Evento inválido." });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const current = await client.query(
+        `SELECT id,titulo,propiedades_extra FROM tareas
+         WHERE id=$1 AND propiedades_extra->>'workspace'='render_os' FOR UPDATE`, [taskId],
+      );
+      const task = current.rows[0];
+      const event = buildMiaPendingEvent(task);
+      if (!event || event.id !== eventId) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "El evento cambió, ya fue entregado o no existe." });
+      }
+      const properties = {
+        ...task.propiedades_extra,
+        mia_notificacion_pendiente: null,
+        mia_notificacion_ultima: {
+          evento_id: event.id,
+          tipo: event.type,
+          entregado_en: new Date().toISOString(),
+          destino: event.destination,
+        },
+      };
+      await client.query(`UPDATE tareas SET propiedades_extra=$2::jsonb WHERE id=$1`, [taskId, JSON.stringify(properties)]);
+      await writeWilsonAudit(client, req, { action: "entregar_evento_mia", taskId, details: { eventId, destination: event.destination } });
+      await client.query("COMMIT");
+      return res.json({ delivered: true, event_id: event.id });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      return next(error);
+    } finally {
+      client.release();
+    }
   });
 
   router.post("/tareas/:id/confirmar-grabacion", async (req, res, next) => {

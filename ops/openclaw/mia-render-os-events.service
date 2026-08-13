@@ -1,0 +1,15 @@
+[Unit]
+Description=Entrega eventos confirmados de RENDER OS mediante MIA
+After=network-online.target openclaw-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/.openclaw/workspace
+EnvironmentFile=-/root/.openclaw/credentials/render-os-events.env
+ExecStart=/usr/bin/python3 /root/.openclaw/workspace/tools/mia_event_worker.py --send --max-events 10
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+

@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import test from "node:test";
 import {
   appendWilsonDescription,
+  buildMiaPendingEvent,
   buildWilsonConfirmationHash,
   buildWilsonSignatureMessage,
   buildWilsonTask,
@@ -12,6 +13,21 @@ import {
   requireWilsonService,
   validateWilsonConfirmation,
 } from "../src/wilson-integration.js";
+
+test("Mia convierte una grabación completa en un evento breve para líderes", () => {
+  const event = buildMiaPendingEvent({
+    id: 42, titulo: "Visita Moketa",
+    propiedades_extra: { mia_notificacion_pendiente: { tipo: "confirmar_grabacion", creado_en: "2026-08-13T10:00:00.000Z" } },
+  });
+  assert.equal(event.destination, "render_brain");
+  assert.match(event.text, /confirmar el traspaso a Edición/);
+  assert.match(event.task_url, /task=42/);
+});
+
+test("Mia ignora marcadores desconocidos o incompletos", () => {
+  assert.equal(buildMiaPendingEvent({ id: 1, propiedades_extra: {} }), null);
+  assert.equal(buildMiaPendingEvent({ id: 1, propiedades_extra: { mia_notificacion_pendiente: { tipo: "otro", creado_en: "hoy" } } }), null);
+});
 
 const catalog = {
   clients: [{ id: 11, nombre: "Búnker Training" }],
@@ -91,6 +107,7 @@ test("la API técnica de WhatsApp exige usuario y grupo permitidos dentro de la 
   };
   const middleware = requireWilsonService({
     WILSON_PUBLIC_KEY: publicKey.export({ type: "spki", format: "pem" }),
+    WILSON_SYSTEM_ACTOR_ID: "mia-system",
     WILSON_WHATSAPP_CONFIG: JSON.stringify({
       allowedIds: ["persona-1", "persona-2"],
       groupIds: ["grupo-render"],
@@ -113,6 +130,18 @@ test("la API técnica de WhatsApp exige usuario y grupo permitidos dentro de la 
   const changedHeaders = { ...sign("nonce-wa-tamper"), "x-wilson-actor-name": "Franco" };
   middleware({ ...request, headers: changedHeaders }, unsignedIdentityChange, () => assert.fail());
   assert.equal(unsignedIdentityChange.statusCode, 401);
+
+  const systemRequest = {
+    ...request,
+    headers: sign("nonce-wa-system", {
+      "x-wilson-actor-id": "mia-system",
+      "x-wilson-actor-name": "MIA",
+    }),
+  };
+  let systemContinued = false;
+  middleware(systemRequest, response(), () => { systemContinued = true; });
+  assert.equal(systemContinued, true);
+  assert.equal(systemRequest.wilson.actorName, "MIA");
 });
 
 test("las confirmaciones de WhatsApp vencen a los 10 minutos", () => {

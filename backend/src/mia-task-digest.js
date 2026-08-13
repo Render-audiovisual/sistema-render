@@ -69,3 +69,21 @@ export function shouldSendImmediateMiaNotice(task, today = new Date().toISOStrin
   const distance = due ? dayDistance(today, due) : null;
   return String(task.prioridad).toLowerCase() === "alta" || (distance !== null && distance >= 0 && distance <= 1);
 }
+
+const MIA_STATE_EVENT_TYPES = new Map([
+  ["en_progreso", "tarea_iniciada"],
+  ["en_revision", "tarea_en_revision"],
+  ["publicada", "tarea_publicada"],
+]);
+
+export function buildMiaStatePendingMarker(task, previousState, createdAt = new Date().toISOString()) {
+  if (task?.propiedades_extra?.workspace !== "render_os" || task.estado === previousState) return null;
+  const type = MIA_STATE_EVENT_TYPES.get(task.estado);
+  if (!type) return null;
+  let destination = "render_brain";
+  if (task.estado === "publicada") destination = "comunicacion";
+  else if (task.estado !== "en_revision" && task.tipo_tarea === "produccion") destination = "visitas";
+  else if (task.estado !== "en_revision" && task.tipo_tarea === "edicion") destination = "edicion";
+  else if (["diseno", "community"].includes(task.tipo_tarea)) destination = "comunicacion";
+  return { tipo: type, destino: destination, estado: task.estado, creado_en: createdAt };
+}

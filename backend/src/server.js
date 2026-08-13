@@ -29,6 +29,7 @@ import { getTaskSearchTerms } from "./task-search.js";
 import { filterReportDataForUser } from "./report-access.js";
 import { createGoogleDrivePublicRouter, createGoogleDriveRouter } from "./google-drive.js";
 import { normalizeClientConfiguration, normalizePeriod } from "./client-config.js";
+import { buildMiaStatePendingMarker } from "./mia-task-digest.js";
 import {
   getStateNotification,
   isTaskLeader,
@@ -2004,6 +2005,25 @@ router.patch("/tareas/:id", async (req, res, next) => {
       );
       if (padreRenderOS.rows.length === 0) {
         return res.status(404).json({ error: "Tarea padre no encontrada." });
+      }
+    }
+
+    if (esRenderOS && Object.prototype.hasOwnProperty.call(body, "estado") && tareaAnteriorCompleta) {
+      const nextTask = {
+        ...tareaAnteriorCompleta,
+        ...body,
+        propiedades_extra: {
+          ...(tareaAnteriorCompleta.propiedades_extra || {}),
+          ...(body.propiedades_extra || {}),
+          workspace: "render_os",
+        },
+      };
+      const pendingEvent = buildMiaStatePendingMarker(nextTask, estadoAnterior);
+      if (pendingEvent) {
+        body.propiedades_extra = {
+          ...(body.propiedades_extra || {}),
+          mia_notificacion_pendiente: pendingEvent,
+        };
       }
     }
 
