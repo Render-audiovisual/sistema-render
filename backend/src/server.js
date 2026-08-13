@@ -85,6 +85,7 @@ router.get("/health", (_req, res) => {
 router.use("/integraciones/wilson", createWilsonRouter({
   pool,
   notifyAssignment: notificarAsignacionSinInterrumpir,
+  confirmProduction: ({ taskId, actor }) => confirmProductionVisit(taskId, actor),
 }));
 
 router.post("/login", async (req, res, next) => {
@@ -2279,13 +2280,7 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
   }
 });
 
-router.post("/tareas/:id/produccion/confirmar", async (req, res, next) => {
-  if (!isTaskLeader(req.auth)) {
-    return res.status(403).json({ error: "Solo Franco o Agustín pueden confirmar una grabación completa." });
-  }
-  if (req.query.workspace !== "render_os") {
-    return res.status(400).json({ error: "Esta acción solo está disponible en RENDER OS." });
-  }
+async function confirmProductionVisit(taskId, actor) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -2294,17 +2289,15 @@ router.post("/tareas/:id/produccion/confirmar", async (req, res, next) => {
         to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,tipo_tarea,subtipo,
         prioridad,aclaraciones,material_referencia,tarea_padre_id,updated_at
        FROM tareas WHERE id=$1 AND propiedades_extra->>'workspace'='render_os' FOR UPDATE`,
-      [req.params.id],
+      [taskId],
     );
     const task = current.rows[0];
-    if (!task) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Visita no encontrada." }); }
-    if (!isProductionVisitTask(task)) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Esta tarea no es una visita de producción." }); }
+    if (!task) { const error = new Error("Visita no encontrada."); error.status = 404; throw error; }
+    if (!isProductionVisitTask(task)) { const error = new Error("Esta tarea no es una visita de producción."); error.status = 400; throw error; }
     const validation = validateProductionHandoff(task);
-    if (validation) { await client.query("ROLLBACK"); return res.status(400).json({ error: validation }); }
-    const actor = getTaskActor(req.auth);
+    if (validation) { const error = new Error(validation); error.status = 400; throw error; }
     if (task.propiedades_extra?.produccion_confirmada_at) {
-      await client.query("COMMIT");
-      return res.status(409).json({ error: `La grabación ya fue confirmada por ${task.propiedades_extra.produccion_confirmada_por || "un Líder"}.` });
+      const error = new Error(`La grabación ya fue confirmada por ${task.propiedades_extra.produccion_confirmada_por || "un Líder"}.`); error.status = 409; throw error;
     }
     const properties = {
       ...task.propiedades_extra,
@@ -2324,11 +2317,22 @@ router.post("/tareas/:id/produccion/confirmar", async (req, res, next) => {
     const editingTask = await crearTareaEdicionDesdeVisita({ ...task, propiedades_extra: properties });
     await client.query("COMMIT");
     if (editingTask) notificarAsignacionSinInterrumpir({ pool, tarea: editingTask, motivo: "creada", actor });
-    return res.json({ task: updated.rows[0], editing_task: editingTask, created: Boolean(editingTask) });
+    return { task: updated.rows[0], editing_task: editingTask, created: Boolean(editingTask) };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
-    return next(error);
+    throw error;
   } finally { client.release(); }
+}
+
+router.post("/tareas/:id/produccion/confirmar", async (req, res, next) => {
+  if (!isTaskLeader(req.auth)) return res.status(403).json({ error: "Solo Franco o Agustín pueden confirmar una grabación completa." });
+  if (req.query.workspace !== "render_os") return res.status(400).json({ error: "Esta acción solo está disponible en RENDER OS." });
+  try {
+    return res.json(await confirmProductionVisit(req.params.id, getTaskActor(req.auth)));
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    return next(error);
+  }
 });
 
 router.patch("/tareas/:id/produccion/registros/:recordId", async (req, res, next) => {

@@ -36,3 +36,20 @@ Cada solicitud se firma con la clave privada
 `~/.openclaw/credentials/render_os_private.pem`. La clave nunca sale del VPS;
 Hostinger conserva solo la clave pública. El archivo privado no pertenece al
 repositorio y debe tener permisos `0600`.
+
+## Confirmación de una visita de producción desde WhatsApp
+
+Cuando una visita alcanza la cantidad prevista, Mía debe mostrar el resumen y
+esperar que Franco o Agustín confirmen. La confirmación dura diez minutos y se
+ejecuta con el cliente firmado `scripts/mia_render_os_task.py`:
+
+```bash
+python3 scripts/mia_render_os_task.py propose --operation confirmar_grabacion \
+  --task-id 1421 --payload '{}' --actor-id '<id>' --actor-name 'Franco' --group-id '<grupo>'
+
+python3 scripts/mia_render_os_task.py confirm-production --task-id 1421 \
+  --confirmation-token '<token>' --actor-id '<id>' --actor-name 'Franco' --group-id '<grupo>'
+```
+
+El backend valida que la visita esté completa y tenga Drive, registra quién
+confirmó y crea una sola tarea de edición vinculada para Luciano.

@@ -40,7 +40,7 @@ function canonicalJson(value) {
   return JSON.stringify(value);
 }
 
-const CONFIRMABLE_OPERATIONS = new Set(["crear", "editar", "archivar", "eliminar"]);
+const CONFIRMABLE_OPERATIONS = new Set(["crear", "editar", "archivar", "eliminar", "confirmar_grabacion"]);
 
 export function buildWilsonConfirmationHash({ operation, taskId = null, payload = {} }) {
   const cleanPayload = Object.fromEntries(Object.entries(payload || {}).filter(([key]) => ![
@@ -352,7 +352,7 @@ function isWilsonLeader(req, env) {
   return matchesIdentifier(req.wilson.actorId, whatsappConfig(env).leaderIds, DEFAULT_LEADER_WHATSAPP_ID_HASHES);
 }
 
-export function createWilsonRouter({ pool, notifyAssignment, env = process.env }) {
+export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, env = process.env }) {
   const router = express.Router();
   if (env.NODE_ENV !== "test") {
     const whatsapp = whatsappConfig(env);
@@ -428,6 +428,28 @@ export function createWilsonRouter({ pool, notifyAssignment, env = process.env }
       if (!task) return res.status(404).json({ error: "La tarea no existe en RENDER OS o está archivada." });
       return res.json({ task: taskWithUrl(task) });
     } catch (error) { return next(error); }
+  });
+
+  router.post("/tareas/:id/confirmar-grabacion", async (req, res, next) => {
+    if (req.wilson.channel !== "whatsapp") return res.status(400).json({ error: "Esta confirmación se realiza desde WhatsApp." });
+    if (!isWilsonLeader(req, env)) return res.status(403).json({ error: "Solo Agustín o Franco pueden confirmar la grabación." });
+    const taskId = Number(req.params.id);
+    if (!Number.isInteger(taskId) || taskId <= 0) return res.status(400).json({ error: "Tarea inválida." });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      if (!await consumeWilsonConfirmation(client, req, res, "confirmar_grabacion", taskId)) {
+        await client.query("ROLLBACK");
+        return undefined;
+      }
+      const result = await confirmProduction({ taskId, actor: req.wilson.actorName || "Líder" });
+      await writeWilsonAudit(client, req, { action: "confirmar_grabacion", taskId });
+      await client.query("COMMIT");
+      return res.json(result);
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      return next(error);
+    } finally { client.release(); }
   });
 
   router.patch("/tareas/:id", async (req, res, next) => {

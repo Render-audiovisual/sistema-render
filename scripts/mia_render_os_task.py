@@ -104,7 +104,7 @@ def main():
     validate = commands.add_parser("validate")
     validate.add_argument("--payload", required=True)
     propose = commands.add_parser("propose")
-    propose.add_argument("--operation", required=True, choices=("crear", "editar", "archivar", "eliminar"))
+    propose.add_argument("--operation", required=True, choices=("crear", "editar", "archivar", "eliminar", "confirmar_grabacion"))
     propose.add_argument("--task-id", type=int)
     propose.add_argument("--payload", default="{}")
     create = commands.add_parser("create")
@@ -123,6 +123,9 @@ def main():
     delete = commands.add_parser("delete")
     delete.add_argument("--task-id", required=True, type=int)
     delete.add_argument("--confirmation-token", required=True)
+    confirm_production = commands.add_parser("confirm-production")
+    confirm_production.add_argument("--task-id", required=True, type=int)
+    confirm_production.add_argument("--confirmation-token", required=True)
 
     args = parser.parse_args()
     if args.cmd == "list":
@@ -145,6 +148,8 @@ def main():
         result = request("PATCH", f"/tareas/{args.task_id}", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token), idempotency_key=args.idempotency_key)
     elif args.cmd == "archive":
         result = request("POST", f"/tareas/{args.task_id}/archivar", args, payload=operation_payload({}, args.confirmation_token), idempotency_key=args.idempotency_key)
+    elif args.cmd == "confirm-production":
+        result = request("POST", f"/tareas/{args.task_id}/confirmar-grabacion", args, payload=operation_payload({}, args.confirmation_token))
     else:
         result = request("DELETE", f"/tareas/{args.task_id}", args, payload=operation_payload({}, args.confirmation_token))
     print(json.dumps(result, ensure_ascii=False, indent=2))
