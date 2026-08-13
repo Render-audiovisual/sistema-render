@@ -8,6 +8,7 @@ import {
   buildWilsonSignatureMessage,
   buildWilsonTask,
   buildWilsonTaskUpdate,
+  canWilsonAssignPrivately,
   findWilsonDuplicates,
   normalizeWilsonText,
   requireWilsonService,
@@ -48,10 +49,26 @@ test("Wilson normaliza una tarea confirmable sin inventar valores", () => {
   assert.equal(result.task.prioridad, "media");
 });
 
-test("Wilson exige cliente, responsable, fecha y sector reales", () => {
+test("Wilson exige cliente, responsable y sector reales, pero permite omitir la fecha", () => {
   const result = buildWilsonTask({ titulo: "Incompleta", cliente: "Otro", responsable: "Nadie" }, catalog);
   assert.equal(result.task, null);
-  assert.equal(result.errors.length, 4);
+  assert.equal(result.errors.length, 3);
+  const withoutDate = buildWilsonTask({
+    titulo: "Bunker | Pedido sin fecha", cliente: "Bunker Training",
+    responsable: "Luciano", lista: "Edición",
+  }, catalog);
+  assert.deepEqual(withoutDate.errors, []);
+  assert.equal(withoutDate.task.fecha_vencimiento, null);
+});
+
+test("los permisos privados respetan rol, identidad y el alias Milton de Luciano", () => {
+  assert.equal(canWilsonAssignPrivately({ actorName: "Augusto", actorRole: "diseno" }, "Augusto"), true);
+  assert.equal(canWilsonAssignPrivately({ actorName: "Luciano", actorRole: "edicion" }, "Milton"), true);
+  assert.equal(canWilsonAssignPrivately({ actorName: "Oriana", actorRole: "community" }, "Mariano Mesa"), true);
+  assert.equal(canWilsonAssignPrivately({ actorName: "Oriana", actorRole: "community" }, "Augusto"), true);
+  assert.equal(canWilsonAssignPrivately({ actorName: "Oriana", actorRole: "community" }, "Germán"), false);
+  assert.equal(canWilsonAssignPrivately({ actorName: "Augusto", actorRole: "diseno" }, "Mariano"), false);
+  assert.equal(canWilsonAssignPrivately({ actorName: "Franco", actorRole: "lider", leader: true }, "Germán"), true);
 });
 
 test("Wilson detecta tareas con el mismo material o contexto operativo", () => {
@@ -163,6 +180,21 @@ test("la API técnica de WhatsApp exige usuario y grupo permitidos dentro de la 
   assert.equal(teamContinued, true);
   assert.equal(teamRequest.wilson.actorName, "Augusto");
   assert.equal(teamRequest.wilson.actorRole, "diseno");
+
+  const privateRequest = {
+    ...request,
+    headers: sign("nonce-wa-private", {
+      "x-wilson-actor-id": "+5493794270166", "x-wilson-actor-name": "Nombre distinto",
+      "x-wilson-group-id": "",
+    }),
+  };
+  let privateContinued = false;
+  ownerMiddleware(privateRequest, response(), () => { privateContinued = true; });
+  assert.equal(privateContinued, true);
+  assert.equal(privateRequest.wilson.privateChat, true);
+  assert.equal(privateRequest.wilson.actorName, "Augusto");
+  assert.match(privateRequest.wilson.groupId, /^private:[a-f0-9]{16}$/);
+  assert.doesNotMatch(privateRequest.wilson.groupId, /3794270166/);
 
   const otherGroup = response();
   middleware({ ...request, headers: sign("nonce-wa-other", { "x-wilson-group-id": "grupo-ajeno" }) }, otherGroup, () => assert.fail());
