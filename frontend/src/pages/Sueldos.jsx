@@ -36,7 +36,7 @@ function SalaryCard({ employee, period, onSaved }) {
   const unit = employee.name === "Oriana" ? "entregas" : employee.name === "Augusto" ? "carruseles" : employee.name === "Luciano" ? "videos" : "tareas";
   const chartMax = Math.max(employee.target, employee.completed, 1);
   return (
-    <article className="salary-card">
+    <article className={`salary-card salary-card-${employee.key}`}>
       <header className="salary-card-header">
         <span className="salary-avatar">{employee.name.charAt(0)}</span>
         <div><h3>{employee.name}</h3><p>{employee.role}</p></div>
@@ -54,12 +54,13 @@ function SalaryCard({ employee, period, onSaved }) {
         <div className="salary-config-warning"><strong>Valor por video pendiente</strong><span>Se contabiliza el trabajo, pero no se calcula dinero hasta definir la tarifa.</span></div>
       ) : (
         <div className="salary-money">
-          <div><span>Devengado</span><strong>{money.format(employee.earned)}</strong></div>
+          <div><span>Costo estimado</span><strong>{money.format(employee.earned)}</strong></div>
           <div><span>Resta del sueldo</span><strong>{money.format(employee.remainingAmount)}</strong></div>
           <small>Sobre {money.format(employee.total)} · proporcional al cumplimiento</small>
         </div>
       )}
-      <div className="salary-admin-controls">
+      <div className="salary-admin-controls" aria-label={`Ajustes financieros de ${employee.name}`}>
+        <strong className="salary-admin-title">Ajustes del Líder</strong>
         {employee.model === "fixed" && <label><span>Sueldo desde el mes próximo</span><div><input type="number" min="0" value={nextSalary} onChange={(event) => setNextSalary(event.target.value)} /><button type="button" disabled={saving} onClick={() => save(`/api/finanzas/compensaciones/${employee.key}`, { sueldo_base: Number(nextSalary) }, "salary")}>Programar</button></div></label>}
         <label><span>Pago final de este período</span><div><input type="number" min="0" placeholder={String(employee.earned ?? 0)} value={finalAmount} onChange={(event) => setFinalAmount(event.target.value)} /><button type="button" disabled={saving || finalAmount === ""} onClick={() => save(`/api/finanzas/pagos/${period}/${employee.key}`, { importe_final: Number(finalAmount) }, "payment")}>Confirmar</button></div></label>
       </div>
@@ -124,9 +125,9 @@ export function SueldosPage() {
       {error && <div className="salary-state is-error"><strong>No se pudo cargar Sueldos.</strong><span>{error}</span></div>}
       {!loading && !error && data && <>
         <section className="salary-summary" aria-label="Resumen mensual">
-          <div><span>Facturación acordada</span><strong>{money.format(data.clientIncome?.total || 0)}</strong><small>{data.clientIncome?.configuredClients || 0} clientes configurados</small></div>
-          <div><span>Costo estimado del equipo</span><strong>{money.format(summary.earned)}</strong><small>Se reemplaza por el pago final confirmado</small></div>
-          <div><span>Resultado estimado</span><strong>{money.format(data.finance?.estimatedResult || 0)}</strong><small>Trabajo de {labelPeriod(period)} · movimiento en {labelPeriod(data.finance?.cashPeriod || movePeriod(period, 1))}</small></div>
+          <div className="salary-summary-card"><span>Facturación acordada</span><strong>{money.format(data.clientIncome?.total || 0)}</strong><small>{data.clientIncome?.configuredClients || 0} clientes configurados</small></div>
+          <div className="salary-summary-card"><span>Costo estimado del equipo</span><strong>{money.format(summary.earned)}</strong><small>Se reemplaza por el pago final confirmado</small></div>
+          <div className="salary-summary-card is-result"><span>Resultado estimado</span><strong>{money.format(data.finance?.estimatedResult || 0)}</strong><small>Trabajo de {labelPeriod(period)} · movimiento en {labelPeriod(data.finance?.cashPeriod || movePeriod(period, 1))}</small></div>
         </section>
         {summary.pendingConfigurations.length > 0 && <div className="salary-banner"><strong>Cálculo incompleto:</strong> falta definir el valor por video de {summary.pendingConfigurations.join(", ")}. No se inventó ningún importe.</div>}
         <section className="salary-grid">{data.employees.map((employee) => <SalaryCard key={employee.name} employee={employee} period={period} onSaved={() => setRefresh((value) => value + 1)} />)}</section>
