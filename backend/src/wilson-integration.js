@@ -9,6 +9,10 @@ const DEFAULT_ALLOWED_WHATSAPP_ID_HASHES = [
   "82dbca966460791f7150fbab9343d1a8418686a0f0d393777c487be1cd7c7893",
   "778f6cd718a5c563208520131273c07812deaa72272a9d8a4503383a1eb4bfd2",
   "2e945d6cb00e0f5f616176c007825af691f1398ead3e12787800bd8e6c6968c6",
+  "919b2d579ce977f7814bf24d754e6fa9d561d25c61ee06e7683a372cd566ee7e",
+  "5028709cf82d1cc48f174b565e3ca8bf07efb7ccc3e20d2a713dc88bd9957819",
+  "571fe5c68e0b986e380c466bffe5ec2e283c7d812a2717fe243fbff366a58a46",
+  "f1e60232f9cb2d8abc631090c963c389fc46d83e1ffae025e1342182bdce29d1",
 ];
 const DEFAULT_WHATSAPP_GROUP_HASHES = [
   "2e0c668340e7a99aede30b6867a22268a59590fa5fc8f930f1897dc53b88de41",
@@ -16,7 +20,20 @@ const DEFAULT_WHATSAPP_GROUP_HASHES = [
 const OWNER_WHATSAPP_ID_HASHES = [
   "778f6cd718a5c563208520131273c07812deaa72272a9d8a4503383a1eb4bfd2",
 ];
-const DEFAULT_LEADER_WHATSAPP_ID_HASHES = DEFAULT_ALLOWED_WHATSAPP_ID_HASHES.slice(0, 3);
+const DEFAULT_LEADER_WHATSAPP_ID_HASHES = [
+  "6dcb148275f19084819c4428ce778efde4141d5e42d16ce95aacbec52f88e36a",
+  "82dbca966460791f7150fbab9343d1a8418686a0f0d393777c487be1cd7c7893",
+  "778f6cd718a5c563208520131273c07812deaa72272a9d8a4503383a1eb4bfd2",
+];
+const KNOWN_WHATSAPP_ACCOUNTS = [
+  { hash: "778f6cd718a5c563208520131273c07812deaa72272a9d8a4503383a1eb4bfd2", name: "Agustín", role: "lider", leader: true },
+  { hash: "6dcb148275f19084819c4428ce778efde4141d5e42d16ce95aacbec52f88e36a", name: "Franco", role: "lider", leader: true },
+  { hash: "919b2d579ce977f7814bf24d754e6fa9d561d25c61ee06e7683a372cd566ee7e", name: "Augusto", role: "diseno", leader: false },
+  { hash: "5028709cf82d1cc48f174b565e3ca8bf07efb7ccc3e20d2a713dc88bd9957819", name: "Germán", role: "produccion", leader: false },
+  { hash: "571fe5c68e0b986e380c466bffe5ec2e283c7d812a2717fe243fbff366a58a46", name: "Luciano", role: "edicion", leader: false },
+  { hash: "f1e60232f9cb2d8abc631090c963c389fc46d83e1ffae025e1342182bdce29d1", name: "Mariano Mesa", role: "diseno", leader: false },
+  { hash: "2e945d6cb00e0f5f616176c007825af691f1398ead3e12787800bd8e6c6968c6", name: "Oriana", role: "community", leader: false },
+];
 const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
 const CONFIRMATION_MAX_AGE_MS = 10 * 60 * 1000;
 const usedNonces = new Map();
@@ -93,6 +110,12 @@ function matchesIdentifier(value, configuredValues, defaultHashes) {
   });
 }
 
+function knownWhatsappAccount(value) {
+  const rawValue = String(value || "").trim().replace(/^\+/, "");
+  const hash = crypto.createHash("sha256").update(rawValue).digest("hex");
+  return KNOWN_WHATSAPP_ACCOUNTS.find((account) => account.hash === hash) || null;
+}
+
 export function validateWilsonConfirmation({ confirmed, confirmedAt, now = Date.now(), maxAgeMs = CONFIRMATION_MAX_AGE_MS }) {
   if (confirmed !== true) return "La operación todavía no fue confirmada.";
   const timestamp = Date.parse(String(confirmedAt || ""));
@@ -113,12 +136,14 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
     const groupId = String(req.headers?.["x-wilson-group-id"] || "").trim();
     const actorName = String(req.headers?.["x-wilson-actor-name"] || "").trim();
     const whatsapp = whatsappConfig(env);
+    const knownAccount = channel === "whatsapp" ? knownWhatsappAccount(actorId) : null;
     const allowedIds = channel === "whatsapp"
       ? whatsapp.allowedIds
       : csv(env.WILSON_ALLOWED_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(","));
     const systemActorId = String(env.WILSON_SYSTEM_ACTOR_ID || "").trim();
     const actorAllowed = channel === "whatsapp"
       ? (Boolean(systemActorId) && actorId === systemActorId)
+        || Boolean(knownAccount)
         || matchesIdentifier(actorId, allowedIds, DEFAULT_ALLOWED_WHATSAPP_ID_HASHES)
         || matchesIdentifier(actorId, [], OWNER_WHATSAPP_ID_HASHES)
       : allowedIds.includes(actorId);
@@ -147,9 +172,10 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
     usedNonces.set(nonce, now() + SIGNATURE_MAX_AGE_MS);
     req.wilson = {
       channel, actorId, groupId,
-      actorName: actorName || (channel === "telegram" ? "Usuario de Telegram" : "Usuario de WhatsApp"),
+      actorName: knownAccount?.name || actorName || (channel === "telegram" ? "Usuario de Telegram" : "Usuario de WhatsApp"),
+      actorRole: knownAccount?.role || "",
       telegramUserId: channel === "telegram" ? actorId : "",
-      confirmedBy: actorName || (channel === "telegram" ? "Usuario de Telegram" : "Usuario de WhatsApp"),
+      confirmedBy: knownAccount?.name || actorName || (channel === "telegram" ? "Usuario de Telegram" : "Usuario de WhatsApp"),
     };
     return next();
   };
@@ -394,6 +420,8 @@ async function consumeWilsonConfirmation(db, req, res, operation, taskId = null)
 
 function isWilsonLeader(req, env) {
   if (req.wilson.channel === "telegram") return csv(env.WILSON_LEADER_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(",")).includes(req.wilson.actorId);
+  const knownAccount = knownWhatsappAccount(req.wilson.actorId);
+  if (knownAccount) return knownAccount.leader;
   return matchesIdentifier(req.wilson.actorId, whatsappConfig(env).leaderIds, DEFAULT_LEADER_WHATSAPP_ID_HASHES)
     || matchesIdentifier(req.wilson.actorId, [], OWNER_WHATSAPP_ID_HASHES);
 }
