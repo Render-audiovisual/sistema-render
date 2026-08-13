@@ -66,6 +66,7 @@ test("los permisos privados respetan rol, identidad y el alias Milton de Luciano
   assert.equal(canWilsonAssignPrivately({ actorName: "Augusto", actorRole: "diseno" }, "Augusto"), true);
   assert.equal(canWilsonAssignPrivately({ actorName: "Luciano", actorRole: "edicion" }, "Milton"), true);
   assert.equal(canWilsonAssignPrivately({ actorName: "Oriana", actorRole: "community" }, "Mariano Mesa"), true);
+  assert.equal(canWilsonAssignPrivately({ actorName: "Oriana", actorRole: "community" }, "Mariano Meza"), true);
   assert.equal(canWilsonAssignPrivately({ actorName: "Oriana", actorRole: "community" }, "Augusto"), true);
   assert.equal(canWilsonAssignPrivately({ actorName: "Oriana", actorRole: "community" }, "Germán"), false);
   assert.equal(canWilsonAssignPrivately({ actorName: "Augusto", actorRole: "diseno" }, "Mariano"), false);

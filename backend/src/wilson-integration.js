@@ -122,20 +122,20 @@ export function canWilsonAssignPrivately({ actorName, actorRole, leader = false 
   const target = normalizeWilsonText(assignee);
   if (!actor || !target) return false;
   if (canonicalWilsonPerson(target) === actor) return true;
-  return actorRole === "community" && ["augusto", "mariano mesa", "mariano"].includes(target);
+  return actorRole === "community" && ["augusto", "mariano mesa", "mariano meza", "mariano"].includes(target);
 }
 
 function canonicalWilsonPerson(value) {
   const normalized = normalizeWilsonText(value);
   if (["luciano", "milton", "milton luciano"].includes(normalized)) return "luciano";
-  if (["mariano", "mariano mesa", "mesa"].includes(normalized)) return "mariano mesa";
+  if (["mariano", "mariano mesa", "mariano meza", "mesa", "meza"].includes(normalized)) return "mariano mesa";
   return normalized;
 }
 
 export function wilsonPersonAliases(value) {
   const canonical = canonicalWilsonPerson(value);
   if (canonical === "luciano") return ["luciano", "milton", "milton luciano"];
-  if (canonical === "mariano mesa") return ["mariano", "mariano mesa", "mesa"];
+  if (canonical === "mariano mesa") return ["mariano", "mariano mesa", "mariano meza", "mesa", "meza"];
   if (canonical === "german") return ["german", "germán"];
   return canonical ? [canonical] : [];
 }
