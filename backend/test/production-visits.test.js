@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { canRecordProduction, getProductionProgress, isProductionVisitTask, isValidProductionDate } from "../src/production-visits.js";
-import { getProductionVisitProgress, groupProductionByClient } from "../../frontend/src/features/render-os/utils/production-visits.js";
+import { canRecordProduction, getProductionPhase, getProductionProgress, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "../src/production-visits.js";
+import { getProductionPhase as getFrontendProductionPhase, getProductionVisitProgress, groupProductionByClient } from "../../frontend/src/features/render-os/utils/production-visits.js";
 
 test("limita el seguimiento a tareas de visitas de producción", () => {
   assert.equal(isProductionVisitTask({ titulo: "Luzin | Visita producción", tipo_tarea: "produccion" }), true);
@@ -58,4 +58,21 @@ test("solo Germán y el rol Líder pueden registrar grabaciones", () => {
   assert.equal(isValidProductionDate("2026-08-05"), true);
   assert.equal(isValidProductionDate("05/08/2026"), false);
   assert.equal(isValidProductionDate("2026-02-31"), false);
+});
+
+test("expone la fase operativa sin crear nuevos estados de base", () => {
+  const visit = { titulo: "Visita producción", tipo_tarea: "produccion", estado: "en_progreso", propiedades_extra: { produccion_videos_previstos: 4, produccion_registros: [{ cantidad: 4 }] } };
+  assert.equal(getProductionPhase(visit), "grabacion_completa");
+  assert.deepEqual(getFrontendProductionPhase(visit), { id: "grabacion_completa", label: "Grabación completa" });
+  assert.equal(getProductionPhase({ tipo_tarea: "edicion", estado: "pendiente" }), "edicion");
+  assert.equal(nextProductionPeriod("2026-12-10"), "2027-01");
+});
+
+test("el adelanto se acredita solo al mes siguiente del mismo cliente", () => {
+  const tasks = [{
+    titulo: "Visita Luzin", tipo_tarea: "produccion", cliente_nombre: "Luzin",
+    propiedades_extra: { produccion_videos_previstos: 7, produccion_registros: [{ cantidad: 8, fecha: "2026-08-20", periodo_objetivo: "2026-08", cantidad_mes_actual: 7, cantidad_adelanto: 1, periodo_adelanto: "2026-09" }] },
+  }];
+  assert.equal(groupProductionByClient(tasks, "2026-08-01", "2026-09-01").find((item) => item.nombre === "Luzin").grabados, 7);
+  assert.equal(groupProductionByClient(tasks, "2026-09-01", "2026-10-01").find((item) => item.nombre === "Luzin").grabados, 1);
 });

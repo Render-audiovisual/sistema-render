@@ -339,6 +339,19 @@
   .render-workspace .ros-board{width:calc(100% - 20px)}
 }
 
+/* Flujo operativo simplificado: cuatro columnas y etapa específica dentro de cada tarea. */
+.render-workspace .ros-board-four{grid-template-columns:repeat(4,minmax(260px,1fr))}
+.render-workspace .ros-card-badges{align-items:center;display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between}
+.render-workspace .ros-phase-badge{background:#eef1e8;border:1px solid #dce2d3;border-radius:999px;color:#626a5d;font-size:var(--ros-type-badge);font-weight:700;padding:4px 7px;white-space:nowrap}
+.render-workspace .ros-phase-badge.grabacion,.render-workspace .ros-phase-badge.grabacion_completa{background:#fff4d9;border-color:#f0d48f;color:#725615}
+.render-workspace .ros-phase-badge.edicion{background:#e8f4ef;border-color:#cce4da;color:#286a55}
+.render-workspace .ros-phase-badge.programada{background:#f0eafa;border-color:#ddd0f0;color:#65469a}
+.render-workspace .ros-phase-badge.publicada,.render-workspace .ros-phase-badge.grabacion_confirmada{background:#e7f6ec;border-color:#cce6d4;color:#267046}
+.render-workspace .ros-production-confirm{align-items:center;background:#f1f8df;border:1px solid #d8e9ad;border-radius:12px;display:flex;gap:16px;justify-content:space-between;margin-top:14px;padding:14px}
+.render-workspace .ros-production-confirm>div{display:grid;gap:3px}.render-workspace .ros-production-confirm strong{font-size:var(--ros-type-body)}.render-workspace .ros-production-confirm span{color:#68705f;font-size:var(--ros-type-label);line-height:1.45}
+.render-workspace .ros-production-confirm button{background:#202418;border:0;border-radius:8px;color:#b5fc00;font-size:var(--ros-type-button);font-weight:700;padding:10px 13px;white-space:nowrap}
+@media(max-width:700px){.render-workspace .ros-board-four{grid-template-columns:repeat(4,82vw)}.render-workspace .ros-production-confirm{align-items:stretch;flex-direction:column}.render-workspace .ros-production-confirm button{width:100%}}
+
 /* La cabecera del espacio de tarea debe prevalecer sobre el tema general de modales. */
 .render-workspace .ros-drawer.ros-task-workspace>.ros-task-workspace-header{background:#171a13;border-color:#373c31;color:#f5f6ef}
 .render-workspace .ros-drawer.ros-task-workspace>.ros-task-workspace-header h2{color:#f5f6ef}

@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ESTADO_FINAL_TAREA, getRolLabel } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea } from "../utils.jsx";
-import { AREAS, STATUSES, TASK_TYPES } from "../features/render-os/constants.js";
+import { AREAS, BOARD_COLUMNS, STATUSES, TASK_TYPES } from "../features/render-os/constants.js";
 import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
 import { areaForTask, formatDate, formatDateTime, initials, personForTask } from "../features/render-os/utils/task-formatters.js";
 import { canRetryTaskUpdate, canUserMoveTask, mergeRelatedTasks } from "../workspace-task-state.js";
 import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
-import { getProductionVisitProgress, isProductionVisitTask } from "../features/render-os/utils/production-visits.js";
+import { getProductionPhase, getProductionVisitProgress, isProductionVisitTask } from "../features/render-os/utils/production-visits.js";
 import { getCanonicalTaskContentMetadata, getUnifiedTaskContent } from "../features/render-os/utils/task-content.js";
 import { getNewTaskSuggestions, getTaskDirectUrl } from "../features/render-os/utils/new-task-suggestions.js";
 import { getHoyLocalISO } from "../shared/date/date-utils.js";
@@ -67,7 +67,7 @@ function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, editor
   </section>;
 }
 
-function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onApprove, onArchive, onDelete, onCreateSubtask }) {
+function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onArchive, onDelete, onCreateSubtask }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task || {});
   const [comments, setComments] = useState([]);
@@ -86,6 +86,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [registeringProduction, setRegisteringProduction] = useState(false);
   const [savingProductionDrive, setSavingProductionDrive] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [confirmingProduction, setConfirmingProduction] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const archivePendingRef = useRef(false);
   const scriptEditorRef = useRef(null);
@@ -126,7 +127,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const isLeader = isAdmin || userIdentity.includes("franco") || userIdentity.includes("agustin") || userIdentity.includes("lider");
   const canApproveForOriana = isLeader && task.estado === "en_revision" && areaForTask(task) === "edicion" && metadata.revision_aprobada !== true;
   const productionProgress = getProductionVisitProgress(task);
+  const productionPhase = getProductionPhase(task);
   const canRegisterProduction = isAdmin || String(sesion?.usuario?.nombre || sesion?.usuario?.usuario || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().startsWith("german");
+  const canConfirmProduction = isLeader && isProductionVisit && productionProgress.complete && !metadata.produccion_confirmada_at;
   const isArchived = metadata.archivada_render_os === true;
   const tags = Array.isArray(metadata.etiquetas) ? metadata.etiquetas : [];
   const collaborators = Array.isArray(metadata.colaboradores) ? metadata.colaboradores : [];
@@ -254,7 +257,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const registerProduction = async () => {
-    if (registeringProduction || productionProgress.remaining <= 0) return;
+    if (registeringProduction || metadata.produccion_confirmada_at) return;
     setRegisteringProduction(true);
     try {
       await onRegisterProduction(task, Number(productionAmount), productionDate);
@@ -262,6 +265,13 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     } finally {
       setRegisteringProduction(false);
     }
+  };
+
+  const confirmProduction = async () => {
+    if (confirmingProduction) return;
+    setConfirmingProduction(true);
+    try { await onConfirmProduction(task); }
+    finally { setConfirmingProduction(false); }
   };
 
   const approveForOriana = async () => {
@@ -327,17 +337,19 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         {canApproveForOriana && <section className="ros-approval-handoff"><div><strong>El video está esperando aprobación</strong><span>Revisá el material y, si está listo, entregáselo a Oriana para programar o publicar.</span></div><button type="button" disabled={approving} onClick={approveForOriana}>{approving ? "Enviando…" : "Aprobar y enviar a Oriana"}</button></section>}
         {metadata.revision_aprobada === true && task.estado === "en_revision" && <div className="ros-approved-banner">✓ Aprobada por {metadata.revision_aprobada_por || "Líder"}. Oriana decide si programarla o publicarla.</div>}
         {isProductionVisit && <section className="ros-production-visit">
-          <header><div><span>VISITA DE PRODUCCIÓN</span><strong>{productionProgress.recorded} de {productionProgress.planned || "—"} videos grabados</strong></div>{productionProgress.complete ? <b>Completa</b> : <b className="pending">Faltan {productionProgress.remaining || "—"}</b>}</header>
+          <header><div><span>VISITA DE PRODUCCIÓN</span><strong>{productionProgress.recorded} de {productionProgress.planned || "—"} videos grabados</strong></div>{productionProgress.complete ? <b>{productionPhase?.label || "Completa"}</b> : <b className="pending">Faltan {productionProgress.remaining || "—"}</b>}</header>
           <div className="ros-production-progress"><i style={{ width: `${productionProgress.planned ? Math.min(100, (productionProgress.recorded / productionProgress.planned) * 100) : 0}%` }}/></div>
           {editing && isAdmin && <label className="ros-production-planned"><span>Videos previstos</span><input type="number" min="1" step="1" value={draft.produccion_videos_previstos || ""} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}
-          {!editing && canRegisterProduction && productionProgress.planned > 0 && !productionProgress.complete && <div className="ros-production-entry">
-            <label><span>¿Cuántos grabaste hoy?</span><div><button type="button" onClick={() => setProductionAmount((current) => Math.max(1, Number(current) - 1))}>−</button><input inputMode="numeric" type="number" min="1" max={productionProgress.remaining} value={productionAmount} onChange={(event) => setProductionAmount(Math.min(productionProgress.remaining, Math.max(1, Number(event.target.value) || 1)))}/><button type="button" onClick={() => setProductionAmount((current) => Math.min(productionProgress.remaining, Number(current) + 1))}>+</button></div></label>
+          {!editing && canRegisterProduction && productionProgress.planned > 0 && !metadata.produccion_confirmada_at && <div className="ros-production-entry">
+            <label><span>¿Cuántos grabaste hoy?</span><div><button type="button" onClick={() => setProductionAmount((current) => Math.max(1, Number(current) - 1))}>−</button><input inputMode="numeric" type="number" min="1" value={productionAmount} onChange={(event) => setProductionAmount(Math.max(1, Number(event.target.value) || 1))}/><button type="button" onClick={() => setProductionAmount((current) => Number(current) + 1)}>+</button></div></label>
             <label><span>Fecha de grabación</span><input type="date" value={productionDate} max={getHoyLocalISO()} onChange={(event) => setProductionDate(event.target.value)}/></label>
             <button type="button" disabled={registeringProduction || !productionDate} onClick={registerProduction}>{registeringProduction ? "Guardando…" : `Registrar ${productionAmount} video${Number(productionAmount) === 1 ? "" : "s"}`}</button>
           </div>}
+          {canConfirmProduction && <div className="ros-production-confirm"><div><strong>Grabación completa</strong><span>Franco o Agustín deben confirmarla antes de crear la edición para Luciano.</span></div><button type="button" disabled={confirmingProduction} onClick={confirmProduction}>{confirmingProduction ? "Confirmando…" : "Confirmar y enviar a edición"}</button></div>}
+          {metadata.produccion_confirmada_at && <div className="ros-approved-banner">✓ Grabación confirmada por {metadata.produccion_confirmada_por}. La edición quedó vinculada.</div>}
           {!editing && canRegisterProduction && <div className="ros-production-drive"><label><span>Carpeta de material en Google Drive</span><input inputMode="url" placeholder="https://drive.google.com/…" value={productionDriveLink} onChange={(event) => setProductionDriveLink(event.target.value)}/></label><button type="button" disabled={savingProductionDrive || !productionDriveLink.trim() || productionDriveLink.trim() === String(task.material_referencia || "").trim()} onClick={saveProductionDrive}>{savingProductionDrive ? "Guardando…" : task.material_referencia ? "Actualizar enlace" : "Vincular Drive"}</button></div>}
           {productionProgress.planned === 0 && !editing && <p>Un Líder debe editar esta visita e indicar cuántos videos están previstos.</p>}
-          {Array.isArray(metadata.produccion_registros) && metadata.produccion_registros.length > 0 && <details><summary>Ver registros</summary>{metadata.produccion_registros.slice().reverse().map((record) => <div key={record.id || `${record.fecha}-${record.created_at}`}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario || "Equipo"}</span></div>)}</details>}
+          {Array.isArray(metadata.produccion_registros) && metadata.produccion_registros.length > 0 && <details><summary>Ver registros</summary>{metadata.produccion_registros.slice().reverse().map((record) => <div key={record.id || `${record.fecha}-${record.created_at}`}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario || "Equipo"}{record.corregido_at ? ` · Corregido por ${record.corregido_por}` : ""}</span>{canRegisterProduction && !metadata.produccion_confirmada_at && <button type="button" onClick={() => { const value = window.prompt("Cantidad correcta de videos:", String(record.cantidad)); if (value !== null) onCorrectProduction(task, record, Number(value)); }}>Corregir</button>}</div>)}</details>}
         </section>}
         <TaskContentWorkspace task={task} metadata={metadata} editing={editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={isAdmin ? startEditing : null}/>
         <section className="ros-work-block"><div className="ros-block-heading"><div><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3></div><small>Archivos y enlaces</small></div>{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <><div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{driveFiles.filter((file) => file.url !== task.material_referencia).map((file) => <a className="ros-file" href={file.url} target="_blank" rel="noreferrer" key={file.id}><span>▤</span><div><strong>{file.name}</strong><small>Google Drive · {file.uploaded_by || "Equipo"}</small></div><b>↗</b></a>)}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{!task.material_referencia && driveFiles.length === 0 && links.length === 0 && <p className="ros-compact-empty">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "Sin material vinculado."}</p>}</div><DriveUploader task={task} onUploaded={async () => { const refreshed = await apiTaskById(task.id); window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: [refreshed] })); }}/></>}</section>
@@ -453,8 +465,9 @@ function TaskCard({ task, users, today, onOpen, onMove, canMove }) {
   const person = personForTask(task, users);
   const tags = Array.isArray(task.propiedades_extra?.etiquetas) ? task.propiedades_extra.etiquetas : [];
   const collaborators = Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [];
+  const phase = getProductionPhase(task);
   return <article role="button" tabIndex={0} draggable={canMove} className={`ros-task-card ${canMove ? "can-move" : "view-only"}`} onDragStart={(event) => { if (!canMove) { event.preventDefault(); return; } event.dataTransfer.setData("text/task-id", String(task.id)); event.dataTransfer.effectAllowed = "move"; }} onClick={() => onOpen(task.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onOpen(task.id); }}>
-    <AreaBadge task={task}/><h3>{task.titulo}</h3><p>{task.cliente_nombre || "Sin cliente"}</p>
+    <div className="ros-card-badges"><AreaBadge task={task}/>{phase && <span className={`ros-phase-badge ${phase.id}`}>{phase.label}</span>}</div><h3>{task.titulo}</h3><p>{task.cliente_nombre || "Sin cliente"}</p>
     {task.propiedades_extra?.resumen && <div className="ros-card-summary">{task.propiedades_extra.resumen}</div>}
     {tags.length > 0 && <div className="ros-card-tags">{tags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}
     {esperandoMaterial(task) && <div className="ros-card-warning">Esperando material</div>}
@@ -521,7 +534,7 @@ function TasksByClient({ tasks, onOpen }) {
   return <div className="ros-project-grid">{groups.map((group) => <section className="ros-project-card" key={group.name}><header><div><span>{initials(group.name)}</span><strong>{group.name}</strong></div><small>{group.tasks.length} tareas</small></header><div>{group.tasks.map((task) => <button type="button" key={task.id} onClick={() => onOpen(task.id)}><span>{task.titulo}</span><b>{STATUSES.find((item) => item.id === task.estado)?.label || task.estado}</b><small>{task.asignado_a} · {formatDate(task.fecha_vencimiento)}</small></button>)}</div></section>)}</div>;
 }
 
-function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, responsible, setResponsible, client, setClient, sector, setSector, priority, setPriority, archiveMode, setArchiveMode, sesion, onCreate, onUpdate, onRegisterProduction, onApprove, onDelete, onError }) {
+function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, responsible, setResponsible, client, setClient, sector, setSector, priority, setPriority, archiveMode, setArchiveMode, sesion, onCreate, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onDelete, onError }) {
   const initialViewState = useMemo(() => getTaskViewState(window.location.search), []);
   const initialTask = Number(new URLSearchParams(window.location.search).get("task")) || null;
   const [view, setView] = useState(initialViewState.view);
@@ -614,12 +627,12 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     <div className="ros-controls"><div><button aria-pressed={view === "board"} className={view === "board" ? "active" : ""} onClick={() => setView("board")}>▦ Tablero</button><button aria-pressed={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")}>☷ Lista</button><button aria-pressed={view === "calendar"} className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}>□ Calendario</button><button aria-pressed={view === "clients"} className={view === "clients" ? "active" : ""} onClick={() => setView("clients")}>◌ Por cliente</button></div><div className="ros-controls-meta"><span>Mostrando {visible.length} de {totalTasks}</span><button className="ros-archive-link" type="button" onClick={() => setArchiveMode(archiveMode === "archived" ? "active" : "archived")}>{archiveMode === "archived" ? "← Volver a tareas activas" : "▣ Ver archivadas"}</button></div></div>
     <button className="ros-filter-toggle" type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((current) => !current)}>Filtros{activeFilterCount ? <b>{activeFilterCount}</b> : null}<span>{filtersOpen ? "Ocultar" : "Mostrar"}</span></button>
     <div className={`ros-filter-bar ${filtersOpen ? "open" : ""}`}><label><span>Área</span><select aria-label="Área" value={area} onChange={(event) => setArea(event.target.value)}><option value="all">Todas</option>{AREAS.slice(1).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Responsable</span><select aria-label="Responsable" value={responsible} onChange={(event) => setResponsible(event.target.value)}><option value="all">Todos</option>{responsibleOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label><label><span>Cliente</span><select aria-label="Cliente" value={client} onChange={(event) => setClient(event.target.value)}><option value="all">Todos</option><option value="none">Sin cliente</option>{clients.map((item) => <option key={item.id} value={String(item.id)}>{item.nombre}</option>)}</select></label><label><span>Sector</span><select aria-label="Sector" value={sector} onChange={(event) => setSector(event.target.value)}><option value="all">Todos</option><option value="none">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Prioridad</span><select aria-label="Prioridad" value={priority} onChange={(event) => setPriority(event.target.value)}><option value="all">Todas</option><option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option></select></label>{hasFilters && <button type="button" onClick={clearFilters}>Limpiar filtros</button>}</div>
-    {view === "board" && <div className="ros-board">{STATUSES.map((status) => { const items = visible.filter((task) => task.estado === status.id); return <section className={`ros-column ${dragOver === status.id ? "drag-over" : ""}`} key={status.id} onDragOver={(event) => { if (!event.dataTransfer.types.includes("text/task-id")) return; event.preventDefault(); setDragOver(status.id); }} onDragLeave={() => setDragOver("")} onDrop={(event) => { event.preventDefault(); setDragOver(""); const task = tasks.find((item) => String(item.id) === event.dataTransfer.getData("text/task-id")); if (task && canUserMoveTask(task, sesion?.usuario)) move(task, status.id); }}><header><span style={{ color: status.color }}>●</span><strong>{status.label}</strong><small>{items.length}</small></header><div>{items.slice(0, 250).map((task) => <TaskCard key={task.id} task={task} users={users} today={today} onOpen={openTask} onMove={move} canMove={canUserMoveTask(task, sesion?.usuario)}/>)}{items.length > 250 && <div className="ros-column-limit">Mostrando 250 de {items.length}. Usá los filtros para acotar.</div>}{items.length === 0 && <button className="ros-empty-column" type="button" onClick={() => setCreatingStatus(status.id)}><span>+</span>Nueva tarea</button>}</div></section>; })}</div>}
+    {view === "board" && <div className="ros-board ros-board-four">{BOARD_COLUMNS.map((column) => { const items = visible.filter((task) => column.states.includes(task.estado)); return <section className={`ros-column ${dragOver === column.id ? "drag-over" : ""}`} key={column.id} onDragOver={(event) => { if (!event.dataTransfer.types.includes("text/task-id")) return; event.preventDefault(); setDragOver(column.id); }} onDragLeave={() => setDragOver("")} onDrop={(event) => { event.preventDefault(); setDragOver(""); const task = tasks.find((item) => String(item.id) === event.dataTransfer.getData("text/task-id")); if (task && canUserMoveTask(task, sesion?.usuario)) move(task, column.dropState || column.id); }}><header><span style={{ color: column.color }}>●</span><strong>{column.label}</strong><small>{items.length}</small></header><div>{items.slice(0, 250).map((task) => <TaskCard key={task.id} task={task} users={users} today={today} onOpen={openTask} onMove={move} canMove={canUserMoveTask(task, sesion?.usuario)}/>)}{items.length > 250 && <div className="ros-column-limit">Mostrando 250 de {items.length}. Usá los filtros para acotar.</div>}{items.length === 0 && <button className="ros-empty-column" type="button" onClick={() => setCreatingStatus(column.dropState || column.id)}><span>+</span>Nueva tarea</button>}</div></section>; })}</div>}
     {view === "list" && <div className="ros-task-list"><div className="ros-task-list-head"><span>TAREA</span><span>ÁREA</span><span>CLIENTE</span><span>RESPONSABLE</span><span>ESTADO</span><span>FECHA</span></div>{visible.slice(0, 500).map((task) => <button key={task.id} onClick={() => openTask(task.id)}><strong>{task.titulo}</strong><AreaBadge task={task}/><span>{task.cliente_nombre || "Sin cliente"}</span><span>{task.asignado_a || "Sin asignar"}</span><span>{STATUSES.find((item) => item.id === task.estado)?.label || task.estado}</span><span>{formatDate(task.fecha_vencimiento)}</span></button>)}{visible.length > 500 && <div className="ros-list-limit">Mostrando 500 de {visible.length}. Usá los filtros para acotar.</div>}</div>}
     {view === "calendar" && <TaskCalendar tasks={visible} onOpen={openTask} monthValue={calendarMonth} onMonthChange={setCalendarMonth}/>} {view === "clients" && <TasksByClient tasks={visible} onOpen={openTask}/>} {view !== "board" && visible.length === 0 && <div className="ros-no-results">{emptyMessage}</div>}
     {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
-  <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onApprove={onApprove} onArchive={archiveTask} onDelete={async (id) => { await onDelete(id); closeTask(); }} onCreateSubtask={createSubtask}/>
+  <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onCorrectProduction={onCorrectProduction} onConfirmProduction={onConfirmProduction} onApprove={onApprove} onArchive={archiveTask} onDelete={async (id) => { await onDelete(id); closeTask(); }} onCreateSubtask={createSubtask}/>
   {creatingStatus && <NewTaskModal users={users} clients={clients} initialStatus={creatingStatus} onClose={() => setCreatingStatus(null)} onCreate={async (draft) => { const created = await onCreate(draft); setCreatingStatus(null); openTask(created.id); }}/>}</>;
 }
 
@@ -824,6 +837,37 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       throw reason;
     }
   };
+  const confirmProduction = async (task) => {
+    try {
+      const result = await apiRequest(`/api/tareas/${task.id}/produccion/confirmar?workspace=render_os`, { method: "POST" });
+      const updated = { ...task, ...result.task, cliente_nombre: task.cliente_nombre || null };
+      const additions = result.editing_task ? [{ ...result.editing_task, cliente_nombre: task.cliente_nombre || null }] : [];
+      setTasks((current) => mergeRelatedTasks(current.map((item) => item.id === task.id ? updated : item), additions));
+      notify(result.created ? "Grabación confirmada. Se creó la edición para Luciano." : "Grabación confirmada.");
+      return updated;
+    } catch (reason) {
+      notify(reason.message || "No se pudo confirmar la grabación.", "error");
+      throw reason;
+    }
+  };
+  const correctProduction = async (task, record, cantidad) => {
+    if (!Number.isInteger(cantidad) || cantidad <= 0) {
+      notify("Ingresá una cantidad válida mayor que cero.", "error");
+      return null;
+    }
+    try {
+      const updated = await apiRequest(`/api/tareas/${task.id}/produccion/registros/${record.id}?workspace=render_os`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cantidad }),
+      });
+      const complete = { ...task, ...updated, cliente_nombre: task.cliente_nombre || null };
+      setTasks((current) => current.map((item) => item.id === task.id ? complete : item));
+      notify(`Registro corregido de ${record.cantidad} a ${cantidad} videos.`);
+      return complete;
+    } catch (reason) {
+      notify(reason.message || "No se pudo corregir el registro.", "error");
+      throw reason;
+    }
+  };
   const approveTask = async (task) => {
     try {
       const updated = await apiRequest(`/api/tareas/${task.id}/aprobar-publicacion?workspace=render_os`, { method: "POST" });
@@ -852,5 +896,5 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   };
 
   const retry = () => { setError(""); setLoading(true); setReloadKey((current) => current + 1); };
-  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} setQuery={setQuery} area={area} setArea={setArea} responsible={responsible} setResponsible={setResponsible} client={client} setClient={setClient} sector={sector} setSector={setSector} priority={priority} setPriority={setPriority} archiveMode={archiveMode} setArchiveMode={setArchiveMode} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onRegisterProduction={registerProduction} onApprove={approveTask} onDelete={deleteTask} onError={(message) => notify(message, "error")}/>}</main></div>;
+  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} setQuery={setQuery} area={area} setArea={setArea} responsible={responsible} setResponsible={setResponsible} client={client} setClient={setClient} sector={sector} setSector={setSector} priority={priority} setPriority={setPriority} archiveMode={archiveMode} setArchiveMode={setArchiveMode} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onRegisterProduction={registerProduction} onCorrectProduction={correctProduction} onConfirmProduction={confirmProduction} onApprove={approveTask} onDelete={deleteTask} onError={(message) => notify(message, "error")}/>}</main></div>;
 }

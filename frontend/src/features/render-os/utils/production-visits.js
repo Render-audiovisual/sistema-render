@@ -38,6 +38,19 @@ export function getProductionVisitProgress(task = {}) {
   return { planned, recorded, remaining: Math.max(planned - recorded, 0), complete: planned > 0 && recorded >= planned };
 }
 
+export function getProductionPhase(task = {}) {
+  const progress = getProductionVisitProgress(task);
+  if (isProductionVisitTask(task)) {
+    if (task.propiedades_extra?.produccion_confirmada_at) return { id: "grabacion_confirmada", label: "Grabación confirmada" };
+    if (progress.complete) return { id: "grabacion_completa", label: "Grabación completa" };
+    if (progress.recorded > 0) return { id: "grabacion", label: "Grabación" };
+  }
+  if (task.estado === "programada") return { id: "programada", label: "Programada" };
+  if (task.estado === "publicada") return { id: "publicada", label: "Publicada" };
+  if (task.tipo_tarea === "edicion") return { id: "edicion", label: "Edición" };
+  return null;
+}
+
 export function getProductionTarget(clientName = "") {
   const normalized = normalizeProductionText(clientName);
   return PRODUCTION_MONTHLY_TARGETS.find((item) => item.aliases.some((alias) => normalized === normalizeProductionText(alias))) || null;
@@ -48,9 +61,13 @@ export function groupProductionByClient(tasks = [], from = "0000-00-00", to = "9
   tasks.filter(isProductionVisitTask).forEach((task) => {
     const target = getProductionTarget(task.cliente_nombre);
     if (!target) return;
-    const amount = getProductionRecords(task)
-      .filter((item) => String(item.fecha || "").slice(0, 10) >= from && String(item.fecha || "").slice(0, 10) < to)
-      .reduce((total, item) => total + Number(item.cantidad), 0);
+    const period = from.slice(0, 7);
+    const amount = getProductionRecords(task).reduce((total, item) => {
+      if (item.periodo_adelanto === period) return total + Number(item.cantidad_adelanto || 0);
+      const itemPeriod = item.periodo_objetivo || String(item.fecha || "").slice(0, 7);
+      if (itemPeriod !== period) return total;
+      return total + Number(item.cantidad_mes_actual ?? item.cantidad);
+    }, 0);
     recordedByTarget.set(target.name, recordedByTarget.get(target.name) + amount);
   });
   return PRODUCTION_MONTHLY_TARGETS.map((item) => ({

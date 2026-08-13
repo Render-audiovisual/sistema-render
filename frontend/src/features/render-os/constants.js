@@ -8,6 +8,13 @@ export const STATUSES = [
   { id: "publicada", label: "Publicadas", color: "#34a16f" },
 ];
 
+export const BOARD_COLUMNS = [
+  { id: "pendiente", label: "Pendientes", color: "#8d9095", states: ["pendiente"] },
+  { id: "en_progreso", label: "En proceso", color: "#3378d4", states: ["en_progreso"] },
+  { id: "en_revision", label: "Para revisar", color: "#df9830", states: ["en_revision"] },
+  { id: "finalizadas", label: "Finalizadas", color: "#34a16f", states: ["programada", "publicada"], dropState: "publicada" },
+];
+
 export const AREAS = [
   { id: "all", label: "Todo", icon: "⌘", color: "#242529" },
   { id: "planificacion", label: "Planificación", icon: "□", color: "#6b7280" },

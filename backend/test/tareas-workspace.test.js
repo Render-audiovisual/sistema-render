@@ -218,11 +218,11 @@ test(
         expected_updated_at: visitResponse.body.updated_at,
       }));
       assert.equal(productionRecord.response.status, 201);
-      const visitReview = await request(`/tareas/${visitResponse.body.id}?workspace=render_os`, jsonOptions("PATCH", {
-        estado: "en_revision",
-        expected_updated_at: productionRecord.body.updated_at,
-      }));
+      const beforeConfirmation = await pool.query("SELECT count(*)::int AS total FROM tareas WHERE propiedades_extra->>'origen_visita_id' = $1", [String(visitResponse.body.id)]);
+      assert.equal(beforeConfirmation.rows[0].total, 0);
+      const visitReview = await request(`/tareas/${visitResponse.body.id}/produccion/confirmar?workspace=render_os`, jsonOptions("POST", {}));
       assert.equal(visitReview.response.status, 200);
+      assert.equal(visitReview.body.created, true);
       let generatedEditingTask = null;
       for (let attempt = 0; attempt < 20 && !generatedEditingTask; attempt += 1) {
         const generated = await pool.query("SELECT id, asignado_a, material_referencia FROM tareas WHERE propiedades_extra->>'origen_visita_id' = $1", [String(visitResponse.body.id)]);
@@ -234,6 +234,8 @@ test(
       ids.push(generatedEditingTask.id);
       const generatedCount = await pool.query("SELECT count(*)::int AS total FROM tareas WHERE propiedades_extra->>'origen_visita_id' = $1", [String(visitResponse.body.id)]);
       assert.equal(generatedCount.rows[0].total, 1);
+      const duplicateConfirmation = await request(`/tareas/${visitResponse.body.id}/produccion/confirmar?workspace=render_os`, jsonOptions("POST", {}));
+      assert.equal(duplicateConfirmation.response.status, 409);
 
       const reviewVideoResponse = await request("/tareas", jsonOptions("POST", {
         titulo: `${marker} Editar video`,

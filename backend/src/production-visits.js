@@ -18,6 +18,26 @@ export function getProductionProgress(task = {}) {
   return { planned, recorded, remaining: Math.max(planned - recorded, 0) };
 }
 
+export function getProductionPhase(task = {}) {
+  const progress = getProductionProgress(task);
+  if (isProductionVisitTask(task)) {
+    if (task.propiedades_extra?.produccion_confirmada_at) return "grabacion_confirmada";
+    if (progress.planned > 0 && progress.recorded >= progress.planned) return "grabacion_completa";
+    if (progress.recorded > 0) return "grabacion";
+  }
+  if (task.estado === "programada") return "programada";
+  if (task.estado === "publicada") return "publicada";
+  if (task.tipo_tarea === "edicion") return "edicion";
+  return null;
+}
+
+export function nextProductionPeriod(dateValue) {
+  const match = /^(\d{4})-(\d{2})/.exec(String(dateValue || ""));
+  if (!match) return null;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]), 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
 export function canRecordProduction(auth = {}) {
   if (auth.rol === "admin") return true;
   return normalizeProductionText(auth.nombre || auth.usuario).split(/\s+/)[0] === "german";
