@@ -431,13 +431,20 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       `, [period]),
       pool.query(`
         SELECT COALESCE(SUM(config.abono_mensual), 0)::numeric AS total,
-               COUNT(config.id)::int AS clientes_configurados
+               COUNT(config.abono_mensual)::int AS clientes_configurados
         FROM clientes c
         LEFT JOIN LATERAL (
-          SELECT ca.id, ca.importe AS abono_mensual
-          FROM cliente_abonos ca
-          WHERE ca.cliente_id = c.id AND ca.vigente_desde <= ($1 || '-01')::date
-          ORDER BY ca.vigente_desde DESC
+          SELECT source.abono_mensual
+          FROM (
+            SELECT ca.importe AS abono_mensual, ca.vigente_desde, 1 AS priority
+            FROM cliente_abonos ca
+            WHERE ca.cliente_id = c.id AND ca.vigente_desde <= ($1 || '-01')::date
+            UNION ALL
+            SELECT cc.abono_mensual, cc.vigente_desde, 2 AS priority
+            FROM cliente_configuraciones cc
+            WHERE cc.cliente_id = c.id AND cc.vigente_desde <= ($1 || '-01')::date
+          ) source
+          ORDER BY source.vigente_desde DESC, source.priority ASC
           LIMIT 1
         ) config ON TRUE
         WHERE COALESCE(c.fecha_inicio, '-infinity'::date) <= (($1 || '-01')::date + INTERVAL '1 month - 1 day')
@@ -1058,8 +1065,8 @@ router.get("/clientes", async (req, res, next) => {
         to_char(c.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
         cfg.dias_historias,
         cfg.disenador_responsable,
-        abono.importe AS abono_mensual,
-        to_char(abono.vigente_desde, 'YYYY-MM-DD') AS abono_vigente_desde,
+        COALESCE(abono.importe, cfg.abono_mensual) AS abono_mensual,
+        to_char(COALESCE(abono.vigente_desde, cfg.vigente_desde), 'YYYY-MM-DD') AS abono_vigente_desde,
         to_char(cfg.vigente_desde, 'YYYY-MM-DD') AS configuracion_vigente_desde,
         (cfg.id IS NOT NULL) AS configuracion_completa,
         c.grupo_feed_id,
@@ -1141,7 +1148,7 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
       await client.query(
         `INSERT INTO cliente_abonos (cliente_id, vigente_desde, importe, creado_por)
          VALUES ($1, $2, $3, $4) ON CONFLICT (cliente_id, vigente_desde) DO UPDATE SET importe = EXCLUDED.importe`,
-        [result.rows[0].id, `${nextPeriod(new Date().toISOString().slice(0, 7))}-01`, config.abono_mensual, req.auth.nombre || req.auth.usuario],
+        [result.rows[0].id, vigenteDesde, config.abono_mensual, req.auth.nombre || req.auth.usuario],
       );
     }
     await client.query("COMMIT");
@@ -1196,11 +1203,30 @@ router.post("/clientes/:id/configuraciones", requireRole("admin"), async (req, r
         config.dias_historias, config.disenador_responsable, config.abono_mensual],
     );
     await client.query(
-      "UPDATE clientes SET cuota_reels = $1, cuota_carruseles = $2 WHERE id = $3",
-      [config.cuota_reels, config.cuota_carruseles, req.params.id],
+      `INSERT INTO cliente_abonos (cliente_id, vigente_desde, importe, creado_por)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (cliente_id, vigente_desde) DO UPDATE SET
+         importe = EXCLUDED.importe,
+         creado_por = EXCLUDED.creado_por`,
+      [req.params.id, vigenteDesde, config.abono_mensual, req.auth.nombre || req.auth.usuario],
+    );
+    const nombre = String(req.body.nombre || "").trim();
+    const rubro = String(req.body.rubro || "").trim();
+    await client.query(
+      `UPDATE clientes SET cuota_reels = $1, cuota_carruseles = $2,
+        nombre = CASE WHEN $3 <> '' THEN $3 ELSE nombre END,
+        rubro = CASE WHEN $4 <> '' THEN $4 ELSE rubro END
+       WHERE id = $5`,
+      [config.cuota_reels, config.cuota_carruseles, nombre, rubro, req.params.id],
     );
     await client.query("COMMIT");
-    res.json({ id: Number(req.params.id), ...config, configuracion_vigente_desde: vigenteDesde, configuracion_completa: true });
+    res.json({
+      id: Number(req.params.id), ...config,
+      ...(nombre ? { nombre } : {}), ...(rubro ? { rubro } : {}),
+      abono_vigente_desde: vigenteDesde,
+      configuracion_vigente_desde: vigenteDesde,
+      configuracion_completa: true,
+    });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     if (/cuotas|abono mensual|día válido|diseñador responsable/i.test(error.message || "")) {

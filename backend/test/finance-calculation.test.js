@@ -34,3 +34,13 @@ test("los endpoints financieros exigen Líder y clientes oculta abonos a emplead
   assert.match(source, /router\.post\("\/clientes\/:id\/abono-proximo-mes", requireRole\("admin"\)/);
   assert.match(source, /req\.auth\.rol === "admin"[\s\S]*abono_mensual, abono_vigente_desde/);
 });
+
+test("el abono mensual de Clientes alimenta Finanzas desde una única edición", () => {
+  const source = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.match(source, /SELECT cc\.abono_mensual, cc\.vigente_desde/);
+  assert.match(source, /COALESCE\(abono\.importe, cfg\.abono_mensual\) AS abono_mensual/);
+  assert.match(
+    source,
+    /router\.post\("\/clientes\/:id\/configuraciones"[\s\S]*INSERT INTO cliente_abonos[\s\S]*ON CONFLICT \(cliente_id, vigente_desde\) DO UPDATE/,
+  );
+});

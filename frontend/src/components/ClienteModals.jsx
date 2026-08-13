@@ -32,7 +32,8 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
 
   const esCuotaValida = (valor) =>
     valor !== "" && Number.isInteger(Number(valor)) && Number(valor) >= 0;
-  const formularioValido = nombre.trim().length > 0 && (esFeedCompartido
+  const abonoValido = esFeedCompartido || (abonoMensual !== "" && Number.isFinite(Number(abonoMensual)) && Number(abonoMensual) >= 0);
+  const formularioValido = nombre.trim().length > 0 && abonoValido && (esFeedCompartido
     ? esCuotaValida(cuotaFeedReels) && esCuotaValida(cuotaFeedCarruseles)
     : esCuotaValida(cuotaReels) && esCuotaValida(cuotaCarruseles));
   const totalMensual = formularioValido
@@ -52,11 +53,13 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
     const usaConfiguracionMensual = cliente.configuracion_completa && !esFeedCompartido;
     const configuracionMensual = {
       vigente_desde: getMesActualISO(),
+      nombre: nombre.trim(),
+      rubro: cliente.rubro,
       cuota_reels: Number(cuotaReels),
       cuota_carruseles: Number(cuotaCarruseles),
       dias_historias: cliente.dias_historias,
       disenador_responsable: cliente.disenador_responsable,
-      abono_mensual: Number(cliente.abono_mensual),
+      abono_mensual: Number(abonoMensual),
     };
     fetch(
       usaConfiguracionMensual
@@ -87,18 +90,7 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
         return data;
       })
       .then(async (data) => {
-        if (!usaConfiguracionMensual || nombre.trim() === cliente.nombre) return data;
-        const response = await fetch(`/api/clientes/${cliente.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nombre: nombre.trim() }),
-        });
-        const renamed = await response.json();
-        if (!response.ok) throw new Error(renamed.error || "La cuota se guardó, pero no se pudo cambiar el nombre.");
-        return { ...renamed, ...data, nombre: renamed.nombre };
-      })
-      .then(async (data) => {
-        if (abonoMensual === "" || Number(abonoMensual) === Number(cliente.abono_mensual)) return data;
+        if (usaConfiguracionMensual || abonoMensual === "" || Number(abonoMensual) === Number(cliente.abono_mensual)) return data;
         const response = await fetch(`/api/clientes/${cliente.id}/abono-proximo-mes`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ importe: Number(abonoMensual) }),
@@ -120,18 +112,16 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
       overlayAriaLabel="Editar cuota mensual"
     >
         <form className="modal-body cliente-create-modal-body" onSubmit={guardar}>
-          <div className="clientes-panel-copy">
-            <strong>{cliente.nombre}</strong>
-            <span>
-              {esFeedCompartido
-                ? `Esta cuenta comparte su cuota con el grupo ${cliente.grupo_feed_nombre}.`
-                : "Definí la cantidad contratada de cada formato para un mes."}
-            </span>
+          <div className="cliente-edit-intro">
+            <div>
+              <span>ACUERDO MENSUAL</span>
+              <strong>{cliente.nombre}</strong>
+            </div>
+            <small>{totalMensual} piezas por mes</small>
           </div>
-          <label className="cliente-service-field">
+          <label className="cliente-service-field cliente-edit-name">
             <span>Nombre del cliente</span>
             <input value={nombre} onChange={(event) => setNombre(event.target.value)} />
-            <small>Se guarda únicamente al confirmar los cambios.</small>
           </label>
           {esFeedCompartido ? (
             <div className="cliente-create-modal-grid">
@@ -144,7 +134,6 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
                   value={cuotaFeedReels}
                   onChange={(e) => setCuotaFeedReels(e.target.value)}
                 />
-                <small>Se cuentan entre las dos cuentas del grupo.</small>
               </label>
               <label className="cliente-service-field">
                 <span>Carruseles compartidos por mes</span>
@@ -155,7 +144,6 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
                   value={cuotaFeedCarruseles}
                   onChange={(e) => setCuotaFeedCarruseles(e.target.value)}
                 />
-                <small>Se cuentan entre las dos cuentas del grupo.</small>
               </label>
             </div>
           ) : (
@@ -169,7 +157,6 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
                 value={cuotaReels}
                 onChange={(e) => setCuotaReels(e.target.value)}
               />
-              <small>Usá 0 si el acuerdo no incluye reels.</small>
             </label>
             <label className="cliente-service-field">
               <span>Carruseles mensuales</span>
@@ -180,27 +167,19 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
                 value={cuotaCarruseles}
                 onChange={(e) => setCuotaCarruseles(e.target.value)}
               />
-              <small>Usá 0 si el acuerdo no incluye carruseles.</small>
             </label>
           </div>
           )}
-          <div className="cliente-contract-summary">
-            <span>Resumen del acuerdo</span>
-            <strong>{totalMensual} piezas mensuales</strong>
-            <small>
-              {esFeedCompartido
-                ? `${cuotaFeedReels || 0} reels · ${cuotaFeedCarruseles || 0} carruseles compartidos`
-                : `${cuotaReels || 0} reels · ${cuotaCarruseles || 0} carruseles`}
-            </small>
-          </div>
-          <label className="cliente-service-field">
-            <span>Abono mensual de Render</span>
-            <input min="0" step="1" type="number" placeholder="$ 0" value={abonoMensual} onChange={(event) => setAbonoMensual(event.target.value)} />
-            <small>Por seguridad financiera, cualquier cambio comienza automáticamente el mes próximo y conserva el valor anterior.</small>
-          </label>
+          {!esFeedCompartido && <section className="cliente-edit-finance">
+            <div><span>Abono mensual</span><small>Visible únicamente para Líder.</small></div>
+            <label className="cliente-money-input">
+              <span>$</span>
+              <input min="0" step="1" type="number" placeholder="0" value={abonoMensual} onChange={(event) => setAbonoMensual(event.target.value)} />
+            </label>
+          </section>}
           {error && <div className="caption login-error">{error}</div>}
-          <div className="modal-actions">
-            <button className="btn" type="button" disabled={guardando} onClick={onClose}>
+          <div className="modal-actions cliente-edit-actions">
+            <button className="btn ghost" type="button" disabled={guardando} onClick={onClose}>
               Cancelar
             </button>
             <button className="btn primary" type="submit" disabled={guardando || !formularioValido}>
