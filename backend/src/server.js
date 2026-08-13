@@ -20,6 +20,7 @@ import { requireAuthentication, requireRole } from "./auth.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks } from "./piece-task-linking.js";
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
+import { applyCompensations, employeeKey, nextPeriod } from "./finance-calculation.js";
 import { createWilsonRouter } from "./wilson-integration.js";
 import { runMigrations } from "./migrations.js";
 import { resolveUserRole } from "./user-roles.js";
@@ -400,7 +401,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
     if (!isValidSalaryPeriod(period)) {
       return res.status(400).json({ error: "Usá un período válido con formato YYYY-MM." });
     }
-    const [tasksResult, historiesResult, publicationsResult, clientIncomeResult] = await Promise.all([
+    const [tasksResult, historiesResult, publicationsResult, clientIncomeResult, compensationResult, paymentsResult] = await Promise.all([
       pool.query(`
         SELECT t.id, t.titulo, t.asignado_a, t.estado, t.tipo_tarea, t.subtipo,
                to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
@@ -431,31 +432,104 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
                COUNT(config.id)::int AS clientes_configurados
         FROM clientes c
         LEFT JOIN LATERAL (
-          SELECT cc.id, cc.abono_mensual
-          FROM cliente_configuraciones cc
-          WHERE cc.cliente_id = c.id AND cc.vigente_desde <= ($1 || '-01')::date
-          ORDER BY cc.vigente_desde DESC
+          SELECT ca.id, ca.importe AS abono_mensual
+          FROM cliente_abonos ca
+          WHERE ca.cliente_id = c.id AND ca.vigente_desde <= ($1 || '-01')::date
+          ORDER BY ca.vigente_desde DESC
           LIMIT 1
         ) config ON TRUE
-        WHERE c.activo = TRUE
+        WHERE COALESCE(c.fecha_inicio, '-infinity'::date) <= (($1 || '-01')::date + INTERVAL '1 month - 1 day')
+          AND (c.fecha_fin IS NULL OR c.fecha_fin >= ($1 || '-01')::date)
       `, [period]),
+      pool.query(`
+        SELECT DISTINCT ON (empleado_clave) empleado_clave, modalidad,
+          sueldo_base, tarifa_facil, tarifa_intermedia, to_char(vigente_desde, 'YYYY-MM-DD') AS vigente_desde
+        FROM empleado_compensaciones
+        WHERE vigente_desde <= ($1 || '-01')::date
+        ORDER BY empleado_clave, vigente_desde DESC
+      `, [period]),
+      pool.query(`SELECT empleado_clave, importe_final FROM empleado_pagos_mensuales WHERE periodo_trabajo = ($1 || '-01')::date`, [period]),
     ]);
-    const dashboard = calculateSalaryDashboard({
+    const dashboard = applyCompensations(calculateSalaryDashboard({
       period,
       tasks: tasksResult.rows,
       histories: historiesResult.rows,
       publications: publicationsResult.rows,
-    });
+    }), compensationResult.rows, paymentsResult.rows);
+    const income = Number(clientIncomeResult.rows[0].total || 0);
     res.json({
       ...dashboard,
       clientIncome: {
-        total: Number(clientIncomeResult.rows[0].total || 0),
+        total: income,
         configuredClients: clientIncomeResult.rows[0].clientes_configurados,
+      },
+      finance: {
+        workPeriod: period,
+        cashPeriod: nextPeriod(period),
+        estimatedResult: income - dashboard.summary.payablePayroll,
       },
     });
   } catch (error) {
     next(error);
   }
+});
+
+router.post("/finanzas/compensaciones/:empleado", requireRole("admin"), async (req, res, next) => {
+  try {
+    const empleado = employeeKey(req.params.empleado);
+    if (!["oriana", "augusto", "mariano", "german", "luciano"].includes(empleado)) return res.status(400).json({ error: "Empleado inválido." });
+    const now = new Date();
+    const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const vigenteDesde = `${nextPeriod(current)}-01`;
+    const modalidad = empleado === "luciano" ? "por_pieza" : "mensual";
+    const sueldoBase = modalidad === "mensual" ? Number(req.body.sueldo_base) : null;
+    const tarifaFacil = modalidad === "por_pieza" ? Number(req.body.tarifa_facil) : null;
+    const tarifaIntermedia = modalidad === "por_pieza" ? Number(req.body.tarifa_intermedia) : null;
+    if ([sueldoBase, tarifaFacil, tarifaIntermedia].filter((value) => value != null).some((value) => !Number.isFinite(value) || value < 0)) return res.status(400).json({ error: "Los importes deben ser números positivos o cero." });
+    const result = await pool.query(`
+      INSERT INTO empleado_compensaciones (empleado_clave, vigente_desde, modalidad, sueldo_base, tarifa_facil, tarifa_intermedia, creado_por)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      ON CONFLICT (empleado_clave, vigente_desde) DO UPDATE SET modalidad=EXCLUDED.modalidad, sueldo_base=EXCLUDED.sueldo_base,
+        tarifa_facil=EXCLUDED.tarifa_facil, tarifa_intermedia=EXCLUDED.tarifa_intermedia, creado_por=EXCLUDED.creado_por
+      RETURNING empleado_clave, modalidad, sueldo_base, tarifa_facil, tarifa_intermedia, to_char(vigente_desde,'YYYY-MM-DD') AS vigente_desde
+    `, [empleado, vigenteDesde, modalidad, sueldoBase, tarifaFacil, tarifaIntermedia, req.auth.nombre || req.auth.usuario]);
+    res.json(result.rows[0]);
+  } catch (error) { next(error); }
+});
+
+router.put("/finanzas/pagos/:periodo/:empleado", requireRole("admin"), async (req, res, next) => {
+  const client = await pool.connect();
+  try {
+    const period = req.params.periodo;
+    if (!isValidSalaryPeriod(period)) return res.status(400).json({ error: "Período inválido." });
+    const empleado = employeeKey(req.params.empleado);
+    if (!["oriana", "augusto", "mariano", "german", "luciano"].includes(empleado)) return res.status(400).json({ error: "Empleado inválido." });
+    const amount = Number(req.body.importe_final);
+    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "El importe final debe ser positivo o cero." });
+    const actor = req.auth.nombre || req.auth.usuario;
+    await client.query("BEGIN");
+    const previous = await client.query("SELECT id, importe_final FROM empleado_pagos_mensuales WHERE empleado_clave=$1 AND periodo_trabajo=($2 || '-01')::date FOR UPDATE", [empleado, period]);
+    const payment = await client.query(`INSERT INTO empleado_pagos_mensuales (empleado_clave, periodo_trabajo, importe_final, confirmado_por)
+      VALUES ($1,($2 || '-01')::date,$3,$4) ON CONFLICT (empleado_clave,periodo_trabajo) DO UPDATE SET importe_final=EXCLUDED.importe_final,
+      confirmado_por=EXCLUDED.confirmado_por,updated_at=now() RETURNING id, empleado_clave, importe_final`, [empleado, period, amount, actor]);
+    await client.query("INSERT INTO empleado_pagos_historial (pago_id, importe_anterior, importe_nuevo, modificado_por) VALUES ($1,$2,$3,$4)", [payment.rows[0].id, previous.rows[0]?.importe_final ?? null, amount, actor]);
+    await client.query("COMMIT");
+    res.json(payment.rows[0]);
+  } catch (error) { await client.query("ROLLBACK").catch(() => {}); next(error); } finally { client.release(); }
+});
+
+router.post("/clientes/:id/abono-proximo-mes", requireRole("admin"), async (req, res, next) => {
+  try {
+    const amount = Number(req.body.importe);
+    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "El abono debe ser positivo o cero." });
+    const now = new Date();
+    const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const vigenteDesde = `${nextPeriod(current)}-01`;
+    const result = await pool.query(`INSERT INTO cliente_abonos (cliente_id,vigente_desde,importe,creado_por) VALUES ($1,$2,$3,$4)
+      ON CONFLICT (cliente_id,vigente_desde) DO UPDATE SET importe=EXCLUDED.importe,creado_por=EXCLUDED.creado_por
+      RETURNING cliente_id,importe,to_char(vigente_desde,'YYYY-MM-DD') AS vigente_desde`, [req.params.id, vigenteDesde, amount, req.auth.nombre || req.auth.usuario]);
+    res.json(result.rows[0]);
+  } catch (error) { if (error.code === "23503") return res.status(404).json({ error: "Cliente no encontrado." }); next(error); }
 });
 
 router.post("/usuarios", requireRole("admin"), async (req, res, next) => {
@@ -982,7 +1056,8 @@ router.get("/clientes", async (req, res, next) => {
         to_char(c.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
         cfg.dias_historias,
         cfg.disenador_responsable,
-        cfg.abono_mensual,
+        abono.importe AS abono_mensual,
+        to_char(abono.vigente_desde, 'YYYY-MM-DD') AS abono_vigente_desde,
         to_char(cfg.vigente_desde, 'YYYY-MM-DD') AS configuracion_vigente_desde,
         (cfg.id IS NOT NULL) AS configuracion_completa,
         c.grupo_feed_id,
@@ -998,10 +1073,17 @@ router.get("/clientes", async (req, res, next) => {
         ORDER BY cc.vigente_desde DESC
         LIMIT 1
       ) cfg ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT ca.importe, ca.vigente_desde
+        FROM cliente_abonos ca
+        WHERE ca.cliente_id = c.id AND ca.vigente_desde <= $1::date
+        ORDER BY ca.vigente_desde DESC LIMIT 1
+      ) abono ON TRUE
       LEFT JOIN grupos_feed gf ON gf.id = c.grupo_feed_id
       ORDER BY c.id
     `, [periodo]);
-    res.json(result.rows);
+    if (req.auth.rol === "admin") return res.json(result.rows);
+    res.json(result.rows.map(({ abono_mensual, abono_vigente_desde, ...cliente }) => cliente));
   } catch (error) {
     next(error);
   }
@@ -1053,6 +1135,11 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
          VALUES ($1, $2, $3, $4, $5::smallint[], $6, $7)`,
         [result.rows[0].id, vigenteDesde, config.cuota_reels, config.cuota_carruseles,
           config.dias_historias, config.disenador_responsable, config.abono_mensual],
+      );
+      await client.query(
+        `INSERT INTO cliente_abonos (cliente_id, vigente_desde, importe, creado_por)
+         VALUES ($1, $2, $3, $4) ON CONFLICT (cliente_id, vigente_desde) DO UPDATE SET importe = EXCLUDED.importe`,
+        [result.rows[0].id, `${nextPeriod(new Date().toISOString().slice(0, 7))}-01`, config.abono_mensual, req.auth.nombre || req.auth.usuario],
       );
     }
     await client.query("COMMIT");

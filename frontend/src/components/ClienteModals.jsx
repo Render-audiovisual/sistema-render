@@ -26,6 +26,7 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
   const [cuotaFeedCarruseles, setCuotaFeedCarruseles] = useState(
     String(cliente.cuota_feed_carruseles ?? 0),
   );
+  const [abonoMensual, setAbonoMensual] = useState(String(cliente.abono_mensual ?? ""));
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
 
@@ -95,6 +96,16 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
         const renamed = await response.json();
         if (!response.ok) throw new Error(renamed.error || "La cuota se guardó, pero no se pudo cambiar el nombre.");
         return { ...renamed, ...data, nombre: renamed.nombre };
+      })
+      .then(async (data) => {
+        if (abonoMensual === "" || Number(abonoMensual) === Number(cliente.abono_mensual)) return data;
+        const response = await fetch(`/api/clientes/${cliente.id}/abono-proximo-mes`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ importe: Number(abonoMensual) }),
+        });
+        const fee = await response.json();
+        if (!response.ok) throw new Error(fee.error || "No se pudo programar el abono.");
+        return { ...data, abono_proximo_mes: fee.importe, abono_proximo_vigente_desde: fee.vigente_desde };
       })
       .then((data) => onGuardado({ ...cliente, ...data }))
       .catch((err) => setError(err.message))
@@ -182,6 +193,11 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
                 : `${cuotaReels || 0} reels · ${cuotaCarruseles || 0} carruseles`}
             </small>
           </div>
+          <label className="cliente-service-field">
+            <span>Abono mensual de Render</span>
+            <input min="0" step="1" type="number" placeholder="$ 0" value={abonoMensual} onChange={(event) => setAbonoMensual(event.target.value)} />
+            <small>Por seguridad financiera, cualquier cambio comienza automáticamente el mes próximo y conserva el valor anterior.</small>
+          </label>
           {error && <div className="caption login-error">{error}</div>}
           <div className="modal-actions">
             <button className="btn" type="button" disabled={guardando} onClick={onClose}>

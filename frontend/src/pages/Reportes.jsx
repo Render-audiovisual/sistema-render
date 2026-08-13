@@ -521,7 +521,7 @@ export function ReportesEquipoPage() {
     <main aria-label="Render platform reportes equipo">
       <div className="frame">
         <div className="content reportes-page">
-          <header className="module-intro"><div><div className="section-label">Reportes</div><h2>Reporte del equipo</h2><p>{esVistaAdmin ? "Entregas realizadas y pendientes del equipo." : "Tu objetivo, tareas completadas y pendientes."}</p></div></header>
+          <header className="module-intro"><div><div className="section-label">Reportes</div><h2>Reporte del equipo</h2><p>{esVistaAdmin ? "Entregas realizadas y pendientes del equipo." : "Tu objetivo, tareas completadas y pendientes."}</p></div>{esVistaAdmin && <nav className="report-section-tabs" aria-label="Secciones del reporte"><a className="active" href="/reportes-historias">Equipo</a><a href="/sueldos">Finanzas</a></nav>}</header>
 
           {error && (
             <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>

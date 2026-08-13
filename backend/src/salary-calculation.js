@@ -51,6 +51,7 @@ function taskItem(task) {
     date: taskDate(task),
     state: task.estado,
     complete: isComplete(task),
+    difficulty: normalizePerson(task.propiedades_extra?.dificultad || ""),
   };
 }
 

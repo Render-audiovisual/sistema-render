@@ -102,7 +102,10 @@ test("la navegación de empleados expone inicio, tareas, notas, reportes y perfi
   assert.match(sidebarSource, /planificacion: esAdmin \?/);
   assert.match(sidebarSource, /gestion: \[/);
   assert.match(sidebarSource, /href: "\/reportes-historias", label: "Reportes"/);
-  assert.match(sidebarSource, /\.\.\.\(esAdmin \? \[\{ href: "\/sueldos"/);
+  assert.doesNotMatch(sidebarSource, /href: "\/sueldos", label: "Sueldos"/);
+  const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
+  assert.match(reportesSource, /esVistaAdmin && <nav className="report-section-tabs"/);
+  assert.match(reportesSource, /href="\/sueldos">Finanzas/);
   assert.match(sidebarSource, /\{esAdmin && <details/);
   assert.doesNotMatch(utilsSource, /getUsuarioKey\(sesion\?\.usuario\?\.usuario\) === "franco"/);
 });

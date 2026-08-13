@@ -46,7 +46,6 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
     ] : [],
     gestion: [
       { href: "/reportes-historias", label: "Reportes", icon: "reports" },
-      ...(esAdmin ? [{ href: "/sueldos", label: "Sueldos", icon: "salary" }] : []),
     ],
     admin: esAdmin ? [
       { href: "/clientes", label: "Clientes", icon: "clients" },

@@ -20,7 +20,19 @@ function labelPeriod(period) {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-function SalaryCard({ employee }) {
+function SalaryCard({ employee, period, onSaved }) {
+  const [finalAmount, setFinalAmount] = useState(employee.finalPayment == null ? "" : String(employee.finalPayment));
+  const [nextSalary, setNextSalary] = useState(employee.model === "fixed" ? String(employee.total || "") : "");
+  const [saving, setSaving] = useState("");
+  const save = async (url, body, kind) => {
+    setSaving(kind);
+    try {
+      const response = await fetch(url, { method: kind === "payment" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo guardar.");
+      onSaved();
+    } finally { setSaving(""); }
+  };
   const unit = employee.name === "Oriana" ? "entregas" : employee.name === "Augusto" ? "carruseles" : employee.name === "Luciano" ? "videos" : "tareas";
   const chartMax = Math.max(employee.target, employee.completed, 1);
   return (
@@ -47,6 +59,10 @@ function SalaryCard({ employee }) {
           <small>Sobre {money.format(employee.total)} · proporcional al cumplimiento</small>
         </div>
       )}
+      <div className="salary-admin-controls">
+        {employee.model === "fixed" && <label><span>Sueldo desde el mes próximo</span><div><input type="number" min="0" value={nextSalary} onChange={(event) => setNextSalary(event.target.value)} /><button type="button" disabled={saving} onClick={() => save(`/api/finanzas/compensaciones/${employee.key}`, { sueldo_base: Number(nextSalary) }, "salary")}>Programar</button></div></label>}
+        <label><span>Pago final de este período</span><div><input type="number" min="0" placeholder={String(employee.earned ?? 0)} value={finalAmount} onChange={(event) => setFinalAmount(event.target.value)} /><button type="button" disabled={saving || finalAmount === ""} onClick={() => save(`/api/finanzas/pagos/${period}/${employee.key}`, { importe_final: Number(finalAmount) }, "payment")}>Confirmar</button></div></label>
+      </div>
       <div className="salary-daily">
         <div><strong>Avance diario</strong><span>{employee.completed} {unit}</span></div>
         <div className="salary-daily-bars" aria-label="Progreso acumulado por día">
@@ -73,6 +89,7 @@ export function SueldosPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -89,30 +106,30 @@ export function SueldosPage() {
       .then(setData)
       .catch((reason) => setError(reason.message))
       .finally(() => setLoading(false));
-  }, [period]);
+  }, [period, refresh]);
 
   const summary = useMemo(() => data?.summary, [data]);
   return (
     <main className="page-shell salary-page">
       <section className="salary-hero">
-        <div><span className="section-label">Gestión interna · Solo Líder</span><h1>¿Cuánto trabajo realizó el equipo?</h1><p>Avance mensual y sueldo proporcional, calculados desde el trabajo ya registrado.</p></div>
+        <div><span className="section-label">Reportes · Finanzas · Solo Líder</span><h1>Resultado mensual estimado</h1><p>Ingresos acordados y costo del equipo, vinculados al trabajo ya registrado.</p></div>
         <div className="salary-period-control">
           <button type="button" onClick={() => setPeriod(movePeriod(period, -1))} aria-label="Mes anterior">←</button>
           <strong>{labelPeriod(period)}</strong>
           <button type="button" onClick={() => setPeriod(movePeriod(period, 1))} aria-label="Mes siguiente">→</button>
         </div>
       </section>
+      <nav className="report-section-tabs" aria-label="Secciones del reporte"><a href="/reportes-historias">Equipo</a><a className="active" href="/sueldos">Finanzas</a></nav>
       {loading && <div className="salary-state">Calculando el avance del mes…</div>}
       {error && <div className="salary-state is-error"><strong>No se pudo cargar Sueldos.</strong><span>{error}</span></div>}
       {!loading && !error && data && <>
         <section className="salary-summary" aria-label="Resumen mensual">
-          <div><span>Ingresos configurados</span><strong>{money.format(data.clientIncome?.total || 0)}</strong><small>{data.clientIncome?.configuredClients || 0} clientes con abono cargado</small></div>
-          <div><span>Devengado calculable</span><strong>{money.format(summary.earned)}</strong></div>
-          <div><span>Resta para completar</span><strong>{money.format(summary.remaining)}</strong></div>
-          <div><span>Avance promedio</span><strong>{summary.averageProgress}%</strong></div>
+          <div><span>Facturación acordada</span><strong>{money.format(data.clientIncome?.total || 0)}</strong><small>{data.clientIncome?.configuredClients || 0} clientes configurados</small></div>
+          <div><span>Costo estimado del equipo</span><strong>{money.format(summary.earned)}</strong><small>Se reemplaza por el pago final confirmado</small></div>
+          <div><span>Resultado estimado</span><strong>{money.format(data.finance?.estimatedResult || 0)}</strong><small>Trabajo de {labelPeriod(period)} · movimiento en {labelPeriod(data.finance?.cashPeriod || movePeriod(period, 1))}</small></div>
         </section>
         {summary.pendingConfigurations.length > 0 && <div className="salary-banner"><strong>Cálculo incompleto:</strong> falta definir el valor por video de {summary.pendingConfigurations.join(", ")}. No se inventó ningún importe.</div>}
-        <section className="salary-grid">{data.employees.map((employee) => <SalaryCard key={employee.name} employee={employee} />)}</section>
+        <section className="salary-grid">{data.employees.map((employee) => <SalaryCard key={employee.name} employee={employee} period={period} onSaved={() => setRefresh((value) => value + 1)} />)}</section>
         <footer className="salary-notes"><strong>Cómo leer este módulo</strong>{data.notes.map((note) => <p key={note}>{note}</p>)}</footer>
       </>}
     </main>
