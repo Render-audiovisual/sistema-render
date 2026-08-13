@@ -132,10 +132,11 @@ function canonicalWilsonPerson(value) {
   return normalized;
 }
 
-function wilsonPersonAliases(value) {
+export function wilsonPersonAliases(value) {
   const canonical = canonicalWilsonPerson(value);
   if (canonical === "luciano") return ["luciano", "milton", "milton luciano"];
   if (canonical === "mariano mesa") return ["mariano", "mariano mesa", "mesa"];
+  if (canonical === "german") return ["german", "germán"];
   return canonical ? [canonical] : [];
 }
 

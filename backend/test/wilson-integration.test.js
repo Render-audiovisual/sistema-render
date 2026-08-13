@@ -13,6 +13,7 @@ import {
   normalizeWilsonText,
   requireWilsonService,
   validateWilsonConfirmation,
+  wilsonPersonAliases,
 } from "../src/wilson-integration.js";
 
 test("Mia convierte una grabación completa en un evento breve para líderes", () => {
@@ -69,6 +70,8 @@ test("los permisos privados respetan rol, identidad y el alias Milton de Luciano
   assert.equal(canWilsonAssignPrivately({ actorName: "Oriana", actorRole: "community" }, "Germán"), false);
   assert.equal(canWilsonAssignPrivately({ actorName: "Augusto", actorRole: "diseno" }, "Mariano"), false);
   assert.equal(canWilsonAssignPrivately({ actorName: "Franco", actorRole: "lider", leader: true }, "Germán"), true);
+  assert.deepEqual(wilsonPersonAliases("Germán"), ["german", "germán"]);
+  assert.deepEqual(wilsonPersonAliases("Luciano"), ["luciano", "milton", "milton luciano"]);
 });
 
 test("Wilson detecta tareas con el mismo material o contexto operativo", () => {
