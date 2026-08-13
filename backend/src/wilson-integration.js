@@ -81,9 +81,13 @@ function whatsappConfig(env) {
 }
 
 function matchesIdentifier(value, configuredValues, defaultHashes) {
-  if (configuredValues.length) return configuredValues.includes(value);
-  const hash = crypto.createHash("sha256").update(String(value || "")).digest("hex");
-  return defaultHashes.includes(hash);
+  const rawValue = String(value || "").trim();
+  const candidates = rawValue.startsWith("+") ? [rawValue, rawValue.slice(1)] : [rawValue];
+  if (configuredValues.length) return candidates.some((candidate) => configuredValues.includes(candidate));
+  return candidates.some((candidate) => {
+    const hash = crypto.createHash("sha256").update(candidate).digest("hex");
+    return defaultHashes.includes(hash);
+  });
 }
 
 export function validateWilsonConfirmation({ confirmed, confirmedAt, now = Date.now(), maxAgeMs = CONFIRMATION_MAX_AGE_MS }) {

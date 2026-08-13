@@ -122,6 +122,20 @@ test("la API técnica de WhatsApp exige usuario y grupo permitidos dentro de la 
   assert.equal(request.wilson.actorName, "Augusto");
   assert.equal(request.wilson.groupId, "grupo-render");
 
+  const internationalRequest = {
+    ...request,
+    headers: sign("nonce-wa-international", { "x-wilson-actor-id": "+persona-1" }),
+  };
+  const internationalMiddleware = requireWilsonService({
+    WILSON_PUBLIC_KEY: publicKey.export({ type: "spki", format: "pem" }),
+    WILSON_WHATSAPP_CONFIG: JSON.stringify({
+      allowedIds: ["persona-1"], groupIds: ["grupo-render"], leaderIds: ["persona-1"],
+    }),
+  }, () => now);
+  let internationalContinued = false;
+  internationalMiddleware(internationalRequest, response(), () => { internationalContinued = true; });
+  assert.equal(internationalContinued, true);
+
   const otherGroup = response();
   middleware({ ...request, headers: sign("nonce-wa-other", { "x-wilson-group-id": "grupo-ajeno" }) }, otherGroup, () => assert.fail());
   assert.equal(otherGroup.statusCode, 403);
