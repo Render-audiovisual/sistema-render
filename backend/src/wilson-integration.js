@@ -13,6 +13,9 @@ const DEFAULT_ALLOWED_WHATSAPP_ID_HASHES = [
 const DEFAULT_WHATSAPP_GROUP_HASHES = [
   "2e0c668340e7a99aede30b6867a22268a59590fa5fc8f930f1897dc53b88de41",
 ];
+const OWNER_WHATSAPP_ID_HASHES = [
+  "778f6cd718a5c563208520131273c07812deaa72272a9d8a4503383a1eb4bfd2",
+];
 const DEFAULT_LEADER_WHATSAPP_ID_HASHES = DEFAULT_ALLOWED_WHATSAPP_ID_HASHES.slice(0, 3);
 const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
 const CONFIRMATION_MAX_AGE_MS = 10 * 60 * 1000;
@@ -117,6 +120,7 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
     const actorAllowed = channel === "whatsapp"
       ? (Boolean(systemActorId) && actorId === systemActorId)
         || matchesIdentifier(actorId, allowedIds, DEFAULT_ALLOWED_WHATSAPP_ID_HASHES)
+        || matchesIdentifier(actorId, [], OWNER_WHATSAPP_ID_HASHES)
       : allowedIds.includes(actorId);
     if (!actorAllowed) return res.status(403).json({ error: `Esta cuenta de ${channel === "whatsapp" ? "WhatsApp" : "Telegram"} no puede operar tareas.` });
     if (channel === "whatsapp" && !matchesIdentifier(groupId, whatsapp.groupIds, DEFAULT_WHATSAPP_GROUP_HASHES)) {
@@ -390,7 +394,8 @@ async function consumeWilsonConfirmation(db, req, res, operation, taskId = null)
 
 function isWilsonLeader(req, env) {
   if (req.wilson.channel === "telegram") return csv(env.WILSON_LEADER_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(",")).includes(req.wilson.actorId);
-  return matchesIdentifier(req.wilson.actorId, whatsappConfig(env).leaderIds, DEFAULT_LEADER_WHATSAPP_ID_HASHES);
+  return matchesIdentifier(req.wilson.actorId, whatsappConfig(env).leaderIds, DEFAULT_LEADER_WHATSAPP_ID_HASHES)
+    || matchesIdentifier(req.wilson.actorId, [], OWNER_WHATSAPP_ID_HASHES);
 }
 
 function isWilsonSystemActor(req, env) {
