@@ -15,6 +15,11 @@ import { Modal } from "./Modal.jsx";
 
 export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
   const esFeedCompartido = Boolean(cliente.grupo_feed_id);
+  const estadoTexto = {
+    rojo: "Necesita atención",
+    amarillo: "En seguimiento",
+    verde: "Buen ritmo",
+  }[estado] || getEstadoLabel(estado);
   const [nombre, setNombre] = useState(cliente.nombre || "");
   const [cuotaReels, setCuotaReels] = useState(String(cliente.cuota_reels ?? 0));
   const [cuotaCarruseles, setCuotaCarruseles] = useState(
@@ -299,9 +304,8 @@ export function DetalleClienteModal({
           <div className="modal-client-summary">
             <div className="modal-client-status">
               <span className={`semaforo ${estado}`}></span>
-              <strong>
-                {getEstadoLabel(estado)} · {porcentajes.objetivo}% objetivo mes
-              </strong>
+              <strong>{estadoTexto}</strong>
+              <span>{porcentajes.objetivo}% del objetivo mensual</span>
             </div>
             <div className="caption">
               {esFeedCompartido
@@ -320,26 +324,26 @@ export function DetalleClienteModal({
               <>
                 <div>
                   <span>Reels compartidos</span>
-                  <strong>{reelsPublicados}</strong>
-                  <small>de {cliente.cuota_feed_reels ?? 0} mensuales</small>
+                  <strong>{reelsPublicados} <small>/ {cliente.cuota_feed_reels ?? 0}</small></strong>
+                  <small>publicados este mes</small>
                 </div>
                 <div>
                   <span>Carruseles compartidos</span>
-                  <strong>{carruselesPublicados}</strong>
-                  <small>de {cliente.cuota_feed_carruseles ?? 0} mensuales</small>
+                  <strong>{carruselesPublicados} <small>/ {cliente.cuota_feed_carruseles ?? 0}</small></strong>
+                  <small>publicados este mes</small>
                 </div>
               </>
             ) : (
               <>
                 <div>
                   <span>Reels</span>
-                  <strong>{reelsPublicados}</strong>
-                  <small>de {cliente.cuota_reels ?? 0} mensuales</small>
+                  <strong>{reelsPublicados} <small>/ {cliente.cuota_reels ?? 0}</small></strong>
+                  <small>publicados este mes</small>
                 </div>
                 <div>
                   <span>Carruseles</span>
-                  <strong>{carruselesPublicados}</strong>
-                  <small>de {cliente.cuota_carruseles ?? 0} mensuales</small>
+                  <strong>{carruselesPublicados} <small>/ {cliente.cuota_carruseles ?? 0}</small></strong>
+                  <small>publicados este mes</small>
                 </div>
               </>
             )}
@@ -348,35 +352,39 @@ export function DetalleClienteModal({
           {error && <div className="caption login-error">{error}</div>}
           {mensajeExito && <div className="caption cliente-success">{mensajeExito}</div>}
 
-          <table className="cliente-detail-table">
-            <thead>
-              <tr>
-                <th>Pieza</th>
-                <th>Responsable</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {piezas.map((pieza) => (
-                <tr key={pieza.id}>
-                  <td>{pieza.pieza}</td>
-                  <td>{pieza.responsable}</td>
-                  <td>{pieza.estado}</td>
-                </tr>
-              ))}
-              {piezas.length === 0 && (
-                <tr>
-                  <td colSpan="3">
-                    Sin historias ni publicaciones cargadas para este cliente.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <details className="cliente-detail-pieces">
+            <summary>
+              <span><strong>Piezas del mes</strong><small>Historias, reels y carruseles</small></span>
+              <span className="cliente-detail-count">{piezas.length}</span>
+            </summary>
+            <div className="cliente-detail-table-wrap">
+              <table className="cliente-detail-table">
+                <thead>
+                  <tr><th>Pieza</th><th>Responsable</th><th>Estado</th></tr>
+                </thead>
+                <tbody>
+                  {piezas.map((pieza) => (
+                    <tr key={pieza.id}><td>{pieza.pieza}</td><td>{pieza.responsable}</td><td>{pieza.estado}</td></tr>
+                  ))}
+                  {piezas.length === 0 && (
+                    <tr><td colSpan="3">Sin historias ni publicaciones cargadas para este cliente.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </details>
 
           <div className="modal-actions">
             <button
               className="btn primary"
+              type="button"
+              disabled={enviando !== null}
+              onClick={() => setEditandoCuota(true)}
+            >
+              Editar cliente
+            </button>
+            <button
+              className="btn"
               type="button"
               disabled={enviando !== null}
               onClick={() => handleAvisar("Augusto")}
@@ -390,14 +398,6 @@ export function DetalleClienteModal({
               onClick={() => handleAvisar("Líder")}
             >
               {enviando === "Líder" ? "Enviando..." : "Escalar al Líder"}
-            </button>
-            <button
-              className="btn"
-              type="button"
-              disabled={enviando !== null}
-              onClick={() => setEditandoCuota(true)}
-            >
-              Editar cliente
             </button>
             <button
               className="btn danger"

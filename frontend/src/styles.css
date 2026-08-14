@@ -6165,12 +6165,24 @@ tr:hover .sheet-row-actions {
 }
 
 .modal-client-summary {
-  background: #f8f9fa;
-  border: 1px solid #e8eaed;
-  border-radius: 8px;
+  background: #f7f8f3;
+  border: 1px solid #e1e4d9;
+  border-radius: 12px;
   display: grid;
-  gap: 6px;
-  padding: 12px;
+  gap: 8px;
+  padding: 14px 16px;
+}
+
+.modal-client-status {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.modal-client-status > span:last-child {
+  color: #73786d;
+  font-size: 13px;
 }
 
 .cliente-detail-metrics {
@@ -6181,19 +6193,81 @@ tr:hover .sheet-row-actions {
 }
 
 .cliente-detail-metrics > div {
-  border: 1px solid #e8eaed;
-  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e1e4d9;
+  border-radius: 12px;
   display: grid;
   gap: 4px;
-  padding: 10px;
+  padding: 12px 14px;
 }
 
 .cliente-detail-metrics strong {
-  font-size: 20px;
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.cliente-detail-metrics strong small {
+  color: #777c71;
+  font-size: 14px;
+  font-weight: 700;
 }
 
 .cliente-detail-table {
-  margin-top: 8px;
+  margin: 0;
+  width: 100%;
+}
+
+.cliente-detail-pieces {
+  border: 1px solid #e1e4d9;
+  border-radius: 12px;
+  margin-top: 14px;
+  overflow: hidden;
+}
+
+.cliente-detail-pieces > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  list-style: none;
+  padding: 14px 16px;
+}
+
+.cliente-detail-pieces > summary::-webkit-details-marker {
+  display: none;
+}
+
+.cliente-detail-pieces > summary > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.cliente-detail-pieces > summary small {
+  color: #7b8075;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.cliente-detail-count {
+  align-items: center;
+  background: #eef1e6;
+  border-radius: 999px;
+  color: #4e5545;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  justify-content: center;
+  min-width: 30px;
+  padding: 5px 9px;
+}
+
+.cliente-detail-pieces[open] > summary {
+  border-bottom: 1px solid #e1e4d9;
+}
+
+.cliente-detail-table-wrap {
+  max-height: 310px;
+  overflow: auto;
 }
 
 .lider-dashboard-header {
