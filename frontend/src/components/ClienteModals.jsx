@@ -15,11 +15,6 @@ import { Modal } from "./Modal.jsx";
 
 export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
   const esFeedCompartido = Boolean(cliente.grupo_feed_id);
-  const estadoTexto = {
-    rojo: "Necesita atención",
-    amarillo: "En seguimiento",
-    verde: "Buen ritmo",
-  }[estado] || getEstadoLabel(estado);
   const [nombre, setNombre] = useState(cliente.nombre || "");
   const [cuotaReels, setCuotaReels] = useState(String(cliente.cuota_reels ?? 0));
   const [cuotaCarruseles, setCuotaCarruseles] = useState(
@@ -296,6 +291,11 @@ export function DetalleClienteModal({
     (publicacion) => publicacion.estado === "publicada" && publicacion.tipo === "carrusel",
   ).length;
   const esFeedCompartido = Boolean(cliente.grupo_feed_id);
+  const estadoTexto = {
+    rojo: "Necesita atención",
+    amarillo: "En seguimiento",
+    verde: "Buen ritmo",
+  }[estado] || getEstadoLabel(estado);
 
   return (
     <>
