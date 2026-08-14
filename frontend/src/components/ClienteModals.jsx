@@ -374,7 +374,7 @@ export function DetalleClienteModal({
             </div>
           </details>
 
-          <div className="modal-actions">
+          <div className="modal-actions cliente-detail-actions">
             <button
               className="btn primary"
               type="button"
@@ -400,7 +400,7 @@ export function DetalleClienteModal({
               {enviando === "Líder" ? "Enviando..." : "Escalar al Líder"}
             </button>
             <button
-              className="btn danger"
+              className="btn danger cliente-detail-delete"
               type="button"
               disabled={enviando !== null}
               onClick={handleEliminarCliente}

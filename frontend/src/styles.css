@@ -6270,6 +6270,50 @@ tr:hover .sheet-row-actions {
   overflow: auto;
 }
 
+.cliente-detail-actions {
+  align-items: stretch;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.cliente-detail-actions .btn {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 46px;
+  padding: 10px 14px;
+  text-align: center;
+  white-space: normal;
+}
+
+.cliente-detail-actions .cliente-detail-delete {
+  background: transparent;
+  border-color: transparent;
+  grid-column: 1 / -1;
+  justify-self: end;
+  min-height: 36px;
+  padding: 6px 8px;
+  width: auto;
+}
+
+.cliente-detail-actions .cliente-detail-delete:hover {
+  background: #fff3f2;
+  border-color: #f4c7c3;
+}
+
+@media (max-width: 640px) {
+  .cliente-detail-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .cliente-detail-actions .cliente-detail-delete {
+    grid-column: auto;
+    justify-self: stretch;
+  }
+}
+
 .lider-dashboard-header {
   align-items: center;
   display: flex;
