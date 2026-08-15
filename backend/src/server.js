@@ -358,7 +358,7 @@ router.get("/usuarios", async (req, res, next) => {
   }
 });
 
-router.get("/reportes/datos", async (req, res, next) => {
+router.get("/reportes/datos", requireRole("admin"), async (req, res, next) => {
   try {
     const [tareas, historias, publicaciones, clientes, usuarios, tareasRenderOs] = await Promise.all([
       pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
@@ -430,8 +430,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
           AND p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
       `, [period]),
       pool.query(`
-        SELECT COALESCE(SUM(config.abono_mensual), 0)::numeric AS total,
-               COUNT(config.abono_mensual)::int AS clientes_configurados
+        SELECT c.id, c.nombre, config.abono_mensual
         FROM clientes c
         LEFT JOIN LATERAL (
           SELECT source.abono_mensual
@@ -465,16 +464,22 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       histories: historiesResult.rows,
       publications: publicationsResult.rows,
     }), compensationResult.rows, paymentsResult.rows);
-    const income = Number(clientIncomeResult.rows[0].total || 0);
+    const clientIncomeItems = clientIncomeResult.rows
+      .filter((item) => item.abono_mensual != null)
+      .map((item) => ({ id: item.id, name: item.nombre, amount: Number(item.abono_mensual) }));
+    const income = clientIncomeItems.reduce((total, item) => total + item.amount, 0);
     res.json({
       ...dashboard,
       clientIncome: {
         total: income,
-        configuredClients: clientIncomeResult.rows[0].clientes_configurados,
+        configuredClients: clientIncomeItems.length,
+        items: clientIncomeItems,
       },
       finance: {
         workPeriod: period,
         cashPeriod: nextPeriod(period),
+        otherExpenses: 0,
+        otherExpensesConfigured: false,
         estimatedResult: income - dashboard.summary.payablePayroll,
       },
     });

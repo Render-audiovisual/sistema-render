@@ -10,6 +10,7 @@ const RUBROS = ["Gastronomía", "Tecnología", "Turismo", "Educación", "Automot
 const WEEKDAYS = [
   [1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"],
 ];
+const MONEY = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
 
 function emptyClientForm() {
   return {
@@ -342,6 +343,10 @@ export function ClientesAdminPage() {
                         <strong>{cuotaReels} reels · {cuotaCarruseles} carruseles</strong>
                         <small>{cliente.historiasMes ? `${cliente.historiasMes} historias planificadas` : "Historias sin frecuencia cargada"}</small>
                       </div>
+                      <div className="clientes-portfolio-commercial">
+                        <strong>{MONEY.format(Number(cliente.abono_mensual) || 0)}</strong>
+                        <small>Pago sin registrar</small>
+                      </div>
                       <div className="clientes-portfolio-progress">
                         <strong>{publicadas} de {comprometidas} publicados</strong>
                         <span><i style={{ width: `${Math.min(progreso, 100)}%` }} /></span>
@@ -406,6 +411,11 @@ export function ClientesAdminPage() {
                       )}
                     </div>
                     <div className="cliente-mobile-status-grid">
+                      <div>
+                        <span>Cuota mensual</span>
+                        <strong>{MONEY.format(Number(cliente.abono_mensual) || 0)}</strong>
+                        <small>Pago sin registrar</small>
+                      </div>
                       <div>
                         <span>Historias</span>
                         <strong>{cliente.historiasPublicadas} de {cliente.historiasMes} OK</strong>

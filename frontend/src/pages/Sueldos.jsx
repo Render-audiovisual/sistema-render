@@ -33,8 +33,6 @@ function SalaryCard({ employee, period, onSaved }) {
       onSaved();
     } finally { setSaving(""); }
   };
-  const unit = employee.name === "Oriana" ? "entregas" : employee.name === "Augusto" ? "carruseles" : employee.name === "Luciano" ? "videos" : "tareas";
-  const chartMax = Math.max(employee.target, employee.completed, 1);
   return (
     <article className={`salary-card salary-card-${employee.key}`}>
       <header className="salary-card-header">
@@ -64,14 +62,8 @@ function SalaryCard({ employee, period, onSaved }) {
         {employee.model === "fixed" && <label><span>Sueldo desde el mes próximo</span><div><input type="number" min="0" value={nextSalary} onChange={(event) => setNextSalary(event.target.value)} /><button type="button" disabled={saving} onClick={() => save(`/api/finanzas/compensaciones/${employee.key}`, { sueldo_base: Number(nextSalary) }, "salary")}>Programar</button></div></label>}
         <label><span>Pago final de este período</span><div><input type="number" min="0" placeholder={String(employee.earned ?? 0)} value={finalAmount} onChange={(event) => setFinalAmount(event.target.value)} /><button type="button" disabled={saving || finalAmount === ""} onClick={() => save(`/api/finanzas/pagos/${period}/${employee.key}`, { importe_final: Number(finalAmount) }, "payment")}>Confirmar</button></div></label>
       </div>
-      <div className="salary-daily">
-        <div><strong>Avance diario</strong><span>{employee.completed} {unit}</span></div>
-        <div className="salary-daily-bars" aria-label="Progreso acumulado por día">
-          {employee.dailyProgress.map((day) => <i key={day.day} style={{ height: `${Math.max(8, (day.completed / chartMax) * 100)}%` }} title={`Día ${day.day}: ${day.completed}`} />)}
-        </div>
-      </div>
       <details className="salary-detail">
-        <summary>Ver trabajo incluido ({employee.items.length})</summary>
+        <summary>Comprobar trabajo considerado ({employee.items.length})</summary>
         {employee.items.length ? <div className="salary-detail-list">
           {employee.items.map((item) => <div key={item.key}>
             <span className={item.complete ? "is-complete" : ""}>{item.complete ? "✓" : "○"}</span>
@@ -113,7 +105,7 @@ export function SueldosPage() {
   return (
     <main className="page-shell salary-page">
       <section className="salary-hero">
-        <div><span className="section-label">Reportes · Finanzas · Solo Líder</span><h1>Resultado mensual estimado</h1><p>Ingresos acordados y costo del equipo, vinculados al trabajo ya registrado.</p></div>
+        <div><span className="section-label">Finanzas · Solo Líder</span><h1>¿Cómo está Render este mes?</h1><p>Ingresos acordados, costos y resultado mensual en una sola vista.</p></div>
         <div className="salary-period-control">
           <button type="button" onClick={() => setPeriod(movePeriod(period, -1))} aria-label="Mes anterior">←</button>
           <strong>{labelPeriod(period)}</strong>
@@ -122,13 +114,18 @@ export function SueldosPage() {
       </section>
       <nav className="report-section-tabs" aria-label="Secciones del reporte"><a href="/reportes-historias">Equipo</a><a className="active" href="/sueldos">Finanzas</a></nav>
       {loading && <div className="salary-state">Calculando el avance del mes…</div>}
-      {error && <div className="salary-state is-error"><strong>No se pudo cargar Sueldos.</strong><span>{error}</span></div>}
+      {error && <div className="salary-state is-error"><strong>No se pudo cargar Finanzas.</strong><span>{error}</span></div>}
       {!loading && !error && data && <>
         <section className="salary-summary" aria-label="Resumen mensual">
-          <div className="salary-summary-card"><span>Facturación acordada</span><strong>{money.format(data.clientIncome?.total || 0)}</strong><small>{data.clientIncome?.configuredClients || 0} clientes configurados</small></div>
-          <div className="salary-summary-card"><span>Costo estimado del equipo</span><strong>{money.format(summary.earned)}</strong><small>Se reemplaza por el pago final confirmado</small></div>
+          <div className="salary-summary-card"><span>Ingresos acordados</span><strong>{money.format(data.clientIncome?.total || 0)}</strong><small>{data.clientIncome?.configuredClients || 0} clientes · todavía no equivale a cobrado</small></div>
+          <div className="salary-summary-card"><span>Costo del equipo</span><strong>{money.format(summary.earned)}</strong><small>Estimado según trabajo registrado</small></div>
+          <div className="salary-summary-card"><span>Otros gastos</span><strong>Sin registrar</strong><small>No se descuenta ningún importe inventado</small></div>
           <div className="salary-summary-card is-result"><span>Resultado estimado</span><strong>{money.format(data.finance?.estimatedResult || 0)}</strong><small>Trabajo de {labelPeriod(period)} · movimiento en {labelPeriod(data.finance?.cashPeriod || movePeriod(period, 1))}</small></div>
         </section>
+        <details className="finance-income-detail">
+          <summary>Ver ingresos por cliente ({data.clientIncome?.items?.length || 0})</summary>
+          <div>{data.clientIncome?.items?.map((item) => <p key={item.id}><span>{item.name}</span><strong>{money.format(item.amount)}</strong></p>)}</div>
+        </details>
         {summary.pendingConfigurations.length > 0 && <div className="salary-banner"><strong>Cálculo incompleto:</strong> falta definir el valor por video de {summary.pendingConfigurations.join(", ")}. No se inventó ningún importe.</div>}
         <section className="salary-grid">{data.employees.map((employee) => <SalaryCard key={employee.name} employee={employee} period={period} onSaved={() => setRefresh((value) => value + 1)} />)}</section>
         <footer className="salary-notes"><strong>Cómo leer este módulo</strong>{data.notes.map((note) => <p key={note}>{note}</p>)}</footer>

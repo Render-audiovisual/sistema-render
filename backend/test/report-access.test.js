@@ -59,6 +59,13 @@ test("el administrador conserva el reporte completo", () => {
   assert.deepEqual(result.tareasRenderOs, data.tareasRenderOs);
 });
 
+test("el endpoint del reporte general exige rol administrador", () => {
+  assert.match(
+    serverSource,
+    /router\.get\("\/reportes\/datos", requireRole\("admin"\)/,
+  );
+});
+
 test("el resumen compartido expone solo totales diarios y no detalles de tareas", () => {
   const result = summarizeRenderOsByDay([
     { titulo: "Carrusel 1", estado: "publicada", fecha_vencimiento: "2026-08-06", propiedades_extra: {} },

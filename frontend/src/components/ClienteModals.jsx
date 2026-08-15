@@ -204,44 +204,8 @@ export function DetalleClienteModal({
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
   const [editandoCuota, setEditandoCuota] = useState(false);
-  const [mensajeExito, setMensajeExito] = useState("");
   const porcentajes = getPorcentajesCliente(cliente);
   const estado = getEstadoPorObjetivo(porcentajes.objetivo);
-
-  const handleAvisar = (destinatario) => {
-    const mensaje = window.prompt(`Mensaje para ${destinatario}:`);
-    if (!mensaje) return;
-
-    setEnviando(destinatario);
-    setError(null);
-
-    fetch("/api/tareas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        titulo: `${cliente.nombre}: ${mensaje}`,
-        asignado_a: destinatario,
-        cliente_id: cliente.id,
-        estado: "pendiente",
-        motivo: mensaje,
-        workspace: "render_os",
-      }),
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("No se pudo enviar el aviso.");
-        }
-        return response.json();
-      })
-      .then(() => {
-        setMensajeExito(`Tarea creada para ${destinatario} sin cerrar el cliente.`);
-        setEnviando(null);
-      })
-      .catch(() => {
-        setError("No se pudo enviar el aviso. Intentá de nuevo.");
-        setEnviando(null);
-      });
-  };
 
   const handleEliminarCliente = () => {
     const confirmado = window.confirm(
@@ -296,6 +260,8 @@ export function DetalleClienteModal({
     amarillo: "En seguimiento",
     verde: "Buen ritmo",
   }[estado] || getEstadoLabel(estado);
+  const abono = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 })
+    .format(Number(cliente.abono_mensual) || 0);
 
   return (
     <>
@@ -311,6 +277,11 @@ export function DetalleClienteModal({
               {esFeedCompartido
                 ? `Cuota compartida ${cliente.grupo_feed_nombre}: ${cliente.cuota_feed_reels ?? 0} reels · ${cliente.cuota_feed_carruseles ?? 0} carruseles entre ambas cuentas`
                 : `Cuota mensual: ${cliente.cuota_reels ?? 0} reels · ${cliente.cuota_carruseles ?? 0} carruseles`}
+            </div>
+            <div className="cliente-detail-agreement">
+              <div><span>Cuota mensual</span><strong>{abono}</strong></div>
+              <div><span>Estado del pago</span><strong>Sin registrar</strong></div>
+              <div><span>Servicios</span><strong>Reels · Carruseles · Historias</strong></div>
             </div>
           </div>
 
@@ -350,8 +321,6 @@ export function DetalleClienteModal({
           </div>
 
           {error && <div className="caption login-error">{error}</div>}
-          {mensajeExito && <div className="caption cliente-success">{mensajeExito}</div>}
-
           <details className="cliente-detail-pieces">
             <summary>
               <span><strong>Piezas del mes</strong><small>Historias, reels y carruseles</small></span>
@@ -382,22 +351,6 @@ export function DetalleClienteModal({
               onClick={() => setEditandoCuota(true)}
             >
               Editar cliente
-            </button>
-            <button
-              className="btn"
-              type="button"
-              disabled={enviando !== null}
-              onClick={() => handleAvisar("Augusto")}
-            >
-              {enviando === "Augusto" ? "Enviando..." : "Escribir a Augusto"}
-            </button>
-            <button
-              className="btn"
-              type="button"
-              disabled={enviando !== null}
-              onClick={() => handleAvisar("Líder")}
-            >
-              {enviando === "Líder" ? "Enviando..." : "Escalar al Líder"}
             </button>
             <button
               className="btn danger cliente-detail-delete"
