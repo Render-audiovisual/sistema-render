@@ -279,8 +279,7 @@ export function DetalleClienteModal({
                 : `Cuota mensual: ${cliente.cuota_reels ?? 0} reels · ${cliente.cuota_carruseles ?? 0} carruseles`}
             </div>
             <div className="cliente-detail-agreement">
-              <div><span>Cuota mensual</span><strong>{abono}</strong></div>
-              <div><span>Estado del pago</span><strong>Sin registrar</strong></div>
+              <div><span>Abono mensual</span><strong>{abono}</strong></div>
               <div><span>Servicios</span><strong>Reels · Carruseles · Historias</strong></div>
             </div>
           </div>

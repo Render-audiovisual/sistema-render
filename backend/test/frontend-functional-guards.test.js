@@ -119,6 +119,15 @@ test("el abono mensual también puede configurarse en cuentas con cuota comparti
   assert.doesNotMatch(modalsSource, /Number\(abonoMensual\) === Number\(cliente\.abono_mensual\)/);
 });
 
+test("Clientes muestra el abono mensual sin inventar estados de cobranza", () => {
+  const pageSource = readFileSync(new URL("../../frontend/src/pages/Clientes.jsx", import.meta.url), "utf8");
+  const modalsSource = readFileSync(new URL("../../frontend/src/components/ClienteModals.jsx", import.meta.url), "utf8");
+  assert.match(pageSource, /Abono mensual/);
+  assert.match(modalsSource, /<span>Abono mensual<\/span><strong>\{abono\}<\/strong>/);
+  assert.doesNotMatch(pageSource, /Pago sin registrar/);
+  assert.doesNotMatch(modalsSource, /Estado del pago|Sin registrar/);
+});
+
 test("el reporte personal de Oriana separa carruseles, reels e historias publicadas", () => {
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
   assert.match(reportesSource, /resumenOperativo\("carruseles"\)/);

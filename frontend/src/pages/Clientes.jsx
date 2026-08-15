@@ -345,7 +345,7 @@ export function ClientesAdminPage() {
                       </div>
                       <div className="clientes-portfolio-commercial">
                         <strong>{MONEY.format(Number(cliente.abono_mensual) || 0)}</strong>
-                        <small>Pago sin registrar</small>
+                        <small>Abono mensual</small>
                       </div>
                       <div className="clientes-portfolio-progress">
                         <strong>{publicadas} de {comprometidas} publicados</strong>
@@ -412,9 +412,9 @@ export function ClientesAdminPage() {
                     </div>
                     <div className="cliente-mobile-status-grid">
                       <div>
-                        <span>Cuota mensual</span>
+                        <span>Abono mensual</span>
                         <strong>{MONEY.format(Number(cliente.abono_mensual) || 0)}</strong>
-                        <small>Pago sin registrar</small>
+                        <small>Facturación del cliente</small>
                       </div>
                       <div>
                         <span>Historias</span>
