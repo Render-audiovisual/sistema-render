@@ -32,7 +32,7 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
 
   const esCuotaValida = (valor) =>
     valor !== "" && Number.isInteger(Number(valor)) && Number(valor) >= 0;
-  const abonoValido = esFeedCompartido || (abonoMensual !== "" && Number.isFinite(Number(abonoMensual)) && Number(abonoMensual) >= 0);
+  const abonoValido = abonoMensual !== "" && Number.isFinite(Number(abonoMensual)) && Number(abonoMensual) >= 0;
   const formularioValido = nombre.trim().length > 0 && abonoValido && (esFeedCompartido
     ? esCuotaValida(cuotaFeedReels) && esCuotaValida(cuotaFeedCarruseles)
     : esCuotaValida(cuotaReels) && esCuotaValida(cuotaCarruseles));
@@ -90,7 +90,7 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
         return data;
       })
       .then(async (data) => {
-        if (usaConfiguracionMensual || abonoMensual === "" || Number(abonoMensual) === Number(cliente.abono_mensual)) return data;
+        if (usaConfiguracionMensual || abonoMensual === "") return data;
         const response = await fetch(`/api/clientes/${cliente.id}/abono-proximo-mes`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ importe: Number(abonoMensual) }),
@@ -170,13 +170,13 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
             </label>
           </div>
           )}
-          {!esFeedCompartido && <section className="cliente-edit-finance">
+          <section className="cliente-edit-finance">
             <div><span>Abono mensual</span><small>Visible únicamente para Líder.</small></div>
             <label className="cliente-money-input">
               <span>$</span>
               <input min="0" step="1" type="number" placeholder="0" value={abonoMensual} onChange={(event) => setAbonoMensual(event.target.value)} />
             </label>
-          </section>}
+          </section>
           {error && <div className="caption login-error">{error}</div>}
           <div className="modal-actions cliente-edit-actions">
             <button className="btn ghost" type="button" disabled={guardando} onClick={onClose}>

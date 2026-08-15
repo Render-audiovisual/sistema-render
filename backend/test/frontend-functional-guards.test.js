@@ -111,6 +111,14 @@ test("la navegación de empleados expone trabajo y contenido, pero no gestión s
   assert.doesNotMatch(utilsSource, /getUsuarioKey\(sesion\?\.usuario\?\.usuario\) === "franco"/);
 });
 
+test("el abono mensual también puede configurarse en cuentas con cuota compartida", () => {
+  const modalsSource = readFileSync(new URL("../../frontend/src/components/ClienteModals.jsx", import.meta.url), "utf8");
+  assert.match(modalsSource, /<section className="cliente-edit-finance">/);
+  assert.doesNotMatch(modalsSource, /!esFeedCompartido && <section className="cliente-edit-finance">/);
+  assert.match(modalsSource, /\/abono-proximo-mes/);
+  assert.doesNotMatch(modalsSource, /Number\(abonoMensual\) === Number\(cliente\.abono_mensual\)/);
+});
+
 test("el reporte personal de Oriana separa carruseles, reels e historias publicadas", () => {
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
   assert.match(reportesSource, /resumenOperativo\("carruseles"\)/);
