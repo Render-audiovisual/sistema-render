@@ -37,10 +37,27 @@ test("los endpoints financieros exigen Líder y clientes oculta abonos a emplead
 
 test("el abono mensual de Clientes alimenta Finanzas desde una única edición", () => {
   const source = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
-  assert.match(source, /SELECT cc\.abono_mensual, cc\.vigente_desde/);
+  assert.match(source, /SELECT cc\.abono_mensual, cc\.cuota_reels, cc\.cuota_carruseles, cc\.dias_historias/);
   assert.match(source, /COALESCE\(abono\.importe, cfg\.abono_mensual\) AS abono_mensual/);
   assert.match(
     source,
     /router\.post\("\/clientes\/:id\/configuraciones"[\s\S]*INSERT INTO cliente_abonos[\s\S]*ON CONFLICT \(cliente_id, vigente_desde\) DO UPDATE/,
   );
+});
+
+test("Finanzas expone un tablero ejecutivo de facturación sin mezclar cobranzas", () => {
+  const backend = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+  const frontend = readFileSync(new URL("../../frontend/src/pages/Sueldos.jsx", import.meta.url), "utf8");
+  assert.match(backend, /committedPayroll/);
+  assert.match(backend, /accruedPayroll/);
+  assert.match(backend, /estimatedMargin/);
+  assert.match(backend, /billingHistory/);
+  assert.match(frontend, /RENDER FACTURA/);
+  assert.match(frontend, /Sueldos a pagar/);
+  assert.match(frontend, /Devengado hasta hoy/);
+  assert.match(frontend, /Resultado estimado/);
+  assert.match(frontend, /Margen estimado/);
+  assert.doesNotMatch(frontend, /Pago final de este período/);
+  assert.doesNotMatch(frontend, /Otros gastos/);
+  assert.doesNotMatch(frontend, /Programar/);
 });

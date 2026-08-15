@@ -8,81 +8,35 @@ function currentPeriod() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function movePeriod(period, offset) {
-  const [year, month] = period.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1 + offset, 1));
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
 function labelPeriod(period) {
-  const [year, month] = period.split("-").map(Number);
+  const [year, month] = String(period || currentPeriod()).split("-").map(Number);
   const label = monthLabel.format(new Date(Date.UTC(year, month - 1, 1)));
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-function SalaryCard({ employee, period, onSaved }) {
-  const [finalAmount, setFinalAmount] = useState(employee.finalPayment == null ? "" : String(employee.finalPayment));
-  const [nextSalary, setNextSalary] = useState(employee.model === "fixed" ? String(employee.total || "") : "");
-  const [saving, setSaving] = useState("");
-  const save = async (url, body, kind) => {
-    setSaving(kind);
-    try {
-      const response = await fetch(url, { method: kind === "payment" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "No se pudo guardar.");
-      onSaved();
-    } finally { setSaving(""); }
-  };
+function BillingChart({ items = [], selectedPeriod }) {
+  const visible = items.slice(-8);
+  const maximum = Math.max(...visible.map((item) => item.total), 1);
+  if (!visible.length) return <div className="finance-empty">Todavía no hay meses con facturación configurada.</div>;
   return (
-    <article className={`salary-card salary-card-${employee.key}`}>
-      <header className="salary-card-header">
-        <span className="salary-avatar">{employee.name.charAt(0)}</span>
-        <div><h3>{employee.name}</h3><p>{employee.role}</p></div>
-        <strong className="salary-percent">{employee.percentage}%</strong>
-      </header>
-      <div className="salary-progress" aria-label={`${employee.percentage}% completado`}>
-        <span style={{ width: `${employee.percentage}%` }} />
-      </div>
-      <div className="salary-work-summary">
-        <div><strong>{employee.completed}</strong><span>realizadas</span></div>
-        <div><strong>{employee.target}</strong><span>objetivo</span></div>
-        <div><strong>{employee.remainingUnits}</strong><span>faltan</span></div>
-      </div>
-      {employee.configurationPending ? (
-        <div className="salary-config-warning"><strong>Valor por video pendiente</strong><span>Se contabiliza el trabajo, pero no se calcula dinero hasta definir la tarifa.</span></div>
-      ) : (
-        <div className="salary-money">
-          <div><span>Costo estimado</span><strong>{money.format(employee.earned)}</strong></div>
-          <div><span>Resta del sueldo</span><strong>{money.format(employee.remainingAmount)}</strong></div>
-          <small>Sobre {money.format(employee.total)} · proporcional al cumplimiento</small>
+    <div className="finance-chart" role="img" aria-label="Evolución mensual de la facturación">
+      {visible.map((item) => (
+        <div className={`finance-chart-column${item.period === selectedPeriod ? " is-current" : ""}`} key={item.period}>
+          <strong>{money.format(item.total)}</strong>
+          <div><i style={{ height: `${Math.max((item.total / maximum) * 100, 4)}%` }} /></div>
+          <span>{labelPeriod(item.period).split(" de ")[0].slice(0, 3)}</span>
         </div>
-      )}
-      <div className="salary-admin-controls" aria-label={`Ajustes financieros de ${employee.name}`}>
-        <strong className="salary-admin-title">Ajustes del Líder</strong>
-        {employee.model === "fixed" && <label><span>Sueldo desde el mes próximo</span><div><input type="number" min="0" value={nextSalary} onChange={(event) => setNextSalary(event.target.value)} /><button type="button" disabled={saving} onClick={() => save(`/api/finanzas/compensaciones/${employee.key}`, { sueldo_base: Number(nextSalary) }, "salary")}>Programar</button></div></label>}
-        <label><span>Pago final de este período</span><div><input type="number" min="0" placeholder={String(employee.earned ?? 0)} value={finalAmount} onChange={(event) => setFinalAmount(event.target.value)} /><button type="button" disabled={saving || finalAmount === ""} onClick={() => save(`/api/finanzas/pagos/${period}/${employee.key}`, { importe_final: Number(finalAmount) }, "payment")}>Confirmar</button></div></label>
-      </div>
-      <details className="salary-detail">
-        <summary>Comprobar trabajo considerado ({employee.items.length})</summary>
-        {employee.items.length ? <div className="salary-detail-list">
-          {employee.items.map((item) => <div key={item.key}>
-            <span className={item.complete ? "is-complete" : ""}>{item.complete ? "✓" : "○"}</span>
-            <div><strong>{item.title}</strong><small>{item.client} · {item.source} · {item.date || "Sin fecha"}</small></div>
-            <b>{item.state}</b>
-          </div>)}
-        </div> : <p className="salary-empty">No hay trabajo registrado para este período.</p>}
-      </details>
-    </article>
+      ))}
+    </div>
   );
 }
 
 export function SueldosPage() {
-  const initial = new URLSearchParams(window.location.search).get("periodo");
-  const [period, setPeriod] = useState(/^\d{4}-\d{2}$/.test(initial || "") ? initial : currentPeriod());
+  const requested = new URLSearchParams(window.location.search).get("periodo");
+  const [period, setPeriod] = useState(/^\d{4}-\d{2}$/.test(requested || "") ? requested : currentPeriod());
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [refresh, setRefresh] = useState(0);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -96,38 +50,87 @@ export function SueldosPage() {
         if (!response.ok) throw new Error(body.error || "No se pudo calcular el período.");
         return body;
       })
-      .then(setData)
+      .then((body) => {
+        setData(body);
+        const available = body.finance?.availablePeriods || [];
+        if (available.length && !available.includes(period)) setPeriod(available.at(-1));
+      })
       .catch((reason) => setError(reason.message))
       .finally(() => setLoading(false));
-  }, [period, refresh]);
+  }, [period]);
 
-  const summary = useMemo(() => data?.summary, [data]);
+  const comparison = useMemo(() => {
+    const history = data?.finance?.billingHistory || [];
+    const index = history.findIndex((item) => item.period === period);
+    if (index <= 0) return null;
+    const current = history[index].total;
+    const previous = history[index - 1].total;
+    if (!previous) return null;
+    return Math.round(((current - previous) / previous) * 1000) / 10;
+  }, [data, period]);
+
+  const finance = data?.finance;
+  const clients = data?.clientIncome?.items || [];
   return (
-    <main className="page-shell salary-page">
+    <main className="page-shell salary-page finance-dashboard">
       <section className="salary-hero">
-        <div><span className="section-label">Finanzas · Solo Líder</span><h1>¿Cómo está Render este mes?</h1><p>Ingresos acordados, costos y resultado mensual en una sola vista.</p></div>
-        <div className="salary-period-control">
-          <button type="button" onClick={() => setPeriod(movePeriod(period, -1))} aria-label="Mes anterior">←</button>
-          <strong>{labelPeriod(period)}</strong>
-          <button type="button" onClick={() => setPeriod(movePeriod(period, 1))} aria-label="Mes siguiente">→</button>
+        <div>
+          <span className="section-label">Finanzas · Solo Líder</span>
+          <h1>Facturación de Render</h1>
+          <p>Una lectura ejecutiva de ingresos, sueldos y resultado mensual estimado.</p>
         </div>
+        <label className="finance-period-select">
+          <span>Período</span>
+          <select value={period} onChange={(event) => setPeriod(event.target.value)}>
+            {(finance?.availablePeriods?.length ? finance.availablePeriods : [period]).map((item) => (
+              <option key={item} value={item}>{labelPeriod(item)}</option>
+            ))}
+          </select>
+        </label>
       </section>
-      {loading && <div className="salary-state">Calculando el avance del mes…</div>}
+
+      {loading && <div className="salary-state">Calculando la facturación del mes…</div>}
       {error && <div className="salary-state is-error"><strong>No se pudo cargar Finanzas.</strong><span>{error}</span></div>}
       {!loading && !error && data && <>
-        <section className="salary-summary" aria-label="Resumen mensual">
-          <div className="salary-summary-card"><span>Ingresos acordados</span><strong>{money.format(data.clientIncome?.total || 0)}</strong><small>{data.clientIncome?.configuredClients || 0} clientes · todavía no equivale a cobrado</small></div>
-          <div className="salary-summary-card"><span>Costo del equipo</span><strong>{money.format(summary.earned)}</strong><small>Estimado según trabajo registrado</small></div>
-          <div className="salary-summary-card"><span>Otros gastos</span><strong>Sin registrar</strong><small>No se descuenta ningún importe inventado</small></div>
-          <div className="salary-summary-card is-result"><span>Resultado estimado</span><strong>{money.format(data.finance?.estimatedResult || 0)}</strong><small>Trabajo de {labelPeriod(period)} · movimiento en {labelPeriod(data.finance?.cashPeriod || movePeriod(period, 1))}</small></div>
+        <section className="finance-billing-hero">
+          <div>
+            <span>RENDER FACTURA</span>
+            <small>{labelPeriod(period)}</small>
+            <strong>{money.format(finance?.billing || 0)}</strong>
+            <p>Suma mensual de los servicios activos. No depende de cobranzas.</p>
+          </div>
+          {comparison != null && <b className={comparison >= 0 ? "is-positive" : "is-negative"}>{comparison >= 0 ? "+" : ""}{comparison}% vs. mes anterior</b>}
         </section>
-        <details className="finance-income-detail">
-          <summary>Ver ingresos por cliente ({data.clientIncome?.items?.length || 0})</summary>
-          <div>{data.clientIncome?.items?.map((item) => <p key={item.id}><span>{item.name}</span><strong>{money.format(item.amount)}</strong></p>)}</div>
-        </details>
-        {summary.pendingConfigurations.length > 0 && <div className="salary-banner"><strong>Cálculo incompleto:</strong> falta definir el valor por video de {summary.pendingConfigurations.join(", ")}. No se inventó ningún importe.</div>}
-        <section className="salary-grid">{data.employees.map((employee) => <SalaryCard key={employee.name} employee={employee} period={period} onSaved={() => setRefresh((value) => value + 1)} />)}</section>
-        <footer className="salary-notes"><strong>Cómo leer este módulo</strong>{data.notes.map((note) => <p key={note}>{note}</p>)}</footer>
+
+        <section className="finance-metrics" aria-label="Resumen financiero mensual">
+          <article><span>Sueldos a pagar</span><strong>{money.format(finance?.committedPayroll || 0)}</strong><small>Compromiso mensual completo</small></article>
+          <article><span>Devengado hasta hoy</span><strong>{money.format(finance?.accruedPayroll || 0)}</strong><small>Según el trabajo registrado</small></article>
+          <article className="is-result"><span>Resultado estimado</span><strong>{money.format(finance?.estimatedResult || 0)}</strong><small>Facturación menos sueldos comprometidos</small></article>
+          <article><span>Margen estimado</span><strong>{finance?.estimatedMargin || 0}%</strong><small>No representa ganancia neta</small></article>
+        </section>
+
+        <section className="finance-panel">
+          <header><div><span className="section-label">EVOLUCIÓN MENSUAL</span><h2>¿Render está creciendo?</h2></div><small>Últimos meses con información disponible</small></header>
+          <BillingChart items={finance?.billingHistory} selectedPeriod={period} />
+        </section>
+
+        <section className="finance-panel finance-clients">
+          <header><div><span className="section-label">ORIGEN DE LA FACTURACIÓN</span><h2>Clientes activos</h2></div><strong>{clients.length} configurados</strong></header>
+          <div className="finance-client-table">
+            <div className="finance-client-row is-heading"><span>Cliente</span><span>Servicios activos</span><span>Facturación mensual</span></div>
+            {clients.map((client) => (
+              <div className="finance-client-row" key={client.id}>
+                <strong>{client.name}</strong>
+                <span>{client.services?.length ? client.services.join(" · ") : "Servicio sin cuota cargada"}</span>
+                <b>{money.format(client.amount)}</b>
+              </div>
+            ))}
+            <footer><span>TOTAL FACTURACIÓN RENDER</span><strong>{money.format(finance?.billing || 0)}</strong></footer>
+          </div>
+        </section>
+
+        {data.summary?.pendingConfigurations?.length > 0 && <div className="salary-banner"><strong>Cálculo de sueldos incompleto:</strong> falta definir el valor por pieza de {data.summary.pendingConfigurations.join(", ")}.</div>}
+        <p className="finance-disclaimer">Este tablero es una estimación de gestión. No incluye cobranzas, impuestos, herramientas, proveedores ni otros costos operativos.</p>
       </>}
     </main>
   );

@@ -403,7 +403,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
     if (!isValidSalaryPeriod(period)) {
       return res.status(400).json({ error: "Usá un período válido con formato YYYY-MM." });
     }
-    const [tasksResult, historiesResult, publicationsResult, clientIncomeResult, compensationResult, paymentsResult] = await Promise.all([
+    const [tasksResult, historiesResult, publicationsResult, clientIncomeResult, compensationResult, paymentsResult, billingHistoryResult] = await Promise.all([
       pool.query(`
         SELECT t.id, t.titulo, t.asignado_a, t.estado, t.tipo_tarea, t.subtipo,
                to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
@@ -430,24 +430,30 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
           AND p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
       `, [period]),
       pool.query(`
-        SELECT c.id, c.nombre, config.abono_mensual
+        SELECT c.id, c.nombre,
+          COALESCE(abono.importe, cfg.abono_mensual) AS abono_mensual,
+          COALESCE(cfg.cuota_reels, c.cuota_reels, 0) AS cuota_reels,
+          COALESCE(cfg.cuota_carruseles, c.cuota_carruseles, 0) AS cuota_carruseles,
+          COALESCE(cardinality(cfg.dias_historias), 0) AS dias_historias
         FROM clientes c
         LEFT JOIN LATERAL (
-          SELECT source.abono_mensual
-          FROM (
-            SELECT ca.importe AS abono_mensual, ca.vigente_desde, 1 AS priority
-            FROM cliente_abonos ca
-            WHERE ca.cliente_id = c.id AND ca.vigente_desde <= ($1 || '-01')::date
-            UNION ALL
-            SELECT cc.abono_mensual, cc.vigente_desde, 2 AS priority
-            FROM cliente_configuraciones cc
-            WHERE cc.cliente_id = c.id AND cc.vigente_desde <= ($1 || '-01')::date
-          ) source
-          ORDER BY source.vigente_desde DESC, source.priority ASC
+          SELECT ca.importe
+          FROM cliente_abonos ca
+          WHERE ca.cliente_id = c.id AND ca.vigente_desde <= ($1 || '-01')::date
+          ORDER BY ca.vigente_desde DESC
           LIMIT 1
-        ) config ON TRUE
+        ) abono ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT cc.abono_mensual, cc.cuota_reels, cc.cuota_carruseles, cc.dias_historias
+          FROM cliente_configuraciones cc
+          WHERE cc.cliente_id = c.id AND cc.vigente_desde <= ($1 || '-01')::date
+          ORDER BY cc.vigente_desde DESC
+          LIMIT 1
+        ) cfg ON TRUE
         WHERE COALESCE(c.fecha_inicio, '-infinity'::date) <= (($1 || '-01')::date + INTERVAL '1 month - 1 day')
           AND (c.fecha_fin IS NULL OR c.fecha_fin >= ($1 || '-01')::date)
+          AND COALESCE(c.activo, TRUE) = TRUE
+        ORDER BY c.nombre
       `, [period]),
       pool.query(`
         SELECT DISTINCT ON (empleado_clave) empleado_clave, modalidad,
@@ -457,6 +463,38 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
         ORDER BY empleado_clave, vigente_desde DESC
       `, [period]),
       pool.query(`SELECT empleado_clave, importe_final FROM empleado_pagos_mensuales WHERE periodo_trabajo = ($1 || '-01')::date`, [period]),
+      pool.query(`
+        WITH bounds AS (
+          SELECT MIN(vigente_desde)::date AS first_month,
+                 GREATEST(MAX(vigente_desde)::date, date_trunc('month', CURRENT_DATE)::date) AS last_month
+          FROM (
+            SELECT vigente_desde FROM cliente_abonos
+            UNION ALL
+            SELECT vigente_desde FROM cliente_configuraciones WHERE abono_mensual IS NOT NULL
+          ) dates
+        ), periods AS (
+          SELECT generate_series(date_trunc('month', first_month), date_trunc('month', last_month), interval '1 month')::date AS month
+          FROM bounds WHERE first_month IS NOT NULL
+        )
+        SELECT to_char(p.month, 'YYYY-MM') AS period,
+          COALESCE(SUM(COALESCE(abono.importe, cfg.abono_mensual)), 0)::numeric AS total
+        FROM periods p
+        JOIN clientes c
+          ON COALESCE(c.fecha_inicio, '-infinity'::date) <= (p.month + interval '1 month - 1 day')
+         AND (c.fecha_fin IS NULL OR c.fecha_fin >= p.month)
+         AND COALESCE(c.activo, TRUE) = TRUE
+        LEFT JOIN LATERAL (
+          SELECT ca.importe FROM cliente_abonos ca
+          WHERE ca.cliente_id = c.id AND ca.vigente_desde <= p.month
+          ORDER BY ca.vigente_desde DESC LIMIT 1
+        ) abono ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT cc.abono_mensual FROM cliente_configuraciones cc
+          WHERE cc.cliente_id = c.id AND cc.vigente_desde <= p.month
+          ORDER BY cc.vigente_desde DESC LIMIT 1
+        ) cfg ON TRUE
+        GROUP BY p.month ORDER BY p.month
+      `),
     ]);
     const dashboard = applyCompensations(calculateSalaryDashboard({
       period,
@@ -466,8 +504,21 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
     }), compensationResult.rows, paymentsResult.rows);
     const clientIncomeItems = clientIncomeResult.rows
       .filter((item) => item.abono_mensual != null)
-      .map((item) => ({ id: item.id, name: item.nombre, amount: Number(item.abono_mensual) }));
+      .map((item) => ({
+        id: item.id,
+        name: item.nombre,
+        amount: Number(item.abono_mensual),
+        services: [
+          Number(item.cuota_reels) > 0 ? "Reels" : null,
+          Number(item.cuota_carruseles) > 0 ? "Carruseles" : null,
+          Number(item.dias_historias) > 0 ? "Historias" : null,
+        ].filter(Boolean),
+      }));
     const income = clientIncomeItems.reduce((total, item) => total + item.amount, 0);
+    const committedPayroll = Number(dashboard.summary.configuredPayroll || 0);
+    const accruedPayroll = Number(dashboard.summary.earned || 0);
+    const estimatedResult = income - committedPayroll;
+    const billingHistory = billingHistoryResult.rows.map((item) => ({ period: item.period, total: Number(item.total) }));
     res.json({
       ...dashboard,
       clientIncome: {
@@ -477,10 +528,13 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       },
       finance: {
         workPeriod: period,
-        cashPeriod: nextPeriod(period),
-        otherExpenses: 0,
-        otherExpensesConfigured: false,
-        estimatedResult: income - dashboard.summary.payablePayroll,
+        billing: income,
+        committedPayroll,
+        accruedPayroll,
+        estimatedResult,
+        estimatedMargin: income > 0 ? Math.round((estimatedResult / income) * 1000) / 10 : 0,
+        availablePeriods: billingHistory.map((item) => item.period),
+        billingHistory,
       },
     });
   } catch (error) {
