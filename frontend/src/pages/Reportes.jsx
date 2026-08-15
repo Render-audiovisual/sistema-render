@@ -519,7 +519,7 @@ export function ReportesEquipoPage() {
     <main aria-label="Render platform reportes equipo">
       <div className="frame">
         <div className="content reportes-page">
-          <header className="module-intro"><div><div className="section-label">Reportes · Solo Líder</div><h2>¿Cómo rindió el equipo este mes?</h2><p>Objetivos, trabajo realizado y pendientes, sin información económica.</p></div>{esVistaAdmin && <nav className="report-section-tabs" aria-label="Secciones del reporte"><a className="active" href="/reportes-historias">Equipo</a><a href="/sueldos">Finanzas</a></nav>}</header>
+          <header className="module-intro"><div><div className="section-label">Reportes · Solo Líder</div><h2>¿Cómo rindió el equipo este mes?</h2><p>Objetivos, trabajo realizado y pendientes, sin información económica.</p></div></header>
 
           {error && (
             <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>

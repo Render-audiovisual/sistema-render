@@ -112,7 +112,6 @@ export function SueldosPage() {
           <button type="button" onClick={() => setPeriod(movePeriod(period, 1))} aria-label="Mes siguiente">→</button>
         </div>
       </section>
-      <nav className="report-section-tabs" aria-label="Secciones del reporte"><a href="/reportes-historias">Equipo</a><a className="active" href="/sueldos">Finanzas</a></nav>
       {loading && <div className="salary-state">Calculando el avance del mes…</div>}
       {error && <div className="salary-state is-error"><strong>No se pudo cargar Finanzas.</strong><span>{error}</span></div>}
       {!loading && !error && data && <>

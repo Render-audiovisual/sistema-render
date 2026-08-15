@@ -104,8 +104,9 @@ test("la navegación de empleados expone trabajo y contenido, pero no gestión s
   assert.match(sidebarSource, /href: "\/reportes-historias", label: "Reportes"/);
   assert.match(sidebarSource, /href: "\/sueldos", label: "Finanzas"/);
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
-  assert.match(reportesSource, /esVistaAdmin && <nav className="report-section-tabs"/);
-  assert.match(reportesSource, /href="\/sueldos">Finanzas/);
+  const finanzasSource = readFileSync(new URL("../../frontend/src/pages/Sueldos.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(reportesSource, /report-section-tabs/);
+  assert.doesNotMatch(finanzasSource, /report-section-tabs/);
   assert.doesNotMatch(appSource, /: \[[^\]]*"\/reportes-historias"/);
   assert.doesNotMatch(utilsSource, /getUsuarioKey\(sesion\?\.usuario\?\.usuario\) === "franco"/);
 });
