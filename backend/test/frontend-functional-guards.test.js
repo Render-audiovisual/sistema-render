@@ -130,14 +130,12 @@ test("el reporte se actualiza al volver a la pestaña y periódicamente", () => 
   assert.match(reportesSource, /document\.addEventListener\("visibilitychange", actualizarAlVolver\)/);
 });
 
-test("Reportes muestra cierre mensual y una barra de avance animada accesible", () => {
+test("Reportes prioriza rendimiento y conserva una barra de avance accesible", () => {
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
   const stylesSource = readFileSync(new URL("../../frontend/src/styles.css", import.meta.url), "utf8");
-  assert.match(reportesSource, /<h2>Reporte del equipo<\/h2>/);
-  assert.match(reportesSource, /Tenés tiempo de completarlo hasta el/);
-  assert.match(reportesSource, /🚀/);
-  assert.match(reportesSource, /formatPeriodDeadline\(rangoPeriodo\.hasta\)/);
-  assert.match(reportesSource, /tarjeta\.nombre === "Luciano" \? "" : fechaLimite/);
+  assert.match(reportesSource, /<h2>¿Cómo rindió el equipo este mes\?<\/h2>/);
+  assert.match(reportesSource, /Objetivos, trabajo realizado y pendientes, sin información económica/);
+  assert.match(reportesSource, /Ver grabaciones por cliente/);
   assert.match(stylesSource, /@keyframes report-progress-shine/);
   assert.match(stylesSource, /@media \(prefers-reduced-motion:reduce\)/);
 });

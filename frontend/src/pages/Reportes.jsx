@@ -103,9 +103,6 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
           </span>
         )}
       </div>
-      {fechaLimite && !proximoMes && (
-        <p className="report-employee-encouragement"><span aria-hidden="true">🚀</span> <strong>¡Vamos!</strong> Tenés tiempo de completarlo hasta el <b>{fechaLimite}</b>.</p>
-      )}
       {proximoMes ? (
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px", color: "var(--muted)", fontSize: "12px", lineHeight: 1.5 }}>
           Carruseles e historias medidas a partir de agosto.
@@ -124,26 +121,27 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
 function TarjetaFilmacionesGerman({ clientes, fechaLimite = "" }) {
   const totalGrabados = clientes.reduce((sum, item) => sum + item.grabados, 0);
   const totalPlanificados = clientes.reduce((sum, item) => sum + item.objetivo, 0);
+  const totalPendientes = Math.max(totalPlanificados - totalGrabados, 0);
+  const porcentaje = totalPlanificados > 0 ? Math.round((totalGrabados / totalPlanificados) * 100) : 0;
   return (
     <article className="report-employee-card report-filmmaker-card">
       <header className="report-filmmaker-header">
         <span className="report-employee-avatar">G</span>
         <div><strong>Germán</strong><small>Filmmaker · Producción audiovisual</small></div>
       </header>
-      {fechaLimite && <p className="report-employee-encouragement"><span aria-hidden="true">🚀</span> <strong>¡Vamos!</strong> Tenés tiempo de completarlo hasta el <b>{fechaLimite}</b>.</p>}
       <div className="report-filmmaker-total">
         <strong>{totalGrabados}</strong>
-        <div><span>videos grabados</span><small>{totalPlanificados - totalGrabados} pendientes · {totalPlanificados} planificados</small></div>
+        <div><span>videos grabados</span><small>{totalPendientes} pendientes · {totalPlanificados} objetivo · {porcentaje}%</small></div>
       </div>
-      <div className="report-filmmaker-locations">
-        <div className="report-filmmaker-label">Grabaciones por cliente</div>
+      <details className="report-filmmaker-locations">
+        <summary className="report-filmmaker-label">Ver grabaciones por cliente</summary>
         {clientes.length > 0 ? clientes.map((cliente) => (
           <div className="report-filmmaker-location" key={cliente.nombre}>
             <span>{cliente.nombre}</span>
             <div><strong>{cliente.grabados} / {cliente.objetivo}</strong><small>videos</small>{cliente.pendientes > 0 && <b>{cliente.pendientes} pendientes</b>}</div>
           </div>
         )) : <p>No hay filmaciones registradas para este período.</p>}
-      </div>
+      </details>
     </article>
   );
 }
@@ -521,7 +519,7 @@ export function ReportesEquipoPage() {
     <main aria-label="Render platform reportes equipo">
       <div className="frame">
         <div className="content reportes-page">
-          <header className="module-intro"><div><div className="section-label">Reportes</div><h2>Reporte del equipo</h2><p>{esVistaAdmin ? "Entregas realizadas y pendientes del equipo." : "Tu objetivo, tareas completadas y pendientes."}</p></div>{esVistaAdmin && <nav className="report-section-tabs" aria-label="Secciones del reporte"><a className="active" href="/reportes-historias">Equipo</a><a href="/sueldos">Finanzas</a></nav>}</header>
+          <header className="module-intro"><div><div className="section-label">Reportes · Solo Líder</div><h2>¿Cómo rindió el equipo este mes?</h2><p>Objetivos, trabajo realizado y pendientes, sin información económica.</p></div>{esVistaAdmin && <nav className="report-section-tabs" aria-label="Secciones del reporte"><a className="active" href="/reportes-historias">Equipo</a><a href="/sueldos">Finanzas</a></nav>}</header>
 
           {error && (
             <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
@@ -587,11 +585,6 @@ export function ReportesEquipoPage() {
                   </>
                 )}
               </div>
-              {esVistaAdmin && (
-                <div className="caption" style={{ marginBottom: "24px" }}>
-                  Carruseles, ediciones, grabaciones y publicaciones se calculan por separado. No se mezclan tareas de otros roles.
-                </div>
-              )}
 
               {!esVistaAdmin && (
                 <>
