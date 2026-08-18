@@ -19,7 +19,7 @@ export function resolveDriveRoot(task = {}) {
   const type = normalizeDriveName(`${task.tipo_tarea || ""} ${task.subtipo || ""} ${task.titulo || ""}`);
   const isDesign = /(diseno|carrusel|flyer|placa)/.test(type);
   if (isDesign && person.includes("augusto")) return { id: DESIGN_ROOTS.augusto, key: "augusto", label: "Diseño de Augusto" };
-  if (isDesign && person.includes("mariano")) return { id: DESIGN_ROOTS.mariano, key: "mariano", label: "Diseño de Mariano" };
+  if (isDesign && person.includes("mariano")) return { id: DESIGN_ROOTS.mariano, key: "mariano", label: "Diseño de Mariano Mesa" };
   return { id: GENERAL_ROOT, key: "general", label: "Drive de Render", child: "RENDER_UPLOADS" };
 }
 

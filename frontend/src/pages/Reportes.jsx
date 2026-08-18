@@ -483,7 +483,7 @@ export function ReportesEquipoPage() {
       metricas: metricasOriana,
     },
     {
-      nombre: "Mariano",
+      nombre: "Mariano Mesa",
       rol: "Diseño y contenido",
       proximoMes: !marianoActivo,
       metricas: [
@@ -545,7 +545,7 @@ export function ReportesEquipoPage() {
                 ) : belongsToPerson(nombrePropio, "Augusto") ? (
                   <TarjetaEntregablesEquipo nombre="Augusto" rol="Diseño" metricas={[{ etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesAugusto }]} fechaLimite={fechaLimite}/>
                 ) : belongsToPerson(nombrePropio, "Mariano") ? (
-                  <TarjetaEntregablesEquipo nombre="Mariano" rol="Diseño y contenido" metricas={[{ etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesMariano }]} fechaLimite={fechaLimite}/>
+                  <TarjetaEntregablesEquipo nombre="Mariano Mesa" rol="Diseño y contenido" metricas={[{ etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesMariano }]} fechaLimite={fechaLimite}/>
                 ) : belongsToPerson(nombrePropio, "Germán") ? (
                   <TarjetaFilmacionesGerman clientes={filmacionesGerman} fechaLimite={fechaLimite}/>
                 ) : (
