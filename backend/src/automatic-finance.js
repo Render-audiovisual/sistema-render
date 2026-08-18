@@ -62,11 +62,13 @@ export function calculateFixedExpenses(expenses = [], paymentPeriod) {
   };
 }
 
-export function buildAutomaticFinanceSummary({ period, contracts, expenses, payrollARS = 0 }) {
+export function buildAutomaticFinanceSummary({ period, contracts, expenses, payrollARS = 0, exchangeRateARS = 0 }) {
   const workPeriod = previousPeriod(period);
   const billing = calculateBillingForWorkPeriod(contracts, workPeriod);
   const fixed = calculateFixedExpenses(expenses, period);
   const salaries = Number(payrollARS || 0) + fixed.sueldosARS;
+  const toolsUSDinARS = Math.round(fixed.herramientasUSD * Number(exchangeRateARS || 0));
+  const fixedExpensesARS = fixed.impuestosARS + fixed.herramientasARS + toolsUSDinARS;
   return {
     period,
     workPeriod,
@@ -75,7 +77,9 @@ export function buildAutomaticFinanceSummary({ period, contracts, expenses, payr
     impuestos: fixed.impuestosARS,
     herramientasARS: fixed.herramientasARS,
     herramientasUSD: fixed.herramientasUSD,
-    resultadoARS: billing.total - salaries - fixed.impuestosARS - fixed.herramientasARS,
+    herramientasUSDEnARS: toolsUSDinARS,
+    gastosFijosARS: fixedExpensesARS,
+    resultadoARS: billing.total - salaries - fixedExpensesARS,
     ingresos: billing.items,
     gastos: fixed.items,
   };
