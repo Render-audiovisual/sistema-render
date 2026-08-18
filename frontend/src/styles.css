@@ -11586,13 +11586,18 @@ tr:hover .sheet-row-actions {
 }
 
 .clientes-top-actions .btn.primary {
+  align-items: center;
   background: #202418;
   border-color: #202418;
   color: #b5fc00;
   align-self: end;
   min-height: 48px;
+  line-height: 1;
+  padding-bottom: 0;
   padding-inline: 20px;
+  padding-top: 0;
   justify-content: center;
+  text-align: center;
   width: 100%;
   white-space: nowrap;
 }
