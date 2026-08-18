@@ -11113,21 +11113,21 @@ tr:hover .sheet-row-actions {
 
 .cliente-create-modal {
   background: #fff;
-  border-color: #d9e1ef;
+  border-color: #dfe3d8;
   border-radius: 20px;
   width: min(760px, calc(100vw - 32px));
 }
 
 .cliente-create-modal .modal-header {
   background: #fff;
-  border-bottom-color: #e2e7f0;
-  color: #172033;
+  border-bottom-color: #e4e7df;
+  color: #202418;
   min-height: 66px;
   padding: 18px 24px;
 }
 
 .cliente-create-modal .modal-close {
-  color: #6c7688;
+  color: #71766c;
 }
 
 .cliente-create-modal-body {
@@ -11141,7 +11141,7 @@ tr:hover .sheet-row-actions {
 }
 
 .cliente-create-progress::before {
-  background: #d9e1ef;
+  background: #dfe3d8;
   content: "";
   height: 2px;
   left: 16.66%;
@@ -11152,7 +11152,7 @@ tr:hover .sheet-row-actions {
 
 .cliente-create-progress > div {
   align-items: center;
-  color: #8791a3;
+  color: #8b9086;
   display: grid;
   gap: 7px;
   justify-items: center;
@@ -11162,8 +11162,8 @@ tr:hover .sheet-row-actions {
 
 .cliente-create-progress > div > span {
   align-items: center;
-  background: #f7f9fc;
-  border: 2px solid #d9e1ef;
+  background: #f5f6ef;
+  border: 2px solid #dfe3d8;
   border-radius: 50%;
   display: flex;
   font-size: 12px;
@@ -11180,19 +11180,19 @@ tr:hover .sheet-row-actions {
 
 .cliente-create-progress > div.active,
 .cliente-create-progress > div.complete {
-  color: #172033;
+  color: #202418;
 }
 
 .cliente-create-progress > div.active > span {
-  background: #2e66e6;
-  border-color: #2e66e6;
-  color: #fff;
+  background: #202418;
+  border-color: #202418;
+  color: #b5fc00;
 }
 
 .cliente-create-progress > div.complete > span {
-  background: #eaf0ff;
-  border-color: #9ab5f5;
-  color: #234fae;
+  background: #f4f8e9;
+  border-color: #a9c36e;
+  color: #43511f;
 }
 
 .cliente-create-step {
@@ -11207,13 +11207,13 @@ tr:hover .sheet-row-actions {
 }
 
 .cliente-create-step-copy strong {
-  color: #172033;
+  color: #202418;
   font-size: 20px;
   line-height: 1.25;
 }
 
 .cliente-create-step-copy span {
-  color: #6c7688;
+  color: #71766c;
   font-size: 14px;
   line-height: 1.5;
 }
@@ -11237,7 +11237,7 @@ tr:hover .sheet-row-actions {
 }
 
 .cliente-create-guidance {
-  color: #6c7688;
+  color: #71766c;
   font-size: 12px;
   line-height: 1.4;
   margin: -8px 0 -10px;
@@ -11246,9 +11246,9 @@ tr:hover .sheet-row-actions {
 
 .cliente-create-actions .btn {
   align-items: center;
-  background: #fff;
-  border-color: #d9e1ef;
-  color: #172033;
+  background: #f5f6ef;
+  border-color: #d5dacd;
+  color: #202418;
   display: inline-flex;
   justify-content: center;
   line-height: 1;
@@ -11259,32 +11259,32 @@ tr:hover .sheet-row-actions {
 }
 
 .cliente-create-actions .btn.primary {
-  background: #2e66e6;
-  border-color: #2e66e6;
-  color: #fff;
+  background: #202418;
+  border-color: #202418;
+  color: #b5fc00;
 }
 
 .cliente-create-actions .btn.primary:hover:not(:disabled) {
-  background: #2457c7;
-  border-color: #2457c7;
+  background: #292d23;
+  border-color: #292d23;
 }
 
 .cliente-create-actions .btn.primary:disabled {
-  background: #2e66e6;
-  border-color: #2e66e6;
-  color: #fff;
+  background: #202418;
+  border-color: #202418;
+  color: #b5fc00;
   opacity: .48;
 }
 
 .cliente-create-modal .cliente-weekdays label.selected {
-  background: #eaf0ff;
-  border-color: #9ab5f5;
-  color: #234fae;
+  background: #f4f8e9;
+  border-color: #a9c36e;
+  color: #43511f;
 }
 
 .cliente-create-modal .cliente-contract-summary {
-  background: #f7f9fc;
-  border-color: #d9e1ef;
+  background: #f5f6ef;
+  border-color: #dfe3d8;
 }
 
 .cliente-edit-intro {
@@ -11541,7 +11541,7 @@ tr:hover .sheet-row-actions {
 }
 
 .clientes-top-actions::before {
-  background: #2e66e6;
+  background: #b5fc00;
   content: "";
   height: 2px;
   left: 0;
@@ -11586,12 +11586,21 @@ tr:hover .sheet-row-actions {
 }
 
 .clientes-top-actions .btn.primary {
+  background: #202418;
+  border-color: #202418;
+  color: #b5fc00;
   align-self: end;
   min-height: 48px;
   padding-inline: 20px;
   justify-content: center;
   width: 100%;
   white-space: nowrap;
+}
+
+.clientes-top-actions .btn.primary:hover {
+  background: #292d23;
+  border-color: #292d23;
+  color: #b5fc00;
 }
 
 @media (max-width: 980px) {
