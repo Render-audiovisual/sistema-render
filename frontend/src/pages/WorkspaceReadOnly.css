@@ -1339,3 +1339,62 @@
   .render-workspace .ros-primary-button{width:100%}
   .render-workspace .ros-controls .ros-controls-meta{justify-content:flex-start;overflow-x:auto}
 }
+
+/* Edición directa del contenido de una tarea */
+.render-workspace .ros-content-viewer.is-editable{
+  cursor:text;
+  outline:0;
+  transition:border-color .15s ease,box-shadow .15s ease,background .15s ease;
+}
+.render-workspace .ros-content-viewer.is-editable:hover{
+  border-color:#a9c968;
+  box-shadow:0 0 0 3px #b5fc001c;
+}
+.render-workspace .ros-content-viewer.is-editable:focus-visible{
+  border-color:#8fb640;
+  box-shadow:0 0 0 3px #b5fc0030;
+}
+.render-workspace .ros-content-viewer.is-editable .ros-content-editor-header>b{
+  background:#eef6d9;
+  border-radius:999px;
+  color:#52651d;
+  font-size:var(--ros-type-badge);
+  font-weight:650;
+  padding:5px 9px;
+}
+.render-workspace .ros-content-viewer.is-editable:hover .ros-content-reading{background:#fcfef8}
+.render-workspace .ros-content-edit-actions{
+  align-items:center;
+  background:#fafbf7;
+  border-top:1px solid #e5e8e0;
+  display:flex;
+  gap:12px;
+  justify-content:space-between;
+  padding:10px 12px;
+}
+.render-workspace .ros-content-edit-actions>small{
+  color:#747c70;
+  font-size:var(--ros-type-label);
+}
+.render-workspace .ros-content-edit-actions>div{display:flex;gap:8px}
+.render-workspace .ros-content-edit-actions button{
+  background:#fff;
+  border:1px solid #d9ddd2;
+  border-radius:8px;
+  color:#50574d;
+  cursor:pointer;
+  font-size:var(--ros-type-secondary);
+  font-weight:600;
+  min-height:38px;
+  padding:8px 12px;
+}
+.render-workspace .ros-content-edit-actions button.primary{
+  background:var(--ros-lime);
+  border-color:var(--ros-lime);
+  color:var(--ros-graphite);
+}
+.render-workspace .ros-content-edit-actions button:disabled{cursor:not-allowed;opacity:.55}
+@media(max-width:600px){
+  .render-workspace .ros-content-edit-actions{align-items:stretch;flex-direction:column}
+  .render-workspace .ros-content-edit-actions>div{display:grid;grid-template-columns:1fr 1fr}
+}
