@@ -11246,8 +11246,8 @@ tr:hover .sheet-row-actions {
 
 .cliente-create-actions .btn {
   align-items: center;
-  background: #fff;
-  border-color: #d6dbd0;
+  background: #f2f4ee;
+  border-color: #cfd5c8;
   color: #202418;
   display: inline-flex;
   justify-content: center;
@@ -11269,12 +11269,11 @@ tr:hover .sheet-row-actions {
   border-color: #292d23;
 }
 
-.cliente-create-actions .btn:disabled,
 .cliente-create-actions .btn.primary:disabled {
-  background: #f2f4ee;
-  border-color: #dfe3d8;
-  color: #8b9086;
-  opacity: 1;
+  background: #202418;
+  border-color: #202418;
+  color: #b5fc00;
+  opacity: .48;
 }
 
 .cliente-edit-intro {
