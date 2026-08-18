@@ -29,14 +29,16 @@ test("API Bloc de notas: acceso compartido, autoguardado, conflicto y Papelera",
   };
 
   try {
-    const created = await request("/notas", { method: "POST", body: JSON.stringify({ titulo: "QA nota", contenido: "Inicial" }) });
+    const created = await request("/notas", { method: "POST", body: JSON.stringify({ titulo: "QA nota", contenido: "Inicial", categoria: "diseno" }) });
     assert.equal(created.response.status, 201);
     assert.equal(created.body.creado_por, "QA Equipo");
+    assert.equal(created.body.categoria, "diseno");
     noteId = created.body.id;
 
-    const updated = await request(`/notas/${noteId}`, { method: "PATCH", body: JSON.stringify({ contenido: "Guardada", expected_updated_at: created.body.updated_at }) });
+    const updated = await request(`/notas/${noteId}`, { method: "PATCH", body: JSON.stringify({ contenido: "Guardada", categoria: "reunion", expected_updated_at: created.body.updated_at }) });
     assert.equal(updated.response.status, 200);
     assert.equal(updated.body.contenido, "Guardada");
+    assert.equal(updated.body.categoria, "reunion");
 
     const stale = await request(`/notas/${noteId}`, { method: "PATCH", body: JSON.stringify({ contenido: "No pisar", expected_updated_at: created.body.updated_at }) });
     assert.equal(stale.response.status, 409);
