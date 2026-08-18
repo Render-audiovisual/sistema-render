@@ -18,7 +18,7 @@ import { setupDemoClientes } from "./setup-demo-data.js";
 import { shouldSetupDemoData } from "./hosting-config.js";
 import { requireAuthentication, requireRole } from "./auth.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
-import { buildAutoTaskProperties, completeLinkedAutoTasks } from "./piece-task-linking.js";
+import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
 import { applyCompensations, employeeKey, nextPeriod } from "./finance-calculation.js";
 import { createWilsonRouter } from "./wilson-integration.js";
@@ -2195,6 +2195,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
     }
 
     const tareaActualizada = result.rows[0];
+    await publishPieceLinkedToCompletedTask(pool, tareaActualizada);
     res.json(tareaActualizada);
 
     const actor = getTaskActor(req.auth);

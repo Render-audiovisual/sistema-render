@@ -63,3 +63,23 @@ test("el estado general considera reels y carruseles aunque no haya historias", 
   assert.equal(fila.piezasPublicadas, 1);
   assert.equal(fila.porcentajeGeneral, 13);
 });
+
+test("cuenta tareas de carrusel finalizadas sin duplicar publicaciones vinculadas", () => {
+  const clientes = [{ id: 1, activo: true, dias_historias: [], cuota_reels: 0, cuota_carruseles: 4 }];
+  const publicaciones = [
+    { id: 20, cliente_id: 1, fecha_programada: "2026-08-04", estado: "pendiente", tipo: "carrusel" },
+  ];
+  const tareas = [
+    { id: 1, cliente_id: 1, fecha_vencimiento: "2026-08-04", estado: "publicada", titulo: "Carrusel uno", publicacion_id: 20 },
+    { id: 2, cliente_id: 1, fecha_vencimiento: "2026-08-11", estado: "publicada", titulo: "Carrusel dos" },
+  ];
+  const [fila] = getResumenClientes(clientes, [], publicaciones, {
+    mes: "2026-08",
+    avanceDelMes: 0.5,
+    tareas,
+  });
+
+  assert.equal(fila.carruselesPublicados, 2);
+  assert.equal(fila.piezasPublicadas, 2);
+  assert.equal(fila.porcentajeGeneral, 50);
+});
