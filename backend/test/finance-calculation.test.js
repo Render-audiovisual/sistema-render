@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { applyCompensations, employeeKey, nextPeriod } from "../src/finance-calculation.js";
 import { buildAutomaticFinanceSummary, calculateBillingForWorkPeriod, calculateFixedExpenses, previousPeriod } from "../src/automatic-finance.js";
+import { roundExchangeRateUp } from "../src/exchange-rate.js";
 import { readFileSync } from "node:fs";
 
 test("calcula el mes siguiente incluso al cambiar de año", () => {
@@ -53,7 +54,10 @@ test("Finanzas expone el cálculo automático a mes vencido", () => {
   assert.match(backend, /buildAutomaticFinanceSummary/);
   assert.match(frontend, /FACTURACIÓN A COBRAR/);
   assert.match(frontend, /Mes vencido/);
-  assert.match(frontend, /Herramientas USD/);
+  assert.match(frontend, /Gastos fijos/);
+  assert.match(frontend, /Dólar usado/);
+  assert.doesNotMatch(frontend, /Equipo \+ Franco programador|Herramientas USD|Herramientas ARS/);
+  assert.match(backend, /getCardDollarRate/);
   assert.match(frontend, /Sin cargas manuales/);
   assert.doesNotMatch(frontend, /Guardar cierre mensual/);
 });
@@ -81,7 +85,7 @@ test("la cartera informada factura 9.172.581 pesos en septiembre", () => {
   assert.equal(calculateBillingForWorkPeriod(contracts, "2026-09").total, 10100000);
 });
 
-test("Adobe e impuestos no se duplican y los dólares quedan separados", () => {
+test("Adobe e impuestos no se duplican y los dólares se convierten a pesos", () => {
   const expenses = calculateFixedExpenses([
     { nombre: "Adobe — 2 cuentas", categoria: "herramientas", moneda: "ARS", importe: 36000, dia_pago: 3, inicia_el: "2026-08-01" },
     { nombre: "ChatGPT", categoria: "herramientas", moneda: "USD", importe: 100, dia_pago: 1, inicia_el: "2026-08-01" },
@@ -97,8 +101,17 @@ test("Adobe e impuestos no se duplican y los dólares quedan separados", () => {
     contracts: [{ nombre: "Cliente", importe_mensual: 1000000, inicia_el: "2026-08-01" }],
     expenses: expenses.items.map((item) => ({ ...item, inicia_el: "2026-08-01", dia_pago: item.diaPago })),
     payrollARS: 500000,
+    exchangeRateARS: 1500,
   });
   assert.equal(summary.sueldos, 575000);
-  assert.equal(summary.resultadoARS, 294000);
+  assert.equal(summary.herramientasUSDEnARS, 165000);
+  assert.equal(summary.gastosFijosARS, 296000);
+  assert.equal(summary.resultadoARS, 129000);
   assert.equal(summary.herramientasUSD, 110);
+});
+
+test("la cotización se redondea hacia arriba al próximo múltiplo de cien", () => {
+  assert.equal(roundExchangeRateUp(1490), 1500);
+  assert.equal(roundExchangeRateUp(1500), 1500);
+  assert.equal(roundExchangeRateUp(1963), 2000);
 });

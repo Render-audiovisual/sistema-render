@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 
 const ars = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
-const usd = new Intl.NumberFormat("es-AR", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 const monthLabel = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" });
 
 function currentPeriod() {
@@ -52,6 +51,7 @@ export function SueldosPage() {
   }, [period]);
 
   const finance = data?.finance;
+  const exchangeRate = data?.exchangeRate;
   const salaryExpenses = finance?.gastos?.filter((item) => item.categoria === "sueldos") || [];
   const taxExpenses = finance?.gastos?.filter((item) => item.categoria === "impuestos") || [];
   const toolExpenses = finance?.gastos?.filter((item) => item.categoria === "herramientas") || [];
@@ -67,28 +67,30 @@ export function SueldosPage() {
     {!loading && !error && finance && <>
       <section className="finance-billing-hero"><div><span>FACTURACIÓN A COBRAR</span><small>{labelPeriod(period)} · trabajo de {labelPeriod(finance.workPeriod)}</small><strong>{ars.format(finance.facturacion)}</strong><p>Los clientes se facturan automáticamente a mes vencido.</p></div><b>Mes vencido</b></section>
 
-      <section className="finance-metrics" aria-label="Resumen financiero automático">
-        <article><span>Sueldos</span><strong>{ars.format(finance.sueldos)}</strong><small>Equipo + Franco programador</small></article>
-        <article><span>Impuestos</span><strong>{ars.format(finance.impuestos)}</strong><small>Monotributo e Ingresos Brutos</small></article>
-        <article><span>Herramientas ARS</span><strong>{ars.format(finance.herramientasARS)}</strong><small>Adobe, Drive y Cloud Code</small></article>
-        <article><span>Herramientas USD</span><strong>{usd.format(finance.herramientasUSD)}</strong><small>Separadas hasta definir cotización</small></article>
+      <section className="finance-metrics finance-metrics-unified" aria-label="Resumen financiero automático">
+        <article><span>Equipo</span><strong>{ars.format(finance.sueldos)}</strong><small>Total mensual de sueldos</small></article>
+        <article><span>Gastos fijos</span><strong>{ars.format(finance.gastosFijosARS)}</strong><small>Impuestos y herramientas, todo convertido a pesos</small></article>
       </section>
 
-      <section className="finance-result-row"><div><span>RESULTADO EN PESOS</span><small>Sin convertir ni descontar los gastos en USD</small></div><strong className={finance.resultadoARS < 0 ? "is-negative" : ""}>{ars.format(finance.resultadoARS)}</strong></section>
+      <section className="finance-result-row"><div><span>RESULTADO DEL MES</span><small>Facturación menos equipo y gastos fijos</small></div><strong className={finance.resultadoARS < 0 ? "is-negative" : ""}>{ars.format(finance.resultadoARS)}</strong></section>
+      <div className={`finance-exchange-note${exchangeRate?.fallback ? " is-fallback" : ""}`}>
+        <span>Dólar usado para ChatGPT y Contabo</span>
+        <strong>{ars.format(exchangeRate?.rounded || 0)} por USD</strong>
+        <small>Cotización tarjeta vendedor: {ars.format(exchangeRate?.original || 0)}, redondeada hacia arriba · {exchangeRate?.source}</small>
+      </div>
       {data.payrollPending?.length > 0 && <div className="salary-banner"><strong>Sueldo variable pendiente:</strong> falta clasificar las piezas de {data.payrollPending.join(", ")} para completar ese importe automáticamente.</div>}
 
       <section className="finance-panel finance-auto-details">
         <header><div><span className="section-label">DETALLE AUTOMÁTICO</span><h2>¿De dónde sale cada número?</h2></div><small>Sin cargas manuales</small></header>
         <div className="finance-detail-columns">
           <details open><summary>Clientes · {ars.format(finance.facturacion)}</summary>{finance.ingresos.map((item) => <p key={item.nombre}><span>{item.nombre}{item.prorrateado ? ` · ${item.diasActivos}/${item.diasDelMes} días` : ""}</span><strong>{ars.format(item.importe)}</strong></p>)}</details>
-          <details><summary>Sueldos · {ars.format(finance.sueldos)}</summary>{(data.payroll || []).map((item) => <p key={item.name}><span>{item.name}</span><strong>{ars.format(item.total)}</strong></p>)}{salaryExpenses.map((item) => <p key={item.nombre}><span>{item.nombre}</span><strong>{ars.format(item.importe)}</strong></p>)}</details>
-          <details><summary>Impuestos · {ars.format(finance.impuestos)}</summary>{taxExpenses.map((item) => <p key={item.nombre}><span>Día {item.diaPago} · {item.nombre}</span><strong>{ars.format(item.importe)}</strong></p>)}</details>
-          <details><summary>Herramientas · ARS + USD</summary>{toolExpenses.map((item) => <p key={item.nombre}><span>Día {item.diaPago} · {item.nombre}</span><strong>{item.moneda === "USD" ? usd.format(item.importe) : ars.format(item.importe)}</strong></p>)}</details>
+          <details><summary>Equipo · {ars.format(finance.sueldos)}</summary>{(data.payroll || []).map((item) => <p key={item.name}><span>{item.name}</span><strong>{ars.format(item.total)}</strong></p>)}{salaryExpenses.map((item) => <p key={item.nombre}><span>{item.nombre}</span><strong>{ars.format(item.importe)}</strong></p>)}</details>
+          <details><summary>Gastos fijos · {ars.format(finance.gastosFijosARS)}</summary>{taxExpenses.map((item) => <p key={item.nombre}><span>Día {item.diaPago} · {item.nombre}</span><strong>{ars.format(item.importe)}</strong></p>)}{toolExpenses.map((item) => <p key={item.nombre}><span>Día {item.diaPago} · {item.nombre}{item.moneda === "USD" ? ` · USD ${item.importe}` : ""}</span><strong>{ars.format(item.moneda === "USD" ? item.importe * (exchangeRate?.rounded || 0) : item.importe)}</strong></p>)}</details>
         </div>
       </section>
 
       <section className="finance-panel"><header><div><span className="section-label">HISTORIAL</span><h2>Facturación mes a mes</h2></div><small>Siempre según el trabajo del mes anterior</small></header><BillingChart items={data.billingHistory} selectedPeriod={period} /></section>
-      <p className="finance-disclaimer">Los USD permanecen separados y no afectan el resultado en pesos hasta que se defina una cotización.</p>
+      <p className="finance-disclaimer">Los consumos en USD se convierten con dólar tarjeta vendedor y se redondean hacia arriba al próximo múltiplo de $100.</p>
     </>}
   </main>;
 }

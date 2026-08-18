@@ -22,6 +22,7 @@ import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToC
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
 import { applyCompensations, nextPeriod } from "./finance-calculation.js";
 import { buildAutomaticFinanceSummary, previousPeriod } from "./automatic-finance.js";
+import { getCardDollarRate } from "./exchange-rate.js";
 import { createWilsonRouter } from "./wilson-integration.js";
 import { runMigrations } from "./migrations.js";
 import { resolveUserRole } from "./user-roles.js";
@@ -415,7 +416,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       return res.status(400).json({ error: "Usá un período válido con formato YYYY-MM." });
     }
     const workPeriod = previousPeriod(period);
-    const [contracts, expenses, tasks, histories, publications, compensations] = await Promise.all([
+    const [contracts, expenses, tasks, histories, publications, compensations, exchangeRate] = await Promise.all([
       pool.query(`SELECT nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
         to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM contratos_financieros ORDER BY nombre`),
       pool.query(`SELECT nombre,categoria,moneda,importe,dia_pago,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
@@ -434,6 +435,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       pool.query(`SELECT DISTINCT ON (empleado_clave) empleado_clave,modalidad,sueldo_base,tarifa_facil,tarifa_intermedia
         FROM empleado_compensaciones WHERE vigente_desde <= ($1 || '-01')::date
         ORDER BY empleado_clave,vigente_desde DESC`, [period]),
+      getCardDollarRate(),
     ]);
     const payroll = applyCompensations(calculateSalaryDashboard({
       period: workPeriod,
@@ -446,6 +448,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       contracts: contracts.rows,
       expenses: expenses.rows,
       payrollARS: payroll.summary.configuredPayroll,
+      exchangeRateARS: exchangeRate.rounded,
     });
     const firstBillingPeriod = "2026-09";
     const history = [];
@@ -459,6 +462,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
     }
     res.json({
       finance,
+      exchangeRate,
       payroll: payroll.employees.map((employee) => ({ name: employee.name, total: Number(employee.total || 0) })),
       payrollPending: payroll.summary.pendingConfigurations,
       billingHistory: history,
