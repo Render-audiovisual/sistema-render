@@ -119,17 +119,6 @@ export function GermanDashboard() {
             </div>
           </div>
 
-          <div className="section-label">Agenda de visitas</div>
-          <div className="box">
-            <div className="placeholder-box">
-              [ Módulo de Agenda — Fase 2, no incluido en el MVP ]
-            </div>
-            <div className="caption">
-              Por ahora, coordinación de horarios y rutas se sigue manejando
-              fuera de la plataforma.
-            </div>
-          </div>
-
           <div className="section-label">Cumplimiento mensual por cliente</div>
           <div className="box">
             <table>
@@ -160,22 +149,6 @@ export function GermanDashboard() {
               → Un video cuenta como cumplido recién cuando queda marcado
               "Publicada" — no alcanza con haber ido a filmar.
             </div>
-          </div>
-
-          <div className="section-label">En revisión</div>
-          <div className="box">
-            {tareasGerman.filter((t) => t.estado === "en_revision").length === 0 && (
-              <div className="caption">No hay producciones en revisión.</div>
-            )}
-            {tareasGerman
-              .filter((t) => t.estado === "en_revision")
-              .map((t) => (
-                <div className="priority-card" key={`revision-${t.id}`}>
-                  <div className="cliente">{t.cliente_nombre ?? "Sin cliente"}</div>
-                  <div>{t.titulo}</div>
-                  <div className="meta">Pendiente de revisión.</div>
-                </div>
-              ))}
           </div>
         </div>
       </div>

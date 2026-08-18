@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { getEstadoHistoriaLabel, getHoyLocalISO, getSesion } from "../../utils.jsx";
 import { TareasAsignadasGenericas } from "../../components/TareasAsignadasGenericas.jsx";
 import { Modal } from "../../components/Modal.jsx";
+import { IconUpload, IconClock, IconCheckCircle } from "../../components/Icons.jsx";
 
 export function OrianaDashboard() {
   const [publicacionChecklist, setPublicacionChecklist] = useState(null);
@@ -68,21 +69,21 @@ export function OrianaDashboard() {
 
           <div className="stat-row">
             <div className="stat-card is-neutral">
-              <span className="stat-dot"></span>
+              <div className="stat-icon"><IconUpload /></div>
               <div>
                 <div className="stat-num">{listasHoy}</div>
                 <div className="stat-label">Listas para subir</div>
               </div>
             </div>
             <div className={`stat-card ${piezasHoy.length - listasHoy - publicadasHoy > 0 ? "is-warning" : "is-neutral"}`}>
-              <span className="stat-dot"></span>
+              <div className="stat-icon"><IconClock /></div>
               <div>
                 <div className="stat-num">{piezasHoy.length - listasHoy - publicadasHoy}</div>
                 <div className="stat-label">Esperando aprobación</div>
               </div>
             </div>
             <div className="stat-card is-neutral">
-              <span className="stat-dot"></span>
+              <div className="stat-icon"><IconCheckCircle /></div>
               <div>
                 <div className="stat-num">{publicadasHoy}</div>
                 <div className="stat-label">Ya publicadas</div>
@@ -139,23 +140,57 @@ export function OrianaDashboard() {
             </div>
           </div>
 
-          <div className="section-label">Vencidas (no publicadas a tiempo)</div>
+          <div className="section-label">Piezas que requieren atención</div>
           <div className="box">
-            {vencidas.map((pieza) => (
-              <div
-                className="priority-card blocked"
-                key={`vencida-${pieza.origen}-${pieza.id}`}
-              >
-                <div className="cliente">{pieza.cliente_nombre}</div>
-                <div>{pieza.idea || "Sin idea cargada"}</div>
-                <div className="meta">
-                  Debía publicarse el {pieza.fecha_programada}
+            {(() => {
+              const piezasPorClave = new Map();
+              vencidas.forEach((pieza) => {
+                piezasPorClave.set(`${pieza.origen}-${pieza.id}`, {
+                  ...pieza,
+                  urgencia: "atrasada",
+                });
+              });
+              bloqueadas.forEach((pieza) => {
+                const clave = `${pieza.origen}-${pieza.id}`;
+                piezasPorClave.set(clave, {
+                  ...(piezasPorClave.get(clave) ?? pieza),
+                  ...pieza,
+                  urgencia: "bloqueada",
+                });
+              });
+              const piezasAtencion = Array.from(piezasPorClave.values()).sort(
+                (a, b) => (a.urgencia === b.urgencia ? 0 : a.urgencia === "bloqueada" ? -1 : 1),
+              );
+
+              if (piezasAtencion.length === 0) {
+                return <div className="caption">✅ No hay piezas vencidas ni bloqueadas.</div>;
+              }
+
+              return (
+                <div className="urgent-list">
+                  {piezasAtencion.map((pieza) => {
+                    const esBloqueada = pieza.urgencia === "bloqueada";
+                    return (
+                      <div className="urgent-row" key={`${pieza.origen}-${pieza.id}`}>
+                        <span className={`tag ${esBloqueada ? "bloqueada" : "atraso"}`}>
+                          {esBloqueada ? "Bloqueada" : "Vencida"}
+                        </span>
+                        <div className="urgent-info">
+                          <div className="urgent-title">
+                            {pieza.cliente_nombre} · {pieza.idea || "Sin idea cargada"}
+                          </div>
+                          <div className="urgent-meta">
+                            {esBloqueada
+                              ? pieza.aclaraciones || "Sin aclaración cargada"
+                              : `Debía publicarse el ${pieza.fecha_programada}`}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </div>
-            ))}
-            {vencidas.length === 0 && (
-              <div className="caption">No hay piezas vencidas.</div>
-            )}
+              );
+            })()}
           </div>
 
           <div className="section-label">Próximas programadas</div>
@@ -170,43 +205,6 @@ export function OrianaDashboard() {
             {proximas.length === 0 && (
               <div className="caption">No hay piezas listas programadas a futuro todavía.</div>
             )}
-          </div>
-
-          <div className="section-label">Piezas bloqueadas por corrección</div>
-          <div className="box">
-            {bloqueadas.map((pieza) => (
-              <div
-                className="priority-card blocked"
-                key={`bloqueada-${pieza.origen}-${pieza.id}`}
-              >
-                <div className="cliente">{pieza.cliente_nombre}</div>
-                <div>{pieza.idea || "Sin idea cargada"}</div>
-                <div className="meta">
-                  {pieza.aclaraciones || "Sin aclaración cargada"}
-                </div>
-              </div>
-            ))}
-            {bloqueadas.length === 0 && (
-              <div className="caption">No hay piezas bloqueadas.</div>
-            )}
-            <div className="caption">
-              → Bloqueos de publicación separados del calendario para no perder
-              piezas que requieren corrección.
-            </div>
-          </div>
-
-          <div className="section-label">Avance del día</div>
-          <div className="box">
-            <div className="progress-card">
-              <div className="progress-label">Avance del día</div>
-              <div className="progress-value compact">
-                {publicadasHoy} / {piezasHoy.length}
-              </div>
-            </div>
-            <div className="caption">
-              → Conteo real de piezas publicadas hoy sobre el total programado
-              para hoy.
-            </div>
           </div>
         </div>
       </div>

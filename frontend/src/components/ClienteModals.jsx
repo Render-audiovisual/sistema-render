@@ -6,16 +6,16 @@ import {
   getCuotaReelsMensual,
   getMesActualISO,
   getPublicacionesDelMismoFeed,
-  getPorcentajesCliente,
-  getEstadoPorObjetivo,
-  getEstadoLabel,
   getTipoPublicacionLabel,
 } from "../utils.jsx";
 import { Modal } from "./Modal.jsx";
+import { ESTADOS_CLIENTE } from "../clientesStats.js";
 
 export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
   const esFeedCompartido = Boolean(cliente.grupo_feed_id);
   const [cuotaReels, setCuotaReels] = useState(String(cliente.cuota_reels ?? 0));
+  const [cuotaHistorias, setCuotaHistorias] = useState(String(cliente.cuota_historias ?? 0));
+  const [estadoCliente, setEstadoCliente] = useState(cliente.estado_cliente || "activo");
   const [cuotaCarruseles, setCuotaCarruseles] = useState(
     String(cliente.cuota_carruseles ?? 0),
   );
@@ -30,13 +30,13 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
 
   const esCuotaValida = (valor) =>
     valor !== "" && Number.isInteger(Number(valor)) && Number(valor) >= 0;
-  const formularioValido = esFeedCompartido
+  const formularioValido = esCuotaValida(cuotaHistorias) && (esFeedCompartido
     ? esCuotaValida(cuotaFeedReels) && esCuotaValida(cuotaFeedCarruseles)
-    : esCuotaValida(cuotaReels) && esCuotaValida(cuotaCarruseles);
+    : esCuotaValida(cuotaReels) && esCuotaValida(cuotaCarruseles));
   const totalMensual = formularioValido
     ? esFeedCompartido
-      ? Number(cuotaFeedReels) + Number(cuotaFeedCarruseles)
-      : Number(cuotaReels) + Number(cuotaCarruseles)
+      ? Number(cuotaHistorias) + Number(cuotaFeedReels) + Number(cuotaFeedCarruseles)
+      : Number(cuotaHistorias) + Number(cuotaReels) + Number(cuotaCarruseles)
     : 0;
 
   const guardar = (event) => {
@@ -53,10 +53,14 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
       body: JSON.stringify(
         esFeedCompartido
           ? {
+              estado_cliente: estadoCliente,
+              cuota_historias: Number(cuotaHistorias),
               cuota_feed_reels: Number(cuotaFeedReels),
               cuota_feed_carruseles: Number(cuotaFeedCarruseles),
             }
           : {
+              estado_cliente: estadoCliente,
+              cuota_historias: Number(cuotaHistorias),
               cuota_reels: Number(cuotaReels),
               cuota_carruseles: Number(cuotaCarruseles),
             },
@@ -87,6 +91,22 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
                 ? `Esta cuenta comparte su cuota con el grupo ${cliente.grupo_feed_nombre}.`
                 : "Definí la cantidad contratada de cada formato para un mes."}
             </span>
+          </div>
+          <div className="cliente-create-modal-grid">
+            <label className="cliente-service-field">
+              <span>Estado contractual</span>
+              <select value={estadoCliente} onChange={(event) => setEstadoCliente(event.target.value)}>
+                {ESTADOS_CLIENTE.map((estado) => (
+                  <option key={estado.value} value={estado.value}>{estado.label}</option>
+                ))}
+              </select>
+              <small>Solo los activos integran los totales de cartera.</small>
+            </label>
+            <label className="cliente-service-field">
+              <span>Historias mensuales</span>
+              <input min="0" step="1" type="number" value={cuotaHistorias} onChange={(event) => setCuotaHistorias(event.target.value)} />
+              <small>Usá 0 si no forman parte del acuerdo.</small>
+            </label>
           </div>
           {esFeedCompartido ? (
             <div className="cliente-create-modal-grid">
@@ -144,8 +164,8 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
             <strong>{totalMensual} piezas mensuales</strong>
             <small>
               {esFeedCompartido
-                ? `${cuotaFeedReels || 0} reels · ${cuotaFeedCarruseles || 0} carruseles compartidos`
-                : `${cuotaReels || 0} reels · ${cuotaCarruseles || 0} carruseles`}
+                ? `${cuotaHistorias || 0} historias · ${cuotaFeedReels || 0} reels · ${cuotaFeedCarruseles || 0} carruseles compartidos`
+                : `${cuotaHistorias || 0} historias · ${cuotaReels || 0} reels · ${cuotaCarruseles || 0} carruseles`}
             </small>
           </div>
           {error && <div className="caption login-error">{error}</div>}
@@ -174,8 +194,7 @@ export function DetalleClienteModal({
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
   const [editandoCuota, setEditandoCuota] = useState(false);
-  const porcentajes = getPorcentajesCliente(cliente);
-  const estado = getEstadoPorObjetivo(porcentajes.objetivo);
+  const estado = cliente.estadoHistorias?.color || "gris";
 
   const handleAvisar = (destinatario) => {
     const mensaje = window.prompt(`Mensaje para ${destinatario}:`);
@@ -267,7 +286,7 @@ export function DetalleClienteModal({
             <div className="modal-client-status">
               <span className={`semaforo ${estado}`}></span>
               <strong>
-                {getEstadoLabel(estado)} · {porcentajes.objetivo}% objetivo mes
+                {cliente.estadoHistorias?.label || "Sin estado"} · {cliente.porcentajeHistorias || 0}% de historias contratadas
               </strong>
             </div>
             <div className="caption">
@@ -280,8 +299,8 @@ export function DetalleClienteModal({
           <div className="cliente-detail-metrics">
             <div>
               <span>Historias</span>
-              <strong>{porcentajes.historias}%</strong>
-              <small>{porcentajes.historiasPublicadas} / {porcentajes.historiasTotal} OK</small>
+              <strong>{cliente.historiasPublicadas || 0}</strong>
+              <small>{cliente.historiasMes || 0} planificadas · cuota {cliente.cuota_historias || 0}</small>
             </div>
             {esFeedCompartido ? (
               <>

@@ -665,6 +665,8 @@ router.get("/clientes", async (_req, res, next) => {
       SELECT
         c.id,
         c.nombre,
+        c.estado_cliente,
+        c.cuota_historias,
         c.cuota_reels,
         c.cuota_carruseles,
         c.grupo_feed_id,
@@ -685,6 +687,8 @@ router.get("/clientes", async (_req, res, next) => {
 router.post("/clientes", requiereAdmin, async (req, res, next) => {
   try {
     const nombre = (req.body.nombre || "").trim();
+    const estado_cliente = req.body.estado_cliente || "activo";
+    const cuota_historias = Number(req.body.cuota_historias ?? 0);
     const cuota_reels = Number(req.body.cuota_reels ?? 0);
     const cuota_carruseles = Number(req.body.cuota_carruseles ?? 0);
 
@@ -692,21 +696,26 @@ router.post("/clientes", requiereAdmin, async (req, res, next) => {
       return res.status(400).json({ error: "Falta el nombre del cliente." });
     }
     if (
+      !Number.isInteger(cuota_historias) ||
       !Number.isInteger(cuota_reels) ||
       !Number.isInteger(cuota_carruseles) ||
+      cuota_historias < 0 ||
       cuota_reels < 0 ||
       cuota_carruseles < 0
     ) {
       return res.status(400).json({
-        error: "cuota_reels y cuota_carruseles deben ser enteros ≥ 0.",
+        error: "Las cuotas de historias, reels y carruseles deben ser enteros ≥ 0.",
       });
+    }
+    if (!["activo", "pausado", "finalizado"].includes(estado_cliente)) {
+      return res.status(400).json({ error: "Estado de cliente inválido." });
     }
 
     const result = await pool.query(
-      `INSERT INTO clientes (nombre, cuota_reels, cuota_carruseles)
-       VALUES ($1, $2, $3)
-       RETURNING id, nombre, cuota_reels, cuota_carruseles`,
-      [nombre, cuota_reels, cuota_carruseles],
+      `INSERT INTO clientes (nombre, estado_cliente, cuota_historias, cuota_reels, cuota_carruseles)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, nombre, estado_cliente, cuota_historias, cuota_reels, cuota_carruseles`,
+      [nombre, estado_cliente, cuota_historias, cuota_reels, cuota_carruseles],
     );
 
     res.status(201).json({
@@ -731,6 +740,8 @@ router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
     const { id } = req.params;
     const {
       nombre,
+      estado_cliente,
+      cuota_historias,
       cuota_reels,
       cuota_carruseles,
       cuota_feed_reels,
@@ -741,6 +752,9 @@ router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
     const cuotaReelsValida =
       cuota_reels === undefined ||
       (Number.isInteger(cuota_reels) && cuota_reels >= 0);
+    const cuotaHistoriasValida =
+      cuota_historias === undefined ||
+      (Number.isInteger(cuota_historias) && cuota_historias >= 0);
     const cuotaCarruselesValida =
       cuota_carruseles === undefined ||
       (Number.isInteger(cuota_carruseles) && cuota_carruseles >= 0);
@@ -752,6 +766,7 @@ router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
       (Number.isInteger(cuota_feed_carruseles) && cuota_feed_carruseles >= 0);
 
     if (
+      !cuotaHistoriasValida ||
       !cuotaReelsValida ||
       !cuotaCarruselesValida ||
       !cuotaFeedReelsValida ||
@@ -763,6 +778,12 @@ router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
     }
     if (nombreNormalizado !== undefined && !nombreNormalizado) {
       return res.status(400).json({ error: "El nombre del cliente no puede quedar vacío." });
+    }
+    if (
+      estado_cliente !== undefined &&
+      !["activo", "pausado", "finalizado"].includes(estado_cliente)
+    ) {
+      return res.status(400).json({ error: "Estado de cliente inválido." });
     }
 
     await client.query("BEGIN");
@@ -799,11 +820,15 @@ router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
       `UPDATE clientes
        SET
          nombre = COALESCE($1, nombre),
-         cuota_reels = COALESCE($2, cuota_reels),
-         cuota_carruseles = COALESCE($3, cuota_carruseles)
-       WHERE id = $4`,
+         estado_cliente = COALESCE($2, estado_cliente),
+         cuota_historias = COALESCE($3, cuota_historias),
+         cuota_reels = COALESCE($4, cuota_reels),
+         cuota_carruseles = COALESCE($5, cuota_carruseles)
+       WHERE id = $6`,
       [
         nombreNormalizado ?? null,
+        estado_cliente ?? null,
+        cuota_historias ?? null,
         cuota_reels ?? null,
         cuota_carruseles ?? null,
         id,
@@ -813,6 +838,8 @@ router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
       `SELECT
          c.id,
          c.nombre,
+         c.estado_cliente,
+         c.cuota_historias,
          c.cuota_reels,
          c.cuota_carruseles,
          c.grupo_feed_id,

@@ -21,6 +21,8 @@ export async function setupDemoClientes() {
     CREATE TABLE IF NOT EXISTS clientes (
       id SERIAL PRIMARY KEY,
       nombre TEXT NOT NULL UNIQUE,
+      estado_cliente TEXT NOT NULL DEFAULT 'activo',
+      cuota_historias INTEGER NOT NULL DEFAULT 0,
       cuota_reels INTEGER NOT NULL DEFAULT 0,
       cuota_carruseles INTEGER NOT NULL DEFAULT 0
     )
