@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { getEstadoTareaLabel } from "../../utils.jsx";
+import { getEstadoTareaLabel, getHoyLocalISO } from "../../utils.jsx";
 import { ESTADO_FINAL_TAREA } from "../../constants.js";
 import { TareasAsignadasGenericas } from "../../components/TareasAsignadasGenericas.jsx";
 
@@ -8,7 +8,7 @@ export function LucianoDashboard() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch("/api/tareas?asignado_a=Luciano&tipo_tarea=edicion")
+    fetch("/api/tareas?workspace=render_os&asignado_a=Luciano&tipo_tarea=edicion")
       .then((response) => response.json())
       .then((tareas) => {
         setEdicionesLuciano(
@@ -23,8 +23,12 @@ export function LucianoDashboard() {
       });
   }, []);
 
+  const mesActual = getHoyLocalISO().slice(0, 7);
+  const edicionesDelMes = edicionesLuciano.filter((tarea) =>
+    String(tarea.fecha_vencimiento || tarea.updated_at || "").startsWith(mesActual),
+  );
   const pendientes = edicionesLuciano.filter((t) => t.estado !== ESTADO_FINAL_TAREA);
-  const publicadas = edicionesLuciano.filter((t) => t.estado === ESTADO_FINAL_TAREA).length;
+  const publicadas = edicionesDelMes.filter((t) => t.estado === ESTADO_FINAL_TAREA).length;
   const proxima = pendientes[0];
 
   return (
@@ -58,7 +62,7 @@ export function LucianoDashboard() {
             <div className="progress-card">
               <div className="progress-label">Videos editados</div>
               <div className="progress-value">
-                {publicadas} / {edicionesLuciano.length}
+                {publicadas} / {edicionesDelMes.length}
               </div>
             </div>
             <div className="caption">

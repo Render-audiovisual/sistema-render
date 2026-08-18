@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getClientCarouselTarget, getDesignerCarouselSummary, getDesignerCarouselTaskSummary, groupFilmingTasksByClient, isCarouselTask, isEditingTask, isFilmingTask, isPlannedReelTask, summarizeTaskDeliveries } from "../../frontend/src/shared/reports/report-utils.js";
+import { belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getCarouselDesignerForClient, getClientCarouselTarget, getDesignerCarouselSummary, getDesignerCarouselTaskSummary, getReportPeriodRange, groupFilmingTasksByClient, isCarouselTask, isEditingTask, isFilmingTask, isPlannedReelTask, mergeReportTaskSources, summarizeTaskDeliveries } from "../../frontend/src/shared/reports/report-utils.js";
 
 test("identifica filmaciones sin contar tareas de edición", () => {
   assert.equal(isFilmingTask({ tipo_tarea: "produccion", titulo: "Visita al local" }), true);
@@ -118,4 +118,50 @@ test("cuenta carruseles publicados desde RENDER OS para cada diseñador", () => 
   assert.deepEqual(getDesignerCarouselTaskSummary("Mariano", clients, tasks), { realizados: 1, pendientes: 1, total: 2 });
   assert.deepEqual(getDesignerCarouselTaskSummary("Augusto", clients, tasks), { realizados: 1, pendientes: 2, total: 3 });
   assert.deepEqual(summarizeTaskDeliveries(tasks), { realizados: 2, pendientes: 1, total: 3 });
+});
+
+test("últimos 30 días contiene exactamente 30 fechas y nunca incluye el futuro", () => {
+  assert.deepEqual(getReportPeriodRange("ultimos_30", new Date(2026, 7, 18)), {
+    desde: "2026-07-20",
+    hasta: "2026-08-19",
+    dias: 30,
+    diasTranscurridos: 30,
+  });
+});
+
+test("combina tareas históricas y RENDER OS sin duplicar la misma entrega", () => {
+  const legacy = [{ id: 1, titulo: "Carrusel 1", cliente_nombre: "Bendita", asignado_a: "Augusto", fecha_vencimiento: "2026-08-10", estado: "pendiente" }];
+  const render = [
+    { id: 20, titulo: "Carrusel 1", cliente_nombre: "Bendita", asignado_a: "Augusto", fecha_vencimiento: "2026-08-10", estado: "publicada" },
+    { id: 21, titulo: "Carrusel 2", cliente_nombre: "Bendita", asignado_a: "Augusto", fecha_vencimiento: "2026-08-12", estado: "publicada" },
+  ];
+  const merged = mergeReportTaskSources(legacy, render);
+  assert.equal(merged.length, 2);
+  assert.deepEqual(merged.map((task) => task.id), [20, 21]);
+});
+
+test("respeta el diseñador configurado y excluye clientes inactivos de las cuotas", () => {
+  const clients = [
+    { id: 1, nombre: "Bendita", cuota_carruseles: 4, disenador_responsable: "Mariano Meza", activo: true },
+    { id: 2, nombre: "RPM Chevrolet", cuota_carruseles: 7, disenador_responsable: "Augusto", activo: false },
+  ];
+  assert.equal(getCarouselDesignerForClient(clients[0]), "Mariano");
+  assert.deepEqual(getDesignerCarouselTaskSummary("Mariano", clients, []), {
+    realizados: 0,
+    pendientes: 4,
+    total: 4,
+  });
+  assert.deepEqual(getDesignerCarouselTaskSummary("Augusto", clients, []), {
+    realizados: 0,
+    pendientes: 0,
+    total: 0,
+  });
+});
+
+test("preserva tareas legítimas repetidas dentro de una misma fuente", () => {
+  const render = [
+    { id: 1, titulo: "Carrusel", cliente_nombre: "Bendita", asignado_a: "Augusto", fecha_vencimiento: "2026-08-10" },
+    { id: 2, titulo: "Carrusel", cliente_nombre: "Bendita", asignado_a: "Augusto", fecha_vencimiento: "2026-08-10" },
+  ];
+  assert.deepEqual(mergeReportTaskSources([], render).map((task) => task.id), [1, 2]);
 });

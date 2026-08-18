@@ -10,12 +10,10 @@ export function GermanDashboard() {
   const [tareasGermanError, setTareasGermanError] = useState(null);
 
   const cargarTareasGerman = () => {
-    fetch("/api/tareas")
+    fetch("/api/tareas?workspace=render_os&asignado_a=Germ%C3%A1n&tipo_tarea=produccion")
       .then((response) => response.json())
       .then((tareas) => {
-        setTareasGerman(
-          tareas.filter((tarea) => tarea.asignado_a === "Germán"),
-        );
+        setTareasGerman(tareas);
       })
       .catch((error) => {
         console.error("No se pudieron cargar las tareas de Germán", error);
@@ -32,23 +30,20 @@ export function GermanDashboard() {
   // fecha_vencimiento (no hay fecha_programada directa en tareas) — el
   // desvío es de a lo sumo unos días, aceptable para el MVP.
   const mesActual = getHoyLocalISO().slice(0, 7);
-  const CUOTAS_GERMAN = [
-    { cliente: "Luzin", cuota: 8 },
-    { cliente: "Moketa", cuota: 8 },
-    { cliente: "Búnker Training", cuota: 4 },
-    { cliente: "Bohle", cuota: 6 },
-    { cliente: "Capital Motos", cuota: 6 },
-  ];
-  const cumplimientoPorCliente = CUOTAS_GERMAN.map((c) => {
-    const hechas = tareasGerman.filter(
-      (t) =>
-        t.cliente_nombre === c.cliente &&
-        t.estado === ESTADO_FINAL_TAREA &&
-        t.fecha_vencimiento?.startsWith(mesActual),
-    ).length;
-    return { ...c, hechas, porcentaje: Math.round((hechas / c.cuota) * 100) };
-  });
-  const cuotaTotal = CUOTAS_GERMAN.reduce((acc, c) => acc + c.cuota, 0);
+  const tareasDelMes = tareasGerman.filter((tarea) =>
+    String(tarea.fecha_vencimiento || tarea.updated_at || "").startsWith(mesActual),
+  );
+  const cumplimientoPorCliente = Object.values(tareasDelMes.reduce((resumen, tarea) => {
+    const cliente = tarea.cliente_nombre || "Sin cliente";
+    if (!resumen[cliente]) resumen[cliente] = { cliente, cuota: 0, hechas: 0 };
+    resumen[cliente].cuota += 1;
+    if (tarea.estado === ESTADO_FINAL_TAREA) resumen[cliente].hechas += 1;
+    return resumen;
+  }, {})).map((item) => ({
+    ...item,
+    porcentaje: item.cuota > 0 ? Math.round((item.hechas / item.cuota) * 100) : 0,
+  }));
+  const cuotaTotal = tareasDelMes.length;
   const hechasTotal = cumplimientoPorCliente.reduce((acc, c) => acc + c.hechas, 0);
 
   return (
@@ -153,7 +148,7 @@ export function GermanDashboard() {
             <div className="progress-card" style={{ marginTop: "12px" }}>
               <div className="progress-label">Total del mes</div>
               <div className="progress-value">
-                {hechasTotal} / {cuotaTotal} ({Math.round((hechasTotal / cuotaTotal) * 100)}%)
+                {hechasTotal} / {cuotaTotal} ({cuotaTotal > 0 ? Math.round((hechasTotal / cuotaTotal) * 100) : 0}%)
               </div>
             </div>
             <div className="caption">

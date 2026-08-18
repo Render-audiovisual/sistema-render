@@ -84,6 +84,40 @@ export function normalizeClientName(value = "") {
     .trim();
 }
 
+export function getReportPeriodRange(period = "mes_actual", now = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  const iso = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  if (period === "mes_pasado") {
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), 1);
+    const days = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    return { desde: iso(start), hasta: iso(end), dias: days, diasTranscurridos: days };
+  }
+  if (period === "ultimos_30") {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    return { desde: iso(start), hasta: iso(end), dias: 30, diasTranscurridos: 30 };
+  }
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return { desde: iso(start), hasta: iso(end), dias: days, diasTranscurridos: now.getDate() };
+}
+
+export function mergeReportTaskSources(legacyTasks = [], renderTasks = []) {
+  const key = (task) => [
+    normalizeClientName(task.titulo),
+    normalizeClientName(task.cliente_nombre),
+    normalizePersonName(task.asignado_a),
+    String(task.fecha_vencimiento || task.updated_at || "").slice(0, 10),
+  ].join("|");
+  const renderKeys = new Set(renderTasks.map(key));
+  return [
+    ...renderTasks,
+    ...legacyTasks.filter((task) => !renderKeys.has(key(task))),
+  ];
+}
+
 const MARIANO_CLIENTS = new Set([
   "iphone shop",
   "luzin",
@@ -100,18 +134,25 @@ const MARIANO_CLIENTS = new Set([
 ]);
 
 export function getCarouselDesignerForClient(client = {}) {
+  const configuredDesigner = normalizePersonName(client.disenador_responsable);
+  if (configuredDesigner.startsWith("mariano")) return "Mariano";
+  if (configuredDesigner.startsWith("augusto")) return "Augusto";
   return MARIANO_CLIENTS.has(normalizeClientName(client.nombre)) ? "Mariano" : "Augusto";
 }
 
 export function getClientCarouselTarget(client = {}, clients = []) {
   if (!client.grupo_feed_id) return Number(client.cuota_carruseles) || 0;
-  const groupClients = clients.filter((item) => item.grupo_feed_id === client.grupo_feed_id);
+  const groupClients = clients.filter(
+    (item) => item.activo !== false && item.grupo_feed_id === client.grupo_feed_id,
+  );
   const groupTarget = Number(client.cuota_feed_carruseles) || 0;
   return groupClients.length > 0 ? groupTarget / groupClients.length : 0;
 }
 
 export function getDesignerCarouselSummary(designer, clients = [], publications = []) {
-  const assignedClients = clients.filter((client) => getCarouselDesignerForClient(client) === designer);
+  const assignedClients = clients.filter(
+    (client) => client.activo !== false && getCarouselDesignerForClient(client) === designer,
+  );
   const assignedIds = new Set(assignedClients.map((client) => Number(client.id)));
   const total = assignedClients.reduce(
     (sum, client) => sum + getClientCarouselTarget(client, clients),
@@ -131,7 +172,9 @@ export function getDesignerCarouselSummary(designer, clients = [], publications 
 }
 
 export function getDesignerCarouselTaskSummary(designer, clients = [], tasks = []) {
-  const assignedClients = clients.filter((client) => getCarouselDesignerForClient(client) === designer);
+  const assignedClients = clients.filter(
+    (client) => client.activo !== false && getCarouselDesignerForClient(client) === designer,
+  );
   const assignedNames = new Set(assignedClients.map((client) => normalizeClientName(client.nombre)));
   const total = assignedClients.reduce((sum, client) => sum + getClientCarouselTarget(client, clients), 0);
   const realizados = tasks.filter((task) =>

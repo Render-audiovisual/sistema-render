@@ -1,4 +1,5 @@
 import React from "react";
+import { calculateActiveClientsCompliance, isTaskAssignedToPerson } from "./shared/dashboard-stats.js";
 import {
   esDeEstaSemana,
   esDelMesActual,
@@ -150,13 +151,7 @@ export function getPanoramaClientes(clientes, historias, publicaciones) {
 }
 
 export function getCumplimientoGeneral(clientes) {
-  const conDatos = clientes.filter((cliente) => cliente.porcentajes);
-  if (conDatos.length === 0) return 0;
-  const suma = conDatos.reduce(
-    (acc, cliente) => acc + cliente.porcentajes.objetivo,
-    0,
-  );
-  return Math.round(suma / conDatos.length);
+  return calculateActiveClientsCompliance(clientes);
 }
 
 export function getPorcentajesCliente(cliente) {
@@ -181,17 +176,21 @@ export function getResumenEquipo(historias, publicaciones, tareas) {
         (publicacion) => publicacion.responsable === nombre,
       ),
     ];
-    const items = [...piezas, ...tareas.filter((tarea) => tarea.asignado_a === nombre)];
+    const tareasPersona = tareas.filter((tarea) => isTaskAssignedToPerson(tarea, nombre));
+    const items = tareasPersona.length > 0 ? tareasPersona : piezas;
     const bloqueadas = items.filter((item) => item.estado === "bloqueada");
     const atrasadas = items.filter(
       (item) =>
-        item.fecha_programada &&
-        item.fecha_programada < hoy &&
+        (item.fecha_vencimiento || item.fecha_programada) &&
+        (item.fecha_vencimiento || item.fecha_programada) < hoy &&
         item.estado !== "publicada" &&
         item.estado !== "hecha",
     );
     const piezasDelMes = piezas.filter((pieza) =>
       esDelMesActual(pieza.fecha_programada),
+    );
+    const tareasDelMes = tareasPersona.filter((tarea) =>
+      esDelMesActual(tarea.fecha_vencimiento || tarea.updated_at),
     );
     const cargaTotal = items.length;
 
@@ -213,7 +212,7 @@ export function getResumenEquipo(historias, publicaciones, tareas) {
       bloqueadas: bloqueadas.length,
       atrasadas: atrasadas.length,
       cargaTotal,
-      cumplimiento: calcularPorcentajePublicadas(piezasDelMes),
+      cumplimiento: calcularPorcentajePublicadas(tareasDelMes.length > 0 ? tareasDelMes : piezasDelMes),
     };
   });
 }
