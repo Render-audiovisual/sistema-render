@@ -38,3 +38,28 @@ test("excluye inactivos y no duplica un feed compartido", () => {
   assert.equal(totales.reelsPublicados, 4);
   assert.equal(totales.piezasContratadas, 19);
 });
+
+test("el estado general considera reels y carruseles aunque no haya historias", () => {
+  const clientes = [{
+    id: 1,
+    activo: true,
+    dias_historias: [],
+    cuota_reels: 4,
+    cuota_carruseles: 4,
+  }];
+  const publicaciones = [
+    { cliente_id: 1, fecha_programada: "2026-08-03", estado: "publicada", tipo: "reel" },
+    { cliente_id: 1, fecha_programada: "2026-08-10", estado: "pendiente", tipo: "carrusel" },
+  ];
+  const [fila] = getResumenClientes(clientes, [], publicaciones, {
+    mes: "2026-08",
+    avanceDelMes: 0.5,
+  });
+
+  assert.equal(fila.estadoHistorias.label, "No incluido");
+  assert.equal(fila.estadoGeneral.label, "Necesita seguimiento");
+  assert.equal(fila.cuotaTotal, 8);
+  assert.equal(fila.piezasPlanificadas, 2);
+  assert.equal(fila.piezasPublicadas, 1);
+  assert.equal(fila.porcentajeGeneral, 13);
+});
