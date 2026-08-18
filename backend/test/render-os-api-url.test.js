@@ -25,6 +25,12 @@ test("la consulta paginada de RENDER OS envía filtros y archivado al backend", 
   assert.equal(url.searchParams.get("prioridad"), "alta");
 });
 
+test("Papelera usa su propio filtro y no se mezcla con Archivadas", () => {
+  const url = new URL(buildTaskPageUrl({ archiveMode: "trash" }), "https://render.test");
+  assert.equal(url.searchParams.get("papelera"), "true");
+  assert.equal(url.searchParams.has("solo_archivadas"), false);
+});
+
 test("los filtros vacíos no contaminan la consulta activa", () => {
   const url = new URL(buildTaskPageUrl({}), "https://render.local");
   assert.equal(url.searchParams.get("workspace"), "render_os");

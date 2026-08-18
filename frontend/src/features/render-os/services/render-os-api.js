@@ -19,6 +19,7 @@ export function buildTaskPageUrl(options = {}) {
   const settings = typeof options === "number" ? { offset: options } : options;
   const params = new URLSearchParams({ workspace: "render_os", limit: "100", offset: String(settings.offset || 0) });
   if (settings.archiveMode === "archived") params.set("solo_archivadas", "true");
+  if (settings.archiveMode === "trash") params.set("papelera", "true");
   if (settings.responsible && settings.responsible !== "all") params.set("asignado_a", settings.responsible);
   if (settings.client && settings.client !== "all") params.set("cliente_id", settings.client === "none" ? "none" : settings.client);
   if (settings.sector && settings.sector !== "all") params.set("tipo_tarea", settings.sector === "none" ? "none" : settings.sector);

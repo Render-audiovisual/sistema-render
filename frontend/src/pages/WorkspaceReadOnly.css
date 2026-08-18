@@ -701,6 +701,46 @@
   color:#363934;
 }
 
+/* Selección múltiple del tablero */
+.render-workspace .ros-title-with-menu{align-items:flex-start;display:flex;gap:12px;min-width:0}
+.render-workspace .ros-bulk-menu{flex:0 0 auto;position:relative;z-index:35}
+.render-workspace .ros-bulk-menu>summary{align-items:center;background:#fff;border:1px solid #d8dcd1;border-radius:9px;color:var(--ros-graphite,#242724);cursor:pointer;display:flex;height:38px;justify-content:center;list-style:none;position:relative;width:42px}
+.render-workspace .ros-bulk-menu>summary::-webkit-details-marker{display:none}
+.render-workspace .ros-bulk-menu>summary:hover,.render-workspace .ros-bulk-menu[open]>summary{background:#eef1e8;border-color:#bcc6ad}
+.render-workspace .ros-bulk-menu>summary:focus-visible{outline:3px solid #b9dd73;outline-offset:2px}
+.render-workspace .ros-bulk-menu>summary svg{fill:currentColor;height:20px;width:20px}
+.render-workspace .ros-bulk-menu>summary b{align-items:center;background:var(--ros-lime,#b8ec57);border:2px solid #fff;border-radius:999px;color:#20251d;display:flex;font-size:9px;height:19px;justify-content:center;min-width:19px;padding:0 4px;position:absolute;right:-7px;top:-7px}
+.render-workspace .ros-bulk-menu-panel{background:#fff;border:1px solid #d8dcd1;border-radius:12px;box-shadow:0 16px 38px #1c211727;display:grid;gap:4px;left:0;min-width:260px;padding:8px;position:absolute;top:46px}
+.render-workspace .ros-bulk-menu-panel header{border-bottom:1px solid #eceee7;display:grid;gap:3px;margin-bottom:3px;padding:8px 9px 10px}
+.render-workspace .ros-bulk-menu-panel header strong{color:#272b25;font-size:12px}
+.render-workspace .ros-bulk-menu-panel header small{color:#747a70;font-size:10px;line-height:1.45}
+.render-workspace .ros-bulk-menu-panel button{background:transparent;border:0;border-radius:8px;color:#363b33;cursor:pointer;display:grid;gap:2px;padding:9px;text-align:left;width:100%}
+.render-workspace .ros-bulk-menu-panel button:hover:not(:disabled){background:#f0f3e9}
+.render-workspace .ros-bulk-menu-panel button span{font-size:11px;font-weight:750}
+.render-workspace .ros-bulk-menu-panel button small{color:#777d73;font-size:9px;line-height:1.35}
+.render-workspace .ros-bulk-menu-panel button.danger{color:#923f39}
+.render-workspace .ros-bulk-menu-panel button.danger:hover:not(:disabled){background:#fff0ee}
+.render-workspace .ros-bulk-menu-panel button.quiet{border-top:1px solid #eceee7;color:#777d73;font-size:10px;margin-top:3px;padding-top:10px}
+.render-workspace .ros-bulk-menu-panel button:disabled{cursor:not-allowed;opacity:.42}
+.render-workspace .ros-selection-status{align-items:center;background:#252a22;border-radius:10px;color:#fff;display:flex;gap:10px;margin:12px 22px 0;padding:10px 12px}
+.render-workspace .ros-selection-status strong{font-size:11px}
+.render-workspace .ros-selection-status span{color:#d4d9ce;font-size:9px}
+.render-workspace .ros-selection-status button{background:#3b4236;border:1px solid #555e4d;border-radius:7px;color:#fff;font-size:9px;margin-left:auto;padding:7px 10px}
+.render-workspace .ros-board.is-selecting{cursor:crosshair;user-select:none}
+.render-workspace .ros-selection-rectangle{background:#a8db4b26;border:1px solid #7dab31;box-shadow:0 5px 18px #2430171a;pointer-events:none;position:fixed;z-index:90}
+.render-workspace .ros-task-card{position:relative}
+.render-workspace .ros-task-card.is-selected{border-color:#7cab31;box-shadow:0 0 0 2px #a8db4b,0 8px 20px #20241816;transform:translateY(-1px)}
+.render-workspace .ros-task-selection-check{align-items:center;background:#9ed83e;border:2px solid #fff;border-radius:50%;color:#20251d;display:flex;font-size:9px;font-weight:900;height:21px;justify-content:center;opacity:0;pointer-events:none;position:absolute;right:-7px;top:-7px;transform:scale(.72);transition:opacity .14s ease,transform .18s cubic-bezier(.2,.8,.2,1);width:21px;z-index:2}
+.render-workspace .ros-task-card.is-selected .ros-task-selection-check{opacity:1;transform:scale(1)}
+
+@media(max-width:700px){
+  .render-workspace .ros-title-with-menu{gap:8px}
+  .render-workspace .ros-bulk-menu-panel{max-width:calc(100vw - 28px);min-width:240px}
+  .render-workspace .ros-selection-status{align-items:flex-start;flex-wrap:wrap;margin:10px 10px 0}
+  .render-workspace .ros-selection-status span{flex-basis:100%}
+  .render-workspace .ros-selection-status button{margin-left:0}
+}
+
 @media(max-width:700px){
   .render-workspace .ros-controls .ros-controls-meta{
     justify-content:space-between;
