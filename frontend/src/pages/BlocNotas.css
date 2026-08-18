@@ -53,7 +53,7 @@
   min-height:560px;
   overflow:hidden;
 }
-.notes-list{background:#f2f4ed;border-right:1px solid var(--notes-line);display:flex;flex-direction:column;min-width:0}
+.notes-list{background:#f2f4ed;border-right:1px solid var(--notes-line);display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
 .notes-search{
   align-items:center;
   background:#fff;
@@ -87,7 +87,21 @@
 .notes-list-title{align-items:center;display:flex;padding:7px 17px 10px}
 .notes-list-title strong{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
 .notes-list-title small{background:#e2e6db;border-radius:99px;color:#656b60;font-size:9px;margin-left:auto;min-width:22px;padding:4px 7px;text-align:center}
-.notes-items{flex:1;overflow:auto;padding:0 9px 10px}
+.notes-items{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  padding:0 9px 10px;
+  scrollbar-color:#bcc3b5 transparent;
+  scrollbar-gutter:stable;
+  scrollbar-width:thin;
+  -webkit-overflow-scrolling:touch;
+}
+.notes-items::-webkit-scrollbar{width:8px}
+.notes-items::-webkit-scrollbar-thumb{background:#bcc3b5;border:2px solid #f2f4ed;border-radius:99px}
+.notes-items::-webkit-scrollbar-track{background:transparent}
 .notes-items>button{
   background:transparent;
   border:1px solid transparent;
