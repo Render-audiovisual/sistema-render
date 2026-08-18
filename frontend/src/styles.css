@@ -10899,7 +10899,56 @@ tr:hover .sheet-row-actions {
   }
 }
 .clientes-metrics-compact {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.clientes-compact-field {
+  display: grid;
+  gap: 4px;
+}
+
+.clientes-compact-field span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.clientes-compact-field input,
+.clientes-compact-field select {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.cliente-active-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px 14px;
+  border: 1px solid #dfe3d8;
+  border-radius: 11px;
+  background: #f8f9f4;
+}
+
+.cliente-active-toggle input {
+  margin-top: 3px;
+}
+
+.cliente-active-toggle span,
+.cliente-active-toggle small {
+  display: block;
+}
+
+.cliente-active-toggle small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+@media (max-width: 1250px) and (min-width: 761px) {
+  .clientes-metrics-compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 .cliente-detail-btn {

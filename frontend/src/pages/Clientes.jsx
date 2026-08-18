@@ -1,5 +1,17 @@
-import React, { useEffect, useState } from "react";
-import { calcularPorcentajeCuota, getClaveFeed, getCuotaCarruselesMensual, getCuotaReelsMensual, getMesActualISO, getPublicacionesDelMismoFeed, getResumenClientesActivos } from "../utils.jsx";
+import React, { useEffect, useMemo, useState } from "react";
+import { getMesActualISO } from "../utils.jsx";
+import {
+  calcularCuotaHistoriasPorDias,
+  calcularPorcentajeCuota,
+  esDelMes,
+  getAvanceMes,
+  getCuotaCarruselesMensual,
+  getCuotaReelsMensual,
+  getMesISO,
+  getPublicacionesDelMismoFeed,
+  getResumenClientes,
+  getTotalesCartera,
+} from "../clientesStats.js";
 import { EditarCuotaClienteModal, DetalleClienteModal } from "../components/ClienteModals.jsx";
 import { Modal } from "../components/Modal.jsx";
 import { PageState } from "../components/PageState.jsx";
@@ -67,6 +79,8 @@ export function ClientesAdminPage() {
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [nuevoCliente, setNuevoCliente] = useState(emptyClientForm);
+  const [mesSeleccionado, setMesSeleccionado] = useState(() => getMesISO());
+  const [filtroEstado, setFiltroEstado] = useState("activos");
   const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [altaClienteAbierta, setAltaClienteAbierta] = useState(false);
   const [clienteCuotaEnEdicion, setClienteCuotaEnEdicion] = useState(null);
@@ -80,9 +94,9 @@ export function ClientesAdminPage() {
     if (!silencioso) setCargando(true);
     setError(null);
     Promise.all([
-      fetch("/api/clientes").then((response) => response.json()),
-      fetch("/api/historias").then((response) => response.json()),
-      fetch("/api/publicaciones").then((response) => response.json()),
+      fetch(`/api/clientes?periodo=${mesSeleccionado}`).then(validarRespuestaApi),
+      fetch("/api/historias").then(validarRespuestaApi),
+      fetch("/api/publicaciones").then(validarRespuestaApi),
     ])
       .then(([clientesApi, historiasApi, publicacionesApi]) => {
         setClientes(clientesApi);
@@ -97,6 +111,13 @@ export function ClientesAdminPage() {
         if (!silencioso) setCargando(false);
       });
   };
+
+  async function validarRespuestaApi(response) {
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.error || `No se pudo cargar la información (${response.status}).`);
+    if (!Array.isArray(data)) throw new Error("El servidor devolvió información inválida.");
+    return data;
+  }
 
   useEffect(() => {
     if (contextRestored || clientes.length === 0) return;
@@ -130,7 +151,7 @@ export function ClientesAdminPage() {
       clearInterval(intervalo);
       document.removeEventListener("visibilitychange", alVolverVisible);
     };
-  }, []);
+  }, [mesSeleccionado]);
 
   const validarCuota = (valor) => {
     const numero = Number(valor);
@@ -147,7 +168,8 @@ export function ClientesAdminPage() {
     nuevoCliente.abono_mensual !== "" && Number(nuevoCliente.abono_mensual) >= 0 &&
     /^\d{4}-\d{2}$/.test(nuevoCliente.vigente_desde);
   const totalPiezasNuevoCliente = altaClienteValida
-    ? Number(nuevoCliente.cuota_reels) + Number(nuevoCliente.cuota_carruseles)
+    ? calcularCuotaHistoriasPorDias(nuevoCliente.dias_historias, nuevoCliente.vigente_desde) +
+      Number(nuevoCliente.cuota_reels) + Number(nuevoCliente.cuota_carruseles)
     : 0;
 
   const abrirAltaCliente = () => {
@@ -212,61 +234,20 @@ export function ClientesAdminPage() {
     );
   };
 
-  const filas = getResumenClientesActivos(clientes, historias, publicaciones);
-  const totalHistorias = filas.reduce(
-    (sum, cliente) => sum + cliente.historiasMes,
-    0,
+  const filasTodas = useMemo(
+    () => getResumenClientes(clientes, historias, publicaciones, {
+      mes: mesSeleccionado,
+      avanceDelMes: getAvanceMes(mesSeleccionado),
+    }),
+    [clientes, historias, publicaciones, mesSeleccionado],
   );
-  const totalHistoriasPublicadas = filas.reduce(
-    (sum, cliente) => sum + cliente.historiasPublicadas,
-    0,
+  const filas = useMemo(
+    () => filasTodas.filter((cliente) =>
+      filtroEstado === "todos" || (filtroEstado === "activos" ? cliente.activo : !cliente.activo)),
+    [filasTodas, filtroEstado],
   );
-  const clavesFeedContadas = new Set();
-  const filasFeedUnicas = filas.filter((cliente) => {
-    const clave = getClaveFeed(cliente);
-    if (clavesFeedContadas.has(clave)) return false;
-    clavesFeedContadas.add(clave);
-    return true;
-  });
-  const totalReelsPublicados = filasFeedUnicas.reduce((sum, cliente) => sum + cliente.reelsPublicados, 0);
-  const totalCarruselesPublicados = filasFeedUnicas.reduce(
-    (sum, cliente) => sum + cliente.carruselesPublicados,
-    0,
-  );
-  const totalCuotaReels = filasFeedUnicas.reduce(
-    (sum, cliente) => sum + getCuotaReelsMensual(cliente),
-    0,
-  );
-  const totalCuotaCarruseles = filasFeedUnicas.reduce(
-    (sum, cliente) => sum + getCuotaCarruselesMensual(cliente),
-    0,
-  );
-  const totalPiezasPublicadas =
-    totalHistoriasPublicadas + totalReelsPublicados + totalCarruselesPublicados;
-  const totalPiezasComprometidas =
-    totalHistorias + totalCuotaReels + totalCuotaCarruseles;
-  const avanceHistorias = calcularPorcentajeCuota(
-    totalHistoriasPublicadas,
-    totalHistorias,
-  );
-  const avanceReels = calcularPorcentajeCuota(
-    totalReelsPublicados,
-    totalCuotaReels,
-  );
-  const avanceCarruseles = calcularPorcentajeCuota(
-    totalCarruselesPublicados,
-    totalCuotaCarruseles,
-  );
-  const avanceTotal = calcularPorcentajeCuota(
-    totalPiezasPublicadas,
-    totalPiezasComprometidas,
-  );
-  const getAlertaCliente = (cliente) => {
-    if (cliente.estadoHistorias.color === "rojo") return "Necesita seguimiento";
-    if (cliente.estadoHistorias.color === "amarillo") return "Revisar ritmo";
-    if (cliente.historiasMes === 0) return "Sin planificación de historias";
-    return "Al día";
-  };
+  const totales = useMemo(() => getTotalesCartera(filasTodas), [filasTodas]);
+  const getAlertaCliente = (cliente) => cliente.estadoHistorias.label;
 
   return (
     <main aria-label="Administración de clientes">
@@ -274,14 +255,26 @@ export function ClientesAdminPage() {
         <div className="content clientes-page">
           <div className="clientes-command-bar">
             <div className="clientes-heading">
-              <div className="section-label">Clientes — {getMesActualISO()}</div>
+              <div className="section-label">Clientes</div>
               <h2>¿Cómo está cada cliente este mes?</h2>
               <p>Revisá el avance acordado y detectá rápidamente qué necesita atención.</p>
             </div>
             <div className="clientes-top-actions">
               <div className="clientes-heading-meta">
-                <span>{filas.length} activos</span>
+                <span>{totales.clientesActivos} activos</span>
               </div>
+              <label className="clientes-compact-field">
+                <span>Mes</span>
+                <input type="month" value={mesSeleccionado} onChange={(event) => setMesSeleccionado(event.target.value)} />
+              </label>
+              <label className="clientes-compact-field">
+                <span>Estado</span>
+                <select value={filtroEstado} onChange={(event) => setFiltroEstado(event.target.value)}>
+                  <option value="activos">Activos</option>
+                  <option value="inactivos">Inactivos</option>
+                  <option value="todos">Todos</option>
+                </select>
+              </label>
               <button
                 className="btn primary"
                 type="button"
@@ -293,20 +286,30 @@ export function ClientesAdminPage() {
           </div>
 
           <div className="clientes-metrics clientes-metrics-compact" aria-label="Avance mensual de la cartera">
+            <div className="cliente-metric historias">
+              <div><span>Historias planificadas</span><strong>{totales.porcentajePlanificacionHistorias}%</strong></div>
+              <div className="cliente-metric-progress" aria-label={`${totales.porcentajePlanificacionHistorias}% de historias planificadas`}><i style={{ width: `${totales.porcentajePlanificacionHistorias}%` }}/></div>
+              <small>{totales.historiasPlanificadas} / {totales.cuotaHistorias} contratadas</small>
+            </div>
+            <div className="cliente-metric historias">
+              <div><span>Historias publicadas</span><strong>{totales.porcentajeHistorias}%</strong></div>
+              <div className="cliente-metric-progress" aria-label={`${totales.porcentajeHistorias}% de historias publicadas`}><i style={{ width: `${totales.porcentajeHistorias}%` }}/></div>
+              <small>{totales.historiasPublicadas} / {totales.cuotaHistorias} contratadas</small>
+            </div>
             <div className="cliente-metric reels">
-              <div><span>Reels</span><strong>{avanceReels}%</strong></div>
-              <div className="cliente-metric-progress" aria-label={`${avanceReels}% de reels publicados`}><i style={{ width: `${avanceReels}%` }}/></div>
-              <small>{totalReelsPublicados} / {totalCuotaReels} publicados</small>
+              <div><span>Reels</span><strong>{totales.porcentajeReels}%</strong></div>
+              <div className="cliente-metric-progress" aria-label={`${totales.porcentajeReels}% de reels publicados`}><i style={{ width: `${totales.porcentajeReels}%` }}/></div>
+              <small>{totales.reelsPublicados} / {totales.cuotaReels} contratados</small>
             </div>
             <div className="cliente-metric carruseles">
-              <div><span>Carruseles</span><strong>{avanceCarruseles}%</strong></div>
-              <div className="cliente-metric-progress" aria-label={`${avanceCarruseles}% de carruseles publicados`}><i style={{ width: `${avanceCarruseles}%` }}/></div>
-              <small>{totalCarruselesPublicados} / {totalCuotaCarruseles} publicados</small>
+              <div><span>Carruseles</span><strong>{totales.porcentajeCarruseles}%</strong></div>
+              <div className="cliente-metric-progress" aria-label={`${totales.porcentajeCarruseles}% de carruseles publicados`}><i style={{ width: `${totales.porcentajeCarruseles}%` }}/></div>
+              <small>{totales.carruselesPublicados} / {totales.cuotaCarruseles} contratados</small>
             </div>
             <div className="cliente-metric total">
-              <div><span>Avance total</span><strong>{avanceTotal}%</strong></div>
-              <div className="cliente-metric-progress" aria-label={`${avanceTotal}% del total mensual publicado`}><i style={{ width: `${avanceTotal}%` }}/></div>
-              <small>{totalPiezasPublicadas} / {totalPiezasComprometidas} piezas del mes</small>
+              <div><span>Cumplimiento contractual</span><strong>{totales.porcentajeTotal}%</strong></div>
+              <div className="cliente-metric-progress" aria-label={`${totales.porcentajeTotal}% del total mensual publicado`}><i style={{ width: `${totales.porcentajeTotal}%` }}/></div>
+              <small>{totales.piezasPublicadas} / {totales.piezasContratadas} piezas contratadas</small>
             </div>
           </div>
 
@@ -327,7 +330,7 @@ export function ClientesAdminPage() {
                 {filas.map((cliente) => {
                   const cuotaReels = getCuotaReelsMensual(cliente);
                   const cuotaCarruseles = getCuotaCarruselesMensual(cliente);
-                  const comprometidas = cuotaReels + cuotaCarruseles + cliente.historiasMes;
+                  const comprometidas = cuotaReels + cuotaCarruseles + cliente.cuotaHistorias;
                   const publicadas = cliente.reelsPublicados + cliente.carruselesPublicados + cliente.historiasPublicadas;
                   const progreso = calcularPorcentajeCuota(publicadas, comprometidas);
                   const pendientes = Math.max(0, comprometidas - publicadas);
@@ -337,11 +340,11 @@ export function ClientesAdminPage() {
                       onClick={() => setClienteSeleccionado(cliente)}>
                       <div className="clientes-portfolio-identity">
                         <span className="cliente-initial">{getClienteInicial(cliente.nombre)}</span>
-                        <div><strong>{cliente.nombre}</strong><small>{cliente.rubro || "Sin rubro cargado"} · Activo</small></div>
+                        <div><strong>{cliente.nombre}</strong><small>{cliente.rubro || "Sin rubro cargado"} · {cliente.activo ? "Activo" : "Inactivo"}</small></div>
                       </div>
                       <div className="clientes-portfolio-contract">
                         <strong>{cuotaReels} reels · {cuotaCarruseles} carruseles</strong>
-                        <small>{cliente.historiasMes ? `${cliente.historiasMes} historias planificadas` : "Historias sin frecuencia cargada"}</small>
+                        <small>{cliente.cuotaHistorias ? `${cliente.historiasMes} planificadas de ${cliente.cuotaHistorias} contratadas` : "Historias no incluidas"}</small>
                       </div>
                       <div className="clientes-portfolio-commercial">
                         <strong>{MONEY.format(Number(cliente.abono_mensual) || 0)}</strong>
@@ -373,7 +376,7 @@ export function ClientesAdminPage() {
                         <span className="cliente-initial">{getClienteInicial(cliente.nombre)}</span>
                         <div>
                           <strong>{cliente.nombre}</strong>
-                          <small>Cliente activo</small>
+                          <small>Cliente {cliente.activo ? "activo" : "inactivo"}</small>
                         </div>
                       </div>
                       <span className={`cliente-status-pill ${cliente.estadoHistorias.color}`}>
@@ -418,16 +421,16 @@ export function ClientesAdminPage() {
                       </div>
                       <div>
                         <span>Historias</span>
-                        <strong>{cliente.historiasPublicadas} de {cliente.historiasMes} OK</strong>
-                        <small>{cliente.porcentajeHistorias}% publicado</small>
+                        <strong>{cliente.historiasPublicadas} de {cliente.cuotaHistorias} publicadas</strong>
+                        <small>{cliente.historiasMes} planificadas · {cliente.porcentajeHistorias}% del acuerdo</small>
                       </div>
                       <div>
                         <span>Próxima acción</span>
                         <strong>{getAlertaCliente(cliente)}</strong>
                         <small>
-                          {cliente.historiasMes === 0
-                            ? "Sin historias planificadas."
-                            : `${cliente.historiasMes - cliente.historiasPublicadas} pendientes.`}
+                          {cliente.cuotaHistorias === 0
+                            ? "Historias no incluidas."
+                            : `${Math.max(cliente.cuotaHistorias - cliente.historiasPublicadas, 0)} contratadas pendientes.`}
                         </small>
                       </div>
                     </div>
@@ -559,7 +562,7 @@ export function ClientesAdminPage() {
                 <span>Resumen del acuerdo</span>
                 <strong>{totalPiezasNuevoCliente} piezas mensuales</strong>
                 <small>
-                  {nuevoCliente.cuota_reels || 0} reels · {nuevoCliente.cuota_carruseles || 0} carruseles · {nuevoCliente.dias_historias.length} días de historias
+                  {calcularCuotaHistoriasPorDias(nuevoCliente.dias_historias, nuevoCliente.vigente_desde)} historias · {nuevoCliente.cuota_reels || 0} reels · {nuevoCliente.cuota_carruseles || 0} carruseles
                 </small>
                 <small>{nuevoCliente.disenador_responsable || "Sin diseñador"} · {Number(nuevoCliente.abono_mensual || 0).toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 })}</small>
               </div>
@@ -599,12 +602,14 @@ export function ClientesAdminPage() {
       {clienteSeleccionado && (
         <DetalleClienteModal
           cliente={clienteSeleccionado}
-          historias={historias.filter((h) => h.cliente_id === clienteSeleccionado.id)}
+          historias={historias.filter(
+            (historia) => historia.cliente_id === clienteSeleccionado.id && esDelMes(historia.fecha_programada, mesSeleccionado),
+          )}
           publicaciones={getPublicacionesDelMismoFeed(
             clienteSeleccionado,
             clientes,
             publicaciones,
-          )}
+          ).filter((publicacion) => esDelMes(publicacion.fecha_programada, mesSeleccionado))}
           onClose={() => setClienteSeleccionado(null)}
           onCuotaActualizada={cargarClientes}
           onClienteActualizado={(clienteActualizado) => actualizarClienteLocal(clienteActualizado.id, clienteActualizado)}
