@@ -596,6 +596,7 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
   const [error, setError] = useState(null);
   const [guardandoId, setGuardandoId] = useState(null);
   const [checks, setChecks] = useState([]);
+  const [semanaSeleccionada, setSemanaSeleccionada] = useState(0);
 
   const hoyISO = getHoyLocalISO();
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -650,6 +651,11 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
     }
     return resultado;
   }, [year, month]);
+
+  useEffect(() => {
+    const indiceActual = semanas.findIndex((dias) => dias.some((dia) => dia.iso === hoyISO));
+    setSemanaSeleccionada(indiceActual >= 0 ? indiceActual : 0);
+  }, [semanas, hoyISO]);
 
   useEffect(() => {
     const desde = `${year}-${String(month + 1).padStart(2, "0")}-01`;
@@ -758,9 +764,34 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
       {cargando ? (
         <div className="state-empty">Cargando checklist…</div>
       ) : (
-        <div className="sheet-frame check-sheet-frame">
+        <>
+          <div className="check-week-navigation" aria-label="Navegación por semanas">
+            <button
+              type="button"
+              disabled={semanaSeleccionada === 0}
+              onClick={() => setSemanaSeleccionada((actual) => Math.max(0, actual - 1))}
+            >Anterior</button>
+            <div className="check-week-tabs">
+              {semanas.map((dias, indice) => (
+                <button
+                  type="button"
+                  key={dias[0].iso}
+                  className={indice === semanaSeleccionada ? "active" : ""}
+                  onClick={() => setSemanaSeleccionada(indice)}
+                  aria-label={`Ver semana ${indice + 1}`}
+                >{indice + 1}</button>
+              ))}
+            </div>
+            <button
+              type="button"
+              disabled={semanaSeleccionada === semanas.length - 1}
+              onClick={() => setSemanaSeleccionada((actual) => Math.min(semanas.length - 1, actual + 1))}
+            >Siguiente</button>
+          </div>
+          <div className="sheet-frame check-sheet-frame">
           <div className="sheet-namebar">CHECK HISTORIAS — {MESES[month].toUpperCase()} {year}</div>
           {semanas.map((dias, semanaIndex) => {
+            if (semanaIndex !== semanaSeleccionada) return null;
             const desde = dias[0];
             const hasta = dias[6];
             const esSemanaActual = dias.some((dia) => dia.iso === hoyISO);
@@ -866,12 +897,11 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
               </table>
             );
           })}
-        </div>
+          </div>
+        </>
       )}
 
-      <div className="caption" style={{ marginTop: "10px" }}>
-        Matriz mensual igual a CHECKHISTORIAS: clientes por fila, días por columna.
-      </div>
+      <div className="caption check-help">Elegí una semana y marcá cada día cuando las historias estén publicadas.</div>
     </>
   );
 }
@@ -1006,6 +1036,8 @@ export function HistoriasFechasEspecialesTab({ clientes }) {
   const [fechasEspeciales, setFechasEspeciales] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
+  const [filtro, setFiltro] = useState("proximas");
+  const [busqueda, setBusqueda] = useState("");
 
   useEffect(() => {
     setCargando(true);
@@ -1026,7 +1058,25 @@ export function HistoriasFechasEspecialesTab({ clientes }) {
 
   const hoyISO = getHoyLocalISO();
   const estadoLabel = { pendiente: "Pendiente", en_curso: "En curso", hecho: "Hecho" };
-  const clientesPorId = Object.fromEntries(clientes.map((c) => [c.id, c.nombre]));
+  const clientesPorId = useMemo(() => Object.fromEntries(clientes.map((c) => [c.id, c.nombre])), [clientes]);
+  const fechasFiltradas = useMemo(() => {
+    const termino = busqueda.trim().toLocaleLowerCase("es");
+    return fechasEspeciales.filter((fecha) => {
+      const vencida = fecha.fecha && fecha.fecha < hoyISO && fecha.estado !== "hecho";
+      const coincideFiltro = filtro === "todas"
+        || (filtro === "proximas" && fecha.estado !== "hecho" && !vencida)
+        || (filtro === "pendientes" && fecha.estado !== "hecho")
+        || (filtro === "hechas" && fecha.estado === "hecho");
+      if (!coincideFiltro) return false;
+      if (!termino) return true;
+      const contenido = [
+        fecha.evento,
+        fecha.idea,
+        fecha.cliente_id ? clientesPorId[fecha.cliente_id] : "Todos",
+      ].filter(Boolean).join(" ").toLocaleLowerCase("es");
+      return contenido.includes(termino);
+    });
+  }, [busqueda, clientesPorId, fechasEspeciales, filtro, hoyISO]);
 
   if (cargando) {
     return <div className="state-empty">Cargando fechas especiales…</div>;
@@ -1038,10 +1088,27 @@ export function HistoriasFechasEspecialesTab({ clientes }) {
         <div className="alert is-error">{error}</div>
       )}
 
-      <div className="sheet-frame">
-        <div className="sheet-namebar">Fechas especiales</div>
-        {fechasEspeciales.length === 0 ? (
-          <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>No hay fechas especiales registradas.</div>
+      <div className="special-dates-toolbar">
+        <div className="special-dates-filters" aria-label="Filtrar fechas especiales">
+          {[
+            ["proximas", "Próximas"],
+            ["pendientes", "Pendientes"],
+            ["hechas", "Hechas"],
+            ["todas", "Todas"],
+          ].map(([valor, etiqueta]) => (
+            <button key={valor} type="button" className={filtro === valor ? "active" : ""} onClick={() => setFiltro(valor)}>{etiqueta}</button>
+          ))}
+        </div>
+        <label className="special-dates-search">
+          <span>Buscar</span>
+          <input value={busqueda} onChange={(event) => setBusqueda(event.target.value)} placeholder="Cliente, motivo o acción" />
+        </label>
+      </div>
+
+      <div className="sheet-frame special-dates-frame">
+        <div className="sheet-namebar">{fechasFiltradas.length} fechas encontradas</div>
+        {fechasFiltradas.length === 0 ? (
+          <div className="special-dates-empty">No hay fechas que coincidan con esta búsqueda.</div>
         ) : (
           <table className="sheet-table historias-special-dates-table">
             <thead>
@@ -1054,14 +1121,14 @@ export function HistoriasFechasEspecialesTab({ clientes }) {
               </tr>
             </thead>
             <tbody>
-              {fechasEspeciales.map((f) => (
+              {fechasFiltradas.map((f) => (
                 <tr key={f.id} className={f.fecha && f.fecha < hoyISO && f.estado !== "hecho" ? "sheet-row-danger" : undefined}>
-                  <td style={{ padding: "8px 10px" }}>{f.fecha || "Sin fecha"}</td>
-                  <td style={{ padding: "8px 10px", fontWeight: 600 }}>{f.cliente_id ? clientesPorId[f.cliente_id] || "Sin local" : "Todos"}</td>
-                  <td style={{ padding: "8px 10px" }}>{f.evento || "—"}</td>
-                  <td style={{ padding: "8px 10px" }}>{f.idea || "—"}</td>
-                  <td style={{ padding: "8px 10px" }}>
-                    <span className="sheet-status-pill" style={{ background: f.estado === "hecho" ? "#c8e6c9" : f.estado === "en_curso" ? "#fff9c4" : "#ffccbc" }}>
+                  <td className="special-date-cell">{f.fecha || "Sin fecha"}</td>
+                  <td className="special-client-cell">{f.cliente_id ? clientesPorId[f.cliente_id] || "Sin local" : "Todos"}</td>
+                  <td>{f.evento || "—"}</td>
+                  <td>{f.idea || "—"}</td>
+                  <td>
+                    <span className={`sheet-status-pill is-${f.estado || "pendiente"}`}>
                       {estadoLabel[f.estado] || f.estado}
                     </span>
                   </td>
