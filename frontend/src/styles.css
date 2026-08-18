@@ -11308,6 +11308,134 @@ tr:hover .sheet-row-actions {
 .clientes-portfolio-commercial strong { display: block; color: #202418; font-size: 14px; line-height: 1.35; }
 .clientes-portfolio-commercial small { display: block; margin-top: 4px; color: #8a6a36; font-size: 12px; line-height: 1.4; }
 .cliente-detail-agreement { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; margin-top: 16px; }
+
+/* Clientes · encabezado operativo */
+.clientes-command-bar {
+  align-items: stretch;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.clientes-heading {
+  max-width: 1180px;
+}
+
+.clientes-heading h2 {
+  font-size: clamp(34px, 3.2vw, 54px);
+  line-height: 1.02;
+  max-width: none;
+  text-wrap: balance;
+}
+
+.clientes-heading p {
+  font-size: 15px;
+  max-width: 68ch;
+}
+
+.clientes-top-actions {
+  align-items: end;
+  border-top: 1px solid #e2e6ed;
+  display: grid;
+  flex: none;
+  gap: 12px;
+  grid-template-columns: minmax(120px, .6fr) minmax(240px, 1.6fr) minmax(170px, 1fr) minmax(180px, .9fr);
+  justify-content: stretch;
+  padding-top: 18px;
+  position: relative;
+}
+
+.clientes-top-actions::before {
+  background: #2e66e6;
+  content: "";
+  height: 2px;
+  left: 0;
+  position: absolute;
+  top: -1px;
+  width: 52px;
+}
+
+.clientes-heading-meta {
+  align-self: center;
+  justify-content: flex-start;
+}
+
+.clientes-heading-meta span {
+  align-items: baseline;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: #273244;
+  display: inline-flex;
+  font-size: 14px;
+  gap: 5px;
+  padding: 0 10px 0 0;
+  white-space: nowrap;
+}
+
+.clientes-compact-field {
+  gap: 7px;
+}
+
+.clientes-compact-field span {
+  color: #596579;
+  font-size: 12px;
+}
+
+.clientes-compact-field input,
+.clientes-compact-field select {
+  border-color: #d9dee7;
+  border-radius: 11px;
+  min-height: 48px;
+  padding-inline: 14px;
+}
+
+.clientes-top-actions .btn.primary {
+  align-self: end;
+  min-height: 48px;
+  padding-inline: 20px;
+  justify-content: center;
+  width: 100%;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .clientes-top-actions {
+    grid-template-columns: minmax(120px, .55fr) minmax(210px, 1.35fr) minmax(150px, .8fr);
+  }
+
+  .clientes-top-actions .btn.primary {
+    grid-column: 2 / -1;
+    justify-self: end;
+  }
+}
+
+@media (max-width: 700px) {
+  .clientes-command-bar { gap: 20px; }
+  .clientes-heading h2 { font-size: clamp(32px, 10vw, 44px); }
+  .clientes-heading p { font-size: 14px; }
+
+  .clientes-top-actions {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .clientes-heading-meta {
+    grid-column: 1 / -1;
+  }
+
+  .clientes-top-actions .btn.primary {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+}
+
+@media (max-width: 480px) {
+  .clientes-top-actions { grid-template-columns: 1fr; }
+  .clientes-heading-meta,
+  .clientes-top-actions .btn.primary { grid-column: 1; }
+}
 .cliente-detail-agreement > div { display: grid; gap: 5px; padding: 14px; border: 1px solid #e2e5dc; border-radius: 12px; background: #fff; }
 .cliente-detail-agreement span { color: #7d8278; font-size: 11px; }
 .cliente-detail-agreement strong { color: #202418; font-size: 13px; line-height: 1.35; }
