@@ -5185,7 +5185,11 @@ textarea:disabled {
 }
 
 .historias-viewport .stories-context-bar.is-checklist .h-today-btn {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
   min-height: 44px;
+  text-align: center;
   white-space: nowrap;
 }
 
@@ -5199,7 +5203,7 @@ textarea:disabled {
 }
 
 .historias-viewport .checklist-context-stats span {
-  align-items: baseline;
+  align-items: center;
   background: #fff;
   border: 1px solid #dfe4da;
   border-radius: 8px;
@@ -5208,6 +5212,7 @@ textarea:disabled {
   font-size: 9.5px;
   gap: 4px;
   justify-content: center;
+  line-height: 1;
   min-height: 44px;
   padding: 0 8px;
   white-space: nowrap;
@@ -5217,6 +5222,7 @@ textarea:disabled {
   color: #2c332a;
   font-size: 14px;
   font-weight: 700;
+  line-height: 1;
 }
 
 .historias-viewport .checklist-context-stats .ok {
