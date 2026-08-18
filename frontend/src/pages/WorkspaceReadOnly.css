@@ -956,6 +956,7 @@
 .render-workspace .ros-column>header span,.render-workspace .ros-column>header strong{font-size:var(--ros-type-body)}
 .render-workspace .ros-column>header small{font-size:var(--ros-type-badge);height:22px;min-width:22px}
 .render-workspace .ros-area-badge{font-size:var(--ros-type-badge);font-weight:700}
+.render-workspace .ros-area-emoji{font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;font-size:1.25em;line-height:1}
 .render-workspace .ros-task-card h3{font-size:15px;line-height:1.4;margin:9px 0 5px}
 .render-workspace .ros-task-card>p{font-size:var(--ros-type-secondary);line-height:1.45;margin-bottom:14px}
 .render-workspace .ros-task-card footer>span,.render-workspace .ros-task-card footer>b{font-size:var(--ros-type-label)}
