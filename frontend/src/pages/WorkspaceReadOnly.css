@@ -1288,3 +1288,54 @@
   .render-workspace .ros-day-preview-list>button{grid-template-columns:7px minmax(0,1fr) 12px}
   .render-workspace .ros-day-preview-list>button b{display:none}
 }
+
+/* Tareas · cabecera operativa compacta para priorizar el tablero */
+.render-workspace .ros-page{padding-bottom:36px}
+.render-workspace .ros-title-row{
+  align-items:center;
+  background:transparent;
+  display:grid;
+  gap:20px;
+  grid-template-columns:minmax(240px,.72fr) minmax(460px,1.28fr);
+  margin:0;
+  padding:18px 22px 14px;
+}
+.render-workspace .ros-title-with-menu{align-items:center;gap:12px}
+.render-workspace .ros-title-copy{align-items:baseline;display:flex;gap:12px;min-width:0}
+.render-workspace .ros-title-row h1{flex:0 0 auto;font-size:28px;letter-spacing:-.035em;line-height:1.1}
+.render-workspace .ros-title-row p{font-size:12px;line-height:1.4;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.render-workspace .ros-title-actions{display:grid;flex:initial;gap:10px;grid-template-columns:minmax(260px,1fr) auto;width:100%}
+.render-workspace .ros-top-search{max-width:none;min-height:40px;width:100%}
+.render-workspace .ros-primary-button{min-height:40px;padding-inline:18px}
+.render-workspace .ros-controls{border-radius:12px 12px 0 0;gap:14px;margin:0 22px;min-height:52px;padding:6px 8px}
+.render-workspace .ros-controls>div:first-child{flex:0 1 auto;min-width:0}
+.render-workspace .ros-controls button{min-height:36px;padding:7px 11px}
+.render-workspace .ros-controls .ros-controls-meta{min-width:0}
+.render-workspace .ros-controls-meta>span{font-size:11px;margin-right:2px;padding-right:10px}
+.render-workspace .ros-controls .ros-archive-link{min-height:34px;padding:6px 9px}
+.render-workspace .ros-filter-bar{column-gap:10px;margin:0 22px 12px;padding:10px 12px 12px;row-gap:8px}
+.render-workspace .ros-filter-bar label{gap:5px}
+.render-workspace .ros-filter-bar label>span{font-size:10px}
+.render-workspace .ros-filter-bar select,.render-workspace .ros-filter-bar button{min-height:36px}
+.render-workspace .ros-board{margin-top:6px}
+
+@media(max-width:1100px){
+  .render-workspace .ros-title-row{gap:14px;grid-template-columns:minmax(210px,.65fr) minmax(390px,1.35fr)}
+  .render-workspace .ros-title-copy p{display:none}
+  .render-workspace .ros-controls{align-items:stretch;flex-direction:column;gap:7px}
+  .render-workspace .ros-controls .ros-controls-meta{justify-content:flex-end;width:100%}
+}
+@media(max-width:760px){
+  .render-workspace .ros-title-row{display:grid;gap:12px;grid-template-columns:1fr;padding:14px 10px 12px}
+  .render-workspace .ros-title-copy p{display:block}
+  .render-workspace .ros-title-actions{grid-template-columns:minmax(0,1fr) auto}
+  .render-workspace .ros-controls,.render-workspace .ros-filter-bar{margin-inline:10px}
+}
+@media(max-width:520px){
+  .render-workspace .ros-title-copy{align-items:flex-start;display:grid;gap:3px}
+  .render-workspace .ros-title-row h1{font-size:26px}
+  .render-workspace .ros-title-row p{white-space:normal}
+  .render-workspace .ros-title-actions{grid-template-columns:1fr}
+  .render-workspace .ros-primary-button{width:100%}
+  .render-workspace .ros-controls .ros-controls-meta{justify-content:flex-start;overflow-x:auto}
+}
