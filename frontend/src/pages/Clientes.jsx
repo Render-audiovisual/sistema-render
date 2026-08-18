@@ -83,6 +83,7 @@ export function ClientesAdminPage() {
   const [filtroEstado, setFiltroEstado] = useState("activos");
   const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [altaClienteAbierta, setAltaClienteAbierta] = useState(false);
+  const [pasoAltaCliente, setPasoAltaCliente] = useState(1);
   const [clienteCuotaEnEdicion, setClienteCuotaEnEdicion] = useState(null);
   const [errorAltaCliente, setErrorAltaCliente] = useState(null);
 
@@ -167,13 +168,22 @@ export function ClientesAdminPage() {
     nuevoCliente.disenador_responsable &&
     nuevoCliente.abono_mensual !== "" && Number(nuevoCliente.abono_mensual) >= 0 &&
     /^\d{4}-\d{2}$/.test(nuevoCliente.vigente_desde);
-  const totalPiezasNuevoCliente = altaClienteValida
-    ? calcularCuotaHistoriasPorDias(nuevoCliente.dias_historias, nuevoCliente.vigente_desde) +
-      Number(nuevoCliente.cuota_reels) + Number(nuevoCliente.cuota_carruseles)
+  const historiasMensualesNuevoCliente = nuevoCliente.dias_historias.length > 0 && /^\d{4}-\d{2}$/.test(nuevoCliente.vigente_desde)
+    ? calcularCuotaHistoriasPorDias(nuevoCliente.dias_historias, nuevoCliente.vigente_desde)
     : 0;
+  const totalPiezasNuevoCliente = historiasMensualesNuevoCliente +
+    (validarCuota(nuevoCliente.cuota_reels) ? Number(nuevoCliente.cuota_reels) : 0) +
+    (validarCuota(nuevoCliente.cuota_carruseles) ? Number(nuevoCliente.cuota_carruseles) : 0);
+  const pasoIdentidadValido = nuevoCliente.nombre.trim().length > 0 &&
+    nuevoCliente.rubro.trim().length > 0 && /^\d{4}-\d{2}$/.test(nuevoCliente.vigente_desde);
+  const pasoAcuerdoValido = validarCuota(nuevoCliente.cuota_reels) &&
+    validarCuota(nuevoCliente.cuota_carruseles) && nuevoCliente.dias_historias.length > 0;
+  const pasoResponsableValido = Boolean(nuevoCliente.disenador_responsable) &&
+    nuevoCliente.abono_mensual !== "" && Number(nuevoCliente.abono_mensual) >= 0;
 
   const abrirAltaCliente = () => {
     setNuevoCliente(emptyClientForm());
+    setPasoAltaCliente(1);
     setErrorAltaCliente(null);
     setAltaClienteAbierta(true);
   };
@@ -452,11 +462,28 @@ export function ClientesAdminPage() {
           className="cliente-create-modal"
         >
             <form className="modal-body cliente-create-modal-body" onSubmit={crearCliente}>
-              <div className="clientes-panel-copy">
-                <strong>Configuración inicial</strong>
-                <span>Completá el acuerdo una sola vez. Las cuotas anteriores nunca se sobrescriben.</span>
+              <div className="cliente-create-progress" aria-label={`Paso ${pasoAltaCliente} de 3`}>
+                {["Datos", "Acuerdo", "Responsable"].map((etiqueta, index) => {
+                  const numero = index + 1;
+                  return (
+                    <div
+                      key={etiqueta}
+                      className={numero === pasoAltaCliente ? "active" : numero < pasoAltaCliente ? "complete" : ""}
+                      aria-current={numero === pasoAltaCliente ? "step" : undefined}
+                    >
+                      <span>{numero < pasoAltaCliente ? "✓" : numero}</span>
+                      <small>{etiqueta}</small>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="cliente-create-modal-grid">
+
+              {pasoAltaCliente === 1 && <section className="cliente-create-step">
+                <div className="cliente-create-step-copy">
+                  <strong>¿A quién vamos a gestionar?</strong>
+                  <span>Ingresá los datos básicos del cliente y desde qué mes comienza el acuerdo.</span>
+                </div>
+                <div className="cliente-create-modal-grid">
                 <label className="cliente-service-field">
                   <span>Nombre del cliente</span>
                   <input autoFocus type="text" placeholder="Ej. RENDER Motors" value={nuevoCliente.nombre}
@@ -473,6 +500,15 @@ export function ClientesAdminPage() {
                   <input type="month" value={nuevoCliente.vigente_desde}
                     onChange={(e) => setNuevoCliente((prev) => ({ ...prev, vigente_desde: e.target.value }))} />
                 </label>
+                </div>
+              </section>}
+
+              {pasoAltaCliente === 2 && <section className="cliente-create-step">
+                <div className="cliente-create-step-copy">
+                  <strong>¿Qué incluye el acuerdo mensual?</strong>
+                  <span>Definí las piezas contratadas. Si un formato no está incluido, escribí 0.</span>
+                </div>
+                <div className="cliente-create-modal-grid">
                 <label className="cliente-service-field">
                   <span>Reels mensuales</span>
                   <input
@@ -501,8 +537,8 @@ export function ClientesAdminPage() {
                   />
                   <small>Usá 0 si el acuerdo no incluye carruseles.</small>
                 </label>
-              </div>
-              <fieldset className="cliente-weekdays">
+                </div>
+                <fieldset className="cliente-weekdays">
                 <legend>Días de historias</legend>
                 <small>Marcá los días en los que normalmente se publican historias.</small>
                 <div>{WEEKDAYS.map(([value, label]) => (
@@ -517,8 +553,15 @@ export function ClientesAdminPage() {
                     {label}
                   </label>
                 ))}</div>
-              </fieldset>
-              <div className="cliente-create-modal-grid">
+                </fieldset>
+              </section>}
+
+              {pasoAltaCliente === 3 && <section className="cliente-create-step">
+                <div className="cliente-create-step-copy">
+                  <strong>¿Quién lo gestiona y cuál es el abono?</strong>
+                  <span>Asigná al responsable y revisá el acuerdo antes de crear el cliente.</span>
+                </div>
+                <div className="cliente-create-modal-grid">
                 <label className="cliente-service-field">
                   <span>Diseñador responsable</span>
                   <select value={nuevoCliente.disenador_responsable}
@@ -534,32 +577,45 @@ export function ClientesAdminPage() {
                     onChange={(e) => setNuevoCliente((prev) => ({ ...prev, abono_mensual: e.target.value }))} />
                   <small>Importe fijo en pesos argentinos.</small>
                 </label>
-              </div>
-              <div className="cliente-contract-summary">
+                </div>
+                <div className="cliente-contract-summary">
                 <span>Resumen del acuerdo</span>
                 <strong>{totalPiezasNuevoCliente} piezas mensuales</strong>
                 <small>
-                  {calcularCuotaHistoriasPorDias(nuevoCliente.dias_historias, nuevoCliente.vigente_desde)} historias · {nuevoCliente.cuota_reels || 0} reels · {nuevoCliente.cuota_carruseles || 0} carruseles
+                  {historiasMensualesNuevoCliente} historias · {nuevoCliente.cuota_reels || 0} reels · {nuevoCliente.cuota_carruseles || 0} carruseles
                 </small>
                 <small>{nuevoCliente.disenador_responsable || "Sin diseñador"} · {Number(nuevoCliente.abono_mensual || 0).toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 })}</small>
-              </div>
+                </div>
+              </section>}
               {errorAltaCliente && <div className="caption login-error">{errorAltaCliente}</div>}
-              <div className="modal-actions">
+              <p className="cliente-create-guidance" aria-live="polite">
+                {pasoAltaCliente === 1 && !pasoIdentidadValido && "Completá el nombre y el rubro para continuar."}
+                {pasoAltaCliente === 2 && !pasoAcuerdoValido && "Indicá ambas cuotas y elegí al menos un día de historias."}
+                {pasoAltaCliente === 3 && !pasoResponsableValido && "Elegí un responsable e ingresá el abono mensual."}
+              </p>
+              <div className="modal-actions cliente-create-actions">
                 <button
                   className="btn"
                   type="button"
                   disabled={guardandoCliente}
-                  onClick={cerrarAltaCliente}
+                  onClick={() => pasoAltaCliente === 1 ? cerrarAltaCliente() : setPasoAltaCliente((paso) => paso - 1)}
                 >
-                  Cancelar
+                  {pasoAltaCliente === 1 ? "Cancelar" : "Volver"}
                 </button>
-                <button
+                {pasoAltaCliente < 3 ? <button
+                  className="btn primary"
+                  type="button"
+                  disabled={pasoAltaCliente === 1 ? !pasoIdentidadValido : !pasoAcuerdoValido}
+                  onClick={() => setPasoAltaCliente((paso) => paso + 1)}
+                >
+                  Continuar
+                </button> : <button
                   className="btn primary"
                   type="submit"
-                  disabled={guardandoCliente || !altaClienteValida}
+                  disabled={guardandoCliente || !pasoResponsableValido || !altaClienteValida}
                 >
                   {guardandoCliente ? "Creando..." : "Crear cliente"}
-                </button>
+                </button>}
               </div>
             </form>
         </Modal>
