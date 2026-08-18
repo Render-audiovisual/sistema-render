@@ -8,7 +8,7 @@ export function AugustoDashboard() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch("/api/tareas?asignado_a=Augusto&tipo_tarea=diseno")
+    fetch("/api/tareas?workspace=render_os&asignado_a=Augusto&tipo_tarea=diseno")
       .then((response) => response.json())
       .then((tareas) => {
         setDisenosAugusto(
@@ -24,10 +24,14 @@ export function AugustoDashboard() {
   }, []);
 
   const hoy = getHoyLocalISO();
+  const mesActual = hoy.slice(0, 7);
+  const disenosDelMes = disenosAugusto.filter((tarea) =>
+    String(tarea.fecha_vencimiento || tarea.updated_at || "").startsWith(mesActual),
+  );
   const atrasadasOHoy = disenosAugusto.filter(
     (t) => t.estado !== ESTADO_FINAL_TAREA && t.fecha_vencimiento && t.fecha_vencimiento <= hoy,
   );
-  const publicadas = disenosAugusto.filter((t) => t.estado === ESTADO_FINAL_TAREA).length;
+  const publicadas = disenosDelMes.filter((t) => t.estado === ESTADO_FINAL_TAREA).length;
   const proxima = disenosAugusto.find((t) => t.estado !== ESTADO_FINAL_TAREA);
 
   return (
@@ -79,7 +83,7 @@ export function AugustoDashboard() {
             <div className="progress-card">
               <div className="progress-label">Diseños entregados</div>
               <div className="progress-value">
-                {publicadas} / {disenosAugusto.length}
+                {publicadas} / {disenosDelMes.length}
               </div>
             </div>
           </div>

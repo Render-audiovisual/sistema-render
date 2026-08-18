@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
 import { pushUrlContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
-import { belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getDesignerCarouselTaskSummary, isCarouselTask, isEditingTask, summarizeTaskDeliveries } from "../shared/reports/report-utils.js";
+import { belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getDesignerCarouselTaskSummary, getReportPeriodRange, isCarouselTask, isEditingTask, mergeReportTaskSources, summarizeTaskDeliveries } from "../shared/reports/report-utils.js";
 import { groupProductionByClient } from "../features/render-os/utils/production-visits.js";
 
 export function ResumenEntregableEquipo({
@@ -184,7 +184,11 @@ export function ReportesEquipoPage() {
       if (loading) return;
       loading = true;
       if (!silencioso) setCargando(true);
-      fetch("/api/reportes/datos", { cache: "no-store" })
+      const rango = getReportPeriodRange(periodo, new Date());
+      const mesConfiguracion = periodo === "mes_pasado"
+        ? rango.desde.slice(0, 7)
+        : getHoyLocalISO().slice(0, 7);
+      fetch(`/api/reportes/datos?mes_configuracion=${encodeURIComponent(mesConfiguracion)}`, { cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || "No se pudieron cargar los datos del reporte.");
@@ -226,10 +230,10 @@ export function ReportesEquipoPage() {
       window.removeEventListener("focus", actualizarAlVolver);
       document.removeEventListener("visibilitychange", actualizarAlVolver);
     };
-  }, [esVistaAdmin, nombrePropio]);
+  }, [esVistaAdmin, nombrePropio, periodo]);
 
   const hoyISO = getHoyLocalISO();
-  const ahora = new Date();
+  const ahora = useMemo(() => new Date(), [periodo]);
   const OBJETIVOS_MENSUALES_EQUIPO = {
     edicion: 40,
     diseno: 30,
@@ -237,31 +241,7 @@ export function ReportesEquipoPage() {
     community: 120,
   };
 
-  const rangoPeriodo = useMemo(() => {
-    const pad = (n) => String(n).padStart(2, "0");
-    if (periodo === "mes_actual") {
-      const desde = `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-01`;
-      const sig = new Date(ahora.getFullYear(), ahora.getMonth() + 1, 1);
-      const hasta = `${sig.getFullYear()}-${pad(sig.getMonth() + 1)}-01`;
-      return {
-        desde,
-        hasta,
-        dias: new Date(ahora.getFullYear(), ahora.getMonth() + 1, 0).getDate(),
-        diasTranscurridos: ahora.getDate(),
-      };
-    }
-    if (periodo === "mes_pasado") {
-      const prev = new Date(ahora.getFullYear(), ahora.getMonth() - 1, 1);
-      const desde = `${prev.getFullYear()}-${pad(prev.getMonth() + 1)}-01`;
-      const hasta = `${ahora.getFullYear()}-${pad(ahora.getMonth() + 1)}-01`;
-      const dias = new Date(prev.getFullYear(), prev.getMonth() + 1, 0).getDate();
-      return { desde, hasta, dias, diasTranscurridos: dias };
-    }
-    const d30 = new Date(ahora);
-    d30.setDate(d30.getDate() - 30);
-    const desde = `${d30.getFullYear()}-${pad(d30.getMonth() + 1)}-${pad(d30.getDate())}`;
-    return { desde, hasta: "9999-12-31", dias: 30, diasTranscurridos: 30 };
-  }, [periodo, ahora]);
+  const rangoPeriodo = useMemo(() => getReportPeriodRange(periodo, ahora), [periodo, ahora]);
 
   const enPeriodo = useCallback((fechaISO) =>
     typeof fechaISO === "string" &&
@@ -270,8 +250,13 @@ export function ReportesEquipoPage() {
     [rangoPeriodo]
   );
 
+  const tareasReporte = useMemo(
+    () => mergeReportTaskSources(tareas, tareasRenderOs),
+    [tareas, tareasRenderOs],
+  );
+
   const empleados = useMemo(() => {
-    const nombresConTareas = [...new Set(tareas.map((t) => t.asignado_a).filter(Boolean))];
+    const nombresConTareas = [...new Set(tareasReporte.map((t) => t.asignado_a).filter(Boolean))];
     const nombresUsuarios = usuarios
       .filter((u) => u.rol !== "admin" || nombresConTareas.some((nombre) => belongsToPerson(nombre, u.nombre)))
       .map((u) => u.nombre);
@@ -284,10 +269,11 @@ export function ReportesEquipoPage() {
     return esVistaAdmin
       ? nombresUnificados
       : [nombrePropio].filter(Boolean);
-  }, [tareas, usuarios, esVistaAdmin, nombrePropio]);
+  }, [tareasReporte, usuarios, esVistaAdmin, nombrePropio]);
 
   const filas = useMemo(() => empleados.map((nombre) => {
-    const propias = tareas.filter((t) => belongsToPerson(t.asignado_a, nombre));
+    const propias = tareasReporte.filter((t) => belongsToPerson(t.asignado_a, nombre));
+    const propiasRenderOs = tareasRenderOs.filter((t) => belongsToPerson(t.asignado_a, nombre));
     // Cuando una persona tiene una base mensual auditada desde ClickUp, esa
     // fuente es la que gobierna el reporte del mes. Así no se mezclan tareas
     // operativas reales con backfills automáticos o registros históricos que
@@ -303,7 +289,7 @@ export function ReportesEquipoPage() {
         )
       : [];
     const propiasReporte = propiasFuenteMensual.length > 0
-      ? propiasFuenteMensual
+      ? mergeReportTaskSources(propiasFuenteMensual, propiasRenderOs)
       : propias;
 
     const activas = propiasReporte.filter((t) => t.estado !== ESTADO_FINAL_TAREA);
@@ -376,7 +362,7 @@ export function ReportesEquipoPage() {
       tiempoPromedio,
       productividad,
     };
-  }), [empleados, tareas, usuarios, rangoPeriodo, hoyISO, enPeriodo, ESTADO_FINAL_TAREA, OBJETIVOS_MENSUALES_EQUIPO]);
+  }), [empleados, tareasReporte, tareasRenderOs, usuarios, rangoPeriodo, hoyISO, enPeriodo, ESTADO_FINAL_TAREA, OBJETIVOS_MENSUALES_EQUIPO]);
 
   const PRIORIDAD_ESTADO = useMemo(() => ({ Atrasado: 0, "En riesgo": 1, "Al día": 2, "Sin objetivo": 3 }), []);
 

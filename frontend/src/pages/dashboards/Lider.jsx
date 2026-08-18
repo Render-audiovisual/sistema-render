@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { getAprobacionesLider, getCumplimientoGeneral, getEdicionesEsperandoMaterial, getEstadoLabel, getEstadoPorObjetivo, getHoyLocalISO, getMesActualISO, getPanoramaClientes, getPiezasAtrasadas, getPiezasBloqueadas, getPorcentajesCliente, getPublicacionesDeHoy, getPublicacionesDelMismoFeed, getResumenEquipo, getTareasParaAsignar, getTipoPublicacionLabel } from "../../utils.jsx";
+import { getAprobacionesLider, getCumplimientoGeneral, getEdicionesEsperandoMaterial, getEstadoLabel, getEstadoPorObjetivo, getHoyLocalISO, getMesActualISO, getPiezasAtrasadas, getPiezasBloqueadas, getPorcentajesCliente, getPublicacionesDeHoy, getResumenEquipo, getTareasParaAsignar, getTipoPublicacionLabel } from "../../utils.jsx";
+import { calcularPorcentajeCuota, getAvanceMes, getCuotaCarruselesMensual, getCuotaReelsMensual, getResumenClientes } from "../../clientesStats.js";
 import { ESTADO_FINAL_TAREA } from "../../constants.js";
 import { EditarCuotaClienteModal, DetalleClienteModal } from "../../components/ClienteModals.jsx";
 import { TareasAsignadasGenericas } from "../../components/TareasAsignadasGenericas.jsx";
@@ -29,9 +30,30 @@ export function LiderDashboard() {
       fetch("/api/tareas?workspace=render_os").then((response) => response.json()),
     ])
       .then(([clientesApi, historiasApi, publicacionesApi, tareasApi]) => {
-        setClientes(
-          getPanoramaClientes(clientesApi, historiasApi, publicacionesApi),
-        );
+        const mes = getMesActualISO();
+        const resumenClientes = getResumenClientes(clientesApi, historiasApi, publicacionesApi, {
+          mes,
+          avanceDelMes: getAvanceMes(mes),
+          tareas: tareasApi,
+        }).map((cliente) => {
+          const cuotaFeed = getCuotaReelsMensual(cliente) + getCuotaCarruselesMensual(cliente);
+          const feedPublicado = cliente.reelsPublicados + cliente.carruselesPublicados;
+          return {
+            ...cliente,
+            porcentajes: {
+              historias: cliente.porcentajeHistorias,
+              feed: calcularPorcentajeCuota(feedPublicado, cuotaFeed),
+              feedSemana: 0,
+              objetivo: cliente.porcentajeGeneral,
+              historiasPublicadas: cliente.historiasPublicadas,
+              historiasTotal: cliente.cuotaHistorias,
+              feedPublicado,
+              feedTotal: cuotaFeed,
+            },
+            semaforo: cliente.estadoGeneral.color,
+          };
+        });
+        setClientes(resumenClientes);
         setResumenEquipo(
           getResumenEquipo(historiasApi, publicacionesApi, tareasApi),
         );
@@ -49,7 +71,16 @@ export function LiderDashboard() {
       .finally(() => setCargandoInicio(false));
   };
 
-  useEffect(cargarPanorama, []);
+  useEffect(() => {
+    cargarPanorama();
+    const intervalo = window.setInterval(cargarPanorama, 30000);
+    const alVolver = () => document.visibilityState === "visible" && cargarPanorama();
+    document.addEventListener("visibilitychange", alVolver);
+    return () => {
+      window.clearInterval(intervalo);
+      document.removeEventListener("visibilitychange", alVolver);
+    };
+  }, []);
 
   const clientesFiltrados = clientes.filter((cliente) =>
     cliente.nombre.toLowerCase().includes(busquedaCliente.toLowerCase()),

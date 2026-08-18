@@ -142,7 +142,7 @@ test("el reporte personal de Oriana separa carruseles, reels e historias publica
 
 test("el reporte se actualiza al volver a la pestaña y periódicamente", () => {
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
-  assert.match(reportesSource, /fetch\("\/api\/reportes\/datos", \{ cache: "no-store" \}\)/);
+  assert.match(reportesSource, /fetch\(`\/api\/reportes\/datos\?mes_configuracion=/);
   assert.match(reportesSource, /setInterval\(\(\) => cargarReporte\(true\), 30000\)/);
   assert.match(reportesSource, /window\.addEventListener\("focus", actualizarAlVolver\)/);
   assert.match(reportesSource, /document\.addEventListener\("visibilitychange", actualizarAlVolver\)/);

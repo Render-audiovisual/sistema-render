@@ -360,6 +360,7 @@ router.get("/usuarios", async (req, res, next) => {
 
 router.get("/reportes/datos", requireRole("admin"), async (req, res, next) => {
   try {
+    const mesConfiguracion = normalizePeriod(req.query.mes_configuracion);
     const [tareas, historias, publicaciones, clientes, usuarios, tareasRenderOs] = await Promise.all([
       pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
         to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,t.subtipo,
@@ -372,10 +373,19 @@ router.get("/reportes/datos", requireRole("admin"), async (req, res, next) => {
       pool.query(`SELECT id,cliente_id,tipo,estado,to_char(fecha_programada,'YYYY-MM-DD') AS fecha_programada,
         responsable,responsable_diseño FROM publicaciones
         WHERE metadata->>'archivado_tablero' IS DISTINCT FROM 'true'`),
-      pool.query(`SELECT c.id,c.nombre,c.cuota_carruseles,c.grupo_feed_id,
+      pool.query(`SELECT c.id,c.nombre,c.activo,
+        COALESCE(cfg.cuota_carruseles,c.cuota_carruseles) AS cuota_carruseles,
+        cfg.disenador_responsable,c.grupo_feed_id,
         gf.cuota_carruseles AS cuota_feed_carruseles
-        FROM clientes c LEFT JOIN grupos_feed gf ON gf.id=c.grupo_feed_id
-        ORDER BY c.nombre`),
+        FROM clientes c
+        LEFT JOIN LATERAL (
+          SELECT cc.cuota_carruseles,cc.disenador_responsable
+          FROM cliente_configuraciones cc
+          WHERE cc.cliente_id=c.id AND cc.vigente_desde <= $1::date
+          ORDER BY cc.vigente_desde DESC LIMIT 1
+        ) cfg ON TRUE
+        LEFT JOIN grupos_feed gf ON gf.id=c.grupo_feed_id
+        ORDER BY c.nombre`, [mesConfiguracion]),
       pool.query(`SELECT id,usuario,nombre,rol FROM usuarios ORDER BY id`),
       pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
         to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,t.subtipo,
