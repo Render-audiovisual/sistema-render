@@ -383,11 +383,11 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
             <div><small>Último cambio</small><strong>{lastActivity ? lastActivity.contenido.replace(/^\[Actividad\]\s*/, "") : `Tarea creada · ${status.label}`}</strong></div>
             <span>{formatDateTime(lastActivity?.created_at || task.created_at)} · Ver historial</span>
           </summary>
-          <div className="ros-comments ros-activity-feed"><article className="activity"><div><strong>Sistema</strong><time>{formatDateTime(task.created_at)}</time></div><p>Creó la tarea.</p></article>{activityComments.map((item) => <article className="activity" key={item.id}><div><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></div><p>{item.contenido.replace(/^\[Actividad\]\s*/, "")}</p></article>)}</div>
+          <div className="ros-comments ros-activity-feed"><article className="activity"><div><strong>Sistema</strong><time>{formatDateTime(task.created_at)}</time></div><p>Creó la tarea.</p></article>{activityComments.map((item) => <article className="activity" key={item.id}><div><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></div><p>{renderizarTextoTarea(item.contenido.replace(/^\[Actividad\]\s*/, ""))}</p></article>)}</div>
         </details>
         <section className="ros-work-block"><h3>Comentarios</h3>
         {commentError && <div className="ros-inline-error">{commentError}</div>}
-        {teamComments.length > 0 && <div className="ros-comments">{teamComments.map((item) => <article key={item.id}><div><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></div><p>{item.contenido}</p></article>)}</div>}
+        {teamComments.length > 0 && <div className="ros-comments">{teamComments.map((item) => <article key={item.id}><div><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></div><p>{renderizarTextoTarea(item.contenido)}</p></article>)}</div>}
         <div className="ros-comment-create">
           <div className="ros-comment-author"><Avatar person={users.find((user) => user.nombre === sesion?.usuario?.nombre)} name={sesion?.usuario?.nombre || sesion?.usuario?.usuario}/><div><strong>{sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER"}</strong><small>El comentario será visible para todo el equipo.</small></div></div>
           <textarea rows={3} value={comment} placeholder="Escribí una actualización, consulta o bloqueo…" onChange={(event) => setComment(event.target.value)}/>

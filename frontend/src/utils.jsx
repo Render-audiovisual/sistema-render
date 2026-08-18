@@ -561,7 +561,7 @@ export function limpiarUrlTarea(url = "") {
   return url.replace(/[.,;:!?]+$/, "");
 }
 
-const URL_EN_TAREA_REGEX = /(https?:\/\/[^\s<>"')\]]+)/gi;
+const URL_EN_TAREA_REGEX = /((?:https?:\/\/|www\.)[^\s<>"')\]]+)/gi;
 
 export function extraerUrlsTarea(texto = "") {
   return [...texto.matchAll(URL_EN_TAREA_REGEX)]
@@ -571,15 +571,16 @@ export function extraerUrlsTarea(texto = "") {
 
 export function renderizarTextoTarea(texto = "") {
   return texto.split(URL_EN_TAREA_REGEX).map((parte, indice) => {
-    if (!/^https?:\/\//i.test(parte)) {
+    if (!/^(?:https?:\/\/|www\.)/i.test(parte)) {
       return <React.Fragment key={`texto-${indice}`}>{parte}</React.Fragment>;
     }
 
     const url = limpiarUrlTarea(parte);
     const sufijo = parte.slice(url.length);
+    const href = /^www\./i.test(url) ? `https://${url}` : url;
     return (
       <React.Fragment key={`link-${indice}`}>
-        <a href={url} target="_blank" rel="noopener noreferrer">
+        <a href={href} target="_blank" rel="noopener noreferrer">
           {url}
         </a>
         {sufijo}
