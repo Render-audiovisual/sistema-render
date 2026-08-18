@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
-const script = new URL("../../scripts/mia_event_worker.py", import.meta.url).pathname;
+const script = fileURLToPath(new URL("../../scripts/mia_event_worker.py", import.meta.url));
 
 test("el worker genera un aviso corto con enlace directo", () => {
   const source = `

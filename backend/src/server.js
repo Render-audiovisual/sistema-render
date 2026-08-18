@@ -1303,6 +1303,7 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
     const { id } = req.params;
     const {
       nombre,
+      activo,
       cuota_reels,
       cuota_carruseles,
       cuota_feed_reels,
@@ -1335,6 +1336,9 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
     }
     if (nombreNormalizado !== undefined && !nombreNormalizado) {
       return res.status(400).json({ error: "El nombre del cliente no puede quedar vacío." });
+    }
+    if (activo !== undefined && typeof activo !== "boolean") {
+      return res.status(400).json({ error: "El estado activo debe ser verdadero o falso." });
     }
 
     await client.query("BEGIN");
@@ -1371,11 +1375,18 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
       `UPDATE clientes
        SET
          nombre = COALESCE($1, nombre),
-         cuota_reels = COALESCE($2, cuota_reels),
-         cuota_carruseles = COALESCE($3, cuota_carruseles)
-       WHERE id = $4`,
+         activo = COALESCE($2, activo),
+         fecha_fin = CASE
+           WHEN $2::boolean = FALSE THEN COALESCE(fecha_fin, CURRENT_DATE)
+           WHEN $2::boolean = TRUE THEN NULL
+           ELSE fecha_fin
+         END,
+         cuota_reels = COALESCE($3, cuota_reels),
+         cuota_carruseles = COALESCE($4, cuota_carruseles)
+       WHERE id = $5`,
       [
         nombreNormalizado ?? null,
+        activo ?? null,
         cuota_reels ?? null,
         cuota_carruseles ?? null,
         id,
@@ -1385,6 +1396,8 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
       `SELECT
          c.id,
          c.nombre,
+         c.activo,
+         to_char(c.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
          c.cuota_reels,
          c.cuota_carruseles,
          c.grupo_feed_id,

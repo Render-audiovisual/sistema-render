@@ -6,8 +6,6 @@ import {
   getCuotaReelsMensual,
   getMesActualISO,
   getPublicacionesDelMismoFeed,
-  getPorcentajesCliente,
-  getEstadoPorObjetivo,
   getEstadoLabel,
   getTipoPublicacionLabel,
 } from "../utils.jsx";
@@ -16,6 +14,7 @@ import { Modal } from "./Modal.jsx";
 export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
   const esFeedCompartido = Boolean(cliente.grupo_feed_id);
   const [nombre, setNombre] = useState(cliente.nombre || "");
+  const [activo, setActivo] = useState(cliente.activo !== false);
   const [cuotaReels, setCuotaReels] = useState(String(cliente.cuota_reels ?? 0));
   const [cuotaCarruseles, setCuotaCarruseles] = useState(
     String(cliente.cuota_carruseles ?? 0),
@@ -74,11 +73,13 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
           : esFeedCompartido
           ? {
               nombre: nombre.trim(),
+              activo,
               cuota_feed_reels: Number(cuotaFeedReels),
               cuota_feed_carruseles: Number(cuotaFeedCarruseles),
             }
           : {
               nombre: nombre.trim(),
+              activo,
               cuota_reels: Number(cuotaReels),
               cuota_carruseles: Number(cuotaCarruseles),
             },
@@ -90,6 +91,16 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
         return data;
       })
       .then(async (data) => {
+        if (usaConfiguracionMensual && activo !== cliente.activo) {
+          const response = await fetch(`/api/clientes/${cliente.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ activo }),
+          });
+          const estado = await response.json();
+          if (!response.ok) throw new Error(estado.error || "No se pudo actualizar el estado del cliente.");
+          data = { ...data, ...estado };
+        }
         if (usaConfiguracionMensual || abonoMensual === "") return data;
         const response = await fetch(`/api/clientes/${cliente.id}/abono-proximo-mes`, {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -122,6 +133,13 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
           <label className="cliente-service-field cliente-edit-name">
             <span>Nombre del cliente</span>
             <input value={nombre} onChange={(event) => setNombre(event.target.value)} />
+          </label>
+          <label className="cliente-active-toggle">
+            <input type="checkbox" checked={activo} onChange={(event) => setActivo(event.target.checked)} />
+            <span>
+              <strong>Cliente activo</strong>
+              <small>Si lo desactivás, deja de contar en las estadísticas generales sin perder su historial.</small>
+            </span>
           </label>
           {esFeedCompartido ? (
             <div className="cliente-create-modal-grid">
@@ -204,8 +222,7 @@ export function DetalleClienteModal({
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
   const [editandoCuota, setEditandoCuota] = useState(false);
-  const porcentajes = getPorcentajesCliente(cliente);
-  const estado = getEstadoPorObjetivo(porcentajes.objetivo);
+  const estado = cliente.estadoHistorias?.color || "gris";
 
   const handleEliminarCliente = () => {
     const confirmado = window.confirm(
@@ -271,7 +288,7 @@ export function DetalleClienteModal({
             <div className="modal-client-status">
               <span className={`semaforo ${estado}`}></span>
               <strong>{estadoTexto}</strong>
-              <span>{porcentajes.objetivo}% del objetivo mensual</span>
+              <span>{cliente.porcentajeHistorias || 0}% de historias contratadas</span>
             </div>
             <div className="caption">
               {esFeedCompartido
@@ -287,8 +304,8 @@ export function DetalleClienteModal({
           <div className="cliente-detail-metrics">
             <div>
               <span>Historias</span>
-              <strong>{porcentajes.historias}%</strong>
-              <small>{porcentajes.historiasPublicadas} / {porcentajes.historiasTotal} OK</small>
+              <strong>{cliente.historiasPublicadas || 0} <small>/ {cliente.cuotaHistorias || 0}</small></strong>
+              <small>{cliente.historiasMes || 0} planificadas este mes</small>
             </div>
             {esFeedCompartido ? (
               <>
