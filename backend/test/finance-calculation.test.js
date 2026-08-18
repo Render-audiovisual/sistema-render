@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { applyCompensations, employeeKey, nextPeriod } from "../src/finance-calculation.js";
-import { buildManualFinanceSummary, normalizeManualFinance } from "../src/manual-finance.js";
+import { buildAutomaticFinanceSummary, calculateBillingForWorkPeriod, calculateFixedExpenses, previousPeriod } from "../src/automatic-finance.js";
 import { readFileSync } from "node:fs";
 
 test("calcula el mes siguiente incluso al cambiar de año", () => {
@@ -31,46 +31,74 @@ test("Luciano conserva como pendiente el trabajo todavía no clasificado", () =>
 test("los endpoints financieros exigen Líder y clientes oculta abonos a empleados", () => {
   const source = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
   assert.match(source, /router\.get\("\/sueldos", requireRole\("admin"\)/);
-  assert.match(source, /router\.put\("\/finanzas\/resumen\/:periodo", requireRole\("admin"\)/);
-  assert.doesNotMatch(source, /router\.(post|put)\("\/finanzas\/(compensaciones|pagos)/);
+  assert.doesNotMatch(source, /router\.(post|put)\("\/finanzas\//);
   assert.match(source, /router\.post\("\/clientes\/:id\/abono-proximo-mes", requireRole\("admin"\)/);
   assert.match(source, /req\.auth\.rol === "admin"[\s\S]*abono_mensual, abono_vigente_desde/);
 });
 
-test("el abono mensual de Clientes queda separado del cierre manual de Finanzas", () => {
+test("la facturación automática queda separada de los abonos operativos de Clientes", () => {
   const source = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
   const financeRoute = source.slice(source.indexOf('router.get("/sueldos"'), source.indexOf('router.post("/clientes/:id/abono-proximo-mes'));
-  assert.match(financeRoute, /resumen_financiero_mensual/);
-  assert.doesNotMatch(financeRoute, /cliente_abonos|cliente_configuraciones|tareas|historias|publicaciones/);
+  assert.match(financeRoute, /contratos_financieros/);
+  assert.doesNotMatch(financeRoute, /cliente_abonos|cliente_configuraciones/);
   assert.match(
     source,
     /router\.post\("\/clientes\/:id\/configuraciones"[\s\S]*INSERT INTO cliente_abonos[\s\S]*ON CONFLICT \(cliente_id, vigente_desde\) DO UPDATE/,
   );
 });
 
-test("Finanzas expone un cierre mensual completamente manual", () => {
+test("Finanzas expone el cálculo automático a mes vencido", () => {
   const backend = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
   const frontend = readFileSync(new URL("../../frontend/src/pages/Sueldos.jsx", import.meta.url), "utf8");
-  assert.match(backend, /router\.put\("\/finanzas\/resumen\/:periodo", requireRole\("admin"\)/);
-  assert.match(backend, /FROM resumen_financiero_mensual/);
-  assert.match(frontend, /Facturación total/);
-  assert.match(frontend, /Sueldos a pagar/);
-  assert.match(frontend, /Impuestos pagados/);
-  assert.match(frontend, /Herramientas pagadas/);
-  assert.match(frontend, /Guardar cierre mensual/);
-  assert.doesNotMatch(frontend, /Devengado hasta hoy|Margen estimado|descuento|por pieza/i);
+  assert.match(backend, /buildAutomaticFinanceSummary/);
+  assert.match(frontend, /FACTURACIÓN A COBRAR/);
+  assert.match(frontend, /Mes vencido/);
+  assert.match(frontend, /Herramientas USD/);
+  assert.match(frontend, /Sin cargas manuales/);
+  assert.doesNotMatch(frontend, /Guardar cierre mensual/);
 });
 
-test("el resumen manual resta únicamente los tres egresos pedidos", () => {
-  const values = normalizeManualFinance({ facturacion: 2000000, sueldos: 900000, impuestos: 200000, herramientas: 100000 });
-  assert.deepEqual(buildManualFinanceSummary(values, "2026-08"), {
-    period: "2026-08",
-    facturacion: 2000000,
-    sueldos: 900000,
-    impuestos: 200000,
-    herramientas: 100000,
-    resultado: 800000,
-    updatedAt: null,
+test("septiembre cobra agosto y prorratea Óptica desde el día 19", () => {
+  assert.equal(previousPeriod("2026-09"), "2026-08");
+  const billing = calculateBillingForWorkPeriod([
+    { nombre: "Cliente completo", importe_mensual: 310000, inicia_el: "2026-08-01" },
+    { nombre: "Óptica", importe_mensual: 620000, inicia_el: "2026-08-19" },
+    { nombre: "Pope", importe_mensual: 550000, inicia_el: "2026-09-01" },
+  ], "2026-08");
+  assert.deepEqual(billing.items.map((item) => [item.nombre, item.importe]), [
+    ["Cliente completo", 310000],
+    ["Óptica", 260000],
+  ]);
+  assert.equal(billing.total, 570000);
+});
+
+test("la cartera informada factura 9.172.581 pesos en septiembre", () => {
+  const amounts = [950000, 600000, 500000, 680000, 900000, 550000, 1200000, 1800000, 390000, 780000, 550000];
+  const contracts = amounts.map((importe_mensual, index) => ({ nombre: `Cliente ${index}`, importe_mensual, inicia_el: "2026-08-01" }));
+  contracts.push({ nombre: "Óptica Occhiali", importe_mensual: 650000, inicia_el: "2026-08-19" });
+  contracts.push({ nombre: "Pope Burger", importe_mensual: 550000, inicia_el: "2026-09-01" });
+  assert.equal(calculateBillingForWorkPeriod(contracts, "2026-08").total, 9172581);
+  assert.equal(calculateBillingForWorkPeriod(contracts, "2026-09").total, 10100000);
+});
+
+test("Adobe e impuestos no se duplican y los dólares quedan separados", () => {
+  const expenses = calculateFixedExpenses([
+    { nombre: "Adobe — 2 cuentas", categoria: "herramientas", moneda: "ARS", importe: 36000, dia_pago: 3, inicia_el: "2026-08-01" },
+    { nombre: "ChatGPT", categoria: "herramientas", moneda: "USD", importe: 100, dia_pago: 1, inicia_el: "2026-08-01" },
+    { nombre: "Contabo", categoria: "herramientas", moneda: "USD", importe: 10, dia_pago: 5, inicia_el: "2026-08-01" },
+    { nombre: "Impuestos", categoria: "impuestos", moneda: "ARS", importe: 95000, dia_pago: 20, inicia_el: "2026-08-01" },
+    { nombre: "Franco", categoria: "sueldos", moneda: "ARS", importe: 75000, dia_pago: 1, inicia_el: "2026-08-01" },
+  ], "2026-09");
+  assert.equal(expenses.herramientasARS, 36000);
+  assert.equal(expenses.herramientasUSD, 110);
+  assert.equal(expenses.impuestosARS, 95000);
+  const summary = buildAutomaticFinanceSummary({
+    period: "2026-09",
+    contracts: [{ nombre: "Cliente", importe_mensual: 1000000, inicia_el: "2026-08-01" }],
+    expenses: expenses.items.map((item) => ({ ...item, inicia_el: "2026-08-01", dia_pago: item.diaPago })),
+    payrollARS: 500000,
   });
-  assert.throws(() => normalizeManualFinance({ facturacion: -1, sueldos: 0, impuestos: 0, herramientas: 0 }));
+  assert.equal(summary.sueldos, 575000);
+  assert.equal(summary.resultadoARS, 294000);
+  assert.equal(summary.herramientasUSD, 110);
 });
