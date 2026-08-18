@@ -388,6 +388,58 @@ main {
   padding: 0 10px 12px;
 }
 
+.historias-viewport .check-week-navigation {
+  align-items: center;
+  background: #f4f6ef;
+  border: 1px solid #dfe4d8;
+  border-radius: 11px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(92px, auto) 1fr minmax(92px, auto);
+  margin-bottom: 10px;
+  padding: 6px;
+}
+
+.historias-viewport .check-week-navigation > button,
+.historias-viewport .check-week-tabs button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #596054;
+  cursor: pointer;
+  display: inline-flex;
+  font: 600 11px/1 Poppins, sans-serif;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
+.historias-viewport .check-week-navigation > button:hover:not(:disabled),
+.historias-viewport .check-week-tabs button:hover:not(.active) {
+  background: #e7ebdf;
+  color: #283126;
+}
+
+.historias-viewport .check-week-navigation > button:disabled {
+  cursor: default;
+  opacity: .38;
+}
+
+.historias-viewport .check-week-tabs {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(auto-fit, minmax(34px, 1fr));
+  justify-self: center;
+  max-width: 420px;
+  width: 100%;
+}
+
+.historias-viewport .check-week-tabs button.active {
+  background: #202418;
+  color: #b5fc00;
+}
+
 .historias-viewport .sheet-namebar {
   background: #f7f8f3;
   border-bottom-color: #dfe3d9;
@@ -512,6 +564,10 @@ main {
   line-height: 1.5;
 }
 
+.historias-viewport .check-help {
+  margin-top: 8px;
+}
+
 @media (max-width: 768px) {
   .historias-viewport .sheet-stats {
     display: grid;
@@ -530,6 +586,37 @@ main {
   .historias-viewport .check-sheet-frame {
     max-height: 62vh;
     padding-inline: 7px;
+  }
+
+  .historias-viewport .check-week-navigation {
+    gap: 5px;
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .historias-viewport .check-week-navigation > button {
+    font-size: 0;
+    min-width: 42px;
+    padding: 0 8px;
+  }
+
+  .historias-viewport .check-week-navigation > button:first-child::after {
+    content: "Ant.";
+    font-size: 10px;
+  }
+
+  .historias-viewport .check-week-navigation > button:last-child::after {
+    content: "Sig.";
+    font-size: 10px;
+  }
+
+  .historias-viewport .check-week-tabs {
+    gap: 2px;
+  }
+
+  .historias-viewport .check-week-tabs button {
+    min-height: 32px;
+    min-width: 30px;
+    padding: 0 6px;
   }
 
   .historias-viewport .check-client-col {
@@ -5532,6 +5619,157 @@ textarea:disabled {
 
 .historias-special-dates-table {
   min-width: 980px;
+}
+
+.historias-viewport .special-dates-toolbar {
+  align-items: end;
+  background: #f7f8f3;
+  border: 1px solid #dfe4da;
+  border-radius: 12px;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(420px, 1fr) minmax(240px, 360px);
+  margin-bottom: 10px;
+  padding: 8px;
+}
+
+.historias-viewport .special-dates-filters {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(4, minmax(90px, 1fr));
+}
+
+.historias-viewport .special-dates-filters button {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #6d7368;
+  cursor: pointer;
+  font: 600 11px/1 Poppins, sans-serif;
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+.historias-viewport .special-dates-filters button:hover:not(.active) {
+  background: #e9ece4;
+  color: #283126;
+}
+
+.historias-viewport .special-dates-filters button.active {
+  background: #202418;
+  color: #b5fc00;
+}
+
+.historias-viewport .special-dates-search {
+  display: grid;
+  gap: 3px;
+}
+
+.historias-viewport .special-dates-search span {
+  color: #73796f;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  padding-left: 2px;
+  text-transform: uppercase;
+}
+
+.historias-viewport .special-dates-search input {
+  background: #fff;
+  border: 1px solid #d7ddd2;
+  border-radius: 8px;
+  color: #20261f;
+  font: 500 11px/1.3 Poppins, sans-serif;
+  min-height: 40px;
+  outline: 0;
+  padding: 0 12px;
+  width: 100%;
+}
+
+.historias-viewport .special-dates-search input:focus {
+  border-color: #72933b;
+  box-shadow: 0 0 0 3px rgba(181, 252, 0, .18);
+}
+
+.historias-viewport .special-dates-frame {
+  border-color: #dfe4da;
+  border-radius: 12px;
+  max-height: 68vh;
+}
+
+.historias-viewport .historias-special-dates-table th {
+  background: #1d3937;
+  color: #f4f8ef;
+  font-size: 10px;
+  height: 42px;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.historias-viewport .historias-special-dates-table td {
+  color: #333a32;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 10px 12px;
+  vertical-align: middle;
+}
+
+.historias-viewport .historias-special-dates-table tbody tr:nth-child(even) td {
+  background: #fafbf8;
+}
+
+.historias-viewport .historias-special-dates-table .special-date-cell {
+  color: #566052;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.historias-viewport .historias-special-dates-table .special-client-cell {
+  color: #20261f;
+  font-weight: 650;
+}
+
+.historias-viewport .sheet-status-pill.is-hecho {
+  background: #e7f5d0;
+  color: #4f681b;
+}
+
+.historias-viewport .sheet-status-pill.is-en_curso {
+  background: #fff4cf;
+  color: #765f18;
+}
+
+.historias-viewport .sheet-status-pill.is-pendiente {
+  background: #f5e8e4;
+  color: #8a4b40;
+}
+
+.historias-viewport .special-dates-empty {
+  color: #747b71;
+  font-size: 12px;
+  padding: 36px 20px;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  .historias-viewport .special-dates-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .historias-viewport .special-dates-filters {
+    grid-template-columns: repeat(4, minmax(78px, 1fr));
+    overflow-x: auto;
+  }
+
+  .historias-viewport .special-dates-search span {
+    position: absolute;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+    width: 1px;
+  }
 }
 
 .historias-local-col {
