@@ -285,38 +285,6 @@ export function ClientesAdminPage() {
             </div>
           </div>
 
-          <div className="clientes-metrics clientes-metrics-compact" aria-label="Avance mensual de la cartera">
-            <div className="cliente-metric historias">
-              <div><span>Historias planificadas</span><strong>{totales.porcentajePlanificacionHistorias}%</strong></div>
-              <div className="cliente-metric-progress" aria-label={`${totales.porcentajePlanificacionHistorias}% de historias planificadas`}><i style={{ width: `${totales.porcentajePlanificacionHistorias}%` }}/></div>
-              <small>
-                {totales.cuotaHistorias > 0
-                  ? `${totales.historiasPlanificadas} / ${totales.cuotaHistorias} contratadas`
-                  : `${totales.historiasPlanificadas} planificadas · Sin contrato configurado`}
-              </small>
-            </div>
-            <div className="cliente-metric historias">
-              <div><span>Historias publicadas</span><strong>{totales.porcentajeHistorias}%</strong></div>
-              <div className="cliente-metric-progress" aria-label={`${totales.porcentajeHistorias}% de historias publicadas`}><i style={{ width: `${totales.porcentajeHistorias}%` }}/></div>
-              <small>{totales.historiasPublicadas} / {totales.cuotaHistorias} contratadas</small>
-            </div>
-            <div className="cliente-metric reels">
-              <div><span>Reels</span><strong>{totales.porcentajeReels}%</strong></div>
-              <div className="cliente-metric-progress" aria-label={`${totales.porcentajeReels}% de reels publicados`}><i style={{ width: `${totales.porcentajeReels}%` }}/></div>
-              <small>{totales.reelsPublicados} / {totales.cuotaReels} contratados</small>
-            </div>
-            <div className="cliente-metric carruseles">
-              <div><span>Carruseles</span><strong>{totales.porcentajeCarruseles}%</strong></div>
-              <div className="cliente-metric-progress" aria-label={`${totales.porcentajeCarruseles}% de carruseles publicados`}><i style={{ width: `${totales.porcentajeCarruseles}%` }}/></div>
-              <small>{totales.carruselesPublicados} / {totales.cuotaCarruseles} contratados</small>
-            </div>
-            <div className="cliente-metric total">
-              <div><span>Cumplimiento contractual</span><strong>{totales.porcentajeTotal}%</strong></div>
-              <div className="cliente-metric-progress" aria-label={`${totales.porcentajeTotal}% del total mensual publicado`}><i style={{ width: `${totales.porcentajeTotal}%` }}/></div>
-              <small>{totales.piezasPublicadas} / {totales.piezasContratadas} piezas contratadas</small>
-            </div>
-          </div>
-
           <div className="box clientes-table-panel">
             <div className="clientes-table-toolbar">
               <div>
