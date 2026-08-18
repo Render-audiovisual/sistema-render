@@ -2,6 +2,21 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import "./BlocNotas.css";
 
+export const CATEGORIAS_NOTA = [
+  { id: "todas", label: "Todas" },
+  { id: "general", label: "General" },
+  { id: "diseno", label: "Diseño" },
+  { id: "web", label: "Página web" },
+  { id: "reunion", label: "Reunión" },
+  { id: "contenido", label: "Contenido" },
+];
+
+const CATEGORIAS_EDITABLES = CATEGORIAS_NOTA.filter((categoria) => categoria.id !== "todas");
+
+function categoriaNota(id) {
+  return CATEGORIAS_EDITABLES.find((categoria) => categoria.id === id) || CATEGORIAS_EDITABLES[0];
+}
+
 function formatRelative(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -22,6 +37,7 @@ export function BlocNotasPage() {
   const [selectedId, setSelectedId] = useState(Number(initial.get("note")) || null);
   const [query, setQuery] = useState(initial.get("q") || "");
   const [trash, setTrash] = useState(initial.get("mode") === "trash");
+  const [category, setCategory] = useState(initial.get("category") || "todas");
   const [draft, setDraft] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState("");
@@ -38,6 +54,7 @@ export function BlocNotasPage() {
       const params = new URLSearchParams();
       if (trash) params.set("papelera", "true");
       if (query.trim()) params.set("q", query.trim());
+      if (category !== "todas") params.set("categoria", category);
       const data = await apiRequest(`/api/notas?${params.toString()}`);
       latestVersion.current = new Map(data.map((note) => [note.id, note]));
       setNotes(data);
@@ -50,11 +67,11 @@ export function BlocNotasPage() {
   useEffect(() => {
     const timer = window.setTimeout(load, query ? 220 : 0);
     return () => window.clearTimeout(timer);
-  }, [query, trash]);
+  }, [query, trash, category]);
 
   useEffect(() => {
     activeNoteId.current = selectedId;
-    setDraft(selected ? { titulo: selected.titulo, contenido: selected.contenido } : null);
+    setDraft(selected ? { titulo: selected.titulo, contenido: selected.contenido, categoria: selected.categoria || "general" } : null);
     setSaving("");
   }, [selected?.id]);
 
@@ -65,8 +82,9 @@ export function BlocNotasPage() {
     selectedId ? url.searchParams.set("note", String(selectedId)) : url.searchParams.delete("note");
     query ? url.searchParams.set("q", query) : url.searchParams.delete("q");
     trash ? url.searchParams.set("mode", "trash") : url.searchParams.delete("mode");
+    category !== "todas" ? url.searchParams.set("category", category) : url.searchParams.delete("category");
     window.history.replaceState(window.history.state, "", url);
-  }, [selectedId, query, trash]);
+  }, [selectedId, query, trash, category]);
 
   const persist = (nextDraft) => {
     const noteId = selectedId;
@@ -95,9 +113,9 @@ export function BlocNotasPage() {
 
   const createNote = async () => {
     try {
-      const created = await apiRequest("/api/notas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ titulo: "Nueva nota", contenido: "" }) });
+      const created = await apiRequest("/api/notas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ titulo: "Nueva nota", contenido: "", categoria: category === "todas" ? "general" : category }) });
       latestVersion.current.set(created.id, created);
-      setTrash(false); setQuery(""); setNotes((current) => [created, ...current]); setSelectedId(created.id);
+      setTrash(false); setQuery(""); setCategory(created.categoria); setNotes((current) => [created, ...current]); setSelectedId(created.id);
     } catch (reason) { setError(reason.message || "No se pudo crear la nota."); }
   };
 
@@ -123,8 +141,8 @@ export function BlocNotasPage() {
     <header className="notes-header"><div><span className="notes-kicker">ESPACIO COMPARTIDO</span><h1>Bloc de notas</h1><p>Información importante del equipo, siempre en un mismo lugar.</p></div><button onClick={createNote}>+ Nueva nota</button></header>
     {error && <button className="notes-error" onClick={() => setError("")}>! {error} <span>×</span></button>}
     <section className="notes-shell">
-      <aside className="notes-list"><div className="notes-search"><span>⌕</span><input aria-label="Buscar notas" placeholder="Buscar notas…" value={query} onChange={(event) => setQuery(event.target.value)}/></div><div className="notes-list-title"><strong>{trash ? "Papelera" : "Notas"}</strong><small>{notes.length}</small></div><div className="notes-items">{loading ? <div className="notes-empty">Cargando…</div> : notes.map((note) => <button key={note.id} className={note.id === selectedId ? "active" : ""} onClick={() => setSelectedId(note.id)}><strong>{note.titulo || "Nueva nota"}</strong><p>{note.contenido || "Sin contenido"}</p><small>{formatRelative(note.updated_at)} · {note.modificado_por}</small></button>)}{!loading && notes.length === 0 && <div className="notes-empty">{query ? "No encontramos notas." : trash ? "La Papelera está vacía." : "Todavía no hay notas."}</div>}</div><button className={`notes-trash-toggle ${trash ? "active" : ""}`} onClick={() => { setTrash((value) => !value); setSelectedId(null); }}>{trash ? "← Volver a Notas" : "⌫ Papelera"}</button></aside>
-      <article className="notes-editor">{selected && draft ? <><div className="notes-editor-mobile"><button onClick={() => setSelectedId(null)}>‹ Notas</button></div><input className="notes-title" aria-label="Título de la nota" value={draft.titulo} onChange={(event) => persist({ ...draft, titulo: event.target.value })}/><textarea aria-label="Contenido de la nota" autoFocus value={draft.contenido} placeholder="Empezá a escribir…" onChange={(event) => persist({ ...draft, contenido: event.target.value })}/><footer><div><span>Creada por <strong>{selected.creado_por}</strong></span><span>Última edición: <strong>{selected.modificado_por}</strong> · {formatFull(selected.updated_at)}</span></div><div className={`notes-save-state ${saving}`}>{saving === "pending" ? "Guardando…" : saving === "saved" ? "✓ Guardado" : saving === "conflict" ? "Hay una versión más reciente" : saving === "error" ? "No se pudo guardar" : ""}</div>{trash ? <div className="notes-actions"><button onClick={restore}>Restaurar</button><button className="danger" onClick={removeForever}>Eliminar definitivamente</button></div> : <button className="notes-delete" onClick={moveToTrash}>Mover a Papelera</button>}</footer></> : <div className="notes-welcome"><span>▤</span><strong>{trash ? "Seleccioná una nota eliminada" : "Seleccioná una nota"}</strong><p>{trash ? "Podés restaurarla o eliminarla definitivamente." : "O creá una nueva para registrar algo importante."}</p>{!trash && <button onClick={createNote}>+ Nueva nota</button>}</div>}</article>
+      <aside className="notes-list"><div className="notes-search"><span>⌕</span><input aria-label="Buscar notas" placeholder="Buscar notas…" value={query} onChange={(event) => setQuery(event.target.value)}/></div><div className="notes-category-filters" aria-label="Filtrar notas por categoría">{CATEGORIAS_NOTA.map((item) => <button type="button" key={item.id} className={`is-${item.id} ${category === item.id ? "active" : ""}`} onClick={() => { setCategory(item.id); setSelectedId(null); }}>{item.label}</button>)}</div><div className="notes-list-title"><strong>{trash ? "Papelera" : "Notas"}</strong><small>{notes.length}</small></div><div className="notes-items">{loading ? <div className="notes-empty">Cargando…</div> : notes.map((note) => { const noteCategory = categoriaNota(note.categoria); return <button key={note.id} className={`${note.id === selectedId ? "active" : ""} note-category-${noteCategory.id}`} onClick={() => setSelectedId(note.id)}><span className="notes-item-category">{noteCategory.label}</span><strong>{note.titulo || "Nueva nota"}</strong><p>{note.contenido || "Sin contenido"}</p><small>{formatRelative(note.updated_at)} · {note.modificado_por}</small></button>; })}{!loading && notes.length === 0 && <div className="notes-empty">{query ? "No encontramos notas." : trash ? "La Papelera está vacía." : "Todavía no hay notas en esta categoría."}</div>}</div><button className={`notes-trash-toggle ${trash ? "active" : ""}`} onClick={() => { setTrash((value) => !value); setSelectedId(null); }}>{trash ? "← Volver a Notas" : "⌫ Papelera"}</button></aside>
+      <article className="notes-editor">{selected && draft ? <><div className="notes-editor-mobile"><button onClick={() => setSelectedId(null)}>‹ Notas</button></div><div className={`notes-category-picker is-${draft.categoria}`}><span>Categoría</span><select aria-label="Categoría de la nota" value={draft.categoria} onChange={(event) => persist({ ...draft, categoria: event.target.value })}>{CATEGORIAS_EDITABLES.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></div><input className="notes-title" aria-label="Título de la nota" value={draft.titulo} onChange={(event) => persist({ ...draft, titulo: event.target.value })}/><textarea aria-label="Contenido de la nota" autoFocus value={draft.contenido} placeholder="Empezá a escribir…" onChange={(event) => persist({ ...draft, contenido: event.target.value })}/><footer><div><span>Creada por <strong>{selected.creado_por}</strong></span><span>Última edición: <strong>{selected.modificado_por}</strong> · {formatFull(selected.updated_at)}</span></div><div className={`notes-save-state ${saving}`}>{saving === "pending" ? "Guardando…" : saving === "saved" ? "✓ Guardado" : saving === "conflict" ? "Hay una versión más reciente" : saving === "error" ? "No se pudo guardar" : ""}</div>{trash ? <div className="notes-actions"><button onClick={restore}>Restaurar</button><button className="danger" onClick={removeForever}>Eliminar definitivamente</button></div> : <button className="notes-delete" onClick={moveToTrash}>Mover a Papelera</button>}</footer></> : <div className="notes-welcome"><span>▤</span><strong>{trash ? "Seleccioná una nota eliminada" : "Seleccioná una nota"}</strong><p>{trash ? "Podés restaurarla o eliminarla definitivamente." : "O creá una nueva para registrar algo importante."}</p>{!trash && <button onClick={createNote}>+ Nueva nota</button>}</div>}</article>
     </section>
   </main>;
 }

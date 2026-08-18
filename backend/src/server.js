@@ -244,18 +244,31 @@ router.use(requireAuthentication);
 
 router.use("/drive", createGoogleDriveRouter({ express, pool, requireRole }));
 
+const NOTAS_CATEGORIAS = new Set(["general", "diseno", "web", "reunion", "contenido"]);
+
+function normalizeNotaCategoria(value) {
+  const categoria = String(value || "general").trim().toLowerCase();
+  return NOTAS_CATEGORIAS.has(categoria) ? categoria : null;
+}
+
 router.get("/notas", async (req, res, next) => {
   try {
     const papelera = req.query.papelera === "true";
     const busqueda = String(req.query.q || "").trim();
     const params = [];
     let where = papelera ? "eliminado_at IS NOT NULL" : "eliminado_at IS NULL";
+    const categoria = req.query.categoria ? normalizeNotaCategoria(req.query.categoria) : null;
+    if (req.query.categoria && !categoria) return res.status(400).json({ error: "Categoría de nota inválida." });
+    if (categoria) {
+      params.push(categoria);
+      where += ` AND categoria=$${params.length}`;
+    }
     if (busqueda) {
       params.push(`%${busqueda}%`);
       where += ` AND (titulo ILIKE $${params.length} OR contenido ILIKE $${params.length})`;
     }
     const result = await pool.query(
-      `SELECT id,titulo,contenido,creado_por,modificado_por,eliminado_at,created_at,updated_at
+      `SELECT id,titulo,contenido,categoria,creado_por,modificado_por,eliminado_at,created_at,updated_at
        FROM notas_compartidas WHERE ${where}
        ORDER BY updated_at DESC,id DESC LIMIT 500`,
       params,
@@ -269,11 +282,13 @@ router.post("/notas", async (req, res, next) => {
     const actor = getTaskActor(req.auth);
     const titulo = String(req.body?.titulo || "Nueva nota").trim() || "Nueva nota";
     const contenido = String(req.body?.contenido || "");
+    const categoria = normalizeNotaCategoria(req.body?.categoria);
+    if (!categoria) return res.status(400).json({ error: "Categoría de nota inválida." });
     const result = await pool.query(
-      `INSERT INTO notas_compartidas (titulo,contenido,creado_por,modificado_por)
-       VALUES ($1,$2,$3,$3)
-       RETURNING id,titulo,contenido,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
-      [titulo, contenido, actor],
+      `INSERT INTO notas_compartidas (titulo,contenido,categoria,creado_por,modificado_por)
+       VALUES ($1,$2,$3,$4,$4)
+       RETURNING id,titulo,contenido,categoria,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
+      [titulo, contenido, categoria, actor],
     );
     res.status(201).json(result.rows[0]);
   } catch (error) { next(error); }
@@ -292,6 +307,12 @@ router.patch("/notas/:id", async (req, res, next) => {
       params.push(String(req.body.contenido || ""));
       sets.push(`contenido=$${params.length}`);
     }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "categoria")) {
+      const categoria = normalizeNotaCategoria(req.body.categoria);
+      if (!categoria) return res.status(400).json({ error: "Categoría de nota inválida." });
+      params.push(categoria);
+      sets.push(`categoria=$${params.length}`);
+    }
     if (!sets.length) return res.status(400).json({ error: "No se enviaron cambios." });
     params.push(actor);
     sets.push(`modificado_por=$${params.length}`, "updated_at=now()");
@@ -303,7 +324,7 @@ router.patch("/notas/:id", async (req, res, next) => {
     }
     const result = await pool.query(
       `UPDATE notas_compartidas SET ${sets.join(",")} WHERE ${where}
-       RETURNING id,titulo,contenido,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
+       RETURNING id,titulo,contenido,categoria,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
       params,
     );
     if (!result.rows[0]) {
@@ -341,7 +362,7 @@ router.post("/notas/:id/restaurar", async (req, res, next) => {
     const result = await pool.query(
       `UPDATE notas_compartidas SET eliminado_at=NULL,modificado_por=$2,updated_at=now()
        WHERE id=$1 AND eliminado_at IS NOT NULL
-       RETURNING id,titulo,contenido,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
+       RETURNING id,titulo,contenido,categoria,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
       [req.params.id, actor],
     );
     if (!result.rows[0]) return res.status(404).json({ error: "Nota no encontrada en la Papelera." });
