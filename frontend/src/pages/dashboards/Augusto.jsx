@@ -34,19 +34,22 @@ export function AugustoDashboard() {
     <main aria-label="Render platform Augusto">
       <div className="frame">
         <div className="content">
+          <div className="section-label">Diseño</div>
+          <h2>Mis tareas</h2>
+
           {error && <div className="caption">{error}</div>}
 
-          <div style={{ backgroundColor: "#fff3cd", border: "2px solid #ffc107", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
+          <div className="highlight-card">
             {!proxima ? (
-              <div className="caption">✅ No hay diseños pendientes.</div>
+              <div className="caption">No hay diseños pendientes.</div>
             ) : (
               <div>
-                <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>📌 Tu próxima tarea</div>
-                <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>{proxima.titulo}</div>
-                <div style={{ fontSize: "13px", color: "#555", marginBottom: "8px" }}>
+                <div className="highlight-eyebrow">Tu próxima tarea</div>
+                <div className="highlight-title">{proxima.titulo}</div>
+                <div className="highlight-meta">
                   {proxima.cliente_nombre ?? "Sin cliente"} · Vence {proxima.fecha_vencimiento}
                 </div>
-                <div style={{ fontSize: "12px", color: "#666" }}>Estado: {getEstadoTareaLabel(proxima.estado)}</div>
+                <div className="highlight-status">Estado: {getEstadoTareaLabel(proxima.estado)}</div>
               </div>
             )}
           </div>

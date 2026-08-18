@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { etiquetaCortaPublicacion, fechaISODesde, getCheckPublicacionLabel, getEstadoHistoriaLabel, getGrillaMes, getHoyLocalISO, getTipoPublicacionLabel, payloadColumnaPublicacion, sumarDiasISO } from "../utils.jsx";
 import { COLUMNAS_PUBLICACION, DIAS_SEMANA, ESTADOS_PUBLICACION, MESES, RESPONSABLES_EQUIPO, TIPOS_PUBLICACION } from "../constants.js";
 import { ClientesRail } from "../pages/Historias.jsx";
+import { Modal } from "../components/Modal.jsx";
 
 export function PublicacionesCalendarioTab({ onIrAPlanilla }) {
   const hoy = new Date();
@@ -312,14 +313,11 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla }) {
       </div>
 
       {diaSel && (
-        <div className="modal-overlay open" role="dialog" aria-modal="true">
-          <div className="modal day-modal">
-            <div className="modal-header">
-              <span>Publicaciones del {diaSel.fecha}</span>
-              <button className="modal-close" type="button" onClick={() => setDiaSel(null)}>
-                X
-              </button>
-            </div>
+        <Modal
+          onClose={() => setDiaSel(null)}
+          title={<span>Publicaciones del {diaSel.fecha}</span>}
+          className="day-modal"
+        >
             <div className="modal-body">
               <div className="day-publication-list">
                 {diaSel.items.map((pz) => (
@@ -340,21 +338,18 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla }) {
                 ))}
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
       {piezaSel && (
-        <div className="modal-overlay open" role="dialog" aria-modal="true">
-          <div className="modal">
-            <div className="modal-header">
-              <span>
-                {piezaSel.cliente_nombre} · {piezaSel.idea || "Sin idea cargada"}
-              </span>
-              <button className="modal-close" type="button" onClick={() => setPiezaSel(null)}>
-                X
-              </button>
-            </div>
+        <Modal
+          onClose={() => setPiezaSel(null)}
+          title={
+            <span>
+              {piezaSel.cliente_nombre} · {piezaSel.idea || "Sin idea cargada"}
+            </span>
+          }
+        >
             <div className="modal-body">
               <div className="detail-grid">
                 <div className="detail-field">
@@ -429,8 +424,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla }) {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </>
   );
@@ -515,19 +509,17 @@ export function PublicacionesGeneralTab({ clientes, onIrACliente }) {
             <option key={t.id} value={t.id}>{t.label}</option>
           ))}
         </select>
-        <span style={{ fontSize: "12px", color: "#777", alignSelf: "center", marginLeft: "auto" }}>
+        <span style={{ fontSize: "12px", color: "var(--muted)", alignSelf: "center", marginLeft: "auto" }}>
           {filtradas.length} publicaciones
         </span>
       </div>
 
       {error && (
-        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
-          {error}
-        </div>
+        <div className="alert is-error">{error}</div>
       )}
 
       {cargando ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando publicaciones…</div>
+        <div className="state-empty">Cargando publicaciones…</div>
       ) : (
         <div className="box" style={{ padding: 0, overflow: "auto", maxHeight: "70vh" }}>
           <table className="sheet-table">
@@ -561,7 +553,7 @@ export function PublicacionesGeneralTab({ clientes, onIrACliente }) {
                     <td style={{ padding: "6px 10px", fontSize: "12px" }}>{p.fecha_programada}</td>
                     <td style={{ padding: "6px 10px", fontSize: "13px", fontWeight: "600" }}>{p.cliente_nombre}</td>
                     <td style={{ padding: "6px 10px", fontSize: "12px" }}>{getTipoPublicacionLabel(p.tipo)}</td>
-                    <td style={{ padding: "6px 10px", fontSize: "13px", color: p.idea ? "#222" : "#bbb" }}>
+                    <td style={{ padding: "6px 10px", fontSize: "13px", color: p.idea ? "var(--text)" : "var(--muted)" }}>
                       {p.idea || "Sin idea cargada"}
                     </td>
                     <td style={{ padding: "6px 10px", fontSize: "12px" }}>{p.responsable || "—"}</td>
@@ -753,13 +745,11 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
   return (
     <>
       {error && (
-        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
-          {error}
-        </div>
+        <div className="alert is-error">{error}</div>
       )}
 
       {cargando ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando planilla…</div>
+        <div className="state-empty">Cargando planilla…</div>
       ) : (
         <div className="sheet-frame" ref={gridRef}>
           <table className="sheet-table">
@@ -791,11 +781,11 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                 const esFinde = dow === 0 || dow === 6;
                 const esHoy = p.fecha_programada === hoyISO;
                 const est = ESTADOS_PUBLICACION.find((e) => e.id === p.estado) || ESTADOS_PUBLICACION[0];
-                const bgFila = esHoy ? "#e3f2fd" : esFinde ? "#fafafa" : undefined;
+                const bgFila = esHoy ? "var(--accent-wash)" : esFinde ? "var(--surface-soft)" : undefined;
 
                 return (
                   <tr key={p.id} style={{ background: bgFila }}>
-                    <td style={{ padding: "6px 10px", fontWeight: esHoy ? "700" : "600", color: esFinde ? "#999" : "#333", fontSize: "12px" }}>
+                    <td style={{ padding: "6px 10px", fontWeight: esHoy ? "700" : "600", color: esFinde ? "var(--muted)" : "var(--text)", fontSize: "12px" }}>
                       {LETRAS_DIA[dow]}
                     </td>
                     <td>
@@ -1035,7 +1025,7 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
       <div className="frame">
         <div className="content">
           {errorClientes && (
-            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
+            <div style={{ padding: "10px", background: "var(--danger-wash)", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
               {errorClientes}
             </div>
           )}
@@ -1106,7 +1096,7 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
                 )}
 
                 {tabPrincipal === "planilla" && !clienteActual && (
-                  <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>
+                  <div className="state-empty">
                     Elegí un cliente en el panel izquierdo.
                   </div>
                 )}

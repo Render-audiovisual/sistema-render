@@ -1,23 +1,27 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { getRutaUsuario, guardarSesion } from "../utils.jsx";
 
+// Fallback hardcodeado: el hosting de Hostinger no inyecta las
+// "Variables de entorno" del panel durante `npm run build` (solo en
+// runtime del backend), así que import.meta.env.VITE_GOOGLE_CLIENT_ID
+// llega undefined ahí. No es un secreto (viaja al navegador de todas
+// formas), así que hardcodearlo es seguro.
+const GOOGLE_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  "468370687841-do43hb7rje2t6agcliof3asq5gmbqssv.apps.googleusercontent.com";
+
 export function LoginPage() {
   const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
   const [mostrarPassword, setMostrarPassword] = useState(false);
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(false);
+  const googleBtnRef = useRef(null);
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
+  const iniciarConToken = useCallback((fetchPromise) => {
     setError(null);
     setCargando(true);
-
-    fetch("/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ usuario, password }),
-    })
+    fetchPromise
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) {
@@ -36,7 +40,65 @@ export function LoginPage() {
       .finally(() => {
         setCargando(false);
       });
+  }, []);
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    iniciarConToken(
+      fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuario, password }),
+      }),
+    );
   };
+
+  const handleGoogleCredential = useCallback(
+    (response) => {
+      iniciarConToken(
+        fetch("/api/login/google", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential: response.credential }),
+        }),
+      );
+    },
+    [iniciarConToken],
+  );
+
+  useEffect(() => {
+    const clientId = GOOGLE_CLIENT_ID;
+    if (!clientId) return; // sin configurar: no mostramos el botón
+
+    const renderBoton = () => {
+      if (!window.google?.accounts?.id || !googleBtnRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleGoogleCredential,
+      });
+      window.google.accounts.id.renderButton(googleBtnRef.current, {
+        type: "standard",
+        theme: "outline",
+        size: "large",
+        shape: "pill",
+        text: "continue_with",
+        locale: "es",
+        width: 320,
+      });
+    };
+
+    if (document.getElementById("google-identity-script")) {
+      renderBoton();
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = "google-identity-script";
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = renderBoton;
+    document.head.appendChild(script);
+  }, [handleGoogleCredential]);
 
 
   return (
@@ -47,6 +109,12 @@ export function LoginPage() {
           <div className="login-title">Sistema interno</div>
           <p>Ingresá con tu usuario asignado para ver tu tablero de trabajo.</p>
         </div>
+
+        <div ref={googleBtnRef} className="login-google-btn" />
+
+        {GOOGLE_CLIENT_ID && (
+          <div className="login-divider"><span>o con tu usuario</span></div>
+        )}
 
         <form onSubmit={handleSubmit} className="login-form login-form-card">
           <label className="login-field">

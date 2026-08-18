@@ -7,6 +7,7 @@ import express from "express";
 import compression from "compression";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { OAuth2Client } from "google-auth-library";
 import { autenticar, requiereAdmin } from "./auth.js";
 import { checkDatabaseConnection, pool } from "./db.js";
 import {
@@ -14,6 +15,7 @@ import {
   notificarAsignacionSinInterrumpir,
 } from "./email-notifications.js";
 import { setupDemoClientes } from "./setup-demo-data.js";
+import { shouldSetupDemoData } from "./hosting-config.js";
 
 // Render no siempre tiene salida IPv6 completa, y Node por defecto prefiere
 // IPv6 si el DNS lo resuelve (típico con smtp.gmail.com) — eso hacía fallar
@@ -28,8 +30,16 @@ const app = express();
 const router = express.Router();
 const port = Number(process.env.PORT || 3001);
 
+const googleClient = process.env.GOOGLE_CLIENT_ID
+  ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
+  : null;
+
 app.use(compression());
 app.use(express.json({ limit: "2mb" }));
+
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
+});
 
 // Permite llamar a esta API desde un frontend alojado en otro dominio
 // (por ejemplo una copia estática en Hostinger). No hay cookies ni
@@ -41,7 +51,7 @@ router.use((_req, res, next) => {
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   next();
 });
-router.options("*", (_req, res) => res.sendStatus(204));
+router.options(/.*/, (_req, res) => res.sendStatus(204));
 
 router.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -99,6 +109,92 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
+router.post("/login/google", async (req, res, next) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      return res.status(400).json({ error: "Falta el token de Google." });
+    }
+    if (!googleClient) {
+      return res
+        .status(500)
+        .json({ error: "El login con Google no está configurado en el servidor." });
+    }
+
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch {
+      return res.status(401).json({ error: "Token de Google inválido o vencido." });
+    }
+
+    if (!payload?.email_verified) {
+      return res
+        .status(401)
+        .json({ error: "Tu cuenta de Google no tiene el email verificado." });
+    }
+
+    const porGoogleId = await pool.query(
+      "SELECT id, usuario, nombre, rol, foto_perfil FROM usuarios WHERE google_id = $1",
+      [payload.sub],
+    );
+    let usuarioDB = porGoogleId.rows[0] || null;
+
+    if (!usuarioDB) {
+      const porEmail = await pool.query(
+        "SELECT id, usuario, nombre, rol, foto_perfil FROM usuarios WHERE lower(google_email) = lower($1)",
+        [payload.email],
+      );
+      usuarioDB = porEmail.rows[0] || null;
+
+      if (usuarioDB) {
+        // Primer login con Google de esta persona: guardamos el google_id
+        // para no depender solo del email en los próximos logins (el email
+        // de Google podría cambiar, el sub no).
+        await pool.query("UPDATE usuarios SET google_id = $1 WHERE id = $2", [
+          payload.sub,
+          usuarioDB.id,
+        ]);
+      }
+    }
+
+    if (!usuarioDB) {
+      return res.status(403).json({
+        error:
+          "Tu cuenta de Google no está vinculada a ningún usuario de Render. Pedile al líder que te vincule.",
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        id: usuarioDB.id,
+        usuario: usuarioDB.usuario,
+        nombre: usuarioDB.nombre,
+        rol: usuarioDB.rol,
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "30d" },
+    );
+
+    res.json({
+      token,
+      usuario: {
+        usuario: usuarioDB.usuario,
+        nombre: usuarioDB.nombre,
+        rol: usuarioDB.rol,
+        foto_perfil: usuarioDB.foto_perfil,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Todas las rutas declaradas a partir de acá requieren un JWT válido.
 // Health, login y el preflight CORS quedan públicos porque se registraron
 // antes de este middleware.
@@ -115,7 +211,7 @@ const ROLES_VALIDOS = [
 router.get("/usuarios", requiereAdmin, async (_req, res, next) => {
   try {
     const result = await pool.query(
-      "SELECT id, usuario, nombre, rol, email_notificaciones, foto_perfil, created_at FROM usuarios ORDER BY id",
+      "SELECT id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at FROM usuarios ORDER BY id",
     );
     res.json(result.rows);
   } catch (error) {
@@ -191,6 +287,40 @@ router.patch("/usuarios/:id/email-notificaciones", requiereAdmin, async (req, re
   } catch (error) {
     if (error.code === "23505") {
       return res.status(409).json({ error: "Ese correo ya está asignado a otra persona." });
+    }
+    next(error);
+  }
+});
+
+router.patch("/usuarios/:id/google-email", requiereAdmin, async (req, res, next) => {
+  try {
+    const emailIngresado =
+      typeof req.body.google_email === "string" ? req.body.google_email.trim() : "";
+    const email = normalizarEmailNotificaciones(emailIngresado);
+
+    if (emailIngresado && !email) {
+      return res.status(400).json({ error: "El email de Google no es válido." });
+    }
+
+    // Cambiar el email vinculado fuerza a re-vincular el google_id en el
+    // próximo login — evita que quede un google_id viejo apuntando a una
+    // cuenta de Google que ya no corresponde.
+    const updated = await pool.query(
+      `UPDATE usuarios
+       SET google_email = $1, google_id = NULL
+       WHERE id = $2
+       RETURNING id, usuario, nombre, rol, google_email, foto_perfil, created_at`,
+      [email, req.params.id],
+    );
+
+    if (updated.rows.length === 0) {
+      return res.status(404).json({ error: "Usuario no encontrado." });
+    }
+
+    res.json(updated.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "Ese email de Google ya está asignado a otra persona." });
     }
     next(error);
   }
@@ -535,6 +665,8 @@ router.get("/clientes", async (_req, res, next) => {
       SELECT
         c.id,
         c.nombre,
+        c.estado_cliente,
+        c.cuota_historias,
         c.cuota_reels,
         c.cuota_carruseles,
         c.grupo_feed_id,
@@ -555,6 +687,8 @@ router.get("/clientes", async (_req, res, next) => {
 router.post("/clientes", requiereAdmin, async (req, res, next) => {
   try {
     const nombre = (req.body.nombre || "").trim();
+    const estado_cliente = req.body.estado_cliente || "activo";
+    const cuota_historias = Number(req.body.cuota_historias ?? 0);
     const cuota_reels = Number(req.body.cuota_reels ?? 0);
     const cuota_carruseles = Number(req.body.cuota_carruseles ?? 0);
 
@@ -562,21 +696,26 @@ router.post("/clientes", requiereAdmin, async (req, res, next) => {
       return res.status(400).json({ error: "Falta el nombre del cliente." });
     }
     if (
+      !Number.isInteger(cuota_historias) ||
       !Number.isInteger(cuota_reels) ||
       !Number.isInteger(cuota_carruseles) ||
+      cuota_historias < 0 ||
       cuota_reels < 0 ||
       cuota_carruseles < 0
     ) {
       return res.status(400).json({
-        error: "cuota_reels y cuota_carruseles deben ser enteros ≥ 0.",
+        error: "Las cuotas de historias, reels y carruseles deben ser enteros ≥ 0.",
       });
+    }
+    if (!["activo", "pausado", "finalizado"].includes(estado_cliente)) {
+      return res.status(400).json({ error: "Estado de cliente inválido." });
     }
 
     const result = await pool.query(
-      `INSERT INTO clientes (nombre, cuota_reels, cuota_carruseles)
-       VALUES ($1, $2, $3)
-       RETURNING id, nombre, cuota_reels, cuota_carruseles`,
-      [nombre, cuota_reels, cuota_carruseles],
+      `INSERT INTO clientes (nombre, estado_cliente, cuota_historias, cuota_reels, cuota_carruseles)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, nombre, estado_cliente, cuota_historias, cuota_reels, cuota_carruseles`,
+      [nombre, estado_cliente, cuota_historias, cuota_reels, cuota_carruseles],
     );
 
     res.status(201).json({
@@ -601,6 +740,8 @@ router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
     const { id } = req.params;
     const {
       nombre,
+      estado_cliente,
+      cuota_historias,
       cuota_reels,
       cuota_carruseles,
       cuota_feed_reels,
@@ -611,6 +752,9 @@ router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
     const cuotaReelsValida =
       cuota_reels === undefined ||
       (Number.isInteger(cuota_reels) && cuota_reels >= 0);
+    const cuotaHistoriasValida =
+      cuota_historias === undefined ||
+      (Number.isInteger(cuota_historias) && cuota_historias >= 0);
     const cuotaCarruselesValida =
       cuota_carruseles === undefined ||
       (Number.isInteger(cuota_carruseles) && cuota_carruseles >= 0);
@@ -622,6 +766,7 @@ router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
       (Number.isInteger(cuota_feed_carruseles) && cuota_feed_carruseles >= 0);
 
     if (
+      !cuotaHistoriasValida ||
       !cuotaReelsValida ||
       !cuotaCarruselesValida ||
       !cuotaFeedReelsValida ||
@@ -633,6 +778,12 @@ router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
     }
     if (nombreNormalizado !== undefined && !nombreNormalizado) {
       return res.status(400).json({ error: "El nombre del cliente no puede quedar vacío." });
+    }
+    if (
+      estado_cliente !== undefined &&
+      !["activo", "pausado", "finalizado"].includes(estado_cliente)
+    ) {
+      return res.status(400).json({ error: "Estado de cliente inválido." });
     }
 
     await client.query("BEGIN");
@@ -669,11 +820,15 @@ router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
       `UPDATE clientes
        SET
          nombre = COALESCE($1, nombre),
-         cuota_reels = COALESCE($2, cuota_reels),
-         cuota_carruseles = COALESCE($3, cuota_carruseles)
-       WHERE id = $4`,
+         estado_cliente = COALESCE($2, estado_cliente),
+         cuota_historias = COALESCE($3, cuota_historias),
+         cuota_reels = COALESCE($4, cuota_reels),
+         cuota_carruseles = COALESCE($5, cuota_carruseles)
+       WHERE id = $6`,
       [
         nombreNormalizado ?? null,
+        estado_cliente ?? null,
+        cuota_historias ?? null,
         cuota_reels ?? null,
         cuota_carruseles ?? null,
         id,
@@ -683,6 +838,8 @@ router.patch("/clientes/:id", requiereAdmin, async (req, res, next) => {
       `SELECT
          c.id,
          c.nombre,
+         c.estado_cliente,
+         c.cuota_historias,
          c.cuota_reels,
          c.cuota_carruseles,
          c.grupo_feed_id,
@@ -1888,8 +2045,13 @@ if (fs.existsSync(distDir)) {
       },
     }),
   );
-  app.get(/^\/(?!api\/).*/, (_req, res) => {
-    res.sendFile(path.join(distDir, "index.html"));
+  // Se lee una sola vez en memoria en vez de usar res.sendFile(): en el
+  // hosting de Hostinger, sendFile devolvía NotFoundError pese a que el
+  // archivo existía (probablemente por cómo resuelve symlinks/permisos
+  // en esa infraestructura). readFileSync no tiene ese problema.
+  const indexHtml = fs.readFileSync(path.join(distDir, "index.html"), "utf-8");
+  app.get(/^\/(?!api\/|health(?:\/|$)).*/, (_req, res) => {
+    res.type("html").send(indexHtml);
   });
   console.log("Sirviendo frontend estático desde", distDir);
 }
@@ -1901,16 +2063,25 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: "Error interno del servidor." });
 });
 
-try {
-  await checkDatabaseConnection();
-  await setupDemoClientes();
-  console.log("Postgres connection OK");
-} catch (error) {
-  console.error("Postgres connection failed");
-  console.error(error.message);
-  process.exit(1);
-}
+// IIFE en vez de top-level await: el runtime de Hostinger (LiteSpeed
+// lsnode.js) carga este archivo con require(), que no admite módulos ESM
+// con await de nivel superior (ERR_REQUIRE_ASYNC_MODULE).
+(async () => {
+  try {
+    await checkDatabaseConnection();
+    if (shouldSetupDemoData()) {
+      await setupDemoClientes();
+      console.log("Postgres connection OK and demo data prepared");
+    } else {
+      console.log("Postgres connection OK");
+    }
+  } catch (error) {
+    console.error("Postgres connection failed");
+    console.error(error.message);
+    process.exit(1);
+  }
 
-app.listen(port, () => {
-  console.log(`Backend listening on http://localhost:${port}`);
-});
+  app.listen(port, () => {
+    console.log(`Backend listening on http://localhost:${port}`);
+  });
+})();

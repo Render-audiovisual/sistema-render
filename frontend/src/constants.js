@@ -108,12 +108,12 @@ export const MESES = [
 export const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
 export const ESTADOS_HISTORIA = [
-  { id: "pendiente", label: "Pendiente", bg: "#eceff1", fg: "#546e7a" },
-  { id: "en_diseño", label: "En diseño", bg: "#f3e5f5", fg: "#7b1fa2" },
-  { id: "en_revision", label: "En revisión", bg: "#fff3e0", fg: "#e65100" },
-  { id: "lista", label: "Lista", bg: "#f0f4c3", fg: "#827717" },
-  { id: "publicada", label: "Publicada", bg: "#e8f5e9", fg: "#2e7d32" },
-  { id: "bloqueada", label: "Bloqueada", bg: "#ffebee", fg: "#c62828" },
+  { id: "pendiente", label: "Pendiente", bg: "#eeeeec", fg: "#62656d" },
+  { id: "en_diseño", label: "En diseño", bg: "#f1e9f5", fg: "#7a4d8f" },
+  { id: "en_revision", label: "En revisión", bg: "#f7ecd9", fg: "#b7791f" },
+  { id: "lista", label: "Lista", bg: "#e3f0ee", fg: "#0e6e67" },
+  { id: "publicada", label: "Publicada", bg: "#e2f0e7", fg: "#1c8753" },
+  { id: "bloqueada", label: "Bloqueada", bg: "#f6e3e0", fg: "#c0392b" },
 ];
 
 export const RESPONSABLES_EQUIPO = ["Augusto", "Luciano", "Germán", "Oriana", "Líder"];

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { esperandoMaterial, extraerUrlsTarea, fechaISODesde, formatearFechaTarea, getEstadoTarea, getGrillaMes, getHoyLocalISO, getPrioridadTarea, getSectorTarea, getSesion, getTipoPublicacionLabel, getUsuarioKey, obtenerInfoLinkTarea, ordenarTareasPorPrioridad, renderizarTextoTarea } from "../utils.jsx";
 import { DIAS_SEMANA, ESTADO_FINAL_TAREA, ESTADOS_TAREA, MESES, PRIORIDADES_TAREA, RESPONSABLES_EQUIPO, SECTORES_TAREA, SUBTIPOS_SUGERIDOS } from "../constants.js";
-import { PiezasTableroPage } from "../pages/PiezasTablero.jsx";
+import { Modal } from "../components/Modal.jsx";
 
 export function TareasTableroPage() {
   const sesion = getSesion();
@@ -968,7 +968,7 @@ export function TareaDetallePanel({
 // Tablero drag-and-drop genérico: columnas + un campo de la tarea que se
 // actualiza al soltar. Sirve tanto para "Columnas" (columnas = estado) como
 // para "Por persona" (columnas = responsable) sin duplicar la lógica de
-// arrastre — mismo patrón HTML5 nativo que ya usaba PiezasTableroPage.
+// arrastre.
 
 export function TareasPorCliente({ tareas, onAbrir }) {
   const grupos = [...tareas.reduce((mapa, tarea) => {
@@ -1079,13 +1079,12 @@ export function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
   };
 
   return (
-    <div className="modal-overlay open" role="dialog" aria-modal="true" onClick={onCerrar}>
-      <div className="modal" style={{ maxWidth: "600px", maxHeight: "90vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Nueva tarea</h2>
-          <button onClick={onCerrar} style={{ background: "none", border: "none", fontSize: "24px", cursor: "pointer", color: "#9aa0a6" }}>✕</button>
-        </div>
-
+    <Modal
+      onClose={onCerrar}
+      title={<h2>Nueva tarea</h2>}
+      style={{ maxWidth: "600px", maxHeight: "90vh", overflowY: "auto" }}
+      closeOnBackdropClick
+    >
         <div className="modal-body">
           {error && (
             <div style={{ padding: "10px", background: "#331616", color: "#ef5350", borderRadius: "4px", marginBottom: "14px" }}>
@@ -1274,8 +1273,7 @@ export function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
             {enviando ? "Creando…" : "Crear tarea"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

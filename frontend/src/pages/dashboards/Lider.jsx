@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { getAprobacionesLider, getCumplimientoGeneral, getEdicionesEsperandoMaterial, getEstadoLabel, getEstadoPorObjetivo, getHoyLocalISO, getMesActualISO, getPanoramaClientes, getPiezasAtrasadas, getPiezasBloqueadas, getPorcentajesCliente, getPublicacionesDeHoy, getPublicacionesDelMismoFeed, getResumenEquipo, getTareasParaAsignar, getTipoPublicacionLabel } from "../../utils.jsx";
+import { getAprobacionesLider, getCumplimientoGeneral, getEdicionesEsperandoMaterial, getEstadoLabel, getHoyLocalISO, getMesActualISO, getPanoramaClientes, getPiezasAtrasadas, getPiezasBloqueadas, getPorcentajesCliente, getPublicacionesDelMismoFeed, getResumenEquipo, getTareasParaAsignar, getTipoPublicacionLabel } from "../../utils.jsx";
 import { ESTADO_FINAL_TAREA } from "../../constants.js";
 import { EditarCuotaClienteModal, DetalleClienteModal } from "../../components/ClienteModals.jsx";
 import { TareasAsignadasGenericas } from "../../components/TareasAsignadasGenericas.jsx";
+import { Modal } from "../../components/Modal.jsx";
+import { IconClock, IconLock, IconHourglass, IconCheckCircle } from "../../components/Icons.jsx";
 
 export function LiderDashboard() {
   const [clientes, setClientes] = useState([]);
@@ -89,316 +91,248 @@ export function LiderDashboard() {
 
           {vistaLider === "panorama" && (
             <div className="lider-dashboard-view" role="tabpanel">
-              <div style={{ backgroundColor: "#ffe0e0", border: "2px solid #d32f2f", borderRadius: "4px", padding: "12px", marginBottom: "20px", fontSize: "13px" }}>
-            {(() => {
-              const atrasadas = getPiezasAtrasadas(historiasRaw, publicacionesRaw);
-              const bloqueadas = getPiezasBloqueadas(historiasRaw, publicacionesRaw);
-              const cumplimiento = getCumplimientoGeneral(clientes);
-              const edicionesEsperando = getEdicionesEsperandoMaterial(tareasRaw);
+              {(() => {
+                const atrasadas = getPiezasAtrasadas(historiasRaw, publicacionesRaw);
+                const bloqueadas = getPiezasBloqueadas(historiasRaw, publicacionesRaw);
+                const cumplimiento = getCumplimientoGeneral(clientes);
+                const edicionesEsperando = getEdicionesEsperandoMaterial(tareasRaw);
 
-              return (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px" }}>
-                  <div>
-                    <span style={{ marginRight: "20px" }}>
-                      🔴 {atrasadas.length} atrasados
-                    </span>
-                    <span style={{ marginRight: "20px" }}>
-                      ⚠️ {bloqueadas.length} bloqueados
-                    </span>
-                    {edicionesEsperando.length > 0 && (
-                      <span style={{ marginRight: "20px" }}>
-                        ⏳ {edicionesEsperando.length} edicion{edicionesEsperando.length === 1 ? "" : "es"} esperando material de Germán
-                      </span>
-                    )}
-                    <span>
-                      📊 Cumplimiento: <strong>{cumplimiento}%</strong>
-                    </span>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-
-          <div className="section-label">
-            Panorama de clientes
-          </div>
-          <div className="box">
-            <div className="box-header">
-              <strong>Panorama de clientes — {getMesActualISO()}</strong>
-              <span className="tag">
-                Cumplimiento general: {getCumplimientoGeneral(clientes)}%
-              </span>
-            </div>
-
-            <input
-              type="text"
-              placeholder="Buscar cliente por nombre…"
-              value={busquedaCliente}
-              onChange={(e) => setBusquedaCliente(e.target.value)}
-              style={{ marginBottom: "12px", width: "100%" }}
-            />
-
-            <table>
-              <thead>
-                <tr>
-                  <th>Estado</th>
-                  <th>Cliente</th>
-                  <th>Historias</th>
-                  <th>Feed (mes)</th>
-                  <th>Feed (semana)</th>
-                  <th>Objetivo mes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {clientesFiltrados.map((cliente) => {
-                  const porcentajes = getPorcentajesCliente(cliente);
-                  const estado = cliente.semaforo;
-
-                  return (
-                    <tr
-                      className="row-clickable"
-                      key={cliente.id}
-                      onClick={() => setClienteSeleccionado(cliente)}
-                    >
-                      <td>
-                        <span className={`semaforo ${estado}`}></span>
-                        {getEstadoLabel(estado)}
-                      </td>
-                      <td>{cliente.nombre}</td>
-                      <td>{porcentajes.historias}%</td>
-                      <td>{porcentajes.feed}%</td>
-                      <td>{porcentajes.feedSemana}%</td>
-                      <td>{porcentajes.objetivo}%</td>
-                    </tr>
-                  );
-                })}
-                {panoramaError && (
-                  <tr>
-                    <td colSpan="6">{panoramaError}</td>
-                  </tr>
-                )}
-                {!panoramaError &&
-                  clientes.length > 0 &&
-                  clientesFiltrados.length === 0 && (
-                    <tr>
-                      <td colSpan="6">
-                        Ningún cliente coincide con "{busquedaCliente}".
-                      </td>
-                    </tr>
-                  )}
-              </tbody>
-            </table>
-
-            <div className="leyenda">
-              <span className="semaforo rojo"></span>Rojo &lt;60% &nbsp;
-              <span className="semaforo amarillo"></span>Amarillo 60–89%
-              &nbsp;
-              <span className="semaforo verde"></span>Verde ≥90%
-            </div>
-          </div>
-
-          <div className="section-label">Resumen de equipo</div>
-          <div className="box">
-            {resumenEquipo.map((persona) => (
-              <div className="persona-row" key={persona.nombre}>
-                <span>{persona.nombre}</span>
-                <span className="caption">
-                  {persona.cargaTotal} asignadas · {persona.cumplimiento}%
-                  cumplimiento
-                </span>
-                <span className={`tag ${persona.alerta ? "atraso" : ""}`}>
-                  {persona.estado}
-                </span>
-              </div>
-            ))}
-            {resumenEquipoError && (
-              <div className="caption">{resumenEquipoError}</div>
-            )}
-          </div>
-
-          <div className="section-label">
-            Aprobaciones escaladas
-          </div>
-          <div className="box">
-            <table>
-              <thead>
-                <tr>
-                  <th>Cliente</th>
-                  <th>Pieza</th>
-                  <th>Motivo escalado</th>
-                  <th>Acción</th>
-                </tr>
-              </thead>
-              <tbody>
-                {aprobacionesLider.map((aprobacion) => (
-                  <tr key={aprobacion.id}>
-                    <td>{aprobacion.cliente_nombre ?? "Sin cliente"}</td>
-                    <td>{aprobacion.titulo}</td>
-                    <td>
-                      {aprobacion.propiedades_extra?.motivo ??
-                        "Sin motivo cargado"}
-                    </td>
-                    <td>
-                      <button
-                        className="btn"
-                        type="button"
-                        onClick={() => {
-                          fetch(`/api/tareas/${aprobacion.id}`, {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ estado: ESTADO_FINAL_TAREA }),
-                          }).then((response) => {
-                            if (response.ok) cargarPanorama();
-                          });
-                        }}
-                      >
-                        Marcar resuelta
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {aprobacionesLiderError && (
-                  <tr>
-                    <td colSpan="4">{aprobacionesLiderError}</td>
-                  </tr>
-                )}
-                {!aprobacionesLiderError &&
-                  aprobacionesLider.length === 0 && (
-                    <tr>
-                      <td colSpan="4">
-                        No hay tareas escaladas al Líder.
-                      </td>
-                    </tr>
-                  )}
-              </tbody>
-            </table>
-            <div className="caption">
-              → Reúne los casos escalados al equipo administrativo, incluidos
-              los pendientes anteriores a la unificación.
-            </div>
-          </div>
-
-          <div className="section-label">Piezas atrasadas</div>
-          <div className="box">
-            {(() => {
-              const atrasadas = getPiezasAtrasadas(historiasRaw, publicacionesRaw);
-              if (atrasadas.length === 0) {
-                return (
-                  <div className="caption">✅ No hay piezas atrasadas.</div>
+                const piezasPorClave = new Map();
+                atrasadas.forEach((pieza) => {
+                  piezasPorClave.set(`${pieza.origen}-${pieza.id}`, {
+                    ...pieza,
+                    urgencia: "atrasada",
+                  });
+                });
+                bloqueadas.forEach((pieza) => {
+                  const clave = `${pieza.origen}-${pieza.id}`;
+                  piezasPorClave.set(clave, {
+                    ...(piezasPorClave.get(clave) ?? pieza),
+                    ...pieza,
+                    urgencia: "bloqueada",
+                  });
+                });
+                const piezasUrgentes = Array.from(piezasPorClave.values()).sort(
+                  (a, b) => {
+                    if (a.urgencia !== b.urgencia) {
+                      return a.urgencia === "bloqueada" ? -1 : 1;
+                    }
+                    return (
+                      new Date(a.fecha_programada) - new Date(b.fecha_programada)
+                    );
+                  },
                 );
-              }
-              return (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Cliente</th>
-                      <th>Tipo</th>
-                      <th>Pieza</th>
-                      <th>Vencía</th>
-                      <th>Días atrasada</th>
-                      <th>Estado actual</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {atrasadas.map((pieza) => {
-                      const diasAtrasada = Math.floor(
-                        (new Date(getHoyLocalISO()) -
-                          new Date(pieza.fecha_programada)) /
-                          (1000 * 60 * 60 * 24),
-                      );
-                      return (
-                        <tr key={`${pieza.origen}-${pieza.id}`}>
-                          <td>{pieza.cliente_nombre ?? pieza.cliente_id}</td>
-                          <td>{pieza.tipo}</td>
-                          <td>{pieza.idea || pieza.titulo || "Sin título"}</td>
-                          <td>{pieza.fecha_programada}</td>
-                          <td style={{ color: "#d9534f", fontWeight: "bold" }}>
-                            {diasAtrasada} {diasAtrasada === 1 ? "día" : "días"}
-                          </td>
-                          <td>{pieza.estado}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              );
-            })()}
-          </div>
 
-          <div className="section-label">Bloqueos críticos</div>
-          <div className="box">
-            {(() => {
-              const bloqueadas = getPiezasBloqueadas(historiasRaw, publicacionesRaw);
-              if (bloqueadas.length === 0) {
-                return <div className="caption">✅ No hay piezas bloqueadas.</div>;
-              }
-              return (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Cliente</th>
-                      <th>Tipo</th>
-                      <th>Pieza</th>
-                      <th>Aclaraciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bloqueadas.map((pieza) => (
-                      <tr key={`${pieza.origen}-${pieza.id}`}>
-                        <td>{pieza.cliente_nombre ?? pieza.cliente_id}</td>
-                        <td>{pieza.tipo}</td>
-                        <td>{pieza.idea || pieza.titulo || "Sin título"}</td>
-                        <td>{pieza.aclaraciones || "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              );
-            })()}
-            <div className="caption">
-              → Piezas con estado "bloqueada". Alguien las está esperando.
-            </div>
-          </div>
+                const hayAccionesUrgentes =
+                  aprobacionesLider.length > 0 || piezasUrgentes.length > 0;
 
-          <div className="section-label">Publicaciones de hoy</div>
-          <div className="box">
-            {(() => {
-              const deHoy = getPublicacionesDeHoy(historiasRaw, publicacionesRaw);
-              if (deHoy.length === 0) {
                 return (
-                  <div className="caption">
-                    ℹ️ No hay piezas programadas para hoy.
-                  </div>
-                );
-              }
-              return (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Hora</th>
-                      <th>Cliente</th>
-                      <th>Tipo</th>
-                      <th>Pieza</th>
-                      <th>Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {deHoy.map((pieza) => (
-                      <tr key={`${pieza.origen}-${pieza.id}`}>
-                        <td>{pieza.fecha_programada.split(" ")[1] || "—"}</td>
-                        <td>{pieza.cliente_nombre ?? pieza.cliente_id}</td>
-                        <td>{pieza.tipo}</td>
-                        <td>{pieza.idea || pieza.titulo || "Sin título"}</td>
-                        <td>{pieza.estado}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              );
-            })()}
-          </div>
+                  <>
+                    <div className="stat-row">
+                      <div className={`stat-card ${atrasadas.length > 0 ? "is-critical" : "is-neutral"}`}>
+                        <div className="stat-icon"><IconClock /></div>
+                        <div>
+                          <div className="stat-num">{atrasadas.length}</div>
+                          <div className="stat-label">Atrasados</div>
+                        </div>
+                      </div>
+                      <div className={`stat-card ${bloqueadas.length > 0 ? "is-warning" : "is-neutral"}`}>
+                        <div className="stat-icon"><IconLock /></div>
+                        <div>
+                          <div className="stat-num">{bloqueadas.length}</div>
+                          <div className="stat-label">Bloqueados</div>
+                        </div>
+                      </div>
+                      {edicionesEsperando.length > 0 && (
+                        <div className="stat-card is-warning">
+                          <div className="stat-icon"><IconHourglass /></div>
+                          <div>
+                            <div className="stat-num">{edicionesEsperando.length}</div>
+                            <div className="stat-label">
+                              Edicion{edicionesEsperando.length === 1 ? "" : "es"} esperando material de Germán
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div className="stat-card is-neutral">
+                        <div className="stat-icon"><IconCheckCircle /></div>
+                        <div>
+                          <div className="stat-num">{cumplimiento}%</div>
+                          <div className="stat-label">Cumplimiento general</div>
+                        </div>
+                      </div>
+                    </div>
 
-              </div>
+                    <div className="section-label">Acciones urgentes</div>
+                    <div className="box">
+                      {aprobacionesLiderError && (
+                        <div className="caption">{aprobacionesLiderError}</div>
+                      )}
+                      {!aprobacionesLiderError && !hayAccionesUrgentes && (
+                        <div className="caption">
+                          ✅ No hay acciones urgentes. Todo está en control.
+                        </div>
+                      )}
+                      {!aprobacionesLiderError && hayAccionesUrgentes && (
+                        <div className="urgent-list">
+                          {aprobacionesLider.map((aprobacion) => (
+                            <div className="urgent-row" key={`escalada-${aprobacion.id}`}>
+                              <span className="tag escalada">Escalada</span>
+                              <div className="urgent-info">
+                                <div className="urgent-title">
+                                  {aprobacion.cliente_nombre ?? "Sin cliente"} · {aprobacion.titulo}
+                                </div>
+                                <div className="urgent-meta">
+                                  {aprobacion.propiedades_extra?.motivo ?? "Sin motivo cargado"}
+                                </div>
+                              </div>
+                              <button
+                                className="btn"
+                                type="button"
+                                onClick={() => {
+                                  fetch(`/api/tareas/${aprobacion.id}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ estado: ESTADO_FINAL_TAREA }),
+                                  }).then((response) => {
+                                    if (response.ok) cargarPanorama();
+                                  });
+                                }}
+                              >
+                                Marcar resuelta
+                              </button>
+                            </div>
+                          ))}
+                          {piezasUrgentes.map((pieza) => {
+                            const esBloqueada = pieza.urgencia === "bloqueada";
+                            const diasAtrasada = !esBloqueada
+                              ? Math.floor(
+                                  (new Date(getHoyLocalISO()) - new Date(pieza.fecha_programada)) /
+                                    (1000 * 60 * 60 * 24),
+                                )
+                              : null;
+                            return (
+                              <div className="urgent-row" key={`${pieza.origen}-${pieza.id}`}>
+                                <span className={`tag ${esBloqueada ? "bloqueada" : "atraso"}`}>
+                                  {esBloqueada ? "Bloqueada" : "Atrasada"}
+                                </span>
+                                <div className="urgent-info">
+                                  <div className="urgent-title">
+                                    {pieza.cliente_nombre ?? pieza.cliente_id} · {pieza.idea || pieza.titulo || "Sin título"}
+                                  </div>
+                                  <div className="urgent-meta">
+                                    {esBloqueada
+                                      ? pieza.aclaraciones || "Bloqueada — sin aclaraciones cargadas"
+                                      : `Vencía ${pieza.fecha_programada} · ${diasAtrasada} ${diasAtrasada === 1 ? "día" : "días"} atrasada`}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="section-label">Panorama de clientes</div>
+                    <div className="box">
+                      <div className="box-header">
+                        <strong>Panorama de clientes — {getMesActualISO()}</strong>
+                      </div>
+
+                      <input
+                        type="text"
+                        placeholder="Buscar cliente por nombre…"
+                        value={busquedaCliente}
+                        onChange={(e) => setBusquedaCliente(e.target.value)}
+                        style={{ marginBottom: "12px", width: "100%" }}
+                      />
+
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Estado</th>
+                            <th>Cliente</th>
+                            <th>Cumplimiento</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {clientesFiltrados.map((cliente) => {
+                            const porcentajes = getPorcentajesCliente(cliente);
+                            const estado = cliente.semaforo;
+
+                            return (
+                              <tr
+                                className="row-clickable"
+                                key={cliente.id}
+                                onClick={() => setClienteSeleccionado(cliente)}
+                              >
+                                <td>
+                                  <span className={`status-pill ${estado}`}>
+                                    <i></i>
+                                    {getEstadoLabel(estado)}
+                                  </span>
+                                </td>
+                                <td>{cliente.nombre}</td>
+                                <td>{porcentajes.objetivo}%</td>
+                              </tr>
+                            );
+                          })}
+                          {panoramaError && (
+                            <tr>
+                              <td colSpan="3">{panoramaError}</td>
+                            </tr>
+                          )}
+                          {!panoramaError &&
+                            clientes.length > 0 &&
+                            clientesFiltrados.length === 0 && (
+                              <tr>
+                                <td colSpan="3">
+                                  Ningún cliente coincide con "{busquedaCliente}".
+                                </td>
+                              </tr>
+                            )}
+                        </tbody>
+                      </table>
+
+                      <div className="leyenda">
+                        <span className="semaforo rojo"></span>Rojo &lt;60% &nbsp;
+                        <span className="semaforo amarillo"></span>Amarillo 60–89%
+                        &nbsp;
+                        <span className="semaforo verde"></span>Verde ≥90%
+                      </div>
+                    </div>
+
+                    <div className="section-label">Resumen de equipo</div>
+                    <div className="box">
+                      {resumenEquipoError && (
+                        <div className="caption">{resumenEquipoError}</div>
+                      )}
+                      {!resumenEquipoError && (
+                        <div className="personas-grid">
+                          {resumenEquipo.map((persona) => (
+                            <div className="persona-card" key={persona.nombre}>
+                              <div className="persona-card-header">
+                                <div className="persona-identity">
+                                  <span className="persona-avatar">{persona.nombre.charAt(0)}</span>
+                                  <strong>{persona.nombre}</strong>
+                                </div>
+                                <span className={`tag ${persona.alerta ? "atraso" : ""}`}>
+                                  {persona.estado}
+                                </span>
+                              </div>
+                              <div className="persona-card-metrics">
+                                <span><strong>{persona.cargaTotal}</strong> asignadas</span>
+                                <span><strong>{persona.cumplimiento}%</strong> cumplimiento</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
           )}
 
           {vistaLider === "gestion" && (
@@ -450,9 +384,6 @@ export function GestionLiderPanel() {
 
   const tareasDestrabadas = tareasGestion.filter(
     (tarea) => tarea.propiedades_extra?.destrabada_por,
-  );
-  const tareasEscaladas = tareasGestion.filter(
-    (tarea) => tarea.propiedades_extra?.escalada_a,
   );
 
   const cargarCola = () => {
@@ -638,31 +569,6 @@ export function GestionLiderPanel() {
             </table>
             <div className="caption">
               → Historial simple de lo que el Líder ya destrabó hoy.
-            </div>
-          </div>
-
-          <div className="section-label">Casos escalados al Líder</div>
-          <div className="box">
-            {tareasEscaladas.map((tarea) => (
-              <div className="card" key={tarea.id}>
-                <div className="cliente">
-                  {tarea.cliente_nombre ?? "Sin cliente"}
-                </div>
-                <div>{tarea.titulo}</div>
-                <div className="meta">
-                  Escalado · motivo:{" "}
-                  {tarea.propiedades_extra.motivo ?? "Sin motivo cargado"}
-                </div>
-              </div>
-            ))}
-            {tareasGestionError && (
-              <div className="caption">{tareasGestionError}</div>
-            )}
-            {!tareasGestionError && tareasEscaladas.length === 0 && (
-              <div className="caption">No hay tareas escaladas al Líder.</div>
-            )}
-            <div className="caption">
-              → Conserva también los casos escalados antes de la unificación.
             </div>
           </div>
 
@@ -922,16 +828,14 @@ export function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) 
   };
 
   return (
-    <div className="modal-overlay open" role="dialog" aria-modal="true">
-      <div className="modal">
-        <div className="modal-header">
-          <span>
-            {pieza.cliente_nombre} · {pieza.metadata?.Idea || "Sin idea cargada"}
-          </span>
-          <button className="modal-close" type="button" onClick={onClose}>
-            X
-          </button>
-        </div>
+    <Modal
+      onClose={onClose}
+      title={
+        <span>
+          {pieza.cliente_nombre} · {pieza.metadata?.Idea || "Sin idea cargada"}
+        </span>
+      }
+    >
         <div className="modal-body">
           <span className="tag creativa">Aprobación creativa</span>
 
@@ -993,8 +897,7 @@ export function RevisionPiezaModal({ pieza, onClose, onAprobar, onCorreccion }) 
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

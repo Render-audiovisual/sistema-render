@@ -31,19 +31,22 @@ export function LucianoDashboard() {
     <main aria-label="Render platform Luciano">
       <div className="frame">
         <div className="content">
+          <div className="section-label">Edición</div>
+          <h2>Mis tareas</h2>
+
           {error && <div className="caption">{error}</div>}
 
-          <div style={{ backgroundColor: "#d4edff", border: "2px solid #0066cc", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
+          <div className="highlight-card">
             {!proxima ? (
-              <div className="caption">✅ No hay ediciones pendientes.</div>
+              <div className="caption">No hay ediciones pendientes.</div>
             ) : (
               <div>
-                <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>🎬 Tu próxima edición</div>
-                <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>{proxima.titulo}</div>
-                <div style={{ fontSize: "13px", color: "#333", marginBottom: "8px" }}>
+                <div className="highlight-eyebrow">Tu próxima edición</div>
+                <div className="highlight-title">{proxima.titulo}</div>
+                <div className="highlight-meta">
                   {proxima.cliente_nombre ?? "Sin cliente"} · Vence {proxima.fecha_vencimiento}
                 </div>
-                <div style={{ fontSize: "12px", color: "#555" }}>
+                <div className="highlight-status">
                   {proxima.requiere_aprobacion ? "Esperando aprobación del Líder" : `Estado: ${getEstadoTareaLabel(proxima.estado)}`}
                 </div>
               </div>

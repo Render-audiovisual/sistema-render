@@ -166,13 +166,11 @@ export function HistoriasPlanillaTab({
   return (
     <>
       {error && (
-        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
-          {error}
-        </div>
+        <div className="alert is-error">{error}</div>
       )}
 
       {cargando ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando planilla…</div>
+        <div className="state-empty">Cargando planilla…</div>
       ) : (
         <div className="sheet-frame" ref={gridRef}>
           <table className="sheet-table sheet-planning-table">
@@ -215,7 +213,7 @@ export function HistoriasPlanillaTab({
             <tbody>
               {filasVisibles.length === 0 && (
                 <tr>
-                  <td colSpan={12} style={{ textAlign: "center", padding: "24px", color: "#999" }}>
+                  <td colSpan={12} style={{ textAlign: "center", padding: "24px", color: "var(--muted)" }}>
                     Sin historias planificadas este mes todavía.
                   </td>
                 </tr>
@@ -233,11 +231,11 @@ export function HistoriasPlanillaTab({
                 // rápido dónde termina un día y empieza el siguiente, igual
                 // que en el Sheet, sin competir con hoy/atrasada/finde.
                 const diaPar = fecha.getDate() % 2 === 0;
-                const bgFila = estaAtrasada ? "#fff5f5" : esHoy ? "#e3f2fd" : esFinde ? "#fafafa" : diaPar ? "#fbfcfa" : undefined;
+                const bgFila = estaAtrasada ? "var(--danger-wash)" : esHoy ? "var(--accent-wash)" : esFinde ? "var(--surface-soft)" : diaPar ? "var(--surface-soft)" : undefined;
                 const esNuevoDia = rowIndex === 0 || filasVisibles[rowIndex - 1].fecha_programada !== h.fecha_programada;
 
                 return (
-                  <tr key={h.id} style={{ background: bgFila, borderTop: esNuevoDia && rowIndex > 0 ? "2px solid #dadce0" : undefined }}>
+                  <tr key={h.id} style={{ background: bgFila, borderTop: esNuevoDia && rowIndex > 0 ? "2px solid var(--border-strong)" : undefined }}>
                     <td className="sheet-row-number">{rowIndex + 1}</td>
                     <td className="sheet-client-cell">
                       <select
@@ -256,7 +254,7 @@ export function HistoriasPlanillaTab({
                         ))}
                       </select>
                     </td>
-                    <td className="sheet-day-cell" style={{ fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "#c62828" : esFinde ? "#999" : "#333" }}>
+                    <td className="sheet-day-cell" style={{ fontWeight: esHoy ? "700" : "600", color: estaAtrasada ? "var(--danger)" : esFinde ? "var(--muted)" : "var(--text)" }}>
                       {esNuevoDia ? LETRAS_DIA[dow] : ""}
                       {estaAtrasada && esNuevoDia && <span title="Atrasada" style={{ marginLeft: "2px" }}>⚠</span>}
                     </td>
@@ -497,24 +495,24 @@ export function HistoriasClienteTab({ clientes, estructura, historias, year, mon
   }, [year, month, estructuraPorDia, historiasPorFecha]);
 
   if (!clienteActual) {
-    return <div style={{ padding: "40px", textAlign: "center", color: "#999" }}>No hay clientes cargados</div>;
+    return <div className="state-empty">No hay clientes cargados</div>;
   }
 
   return (
     <>
       <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "24px" }}>
-        <label style={{ fontWeight: "600", color: "#333", fontSize: "14px" }}>Seleccionar cliente:</label>
+        <label style={{ fontWeight: "600", color: "var(--text)", fontSize: "14px" }}>Seleccionar cliente:</label>
         <select
           value={clienteSeleccionado}
           onChange={(e) => setClienteSeleccionado(Number(e.target.value))}
           style={{
             padding: "10px 14px",
-            border: "1px solid #ddd",
+            border: "1px solid var(--border-strong)",
             borderRadius: "6px",
             fontSize: "14px",
             fontWeight: "500",
             cursor: "pointer",
-            background: "white",
+            background: "var(--surface)",
           }}
         >
           {clientes.map((c) => (
@@ -525,7 +523,7 @@ export function HistoriasClienteTab({ clientes, estructura, historias, year, mon
         </select>
       </div>
 
-      <div style={{ background: "linear-gradient(135deg, #1565c0 0%, #1976d2 100%)", color: "white", padding: "20px", borderRadius: "8px", marginBottom: "24px", boxShadow: "0 2px 8px rgba(21,101,192,0.2)" }}>
+      <div style={{ background: "linear-gradient(135deg, var(--accent-strong) 0%, var(--accent) 100%)", color: "white", padding: "20px", borderRadius: "12px", marginBottom: "24px", boxShadow: "var(--shadow-sm)" }}>
         <h2 style={{ fontSize: "20px", margin: "0 0 8px 0", fontWeight: "700" }}>{clienteActual.nombre}</h2>
         <p style={{ fontSize: "13px", margin: "0", opacity: 0.95, display: "flex", gap: "8px" }}>
           <span>🏢 {clienteActual.rubro || "—"}</span>
@@ -534,7 +532,7 @@ export function HistoriasClienteTab({ clientes, estructura, historias, year, mon
         </p>
       </div>
 
-      <div style={{ marginBottom: "16px", fontSize: "12px", color: "#666", padding: "12px", background: "#f0f4ff", borderRadius: "6px", borderLeft: "3px solid #1976d2" }}>
+      <div style={{ marginBottom: "16px", fontSize: "12px", color: "var(--muted)", padding: "12px", background: "var(--accent-wash)", borderRadius: "6px", borderLeft: "3px solid var(--accent-strong)" }}>
         📋 <strong>{MESES[month]} {year}</strong> — Estructura día por día
       </div>
 
@@ -544,7 +542,7 @@ export function HistoriasClienteTab({ clientes, estructura, historias, year, mon
 
         return (
           <div key={semanaIdx} style={{ marginBottom: "24px" }}>
-            <div style={{ fontSize: "12px", fontWeight: "700", color: "#1565c0", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--accent-strong)", marginBottom: "10px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
               Semana {semanaIdx + 1}
             </div>
             <div
@@ -552,18 +550,18 @@ export function HistoriasClienteTab({ clientes, estructura, historias, year, mon
                 display: "grid",
                 gridTemplateColumns: "repeat(7, 1fr)",
                 gap: "10px",
-                background: "white",
+                background: "var(--surface)",
                 padding: "16px",
                 borderRadius: "8px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                boxShadow: "var(--shadow-sm)",
               }}
             >
               {dias.map((dia) => (
                 <div
                   key={dia.iso}
                   style={{
-                    background: dia.esDiaMes ? "#f5f8ff" : "#f9f9f9",
-                    border: dia.esDiaMes ? "2px solid #e3f2fd" : "1px solid #e8e8e8",
+                    background: dia.esDiaMes ? "var(--accent-wash)" : "#f9f9f9",
+                    border: dia.esDiaMes ? "2px solid var(--accent-wash)" : "1px solid #e8e8e8",
                     borderRadius: "8px",
                     padding: "12px",
                     textAlign: "center",
@@ -574,17 +572,17 @@ export function HistoriasClienteTab({ clientes, estructura, historias, year, mon
                     transition: "all 0.2s",
                   }}
                 >
-                  <div style={{ fontSize: "11px", fontWeight: "600", color: "#999", marginBottom: "2px", textTransform: "uppercase" }}>
+                  <div style={{ fontSize: "11px", fontWeight: "600", color: "var(--muted)", marginBottom: "2px", textTransform: "uppercase" }}>
                     {DIAS_SEMANA[dia.diaSemana]}
                   </div>
-                  <div style={{ fontSize: "16px", fontWeight: "700", color: "#1976d2", marginBottom: "8px" }}>
+                  <div style={{ fontSize: "16px", fontWeight: "700", color: "var(--accent-strong)", marginBottom: "8px" }}>
                     {String(dia.date.getDate()).padStart(2, "0")}
                   </div>
-                  <div style={{ fontSize: "13px", fontWeight: "600", color: "#333", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: "1.3" }}>
+                  <div style={{ fontSize: "13px", fontWeight: "600", color: "var(--text)", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: "1.3" }}>
                     {dia.tema}
                   </div>
                   {dia.horario && (
-                    <div style={{ fontSize: "11px", color: "#1976d2", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #e0e8ff", fontWeight: "500" }}>
+                    <div style={{ fontSize: "11px", color: "var(--accent-strong)", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid var(--border)", fontWeight: "500" }}>
                       🕐 {dia.horario}
                     </div>
                   )}
@@ -758,13 +756,11 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
       </div>
 
       {error && (
-        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
-          {error}
-        </div>
+        <div className="alert is-error">{error}</div>
       )}
 
       {cargando ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando checklist…</div>
+        <div className="state-empty">Cargando checklist…</div>
       ) : (
         <div className="sheet-frame check-sheet-frame">
           <div className="sheet-namebar">CHECK HISTORIAS — {MESES[month].toUpperCase()} {year}</div>
@@ -920,32 +916,32 @@ export function HistoriasEstructuraTab({ clientes }) {
   });
 
   if (cargando) {
-    return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando estructura…</div>;
+    return <div className="state-empty">Cargando estructura…</div>;
   }
 
   return (
     <>
       {error && (
-        <div style={{ padding: "12px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "20px", fontSize: "13px" }}>
-          ⚠️ {error}
+        <div style={{ padding: "12px", background: "var(--danger-wash)", color: "var(--danger)", borderRadius: "8px", marginBottom: "20px", fontSize: "13px" }}>
+          {error}
         </div>
       )}
 
-      <div style={{ background: "white", borderRadius: "8px", padding: "20px", marginBottom: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-        <h2 style={{ fontSize: "18px", margin: "0 0 8px 0", color: "#333" }}>📅 Estructura Semanal de Historias</h2>
-        <p style={{ fontSize: "13px", color: "#666", margin: "0" }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", padding: "20px", marginBottom: "20px" }}>
+        <h2 style={{ fontSize: "18px", margin: "0 0 8px 0", color: "var(--text)" }}>Estructura semanal de historias</h2>
+        <p style={{ fontSize: "13px", color: "var(--muted)", margin: "0" }}>
           Qué tema va cada día para cada cliente y a qué hora se publica. Patrón base que se sugiere automáticamente.
         </p>
       </div>
 
-      <div style={{ background: "white", borderRadius: "8px", overflowX: "auto", overflowY: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "12px", overflowX: "auto", overflowY: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ background: "#1565c0", color: "white" }}>
-              <th style={{ padding: "14px 16px", textAlign: "left", fontWeight: "600", fontSize: "13px", borderBottom: "2px solid #0d47a1", minWidth: "140px" }}>
+            <tr style={{ background: "var(--surface-sunken, var(--surface-soft))", color: "var(--muted)" }}>
+              <th style={{ padding: "14px 16px", textAlign: "left", fontWeight: "700", fontSize: "11px", letterSpacing: "0.04em", textTransform: "uppercase", borderBottom: "1px solid var(--border)", minWidth: "140px" }}>
                 Cliente
               </th>
-              <th style={{ padding: "14px 8px", textAlign: "center", fontWeight: "600", fontSize: "12px", borderBottom: "2px solid #0d47a1", width: "14.28%" }}>
+              <th style={{ padding: "14px 8px", textAlign: "center", fontWeight: "700", fontSize: "11px", letterSpacing: "0.04em", textTransform: "uppercase", borderBottom: "1px solid var(--border)", width: "14.28%" }}>
                 Rubro
               </th>
               {DIAS_SEMANA.map((dia) => (
@@ -956,7 +952,7 @@ export function HistoriasEstructuraTab({ clientes }) {
                     textAlign: "center",
                     fontWeight: "600",
                     fontSize: "12px",
-                    borderBottom: "2px solid #0d47a1",
+                    borderBottom: "2px solid var(--accent-strong)",
                     width: "12.5%",
                   }}
                 >
@@ -970,11 +966,11 @@ export function HistoriasEstructuraTab({ clientes }) {
             {clientes.map((cliente, idx) => {
               const estructuraCliente = estructuraPorClienteDia[cliente.id] || {};
               return (
-                <tr key={cliente.id} style={{ borderBottom: "1px solid #e0e0e0", background: idx % 2 === 0 ? "#fafafa" : "#fff" }}>
-                  <td style={{ padding: "16px", fontWeight: "600", color: "#333", fontSize: "13px", verticalAlign: "top" }}>
+                <tr key={cliente.id} style={{ borderBottom: "1px solid var(--border)", background: idx % 2 === 0 ? "var(--surface-soft)" : "var(--surface)" }}>
+                  <td style={{ padding: "16px", fontWeight: "600", color: "var(--text)", fontSize: "13px", verticalAlign: "top" }}>
                     {cliente.nombre}
                   </td>
-                  <td style={{ padding: "12px 8px", fontSize: "12px", color: "#666", textAlign: "center", verticalAlign: "top" }}>
+                  <td style={{ padding: "12px 8px", fontSize: "12px", color: "var(--muted)", textAlign: "center", verticalAlign: "top" }}>
                     {cliente.rubro || "—"}
                   </td>
                   {DIAS_SEMANA.map((dia) => {
@@ -987,28 +983,28 @@ export function HistoriasEstructuraTab({ clientes }) {
                           textAlign: "center",
                           verticalAlign: "top",
                           fontSize: "12px",
-                          background: est ? "#f0f4ff" : "#f9f9f9",
-                          borderLeft: "1px solid #e0e8ff",
+                          background: est ? "var(--accent-wash)" : "#f9f9f9",
+                          borderLeft: "1px solid var(--border)",
                         }}
                       >
                         {est ? (
                           <div style={{ minHeight: "70px", display: "flex", flexDirection: "column", justifyContent: "center", gap: "4px" }}>
                             {est.horario && (
-                              <div style={{ fontSize: "11px", color: "#1976d2", fontWeight: "600", padding: "2px 4px", background: "#e3f2fd", borderRadius: "3px" }}>
+                              <div style={{ fontSize: "11px", color: "var(--accent-strong)", fontWeight: "600", padding: "2px 4px", background: "var(--accent-wash)", borderRadius: "3px" }}>
                                 {est.horario}
                               </div>
                             )}
-                            <div style={{ fontSize: "12px", fontWeight: "600", color: "#333" }}>
+                            <div style={{ fontSize: "12px", fontWeight: "600", color: "var(--text)" }}>
                               {est.tema || "Sin tema"}
                             </div>
                             {est.tipo && (
-                              <div style={{ fontSize: "11px", color: "#999", fontStyle: "italic" }}>
+                              <div style={{ fontSize: "11px", color: "var(--muted)", fontStyle: "italic" }}>
                                 ({est.tipo})
                               </div>
                             )}
                           </div>
                         ) : (
-                          <div style={{ minHeight: "70px", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: "11px" }}>
+                          <div style={{ minHeight: "70px", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontSize: "11px" }}>
                             —
                           </div>
                         )}
@@ -1022,7 +1018,7 @@ export function HistoriasEstructuraTab({ clientes }) {
         </table>
       </div>
 
-      <div style={{ fontSize: "12px", color: "#666", marginTop: "16px", padding: "12px", background: "#f5f5f5", borderRadius: "4px" }}>
+      <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "16px", padding: "12px", background: "var(--surface-soft)", borderRadius: "4px" }}>
         💡 <strong>Consejo:</strong> Cuando agregues una historia nueva, el tipo y horario de ese día se sugieren automáticamente basándose en esta estructura.
       </div>
     </>
@@ -1056,21 +1052,19 @@ export function HistoriasFechasEspecialesTab({ clientes }) {
   const clientesPorId = Object.fromEntries(clientes.map((c) => [c.id, c.nombre]));
 
   if (cargando) {
-    return <div style={{ textAlign: "center", padding: "40px", color: "#999" }}>Cargando fechas especiales…</div>;
+    return <div className="state-empty">Cargando fechas especiales…</div>;
   }
 
   return (
     <>
       {error && (
-        <div style={{ padding: "10px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "12px" }}>
-          {error}
-        </div>
+        <div className="alert is-error">{error}</div>
       )}
 
       <div className="sheet-frame">
         <div className="sheet-namebar">Fechas especiales</div>
         {fechasEspeciales.length === 0 ? (
-          <div style={{ color: "#999", textAlign: "center", padding: "20px" }}>No hay fechas especiales registradas.</div>
+          <div style={{ color: "var(--muted)", textAlign: "center", padding: "20px" }}>No hay fechas especiales registradas.</div>
         ) : (
           <table className="sheet-table historias-special-dates-table">
             <thead>
@@ -1090,7 +1084,7 @@ export function HistoriasFechasEspecialesTab({ clientes }) {
                   <td style={{ padding: "8px 10px" }}>{f.evento || "—"}</td>
                   <td style={{ padding: "8px 10px" }}>{f.idea || "—"}</td>
                   <td style={{ padding: "8px 10px" }}>
-                    <span className="sheet-status-pill" style={{ background: f.estado === "hecho" ? "#c8e6c9" : f.estado === "en_curso" ? "#fff9c4" : "#ffccbc" }}>
+                    <span className="sheet-status-pill" style={{ background: f.estado === "hecho" ? "var(--success-wash)" : f.estado === "en_curso" ? "var(--warning-wash)" : "var(--danger-wash)", color: f.estado === "hecho" ? "var(--success)" : f.estado === "en_curso" ? "var(--warning)" : "var(--danger)" }}>
                       {estadoLabel[f.estado] || f.estado}
                     </span>
                   </td>
@@ -1137,8 +1131,8 @@ export function FlyersMigrarBanner({ onMigrado }) {
   };
 
   return (
-    <div style={{ background: "#fff3e0", border: "1px solid #ffb74d", borderRadius: "6px", padding: "12px 16px", marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
-      <div style={{ fontSize: "13px", color: "#e65100" }}>
+    <div style={{ background: "var(--warning-wash)", border: "1px solid transparent", borderRadius: "6px", padding: "12px 16px", marginBottom: "16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+      <div style={{ fontSize: "13px", color: "var(--warning)" }}>
         ⚠️ Hay <strong>{flyers.length}</strong> flyer{flyers.length > 1 ? "s" : ""} viejo{flyers.length > 1 ? "s" : ""} en Publicaciones. Los flyers ahora viven dentro de Historias.
         {error && <div style={{ marginTop: "4px" }}>{error}</div>}
       </div>
@@ -1434,7 +1428,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
       <div className="frame">
         <div className="content">
           {(errorClientes || errorHistorias) && (
-            <div style={{ padding: "10px", background: "#ffebee", color: "#c62828" }}>
+            <div style={{ padding: "10px", background: "var(--danger-wash)", color: "var(--danger)" }}>
               {errorClientes || errorHistorias}
             </div>
           )}
@@ -1482,9 +1476,9 @@ export function HistoriasPage({ initialTab = "estructura" }) {
 
                 {vista === "planilla" && clientes.length > 0 && (
                   <button
-                    className="add-btn"
+                    className="btn primary"
                     type="button"
-                    style={{ background: "#202124", color: "#fff", border: "none", borderRadius: "6px", padding: "8px 14px", fontSize: "13px", fontWeight: "600", cursor: "pointer" }}
+                    style={{ borderRadius: "6px", padding: "8px 14px", fontSize: "13px", minHeight: "auto" }}
                     onClick={agregarHistoriaEnMesActual}
                   >
                     + Nueva historia

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from "react"
 import { getEstadoTareaLabel, getHoyLocalISO } from "../../utils.jsx";
 import { ESTADO_FINAL_TAREA } from "../../constants.js";
 import { TareasAsignadasGenericas } from "../../components/TareasAsignadasGenericas.jsx";
+import { Modal } from "../../components/Modal.jsx";
 
 export function GermanDashboard() {
   const [produccionSeleccionada, setProduccionSeleccionada] = useState(null);
@@ -54,21 +55,24 @@ export function GermanDashboard() {
     <main aria-label="Render platform German">
       <div className="frame">
         <div className="content">
-          <div style={{ backgroundColor: "#fff3cd", border: "2px solid #ff9800", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
+          <div className="section-label">Producción</div>
+          <h2>Mis tareas</h2>
+
+          <div className="highlight-card">
             {(() => {
               const proximaTarea = pendientes
                 .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))[0];
 
               if (!proximaTarea) {
-                return <div className="caption">✅ No hay tareas pendientes.</div>;
+                return <div className="caption">No hay tareas pendientes.</div>;
               }
 
               return (
                 <div onClick={() => setProduccionSeleccionada(proximaTarea)} style={{ cursor: "pointer" }}>
-                  <div style={{ fontSize: "14px", fontWeight: "bold", marginBottom: "8px" }}>🎯 Tu próxima tarea</div>
-                  <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "4px" }}>{proximaTarea.titulo}</div>
-                  <div style={{ fontSize: "13px", color: "#333", marginBottom: "8px" }}>{proximaTarea.cliente_nombre ?? "Sin cliente"} · Vence {proximaTarea.fecha_vencimiento}</div>
-                  <div style={{ fontSize: "12px", color: "#555" }}>Estado: {getEstadoTareaLabel(proximaTarea.estado)}</div>
+                  <div className="highlight-eyebrow">Tu próxima tarea</div>
+                  <div className="highlight-title">{proximaTarea.titulo}</div>
+                  <div className="highlight-meta">{proximaTarea.cliente_nombre ?? "Sin cliente"} · Vence {proximaTarea.fecha_vencimiento}</div>
+                  <div className="highlight-status">Estado: {getEstadoTareaLabel(proximaTarea.estado)}</div>
                 </div>
               );
             })()}
@@ -115,17 +119,6 @@ export function GermanDashboard() {
             </div>
           </div>
 
-          <div className="section-label">Agenda de visitas</div>
-          <div className="box">
-            <div className="placeholder-box">
-              [ Módulo de Agenda — Fase 2, no incluido en el MVP ]
-            </div>
-            <div className="caption">
-              Por ahora, coordinación de horarios y rutas se sigue manejando
-              fuera de la plataforma.
-            </div>
-          </div>
-
           <div className="section-label">Cumplimiento mensual por cliente</div>
           <div className="box">
             <table>
@@ -156,22 +149,6 @@ export function GermanDashboard() {
               → Un video cuenta como cumplido recién cuando queda marcado
               "Publicada" — no alcanza con haber ido a filmar.
             </div>
-          </div>
-
-          <div className="section-label">En revisión</div>
-          <div className="box">
-            {tareasGerman.filter((t) => t.estado === "en_revision").length === 0 && (
-              <div className="caption">No hay producciones en revisión.</div>
-            )}
-            {tareasGerman
-              .filter((t) => t.estado === "en_revision")
-              .map((t) => (
-                <div className="priority-card" key={`revision-${t.id}`}>
-                  <div className="cliente">{t.cliente_nombre ?? "Sin cliente"}</div>
-                  <div>{t.titulo}</div>
-                  <div className="meta">Pendiente de revisión.</div>
-                </div>
-              ))}
           </div>
         </div>
       </div>
@@ -251,16 +228,14 @@ export function DetalleProduccionGermanModal({ produccion, onClose, onActualizad
   };
 
   return (
-    <div className="modal-overlay open" role="dialog" aria-modal="true">
-      <div className="modal">
-        <div className="modal-header">
-          <span>
-            {produccion.cliente_nombre ?? "Sin cliente"} · {produccion.titulo}
-          </span>
-          <button className="modal-close" type="button" onClick={onClose}>
-            X
-          </button>
-        </div>
+    <Modal
+      onClose={onClose}
+      title={
+        <span>
+          {produccion.cliente_nombre ?? "Sin cliente"} · {produccion.titulo}
+        </span>
+      }
+    >
         <div className="modal-body">
           <div className="detail-grid">
             <div className="detail-field">
@@ -304,7 +279,6 @@ export function DetalleProduccionGermanModal({ produccion, onClose, onActualizad
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
