@@ -3,7 +3,7 @@ import { ESTADO_FINAL_TAREA, getRolLabel } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea } from "../utils.jsx";
 import { AREAS, BOARD_COLUMNS, STATUSES, TASK_TYPES } from "../features/render-os/constants.js";
 import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
-import { areaForTask, formatDate, formatDateTime, initials, personForTask } from "../features/render-os/utils/task-formatters.js";
+import { areaForTask, emojiForTaskCard, formatDate, formatDateTime, initials, personForTask } from "../features/render-os/utils/task-formatters.js";
 import { canRetryTaskUpdate, canUserMoveTask, mergeRelatedTasks } from "../workspace-task-state.js";
 import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
 import { getProductionPhase, getProductionVisitProgress, isProductionVisitTask } from "../features/render-os/utils/production-visits.js";
@@ -19,9 +19,11 @@ function Avatar({ person, name }) {
   return <span className="ros-avatar" title={person ? `${person.nombre} · @${person.usuario}` : label}>{initials(label)}</span>;
 }
 
-function AreaBadge({ task }) {
-  const area = AREAS.find((item) => item.id === areaForTask(task)) || AREAS[0];
-  return <span className="ros-area-badge" style={{ "--area": area.color }}>{area.icon} {area.label}</span>;
+function AreaBadge({ task, card = false }) {
+  const resolvedArea = AREAS.find((item) => item.id === areaForTask(task)) || AREAS[0];
+  const emoji = card ? emojiForTaskCard(task) : "";
+  const area = card && emoji === "📌" ? { label: "General", icon: "•", color: "#68717f" } : resolvedArea;
+  return <span className="ros-area-badge" style={{ "--area": area.color }}>{card ? <span className="ros-area-emoji" aria-hidden="true">{emoji}</span> : area.icon} {area.label}</span>;
 }
 
 function LoadingState({ error, onRetry }) {
@@ -469,7 +471,7 @@ function TaskCard({ task, users, today, onOpen, onMove, canMove, selected = fals
   const phase = getProductionPhase(task);
   return <article role="button" tabIndex={0} aria-selected={selected} data-task-id={task.id} draggable={canMove && !selectionActive} className={`ros-task-card ${canMove ? "can-move" : "view-only"} ${selected ? "is-selected" : ""}`} onDragStart={(event) => { if (!canMove || selectionActive) { event.preventDefault(); return; } event.dataTransfer.setData("text/task-id", String(task.id)); event.dataTransfer.effectAllowed = "move"; }} onClick={(event) => { if (selectionActive) { event.stopPropagation(); onToggleSelection(task.id); return; } onOpen(task.id); }} onKeyDown={(event) => { if (event.key !== "Enter" && event.key !== " ") return; event.preventDefault(); if (selectionActive) onToggleSelection(task.id); else onOpen(task.id); }}>
     <span className="ros-task-selection-check" aria-hidden="true">✓</span>
-    <div className="ros-card-badges"><AreaBadge task={task}/>{phase && <span className={`ros-phase-badge ${phase.id}`}>{phase.label}</span>}</div><h3>{task.titulo}</h3><p>{task.cliente_nombre || "Sin cliente"}</p>
+    <div className="ros-card-badges"><AreaBadge task={task} card/>{phase && <span className={`ros-phase-badge ${phase.id}`}>{phase.label}</span>}</div><h3>{task.titulo}</h3><p>{task.cliente_nombre || "Sin cliente"}</p>
     {task.propiedades_extra?.resumen && <div className="ros-card-summary">{task.propiedades_extra.resumen}</div>}
     {tags.length > 0 && <div className="ros-card-tags">{tags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}
     {esperandoMaterial(task) && <div className="ros-card-warning">Esperando material</div>}

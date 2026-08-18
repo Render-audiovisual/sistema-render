@@ -11,6 +11,19 @@ export function areaForTask(task) {
   return task.tipo_tarea === "diseno" ? "carruseles" : "edicion";
 }
 
+export function emojiForTaskCard(task) {
+  const text = `${task.tipo_tarea || ""} ${task.subtipo || ""} ${task.titulo || ""}`.toLowerCase();
+  if (task.tipo_tarea === "administracion" && (text.includes("video") || text.includes("reel"))) return "🗓️";
+  if (text.includes("chatbot") || text.includes("bot ")) return "🤖";
+  if (text.includes("web") || text.includes("landing") || text.includes("página")) return "💻";
+  if (text.includes("cartel")) return "🪧";
+  if (text.includes("carrusel") || task.tipo_tarea === "diseno") return "🎠";
+  if (text.includes("historia") || text.includes("flyer") || text.includes("community") || task.tipo_tarea === "community") return "🎨";
+  if (text.includes("produccion") || text.includes("producción") || text.includes("visita") || text.includes("filmar") || task.tipo_tarea === "produccion") return "📹";
+  if (text.includes("edicion") || text.includes("edición") || text.includes("editar") || text.includes("reel") || task.tipo_tarea === "edicion") return "🎬";
+  return "📌";
+}
+
 export function formatDate(value) {
   if (!value) return "Sin fecha";
   const [year, month, day] = String(value).slice(0, 10).split("-");
