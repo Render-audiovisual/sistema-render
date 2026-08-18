@@ -56,7 +56,7 @@ const TASK_CONTENT_TEMPLATES = {
   ],
 };
 
-function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, editorRef, onInsertTemplate, onEditContent }) {
+function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, editorRef, onInsertTemplate, onEditContent, onCancelEdit, onSaveEdit, saving, canSave }) {
   const savedContent = getUnifiedTaskContent(task);
   const value = editing && String(draft.aclaraciones || "") !== String(task.aclaraciones || "") ? String(draft.aclaraciones || "") : savedContent;
   return <section className="ros-work-block ros-content-workspace">
@@ -65,8 +65,8 @@ function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, editor
       <div className="ros-content-editor-header"><div><span>Contenido de la tarea</span><strong>Escribí todo lo necesario para trabajar</strong></div></div>
       <div className="ros-content-tools"><span>Usá bloques para ordenar el texto.</span>{TASK_CONTENT_TYPES.flatMap((type) => TASK_CONTENT_TEMPLATES[type.id] || []).map((template) => <button type="button" key={`${template.label}-${template.value}`} onClick={() => onInsertTemplate(template.value)}>{template.label}</button>)}</div>
       <textarea ref={editorRef} className="ros-detail-textarea ros-content-textarea" rows={16} value={value} placeholder="Escribí el guion, copy o las indicaciones acá…" onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/>
-      <small>Los cambios se guardan únicamente al presionar “Guardar cambios”.</small>
-    </div> : value ? <div className="ros-content-editor ros-content-viewer"><div className="ros-content-editor-header"><div><span>Contenido de la tarea</span><strong>Información para trabajar</strong></div></div><div className="ros-content-reading">{renderizarTextoTarea(value)}</div></div> : <div className="ros-content-empty"><span>✎</span><div><strong>Todavía no hay contenido cargado.</strong><p>Agregá el guion, copy o las indicaciones en un solo lugar.</p></div>{onEditContent && <button type="button" onClick={onEditContent}>Escribir contenido</button>}</div>}
+      <div className="ros-content-edit-actions"><small>Guardá antes de cerrar la tarea.</small><div><button type="button" onClick={onCancelEdit}>Cancelar</button><button className="primary" type="button" disabled={saving || !canSave} onClick={onSaveEdit}>{saving ? "Guardando…" : "Guardar texto"}</button></div></div>
+    </div> : value ? <div className={`ros-content-editor ros-content-viewer ${onEditContent ? "is-editable" : ""}`} role={onEditContent ? "button" : undefined} tabIndex={onEditContent ? 0 : undefined} onClick={onEditContent || undefined} onKeyDown={onEditContent ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onEditContent(); } } : undefined}><div className="ros-content-editor-header"><div><span>Contenido de la tarea</span><strong>Información para trabajar</strong></div>{onEditContent && <b>Hacé clic para editar</b>}</div><div className="ros-content-reading">{renderizarTextoTarea(value)}</div></div> : <div className="ros-content-empty"><span>✎</span><div><strong>Todavía no hay contenido cargado.</strong><p>Agregá el guion, copy o las indicaciones en un solo lugar.</p></div>{onEditContent && <button type="button" onClick={onEditContent}>Escribir contenido</button>}</div>}
   </section>;
 }
 
@@ -93,6 +93,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [linkCopied, setLinkCopied] = useState(false);
   const archivePendingRef = useRef(false);
   const scriptEditorRef = useRef(null);
+  const focusContentEditorRef = useRef(false);
   const isAdmin = sesion?.usuario?.rol === "admin";
 
   useEffect(() => {
@@ -119,6 +120,16 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = previous; };
   }, [task]);
+
+  useEffect(() => {
+    if (!editing || !focusContentEditorRef.current) return;
+    focusContentEditorRef.current = false;
+    const textarea = scriptEditorRef.current;
+    if (!textarea) return;
+    textarea.focus();
+    const cursor = textarea.value.length;
+    textarea.setSelectionRange(cursor, cursor);
+  }, [editing]);
 
   if (!task) return null;
   const person = personForTask(task, users);
@@ -186,6 +197,16 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const startEditing = () => {
     setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task), resumen: metadata.resumen || "", etiquetas: tags.join(", "), colaboradores: collaborators, guiones: "", copy_trabajo: "", produccion_videos_previstos: productionProgress.planned || "" });
     setEditing(true);
+  };
+
+  const startEditingContent = () => {
+    focusContentEditorRef.current = true;
+    startEditing();
+  };
+
+  const cancelEditing = () => {
+    setDraft(task);
+    setEditing(false);
   };
 
   const insertContentTemplate = (template) => {
@@ -354,7 +375,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {productionProgress.planned === 0 && !editing && <p>Un Líder debe editar esta visita e indicar cuántos videos están previstos.</p>}
           {Array.isArray(metadata.produccion_registros) && metadata.produccion_registros.length > 0 && <details><summary>Ver registros</summary>{metadata.produccion_registros.slice().reverse().map((record) => <div key={record.id || `${record.fecha}-${record.created_at}`}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario || "Equipo"}{record.corregido_at ? ` · Corregido por ${record.corregido_por}` : ""}</span>{canRegisterProduction && !metadata.produccion_confirmada_at && <button type="button" onClick={() => { const value = window.prompt("Cantidad correcta de videos:", String(record.cantidad)); if (value !== null) onCorrectProduction(task, record, Number(value)); }}>Corregir</button>}</div>)}</details>}
         </section>}
-        <TaskContentWorkspace task={task} metadata={metadata} editing={editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={isAdmin ? startEditing : null}/>
+        <TaskContentWorkspace task={task} metadata={metadata} editing={editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={isAdmin ? startEditingContent : null} onCancelEdit={cancelEditing} onSaveEdit={save} saving={saving} canSave={Boolean(draft.titulo?.trim() && draft.asignado_a)}/>
         <section className="ros-work-block"><div className="ros-block-heading"><div><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3></div><small>Archivos y enlaces</small></div>{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <><div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{driveFiles.filter((file) => file.url !== task.material_referencia).map((file) => <a className="ros-file" href={file.url} target="_blank" rel="noreferrer" key={file.id}><span>▤</span><div><strong>{file.name}</strong><small>Google Drive · {file.uploaded_by || "Equipo"}</small></div><b>↗</b></a>)}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{!task.material_referencia && driveFiles.length === 0 && links.length === 0 && <p className="ros-compact-empty">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "Sin material vinculado."}</p>}</div><DriveUploader task={task} onUploaded={async () => { const refreshed = await apiTaskById(task.id); window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: [refreshed] })); }}/></>}</section>
         {(origin || task.tarea_padre_id || subtasks.length > 0 || isAdmin) && <section className="ros-work-block"><h3>Organización del trabajo</h3>{(origin || task.tarea_padre_id) && <div className="ros-context-list">{origin && <a href={origin.href}><strong>{origin.label}</strong><span>{formatDate(origin.date)} · {origin.state || "Sin estado"}</span><b>↗</b></a>}{task.tarea_padre_id && <button type="button" onClick={() => onOpen(Number(task.tarea_padre_id))}><strong>Depende de la tarea #{task.tarea_padre_id}</strong><span>Estado: {task.tarea_padre_estado || "Sin datos"}</span></button>}</div>}<div className="ros-subtasks">{subtasks.map((subtask) => <button type="button" key={subtask.id} onClick={() => onOpen(subtask.id)}><span>{subtask.titulo}</span><b>{STATUSES.find((item) => item.id === subtask.estado)?.label || subtask.estado}</b></button>)}{subtasks.length === 0 && !isAdmin && <p className="ros-empty-copy">No hay subtareas cargadas.</p>}</div>{isAdmin && <div className="ros-subtask-create"><input value={subtaskTitle} placeholder="Agregar una subtarea" onChange={(event) => setSubtaskTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createSubtask(); }}/><button type="button" disabled={!subtaskTitle.trim() || creatingSubtask} onClick={createSubtask}>{creatingSubtask ? "Creando…" : "+ Agregar"}</button></div>}</section>}
         <details className="ros-work-block ros-activity-history">
@@ -379,7 +400,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         {isAdmin && <details className="ros-task-admin-actions"><summary>Acciones de tarea</summary><div className="ros-danger-zone"><strong>Administrar tarea</strong><p>{isArchived ? "Podés restaurarla al tablero o eliminarla definitivamente." : "Archivala para sacarla del tablero sin perder su historial."}</p><div><button type="button" disabled={archiving} onClick={archiveTask}>{archiving ? (isArchived ? "Restaurando…" : "Archivando…") : (isArchived ? "Restaurar tarea" : "Archivar tarea")}</button>{confirmDelete ? <><button type="button" onClick={() => setConfirmDelete(false)}>Cancelar</button><button className="danger" type="button" disabled={deleting} onClick={deleteTask}>{deleting ? "Eliminando…" : "Eliminar definitivamente"}</button></> : <button className="danger" type="button" onClick={() => setConfirmDelete(true)}>Eliminar…</button>}</div></div></details>}
           </aside>
         </div>
-        {isAdmin && editing && <div className="ros-detail-actions ros-edit-footer"><button type="button" onClick={() => { setDraft(task); setEditing(false); }}>Cancelar</button><button className="primary" type="button" disabled={saving || !draft.titulo?.trim() || !draft.asignado_a} onClick={save}>{saving ? "Guardando…" : "Guardar cambios"}</button></div>}
+        {isAdmin && editing && <div className="ros-detail-actions ros-edit-footer"><button type="button" onClick={cancelEditing}>Cancelar</button><button className="primary" type="button" disabled={saving || !draft.titulo?.trim() || !draft.asignado_a} onClick={save}>{saving ? "Guardando…" : "Guardar cambios"}</button></div>}
       </div>
     </aside>
   </div>;
