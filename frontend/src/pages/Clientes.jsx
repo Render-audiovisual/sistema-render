@@ -289,7 +289,11 @@ export function ClientesAdminPage() {
             <div className="cliente-metric historias">
               <div><span>Historias planificadas</span><strong>{totales.porcentajePlanificacionHistorias}%</strong></div>
               <div className="cliente-metric-progress" aria-label={`${totales.porcentajePlanificacionHistorias}% de historias planificadas`}><i style={{ width: `${totales.porcentajePlanificacionHistorias}%` }}/></div>
-              <small>{totales.historiasPlanificadas} / {totales.cuotaHistorias} contratadas</small>
+              <small>
+                {totales.cuotaHistorias > 0
+                  ? `${totales.historiasPlanificadas} / ${totales.cuotaHistorias} contratadas`
+                  : `${totales.historiasPlanificadas} planificadas · Sin contrato configurado`}
+              </small>
             </div>
             <div className="cliente-metric historias">
               <div><span>Historias publicadas</span><strong>{totales.porcentajeHistorias}%</strong></div>
@@ -316,7 +320,13 @@ export function ClientesAdminPage() {
           <div className="box clientes-table-panel">
             <div className="clientes-table-toolbar">
               <div>
-                <strong>Cartera activa</strong>
+                <strong>
+                  {filtroEstado === "activos"
+                    ? "Cartera activa"
+                    : filtroEstado === "inactivos"
+                      ? "Cartera inactiva"
+                      : "Todos los clientes"}
+                </strong>
                 <span>Producción publicada, acuerdo mensual y estado del mes</span>
               </div>
             </div>
