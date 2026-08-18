@@ -3367,6 +3367,8 @@ textarea:disabled {
 .editorial-view-toggle { background: #f0f2eb; border-radius: 9px; display: flex; padding: 3px; }
 .editorial-view-toggle button { background: transparent; border: 0; border-radius: 7px; color: #687064; cursor: pointer; font: 600 11px/1 Poppins, sans-serif; padding: 9px 12px; }
 .editorial-view-toggle button.active { background: #1d3937; color: #b5fc00; }
+.publicaciones-viewport .cal-toolbar .btn.primary { background: #1d3937; border-color: #1d3937; color: #b5fc00; }
+.publicaciones-viewport .cal-toolbar .btn.primary:hover { background: #294a47; border-color: #294a47; }
 .editorial-week-view { display: grid; gap: 10px; grid-template-columns: repeat(7, minmax(0, 1fr)); margin-top: 12px; }
 .editorial-week-view section { background: #fff; border: 1px solid #e1e5d9; border-radius: 12px; min-height: 260px; padding: 12px; }
 .editorial-week-view section.today { border: 2px solid #1d3937; }

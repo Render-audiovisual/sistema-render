@@ -1058,7 +1058,7 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
       <div className="frame">
         <div className="content">
           <header className="module-intro">
-            <div><div className="section-label">Publicaciones</div><h2>¿Qué tenemos que publicar y cuándo?</h2><p>Revisá el calendario, detectá pendientes y organizá cada cliente sin perder el contexto.</p></div>
+            <div><h2>¿Qué tenemos que publicar y cuándo?</h2><p>Consultá las fechas de cada Reel y Carrusel, por cliente y por semana.</p></div>
           </header>
           {errorClientes && <PageState compact type="error" title={errorClientes} description="La vista, el cliente y el mes siguen guardados." onRetry={() => window.location.reload()} />}
 
