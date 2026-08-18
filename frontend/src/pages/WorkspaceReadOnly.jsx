@@ -351,7 +351,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         <div className="ros-task-document-heading">{editing ? <input className="ros-title-input" value={draft.titulo || ""} onChange={(event) => setDraft({ ...draft, titulo: event.target.value })}/> : <h2>{task.titulo}</h2>}{isAdmin && !editing && <button className="ros-task-edit-button" type="button" onClick={startEditing}>Editar tarea</button>}</div>
         <div className="ros-task-document-properties">
           <div><span>◉ <b>Estado</b></span><strong className="ros-task-document-status"><i style={{ background: status.color }}/>{status.label}</strong></div>
-          <div><span>♙ <b>Responsable</b></span><strong><Avatar person={person} name={task.asignado_a}/>{task.asignado_a || "Sin asignar"}</strong></div>
+          <div className={editing ? "ros-task-people-property is-editing" : "ros-task-people-property"}><span>♙ <b>Responsables</b></span>{editing ? <TaskPeoplePicker compact users={users} primary={draft.asignado_a || ""} collaborators={draft.colaboradores || []} onChange={({ primary, collaborators: nextCollaborators }) => setDraft((current) => ({ ...current, asignado_a: primary, colaboradores: nextCollaborators }))}/> : <strong className="ros-task-assignees">{[task.asignado_a, ...collaborators].filter((name, index, names) => name && names.indexOf(name) === index).map((name, index) => <span className="ros-task-assignee" key={name}><Avatar person={users.find((user) => user.nombre === name)} name={name}/><span>{name}<small>{index === 0 ? "Principal" : "Colabora"}</small></span></span>)}</strong>}</div>
           <div><span>▥ <b>Cliente</b></span><strong>{task.cliente_nombre || "Sin cliente"}</strong></div>
           <div><span>▦ <b>Entrega</b></span><strong>{formatDate(task.fecha_vencimiento)}</strong></div>
           {String(task.prioridad || "").toLowerCase() !== "media" && <div><span>⚑ <b>Prioridad</b></span><strong>{task.prioridad || "Sin definir"}</strong></div>}
@@ -406,15 +406,15 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   </div>;
 }
 
-function TaskPeoplePicker({ users, primary, collaborators, onChange }) {
+function TaskPeoplePicker({ users, primary, collaborators, onChange, compact = false }) {
   const [open, setOpen] = useState(false);
   const selected = [primary, ...(collaborators || [])].filter((name, index, items) => name && items.indexOf(name) === index);
   const toggle = (name) => {
     const next = selected.includes(name) ? selected.filter((item) => item !== name) : [...selected, name];
     onChange({ primary: next[0] || "", collaborators: next.slice(1) });
   };
-  return <div className="wide ros-people-picker">
-    <div className="ros-people-picker-label"><span>Responsables *</span><small>Podés seleccionar una o varias personas.</small></div>
+  return <div className={`wide ros-people-picker ${compact ? "compact" : ""}`}>
+    {!compact && <div className="ros-people-picker-label"><span>Responsables *</span><small>Podés seleccionar una o varias personas.</small></div>}
     {selected.length > 0 && <div className="ros-selected-people">{selected.map((name, index) => <button type="button" key={name} onClick={() => toggle(name)}><Avatar person={users.find((user) => user.nombre === name)} name={name}/><span><strong>{name}</strong><small>{index === 0 ? "Responsable principal" : "Colabora"}</small></span><b aria-hidden="true">×</b></button>)}</div>}
     <button className="ros-add-person" type="button" aria-expanded={open} onClick={() => setOpen((current) => !current)}><span>+</span>{selected.length ? "Añadir otra persona" : "Añadir responsable"}<b>{open ? "⌃" : "⌄"}</b></button>
     {open && <div className="ros-people-options">{users.map((user) => { const active = selected.includes(user.nombre); return <button className={active ? "selected" : ""} type="button" key={user.id} onClick={() => toggle(user.nombre)}><Avatar person={user}/><span><strong>{user.nombre}</strong><small>{getRolLabel(user.rol) || `@${user.usuario}`}</small></span><b>{active ? "✓" : "+"}</b></button>; })}</div>}
