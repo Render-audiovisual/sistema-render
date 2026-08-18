@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
 const monthLabel = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" });
+const EMPTY_VALUES = { facturacion: 0, sueldos: 0, impuestos: 0, herramientas: 0 };
 
 function currentPeriod() {
   const now = new Date();
@@ -17,121 +18,117 @@ function labelPeriod(period) {
 function BillingChart({ items = [], selectedPeriod }) {
   const visible = items.slice(-8);
   const maximum = Math.max(...visible.map((item) => item.total), 1);
-  if (!visible.length) return <div className="finance-empty">Todavía no hay meses con facturación configurada.</div>;
-  return (
-    <div className="finance-chart" role="img" aria-label="Evolución mensual de la facturación">
-      {visible.map((item) => (
-        <div className={`finance-chart-column${item.period === selectedPeriod ? " is-current" : ""}`} key={item.period}>
-          <strong>{money.format(item.total)}</strong>
-          <div><i style={{ height: `${Math.max((item.total / maximum) * 100, 4)}%` }} /></div>
-          <span>{labelPeriod(item.period).split(" de ")[0].slice(0, 3)}</span>
-        </div>
-      ))}
-    </div>
-  );
+  if (!visible.length) return <div className="finance-empty">Cargá el primer mes para comenzar el historial.</div>;
+  return <div className="finance-chart" role="img" aria-label="Evolución mensual de la facturación">
+    {visible.map((item) => <div className={`finance-chart-column${item.period === selectedPeriod ? " is-current" : ""}`} key={item.period}>
+      <strong>{money.format(item.total)}</strong>
+      <div><i style={{ height: `${Math.max((item.total / maximum) * 100, 4)}%` }} /></div>
+      <span>{labelPeriod(item.period).split(" de ")[0].slice(0, 3)}</span>
+    </div>)}
+  </div>;
 }
 
 export function SueldosPage() {
   const requested = new URLSearchParams(window.location.search).get("periodo");
   const [period, setPeriod] = useState(/^\d{4}-\d{2}$/.test(requested || "") ? requested : currentPeriod());
-  const [data, setData] = useState(null);
+  const [values, setValues] = useState(EMPTY_VALUES);
+  const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const load = () => {
+    setLoading(true);
+    setError("");
+    fetch(`/api/sueldos?periodo=${encodeURIComponent(period)}`, { cache: "no-store" })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || "No se pudo cargar el período.");
+        return body;
+      })
+      .then((body) => {
+        setValues({ ...EMPTY_VALUES, ...body.finance });
+        setHistory(Array.isArray(body.billingHistory) ? body.billingHistory : []);
+      })
+      .catch((reason) => setError(reason.message))
+      .finally(() => setLoading(false));
+  };
 
   useEffect(() => {
     const url = new URL(window.location.href);
     url.searchParams.set("periodo", period);
     window.history.replaceState({}, "", url);
-    setLoading(true);
+    setSaved(false);
+    load();
+  }, [period]);
+
+  const result = useMemo(() =>
+    Number(values.facturacion || 0) - Number(values.sueldos || 0) - Number(values.impuestos || 0) - Number(values.herramientas || 0),
+    [values],
+  );
+
+  const update = (field, value) => {
+    setSaved(false);
+    setValues((current) => ({ ...current, [field]: value }));
+  };
+
+  const save = (event) => {
+    event.preventDefault();
+    setSaving(true);
     setError("");
-    fetch(`/api/sueldos?periodo=${encodeURIComponent(period)}`)
+    fetch(`/api/finanzas/resumen/${encodeURIComponent(period)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(values),
+    })
       .then(async (response) => {
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.error || "No se pudo calcular el período.");
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || "No se pudo guardar el mes.");
         return body;
       })
       .then((body) => {
-        setData(body);
-        const available = body.finance?.availablePeriods || [];
-        if (available.length && !available.includes(period)) setPeriod(available.at(-1));
+        setValues({ ...EMPTY_VALUES, ...body });
+        setSaved(true);
+        setHistory((current) => [...current.filter((item) => item.period !== period), { period, total: body.facturacion }]
+          .sort((a, b) => a.period.localeCompare(b.period)));
       })
       .catch((reason) => setError(reason.message))
-      .finally(() => setLoading(false));
-  }, [period]);
+      .finally(() => setSaving(false));
+  };
 
-  const comparison = useMemo(() => {
-    const history = data?.finance?.billingHistory || [];
-    const index = history.findIndex((item) => item.period === period);
-    if (index <= 0) return null;
-    const current = history[index].total;
-    const previous = history[index - 1].total;
-    if (!previous) return null;
-    return Math.round(((current - previous) / previous) * 1000) / 10;
-  }, [data, period]);
+  return <main className="page-shell salary-page finance-dashboard">
+    <section className="salary-hero">
+      <div><span className="section-label">Finanzas · Solo Líder</span><h1>Cierre mensual de Render</h1><p>Facturación y egresos reales cargados manualmente, sin automatizaciones.</p></div>
+      <label className="finance-period-select"><span>Período</span><input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} /></label>
+    </section>
 
-  const finance = data?.finance;
-  const clients = data?.clientIncome?.items || [];
-  return (
-    <main className="page-shell salary-page finance-dashboard">
-      <section className="salary-hero">
-        <div>
-          <span className="section-label">Finanzas · Solo Líder</span>
-          <h1>Facturación de Render</h1>
-          <p>Una lectura ejecutiva de ingresos, sueldos y resultado mensual estimado.</p>
-        </div>
-        <label className="finance-period-select">
-          <span>Período</span>
-          <select value={period} onChange={(event) => setPeriod(event.target.value)}>
-            {(finance?.availablePeriods?.length ? finance.availablePeriods : [period]).map((item) => (
-              <option key={item} value={item}>{labelPeriod(item)}</option>
-            ))}
-          </select>
-        </label>
+    {loading && <div className="salary-state">Cargando el cierre mensual…</div>}
+    {error && <div className="salary-state is-error"><strong>No se pudo completar la operación.</strong><span>{error}</span></div>}
+    {!loading && <form className="finance-manual-form" onSubmit={save}>
+      <section className="finance-billing-hero">
+        <div><span>FACTURACIÓN TOTAL</span><small>{labelPeriod(period)}</small><strong>{money.format(Number(values.facturacion) || 0)}</strong><p>Importe ingresado manualmente para este mes.</p></div>
+        <b>Sin cálculos automáticos</b>
       </section>
 
-      {loading && <div className="salary-state">Calculando la facturación del mes…</div>}
-      {error && <div className="salary-state is-error"><strong>No se pudo cargar Finanzas.</strong><span>{error}</span></div>}
-      {!loading && !error && data && <>
-        <section className="finance-billing-hero">
-          <div>
-            <span>RENDER FACTURA</span>
-            <small>{labelPeriod(period)}</small>
-            <strong>{money.format(finance?.billing || 0)}</strong>
-            <p>Suma mensual de los servicios activos. No depende de cobranzas.</p>
-          </div>
-          {comparison != null && <b className={comparison >= 0 ? "is-positive" : "is-negative"}>{comparison >= 0 ? "+" : ""}{comparison}% vs. mes anterior</b>}
-        </section>
+      <section className="finance-entry-grid" aria-label="Carga financiera mensual">
+        {[
+          ["facturacion", "Facturación total", "Todo lo facturado por Render"],
+          ["sueldos", "Sueldos a pagar", "Total de sueldos del mes"],
+          ["impuestos", "Impuestos pagados", "Total de impuestos del mes"],
+          ["herramientas", "Herramientas pagadas", "Software y herramientas del mes"],
+        ].map(([field, label, help]) => <label key={field}><span>{label}</span><div><b>$</b><input min="0" step="0.01" type="number" value={values[field]} onChange={(event) => update(field, event.target.value)} /></div><small>{help}</small></label>)}
+      </section>
 
-        <section className="finance-metrics" aria-label="Resumen financiero mensual">
-          <article><span>Sueldos a pagar</span><strong>{money.format(finance?.committedPayroll || 0)}</strong><small>Compromiso mensual completo</small></article>
-          <article><span>Devengado hasta hoy</span><strong>{money.format(finance?.accruedPayroll || 0)}</strong><small>Según el trabajo registrado</small></article>
-          <article className="is-result"><span>Resultado estimado</span><strong>{money.format(finance?.estimatedResult || 0)}</strong><small>Facturación menos sueldos comprometidos</small></article>
-          <article><span>Margen estimado</span><strong>{finance?.estimatedMargin || 0}%</strong><small>No representa ganancia neta</small></article>
-        </section>
+      <section className="finance-result-row">
+        <div><span>RESULTADO DEL MES</span><small>Facturación menos sueldos, impuestos y herramientas</small></div>
+        <strong className={result < 0 ? "is-negative" : ""}>{money.format(result)}</strong>
+        <button className="btn primary" disabled={saving} type="submit">{saving ? "Guardando…" : "Guardar cierre mensual"}</button>
+        {saved && <em>Mes guardado correctamente</em>}
+      </section>
+    </form>}
 
-        <section className="finance-panel">
-          <header><div><span className="section-label">EVOLUCIÓN MENSUAL</span><h2>¿Render está creciendo?</h2></div><small>Últimos meses con información disponible</small></header>
-          <BillingChart items={finance?.billingHistory} selectedPeriod={period} />
-        </section>
-
-        <section className="finance-panel finance-clients">
-          <header><div><span className="section-label">ORIGEN DE LA FACTURACIÓN</span><h2>Clientes activos</h2></div><strong>{clients.length} configurados</strong></header>
-          <div className="finance-client-table">
-            <div className="finance-client-row is-heading"><span>Cliente</span><span>Servicios activos</span><span>Facturación mensual</span></div>
-            {clients.map((client) => (
-              <div className="finance-client-row" key={client.id}>
-                <strong>{client.name}</strong>
-                <span>{client.services?.length ? client.services.join(" · ") : "Servicio sin cuota cargada"}</span>
-                <b>{money.format(client.amount)}</b>
-              </div>
-            ))}
-            <footer><span>TOTAL FACTURACIÓN RENDER</span><strong>{money.format(finance?.billing || 0)}</strong></footer>
-          </div>
-        </section>
-
-        {data.summary?.pendingConfigurations?.length > 0 && <div className="salary-banner"><strong>Cálculo de sueldos incompleto:</strong> falta definir el valor por pieza de {data.summary.pendingConfigurations.join(", ")}.</div>}
-        <p className="finance-disclaimer">Este tablero es una estimación de gestión. No incluye cobranzas, impuestos, herramientas, proveedores ni otros costos operativos.</p>
-      </>}
-    </main>
-  );
+    <section className="finance-panel"><header><div><span className="section-label">HISTORIAL</span><h2>Facturación mes a mes</h2></div><small>Solo meses guardados manualmente</small></header><BillingChart items={history} selectedPeriod={period} /></section>
+    <p className="finance-disclaimer">Finanzas usa únicamente los cuatro importes cargados manualmente para cada mes.</p>
+  </main>;
 }
