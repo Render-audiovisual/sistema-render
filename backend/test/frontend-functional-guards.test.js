@@ -109,6 +109,9 @@ test("todo el equipo puede archivar, enviar a Papelera y restaurar selecciones",
   assert.match(workspaceSource, /normalizeSelectionRect/);
   assert.match(workspaceSource, /Enviar a Papelera/);
   assert.match(workspaceSource, /acciones-masivas\?workspace=render_os/);
+  assert.match(workspaceSource, /event\.key === "Delete" \|\| event\.key === "Backspace"/);
+  assert.match(workspaceSource, /event\.key === "Escape"/);
+  assert.doesNotMatch(workspaceSource, /ros-selection-status/);
   assert.match(serverSource, /router\.post\("\/tareas\/acciones-masivas", async/);
   assert.match(serverSource, /\["archivar", "papelera", "restaurar"\]/);
   assert.doesNotMatch(serverSource, /router\.post\("\/tareas\/acciones-masivas", requireRole/);
