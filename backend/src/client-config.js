@@ -1,4 +1,4 @@
-export const CLIENT_DESIGNERS = ["Augusto", "Mariano"];
+export const CLIENT_DESIGNERS = ["Augusto", "Mariano Mesa"];
 
 export function normalizePeriod(value, fallback = new Date()) {
   const raw = String(value || "");

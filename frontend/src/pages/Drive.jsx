@@ -3,7 +3,7 @@ import { DriveUploader } from "../features/drive/DriveUploader.jsx";
 import { driveFiles, driveRequest, driveStatus } from "../features/drive/drive-api.js";
 import "./Drive.css";
 
-const ROOT_LABELS = { general: "Render", augusto: "Diseño · Augusto", mariano: "Diseño · Mariano" };
+const ROOT_LABELS = { general: "Render", augusto: "Diseño · Augusto", mariano: "Diseño · Mariano Mesa" };
 
 function fileSize(value) {
   if (!value) return "Archivo de Google";
@@ -53,4 +53,3 @@ export function DrivePage({ sesion }) {
     </>}
   </main>;
 }
-

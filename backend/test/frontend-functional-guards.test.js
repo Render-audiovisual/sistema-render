@@ -233,8 +233,8 @@ test("el detalle de todas las tareas conserva guion, copy e indicaciones en un Ã
   assert.match(workspaceStyles, /--ros-type-page:32px/);
   assert.match(workspaceStyles, /\.ros-task-card h3\{font-size:15px/);
   assert.match(workspaceStyles, /\.ros-content-textarea,[^}]*font-size:var\(--ros-type-body\)/);
-  assert.match(workspaceStyles, /grid-template-columns:1\.05fr 1\.05fr 1\.05fr 1fr \.78fr auto/);
-  assert.match(workspaceStyles, /\.ros-controls-meta>span\{[^}]*border-radius:999px/);
+  assert.match(workspaceStyles, /grid-template-columns:1fr 1fr 1\.12fr \.96fr \.72fr auto/);
+  assert.match(workspaceStyles, /\.ros-controls-meta>span\{[^}]*font-weight:500/);
 });
 
 test("el frontend no fabrica sesiones y adjunta el JWT a la API", () => {
