@@ -673,14 +673,6 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
       });
   }, [year, month]);
 
-  const { publicadas, pendientes, vencidas } = useMemo(() => {
-    const pub = historiasMes.filter((h) => h.estado === "publicada").length;
-    const venc = historiasMes.filter(
-      (h) => h.estado !== "publicada" && h.fecha_programada < hoyISO,
-    ).length;
-    return { publicadas: pub, pendientes: historiasMes.length - pub, vencidas: venc };
-  }, [historiasMes, hoyISO]);
-
   const marcarPublicada = useCallback(async (clienteId, fecha, publicada) => {
     const nuevoEstado = publicada ? "publicada" : "pendiente";
     const key = `${clienteId}:${fecha}`;
@@ -748,15 +740,6 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
 
   return (
     <>
-      <div className="sheet-toolbar">
-        <div className="sheet-stats">
-          <span>{historiasMes.length} historias</span>
-          <span className="ok">{publicadas} publicadas</span>
-          <span className="warn">{pendientes} pendientes</span>
-          {vencidas > 0 && <span className="danger">{vencidas} vencidas</span>}
-        </div>
-      </div>
-
       {error && (
         <div className="alert is-error">{error}</div>
       )}
@@ -1520,7 +1503,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
               </div>
 
               {["planilla", "checklist"].includes(vista) && (
-                <div className="stories-context-bar">
+                <div className={`stories-context-bar is-${vista}`}>
                   {vista === "planilla" && (
                     <label className="stories-context-field">
                       <span>Cliente</span>
@@ -1544,6 +1527,14 @@ export function HistoriasPage({ initialTab = "estructura" }) {
                     <button type="button" onClick={() => irMes(1)} aria-label="Mes siguiente">›</button>
                   </div>
                   <button className="h-today-btn" type="button" onClick={irAHoy}>Mes actual</button>
+                  {vista === "checklist" && (
+                    <div className="checklist-context-stats" aria-label="Resumen del checklist">
+                      <span><strong>{historiasMes.length}</strong> historias</span>
+                      <span className="ok"><strong>{publicadasMes}</strong> publicadas</span>
+                      <span className="warn"><strong>{pendientesMes}</strong> pendientes</span>
+                      <span className={atrasadasMes > 0 ? "danger" : ""}><strong>{atrasadasMes}</strong> vencidas</span>
+                    </div>
+                  )}
                 </div>
               )}
 
