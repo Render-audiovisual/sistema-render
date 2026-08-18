@@ -75,6 +75,7 @@ export function ClientesAdminPage() {
   const [clientes, setClientes] = useState([]);
   const [historias, setHistorias] = useState([]);
   const [publicaciones, setPublicaciones] = useState([]);
+  const [tareasFinalizadas, setTareasFinalizadas] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(true);
@@ -98,11 +99,13 @@ export function ClientesAdminPage() {
       fetch(`/api/clientes?periodo=${mesSeleccionado}`).then(validarRespuestaApi),
       fetch("/api/historias").then(validarRespuestaApi),
       fetch("/api/publicaciones").then(validarRespuestaApi),
+      fetch("/api/tareas?workspace=render_os&estado=publicada").then(validarRespuestaApi),
     ])
-      .then(([clientesApi, historiasApi, publicacionesApi]) => {
+      .then(([clientesApi, historiasApi, publicacionesApi, tareasApi]) => {
         setClientes(clientesApi);
         setHistorias(historiasApi);
         setPublicaciones(publicacionesApi);
+        setTareasFinalizadas(tareasApi);
       })
       .catch((err) => {
         console.error("No se pudo cargar el tablero de clientes", err);
@@ -248,8 +251,9 @@ export function ClientesAdminPage() {
     () => getResumenClientes(clientes, historias, publicaciones, {
       mes: mesSeleccionado,
       avanceDelMes: getAvanceMes(mesSeleccionado),
+      tareas: tareasFinalizadas,
     }),
-    [clientes, historias, publicaciones, mesSeleccionado],
+    [clientes, historias, publicaciones, tareasFinalizadas, mesSeleccionado],
   );
   const filas = useMemo(
     () => filasTodas.filter((cliente) =>

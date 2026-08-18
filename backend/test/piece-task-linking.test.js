@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildAutoTaskProperties, completeLinkedAutoTasks } from "../src/piece-task-linking.js";
+import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "../src/piece-task-linking.js";
 
 test("las tareas automáticas de piezas pertenecen a RENDER OS", () => {
   assert.deepEqual(buildAutoTaskProperties(), {
@@ -9,6 +9,22 @@ test("las tareas automáticas de piezas pertenecen a RENDER OS", () => {
     workspace: "render_os",
     origen_pieza: true,
   });
+});
+
+test("finalizar una tarea publica la pieza vinculada", async () => {
+  const calls = [];
+  const pool = {
+    query: async (sql, params) => {
+      calls.push({ sql, params });
+      return { rowCount: 1 };
+    },
+  };
+
+  assert.equal(await publishPieceLinkedToCompletedTask(pool, { estado: "en_revision", publicacion_id: 9 }), 0);
+  assert.equal(await publishPieceLinkedToCompletedTask(pool, { estado: "publicada", publicacion_id: 9 }), 1);
+  assert.deepEqual(calls[0].params, [9]);
+  assert.match(calls[0].sql, /UPDATE publicaciones/);
+  assert.match(calls[0].sql, /estado = 'publicada'/);
 });
 
 test("publicar una pieza completa únicamente sus tareas automáticas vinculadas", async () => {

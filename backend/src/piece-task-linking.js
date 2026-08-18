@@ -22,3 +22,30 @@ export async function completeLinkedAutoTasks(pool, { estado, historiaId = null,
 
   return result.rowCount || 0;
 }
+
+export async function publishPieceLinkedToCompletedTask(pool, task = {}) {
+  if (task.estado !== "publicada") return 0;
+
+  let updated = 0;
+  if (task.publicacion_id) {
+    const result = await pool.query(
+      `UPDATE publicaciones
+       SET estado = 'publicada',
+           fecha_publicación_real = COALESCE(fecha_publicación_real, now()),
+           updated_at = now()
+       WHERE id = $1 AND estado <> 'publicada'`,
+      [task.publicacion_id],
+    );
+    updated += result.rowCount || 0;
+  }
+  if (task.historia_id) {
+    const result = await pool.query(
+      `UPDATE historias
+       SET estado = 'publicada', updated_at = now()
+       WHERE id = $1 AND estado <> 'publicada'`,
+      [task.historia_id],
+    );
+    updated += result.rowCount || 0;
+  }
+  return updated;
+}

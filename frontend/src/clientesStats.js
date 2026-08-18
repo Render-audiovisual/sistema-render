@@ -66,21 +66,63 @@ export function getEstadoCuota({ cuota, realizadas, planificadas, avanceDelMes }
   return { color: "verde", label: "Al día", tipo: "al_dia" };
 }
 
-export function getResumenClientes(clientes, historias, publicaciones, { mes, avanceDelMes }) {
+function getTipoPiezaDeTarea(tarea = {}) {
+  const texto = `${tarea.titulo || ""} ${tarea.subtipo || ""} ${tarea.tipo_tarea || ""}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es");
+  if (texto.includes("carrusel")) return "carrusel";
+  if (texto.includes("historia") || texto.includes("flyer")) return "historia";
+  if (texto.includes("reel") || texto.includes("video") || texto.includes("edicion")) return "reel";
+  return null;
+}
+
+function getFechaTarea(tarea = {}) {
+  return tarea.fecha_vencimiento || tarea.updated_at || "";
+}
+
+export function getResumenClientes(clientes, historias, publicaciones, { mes, avanceDelMes, tareas = [] }) {
   return clientes.map((cliente) => {
+    const tareasPublicadasMes = tareas.filter(
+      (tarea) => tarea.estado === "publicada" &&
+        Number(tarea.cliente_id) === Number(cliente.id) &&
+        esDelMes(getFechaTarea(tarea), mes),
+    );
+    const historiasPublicadasPorTarea = new Set(
+      tareasPublicadasMes.filter((tarea) => tarea.historia_id).map((tarea) => Number(tarea.historia_id)),
+    );
+    const publicacionesPublicadasPorTarea = new Set(
+      tareasPublicadasMes.filter((tarea) => tarea.publicacion_id).map((tarea) => Number(tarea.publicacion_id)),
+    );
+    const tareasSinPieza = tareasPublicadasMes.filter(
+      (tarea) => !tarea.historia_id && !tarea.publicacion_id,
+    );
+    const historiasPublicadasSinPieza = tareasSinPieza.filter(
+      (tarea) => getTipoPiezaDeTarea(tarea) === "historia",
+    ).length;
+    const reelsPublicadosSinPieza = tareasSinPieza.filter(
+      (tarea) => getTipoPiezaDeTarea(tarea) === "reel",
+    ).length;
+    const carruselesPublicadosSinPieza = tareasSinPieza.filter(
+      (tarea) => getTipoPiezaDeTarea(tarea) === "carrusel",
+    ).length;
     const historiasMes = historias.filter(
       (historia) => historia.cliente_id === cliente.id && esDelMes(historia.fecha_programada, mes),
     );
     const publicacionesMes = getPublicacionesDelMismoFeed(cliente, clientes, publicaciones)
       .filter((publicacion) => esDelMes(publicacion.fecha_programada, mes));
-    const historiasPublicadas = historiasMes.filter((historia) => historia.estado === "publicada");
-    const publicacionesPublicadas = publicacionesMes.filter((publicacion) => publicacion.estado === "publicada");
+    const historiasPublicadas = historiasMes.filter(
+      (historia) => historia.estado === "publicada" || historiasPublicadasPorTarea.has(Number(historia.id)),
+    );
+    const publicacionesPublicadas = publicacionesMes.filter(
+      (publicacion) => publicacion.estado === "publicada" || publicacionesPublicadasPorTarea.has(Number(publicacion.id)),
+    );
     const reelsPublicados = publicacionesPublicadas.filter(
       (publicacion) => publicacion.tipo === "reel" || publicacion.tipo === "video",
-    ).length;
+    ).length + reelsPublicadosSinPieza;
     const carruselesPublicados = publicacionesPublicadas.filter(
       (publicacion) => publicacion.tipo === "carrusel",
-    ).length;
+    ).length + carruselesPublicadosSinPieza;
     const cuotaHistorias = calcularCuotaHistoriasPorDias(cliente.dias_historias, mes);
     const cuotaReels = getCuotaReelsMensual(cliente);
     const cuotaCarruseles = getCuotaCarruselesMensual(cliente);
@@ -88,13 +130,14 @@ export function getResumenClientes(clientes, historias, publicaciones, { mes, av
       (publicacion) => ["reel", "video", "carrusel"].includes(publicacion.tipo),
     ).length;
     const cuotaTotal = cuotaHistorias + cuotaReels + cuotaCarruseles;
-    const piezasPlanificadas = historiasMes.length + publicacionesPlanificadas;
-    const piezasPublicadas = historiasPublicadas.length + reelsPublicados + carruselesPublicados;
+    const piezasPlanificadas = historiasMes.length + publicacionesPlanificadas + tareasSinPieza.filter(getTipoPiezaDeTarea).length;
+    const totalHistoriasPublicadas = historiasPublicadas.length + historiasPublicadasSinPieza;
+    const piezasPublicadas = totalHistoriasPublicadas + reelsPublicados + carruselesPublicados;
     const activo = cliente.activo !== false;
     const estadoHistorias = activo ? getEstadoCuota({
       cuota: cuotaHistorias,
-      realizadas: historiasPublicadas.length,
-      planificadas: historiasMes.length,
+      realizadas: totalHistoriasPublicadas,
+      planificadas: historiasMes.length + historiasPublicadasSinPieza,
       avanceDelMes,
     }) : { color: "gris", label: "Inactivo", tipo: "inactivo" };
     const estadoGeneral = activo ? getEstadoCuota({
@@ -108,9 +151,9 @@ export function getResumenClientes(clientes, historias, publicaciones, { mes, av
       activo,
       cuotaHistorias,
       historiasMes: historiasMes.length,
-      historiasPublicadas: historiasPublicadas.length,
+      historiasPublicadas: totalHistoriasPublicadas,
       porcentajePlanificacionHistorias: calcularPorcentajeCuota(historiasMes.length, cuotaHistorias),
-      porcentajeHistorias: calcularPorcentajeCuota(historiasPublicadas.length, cuotaHistorias),
+      porcentajeHistorias: calcularPorcentajeCuota(totalHistoriasPublicadas, cuotaHistorias),
       estadoHistorias,
       estadoGeneral,
       cuotaTotal,
