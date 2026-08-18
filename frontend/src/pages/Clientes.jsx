@@ -257,7 +257,7 @@ export function ClientesAdminPage() {
     [filasTodas, filtroEstado],
   );
   const totales = useMemo(() => getTotalesCartera(filasTodas), [filasTodas]);
-  const getAlertaCliente = (cliente) => cliente.estadoHistorias.label;
+  const getAlertaCliente = (cliente) => cliente.estadoGeneral.label;
 
   return (
     <main aria-label="Administración de clientes">
@@ -343,7 +343,7 @@ export function ClientesAdminPage() {
                         <small>{progreso}% del acuerdo mensual</small>
                       </div>
                       <div className="clientes-portfolio-status">
-                        <strong className={cliente.estadoHistorias.color === "rojo" ? "attention" : ""}>{getAlertaCliente(cliente)}</strong>
+                        <strong className={cliente.estadoGeneral.color === "rojo" ? "attention" : ""}>{getAlertaCliente(cliente)}</strong>
                         <small>{pendientes ? `${pendientes} pendientes` : "Sin pendientes"}</small>
                       </div>
                       <button className="btn clientes-portfolio-action" type="button"
@@ -366,9 +366,9 @@ export function ClientesAdminPage() {
                           <small>Cliente {cliente.activo ? "activo" : "inactivo"}</small>
                         </div>
                       </div>
-                      <span className={`cliente-status-pill ${cliente.estadoHistorias.color}`}>
-                        <span className={`semaforo ${cliente.estadoHistorias.color}`}></span>
-                        {cliente.estadoHistorias.label}
+                      <span className={`cliente-status-pill ${cliente.estadoGeneral.color}`}>
+                        <span className={`semaforo ${cliente.estadoGeneral.color}`}></span>
+                        {cliente.estadoGeneral.label}
                       </span>
                     </div>
                     <div className="cliente-mobile-quotas">

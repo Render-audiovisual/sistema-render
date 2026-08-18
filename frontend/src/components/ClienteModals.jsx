@@ -222,7 +222,7 @@ export function DetalleClienteModal({
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
   const [editandoCuota, setEditandoCuota] = useState(false);
-  const estado = cliente.estadoHistorias?.color || "gris";
+  const estado = cliente.estadoGeneral?.color || cliente.estadoHistorias?.color || "gris";
 
   const handleEliminarCliente = () => {
     const confirmado = window.confirm(
@@ -288,7 +288,7 @@ export function DetalleClienteModal({
             <div className="modal-client-status">
               <span className={`semaforo ${estado}`}></span>
               <strong>{estadoTexto}</strong>
-              <span>{cliente.porcentajeHistorias || 0}% de historias contratadas</span>
+              <span>{cliente.porcentajeGeneral || 0}% del acuerdo mensual</span>
             </div>
             <div className="caption">
               {esFeedCompartido

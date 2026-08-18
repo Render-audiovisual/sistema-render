@@ -82,11 +82,25 @@ export function getResumenClientes(clientes, historias, publicaciones, { mes, av
       (publicacion) => publicacion.tipo === "carrusel",
     ).length;
     const cuotaHistorias = calcularCuotaHistoriasPorDias(cliente.dias_historias, mes);
+    const cuotaReels = getCuotaReelsMensual(cliente);
+    const cuotaCarruseles = getCuotaCarruselesMensual(cliente);
+    const publicacionesPlanificadas = publicacionesMes.filter(
+      (publicacion) => ["reel", "video", "carrusel"].includes(publicacion.tipo),
+    ).length;
+    const cuotaTotal = cuotaHistorias + cuotaReels + cuotaCarruseles;
+    const piezasPlanificadas = historiasMes.length + publicacionesPlanificadas;
+    const piezasPublicadas = historiasPublicadas.length + reelsPublicados + carruselesPublicados;
     const activo = cliente.activo !== false;
     const estadoHistorias = activo ? getEstadoCuota({
       cuota: cuotaHistorias,
       realizadas: historiasPublicadas.length,
       planificadas: historiasMes.length,
+      avanceDelMes,
+    }) : { color: "gris", label: "Inactivo", tipo: "inactivo" };
+    const estadoGeneral = activo ? getEstadoCuota({
+      cuota: cuotaTotal,
+      realizadas: piezasPublicadas,
+      planificadas: piezasPlanificadas,
       avanceDelMes,
     }) : { color: "gris", label: "Inactivo", tipo: "inactivo" };
     return {
@@ -98,6 +112,11 @@ export function getResumenClientes(clientes, historias, publicaciones, { mes, av
       porcentajePlanificacionHistorias: calcularPorcentajeCuota(historiasMes.length, cuotaHistorias),
       porcentajeHistorias: calcularPorcentajeCuota(historiasPublicadas.length, cuotaHistorias),
       estadoHistorias,
+      estadoGeneral,
+      cuotaTotal,
+      piezasPlanificadas,
+      piezasPublicadas,
+      porcentajeGeneral: calcularPorcentajeCuota(piezasPublicadas, cuotaTotal),
       reelsPublicados,
       carruselesPublicados,
       feedCompartido: Boolean(cliente.grupo_feed_id),
