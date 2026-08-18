@@ -212,8 +212,8 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
             <button type="button" className={vista === "semana" ? "active" : ""} onClick={() => setVista("semana")}>Semana</button>
           </div>
           <button className="btn" type="button" onClick={() => { const now = new Date(); if (onMonthChange) onMonthChange(now.getFullYear(), now.getMonth()); else { setLocalYear(now.getFullYear()); setLocalMonth(now.getMonth()); } }}>Hoy</button>
-          <label>
-            Tipo
+          <label className="editorial-type-filter">
+            <span>Tipo</span>
             <select
               value={filtroTipo}
               onChange={(event) => setFiltroTipo(event.target.value)}
