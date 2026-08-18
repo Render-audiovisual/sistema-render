@@ -2406,6 +2406,40 @@ router.delete("/tareas/:id", requireRole("admin"), async (req, res, next) => {
   }
 });
 
+router.post("/tareas/acciones-masivas", async (req, res, next) => {
+  try {
+    if (req.query.workspace !== "render_os") {
+      return res.status(400).json({ error: "Esta acción solo está disponible en RENDER OS." });
+    }
+    const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isSafeInteger(value) && value > 0))];
+    const action = String(req.body?.accion || "");
+    if (ids.length === 0) return res.status(400).json({ error: "Seleccioná al menos una tarea." });
+    if (ids.length > 250) return res.status(400).json({ error: "Podés modificar hasta 250 tareas por vez." });
+    if (!["archivar", "papelera", "restaurar"].includes(action)) {
+      return res.status(400).json({ error: "Acción masiva inválida." });
+    }
+    const actor = getTaskActor(req.auth) || "Equipo RENDER";
+    const metadata = action === "archivar"
+      ? { archivada_render_os: true, papelera_render_os: false, archivada_por: actor, archivada_at: new Date().toISOString() }
+      : action === "papelera"
+        ? { archivada_render_os: true, papelera_render_os: true, papelera_por: actor, papelera_at: new Date().toISOString() }
+        : { archivada_render_os: false, papelera_render_os: false, restaurada_por: actor, restaurada_at: new Date().toISOString() };
+    const result = await pool.query(
+      `UPDATE tareas
+       SET propiedades_extra = propiedades_extra || $2::jsonb, updated_at = now()
+       WHERE id = ANY($1::bigint[])
+         AND propiedades_extra->>'workspace' = 'render_os'
+       RETURNING id`,
+      [ids, JSON.stringify(metadata)],
+    );
+    return res.json({ ok: true, accion: action, ids: result.rows.map((row) => Number(row.id)), cantidad: result.rowCount });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get("/tareas", async (req, res, next) => {
   try {
     const {
@@ -2418,6 +2452,7 @@ router.get("/tareas", async (req, res, next) => {
       estado,
       incluir_archivadas,
       solo_archivadas,
+      papelera,
       limit,
       offset,
       workspace,
@@ -2560,10 +2595,15 @@ router.get("/tareas", async (req, res, next) => {
       paramCount++;
     }
 
-    if (solo_archivadas === "true") {
-      query += ` AND t.propiedades_extra->>'archivada_render_os' = 'true'`;
-    } else if (incluir_archivadas !== "true") {
-      query += ` AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'`;
+    if (papelera === "true") {
+      query += ` AND t.propiedades_extra->>'papelera_render_os' = 'true'`;
+    } else {
+      query += ` AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'`;
+      if (solo_archivadas === "true") {
+        query += ` AND t.propiedades_extra->>'archivada_render_os' = 'true'`;
+      } else if (incluir_archivadas !== "true") {
+        query += ` AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'`;
+      }
     }
 
     query += ` ORDER BY t.fecha_vencimiento ASC NULLS LAST, t.id DESC`;

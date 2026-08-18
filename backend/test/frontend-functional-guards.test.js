@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../../frontend/src/features/render-os/utils/task-view-state.js";
+import { normalizeSelectionRect, selectionRectsIntersect } from "../../frontend/src/features/render-os/utils/selection-geometry.js";
 import { parseJsonArrayResponse } from "../../frontend/src/shared/http/response-utils.js";
 
 test("parseJsonArrayResponse acepta únicamente respuestas HTTP exitosas con listas", async () => {
@@ -23,8 +24,24 @@ test("getTasksEmptyMessage diferencia tablero vacío, archivadas y filtros", () 
   assert.equal(getTasksEmptyMessage({ hasFilters: false, query: "", totalTasks: 0, archiveMode: "active" }), "No hay tareas todavía.");
   assert.equal(getTasksEmptyMessage({ hasFilters: false, query: "", totalTasks: 4, archiveMode: "active" }), "No hay tareas activas.");
   assert.equal(getTasksEmptyMessage({ hasFilters: false, query: "", totalTasks: 4, archiveMode: "archived" }), "No hay tareas archivadas.");
+  assert.equal(getTasksEmptyMessage({ hasFilters: false, query: "", totalTasks: 4, archiveMode: "trash" }), "La Papelera está vacía.");
   assert.equal(getTasksEmptyMessage({ hasFilters: true, query: "", totalTasks: 4, archiveMode: "active" }), "No hay tareas con estos filtros.");
   assert.equal(getTasksEmptyMessage({ hasFilters: false, query: "sin resultados", totalTasks: 4, archiveMode: "active" }), "No hay tareas con estos filtros.");
+});
+
+test("la selección rectangular normaliza cualquier dirección y detecta tarjetas", () => {
+  const rectangle = normalizeSelectionRect(300, 220, 100, 80);
+  assert.deepEqual(rectangle, { left: 100, top: 80, right: 300, bottom: 220, width: 200, height: 140 });
+  assert.equal(selectionRectsIntersect(rectangle, { left: 250, top: 170, right: 350, bottom: 260 }), true);
+  assert.equal(selectionRectsIntersect(rectangle, { left: 301, top: 80, right: 380, bottom: 220 }), false);
+});
+
+test("Papelera se conserva en la URL y se solicita separada de Archivadas", () => {
+  assert.equal(getTaskViewState("?mode=trash").archiveMode, "trash");
+  const url = updateTaskViewUrl("https://sistema.rendercorrientes.com/workspace/tareas", {
+    ...getTaskViewState(""), archiveMode: "trash",
+  });
+  assert.equal(url.searchParams.get("mode"), "trash");
 });
 
 test("el estado de Tareas se conserva en la URL sin perder el enlace directo", () => {
@@ -84,6 +101,18 @@ test("todo el equipo puede abrir el formulario y crear únicamente tareas RENDER
   assert.match(workspaceSource, /Promise\.all\(\[apiJson\("\/api\/clientes"\), apiJson\("\/api\/usuarios"\)\]\)/);
   assert.doesNotMatch(workspaceSource, /\{isAdmin && <button className="ros-primary-button"/);
   assert.match(workspaceSource, /body: JSON\.stringify\(\{ \.\.\.draft, workspace: "render_os" \}\)/);
+});
+
+test("todo el equipo puede archivar, enviar a Papelera y restaurar selecciones", () => {
+  const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  const serverSource = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.match(workspaceSource, /normalizeSelectionRect/);
+  assert.match(workspaceSource, /Enviar a Papelera/);
+  assert.match(workspaceSource, /acciones-masivas\?workspace=render_os/);
+  assert.match(serverSource, /router\.post\("\/tareas\/acciones-masivas", async/);
+  assert.match(serverSource, /\["archivar", "papelera", "restaurar"\]/);
+  assert.doesNotMatch(serverSource, /router\.post\("\/tareas\/acciones-masivas", requireRole/);
+  assert.match(serverSource, /papelera_render_os/);
 });
 
 test("los dashboards personales leen y actualizan únicamente RENDER OS", () => {

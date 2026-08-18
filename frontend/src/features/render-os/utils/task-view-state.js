@@ -1,12 +1,13 @@
 export function getTasksEmptyMessage({ hasFilters, query, totalTasks, archiveMode }) {
   if (query.trim() || hasFilters) return "No hay tareas con estos filtros.";
   if (archiveMode === "archived") return "No hay tareas archivadas.";
+  if (archiveMode === "trash") return "La Papelera está vacía.";
   if (totalTasks === 0) return "No hay tareas todavía.";
   return "No hay tareas activas.";
 }
 
 const VALID_VIEWS = new Set(["board", "list", "calendar", "clients"]);
-const VALID_ARCHIVE_MODES = new Set(["active", "archived"]);
+const VALID_ARCHIVE_MODES = new Set(["active", "archived", "trash"]);
 
 export function getTaskViewState(search = "") {
   const params = new URLSearchParams(search);
