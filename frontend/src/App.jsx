@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
-import { cerrarSesion, getRutaUsuario, getSesion, getSesionDelPath } from "./utils.jsx";
-import { ROL_LABELS, USUARIO_A_RUTA } from "./constants.js";
+import { cerrarSesion, getRutaUsuario, getSesion } from "./utils.jsx";
+import { ROL_LABELS } from "./constants.js";
 import { AugustoDashboard } from "./pages/dashboards/Augusto.jsx";
 import { ClientesAdminPage } from "./pages/Clientes.jsx";
 import { EmpleadosPage } from "./pages/Empleados.jsx";
@@ -23,11 +23,6 @@ export function App() {
   if (path === "/agustin" || path === "/franco") {
     window.location.href = "/lider";
     return null;
-  }
-
-  // Si estamos en una ruta de usuario específica, usar esa sesión
-  if (Object.values(USUARIO_A_RUTA).includes(path)) {
-    sesion = getSesionDelPath(path);
   }
 
   if (path === "/login") {

@@ -12,7 +12,6 @@ import {
   ESTADO_TAREA_LABELS,
   TIPO_PUBLICACION_LABELS,
   USUARIO_A_RUTA,
-  USUARIO_INFO,
 } from "./constants.js";
 
 export function calcularPorcentajePublicadas(items) {
@@ -535,26 +534,6 @@ export function getSesion() {
   }
 }
 
-export function getSesionDelPath(path) {
-  const usuarioMatch = Object.entries(USUARIO_A_RUTA).find(([, ruta]) => ruta === path);
-  if (!usuarioMatch) {
-    return getSesion();
-  }
-  const usuario = usuarioMatch[0];
-  const info = USUARIO_INFO[usuario];
-  if (!info) {
-    return getSesion();
-  }
-  return {
-    token: null,
-    usuario: {
-      usuario: usuario,
-      nombre: info.nombre,
-      rol: info.rol,
-    },
-  };
-}
-
 export function guardarSesion(token, usuario) {
   localStorage.setItem("render_sesion", JSON.stringify({ token, usuario }));
 }
@@ -791,4 +770,3 @@ export function payloadColumnaPublicacion(columna, valorCrudo) {
       return null;
   }
 }
-

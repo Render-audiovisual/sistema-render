@@ -104,16 +104,22 @@ cd frontend && npm run dev    # Vite en :5173, proxya /api a :3001
 El server detecta que no existe `frontend/dist` y no intenta servir
 estáticos — usa el flujo de Vite dev normal.
 
-## ⚠️ Pendiente de seguridad (heredado, no resuelto en este deploy)
+## Seguridad de la API
 
-`docs/DIAGNOSTICO_RENDER.md` ya lo marcaba como crítico y sigue así: **las
-rutas de la API no validan el token JWT.** Cualquiera con la URL puede leer
-y modificar clientes, historias, publicaciones y tareas sin loguearse. Esto
-no se tocó en este trabajo porque es un cambio de seguridad grande que
-merece revisión aparte, no algo para meter de paso. No lo dejes en producción
-con datos reales de clientes sin resolver esto primero.
+La API valida el JWT en todas las rutas salvo `GET /api/health`,
+`POST /api/login` y el preflight CORS. Una llamada sin token o con un token
+inválido devuelve `401`.
 
-El login con Google (`POST /login/google`) no cambia nada de esto: emite el
-mismo JWT, con el mismo `JWT_SECRET`, que ya emitía `POST /login`. El día
-que se agregue el middleware que valide `jwt.verify(...)` en las rutas
-protegidas, no le importa por cuál de los dos caminos se emitió el token.
+Las operaciones administrativas sensibles devuelven `403` a usuarios que no
+tengan rol `admin`: gestión de usuarios, altas/cambios/bajas de clientes,
+configuración global y eliminaciones de tareas o piezas. Las rutas de perfil
+usan el `id` firmado en el JWT para que cada persona solo pueda modificar su
+propia cuenta.
+
+El frontend agrega automáticamente `Authorization: Bearer <token>` a todas
+las llamadas `/api/*` y elimina la sesión local si el backend responde `401`.
+No se deben volver a crear sesiones falsas según la URL de la pantalla.
+
+El login con Google (`POST /login/google`) emite el mismo tipo de JWT que el
+login tradicional. Ambas formas de acceso quedan protegidas por el mismo
+middleware y los mismos permisos de rol.
