@@ -11119,6 +11119,126 @@ tr:hover .sheet-row-actions {
   gap: 22px;
 }
 
+.cliente-create-progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  position: relative;
+}
+
+.cliente-create-progress::before {
+  background: #dfe3d8;
+  content: "";
+  height: 2px;
+  left: 16.66%;
+  position: absolute;
+  right: 16.66%;
+  top: 16px;
+}
+
+.cliente-create-progress > div {
+  align-items: center;
+  color: #8b9086;
+  display: grid;
+  gap: 7px;
+  justify-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.cliente-create-progress > div > span {
+  align-items: center;
+  background: #f2f4ee;
+  border: 2px solid #dfe3d8;
+  border-radius: 50%;
+  display: flex;
+  font-size: 12px;
+  font-weight: 800;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.cliente-create-progress > div > small {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cliente-create-progress > div.active,
+.cliente-create-progress > div.complete {
+  color: #202418;
+}
+
+.cliente-create-progress > div.active > span {
+  background: #202418;
+  border-color: #202418;
+  color: #b5fc00;
+}
+
+.cliente-create-progress > div.complete > span {
+  background: #eef8d7;
+  border-color: #94c91b;
+  color: #35440f;
+}
+
+.cliente-create-step {
+  display: grid;
+  gap: 20px;
+  min-height: 278px;
+}
+
+.cliente-create-step-copy {
+  display: grid;
+  gap: 5px;
+}
+
+.cliente-create-step-copy strong {
+  color: #202418;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.cliente-create-step-copy span {
+  color: #71766c;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.cliente-create-modal-body select {
+  background: #fff;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  color: #202124;
+  font: inherit;
+  min-height: 42px;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.cliente-create-actions {
+  border-top: 1px solid #e4e7df;
+  justify-content: space-between;
+  margin-top: 0;
+  padding-top: 18px;
+}
+
+.cliente-create-guidance {
+  color: #71766c;
+  font-size: 12px;
+  line-height: 1.4;
+  margin: -8px 0 -10px;
+  min-height: 17px;
+}
+
+.cliente-create-actions .btn {
+  min-width: 124px;
+}
+
+.cliente-create-actions .btn.primary {
+  background: #202418;
+  border-color: #202418;
+  color: #b5fc00;
+}
+
 .cliente-edit-intro {
   align-items: center;
   background: #f5f6ef;
@@ -11284,6 +11404,33 @@ tr:hover .sheet-row-actions {
 
   .cliente-money-input { max-width: none; }
   .cliente-edit-actions .btn { flex: 1; }
+
+  .cliente-create-modal {
+    width: min(100vw - 20px, 760px);
+  }
+
+  .cliente-create-modal-body {
+    gap: 18px;
+  }
+
+  .cliente-create-step {
+    min-height: 0;
+  }
+
+  .cliente-create-progress > div > small {
+    font-size: 11px;
+  }
+
+  .cliente-create-actions {
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    padding-bottom: 2px;
+  }
+
+  .cliente-create-actions .btn {
+    flex: 1;
+  }
 
   .cliente-weekdays > div {
     grid-template-columns: repeat(4, 1fr);
