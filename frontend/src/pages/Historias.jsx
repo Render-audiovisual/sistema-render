@@ -880,6 +880,7 @@ export function HistoriasEstructuraTab({ clientes }) {
   const [estructura, setEstructura] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
+  const [guardandoCelda, setGuardandoCelda] = useState(null);
 
   const DIAS_SEMANA = [
     { id: 1, label: "Lunes", abrev: "L" },
@@ -906,11 +907,42 @@ export function HistoriasEstructuraTab({ clientes }) {
       .finally(() => setCargando(false));
   }, []);
 
-  const estructuraPorClienteDia = {};
-  estructura.forEach((e) => {
-    if (!estructuraPorClienteDia[e.cliente_id]) estructuraPorClienteDia[e.cliente_id] = {};
-    estructuraPorClienteDia[e.cliente_id][e.dia_semana] = e;
-  });
+  const estructuraPorClienteDia = useMemo(() => {
+    const index = {};
+    estructura.forEach((item) => {
+      if (!index[item.cliente_id]) index[item.cliente_id] = {};
+      index[item.cliente_id][item.dia_semana] = item;
+    });
+    return index;
+  }, [estructura]);
+
+  const guardarTema = async (clienteId, diaSemana, temaActual, temaAnterior = "") => {
+    const tema = temaActual.trim();
+    if (tema === String(temaAnterior || "").trim()) return;
+    const celda = `${clienteId}-${diaSemana}`;
+    setGuardandoCelda(celda);
+    setError(null);
+    try {
+      const response = await fetch("/api/estructura", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cliente_id: clienteId, dia_semana: diaSemana, tema }),
+      });
+      const guardada = await response.json();
+      if (!response.ok) throw new Error(guardada.error || "No se pudo guardar el tema.");
+      setEstructura((prev) => {
+        const existe = prev.some((item) => item.cliente_id === clienteId && item.dia_semana === diaSemana);
+        return existe
+          ? prev.map((item) => item.cliente_id === clienteId && item.dia_semana === diaSemana ? { ...item, ...guardada } : item)
+          : [...prev, guardada];
+      });
+    } catch (err) {
+      console.error("No se pudo guardar el tema semanal", err);
+      setError("No se pudo guardar el tema. Revisá la conexión y volvé a intentarlo.");
+    } finally {
+      setGuardandoCelda(null);
+    }
+  };
 
   if (cargando) {
     return <div className="state-empty">Cargando estructura…</div>;
@@ -918,93 +950,42 @@ export function HistoriasEstructuraTab({ clientes }) {
 
   return (
     <>
-      {error && (
-        <div style={{ padding: "12px", background: "#ffebee", color: "#c62828", borderRadius: "4px", marginBottom: "20px", fontSize: "13px" }}>
-          ⚠️ {error}
-        </div>
-      )}
+      {error && <PageState compact type="error" title={error} description="Los demás temas permanecen guardados." />}
 
-      <div style={{ background: "white", borderRadius: "8px", padding: "20px", marginBottom: "20px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-        <h2 style={{ fontSize: "18px", margin: "0 0 8px 0", color: "#333" }}>📅 Estructura Semanal de Historias</h2>
-        <p style={{ fontSize: "13px", color: "#666", margin: "0" }}>
-          Qué tema va cada día para cada cliente y a qué hora se publica. Patrón base que se sugiere automáticamente.
-        </p>
+      <div className="weekly-structure-heading">
+        <div><h3>Estructura semanal</h3><p>Definí el tema habitual de cada día. Hacé clic en una celda para editarla.</p></div>
+        <span>{clientes.length} clientes</span>
       </div>
 
-      <div style={{ background: "white", borderRadius: "8px", overflowX: "auto", overflowY: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div className="weekly-structure-scroll">
+        <table className="weekly-structure-table">
           <thead>
-            <tr style={{ background: "#1565c0", color: "white" }}>
-              <th style={{ padding: "14px 16px", textAlign: "left", fontWeight: "600", fontSize: "13px", borderBottom: "2px solid #0d47a1", minWidth: "140px" }}>
-                Cliente
-              </th>
-              <th style={{ padding: "14px 8px", textAlign: "center", fontWeight: "600", fontSize: "12px", borderBottom: "2px solid #0d47a1", width: "14.28%" }}>
-                Rubro
-              </th>
+            <tr>
+              <th>Cliente</th>
               {DIAS_SEMANA.map((dia) => (
-                <th
-                  key={dia.id}
-                  style={{
-                    padding: "10px 4px",
-                    textAlign: "center",
-                    fontWeight: "600",
-                    fontSize: "12px",
-                    borderBottom: "2px solid #0d47a1",
-                    width: "12.5%",
-                  }}
-                >
-                  <div style={{ fontSize: "10px", color: "rgba(255,255,255,0.7)", fontWeight: "400", marginBottom: "1px" }}>{dia.abrev}</div>
-                  <div>{dia.label.slice(0, 3)}</div>
-                </th>
+                <th key={dia.id}>{dia.label}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {clientes.map((cliente, idx) => {
+            {clientes.map((cliente) => {
               const estructuraCliente = estructuraPorClienteDia[cliente.id] || {};
               return (
-                <tr key={cliente.id} style={{ borderBottom: "1px solid #e0e0e0", background: idx % 2 === 0 ? "#fafafa" : "#fff" }}>
-                  <td style={{ padding: "16px", fontWeight: "600", color: "#333", fontSize: "13px", verticalAlign: "top" }}>
-                    {cliente.nombre}
-                  </td>
-                  <td style={{ padding: "12px 8px", fontSize: "12px", color: "#666", textAlign: "center", verticalAlign: "top" }}>
-                    {cliente.rubro || "—"}
-                  </td>
+                <tr key={cliente.id}>
+                  <th scope="row"><strong>{cliente.nombre}</strong>{cliente.rubro && <span>{cliente.rubro}</span>}</th>
                   {DIAS_SEMANA.map((dia) => {
                     const est = estructuraCliente[dia.id];
+                    const celda = `${cliente.id}-${dia.id}`;
                     return (
-                      <td
-                        key={dia.id}
-                        style={{
-                          padding: "12px 6px",
-                          textAlign: "center",
-                          verticalAlign: "top",
-                          fontSize: "12px",
-                          background: est ? "#f0f4ff" : "#f9f9f9",
-                          borderLeft: "1px solid #e0e8ff",
-                        }}
-                      >
-                        {est ? (
-                          <div style={{ minHeight: "70px", display: "flex", flexDirection: "column", justifyContent: "center", gap: "4px" }}>
-                            {est.horario && (
-                              <div style={{ fontSize: "11px", color: "#1976d2", fontWeight: "600", padding: "2px 4px", background: "#e3f2fd", borderRadius: "3px" }}>
-                                {est.horario}
-                              </div>
-                            )}
-                            <div style={{ fontSize: "12px", fontWeight: "600", color: "#333" }}>
-                              {est.tema || "Sin tema"}
-                            </div>
-                            {est.tipo && (
-                              <div style={{ fontSize: "11px", color: "#999", fontStyle: "italic" }}>
-                                ({est.tipo})
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div style={{ minHeight: "70px", display: "flex", alignItems: "center", justifyContent: "center", color: "#ccc", fontSize: "11px" }}>
-                            —
-                          </div>
-                        )}
+                      <td key={dia.id} className={guardandoCelda === celda ? "is-saving" : ""}>
+                        <input
+                          aria-label={`${cliente.nombre}, ${dia.label}`}
+                          defaultValue={est?.tema || ""}
+                          key={`${celda}-${est?.tema || ""}`}
+                          onBlur={(event) => guardarTema(cliente.id, dia.id, event.target.value, est?.tema)}
+                          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }}
+                        />
+                        {guardandoCelda === celda && <span className="weekly-structure-saving">Guardando…</span>}
                       </td>
                     );
                   })}
@@ -1015,9 +996,6 @@ export function HistoriasEstructuraTab({ clientes }) {
         </table>
       </div>
 
-      <div style={{ fontSize: "12px", color: "#666", marginTop: "16px", padding: "12px", background: "#f5f5f5", borderRadius: "4px" }}>
-        💡 <strong>Consejo:</strong> Cuando agregues una historia nueva, el tipo y horario de ese día se sugieren automáticamente basándose en esta estructura.
-      </div>
     </>
   );
 }
@@ -1202,11 +1180,11 @@ export function ClientesRail({ clientes, clienteSeleccionado, onSeleccionar, atr
   );
 }
 
-export function HistoriasPage({ initialTab = "planilla" }) {
+export function HistoriasPage({ initialTab = "estructura" }) {
   const initialContext = readUrlContext(window.location.search, { vista: initialTab, cliente: "", filtro: "", mes: "" });
   const initialDate = readMonthContext(initialContext.mes, new Date().getFullYear(), new Date().getMonth());
   const [vista, setVista] = useState(
-    ["planilla", "estructura", "checklist", "fechas"].includes(initialContext.vista) ? initialContext.vista : "planilla",
+    ["estructura", "checklist", "fechas"].includes(initialContext.vista) ? initialContext.vista : "estructura",
   );
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(Number(initialContext.cliente) || null);
@@ -1236,9 +1214,9 @@ export function HistoriasPage({ initialTab = "planilla" }) {
 
   useEffect(() => {
     const restoreContext = () => {
-      const context = readUrlContext(window.location.search, { vista: "planilla", cliente: "", filtro: "", mes: "" });
+      const context = readUrlContext(window.location.search, { vista: "estructura", cliente: "", filtro: "", mes: "" });
       const date = readMonthContext(context.mes, hoyDate.getFullYear(), hoyDate.getMonth());
-      setVista(["planilla", "estructura", "checklist", "fechas"].includes(context.vista) ? context.vista : "planilla");
+      setVista(["estructura", "checklist", "fechas"].includes(context.vista) ? context.vista : "estructura");
       setClienteSeleccionado(Number(context.cliente) || null);
       setFiltroClientePlanilla(context.filtro || "");
       setYear(date.year);
@@ -1458,7 +1436,7 @@ export function HistoriasPage({ initialTab = "planilla" }) {
       <div className="frame">
         <div className="content">
           <header className="module-intro">
-            <div><div className="section-label">Historias</div><h2>¿Qué historias tenemos que preparar y publicar?</h2><p>Elegí cliente y mes. Después editá cada historia sin salir de esta pantalla.</p></div>
+            <div><h2>¿Qué tema trabajamos cada día?</h2><p>Organizá la estructura semanal de todos los clientes y controlá qué historias se publicaron.</p></div>
           </header>
           {(errorClientes || errorHistorias) && <PageState compact type="error" title={errorClientes || errorHistorias} description="La vista y el período siguen guardados." onRetry={() => window.location.reload()} />}
 
@@ -1466,19 +1444,10 @@ export function HistoriasPage({ initialTab = "planilla" }) {
             <div className="h-main">
               <div className="h-toolbar">
                 <div className="stories-view-switch" aria-label="Vistas de Historias">
-                  <button type="button" className={vista === "planilla" ? "active" : ""} onClick={() => cambiarVista("planilla")}>Planificación</button>
-                  <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => cambiarVista("checklist")}>Control de publicación</button>
+                  <button type="button" className={vista === "estructura" ? "active" : ""} onClick={() => cambiarVista("estructura")}>Estructura semanal</button>
+                  <button type="button" className={vista === "checklist" ? "active" : ""} onClick={() => cambiarVista("checklist")}>Checklist de historias</button>
+                  <button type="button" className={vista === "fechas" ? "active" : ""} onClick={() => cambiarVista("fechas")}>Fechas especiales</button>
                 </div>
-
-                <details className={`stories-tools-menu ${["estructura", "fechas"].includes(vista) ? "active" : ""}`}>
-                  <summary>Herramientas <span aria-hidden="true">⌄</span></summary>
-                  <div className="stories-tools-panel">
-                    <button type="button" className={vista === "estructura" ? "active" : ""} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); cambiarVista("estructura"); }}><strong>Estructura semanal</strong><small>Configurá temas y horarios sugeridos.</small></button>
-                    <button type="button" className={vista === "fechas" ? "active" : ""} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); cambiarVista("fechas"); }}><strong>Fechas especiales</strong><small>Consultá oportunidades del calendario.</small></button>
-                  </div>
-                </details>
-
-                {vista === "planilla" && clientes.length > 0 && <button className="stories-primary-action" type="button" onClick={agregarHistoriaEnMesActual}>+ Nueva historia</button>}
               </div>
 
               {["planilla", "checklist"].includes(vista) && (
@@ -1519,7 +1488,7 @@ export function HistoriasPage({ initialTab = "planilla" }) {
               )}
 
               <div className="h-body">
-                <FlyersMigrarBanner onMigrado={() => setRefrescarKey((k) => k + 1)} />
+                {vista === "planilla" && <FlyersMigrarBanner onMigrado={() => setRefrescarKey((k) => k + 1)} />}
 
                 {vista === "planilla" && (
                   <HistoriasPlanillaTab
