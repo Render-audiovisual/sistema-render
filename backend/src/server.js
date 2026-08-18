@@ -19,9 +19,9 @@ import { shouldSetupDemoData } from "./hosting-config.js";
 import { requireAuthentication, requireRole } from "./auth.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
-import { isValidSalaryPeriod } from "./salary-calculation.js";
-import { nextPeriod } from "./finance-calculation.js";
-import { buildManualFinanceSummary, normalizeManualFinance } from "./manual-finance.js";
+import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
+import { applyCompensations, nextPeriod } from "./finance-calculation.js";
+import { buildAutomaticFinanceSummary, previousPeriod } from "./automatic-finance.js";
 import { createWilsonRouter } from "./wilson-integration.js";
 import { runMigrations } from "./migrations.js";
 import { resolveUserRole } from "./user-roles.js";
@@ -414,40 +414,56 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
     if (!isValidSalaryPeriod(period)) {
       return res.status(400).json({ error: "Usá un período válido con formato YYYY-MM." });
     }
-    const [current, history] = await Promise.all([
-      pool.query(`SELECT facturacion,sueldos,impuestos,herramientas,updated_at
-        FROM resumen_financiero_mensual WHERE periodo=($1 || '-01')::date`, [period]),
-      pool.query(`SELECT to_char(periodo,'YYYY-MM') AS period,facturacion
-        FROM resumen_financiero_mensual ORDER BY periodo`),
+    const workPeriod = previousPeriod(period);
+    const [contracts, expenses, tasks, histories, publications, compensations] = await Promise.all([
+      pool.query(`SELECT nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
+        to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM contratos_financieros ORDER BY nombre`),
+      pool.query(`SELECT nombre,categoria,moneda,importe,dia_pago,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
+        to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM gastos_fijos_financieros ORDER BY dia_pago,nombre`),
+      pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
+        to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.propiedades_extra,t.created_at,t.updated_at,
+        c.nombre AS cliente_nombre FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+        WHERE t.propiedades_extra->>'workspace'='render_os' AND (to_char(t.fecha_vencimiento,'YYYY-MM')=$1
+          OR t.propiedades_extra->>'reporte_periodo'=$1 OR (t.fecha_vencimiento IS NULL AND to_char(t.updated_at,'YYYY-MM')=$1))`, [workPeriod]),
+      pool.query(`SELECT h.id,h.estado,to_char(h.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
+        h.idea,h.copy,h.fecha_publicación_real,h.updated_at,c.nombre AS cliente_nombre
+        FROM historias h JOIN clientes c ON c.id=h.cliente_id WHERE to_char(h.fecha_programada,'YYYY-MM')=$1`, [workPeriod]),
+      pool.query(`SELECT p.id,p.tipo,p.estado,to_char(p.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
+        p.idea,p.copy,p.fecha_publicación_real,p.updated_at,c.nombre AS cliente_nombre
+        FROM publicaciones p JOIN clientes c ON c.id=p.cliente_id WHERE to_char(p.fecha_programada,'YYYY-MM')=$1`, [workPeriod]),
+      pool.query(`SELECT DISTINCT ON (empleado_clave) empleado_clave,modalidad,sueldo_base,tarifa_facil,tarifa_intermedia
+        FROM empleado_compensaciones WHERE vigente_desde <= ($1 || '-01')::date
+        ORDER BY empleado_clave,vigente_desde DESC`, [period]),
     ]);
+    const payroll = applyCompensations(calculateSalaryDashboard({
+      period: workPeriod,
+      tasks: tasks.rows,
+      histories: histories.rows,
+      publications: publications.rows,
+    }), compensations.rows, []);
+    const finance = buildAutomaticFinanceSummary({
+      period,
+      contracts: contracts.rows,
+      expenses: expenses.rows,
+      payrollARS: payroll.summary.configuredPayroll,
+    });
+    const firstBillingPeriod = "2026-09";
+    const history = [];
+    let cursor = firstBillingPeriod;
+    while (cursor <= period && history.length < 120) {
+      history.push({
+        period: cursor,
+        total: buildAutomaticFinanceSummary({ period: cursor, contracts: contracts.rows, expenses: [], payrollARS: 0 }).facturacion,
+      });
+      cursor = nextPeriod(cursor);
+    }
     res.json({
-      finance: buildManualFinanceSummary(current.rows[0], period),
-      availablePeriods: history.rows.map((item) => item.period),
-      billingHistory: history.rows.map((item) => ({ period: item.period, total: Number(item.facturacion) })),
+      finance,
+      payroll: payroll.employees.map((employee) => ({ name: employee.name, total: Number(employee.total || 0) })),
+      payrollPending: payroll.summary.pendingConfigurations,
+      billingHistory: history,
     });
   } catch (error) {
-    next(error);
-  }
-});
-
-router.put("/finanzas/resumen/:periodo", requireRole("admin"), async (req, res, next) => {
-  try {
-    const period = String(req.params.periodo || "");
-    if (!isValidSalaryPeriod(period)) return res.status(400).json({ error: "Período inválido." });
-    const values = normalizeManualFinance(req.body);
-    const result = await pool.query(`INSERT INTO resumen_financiero_mensual
-      (periodo,facturacion,sueldos,impuestos,herramientas,actualizado_por)
-      VALUES (($1 || '-01')::date,$2,$3,$4,$5,$6)
-      ON CONFLICT (periodo) DO UPDATE SET facturacion=EXCLUDED.facturacion,sueldos=EXCLUDED.sueldos,
-        impuestos=EXCLUDED.impuestos,herramientas=EXCLUDED.herramientas,
-        actualizado_por=EXCLUDED.actualizado_por,updated_at=now()
-      RETURNING facturacion,sueldos,impuestos,herramientas,updated_at`, [
-      period, values.facturacion, values.sueldos, values.impuestos, values.herramientas,
-      req.auth.nombre || req.auth.usuario,
-    ]);
-    res.json(buildManualFinanceSummary(result.rows[0], period));
-  } catch (error) {
-    if (/importes/i.test(error.message || "")) return res.status(400).json({ error: error.message });
     next(error);
   }
 });
