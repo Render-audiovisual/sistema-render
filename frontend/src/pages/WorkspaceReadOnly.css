@@ -1398,3 +1398,44 @@
   .render-workspace .ros-content-edit-actions{align-items:stretch;flex-direction:column}
   .render-workspace .ros-content-edit-actions>div{display:grid;grid-template-columns:1fr 1fr}
 }
+
+/* Responsables múltiples visibles y editables desde la cabecera de la tarea */
+.render-workspace .ros-task-people-property.is-editing{align-items:start;padding-block:9px}
+.render-workspace .ros-task-people-property>.ros-people-picker{min-width:0;width:100%}
+.render-workspace .ros-task-people-property .ros-people-picker.compact{gap:7px}
+.render-workspace .ros-task-people-property .ros-selected-people>button{
+  min-height:40px;
+  padding:6px 8px!important;
+}
+.render-workspace .ros-task-people-property .ros-add-person{
+  min-height:38px;
+  width:min(100%,360px);
+}
+.render-workspace .ros-task-people-property .ros-people-options{
+  left:0;
+  max-width:480px;
+  top:calc(100% + 4px);
+}
+.render-workspace .ros-task-assignees{
+  align-items:center;
+  display:flex!important;
+  flex-wrap:wrap;
+  gap:8px!important;
+}
+.render-workspace .ros-task-assignee{
+  align-items:center;
+  background:#f3f5ef;
+  border:1px solid #e0e4da;
+  border-radius:9px;
+  display:flex;
+  gap:7px;
+  min-height:38px;
+  padding:6px 9px;
+}
+.render-workspace .ros-task-assignee>.ros-avatar{height:25px;width:25px}
+.render-workspace .ros-task-assignee>span{display:grid;font-size:var(--ros-type-secondary);font-weight:600;line-height:1.2}
+.render-workspace .ros-task-assignee small{color:#7c8377;font-size:var(--ros-type-badge);font-weight:500;margin-top:2px}
+@media(max-width:700px){
+  .render-workspace .ros-task-people-property .ros-people-options{max-width:none;position:static}
+  .render-workspace .ros-task-people-property .ros-add-person{width:100%}
+}
