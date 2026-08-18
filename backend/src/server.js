@@ -867,7 +867,12 @@ router.post("/estructura", requireRole("admin"), async (req, res, next) => {
     const result = await pool.query(
       `INSERT INTO estructura_cliente (cliente_id, dia_semana, tema, horario, cta_fijo, tipo)
        VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT DO NOTHING
+       ON CONFLICT (cliente_id, dia_semana) DO UPDATE SET
+         tema = EXCLUDED.tema,
+         horario = COALESCE(EXCLUDED.horario, estructura_cliente.horario),
+         cta_fijo = COALESCE(EXCLUDED.cta_fijo, estructura_cliente.cta_fijo),
+         tipo = COALESCE(EXCLUDED.tipo, estructura_cliente.tipo),
+         activo = true
        RETURNING *`,
       [cliente_id, dia_semana, tema || null, horario || null, cta_fijo || null, tipo || null],
     );
