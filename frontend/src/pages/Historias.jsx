@@ -953,7 +953,7 @@ export function HistoriasEstructuraTab({ clientes }) {
       {error && <PageState compact type="error" title={error} description="Los demás temas permanecen guardados." />}
 
       <div className="weekly-structure-heading">
-        <div><h3>Estructura semanal</h3><p>Definí el tema habitual de cada día. Hacé clic en una celda para editarla.</p></div>
+        <div><h3>Temas por cliente</h3><p>Hacé clic en una celda para editar el tema habitual de cada día.</p></div>
         <span>{clientes.length} clientes</span>
       </div>
 
@@ -978,12 +978,14 @@ export function HistoriasEstructuraTab({ clientes }) {
                     const celda = `${cliente.id}-${dia.id}`;
                     return (
                       <td key={dia.id} className={guardandoCelda === celda ? "is-saving" : ""}>
-                        <input
+                        <textarea
                           aria-label={`${cliente.nombre}, ${dia.label}`}
                           defaultValue={est?.tema || ""}
                           key={`${celda}-${est?.tema || ""}`}
                           onBlur={(event) => guardarTema(cliente.id, dia.id, event.target.value, est?.tema)}
                           onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } }}
+                          placeholder="Tema"
+                          rows={2}
                         />
                         {guardandoCelda === celda && <span className="weekly-structure-saving">Guardando…</span>}
                       </td>
