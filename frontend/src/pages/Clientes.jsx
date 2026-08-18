@@ -255,7 +255,6 @@ export function ClientesAdminPage() {
         <div className="content clientes-page">
           <div className="clientes-command-bar">
             <div className="clientes-heading">
-              <div className="section-label">Clientes</div>
               <h2>¿Cómo está cada cliente este mes?</h2>
               <p>Revisá el avance acordado y detectá rápidamente qué necesita atención.</p>
             </div>
