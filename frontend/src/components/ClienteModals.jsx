@@ -11,6 +11,17 @@ import {
 } from "../utils.jsx";
 import { Modal } from "./Modal.jsx";
 
+const WEEKDAYS = [[1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"]];
+
+function WeekdayPicker({ label, value, onChange }) {
+  return <fieldset className="cliente-weekday-picker"><legend>{label}</legend><div>{WEEKDAYS.map(([day, text]) => (
+    <label key={day} className={value.includes(day) ? "selected" : ""}>
+      <input type="checkbox" checked={value.includes(day)} onChange={() => onChange(value.includes(day) ? value.filter((item) => item !== day) : [...value, day])} />
+      <span>{text}</span>
+    </label>
+  ))}</div><small>Opcional: si no elegís días, el calendario los distribuye automáticamente.</small></fieldset>;
+}
+
 export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
   const esFeedCompartido = Boolean(cliente.grupo_feed_id);
   const [nombre, setNombre] = useState(cliente.nombre || "");
@@ -26,6 +37,8 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
     String(cliente.cuota_feed_carruseles ?? 0),
   );
   const [abonoMensual, setAbonoMensual] = useState(String(cliente.abono_mensual ?? ""));
+  const [diasReels, setDiasReels] = useState(cliente.dias_reels || []);
+  const [diasCarruseles, setDiasCarruseles] = useState(cliente.dias_carruseles || []);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(null);
 
@@ -57,6 +70,8 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
       cuota_reels: Number(cuotaReels),
       cuota_carruseles: Number(cuotaCarruseles),
       dias_historias: cliente.dias_historias,
+      dias_reels: diasReels,
+      dias_carruseles: diasCarruseles,
       disenador_responsable: cliente.disenador_responsable,
       abono_mensual: Number(abonoMensual),
     };
@@ -188,6 +203,10 @@ export function EditarCuotaClienteModal({ cliente, onClose, onGuardado }) {
             </label>
           </div>
           )}
+          {!esFeedCompartido && <div className="cliente-publishing-days">
+            <WeekdayPicker label="Días preferidos para reels" value={diasReels} onChange={setDiasReels} />
+            <WeekdayPicker label="Días preferidos para carruseles" value={diasCarruseles} onChange={setDiasCarruseles} />
+          </div>}
           <section className="cliente-edit-finance">
             <div><span>Abono mensual</span><small>Visible únicamente para Líder.</small></div>
             <label className="cliente-money-input">

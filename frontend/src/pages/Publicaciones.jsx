@@ -14,13 +14,13 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
   const [piezas, setPiezas] = useState([]);
   const [error, setError] = useState(null);
   const [filtroTipo, setFiltroTipo] = useState("todos");
-  const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [actualizando, setActualizando] = useState(false);
+  const [vista, setVista] = useState("mes");
   const [piezaSel, setPiezaSel] = useState(null);
   const [diaSel, setDiaSel] = useState(null);
   const [guardandoId, setGuardandoId] = useState(null);
 
-  useEffect(() => {
-    fetch("/api/publicaciones")
+  const cargarPublicaciones = useCallback(() => fetch("/api/publicaciones")
       .then((r) => r.json())
       .then((publicaciones) => {
         setPiezas(
@@ -33,21 +33,14 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
       .catch((err) => {
         console.error("No se pudo cargar el calendario editorial", err);
         setError("No se pudo cargar el calendario editorial.");
-      });
-  }, []);
+      }), []);
+
+  useEffect(() => { cargarPublicaciones(); }, [cargarPublicaciones]);
 
   const piezasFiltradas = useMemo(() => piezas.filter((pz) => {
     if (filtroTipo !== "todos" && pz.tipo !== filtroTipo) return false;
-    if (filtroEstado === "pendientes" && pz.estado === "publicada") return false;
-    if (
-      filtroEstado !== "todos" &&
-      filtroEstado !== "pendientes" &&
-      pz.estado !== filtroEstado
-    ) {
-      return false;
-    }
     return true;
-  }), [piezas, filtroTipo, filtroEstado]);
+  }), [piezas, filtroTipo]);
 
   const porFecha = useMemo(() => {
     const tmp = {};
@@ -70,6 +63,15 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
   const hoyISO = getHoyLocalISO();
   const finProximos7 = sumarDiasISO(hoyISO, 7);
   const mesISO = fechaISODesde(year, month, 1).slice(0, 7);
+  const diasSemanaVisible = useMemo(() => {
+    const base = mesISO === getHoyLocalISO().slice(0, 7) ? new Date(`${getHoyLocalISO()}T12:00:00`) : new Date(year, month, 1, 12);
+    const mondayOffset = (base.getDay() + 6) % 7;
+    base.setDate(base.getDate() - mondayOffset);
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(base); date.setDate(base.getDate() + index);
+      return fechaISODesde(date.getFullYear(), date.getMonth(), date.getDate());
+    });
+  }, [mesISO, year, month]);
 
   const estadisticas = useMemo(() => {
     const piezasDelMes = piezas.filter(
@@ -86,8 +88,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
     const proximos7 = piezas.filter(
       (pz) =>
         pz.fecha_programada >= hoyISO &&
-        pz.fecha_programada <= finProximos7 &&
-        pz.estado !== "publicada",
+        pz.fecha_programada <= finProximos7,
     );
     return { piezasDelMes, pendientesDelMes, publicadasDelMes, pendientesVencidas, pendientesHoy, proximos7 };
   }, [piezas, mesISO, hoyISO, finProximos7]);
@@ -115,12 +116,27 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
     { key: "carrusel", label: "Carruseles" },
   ], []);
 
-  const FILTROS_ESTADO = useMemo(() => [
-    { key: "todos", label: "Todos" },
-    { key: "pendientes", label: "Pendientes" },
-    { key: "publicada", label: "Publicadas" },
-    { key: "bloqueada", label: "No publicado / revisar" },
-  ], []);
+  const actualizarCalendario = useCallback(async () => {
+    setActualizando(true); setError(null);
+    try {
+      const res = await fetch("/api/calendario-editorial/generar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ periodo: mesISO }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "No se pudo actualizar el calendario.");
+      await cargarPublicaciones();
+    } catch (err) { setError(err.message); } finally { setActualizando(false); }
+  }, [mesISO, cargarPublicaciones]);
+
+  const cambiarFecha = useCallback(async (publicacion, fecha) => {
+    setGuardandoId(publicacion.id); setError(null);
+    try {
+      const res = await fetch(`/api/publicaciones/${publicacion.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fecha_programada: fecha }) });
+      const actualizada = await res.json();
+      if (!res.ok) throw new Error(actualizada.error || "No se pudo mover la publicación.");
+      const completa = { ...publicacion, ...actualizada, tipoLabel: getTipoPublicacionLabel(actualizada.tipo) };
+      setPiezas((prev) => prev.map((item) => item.id === completa.id ? completa : item));
+      setPiezaSel(completa); setDiaSel(null);
+    } catch (err) { setError(err.message); } finally { setGuardandoId(null); }
+  }, []);
 
   const cambiarEstadoPublicacion = useCallback(async (publicacion, nuevoEstado) => {
     setGuardandoId(publicacion.id);
@@ -191,6 +207,11 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
         </div>
 
         <div className="cal-filters" aria-label="Filtros de calendario">
+          <div className="editorial-view-toggle" aria-label="Vista del calendario">
+            <button type="button" className={vista === "mes" ? "active" : ""} onClick={() => setVista("mes")}>Mes</button>
+            <button type="button" className={vista === "semana" ? "active" : ""} onClick={() => setVista("semana")}>Semana</button>
+          </div>
+          <button className="btn" type="button" onClick={() => { const now = new Date(); if (onMonthChange) onMonthChange(now.getFullYear(), now.getMonth()); else { setLocalYear(now.getFullYear()); setLocalMonth(now.getMonth()); } }}>Hoy</button>
           <label>
             Tipo
             <select
@@ -204,48 +225,40 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
               ))}
             </select>
           </label>
-          <label>
-            Estado
-            <select
-              value={filtroEstado}
-              onChange={(event) => setFiltroEstado(event.target.value)}
-            >
-              {FILTROS_ESTADO.map((f) => (
-                <option key={f.key} value={f.key}>
-                  {f.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <button className="btn primary" type="button" disabled={actualizando} onClick={actualizarCalendario}>{actualizando ? "Actualizando…" : "Actualizar calendario"}</button>
         </div>
       </div>
 
       <div className="publication-check-summary">
         <div>
-          <strong>{estadisticas.publicadasDelMes.length}</strong>
-          <span>Publicadas del mes</span>
+          <strong>{estadisticas.piezasDelMes.length}</strong>
+          <span>Publicaciones del mes</span>
         </div>
         <div>
-          <strong>{estadisticas.pendientesDelMes.length}</strong>
-          <span>Pendientes del mes</span>
-        </div>
-        <div className={estadisticas.pendientesVencidas.length ? "alert" : ""}>
-          <strong>{estadisticas.pendientesVencidas.length}</strong>
-          <span>Vencidas sin check</span>
+          <strong>{porFecha[hoyISO]?.length || 0}</strong>
+          <span>Salen hoy</span>
         </div>
         <div>
-          <strong>{estadisticas.pendientesHoy.length}</strong>
-          <span>Para publicar hoy</span>
+          <strong>{porFecha[sumarDiasISO(hoyISO, 1)]?.length || 0}</strong>
+          <span>Salen mañana</span>
         </div>
         <div>
           <strong>{estadisticas.proximos7.length}</strong>
-          <span>Próximos 7 días</span>
+          <span>Esta semana</span>
         </div>
       </div>
 
       {error && <div className="caption">{error}</div>}
 
-      <div className="cal-grid">
+      {vista === "semana" && <div className="editorial-week-view">
+        {diasSemanaVisible.map((fecha) => <section key={fecha} className={fecha === hoyISO ? "today" : ""}>
+          <header><strong>{new Date(`${fecha}T12:00:00`).toLocaleDateString("es-AR", { weekday: "long" })}</strong><span>{new Date(`${fecha}T12:00:00`).toLocaleDateString("es-AR", { day: "numeric", month: "short" })}</span></header>
+          <div>{(porFecha[fecha] || []).map((pz) => <button type="button" key={pz.id} onClick={() => setPiezaSel(pz)}><span>{pz.tipo === "carrusel" ? "Carrusel" : "Reel"}</span><strong>{pz.cliente_nombre}</strong></button>)}</div>
+          {!(porFecha[fecha] || []).length && <small>Sin publicaciones</small>}
+        </section>)}
+      </div>}
+
+      <div className={`cal-grid ${vista === "semana" ? "is-hidden" : ""}`}>
         {DIAS_SEMANA.map((dia) => (
           <div className="cal-dow" key={dia}>
             {dia}
@@ -260,7 +273,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
             }
             const iso = fechaISODesde(year, month, dia);
             const items = porFecha[iso] || [];
-            const visibles = items.slice(0, 3);
+            const visibles = items.slice(0, 4);
             const ocultos = Math.max(items.length - visibles.length, 0);
             return (
               <div
@@ -281,11 +294,9 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
                         event.stopPropagation();
                         setPiezaSel(pz);
                       }}
-                      title={`${pz.tipoLabel} · ${pz.cliente_nombre} · ${getEstadoHistoriaLabel(
-                        pz.estado,
-                      )}`}
+                      title={`${dia} de ${MESES[month].toLowerCase()} — ${pz.tipoLabel} — ${pz.cliente_nombre}`}
                     >
-                      {etiquetaCortaPublicacion(pz)}
+                      <span>{pz.tipo === "carrusel" ? "Carrusel" : "Reel"}</span><strong>{pz.cliente_nombre}</strong>{pz.estado === "publicada" && <i aria-label="Publicado">✓</i>}
                     </div>
                   ))}
                   {ocultos > 0 && (
@@ -307,15 +318,8 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
         )}
       </div>
 
-      <div className="cal-legend">
-        <span className="lg-pend">Pendiente / en diseño</span>
-        <span className="lg-rev">En revisión</span>
-        <span className="lg-bloq">Bloqueada</span>
-        <span className="lg-pub">Publicada</span>
-      </div>
       <div className="caption">
-        Cada casilla muestra un resumen limpio. Tocá una fecha para ver todas
-        las publicaciones del día y marcar el check correspondiente.
+        Tocá una publicación para ver su detalle o cambiar la fecha. Las fechas que movés manualmente quedan protegidas de futuras actualizaciones automáticas.
       </div>
 
       {diaSel && (
@@ -335,7 +339,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
                   >
                     <span className="day-publication-main">
                       <strong>{pz.cliente_nombre}</strong>
-                      <span>{pz.tipoLabel} · {getCheckPublicacionLabel(pz.estado)}</span>
+                      <span>{pz.tipoLabel} · {pz.fecha_programada}</span>
                     </span>
                     <span className="day-publication-badge">
                       {pz.estado === "publicada" ? "✓" : pz.tipo === "carrusel" ? "C" : "V"}
@@ -379,8 +383,8 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
                   </div>
                 )}
                 <div className="detail-field">
-                  <div className="detail-label">Fecha programada</div>
-                  <div>{piezaSel.fecha_programada}</div>
+                  <label className="detail-label" htmlFor="publication-date">Fecha de publicación</label>
+                  <input id="publication-date" type="date" value={piezaSel.fecha_programada || ""} disabled={guardandoId === piezaSel.id} onChange={(event) => cambiarFecha(piezaSel, event.target.value)} />
                 </div>
                 <div className="detail-field">
                   <div className="detail-label">Responsable</div>

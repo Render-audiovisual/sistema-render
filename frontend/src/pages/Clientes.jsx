@@ -27,7 +27,7 @@ const MONEY = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS
 function emptyClientForm() {
   return {
     nombre: "", rubro: "", cuota_reels: "", cuota_carruseles: "",
-    dias_historias: [], disenador_responsable: "", abono_mensual: "",
+    dias_historias: [], dias_reels: [], dias_carruseles: [], disenador_responsable: "", abono_mensual: "",
     vigente_desde: getMesActualISO(),
   };
 }
@@ -558,6 +558,21 @@ export function ClientesAdminPage() {
                   </label>
                 ))}</div>
                 </fieldset>
+                {[['dias_reels', 'Días preferidos para reels'], ['dias_carruseles', 'Días preferidos para carruseles']].map(([field, label]) => (
+                  <fieldset className="cliente-weekdays" key={field}>
+                    <legend>{label}</legend>
+                    <small>Opcional. Podés elegir más de un día; si lo dejás vacío se distribuye automáticamente.</small>
+                    <div>{WEEKDAYS.map(([value, dayLabel]) => (
+                      <label key={value} className={nuevoCliente[field].includes(value) ? "selected" : ""}>
+                        <input type="checkbox" checked={nuevoCliente[field].includes(value)} onChange={() => setNuevoCliente((prev) => ({
+                          ...prev,
+                          [field]: prev[field].includes(value) ? prev[field].filter((day) => day !== value) : [...prev[field], value],
+                        }))} />
+                        {dayLabel}
+                      </label>
+                    ))}</div>
+                  </fieldset>
+                ))}
               </section>}
 
               {pasoAltaCliente === 3 && <section className="cliente-create-step">
