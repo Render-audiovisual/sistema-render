@@ -3338,9 +3338,47 @@ textarea:disabled {
 .publication-check-summary {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 10px 0 14px;
 }
+
+.publicaciones-viewport .cal-grid { gap: 8px; }
+.publicaciones-viewport .cal-dow { background: transparent; color: #74796d; font-size: 11px; padding: 8px 4px; }
+.publicaciones-viewport .cal-cell { border-color: #e1e5d9; border-radius: 12px; min-height: 132px; padding: 10px; transition: border-color .18s ease, box-shadow .18s ease; }
+.publicaciones-viewport .cal-cell.has-items:hover { border-color: #b8c2aa; box-shadow: 0 8px 22px rgba(31, 36, 24, .07); }
+.publicaciones-viewport .cal-cell.today { border: 2px solid #1d3937; }
+.publicaciones-viewport .cal-daynum { color: #252a22; font-size: 13px; font-weight: 650; }
+.publicaciones-viewport .cal-count { background: #edf3e5; color: #31534e; }
+.publicaciones-viewport .cal-chip { align-items: center; background: #f2f6ed; border: 1px solid #dce6d2; border-left: 1px solid #dce6d2; border-radius: 7px; color: #1f2a1c; display: grid; font-size: 10px; gap: 1px; min-height: 31px; padding: 5px 7px; position: relative; }
+.publicaciones-viewport .cal-chip span { color: #55716b; font-size: 8px; font-weight: 700; letter-spacing: .045em; text-transform: uppercase; }
+.publicaciones-viewport .cal-chip strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.publicaciones-viewport .cal-chip i { color: #2c7a67; font-style: normal; position: absolute; right: 6px; top: 6px; }
+.publicaciones-viewport .cal-chip.publicada { background: #edf7f0; border-color: #cfe5d4; color: #1f2a1c; }
+.cliente-publishing-days { display: grid; gap: 14px; margin-top: 4px; }
+.cliente-weekday-picker { border: 1px solid #e1e5d9; border-radius: 12px; margin: 0; padding: 14px; }
+.cliente-weekday-picker legend { color: #343a31; font-size: 12px; font-weight: 650; padding: 0 6px; }
+.cliente-weekday-picker > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.cliente-weekday-picker label { cursor: pointer; }
+.cliente-weekday-picker input { position: absolute; opacity: 0; pointer-events: none; }
+.cliente-weekday-picker label span { align-items: center; border: 1px solid #dce1d6; border-radius: 8px; color: #62685d; display: flex; font-size: 11px; height: 34px; justify-content: center; min-width: 44px; }
+.cliente-weekday-picker label.selected span { background: #1d3937; border-color: #1d3937; color: #b5fc00; }
+.cliente-weekday-picker small { color: #74796d; display: block; font-size: 10px; margin-top: 9px; }
+.cal-grid.is-hidden { display: none; }
+.editorial-view-toggle { background: #f0f2eb; border-radius: 9px; display: flex; padding: 3px; }
+.editorial-view-toggle button { background: transparent; border: 0; border-radius: 7px; color: #687064; cursor: pointer; font: 600 11px/1 Poppins, sans-serif; padding: 9px 12px; }
+.editorial-view-toggle button.active { background: #1d3937; color: #b5fc00; }
+.editorial-week-view { display: grid; gap: 10px; grid-template-columns: repeat(7, minmax(0, 1fr)); margin-top: 12px; }
+.editorial-week-view section { background: #fff; border: 1px solid #e1e5d9; border-radius: 12px; min-height: 260px; padding: 12px; }
+.editorial-week-view section.today { border: 2px solid #1d3937; }
+.editorial-week-view header { border-bottom: 1px solid #ecefe7; display: grid; gap: 2px; padding-bottom: 9px; text-transform: capitalize; }
+.editorial-week-view header strong { color: #252a22; font-size: 12px; font-weight: 650; }
+.editorial-week-view header span,.editorial-week-view section > small { color: #74796d; font-size: 10px; }
+.editorial-week-view section > div { display: grid; gap: 7px; margin-top: 10px; }
+.editorial-week-view section button { background: #f2f6ed; border: 1px solid #dce6d2; border-radius: 8px; color: #1f2a1c; cursor: pointer; display: grid; gap: 2px; padding: 8px; text-align: left; }
+.editorial-week-view section button span { color: #55716b; font-size: 8px; font-weight: 700; text-transform: uppercase; }
+.editorial-week-view section button strong { font-size: 11px; font-weight: 600; }
+@media (max-width: 900px) { .editorial-week-view { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .editorial-week-view { grid-template-columns: 1fr; } }
 
 .publication-check-summary > div {
   background: #fafafa;

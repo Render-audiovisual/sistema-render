@@ -13,6 +13,8 @@ export function normalizeClientConfiguration(body = {}) {
   const cuota_carruseles = Number(body.cuota_carruseles);
   const abono_mensual = Number(body.abono_mensual);
   const dias_historias = [...new Set((body.dias_historias || []).map(Number))].sort();
+  const dias_reels = [...new Set((body.dias_reels || []).map(Number))].sort();
+  const dias_carruseles = [...new Set((body.dias_carruseles || []).map(Number))].sort();
   const disenador_responsable = String(body.disenador_responsable || "").trim();
 
   if (![cuota_reels, cuota_carruseles].every(Number.isInteger) || cuota_reels < 0 || cuota_carruseles < 0) {
@@ -27,5 +29,10 @@ export function normalizeClientConfiguration(body = {}) {
   if (!CLIENT_DESIGNERS.includes(disenador_responsable)) {
     throw new Error("Elegí un diseñador responsable válido.");
   }
-  return { cuota_reels, cuota_carruseles, abono_mensual, dias_historias, disenador_responsable };
+  for (const days of [dias_reels, dias_carruseles]) {
+    if (days.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) {
+      throw new Error("Los días preferidos de publicación no son válidos.");
+    }
+  }
+  return { cuota_reels, cuota_carruseles, abono_mensual, dias_historias, dias_reels, dias_carruseles, disenador_responsable };
 }

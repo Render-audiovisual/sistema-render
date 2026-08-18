@@ -8,7 +8,7 @@ test("normaliza una configuración mensual completa", () => {
     dias_historias: [5, 1, 1], disenador_responsable: "Augusto",
   }), {
     cuota_reels: 4, cuota_carruseles: 2, abono_mensual: 350000,
-    dias_historias: [1, 5], disenador_responsable: "Augusto",
+    dias_historias: [1, 5], dias_reels: [], dias_carruseles: [], disenador_responsable: "Augusto",
   });
 });
 

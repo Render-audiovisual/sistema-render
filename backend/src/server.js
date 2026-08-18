@@ -31,6 +31,7 @@ import { getTaskSearchTerms } from "./task-search.js";
 import { filterReportDataForUser } from "./report-access.js";
 import { createGoogleDrivePublicRouter, createGoogleDriveRouter } from "./google-drive.js";
 import { normalizeClientConfiguration, normalizePeriod } from "./client-config.js";
+import { reconcileEditorialCalendar } from "./editorial-calendar.js";
 import { buildMiaStatePendingMarker } from "./mia-task-digest.js";
 import {
   getStateNotification,
@@ -1009,6 +1010,8 @@ router.get("/clientes", async (req, res, next) => {
         to_char(c.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
         to_char(c.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
         cfg.dias_historias,
+        cfg.dias_reels,
+        cfg.dias_carruseles,
         cfg.disenador_responsable,
         COALESCE(abono.importe, cfg.abono_mensual) AS abono_mensual,
         to_char(COALESCE(abono.vigente_desde, cfg.vigente_desde), 'YYYY-MM-DD') AS abono_vigente_desde,
@@ -1085,10 +1088,10 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
     if (config) {
       await client.query(
         `INSERT INTO cliente_configuraciones
-          (cliente_id, vigente_desde, cuota_reels, cuota_carruseles, dias_historias, disenador_responsable, abono_mensual)
-         VALUES ($1, $2, $3, $4, $5::smallint[], $6, $7)`,
+          (cliente_id, vigente_desde, cuota_reels, cuota_carruseles, dias_historias, dias_reels, dias_carruseles, disenador_responsable, abono_mensual)
+         VALUES ($1, $2, $3, $4, $5::smallint[], $6::smallint[], $7::smallint[], $8, $9)`,
         [result.rows[0].id, vigenteDesde, config.cuota_reels, config.cuota_carruseles,
-          config.dias_historias, config.disenador_responsable, config.abono_mensual],
+          config.dias_historias, config.dias_reels, config.dias_carruseles, config.disenador_responsable, config.abono_mensual],
       );
       await client.query(
         `INSERT INTO cliente_abonos (cliente_id, vigente_desde, importe, creado_por)
@@ -1136,16 +1139,18 @@ router.post("/clientes/:id/configuraciones", requireRole("admin"), async (req, r
     }
     await client.query(
       `INSERT INTO cliente_configuraciones
-        (cliente_id, vigente_desde, cuota_reels, cuota_carruseles, dias_historias, disenador_responsable, abono_mensual)
-       VALUES ($1, $2, $3, $4, $5::smallint[], $6, $7)
+        (cliente_id, vigente_desde, cuota_reels, cuota_carruseles, dias_historias, dias_reels, dias_carruseles, disenador_responsable, abono_mensual)
+       VALUES ($1, $2, $3, $4, $5::smallint[], $6::smallint[], $7::smallint[], $8, $9)
        ON CONFLICT (cliente_id, vigente_desde) DO UPDATE SET
          cuota_reels = EXCLUDED.cuota_reels,
          cuota_carruseles = EXCLUDED.cuota_carruseles,
          dias_historias = EXCLUDED.dias_historias,
+         dias_reels = EXCLUDED.dias_reels,
+         dias_carruseles = EXCLUDED.dias_carruseles,
          disenador_responsable = EXCLUDED.disenador_responsable,
          abono_mensual = EXCLUDED.abono_mensual`,
       [req.params.id, vigenteDesde, config.cuota_reels, config.cuota_carruseles,
-        config.dias_historias, config.disenador_responsable, config.abono_mensual],
+        config.dias_historias, config.dias_reels, config.dias_carruseles, config.disenador_responsable, config.abono_mensual],
     );
     await client.query(
       `INSERT INTO cliente_abonos (cliente_id, vigente_desde, importe, creado_por)
@@ -1569,6 +1574,7 @@ router.patch("/publicaciones/:id", requireRole("admin"), async (req, res, next) 
          aclaraciones = COALESCE($6, aclaraciones),
          prioridad = COALESCE($7, prioridad),
          fecha_programada = COALESCE($8, fecha_programada),
+         fecha_bloqueada = CASE WHEN $8::date IS NOT NULL AND $8::date IS DISTINCT FROM fecha_programada THEN TRUE ELSE fecha_bloqueada END,
          responsable = COALESCE($9, responsable),
          duracion_segundos = COALESCE($10, duracion_segundos),
          num_imagenes = COALESCE($11, num_imagenes),
@@ -1595,7 +1601,7 @@ router.patch("/publicaciones/:id", requireRole("admin"), async (req, res, next) 
                  to_char(fecha_edición_entrega, 'YYYY-MM-DD') AS fecha_edición_entrega,
                  to_char(fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
                  to_char(fecha_publicación_real, 'YYYY-MM-DD HH24:MI') AS fecha_publicación_real,
-                 metadata, created_at, updated_at`,
+                 origen_calendario, calendario_clave, fecha_bloqueada, metadata, created_at, updated_at`,
       [
         estado || null,
         tipo || null,
@@ -1647,6 +1653,15 @@ router.delete("/publicaciones/:id", requireRole("admin"), async (req, res, next)
   }
 });
 
+router.post("/calendario-editorial/generar", requireRole("admin"), async (req, res, next) => {
+  try {
+    res.json(await reconcileEditorialCalendar(pool, req.body.periodo));
+  } catch (error) {
+    if (/período|capacidad/i.test(error.message || "")) return res.status(400).json({ error: error.message });
+    next(error);
+  }
+});
+
 router.get("/publicaciones", async (req, res, next) => {
   try {
     const incluirArchivadas = req.query.incluir_archivadas === "true";
@@ -1674,6 +1689,9 @@ router.get("/publicaciones", async (req, res, next) => {
         to_char(p.fecha_edición_entrega, 'YYYY-MM-DD') AS fecha_edición_entrega,
         to_char(p.fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
         to_char(p.fecha_publicación_real, 'YYYY-MM-DD HH24:MI') AS fecha_publicación_real,
+        p.origen_calendario,
+        p.calendario_clave,
+        p.fecha_bloqueada,
         p.metadata,
         p.created_at,
         p.updated_at
@@ -3232,6 +3250,40 @@ app.use((err, _req, res, _next) => {
 // IIFE en vez de top-level await: el runtime de Hostinger (LiteSpeed
 // lsnode.js) carga este archivo con require(), que no admite módulos ESM
 // con await de nivel superior (ERR_REQUIRE_ASYNC_MODULE).
+function scheduleEditorialCalendar() {
+  let lastRun = "";
+  let currentPrepared = false;
+  const check = async () => {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Argentina/Cordoba", year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(new Date()).reduce((acc, part) => ({ ...acc, [part.type]: part.value }), {});
+    const current = `${parts.year}-${parts.month}`;
+    if (!currentPrepared) {
+      try {
+        await reconcileEditorialCalendar(pool, current);
+        currentPrepared = true;
+        console.log(`Calendario editorial ${current} preparado`);
+      } catch (error) {
+        console.error("No se pudo preparar el calendario editorial actual", error.message);
+      }
+    }
+    if (Number(parts.day) < 28) return;
+    if (lastRun === current) return;
+    const date = new Date(Date.UTC(Number(parts.year), Number(parts.month), 1));
+    const next = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+    try {
+      await reconcileEditorialCalendar(pool, next);
+      lastRun = current;
+      console.log(`Calendario editorial ${next} actualizado automáticamente`);
+    } catch (error) {
+      console.error("No se pudo actualizar el calendario editorial automático", error.message);
+    }
+  };
+  check();
+  const timer = setInterval(check, 60 * 60 * 1000);
+  timer.unref?.();
+}
+
 if (process.env.RENDER_DISABLE_SERVER_START !== "true") (async () => {
   try {
     await checkDatabaseConnection();
@@ -3250,5 +3302,6 @@ if (process.env.RENDER_DISABLE_SERVER_START !== "true") (async () => {
 
   app.listen(port, () => {
     console.log(`Backend listening on http://localhost:${port}`);
+    scheduleEditorialCalendar();
   });
 })();
