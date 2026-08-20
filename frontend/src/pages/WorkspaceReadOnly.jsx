@@ -91,16 +91,14 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [linkCopied, setLinkCopied] = useState(false);
   const archivePendingRef = useRef(false);
   const scriptEditorRef = useRef(null);
-  const focusContentEditorRef = useRef(false);
   const isAdmin = sesion?.usuario?.rol === "admin";
 
   useEffect(() => {
     if (!task) return;
-    setDraft(task);
+    setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task) });
     setEditing(false);
     setComment("");
     setCommentError("");
-    setSubtaskTitle("");
     setConfirmDelete(false);
     setLinkCopied(false);
     setProductionAmount(1);
@@ -118,16 +116,6 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = previous; };
   }, [task]);
-
-  useEffect(() => {
-    if (!editing || !focusContentEditorRef.current) return;
-    focusContentEditorRef.current = false;
-    const textarea = scriptEditorRef.current;
-    if (!textarea) return;
-    textarea.focus();
-    const cursor = textarea.value.length;
-    textarea.setSelectionRange(cursor, cursor);
-  }, [editing]);
 
   if (!task) return null;
   const person = personForTask(task, users);
@@ -188,13 +176,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     setEditing(true);
   };
 
-  const startEditingContent = () => {
-    focusContentEditorRef.current = true;
-    startEditing();
-  };
-
   const cancelEditing = () => {
-    setDraft(task);
+    setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task) });
     setEditing(false);
   };
 
@@ -216,7 +199,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const closeDetail = () => {
-    if (editing && !window.confirm("Hay cambios sin guardar. ¿Querés descartarlos?")) return;
+    const contentDirty = String(draft.aclaraciones || "").trim() !== getUnifiedTaskContent(task).trim();
+    if ((editing || contentDirty) && !window.confirm("Hay cambios sin guardar. ¿Querés descartarlos?")) return;
     onClose();
   };
 
@@ -352,7 +336,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {productionProgress.planned === 0 && !editing && <p>Un Líder debe editar esta visita e indicar cuántos videos están previstos.</p>}
           {Array.isArray(metadata.produccion_registros) && metadata.produccion_registros.length > 0 && <details><summary>Ver registros</summary>{metadata.produccion_registros.slice().reverse().map((record) => <div key={record.id || `${record.fecha}-${record.created_at}`}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario || "Equipo"}{record.corregido_at ? ` · Corregido por ${record.corregido_por}` : ""}</span>{canRegisterProduction && !metadata.produccion_confirmada_at && <button type="button" onClick={() => { const value = window.prompt("Cantidad correcta de videos:", String(record.cantidad)); if (value !== null) onCorrectProduction(task, record, Number(value)); }}>Corregir</button>}</div>)}</details>}
         </section>}
-        <TaskContentWorkspace task={task} metadata={metadata} editing={editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={isAdmin ? startEditingContent : null} onCancelEdit={cancelEditing} onSaveEdit={save} saving={saving} canSave={Boolean(draft.titulo?.trim() && draft.asignado_a)}/>
+        <TaskContentWorkspace task={task} metadata={metadata} editing={isAdmin || editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={null} onCancelEdit={cancelEditing} onSaveEdit={save} saving={saving} canSave={Boolean(draft.titulo?.trim() && draft.asignado_a)}/>
         <section className="ros-work-block"><div className="ros-block-heading"><div><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3></div><small>Archivos y enlaces</small></div>{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <><div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{driveFiles.filter((file) => file.url !== task.material_referencia).map((file) => <a className="ros-file" href={file.url} target="_blank" rel="noreferrer" key={file.id}><span>▤</span><div><strong>{file.name}</strong><small>Google Drive · {file.uploaded_by || "Equipo"}</small></div><b>↗</b></a>)}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{!task.material_referencia && driveFiles.length === 0 && links.length === 0 && <p className="ros-compact-empty">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "Sin material vinculado."}</p>}</div><DriveUploader task={task} onUploaded={async () => { const refreshed = await apiTaskById(task.id); window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: [refreshed] })); }}/></>}</section>
         {(origin || task.tarea_padre_id || subtasks.length > 0) && <section className="ros-work-block"><h3>Organización del trabajo</h3>{(origin || task.tarea_padre_id) && <div className="ros-context-list">{origin && <a href={origin.href}><strong>{origin.label}</strong><span>{formatDate(origin.date)} · {origin.state || "Sin estado"}</span><b>↗</b></a>}{task.tarea_padre_id && <button type="button" onClick={() => onOpen(Number(task.tarea_padre_id))}><strong>Depende de la tarea #{task.tarea_padre_id}</strong><span>Estado: {task.tarea_padre_estado || "Sin datos"}</span></button>}</div>}<div className="ros-subtasks">{subtasks.map((subtask) => <button type="button" key={subtask.id} onClick={() => onOpen(subtask.id)}><span>{subtask.titulo}</span><b>{STATUSES.find((item) => item.id === subtask.estado)?.label || subtask.estado}</b></button>)}</div></section>}
         <section className="ros-work-block"><h3>Comentarios</h3>
