@@ -16,6 +16,10 @@ export function wilsonPeriod(now = new Date()) {
   return `${p.year}-${p.month}`;
 }
 
+export function canResetWilsonConversations(auth = {}) {
+  return auth.rol === "admin";
+}
+
 export function shouldSendWilsonDigest(now = new Date()) {
   const p = localParts(now);
   const hour = Number(p.hour);
@@ -338,15 +342,38 @@ export function createWilsonChatRouter({ express, pool }) {
   });
 
   router.get("/conversaciones", async (req, res, next) => {
-    if (req.auth.rol !== "admin") return res.status(403).json({ error: "Solo un Líder puede consultar las conversaciones." });
+    if (!canResetWilsonConversations(req.auth)) return res.status(403).json({ error: "Solo un Líder puede consultar las conversaciones." });
     try {
       const result = await pool.query(`SELECT u.id,u.nombre,u.usuario,u.rol,c.id conversacion_id,c.periodo,c.updated_at,(SELECT contenido FROM wilson_mensajes m WHERE m.conversacion_id=c.id ORDER BY m.created_at DESC,m.id DESC LIMIT 1) ultimo_mensaje FROM usuarios u LEFT JOIN wilson_conversaciones c ON c.usuario_id=u.id AND c.periodo=$1 ORDER BY u.nombre`, [wilsonPeriod()]);
       return res.json(result.rows);
     } catch (error) { return next(error); }
   });
 
+  router.delete("/conversaciones", async (req, res, next) => {
+    if (!canResetWilsonConversations(req.auth)) return res.status(403).json({ error: "Solo un Líder puede restablecer las conversaciones." });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const messageCount = await client.query(`SELECT COUNT(*)::int total FROM wilson_mensajes`);
+      const deleted = await client.query(`DELETE FROM wilson_conversaciones RETURNING id`);
+      const details = { conversations_deleted: deleted.rowCount, messages_deleted: messageCount.rows[0]?.total || 0 };
+      await client.query(
+        `INSERT INTO integracion_auditoria(integracion,canal,actor_id,actor_nombre,accion,detalles)
+         VALUES('wilson','web',$1,$2,'restablecer_conversaciones',$3::jsonb)`,
+        [String(req.auth.id), getTaskActor(req.auth), JSON.stringify(details)],
+      );
+      await client.query("COMMIT");
+      return res.json({ ok: true, ...details });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      return next(error);
+    } finally {
+      client.release();
+    }
+  });
+
   router.get("/conversaciones/:userId", async (req, res, next) => {
-    if (req.auth.rol !== "admin") return res.status(403).json({ error: "Solo un Líder puede consultar las conversaciones." });
+    if (!canResetWilsonConversations(req.auth)) return res.status(403).json({ error: "Solo un Líder puede consultar las conversaciones." });
     try {
       const current = await conversation(pool, req.params.userId);
       const messages = await pool.query(`SELECT id,remitente,contenido,tipo,metadata,created_at FROM wilson_mensajes WHERE conversacion_id=$1 ORDER BY created_at,id`, [current.id]);
