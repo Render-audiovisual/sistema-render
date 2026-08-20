@@ -131,6 +131,8 @@ const MARIANO_CLIENTS = new Set([
   "joyeria cristal",
   "cristal joyeria",
   "cristal joyerias",
+  "bunker training",
+  "pope burger jr",
 ]);
 
 export function getCarouselDesignerForClient(client = {}) {

@@ -88,6 +88,18 @@ test("reconoce Cristal Joyerias como cliente de Mariano y calcula el cierre mens
   assert.equal(formatPeriodDeadline("2026-09-01"), "31 de agosto");
 });
 
+test("Búnker y Pope Burger pertenecen a Mariano Mesa", () => {
+  const clients = [
+    { id: 10, nombre: "Búnker Training", cuota_carruseles: 2 },
+    { id: 11, nombre: "Pope Burger JR", cuota_carruseles: 2 },
+  ];
+  assert.deepEqual(getDesignerCarouselSummary("Mariano", clients, []), {
+    realizados: 0,
+    pendientes: 4,
+    total: 4,
+  });
+});
+
 test("clasifica las tareas operativas de RENDER OS sin mezclar planificación y edición", () => {
   assert.equal(isCarouselTask({ titulo: "Carrusel 1", tipo_tarea: "diseno" }), true);
   assert.equal(isEditingTask({ titulo: "Luzin | Edición reel", tipo_tarea: "edicion" }), true);
