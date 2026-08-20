@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildEmployeeSnapshot, buildEmployeeStatusReply } from "../src/wilson-chat.js";
+import {
+  buildEmployeeReminder,
+  buildEmployeeSnapshot,
+  buildEmployeeStatusReply,
+  shouldUsePreviousTarget,
+} from "../src/wilson-chat.js";
 
 test("Wilson responde cuánto registró Germán y en qué clientes", () => {
   const snapshot = buildEmployeeSnapshot([
@@ -30,4 +35,17 @@ test("cada especialidad recibe métricas propias", () => {
   const reply = buildEmployeeStatusReply(snapshot, "¿cómo viene?");
   assert.match(reply.text, /1 carrusel pendiente/i);
   assert.match(reply.text, /1 en revisión/i);
+});
+
+test("Wilson conserva el empleado cuando el Líder da una orden de seguimiento", () => {
+  assert.equal(shouldUsePreviousTarget("Mandale un mensaje y pedile que reporte cuántos videos grabó"), true);
+  assert.equal(shouldUsePreviousTarget("¿Qué hago ahora?"), false);
+});
+
+test("Wilson prepara para Germán un pedido específico de producción", () => {
+  const reminder = buildEmployeeReminder({ nombre: "Germán", rol: "produccion" });
+  assert.match(reminder, /Germán/i);
+  assert.match(reminder, /cuántos videos grabaste/i);
+  assert.match(reminder, /en qué clientes/i);
+  assert.match(reminder, /reporte en el sistema/i);
 });
