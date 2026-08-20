@@ -172,9 +172,39 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     }
   };
 
-  const startEditing = () => {
-    setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task), resumen: metadata.resumen || "", etiquetas: tags.join(", "), colaboradores: collaborators, guiones: "", copy_trabajo: "", produccion_videos_previstos: productionProgress.planned || "" });
-    setEditing(true);
+  const saveInlineField = async (field, value, activity = "editó los datos de la tarea") => {
+    if (!isAdmin || saving) return;
+    const nullable = ["cliente_id", "fecha_vencimiento", "tipo_tarea", "subtipo", "material_referencia"];
+    const nextValue = value === "" && nullable.includes(field) ? null : value;
+    if (String(nextValue ?? "") === String(task[field] ?? "")) return;
+    setDraft((current) => ({ ...current, [field]: value }));
+    setSaving(true);
+    try {
+      await onUpdate(task.id, { [field]: nextValue }, activity);
+    } catch {
+      setDraft((current) => ({ ...current, [field]: task[field] ?? "" }));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveInlinePeople = async ({ primary, collaborators: nextCollaborators }) => {
+    if (!isAdmin || saving || !primary) return;
+    const normalizedCollaborators = [...new Set((nextCollaborators || []).filter((name) => name && name !== primary))];
+    const unchanged = primary === task.asignado_a && JSON.stringify(normalizedCollaborators) === JSON.stringify(collaborators);
+    if (unchanged) return;
+    setDraft((current) => ({ ...current, asignado_a: primary, colaboradores: normalizedCollaborators }));
+    setSaving(true);
+    try {
+      await onUpdate(task.id, {
+        asignado_a: primary,
+        propiedades_extra: { ...metadata, colaboradores: normalizedCollaborators },
+      }, "actualizó los responsables de la tarea");
+    } catch {
+      setDraft((current) => ({ ...current, asignado_a: task.asignado_a, colaboradores }));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const cancelEditing = () => {
@@ -311,13 +341,13 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         <div className="ros-task-layout">
           <main className="ros-task-main-column">
         <div className="ros-task-document-kind"><AreaBadge task={task}/></div>
-        <div className="ros-task-document-heading">{editing ? <input className="ros-title-input" value={draft.titulo || ""} onChange={(event) => setDraft({ ...draft, titulo: event.target.value })}/> : <h2>{task.titulo}</h2>}{isAdmin && !editing && <button className="ros-task-edit-button" type="button" onClick={startEditing}>Editar tarea</button>}</div>
+        <div className="ros-task-document-heading">{isAdmin ? <input className="ros-title-input ros-inline-title-input" aria-label="Título de la tarea" value={draft.titulo ?? task.titulo ?? ""} onChange={(event) => setDraft((current) => ({ ...current, titulo: event.target.value }))} onBlur={(event) => event.target.value.trim() ? saveInlineField("titulo", event.target.value.trim(), "actualizó el título de la tarea") : setDraft((current) => ({ ...current, titulo: task.titulo }))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}/> : <h2>{task.titulo}</h2>}</div>
         <div className="ros-task-document-properties">
-          <div><span>◉ <b>Estado</b></span><strong className="ros-task-document-status"><i style={{ background: status.color }}/>{status.label}</strong></div>
-          <div className={editing ? "ros-task-people-property is-editing" : "ros-task-people-property"}><span>♙ <b>Responsables</b></span>{editing ? <TaskPeoplePicker compact users={users} primary={draft.asignado_a || ""} collaborators={draft.colaboradores || []} onChange={({ primary, collaborators: nextCollaborators }) => setDraft((current) => ({ ...current, asignado_a: primary, colaboradores: nextCollaborators }))}/> : <strong className="ros-task-assignees">{[task.asignado_a, ...collaborators].filter((name, index, names) => name && names.indexOf(name) === index).map((name, index) => <span className="ros-task-assignee" key={name}><Avatar person={users.find((user) => user.nombre === name)} name={name}/><span>{name}<small>{index === 0 ? "Principal" : "Colabora"}</small></span></span>)}</strong>}</div>
-          <div><span>▥ <b>Cliente</b></span><strong>{task.cliente_nombre || "Sin cliente"}</strong></div>
-          <div><span>▦ <b>Entrega</b></span><strong>{formatDate(task.fecha_vencimiento)}</strong></div>
-          {String(task.prioridad || "").toLowerCase() !== "media" && <div><span>⚑ <b>Prioridad</b></span><strong>{task.prioridad || "Sin definir"}</strong></div>}
+          <div><span>◉ <b>Estado</b></span>{isAdmin ? <select className="ros-inline-property" aria-label="Estado" value={draft.estado ?? task.estado ?? "pendiente"} disabled={saving} onChange={(event) => saveInlineField("estado", event.target.value, "actualizó el estado de la tarea")}>{STATUSES.map((item) => <option key={item.id} value={item.id} disabled={isProductionVisit && item.id === "publicada" && !productionProgress.complete}>{item.label}</option>)}</select> : <strong className="ros-task-document-status"><i style={{ background: status.color }}/>{status.label}</strong>}</div>
+          <div className="ros-task-people-property is-inline-editing"><span>♙ <b>Responsables</b></span>{isAdmin ? <TaskPeoplePicker compact users={users} primary={draft.asignado_a ?? task.asignado_a ?? ""} collaborators={draft.colaboradores ?? collaborators} disabled={saving} onChange={saveInlinePeople}/> : <strong className="ros-task-assignees">{[task.asignado_a, ...collaborators].filter((name, index, names) => name && names.indexOf(name) === index).map((name, index) => <span className="ros-task-assignee" key={name}><Avatar person={users.find((user) => user.nombre === name)} name={name}/><span>{name}<small>{index === 0 ? "Principal" : "Colabora"}</small></span></span>)}</strong>}</div>
+          <div><span>▥ <b>Cliente</b></span>{isAdmin ? <select className="ros-inline-property" aria-label="Cliente" value={draft.cliente_id ?? task.cliente_id ?? ""} disabled={saving} onChange={(event) => saveInlineField("cliente_id", event.target.value ? Number(event.target.value) : "", "actualizó el cliente de la tarea")}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select> : <strong>{task.cliente_nombre || "Sin cliente"}</strong>}</div>
+          <div><span>▦ <b>Entrega</b></span>{isAdmin ? <input className="ros-inline-property" aria-label="Fecha de entrega" type="date" value={draft.fecha_vencimiento ?? task.fecha_vencimiento ?? ""} disabled={saving} onChange={(event) => saveInlineField("fecha_vencimiento", event.target.value, "actualizó la fecha de entrega")}/> : <strong>{formatDate(task.fecha_vencimiento)}</strong>}</div>
+          {(isAdmin || String(task.prioridad || "").toLowerCase() !== "media") && <div><span>⚑ <b>Prioridad</b></span>{isAdmin ? <select className="ros-inline-property" aria-label="Prioridad" value={draft.prioridad ?? task.prioridad ?? "media"} disabled={saving} onChange={(event) => saveInlineField("prioridad", event.target.value, "actualizó la prioridad de la tarea")}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select> : <strong>{task.prioridad || "Sin definir"}</strong>}</div>}
         </div>
         {esperandoMaterial(task) && <div className="ros-warning-banner">Esperando material: la tarea de origen todavía no está terminada.</div>}
         {canApproveForOriana && <section className="ros-approval-handoff"><div><strong>El video está esperando aprobación</strong><span>Revisá el material y, si está listo, entregáselo a Oriana para programar o publicar.</span></div><button type="button" disabled={approving} onClick={approveForOriana}>{approving ? "Enviando…" : "Aprobar y enviar a Oriana"}</button></section>}
@@ -362,7 +392,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   </div>;
 }
 
-function TaskPeoplePicker({ users, primary, collaborators, onChange, compact = false }) {
+function TaskPeoplePicker({ users, primary, collaborators, onChange, compact = false, disabled = false }) {
   const [open, setOpen] = useState(false);
   const selected = [primary, ...(collaborators || [])].filter((name, index, items) => name && items.indexOf(name) === index);
   const toggle = (name) => {
@@ -371,9 +401,9 @@ function TaskPeoplePicker({ users, primary, collaborators, onChange, compact = f
   };
   return <div className={`wide ros-people-picker ${compact ? "compact" : ""}`}>
     {!compact && <div className="ros-people-picker-label"><span>Responsables *</span><small>Podés seleccionar una o varias personas.</small></div>}
-    {selected.length > 0 && <div className="ros-selected-people">{selected.map((name, index) => <button type="button" key={name} onClick={() => toggle(name)}><Avatar person={users.find((user) => user.nombre === name)} name={name}/><span><strong>{name}</strong><small>{index === 0 ? "Responsable principal" : "Colabora"}</small></span><b aria-hidden="true">×</b></button>)}</div>}
-    <button className="ros-add-person" type="button" aria-expanded={open} onClick={() => setOpen((current) => !current)}><span>+</span>{selected.length ? "Añadir otra persona" : "Añadir responsable"}<b>{open ? "⌃" : "⌄"}</b></button>
-    {open && <div className="ros-people-options">{users.map((user) => { const active = selected.includes(user.nombre); return <button className={active ? "selected" : ""} type="button" key={user.id} onClick={() => toggle(user.nombre)}><Avatar person={user}/><span><strong>{user.nombre}</strong><small>{getRolLabel(user.rol) || `@${user.usuario}`}</small></span><b>{active ? "✓" : "+"}</b></button>; })}</div>}
+    {selected.length > 0 && <div className="ros-selected-people">{selected.map((name, index) => <button type="button" key={name} disabled={disabled} onClick={() => toggle(name)}><Avatar person={users.find((user) => user.nombre === name)} name={name}/><span><strong>{name}</strong><small>{index === 0 ? "Responsable principal" : "Colabora"}</small></span><b aria-hidden="true">×</b></button>)}</div>}
+    <button className="ros-add-person" type="button" disabled={disabled} aria-expanded={open} onClick={() => setOpen((current) => !current)}><span>+</span>{selected.length ? "Añadir otra persona" : "Añadir responsable"}<b>{open ? "⌃" : "⌄"}</b></button>
+    {open && <div className="ros-people-options">{users.map((user) => { const active = selected.includes(user.nombre); return <button className={active ? "selected" : ""} type="button" key={user.id} disabled={disabled} onClick={() => toggle(user.nombre)}><Avatar person={user}/><span><strong>{user.nombre}</strong><small>{getRolLabel(user.rol) || `@${user.usuario}`}</small></span><b>{active ? "✓" : "+"}</b></button>; })}</div>}
   </div>;
 }
 
