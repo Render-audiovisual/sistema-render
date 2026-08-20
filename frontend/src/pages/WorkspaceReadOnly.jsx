@@ -70,16 +70,14 @@ function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, editor
   </section>;
 }
 
-function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onArchive, onDelete, onCreateSubtask }) {
+function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onArchive, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task || {});
   const [comments, setComments] = useState([]);
   const [comment, setComment] = useState("");
   const [commentError, setCommentError] = useState("");
-  const [subtaskTitle, setSubtaskTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [commenting, setCommenting] = useState(false);
-  const [creatingSubtask, setCreatingSubtask] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [archiving, setArchiving] = useState(false);
@@ -155,9 +153,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     : task.publicacion_id
       ? { label: getTipoPublicacionLabel(task.publicacion_tipo), date: task.publicacion_fecha_programada, state: task.publicacion_estado, href: "/planificacion-publicaciones" }
       : null;
-  const activityComments = comments.filter((item) => item.contenido.startsWith("[Actividad]"));
   const teamComments = comments.filter((item) => !item.contenido.startsWith("[Actividad]"));
-  const lastActivity = activityComments.at(-1);
 
   const save = async () => {
     setSaving(true);
@@ -241,17 +237,6 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
       setCommentError(reason.message || "No se pudo guardar el comentario.");
     } finally {
       setCommenting(false);
-    }
-  };
-
-  const createSubtask = async () => {
-    if (!subtaskTitle.trim() || creatingSubtask) return;
-    setCreatingSubtask(true);
-    try {
-      await onCreateSubtask(task, subtaskTitle.trim());
-      setSubtaskTitle("");
-    } finally {
-      setCreatingSubtask(false);
     }
   };
 
@@ -369,14 +354,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         </section>}
         <TaskContentWorkspace task={task} metadata={metadata} editing={editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={isAdmin ? startEditingContent : null} onCancelEdit={cancelEditing} onSaveEdit={save} saving={saving} canSave={Boolean(draft.titulo?.trim() && draft.asignado_a)}/>
         <section className="ros-work-block"><div className="ros-block-heading"><div><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3></div><small>Archivos y enlaces</small></div>{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <><div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{driveFiles.filter((file) => file.url !== task.material_referencia).map((file) => <a className="ros-file" href={file.url} target="_blank" rel="noreferrer" key={file.id}><span>▤</span><div><strong>{file.name}</strong><small>Google Drive · {file.uploaded_by || "Equipo"}</small></div><b>↗</b></a>)}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{!task.material_referencia && driveFiles.length === 0 && links.length === 0 && <p className="ros-compact-empty">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "Sin material vinculado."}</p>}</div><DriveUploader task={task} onUploaded={async () => { const refreshed = await apiTaskById(task.id); window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: [refreshed] })); }}/></>}</section>
-        {(origin || task.tarea_padre_id || subtasks.length > 0 || isAdmin) && <section className="ros-work-block"><h3>Organización del trabajo</h3>{(origin || task.tarea_padre_id) && <div className="ros-context-list">{origin && <a href={origin.href}><strong>{origin.label}</strong><span>{formatDate(origin.date)} · {origin.state || "Sin estado"}</span><b>↗</b></a>}{task.tarea_padre_id && <button type="button" onClick={() => onOpen(Number(task.tarea_padre_id))}><strong>Depende de la tarea #{task.tarea_padre_id}</strong><span>Estado: {task.tarea_padre_estado || "Sin datos"}</span></button>}</div>}<div className="ros-subtasks">{subtasks.map((subtask) => <button type="button" key={subtask.id} onClick={() => onOpen(subtask.id)}><span>{subtask.titulo}</span><b>{STATUSES.find((item) => item.id === subtask.estado)?.label || subtask.estado}</b></button>)}{subtasks.length === 0 && !isAdmin && <p className="ros-empty-copy">No hay subtareas cargadas.</p>}</div>{isAdmin && <div className="ros-subtask-create"><input value={subtaskTitle} placeholder="Agregar una subtarea" onChange={(event) => setSubtaskTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createSubtask(); }}/><button type="button" disabled={!subtaskTitle.trim() || creatingSubtask} onClick={createSubtask}>{creatingSubtask ? "Creando…" : "+ Agregar"}</button></div>}</section>}
-        <details className="ros-work-block ros-activity-history">
-          <summary>
-            <div><small>Último cambio</small><strong>{lastActivity ? lastActivity.contenido.replace(/^\[Actividad\]\s*/, "") : `Tarea creada · ${status.label}`}</strong></div>
-            <span>{formatDateTime(lastActivity?.created_at || task.created_at)} · Ver historial</span>
-          </summary>
-          <div className="ros-comments ros-activity-feed"><article className="activity"><div><strong>Sistema</strong><time>{formatDateTime(task.created_at)}</time></div><p>Creó la tarea.</p></article>{activityComments.map((item) => <article className="activity" key={item.id}><div><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></div><p>{renderizarTextoTarea(item.contenido.replace(/^\[Actividad\]\s*/, ""))}</p></article>)}</div>
-        </details>
+        {(origin || task.tarea_padre_id || subtasks.length > 0) && <section className="ros-work-block"><h3>Organización del trabajo</h3>{(origin || task.tarea_padre_id) && <div className="ros-context-list">{origin && <a href={origin.href}><strong>{origin.label}</strong><span>{formatDate(origin.date)} · {origin.state || "Sin estado"}</span><b>↗</b></a>}{task.tarea_padre_id && <button type="button" onClick={() => onOpen(Number(task.tarea_padre_id))}><strong>Depende de la tarea #{task.tarea_padre_id}</strong><span>Estado: {task.tarea_padre_estado || "Sin datos"}</span></button>}</div>}<div className="ros-subtasks">{subtasks.map((subtask) => <button type="button" key={subtask.id} onClick={() => onOpen(subtask.id)}><span>{subtask.titulo}</span><b>{STATUSES.find((item) => item.id === subtask.estado)?.label || subtask.estado}</b></button>)}</div></section>}
         <section className="ros-work-block"><h3>Comentarios</h3>
         {commentError && <div className="ros-inline-error">{commentError}</div>}
         {teamComments.length > 0 && <div className="ros-comments">{teamComments.map((item) => <article key={item.id}><div><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></div><p>{renderizarTextoTarea(item.contenido)}</p></article>)}</div>}
@@ -736,7 +714,6 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     }
     void onUpdate(task.id, { estado: status }, `movió la tarea de ${STATUSES.find((item) => item.id === task.estado)?.label || task.estado} a ${STATUSES.find((item) => item.id === status)?.label || status}`).catch(() => {});
   };
-  const createSubtask = async (parent, title) => onCreate({ titulo: title, asignado_a: parent.asignado_a, cliente_id: parent.cliente_id || null, estado: "pendiente", tipo_tarea: parent.tipo_tarea || null, subtipo: parent.subtipo || null, prioridad: parent.prioridad || "media", fecha_vencimiento: parent.fecha_vencimiento || null, tarea_padre_id: parent.id });
   const clearFilters = () => { setQuery(""); setResponsible("all"); setClient("all"); setSector("all"); setPriority("all"); setArea("all"); };
 
   const archiveTask = async (task, archived) => {
@@ -754,7 +731,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     {view === "calendar" && <TaskCalendar tasks={visible} onOpen={openTask} monthValue={calendarMonth} onMonthChange={setCalendarMonth}/>} {view === "clients" && <TasksByClient tasks={visible} onOpen={openTask}/>} {view !== "board" && visible.length === 0 && <div className="ros-no-results">{emptyMessage}</div>}
     {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
-  <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onCorrectProduction={onCorrectProduction} onConfirmProduction={onConfirmProduction} onApprove={onApprove} onArchive={archiveTask} onDelete={async (id) => { await onDelete(id); closeTask(); }} onCreateSubtask={createSubtask}/>
+  <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onCorrectProduction={onCorrectProduction} onConfirmProduction={onConfirmProduction} onApprove={onApprove} onArchive={archiveTask} onDelete={async (id) => { await onDelete(id); closeTask(); }}/>
   {creatingStatus && <NewTaskModal users={users} clients={clients} initialStatus={creatingStatus} onClose={() => setCreatingStatus(null)} onCreate={async (draft) => { const created = await onCreate(draft); setCreatingStatus(null); openTask(created.id); }}/>}</>;
 }
 
