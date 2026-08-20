@@ -1,4 +1,6 @@
-const MAX_PER_DAY = 4;
+// La cartera vigente suma más de 120 piezas mensuales. Cinco espacios diarios
+// permiten distribuirla sin dejar clientes fuera del calendario.
+const MAX_PER_DAY = 5;
 
 export function normalizeEditorialPeriod(value) {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(value || ""))) {
