@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canRetryTaskUpdate, canUserMoveTask, mergeRelatedTasks } from "../../frontend/src/workspace-task-state.js";
+import { canRetryTaskUpdate, canUserMoveTask, canUserMoveTaskToState, isTaskFinalizer, mergeRelatedTasks } from "../../frontend/src/workspace-task-state.js";
 
 test("incorpora tareas por ID sin duplicarlas y conserva datos locales", () => {
   const current = [{ id: 10, titulo: "Anterior", cliente_nombre: "Cliente QA" }];
@@ -37,4 +37,21 @@ test("permite mover por nombre, usuario o colaboración sin habilitar tareas aje
   assert.equal(canUserMoveTask(task, { nombre: "Germán", usuario: "German", rol: "produccion" }), true);
   assert.equal(canUserMoveTask(task, { nombre: "Augusto", usuario: "Augusto", rol: "diseno" }), false);
   assert.equal(canUserMoveTask(task, { nombre: "Líder", usuario: "lider", rol: "admin" }), true);
+});
+
+test("empleados llegan hasta revisión y solo los finalizadores cierran o reabren", () => {
+  const ownTask = { estado: "en_progreso", asignado_a: "Augusto", propiedades_extra: {} };
+  const finishedTask = { ...ownTask, estado: "publicada" };
+  const augusto = { nombre: "Augusto", usuario: "Augusto", rol: "diseno" };
+  const oriana = { nombre: "Oriana", usuario: "Oriana", rol: "community" };
+  const franco = { nombre: "Franco Romero", usuario: "Franco", rol: "programacion" };
+  assert.equal(canUserMoveTaskToState(ownTask, augusto, "en_revision"), true);
+  assert.equal(canUserMoveTaskToState(ownTask, augusto, "publicada"), false);
+  assert.equal(canUserMoveTask(finishedTask, augusto), false);
+  assert.equal(canUserMoveTaskToState(finishedTask, augusto, "en_revision"), false);
+  assert.equal(canUserMoveTaskToState(ownTask, oriana, "publicada"), true);
+  assert.equal(canUserMoveTaskToState(finishedTask, oriana, "en_revision"), true);
+  assert.equal(canUserMoveTaskToState(ownTask, franco, "publicada"), true);
+  assert.equal(isTaskFinalizer(oriana), true);
+  assert.equal(canUserMoveTaskToState(ownTask, oriana, "programada"), false);
 });
