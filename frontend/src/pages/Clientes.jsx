@@ -587,7 +587,7 @@ export function ClientesAdminPage() {
                     onChange={(e) => setNuevoCliente((prev) => ({ ...prev, disenador_responsable: e.target.value }))}>
                     <option value="">Elegir diseñador</option>
                     <option value="Augusto">Augusto</option>
-                    <option value="Mariano Mesa">Mariano Mesa</option>
+                    <option value="Mariano Meza">Mariano Meza</option>
                   </select>
                 </label>
                 <label className="cliente-service-field">

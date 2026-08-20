@@ -34,13 +34,13 @@ test("Oriana combina historias y publicaciones del mes sin contar otros período
   assert.equal(oriana.earned, 233333);
 });
 
-test("reconoce alias históricos de Mariano Mesa y separa cada especialidad", () => {
+test("reconoce alias históricos de Mariano Meza y separa cada especialidad", () => {
   const tasks = [
     task(1, "Mariano Meza", "publicada", "diseñar", { type: "diseno" }),
     task(2, "German", "publicada", "filmar", { type: "produccion" }),
   ];
   const result = calculateSalaryDashboard({ period: "2026-08", tasks });
-  assert.equal(result.employees.find((employee) => employee.name === "Mariano Mesa").completed, 1);
+  assert.equal(result.employees.find((employee) => employee.name === "Mariano Meza").completed, 1);
   assert.equal(result.employees.find((employee) => employee.name === "Germán").completed, 1);
 });
 
