@@ -259,6 +259,28 @@ export function createWilsonChatRouter({ express, pool }) {
     } catch (error) { return next(error); }
   });
 
+  router.get("/notificaciones", async (req, res, next) => {
+    try {
+      const result = await pool.query(
+        `SELECT COUNT(*)::int no_leidos
+         FROM wilson_mensajes m
+         JOIN wilson_conversaciones c ON c.id=m.conversacion_id
+         WHERE c.usuario_id=$1 AND c.periodo=$2 AND m.remitente='wilson'
+           AND m.created_at>COALESCE(c.last_read_at,'-infinity'::timestamptz)`,
+        [req.auth.id, wilsonPeriod()],
+      );
+      return res.json({ no_leidos: result.rows[0]?.no_leidos || 0 });
+    } catch (error) { return next(error); }
+  });
+
+  router.post("/conversacion/leida", async (req, res, next) => {
+    try {
+      const current = await conversation(pool, req.auth.id);
+      await pool.query(`UPDATE wilson_conversaciones SET last_read_at=NOW(),updated_at=NOW() WHERE id=$1`, [current.id]);
+      return res.json({ ok: true, no_leidos: 0 });
+    } catch (error) { return next(error); }
+  });
+
   router.post("/mensajes", async (req, res, next) => {
     try {
       const content = String(req.body.contenido || "").trim().slice(0, 2000);
