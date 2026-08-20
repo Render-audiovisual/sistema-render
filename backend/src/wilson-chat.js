@@ -73,12 +73,106 @@ function taskSummary(tasks, limit = 5) {
   return tasks.slice(0, limit).map((task, index) => `${index + 1}. ${task.titulo}${task.cliente_nombre ? ` — ${task.cliente_nombre}` : ""}`).join("\n");
 }
 
-function naturalReply(text, ranked, auth) {
+function normalizeText(value = "") {
+  return String(value).normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function isCarrusel(task) {
+  return normalizeText(`${task.titulo || ""} ${task.subtipo || ""} ${task.tipo_tarea || ""}`).includes("carrusel");
+}
+
+export function buildEmployeeSnapshot(tasks = [], user = {}, period = wilsonPeriod()) {
+  const currentTasks = tasks.filter((task) => {
+    const date = String(task.fecha_vencimiento || task.updated_at || "").slice(0, 7);
+    return date === period || task.estado !== "publicada";
+  });
+  const productionRecords = currentTasks.flatMap((task) => {
+    const records = Array.isArray(task.propiedades_extra?.produccion_registros) ? task.propiedades_extra.produccion_registros : [];
+    return records.filter((record) => String(record.periodo_objetivo || record.fecha || "").slice(0, 7) === period)
+      .map((record) => ({ ...record, task_id: task.id, titulo: task.titulo, cliente_nombre: task.cliente_nombre }));
+  });
+  const role = user.rol;
+  const relevant = role === "diseno" ? currentTasks.filter(isCarrusel)
+    : role === "edicion" ? currentTasks.filter((task) => task.tipo_tarea === "edicion")
+      : role === "produccion" ? currentTasks.filter(isProductionVisitTask)
+        : role === "community" ? currentTasks.filter((task) => task.estado === "en_revision" || task.estado === "publicada")
+          : currentTasks;
+  return {
+    user,
+    tasks: relevant,
+    productionRecords,
+    videosRecorded: productionRecords.reduce((total, record) => total + (Number(record.cantidad) || 0), 0),
+    pending: relevant.filter((task) => ["pendiente", "en_progreso"].includes(task.estado)),
+    review: relevant.filter((task) => task.estado === "en_revision"),
+    completed: relevant.filter((task) => task.estado === "publicada"),
+  };
+}
+
+export function buildEmployeeStatusReply(snapshot, question = "") {
+  const name = snapshot.user.nombre || snapshot.user.usuario || "Esta persona";
+  const firstName = name.split(/\s+/)[0];
+  const asksRecords = /registr|video|grabo|grabacion|film/.test(normalizeText(question));
+  if (snapshot.user.rol === "produccion") {
+    if (asksRecords) {
+      if (!snapshot.productionRecords.length) return { text: `${firstName} todavía no registró videos en el sistema durante este mes.`, tasks: snapshot.tasks.filter(isProductionVisitTask) };
+      const byClient = new Map();
+      for (const record of snapshot.productionRecords) {
+        const key = record.cliente_nombre || record.titulo || "Sin cliente";
+        byClient.set(key, (byClient.get(key) || 0) + (Number(record.cantidad) || 0));
+      }
+      const detail = [...byClient].map(([client, amount]) => `${client}: ${amount}`).join(" · ");
+      return { text: `Sí. ${firstName} registró ${snapshot.videosRecorded} video${snapshot.videosRecorded === 1 ? "" : "s"} este mes. ${detail}.`, tasks: snapshot.tasks.filter((task) => snapshot.productionRecords.some((record) => Number(record.task_id) === Number(task.id))) };
+    }
+    return { text: `${firstName} tiene ${snapshot.pending.length} visita${snapshot.pending.length === 1 ? "" : "s"} abierta${snapshot.pending.length === 1 ? "" : "s"}, ${snapshot.review.length} en revisión y ${snapshot.videosRecorded} videos registrados este mes.`, tasks: snapshot.pending };
+  }
+  if (snapshot.user.rol === "diseno") {
+    return { text: `${firstName} tiene ${snapshot.pending.length} carrusel${snapshot.pending.length === 1 ? "" : "es"} pendiente${snapshot.pending.length === 1 ? "" : "s"}, ${snapshot.review.length} en revisión y ${snapshot.completed.length} finalizado${snapshot.completed.length === 1 ? "" : "s"} este mes.`, tasks: [...snapshot.review, ...snapshot.pending] };
+  }
+  if (snapshot.user.rol === "edicion") {
+    return { text: `${firstName} tiene ${snapshot.pending.length} edición${snapshot.pending.length === 1 ? "" : "es"} pendiente${snapshot.pending.length === 1 ? "" : "s"}, ${snapshot.review.length} en revisión y ${snapshot.completed.length} finalizada${snapshot.completed.length === 1 ? "" : "s"} este mes.`, tasks: [...snapshot.review, ...snapshot.pending] };
+  }
+  if (snapshot.user.rol === "community") {
+    return { text: `${firstName} tiene ${snapshot.review.length} tarea${snapshot.review.length === 1 ? "" : "s"} para revisar o publicar y ${snapshot.completed.length} finalizada${snapshot.completed.length === 1 ? "" : "s"} este mes.`, tasks: snapshot.review };
+  }
+  return { text: `${name} tiene ${snapshot.pending.length} tareas abiertas, ${snapshot.review.length} en revisión y ${snapshot.completed.length} finalizadas este mes.`, tasks: [...snapshot.review, ...snapshot.pending] };
+}
+
+async function resolveTargetUser(pool, auth, text) {
+  const users = await pool.query(`SELECT id,usuario,nombre,rol FROM usuarios ORDER BY nombre`);
+  const normalized = normalizeText(text);
+  const mentioned = users.rows.find((user) => {
+    const names = [user.nombre, user.usuario, String(user.nombre || "").split(/\s+/)[0]].map(normalizeText).filter((value) => value.length > 2);
+    return names.some((name) => new RegExp(`(^| )${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`).test(normalized));
+  });
+  if (!mentioned) return { target: { id: auth.id, usuario: auth.usuario, nombre: auth.nombre, rol: auth.rol }, denied: false };
+  const own = Number(mentioned.id) === Number(auth.id);
+  if (!own && auth.rol !== "admin") return { target: { id: auth.id, usuario: auth.usuario, nombre: auth.nombre, rol: auth.rol }, denied: true };
+  return { target: mentioned, denied: false };
+}
+
+async function employeeTasks(pool, user) {
+  const access = buildTaskAccessClause({ ...user, rol: "personal" }, "t", "$1");
+  const result = await pool.query(
+    `SELECT t.id,t.titulo,t.estado,t.asignado_a,t.prioridad,t.tipo_tarea,t.subtipo,t.propiedades_extra,
+      t.created_at,t.updated_at,c.nombre cliente_nombre,to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento
+     FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+     WHERE t.propiedades_extra->>'workspace'='render_os'
+       AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'${access.sql}
+     ORDER BY t.fecha_vencimiento NULLS LAST,t.id`, [access.value],
+  );
+  return result.rows;
+}
+
+function naturalReply(text, ranked, auth, snapshot = null, denied = false) {
   const normalized = String(text || "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
   const actionable = ranked.recommendations.filter((task) => !task.blocked && !task.waiting_review);
   const overdue = actionable.filter((task) => task.due_days < 0);
   const today = actionable.filter((task) => task.due_days === 0);
   const waiting = ranked.recommendations.filter((task) => task.waiting_review);
+  if (denied) return { text: "Puedo ayudarte con tus tareas, pero no mostrarte el detalle personal de otro integrante.", tasks: [] };
+  const asksEmployeeStatus = snapshot && (/registr|video|grabo|como viene|como va|reporte|rendimiento|que hizo|que le falta|cuanto hizo/.test(normalized)
+    || Number(snapshot.user.id) !== Number(auth.id));
+  if (asksEmployeeStatus) return buildEmployeeStatusReply(snapshot, text);
   if (/hola|buen dia|buenas/.test(normalized)) return { text: `Hola, ${String(auth.nombre || auth.usuario).split(" ")[0]}. ¿Querés que ordenemos lo de hoy?`, tasks: [] };
   if (/reporte|como vengo|rendimiento/.test(normalized)) {
     return { text: `Tenés ${overdue.length} vencidas, ${today.length} para hoy y ${waiting.length} esperando revisión.${overdue.length ? " Primero recuperemos las vencidas." : " Venís al día con los vencimientos."}`, tasks: actionable.slice(0, 5) };
@@ -114,8 +208,10 @@ export function createWilsonChatRouter({ express, pool }) {
       if (!content) return res.status(400).json({ error: "Escribí un mensaje." });
       const current = await conversation(pool, req.auth.id);
       const userMessage = await append(pool, current.id, "usuario", content);
-      const priorities = await personalTasks(pool, req.auth);
-      const reply = naturalReply(content, priorities, req.auth);
+      const { target, denied } = await resolveTargetUser(pool, req.auth, content);
+      const priorities = await personalTasks(pool, denied ? req.auth : target);
+      const snapshot = denied ? null : buildEmployeeSnapshot(await employeeTasks(pool, target), target);
+      const reply = naturalReply(content, priorities, req.auth, snapshot, denied);
       const assistantMessage = await append(pool, current.id, "wilson", reply.text, "respuesta", { task_ids: reply.tasks.map((task) => task.id), intent: reply.intent || null });
       return res.status(201).json({ userMessage, assistantMessage, tasks: reply.tasks, priorities });
     } catch (error) { return next(error); }
