@@ -11,7 +11,7 @@
 
 .render-workspace .ros-task-main-column {
   padding-bottom: 10px;
-  padding-top: 22px;
+  padding-top: 32px;
 }
 
 .render-workspace .ros-task-context-rail {
@@ -20,12 +20,12 @@
 }
 
 .render-workspace .ros-task-document-kind {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .render-workspace .ros-task-document-heading {
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 18px;
 }
 
 .render-workspace .ros-task-document-heading h2,
@@ -36,9 +36,9 @@
 
 .render-workspace .ros-task-document-properties {
   border-bottom: 0;
-  gap: 0;
+  gap: 2px;
   grid-template-columns: 1fr;
-  margin-bottom: 8px;
+  margin-bottom: 14px;
   padding-bottom: 0;
 }
 
@@ -191,6 +191,7 @@
 
 .render-workspace .ros-task-comments-footer .ros-comments article {
   align-items: flex-start;
+  background: transparent;
   border: 0;
   display: grid;
   gap: 10px;
@@ -205,6 +206,7 @@
 }
 
 .render-workspace .ros-task-comments-footer .ros-comment-body {
+  display: block;
   min-width: 0;
 }
 
@@ -213,6 +215,7 @@
   display: flex;
   gap: 7px;
   justify-content: flex-start;
+  margin: 1px 0 0;
 }
 
 .render-workspace .ros-task-comments-footer .ros-comment-body strong {
@@ -230,17 +233,20 @@
   color: #4f554c;
   font-size: 11px;
   line-height: 1.55;
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   overflow-wrap: anywhere;
 }
 
 .render-workspace .ros-task-comments-footer .ros-comment-create {
-  align-items: start;
+  align-items: center;
+  background: #fafbf8;
+  border: 1px solid #e0e4dc;
+  border-radius: 10px;
   display: grid;
-  gap: 10px;
+  gap: 12px;
   grid-template-columns: 30px minmax(0, 1fr) auto;
-  margin: 2px 0 0;
-  padding: 0 0 14px;
+  margin: 4px 0 0;
+  padding: 10px 10px 10px 12px;
 }
 
 .render-workspace .ros-task-comments-footer .ros-comment-create textarea {
@@ -250,8 +256,9 @@
   border-radius: 0;
   color: #30352d;
   line-height: 1.5;
-  min-height: 38px;
-  padding: 6px 2px 8px;
+  max-height: 120px;
+  min-height: 44px;
+  padding: 10px 2px 8px;
   resize: vertical;
 }
 
@@ -261,9 +268,9 @@
 }
 
 .render-workspace .ros-task-comments-footer .ros-comment-create button {
-  align-self: start;
-  min-height: 34px;
-  padding: 7px 10px;
+  align-self: center;
+  min-height: 40px;
+  padding: 8px 12px;
 }
 
 @media (max-width: 640px) {
@@ -274,7 +281,7 @@
   }
 
   .render-workspace .ros-task-main-column {
-    padding-top: 17px;
+    padding-top: 24px;
   }
 
   .render-workspace .ros-task-document-heading h2,
@@ -308,6 +315,7 @@
   }
 
   .render-workspace .ros-task-comments-footer .ros-comment-create {
+    align-items: start;
     grid-template-columns: 30px minmax(0, 1fr);
   }
 
