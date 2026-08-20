@@ -24,10 +24,12 @@ import { applyCompensations, nextPeriod } from "./finance-calculation.js";
 import { buildAutomaticFinanceSummary, previousPeriod } from "./automatic-finance.js";
 import { getCardDollarRate } from "./exchange-rate.js";
 import { createWilsonRouter } from "./wilson-integration.js";
+import { createWilsonChatRouter, scheduleWilsonMessages } from "./wilson-chat.js";
 import { runMigrations } from "./migrations.js";
 import { resolveUserRole } from "./user-roles.js";
 import { canRecordProduction, getProductionProgress, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
+import { rankTaskPriorities } from "./task-priority.js";
 import { filterReportDataForUser } from "./report-access.js";
 import { createGoogleDrivePublicRouter, createGoogleDriveRouter } from "./google-drive.js";
 import { normalizeClientConfiguration, normalizePeriod } from "./client-config.js";
@@ -245,6 +247,7 @@ router.use("/drive", createGoogleDrivePublicRouter({ express, pool }));
 router.use(requireAuthentication);
 
 router.use("/drive", createGoogleDriveRouter({ express, pool, requireRole }));
+router.use("/wilson", createWilsonChatRouter({ express, pool }));
 
 const NOTAS_CATEGORIAS = new Set(["general", "diseno", "web", "reunion", "contenido"]);
 
@@ -2691,6 +2694,32 @@ router.get("/tareas", async (req, res, next) => {
   }
 });
 
+router.get("/tareas-recomendaciones", async (req, res, next) => {
+  try {
+    const access = buildTaskAccessClause(req.auth, "t", "$1");
+    const params = access.value ? [access.value] : [];
+    const result = await pool.query(
+      `SELECT t.id,t.titulo,t.estado,t.asignado_a,t.prioridad,t.tipo_tarea,t.subtipo,
+              t.propiedades_extra,t.created_at,t.updated_at,c.nombre AS cliente_nombre,
+              to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
+              to_char(p.fecha_programada,'YYYY-MM-DD') AS publicacion_fecha_programada
+       FROM tareas t
+       LEFT JOIN clientes c ON c.id=t.cliente_id
+       LEFT JOIN publicaciones p ON p.id=t.publicacion_id
+       WHERE t.propiedades_extra->>'workspace'='render_os'
+         AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+         AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
+         AND t.estado <> 'publicada'${access.sql}
+       ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC`,
+      params,
+    );
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Argentina/Cordoba", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    return res.json({ ...rankTaskPriorities(result.rows, { today, limit: 50 }), generated_at: new Date().toISOString() });
+  } catch (error) { return next(error); }
+});
+
 router.get("/tareas/:id", async (req, res, next) => {
   try {
     if (req.query.workspace !== "render_os") {
@@ -3355,5 +3384,6 @@ if (process.env.RENDER_DISABLE_SERVER_START !== "true") (async () => {
     console.log(`Backend listening on http://localhost:${port}`);
     scheduleEditorialCalendar();
     scheduleRenderOsTrashCleanup(pool);
+    scheduleWilsonMessages(pool);
   });
 })();

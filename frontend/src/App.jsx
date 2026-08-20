@@ -18,6 +18,7 @@ import { SueldosPage } from "./pages/Sueldos.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
 import { DrivePage } from "./pages/Drive.jsx";
+import { WilsonConversationsPage } from "./pages/WilsonConversations.jsx";
 
 export function App() {
   const path = window.location.pathname;
@@ -50,7 +51,7 @@ export function App() {
   }
 
   const rutasCompartidas = esAdmin
-    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/bloc-notas", "/drive"]
+    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/bloc-notas", "/drive", "/wilson-conversaciones"]
     : ["/perfil", "/workspace/tareas", "/bloc-notas", "/drive", "/planificacion-historias", "/planificacion-publicaciones"];
   const rutaPermitida =
     esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
@@ -74,6 +75,9 @@ export function App() {
     }
     if (path === "/drive") {
       return <DrivePage sesion={sesion} />;
+    }
+    if (path === "/wilson-conversaciones") {
+      return <WilsonConversationsPage />;
     }
     if (path === "/lider") {
       return <LiderDashboard />;

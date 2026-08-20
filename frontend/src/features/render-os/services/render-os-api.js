@@ -35,7 +35,7 @@ export async function apiTaskPage(options = {}) {
   if (!response.ok) throw new Error(body.error || "No se pudieron cargar las tareas.");
   const items = Array.isArray(body) ? body : [];
   const totalHeader = Number.parseInt(response.headers.get("X-Total-Count"), 10);
-  return { items, total: Number.isFinite(totalHeader) ? totalHeader : offset + items.length };
+  return { items, total: Number.isFinite(totalHeader) ? totalHeader : (settings.offset || 0) + items.length };
 }
 
 export function apiTaskById(id) {

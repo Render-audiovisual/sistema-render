@@ -12,8 +12,10 @@ import { getNewTaskSuggestions, getTaskDirectUrl } from "../features/render-os/u
 import { getHoyLocalISO } from "../shared/date/date-utils.js";
 import { normalizeSelectionRect, selectionRectsIntersect } from "../features/render-os/utils/selection-geometry.js";
 import { DriveUploader } from "../features/drive/DriveUploader.jsx";
+import { WilsonAssistant } from "../features/render-os/WilsonAssistant.jsx";
 import "./WorkspaceReadOnly.css";
 import "./TaskDetailCompact.css";
+import "../features/render-os/WilsonAssistant.css";
 
 function Avatar({ person, name }) {
   const label = person?.nombre || name || "Sin asignar";
@@ -733,6 +735,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
   <TaskDetail task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onCorrectProduction={onCorrectProduction} onConfirmProduction={onConfirmProduction} onApprove={onApprove} onTrashAction={async (task, action) => { await onBulkAction([task.id], action); closeTask(); }}/>
+  <WilsonAssistant onOpenTask={openTask}/>
   {creatingStatus && <NewTaskModal users={users} clients={clients} initialStatus={creatingStatus} onClose={() => setCreatingStatus(null)} onCreate={async (draft) => { const created = await onCreate(draft); setCreatingStatus(null); openTask(created.id); }}/>}</>;
 }
 
