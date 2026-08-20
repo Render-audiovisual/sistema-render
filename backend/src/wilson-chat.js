@@ -77,6 +77,31 @@ function normalizeText(value = "") {
   return String(value).normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+export function shouldUsePreviousTarget(text = "") {
+  return /\b(mandale|decile|pedile|avisale|recordale|escribile|contactalo|contactala|que reporte|que confirme|su reporte|cuantos videos)\b/.test(normalizeText(text));
+}
+
+function isEmployeeMessageCommand(text = "") {
+  return /\b(mandale|decile|pedile|avisale|recordale|escribile|contactalo|contactala)\b/.test(normalizeText(text));
+}
+
+export function buildEmployeeReminder(user = {}, snapshot = {}) {
+  const firstName = String(user.nombre || user.usuario || "").trim().split(/\s+/)[0] || "equipo";
+  if (user.rol === "produccion") return `Che ${firstName}, necesito que me confirmes cuántos videos grabaste este mes y en qué clientes, así actualizamos tu reporte en el sistema.`;
+  if (user.rol === "diseno") return `Che ${firstName}, confirmame cuántos carruseles completaste y cuáles ya están listos para pasar a Revisar, así actualizamos tu reporte.`;
+  if (user.rol === "edicion") return `Che ${firstName}, confirmame qué ediciones terminaste y cuáles ya están listas para pasar a Revisar, así actualizamos tu reporte.`;
+  if (user.rol === "community") return `Che ${firstName}, confirmame qué publicaciones completaste y qué tareas siguen pendientes, así actualizamos tu reporte.`;
+  return `Che ${firstName}, confirmame qué tareas completaste y cuáles siguen pendientes, así actualizamos tu reporte.`;
+}
+
+function findMentionedUser(users = [], text = "") {
+  const normalized = normalizeText(text);
+  return users.find((user) => {
+    const names = [user.nombre, user.usuario, String(user.nombre || "").split(/\s+/)[0]].map(normalizeText).filter((value) => value.length > 2);
+    return names.some((name) => new RegExp(`(^| )${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`).test(normalized));
+  });
+}
+
 function isCarrusel(task) {
   return normalizeText(`${task.titulo || ""} ${task.subtipo || ""} ${task.tipo_tarea || ""}`).includes("carrusel");
 }
@@ -137,17 +162,45 @@ export function buildEmployeeStatusReply(snapshot, question = "") {
   return { text: `${name} tiene ${snapshot.pending.length} tareas abiertas, ${snapshot.review.length} en revisión y ${snapshot.completed.length} finalizadas este mes.`, tasks: [...snapshot.review, ...snapshot.pending] };
 }
 
-async function resolveTargetUser(pool, auth, text) {
+async function resolveTargetUser(pool, auth, text, previousTargetId = null) {
   const users = await pool.query(`SELECT id,usuario,nombre,rol FROM usuarios ORDER BY nombre`);
-  const normalized = normalizeText(text);
-  const mentioned = users.rows.find((user) => {
-    const names = [user.nombre, user.usuario, String(user.nombre || "").split(/\s+/)[0]].map(normalizeText).filter((value) => value.length > 2);
-    return names.some((name) => new RegExp(`(^| )${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`).test(normalized));
-  });
-  if (!mentioned) return { target: { id: auth.id, usuario: auth.usuario, nombre: auth.nombre, rol: auth.rol }, denied: false };
+  const mentioned = findMentionedUser(users.rows, text);
+  if (!mentioned && auth.rol === "admin" && previousTargetId && shouldUsePreviousTarget(text)) {
+    const previous = users.rows.find((user) => Number(user.id) === Number(previousTargetId));
+    if (previous) return { target: previous, denied: false, source: "context" };
+  }
+  if (!mentioned) return { target: { id: auth.id, usuario: auth.usuario, nombre: auth.nombre, rol: auth.rol }, denied: false, source: "self" };
   const own = Number(mentioned.id) === Number(auth.id);
-  if (!own && auth.rol !== "admin") return { target: { id: auth.id, usuario: auth.usuario, nombre: auth.nombre, rol: auth.rol }, denied: true };
-  return { target: mentioned, denied: false };
+  if (!own && auth.rol !== "admin") return { target: { id: auth.id, usuario: auth.usuario, nombre: auth.nombre, rol: auth.rol }, denied: true, source: "denied" };
+  return { target: mentioned, denied: false, source: own ? "self" : "explicit" };
+}
+
+async function previousTargetId(pool, conversationId) {
+  const result = await pool.query(
+    `SELECT metadata->'target_user'->>'id' target_id
+     FROM wilson_mensajes
+     WHERE conversacion_id=$1 AND remitente='wilson' AND metadata ? 'target_user'
+     ORDER BY created_at DESC,id DESC LIMIT 1`,
+    [conversationId],
+  );
+  if (result.rows[0]?.target_id) return result.rows[0].target_id;
+
+  // Compatibilidad con conversaciones iniciadas antes de guardar target_user:
+  // recupera la última persona nombrada explícitamente por el Líder.
+  const [users, messages] = await Promise.all([
+    pool.query(`SELECT id,usuario,nombre,rol FROM usuarios ORDER BY nombre`),
+    pool.query(
+      `SELECT contenido FROM wilson_mensajes
+       WHERE conversacion_id=$1 AND remitente='usuario'
+       ORDER BY created_at DESC,id DESC LIMIT 8`,
+      [conversationId],
+    ),
+  ]);
+  for (const message of messages.rows) {
+    const mentioned = findMentionedUser(users.rows, message.contenido);
+    if (mentioned) return mentioned.id;
+  }
+  return null;
 }
 
 async function employeeTasks(pool, user) {
@@ -207,12 +260,28 @@ export function createWilsonChatRouter({ express, pool }) {
       const content = String(req.body.contenido || "").trim().slice(0, 2000);
       if (!content) return res.status(400).json({ error: "Escribí un mensaje." });
       const current = await conversation(pool, req.auth.id);
+      const priorTarget = await previousTargetId(pool, current.id);
       const userMessage = await append(pool, current.id, "usuario", content);
-      const { target, denied } = await resolveTargetUser(pool, req.auth, content);
+      const { target, denied, source } = await resolveTargetUser(pool, req.auth, content, priorTarget);
       const priorities = await personalTasks(pool, denied ? req.auth : target);
       const snapshot = denied ? null : buildEmployeeSnapshot(await employeeTasks(pool, target), target);
+      if (!denied && req.auth.rol === "admin" && isEmployeeMessageCommand(content)) {
+        if (source === "self") {
+          const assistantMessage = await append(pool, current.id, "wilson", "Decime a quién querés que le escriba antes de preparar el mensaje.", "respuesta");
+          return res.status(201).json({ userMessage, assistantMessage, tasks: [], priorities });
+        }
+        const token = crypto.randomUUID();
+        const draft = buildEmployeeReminder(target, snapshot);
+        await pool.query(
+          `INSERT INTO wilson_acciones_pendientes(token,conversacion_id,usuario_id,accion,payload,expires_at)
+           VALUES($1,$2,$3,'enviar_mensaje_empleado',$4::jsonb,NOW()+INTERVAL '30 minutes')`,
+          [token, current.id, req.auth.id, JSON.stringify({ target_user_id: target.id, target_name: target.nombre, message: draft })],
+        );
+        const assistantMessage = await append(pool, current.id, "wilson", `Voy a enviarle a ${target.nombre}:\n\n“${draft}”\n\n¿Confirmás?`, "confirmacion", { token, target_user: target });
+        return res.status(201).json({ userMessage, assistantMessage, tasks: [], priorities });
+      }
       const reply = naturalReply(content, priorities, req.auth, snapshot, denied);
-      const assistantMessage = await append(pool, current.id, "wilson", reply.text, "respuesta", { task_ids: reply.tasks.map((task) => task.id), intent: reply.intent || null });
+      const assistantMessage = await append(pool, current.id, "wilson", reply.text, "respuesta", { task_ids: reply.tasks.map((task) => task.id), intent: reply.intent || null, target_user: denied ? null : target });
       return res.status(201).json({ userMessage, assistantMessage, tasks: reply.tasks, priorities });
     } catch (error) { return next(error); }
   });
@@ -236,11 +305,23 @@ export function createWilsonChatRouter({ express, pool }) {
   router.post("/confirmaciones/:token", async (req, res, next) => {
     const client = await pool.connect();
     try {
-      if (!canRecordProduction(req.auth)) { await client.query("ROLLBACK"); return res.status(403).json({ error: "No tenés permiso para confirmar este registro." }); }
       await client.query("BEGIN");
       const pending = await client.query(`SELECT * FROM wilson_acciones_pendientes WHERE token=$1 AND usuario_id=$2 AND confirmed_at IS NULL AND expires_at>NOW() FOR UPDATE`, [req.params.token, req.auth.id]);
       const action = pending.rows[0];
       if (!action) { await client.query("ROLLBACK"); return res.status(409).json({ error: "La confirmación venció o ya fue utilizada." }); }
+      if (action.accion === "enviar_mensaje_empleado") {
+        if (req.auth.rol !== "admin") { await client.query("ROLLBACK"); return res.status(403).json({ error: "Solo un Líder puede enviar avisos a otra persona." }); }
+        const target = await client.query(`SELECT id,nombre FROM usuarios WHERE id=$1`, [action.payload.target_user_id]);
+        if (!target.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La persona destinataria ya no está disponible." }); }
+        const targetConversation = await conversation(client, target.rows[0].id);
+        await append(client, targetConversation.id, "wilson", action.payload.message, "mensaje_lider", { ordered_by: req.auth.id, ordered_by_name: getTaskActor(req.auth) });
+        await client.query(`UPDATE wilson_acciones_pendientes SET confirmed_at=NOW() WHERE token=$1`, [action.token]);
+        await client.query(`INSERT INTO integracion_auditoria(integracion,canal,actor_id,actor_nombre,accion,detalles) VALUES('wilson','web',$1,$2,'enviar_mensaje_empleado',$3::jsonb)`, [String(req.auth.id), getTaskActor(req.auth), JSON.stringify({ target_user_id: target.rows[0].id, target_name: target.rows[0].nombre, message: action.payload.message })]);
+        const message = await append(client, action.conversacion_id, "wilson", `Listo. Le envié el mensaje a ${target.rows[0].nombre}.`, "accion_confirmada", { target_user: target.rows[0] });
+        await client.query("COMMIT");
+        return res.json({ message, target_user_id: target.rows[0].id });
+      }
+      if (!canRecordProduction(req.auth)) { await client.query("ROLLBACK"); return res.status(403).json({ error: "No tenés permiso para confirmar este registro." }); }
       const taskResult = await client.query(`SELECT * FROM tareas WHERE id=$1 FOR UPDATE`, [action.tarea_id]); const task = taskResult.rows[0];
       if (!task || !isProductionVisitTask(task)) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La visita ya no está disponible." }); }
       const progress = getProductionProgress(task); const amount = Number(action.payload.cantidad); const date = action.payload.fecha;

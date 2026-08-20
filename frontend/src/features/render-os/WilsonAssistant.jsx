@@ -85,7 +85,16 @@ export function WilsonAssistant({ onOpenTask }) {
     try {
       const result = await apiRequest("/api/wilson/mensajes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contenido: clean }) });
       setData(result.priorities);
-      setMessages((current) => [...current, { id: result.assistantMessage.id, role: "assistant", text: result.assistantMessage.contenido, tasks: result.tasks || [], intent: result.assistantMessage.metadata?.intent || null }]);
+      setMessages((current) => [...current, {
+        id: result.assistantMessage.id,
+        role: "assistant",
+        text: result.assistantMessage.contenido,
+        tasks: result.tasks || [],
+        intent: result.assistantMessage.metadata?.intent || null,
+        confirmation: result.assistantMessage.metadata?.token
+          ? { token: result.assistantMessage.metadata.token, task_id: result.assistantMessage.metadata.task_id }
+          : null,
+      }]);
     } catch (reason) { setError(reason.message || "No pude responderte."); }
     finally { setLoading(false); }
   };
@@ -102,7 +111,10 @@ export function WilsonAssistant({ onOpenTask }) {
     setLoading(true); setError("");
     try {
       const result = await apiRequest(`/api/wilson/confirmaciones/${confirmation.token}`, { method: "POST" });
-      setMessages((current) => [...current, { id: result.message.id, role: "assistant", text: result.message.contenido }]);
+      setMessages((current) => [
+        ...current.map((message) => message.confirmation?.token === confirmation.token ? { ...message, confirmation: null } : message),
+        { id: result.message.id, role: "assistant", text: result.message.contenido },
+      ]);
     } catch (reason) { setError(reason.message || "No pude confirmar la acción."); }
     finally { setLoading(false); }
   };
