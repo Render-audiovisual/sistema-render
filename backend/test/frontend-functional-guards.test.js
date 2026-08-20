@@ -103,7 +103,7 @@ test("todo el equipo puede abrir el formulario y crear únicamente tareas RENDER
   assert.match(workspaceSource, /body: JSON\.stringify\(\{ \.\.\.draft, workspace: "render_os" \}\)/);
 });
 
-test("todo el equipo puede archivar, enviar a Papelera y restaurar selecciones", () => {
+test("todo el equipo puede enviar a Papelera y restaurar selecciones", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   const serverSource = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
   assert.match(workspaceSource, /normalizeSelectionRect/);
