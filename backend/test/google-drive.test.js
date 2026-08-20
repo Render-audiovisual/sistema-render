@@ -14,7 +14,7 @@ test("los carruseles de Augusto se dirigen exclusivamente a su Drive", () => {
 });
 
 test("los diseños de Mariano se dirigen exclusivamente a su Drive", () => {
-  const result = resolveDriveRoot({ titulo: "Flyer del mes", tipo_tarea: "diseño", asignado_a: "Mariano Mesa" });
+  const result = resolveDriveRoot({ titulo: "Flyer del mes", tipo_tarea: "diseño", asignado_a: "Mariano Meza" });
   assert.equal(result.id, DRIVE_ROOTS.mariano);
   assert.equal(result.key, "mariano");
 });

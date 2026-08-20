@@ -31,7 +31,7 @@ const KNOWN_WHATSAPP_ACCOUNTS = [
   { hash: "919b2d579ce977f7814bf24d754e6fa9d561d25c61ee06e7683a372cd566ee7e", name: "Augusto", role: "diseno", leader: false },
   { hash: "5028709cf82d1cc48f174b565e3ca8bf07efb7ccc3e20d2a713dc88bd9957819", name: "Germán", role: "produccion", leader: false },
   { hash: "571fe5c68e0b986e380c466bffe5ec2e283c7d812a2717fe243fbff366a58a46", name: "Luciano", role: "edicion", leader: false },
-  { hash: "f1e60232f9cb2d8abc631090c963c389fc46d83e1ffae025e1342182bdce29d1", name: "Mariano Mesa", role: "diseno", leader: false },
+  { hash: "f1e60232f9cb2d8abc631090c963c389fc46d83e1ffae025e1342182bdce29d1", name: "Mariano Meza", role: "diseno", leader: false },
   { hash: "2e945d6cb00e0f5f616176c007825af691f1398ead3e12787800bd8e6c6968c6", name: "Oriana", role: "community", leader: false },
 ];
 const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
@@ -128,14 +128,14 @@ export function canWilsonAssignPrivately({ actorName, actorRole, leader = false 
 function canonicalWilsonPerson(value) {
   const normalized = normalizeWilsonText(value);
   if (["luciano", "milton", "milton luciano"].includes(normalized)) return "luciano";
-  if (["mariano", "mariano mesa", "mariano meza", "mesa", "meza"].includes(normalized)) return "mariano mesa";
+  if (["mariano", "mariano mesa", "mariano meza", "mesa", "meza"].includes(normalized)) return "mariano meza";
   return normalized;
 }
 
 export function wilsonPersonAliases(value) {
   const canonical = canonicalWilsonPerson(value);
   if (canonical === "luciano") return ["luciano", "milton", "milton luciano"];
-  if (canonical === "mariano mesa") return ["mariano", "mariano mesa", "mariano meza", "mesa", "meza"];
+  if (canonical === "mariano meza") return ["mariano", "mariano mesa", "mariano meza", "mesa", "meza"];
   if (canonical === "german") return ["german", "germán"];
   return canonical ? [canonical] : [];
 }

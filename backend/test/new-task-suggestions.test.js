@@ -18,7 +18,7 @@ const users = [
   { id: 1, nombre: "Luciano", usuario: "luciano", rol: "usuario" },
   { id: 2, nombre: "Líder", usuario: "lider", rol: "admin" },
   { id: 3, nombre: "Augusto Aguirre", usuario: "augusto", rol: "usuario" },
-  { id: 4, nombre: "Mariano Mesa", usuario: "mariano", rol: "usuario" },
+  { id: 4, nombre: "Mariano Meza", usuario: "mariano", rol: "usuario" },
   { id: 5, nombre: "Germán Beltzer", usuario: "german", rol: "usuario" },
   { id: 6, nombre: "Oriana", usuario: "oriana", rol: "usuario" },
 ];
@@ -40,7 +40,7 @@ test("una edición de video sugiere Luciano y Líder sin impedir cambios manuale
 
 test("carruseles, historias y diseños respetan el diseñador definido para cada cliente", () => {
   const mariano = getNewTaskSuggestions({ title: "iPhone Shop | Carrusel de ofertas", clients, users });
-  assert.equal(mariano.primary, "Mariano Mesa");
+  assert.equal(mariano.primary, "Mariano Meza");
   assert.deepEqual(mariano.collaborators, ["Oriana"]);
   assert.equal(mariano.tipo_tarea, "diseno");
   assert.equal(mariano.subtipo, "carrusel");
@@ -61,7 +61,7 @@ test("una visita de local se asigna a Germán y Líder", () => {
 
 test("un aviso importante se asigna al diseñador del cliente y a Oriana", () => {
   const suggestion = getNewTaskSuggestions({ title: "iPhone Shop | Aviso importante", clients, users });
-  assert.equal(suggestion.primary, "Mariano Mesa");
+  assert.equal(suggestion.primary, "Mariano Meza");
   assert.deepEqual(suggestion.collaborators, ["Oriana"]);
   assert.equal(suggestion.subtipo, "aviso importante");
 });

@@ -3,7 +3,7 @@ const FINAL_STATES = new Set(["publicada", "publicado", "terminada", "terminado"
 export const SALARY_RULES = Object.freeze({
   oriana: { name: "Oriana", role: "Community", model: "fixed", baseSalary: 350000, targetMode: "assigned" },
   augusto: { name: "Augusto", role: "Diseño", model: "fixed", baseSalary: 500000, targetMode: "fixed", target: 10 },
-  mariano: { name: "Mariano Mesa", role: "Diseño", model: "fixed", baseSalary: 600000, targetMode: "assigned" },
+  mariano: { name: "Mariano Meza", role: "Diseño", model: "fixed", baseSalary: 600000, targetMode: "assigned" },
   luciano: { name: "Luciano", role: "Edición", model: "per_unit", unitRate: null, targetMode: "assigned" },
   german: { name: "Germán", role: "Producción", model: "fixed", baseSalary: 650000, targetMode: "assigned" },
 });
