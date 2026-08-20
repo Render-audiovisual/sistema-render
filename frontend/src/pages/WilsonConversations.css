@@ -1,1 +1,190 @@
-.wilson-admin-page{background:#f7f8f4;color:#202418;min-height:100vh;padding:40px clamp(24px,5vw,72px) 64px}.wilson-admin-page>header{margin:0 auto 28px;max-width:1400px}.wilson-admin-page h1{font-size:clamp(30px,4vw,48px);letter-spacing:-.035em;margin:0 0 8px}.wilson-admin-page header p{color:#737a6f;margin:0}.wilson-admin-layout{background:#fff;border:1px solid #dfe3d9;border-radius:18px;display:grid;grid-template-columns:minmax(240px,320px) minmax(0,1fr);height:calc(100vh - 190px);margin:auto;max-width:1400px;min-height:520px;overflow:hidden}.wilson-admin-layout>aside{border-right:1px solid #e3e6df;overflow:auto;padding:10px}.wilson-admin-layout>aside button{background:transparent;border:0;border-radius:10px;color:#30362d;display:grid;gap:4px;padding:12px;text-align:left;width:100%}.wilson-admin-layout>aside button:hover,.wilson-admin-layout>aside button.active{background:#eef4df}.wilson-admin-layout>aside strong{font-size:13px}.wilson-admin-layout>aside small{color:#7b8276;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wilson-admin-layout>section{display:flex;flex-direction:column;min-width:0}.wilson-admin-chat-header{align-items:center;border-bottom:1px solid #e3e6df;display:flex;gap:12px;min-height:72px;padding:12px 20px}.wilson-admin-chat-header>div:last-child{display:grid}.wilson-admin-chat-header small{color:#7b8276;font-size:11px}.wilson-admin-avatar{align-items:center;background:#202418;border-radius:11px;color:#b5fc00;display:flex;font-weight:700;height:40px;justify-content:center;width:40px}.wilson-admin-messages{display:flex;flex:1;flex-direction:column;gap:12px;overflow:auto;padding:24px}.wilson-admin-messages article{background:#f3f5ef;border-radius:12px;max-width:min(680px,82%);padding:10px 13px}.wilson-admin-messages article.usuario{align-self:flex-end;background:#eaf4d5}.wilson-admin-messages article small{color:#737a6f;font-size:10px;font-weight:600}.wilson-admin-messages article p{font-size:13px;line-height:1.55;margin:3px 0 0;white-space:pre-wrap}.wilson-admin-messages .empty{color:#858b81;margin:auto}.wilson-admin-error{background:#fff0ed;border:1px solid #e8c8c1;border-radius:10px;color:#8e4036;margin:0 auto 16px;max-width:1400px;padding:10px 14px}@media(max-width:760px){.wilson-admin-page{padding:24px 12px 80px}.wilson-admin-layout{grid-template-columns:1fr;height:auto}.wilson-admin-layout>aside{border-bottom:1px solid #e3e6df;border-right:0;display:flex;overflow-x:auto}.wilson-admin-layout>aside button{min-width:180px}.wilson-admin-layout>section{height:64vh}}
+.wilson-admin-page {
+  background: #f7f8f4;
+  color: #202418;
+  min-height: 100vh;
+  padding: 40px clamp(24px, 5vw, 72px) 64px;
+}
+
+.wilson-admin-page > header {
+  margin: 0 auto 28px;
+  max-width: 1400px;
+}
+
+.wilson-admin-page h1 {
+  font-size: clamp(30px, 4vw, 48px);
+  letter-spacing: -.035em;
+  margin: 0 0 8px;
+}
+
+.wilson-admin-page header p {
+  color: #737a6f;
+  margin: 0;
+}
+
+.wilson-admin-layout {
+  background: #fff;
+  border: 1px solid #dfe3d9;
+  border-radius: 18px;
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  height: calc(100vh - 190px);
+  margin: auto;
+  max-width: 1400px;
+  min-height: 520px;
+  overflow: hidden;
+}
+
+.wilson-admin-layout > aside {
+  border-right: 1px solid #e3e6df;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px;
+  scrollbar-gutter: stable;
+}
+
+.wilson-admin-layout > aside button {
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: #30362d;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.wilson-admin-layout > aside button:hover,
+.wilson-admin-layout > aside button.active {
+  background: #eef4df;
+}
+
+.wilson-admin-layout > aside strong {
+  font-size: 13px;
+}
+
+.wilson-admin-layout > aside small {
+  color: #7b8276;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wilson-admin-layout > section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.wilson-admin-chat-header {
+  align-items: center;
+  border-bottom: 1px solid #e3e6df;
+  display: flex;
+  gap: 12px;
+  min-height: 72px;
+  padding: 12px 20px;
+}
+
+.wilson-admin-chat-header > div:last-child {
+  display: grid;
+}
+
+.wilson-admin-chat-header small {
+  color: #7b8276;
+  font-size: 11px;
+}
+
+.wilson-admin-avatar {
+  align-items: center;
+  background: #202418;
+  border-radius: 11px;
+  color: #b5fc00;
+  display: flex;
+  font-weight: 700;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+
+.wilson-admin-messages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px;
+  scrollbar-gutter: stable;
+}
+
+.wilson-admin-messages article {
+  background: #f3f5ef;
+  border-radius: 12px;
+  max-width: min(680px, 82%);
+  padding: 10px 13px;
+}
+
+.wilson-admin-messages article.usuario {
+  align-self: flex-end;
+  background: #eaf4d5;
+}
+
+.wilson-admin-messages article small {
+  color: #737a6f;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.wilson-admin-messages article p {
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 3px 0 0;
+  white-space: pre-wrap;
+}
+
+.wilson-admin-messages .empty {
+  color: #858b81;
+  margin: auto;
+}
+
+.wilson-admin-error {
+  background: #fff0ed;
+  border: 1px solid #e8c8c1;
+  border-radius: 10px;
+  color: #8e4036;
+  margin: 0 auto 16px;
+  max-width: 1400px;
+  padding: 10px 14px;
+}
+
+@media (max-width: 760px) {
+  .wilson-admin-page {
+    padding: 24px 12px 80px;
+  }
+
+  .wilson-admin-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .wilson-admin-layout > aside {
+    border-bottom: 1px solid #e3e6df;
+    border-right: 0;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .wilson-admin-layout > aside button {
+    min-width: 180px;
+  }
+
+  .wilson-admin-layout > section {
+    height: 64vh;
+  }
+}
