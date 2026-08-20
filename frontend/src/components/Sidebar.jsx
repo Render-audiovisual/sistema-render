@@ -13,6 +13,7 @@ function SidebarIcon({ name }) {
     salary: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M7 15h3"/></>,
     profile: <><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></>,
     users: <><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M14 15a5 5 0 0 1 7 4.5"/></>,
+    chat: <><path d="M21 12a8 8 0 0 1-8.5 8 9 9 0 0 1-3.7-1L4 21l1.6-4.2A8 8 0 1 1 21 12Z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></>,
   };
   return <svg className="sidebar-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name] || paths.content}</svg>;
 }
@@ -47,6 +48,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
     gestion: esAdmin ? [
       { href: "/reportes-historias", label: "Reportes", icon: "reports" },
       { href: "/sueldos", label: "Finanzas", icon: "salary" },
+      { href: "/wilson-conversaciones", label: "Conversaciones de Wilson", icon: "chat" },
     ] : [],
     admin: esAdmin ? [
       { href: "/clientes", label: "Clientes", icon: "clients" },
