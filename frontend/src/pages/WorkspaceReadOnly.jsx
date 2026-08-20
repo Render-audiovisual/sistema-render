@@ -13,6 +13,7 @@ import { getHoyLocalISO } from "../shared/date/date-utils.js";
 import { normalizeSelectionRect, selectionRectsIntersect } from "../features/render-os/utils/selection-geometry.js";
 import { DriveUploader } from "../features/drive/DriveUploader.jsx";
 import "./WorkspaceReadOnly.css";
+import "./TaskDetailCompact.css";
 
 function Avatar({ person, name }) {
   const label = person?.nombre || name || "Sin asignar";
