@@ -107,12 +107,48 @@
   padding: 8px 10px;
 }
 
+.render-workspace .ros-material-grid {
+  gap: 10px;
+  grid-template-columns: 1fr;
+}
+
 .render-workspace .ros-material-grid .ros-file {
-  min-height: 40px;
+  background: #fafbf8;
+  border: 1px solid #e0e4dc;
+  border-radius: 9px;
+  min-height: 64px;
+  padding: 10px 12px;
+}
+
+.render-workspace .ros-material-grid .ros-file:hover {
+  background: #f5f8ee;
+  border-color: #cbd8b6;
+}
+
+.render-workspace .ros-material-grid .ros-file > span {
+  flex: 0 0 34px;
+  height: 34px;
+  width: 34px;
+}
+
+.render-workspace .ros-material-grid .ros-file strong {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.render-workspace .ros-material-grid .ros-file small {
+  font-size: 9px;
+  margin-top: 3px;
+}
+
+.render-workspace .ros-material-grid .ros-file > b {
+  color: #66705e;
+  font-size: 12px;
 }
 
 .render-workspace .drive-upload-trigger {
-  min-height: 48px;
+  margin-top: 14px;
+  min-height: 58px;
 }
 
 .render-workspace .ros-work-organization > h3 {
