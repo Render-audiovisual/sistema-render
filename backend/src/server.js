@@ -33,6 +33,7 @@ import { createGoogleDrivePublicRouter, createGoogleDriveRouter } from "./google
 import { normalizeClientConfiguration, normalizePeriod } from "./client-config.js";
 import { reconcileEditorialCalendar } from "./editorial-calendar.js";
 import { buildMiaStatePendingMarker } from "./mia-task-digest.js";
+import { scheduleRenderOsTrashCleanup } from "./task-trash-retention.js";
 import {
   getStateNotification,
   isTaskFinalizer,
@@ -2487,13 +2488,11 @@ router.post("/tareas/acciones-masivas", async (req, res, next) => {
     const action = String(req.body?.accion || "");
     if (ids.length === 0) return res.status(400).json({ error: "Seleccioná al menos una tarea." });
     if (ids.length > 250) return res.status(400).json({ error: "Podés modificar hasta 250 tareas por vez." });
-    if (!["archivar", "papelera", "restaurar"].includes(action)) {
+    if (!["papelera", "restaurar"].includes(action)) {
       return res.status(400).json({ error: "Acción masiva inválida." });
     }
     const actor = getTaskActor(req.auth) || "Equipo RENDER";
-    const metadata = action === "archivar"
-      ? { archivada_render_os: true, papelera_render_os: false, archivada_por: actor, archivada_at: new Date().toISOString() }
-      : action === "papelera"
+    const metadata = action === "papelera"
         ? { archivada_render_os: true, papelera_render_os: true, papelera_por: actor, papelera_at: new Date().toISOString() }
         : { archivada_render_os: false, papelera_render_os: false, restaurada_por: actor, restaurada_at: new Date().toISOString() };
     const result = await pool.query(
@@ -3355,5 +3354,6 @@ if (process.env.RENDER_DISABLE_SERVER_START !== "true") (async () => {
   app.listen(port, () => {
     console.log(`Backend listening on http://localhost:${port}`);
     scheduleEditorialCalendar();
+    scheduleRenderOsTrashCleanup(pool);
   });
 })();

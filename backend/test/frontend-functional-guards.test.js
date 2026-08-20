@@ -20,10 +20,9 @@ test("parseJsonArrayResponse acepta únicamente respuestas HTTP exitosas con lis
   );
 });
 
-test("getTasksEmptyMessage diferencia tablero vacío, archivadas y filtros", () => {
+test("getTasksEmptyMessage diferencia tablero vacío, Papelera y filtros", () => {
   assert.equal(getTasksEmptyMessage({ hasFilters: false, query: "", totalTasks: 0, archiveMode: "active" }), "No hay tareas todavía.");
   assert.equal(getTasksEmptyMessage({ hasFilters: false, query: "", totalTasks: 4, archiveMode: "active" }), "No hay tareas activas.");
-  assert.equal(getTasksEmptyMessage({ hasFilters: false, query: "", totalTasks: 4, archiveMode: "archived" }), "No hay tareas archivadas.");
   assert.equal(getTasksEmptyMessage({ hasFilters: false, query: "", totalTasks: 4, archiveMode: "trash" }), "La Papelera está vacía.");
   assert.equal(getTasksEmptyMessage({ hasFilters: true, query: "", totalTasks: 4, archiveMode: "active" }), "No hay tareas con estos filtros.");
   assert.equal(getTasksEmptyMessage({ hasFilters: false, query: "sin resultados", totalTasks: 4, archiveMode: "active" }), "No hay tareas con estos filtros.");
@@ -36,8 +35,9 @@ test("la selección rectangular normaliza cualquier dirección y detecta tarjeta
   assert.equal(selectionRectsIntersect(rectangle, { left: 301, top: 80, right: 380, bottom: 220 }), false);
 });
 
-test("Papelera se conserva en la URL y se solicita separada de Archivadas", () => {
+test("Papelera se conserva en la URL y las URLs antiguas de Archivadas vuelven al tablero", () => {
   assert.equal(getTaskViewState("?mode=trash").archiveMode, "trash");
+  assert.equal(getTaskViewState("?mode=archived").archiveMode, "active");
   const url = updateTaskViewUrl("https://sistema.rendercorrientes.com/workspace/tareas", {
     ...getTaskViewState(""), archiveMode: "trash",
   });
@@ -45,9 +45,9 @@ test("Papelera se conserva en la URL y se solicita separada de Archivadas", () =
 });
 
 test("el estado de Tareas se conserva en la URL sin perder el enlace directo", () => {
-  const state = getTaskViewState("?task=42&view=list&mode=archived&responsible=Augusto&q=urgente&month=2026-08");
+  const state = getTaskViewState("?task=42&view=list&mode=trash&responsible=Augusto&q=urgente&month=2026-08");
   assert.equal(state.view, "list");
-  assert.equal(state.archiveMode, "archived");
+  assert.equal(state.archiveMode, "trash");
   assert.equal(state.responsible, "Augusto");
   assert.equal(state.query, "urgente");
   assert.equal(state.calendarMonth, "2026-08");
@@ -113,7 +113,7 @@ test("todo el equipo puede archivar, enviar a Papelera y restaurar selecciones",
   assert.match(workspaceSource, /event\.key === "Escape"/);
   assert.doesNotMatch(workspaceSource, /ros-selection-status/);
   assert.match(serverSource, /router\.post\("\/tareas\/acciones-masivas", async/);
-  assert.match(serverSource, /\["archivar", "papelera", "restaurar"\]/);
+  assert.match(serverSource, /\["papelera", "restaurar"\]/);
   assert.doesNotMatch(serverSource, /router\.post\("\/tareas\/acciones-masivas", requireRole/);
   assert.match(serverSource, /papelera_render_os/);
 });
@@ -190,10 +190,12 @@ test("Reportes prioriza rendimiento y conserva una barra de avance accesible", (
   assert.match(stylesSource, /@media \(prefers-reduced-motion:reduce\)/);
 });
 
-test("el archivo de Tareas se presenta como una única acción secundaria", () => {
+test("Tareas conserva únicamente Papelera como acción secundaria", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");
-  assert.match(workspaceSource, /Ver archivadas/);
+  assert.doesNotMatch(workspaceSource, /Ver archivadas/);
+  assert.doesNotMatch(workspaceSource, />Archivar</);
+  assert.match(workspaceSource, /después de 10 días/);
   assert.match(workspaceSource, /Volver a tareas activas/);
   assert.doesNotMatch(workspaceSource, />Activas<\/button><button[^>]*>Archivadas</);
   assert.match(workspaceStyles, /grid-template-columns:repeat\(5,minmax\(230px,1fr\)\)/);

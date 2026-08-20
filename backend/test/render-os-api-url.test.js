@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildTaskPageUrl } from "../../frontend/src/features/render-os/services/render-os-api.js";
 
-test("la consulta paginada de RENDER OS envía filtros y archivado al backend", () => {
+test("la consulta paginada de RENDER OS envía filtros al backend sin modo Archivadas", () => {
   const url = new URL(buildTaskPageUrl({
     offset: 100,
     query: "reel lanzamiento",
@@ -11,12 +11,12 @@ test("la consulta paginada de RENDER OS envía filtros y archivado al backend", 
     client: "12",
     sector: "edicion",
     priority: "alta",
-    archiveMode: "archived",
+    archiveMode: "active",
   }), "https://render.local");
   assert.equal(url.searchParams.get("workspace"), "render_os");
   assert.equal(url.searchParams.get("limit"), "100");
   assert.equal(url.searchParams.get("offset"), "100");
-  assert.equal(url.searchParams.get("solo_archivadas"), "true");
+  assert.equal(url.searchParams.has("solo_archivadas"), false);
   assert.equal(url.searchParams.get("q"), "reel lanzamiento");
   assert.equal(url.searchParams.get("area"), "edicion");
   assert.equal(url.searchParams.get("asignado_a"), "Augusto");
@@ -25,7 +25,7 @@ test("la consulta paginada de RENDER OS envía filtros y archivado al backend", 
   assert.equal(url.searchParams.get("prioridad"), "alta");
 });
 
-test("Papelera usa su propio filtro y no se mezcla con Archivadas", () => {
+test("Papelera usa su propio filtro", () => {
   const url = new URL(buildTaskPageUrl({ archiveMode: "trash" }), "https://render.test");
   assert.equal(url.searchParams.get("papelera"), "true");
   assert.equal(url.searchParams.has("solo_archivadas"), false);
