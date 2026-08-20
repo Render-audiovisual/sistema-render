@@ -115,17 +115,102 @@
   min-height: 48px;
 }
 
-.render-workspace .ros-comment-create {
-  padding-top: 8px;
+.render-workspace .ros-task-comments-footer {
+  border-top: 1px solid #e6e8e3;
+  margin: 4px auto 0;
+  max-width: 680px;
+  padding: 20px 24px 32px;
+  width: 100%;
 }
 
-.render-workspace .ros-comment-create textarea {
-  min-height: 58px;
+.render-workspace .ros-task-comments-footer > h3 {
+  color: #30352d;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 14px;
+}
+
+.render-workspace .ros-task-comments-footer .ros-comments article {
+  align-items: flex-start;
+  border: 0;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  padding: 0 0 16px;
+}
+
+.render-workspace .ros-task-comments-footer .ros-comments article > .ros-avatar,
+.render-workspace .ros-task-comments-footer .ros-comment-create > .ros-avatar {
+  height: 30px;
+  width: 30px;
+}
+
+.render-workspace .ros-task-comments-footer .ros-comment-body {
+  min-width: 0;
+}
+
+.render-workspace .ros-task-comments-footer .ros-comment-body > header {
+  align-items: baseline;
+  display: flex;
+  gap: 7px;
+  justify-content: flex-start;
+}
+
+.render-workspace .ros-task-comments-footer .ros-comment-body strong {
+  color: #30352d;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.render-workspace .ros-task-comments-footer .ros-comment-body time {
+  color: #8b9187;
+  font-size: 10px;
+}
+
+.render-workspace .ros-task-comments-footer .ros-comment-body p {
+  color: #4f554c;
+  font-size: 11px;
+  line-height: 1.55;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.render-workspace .ros-task-comments-footer .ros-comment-create {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  margin: 2px 0 0;
+  padding: 0 0 14px;
+}
+
+.render-workspace .ros-task-comments-footer .ros-comment-create textarea {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #dfe2dc;
+  border-radius: 0;
+  color: #30352d;
+  line-height: 1.5;
+  min-height: 38px;
+  padding: 6px 2px 8px;
+  resize: vertical;
+}
+
+.render-workspace .ros-task-comments-footer .ros-comment-create textarea:focus {
+  border-bottom-color: #8bb800;
+  outline: 0;
+}
+
+.render-workspace .ros-task-comments-footer .ros-comment-create button {
+  align-self: start;
+  min-height: 34px;
+  padding: 7px 10px;
 }
 
 @media (max-width: 640px) {
   .render-workspace .ros-task-main-column,
-  .render-workspace .ros-task-context-rail {
+  .render-workspace .ros-task-context-rail,
+  .render-workspace .ros-task-comments-footer {
     padding-inline: 15px;
   }
 
@@ -150,5 +235,14 @@
   .render-workspace .ros-content-tools button {
     min-height: 34px;
     white-space: nowrap;
+  }
+
+  .render-workspace .ros-task-comments-footer .ros-comment-create {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .render-workspace .ros-task-comments-footer .ros-comment-create button {
+    grid-column: 2;
+    justify-self: end;
   }
 }
