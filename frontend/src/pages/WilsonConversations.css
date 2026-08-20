@@ -6,6 +6,10 @@
 }
 
 .wilson-admin-page > header {
+  align-items: flex-end;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
   margin: 0 auto 28px;
   max-width: 1400px;
 }
@@ -162,9 +166,136 @@
   padding: 10px 14px;
 }
 
+.wilson-admin-notice {
+  background: #eef6df;
+  border: 1px solid #d3e4b4;
+  border-radius: 10px;
+  color: #48631e;
+  margin: 0 auto 16px;
+  max-width: 1400px;
+  padding: 10px 14px;
+}
+
+.wilson-reset-button {
+  background: #fff;
+  border: 1px solid #d9bcb7;
+  border-radius: 10px;
+  color: #91443d;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 11px 15px;
+}
+
+.wilson-reset-button:hover {
+  background: #fff5f3;
+  border-color: #c58e86;
+}
+
+.wilson-reset-button:focus-visible,
+.wilson-reset-dialog button:focus-visible {
+  outline: 3px solid #b5fc00;
+  outline-offset: 2px;
+}
+
+.wilson-admin-people-empty {
+  color: #858b81;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 18px 14px;
+}
+
+.wilson-reset-backdrop {
+  align-items: center;
+  background: rgb(24 28 21 / 58%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 200;
+}
+
+.wilson-reset-dialog {
+  background: #fff;
+  border: 1px solid #e3e6df;
+  border-radius: 16px;
+  box-shadow: 0 22px 60px rgb(24 28 21 / 24%);
+  max-width: 470px;
+  padding: 26px;
+  width: 100%;
+}
+
+.wilson-reset-icon {
+  align-items: center;
+  background: #fff0ed;
+  border-radius: 11px;
+  color: #a9483f;
+  display: flex;
+  height: 44px;
+  justify-content: center;
+  margin-bottom: 18px;
+  width: 44px;
+}
+
+.wilson-reset-dialog h2 {
+  font-size: 22px;
+  letter-spacing: -.025em;
+  margin: 0 0 10px;
+}
+
+.wilson-reset-dialog p {
+  color: #6f766b;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.wilson-reset-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.wilson-reset-actions button {
+  background: #fff;
+  border: 1px solid #dfe3d9;
+  border-radius: 9px;
+  color: #3b4037;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 14px;
+}
+
+.wilson-reset-actions button.danger {
+  background: #a9483f;
+  border-color: #a9483f;
+  color: #fff;
+}
+
+.wilson-reset-actions button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
 @media (max-width: 760px) {
   .wilson-admin-page {
     padding: 24px 12px 80px;
+  }
+
+  .wilson-admin-page > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .wilson-reset-button {
+    width: 100%;
   }
 
   .wilson-admin-layout {
@@ -186,5 +317,14 @@
 
   .wilson-admin-layout > section {
     height: 64vh;
+  }
+
+  .wilson-reset-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .wilson-reset-actions button {
+    width: 100%;
   }
 }
