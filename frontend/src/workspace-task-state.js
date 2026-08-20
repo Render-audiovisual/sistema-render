@@ -1,1 +1,1 @@
-export { canRetryTaskUpdate, canUserMoveTask, mergeRelatedTasks } from "./features/render-os/utils/task-state.js";
+export { canRetryTaskUpdate, canUserMoveTask, canUserMoveTaskToState, isTaskFinalizer, mergeRelatedTasks } from "./features/render-os/utils/task-state.js";

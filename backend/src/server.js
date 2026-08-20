@@ -35,6 +35,7 @@ import { reconcileEditorialCalendar } from "./editorial-calendar.js";
 import { buildMiaStatePendingMarker } from "./mia-task-digest.js";
 import {
   getStateNotification,
+  isTaskFinalizer,
   isTaskLeader,
   isVideoEditingTask,
   validateProductionHandoff,
@@ -1775,6 +1776,12 @@ router.post("/tareas", async (req, res, next) => {
     const estadoFinal = ESTADOS_TAREA_VALIDOS.includes(estado)
       ? estado
       : "pendiente";
+    if (workspace === "render_os" && estado === "programada") {
+      return res.status(400).json({ error: "El estado Programada ya no forma parte del flujo de tareas." });
+    }
+    if (workspace === "render_os" && estadoFinal === "publicada" && !isTaskFinalizer(req.auth)) {
+      return res.status(403).json({ error: "Solo Oriana, Agustín o Franco pueden finalizar una tarea." });
+    }
 
     if (workspace === "render_os" && tarea_padre_id) {
       const padreRenderOS = await pool.query(
@@ -1857,7 +1864,6 @@ const ESTADOS_TAREA_VALIDOS = [
   "pendiente",
   "en_progreso",
   "en_revision",
-  "programada",
   "publicada",
 ];
 const TIPOS_TAREA_VALIDOS = [
@@ -1952,6 +1958,9 @@ router.patch("/tareas/:id", async (req, res, next) => {
       if (body.estado === null || !ESTADOS_TAREA_VALIDOS.includes(body.estado)) {
         return res.status(400).json({ error: "Estado inválido." });
       }
+      if (esRenderOS && body.estado === "programada") {
+        return res.status(400).json({ error: "El estado Programada ya no forma parte del flujo de tareas." });
+      }
     }
     if (Object.prototype.hasOwnProperty.call(body, "titulo")) {
       if (body.titulo === null || !String(body.titulo).trim()) {
@@ -1982,6 +1991,16 @@ router.patch("/tareas/:id", async (req, res, next) => {
       colaboradoresAnteriores = Array.isArray(tareaAnterior.rows[0]?.propiedades_extra?.colaboradores)
         ? tareaAnterior.rows[0].propiedades_extra.colaboradores
         : [];
+    }
+    if (
+      esRenderOS &&
+      Object.prototype.hasOwnProperty.call(body, "estado") &&
+      (body.estado === "publicada" || estadoAnterior === "publicada") &&
+      !isTaskFinalizer(req.auth)
+    ) {
+      return res.status(403).json({ error: body.estado === "publicada"
+        ? "Solo Oriana, Agustín o Franco pueden finalizar una tarea."
+        : "Solo Oriana, Agustín o Franco pueden reabrir una tarea finalizada." });
     }
     if (esRenderOS && body.estado === "en_revision" && estadoAnterior !== "en_revision" && tareaAnteriorCompleta) {
       const visitaParaEntregar = {
@@ -2093,7 +2112,12 @@ router.patch("/tareas/:id", async (req, res, next) => {
       valores.push(body.expected_updated_at);
     }
 
-    const acceso = buildTaskAccessClause(req.auth, "t", `$${i + 1}`);
+    const movimientoGlobalFinalizador = esRenderOS
+      && isTaskFinalizer(req.auth)
+      && Object.keys(body).every((key) => ["estado", "expected_updated_at"].includes(key));
+    const acceso = movimientoGlobalFinalizador
+      ? { sql: "", value: null }
+      : buildTaskAccessClause(req.auth, "t", `$${i + 1}`);
     where += acceso.sql;
     if (acceso.value) {
       i++;
@@ -2109,7 +2133,9 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
     if (result.rows.length === 0) {
       if (body.expected_updated_at) {
-        const accesoExistente = buildTaskAccessClause(req.auth, "t", "$2");
+        const accesoExistente = movimientoGlobalFinalizador
+          ? { sql: "", value: null }
+          : buildTaskAccessClause(req.auth, "t", "$2");
         const paramsExistente = [id];
         if (accesoExistente.value) paramsExistente.push(accesoExistente.value);
         const existente = await pool.query(

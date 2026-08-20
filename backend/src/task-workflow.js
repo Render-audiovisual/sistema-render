@@ -13,6 +13,12 @@ export function isTaskLeader(auth = {}) {
   return identity.includes("franco") || identity.includes("agustin") || identity.includes("lider");
 }
 
+export function isTaskFinalizer(auth = {}) {
+  if (auth.rol === "admin") return true;
+  const identity = normalizarNombre(`${auth.nombre || ""} ${auth.usuario || ""}`);
+  return identity.includes("franco") || identity.includes("oriana");
+}
+
 export function isCarouselTask(task = {}) {
   return taskText(task).includes("carrusel");
 }
