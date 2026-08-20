@@ -1,0 +1,154 @@
+/* Detalle de tarea: lectura vertical, compacta y continua. */
+.render-workspace .ros-task-workspace {
+  width: min(900px, 100vw);
+}
+
+.render-workspace .ros-task-main-column,
+.render-workspace .ros-task-context-rail {
+  max-width: 680px;
+  padding-inline: 24px;
+}
+
+.render-workspace .ros-task-main-column {
+  padding-bottom: 10px;
+  padding-top: 22px;
+}
+
+.render-workspace .ros-task-context-rail {
+  gap: 8px;
+  padding-bottom: 24px;
+}
+
+.render-workspace .ros-task-document-kind {
+  margin-bottom: 8px;
+}
+
+.render-workspace .ros-task-document-heading {
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.render-workspace .ros-task-document-heading h2,
+.render-workspace .ros-task-document-heading .ros-title-input {
+  font-size: 27px;
+  line-height: 1.16;
+}
+
+.render-workspace .ros-task-document-properties {
+  border-bottom: 0;
+  gap: 0;
+  grid-template-columns: 1fr;
+  margin-bottom: 8px;
+  padding-bottom: 0;
+}
+
+.render-workspace .ros-task-document-properties > div {
+  gap: 12px;
+  grid-template-columns: 124px minmax(0, 1fr);
+  min-height: 32px;
+  padding: 3px 2px;
+}
+
+.render-workspace .ros-task-document-properties > div > span {
+  font-size: 10px;
+}
+
+.render-workspace .ros-task-document-properties > div > strong {
+  font-size: 11px;
+}
+
+.render-workspace .ros-task-assignee {
+  min-height: 26px;
+  padding-block: 1px;
+}
+
+.render-workspace .ros-work-block {
+  padding: 13px 0;
+}
+
+.render-workspace .ros-block-heading {
+  margin-bottom: 8px;
+}
+
+.render-workspace .ros-block-heading h3,
+.render-workspace .ros-work-block > h3 {
+  font-size: 14px;
+}
+
+.render-workspace .ros-content-workspace {
+  padding-top: 12px;
+}
+
+.render-workspace .ros-content-editor-header {
+  padding: 9px 10px 7px;
+}
+
+.render-workspace .ros-content-tools {
+  gap: 4px;
+  padding: 5px 7px;
+}
+
+.render-workspace .ros-content-tools > span {
+  font-size: 9px;
+}
+
+.render-workspace .ros-content-tools button {
+  min-height: 26px;
+  padding: 4px 6px;
+}
+
+.render-workspace .ros-content-textarea {
+  line-height: 1.55;
+  min-height: 180px;
+  padding: 12px 14px;
+}
+
+.render-workspace .ros-content-edit-actions {
+  padding: 8px 10px;
+}
+
+.render-workspace .ros-material-grid .ros-file {
+  min-height: 40px;
+}
+
+.render-workspace .drive-upload-trigger {
+  min-height: 48px;
+}
+
+.render-workspace .ros-comment-create {
+  padding-top: 8px;
+}
+
+.render-workspace .ros-comment-create textarea {
+  min-height: 58px;
+}
+
+@media (max-width: 640px) {
+  .render-workspace .ros-task-main-column,
+  .render-workspace .ros-task-context-rail {
+    padding-inline: 15px;
+  }
+
+  .render-workspace .ros-task-main-column {
+    padding-top: 17px;
+  }
+
+  .render-workspace .ros-task-document-heading h2,
+  .render-workspace .ros-task-document-heading .ros-title-input {
+    font-size: 24px;
+  }
+
+  .render-workspace .ros-task-document-properties > div {
+    grid-template-columns: 104px minmax(0, 1fr);
+    min-height: 34px;
+  }
+
+  .render-workspace .ros-content-tools {
+    overflow-x: auto;
+  }
+
+  .render-workspace .ros-content-tools button {
+    min-height: 34px;
+    white-space: nowrap;
+  }
+}
