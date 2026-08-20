@@ -158,13 +158,6 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const activityComments = comments.filter((item) => item.contenido.startsWith("[Actividad]"));
   const teamComments = comments.filter((item) => !item.contenido.startsWith("[Actividad]"));
   const lastActivity = activityComments.at(-1);
-  const objectiveSource = String(metadata.resumen || task.aclaraciones || "").replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim();
-  const missingEssentials = [
-    !objectiveSource && "objetivo",
-    !String(task.aclaraciones || "").trim() && "indicaciones",
-    !task.material_referencia && links.length === 0 && "material o referencias",
-    isProductionVisit && productionProgress.planned === 0 && "cantidad de videos previstos",
-  ].filter(Boolean);
 
   const save = async () => {
     setSaving(true);
@@ -357,7 +350,6 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {String(task.prioridad || "").toLowerCase() !== "media" && <div><span>⚑ <b>Prioridad</b></span><strong>{task.prioridad || "Sin definir"}</strong></div>}
         </div>
         {esperandoMaterial(task) && <div className="ros-warning-banner">Esperando material: la tarea de origen todavía no está terminada.</div>}
-        {!editing && missingEssentials.length > 0 && <div className="ros-task-missing-banner"><span>!</span><div><strong>Falta información para trabajar sin dudas</strong><p>Falta completar: {missingEssentials.join(", ")}.</p></div></div>}
         {canApproveForOriana && <section className="ros-approval-handoff"><div><strong>El video está esperando aprobación</strong><span>Revisá el material y, si está listo, entregáselo a Oriana para programar o publicar.</span></div><button type="button" disabled={approving} onClick={approveForOriana}>{approving ? "Enviando…" : "Aprobar y enviar a Oriana"}</button></section>}
         {metadata.revision_aprobada === true && task.estado === "en_revision" && <div className="ros-approved-banner">✓ Aprobada por {metadata.revision_aprobada_por || "Líder"}. Oriana decide si programarla o publicarla.</div>}
         {isProductionVisit && <section className="ros-production-visit">
