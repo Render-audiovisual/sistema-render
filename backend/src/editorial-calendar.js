@@ -79,8 +79,14 @@ export async function reconcileEditorialCalendar(db, period) {
     SELECT c.id, c.nombre, c.rubro, c.activo,
       to_char(c.fecha_inicio, 'YYYY-MM-DD') fecha_inicio,
       to_char(c.fecha_fin, 'YYYY-MM-DD') fecha_fin,
-      COALESCE(cfg.cuota_reels, c.cuota_reels, 0) cuota_reels,
-      COALESCE(cfg.cuota_carruseles, c.cuota_carruseles, 0) cuota_carruseles,
+      COALESCE(cfg.cuota_reels,
+        CASE WHEN c.grupo_feed_id IS NOT NULL
+          THEN floor(gf.cuota_reels::numeric / NULLIF(group_members.cantidad, 0))::int
+          ELSE c.cuota_reels END, 0) cuota_reels,
+      COALESCE(cfg.cuota_carruseles,
+        CASE WHEN c.grupo_feed_id IS NOT NULL
+          THEN floor(gf.cuota_carruseles::numeric / NULLIF(group_members.cantidad, 0))::int
+          ELSE c.cuota_carruseles END, 0) cuota_carruseles,
       COALESCE(cfg.dias_reels, '{}') dias_reels,
       COALESCE(cfg.dias_carruseles, '{}') dias_carruseles
     FROM clientes c
@@ -88,7 +94,15 @@ export async function reconcileEditorialCalendar(db, period) {
       SELECT * FROM cliente_configuraciones cc
       WHERE cc.cliente_id = c.id AND cc.vigente_desde <= $1::date
       ORDER BY cc.vigente_desde DESC LIMIT 1
-    ) cfg ON TRUE`, [periodDate]);
+    ) cfg ON TRUE
+    LEFT JOIN grupos_feed gf ON gf.id = c.grupo_feed_id
+    LEFT JOIN LATERAL (
+      SELECT count(*)::int cantidad FROM clientes member
+      WHERE member.grupo_feed_id = c.grupo_feed_id
+        AND member.activo IS NOT FALSE
+        AND (member.fecha_inicio IS NULL OR member.fecha_inicio <= ($1::date + interval '1 month - 1 day'))
+        AND (member.fecha_fin IS NULL OR member.fecha_fin >= $1::date)
+    ) group_members ON c.grupo_feed_id IS NOT NULL`, [periodDate]);
   const existingResult = await db.query(`
     SELECT id, cliente_id, tipo, estado, to_char(fecha_programada, 'YYYY-MM-DD') fecha_programada,
       origen_calendario, calendario_clave, fecha_bloqueada
