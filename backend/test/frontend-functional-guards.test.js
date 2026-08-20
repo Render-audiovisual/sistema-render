@@ -219,10 +219,10 @@ test("el detalle de todas las tareas conserva guion, copy e indicaciones en un �
   assert.match(workspaceSource, /field: "aclaraciones"/);
   assert.match(workspaceSource, /getCanonicalTaskContentMetadata/);
   assert.match(workspaceSource, /getUnifiedTaskContent\(task\)/);
-  assert.match(workspaceSource, /Los cambios se guardan únicamente al presionar/);
+  assert.match(workspaceSource, /Guardá antes de cerrar la tarea/);
   assert.match(workspaceSource, /ros-task-document-properties/);
-  assert.match(workspaceSource, /ros-activity-history/);
-  assert.match(workspaceSource, /Ver historial/);
+  assert.doesNotMatch(workspaceSource, /ros-activity-history/);
+  assert.doesNotMatch(workspaceSource, /Ver historial/);
   assert.doesNotMatch(workspaceSource, /ros-latest-progress/);
   assert.match(workspaceSource, /Acciones de tarea/);
   assert.match(workspaceSource, /Sin material vinculado/);
