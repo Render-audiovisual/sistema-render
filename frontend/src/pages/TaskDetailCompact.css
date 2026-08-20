@@ -309,10 +309,18 @@
   padding: 8px 12px;
 }
 
+.render-workspace .ros-task-admin-actions-footer {
+  margin: 0 auto 28px;
+  max-width: 680px;
+  padding: 12px 24px 0;
+  width: 100%;
+}
+
 @media (max-width: 640px) {
   .render-workspace .ros-task-main-column,
   .render-workspace .ros-task-context-rail,
-  .render-workspace .ros-task-comments-footer {
+  .render-workspace .ros-task-comments-footer,
+  .render-workspace .ros-task-admin-actions-footer {
     padding-inline: 15px;
   }
 
