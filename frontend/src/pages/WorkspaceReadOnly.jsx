@@ -704,10 +704,8 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
 
   const openTask = useCallback(async (id) => {
     try {
-      if (!tasks.some((task) => task.id === id)) {
-        const task = await apiTaskById(id);
-        incorporateRelatedTasks([task]);
-      }
+      const task = await apiTaskById(id);
+      incorporateRelatedTasks([task]);
       setSelectedId(id);
       const url = new URL(window.location.href);
       url.searchParams.set("task", String(id));
@@ -715,7 +713,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     } catch (reason) {
       onError(reason.message || "No se pudo abrir la tarea.");
     }
-  }, [tasks, incorporateRelatedTasks]);
+  }, [incorporateRelatedTasks]);
   const closeTask = useCallback(() => {
     if (window.history.state?.task) {
       window.history.back();
