@@ -1415,6 +1415,13 @@
   padding:6px 8px!important;
   width:100%;
 }
+.render-workspace .ros-task-people-property .ros-selected-people>button>b{
+  align-self:stretch;
+  display:grid;
+  margin-left:auto;
+  place-items:center;
+  width:28px;
+}
 .render-workspace .ros-task-people-property .ros-add-person{
   min-height:38px;
   width:min(100%,360px);
