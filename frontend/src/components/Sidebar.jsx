@@ -22,12 +22,13 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
   const [menuAbierto, setMenuAbierto] = useState(false);
   const esAdmin = sesion?.usuario?.rol === "admin";
   const rutaTablero = getRutaUsuario(sesion?.usuario?.usuario, sesion?.usuario?.rol);
+  const rutaPrincipal = esAdmin ? (rutaTablero || "/lider") : "/workspace/tareas";
   const primerNombre = sesion?.usuario?.nombre?.trim().split(/\s+/)[0] || "equipo";
 
   const seccionesNav = {
-    inicio: [
-      { href: rutaTablero || "/", label: "Inicio", icon: "home" },
-    ],
+    inicio: esAdmin ? [
+      { href: rutaPrincipal, label: "Inicio", icon: "home" },
+    ] : [],
     trabajo: [
       { href: "/workspace/tareas", label: "Tareas", icon: "tasks" },
       { href: "/drive", label: "Drive", icon: "drive" },
@@ -45,11 +46,15 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
         description: "Organizá y seguí las publicaciones.",
       },
     ],
-    gestion: esAdmin ? [
+    gestion: [
       { href: "/reportes-historias", label: "Reportes", icon: "reports" },
-      { href: "/sueldos", label: "Finanzas", icon: "salary" },
-      { href: "/wilson-conversaciones", label: "Conversaciones", icon: "chat" },
-    ] : [],
+      ...(esAdmin ? [
+        { href: "/sueldos", label: "Finanzas", icon: "salary" },
+        { href: "/wilson-conversaciones", label: "Conversaciones", icon: "chat" },
+      ] : [
+        { href: "/workspace/tareas?wilson=open", label: "Conversaciones", icon: "chat" },
+      ]),
+    ],
     admin: esAdmin ? [
       { href: "/clientes", label: "Clientes", icon: "clients" },
     ] : [],
@@ -91,7 +96,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
   return (
     <nav className="sidebar" aria-label="Navegación principal">
       <div className="sidebar-header">
-        <a className="brand-mark" href={rutaTablero || "/"} aria-label="Ir al Inicio">
+        <a className="brand-mark" href={rutaPrincipal} aria-label={esAdmin ? "Ir al Inicio" : "Ir a Tareas"}>
           <span className="brand-initial">R</span>
           <span className="brand-greeting">
             <strong>Hola, {primerNombre}</strong>

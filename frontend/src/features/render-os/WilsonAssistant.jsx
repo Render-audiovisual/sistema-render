@@ -36,6 +36,10 @@ function initialPosition() {
   return clampPosition({ x: window.innerWidth - PANEL_WIDTH - 24, y: window.innerHeight - PANEL_HEIGHT - 24 });
 }
 
+function shouldOpenFromUrl() {
+  return new URLSearchParams(window.location.search).get("wilson") === "open";
+}
+
 function TaskSuggestion({ task, onOpen, onChoose, chooseLabel }) {
   return <button className="wilson-task" type="button" onClick={() => onChoose ? onChoose(task) : onOpen(task.id)}>
     <span className={`wilson-priority ${task.dynamic_priority.toLowerCase()}`}>{task.dynamic_priority}</span>
@@ -45,7 +49,7 @@ function TaskSuggestion({ task, onOpen, onChoose, chooseLabel }) {
 }
 
 export function WilsonAssistant({ onOpenTask }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(shouldOpenFromUrl);
   const [minimized, setMinimized] = useState(false);
   const [position, setPosition] = useState(initialPosition);
   const [data, setData] = useState(null);
