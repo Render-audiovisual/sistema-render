@@ -13,9 +13,9 @@ test("normaliza nombres de usuario sin depender de mayúsculas o acentos", () =>
   assert.equal(normalizeUserKey("  Germán  "), "german");
 });
 
-test("los usuarios sin dashboard personal ingresan a Tareas según su rol", () => {
+test("todos los empleados ingresan a Tareas y los líderes a su panel", () => {
   assert.equal(getDefaultUserRoute({ usuario: "Mariano", rol: "diseno" }, knownRoutes), "/workspace/tareas");
   assert.equal(getDefaultUserRoute({ usuario: "Leo Aragon", rol: "diseno" }, knownRoutes), "/workspace/tareas");
   assert.equal(getDefaultUserRoute({ usuario: "Nueva líder", rol: "admin" }, knownRoutes), "/lider");
-  assert.equal(getDefaultUserRoute({ usuario: "Augusto", rol: "diseno" }, knownRoutes), "/augusto");
+  assert.equal(getDefaultUserRoute({ usuario: "Augusto", rol: "diseno" }, knownRoutes), "/workspace/tareas");
 });

@@ -8,7 +8,6 @@ export function normalizeUserKey(usuario) {
 
 export function getDefaultUserRoute({ usuario, rol }, knownRoutes) {
   const userKey = normalizeUserKey(usuario);
-  if (userKey === "agustin") return "/lider";
-  if (knownRoutes[userKey]) return knownRoutes[userKey];
-  return rol === "admin" ? "/lider" : "/workspace/tareas";
+  if (rol === "admin" || userKey === "agustin") return "/lider";
+  return "/workspace/tareas";
 }

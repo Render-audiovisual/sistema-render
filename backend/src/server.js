@@ -387,7 +387,7 @@ router.get("/usuarios", async (req, res, next) => {
   }
 });
 
-router.get("/reportes/datos", requireRole("admin"), async (req, res, next) => {
+router.get("/reportes/datos", async (req, res, next) => {
   try {
     const mesConfiguracion = normalizePeriod(req.query.mes_configuracion);
     const [tareas, historias, publicaciones, clientes, usuarios, tareasRenderOs] = await Promise.all([

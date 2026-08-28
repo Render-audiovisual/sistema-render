@@ -59,8 +59,9 @@ test("el administrador conserva el reporte completo", () => {
   assert.deepEqual(result.tareasRenderOs, data.tareasRenderOs);
 });
 
-test("el endpoint del reporte general exige rol administrador", () => {
-  assert.match(
+test("el endpoint del reporte está disponible tras la autenticación compartida", () => {
+  assert.match(serverSource, /router\.use\(requireAuthentication\);[\s\S]*router\.get\("\/reportes\/datos", async/);
+  assert.doesNotMatch(
     serverSource,
     /router\.get\("\/reportes\/datos", requireRole\("admin"\)/,
   );
