@@ -4,18 +4,18 @@
  * visual: unifica ritmo, densidad, jerarquía, foco y objetivos táctiles.
  */
 .render-workspace {
-  --ros-canvas: #f5f6f2;
-  --ros-surface: #ffffff;
-  --ros-surface-subtle: #f8f9f6;
-  --ros-text: #202418;
-  --ros-text-secondary: #697066;
-  --ros-hairline: #e2e5de;
-  --ros-accent: #aef500;
+  --ros-canvas: var(--render-canvas);
+  --ros-surface: var(--render-surface);
+  --ros-surface-subtle: var(--render-surface-soft);
+  --ros-text: var(--render-ink);
+  --ros-text-secondary: var(--render-muted);
+  --ros-hairline: var(--render-line);
+  --ros-accent: var(--render-accent);
   --ros-accent-strong: #83b900;
-  --ros-radius-sm: 10px;
-  --ros-radius-md: 14px;
-  --ros-shadow-raised: 0 8px 28px rgba(31, 36, 24, .07);
-  --ros-focus-ring: 0 0 0 3px rgba(174, 245, 0, .28);
+  --ros-radius-sm: var(--render-radius-control);
+  --ros-radius-md: var(--render-radius-card);
+  --ros-shadow-raised: var(--render-shadow-raised);
+  --ros-focus-ring: var(--render-focus);
   background: var(--ros-canvas);
 }
 
@@ -82,11 +82,11 @@
 
 .render-workspace .ros-primary-button {
   align-items: center;
-  background: var(--ros-accent);
+  background: var(--render-accent);
   border: 0;
   border-radius: 12px;
   box-shadow: none;
-  color: #18200d;
+  color: var(--render-accent-ink);
   display: inline-flex;
   font-size: 12px;
   font-weight: 700;
