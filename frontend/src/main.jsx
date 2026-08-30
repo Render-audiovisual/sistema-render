@@ -1,6 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
+import "./design-system.css";
 import { App } from "./App.jsx";
 
 // Toda la app llama a la API con rutas relativas ("/api/..."). Eso funciona
