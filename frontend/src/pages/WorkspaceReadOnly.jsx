@@ -15,6 +15,7 @@ import { DriveUploader } from "../features/drive/DriveUploader.jsx";
 import { WilsonAssistant } from "../features/render-os/WilsonAssistant.jsx";
 import "./WorkspaceReadOnly.css";
 import "./TaskDetailCompact.css";
+import "./RenderApplePolish.css";
 import "../features/render-os/WilsonAssistant.css";
 
 function Avatar({ person, name }) {
