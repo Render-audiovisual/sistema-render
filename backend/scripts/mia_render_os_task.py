@@ -101,9 +101,13 @@ def main():
     listing.add_argument("--limit", type=int, default=50)
     commands.add_parser("report")
     commands.add_parser("events")
+    commands.add_parser("group-digests")
     ack_event = commands.add_parser("ack-event")
     ack_event.add_argument("--task-id", required=True, type=int)
     ack_event.add_argument("--event-id", required=True)
+    ack_digest = commands.add_parser("ack-group-digest")
+    ack_digest.add_argument("--fingerprint", required=True)
+    ack_digest.add_argument("--payload", required=True)
     get_task = commands.add_parser("get")
     get_task.add_argument("--task-id", required=True, type=int)
     validate = commands.add_parser("validate")
@@ -139,8 +143,12 @@ def main():
         result = request("GET", "/reporte-personal", args)
     elif args.cmd == "events":
         result = request("GET", "/eventos-pendientes", args)
+    elif args.cmd == "group-digests":
+        result = request("GET", "/resumenes-grupos", args)
     elif args.cmd == "ack-event":
         result = request("POST", f"/eventos/{args.task_id}/entregado", args, payload={"evento_id": args.event_id})
+    elif args.cmd == "ack-group-digest":
+        result = request("POST", f"/resumenes-grupos/{args.fingerprint}/entregado", args, payload=json.loads(args.payload))
     elif args.cmd == "get":
         result = request("GET", f"/tareas/{args.task_id}", args)
     elif args.cmd == "validate":

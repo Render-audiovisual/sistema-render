@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import express from "express";
 import fs from "node:fs";
+import { buildMiaGroupDigests, miaGroupDigestWindow } from "./mia-group-digest.js";
 
 const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
 const DEFAULT_ALLOWED_TELEGRAM_IDS = ["1826333320", "1890547269"];
@@ -622,6 +623,59 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
          ORDER BY updated_at ASC,id ASC LIMIT 50`,
       );
       return res.json({ events: result.rows.map(buildMiaPendingEvent).filter(Boolean) });
+    } catch (error) { return next(error); }
+  });
+
+  router.get("/resumenes-grupos", async (req, res, next) => {
+    if (!isWilsonSystemActor(req, env)) return res.status(403).json({ error: "Estos resúmenes son exclusivos del proceso automático de MIA." });
+    try {
+      const window = miaGroupDigestWindow();
+      if (!window) return res.json({ digests: [], window: null });
+      const today = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Argentina/Cordoba", year: "numeric", month: "2-digit", day: "2-digit",
+      }).format(new Date());
+      const result = await pool.query(
+        `SELECT t.id,t.titulo,t.estado,t.asignado_a,t.prioridad,t.tipo_tarea,t.subtipo,t.propiedades_extra,
+          to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento,c.nombre cliente_nombre
+         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+         WHERE t.propiedades_extra->>'workspace'='render_os'
+           AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
+           AND t.estado IN ('pendiente','en_progreso','en_revision','publicada')
+         ORDER BY t.fecha_vencimiento NULLS LAST,t.id`,
+      );
+      const digests = buildMiaGroupDigests(result.rows, { today })
+        .filter((digest) => !window.criticalOnly || digest.level === "critico")
+        .map((digest) => ({ ...digest, schedule_type: window.type }));
+      if (!digests.length) return res.json({ digests: [] });
+      const delivered = await pool.query(
+        `SELECT fingerprint FROM mia_group_digest_deliveries
+         WHERE fingerprint=ANY($1::text[]) AND delivered_at >= NOW()-INTERVAL '24 hours'`,
+        [digests.map((digest) => digest.id)],
+      );
+      const recent = new Set(delivered.rows.map((row) => row.fingerprint));
+      return res.json({ digests: digests.filter((digest) => !recent.has(digest.id)) });
+    } catch (error) { return next(error); }
+  });
+
+  router.post("/resumenes-grupos/:fingerprint/entregado", async (req, res, next) => {
+    if (!isWilsonSystemActor(req, env)) return res.status(403).json({ error: "Esta confirmación es exclusiva del proceso automático de MIA." });
+    const fingerprint = String(req.params.fingerprint || "").trim().toLowerCase();
+    const destination = String(req.body?.destination || "").trim();
+    const period = String(req.body?.period || "").trim();
+    const level = String(req.body?.level || "").trim();
+    if (!/^[a-f0-9]{64}$/.test(fingerprint) || !MIA_EVENT_GROUPS.has(destination)
+      || !/^\d{4}-\d{2}$/.test(period) || !["riesgo", "critico"].includes(level)) {
+      return res.status(400).json({ error: "Resumen de grupo inválido." });
+    }
+    try {
+      await pool.query(
+        `INSERT INTO mia_group_digest_deliveries(fingerprint,destino,periodo,nivel,detalles)
+         VALUES($1,$2,$3,$4,$5::jsonb)
+         ON CONFLICT(fingerprint) DO UPDATE SET destino=EXCLUDED.destino,periodo=EXCLUDED.periodo,
+           nivel=EXCLUDED.nivel,detalles=EXCLUDED.detalles,delivered_at=NOW()`,
+        [fingerprint, destination, period, level, JSON.stringify({ task_ids: req.body?.task_ids || [], clients: req.body?.clients || [] })],
+      );
+      return res.json({ delivered: true, fingerprint });
     } catch (error) { return next(error); }
   });
 

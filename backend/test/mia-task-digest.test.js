@@ -61,11 +61,13 @@ test("clasifica revisión sin depender de datos de otros módulos", () => {
   assert.deepEqual(classifyMiaTask(task(7, { estado: "en_revision", fecha_vencimiento: "2026-08-20" }), "2026-08-10"), { rank: 3, category: "Para revisar" });
 });
 
-test("Mia avisa solo inicio, revisión y publicación en el grupo correcto", () => {
+test("Mia avisa la revisión en el área correcta y evita cambios rutinarios", () => {
   const base = task(8, { tipo_tarea: "produccion" });
   assert.equal(buildMiaStatePendingMarker({ ...base, estado: "pendiente" }, "en_progreso"), null);
   assert.equal(buildMiaStatePendingMarker({ ...base, estado: "programada" }, "en_revision"), null);
-  assert.equal(buildMiaStatePendingMarker({ ...base, estado: "en_progreso" }, "pendiente")?.destino, "visitas");
-  assert.equal(buildMiaStatePendingMarker({ ...base, estado: "en_revision" }, "en_progreso")?.destino, "render_brain");
-  assert.equal(buildMiaStatePendingMarker({ ...base, estado: "publicada" }, "programada")?.destino, "comunicacion");
+  assert.equal(buildMiaStatePendingMarker({ ...base, estado: "en_progreso" }, "pendiente"), null);
+  assert.equal(buildMiaStatePendingMarker({ ...base, estado: "en_revision" }, "en_progreso")?.destino, "visitas");
+  assert.equal(buildMiaStatePendingMarker({ ...base, estado: "publicada" }, "en_revision"), null);
+  assert.equal(buildMiaStatePendingMarker({ ...base, tipo_tarea: "diseno", estado: "en_revision" }, "en_progreso")?.destino, "comunicacion");
+  assert.equal(buildMiaStatePendingMarker({ ...base, tipo_tarea: "edicion", estado: "en_revision" }, "en_progreso")?.destino, "edicion");
 });

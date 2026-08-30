@@ -1,4 +1,4 @@
-const ACTIVE_STATES = new Set(["pendiente", "en_proceso", "en_revision", "programada"]);
+const ACTIVE_STATES = new Set(["pendiente", "en_proceso", "en_progreso", "en_revision", "programada"]);
 
 function dateKey(value) {
   const date = new Date(value);
@@ -71,19 +71,17 @@ export function shouldSendImmediateMiaNotice(task, today = new Date().toISOStrin
 }
 
 const MIA_STATE_EVENT_TYPES = new Map([
-  ["en_progreso", "tarea_iniciada"],
   ["en_revision", "tarea_en_revision"],
-  ["publicada", "tarea_publicada"],
 ]);
 
 export function buildMiaStatePendingMarker(task, previousState, createdAt = new Date().toISOString()) {
   if (task?.propiedades_extra?.workspace !== "render_os" || task.estado === previousState) return null;
   const type = MIA_STATE_EVENT_TYPES.get(task.estado);
   if (!type) return null;
-  let destination = "render_brain";
-  if (task.estado === "publicada") destination = "comunicacion";
-  else if (task.estado !== "en_revision" && task.tipo_tarea === "produccion") destination = "visitas";
-  else if (task.estado !== "en_revision" && task.tipo_tarea === "edicion") destination = "edicion";
+  let destination = null;
+  if (task.tipo_tarea === "produccion") destination = "visitas";
+  else if (task.tipo_tarea === "edicion") destination = "edicion";
   else if (["diseno", "community"].includes(task.tipo_tarea)) destination = "comunicacion";
+  if (!destination) return null;
   return { tipo: type, destino: destination, estado: task.estado, creado_en: createdAt };
 }
