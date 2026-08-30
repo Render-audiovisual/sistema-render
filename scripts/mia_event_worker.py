@@ -96,18 +96,28 @@ def main():
             return 0
 
         response = run_json(client_command(identity, "events"))
-        events = list(response.get("events") or [])[:limit]
+        digest_response = run_json(client_command(identity, "group-digests"))
+        events = ([{**event, "kind": "event"} for event in response.get("events") or []]
+                  + [{**digest, "kind": "digest"} for digest in digest_response.get("digests") or []])[:limit]
         delivered = []
         errors = []
         for event in events:
             try:
                 result = deliver_event(event, account=args.account, send=args.send)
                 if args.send:
-                    run_json(client_command(
-                        identity, "ack-event",
-                        "--task-id", str(event["task_id"]),
-                        "--event-id", str(event["id"]),
-                    ))
+                    if event.get("kind") == "digest":
+                        payload = json.dumps({
+                            "destination": event["destination"], "period": event["period"],
+                            "level": event["level"], "task_ids": event.get("task_ids", []),
+                            "clients": event.get("clients", []),
+                        }, ensure_ascii=False)
+                        run_json(client_command(identity, "ack-group-digest", "--fingerprint", event["id"], "--payload", payload))
+                    else:
+                        run_json(client_command(
+                            identity, "ack-event",
+                            "--task-id", str(event["task_id"]),
+                            "--event-id", str(event["id"]),
+                        ))
                 delivered.append({"event_id": event.get("id"), "destination": event.get("destination"), "result": result})
             except (KeyError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as error:
                 errors.append({"event_id": event.get("id"), "error": str(error)})
