@@ -85,7 +85,8 @@ test("el cliente sombra firma identidad, grupo, confirmación e idempotencia sin
   assert.ok(received.every((entry) => entry.valid));
   assert.ok(received.every((entry) => entry.req.headers["x-wilson-signature-version"] === "2"));
   assert.deepEqual(received.filter((entry) => entry.req.url.endsWith("/confirmaciones")).map((entry) => entry.body.operacion), ["crear", "archivar"]);
-  assert.deepEqual(received.filter((entry) => entry.body?.confirmacion_token).map((entry) => entry.body.confirmacion_token), ["token-1", "token-3"]);
+  assert.deepEqual(received.filter((entry) => entry.req.headers["idempotency-key"])
+    .map((entry) => entry.body.confirmacion_token), ["token-1", "token-3"]);
   assert.deepEqual(received.filter((entry) => entry.req.headers["idempotency-key"]).map((entry) => entry.req.headers["idempotency-key"]), ["mensaje-qa-1", "mensaje-qa-2"]);
   assert.deepEqual(received.slice(4).map((entry) => entry.req.url), [
     "/api/integraciones/wilson/tareas/resolver-revision",
