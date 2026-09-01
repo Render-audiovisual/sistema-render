@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import test from "node:test";
 import {
   appendWilsonDescription,
+  buildMiaFastContext,
   buildMiaPendingEvent,
   buildWilsonConfirmationHash,
   buildWilsonSignatureMessage,
@@ -15,6 +16,44 @@ import {
   validateWilsonConfirmation,
   wilsonPersonAliases,
 } from "../src/wilson-integration.js";
+
+test("Mia recibe un contexto compacto y específico para producción", () => {
+  const tasks = [{
+    id: 21, titulo: "Luzin | Visita producción", cliente_nombre: "Luzin",
+    asignado_a: "Germán", estado: "en_progreso", tipo_tarea: "produccion", subtipo: "visita",
+    prioridad: "alta", fecha_vencimiento: "2026-09-01", created_at: "2026-08-20T10:00:00Z",
+    updated_at: "2026-08-31T10:00:00Z",
+    propiedades_extra: {
+      produccion_videos_previstos: 7,
+      produccion_registros: [{ cantidad: 3, fecha: "2026-09-01" }],
+    },
+  }, {
+    id: 22, titulo: "Bohle | Visita producción", cliente_nombre: "Bohle",
+    asignado_a: "Germán", estado: "publicada", tipo_tarea: "produccion", subtipo: "visita",
+    prioridad: "media", fecha_vencimiento: "2026-09-01", updated_at: "2026-09-01T12:00:00Z",
+    propiedades_extra: { produccion_registros: [{ cantidad: 2, fecha: "2026-09-01" }] },
+  }];
+  const context = buildMiaFastContext(tasks, { name: "Germán", role: "produccion" }, { today: "2026-09-01" });
+  assert.equal(context.empleado, "Germán");
+  assert.equal(context.resumen.videos_registrados_mes, 5);
+  assert.equal(context.resumen.videos_pendientes, 4);
+  assert.equal(context.resumen.finalizadas_mes, 1);
+  assert.equal(context.resumen.today, 1);
+  assert.deepEqual(Object.keys(context.hacer_ahora[0]), ["id", "titulo", "cliente", "estado", "prioridad", "entrega", "motivo", "url"]);
+  assert.equal("propiedades_extra" in context.hacer_ahora[0], false);
+});
+
+test("Mia limita el contexto rápido a seis prioridades", () => {
+  const tasks = Array.from({ length: 12 }, (_, index) => ({
+    id: index + 1, titulo: `Carrusel ${index + 1}`, asignado_a: "Augusto",
+    estado: "pendiente", tipo_tarea: "diseno", subtipo: "carrusel", prioridad: "media",
+    fecha_vencimiento: `2026-09-${String(index + 1).padStart(2, "0")}`,
+    created_at: "2026-08-20T10:00:00Z", updated_at: "2026-08-31T10:00:00Z", propiedades_extra: {},
+  }));
+  const context = buildMiaFastContext(tasks, { name: "Augusto", role: "diseno" }, { today: "2026-09-01" });
+  assert.equal(context.hacer_ahora.length, 6);
+  assert.equal(context.resumen.carruseles_pendientes, 12);
+});
 
 test("Mia convierte una grabación completa en un evento breve para líderes", () => {
   const event = buildMiaPendingEvent({

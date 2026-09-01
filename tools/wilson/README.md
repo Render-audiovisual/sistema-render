@@ -89,3 +89,22 @@ confirmar, el backend cancela el lote completo; nunca aplica una parte. Las
 visitas conservan sus controles de videos, Drive y confirmación de producción.
 Mía solo puede llevar estas tareas hasta `en_revision`; no finaliza, elimina ni
 reasigna mediante este flujo.
+
+## Consultas rápidas de trabajo
+
+Para responder `¿qué hago ahora?`, `¿qué tengo vencido?` o `¿cómo viene
+Germán?`, Mía debe usar `fast-context` antes que descargar la lista general de
+tareas. La respuesta ya viene priorizada, incluye las métricas del rol y limita
+el detalle a seis tareas; esto reduce contexto y acelera la conversación.
+
+```bash
+python3 scripts/mia_render_os_task.py fast-context \
+  --actor-id '<id>' --actor-name 'Augusto'
+
+python3 scripts/mia_render_os_task.py fast-context --person 'Germán' \
+  --actor-id '<id-lider>' --actor-name 'Franco'
+```
+
+Cada empleado puede consultar únicamente su propio contexto. Franco y Agustín
+también pueden consultar a otra persona. Esta operación es de solo lectura: no
+modifica tareas, responsables, estados ni registros.

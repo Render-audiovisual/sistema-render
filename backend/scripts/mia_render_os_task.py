@@ -100,6 +100,8 @@ def main():
     listing = commands.add_parser("list")
     listing.add_argument("--limit", type=int, default=50)
     commands.add_parser("report")
+    fast_context = commands.add_parser("fast-context")
+    fast_context.add_argument("--person")
     commands.add_parser("events")
     commands.add_parser("group-digests")
     resolve_review = commands.add_parser("resolve-review")
@@ -147,6 +149,9 @@ def main():
         result = request("GET", f"/tareas?limit={max(1, min(args.limit, 100))}", args)
     elif args.cmd == "report":
         result = request("GET", "/reporte-personal", args)
+    elif args.cmd == "fast-context":
+        query = "" if not args.person else "?" + urllib.parse.urlencode({"persona": args.person})
+        result = request("GET", f"/contexto-rapido{query}", args)
     elif args.cmd == "events":
         result = request("GET", "/eventos-pendientes", args)
     elif args.cmd == "group-digests":
