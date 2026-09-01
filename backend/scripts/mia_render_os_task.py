@@ -102,6 +102,12 @@ def main():
     commands.add_parser("report")
     commands.add_parser("events")
     commands.add_parser("group-digests")
+    resolve_review = commands.add_parser("resolve-review")
+    resolve_review.add_argument("--references", required=True)
+    preview_review = commands.add_parser("preview-review")
+    preview_review.add_argument("--task-ids", required=True)
+    confirm_review = commands.add_parser("confirm-review")
+    confirm_review.add_argument("--confirmation-token", required=True)
     ack_event = commands.add_parser("ack-event")
     ack_event.add_argument("--task-id", required=True, type=int)
     ack_event.add_argument("--event-id", required=True)
@@ -145,6 +151,12 @@ def main():
         result = request("GET", "/eventos-pendientes", args)
     elif args.cmd == "group-digests":
         result = request("GET", "/resumenes-grupos", args)
+    elif args.cmd == "resolve-review":
+        result = request("POST", "/tareas/resolver-revision", args, payload={"referencias": json.loads(args.references)})
+    elif args.cmd == "preview-review":
+        result = request("POST", "/lotes/revision/previsualizar", args, payload={"task_ids": json.loads(args.task_ids)})
+    elif args.cmd == "confirm-review":
+        result = request("POST", "/lotes/revision/confirmar", args, payload={"confirmacion_token": args.confirmation_token})
     elif args.cmd == "ack-event":
         result = request("POST", f"/eventos/{args.task_id}/entregado", args, payload={"evento_id": args.event_id})
     elif args.cmd == "ack-group-digest":

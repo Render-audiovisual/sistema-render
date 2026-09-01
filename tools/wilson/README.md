@@ -40,7 +40,7 @@ repositorio y debe tener permisos `0600`.
 ## Confirmación de una visita de producción desde WhatsApp
 
 Cuando una visita alcanza la cantidad prevista, Mía debe mostrar el resumen y
-esperar que Franco o Agustín confirmen. La confirmación dura diez minutos y se
+esperar que Franco o Agustín confirmen. La confirmación dura quince minutos y se
 ejecuta con el cliente firmado `scripts/mia_render_os_task.py`:
 
 ```bash
@@ -53,3 +53,39 @@ python3 scripts/mia_render_os_task.py confirm-production --task-id 1421 \
 
 El backend valida que la visita esté completa y tenga Drive, registra quién
 confirmó y crea una sola tarea de edición vinculada para Luciano.
+
+## Informar tareas terminadas desde un grupo
+
+Cuando una persona diga que terminó una o varias tareas, Mía no debe moverlas
+directamente ni adivinar entre coincidencias. El flujo obligatorio es:
+
+1. extraer una referencia separada para cada tarea mencionada;
+2. ejecutar `resolve-review` con esas referencias;
+3. si alguna respuesta es `ambiguous` o `not_found`, mostrar las opciones y no
+   crear una confirmación;
+4. ejecutar `preview-review` solo con un listado completamente resuelto;
+5. enviar sin modificar el texto numerado devuelto y preguntar `¿Confirmás?`;
+6. ejecutar `confirm-review` únicamente ante una confirmación afirmativa dentro
+   de los quince minutos.
+
+```bash
+python3 scripts/mia_render_os_task.py resolve-review \
+  --references '["Luzin Carrusel 1 2026-09-03", "Bendita Carrusel 2"]' \
+  --actor-id '<id>' --actor-name 'Mariano Meza' --group-id '<grupo>'
+
+python3 scripts/mia_render_os_task.py preview-review \
+  --task-ids '[1501, 1508]' \
+  --actor-id '<id>' --actor-name 'Mariano Meza' --group-id '<grupo>'
+
+python3 scripts/mia_render_os_task.py confirm-review \
+  --confirmation-token '<token>' \
+  --actor-id '<id>' --actor-name 'Mariano Meza' --group-id '<grupo>'
+```
+
+La persona que informó, Franco o Agustín pueden confirmar. Si el usuario corrige
+la lista, Mía debe volver a resolver y previsualizar: el resumen anterior queda
+invalidado. Si una tarea cambia, se elimina o deja de estar disponible antes de
+confirmar, el backend cancela el lote completo; nunca aplica una parte. Las
+visitas conservan sus controles de videos, Drive y confirmación de producción.
+Mía solo puede llevar estas tareas hasta `en_revision`; no finaliza, elimina ni
+reasigna mediante este flujo.
