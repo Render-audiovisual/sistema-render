@@ -76,11 +76,12 @@ test("el cliente sombra firma identidad, grupo, confirmación e idempotencia sin
     await runClient(["resolve-review", "--references", JSON.stringify(["Luzin Carrusel 1"])], env);
     const reviewProposal = await runClient(["preview-review", "--task-ids", JSON.stringify([71, 72])], env);
     await runClient(["confirm-review", "--confirmation-token", reviewProposal.confirmacion_token], env);
+    await runClient(["fast-context", "--person", "Germán"], env);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
-  assert.equal(received.length, 7);
+  assert.equal(received.length, 8);
   assert.ok(received.every((entry) => entry.valid));
   assert.ok(received.every((entry) => entry.req.headers["x-wilson-signature-version"] === "2"));
   assert.deepEqual(received.filter((entry) => entry.req.url.endsWith("/confirmaciones")).map((entry) => entry.body.operacion), ["crear", "archivar"]);
@@ -90,6 +91,7 @@ test("el cliente sombra firma identidad, grupo, confirmación e idempotencia sin
     "/api/integraciones/wilson/tareas/resolver-revision",
     "/api/integraciones/wilson/lotes/revision/previsualizar",
     "/api/integraciones/wilson/lotes/revision/confirmar",
+    "/api/integraciones/wilson/contexto-rapido?persona=Germ%C3%A1n",
   ]);
   assert.deepEqual(received[4].body.referencias, ["Luzin Carrusel 1"]);
   assert.deepEqual(received[5].body.task_ids, [71, 72]);

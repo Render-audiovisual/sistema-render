@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import express from "express";
 import fs from "node:fs";
 import { buildMiaGroupDigests, miaGroupDigestWindow } from "./mia-group-digest.js";
-import { isProductionVisitTask } from "./production-visits.js";
+import { getProductionProgress, isProductionVisitTask } from "./production-visits.js";
+import { rankTaskPriorities } from "./task-priority.js";
 import { getStateNotification, validateProductionHandoff } from "./task-workflow.js";
 
 const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
@@ -194,6 +195,56 @@ export function wilsonPersonAliases(value) {
   if (canonical === "mariano meza") return ["mariano", "mariano mesa", "mariano meza", "mesa", "meza"];
   if (canonical === "german") return ["german", "germán"];
   return canonical ? [canonical] : [];
+}
+
+function knownWilsonPerson(value) {
+  const canonical = canonicalWilsonPerson(value);
+  return KNOWN_WHATSAPP_ACCOUNTS.find((account) => canonicalWilsonPerson(account.name) === canonical) || null;
+}
+
+export function buildMiaFastContext(tasks = [], person = {}, { today = argentinaDate(), limit = 6 } = {}) {
+  const active = tasks.filter((task) => task.estado !== "publicada");
+  const ranked = rankTaskPriorities(active, { today, limit });
+  const role = person.role || "equipo";
+  const roleTasks = role === "produccion" ? tasks.filter(isProductionVisitTask)
+    : role === "diseno" ? tasks.filter((task) => normalizeWilsonText(`${task.titulo} ${task.subtipo}`).includes("carrusel"))
+      : role === "edicion" ? tasks.filter((task) => task.tipo_tarea === "edicion")
+        : role === "community" ? tasks.filter((task) => task.estado === "en_revision" || task.estado === "publicada")
+          : tasks;
+  const activeRoleTasks = roleTasks.filter((task) => task.estado !== "publicada");
+  const metrics = {
+    abiertas: activeRoleTasks.filter((task) => ["pendiente", "en_progreso"].includes(task.estado)).length,
+    en_revision: activeRoleTasks.filter((task) => task.estado === "en_revision").length,
+    finalizadas_mes: roleTasks.filter((task) => task.estado === "publicada"
+      && String(task.fecha_vencimiento || task.updated_at || "").slice(0, 7) === today.slice(0, 7)).length,
+  };
+  if (role === "produccion") {
+    metrics.videos_registrados_mes = roleTasks.reduce((total, task) => total
+      + (Array.isArray(task.propiedades_extra?.produccion_registros) ? task.propiedades_extra.produccion_registros : [])
+        .filter((record) => String(record.periodo_objetivo || record.fecha || "").slice(0, 7) === today.slice(0, 7))
+        .reduce((sum, record) => sum + (Number(record.cantidad) || 0), 0), 0);
+    metrics.videos_pendientes = activeRoleTasks.map(getProductionProgress)
+      .reduce((total, item) => total + item.remaining, 0);
+  } else if (role === "diseno") {
+    metrics.carruseles_pendientes = metrics.abiertas;
+  } else if (role === "edicion") {
+    metrics.ediciones_pendientes = metrics.abiertas;
+  } else if (role === "community") {
+    metrics.para_publicar = metrics.en_revision;
+  }
+  const compactTask = (task) => ({
+    id: Number(task.id), titulo: task.titulo, cliente: task.cliente_nombre || null,
+    estado: task.estado, prioridad: task.dynamic_priority_label,
+    entrega: task.fecha_vencimiento || null, motivo: task.priority_reasons?.[0] || null,
+    url: `https://sistema.rendercorrientes.com/workspace/tareas?task=${task.id}`,
+  });
+  return {
+    empleado: person.name,
+    rol: role,
+    fecha: today,
+    resumen: { ...ranked.summary, ...metrics },
+    hacer_ahora: ranked.recommendations.map(compactTask),
+  };
 }
 
 function argentinaDate(now = new Date()) {
@@ -829,7 +880,9 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
          WHERE t.propiedades_extra->>'workspace'='render_os'
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
            AND LOWER(t.asignado_a)=ANY($1::text[])
-           AND t.estado <> 'publicada'
+           AND (t.estado <> 'publicada'
+             OR t.fecha_vencimiento >= date_trunc('month', CURRENT_DATE)
+             OR t.updated_at >= date_trunc('month', CURRENT_DATE))
          ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC LIMIT 100`,
         [wilsonPersonAliases(req.wilson.actorName)],
       );
@@ -851,6 +904,37 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
         resumen: Object.fromEntries(Object.entries(buckets).map(([key, items]) => [key, items.length])),
         prioridades: buckets,
       });
+    } catch (error) { return next(error); }
+  });
+
+  router.get("/contexto-rapido", async (req, res, next) => {
+    if (!req.wilson.privateChat) return res.status(400).json({ error: "Este contexto se consulta únicamente por chat privado." });
+    const requestedName = String(req.query.persona || req.wilson.actorName).trim();
+    const target = knownWilsonPerson(requestedName) || {
+      name: req.wilson.actorName, role: req.wilson.actorRole || "equipo",
+    };
+    if (canonicalWilsonPerson(target.name) !== canonicalWilsonPerson(req.wilson.actorName) && !isWilsonLeader(req, env)) {
+      return res.status(403).json({ error: "Solo un líder puede consultar el contexto de otra persona." });
+    }
+    if (req.query.persona && !knownWilsonPerson(requestedName)
+      && canonicalWilsonPerson(requestedName) !== canonicalWilsonPerson(req.wilson.actorName)) {
+      return res.status(404).json({ error: "No encontré a esa persona en el equipo de Render." });
+    }
+    try {
+      const result = await pool.query(
+        `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,t.prioridad,
+                t.propiedades_extra,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
+                t.created_at,t.updated_at,c.nombre AS cliente_nombre
+         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+         WHERE t.propiedades_extra->>'workspace'='render_os'
+           AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+           AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
+           AND LOWER(t.asignado_a)=ANY($1::text[])
+           AND t.estado <> 'publicada'
+         ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC LIMIT 150`,
+        [wilsonPersonAliases(target.name)],
+      );
+      return res.json(buildMiaFastContext(result.rows, target));
     } catch (error) { return next(error); }
   });
 
