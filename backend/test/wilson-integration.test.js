@@ -222,10 +222,10 @@ test("la API técnica de WhatsApp exige usuario y grupo permitidos dentro de la 
   assert.equal(systemRequest.wilson.actorName, "MIA");
 });
 
-test("las confirmaciones de WhatsApp vencen a los 10 minutos", () => {
+test("las confirmaciones de WhatsApp vencen a los 15 minutos", () => {
   const now = Date.parse("2026-08-10T12:00:00.000Z");
-  assert.equal(validateWilsonConfirmation({ confirmed: true, confirmedAt: "2026-08-10T11:51:00.000Z", now }), null);
-  assert.match(validateWilsonConfirmation({ confirmed: true, confirmedAt: "2026-08-10T11:49:59.000Z", now }), /venció/);
+  assert.equal(validateWilsonConfirmation({ confirmed: true, confirmedAt: "2026-08-10T11:45:00.000Z", now }), null);
+  assert.match(validateWilsonConfirmation({ confirmed: true, confirmedAt: "2026-08-10T11:44:59.000Z", now }), /venció/);
   assert.match(validateWilsonConfirmation({ confirmed: false, confirmedAt: "2026-08-10T11:59:00.000Z", now }), /todavía no fue confirmada/);
   assert.match(validateWilsonConfirmation({ confirmed: true, confirmedAt: "sin fecha", now }), /Falta la fecha/);
 });

@@ -41,7 +41,8 @@ test("el cliente sombra firma identidad, grupo, confirmación e idempotencia sin
       const valid = crypto.verify("sha256", Buffer.from(message), publicKey, Buffer.from(req.headers["x-wilson-signature"], "base64"));
       received.push({ req, body, valid });
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(url.pathname.endsWith("/confirmaciones")
+      const tokenResponse = url.pathname.endsWith("/confirmaciones") || url.pathname.endsWith("/lotes/revision/previsualizar");
+      res.end(JSON.stringify(tokenResponse
         ? { confirmacion_token: `token-${received.length}` }
         : { shadow: true }));
     });
@@ -72,14 +73,25 @@ test("el cliente sombra firma identidad, grupo, confirmación e idempotencia sin
     await runClient(["create", "--payload", createPayload, "--confirmation-token", createProposal.confirmacion_token, "--idempotency-key", "mensaje-qa-1"], env);
     const archiveProposal = await runClient(["propose", "--operation", "archivar", "--task-id", "42"], env);
     await runClient(["archive", "--task-id", "42", "--confirmation-token", archiveProposal.confirmacion_token, "--idempotency-key", "mensaje-qa-2"], env);
+    await runClient(["resolve-review", "--references", JSON.stringify(["Luzin Carrusel 1"])], env);
+    const reviewProposal = await runClient(["preview-review", "--task-ids", JSON.stringify([71, 72])], env);
+    await runClient(["confirm-review", "--confirmation-token", reviewProposal.confirmacion_token], env);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
-  assert.equal(received.length, 4);
+  assert.equal(received.length, 7);
   assert.ok(received.every((entry) => entry.valid));
   assert.ok(received.every((entry) => entry.req.headers["x-wilson-signature-version"] === "2"));
   assert.deepEqual(received.filter((entry) => entry.req.url.endsWith("/confirmaciones")).map((entry) => entry.body.operacion), ["crear", "archivar"]);
   assert.deepEqual(received.filter((entry) => !entry.req.url.endsWith("/confirmaciones")).map((entry) => entry.body.confirmacion_token), ["token-1", "token-3"]);
   assert.deepEqual(received.filter((entry) => entry.req.headers["idempotency-key"]).map((entry) => entry.req.headers["idempotency-key"]), ["mensaje-qa-1", "mensaje-qa-2"]);
+  assert.deepEqual(received.slice(4).map((entry) => entry.req.url), [
+    "/api/integraciones/wilson/tareas/resolver-revision",
+    "/api/integraciones/wilson/lotes/revision/previsualizar",
+    "/api/integraciones/wilson/lotes/revision/confirmar",
+  ]);
+  assert.deepEqual(received[4].body.referencias, ["Luzin Carrusel 1"]);
+  assert.deepEqual(received[5].body.task_ids, [71, 72]);
+  assert.equal(received[6].body.confirmacion_token, "token-6");
 });
