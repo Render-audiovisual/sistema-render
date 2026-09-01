@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import express from "express";
 import fs from "node:fs";
-import { buildMiaGroupDigests, miaGroupDigestWindow } from "./mia-group-digest.js";
+import { buildMiaGroupDigests, buildMiaWeeklyCarruselDigest, miaGroupDigestWindow } from "./mia-group-digest.js";
 import { getProductionProgress, isProductionVisitTask } from "./production-visits.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { getStateNotification, validateProductionHandoff } from "./task-workflow.js";
@@ -982,8 +982,15 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
            AND t.estado IN ('pendiente','en_progreso','en_revision','publicada')
          ORDER BY t.fecha_vencimiento NULLS LAST,t.id`,
       );
-      const digests = buildMiaGroupDigests(result.rows, { today })
+      const weeklyWindow = ["semanal", "semanal_mensual", "control_semanal_tarde"].includes(window.type);
+      const weeklyDigests = weeklyWindow
+        ? buildMiaWeeklyCarruselDigest(result.rows, { today, followUp: window.type === "control_semanal_tarde" })
+        : [];
+      const includeGeneral = !["semanal", "control_semanal_tarde"].includes(window.type);
+      const generalDigests = includeGeneral ? buildMiaGroupDigests(result.rows, { today })
         .filter((digest) => !window.criticalOnly || digest.level === "critico")
+        .filter((digest) => !(window.type === "semanal_mensual" && digest.destination === "comunicacion")) : [];
+      const digests = [...weeklyDigests, ...generalDigests]
         .map((digest) => ({ ...digest, schedule_type: window.type }));
       if (!digests.length) return res.json({ digests: [] });
       const delivered = await pool.query(
