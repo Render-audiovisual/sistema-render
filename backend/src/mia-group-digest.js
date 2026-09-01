@@ -57,6 +57,61 @@ function digestFingerprint(destination, period, items) {
   return crypto.createHash("sha256").update(`${destination}|${period}|${state}`).digest("hex");
 }
 
+function currentWeek(today) {
+  const date = new Date(`${today}T00:00:00Z`);
+  const weekday = date.getUTCDay() || 7;
+  const monday = new Date(date);
+  monday.setUTCDate(date.getUTCDate() - weekday + 1);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  return { start: monday.toISOString().slice(0, 10), end: sunday.toISOString().slice(0, 10) };
+}
+
+export function buildMiaWeeklyCarruselDigest(tasks = [], {
+  today = new Date().toISOString().slice(0, 10), followUp = false,
+} = {}) {
+  const week = currentWeek(today);
+  const scheduled = tasks.filter((task) => {
+    const due = dateOnly(task?.fecha_vencimiento);
+    return task?.propiedades_extra?.workspace === "render_os"
+      && task.propiedades_extra?.papelera_render_os !== true
+      && areaForTask(task) === "comunicacion"
+      && isObjectiveTask(task, "comunicacion")
+      && due >= week.start && due <= week.end;
+  });
+  if (!scheduled.length) return [];
+  const done = scheduled.filter((task) => DONE_STATES.has(task.estado));
+  const pending = scheduled.filter((task) => !DONE_STATES.has(task.estado));
+  if (!pending.length) return [];
+  const byOwner = new Map();
+  for (const task of pending) {
+    const owner = task.asignado_a || "Sin responsable";
+    if (!byOwner.has(owner)) byOwner.set(owner, []);
+    byOwner.get(owner).push(task);
+  }
+  const ownerLines = [...byOwner].map(([owner, ownerTasks]) => {
+    const clients = [...new Set(ownerTasks.map((task) => task.cliente_nombre || "Sin cliente"))];
+    return `• ${owner}: faltan ${ownerTasks.length} · ${clients.join(", ")}`;
+  });
+  const taskLines = pending.slice(0, 6).map((task) => `  ↳ ${task.titulo} — ${task.cliente_nombre || "Sin cliente"}`);
+  const omitted = pending.length > taskLines.length ? `\n  ↳ y ${pending.length - taskLines.length} más` : "";
+  const phase = followUp ? "seguimiento" : "cierre";
+  const id = crypto.createHash("sha256")
+    .update(`comunicacion|${week.start}|${week.end}|${phase}`).digest("hex");
+  const heading = followUp ? "Seguimiento: todavía faltan carruseles de esta semana"
+    : "Cierre semanal de carruseles";
+  const action = followUp
+    ? "Todavía siguen pendientes. Necesito que hoy los terminen y los pasen a Revisar; si hay un bloqueo, avisen ahora cuál es."
+    : "Prioricen hoy estos pendientes y pásenlos a Revisar. Si alguno está bloqueado, indiquen el motivo en el grupo.";
+  return [{
+    id, destination: "comunicacion", period: today.slice(0, 7), level: "critico",
+    text: `${heading}\nEsta semana había ${scheduled.length}: ${done.length} listos y faltan ${pending.length}.\n${ownerLines.join("\n")}\n${taskLines.join("\n")}${omitted}\n\n${action}`,
+    task_ids: pending.map((task) => Number(task.id)),
+    clients: [...new Set(pending.map((task) => task.cliente_nombre || "Sin cliente"))],
+    week_start: week.start, week_end: week.end, follow_up: followUp,
+  }];
+}
+
 export function buildMiaGroupDigests(tasks = [], { today = new Date().toISOString().slice(0, 10) } = {}) {
   const period = today.slice(0, 7);
   const progress = monthProgress(today);
@@ -136,6 +191,6 @@ export function miaGroupDigestWindow(now = new Date(), timeZone = "America/Argen
   if (hour === 10 && (friday || monthly)) {
     return { type: friday && monthly ? "semanal_mensual" : monthly ? "mensual" : "semanal", criticalOnly: false };
   }
-  if (hour === 18) return { type: "control_tarde", criticalOnly: true };
+  if (hour === 18) return { type: friday ? "control_semanal_tarde" : "control_tarde", criticalOnly: true };
   return null;
 }
