@@ -965,6 +965,52 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
     } catch (error) { return next(error); }
   });
 
+  router.get("/notificaciones-privadas", async (req, res, next) => {
+    if (!isWilsonSystemActor(req, env)) return res.status(403).json({ error: "Esta cola es exclusiva del proceso automático de MIA." });
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 20, 50));
+    try {
+      const result = await pool.query(
+        `WITH candidates AS (
+           SELECT id FROM mia_private_task_notifications
+           WHERE estado='pending'
+              OR (estado='sending' AND claimed_at < NOW()-INTERVAL '10 minutes')
+           ORDER BY created_at,id
+           FOR UPDATE SKIP LOCKED
+           LIMIT $1
+         )
+         UPDATE mia_private_task_notifications notification
+         SET estado='sending',claimed_at=NOW(),intentos=intentos+1
+         FROM candidates
+         WHERE notification.id=candidates.id
+         RETURNING notification.id,notification.fingerprint,notification.destinatario,
+           notification.destinatario_clave,notification.tarea_id,notification.motivo,
+           notification.mensaje,notification.tarea_url,notification.intentos,notification.created_at`,
+        [limit],
+      );
+      return res.json({ notifications: result.rows });
+    } catch (error) { return next(error); }
+  });
+
+  router.post("/notificaciones-privadas/:id/entregada", async (req, res, next) => {
+    if (!isWilsonSystemActor(req, env)) return res.status(403).json({ error: "Esta cola es exclusiva del proceso automático de MIA." });
+    const id = Number(req.params.id);
+    const fingerprint = String(req.body?.fingerprint || "").trim().toLowerCase();
+    if (!Number.isInteger(id) || id <= 0 || !/^[a-f0-9]{64}$/.test(fingerprint)) {
+      return res.status(400).json({ error: "Notificación privada inválida." });
+    }
+    try {
+      const result = await pool.query(
+        `UPDATE mia_private_task_notifications
+         SET estado='delivered',delivered_at=NOW()
+         WHERE id=$1 AND fingerprint=$2 AND estado='sending'
+         RETURNING id`,
+        [id, fingerprint],
+      );
+      if (!result.rows[0]) return res.status(409).json({ error: "La notificación ya fue entregada o cambió." });
+      return res.json({ delivered: true, id });
+    } catch (error) { return next(error); }
+  });
+
   router.get("/resumenes-grupos", async (req, res, next) => {
     if (!isWilsonSystemActor(req, env)) return res.status(403).json({ error: "Estos resúmenes son exclusivos del proceso automático de MIA." });
     try {

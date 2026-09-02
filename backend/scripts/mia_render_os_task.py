@@ -104,6 +104,8 @@ def main():
     fast_context.add_argument("--person")
     commands.add_parser("events")
     commands.add_parser("group-digests")
+    private_notifications = commands.add_parser("private-notifications")
+    private_notifications.add_argument("--limit", type=int, default=20)
     resolve_review = commands.add_parser("resolve-review")
     resolve_review.add_argument("--references", required=True)
     preview_review = commands.add_parser("preview-review")
@@ -116,6 +118,9 @@ def main():
     ack_digest = commands.add_parser("ack-group-digest")
     ack_digest.add_argument("--fingerprint", required=True)
     ack_digest.add_argument("--payload", required=True)
+    ack_private = commands.add_parser("ack-private-notification")
+    ack_private.add_argument("--notification-id", required=True, type=int)
+    ack_private.add_argument("--fingerprint", required=True)
     get_task = commands.add_parser("get")
     get_task.add_argument("--task-id", required=True, type=int)
     validate = commands.add_parser("validate")
@@ -156,6 +161,8 @@ def main():
         result = request("GET", "/eventos-pendientes", args)
     elif args.cmd == "group-digests":
         result = request("GET", "/resumenes-grupos", args)
+    elif args.cmd == "private-notifications":
+        result = request("GET", f"/notificaciones-privadas?limit={max(1, min(args.limit, 50))}", args)
     elif args.cmd == "resolve-review":
         result = request("POST", "/tareas/resolver-revision", args, payload={"referencias": json.loads(args.references)})
     elif args.cmd == "preview-review":
@@ -166,6 +173,8 @@ def main():
         result = request("POST", f"/eventos/{args.task_id}/entregado", args, payload={"evento_id": args.event_id})
     elif args.cmd == "ack-group-digest":
         result = request("POST", f"/resumenes-grupos/{args.fingerprint}/entregado", args, payload=json.loads(args.payload))
+    elif args.cmd == "ack-private-notification":
+        result = request("POST", f"/notificaciones-privadas/{args.notification_id}/entregada", args, payload={"fingerprint": args.fingerprint})
     elif args.cmd == "get":
         result = request("GET", f"/tareas/{args.task_id}", args)
     elif args.cmd == "validate":
