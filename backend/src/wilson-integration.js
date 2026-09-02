@@ -993,13 +993,25 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
       const digests = [...weeklyDigests, ...generalDigests]
         .map((digest) => ({ ...digest, schedule_type: window.type }));
       if (!digests.length) return res.json({ digests: [] });
-      const delivered = await pool.query(
-        `SELECT fingerprint FROM mia_group_digest_deliveries
-         WHERE fingerprint=ANY($1::text[]) AND delivered_at >= NOW()-INTERVAL '24 hours'`,
-        [digests.map((digest) => digest.id)],
-      );
-      const recent = new Set(delivered.rows.map((row) => row.fingerprint));
-      return res.json({ digests: digests.filter((digest) => !recent.has(digest.id)) });
+      const claimed = [];
+      for (const digest of digests) {
+        const reservation = await pool.query(
+          `INSERT INTO mia_group_digest_deliveries(fingerprint,destino,periodo,nivel,detalles,delivered_at)
+           VALUES($1,$2,$3,$4,$5::jsonb,NOW())
+           ON CONFLICT(fingerprint) DO UPDATE
+             SET destino=EXCLUDED.destino,periodo=EXCLUDED.periodo,nivel=EXCLUDED.nivel,
+                 detalles=EXCLUDED.detalles,delivered_at=NOW()
+           WHERE (mia_group_digest_deliveries.detalles->>'status'='sending'
+                    AND mia_group_digest_deliveries.delivered_at < NOW()-INTERVAL '10 minutes')
+              OR (mia_group_digest_deliveries.detalles->>'status' IS DISTINCT FROM 'sending'
+                    AND mia_group_digest_deliveries.delivered_at < NOW()-INTERVAL '24 hours')
+           RETURNING fingerprint`,
+          [digest.id, digest.destination, digest.period, digest.level,
+            JSON.stringify({ status: "sending", task_ids: digest.task_ids, clients: digest.clients })],
+        );
+        if (reservation.rows[0]) claimed.push(digest);
+      }
+      return res.json({ digests: claimed });
     } catch (error) { return next(error); }
   });
 
@@ -1019,7 +1031,7 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
          VALUES($1,$2,$3,$4,$5::jsonb)
          ON CONFLICT(fingerprint) DO UPDATE SET destino=EXCLUDED.destino,periodo=EXCLUDED.periodo,
            nivel=EXCLUDED.nivel,detalles=EXCLUDED.detalles,delivered_at=NOW()`,
-        [fingerprint, destination, period, level, JSON.stringify({ task_ids: req.body?.task_ids || [], clients: req.body?.clients || [] })],
+        [fingerprint, destination, period, level, JSON.stringify({ status: "delivered", task_ids: req.body?.task_ids || [], clients: req.body?.clients || [] })],
       );
       return res.json({ delivered: true, fingerprint });
     } catch (error) { return next(error); }

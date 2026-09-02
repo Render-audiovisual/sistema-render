@@ -25,3 +25,11 @@ test("Mia archiva solo RENDER OS y elimina definitivamente solo desde Papelera",
   assert.match(source, /Solo Agustín o Franco pueden eliminar definitivamente/);
   assert.match(source, /archivada_render_os'='true'/);
 });
+
+test("Mia reserva los resúmenes de forma atómica antes de enviarlos", () => {
+  assert.match(source, /const claimed = \[\]/);
+  assert.match(source, /ON CONFLICT\(fingerprint\) DO UPDATE/);
+  assert.match(source, /status'='sending'/);
+  assert.match(source, /if \(reservation\.rows\[0\]\) claimed\.push\(digest\)/);
+  assert.match(source, /status: "delivered"/);
+});
