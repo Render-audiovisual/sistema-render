@@ -33,6 +33,14 @@ def format_event(event):
     return f"{text}\n\nAbrir tarea: {task_url}" if task_url else text
 
 
+def private_recipients():
+    raw = os.environ.get("MIA_PRIVATE_RECIPIENTS_JSON", "{}").strip()
+    values = json.loads(raw or "{}")
+    if not isinstance(values, dict):
+        raise ValueError("MIA_PRIVATE_RECIPIENTS_JSON debe ser un objeto JSON.")
+    return {str(key).strip().lower(): str(value).strip() for key, value in values.items() if str(value).strip()}
+
+
 def run_json(command):
     result = subprocess.run(command, capture_output=True, text=True, check=True)
     return json.loads(result.stdout)
@@ -59,7 +67,12 @@ def client_command(identity, *arguments):
 
 def deliver_event(event, *, account, send):
     destination = str(event.get("destination") or "")
-    target = DESTINATION_GROUPS.get(destination)
+    if event.get("kind") == "private":
+        target = private_recipients().get(str(event.get("destinatario_clave") or "").strip().lower())
+        if not target:
+            raise ValueError(f"Falta vincular el WhatsApp privado de {event.get('destinatario') or destination or '(desconocido)'}.")
+    else:
+        target = DESTINATION_GROUPS.get(destination)
     if not target:
         raise ValueError(f"Destino de MIA desconocido: {destination or '(vacío)'}")
     command = [
@@ -97,7 +110,9 @@ def main():
 
         response = run_json(client_command(identity, "events"))
         digest_response = run_json(client_command(identity, "group-digests"))
-        events = ([{**event, "kind": "event"} for event in response.get("events") or []]
+        private_response = run_json(client_command(identity, "private-notifications", "--limit", str(limit)))
+        events = ([{**event, "kind": "private", "text": event.get("mensaje")} for event in private_response.get("notifications") or []]
+                  + [{**event, "kind": "event"} for event in response.get("events") or []]
                   + [{**digest, "kind": "digest"} for digest in digest_response.get("digests") or []])[:limit]
         delivered = []
         errors = []
@@ -105,7 +120,13 @@ def main():
             try:
                 result = deliver_event(event, account=args.account, send=args.send)
                 if args.send:
-                    if event.get("kind") == "digest":
+                    if event.get("kind") == "private":
+                        run_json(client_command(
+                            identity, "ack-private-notification",
+                            "--notification-id", str(event["id"]),
+                            "--fingerprint", str(event["fingerprint"]),
+                        ))
+                    elif event.get("kind") == "digest":
                         payload = json.dumps({
                             "destination": event["destination"], "period": event["period"],
                             "level": event["level"], "task_ids": event.get("task_ids", []),
@@ -118,7 +139,7 @@ def main():
                             "--task-id", str(event["task_id"]),
                             "--event-id", str(event["id"]),
                         ))
-                delivered.append({"event_id": event.get("id"), "destination": event.get("destination"), "result": result})
+                delivered.append({"event_id": event.get("id"), "destination": event.get("destination") or event.get("destinatario_clave"), "result": result})
             except (KeyError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as error:
                 errors.append({"event_id": event.get("id"), "error": str(error)})
 

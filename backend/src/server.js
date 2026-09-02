@@ -12,8 +12,9 @@ import { checkDatabaseConnection, pool } from "./db.js";
 import {
   enviarInstruccionesAcceso,
   normalizarNombre,
-  notificarAsignacionSinInterrumpir,
+  notificarAsignacionSinInterrumpir as notificarAsignacionPorCorreoSinInterrumpir,
 } from "./email-notifications.js";
+import { encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
 import { setupDemoClientes } from "./setup-demo-data.js";
 import { shouldSetupDemoData } from "./hosting-config.js";
 import { requireAuthentication, requireRole } from "./auth.js";
@@ -56,6 +57,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const app = express();
 const router = express.Router();
 const port = Number(process.env.PORT || 3000);
+
+function notificarAsignacionSinInterrumpir(opciones) {
+  const esRenderOS = opciones?.tarea?.propiedades_extra?.workspace === "render_os";
+  const canal = String(process.env.TASK_NOTIFICATION_CHANNEL || "dual").trim().toLowerCase();
+  if (esRenderOS && canal !== "email") {
+    void encolarNotificacionPrivadaTarea(opciones).catch((error) => {
+      console.error(`No se pudo encolar la notificación privada de la tarea ${opciones.tarea.id}:`, error.message);
+    });
+  }
+  if (!esRenderOS || canal !== "whatsapp") {
+    notificarAsignacionPorCorreoSinInterrumpir(opciones);
+  }
+}
 
 const googleClient = process.env.GOOGLE_CLIENT_ID
   ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
@@ -2886,6 +2900,7 @@ router.post("/tareas/:id/comentarios", async (req, res, next) => {
           tarea: tarea.rows[0],
           motivo: esBloqueo ? "bloqueada" : "comentario",
           detalle: `${autor}: ${contenido.slice(0, 280)}`,
+          actor: autor,
         });
       }).catch((error) => {
         console.error(`No se pudo preparar la notificación del comentario de la tarea ${req.params.id}:`, error.message);

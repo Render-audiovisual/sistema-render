@@ -35,9 +35,21 @@ except ValueError:
 
 test("el worker combina eventos puntuales y resúmenes sin confirmar antes de enviar", () => {
   const source = fs.readFileSync(script, "utf8");
+  assert.match(source, /private-notifications/);
+  assert.match(source, /ack-private-notification/);
+  assert.match(source, /MIA_PRIVATE_RECIPIENTS_JSON/);
   assert.match(source, /group-digests/);
   assert.match(source, /ack-group-digest/);
   assert.match(source, /if args\.send:/);
+});
+
+test("las notificaciones privadas se reservan y deduplican en PostgreSQL", () => {
+  const migration = fs.readFileSync(new URL("../migrations/031_mia_private_task_notifications.sql", import.meta.url), "utf8");
+  assert.match(migration, /fingerprint CHAR\(64\) NOT NULL UNIQUE/);
+  assert.match(migration, /estado IN \('pending', 'sending', 'delivered'\)/);
+  const integration = fs.readFileSync(new URL("../src/wilson-integration.js", import.meta.url), "utf8");
+  assert.match(integration, /FOR UPDATE SKIP LOCKED/);
+  assert.match(integration, /notificaciones-privadas\/:id\/entregada/);
 });
 
 test("la deduplicación de resúmenes queda persistida por destino y período", () => {
