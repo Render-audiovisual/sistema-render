@@ -212,6 +212,18 @@ test("la revisión de videos permite al Líder entregarlos a Oriana", () => {
   assert.match(workspaceSource, /Pegá el enlace de la carpeta de Google Drive/);
 });
 
+test("Germán puede completar una visita desde el celular sin saltear la confirmación del Líder", () => {
+  const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");
+
+  assert.match(workspaceSource, /Marcar visita como completa/);
+  assert.match(workspaceSource, /onRegisterProduction\(task, amount, productionDate\)/);
+  assert.match(workspaceSource, /amount = productionProgress\.remaining/);
+  assert.match(workspaceSource, /Franco o Agustín deben confirmarla antes de enviarla a Edición/);
+  assert.match(workspaceSource, /Registrar un avance parcial/);
+  assert.match(workspaceStyles, /\.ros-production-complete-action button\{[^}]*min-height:50px;[^}]*width:100%/);
+});
+
 test("el detalle de todas las tareas conserva guion, copy e indicaciones en un único espacio", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");

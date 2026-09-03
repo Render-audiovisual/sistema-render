@@ -278,6 +278,22 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     }
   };
 
+  const completeProductionVisit = async () => {
+    if (registeringProduction || metadata.produccion_confirmada_at || productionProgress.remaining <= 0 || !productionDate) return;
+    const amount = productionProgress.remaining;
+    const question = productionProgress.recorded > 0
+      ? `¿Grabaste los ${amount} videos que faltaban y subiste el material?`
+      : `¿Grabaste los ${productionProgress.planned} videos previstos y subiste el material?`;
+    if (!window.confirm(question)) return;
+    setRegisteringProduction(true);
+    try {
+      await onRegisterProduction(task, amount, productionDate);
+      setProductionAmount(1);
+    } finally {
+      setRegisteringProduction(false);
+    }
+  };
+
   const confirmProduction = async () => {
     if (confirmingProduction) return;
     setConfirmingProduction(true);
@@ -350,11 +366,21 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           <header><div><span>VISITA DE PRODUCCIÓN</span><strong>{productionProgress.recorded} de {productionProgress.planned || "—"} videos grabados</strong></div>{productionProgress.complete ? <b>{productionPhase?.label || "Completa"}</b> : <b className="pending">Faltan {productionProgress.remaining || "—"}</b>}</header>
           <div className="ros-production-progress"><i style={{ width: `${productionProgress.planned ? Math.min(100, (productionProgress.recorded / productionProgress.planned) * 100) : 0}%` }}/></div>
           {editing && isAdmin && <label className="ros-production-planned"><span>Videos previstos</span><input type="number" min="1" step="1" value={draft.produccion_videos_previstos || ""} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}
-          {!editing && canRegisterProduction && productionProgress.planned > 0 && !metadata.produccion_confirmada_at && <div className="ros-production-entry">
-            <label><span>¿Cuántos grabaste hoy?</span><div><button type="button" onClick={() => setProductionAmount((current) => Math.max(1, Number(current) - 1))}>−</button><input inputMode="numeric" type="number" min="1" value={productionAmount} onChange={(event) => setProductionAmount(Math.max(1, Number(event.target.value) || 1))}/><button type="button" onClick={() => setProductionAmount((current) => Number(current) + 1)}>+</button></div></label>
-            <label><span>Fecha de grabación</span><input type="date" value={productionDate} max={getHoyLocalISO()} onChange={(event) => setProductionDate(event.target.value)}/></label>
-            <button type="button" disabled={registeringProduction || !productionDate} onClick={registerProduction}>{registeringProduction ? "Guardando…" : `Registrar ${productionAmount} video${Number(productionAmount) === 1 ? "" : "s"}`}</button>
-          </div>}
+          {!editing && canRegisterProduction && productionProgress.planned > 0 && !productionProgress.complete && !metadata.produccion_confirmada_at && <>
+            <div className="ros-production-complete-action">
+              <div><strong>¿Terminaste toda la visita?</strong><span>Marcala completa y avisamos a Franco y Agustín para que la revisen.</span></div>
+              <button type="button" disabled={registeringProduction || !productionDate} onClick={completeProductionVisit}>{registeringProduction ? "Guardando…" : "Marcar visita como completa"}</button>
+            </div>
+            <details className="ros-production-partial">
+              <summary>Registrar un avance parcial</summary>
+              <div className="ros-production-entry">
+                <label><span>¿Cuántos grabaste hoy?</span><div><button type="button" onClick={() => setProductionAmount((current) => Math.max(1, Number(current) - 1))}>−</button><input inputMode="numeric" type="number" min="1" max={productionProgress.remaining} value={productionAmount} onChange={(event) => setProductionAmount(Math.min(productionProgress.remaining, Math.max(1, Number(event.target.value) || 1)))}/><button type="button" onClick={() => setProductionAmount((current) => Math.min(productionProgress.remaining, Number(current) + 1))}>+</button></div></label>
+                <label><span>Fecha de grabación</span><input type="date" value={productionDate} max={getHoyLocalISO()} onChange={(event) => setProductionDate(event.target.value)}/></label>
+                <button type="button" disabled={registeringProduction || !productionDate} onClick={registerProduction}>{registeringProduction ? "Guardando…" : `Registrar ${productionAmount} video${Number(productionAmount) === 1 ? "" : "s"}`}</button>
+              </div>
+            </details>
+          </>}
+          {productionProgress.complete && !metadata.produccion_confirmada_at && !isLeader && <div className="ros-production-waiting"><strong>✓ Visita marcada como completa</strong><span>Franco o Agustín deben confirmarla antes de enviarla a Edición.</span></div>}
           {canConfirmProduction && <div className="ros-production-confirm"><div><strong>Grabación completa</strong><span>Franco o Agustín deben confirmarla antes de crear la edición para Luciano.</span></div><button type="button" disabled={confirmingProduction} onClick={confirmProduction}>{confirmingProduction ? "Confirmando…" : "Confirmar y enviar a edición"}</button></div>}
           {metadata.produccion_confirmada_at && <div className="ros-approved-banner">✓ Grabación confirmada por {metadata.produccion_confirmada_por}. La edición quedó vinculada.</div>}
           {!editing && canRegisterProduction && <div className="ros-production-drive"><label><span>Carpeta de material en Google Drive</span><input inputMode="url" placeholder="https://drive.google.com/…" value={productionDriveLink} onChange={(event) => setProductionDriveLink(event.target.value)}/></label><button type="button" disabled={savingProductionDrive || !productionDriveLink.trim() || productionDriveLink.trim() === String(task.material_referencia || "").trim()} onClick={saveProductionDrive}>{savingProductionDrive ? "Guardando…" : task.material_referencia ? "Actualizar enlace" : "Vincular Drive"}</button></div>}
