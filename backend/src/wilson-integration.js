@@ -345,6 +345,13 @@ export function buildWilsonTask(input, { clients, users }) {
   const user = exactMatch(users, input.responsable || input.asignado_a, ["nombre", "usuario"]);
   const sector = SECTORS.get(String(input.sector || input.lista || input.tipo_tarea || "").trim().toLowerCase());
   const priority = String(input.prioridad || "media").trim().toLowerCase();
+  const hasPlannedProductionVideos = hasOwn(input, "produccion_videos_previstos")
+    && input.produccion_videos_previstos !== null
+    && input.produccion_videos_previstos !== undefined
+    && input.produccion_videos_previstos !== "";
+  const plannedProductionVideos = hasPlannedProductionVideos
+    ? Number(input.produccion_videos_previstos)
+    : null;
   const errors = [];
   if (!title) errors.push("Falta el título.");
   if (!client) errors.push("El cliente no coincide con un cliente del sistema.");
@@ -352,6 +359,9 @@ export function buildWilsonTask(input, { clients, users }) {
   if (dueDate && !validDate(dueDate)) errors.push("La fecha debe tener formato YYYY-MM-DD.");
   if (!sector) errors.push("El sector debe ser Diseño, Edición, Producción, Community o Administración.");
   if (!PRIORITIES.has(priority)) errors.push("La prioridad debe ser baja, media o alta.");
+  if (plannedProductionVideos !== null && (!Number.isInteger(plannedProductionVideos) || plannedProductionVideos <= 0)) {
+    errors.push("Los videos previstos deben ser un número entero mayor a cero.");
+  }
   const description = String(input.descripcion || input.aclaraciones || "").trim();
   const reference = String(input.referencia || "").trim();
   const notes = [description, reference && !description.includes(reference) ? `Referencia: ${reference}` : ""].filter(Boolean).join("\n");
@@ -370,6 +380,7 @@ export function buildWilsonTask(input, { clients, users }) {
       aclaraciones: notes || null,
       material_referencia: String(input.material || input.material_referencia || "").trim() || null,
       referencia: reference || null,
+      produccion_videos_previstos: plannedProductionVideos,
     },
   };
 }
@@ -501,6 +512,9 @@ export function buildWilsonTaskUpdate(input, currentTask, catalog) {
       ? input.referencia
       : currentTask.propiedades_extra?.referencia || "",
     subtipo: hasOwn(input, "subtipo") ? input.subtipo : currentTask.subtipo,
+    produccion_videos_previstos: hasOwn(input, "produccion_videos_previstos")
+      ? input.produccion_videos_previstos
+      : currentTask.propiedades_extra?.produccion_videos_previstos,
   };
   return buildWilsonTask(merged, catalog);
 }
@@ -1193,6 +1207,10 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
         aclaraciones: [current.aclaraciones || "", task.aclaraciones || ""],
         material_referencia: [current.material_referencia || "", task.material_referencia || ""],
         referencia: [current.propiedades_extra?.referencia || "", task.referencia || ""],
+        produccion_videos_previstos: [
+          Number(current.propiedades_extra?.produccion_videos_previstos) || null,
+          task.produccion_videos_previstos,
+        ],
       };
       const changedFields = Object.entries(comparisons)
         .filter(([, [before, after]]) => before !== after)
@@ -1213,6 +1231,8 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
       };
       if (task.referencia) properties.referencia = task.referencia;
       else delete properties.referencia;
+      if (task.produccion_videos_previstos !== null) properties.produccion_videos_previstos = task.produccion_videos_previstos;
+      else delete properties.produccion_videos_previstos;
       const updated = await client.query(
         `UPDATE tareas SET titulo=$2,asignado_a=$3,cliente_id=$4,fecha_vencimiento=$5,
           tipo_tarea=$6,subtipo=$7,prioridad=$8,aclaraciones=$9,material_referencia=$10,
@@ -1274,6 +1294,7 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
         workspace: "render_os", Origen: `Creada por Wilson desde ${req.wilson.channel === "whatsapp" ? "WhatsApp" : "Telegram"}`, origen_integracion: "wilson",
         wilson_idempotency_key: key, wilson_channel: req.wilson.channel, wilson_actor_id: req.wilson.actorId,
         wilson_confirmado_por: req.wilson.confirmedBy, ...(task.referencia ? { referencia: task.referencia } : {}),
+        ...(task.produccion_videos_previstos !== null ? { produccion_videos_previstos: task.produccion_videos_previstos } : {}),
       };
       const inserted = await client.query(
         `INSERT INTO tareas (titulo,asignado_a,cliente_id,estado,requiere_aprobacion,propiedades_extra,

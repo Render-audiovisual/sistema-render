@@ -72,7 +72,10 @@ test("Mia ignora marcadores desconocidos o incompletos", () => {
 
 const catalog = {
   clients: [{ id: 11, nombre: "Búnker Training" }],
-  users: [{ id: 7, usuario: "Luciano", nombre: "Luciano", rol: "edicion" }],
+  users: [
+    { id: 7, usuario: "Luciano", nombre: "Luciano", rol: "edicion" },
+    { id: 8, usuario: "german", nombre: "Germán", rol: "produccion" },
+  ],
 };
 
 test("Wilson normaliza una tarea confirmable sin inventar valores", () => {
@@ -302,6 +305,26 @@ test("Wilson prepara una edición parcial preservando los demás campos", () => 
   assert.equal(result.task.asignado_a, current.asignado_a);
   assert.equal(result.task.aclaraciones, "Brief original\n\nNuevo bloque\nReferencia: https://instagram.test/original");
   assert.equal(result.task.material_referencia, current.material_referencia);
+});
+
+test("Wilson conserva y permite corregir la cantidad prevista de una visita", () => {
+  const current = {
+    titulo: "Luzin | Visita producción | 03/09", asignado_a: "Germán", cliente_id: 11,
+    cliente_nombre: "Búnker Training", fecha_vencimiento: "2026-09-03", tipo_tarea: "produccion",
+    prioridad: "alta", aclaraciones: "Grabar 7 reels", material_referencia: "https://drive.test/material",
+    subtipo: null, propiedades_extra: { produccion_videos_previstos: 5 },
+  };
+  const result = buildWilsonTaskUpdate({ produccion_videos_previstos: 7 }, current, catalog);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.task.produccion_videos_previstos, 7);
+});
+
+test("Wilson rechaza cantidades previstas inválidas", () => {
+  const result = buildWilsonTask({
+    titulo: "Visita", cliente: "Búnker Training", responsable: "Germán", sector: "produccion",
+    produccion_videos_previstos: 0,
+  }, catalog);
+  assert.match(result.errors.join(" "), /entero mayor a cero/);
 });
 
 test("Wilson permite cambiar cliente por nombre en una edición", () => {
