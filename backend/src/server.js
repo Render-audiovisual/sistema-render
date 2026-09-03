@@ -28,7 +28,7 @@ import { createWilsonRouter } from "./wilson-integration.js";
 import { createWilsonChatRouter, scheduleWilsonMessages } from "./wilson-chat.js";
 import { runMigrations } from "./migrations.js";
 import { resolveUserRole } from "./user-roles.js";
-import { canRecordProduction, getProductionProgress, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
+import { canRecordProduction, getProductionProgress, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { filterReportDataForUser } from "./report-access.js";
@@ -2337,6 +2337,7 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
       record.periodo_adelanto = nextProductionPeriod(date);
     }
     const completed = progress.recorded + amount >= progress.planned;
+    const nextState = getProductionTaskState({ planned: progress.planned, recorded: progress.recorded + amount });
     const workflowProperties = completed ? {
       produccion_esperando_confirmacion: true,
       produccion_confirmada_at: null,
@@ -2355,13 +2356,13 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
     };
     const updated = await client.query(
       `UPDATE tareas
-       SET propiedades_extra = propiedades_extra || $2::jsonb, updated_at = now()
+       SET estado = $3, propiedades_extra = propiedades_extra || $2::jsonb, updated_at = now()
        WHERE id = $1
        RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra,
                  to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id,
                  publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia,
                  tarea_padre_id, created_at, updated_at`,
-      [task.id, JSON.stringify({ produccion_registros: [...records, record], ...workflowProperties, workspace: "render_os" })],
+      [task.id, JSON.stringify({ produccion_registros: [...records, record], ...workflowProperties, workspace: "render_os" }), nextState],
     );
     await client.query("COMMIT");
     return res.status(201).json(updated.rows[0]);

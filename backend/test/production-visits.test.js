@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { canRecordProduction, getProductionPhase, getProductionProgress, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "../src/production-visits.js";
+import { canRecordProduction, getProductionPhase, getProductionProgress, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "../src/production-visits.js";
 import { getProductionPhase as getFrontendProductionPhase, getProductionVisitProgress, groupProductionByClient } from "../../frontend/src/features/render-os/utils/production-visits.js";
 
 test("limita el seguimiento a tareas de visitas de producción", () => {
@@ -21,6 +21,13 @@ test("calcula el avance parcial sin dar por finalizada la visita", () => {
   };
   assert.deepEqual(getProductionProgress(task), { planned: 7, recorded: 3, remaining: 4 });
   assert.deepEqual(getProductionVisitProgress(task), { planned: 7, recorded: 3, remaining: 4, complete: false });
+});
+
+test("el estado visible acompaña el avance y muestra la visita completa para revisar", () => {
+  assert.equal(getProductionTaskState({ planned: 7, recorded: 0 }), "pendiente");
+  assert.equal(getProductionTaskState({ planned: 7, recorded: 3 }), "en_progreso");
+  assert.equal(getProductionTaskState({ planned: 7, recorded: 7 }), "en_revision");
+  assert.equal(getProductionTaskState({ planned: 7, recorded: 8 }), "en_revision");
 });
 
 test("separa los videos por mes y normaliza los nombres de clientes", () => {
