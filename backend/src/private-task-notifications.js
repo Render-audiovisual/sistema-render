@@ -19,6 +19,32 @@ const TITULOS = Object.freeze({
   aprobada: "La tarea está lista para publicar",
 });
 
+export function destinatariosNuevosDeAsignacion({
+  asignadoAnterior = "", asignadoActual = "", colaboradoresAnteriores = [], colaboradoresActuales = [],
+  cambioAsignado = true, cambioColaboradores = true,
+}) {
+  const resultado = [];
+  const vistos = new Set();
+  const agregar = (nombre) => {
+    const clave = normalizarNombre(nombre);
+    if (!clave || vistos.has(clave)) return;
+    vistos.add(clave);
+    resultado.push(nombre);
+  };
+
+  if (cambioAsignado && normalizarNombre(asignadoAnterior) !== normalizarNombre(asignadoActual)) {
+    agregar(asignadoActual);
+  }
+
+  if (cambioColaboradores) {
+    const anteriores = new Set(colaboradoresAnteriores.map(normalizarNombre).filter(Boolean));
+    for (const colaborador of colaboradoresActuales) {
+      if (!anteriores.has(normalizarNombre(colaborador))) agregar(colaborador);
+    }
+  }
+  return resultado;
+}
+
 async function resolverUsuarios(pool, nombres) {
   const { rows } = await pool.query("SELECT usuario, nombre FROM usuarios");
   return nombres.map((nombre) => {
