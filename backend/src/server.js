@@ -2046,7 +2046,9 @@ router.patch("/tareas/:id", async (req, res, next) => {
         return res.status(400).json({ error: "Prioridad inválida." });
       }
     }
-    if (esRenderOS && body.estado === "publicada") {
+    const produccionPuedeCompletarPropia = req.auth.rol === "produccion"
+      && tareaAnteriorCompleta?.tipo_tarea === "produccion";
+    if (esRenderOS && body.estado === "publicada" && !produccionPuedeCompletarPropia) {
       const visita = await pool.query(
         `SELECT titulo, subtipo, tipo_tarea, propiedades_extra
          FROM tareas

@@ -218,7 +218,7 @@ test("Germán puede completar una visita desde el celular sin saltear la confirm
 
   assert.match(workspaceSource, /Marcar visita como completa/);
   assert.match(workspaceSource, /isAdmin \|\| canChangeTaskState/);
-  assert.match(workspaceSource, /Completá primero la cantidad prevista de videos de la visita/);
+  assert.doesNotMatch(workspaceSource, /Completá primero la cantidad prevista de videos de la visita/);
   assert.match(workspaceSource, /onRegisterProduction\(task, amount, productionDate\)/);
   assert.match(workspaceSource, /amount = productionProgress\.remaining/);
   assert.match(workspaceSource, /Franco o Agustín deben confirmarla antes de enviarla a Edición/);
