@@ -1,6 +1,39 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { crearMensajePrivadoTarea, encolarNotificacionPrivadaTarea } from "../src/private-task-notifications.js";
+import {
+  crearMensajePrivadoTarea,
+  destinatariosNuevosDeAsignacion,
+  encolarNotificacionPrivadaTarea,
+} from "../src/private-task-notifications.js";
+
+test("una reasignación avisa solo a las personas nuevas", () => {
+  assert.deepEqual(destinatariosNuevosDeAsignacion({
+    asignadoAnterior: "Germán",
+    asignadoActual: "Oriana",
+    colaboradoresAnteriores: ["Augusto", "Mariano Meza"],
+    colaboradoresActuales: ["Augusto", "Mariano Meza", "Luciano", "LUCIANO"],
+  }), ["Oriana", "Luciano"]);
+});
+
+test("quitar responsables no genera avisos y normaliza acentos", () => {
+  assert.deepEqual(destinatariosNuevosDeAsignacion({
+    asignadoAnterior: "Germán",
+    asignadoActual: "GERMAN",
+    colaboradoresAnteriores: ["Oriana", "Augusto"],
+    colaboradoresActuales: ["Oriana"],
+  }), []);
+});
+
+test("editar otros campos no vuelve a notificar responsables existentes", () => {
+  assert.deepEqual(destinatariosNuevosDeAsignacion({
+    asignadoAnterior: "",
+    asignadoActual: "Oriana",
+    colaboradoresAnteriores: [],
+    colaboradoresActuales: ["Augusto"],
+    cambioAsignado: false,
+    cambioColaboradores: false,
+  }), []);
+});
 
 test("arma un aviso privado breve con enlace directo", () => {
   const result = crearMensajePrivadoTarea({

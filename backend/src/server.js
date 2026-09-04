@@ -14,7 +14,7 @@ import {
   normalizarNombre,
   notificarAsignacionSinInterrumpir as notificarAsignacionPorCorreoSinInterrumpir,
 } from "./email-notifications.js";
-import { encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
+import { destinatariosNuevosDeAsignacion, encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
 import { setupDemoClientes } from "./setup-demo-data.js";
 import { shouldSetupDemoData } from "./hosting-config.js";
 import { requireAuthentication, requireRole } from "./auth.js";
@@ -2174,28 +2174,23 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
     const actor = getTaskActor(req.auth);
 
-    if (
-      Object.prototype.hasOwnProperty.call(body, "asignado_a") &&
-      normalizarNombre(asignadoAnterior) !==
-        normalizarNombre(tareaActualizada.asignado_a)
-    ) {
-      notificarAsignacionSinInterrumpir({
-        pool,
-        tarea: tareaActualizada,
-        motivo: "reasignada",
-        actor,
-      });
-    }
     const colaboradoresActuales = Array.isArray(tareaActualizada.propiedades_extra?.colaboradores)
       ? tareaActualizada.propiedades_extra.colaboradores
       : [];
-    const cambiaronColaboradores = Object.prototype.hasOwnProperty.call(body.propiedades_extra || {}, "colaboradores")
-      && JSON.stringify(colaboradoresAnteriores.map(normalizarNombre).sort()) !== JSON.stringify(colaboradoresActuales.map(normalizarNombre).sort());
-    if (cambiaronColaboradores && normalizarNombre(asignadoAnterior) === normalizarNombre(tareaActualizada.asignado_a)) {
+    const destinatariosNuevos = destinatariosNuevosDeAsignacion({
+      asignadoAnterior,
+      asignadoActual: tareaActualizada.asignado_a,
+      colaboradoresAnteriores,
+      colaboradoresActuales,
+      cambioAsignado: Object.prototype.hasOwnProperty.call(body, "asignado_a"),
+      cambioColaboradores: Object.prototype.hasOwnProperty.call(body.propiedades_extra || {}, "colaboradores"),
+    });
+    if (destinatariosNuevos.length) {
       notificarAsignacionSinInterrumpir({
         pool,
         tarea: tareaActualizada,
         motivo: "reasignada",
+        nombresDestinatarios: destinatariosNuevos,
         actor,
       });
     }
