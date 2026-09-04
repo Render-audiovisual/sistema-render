@@ -2014,11 +2014,12 @@ router.patch("/tareas/:id", async (req, res, next) => {
       esRenderOS &&
       Object.prototype.hasOwnProperty.call(body, "estado") &&
       (body.estado === "publicada" || estadoAnterior === "publicada") &&
-      !isTaskFinalizer(req.auth)
+      !isTaskFinalizer(req.auth) &&
+      !(req.auth.rol === "produccion" && tareaAnteriorCompleta?.tipo_tarea === "produccion")
     ) {
       return res.status(403).json({ error: body.estado === "publicada"
-        ? "Solo Oriana, Agustín o Franco pueden finalizar una tarea."
-        : "Solo Oriana, Agustín o Franco pueden reabrir una tarea finalizada." });
+        ? "No tenés permiso para completar esta tarea."
+        : "No tenés permiso para reabrir esta tarea completada." });
     }
     if (esRenderOS && body.estado === "en_revision" && estadoAnterior !== "en_revision" && tareaAnteriorCompleta) {
       const visitaParaEntregar = {

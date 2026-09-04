@@ -126,6 +126,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const isProductionVisit = isProductionVisitTask(task);
   const userIdentity = `${sesion?.usuario?.nombre || ""} ${sesion?.usuario?.usuario || ""}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const isLeader = isAdmin || userIdentity.includes("franco") || userIdentity.includes("agustin") || userIdentity.includes("lider");
+  const canChangeTaskState = canUserMoveTask(task, sesion?.usuario);
+  const availableTaskStatuses = STATUSES.filter((item) => item.id === task.estado || canUserMoveTaskToState(task, sesion?.usuario, item.id));
   const canApproveForOriana = isLeader && task.estado === "en_revision" && areaForTask(task) === "edicion" && metadata.revision_aprobada !== true;
   const productionProgress = getProductionVisitProgress(task);
   const productionPhase = getProductionPhase(task);
@@ -173,7 +175,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const saveInlineField = async (field, value, activity = "editó los datos de la tarea") => {
-    if (!isAdmin || saving) return;
+    if (saving || (!isAdmin && !(field === "estado" && canChangeTaskState))) return;
     const nullable = ["cliente_id", "fecha_vencimiento", "tipo_tarea", "subtipo", "material_referencia"];
     const nextValue = value === "" && nullable.includes(field) ? null : value;
     if (String(nextValue ?? "") === String(task[field] ?? "")) return;
@@ -353,7 +355,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         <div className="ros-task-document-kind"><AreaBadge task={task}/></div>
         <div className="ros-task-document-heading">{isAdmin ? <input className="ros-title-input ros-inline-title-input" aria-label="Título de la tarea" value={draft.titulo ?? task.titulo ?? ""} onChange={(event) => setDraft((current) => ({ ...current, titulo: event.target.value }))} onBlur={(event) => event.target.value.trim() ? saveInlineField("titulo", event.target.value.trim(), "actualizó el título de la tarea") : setDraft((current) => ({ ...current, titulo: task.titulo }))} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}/> : <h2>{task.titulo}</h2>}</div>
         <div className="ros-task-document-properties">
-          <div><span>◉ <b>Estado</b></span>{isAdmin ? <select className="ros-inline-property" aria-label="Estado" value={draft.estado ?? task.estado ?? "pendiente"} disabled={saving} onChange={(event) => saveInlineField("estado", event.target.value, "actualizó el estado de la tarea")}>{STATUSES.map((item) => <option key={item.id} value={item.id} disabled={isProductionVisit && item.id === "publicada" && !productionProgress.complete}>{item.label}</option>)}</select> : <strong className="ros-task-document-status"><i style={{ background: status.color }}/>{status.label}</strong>}</div>
+          <div><span>◉ <b>Estado</b></span>{isAdmin || canChangeTaskState ? <select className="ros-inline-property" aria-label="Estado" value={draft.estado ?? task.estado ?? "pendiente"} disabled={saving} onChange={(event) => saveInlineField("estado", event.target.value, "actualizó el estado de la tarea")}>{availableTaskStatuses.map((item) => <option key={item.id} value={item.id} disabled={isProductionVisit && item.id === "publicada" && !productionProgress.complete}>{item.label}</option>)}</select> : <strong className="ros-task-document-status"><i style={{ background: status.color }}/>{status.label}</strong>}</div>
           <div className="ros-task-people-property is-inline-editing"><span>♙ <b>Responsables</b></span>{isAdmin ? <TaskPeoplePicker compact users={users} primary={draft.asignado_a ?? task.asignado_a ?? ""} collaborators={draft.colaboradores ?? collaborators} disabled={saving} onChange={saveInlinePeople}/> : <strong className="ros-task-assignees">{[task.asignado_a, ...collaborators].filter((name, index, names) => name && names.indexOf(name) === index).map((name, index) => <span className="ros-task-assignee" key={name}><Avatar person={users.find((user) => user.nombre === name)} name={name}/><span>{name}<small>{index === 0 ? "Principal" : "Colabora"}</small></span></span>)}</strong>}</div>
           <div><span>▥ <b>Cliente</b></span>{isAdmin ? <select className="ros-inline-property" aria-label="Cliente" value={draft.cliente_id ?? task.cliente_id ?? ""} disabled={saving} onChange={(event) => saveInlineField("cliente_id", event.target.value ? Number(event.target.value) : "", "actualizó el cliente de la tarea")}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select> : <strong>{task.cliente_nombre || "Sin cliente"}</strong>}</div>
           <div><span>▦ <b>Entrega</b></span>{isAdmin ? <input className="ros-inline-property" aria-label="Fecha de entrega" type="date" value={draft.fecha_vencimiento ?? task.fecha_vencimiento ?? ""} disabled={saving} onChange={(event) => saveInlineField("fecha_vencimiento", event.target.value, "actualizó la fecha de entrega")}/> : <strong>{formatDate(task.fecha_vencimiento)}</strong>}</div>
@@ -496,7 +498,11 @@ function TaskCard({ task, users, user, today, onOpen, onMove, canMove, selected 
   const tags = Array.isArray(task.propiedades_extra?.etiquetas) ? task.propiedades_extra.etiquetas : [];
   const collaborators = Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [];
   const phase = getProductionPhase(task);
-  const availableStatuses = STATUSES.filter((item) => item.id === task.estado || canUserMoveTaskToState(task, user, item.id));
+  const productionProgress = getProductionVisitProgress(task);
+  const availableStatuses = STATUSES.filter((item) => item.id === task.estado || (
+    canUserMoveTaskToState(task, user, item.id)
+    && !(isProductionVisitTask(task) && item.id === "publicada" && !productionProgress.complete)
+  ));
   return <article role="button" tabIndex={0} aria-selected={selected} data-task-id={task.id} draggable={canMove && !selectionActive} className={`ros-task-card ${canMove ? "can-move" : "view-only"} ${selected ? "is-selected" : ""}`} onDragStart={(event) => { if (!canMove || selectionActive) { event.preventDefault(); return; } event.dataTransfer.setData("text/task-id", String(task.id)); event.dataTransfer.effectAllowed = "move"; }} onClick={(event) => { if (selectionActive) { event.stopPropagation(); onToggleSelection(task.id); return; } onOpen(task.id); }} onKeyDown={(event) => { if (event.key !== "Enter" && event.key !== " ") return; event.preventDefault(); if (selectionActive) onToggleSelection(task.id); else onOpen(task.id); }}>
     <span className="ros-task-selection-check" aria-hidden="true">✓</span>
     <div className="ros-card-badges"><AreaBadge task={task} card/>{phase && <span className={`ros-phase-badge ${phase.id}`}>{phase.label}</span>}</div><h3>{task.titulo}</h3><p>{task.cliente_nombre || "Sin cliente"}</p>
@@ -741,9 +747,13 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
 
   const move = (task, status) => {
     if (status === task.estado) return;
+    if (status === "publicada" && isProductionVisitTask(task) && !getProductionVisitProgress(task).complete) {
+      onError("Completá primero la cantidad prevista de videos de la visita.");
+      return;
+    }
     if (!canUserMoveTaskToState(task, sesion?.usuario, status)) {
       onError(status === "publicada"
-        ? "Solo Oriana, Agustín o Franco pueden finalizar una tarea."
+        ? "No tenés permiso para completar esta tarea."
         : "No tenés permiso para mover esta tarea.");
       return;
     }

@@ -46,7 +46,7 @@ export function getProductionPhase(task = {}) {
     if (progress.recorded > 0) return { id: "grabacion", label: "Grabación" };
   }
   if (task.estado === "programada") return { id: "programada", label: "Programada" };
-  if (task.estado === "publicada") return { id: "publicada", label: "Publicada" };
+  if (task.estado === "publicada") return { id: "publicada", label: "Completada" };
   if (task.tipo_tarea === "edicion") return { id: "edicion", label: "Edición" };
   return null;
 }

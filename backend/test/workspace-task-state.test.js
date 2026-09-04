@@ -39,10 +39,13 @@ test("permite mover por nombre, usuario o colaboración sin habilitar tareas aje
   assert.equal(canUserMoveTask(task, { nombre: "Líder", usuario: "lider", rol: "admin" }), true);
 });
 
-test("empleados llegan hasta revisión y solo los finalizadores cierran o reabren", () => {
+test("producción puede completar y reabrir sus tareas sin habilitar otros sectores", () => {
   const ownTask = { estado: "en_progreso", asignado_a: "Augusto", propiedades_extra: {} };
   const finishedTask = { ...ownTask, estado: "publicada" };
+  const productionTask = { estado: "en_revision", asignado_a: "Germán", tipo_tarea: "produccion", propiedades_extra: {} };
+  const finishedProductionTask = { ...productionTask, estado: "publicada" };
   const augusto = { nombre: "Augusto", usuario: "Augusto", rol: "diseno" };
+  const german = { nombre: "Germán", usuario: "German", rol: "produccion" };
   const oriana = { nombre: "Oriana", usuario: "Oriana", rol: "community" };
   const franco = { nombre: "Franco Romero", usuario: "Franco", rol: "programacion" };
   assert.equal(canUserMoveTaskToState(ownTask, augusto, "en_revision"), true);
@@ -52,6 +55,10 @@ test("empleados llegan hasta revisión y solo los finalizadores cierran o reabre
   assert.equal(canUserMoveTaskToState(ownTask, oriana, "publicada"), true);
   assert.equal(canUserMoveTaskToState(finishedTask, oriana, "en_revision"), true);
   assert.equal(canUserMoveTaskToState(ownTask, franco, "publicada"), true);
+  assert.equal(canUserMoveTaskToState(productionTask, german, "publicada"), true);
+  assert.equal(canUserMoveTask(finishedProductionTask, german), true);
+  assert.equal(canUserMoveTaskToState(finishedProductionTask, german, "en_progreso"), true);
+  assert.equal(canUserMoveTaskToState({ ...productionTask, asignado_a: "Augusto" }, german, "publicada"), false);
   assert.equal(isTaskFinalizer(oriana), true);
   assert.equal(canUserMoveTaskToState(ownTask, oriana, "programada"), false);
 });

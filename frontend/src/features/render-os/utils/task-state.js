@@ -26,9 +26,13 @@ export function isTaskFinalizer(user) {
   return identity.includes("franco") || identity.includes("oriana");
 }
 
-export function canUserMoveTask(task, user) {
-  if (isTaskFinalizer(user)) return true;
-  if (task?.estado === "publicada") return false;
+function isOwnProductionTask(task, user) {
+  return user?.rol === "produccion"
+    && task?.tipo_tarea === "produccion"
+    && canUserOwnTask(task, user);
+}
+
+function canUserOwnTask(task, user) {
   const actorNames = new Set([user?.nombre, user?.usuario].map(normalizeActor).filter(Boolean));
   if (actorNames.size === 0) return false;
   const collaborators = Array.isArray(task?.propiedades_extra?.colaboradores)
@@ -39,10 +43,18 @@ export function canUserMoveTask(task, user) {
     .some((name) => actorNames.has(name));
 }
 
+export function canUserMoveTask(task, user) {
+  if (isTaskFinalizer(user)) return true;
+  if (task?.estado === "publicada") return isOwnProductionTask(task, user);
+  return canUserOwnTask(task, user);
+}
+
 export function canUserMoveTaskToState(task, user, nextState) {
   if (!canUserMoveTask(task, user)) return false;
   if (nextState === "programada") return false;
-  if (nextState === "publicada" || task?.estado === "publicada") return isTaskFinalizer(user);
+  if (nextState === "publicada" || task?.estado === "publicada") {
+    return isTaskFinalizer(user) || isOwnProductionTask(task, user);
+  }
   return true;
 }
 
