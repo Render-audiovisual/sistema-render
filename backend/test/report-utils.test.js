@@ -119,14 +119,16 @@ test("clasifica las tareas operativas de RENDER OS sin mezclar planificación y 
   assert.equal(isPlannedReelTask({ titulo: "Editar video", tipo_tarea: "edicion" }), false);
 });
 
-test("el reporte mensual usa tareas RENDER OS activas del período", () => {
+test("el reporte mensual usa vencimiento para abiertas y entrega real para revisión o cierre", () => {
   const inAugust = (date) => date >= "2026-08-01" && date < "2026-09-01";
   const result = filterRenderOsTasksByPeriod([
     { id: 1, fecha_vencimiento: "2026-08-06", propiedades_extra: {} },
     { id: 2, fecha_vencimiento: "2026-07-31", propiedades_extra: {} },
     { id: 3, fecha_vencimiento: "2026-08-07", propiedades_extra: { archivada_render_os: true } },
+    { id: 4, estado: "en_revision", fecha_vencimiento: "2026-07-31", updated_at: "2026-08-08T15:00:00.000Z", propiedades_extra: {} },
+    { id: 5, estado: "publicada", fecha_vencimiento: "2026-08-09", updated_at: "2026-09-01T12:00:00.000Z", propiedades_extra: {} },
   ], inAugust);
-  assert.deepEqual(result.map((task) => task.id), [1]);
+  assert.deepEqual(result.map((task) => task.id), [1, 4]);
 });
 
 test("cuenta carruseles publicados desde RENDER OS para cada diseñador", () => {
@@ -177,6 +179,21 @@ test("respeta el diseñador configurado y excluye clientes inactivos de las cuot
   });
   assert.deepEqual(getDesignerCarouselTaskSummary("Augusto", clients, []), {
     realizados: 0,
+    pendientes: 0,
+    total: 0,
+  });
+});
+
+test("cuenta toda entrega real del diseñador aunque haya cambiado la cartera del cliente", () => {
+  const clients = [
+    { id: 1, nombre: "Bendita", cuota_carruseles: 4, disenador_responsable: "Augusto", activo: true },
+  ];
+  const tasks = [
+    { titulo: "Carrusel especial", cliente_nombre: "Bendita", asignado_a: "Mariano Meza", estado: "en_revision" },
+  ];
+
+  assert.deepEqual(getDesignerCarouselTaskSummary("Mariano", clients, tasks), {
+    realizados: 1,
     pendientes: 0,
     total: 0,
   });

@@ -64,7 +64,9 @@ export function filterRenderOsTasksByPeriod(tasks = [], isInPeriod) {
   if (typeof isInPeriod !== "function") return [];
   return tasks.filter((task) => {
     if (task.propiedades_extra?.archivada_render_os === true) return false;
-    const date = task.fecha_vencimiento || task.propiedades_extra?.clickup_cerrada_at || task.updated_at || "";
+    const date = isCompletedForEmployeeReport(task)
+      ? task.propiedades_extra?.clickup_cerrada_at || task.updated_at || task.fecha_vencimiento || ""
+      : task.fecha_vencimiento || task.updated_at || "";
     return isInPeriod(date);
   });
 }
@@ -184,11 +186,9 @@ export function getDesignerCarouselTaskSummary(designer, clients = [], tasks = [
   const assignedClients = clients.filter(
     (client) => client.activo !== false && getCarouselDesignerForClient(client) === designer,
   );
-  const assignedNames = new Set(assignedClients.map((client) => normalizeClientName(client.nombre)));
   const total = assignedClients.reduce((sum, client) => sum + getClientCarouselTarget(client, clients), 0);
   const realizados = tasks.filter((task) =>
     isCarouselTask(task)
-    && assignedNames.has(normalizeClientName(task.cliente_nombre))
     && belongsToPerson(task.asignado_a, designer)
     && isCompletedForEmployeeReport(task)
   ).length;
