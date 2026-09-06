@@ -119,7 +119,7 @@ test("clasifica las tareas operativas de RENDER OS sin mezclar planificación y 
   assert.equal(isPlannedReelTask({ titulo: "Editar video", tipo_tarea: "edicion" }), false);
 });
 
-test("el reporte mensual usa vencimiento para abiertas y entrega real para revisión o cierre", () => {
+test("el reporte mensual conserva el período planificado aunque la revisión ocurra después", () => {
   const inAugust = (date) => date >= "2026-08-01" && date < "2026-09-01";
   const result = filterRenderOsTasksByPeriod([
     { id: 1, fecha_vencimiento: "2026-08-06", propiedades_extra: {} },
@@ -128,7 +128,7 @@ test("el reporte mensual usa vencimiento para abiertas y entrega real para revis
     { id: 4, estado: "en_revision", fecha_vencimiento: "2026-07-31", updated_at: "2026-08-08T15:00:00.000Z", propiedades_extra: {} },
     { id: 5, estado: "publicada", fecha_vencimiento: "2026-08-09", updated_at: "2026-09-01T12:00:00.000Z", propiedades_extra: {} },
   ], inAugust);
-  assert.deepEqual(result.map((task) => task.id), [1, 4]);
+  assert.deepEqual(result.map((task) => task.id), [1, 5]);
 });
 
 test("cuenta carruseles publicados desde RENDER OS para cada diseñador", () => {

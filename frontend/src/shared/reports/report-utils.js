@@ -64,9 +64,10 @@ export function filterRenderOsTasksByPeriod(tasks = [], isInPeriod) {
   if (typeof isInPeriod !== "function") return [];
   return tasks.filter((task) => {
     if (task.propiedades_extra?.archivada_render_os === true) return false;
-    const date = isCompletedForEmployeeReport(task)
-      ? task.propiedades_extra?.clickup_cerrada_at || task.updated_at || task.fecha_vencimiento || ""
-      : task.fecha_vencimiento || task.updated_at || "";
+    const date = task.fecha_vencimiento
+      || task.propiedades_extra?.clickup_cerrada_at
+      || task.updated_at
+      || "";
     return isInPeriod(date);
   });
 }
