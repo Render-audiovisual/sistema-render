@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getCarouselDesignerForClient, getClientCarouselTarget, getDesignerCarouselSummary, getDesignerCarouselTaskSummary, getReportPeriodRange, groupFilmingTasksByClient, isCarouselTask, isEditingTask, isFilmingTask, isPlannedReelTask, mergeReportTaskSources, summarizeTaskDeliveries } from "../../frontend/src/shared/reports/report-utils.js";
+import { belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getCarouselDesignerForClient, getClientCarouselTarget, getDesignerCarouselSummary, getDesignerCarouselTaskSummary, getReportPeriodRange, groupFilmingTasksByClient, isCarouselTask, isCompletedForEmployeeReport, isEditingTask, isFilmingTask, isPlannedReelTask, mergeReportTaskSources, summarizeTaskDeliveries } from "../../frontend/src/shared/reports/report-utils.js";
 
 test("identifica filmaciones sin contar tareas de edición", () => {
   assert.equal(isFilmingTask({ tipo_tarea: "produccion", titulo: "Visita al local" }), true);
@@ -27,6 +27,18 @@ test("reconoce a la misma persona aunque la tarea use nombre completo o no tenga
   assert.equal(belongsToPerson("Mariano Meza", "Mariano"), true);
   assert.equal(belongsToPerson("German", "Germán"), true);
   assert.equal(belongsToPerson("Luciano", "Augusto"), false);
+});
+
+test("el reporte individual cuenta revisión como entrega sin cambiar el estado de la tarea", () => {
+  const editingTask = { estado: "en_revision", tipo_tarea: "edicion" };
+  const communityTask = { estado: "en_revision", tipo_tarea: "publicacion" };
+
+  assert.equal(isCompletedForEmployeeReport(editingTask), true);
+  assert.equal(isCompletedForEmployeeReport(communityTask), true);
+  assert.equal(isCompletedForEmployeeReport({ estado: "publicada" }), true);
+  assert.equal(isCompletedForEmployeeReport({ estado: "en_progreso" }), false);
+  assert.equal(editingTask.estado, "en_revision");
+  assert.equal(communityTask.estado, "en_revision");
 });
 
 test("los indicadores de piezas respetan el período elegido", () => {
@@ -125,11 +137,11 @@ test("cuenta carruseles publicados desde RENDER OS para cada diseñador", () => 
   const tasks = [
     { titulo: "Carrusel 1", cliente_nombre: "RPM Chevrolet", asignado_a: "Mariano Meza", estado: "publicada" },
     { titulo: "Carrusel 1", cliente_nombre: "Bendita", asignado_a: "Augusto", estado: "publicada" },
-    { titulo: "Carrusel 2", cliente_nombre: "Bendita", asignado_a: "Augusto", estado: "pendiente" },
+    { titulo: "Carrusel 2", cliente_nombre: "Bendita", asignado_a: "Augusto", estado: "en_revision" },
   ];
   assert.deepEqual(getDesignerCarouselTaskSummary("Mariano", clients, tasks), { realizados: 1, pendientes: 1, total: 2 });
-  assert.deepEqual(getDesignerCarouselTaskSummary("Augusto", clients, tasks), { realizados: 1, pendientes: 2, total: 3 });
-  assert.deepEqual(summarizeTaskDeliveries(tasks), { realizados: 2, pendientes: 1, total: 3 });
+  assert.deepEqual(getDesignerCarouselTaskSummary("Augusto", clients, tasks), { realizados: 2, pendientes: 1, total: 3 });
+  assert.deepEqual(summarizeTaskDeliveries(tasks), { realizados: 3, pendientes: 0, total: 3 });
 });
 
 test("últimos 30 días contiene exactamente 30 fechas y nunca incluye el futuro", () => {

@@ -70,8 +70,15 @@ export function filterRenderOsTasksByPeriod(tasks = [], isInPeriod) {
 }
 
 export function summarizeTaskDeliveries(tasks = []) {
-  const realizados = tasks.filter((task) => task.estado === "publicada").length;
+  const realizados = tasks.filter((task) => isCompletedForEmployeeReport(task)).length;
   return { realizados, pendientes: Math.max(tasks.length - realizados, 0), total: tasks.length };
+}
+
+// El reporte individual mide si la persona ya entregó su parte. Una tarea que
+// llegó a revisión cuenta como cumplida para ese reporte, aunque conserva
+// `en_revision` en el tablero hasta que el circuito operativo la haga avanzar.
+export function isCompletedForEmployeeReport(task = {}, finalState = "publicada") {
+  return task.estado === finalState || task.estado === "en_revision";
 }
 
 export function normalizeClientName(value = "") {
@@ -183,7 +190,7 @@ export function getDesignerCarouselTaskSummary(designer, clients = [], tasks = [
     isCarouselTask(task)
     && assignedNames.has(normalizeClientName(task.cliente_nombre))
     && belongsToPerson(task.asignado_a, designer)
-    && task.estado === "publicada"
+    && isCompletedForEmployeeReport(task)
   ).length;
   return { realizados, pendientes: Math.max(total - realizados, 0), total };
 }

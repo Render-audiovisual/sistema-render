@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
 import { pushUrlContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
-import { belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getDesignerCarouselTaskSummary, getReportPeriodRange, isCarouselTask, isEditingTask, mergeReportTaskSources, summarizeTaskDeliveries } from "../shared/reports/report-utils.js";
+import { belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getDesignerCarouselTaskSummary, getReportPeriodRange, isCarouselTask, isCompletedForEmployeeReport, isEditingTask, mergeReportTaskSources, summarizeTaskDeliveries } from "../shared/reports/report-utils.js";
 import { groupProductionByClient } from "../features/render-os/utils/production-visits.js";
 
 export function ResumenEntregableEquipo({
@@ -292,19 +292,23 @@ export function ReportesEquipoPage() {
       ? mergeReportTaskSources(propiasFuenteMensual, propiasRenderOs)
       : propias;
 
-    const activas = propiasReporte.filter((t) => t.estado !== ESTADO_FINAL_TAREA);
+    const activas = propiasReporte.filter(
+      (t) => !isCompletedForEmployeeReport(t, ESTADO_FINAL_TAREA),
+    );
     const atrasadas = activas.filter(
       (t) => t.fecha_vencimiento && t.fecha_vencimiento < hoyISO,
     );
     const terminadasPeriodo = propiasReporte.filter(
       (t) =>
-        t.estado === ESTADO_FINAL_TAREA &&
+        isCompletedForEmployeeReport(t, ESTADO_FINAL_TAREA) &&
         enPeriodo(t.propiedades_extra?.clickup_cerrada_at || t.updated_at || ""),
     );
     const vencianEnPeriodo = propiasReporte.filter(
       (t) => t.fecha_vencimiento && enPeriodo(t.fecha_vencimiento),
     );
-    const vencidasPublicadas = vencianEnPeriodo.filter((t) => t.estado === ESTADO_FINAL_TAREA);
+    const vencidasPublicadas = vencianEnPeriodo.filter((t) =>
+      isCompletedForEmployeeReport(t, ESTADO_FINAL_TAREA),
+    );
     const cumplimiento =
       vencianEnPeriodo.length > 0
         ? Math.round((vencidasPublicadas.length / vencianEnPeriodo.length) * 100)
