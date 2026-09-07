@@ -1038,6 +1038,8 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
           to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento,c.nombre cliente_nombre
          FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
          WHERE t.propiedades_extra->>'workspace'='render_os'
+           AND c.activo IS TRUE
+           AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
            AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
            AND t.estado IN ('pendiente','en_progreso','en_revision','publicada')
          ORDER BY t.fecha_vencimiento NULLS LAST,t.id`,

@@ -52,6 +52,15 @@ test("Mia no envía nada cuando los objetivos están al día", () => {
   assert.deepEqual(digests, []);
 });
 
+test("Mia excluye clientes inactivos y tareas archivadas de los objetivos", () => {
+  const tasks = [
+    task(1, { cliente_nombre: "RPM Chevrolet", cliente_activo: false }),
+    task(2, { propiedades_extra: { workspace: "render_os", archivada_render_os: true } }),
+  ];
+  assert.deepEqual(buildMiaGroupDigests(tasks, { today: "2026-08-30" }), []);
+  assert.deepEqual(buildMiaWeeklyCarruselDigest(tasks, { today: "2026-08-28" }), []);
+});
+
 test("Mia usa mañana, cierre semanal/mensual y tarde solo para críticos", () => {
   assert.deepEqual(miaGroupDigestWindow(new Date("2026-08-24T12:00:00Z")), { type: "diario", criticalOnly: false }); // 09:00 Argentina
   assert.deepEqual(miaGroupDigestWindow(new Date("2026-08-28T13:00:00Z")), { type: "semanal_mensual", criticalOnly: false }); // viernes 28, 10:00

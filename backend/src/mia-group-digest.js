@@ -74,6 +74,8 @@ export function buildMiaWeeklyCarruselDigest(tasks = [], {
   const scheduled = tasks.filter((task) => {
     const due = dateOnly(task?.fecha_vencimiento);
     return task?.propiedades_extra?.workspace === "render_os"
+      && task.cliente_activo !== false
+      && task.propiedades_extra?.archivada_render_os !== true
       && task.propiedades_extra?.papelera_render_os !== true
       && areaForTask(task) === "comunicacion"
       && isObjectiveTask(task, "comunicacion")
@@ -118,7 +120,10 @@ export function buildMiaGroupDigests(tasks = [], { today = new Date().toISOStrin
   const groups = new Map();
 
   for (const task of tasks) {
-    if (task?.propiedades_extra?.workspace !== "render_os" || task.propiedades_extra?.papelera_render_os === true) continue;
+    if (task?.propiedades_extra?.workspace !== "render_os"
+      || task.cliente_activo === false
+      || task.propiedades_extra?.archivada_render_os === true
+      || task.propiedades_extra?.papelera_render_os === true) continue;
     const area = areaForTask(task);
     const due = dateOnly(task.fecha_vencimiento);
     if (!area || !isObjectiveTask(task, area) || (!OPEN_STATES.has(task.estado) && task.estado !== "publicada")) continue;
