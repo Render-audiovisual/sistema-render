@@ -416,7 +416,7 @@ export function findWilsonDuplicates(candidate, existingTasks) {
 
 async function loadCatalog(db) {
   const [clients, users] = await Promise.all([
-    db.query("SELECT id,nombre FROM clientes ORDER BY nombre"),
+    db.query("SELECT id,nombre FROM clientes WHERE activo IS TRUE ORDER BY nombre"),
     db.query("SELECT id,usuario,nombre,rol FROM usuarios ORDER BY nombre"),
   ]);
   return { clients: clients.rows, users: users.rows };
