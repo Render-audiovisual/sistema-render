@@ -26,9 +26,8 @@ export function isTaskFinalizer(user) {
   return identity.includes("franco") || identity.includes("oriana");
 }
 
-export function canUserMoveTask(task, user) {
-  if (isTaskFinalizer(user)) return true;
-  if (task?.estado === "publicada") return false;
+export function canUserEditTask(task, user) {
+  if (user?.rol === "admin") return true;
   const actorNames = new Set([user?.nombre, user?.usuario].map(normalizeActor).filter(Boolean));
   if (actorNames.size === 0) return false;
   const collaborators = Array.isArray(task?.propiedades_extra?.colaboradores)
@@ -37,6 +36,12 @@ export function canUserMoveTask(task, user) {
   return [task?.asignado_a, ...collaborators]
     .map(normalizeActor)
     .some((name) => actorNames.has(name));
+}
+
+export function canUserMoveTask(task, user) {
+  if (isTaskFinalizer(user)) return true;
+  if (task?.estado === "publicada") return false;
+  return canUserEditTask(task, user);
 }
 
 export function canUserMoveTaskToState(task, user, nextState) {

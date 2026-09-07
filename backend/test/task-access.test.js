@@ -42,16 +42,19 @@ test("la escritura reconoce tanto el nombre visible como el usuario", () => {
   assert.match(access.sql, /jsonb_array_elements_text\(\$2::jsonb\)/);
 });
 
-test("un empleado solo puede cambiar estado con control de concurrencia", () => {
-  assert.equal(canEmployeePatchTask({ estado: "en_progreso", expected_updated_at: "2026-08-04T10:00:00Z" }), true);
-  assert.equal(canEmployeePatchTask({ titulo: "No autorizado" }), false);
-  assert.equal(canEmployeePatchTask({ propiedades_extra: { archivada_render_os: true } }), false);
+test("un empleado puede editar los datos laborales de sus tareas de RENDER OS", () => {
+  assert.equal(canEmployeePatchTask({ estado: "en_progreso", expected_updated_at: "2026-08-04T10:00:00Z" }, { workspace: "render_os", role: "diseno" }), true);
+  assert.equal(canEmployeePatchTask({ titulo: "Título corregido", cliente_id: 12, prioridad: "alta" }, { workspace: "render_os", role: "diseno" }), true);
+  assert.equal(canEmployeePatchTask({ asignado_a: "Augusto", propiedades_extra: { colaboradores: ["Oriana"] } }, { workspace: "render_os", role: "diseno" }), true);
+  assert.equal(canEmployeePatchTask({ aclaraciones: "Nueva descripción", material_referencia: "https://drive.google.com/folder" }, { workspace: "render_os", role: "produccion" }), true);
+  assert.equal(canEmployeePatchTask({ propiedades_extra: { archivada_render_os: true } }, { workspace: "render_os", role: "diseno" }), false);
+  assert.equal(canEmployeePatchTask({ publicacion_id: 20 }, { workspace: "render_os", role: "diseno" }), false);
 });
 
 test("producción conserva únicamente la coordinación de sus tareas históricas", () => {
   assert.equal(canEmployeePatchTask({ propiedades_extra: { horario: "10:00", coordinada: true } }, { workspace: "historical", role: "produccion" }), true);
   assert.equal(canEmployeePatchTask({ propiedades_extra: { archivada_render_os: true } }, { workspace: "historical", role: "produccion" }), false);
   assert.equal(canEmployeePatchTask({ material_referencia: "https://drive.google.com/folder" }, { workspace: "render_os", role: "produccion" }), true);
-  assert.equal(canEmployeePatchTask({ titulo: "No permitido" }, { workspace: "render_os", role: "produccion" }), false);
+  assert.equal(canEmployeePatchTask({ titulo: "Permitido" }, { workspace: "render_os", role: "produccion" }), true);
   assert.equal(canEmployeePatchTask({ propiedades_extra: { horario: "10:00" } }, { workspace: "render_os", role: "produccion" }), false);
 });

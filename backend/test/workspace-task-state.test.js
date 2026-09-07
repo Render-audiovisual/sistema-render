@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canRetryTaskUpdate, canUserMoveTask, canUserMoveTaskToState, isTaskFinalizer, mergeRelatedTasks } from "../../frontend/src/workspace-task-state.js";
+import { canRetryTaskUpdate, canUserEditTask, canUserMoveTask, canUserMoveTaskToState, isTaskFinalizer, mergeRelatedTasks } from "../../frontend/src/workspace-task-state.js";
 
 test("incorpora tareas por ID sin duplicarlas y conserva datos locales", () => {
   const current = [{ id: 10, titulo: "Anterior", cliente_nombre: "Cliente QA" }];
@@ -37,6 +37,13 @@ test("permite mover por nombre, usuario o colaboración sin habilitar tareas aje
   assert.equal(canUserMoveTask(task, { nombre: "Germán", usuario: "German", rol: "produccion" }), true);
   assert.equal(canUserMoveTask(task, { nombre: "Augusto", usuario: "Augusto", rol: "diseno" }), false);
   assert.equal(canUserMoveTask(task, { nombre: "Líder", usuario: "lider", rol: "admin" }), true);
+});
+
+test("permite editar una tarea propia o colaborada incluso si ya fue finalizada", () => {
+  const task = { estado: "publicada", asignado_a: "Mariano", propiedades_extra: { colaboradores: ["Germán"] } };
+  assert.equal(canUserEditTask(task, { nombre: "Mariano Meza", usuario: "Mariano", rol: "diseno" }), true);
+  assert.equal(canUserEditTask(task, { nombre: "Germán", usuario: "German", rol: "produccion" }), true);
+  assert.equal(canUserEditTask(task, { nombre: "Augusto", usuario: "Augusto", rol: "diseno" }), false);
 });
 
 test("empleados llegan hasta revisión y solo los finalizadores cierran o reabren", () => {
