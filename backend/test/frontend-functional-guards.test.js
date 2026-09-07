@@ -83,6 +83,16 @@ test("el calendario completa la última semana para conservar toda la cuadrícul
   assert.match(workspaceStyles, /\.ros-day-preview-backdrop/);
 });
 
+test("el calendario editorial permite abrir y verificar sus tareas vinculadas", () => {
+  const publicacionesSource = readFileSync(new URL("../../frontend/src/pages/Publicaciones.jsx", import.meta.url), "utf8");
+  const serverSource = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.match(publicacionesSource, /\/api\/publicaciones\/\$\{piezaSel\.id\}\/tareas/);
+  assert.match(publicacionesSource, /Tareas para verificar/);
+  assert.match(publicacionesSource, /workspace\/tareas\?task=\$\{tarea\.id\}/);
+  assert.match(serverSource, /router\.get\("\/publicaciones\/:id\/tareas"/);
+  assert.match(serverSource, /buildTaskReadAccessClause\(req\.auth, "t", "\$2", "render_os"\)/);
+});
+
 test("Tareas conserva una sola interfaz y navega en la misma pestaña", () => {
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");

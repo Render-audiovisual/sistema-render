@@ -19,6 +19,8 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
   const [piezaSel, setPiezaSel] = useState(null);
   const [diaSel, setDiaSel] = useState(null);
   const [guardandoId, setGuardandoId] = useState(null);
+  const [tareasPieza, setTareasPieza] = useState([]);
+  const [cargandoTareas, setCargandoTareas] = useState(false);
 
   const cargarPublicaciones = useCallback(() => fetch("/api/publicaciones")
       .then((r) => r.json())
@@ -36,6 +38,28 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
       }), []);
 
   useEffect(() => { cargarPublicaciones(); }, [cargarPublicaciones]);
+
+  useEffect(() => {
+    if (!piezaSel?.id) {
+      setTareasPieza([]);
+      return;
+    }
+    let active = true;
+    setCargandoTareas(true);
+    fetch(`/api/publicaciones/${piezaSel.id}/tareas`, { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => []);
+        if (!response.ok) throw new Error(payload.error || "No se pudieron cargar las tareas vinculadas.");
+        return payload;
+      })
+      .then((items) => { if (active) setTareasPieza(Array.isArray(items) ? items : []); })
+      .catch((err) => {
+        console.error("No se pudieron cargar las tareas de la publicación", err);
+        if (active) setTareasPieza([]);
+      })
+      .finally(() => { if (active) setCargandoTareas(false); });
+    return () => { active = false; };
+  }, [piezaSel?.id]);
 
   const piezasFiltradas = useMemo(() => piezas.filter((pz) => {
     if (filtroTipo !== "todos" && pz.tipo !== filtroTipo) return false;
@@ -397,6 +421,20 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
                   </div>
                 )}
               </div>
+              <section className="publication-linked-tasks" aria-label="Tareas para verificar">
+                <header>
+                  <div><strong>Tareas para verificar</strong><span>Abrí el detalle sin volver al tablero.</span></div>
+                  {!cargandoTareas && tareasPieza.length > 0 && <b>{tareasPieza.length}</b>}
+                </header>
+                {cargandoTareas ? <p className="publication-linked-tasks-empty">Cargando tareas…</p> : tareasPieza.length > 0 ? (
+                  <div>{tareasPieza.map((tarea) => (
+                    <a className="publication-linked-task" href={`/workspace/tareas?task=${tarea.id}`} key={tarea.id}>
+                      <span><strong>{tarea.titulo}</strong><small>{tarea.asignado_a || "Sin responsable"} · {tarea.fecha_vencimiento || "Sin fecha"}</small></span>
+                      <b>{getEstadoHistoriaLabel(tarea.estado)}</b><i>Ver tarea →</i>
+                    </a>
+                  ))}</div>
+                ) : <p className="publication-linked-tasks-empty">No hay tareas vinculadas disponibles para tu usuario.</p>}
+              </section>
               <div className="modal-actions">
                 <button
                   className="btn primary"

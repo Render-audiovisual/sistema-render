@@ -1751,6 +1751,31 @@ router.get("/publicaciones", async (req, res, next) => {
   }
 });
 
+router.get("/publicaciones/:id/tareas", async (req, res, next) => {
+  try {
+    const access = buildTaskReadAccessClause(req.auth, "t", "$2", "render_os");
+    const params = [req.params.id];
+    if (access.value) params.push(access.value);
+    const result = await pool.query(
+      `SELECT t.id,t.titulo,t.estado,t.asignado_a,t.tipo_tarea,t.subtipo,
+        to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento
+       FROM tareas t
+       WHERE t.publicacion_id=$1
+         AND t.propiedades_extra->>'workspace'='render_os'
+         AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+         AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'${access.sql}
+       ORDER BY CASE t.estado
+         WHEN 'en_revision' THEN 0 WHEN 'bloqueada' THEN 1 WHEN 'en_progreso' THEN 2
+         WHEN 'pendiente' THEN 3 WHEN 'publicada' THEN 4 ELSE 5 END,
+         t.fecha_vencimiento ASC NULLS LAST,t.id ASC`,
+      params,
+    );
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/tareas", async (req, res, next) => {
   try {
     const {
