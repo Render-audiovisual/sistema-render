@@ -98,6 +98,7 @@ def task_payload(args):
         "descripcion": description,
         "cliente": args.client,
         "responsable": args.assignee_name,
+        "colaboradores": args.additional_assignee,
         "fecha_vencimiento": args.due,
         "sector": SECTORS[args.list],
         "prioridad": PRIORITIES[args.priority],
@@ -112,6 +113,10 @@ def add_task_arguments(parser, *, creating):
     parser.add_argument("--desc", default="")
     parser.add_argument("--client", required=True)
     parser.add_argument("--assignee-name", required=True)
+    parser.add_argument(
+        "--additional-assignee", action="append", default=[],
+        help="Responsable adicional. Se puede repetir.",
+    )
     parser.add_argument("--due", required=True, help="YYYY-MM-DD")
     parser.add_argument("--material")
     parser.add_argument("--reference")
@@ -142,6 +147,8 @@ def update_payload(args):
         "material": args.material,
         "referencia": args.reference,
     }
+    if args.additional_assignee is not None:
+        payload["colaboradores"] = args.additional_assignee
     for key, value in values.items():
         if value is not None:
             payload[key] = value.replace("\\n", "\n").strip() if isinstance(value, str) else value
@@ -174,6 +181,10 @@ def main():
     description.add_argument("--append-desc", help="Agrega un bloque al final sin duplicarlo.")
     update.add_argument("--client")
     update.add_argument("--assignee-name")
+    update.add_argument(
+        "--additional-assignee", action="append",
+        help="Reemplaza los responsables adicionales. Se puede repetir.",
+    )
     update.add_argument("--due", help="YYYY-MM-DD")
     update.add_argument("--material")
     update.add_argument("--reference")

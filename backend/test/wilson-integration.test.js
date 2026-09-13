@@ -75,6 +75,9 @@ const catalog = {
   users: [
     { id: 7, usuario: "Luciano", nombre: "Luciano", rol: "edicion" },
     { id: 8, usuario: "german", nombre: "Germán", rol: "produccion" },
+    { id: 9, usuario: "oriana", nombre: "Oriana", rol: "community" },
+    { id: 10, usuario: "agustin", nombre: "Agustín", rol: "lider" },
+    { id: 11, usuario: "mariano", nombre: "Mariano Meza", rol: "diseno" },
   ],
 };
 
@@ -102,6 +105,31 @@ test("Wilson exige cliente, responsable y sector reales, pero permite omitir la 
   }, catalog);
   assert.deepEqual(withoutDate.errors, []);
   assert.equal(withoutDate.task.fecha_vencimiento, null);
+});
+
+test("Wilson acepta varios responsables y conserva uno principal", () => {
+  const result = buildWilsonTask({
+    titulo: "Bunker | Historias con texto y CTA",
+    cliente: "Búnker Training",
+    responsables: ["Agustín", "Oriana", "Mariano", "Oriana"],
+    sector: "community",
+  }, catalog);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.task.asignado_a, "Agustín");
+  assert.deepEqual(result.task.colaboradores, ["Oriana", "Mariano Meza"]);
+  assert.deepEqual(result.task.responsables, ["Agustín", "Oriana", "Mariano Meza"]);
+});
+
+test("Wilson no descarta responsables adicionales desconocidos", () => {
+  const result = buildWilsonTask({
+    titulo: "Bunker | Historias con texto y CTA",
+    cliente: "Búnker Training",
+    responsable: "Oriana",
+    colaboradores: ["Mariano", "Persona inexistente"],
+    sector: "community",
+  }, catalog);
+  assert.equal(result.task, null);
+  assert.match(result.errors.join(" "), /Persona inexistente/);
 });
 
 test("los permisos privados respetan rol, identidad y el alias Milton de Luciano", () => {
@@ -297,7 +325,9 @@ test("Wilson prepara una edición parcial preservando los demás campos", () => 
     titulo: "Bunker | Visita producción | 07/08", asignado_a: "Luciano", cliente_id: 11,
     cliente_nombre: "Búnker Training", fecha_vencimiento: "2026-08-07", tipo_tarea: "edicion",
     prioridad: "media", aclaraciones: "Brief original", material_referencia: "https://drive.test/material",
-    subtipo: null, propiedades_extra: { referencia: "https://instagram.test/original" },
+    subtipo: null, propiedades_extra: {
+      referencia: "https://instagram.test/original", colaboradores: ["Oriana"],
+    },
   };
   const result = buildWilsonTaskUpdate({ append_descripcion: "Nuevo bloque" }, current, catalog);
   assert.deepEqual(result.errors, []);
@@ -305,6 +335,22 @@ test("Wilson prepara una edición parcial preservando los demás campos", () => 
   assert.equal(result.task.asignado_a, current.asignado_a);
   assert.equal(result.task.aclaraciones, "Brief original\n\nNuevo bloque\nReferencia: https://instagram.test/original");
   assert.equal(result.task.material_referencia, current.material_referencia);
+  assert.deepEqual(result.task.colaboradores, ["Oriana"]);
+});
+
+test("Wilson reemplaza todos los responsables en una edición", () => {
+  const current = {
+    titulo: "Bunker | Historias", asignado_a: "Luciano", cliente_id: 11,
+    cliente_nombre: "Búnker Training", fecha_vencimiento: null, tipo_tarea: "community",
+    prioridad: "media", aclaraciones: null, material_referencia: null,
+    subtipo: null, propiedades_extra: { colaboradores: ["Oriana"] },
+  };
+  const result = buildWilsonTaskUpdate({
+    responsables: ["Agustín", "Oriana", "Mariano"],
+  }, current, catalog);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.task.asignado_a, "Agustín");
+  assert.deepEqual(result.task.colaboradores, ["Oriana", "Mariano Meza"]);
 });
 
 test("Wilson conserva y permite corregir la cantidad prevista de una visita", () => {
