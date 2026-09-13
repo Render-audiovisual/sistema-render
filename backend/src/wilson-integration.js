@@ -192,6 +192,7 @@ function canonicalWilsonPerson(value) {
 
 export function wilsonPersonAliases(value) {
   const canonical = canonicalWilsonPerson(value);
+  if (["agus", "agustin", "lider"].includes(canonical)) return ["agus", "agustin", "lider"];
   if (canonical === "luciano") return ["luciano", "milton", "milton luciano"];
   if (canonical === "mariano meza") return ["mariano", "mariano mesa", "mariano meza", "mesa", "meza"];
   if (canonical === "german") return ["german", "germán"];
@@ -337,10 +338,16 @@ function exactMatch(items, value, fields) {
   return items.find((item) => fields.some((field) => normalizeWilsonText(item[field]) === normalized));
 }
 
+function exactWilsonUser(users, value) {
+  const aliases = new Set(wilsonPersonAliases(value));
+  return users.find((user) => ["nombre", "usuario"]
+    .some((field) => aliases.has(normalizeWilsonText(user[field]))));
+}
+
 function normalizedAssignees(input, users) {
   const requested = Array.isArray(input.responsables) ? input.responsables : [];
   const primaryValue = input.responsable || input.asignado_a || requested[0];
-  const primary = exactMatch(users, primaryValue, ["nombre", "usuario"]);
+  const primary = exactWilsonUser(users, primaryValue);
   const additionalValues = [
     ...(Array.isArray(input.colaboradores) ? input.colaboradores : []),
     ...requested,
@@ -351,7 +358,7 @@ function normalizedAssignees(input, users) {
   for (const value of additionalValues) {
     const cleanValue = String(value || "").trim();
     if (!cleanValue) continue;
-    const matched = exactMatch(users, cleanValue, ["nombre", "usuario"]);
+    const matched = exactWilsonUser(users, cleanValue);
     if (!matched) {
       if (!unknown.includes(cleanValue)) unknown.push(cleanValue);
       continue;

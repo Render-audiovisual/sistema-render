@@ -76,7 +76,7 @@ const catalog = {
     { id: 7, usuario: "Luciano", nombre: "Luciano", rol: "edicion" },
     { id: 8, usuario: "german", nombre: "Germán", rol: "produccion" },
     { id: 9, usuario: "oriana", nombre: "Oriana", rol: "community" },
-    { id: 10, usuario: "agustin", nombre: "Agustín", rol: "lider" },
+    { id: 10, usuario: "lider", nombre: "Líder", rol: "lider" },
     { id: 11, usuario: "mariano", nombre: "Mariano Meza", rol: "diseno" },
   ],
 };
@@ -115,9 +115,9 @@ test("Wilson acepta varios responsables y conserva uno principal", () => {
     sector: "community",
   }, catalog);
   assert.deepEqual(result.errors, []);
-  assert.equal(result.task.asignado_a, "Agustín");
+  assert.equal(result.task.asignado_a, "Líder");
   assert.deepEqual(result.task.colaboradores, ["Oriana", "Mariano Meza"]);
-  assert.deepEqual(result.task.responsables, ["Agustín", "Oriana", "Mariano Meza"]);
+  assert.deepEqual(result.task.responsables, ["Líder", "Oriana", "Mariano Meza"]);
 });
 
 test("Wilson no descarta responsables adicionales desconocidos", () => {
@@ -349,7 +349,7 @@ test("Wilson reemplaza todos los responsables en una edición", () => {
     responsables: ["Agustín", "Oriana", "Mariano"],
   }, current, catalog);
   assert.deepEqual(result.errors, []);
-  assert.equal(result.task.asignado_a, "Agustín");
+  assert.equal(result.task.asignado_a, "Líder");
   assert.deepEqual(result.task.colaboradores, ["Oriana", "Mariano Meza"]);
 });
 
