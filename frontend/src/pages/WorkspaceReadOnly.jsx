@@ -79,7 +79,7 @@ function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, editor
 }
 
 function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onTrashAction }) {
-  const windowMotion = useTaskWindowMotion(task?.id, onClose);
+  const windowMotion = useTaskWindowMotion(task?.id, onClose, true);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task || {});
   const [comments, setComments] = useState([]);
@@ -610,7 +610,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
       && (priority === "all" || task.prioridad === priority)
       && text.includes(query.toLowerCase());
   }), [tasks, query, area, responsible, client, sector, priority, archiveMode]);
-  useTaskBoardMotion(boardRef, visible, view);
+  useTaskBoardMotion(boardRef, visible, view, true);
   const paginatedTaskCount = tasks.filter((task) => !task.__renderOsDirectOnly).length;
   const hasFilters = responsible !== "all" || client !== "all" || sector !== "all" || priority !== "all" || area !== "all";
   const activeFilterCount = [responsible, client, sector, priority, area].filter((value) => value !== "all").length;
