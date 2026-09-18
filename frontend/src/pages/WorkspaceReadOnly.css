@@ -1543,3 +1543,13 @@
   .render-workspace .ros-task-card h3{font-size:14px}
   .render-workspace .ros-content-tools button{min-height:38px}
 }
+
+/* Production and delivery controls remain usable on touch screens. */
+.ros-production-simple p{font-size:14px;line-height:1.45;margin:0}
+.ros-production-simple label>span{font-size:14px}
+.ros-production-simple input,.ros-production-simple>button{font-size:16px;min-height:44px}
+.ros-production-simple>button:disabled{opacity:.55}
+.ros-approval-handoff{flex-wrap:wrap}
+.ros-approval-handoff label{display:grid;gap:6px;font-size:14px;min-width:0}
+.ros-approval-handoff select{font-size:16px;min-height:44px;max-width:100%}
+@media(max-width:640px){.ros-production-drive{flex-direction:column;align-items:stretch}.ros-production-drive input,.ros-production-drive button,.ros-approval-handoff button{font-size:16px;min-height:44px;width:100%}.ros-approval-handoff label{width:100%}.ros-approval-handoff button{white-space:normal}}

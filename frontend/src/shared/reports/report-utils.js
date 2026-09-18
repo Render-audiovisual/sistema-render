@@ -72,6 +72,10 @@ export function filterRenderOsTasksByPeriod(tasks = [], isInPeriod) {
   });
 }
 
+export function getEditingResponsible(task = {}) {
+  return task.propiedades_extra?.edicion_responsable || task.asignado_a;
+}
+
 export function summarizeTaskDeliveries(tasks = []) {
   const realizados = tasks.filter((task) => isCompletedForEmployeeReport(task)).length;
   return { realizados, pendientes: Math.max(tasks.length - realizados, 0), total: tasks.length };

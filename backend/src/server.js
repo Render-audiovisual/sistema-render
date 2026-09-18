@@ -28,7 +28,7 @@ import { createWilsonRouter } from "./wilson-integration.js";
 import { createWilsonChatRouter, scheduleWilsonMessages } from "./wilson-chat.js";
 import { runMigrations } from "./migrations.js";
 import { resolveUserRole } from "./user-roles.js";
-import { canRecordProduction, getProductionProgress, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
+import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { filterReportDataForUser } from "./report-access.js";
@@ -1860,10 +1860,10 @@ router.post("/tareas", async (req, res, next) => {
     const nuevaTarea = { titulo, subtipo, tipo_tarea, propiedades_extra: propiedadesExtra };
     if (isProductionVisitTask(nuevaTarea)) {
       const planned = Number(produccion_videos_previstos);
-      if (!Number.isInteger(planned) || planned <= 0) {
-        return res.status(400).json({ error: "Una visita de producción necesita indicar cuántos videos están previstos." });
+      if (produccion_videos_previstos != null && produccion_videos_previstos !== "" && (!Number.isInteger(planned) || planned <= 0)) {
+        return res.status(400).json({ error: "Los videos previstos deben ser un entero mayor que cero, o dejarse sin definir." });
       }
-      propiedadesExtra.produccion_videos_previstos = planned;
+      if (planned > 0) propiedadesExtra.produccion_videos_previstos = planned;
       propiedadesExtra.produccion_registros = [];
     }
 
@@ -1944,7 +1944,7 @@ async function crearTareaEdicionDesdeVisita(visita) {
     ? await pool.query("SELECT nombre FROM clientes WHERE id = $1", [visita.cliente_id])
     : { rows: [] };
   const clienteNombre = cliente.rows[0]?.nombre || "Sin cliente";
-  const cantidad = getProductionProgress(visita).planned;
+  const cantidad = getProductionProgress(visita).recorded;
   const propiedades = {
     workspace: "render_os",
     origen_visita_id: String(visita.id),
@@ -2073,7 +2073,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
     }
     const produccionPuedeCompletarPropia = req.auth.rol === "produccion"
       && tareaAnteriorCompleta?.tipo_tarea === "produccion";
-    if (esRenderOS && body.estado === "publicada" && !produccionPuedeCompletarPropia) {
+    if (esRenderOS && body.estado === "publicada") {
       const visita = await pool.query(
         `SELECT titulo, subtipo, tipo_tarea, propiedades_extra
          FROM tareas
@@ -2082,7 +2082,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
       );
       if (visita.rows[0] && isProductionVisitTask(visita.rows[0])) {
         const progress = getProductionProgress(visita.rows[0]);
-        if (progress.planned === 0 || progress.recorded < progress.planned) {
+        if (!isProductionComplete(visita.rows[0])) {
           return res.status(400).json({ error: progress.planned === 0
             ? "Indicá cuántos videos tiene la visita antes de finalizarla."
             : `Todavía faltan ${progress.remaining} videos para finalizar esta visita.` });
@@ -2260,12 +2260,19 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
       return res.status(400).json({ error: "Solo se pueden aprobar videos que estén Para revisar." });
     }
     if (tarea.propiedades_extra?.revision_aprobada === true) {
-      return res.status(409).json({ error: "Esta tarea ya fue aprobada y enviada a Oriana." });
+      return res.status(409).json({ error: "Esta tarea ya fue aprobada y asignada para publicación." });
     }
     const actor = getTaskActor(req.auth);
+    const requestedPublisher = String(req.body?.responsable_publicacion || "Oriana").trim();
+    const publisherResult = await pool.query(
+      "SELECT nombre FROM usuarios WHERE nombre = $1 AND rol IN ('admin', 'community')",
+      [requestedPublisher],
+    );
+    if (!publisherResult.rows[0]) return res.status(400).json({ error: "Elegí una persona de Community o un Líder para publicar." });
+    const publisher = publisherResult.rows[0].nombre;
     const result = await pool.query(
       `UPDATE tareas
-       SET asignado_a = 'Oriana',
+       SET asignado_a = $3,
            propiedades_extra = propiedades_extra || $2::jsonb,
            updated_at = now()
        WHERE id = $1
@@ -2276,7 +2283,7 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
          propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
          historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones,
          material_referencia, tarea_padre_id, created_at, updated_at`,
-      [req.params.id, JSON.stringify({ revision_aprobada: true, revision_aprobada_por: actor, revision_aprobada_at: new Date().toISOString(), workspace: "render_os" })],
+      [req.params.id, JSON.stringify({ revision_aprobada: true, revision_aprobada_por: actor, revision_aprobada_at: new Date().toISOString(), edicion_responsable: tarea.propiedades_extra?.edicion_responsable || tarea.asignado_a, responsable_publicacion: publisher, workspace: "render_os" }), publisher],
     );
     if (!result.rows[0]) return res.status(409).json({ error: "La tarea ya fue aprobada o cambió de estado." });
     const aprobada = result.rows[0];
@@ -2285,9 +2292,9 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
       pool,
       tarea: aprobada,
       motivo: "aprobada",
-      nombresDestinatarios: ["Oriana"],
+      nombresDestinatarios: [publisher],
       actor,
-      detalle: `${actor} aprobó el material. Oriana puede programarlo o publicarlo.`,
+      detalle: `${actor} aprobó el material. ${publisher} puede programarlo o publicarlo.`,
     });
   } catch (error) {
     next(error);
@@ -2300,7 +2307,8 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
   }
   const amount = Number(req.body.cantidad);
   const date = String(req.body.fecha || "");
-  if (!Number.isInteger(amount) || amount <= 0) {
+  const finished = req.body.finalizar === true;
+  if (!Number.isSafeInteger(amount) || amount < 0 || (amount === 0 && !finished)) {
     return res.status(400).json({ error: "La cantidad debe ser un número entero mayor que cero." });
   }
   if (!isValidProductionDate(date)) {
@@ -2337,9 +2345,13 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
       return res.status(409).json({ error: "La tarea cambió mientras registrabas los videos. Revisá la última versión." });
     }
     const progress = getProductionProgress(task);
-    if (progress.planned === 0) {
+    if (task.propiedades_extra?.produccion_confirmada_at || isProductionComplete(task)) {
       await client.query("ROLLBACK");
-      return res.status(400).json({ error: "Primero un Líder debe indicar cuántos videos están previstos en la visita." });
+      return res.status(409).json({ error: "La visita ya está terminada. Revisá sus registros antes de agregar videos." });
+    }
+    if (progress.recorded + amount <= 0) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Indicá cuántos videos grabaste antes de terminar la visita." });
     }
     const records = Array.isArray(task.propiedades_extra?.produccion_registros)
       ? task.propiedades_extra.produccion_registros
@@ -2352,16 +2364,18 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
       created_at: new Date().toISOString(),
       periodo_objetivo: date.slice(0, 7),
     };
-    const regularAmount = Math.min(amount, progress.remaining);
+    const regularAmount = progress.planned > 0 ? Math.min(amount, progress.remaining) : amount;
     const advanceAmount = amount - regularAmount;
     if (advanceAmount > 0) {
       record.cantidad_mes_actual = regularAmount;
       record.cantidad_adelanto = advanceAmount;
       record.periodo_adelanto = nextProductionPeriod(date);
     }
-    const completed = progress.recorded + amount >= progress.planned;
-    const nextState = getProductionTaskState({ planned: progress.planned, recorded: progress.recorded + amount });
+    const completed = finished || (progress.planned > 0 && progress.recorded + amount >= progress.planned);
+    const nextState = getProductionTaskState({ planned: progress.planned, recorded: progress.recorded + amount, finished });
     const workflowProperties = completed ? {
+      produccion_finalizada_at: new Date().toISOString(),
+      produccion_finalizada_por: getTaskActor(req.auth),
       produccion_esperando_confirmacion: true,
       produccion_confirmada_at: null,
       produccion_confirmada_por: null,
@@ -2385,7 +2399,7 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
                  to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id,
                  publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia,
                  tarea_padre_id, created_at, updated_at`,
-      [task.id, JSON.stringify({ produccion_registros: [...records, record], ...workflowProperties, workspace: "render_os" }), nextState],
+      [task.id, JSON.stringify({ produccion_registros: amount > 0 ? [...records, record] : records, ...workflowProperties, workspace: "render_os" }), nextState],
     );
     await client.query("COMMIT");
     return res.status(201).json(updated.rows[0]);
@@ -2472,7 +2486,7 @@ router.patch("/tareas/:id/produccion/registros/:recordId", async (req, res, next
     const recordedBefore = records.slice(0, index).reduce((total, item) => total + (Number(item.cantidad) || 0), 0);
     const planned = getProductionProgress(task).planned;
     const remainingAtRecord = Math.max(planned - recordedBefore, 0);
-    const regularAmount = Math.min(amount, remainingAtRecord);
+    const regularAmount = planned > 0 ? Math.min(amount, remainingAtRecord) : amount;
     const advanceAmount = amount - regularAmount;
     corrected[index] = {
       ...corrected[index], cantidad: amount, cantidad_mes_actual: regularAmount,

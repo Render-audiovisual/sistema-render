@@ -35,7 +35,7 @@ export function getProductionRecorded(task = {}) {
 export function getProductionVisitProgress(task = {}) {
   const planned = getProductionPlanned(task);
   const recorded = getProductionRecorded(task);
-  return { planned, recorded, remaining: Math.max(planned - recorded, 0), complete: planned > 0 && recorded >= planned };
+  return { planned, recorded, remaining: Math.max(planned - recorded, 0), complete: recorded > 0 && (Boolean(task.propiedades_extra?.produccion_finalizada_at) || (planned > 0 && recorded >= planned)) };
 }
 
 export function getProductionPhase(task = {}) {

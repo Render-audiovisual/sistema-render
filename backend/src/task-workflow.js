@@ -1,5 +1,5 @@
 import { normalizarNombre } from "./email-notifications.js";
-import { getProductionProgress, isProductionVisitTask } from "./production-visits.js";
+import { getProductionProgress, isProductionVisitTask, isProductionComplete } from "./production-visits.js";
 
 export const TASK_LEADERS = ["Agustín", "Franco"];
 
@@ -48,7 +48,7 @@ export function getStateNotification(task, previousState) {
 export function validateProductionHandoff(task = {}) {
   if (!isProductionVisitTask(task)) return null;
   const progress = getProductionProgress(task);
-  if (progress.planned <= 0 || progress.recorded < progress.planned) {
+  if (!isProductionComplete(task)) {
     return `Todavía faltan ${progress.remaining || progress.planned || 1} videos para enviar esta visita a edición.`;
   }
   if (!String(task.material_referencia || "").trim()) {

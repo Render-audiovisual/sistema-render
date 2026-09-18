@@ -18,10 +18,15 @@ export function getProductionProgress(task = {}) {
   return { planned, recorded, remaining: Math.max(planned - recorded, 0) };
 }
 
-export function getProductionTaskState({ planned = 0, recorded = 0 } = {}) {
+export function isProductionComplete(task = {}) {
+  const { planned, recorded } = getProductionProgress(task);
+  return recorded > 0 && (Boolean(task.propiedades_extra?.produccion_finalizada_at) || (planned > 0 && recorded >= planned));
+}
+
+export function getProductionTaskState({ planned = 0, recorded = 0, finished = false } = {}) {
   const expected = Number(planned) || 0;
   const completed = Number(recorded) || 0;
-  if (expected > 0 && completed >= expected) return "en_revision";
+  if (completed > 0 && (finished || (expected > 0 && completed >= expected))) return "en_revision";
   if (completed > 0) return "en_progreso";
   return "pendiente";
 }
@@ -30,7 +35,7 @@ export function getProductionPhase(task = {}) {
   const progress = getProductionProgress(task);
   if (isProductionVisitTask(task)) {
     if (task.propiedades_extra?.produccion_confirmada_at) return "grabacion_confirmada";
-    if (progress.planned > 0 && progress.recorded >= progress.planned) return "grabacion_completa";
+    if (isProductionComplete(task)) return "grabacion_completa";
     if (progress.recorded > 0) return "grabacion";
   }
   if (task.estado === "programada") return "programada";
