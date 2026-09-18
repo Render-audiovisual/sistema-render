@@ -1,0 +1,18 @@
+/* Feedback for the existing native drag interaction, without delaying saves. */
+.render-workspace .ros-board .ros-column > div {
+  transition: background-color 240ms ease-out, box-shadow 240ms ease-out;
+}
+.render-workspace .ros-board .ros-column.drag-over > div {
+  background: #f3f7ec;
+  box-shadow: inset 0 0 0 1px #91a96c;
+}
+.render-workspace .ros-board .ros-task-card.is-dragging {
+  border-color: #91a96c;
+  box-shadow: 0 12px 28px #20241826;
+  transform: scale(1.025);
+}
+@media (prefers-reduced-motion: reduce) {
+  .render-workspace .ros-board .ros-column > div,
+  .render-workspace .ros-board .ros-task-card { transition: none; }
+  .render-workspace .ros-board .ros-task-card.is-dragging { transform: none; }
+}
