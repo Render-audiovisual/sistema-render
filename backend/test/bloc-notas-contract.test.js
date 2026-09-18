@@ -43,8 +43,9 @@ test("las notas admiten categorías persistentes y compatibles con datos existen
 
 test("la ruta y el acceso compartido están visibles junto a Tareas", () => {
   assert.match(app, /"\/bloc-notas"/);
-  assert.match(app, /<BlocNotasPage/);
-  assert.match(sidebar, /href: "\/workspace\/tareas"[\s\S]*href: "\/bloc-notas"/);
+  assert.match(app, /path === "\/bloc-notas" \|\| path === "\/feedback"/);
+  assert.match(app, /<FeedbackPage/);
+  assert.match(sidebar, /href: "\/workspace\/tareas"[\s\S]*href: "\/feedback"/);
   assert.match(page, /saveQueue/);
   assert.match(page, /expected_updated_at/);
   assert.match(page, /Papelera/);

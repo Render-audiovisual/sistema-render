@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { normalizeFeedback } from "./feedback-fields.js";
 import fs from "node:fs";
 import path from "node:path";
 import dns from "node:dns";
@@ -287,7 +288,7 @@ router.get("/notas", async (req, res, next) => {
       where += ` AND (titulo ILIKE $${params.length} OR contenido ILIKE $${params.length})`;
     }
     const result = await pool.query(
-      `SELECT id,titulo,contenido,categoria,creado_por,modificado_por,eliminado_at,created_at,updated_at
+      `SELECT id,titulo,contenido,categoria,feedback,creado_por,modificado_por,eliminado_at,created_at,updated_at
        FROM notas_compartidas WHERE ${where}
        ORDER BY updated_at DESC,id DESC LIMIT 500`,
       params,
@@ -303,11 +304,14 @@ router.post("/notas", async (req, res, next) => {
     const contenido = String(req.body?.contenido || "");
     const categoria = normalizeNotaCategoria(req.body?.categoria);
     if (!categoria) return res.status(400).json({ error: "Categoría de nota inválida." });
+    let feedback;
+    try { feedback = normalizeFeedback(req.body?.feedback ?? {}); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
     const result = await pool.query(
-      `INSERT INTO notas_compartidas (titulo,contenido,categoria,creado_por,modificado_por)
-       VALUES ($1,$2,$3,$4,$4)
-       RETURNING id,titulo,contenido,categoria,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
-      [titulo, contenido, categoria, actor],
+      `INSERT INTO notas_compartidas (titulo,contenido,categoria,creado_por,modificado_por,feedback)
+       VALUES ($1,$2,$3,$4,$4,$5)
+       RETURNING id,titulo,contenido,categoria,feedback,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
+      [titulo, contenido, categoria, actor, JSON.stringify(feedback)],
     );
     res.status(201).json(result.rows[0]);
   } catch (error) { next(error); }
@@ -318,6 +322,11 @@ router.patch("/notas/:id", async (req, res, next) => {
     const actor = getTaskActor(req.auth);
     const sets = [];
     const params = [];
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "feedback")) {
+      try { params.push(JSON.stringify(normalizeFeedback(req.body.feedback))); }
+      catch (error) { return res.status(400).json({ error: error.message }); }
+      sets.push(`feedback=$${params.length}`);
+    }
     if (Object.prototype.hasOwnProperty.call(req.body || {}, "titulo")) {
       params.push(String(req.body.titulo || "").trim() || "Nueva nota");
       sets.push(`titulo=$${params.length}`);
@@ -343,7 +352,7 @@ router.patch("/notas/:id", async (req, res, next) => {
     }
     const result = await pool.query(
       `UPDATE notas_compartidas SET ${sets.join(",")} WHERE ${where}
-       RETURNING id,titulo,contenido,categoria,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
+       RETURNING id,titulo,contenido,categoria,feedback,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
       params,
     );
     if (!result.rows[0]) {

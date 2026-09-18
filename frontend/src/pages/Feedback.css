@@ -1,0 +1,36 @@
+/* Approved Render UI: white surfaces, Poppins, quiet borders and lime primary actions. */
+.render-feedback{background:#fff;color:#202418;border:1px solid #e2e5df;border-radius:16px;padding:28px;min-width:0;font-family:inherit}
+.render-feedback *{box-sizing:border-box}
+.render-feedback :is(button,input,select,textarea,a){font:inherit}
+.render-feedback :is(button,input,select,textarea,a):focus-visible{outline:2px solid #526b21;outline-offset:3px}
+.render-feedback button{min-height:44px;padding:10px 16px;border:1px solid #dce0d6;border-radius:8px;background:#fff;color:#30362e;font-size:13px;cursor:pointer}
+.render-feedback button:hover{background:#f2f5ec}
+.render-feedback button:disabled{opacity:.55;cursor:not-allowed}
+.render-feedback .rf-primary{background:#b5fc00;border-color:#b5fc00;color:#202418;font-weight:600}
+.rf-header,.rf-intro{display:flex;align-items:center;justify-content:space-between;gap:24px}
+.rf-header{margin-bottom:24px}.rf-header h1{font-size:32px;line-height:1.2;letter-spacing:-.03em;margin:0 0 8px;font-weight:600}
+.rf-header p,.rf-intro p{margin:0;color:#62695c;font-size:13px;line-height:1.6}
+.rf-tabs{display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid #e2e5df;margin-bottom:28px}
+.rf-tabs a{padding:12px;color:#59614f;font-size:13px;min-height:44px;text-decoration:none;border-bottom:2px solid transparent}
+.rf-tabs a[aria-current]{color:#202418;border-bottom-color:#526b21;font-weight:600}
+.rf-intro h2,.rf-editor h2{font-size:20px;letter-spacing:-.02em;font-weight:600;margin:0 0 8px}
+.rf-filters{display:flex;align-items:end;gap:16px;margin:24px 0}.rf-filters label:first-child{flex:1}.rf-filters>span{font-size:12px;padding-bottom:12px;color:#62695c}
+.render-feedback label{display:grid;gap:8px;color:#4e5745;font-size:12px}
+.render-feedback :is(input,select,textarea){width:100%;min-height:44px;padding:10px 12px;border:1px solid #dce0d6;border-radius:8px;background:#fff;color:#30362e;font-size:14px}
+.render-feedback textarea{resize:vertical;line-height:1.7}
+.rf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.rf-card{min-width:0;display:flex;flex-direction:column;border:1px solid #e2e5df;border-radius:12px;overflow:hidden;background:#fff}
+.rf-card-main{padding:24px;flex:1;overflow-wrap:anywhere}.rf-client{font-size:12px;font-weight:500;color:#526041}
+.rf-card h3{font-size:16px;font-weight:600;line-height:1.5;margin:16px 0 8px}
+.rf-card p{white-space:pre-wrap;font-size:13px;line-height:1.75;max-width:70ch;margin:0}
+.rf-card details{margin-top:16px;font-size:12px;line-height:1.7}.rf-card summary{min-height:44px;cursor:pointer;padding:12px 0}.rf-card a{color:#435c18}
+.rf-card footer{border-top:1px solid #edf0e9;background:#fafbf9;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;flex-wrap:wrap}
+.rf-card footer button{border:0;background:transparent;padding:8px;font-size:12px}.rf-card footer>div{display:flex;gap:4px}
+.rf-card small{padding:8px 16px;font-size:11px;color:#62695c;overflow-wrap:anywhere}
+.rf-editor{padding:24px;background:#f8f9f6;border:1px solid #e2e5df;border-radius:12px;margin:24px 0}
+.rf-editor fieldset{border:0;padding:0;margin:0;min-width:0}.rf-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px}.rf-wide{grid-column:1/-1}
+.rf-form-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:20px}
+.rf-error{padding:16px;background:#fff2ef;color:#8b3322;border-radius:8px;margin:16px 0}.rf-error button{margin-left:16px}.rf-message{font-size:13px;color:#425b27}.rf-empty{padding:24px;background:#f8f9f6;grid-column:1/-1}
+@media(min-width:1700px){.rf-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:850px){.rf-grid{grid-template-columns:1fr}}
+@media(max-width:600px){.render-feedback{padding:16px}.rf-header,.rf-intro{align-items:flex-start;gap:16px}.rf-header h1{font-size:28px}.rf-filters{flex-wrap:wrap}.rf-filters label{flex:1 1 100%}.rf-fields{grid-template-columns:1fr}.rf-editor,.rf-card-main{padding:16px}.rf-tabs{gap:0}.rf-tabs a{padding:10px}.rf-intro{flex-wrap:wrap}}

@@ -32,7 +32,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
     trabajo: [
       { href: "/workspace/tareas", label: "Tareas", icon: "tasks" },
       { href: "/drive", label: "Drive", icon: "drive" },
-      { href: "/bloc-notas", label: "Bloc de notas", icon: "notes" },
+      { href: "/feedback", label: "Feedback", icon: "notes" },
     ],
     planificacion: [
       {
