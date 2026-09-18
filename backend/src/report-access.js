@@ -53,6 +53,7 @@ export function filterReportDataForUser(data, auth = {}) {
   if (auth.rol === "admin") return reportData;
   const identity = auth.nombre || auth.usuario || "";
   const ownTask = (task) => belongsTo(task.asignado_a, identity)
+    || (auth.rol === "edicion" && belongsTo(task.propiedades_extra?.edicion_responsable, identity))
     || (Array.isArray(task.propiedades_extra?.colaboradores)
       && task.propiedades_extra.colaboradores.some((name) => belongsTo(name, identity)));
   const ownUsers = data.usuarios.filter((user) => belongsTo(user.nombre || user.usuario, identity));

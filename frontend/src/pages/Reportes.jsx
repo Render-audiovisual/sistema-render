@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
 import { pushUrlContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
-import { belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getDesignerCarouselTaskSummary, getReportPeriodRange, isCarouselTask, isCompletedForEmployeeReport, isEditingTask, mergeReportTaskSources, summarizeTaskDeliveries } from "../shared/reports/report-utils.js";
+import { getEditingResponsible, belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getDesignerCarouselTaskSummary, getReportPeriodRange, isCarouselTask, isCompletedForEmployeeReport, isEditingTask, mergeReportTaskSources, summarizeTaskDeliveries } from "../shared/reports/report-utils.js";
 import { groupProductionByClient } from "../features/render-os/utils/production-visits.js";
 
 export function ResumenEntregableEquipo({
@@ -272,8 +272,8 @@ export function ReportesEquipoPage() {
   }, [tareasReporte, usuarios, esVistaAdmin, nombrePropio]);
 
   const filas = useMemo(() => empleados.map((nombre) => {
-    const propias = tareasReporte.filter((t) => belongsToPerson(t.asignado_a, nombre));
-    const propiasRenderOs = tareasRenderOs.filter((t) => belongsToPerson(t.asignado_a, nombre));
+    const propias = tareasReporte.filter((t) => belongsToPerson(t.asignado_a, nombre) || (isEditingTask(t) && belongsToPerson(t.propiedades_extra?.edicion_responsable, nombre)));
+    const propiasRenderOs = tareasRenderOs.filter((t) => belongsToPerson(t.asignado_a, nombre) || (isEditingTask(t) && belongsToPerson(t.propiedades_extra?.edicion_responsable, nombre)));
     // Cuando una persona tiene una base mensual auditada desde ClickUp, esa
     // fuente es la que gobierna el reporte del mes. Así no se mezclan tareas
     // operativas reales con backfills automáticos o registros históricos que
@@ -418,7 +418,7 @@ export function ReportesEquipoPage() {
   };
   const tareasRenderOsDelPeriodo = filterRenderOsTasksByPeriod(tareasRenderOs, enPeriodo);
   const videosLuciano = summarizeTaskDeliveries(
-    tareasRenderOsDelPeriodo.filter((task) => belongsToPerson(task.asignado_a, "Luciano") && isEditingTask(task)),
+    tareasRenderOsDelPeriodo.filter((task) => belongsToPerson(getEditingResponsible(task), "Luciano") && isEditingTask(task)),
   );
   const filmacionesGerman = groupProductionByClient(
     tareasRenderOs.filter((tarea) => belongsToPerson(tarea.asignado_a, "Germán")),

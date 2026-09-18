@@ -158,7 +158,7 @@ export function buildEmployeeStatusReply(snapshot, question = "") {
     return { text: `${firstName} tiene ${snapshot.pending.length} carrusel${snapshot.pending.length === 1 ? "" : "es"} pendiente${snapshot.pending.length === 1 ? "" : "s"}, ${snapshot.review.length} en revisión y ${snapshot.completed.length} finalizado${snapshot.completed.length === 1 ? "" : "s"} este mes.`, tasks: [...snapshot.review, ...snapshot.pending] };
   }
   if (snapshot.user.rol === "edicion") {
-    return { text: `${firstName} tiene ${snapshot.pending.length} edición${snapshot.pending.length === 1 ? "" : "es"} pendiente${snapshot.pending.length === 1 ? "" : "s"}, ${snapshot.review.length} en revisión y ${snapshot.completed.length} finalizada${snapshot.completed.length === 1 ? "" : "s"} este mes.`, tasks: [...snapshot.review, ...snapshot.pending] };
+    return { text: `${firstName} tiene ${snapshot.pending.length} edición${snapshot.pending.length === 1 ? "" : "es"} pendiente${snapshot.pending.length === 1 ? "" : "s"}, ${snapshot.review.length + snapshot.completed.length} entregadas; de ellas, ${snapshot.review.length} siguen en revisión y ${snapshot.completed.length} están publicadas.`, tasks: [...snapshot.review, ...snapshot.pending] };
   }
   if (snapshot.user.rol === "community") {
     return { text: `${firstName} tiene ${snapshot.review.length} tarea${snapshot.review.length === 1 ? "" : "s"} para revisar o publicar y ${snapshot.completed.length} finalizada${snapshot.completed.length === 1 ? "" : "s"} este mes.`, tasks: snapshot.review };
@@ -209,6 +209,9 @@ async function previousTargetId(pool, conversationId) {
 
 async function employeeTasks(pool, user) {
   const access = buildTaskAccessClause({ ...user, rol: "personal" }, "t", "$1");
+  // Credit the editor after assignment has moved to the publisher. Read only;
+  // mutation permissions continue to use the current task owner.
+  if (user.rol === "edicion") access.sql = access.sql.replaceAll("t.asignado_a", "COALESCE(t.propiedades_extra->>'edicion_responsable', t.asignado_a)");
   const result = await pool.query(
     `SELECT t.id,t.titulo,t.estado,t.asignado_a,t.prioridad,t.tipo_tarea,t.subtipo,t.propiedades_extra,
       t.created_at,t.updated_at,c.nombre cliente_nombre,to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento
@@ -351,9 +354,8 @@ export function createWilsonChatRouter({ express, pool }) {
       const taskResult = await client.query(`SELECT * FROM tareas WHERE id=$1 FOR UPDATE`, [action.tarea_id]); const task = taskResult.rows[0];
       if (!task || !isProductionVisitTask(task)) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La visita ya no está disponible." }); }
       const progress = getProductionProgress(task); const amount = Number(action.payload.cantidad); const date = action.payload.fecha;
-      if (!progress.planned) { await client.query("ROLLBACK"); return res.status(400).json({ error: "Primero un Líder debe indicar cuántos videos están previstos." }); }
       const record = { id: crypto.randomUUID(), cantidad: amount, fecha: date, usuario: getTaskActor(req.auth), created_at: new Date().toISOString(), periodo_objetivo: date.slice(0, 7) };
-      const regular = Math.min(amount, progress.remaining); if (amount > regular) Object.assign(record, { cantidad_mes_actual: regular, cantidad_adelanto: amount - regular, periodo_adelanto: nextProductionPeriod(date) });
+      const regular = progress.planned > 0 ? Math.min(amount, progress.remaining) : amount; if (amount > regular) Object.assign(record, { cantidad_mes_actual: regular, cantidad_adelanto: amount - regular, periodo_adelanto: nextProductionPeriod(date) });
       const records = Array.isArray(task.propiedades_extra?.produccion_registros) ? task.propiedades_extra.produccion_registros : [];
       await client.query(`UPDATE tareas SET propiedades_extra=propiedades_extra||$2::jsonb,updated_at=NOW() WHERE id=$1`, [task.id, JSON.stringify({ produccion_registros: [...records, record], wilson_ultimo_registro: record, workspace: "render_os" })]);
       await client.query(`UPDATE wilson_acciones_pendientes SET confirmed_at=NOW() WHERE token=$1`, [action.token]);
