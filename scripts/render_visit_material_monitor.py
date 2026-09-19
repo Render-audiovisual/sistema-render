@@ -134,7 +134,7 @@ def main():
                     (args.state_dir/(key+'.json')).write_text(json.dumps(packet,ensure_ascii=False,indent=2))
                     if stats['sent']>=3:continue
                     def sender(message):
-                        r=subprocess.run(['openclaw','message','send','--channel','whatsapp','--account','render-3794145157','--target',FRANCO,'--message',message,'--json'],capture_output=True,text=True,check=True,timeout=45)
+                        r=subprocess.run(['openclaw','message','send','--channel','whatsapp','--account','render-3794145157','--target',FRANCO,'--message',message,'--json'],capture_output=True,text=True,check=True,timeout=90)
                         return json.loads(r.stdout)
                     status=deliver(db,key,text,sender)
                     if status!='sent':stats['errors'].append(f'Visit {tid}: uncertain delivery; manual review required');continue

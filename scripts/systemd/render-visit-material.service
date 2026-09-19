@@ -1,0 +1,17 @@
+[Unit]
+Description=Detecta material de visitas de German y propone revision privada
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/.openclaw/workspace
+Environment=PATH=/opt/node-v24.21.0-linux-x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PYTHONUNBUFFERED=1
+UMask=0077
+ExecStart=/usr/bin/python3 /root/.openclaw/workspace/tools/render_visit_material_monitor.py --send
+TimeoutStartSec=360
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true

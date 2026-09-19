@@ -1,0 +1,10 @@
+[Unit]
+Description=Revision determinista de material de visitas cada diez minutos
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+RandomizedDelaySec=15s
+AccuracySec=5s
+Unit=render-visit-material.service
+[Install]
+WantedBy=timers.target
