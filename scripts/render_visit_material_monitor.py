@@ -20,7 +20,7 @@ def fingerprint(task,files):
     return hashlib.sha256(json.dumps(value,sort_keys=True).encode()).hexdigest()
 
 def recent(task,now):
-    values=[task.get('fecha_vencimiento'),task.get('updated_at'),task.get('created_at')]
+    values=[task.get('fecha_vencimiento'),task.get('created_at'),task.get('propiedades_extra',{}).get('produccion_finalizada_at')]
     values += [c.get('created_at') for c in task.get('comentarios',[])]
     for value in values:
         if value:
