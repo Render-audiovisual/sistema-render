@@ -4,6 +4,12 @@ class MonitorTests(unittest.TestCase):
  def test_links_in_comments_and_duplicate_ids(self):
   t={'comentarios':[{'contenido':'https://drive.google.com/drive/u/0/folders/abcdefghijk'}],'material_referencia':'https://drive.google.com/drive/folders/abcdefghijk'}
   self.assertEqual(m.folder_ids(t),['abcdefghijk'])
+ def test_old_visit_updated_by_migration_is_not_new_material(self):
+  import datetime as dt
+  task={'fecha_vencimiento':'2026-08-17','updated_at':'2026-09-19','created_at':'2026-08-01'}
+  self.assertFalse(m.recent(task,dt.datetime(2026,9,19)))
+  task['comentarios']=[{'created_at':'2026-09-19T10:00:00Z'}]
+  self.assertTrue(m.recent(task,dt.datetime(2026,9,19)))
  def test_scan_all_task_pages(self):
   pages={0:{'tasks':[{'id':1}],'next_after':100},100:{'tasks':[{'id':101}],'next_after':None}}
   self.assertEqual(len(m.all_visits(pages.get)),2)
