@@ -107,15 +107,25 @@ def main():
     tasks=all_visits(lambda after:api.request('GET',f'/visitas-material?after={after}',actor))
     db=sqlite3.connect(args.state_dir/'state.sqlite');os.chmod(args.state_dir/'state.sqlite',0o600)
     db.execute('PRAGMA synchronous=FULL');db.execute('CREATE TABLE IF NOT EXISTS snapshots (id TEXT PRIMARY KEY, fingerprint TEXT)');db.execute('CREATE TABLE IF NOT EXISTS deliveries (id TEXT PRIMARY KEY,status TEXT)');db.commit()
+    db.execute('CREATE TABLE IF NOT EXISTS progress (id INTEGER PRIMARY KEY, task_id TEXT)');db.commit()
+    tasks=sorted(tasks,key=lambda t:str(t.get('fecha_vencimiento') or ''),reverse=True)
+    cursor=db.execute('SELECT task_id FROM progress WHERE id=1').fetchone()
+    if cursor:
+        indexes=[i for i,t in enumerate(tasks) if str(t['id'])==cursor[0]]
+        if indexes:
+            cut=indexes[0]+1;tasks=tasks[cut:]+tasks[:cut]
     now=dt.datetime.now(dt.timezone.utc);stats={'tasks':len(tasks),'proposals':0,'sent':0,'errors':[]};deadline=time.monotonic()+140
-    for task in sorted(tasks,key=lambda t:str(t.get('fecha_vencimiento') or ''),reverse=True):
+    for task in tasks:
         if time.monotonic()>deadline:stats['errors'].append('Scan time budget reached; remaining visits deferred');break
         tid=str(task['id']);roots=folder_ids(task)
-        if not roots:continue
+        if args.send:
+            db.execute('INSERT OR REPLACE INTO progress VALUES (1,?)',(tid,));db.commit()
+        complete=bool(task.get('propiedades_extra',{}).get('produccion_finalizada_at')) or task.get('estado') in ('en_revision','publicada','completada')
+        if not roots and not complete:continue
         try:
             files=inventory(roots,drive.request);fp=fingerprint(task,files)
             prev=db.execute('SELECT fingerprint FROM snapshots WHERE id=?',(tid,)).fetchone()
-            changed=bool(files) and (prev[0]!=fp if prev else recent(task,now))
+            changed=(bool(files) or complete) and (prev[0]!=fp if prev else recent(task,now))
             if changed:
                 stats['proposals']+=1;key=tid+'-'+fp
                 text=proposal(task,files)
