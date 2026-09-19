@@ -926,6 +926,39 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
     } catch (error) { return next(error); }
   });
 
+  // Read-only, keyset-paginated intake. Comments need not update tareas.updated_at.
+  router.get("/visitas-material", async (req, res, next) => {
+    if (!isWilsonLeader(req, env)) return res.status(403).json({ error: "Consulta exclusiva de líderes." });
+    const after = Number(req.query.after || 0);
+    if (!Number.isSafeInteger(after) || after < 0) return res.status(400).json({ error: "Cursor inválido." });
+    try {
+      const result = await pool.query(
+        `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
+                t.propiedades_extra,t.aclaraciones,t.material_referencia,
+                to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
+                t.created_at,t.updated_at,c.nombre AS cliente_nombre,
+                COALESCE((SELECT json_agg(json_build_object('id',e.id,'titulo',e.titulo,'estado',e.estado))
+                  FROM tareas e WHERE e.propiedades_extra->>'origen_visita_id'=t.id::text
+                  AND e.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+                  AND e.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'), '[]'::json) AS ediciones_vinculadas,
+                COALESCE((SELECT json_agg(json_build_object('id',tc.id,'contenido',tc.contenido,
+                  'created_at',tc.created_at) ORDER BY tc.id)
+                  FROM tarea_comentarios tc WHERE tc.tarea_id=t.id), '[]'::json) AS comentarios
+         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+         WHERE t.propiedades_extra->>'workspace'='render_os'
+           AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+           AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
+           AND LOWER(t.asignado_a)=ANY($1::text[])
+           AND t.tipo_tarea='produccion' AND t.id>$2
+         ORDER BY t.id ASC LIMIT 101`,
+        [wilsonPersonAliases("Germán"), after],
+      );
+      const page = result.rows.slice(0, 100);
+      return res.json({ tasks: page.filter(isProductionVisitTask).map(taskWithUrl),
+        next_after: result.rows.length > 100 ? Number(page.at(-1).id) : null });
+    } catch (error) { return next(error); }
+  });
+
   router.get("/tareas", async (req, res, next) => {
     try {
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 100));
