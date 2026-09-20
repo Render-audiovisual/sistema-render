@@ -56,6 +56,7 @@ export function filterReportDataForUser(data, auth = {}) {
     || (Array.isArray(task.propiedades_extra?.colaboradores)
       && task.propiedades_extra.colaboradores.some((name) => belongsTo(name, identity)));
   const ownUsers = data.usuarios.filter((user) => belongsTo(user.nombre || user.usuario, identity));
+  const ownEditingDeliveries = (data.entregasEdicion || []).filter((item) => belongsTo(item.editor_clave, identity));
 
   if (auth.rol === "community") {
     return { ...reportData, tareas: data.tareas.filter(ownTask), tareasRenderOs: [], clientes: [], usuarios: ownUsers };
@@ -82,6 +83,7 @@ export function filterReportDataForUser(data, auth = {}) {
   return {
     ...reportData,
     tareas: data.tareas.filter(ownTask),
-    tareasRenderOs: data.tareasRenderOs.filter(ownTask), historias: [], publicaciones: [], clientes: [], usuarios: ownUsers,
+    tareasRenderOs: data.tareasRenderOs.filter(ownTask), entregasEdicion: ownEditingDeliveries,
+    historias: [], publicaciones: [], clientes: [], usuarios: ownUsers,
   };
 }

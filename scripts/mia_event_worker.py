@@ -7,10 +7,12 @@ WhatsApp y confirma el evento en el backend después de una entrega exitosa.
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import pathlib
 import subprocess
+import sqlite3
 import sys
 
 
@@ -23,6 +25,56 @@ DESTINATION_GROUPS = {
 DEFAULT_ACCOUNT = "render-3794145157"
 DEFAULT_CLIENT = pathlib.Path(__file__).with_name("mia_render_os_task.py")
 DEFAULT_LOCK = pathlib.Path("/tmp/mia-render-os-events.lock")
+DEFAULT_LEDGER = pathlib.Path(__file__).resolve().parent / "state" / "mia-deliveries.sqlite3"
+
+
+def delivery_key(event, account):
+    return hashlib.sha256(json.dumps([
+        account, event.get("kind"), event.get("id"),
+        event.get("destinatario_clave") or event.get("destination"),
+    ], sort_keys=True).encode()).hexdigest()
+
+
+def acknowledge_receipt(event, *, account, ledger_path):
+    with sqlite3.connect(ledger_path, timeout=10) as db:
+        db.execute("UPDATE deliveries SET status='acked' WHERE id=? AND status='sent'",
+                   (delivery_key(event, account),))
+
+
+def guarded_delivery(event, *, account, ledger_path):
+    """Persist intent BEFORE sending. Unknown outcomes must never be retried blindly.
+
+    A sent receipt survives a failed backend acknowledgement and process restarts.
+    Acknowledged digests may intentionally recur after the backend's 24h cooldown.
+    No message text or phone number is stored in this ledger.
+    """
+    event_id = event.get("id")
+    if not event_id:
+        raise ValueError("Falta el identificador estable del evento.")
+    key = delivery_key(event, account)
+    ledger_path = pathlib.Path(ledger_path)
+    ledger_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with sqlite3.connect(ledger_path, timeout=10) as db:
+        os.chmod(ledger_path, 0o600)
+        db.execute("PRAGMA synchronous=FULL")
+        db.execute("CREATE TABLE IF NOT EXISTS deliveries (id TEXT PRIMARY KEY, status TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute("SELECT status, updated_at <= datetime('now', '-24 hours') FROM deliveries WHERE id=?", (key,)).fetchone()
+        if row and row[0] == "acked" and row[1] and event.get("kind") == "digest":
+            db.execute("DELETE FROM deliveries WHERE id=?", (key,))
+            row = None
+        if row:
+            db.commit()
+            if row[0] in ("sent", "acked"):
+                return {"status": "already_sent", "resend": False}
+            raise RuntimeError("Envío incierto retenido para revisión; no se reenviará automáticamente.")
+        db.execute("INSERT INTO deliveries(id,status) VALUES (?, 'uncertain')", (key,))
+        db.commit()
+        # Any exception/crash from this point leaves the durable uncertain marker.
+        result = deliver_event(event, account=account, send=True)
+        db.execute("UPDATE deliveries SET status='sent',updated_at=CURRENT_TIMESTAMP WHERE id=?", (key,))
+        db.commit()
+        return result
 
 
 def format_event(event):
@@ -96,6 +148,8 @@ def main():
     parser.add_argument("--max-events", type=int, default=10)
     parser.add_argument("--account", default=os.environ.get("MIA_OPENCLAW_ACCOUNT", DEFAULT_ACCOUNT))
     parser.add_argument("--lock-file", type=pathlib.Path, default=DEFAULT_LOCK)
+    parser.add_argument("--ledger-file", type=pathlib.Path,
+                        default=pathlib.Path(os.environ.get("MIA_DELIVERY_LEDGER", str(DEFAULT_LEDGER))))
     args = parser.parse_args()
     limit = max(1, min(args.max_events, 50))
     identity = client_identity()
@@ -118,7 +172,8 @@ def main():
         errors = []
         for event in events:
             try:
-                result = deliver_event(event, account=args.account, send=args.send)
+                result = (guarded_delivery(event, account=args.account, ledger_path=args.ledger_file)
+                          if args.send else deliver_event(event, account=args.account, send=False))
                 if args.send:
                     if event.get("kind") == "private":
                         run_json(client_command(
@@ -139,8 +194,9 @@ def main():
                             "--task-id", str(event["task_id"]),
                             "--event-id", str(event["id"]),
                         ))
+                    acknowledge_receipt(event, account=args.account, ledger_path=args.ledger_file)
                 delivered.append({"event_id": event.get("id"), "destination": event.get("destination") or event.get("destinatario_clave"), "result": result})
-            except (KeyError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as error:
+            except (KeyError, ValueError, RuntimeError, OSError, sqlite3.Error, json.JSONDecodeError, subprocess.CalledProcessError) as error:
                 errors.append({"event_id": event.get("id"), "error": str(error)})
 
         print(json.dumps({

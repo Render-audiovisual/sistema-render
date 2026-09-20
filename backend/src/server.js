@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { normalizeFeedback } from "./feedback-fields.js";
 import fs from "node:fs";
 import path from "node:path";
 import dns from "node:dns";
@@ -287,12 +288,27 @@ router.get("/notas", async (req, res, next) => {
       where += ` AND (titulo ILIKE $${params.length} OR contenido ILIKE $${params.length})`;
     }
     const result = await pool.query(
-      `SELECT id,titulo,contenido,categoria,creado_por,modificado_por,eliminado_at,created_at,updated_at
+      `SELECT id,titulo,contenido,categoria,feedback,creado_por,modificado_por,eliminado_at,created_at,updated_at
        FROM notas_compartidas WHERE ${where}
        ORDER BY updated_at DESC,id DESC LIMIT 500`,
       params,
     );
     res.json(result.rows);
+  } catch (error) { next(error); }
+});
+
+router.get("/notas/nuevas", async (req, res, next) => {
+  try {
+    const desde = new Date(String(req.query.desde || ""));
+    if (Number.isNaN(desde.getTime())) {
+      return res.status(400).json({ error: "La fecha de lectura no es válida." });
+    }
+    const result = await pool.query(
+      `SELECT COUNT(*)::int AS cantidad FROM notas_compartidas
+       WHERE eliminado_at IS NULL AND created_at > $1`,
+      [desde.toISOString()],
+    );
+    res.json({ cantidad: Number(result.rows[0]?.cantidad) || 0 });
   } catch (error) { next(error); }
 });
 
@@ -303,11 +319,14 @@ router.post("/notas", async (req, res, next) => {
     const contenido = String(req.body?.contenido || "");
     const categoria = normalizeNotaCategoria(req.body?.categoria);
     if (!categoria) return res.status(400).json({ error: "Categoría de nota inválida." });
+    let feedback;
+    try { feedback = normalizeFeedback(req.body?.feedback ?? {}); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
     const result = await pool.query(
-      `INSERT INTO notas_compartidas (titulo,contenido,categoria,creado_por,modificado_por)
-       VALUES ($1,$2,$3,$4,$4)
-       RETURNING id,titulo,contenido,categoria,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
-      [titulo, contenido, categoria, actor],
+      `INSERT INTO notas_compartidas (titulo,contenido,categoria,creado_por,modificado_por,feedback)
+       VALUES ($1,$2,$3,$4,$4,$5)
+       RETURNING id,titulo,contenido,categoria,feedback,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
+      [titulo, contenido, categoria, actor, JSON.stringify(feedback)],
     );
     res.status(201).json(result.rows[0]);
   } catch (error) { next(error); }
@@ -318,6 +337,11 @@ router.patch("/notas/:id", async (req, res, next) => {
     const actor = getTaskActor(req.auth);
     const sets = [];
     const params = [];
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "feedback")) {
+      try { params.push(JSON.stringify(normalizeFeedback(req.body.feedback))); }
+      catch (error) { return res.status(400).json({ error: error.message }); }
+      sets.push(`feedback=$${params.length}`);
+    }
     if (Object.prototype.hasOwnProperty.call(req.body || {}, "titulo")) {
       params.push(String(req.body.titulo || "").trim() || "Nueva nota");
       sets.push(`titulo=$${params.length}`);
@@ -343,7 +367,7 @@ router.patch("/notas/:id", async (req, res, next) => {
     }
     const result = await pool.query(
       `UPDATE notas_compartidas SET ${sets.join(",")} WHERE ${where}
-       RETURNING id,titulo,contenido,categoria,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
+       RETURNING id,titulo,contenido,categoria,feedback,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
       params,
     );
     if (!result.rows[0]) {
@@ -404,7 +428,7 @@ router.get("/usuarios", async (req, res, next) => {
 router.get("/reportes/datos", async (req, res, next) => {
   try {
     const mesConfiguracion = normalizePeriod(req.query.mes_configuracion);
-    const [tareas, historias, publicaciones, clientes, usuarios, tareasRenderOs] = await Promise.all([
+    const [tareas, historias, publicaciones, clientes, usuarios, tareasRenderOs, entregasEdicion] = await Promise.all([
       pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
         to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,t.subtipo,
         t.created_at,t.updated_at,c.nombre AS cliente_nombre
@@ -436,6 +460,9 @@ router.get("/reportes/datos", async (req, res, next) => {
         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
         WHERE t.propiedades_extra->>'workspace'='render_os'
           AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'`),
+      pool.query(`SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
+        cliente_etiqueta,categoria,importe,fuente,fuente_item,confirmado_por
+        FROM entregas_edicion ORDER BY fecha_entrega,fuente_item`),
     ]);
     res.json(filterReportDataForUser({
       tareas: tareas.rows,
@@ -444,6 +471,7 @@ router.get("/reportes/datos", async (req, res, next) => {
       clientes: clientes.rows,
       usuarios: usuarios.rows,
       tareasRenderOs: tareasRenderOs.rows,
+      entregasEdicion: entregasEdicion.rows,
     }, req.auth));
   } catch (error) {
     next(error);
@@ -457,7 +485,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       return res.status(400).json({ error: "Usá un período válido con formato YYYY-MM." });
     }
     const workPeriod = previousPeriod(period);
-    const [contracts, expenses, tasks, histories, publications, compensations, exchangeRate] = await Promise.all([
+    const [contracts, expenses, tasks, histories, publications, compensations, editingDeliveries, exchangeRate] = await Promise.all([
       pool.query(`SELECT nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
         to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM contratos_financieros ORDER BY nombre`),
       pool.query(`SELECT nombre,categoria,moneda,importe,dia_pago,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
@@ -476,6 +504,9 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       pool.query(`SELECT DISTINCT ON (empleado_clave) empleado_clave,modalidad,sueldo_base,tarifa_facil,tarifa_intermedia
         FROM empleado_compensaciones WHERE vigente_desde <= ($1 || '-01')::date
         ORDER BY empleado_clave,vigente_desde DESC`, [period]),
+      pool.query(`SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
+        cliente_etiqueta,categoria,importe FROM entregas_edicion
+        WHERE to_char(fecha_entrega,'YYYY-MM')=$1 ORDER BY fecha_entrega,id`, [workPeriod]),
       getCardDollarRate(),
     ]);
     const payroll = applyCompensations(calculateSalaryDashboard({
@@ -483,6 +514,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       tasks: tasks.rows,
       histories: histories.rows,
       publications: publications.rows,
+      editingDeliveries: editingDeliveries.rows,
     }), compensations.rows, []);
     const finance = buildAutomaticFinanceSummary({
       period,

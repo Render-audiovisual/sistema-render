@@ -2,7 +2,7 @@ import React from "react";
 import { cerrarSesion, getRutaUsuario, getSesion } from "./utils.jsx";
 import { getRolLabel, ROL_LABELS } from "./constants.js";
 import { AugustoDashboard } from "./pages/dashboards/Augusto.jsx";
-import { BlocNotasPage } from "./pages/BlocNotas.jsx";
+import { FeedbackPage } from "./pages/Feedback.jsx";
 import { ClientesAdminPage } from "./pages/Clientes.jsx";
 import { EmpleadosPage } from "./pages/Empleados.jsx";
 import { GermanDashboard } from "./pages/dashboards/German.jsx";
@@ -54,7 +54,7 @@ export function App() {
     ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/bloc-notas", "/drive", "/wilson-conversaciones"]
     : ["/perfil", "/workspace/tareas", "/bloc-notas", "/drive", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias"];
   const rutaPermitida =
-    esAdmin || rutasCompartidas.includes(path) || rutaPropia === path;
+    esAdmin || path === "/feedback" || rutasCompartidas.includes(path) || rutaPropia === path;
 
   if (!rutaPermitida) {
     window.location.href = rutaPropia || "/";
@@ -70,8 +70,8 @@ export function App() {
     if (path === "/workspace/tareas") {
       return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
     }
-    if (path === "/bloc-notas") {
-      return <BlocNotasPage />;
+    if (path === "/bloc-notas" || path === "/feedback") {
+      return <FeedbackPage sesion={sesion} />;
     }
     if (path === "/drive") {
       return <DrivePage sesion={sesion} />;
