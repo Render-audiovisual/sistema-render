@@ -35,8 +35,14 @@ test('board motion only animates state changes and honors reduced motion', () =>
   assert.equal(animations, 1, 'reduce motion disables movement');
   x = 320;
   hook(board, [{id:1, estado:'pendiente'}], 'board', true);
-  assert.equal(animations, 2, 'demo opt-in previews Genie even with reduced motion');
+  assert.equal(animations, 1, 'preview also honors the operating system motion preference');
   board.current = null;
   hook(board, [{id:1, estado:'en_revision'}], 'list');
   assert.equal(ref.current.size, 0, 'changing view clears positions');
+});
+
+test('board motion avoids layout work outside the board', () => {
+  const source = fs.readFileSync(new URL('../../frontend/src/features/render-os/useTaskBoardMotion.js', import.meta.url), 'utf8');
+  assert.match(source, /if \(view !== "board" \|\| !board\)/);
+  assert.equal((source.match(/getBoundingClientRect\(\)/g) || []).length, 1);
 });

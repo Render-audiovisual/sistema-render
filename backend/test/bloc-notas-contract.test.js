@@ -13,6 +13,7 @@ test("el Bloc de notas exige sesión y expone el contrato CRUD con Papelera", ()
   const authPosition = server.indexOf("router.use(requireAuthentication)");
   for (const route of [
     'router.get("/notas"',
+    'router.get("/notas/nuevas"',
     'router.post("/notas"',
     'router.patch("/notas/:id"',
     'router.delete("/notas/:id"',
@@ -45,7 +46,7 @@ test("la ruta y el acceso compartido están visibles junto a Tareas", () => {
   assert.match(app, /"\/bloc-notas"/);
   assert.match(app, /path === "\/bloc-notas" \|\| path === "\/feedback"/);
   assert.match(app, /<FeedbackPage/);
-  assert.match(sidebar, /href: "\/workspace\/tareas"[\s\S]*href: "\/feedback"/);
+  assert.doesNotMatch(sidebar, /href: "\/(?:bloc-notas|feedback)"/);
   assert.match(page, /saveQueue/);
   assert.match(page, /expected_updated_at/);
   assert.match(page, /Papelera/);

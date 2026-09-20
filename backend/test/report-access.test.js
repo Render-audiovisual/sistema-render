@@ -28,6 +28,7 @@ const data = {
     { id: 1, nombre: "Augusto", rol: "diseno" },
     { id: 2, nombre: "Germán", rol: "produccion" },
   ],
+  entregasEdicion: [{ id: 9, editor_clave: "luciano" }],
 };
 
 test("el reporte de un diseñador contiene solo sus carruseles", () => {
@@ -57,6 +58,11 @@ test("community conserva métricas globales de publicación sin usuarios ajenos"
 test("el administrador conserva el reporte completo", () => {
   const result = filterReportDataForUser(data, { rol: "admin" });
   assert.deepEqual(result.tareasRenderOs, data.tareasRenderOs);
+});
+
+test("edición recibe únicamente su registro confirmado", () => {
+  const result = filterReportDataForUser(data, { nombre: "Luciano", rol: "edicion" });
+  assert.deepEqual(result.entregasEdicion.map((item) => item.id), [9]);
 });
 
 test("el endpoint del reporte está disponible tras la autenticación compartida", () => {

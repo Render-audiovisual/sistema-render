@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { CATEGORIAS_NOTA } from './BlocNotas.jsx';
+import { markFeedbackSeen } from '../features/render-os/utils/feedback-notifications.js';
 import './Feedback.css';
 
 const emptyDraft = () => ({ titulo: '', contenido: '', categoria: 'general', feedback: { cliente: '', responsable: '', referencia: '' } });
@@ -12,7 +13,7 @@ function Reference({ text }) {
 }
 
 // Same shared notes, no task states, deadlines, notifications or automatic task creation.
-export function FeedbackPage({ request = apiRequest, taskBase = '/workspace/tareas', feedbackHref = '/feedback', externalTasks = false }) {
+export function FeedbackPage({ request = apiRequest, taskBase = '/workspace/tareas', feedbackHref = '/feedback', externalTasks = false, sesion = null }) {
   const [notes, setNotes] = useState([]);
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
@@ -42,6 +43,7 @@ export function FeedbackPage({ request = apiRequest, taskBase = '/workspace/tare
       if (!active) return;
       setNotes(rows);
       const id = Number(new URLSearchParams(window.location.search).get('note'));
+      if (!trash) markFeedbackSeen(sesion?.usuario);
       const note = rows.find((row) => row.id === id);
       if (note && !trash) open(note);
     }).catch((reason) => { if (active) setError(reason.message); }).finally(() => { if (active) setLoading(false); });
@@ -70,6 +72,7 @@ export function FeedbackPage({ request = apiRequest, taskBase = '/workspace/tare
       const body = { titulo: draft.titulo.trim(), contenido: draft.contenido, categoria: draft.categoria, feedback: draft.feedback, ...(draft.id ? { expected_updated_at: draft.updated_at } : {}) };
       const saved = await request(draft.id ? `/api/notas/${draft.id}` : '/api/notas', { method: draft.id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       setNotes((rows) => [saved, ...rows.filter((row) => row.id !== saved.id)]);
+      markFeedbackSeen(sesion?.usuario);
       setDraft(null); setQuery(''); setClient(''); setMessage('Nota guardada. Ya está disponible para el equipo.');
     } catch (reason) { setError(reason.message || 'No se pudo guardar. Tu texto sigue acá.'); setConflict(reason.status === 409); }
     finally { lock.current = false; setBusy(false); }
@@ -90,7 +93,7 @@ export function FeedbackPage({ request = apiRequest, taskBase = '/workspace/tare
   const changeMeta = (key, value) => setDraft((d) => ({ ...d, feedback: { ...d.feedback, [key]: value } }));
   return <main className="render-feedback">
     <header className="rf-header"><div><h1>Tareas</h1><p>El trabajo del equipo, en orden.</p></div><button className="rf-primary" disabled={busy || trash} onClick={() => open(null)}>Nueva nota</button></header>
-    <nav className="rf-tabs" aria-label="Vista de tareas">{[['Tablero', ''], ['Lista', '?view=list'], ['Calendario', '?view=calendar'], ['Por cliente', '?view=clients']].map(([label, search]) => <a key={label} href={`${taskBase}${search}`} target={externalTasks ? '_blank' : undefined} rel={externalTasks ? 'noopener noreferrer' : undefined}>{label}</a>)}<a href={feedbackHref} aria-current="page">Feedback</a></nav>
+    <nav className="rf-tabs" aria-label="Vista de tareas"><div>{[['Tablero', ''], ['Lista', '?view=list'], ['Calendario', '?view=calendar'], ['Por cliente', '?view=clients']].map(([label, search]) => <a key={label} href={`${taskBase}${search}`} target={externalTasks ? '_blank' : undefined} rel={externalTasks ? 'noopener noreferrer' : undefined}>{label}</a>)}</div><a className="rf-feedback-link" href={feedbackHref} aria-current="page"><span aria-hidden="true">✎</span>Feedback</a></nav>
     <section className="rf-intro"><div><h2>{trash ? 'Papelera de feedback' : 'Feedback de clientes'}</h2><p>Comentarios, correcciones e ideas. Sin estados ni vencimientos.</p></div><button disabled={busy} onClick={() => { if (canLeave()) { setDraft(null); setTrash(!trash); setClient(''); setQuery(''); } }}>{trash ? 'Volver a las notas' : 'Papelera'}</button></section>
     <div className="rf-filters"><label>Buscar<input type="search" placeholder="Nota, cliente o responsable" value={query} onChange={(e) => setQuery(e.target.value)}/></label><label>Filtrar por cliente<select value={client} onChange={(e) => setClient(e.target.value)}><option value="">Todos</option><option value="__none">Sin cliente</option>{clientOptions.map((name) => <option key={name}>{name}</option>)}</select></label><span>{visible.length} notas</span></div>
     {error && <div className="rf-error" role="alert">{error}{!draft && <button onClick={() => setReload((n) => n + 1)}>Reintentar</button>}</div>}

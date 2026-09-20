@@ -158,6 +158,7 @@ export function ReportesEquipoPage() {
   const [clientes, setClientes] = useState([]);
   const [usuarios, setUsuarios] = useState([]);
   const [resumenRenderOsPorDia, setResumenRenderOsPorDia] = useState({});
+  const [entregasEdicion, setEntregasEdicion] = useState([]);
   const initialPeriod = readUrlContext(window.location.search, { periodo: "mes_actual" }).periodo;
   const [periodo, setPeriodo] = useState(
     ["mes_actual", "mes_pasado", "ultimos_30"].includes(initialPeriod) ? initialPeriod : "mes_actual",
@@ -203,6 +204,7 @@ export function ReportesEquipoPage() {
         setUsuarios(Array.isArray(data.usuarios) ? data.usuarios : []);
         setTareasRenderOs(Array.isArray(data.tareasRenderOs) ? data.tareasRenderOs : []);
         setResumenRenderOsPorDia(data.resumenRenderOsPorDia && typeof data.resumenRenderOsPorDia === "object" ? data.resumenRenderOsPorDia : {});
+        setEntregasEdicion(Array.isArray(data.entregasEdicion) ? data.entregasEdicion : []);
         setError(null);
       })
       .catch((err) => {
@@ -417,9 +419,12 @@ export function ReportesEquipoPage() {
     };
   };
   const tareasRenderOsDelPeriodo = filterRenderOsTasksByPeriod(tareasRenderOs, enPeriodo);
-  const videosLuciano = summarizeTaskDeliveries(
-    tareasRenderOsDelPeriodo.filter((task) => belongsToPerson(getEditingResponsible(task), "Luciano") && isEditingTask(task)),
-  );
+  const entregasLucianoDelPeriodo = entregasEdicion.filter((item) => enPeriodo(item.fecha_entrega || ""));
+  const videosLuciano = entregasLucianoDelPeriodo.length > 0
+    ? { realizados: entregasLucianoDelPeriodo.length, pendientes: 0, total: entregasLucianoDelPeriodo.length }
+    : summarizeTaskDeliveries(
+        tareasRenderOsDelPeriodo.filter((task) => belongsToPerson(getEditingResponsible(task), "Luciano") && isEditingTask(task)),
+      );
   const filmacionesGerman = groupProductionByClient(
     tareasRenderOs.filter((tarea) => belongsToPerson(tarea.asignado_a, "Germán")),
     rangoPeriodo.desde,

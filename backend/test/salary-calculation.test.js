@@ -52,6 +52,18 @@ test("Luciano no recibe un importe inventado si falta el valor por video", () =>
   assert.equal(luciano.configurationPending, true);
 });
 
+test("el registro confirmado de edición reemplaza el conteo incompleto de tareas", () => {
+  const tasks = [task(1, "Luciano", "publicada", "editar video", { type: "edicion" })];
+  const editingDeliveries = [
+    { id: 1, editor_clave: "luciano", fecha_entrega: "2026-08-03", cliente_etiqueta: "Bunker", categoria: "B", importe: 15000 },
+    { id: 2, editor_clave: "luciano", fecha_entrega: "2026-08-10", cliente_etiqueta: "Luzin", categoria: "C", importe: 10000 },
+  ];
+  const result = calculateSalaryDashboard({ period: "2026-08", tasks, editingDeliveries });
+  const luciano = result.employees.find((employee) => employee.name === "Luciano");
+  assert.equal(luciano.completed, 2);
+  assert.equal(luciano.items.every((item) => item.source === "Registro de edición"), true);
+});
+
 test("prioriza el lote importado de ClickUp para evitar duplicar reportes", () => {
   const tasks = [
     task(1, "Augusto", "publicada", "carrusel"),

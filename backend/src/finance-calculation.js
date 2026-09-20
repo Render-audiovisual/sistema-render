@@ -28,10 +28,13 @@ export function applyCompensations(dashboard, configurations = [], finalPayments
       earned = Math.round(total * (employee.percentage / 100));
       configurationPending = false;
     } else if (config?.modalidad === "por_pieza") {
+      const recordedItems = employee.items.filter((item) => item.complete && item.source === "Registro de edición");
       const easy = employee.items.filter((item) => item.complete && item.difficulty === "facil").length;
       const intermediate = employee.items.filter((item) => item.complete && item.difficulty === "intermedio").length;
-      const unclassified = employee.completed - easy - intermediate;
-      earned = easy * Number(config.tarifa_facil || 0) + intermediate * Number(config.tarifa_intermedia || 0);
+      const unclassified = recordedItems.length > 0 ? 0 : employee.completed - easy - intermediate;
+      earned = recordedItems.length > 0
+        ? recordedItems.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+        : easy * Number(config.tarifa_facil || 0) + intermediate * Number(config.tarifa_intermedia || 0);
       total = earned;
       configurationPending = unclassified > 0;
     }

@@ -71,7 +71,7 @@ export function App() {
       return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
     }
     if (path === "/bloc-notas" || path === "/feedback") {
-      return <FeedbackPage />;
+      return <FeedbackPage sesion={sesion} />;
     }
     if (path === "/drive") {
       return <DrivePage sesion={sesion} />;

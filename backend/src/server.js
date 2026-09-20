@@ -297,6 +297,21 @@ router.get("/notas", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.get("/notas/nuevas", async (req, res, next) => {
+  try {
+    const desde = new Date(String(req.query.desde || ""));
+    if (Number.isNaN(desde.getTime())) {
+      return res.status(400).json({ error: "La fecha de lectura no es válida." });
+    }
+    const result = await pool.query(
+      `SELECT COUNT(*)::int AS cantidad FROM notas_compartidas
+       WHERE eliminado_at IS NULL AND created_at > $1`,
+      [desde.toISOString()],
+    );
+    res.json({ cantidad: Number(result.rows[0]?.cantidad) || 0 });
+  } catch (error) { next(error); }
+});
+
 router.post("/notas", async (req, res, next) => {
   try {
     const actor = getTaskActor(req.auth);
@@ -413,7 +428,7 @@ router.get("/usuarios", async (req, res, next) => {
 router.get("/reportes/datos", async (req, res, next) => {
   try {
     const mesConfiguracion = normalizePeriod(req.query.mes_configuracion);
-    const [tareas, historias, publicaciones, clientes, usuarios, tareasRenderOs] = await Promise.all([
+    const [tareas, historias, publicaciones, clientes, usuarios, tareasRenderOs, entregasEdicion] = await Promise.all([
       pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
         to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,t.subtipo,
         t.created_at,t.updated_at,c.nombre AS cliente_nombre
@@ -445,6 +460,9 @@ router.get("/reportes/datos", async (req, res, next) => {
         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
         WHERE t.propiedades_extra->>'workspace'='render_os'
           AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'`),
+      pool.query(`SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
+        cliente_etiqueta,categoria,importe,fuente,fuente_item,confirmado_por
+        FROM entregas_edicion ORDER BY fecha_entrega,fuente_item`),
     ]);
     res.json(filterReportDataForUser({
       tareas: tareas.rows,
@@ -453,6 +471,7 @@ router.get("/reportes/datos", async (req, res, next) => {
       clientes: clientes.rows,
       usuarios: usuarios.rows,
       tareasRenderOs: tareasRenderOs.rows,
+      entregasEdicion: entregasEdicion.rows,
     }, req.auth));
   } catch (error) {
     next(error);
@@ -466,7 +485,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       return res.status(400).json({ error: "Usá un período válido con formato YYYY-MM." });
     }
     const workPeriod = previousPeriod(period);
-    const [contracts, expenses, tasks, histories, publications, compensations, exchangeRate] = await Promise.all([
+    const [contracts, expenses, tasks, histories, publications, compensations, editingDeliveries, exchangeRate] = await Promise.all([
       pool.query(`SELECT nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
         to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM contratos_financieros ORDER BY nombre`),
       pool.query(`SELECT nombre,categoria,moneda,importe,dia_pago,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
@@ -485,6 +504,9 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       pool.query(`SELECT DISTINCT ON (empleado_clave) empleado_clave,modalidad,sueldo_base,tarifa_facil,tarifa_intermedia
         FROM empleado_compensaciones WHERE vigente_desde <= ($1 || '-01')::date
         ORDER BY empleado_clave,vigente_desde DESC`, [period]),
+      pool.query(`SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
+        cliente_etiqueta,categoria,importe FROM entregas_edicion
+        WHERE to_char(fecha_entrega,'YYYY-MM')=$1 ORDER BY fecha_entrega,id`, [workPeriod]),
       getCardDollarRate(),
     ]);
     const payroll = applyCompensations(calculateSalaryDashboard({
@@ -492,6 +514,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       tasks: tasks.rows,
       histories: histories.rows,
       publications: publications.rows,
+      editingDeliveries: editingDeliveries.rows,
     }), compensations.rows, []);
     const finance = buildAutomaticFinanceSummary({
       period,

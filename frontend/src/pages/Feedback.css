@@ -34,3 +34,15 @@
 @media(min-width:1700px){.rf-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:850px){.rf-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.render-feedback{padding:16px}.rf-header,.rf-intro{align-items:flex-start;gap:16px}.rf-header h1{font-size:28px}.rf-filters{flex-wrap:wrap}.rf-filters label{flex:1 1 100%}.rf-fields{grid-template-columns:1fr}.rf-editor,.rf-card-main{padding:16px}.rf-tabs{gap:0}.rf-tabs a{padding:10px}.rf-intro{flex-wrap:wrap}}
+
+.rf-tabs{align-items:center;justify-content:space-between}
+.rf-tabs>div{display:flex;flex-wrap:wrap;gap:8px}
+.rf-tabs .rf-feedback-link{align-items:center;background:#f2f8e7;border:1px solid #bfd693;border-radius:10px;color:#29331f;display:inline-flex;font-weight:650;gap:7px;margin:0 0 8px 24px;min-height:40px;padding:8px 12px}
+.rf-tabs .rf-feedback-link::before{background:#d8ddd2;content:"";height:28px;margin-left:-25px;margin-right:10px;width:1px}
+.rf-tabs .rf-feedback-link>span{font-size:15px;line-height:1}
+@media(max-width:600px){
+  .rf-tabs{align-items:flex-start;flex-direction:column}
+  .rf-tabs>div{max-width:100%;overflow-x:auto}
+  .rf-tabs .rf-feedback-link{margin:4px 0 10px}
+  .rf-tabs .rf-feedback-link::before{display:none}
+}

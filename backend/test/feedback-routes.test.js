@@ -48,3 +48,11 @@ test('invalid metadata rejected before query', async () => {
   assert.equal((await h.run('post /notas', { feedback: [] })).code, 400);
   assert.equal(h.calls.length, 0);
 });
+test('new feedback count uses the last seen timestamp and ignores deleted notes', async () => {
+  const h = harness([{ rows: [{ cantidad: 2 }] }]);
+  const response = await h.run('get /notas/nuevas', {}, { desde: '2026-09-20T12:00:00.000Z' });
+  assert.equal(response.code, 200);
+  assert.equal(response.data.cantidad, 2);
+  assert.match(h.calls[0].sql, /created_at > \$1/);
+  assert.match(h.calls[0].sql, /eliminado_at IS NULL/);
+});

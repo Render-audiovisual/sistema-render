@@ -69,6 +69,22 @@ function pieceItem(piece, source) {
   };
 }
 
+function editingDeliveryItem(item) {
+  return {
+    key: `entrega-edicion-${item.id}`,
+    id: item.id,
+    source: "Registro de edición",
+    title: `Video ${item.categoria}`,
+    client: item.cliente_etiqueta,
+    date: item.fecha_entrega,
+    completedAt: item.fecha_entrega,
+    state: "publicada",
+    complete: true,
+    difficulty: String(item.categoria || "").toLowerCase(),
+    amount: Number(item.importe || 0),
+  };
+}
+
 function preferImportedReportTasks(tasks, period) {
   const imported = tasks.filter((task) => task.propiedades_extra?.reporte_fuente === "clickup" && task.propiedades_extra?.reporte_periodo === period);
   return imported.length ? imported : tasks.filter((task) => taskMatchesPeriod(task, period));
@@ -118,7 +134,7 @@ function summarize(rule, items, period) {
   };
 }
 
-export function calculateSalaryDashboard({ period, tasks = [], histories = [], publications = [] }) {
+export function calculateSalaryDashboard({ period, tasks = [], histories = [], publications = [], editingDeliveries = [] }) {
   if (!isValidSalaryPeriod(period)) throw new Error("Período salarial inválido.");
   const monthlyTasks = preferImportedReportTasks(tasks, period);
   const taskItemsFor = (aliases, predicate) => uniqueItems(monthlyTasks
@@ -131,7 +147,12 @@ export function calculateSalaryDashboard({ period, tasks = [], histories = [], p
   ]);
   const augustoItems = taskItemsFor(["augusto"], (text) => text.includes("carrusel"));
   const marianoItems = taskItemsFor(["mariano", "mariano meza"], (text, task) => task.tipo_tarea === "diseno" || /disen|flyer|carrusel/.test(text));
-  const lucianoItems = taskItemsFor(["luciano"], (text, task) => task.tipo_tarea === "edicion" || /edit|video|reel/.test(text));
+  const editingDeliveryItems = editingDeliveries
+    .filter((item) => item.editor_clave === "luciano" && inPeriod(item.fecha_entrega, period))
+    .map(editingDeliveryItem);
+  const lucianoItems = editingDeliveryItems.length > 0
+    ? editingDeliveryItems
+    : taskItemsFor(["luciano"], (text, task) => task.tipo_tarea === "edicion" || /edit|video|reel/.test(text));
   const germanItems = taskItemsFor(["german"], (text, task) => task.tipo_tarea === "produccion" || /film|graba|video|reel/.test(text));
 
   const employees = [

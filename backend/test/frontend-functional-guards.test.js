@@ -113,19 +113,24 @@ test("todo el equipo puede abrir el formulario y crear únicamente tareas RENDER
   assert.match(workspaceSource, /body: JSON\.stringify\(\{ \.\.\.draft, workspace: "render_os" \}\)/);
 });
 
-test("todo el equipo puede enviar a Papelera y restaurar selecciones", () => {
+test("las acciones masivas no aparecen en el tablero y la Papelera individual sigue disponible", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   const serverSource = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
-  assert.match(workspaceSource, /normalizeSelectionRect/);
-  assert.match(workspaceSource, /Enviar a Papelera/);
-  assert.match(workspaceSource, /acciones-masivas\?workspace=render_os/);
-  assert.match(workspaceSource, /event\.key === "Delete" \|\| event\.key === "Backspace"/);
-  assert.match(workspaceSource, /event\.key === "Escape"/);
-  assert.doesNotMatch(workspaceSource, /ros-selection-status/);
+  assert.doesNotMatch(workspaceSource, /Acciones masivas|ros-bulk-menu|normalizeSelectionRect/);
+  assert.match(workspaceSource, /Acciones de tarea/);
   assert.match(serverSource, /router\.post\("\/tareas\/acciones-masivas", async/);
   assert.match(serverSource, /\["papelera", "restaurar"\]/);
   assert.doesNotMatch(serverSource, /router\.post\("\/tareas\/acciones-masivas", requireRole/);
   assert.match(serverSource, /papelera_render_os/);
+});
+
+test("Tareas evita renders globales y mantiene los hooks en el nivel del componente", () => {
+  const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  assert.match(workspaceSource, /const TaskCard = React\.memo/);
+  assert.match(workspaceSource, /const TasksByClient = React\.memo/);
+  assert.match(workspaceSource, /const move = useCallback/);
+  assert.match(workspaceSource, /const nextCount = Math\.max/);
+  assert.doesNotMatch(workspaceSource, /const incorporateRelatedTasks = useCallback\(\(items\) => \{\s*const refreshFeedbackCount/);
 });
 
 test("los dashboards personales leen y actualizan únicamente RENDER OS", () => {
@@ -207,7 +212,7 @@ test("Tareas conserva únicamente Papelera como acción secundaria", () => {
   const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");
   assert.doesNotMatch(workspaceSource, /Ver archivadas/);
   assert.doesNotMatch(workspaceSource, />Archivar</);
-  assert.match(workspaceSource, /después de 10 días/);
+  assert.match(workspaceSource, /10 días/);
   assert.match(workspaceSource, /Volver a tareas activas/);
   assert.doesNotMatch(workspaceSource, />Activas<\/button><button[^>]*>Archivadas</);
   assert.match(workspaceStyles, /grid-template-columns:repeat\(5,minmax\(230px,1fr\)\)/);

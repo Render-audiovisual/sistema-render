@@ -29,6 +29,16 @@ test("Luciano conserva como pendiente el trabajo todavía no clasificado", () =>
   assert.equal(result.employees[0].configurationPending, true);
 });
 
+test("el lote confirmado de edición usa los importes de cada pieza", () => {
+  const dashboard = { employees: [{ name: "Luciano", model: "per_unit", percentage: 100, completed: 2, total: null, earned: null, remainingAmount: null, configurationPending: true, items: [
+    { complete: true, source: "Registro de edición", difficulty: "b", amount: 15000 },
+    { complete: true, source: "Registro de edición", difficulty: "c", amount: 10000 },
+  ] }], summary: {} };
+  const result = applyCompensations(dashboard, [{ empleado_clave: "luciano", modalidad: "por_pieza", tarifa_facil: 5000, tarifa_intermedia: 10000 }]);
+  assert.equal(result.employees[0].earned, 25000);
+  assert.equal(result.employees[0].configurationPending, false);
+});
+
 test("los endpoints financieros exigen Líder y clientes oculta abonos a empleados", () => {
   const source = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
   assert.match(source, /router\.get\("\/sueldos", requireRole\("admin"\)/);

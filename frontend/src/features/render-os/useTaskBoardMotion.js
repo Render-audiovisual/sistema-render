@@ -7,18 +7,24 @@ export function useTaskBoardMotion(boardRef, tasks, view, previewMotion = false)
     const board = boardRef.current;
     const before = previous.current;
     const next = new Map();
+    if (view !== "board" || !board) {
+      previous.current = next;
+      return undefined;
+    }
     const states = new Map(tasks.map(task => [String(task.id), task.estado]));
-    const cards = board ? [...board.querySelectorAll(".ros-task-card[data-task-id]")] : [];
+    const cards = [...board.querySelectorAll(".ros-task-card[data-task-id]")];
     for (const card of cards) {
       const rect = card.getBoundingClientRect();
       next.set(card.dataset.taskId, {
         x: rect.left + window.scrollX, y: rect.top + window.scrollY,
+        top: rect.top,
+        bottom: rect.bottom,
         state: states.get(card.dataset.taskId),
       });
     }
     previous.current = next;
     const changed = [...next].some(([id, item]) => before.has(id) && before.get(id).state !== item.state);
-    if (!changed || (!previewMotion && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) return;
+    if (!changed || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
     const animations = [];
     for (const card of cards) {
       const from = before.get(card.dataset.taskId);
@@ -26,8 +32,7 @@ export function useTaskBoardMotion(boardRef, tasks, view, previewMotion = false)
       if (!from || typeof card.animate !== "function") continue;
       const x = from.x - to.x, y = from.y - to.y;
       if (Math.abs(x) + Math.abs(y) < 1) continue;
-      const rect = card.getBoundingClientRect();
-      if (rect.bottom < 0 || rect.top > window.innerHeight) continue;
+      if (to.bottom < 0 || to.top > window.innerHeight) continue;
       const moved = from.state !== to.state;
       // Avoid a long flight when the destination is far down a column.
       const nearby = Math.abs(y) < window.innerHeight && Math.abs(x) < window.innerWidth;
