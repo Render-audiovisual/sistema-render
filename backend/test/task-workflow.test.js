@@ -32,10 +32,11 @@ test("Franco y el administrador pueden aprobar una revisión", () => {
   assert.equal(isTaskLeader({ rol: "diseno", nombre: "Augusto" }), false);
 });
 
-test("solo Oriana, Agustín y Franco pueden finalizar o reabrir tareas", () => {
+test("community managers, administradores y Franco pueden finalizar o reabrir tareas", () => {
   assert.equal(isTaskFinalizer({ rol: "admin", nombre: "Líder", usuario: "lider" }), true);
   assert.equal(isTaskFinalizer({ rol: "programacion", nombre: "Franco Romero", usuario: "Franco" }), true);
   assert.equal(isTaskFinalizer({ rol: "community", nombre: "Oriana", usuario: "Oriana" }), true);
+  assert.equal(isTaskFinalizer({ rol: "community", nombre: "Ana Mayerro", usuario: "Ana" }), true);
   assert.equal(isTaskFinalizer({ rol: "diseno", nombre: "Augusto", usuario: "Augusto" }), false);
   assert.equal(isTaskFinalizer({ rol: "produccion", nombre: "Germán", usuario: "German" }), false);
 });

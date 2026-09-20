@@ -14,9 +14,9 @@ export function isTaskLeader(auth = {}) {
 }
 
 export function isTaskFinalizer(auth = {}) {
-  if (auth.rol === "admin") return true;
+  if (auth.rol === "admin" || auth.rol === "community") return true;
   const identity = normalizarNombre(`${auth.nombre || ""} ${auth.usuario || ""}`);
-  return identity.includes("franco") || identity.includes("oriana");
+  return identity.includes("franco");
 }
 
 export function isCarouselTask(task = {}) {

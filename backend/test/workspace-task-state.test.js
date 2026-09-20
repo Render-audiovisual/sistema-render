@@ -54,12 +54,15 @@ test("producción puede completar y reabrir sus tareas sin habilitar otros secto
   const augusto = { nombre: "Augusto", usuario: "Augusto", rol: "diseno" };
   const german = { nombre: "Germán", usuario: "German", rol: "produccion" };
   const oriana = { nombre: "Oriana", usuario: "Oriana", rol: "community" };
+  const ana = { nombre: "Ana Mayerro", usuario: "Ana", rol: "community" };
   const franco = { nombre: "Franco Romero", usuario: "Franco", rol: "programacion" };
   assert.equal(canUserMoveTaskToState(ownTask, augusto, "en_revision"), true);
   assert.equal(canUserMoveTaskToState(ownTask, augusto, "publicada"), false);
   assert.equal(canUserMoveTask(finishedTask, augusto), false);
   assert.equal(canUserMoveTaskToState(finishedTask, augusto, "en_revision"), false);
   assert.equal(canUserMoveTaskToState(ownTask, oriana, "publicada"), true);
+  assert.equal(canUserMoveTaskToState(ownTask, ana, "publicada"), true);
+  assert.equal(canUserMoveTaskToState(finishedTask, ana, "en_revision"), true);
   assert.equal(canUserMoveTaskToState(finishedTask, oriana, "en_revision"), true);
   assert.equal(canUserMoveTaskToState(ownTask, franco, "publicada"), true);
   assert.equal(canUserMoveTaskToState(productionTask, german, "publicada"), true);

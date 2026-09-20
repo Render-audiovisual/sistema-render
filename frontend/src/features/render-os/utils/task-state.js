@@ -21,9 +21,9 @@ function normalizeActor(value) {
 }
 
 export function isTaskFinalizer(user) {
-  if (user?.rol === "admin") return true;
+  if (user?.rol === "admin" || user?.rol === "community") return true;
   const identity = normalizeActor(`${user?.nombre || ""} ${user?.usuario || ""}`);
-  return identity.includes("franco") || identity.includes("oriana");
+  return identity.includes("franco");
 }
 
 function isOwnProductionTask(task, user) {

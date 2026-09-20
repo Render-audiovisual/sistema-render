@@ -1832,7 +1832,7 @@ router.post("/tareas", async (req, res, next) => {
       return res.status(400).json({ error: "El estado Programada ya no forma parte del flujo de tareas." });
     }
     if (workspace === "render_os" && estadoFinal === "publicada" && !isTaskFinalizer(req.auth)) {
-      return res.status(403).json({ error: "Solo Oriana, Agustín o Franco pueden finalizar una tarea." });
+      return res.status(403).json({ error: "Solo una Community Manager o un líder pueden finalizar una tarea." });
     }
 
     if (workspace === "render_os" && tarea_padre_id) {
