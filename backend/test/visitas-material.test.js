@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {isProductionVisitTask} from '../src/production-visits.js';
 const src=readFileSync(new URL('../src/wilson-integration.js',import.meta.url),'utf8');
-const code=src.slice(src.indexOf('  // Read-only, keyset-paginated intake.'),src.indexOf('  router.get("/tareas",'));
+const code=src.slice(src.indexOf('  // Read-only, keyset-paginated intake.'),src.indexOf('  // Bounded, filtered task reads'));
 async function run({leader=true,after,rows=[]}={}){
  let fn,query;
  const bindings={router:{get(path,f){assert.equal(path,'/visitas-material');fn=f;}},pool:{async query(sql,args){query={sql,args};return {rows};}},isWilsonLeader:()=>leader,env:{},wilsonPersonAliases:()=>['germán','german'],isProductionVisitTask,taskWithUrl:t=>({...t,url:`task=${t.id}`})};

@@ -959,6 +959,37 @@ export function createWilsonRouter({ pool, notifyAssignment, confirmProduction, 
     } catch (error) { return next(error); }
   });
 
+  // Bounded, filtered task reads for Wilson; preserve actor scope.
+  router.get("/consulta-tareas", async (req, res, next) => {
+    const after = Number(req.query.after || 0);
+    if (!Number.isSafeInteger(after) || after < 0) return res.status(400).json({error:"Cursor inválido"});
+    const person = String(req.query.persona || "").trim();
+    const clients = String(req.query.clientes || "").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
+    if (person.length > 100 || clients.length > 10 || clients.some(x=>x.length>100)) return res.status(400).json({error:"Filtros demasiado extensos"});
+    const limit = 50;
+    try {
+      const result = await pool.query(
+        `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.aclaraciones,t.material_referencia,
+                t.propiedades_extra,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
+                c.nombre AS cliente_nombre,
+                COALESCE((SELECT jsonb_agg(jsonb_build_object('contenido',tc.contenido,'created_at',tc.created_at))
+                          FROM tarea_comentarios tc WHERE tc.tarea_id=t.id),'[]'::jsonb) AS comentarios
+         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+         WHERE t.propiedades_extra->>'workspace'='render_os'
+           AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+           AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
+           AND ($1::boolean OR LOWER(t.asignado_a)=ANY($2::text[]))
+           AND ($3::boolean OR LOWER(t.asignado_a)=ANY($4::text[]))
+           AND ($5::boolean OR LOWER(COALESCE(c.nombre,'')) LIKE ANY($6::text[]))
+           AND ($7::boolean OR t.estado NOT IN ('publicada','completada','cancelada','archivada'))
+           AND t.id>$8 ORDER BY t.id ASC LIMIT $9`,
+        [isWilsonLeader(req,env),wilsonPersonAliases(req.wilson.actorName),!person,wilsonPersonAliases(person),
+         clients.length===0,clients.map(x=>'%'+x+'%'),req.query.pendientes==='false',after,limit+1]);
+      const rows=result.rows.slice(0,limit);
+      return res.json({tasks:rows.map(taskWithUrl),next_after:result.rows.length>limit?rows.at(-1).id:null});
+    } catch(error){return next(error);}
+  });
+
   router.get("/tareas", async (req, res, next) => {
     try {
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 100));
