@@ -35,6 +35,88 @@ function BillingChart({ items = [], selectedPeriod }) {
   </div>;
 }
 
+function TrendChart({ data = [], title, metric, valueFormatter }) {
+  if (!data || data.length === 0) return null;
+  const width = 720;
+  const height = 240;
+  const padding = { top: 30, right: 20, bottom: 30, left: 50 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  
+  const values = data.map((item) => metric(item));
+  const maxValue = Math.max(...values.filter(v => v !== null), 1);
+  const minValue = Math.min(...values.filter(v => v !== null), 0);
+  const range = maxValue - minValue || 1;
+  
+  const points = data.map((item, i) => {
+    const value = metric(item);
+    const x = padding.left + (i / (data.length - 1 || 1)) * chartWidth;
+    const y = padding.top + chartHeight - ((value - minValue) / range) * chartHeight;
+    return { x, y, value, period: item.period };
+  });
+  
+  const pathData = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', maxWidth: '100%', height: 'auto' }}>
+      <defs>
+        <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="rgba(181,252,0,0.3)" />
+          <stop offset="100%" stopColor="rgba(181,252,0,0)" />
+        </linearGradient>
+      </defs>
+      <path d={pathData} stroke="#b5fc00" strokeWidth="2" fill="none" />
+      <polygon points={points.map(p => `${p.x},${p.y}`).join(' ') + ` ${padding.left + chartWidth},${padding.top + chartHeight} ${padding.left},${padding.top + chartHeight}`} fill="url(#gradient)" />
+      <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + chartHeight} stroke="var(--border)" strokeWidth="1" />
+      <line x1={padding.left} y1={padding.top + chartHeight} x2={width - padding.right} y2={padding.top + chartHeight} stroke="var(--border)" strokeWidth="1" />
+      {points.map((p) => (
+        <g key={p.period}>
+          <circle cx={p.x} cy={p.y} r="3" fill="#b5fc00" />
+          <text x={p.x} y={height - 8} textAnchor="middle" fontSize="10" fill="var(--muted)">
+            {p.period.slice(5)}
+          </text>
+        </g>
+      ))}
+      <text x={padding.left} y={20} fontSize="13" fontWeight="700" fill="var(--text)">{title}</text>
+    </svg>
+  );
+}
+
+function ComparativeChart({ data = [], title }) {
+  if (!data || data.length < 2) return null;
+  const width = 720;
+  const height = 240;
+  const padding = { top: 30, right: 20, bottom: 30, left: 50 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const barWidth = chartWidth / (data.length * 1.5);
+  
+  const maxValue = Math.max(...data.map(item => Math.max(item.facturacion, item.sueldos + item.gastosFijos)), 1);
+  
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', maxWidth: '100%', height: 'auto' }}>
+      <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + chartHeight} stroke="var(--border)" strokeWidth="1" />
+      <line x1={padding.left} y1={padding.top + chartHeight} x2={width - padding.right} y2={padding.top + chartHeight} stroke="var(--border)" strokeWidth="1" />
+      {data.map((item, i) => {
+        const x = padding.left + (i / data.length) * chartWidth + chartWidth / (data.length * 2);
+        const facHeight = (item.facturacion / maxValue) * chartHeight;
+        const costsHeight = ((item.sueldos + item.gastosFijos) / maxValue) * chartHeight;
+        return (
+          <g key={item.period}>
+            <rect x={x - barWidth / 3} y={padding.top + chartHeight - facHeight} width={barWidth / 3} height={facHeight} fill="#b5fc00" />
+            <rect x={x} y={padding.top + chartHeight - costsHeight} width={barWidth / 3} height={costsHeight} fill="#e74c3c" />
+            <text x={x + barWidth / 6} y={height - 8} textAnchor="middle" fontSize="10" fill="var(--muted)">
+              {item.period.slice(5)}
+            </text>
+          </g>
+        );
+      })}
+      <text x={padding.left} y={20} fontSize="13" fontWeight="700" fill="var(--text)">{title}</text>
+    </svg>
+  );
+}
+
+
 export function SueldosPage() {
   const requested = new URLSearchParams(window.location.search).get("periodo");
   const [period, setPeriod] = useState(/^\d{4}-\d{2}$/.test(requested || "") && requested >= "2026-09" ? requested : currentPeriod());
@@ -134,6 +216,35 @@ export function SueldosPage() {
               <div style={{textAlign: 'right'}}><strong>{((cliente.importe / finance.facturacion) * 100).toFixed(1)}%</strong></div>
             </div>
           ))}
+        </div>
+      </section>
+
+
+      <section className="finance-panel">
+        <header><div><span className="section-label">TENDENCIAS</span><h2>Resultado y margen histórico</h2></div></header>
+        <div style={{display: 'grid', gap: '24px'}}>
+          <div>
+            <TrendChart 
+              data={data.billingHistory.slice(-12)} 
+              title="Resultado del mes (últimos 12 meses)" 
+              metric={(item) => item.resultado}
+              valueFormatter={(value) => ars.format(value)}
+            />
+          </div>
+          <div>
+            <TrendChart 
+              data={data.billingHistory.slice(-12)} 
+              title="Margen % (últimos 12 meses)" 
+              metric={(item) => item.margen}
+              valueFormatter={(value) => `${value.toFixed(1)}%`}
+            />
+          </div>
+          <div>
+            <ComparativeChart 
+              data={data.billingHistory.slice(-12)} 
+              title="Facturación vs Gastos (últimos 12 meses)"
+            />
+          </div>
         </div>
       </section>
 

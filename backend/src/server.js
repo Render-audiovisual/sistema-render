@@ -535,9 +535,20 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
     const history = [];
     let cursor = firstBillingPeriod;
     while (cursor <= period && history.length < 120) {
+      const historicalFinance = buildAutomaticFinanceSummary({ 
+        period: cursor, 
+        contracts: contracts.rows, 
+        expenses: expenses.rows, 
+        payrollARS: 0, 
+        exchangeRateARS: exchangeRate.rounded 
+      });
       history.push({
         period: cursor,
-        total: buildAutomaticFinanceSummary({ period: cursor, contracts: contracts.rows, expenses: [], payrollARS: 0 }).facturacion,
+        facturacion: historicalFinance.facturacion,
+        sueldos: historicalFinance.sueldos,
+        gastosFijos: historicalFinance.gastosFijosARS,
+        resultado: historicalFinance.resultadoARS,
+        margen: historicalFinance.facturacion > 0 ? ((historicalFinance.resultadoARS / historicalFinance.facturacion) * 100) : 0,
       });
       cursor = nextPeriod(cursor);
     }
