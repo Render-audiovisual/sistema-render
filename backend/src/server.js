@@ -523,6 +523,14 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       payrollARS: payroll.summary.configuredPayroll,
       exchangeRateARS: exchangeRate.rounded,
     });
+    const previousPeriodLabel = previousPeriod(period);
+    const previousFinance = buildAutomaticFinanceSummary({
+      period: previousPeriodLabel,
+      contracts: contracts.rows,
+      expenses: expenses.rows,
+      payrollARS: 0,
+      exchangeRateARS: exchangeRate.rounded,
+    });
     const firstBillingPeriod = "2026-09";
     const history = [];
     let cursor = firstBillingPeriod;
@@ -535,6 +543,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
     }
     res.json({
       finance,
+      previousFinance,
       exchangeRate,
       payroll: payroll.employees.map((employee) => ({ name: employee.name, total: Number(employee.total || 0) })),
       payrollPending: payroll.summary.pendingConfigurations,

@@ -15,6 +15,15 @@ function labelPeriod(period) {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+function formatVariation(current, previous) {
+  if (previous === undefined || previous === 0) return null;
+  const delta = current - previous;
+  const percent = ((delta / previous) * 100).toFixed(1);
+  const sign = delta > 0 ? "+" : "";
+  return { delta: Math.round(delta), percent: sign + percent, isPositive: delta > 0, isNegative: delta < 0 };
+}
+
+
 function BillingChart({ items = [], selectedPeriod }) {
   const visible = items.slice(-8);
   const maximum = Math.max(...visible.map((item) => item.total), 1);
@@ -51,10 +60,17 @@ export function SueldosPage() {
   }, [period]);
 
   const finance = data?.finance;
+  const previousFinance = data?.previousFinance;
   const exchangeRate = data?.exchangeRate;
   const salaryExpenses = finance?.gastos?.filter((item) => item.categoria === "sueldos") || [];
   const taxExpenses = finance?.gastos?.filter((item) => item.categoria === "impuestos") || [];
   const toolExpenses = finance?.gastos?.filter((item) => item.categoria === "herramientas") || [];
+
+  const facturacionVariation = finance && previousFinance ? formatVariation(finance.facturacion, previousFinance.facturacion) : null;
+  const sueldosVariation = finance && previousFinance ? formatVariation(finance.sueldos, previousFinance.sueldos) : null;
+  const gastosVariation = finance && previousFinance ? formatVariation(finance.gastosFijosARS, previousFinance.gastosFijosARS) : null;
+  const resultadoVariation = finance && previousFinance ? formatVariation(finance.resultadoARS, previousFinance.resultadoARS) : null;
+  const margen = finance && finance.facturacion > 0 ? ((finance.resultadoARS / finance.facturacion) * 100).toFixed(1) : 0;
 
   return <main className="page-shell salary-page finance-dashboard">
     <section className="salary-hero">
@@ -68,17 +84,58 @@ export function SueldosPage() {
       <section className="finance-billing-hero"><div><span>FACTURACIÓN A COBRAR</span><small>{labelPeriod(period)} · trabajo de {labelPeriod(finance.workPeriod)}</small><strong>{ars.format(finance.facturacion)}</strong><p>Los clientes se facturan automáticamente a mes vencido.</p></div><b>Mes vencido</b></section>
 
       <section className="finance-metrics finance-metrics-unified" aria-label="Resumen financiero automático">
-        <article><span>Equipo</span><strong>{ars.format(finance.sueldos)}</strong><small>Total mensual de sueldos</small></article>
-        <article><span>Gastos fijos</span><strong>{ars.format(finance.gastosFijosARS)}</strong><small>Impuestos y herramientas, todo convertido a pesos</small></article>
+        <article>
+          <span>Equipo</span>
+          <strong>{ars.format(finance.sueldos)}</strong>
+          {sueldosVariation && <small style={{color: sueldosVariation.isNegative ? '#2d5a4e' : sueldosVariation.isPositive ? '#a7322a' : 'var(--muted)', fontSize: '11px', marginTop: '4px'}}>
+            {sueldosVariation.isNegative ? '↓' : '↑'} {ars.format(sueldosVariation.delta)} ({sueldosVariation.percent}%)
+          </small>}
+          <small>Total mensual de sueldos</small>
+        </article>
+        <article>
+          <span>Gastos fijos</span>
+          <strong>{ars.format(finance.gastosFijosARS)}</strong>
+          {gastosVariation && <small style={{color: gastosVariation.isNegative ? '#2d5a4e' : gastosVariation.isPositive ? '#a7322a' : 'var(--muted)', fontSize: '11px', marginTop: '4px'}}>
+            {gastosVariation.isNegative ? '↓' : '↑'} {ars.format(gastosVariation.delta)} ({gastosVariation.percent}%)
+          </small>}
+          <small>Impuestos y herramientas, todo convertido a pesos</small>
+        </article>
       </section>
 
-      <section className="finance-result-row"><div><span>RESULTADO DEL MES</span><small>Facturación menos equipo y gastos fijos</small></div><strong className={finance.resultadoARS < 0 ? "is-negative" : ""}>{ars.format(finance.resultadoARS)}</strong></section>
+      <section className="finance-result-row">
+        <div>
+          <span>RESULTADO DEL MES</span>
+          <small>Facturación menos equipo y gastos fijos · Margen: <strong>{margen}%</strong></small>
+          {resultadoVariation && <small style={{color: resultadoVariation.isNegative ? '#2d5a4e' : resultadoVariation.isPositive ? '#a7322a' : 'var(--muted)', fontSize: '11px', marginTop: '2px'}}>
+            {resultadoVariation.isNegative ? '↓' : '↑'} {ars.format(resultadoVariation.delta)} ({resultadoVariation.percent}%)
+          </small>}
+        </div>
+        <strong className={finance.resultadoARS < 0 ? "is-negative" : ""}>{ars.format(finance.resultadoARS)}</strong>
+      </section>
       <div className={`finance-exchange-note${exchangeRate?.fallback ? " is-fallback" : ""}`}>
         <span>Dólar usado para ChatGPT y Contabo</span>
         <strong>{ars.format(exchangeRate?.rounded || 0)} por USD</strong>
         <small>Cotización tarjeta vendedor: {ars.format(exchangeRate?.original || 0)}, redondeada hacia arriba · {exchangeRate?.source}</small>
       </div>
       {data.payrollPending?.length > 0 && <div className="salary-banner"><strong>Sueldo variable pendiente:</strong> falta clasificar las piezas de {data.payrollPending.join(", ")} para completar ese importe automáticamente.</div>}
+
+      <section className="finance-panel">
+        <header><div><span className="section-label">CLIENTES</span><h2>Ingresos por cliente</h2></div></header>
+        <div className="finance-client-table">
+          <div className="finance-client-row is-heading">
+            <div>Cliente</div>
+            <div>Monto facturado</div>
+            <div style={{textAlign: 'right'}}>% del total</div>
+          </div>
+          {finance.ingresos.sort((a, b) => b.importe - a.importe).map((cliente) => (
+            <div key={cliente.nombre} className="finance-client-row">
+              <div>{cliente.nombre}</div>
+              <div><strong>{ars.format(cliente.importe)}</strong></div>
+              <div style={{textAlign: 'right'}}><strong>{((cliente.importe / finance.facturacion) * 100).toFixed(1)}%</strong></div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="finance-panel finance-auto-details">
         <header><div><span className="section-label">DETALLE AUTOMÁTICO</span><h2>¿De dónde sale cada número?</h2></div><small>Sin cargas manuales</small></header>
