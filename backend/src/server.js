@@ -478,7 +478,7 @@ router.get("/reportes/datos", async (req, res, next) => {
   }
 });
 
-router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
+router.get("/sueldos", requireRole("leader"), async (req, res, next) => {
   try {
     const period = String(req.query.periodo || "");
     if (!isValidSalaryPeriod(period)) {
@@ -3436,7 +3436,7 @@ app.use((err, _req, res, _next) => {
 // lsnode.js) carga este archivo con require(), que no admite módulos ESM
 // con await de nivel superior (ERR_REQUIRE_ASYNC_MODULE).
 // Endpoints para gestionar contratos (clientes)
-router.get("/contratos", requireRole("admin"), async (req, res, next) => {
+router.get("/contratos", requireRole("leader"), async (req, res, next) => {
   try {
     const result = await pool.query(`
       SELECT id, nombre, importe_mensual, to_char(inicia_el, 'YYYY-MM-DD') AS inicia_el, 
@@ -3450,7 +3450,7 @@ router.get("/contratos", requireRole("admin"), async (req, res, next) => {
   }
 });
 
-router.post("/contratos", requireRole("admin"), async (req, res, next) => {
+router.post("/contratos", requireRole("leader"), async (req, res, next) => {
   try {
     const { nombre, importe_mensual, inicia_el, finaliza_el } = req.body;
     if (!nombre || importe_mensual === undefined) {
@@ -3467,7 +3467,7 @@ router.post("/contratos", requireRole("admin"), async (req, res, next) => {
   }
 });
 
-router.patch("/contratos/:id", requireRole("admin"), async (req, res, next) => {
+router.patch("/contratos/:id", requireRole("leader"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const { nombre, importe_mensual, inicia_el, finaliza_el } = req.body;
@@ -3496,7 +3496,7 @@ router.patch("/contratos/:id", requireRole("admin"), async (req, res, next) => {
   }
 });
 
-router.delete("/contratos/:id", requireRole("admin"), async (req, res, next) => {
+router.delete("/contratos/:id", requireRole("leader"), async (req, res, next) => {
   try {
     const { id } = req.params;
     const result = await pool.query(`DELETE FROM contratos_financieros WHERE id = $1 RETURNING id`, [id]);
