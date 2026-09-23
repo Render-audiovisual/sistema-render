@@ -117,6 +117,96 @@ function ComparativeChart({ data = [], title }) {
 }
 
 
+
+function ClientsPanel({ contracts, onUpdate, ars }) {
+  const [editing, setEditing] = React.useState(null);
+  const [newClient, setNewClient] = React.useState({ nombre: "", importe_mensual: "", inicia_el: new Date().toISOString().split('T')[0] });
+  const [loading, setLoading] = React.useState(false);
+
+  const handleAdd = async () => {
+    if (!newClient.nombre || !newClient.importe_mensual) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/contratos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre: newClient.nombre, importe_mensual: Number(newClient.importe_mensual), inicia_el: newClient.inicia_el, finaliza_el: newClient.finaliza_el || null }) });
+      if (res.ok) { onUpdate(); setNewClient({ nombre: "", importe_mensual: "", inicia_el: new Date().toISOString().split('T')[0] }); }
+    } catch (error) { console.error(error); }
+    finally { setLoading(false); }
+  };
+
+  const handleEdit = async (id, updates) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/contratos/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updates) });
+      if (res.ok) { onUpdate(); setEditing(null); }
+    } catch (error) { console.error(error); }
+    finally { setLoading(false); }
+  };
+
+  const handleToggleActive = async (id, currentActive) => {
+    await handleEdit(id, { activo: !currentActive });
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm("¿Eliminar este cliente?")) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/contratos/${id}`, { method: "DELETE" });
+      if (res.ok) onUpdate();
+    } catch (error) { console.error(error); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{ display: "grid", gap: "16px" }}>
+      <div style={{ border: "1px solid var(--border)", borderRadius: "12px", padding: "16px", background: "#fafbf8" }}>
+        <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 700 }}>Agregar cliente</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: "10px", alignItems: "end" }}>
+          <input type="text" placeholder="Nombre cliente" value={newClient.nombre} onChange={(e) => setNewClient({ ...newClient, nombre: e.target.value })} style={{ padding: "8px", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "13px" }} />
+          <input type="number" placeholder="Monto" value={newClient.importe_mensual} onChange={(e) => setNewClient({ ...newClient, importe_mensual: e.target.value })} style={{ padding: "8px", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "13px" }} />
+          <input type="date" value={newClient.inicia_el} onChange={(e) => setNewClient({ ...newClient, inicia_el: e.target.value })} style={{ padding: "8px", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "13px" }} />
+          <button onClick={handleAdd} disabled={loading || !newClient.nombre || !newClient.importe_mensual} style={{ padding: "8px 12px", background: newClient.nombre && newClient.importe_mensual ? "#b5fc00" : "#ddd", border: 0, borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>+ Agregar</button>
+        </div>
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+          <thead>
+            <tr style={{ background: "#f6f7f2", borderBottom: "1px solid var(--border)" }}>
+              <th style={{ padding: "10px", textAlign: "left", fontWeight: 700, color: "var(--muted)" }}>Cliente</th>
+              <th style={{ padding: "10px", textAlign: "right", fontWeight: 700, color: "var(--muted)" }}>Monto mensual</th>
+              <th style={{ padding: "10px", textAlign: "center", fontWeight: 700, color: "var(--muted)" }}>Inicia</th>
+              <th style={{ padding: "10px", textAlign: "center", fontWeight: 700, color: "var(--muted)" }}>Finaliza</th>
+              <th style={{ padding: "10px", textAlign: "center", fontWeight: 700, color: "var(--muted)" }}>Estado</th>
+              <th style={{ padding: "10px", textAlign: "center", fontWeight: 700, color: "var(--muted)" }}>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(contracts || []).map((c) => editing === c.id ? (
+              <tr key={c.id} style={{ background: "#fff7e9", borderBottom: "1px solid var(--border)" }}>
+                <td style={{ padding: "10px" }}><input type="text" defaultValue={c.nombre} id={`name-${c.id}`} style={{ width: "100%", padding: "4px", fontSize: "12px" }} /></td>
+                <td style={{ padding: "10px" }}><input type="number" defaultValue={c.importe_mensual} id={`amount-${c.id}`} style={{ width: "100%", padding: "4px", fontSize: "12px", textAlign: "right" }} /></td>
+                <td style={{ padding: "10px" }}><input type="date" defaultValue={c.inicia_el} id={`start-${c.id}`} style={{ width: "100%", padding: "4px", fontSize: "12px" }} /></td>
+                <td style={{ padding: "10px" }}><input type="date" defaultValue={c.finaliza_el || ""} id={`end-${c.id}`} style={{ width: "100%", padding: "4px", fontSize: "12px" }} /></td>
+                <td style={{ padding: "10px", textAlign: "center" }}>{c.activo ? "✓ Activo" : "✕ Inactivo"}</td>
+                <td style={{ padding: "10px", textAlign: "center" }}><button onClick={() => handleEdit(c.id, { nombre: document.getElementById(`name-${c.id}`).value, importe_mensual: Number(document.getElementById(`amount-${c.id}`).value), inicia_el: document.getElementById(`start-${c.id}`).value, finaliza_el: document.getElementById(`end-${c.id}`).value || null })} style={{ padding: "4px 8px", background: "#b5fc00", border: 0, borderRadius: "4px", cursor: "pointer", fontSize: "11px", marginRight: "4px" }}>✓</button><button onClick={() => setEditing(null)} style={{ padding: "4px 8px", background: "#ddd", border: 0, borderRadius: "4px", cursor: "pointer", fontSize: "11px" }}>✕</button></td>
+              </tr>
+            ) : (
+              <tr key={c.id} style={{ borderBottom: "1px solid #eceee7", opacity: c.activo ? 1 : 0.5, textDecoration: c.activo ? "none" : "line-through" }}>
+                <td style={{ padding: "10px", color: c.activo ? "var(--text)" : "var(--muted)" }}>{c.nombre}</td>
+                <td style={{ padding: "10px", textAlign: "right", fontWeight: 700, color: c.activo ? "var(--text)" : "var(--muted)" }}>{ars.format(c.importe_mensual)}</td>
+                <td style={{ padding: "10px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>{c.inicia_el}</td>
+                <td style={{ padding: "10px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>{c.finaliza_el || "—"}</td>
+                <td style={{ padding: "10px", textAlign: "center" }}><button onClick={() => handleToggleActive(c.id, c.activo)} style={{ padding: "4px 8px", background: c.activo ? "#2d5a4e" : "#ffcccc", color: c.activo ? "#fff" : "#cc3333", border: 0, borderRadius: "4px", cursor: "pointer", fontSize: "11px", marginRight: "4px", fontWeight: 700 }}>{c.activo ? "✓ Activo" : "✕ Baja"}</button></td>
+                <td style={{ padding: "10px", textAlign: "center" }}><button onClick={() => setEditing(c.id)} style={{ padding: "4px 8px", background: "transparent", border: "1px solid var(--border)", borderRadius: "4px", cursor: "pointer", fontSize: "11px", marginRight: "4px" }}>Editar</button><button onClick={() => handleDelete(c.id)} style={{ padding: "4px 8px", background: "transparent", border: "1px solid #ffcccc", color: "#cc3333", borderRadius: "4px", cursor: "pointer", fontSize: "11px" }}>Eliminar</button></td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
 export function SueldosPage() {
   const requested = new URLSearchParams(window.location.search).get("periodo");
   const [period, setPeriod] = useState(/^\d{4}-\d{2}$/.test(requested || "") && requested >= "2026-09" ? requested : currentPeriod());
