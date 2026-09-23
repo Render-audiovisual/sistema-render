@@ -10,6 +10,7 @@ export function LiderDashboard() {
   const [clientes, setClientes] = useState([]);
   const [resumenEquipo, setResumenEquipo] = useState([]);
   const [aprobacionesLider, setAprobacionesLider] = useState([]);
+  const [finanzas, setFinanzas] = useState(null);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [panoramaError, setPanoramaError] = useState(null);
   const [resumenEquipoError, setResumenEquipoError] = useState(null);
@@ -23,13 +24,18 @@ export function LiderDashboard() {
   const [cargandoInicio, setCargandoInicio] = useState(true);
 
   const cargarPanorama = () => {
+    const ahora = new Date();
+    const periodo = `${ahora.getFullYear()}-${String(ahora.getMonth() + 1).padStart(2, "0")}`;
+    
     Promise.all([
       fetch("/api/clientes").then((response) => response.json()),
       fetch("/api/historias").then((response) => response.json()),
       fetch("/api/publicaciones").then((response) => response.json()),
       fetch("/api/tareas?workspace=render_os").then((response) => response.json()),
+      fetch(`/sueldos?periodo=${periodo}`).then((response) => response.json()),
     ])
-      .then(([clientesApi, historiasApi, publicacionesApi, tareasApi]) => {
+      .then(([clientesApi, historiasApi, publicacionesApi, tareasApi, finanzasApi]) => {
+        setFinanzas(finanzasApi);
         const mes = getMesActualISO();
         const resumenClientes = getResumenClientes(clientesApi, historiasApi, publicacionesApi, {
           mes,
@@ -157,6 +163,48 @@ export function LiderDashboard() {
                   ))}
                 </div>
               </section>
+              <section className="lider-home-section" aria-labelledby="finanzas-title">
+                <div className="lider-section-header">
+                  <h2 id="finanzas-title">💰 Finanzas del mes</h2>
+                  <a href="/sueldos" style={{fontSize: '12px', color: 'var(--muted)', textDecoration: 'none'}}>Ver detalle →</a>
+                </div>
+                {finanzas ? (
+                  <div style={{display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px'}}>
+                    <div style={{background: '#f4f8e9', border: '1px solid #c9d2b8', borderRadius: '12px', padding: '14px'}}>
+                      <div style={{color: 'var(--muted)', fontSize: '11px', fontWeight: 700, marginBottom: '6px'}}>RESULTADO</div>
+                      <div style={{fontSize: '20px', fontWeight: 700, color: finanzas.finance.resultadoARS >= 0 ? '#b5fc00' : '#ff6b6b'}}>
+                        {new Intl.NumberFormat('es-AR', {style: 'currency', currency: 'ARS', maximumFractionDigits: 0}).format(finanzas.finance.resultadoARS)}
+                      </div>
+                      <div style={{fontSize: '11px', color: 'var(--muted)', marginTop: '4px'}}>Margen: <strong>{((finanzas.finance.resultadoARS / finanzas.finance.facturacion) * 100).toFixed(1)}%</strong></div>
+                    </div>
+                    <div style={{background: '#fff7e9', border: '1px solid #e7c99e', borderRadius: '12px', padding: '14px'}}>
+                      <div style={{color: 'var(--muted)', fontSize: '11px', fontWeight: 700, marginBottom: '6px'}}>FACTURACIÓN</div>
+                      <div style={{fontSize: '20px', fontWeight: 700, color: '#b5fc00'}}>
+                        {new Intl.NumberFormat('es-AR', {style: 'currency', currency: 'ARS', maximumFractionDigits: 0}).format(finanzas.finance.facturacion)}
+                      </div>
+                      <div style={{fontSize: '11px', color: 'var(--muted)', marginTop: '4px'}}>Clientes activos: <strong>{finanzas.finance.ingresos.length}</strong></div>
+                    </div>
+                    <div style={{background: '#f0f4f8', border: '1px solid #d4dce5', borderRadius: '12px', padding: '14px'}}>
+                      <div style={{color: 'var(--muted)', fontSize: '11px', fontWeight: 700, marginBottom: '6px'}}>EQUIPO</div>
+                      <div style={{fontSize: '20px', fontWeight: 700, color: '#556b7f'}}>
+                        {new Intl.NumberFormat('es-AR', {style: 'currency', currency: 'ARS', maximumFractionDigits: 0}).format(finanzas.finance.sueldos)}
+                      </div>
+                      <div style={{fontSize: '11px', color: 'var(--muted)', marginTop: '4px'}}>Personas: <strong>{finanzas.payroll.length}</strong></div>
+                    </div>
+                    <div style={{background: '#f8f0f0', border: '1px solid #e5d4d4', borderRadius: '12px', padding: '14px'}}>
+                      <div style={{color: 'var(--muted)', fontSize: '11px', fontWeight: 700, marginBottom: '6px'}}>GASTOS FIJOS</div>
+                      <div style={{fontSize: '20px', fontWeight: 700, color: '#c57575'}}>
+                        {new Intl.NumberFormat('es-AR', {style: 'currency', currency: 'ARS', maximumFractionDigits: 0}).format(finanzas.finance.gastosFijosARS)}
+                      </div>
+                      <div style={{fontSize: '11px', color: 'var(--muted)', marginTop: '4px'}}>Impuestos + Herramientas</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{color: 'var(--muted)', fontSize: '13px', padding: '12px'}}>Cargando finanzas...</div>
+                )}
+              </section>
+
+
             </>
           )}
         </div>
