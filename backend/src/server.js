@@ -3435,6 +3435,79 @@ app.use((err, _req, res, _next) => {
 // IIFE en vez de top-level await: el runtime de Hostinger (LiteSpeed
 // lsnode.js) carga este archivo con require(), que no admite módulos ESM
 // con await de nivel superior (ERR_REQUIRE_ASYNC_MODULE).
+// Endpoints para gestionar contratos (clientes)
+router.get("/contratos", requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, nombre, importe_mensual, to_char(inicia_el, 'YYYY-MM-DD') AS inicia_el, 
+        to_char(finaliza_el, 'YYYY-MM-DD') AS finaliza_el
+      FROM contratos_financieros 
+      ORDER BY nombre
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/contratos", requireRole("admin"), async (req, res, next) => {
+  try {
+    const { nombre, importe_mensual, inicia_el, finaliza_el } = req.body;
+    if (!nombre || importe_mensual === undefined) {
+      return res.status(400).json({ error: "nombre e importe_mensual son requeridos" });
+    }
+    const result = await pool.query(
+      `INSERT INTO contratos_financieros (nombre, importe_mensual, inicia_el, finaliza_el)
+       VALUES ($1, $2, $3::date, $4::date) RETURNING id, nombre, importe_mensual, to_char(inicia_el, 'YYYY-MM-DD') AS inicia_el, to_char(finaliza_el, 'YYYY-MM-DD') AS finaliza_el`,
+      [nombre, importe_mensual, inicia_el || null, finaliza_el || null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.patch("/contratos/:id", requireRole("admin"), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { nombre, importe_mensual, inicia_el, finaliza_el } = req.body;
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+    
+    if (nombre !== undefined) { updates.push(`nombre = $${paramIndex++}`); values.push(nombre); }
+    if (importe_mensual !== undefined) { updates.push(`importe_mensual = $${paramIndex++}`); values.push(importe_mensual); }
+    if (inicia_el !== undefined) { updates.push(`inicia_el = $${paramIndex++}::date`); values.push(inicia_el); }
+    if (finaliza_el !== undefined) { updates.push(`finaliza_el = $${paramIndex++}::date`); values.push(finaliza_el); }
+    
+    if (updates.length === 0) return res.status(400).json({ error: "No hay campos para actualizar" });
+    
+    values.push(id);
+    const result = await pool.query(
+      `UPDATE contratos_financieros SET ${updates.join(', ')} WHERE id = $${paramIndex} 
+       RETURNING id, nombre, importe_mensual, to_char(inicia_el, 'YYYY-MM-DD') AS inicia_el, to_char(finaliza_el, 'YYYY-MM-DD') AS finaliza_el`,
+      values
+    );
+    
+    if (result.rows.length === 0) return res.status(404).json({ error: "Contrato no encontrado" });
+    res.json(result.rows[0]);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/contratos/:id", requireRole("admin"), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(`DELETE FROM contratos_financieros WHERE id = $1 RETURNING id`, [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: "Contrato no encontrado" });
+    res.json({ success: true, id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+
 function scheduleEditorialCalendar() {
   let lastRun = "";
   let currentPrepared = false;

@@ -121,8 +121,22 @@ export function SueldosPage() {
   const requested = new URLSearchParams(window.location.search).get("periodo");
   const [period, setPeriod] = useState(/^\d{4}-\d{2}$/.test(requested || "") && requested >= "2026-09" ? requested : currentPeriod());
   const [data, setData] = useState(null);
+  const [contracts, setContracts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const loadContracts = async () => {
+    try {
+      const res = await fetch("/contratos");
+      if (res.ok) setContracts(await res.json());
+    } catch (error) {
+      console.error("Error cargando contratos:", error);
+    }
+  };
+
+  useEffect(() => {
+    loadContracts();
+  }, []);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -219,6 +233,11 @@ export function SueldosPage() {
         </div>
       </section>
 
+
+      <section className="finance-panel">
+        <header><div><span className="section-label">ADMINISTRACIÓN</span><h2>Gestionar contratos de clientes</h2></div><small>Edita montos, fechas de inicio/fin, agrega o elimina clientes</small></header>
+        <ClientsPanel contracts={contracts} onUpdate={loadContracts} ars={ars} />
+      </section>
 
       <section className="finance-panel">
         <header><div><span className="section-label">TENDENCIAS</span><h2>Resultado y margen histórico</h2></div></header>
