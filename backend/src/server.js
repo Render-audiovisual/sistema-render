@@ -487,7 +487,7 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
     const workPeriod = previousPeriod(period);
     const [contracts, expenses, tasks, histories, publications, compensations, editingDeliveries, exchangeRate] = await Promise.all([
       pool.query(`SELECT nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
-        to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM contratos_financieros WHERE activo IS NULL OR activo = true ORDER BY nombre`),
+        to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM contratos_financieros ORDER BY nombre`),
       pool.query(`SELECT nombre,categoria,moneda,importe,dia_pago,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
         to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM gastos_fijos_financieros ORDER BY dia_pago,nombre`),
       pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
@@ -3440,8 +3440,7 @@ router.get("/contratos", requireRole("admin"), async (req, res, next) => {
   try {
     const result = await pool.query(`
       SELECT id, nombre, importe_mensual, to_char(inicia_el, 'YYYY-MM-DD') AS inicia_el, 
-        to_char(finaliza_el, 'YYYY-MM-DD') AS finaliza_el, 
-        COALESCE(activo, true) AS activo
+        to_char(finaliza_el, 'YYYY-MM-DD') AS finaliza_el
       FROM contratos_financieros 
       ORDER BY nombre
     `);
