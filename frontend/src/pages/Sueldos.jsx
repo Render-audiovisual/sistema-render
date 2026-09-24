@@ -190,34 +190,31 @@ export function SueldosPage() {
     {!loading && !error && finance && <>
       <section className="finance-billing-hero"><div><span>FACTURACIÓN A COBRAR</span><small>{labelPeriod(period)} · trabajo de {labelPeriod(finance.workPeriod)}</small><strong>{ars.format(finance.facturacion)}</strong><p>Los clientes se facturan automáticamente a mes vencido.{facturacionVariation ? ` Variación contra el mes anterior: ${facturacionVariation.percent}%.` : ""}</p></div><b>Mes vencido</b></section>
 
-      <section className="finance-metrics finance-metrics-unified" aria-label="Resumen financiero automático">
-        <article>
-          <span>Equipo</span>
-          <strong>{ars.format(finance.sueldos)}</strong>
-          {sueldosVariation && <small style={{color: sueldosVariation.isNegative ? '#2d5a4e' : sueldosVariation.isPositive ? '#a7322a' : 'var(--muted)', fontSize: '11px', marginTop: '4px'}}>
-            {sueldosVariation.isNegative ? '↓' : '↑'} {ars.format(sueldosVariation.delta)} ({sueldosVariation.percent}%)
-          </small>}
-          <small>Total mensual de sueldos</small>
+      <section className="finance-metrics" aria-label="Resumen financiero automático">
+        <article style={{background: '#f0f4f8', borderColor: '#d4dce5'}}>
+          <span>📊 Resultado</span>
+          <strong style={{fontSize: '28px', color: finance.resultadoARS >= 0 ? '#2d5a4e' : '#a7322a'}}>{ars.format(finance.resultadoARS)}</strong>
+          <small style={{color: 'var(--muted)', marginTop: '4px'}}>Margen: <strong>{margen}%</strong></small>
+          {resultadoVariation && <small style={{color: resultadoVariation.isNegative ? '#a7322a' : '#2d5a4e', fontSize: '11px'}}>{resultadoVariation.isNegative ? '↓' : '↑'} {resultadoVariation.percent}%</small>}
         </article>
-        <article>
-          <span>Gastos fijos</span>
-          <strong>{ars.format(finance.gastosFijosARS)}</strong>
-          {gastosVariation && <small style={{color: gastosVariation.isNegative ? '#2d5a4e' : gastosVariation.isPositive ? '#a7322a' : 'var(--muted)', fontSize: '11px', marginTop: '4px'}}>
-            {gastosVariation.isNegative ? '↓' : '↑'} {ars.format(gastosVariation.delta)} ({gastosVariation.percent}%)
-          </small>}
-          <small>Impuestos y herramientas, todo convertido a pesos</small>
+        <article style={{background: '#fff7e9', borderColor: '#e7c99e'}}>
+          <span>💵 Facturación</span>
+          <strong style={{fontSize: '28px', color: '#755315'}}>{ars.format(finance.facturacion)}</strong>
+          <small style={{color: 'var(--muted)', marginTop: '4px'}}>Clientes activos: <strong>{finance.ingresos.length}</strong></small>
+          {facturacionVariation && <small style={{color: facturacionVariation.isNegative ? '#a7322a' : '#2d5a4e', fontSize: '11px'}}>{facturacionVariation.isNegative ? '↓' : '↑'} {facturacionVariation.percent}%</small>}
         </article>
-      </section>
-
-      <section className="finance-result-row">
-        <div>
-          <span>RESULTADO DEL MES</span>
-          <small>Facturación menos equipo y gastos fijos · Margen: <strong>{margen}%</strong></small>
-          {resultadoVariation && <small style={{color: resultadoVariation.isNegative ? '#2d5a4e' : resultadoVariation.isPositive ? '#a7322a' : 'var(--muted)', fontSize: '11px', marginTop: '2px'}}>
-            {resultadoVariation.isNegative ? '↓' : '↑'} {ars.format(resultadoVariation.delta)} ({resultadoVariation.percent}%)
-          </small>}
-        </div>
-        <strong className={finance.resultadoARS < 0 ? "is-negative" : ""}>{ars.format(finance.resultadoARS)}</strong>
+        <article style={{background: '#f0f8f4', borderColor: '#d4e5dc'}}>
+          <span>👥 Equipo</span>
+          <strong style={{fontSize: '28px', color: '#556b7f'}}>{ars.format(finance.sueldos)}</strong>
+          <small style={{color: 'var(--muted)', marginTop: '4px'}}>Total de sueldos</small>
+          {sueldosVariation && <small style={{color: sueldosVariation.isNegative ? '#2d5a4e' : '#a7322a', fontSize: '11px'}}>{sueldosVariation.isNegative ? '↓' : '↑'} {sueldosVariation.percent}%</small>}
+        </article>
+        <article style={{background: '#f8f0f0', borderColor: '#e5d4d4'}}>
+          <span>📋 Gastos fijos</span>
+          <strong style={{fontSize: '28px', color: '#9b4f4f'}}>{ars.format(finance.gastosFijosARS)}</strong>
+          <small style={{color: 'var(--muted)', marginTop: '4px'}}>Impuestos + herramientas</small>
+          {gastosVariation && <small style={{color: gastosVariation.isNegative ? '#2d5a4e' : '#a7322a', fontSize: '11px'}}>{gastosVariation.isNegative ? '↓' : '↑'} {gastosVariation.percent}%</small>}
+        </article>
       </section>
       <div className={`finance-exchange-note${exchangeRate?.fallback ? " is-fallback" : ""}`}>
         <span>Dólar usado para ChatGPT y Contabo</span>
