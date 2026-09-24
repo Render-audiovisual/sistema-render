@@ -32,10 +32,12 @@ export function LiderDashboard() {
       fetch("/api/historias").then((response) => response.json()),
       fetch("/api/publicaciones").then((response) => response.json()),
       fetch("/api/tareas?workspace=render_os").then((response) => response.json()),
-      fetch(`/sueldos?periodo=${periodo}`).then((response) => response.json()),
+      fetch(`/api/sueldos?periodo=${periodo}`, { cache: "no-store" })
+        .then((response) => response.ok ? response.json() : null)
+        .catch(() => null),
     ])
       .then(([clientesApi, historiasApi, publicacionesApi, tareasApi, finanzasApi]) => {
-        setFinanzas(finanzasApi);
+        setFinanzas(finanzasApi?.finance ? finanzasApi : null);
         const mes = getMesActualISO();
         const resumenClientes = getResumenClientes(clientesApi, historiasApi, publicacionesApi, {
           mes,
@@ -175,7 +177,7 @@ export function LiderDashboard() {
                       <div style={{fontSize: '20px', fontWeight: 700, color: finanzas.finance.resultadoARS >= 0 ? '#b5fc00' : '#ff6b6b'}}>
                         {new Intl.NumberFormat('es-AR', {style: 'currency', currency: 'ARS', maximumFractionDigits: 0}).format(finanzas.finance.resultadoARS)}
                       </div>
-                      <div style={{fontSize: '11px', color: 'var(--muted)', marginTop: '4px'}}>Margen: <strong>{((finanzas.finance.resultadoARS / finanzas.finance.facturacion) * 100).toFixed(1)}%</strong></div>
+                      <div style={{fontSize: '11px', color: 'var(--muted)', marginTop: '4px'}}>Margen: <strong>{finanzas.finance.facturacion > 0 ? ((finanzas.finance.resultadoARS / finanzas.finance.facturacion) * 100).toFixed(1) : "0.0"}%</strong></div>
                     </div>
                     <div style={{background: '#fff7e9', border: '1px solid #e7c99e', borderRadius: '12px', padding: '14px'}}>
                       <div style={{color: 'var(--muted)', fontSize: '11px', fontWeight: 700, marginBottom: '6px'}}>FACTURACIÓN</div>

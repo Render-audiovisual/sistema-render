@@ -125,3 +125,31 @@ test("la cotización se redondea hacia arriba al próximo múltiplo de cien", ()
   assert.equal(roundExchangeRateUp(1500), 1500);
   assert.equal(roundExchangeRateUp(1963), 2000);
 });
+
+test("la administración de contratos usa la API autenticada y conserva el historial", () => {
+  const backend = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+  const frontend = readFileSync(new URL("../../frontend/src/pages/Sueldos.jsx", import.meta.url), "utf8");
+  assert.match(frontend, /requestJson\("\/api\/contratos"/);
+  assert.match(frontend, /requestJson\(`\/api\/contratos\/\$\{id\}`/);
+  assert.doesNotMatch(frontend, /fetch\("\/contratos"|fetch\(`\/contratos/);
+  assert.match(backend, /router\.patch\("\/contratos\/:id", requireRole\("admin"\)/);
+  assert.match(backend, /activo = \?/);
+  assert.match(backend, /finaliza_el = COALESCE\(finaliza_el, CURRENT_DATE\)/);
+  assert.doesNotMatch(backend, /DELETE FROM contratos_financieros/);
+  assert.doesNotMatch(backend, /FROM contratos_financieros WHERE activo/);
+});
+
+test("los comparativos financieros calculan la nómina del mes anterior", () => {
+  const backend = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+  assert.match(backend, /loadPayrollForCollectionPeriod\(period\)/);
+  assert.match(backend, /loadPayrollForCollectionPeriod\(previousCollectionPeriod\)/);
+  assert.match(backend, /payrollARS: previousPayrollData\.payroll\.summary\.configuredPayroll/);
+  assert.match(backend, /history\.push\(\{\s*period: cursor,\s*total:/);
+});
+
+test("el Inicio del Líder consulta Finanzas por API sin bloquear el resto del panel", () => {
+  const frontend = readFileSync(new URL("../../frontend/src/pages/dashboards/Lider.jsx", import.meta.url), "utf8");
+  assert.match(frontend, /fetch\(`\/api\/sueldos\?periodo=/);
+  assert.match(frontend, /\.catch\(\(\) => null\)/);
+  assert.doesNotMatch(frontend, /fetch\(`\/sueldos\?periodo=/);
+});

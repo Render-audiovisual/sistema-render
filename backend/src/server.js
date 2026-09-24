@@ -478,44 +478,152 @@ router.get("/reportes/datos", async (req, res, next) => {
   }
 });
 
+async function loadPayrollForCollectionPeriod(collectionPeriod) {
+  const workPeriod = previousPeriod(collectionPeriod);
+  const [tasks, histories, publications, compensations, editingDeliveries] = await Promise.all([
+    pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
+      to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.propiedades_extra,t.created_at,t.updated_at,
+      c.nombre AS cliente_nombre FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+      WHERE t.propiedades_extra->>'workspace'='render_os' AND (to_char(t.fecha_vencimiento,'YYYY-MM')=$1
+        OR t.propiedades_extra->>'reporte_periodo'=$1 OR (t.fecha_vencimiento IS NULL AND to_char(t.updated_at,'YYYY-MM')=$1))`, [workPeriod]),
+    pool.query(`SELECT h.id,h.estado,to_char(h.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
+      h.idea,h.copy,h.fecha_publicación_real,h.updated_at,c.nombre AS cliente_nombre
+      FROM historias h JOIN clientes c ON c.id=h.cliente_id WHERE to_char(h.fecha_programada,'YYYY-MM')=$1`, [workPeriod]),
+    pool.query(`SELECT p.id,p.tipo,p.estado,to_char(p.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
+      p.idea,p.copy,p.fecha_publicación_real,p.updated_at,c.nombre AS cliente_nombre
+      FROM publicaciones p JOIN clientes c ON c.id=p.cliente_id WHERE to_char(p.fecha_programada,'YYYY-MM')=$1`, [workPeriod]),
+    pool.query(`SELECT DISTINCT ON (empleado_clave) empleado_clave,modalidad,sueldo_base,tarifa_facil,tarifa_intermedia
+      FROM empleado_compensaciones WHERE vigente_desde <= ($1 || '-01')::date
+      ORDER BY empleado_clave,vigente_desde DESC`, [collectionPeriod]),
+    pool.query(`SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
+      cliente_etiqueta,categoria,importe FROM entregas_edicion
+      WHERE to_char(fecha_entrega,'YYYY-MM')=$1 ORDER BY fecha_entrega,id`, [workPeriod]),
+  ]);
+  const payroll = applyCompensations(calculateSalaryDashboard({
+    period: workPeriod,
+    tasks: tasks.rows,
+    histories: histories.rows,
+    publications: publications.rows,
+    editingDeliveries: editingDeliveries.rows,
+  }), compensations.rows, []);
+  return { workPeriod, payroll };
+}
+
+function contractApiError(error, res, next) {
+  if (error.code === "23505") return res.status(409).json({ error: "Ya existe un contrato con ese nombre y fecha de inicio." });
+  if (["22007", "23502", "23514"].includes(error.code)) {
+    return res.status(400).json({ error: "Revisá el monto y las fechas del contrato." });
+  }
+  return next(error);
+}
+
+router.get("/contratos", requireRole("admin"), async (_req, res, next) => {
+  try {
+    const result = await pool.query(`SELECT id,nombre,importe_mensual,
+      to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,activo
+      FROM contratos_financieros ORDER BY activo DESC,nombre,inicia_el DESC`);
+    return res.json(result.rows);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post("/contratos", requireRole("admin"), async (req, res, next) => {
+  try {
+    const nombre = String(req.body.nombre || "").trim();
+    const importe = Number(req.body.importe_mensual);
+    const iniciaEl = String(req.body.inicia_el || "");
+    const finalizaEl = req.body.finaliza_el ? String(req.body.finaliza_el) : null;
+    if (!nombre || !Number.isFinite(importe) || importe < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(iniciaEl)) {
+      return res.status(400).json({ error: "Completá nombre, monto válido y fecha de inicio." });
+    }
+    if (finalizaEl && !/^\d{4}-\d{2}-\d{2}$/.test(finalizaEl)) {
+      return res.status(400).json({ error: "La fecha de finalización no es válida." });
+    }
+    const result = await pool.query(`INSERT INTO contratos_financieros
+      (nombre,importe_mensual,inicia_el,finaliza_el,activo) VALUES ($1,$2,$3::date,$4::date,true)
+      RETURNING id,nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
+        to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,activo`, [nombre, importe, iniciaEl, finalizaEl]);
+    return res.status(201).json(result.rows[0]);
+  } catch (error) {
+    return contractApiError(error, res, next);
+  }
+});
+
+router.patch("/contratos/:id", requireRole("admin"), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Contrato inválido." });
+    const updates = [];
+    const values = [];
+    const addValue = (sql, value) => {
+      values.push(value);
+      updates.push(sql.replace("?", `$${values.length}`));
+    };
+    if (Object.hasOwn(req.body, "nombre")) {
+      const nombre = String(req.body.nombre || "").trim();
+      if (!nombre) return res.status(400).json({ error: "El nombre no puede quedar vacío." });
+      addValue("nombre = ?", nombre);
+    }
+    if (Object.hasOwn(req.body, "importe_mensual")) {
+      const importe = Number(req.body.importe_mensual);
+      if (!Number.isFinite(importe) || importe < 0) return res.status(400).json({ error: "El monto no es válido." });
+      addValue("importe_mensual = ?", importe);
+    }
+    for (const field of ["inicia_el", "finaliza_el"]) {
+      if (!Object.hasOwn(req.body, field)) continue;
+      const value = req.body[field] ? String(req.body[field]) : null;
+      if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return res.status(400).json({ error: "La fecha no es válida." });
+      addValue(`${field} = ?::date`, value);
+    }
+    if (Object.hasOwn(req.body, "activo")) {
+      if (typeof req.body.activo !== "boolean") return res.status(400).json({ error: "El estado del contrato no es válido." });
+      addValue("activo = ?", req.body.activo);
+      if (!Object.hasOwn(req.body, "finaliza_el")) {
+        updates.push(req.body.activo ? "finaliza_el = NULL" : "finaliza_el = COALESCE(finaliza_el, CURRENT_DATE)");
+      }
+    }
+    if (!updates.length) return res.status(400).json({ error: "No hay campos para actualizar." });
+    values.push(id);
+    const result = await pool.query(`UPDATE contratos_financieros SET ${updates.join(", ")}
+      WHERE id = $${values.length} RETURNING id,nombre,importe_mensual,
+      to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,activo`, values);
+    if (!result.rows[0]) return res.status(404).json({ error: "Contrato no encontrado." });
+    return res.json(result.rows[0]);
+  } catch (error) {
+    return contractApiError(error, res, next);
+  }
+});
+
+router.delete("/contratos/:id", requireRole("admin"), async (req, res, next) => {
+  try {
+    const result = await pool.query(`UPDATE contratos_financieros
+      SET activo=false,finaliza_el=COALESCE(finaliza_el,CURRENT_DATE) WHERE id=$1
+      RETURNING id,nombre,activo,to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el`, [req.params.id]);
+    if (!result.rows[0]) return res.status(404).json({ error: "Contrato no encontrado." });
+    return res.json(result.rows[0]);
+  } catch (error) {
+    return next(error);
+  }
+});
+
 router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
   try {
     const period = String(req.query.periodo || "");
     if (!isValidSalaryPeriod(period)) {
       return res.status(400).json({ error: "Usá un período válido con formato YYYY-MM." });
     }
-    const workPeriod = previousPeriod(period);
-    const [contracts, expenses, tasks, histories, publications, compensations, editingDeliveries, exchangeRate] = await Promise.all([
+    const previousCollectionPeriod = previousPeriod(period);
+    const [contracts, expenses, currentPayrollData, previousPayrollData, exchangeRate] = await Promise.all([
       pool.query(`SELECT nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
-        to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM contratos_financieros ORDER BY nombre`),
+        to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM contratos_financieros ORDER BY nombre,inicia_el`),
       pool.query(`SELECT nombre,categoria,moneda,importe,dia_pago,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
         to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM gastos_fijos_financieros ORDER BY dia_pago,nombre`),
-      pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
-        to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.propiedades_extra,t.created_at,t.updated_at,
-        c.nombre AS cliente_nombre FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
-        WHERE t.propiedades_extra->>'workspace'='render_os' AND (to_char(t.fecha_vencimiento,'YYYY-MM')=$1
-          OR t.propiedades_extra->>'reporte_periodo'=$1 OR (t.fecha_vencimiento IS NULL AND to_char(t.updated_at,'YYYY-MM')=$1))`, [workPeriod]),
-      pool.query(`SELECT h.id,h.estado,to_char(h.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
-        h.idea,h.copy,h.fecha_publicación_real,h.updated_at,c.nombre AS cliente_nombre
-        FROM historias h JOIN clientes c ON c.id=h.cliente_id WHERE to_char(h.fecha_programada,'YYYY-MM')=$1`, [workPeriod]),
-      pool.query(`SELECT p.id,p.tipo,p.estado,to_char(p.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
-        p.idea,p.copy,p.fecha_publicación_real,p.updated_at,c.nombre AS cliente_nombre
-        FROM publicaciones p JOIN clientes c ON c.id=p.cliente_id WHERE to_char(p.fecha_programada,'YYYY-MM')=$1`, [workPeriod]),
-      pool.query(`SELECT DISTINCT ON (empleado_clave) empleado_clave,modalidad,sueldo_base,tarifa_facil,tarifa_intermedia
-        FROM empleado_compensaciones WHERE vigente_desde <= ($1 || '-01')::date
-        ORDER BY empleado_clave,vigente_desde DESC`, [period]),
-      pool.query(`SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
-        cliente_etiqueta,categoria,importe FROM entregas_edicion
-        WHERE to_char(fecha_entrega,'YYYY-MM')=$1 ORDER BY fecha_entrega,id`, [workPeriod]),
+      loadPayrollForCollectionPeriod(period),
+      loadPayrollForCollectionPeriod(previousCollectionPeriod),
       getCardDollarRate(),
     ]);
-    const payroll = applyCompensations(calculateSalaryDashboard({
-      period: workPeriod,
-      tasks: tasks.rows,
-      histories: histories.rows,
-      publications: publications.rows,
-      editingDeliveries: editingDeliveries.rows,
-    }), compensations.rows, []);
+    const payroll = currentPayrollData.payroll;
     const finance = buildAutomaticFinanceSummary({
       period,
       contracts: contracts.rows,
@@ -523,32 +631,20 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       payrollARS: payroll.summary.configuredPayroll,
       exchangeRateARS: exchangeRate.rounded,
     });
-    const previousPeriodLabel = previousPeriod(period);
     const previousFinance = buildAutomaticFinanceSummary({
-      period: previousPeriodLabel,
+      period: previousCollectionPeriod,
       contracts: contracts.rows,
       expenses: expenses.rows,
-      payrollARS: 0,
+      payrollARS: previousPayrollData.payroll.summary.configuredPayroll,
       exchangeRateARS: exchangeRate.rounded,
     });
     const firstBillingPeriod = "2026-09";
     const history = [];
     let cursor = firstBillingPeriod;
     while (cursor <= period && history.length < 120) {
-      const historicalFinance = buildAutomaticFinanceSummary({ 
-        period: cursor, 
-        contracts: contracts.rows, 
-        expenses: expenses.rows, 
-        payrollARS: 0, 
-        exchangeRateARS: exchangeRate.rounded 
-      });
       history.push({
         period: cursor,
-        facturacion: historicalFinance.facturacion,
-        sueldos: historicalFinance.sueldos,
-        gastosFijos: historicalFinance.gastosFijosARS,
-        resultado: historicalFinance.resultadoARS,
-        margen: historicalFinance.facturacion > 0 ? ((historicalFinance.resultadoARS / historicalFinance.facturacion) * 100) : 0,
+        total: buildAutomaticFinanceSummary({ period: cursor, contracts: contracts.rows, expenses: [], payrollARS: 0 }).facturacion,
       });
       cursor = nextPeriod(cursor);
     }
@@ -3435,79 +3531,6 @@ app.use((err, _req, res, _next) => {
 // IIFE en vez de top-level await: el runtime de Hostinger (LiteSpeed
 // lsnode.js) carga este archivo con require(), que no admite módulos ESM
 // con await de nivel superior (ERR_REQUIRE_ASYNC_MODULE).
-// Endpoints para gestionar contratos (clientes)
-router.get("/contratos", requireRole("admin"), async (req, res, next) => {
-  try {
-    const result = await pool.query(`
-      SELECT id, nombre, importe_mensual, to_char(inicia_el, 'YYYY-MM-DD') AS inicia_el, 
-        to_char(finaliza_el, 'YYYY-MM-DD') AS finaliza_el
-      FROM contratos_financieros 
-      ORDER BY nombre
-    `);
-    res.json(result.rows);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.post("/contratos", requireRole("admin"), async (req, res, next) => {
-  try {
-    const { nombre, importe_mensual, inicia_el, finaliza_el } = req.body;
-    if (!nombre || importe_mensual === undefined) {
-      return res.status(400).json({ error: "nombre e importe_mensual son requeridos" });
-    }
-    const result = await pool.query(
-      `INSERT INTO contratos_financieros (nombre, importe_mensual, inicia_el, finaliza_el, activo)
-       VALUES ($1, $2, $3::date, $4::date, true) RETURNING id, nombre, importe_mensual, to_char(inicia_el, 'YYYY-MM-DD') AS inicia_el, to_char(finaliza_el, 'YYYY-MM-DD') AS finaliza_el, activo`,
-      [nombre, importe_mensual, inicia_el || null, finaliza_el || null]
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.patch("/contratos/:id", requireRole("admin"), async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { nombre, importe_mensual, inicia_el, finaliza_el } = req.body;
-    const updates = [];
-    const values = [];
-    let paramIndex = 1;
-    
-    if (nombre !== undefined) { updates.push(`nombre = $${paramIndex++}`); values.push(nombre); }
-    if (importe_mensual !== undefined) { updates.push(`importe_mensual = $${paramIndex++}`); values.push(importe_mensual); }
-    if (inicia_el !== undefined) { updates.push(`inicia_el = $${paramIndex++}::date`); values.push(inicia_el); }
-    if (finaliza_el !== undefined) { updates.push(`finaliza_el = $${paramIndex++}::date`); values.push(finaliza_el); }
-    
-    if (updates.length === 0) return res.status(400).json({ error: "No hay campos para actualizar" });
-    
-    values.push(id);
-    const result = await pool.query(
-      `UPDATE contratos_financieros SET ${updates.join(', ')} WHERE id = $${paramIndex} 
-       RETURNING id, nombre, importe_mensual, to_char(inicia_el, 'YYYY-MM-DD') AS inicia_el, to_char(finaliza_el, 'YYYY-MM-DD') AS finaliza_el, activo`,
-      values
-    );
-    
-    if (result.rows.length === 0) return res.status(404).json({ error: "Contrato no encontrado" });
-    res.json(result.rows[0]);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.delete("/contratos/:id", requireRole("admin"), async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const result = await pool.query(`DELETE FROM contratos_financieros WHERE id = $1 RETURNING id`, [id]);
-    if (result.rows.length === 0) return res.status(404).json({ error: "Contrato no encontrado" });
-    res.json({ success: true, id });
-  } catch (error) {
-    next(error);
-  }
-});
-
-
 function scheduleEditorialCalendar() {
   let lastRun = "";
   let currentPrepared = false;
