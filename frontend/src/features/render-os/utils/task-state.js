@@ -47,6 +47,10 @@ export function canUserEditTask(task, user) {
   return user?.rol === "admin" || canUserOwnTask(task, user);
 }
 
+export function canUserDeleteTask(task, user) {
+  return user?.rol === "admin" || canUserOwnTask(task, user);
+}
+
 export function canUserMoveTask(task, user) {
   if (isTaskFinalizer(user)) return true;
   if (task?.estado === "publicada") return isOwnProductionTask(task, user);

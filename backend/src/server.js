@@ -2695,17 +2695,32 @@ router.post("/tareas/acciones-masivas", async (req, res, next) => {
       return res.status(400).json({ error: "Acción masiva inválida." });
     }
     const actor = getTaskActor(req.auth) || "Equipo RENDER";
+    const access = buildTaskAccessClause(req.auth, "t", "$3");
     const metadata = action === "papelera"
         ? { archivada_render_os: true, papelera_render_os: true, papelera_por: actor, papelera_at: new Date().toISOString() }
         : { archivada_render_os: false, papelera_render_os: false, restaurada_por: actor, restaurada_at: new Date().toISOString() };
+    const params = [ids, JSON.stringify(metadata)];
+    if (access.value) params.push(access.value);
     const result = await pool.query(
-      `UPDATE tareas
-       SET propiedades_extra = propiedades_extra || $2::jsonb, updated_at = now()
-       WHERE id = ANY($1::bigint[])
-         AND propiedades_extra->>'workspace' = 'render_os'
-       RETURNING id`,
-      [ids, JSON.stringify(metadata)],
+      `WITH accesibles AS (
+         SELECT t.id
+         FROM tareas AS t
+         WHERE t.id = ANY($1::bigint[])
+           AND t.propiedades_extra->>'workspace' = 'render_os'${access.sql}
+       ), autorizadas AS (
+         SELECT id FROM accesibles
+         WHERE (SELECT count(*) FROM accesibles) = cardinality($1::bigint[])
+       )
+       UPDATE tareas AS t
+       SET propiedades_extra = t.propiedades_extra || $2::jsonb, updated_at = now()
+       FROM autorizadas AS a
+       WHERE t.id = a.id
+       RETURNING t.id`,
+      params,
     );
+    if (result.rowCount !== ids.length) {
+      return res.status(403).json({ error: "Solo podés eliminar o restaurar tareas propias o donde colaborás." });
+    }
     return res.json({ ok: true, accion: action, ids: result.rows.map((row) => Number(row.id)), cantidad: result.rowCount });
   } catch (error) {
     return next(error);

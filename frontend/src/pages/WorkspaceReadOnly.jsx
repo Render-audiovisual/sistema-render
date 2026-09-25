@@ -4,7 +4,7 @@ import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerIn
 import { AREAS, BOARD_COLUMNS, STATUSES, TASK_TYPES } from "../features/render-os/constants.js";
 import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
 import { areaForTask, emojiForTaskCard, formatDate, formatDateTime, initials, personForTask } from "../features/render-os/utils/task-formatters.js";
-import { canRetryTaskUpdate, canUserEditTask, canUserMoveTask, canUserMoveTaskToState, mergeRelatedTasks } from "../workspace-task-state.js";
+import { canRetryTaskUpdate, canUserDeleteTask, canUserEditTask, canUserMoveTask, canUserMoveTaskToState, mergeRelatedTasks } from "../workspace-task-state.js";
 import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
 import { getProductionPhase, getProductionVisitProgress, isProductionVisitTask } from "../features/render-os/utils/production-visits.js";
 import { getCanonicalTaskContentMetadata, getUnifiedTaskContent } from "../features/render-os/utils/task-content.js";
@@ -144,6 +144,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const tags = Array.isArray(metadata.etiquetas) ? metadata.etiquetas : [];
   const collaborators = Array.isArray(metadata.colaboradores) ? metadata.colaboradores : [];
   const canEditTask = canUserEditTask(task, sesion?.usuario);
+  const canDeleteTask = canUserDeleteTask(task, sesion?.usuario);
   const subtasks = tasks.filter((item) => Number(item.tarea_padre_id) === Number(task.id));
   const links = [...new Set(extraerUrlsTarea(task.aclaraciones || ""))].filter((url) => url !== task.material_referencia);
   const materialInfo = task.material_referencia ? obtenerInfoLinkTarea(task.material_referencia) : null;
@@ -268,6 +269,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
 
   const changeTrashState = async () => {
     if (archivePendingRef.current) return;
+    if (!isTrashed && !window.confirm("¿Enviar esta tarea a Papelera? Podrás restaurarla durante 10 días.")) return;
     archivePendingRef.current = true;
     setArchiving(true);
     try {
@@ -396,7 +398,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           </div>
         </section>
         {isAdmin && editing && <div className="ros-detail-actions ros-edit-footer"><button type="button" onClick={cancelEditing}>Cancelar</button><button className="primary" type="button" disabled={saving || !draft.titulo?.trim() || !draft.asignado_a} onClick={save}>{saving ? "Guardando…" : "Guardar cambios"}</button></div>}
-        {isAdmin && <details className="ros-task-admin-actions ros-task-admin-actions-footer"><summary>Acciones de tarea</summary><div className="ros-danger-zone"><strong>{isTrashed ? "Tarea eliminada" : "Eliminar tarea"}</strong><p>{isTrashed ? "Podés restaurarla antes de que se elimine definitivamente." : "Permanecerá 10 días en Papelera antes de eliminarse definitivamente."}</p><div><button className={isTrashed ? "" : "danger"} type="button" disabled={archiving} onClick={changeTrashState}>{archiving ? (isTrashed ? "Restaurando…" : "Enviando…") : (isTrashed ? "Restaurar tarea" : "Enviar a Papelera")}</button></div></div></details>}
+        {canDeleteTask && <details className="ros-task-admin-actions ros-task-admin-actions-footer"><summary>Acciones de tarea</summary><div className="ros-danger-zone"><strong>{isTrashed ? "Tarea eliminada" : "Eliminar tarea"}</strong><p>{isTrashed ? "Podés restaurarla antes de que se elimine definitivamente." : "Permanecerá 10 días en Papelera antes de eliminarse definitivamente."}</p><div><button className={isTrashed ? "" : "danger"} type="button" disabled={archiving} onClick={changeTrashState}>{archiving ? (isTrashed ? "Restaurando…" : "Enviando…") : (isTrashed ? "Restaurar tarea" : "Enviar a Papelera")}</button></div></div></details>}
       </div>
     </aside>
   </div>;

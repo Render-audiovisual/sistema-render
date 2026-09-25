@@ -121,6 +121,9 @@ test("las acciones masivas no aparecen en el tablero y la Papelera individual si
   assert.match(serverSource, /router\.post\("\/tareas\/acciones-masivas", async/);
   assert.match(serverSource, /\["papelera", "restaurar"\]/);
   assert.doesNotMatch(serverSource, /router\.post\("\/tareas\/acciones-masivas", requireRole/);
+  assert.match(serverSource, /buildTaskAccessClause\(req\.auth, "t", "\$3"\)/);
+  assert.match(serverSource, /Solo podés eliminar o restaurar tareas propias o donde colaborás/);
+  assert.match(workspaceSource, /canDeleteTask && <details/);
   assert.match(serverSource, /papelera_render_os/);
 });
 
