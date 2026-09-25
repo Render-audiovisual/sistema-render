@@ -133,6 +133,13 @@ test("Tareas evita renders globales y mantiene los hooks en el nivel del compone
   assert.doesNotMatch(workspaceSource, /const incorporateRelatedTasks = useCallback\(\(items\) => \{\s*const refreshFeedbackCount/);
 });
 
+test("abrir una tarea no compite con el arrastre de la tarjeta", () => {
+  const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  assert.match(workspaceSource, /className="ros-card-drag-handle" draggable="true"/);
+  assert.match(workspaceSource, /onClick=\{\(\) => onOpen\(task\.id\)\}/);
+  assert.doesNotMatch(workspaceSource, /<article[^>]+draggable=\{canMove\}/);
+});
+
 test("los dashboards personales leen y actualizan únicamente RENDER OS", () => {
   const assignedTasksSource = readFileSync(new URL("../../frontend/src/components/TareasAsignadasGenericas.jsx", import.meta.url), "utf8");
   assert.match(assignedTasksSource, /workspace: "render_os"/);

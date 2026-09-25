@@ -72,3 +72,17 @@ test("producción puede completar y reabrir sus tareas sin habilitar otros secto
   assert.equal(isTaskFinalizer(oriana), true);
   assert.equal(canUserMoveTaskToState(ownTask, oriana, "programada"), false);
 });
+
+test("las community managers conservan acceso operativo en todos los estados", () => {
+  const estados = ["pendiente", "en_progreso", "en_revision", "publicada"];
+  const communityManagers = [
+    { nombre: "Oriana", usuario: "Oriana", rol: "community" },
+    { nombre: "Ana Mayerro", usuario: "Ana", rol: "community" },
+  ];
+  for (const user of communityManagers) {
+    for (const estado of estados) {
+      const task = { estado, asignado_a: "Augusto", tipo_tarea: "diseno", propiedades_extra: {} };
+      assert.equal(canUserMoveTask(task, user), true, `${user.nombre} debe acceder a ${estado}`);
+    }
+  }
+});

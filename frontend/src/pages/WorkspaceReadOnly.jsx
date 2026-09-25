@@ -487,8 +487,16 @@ const TaskCard = React.memo(function TaskCard({ task, users, user, today, onOpen
   const collaborators = Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [];
   const phase = getProductionPhase(task);
   const availableStatuses = STATUSES.filter((item) => item.id === task.estado || canUserMoveTaskToState(task, user, item.id));
-  return <article role="button" tabIndex={0} data-task-id={task.id} draggable={canMove} className={`ros-task-card ${canMove ? "can-move" : "view-only"}`} onDragStart={(event) => { if (!canMove) { event.preventDefault(); return; } event.dataTransfer.setData("text/task-id", String(task.id)); event.dataTransfer.effectAllowed = "move"; event.currentTarget.classList.add("is-dragging"); }} onDragEnd={(event) => event.currentTarget.classList.remove("is-dragging")} onClick={() => onOpen(task.id)} onKeyDown={(event) => { if (event.key !== "Enter" && event.key !== " ") return; event.preventDefault(); onOpen(task.id); }}>
-    <div className="ros-card-badges"><AreaBadge task={task} card/>{phase && <span className={`ros-phase-badge ${phase.id}`}>{phase.label}</span>}</div><h3>{task.titulo}</h3><p>{task.cliente_nombre || "Sin cliente"}</p>
+  const startDrag = (event) => {
+    if (!canMove) { event.preventDefault(); return; }
+    event.stopPropagation();
+    event.dataTransfer.setData("text/task-id", String(task.id));
+    event.dataTransfer.effectAllowed = "move";
+    event.currentTarget.closest(".ros-task-card")?.classList.add("is-dragging");
+  };
+  const endDrag = (event) => event.currentTarget.closest(".ros-task-card")?.classList.remove("is-dragging");
+  return <article role="button" tabIndex={0} data-task-id={task.id} className={`ros-task-card ${canMove ? "can-move" : "view-only"}`} onClick={() => onOpen(task.id)} onKeyDown={(event) => { if (event.key !== "Enter" && event.key !== " ") return; event.preventDefault(); onOpen(task.id); }}>
+    <div className="ros-card-badges"><AreaBadge task={task} card/>{phase && <span className={`ros-phase-badge ${phase.id}`}>{phase.label}</span>}{canMove && <span className="ros-card-drag-handle" draggable="true" role="button" tabIndex={-1} aria-label={`Mover ${task.titulo}`} title="Arrastrar tarea" onClick={(event) => event.stopPropagation()} onDragStart={startDrag} onDragEnd={endDrag}>⠿</span>}</div><h3>{task.titulo}</h3><p>{task.cliente_nombre || "Sin cliente"}</p>
     {task.propiedades_extra?.resumen && <div className="ros-card-summary">{task.propiedades_extra.resumen}</div>}
     {tags.length > 0 && <div className="ros-card-tags">{tags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}
     {esperandoMaterial(task) && <div className="ros-card-warning">Esperando material</div>}
