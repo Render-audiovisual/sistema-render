@@ -27,6 +27,7 @@ function Reference({ text }) {
 export function FeedbackPage({ request = apiRequest, sesion = null }) {
   const initialParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const [notes, setNotes] = useState([]);
+  const [taskFeedbacks, setTaskFeedbacks] = useState([]);
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
   const [section, setSection] = useState(initialParams.get("section") === "team" ? "team" : "clients");
@@ -64,9 +65,14 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     let active = true;
     setLoading(true);
     setError("");
-    request(`/api/notas?${trash ? "papelera=true" : ""}`).then((rows) => {
+    const notesRequest = request(`/api/notas?${trash ? "papelera=true" : ""}`);
+    const taskRequest = trash
+      ? Promise.resolve([])
+      : request("/api/tareas?workspace=render_os&limit=100&offset=0&q=feedback");
+    Promise.all([notesRequest, taskRequest]).then(([rows, taskRows]) => {
       if (!active) return;
       setNotes(rows);
+      setTaskFeedbacks(taskRows);
       if (!trash) markFeedbackSeen(sesion?.usuario);
       const noteId = linkedNoteId.current;
       const linkedNote = rows.find((note) => note.id === noteId);
@@ -109,6 +115,12 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     setError("");
     setMessage("");
     setConflict(false);
+  }
+
+  function openTask(taskId) {
+    const destination = `/workspace/tareas?task=${taskId}`;
+    window.history.pushState({}, "", destination);
+    window.dispatchEvent(new PopStateEvent("popstate"));
   }
 
   function createNote() {
@@ -203,7 +215,29 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
   const clientOptions = useMemo(() => [...new Set([
     ...clients.map((item) => item.nombre),
     ...notes.map((note) => note.feedback?.cliente),
-  ].filter(Boolean))].sort((left, right) => left.localeCompare(right, "es")), [clients, notes]);
+    ...taskFeedbacks.map((task) => task.cliente_nombre),
+  ].filter(Boolean))].sort((left, right) => left.localeCompare(right, "es")), [clients, notes, taskFeedbacks]);
+
+  const feedbackEntries = useMemo(() => [
+    ...notes,
+    ...taskFeedbacks.map((task) => ({
+      id: `task-${task.id}`,
+      task_id: task.id,
+      source: "task",
+      titulo: task.titulo,
+      contenido: task.aclaraciones || "Sin detalle.",
+      categoria: "general",
+      feedback: {
+        cliente: task.cliente_nombre || "",
+        responsable: task.asignado_a || "",
+        referencia: task.material_referencia || "",
+      },
+      creado_por: task.propiedades_extra?.wilson_confirmado_por || "Wilson",
+      modificado_por: task.propiedades_extra?.wilson_confirmado_por || task.asignado_a || "Equipo RENDER",
+      created_at: task.created_at,
+      updated_at: task.updated_at,
+    })),
+  ], [notes, taskFeedbacks]);
 
   useEffect(() => {
     if (selected && !draft) {
@@ -211,7 +245,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     }
   }, [clientOptions, selected?.id, Boolean(draft)]);
 
-  const visible = useMemo(() => notes.filter((note) => {
+  const visible = useMemo(() => feedbackEntries.filter((note) => {
     const belongsToClients = isClientFeedback(note, clientOptions);
     const belongsToSection = section === "clients" ? belongsToClients : !belongsToClients;
     const searchable = [
@@ -224,7 +258,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
       ...Object.values(note.feedback || {}),
     ].join(" ");
     return belongsToSection && normalizeFeedbackText(searchable).includes(normalizeFeedbackText(query));
-  }), [notes, section, query, clientOptions]);
+  }), [feedbackEntries, section, query, clientOptions]);
 
   const change = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
   const changeMeta = (key, value) => setDraft((current) => ({ ...current, feedback: { ...current.feedback, [key]: value } }));
@@ -283,7 +317,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
           <div className="rf-detail-content">{selected.contenido || "Sin contenido."}</div>
           {selected.feedback?.referencia && <section className="rf-reference"><span>REFERENCIA</span><Reference text={selected.feedback.referencia}/></section>}
           <dl className="rf-detail-meta"><div><dt>Responsable</dt><dd>{selected.feedback?.responsable || "Sin asignar"}</dd></div><div><dt>Categoría</dt><dd>{CATEGORY_LABELS[selected.categoria] || "General"}</dd></div><div><dt>Creado por</dt><dd>{selected.creado_por}</dd></div></dl>
-          <footer className="rf-detail-actions">{trash ? <button className="rf-primary" disabled={busy} onClick={() => trashAction(selected)}>Restaurar feedback</button> : <><button className="rf-danger" disabled={busy} onClick={() => trashAction(selected)}>Mover a Papelera</button><button className="rf-primary" disabled={busy} onClick={() => editNote(selected)}>Editar feedback</button></>}</footer>
+          <footer className="rf-detail-actions">{selected.source === "task" ? <button className="rf-primary" onClick={() => openTask(selected.task_id)}>Abrir tarea relacionada</button> : trash ? <button className="rf-primary" disabled={busy} onClick={() => trashAction(selected)}>Restaurar feedback</button> : <><button className="rf-danger" disabled={busy} onClick={() => trashAction(selected)}>Mover a Papelera</button><button className="rf-primary" disabled={busy} onClick={() => editNote(selected)}>Editar feedback</button></>}</footer>
         </div>}
       </section>
     </div>}

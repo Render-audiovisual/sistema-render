@@ -2875,6 +2875,7 @@ router.get("/tareas", async (req, res, next) => {
         t.titulo,
         COALESCE(c.nombre, ''),
         COALESCE(t.asignado_a, ''),
+        COALESCE(t.aclaraciones, ''),
         COALESCE(t.propiedades_extra->>'resumen', ''),
         COALESCE(t.propiedades_extra->'colaboradores', '[]'::jsonb)::text
       ) ILIKE $${paramCount}`;

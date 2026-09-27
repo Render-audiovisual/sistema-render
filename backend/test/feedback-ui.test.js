@@ -26,6 +26,14 @@ test("Feedback recupera el cliente de notas antiguas sin metadata", () => {
   assert.equal(resolveFeedbackClient({ titulo: "Nota general", feedback: { cliente: "Moketa" } }, clients), "Moketa");
 });
 
+test("Feedback incorpora pedidos cargados por Wilson como tareas", () => {
+  assert.match(feedbackSource, /q=feedback/);
+  assert.match(feedbackSource, /task\.propiedades_extra\?\.wilson_confirmado_por/);
+  assert.match(feedbackSource, /source: "task"/);
+  assert.match(feedbackSource, /Abrir tarea relacionada/);
+  assert.match(feedbackSource, /window\.dispatchEvent\(new PopStateEvent\("popstate"\)\)/);
+});
+
 test("Feedback presenta resúmenes compactos y abre el contenido en un panel", () => {
   assert.match(feedbackSource, /className="rf-note-card"/);
   assert.match(feedbackSource, /onClick=\{\(\) => openNote\(note\)\}/);
