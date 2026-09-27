@@ -21,8 +21,14 @@ import { DrivePage } from "./pages/Drive.jsx";
 import { WilsonConversationsPage } from "./pages/WilsonConversations.jsx";
 
 export function App() {
-  const path = window.location.pathname;
+  const [path, setPath] = React.useState(window.location.pathname);
   let sesion = getSesion();
+
+  React.useEffect(() => {
+    const syncPath = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", syncPath);
+    return () => window.removeEventListener("popstate", syncPath);
+  }, []);
 
   if (path === "/agustin" || path === "/franco") {
     window.location.href = "/lider";

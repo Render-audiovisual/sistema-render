@@ -1764,11 +1764,12 @@
   min-height:36px;
   padding:7px 10px;
   text-decoration:none;
-  transition:background .2s ease,border-color .2s ease,box-shadow .2s ease,transform .2s ease;
+  transition:background .18s ease,border-color .18s ease,box-shadow .18s ease;
 }
 .render-workspace .ros-feedback-link::before{background:#d8ddd2;content:"";height:24px;margin-left:-19px;margin-right:8px;width:1px}
 .render-workspace .ros-feedback-link>span{color:#68745a;font-size:14px;line-height:1}
-.render-workspace .ros-feedback-link:hover{background:#eef3e6;border-color:#cbd7bd;box-shadow:0 5px 16px #28301f12;transform:translateY(-1px)}
+.render-workspace .ros-feedback-link:hover{background:#eef3e6;border-color:#cbd7bd;box-shadow:0 4px 14px #28301f10}
+.render-workspace .ros-feedback-link:active{box-shadow:0 1px 4px #28301f12;transform:scale(.975)}
 .render-workspace .ros-feedback-link.has-new{background:#f2f8e7;border-color:#bfd693;color:#29331f}
 .render-workspace .ros-feedback-link>b{
   align-items:center;
@@ -1785,6 +1786,14 @@
   padding:0 6px;
 }
 @keyframes ros-feedback-arrival{from{opacity:0;transform:scale(.72)}to{opacity:1;transform:scale(1)}}
+/* Movimiento funcional: confirma el toque y orienta al cambiar de vista sin
+   desplazar el contenido ni competir con el trabajo. */
+.render-workspace button:not(:disabled):active{transform:scale(.975)}
+.render-workspace .ros-task-card:active{box-shadow:0 2px 7px #20212412;transform:scale(.992)}
+.render-workspace :is(.ros-board,.ros-task-list,.ros-calendar,.ros-project-grid,.ros-no-results){animation:ros-surface-enter .2s cubic-bezier(.22,.8,.22,1) both}
+.render-workspace .ros-filter-bar.open{animation:ros-surface-enter .18s cubic-bezier(.22,.8,.22,1) both}
+.render-workspace .ros-controls button{transition:background-color .16s ease,border-color .16s ease,color .16s ease,transform .12s ease}
+@keyframes ros-surface-enter{from{opacity:.72;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:900px){
   .render-workspace .ros-controls{align-items:flex-start;flex-wrap:wrap}
   .render-workspace .ros-feedback-link{margin:4px 0 8px 14px}
@@ -1796,5 +1805,7 @@
   .render-workspace .ros-feedback-link::before{display:none}
 }
 @media(prefers-reduced-motion:reduce){
-  .render-workspace .ros-feedback-link,.render-workspace .ros-feedback-link>b{animation:none;transition:none}
+  .render-workspace .ros-feedback-link,.render-workspace .ros-feedback-link>b,
+  .render-workspace :is(.ros-board,.ros-task-list,.ros-calendar,.ros-project-grid,.ros-no-results,.ros-filter-bar.open){animation:none;transition:none}
+  .render-workspace button:not(:disabled):active,.render-workspace .ros-task-card:active,.render-workspace .ros-feedback-link:active{transform:none}
 }
