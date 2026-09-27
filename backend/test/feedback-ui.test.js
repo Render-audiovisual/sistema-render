@@ -48,6 +48,11 @@ test("Feedback adapta la grilla y el detalle a pantallas móviles", () => {
   assert.match(feedbackStyles, /\.rf-grid\{grid-template-columns:1fr\}/);
   assert.match(feedbackStyles, /\.rf-panel\{height:100dvh;max-width:none;width:100%\}/);
   assert.match(feedbackStyles, /min-height:44px/);
+  assert.match(feedbackStyles, /env\(safe-area-inset-top\)/);
+  assert.match(feedbackStyles, /\.rf-search input\{font-size:16px/);
+  assert.match(feedbackStyles, /\.rf-panel-backdrop\{z-index:1300\}/);
+  assert.match(feedbackStyles, /position:sticky/);
+  assert.match(feedbackStyles, /overscroll-behavior-y:contain/);
 });
 
 test("Tareas abre Feedback sin recargar ni romper el marco de la aplicación", () => {
