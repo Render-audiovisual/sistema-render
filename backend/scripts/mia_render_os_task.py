@@ -123,16 +123,28 @@ def main():
     ack_private.add_argument("--fingerprint", required=True)
     get_task = commands.add_parser("get")
     get_task.add_argument("--task-id", required=True, type=int)
+    get_feedback = commands.add_parser("get-feedback")
+    get_feedback.add_argument("--feedback-id", required=True, type=int)
     validate = commands.add_parser("validate")
     validate.add_argument("--payload", required=True)
+    validate_feedback = commands.add_parser("validate-feedback")
+    validate_feedback.add_argument("--payload", required=True)
     propose = commands.add_parser("propose")
-    propose.add_argument("--operation", required=True, choices=("crear", "editar", "archivar", "eliminar", "confirmar_grabacion"))
+    propose.add_argument("--operation", required=True, choices=("crear", "editar", "archivar", "eliminar", "confirmar_grabacion", "crear_feedback", "editar_feedback"))
     propose.add_argument("--task-id", type=int)
     propose.add_argument("--payload", default="{}")
     create = commands.add_parser("create")
     create.add_argument("--payload", required=True)
     create.add_argument("--confirmation-token", required=True)
     create.add_argument("--idempotency-key", required=True)
+    create_feedback = commands.add_parser("create-feedback")
+    create_feedback.add_argument("--payload", required=True)
+    create_feedback.add_argument("--confirmation-token", required=True)
+    create_feedback.add_argument("--idempotency-key", required=True)
+    update_feedback = commands.add_parser("update-feedback")
+    update_feedback.add_argument("--feedback-id", required=True, type=int)
+    update_feedback.add_argument("--payload", required=True)
+    update_feedback.add_argument("--confirmation-token", required=True)
     update = commands.add_parser("update")
     update.add_argument("--task-id", required=True, type=int)
     update.add_argument("--payload", required=True)
@@ -177,8 +189,12 @@ def main():
         result = request("POST", f"/notificaciones-privadas/{args.notification_id}/entregada", args, payload={"fingerprint": args.fingerprint})
     elif args.cmd == "get":
         result = request("GET", f"/tareas/{args.task_id}", args)
+    elif args.cmd == "get-feedback":
+        result = request("GET", f"/feedback/{args.feedback_id}", args)
     elif args.cmd == "validate":
         result = request("POST", "/tareas/validar", args, payload=json.loads(args.payload))
+    elif args.cmd == "validate-feedback":
+        result = request("POST", "/feedback/validar", args, payload=json.loads(args.payload))
     elif args.cmd == "propose":
         if args.operation != "crear" and not args.task_id:
             raise RuntimeError("Esta operación necesita --task-id.")
@@ -189,6 +205,10 @@ def main():
         })
     elif args.cmd == "create":
         result = request("POST", "/tareas", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token), idempotency_key=args.idempotency_key)
+    elif args.cmd == "create-feedback":
+        result = request("POST", "/feedback", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token), idempotency_key=args.idempotency_key)
+    elif args.cmd == "update-feedback":
+        result = request("PATCH", f"/feedback/{args.feedback_id}", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token))
     elif args.cmd == "update":
         result = request("PATCH", f"/tareas/{args.task_id}", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token), idempotency_key=args.idempotency_key)
     elif args.cmd == "archive":

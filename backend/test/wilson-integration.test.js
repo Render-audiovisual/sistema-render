@@ -7,6 +7,7 @@ import {
   buildMiaPendingEvent,
   buildWilsonConfirmationHash,
   buildWilsonSignatureMessage,
+  buildWilsonFeedback,
   buildWilsonTask,
   buildWilsonTaskUpdate,
   canWilsonAssignPrivately,
@@ -80,6 +81,18 @@ const catalog = {
     { id: 11, usuario: "mariano", nombre: "Mariano Meza", rol: "diseno" },
   ],
 };
+
+test("Mía prepara feedback con responsables iguales y datos completos", () => {
+  const result = buildWilsonFeedback({
+    seccion: "cliente", cliente: "Bunker Training", titulo: "No usar fondos rojos",
+    detalle: "El cliente pidió evitar fondos rojos en todos los carruseles.",
+    responsables: ["Oriana", "Mariano"], vigencia: "permanente",
+  }, catalog);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.feedback.feedback.cliente, "Búnker Training");
+  assert.deepEqual(result.feedback.feedback.responsables, ["Oriana", "Mariano Meza"]);
+  assert.equal(result.feedback.feedback.vigencia, "permanente");
+});
 
 test("Wilson normaliza una tarea confirmable sin inventar valores", () => {
   const result = buildWilsonTask({

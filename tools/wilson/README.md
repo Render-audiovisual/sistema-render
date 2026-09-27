@@ -108,3 +108,39 @@ python3 scripts/mia_render_os_task.py fast-context --person 'Germán' \
 Cada empleado puede consultar únicamente su propio contexto. Franco y Agustín
 también pueden consultar a otra persona. Esta operación es de solo lectura: no
 modifica tareas, responsables, estados ni registros.
+
+## Feedback y tareas desde WhatsApp
+
+Cuando un mensaje contiene una preferencia, corrección o reclamo, Mía debe
+recomendar `Feedback`. Cuando pide una acción concreta con fecha o entrega,
+debe recomendar `Tarea`. Si contiene ambas cosas, debe preparar ambos borradores
+sin guardar todavía.
+
+Mía pregunta únicamente los datos faltantes y presenta un solo resumen corto:
+cliente o `Equipo`, título, detalle, vigencia, estado y responsables para el
+feedback; cliente, sector, prioridad, fecha, descripción y responsables para la
+tarea. Puede analizar texto transcripto de audios o imágenes, pero RENDER OS
+guarda solamente texto. Siempre termina con `Confirmar`, `Modificar` o
+`Cancelar`; la confirmación vence a los quince minutos.
+
+Antes de confirmar un feedback se debe ejecutar `validate-feedback`. Si aparecen
+duplicados, Mía ofrece modificar el anterior o crear uno nuevo; nunca decide por
+su cuenta. El alta confirmada usa `crear_feedback` y una idempotency key estable:
+
+```bash
+python3 scripts/mia_render_os_task.py validate-feedback --payload '<json>' \
+  --actor-id '<id>' --actor-name 'Oriana'
+
+python3 scripts/mia_render_os_task.py propose --operation crear_feedback \
+  --payload '<mismo-json>' --actor-id '<id>' --actor-name 'Oriana'
+
+python3 scripts/mia_render_os_task.py create-feedback --payload '<mismo-json>' \
+  --confirmation-token '<token>' --idempotency-key '<uuid>' \
+  --actor-id '<id>' --actor-name 'Oriana'
+```
+
+Los responsables son equivalentes: no se comunica un responsable principal.
+Se exige al menos uno y, al guardar, cada responsable recibe un aviso privado
+por WhatsApp. Para una solicitud mixta, Mía valida feedback y tarea, muestra un
+solo resumen al usuario y, después del mismo “sí”, ejecuta las dos altas con sus
+confirmaciones técnicas correspondientes.

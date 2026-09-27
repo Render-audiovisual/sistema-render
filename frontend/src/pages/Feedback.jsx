@@ -11,8 +11,13 @@ const emptyDraft = (section) => ({
   titulo: "",
   contenido: "",
   categoria: section === "team" ? "reunion" : "general",
-  feedback: { cliente: "", responsable: "", referencia: "" },
+  feedback: { cliente: "", responsable: "", responsables: [], referencia: "", estado: "pendiente", vigencia: "puntual", flujo: "feedback" },
 });
+
+function feedbackResponsibles(note) {
+  const values = Array.isArray(note?.feedback?.responsables) ? note.feedback.responsables : [note?.feedback?.responsable];
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
 
 function formatDate(value) {
   return value ? new Date(value).toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" }) : "";
@@ -42,6 +47,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
   const [message, setMessage] = useState("");
   const [reload, setReload] = useState(0);
   const [conflict, setConflict] = useState(false);
+  const [duplicates, setDuplicates] = useState([]);
   const titleRef = useRef(null);
   const lock = useRef(false);
   const linkedNoteId = useRef(Number(initialParams.get("note")) || null);
@@ -131,6 +137,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     setBaseline(JSON.stringify(next));
     setError("");
     setConflict(false);
+    setDuplicates([]);
   }
 
   function editNote(note) {
@@ -140,6 +147,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
         ...emptyDraft(section).feedback,
         ...note.feedback,
         cliente: resolveFeedbackClient(note, clientOptions),
+        responsables: feedbackResponsibles(note),
       },
     };
     setSelected(note);
@@ -147,6 +155,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     setBaseline(JSON.stringify(next));
     setError("");
     setConflict(false);
+    setDuplicates([]);
   }
 
   function closePanel() {
@@ -155,21 +164,31 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     setDraft(null);
     setBaseline("");
     setConflict(false);
+    setDuplicates([]);
   }
 
-  async function save(event) {
-    event.preventDefault();
+  async function persistDraft({ skipDuplicateCheck = false } = {}) {
     const clientName = String(draft?.feedback?.cliente || "").trim();
-    if (lock.current || conflict || !draft?.titulo.trim() || !draft?.contenido.trim() || (section === "clients" && !clientName)) return;
+    const responsables = feedbackResponsibles(draft);
+    if (lock.current || conflict || !draft?.titulo.trim() || !draft?.contenido.trim()
+      || !responsables.length || (section === "clients" && !clientName)) return;
     lock.current = true;
     setBusy(true);
     setError("");
     try {
+      if (!draft.id && !skipDuplicateCheck) {
+        const params = new URLSearchParams({ cliente: section === "team" ? "" : clientName, titulo: draft.titulo, contenido: draft.contenido });
+        const result = await request(`/api/notas/similares?${params}`);
+        if (result.similares?.length) {
+          setDuplicates(result.similares);
+          return;
+        }
+      }
       const body = {
         titulo: draft.titulo.trim(),
         contenido: draft.contenido,
         categoria: draft.categoria,
-        feedback: { ...draft.feedback, cliente: section === "team" ? "" : clientName },
+        feedback: { ...draft.feedback, responsables, responsable: responsables[0], cliente: section === "team" ? "" : clientName, flujo: "feedback" },
         ...(draft.id ? { expected_updated_at: draft.updated_at } : {}),
       };
       const saved = await request(draft.id ? `/api/notas/${draft.id}` : "/api/notas", {
@@ -183,6 +202,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
       setDraft(null);
       setBaseline("");
       setMessage("Feedback guardado y disponible para el equipo.");
+      setDuplicates([]);
     } catch (reason) {
       setError(reason.message || "No se pudo guardar. Tu texto sigue acá.");
       setConflict(reason.status === 409);
@@ -190,6 +210,37 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
       lock.current = false;
       setBusy(false);
     }
+  }
+
+  function save(event) {
+    event.preventDefault();
+    void persistDraft();
+  }
+
+  function updateDuplicate(noteId) {
+    const existing = notes.find((note) => Number(note.id) === Number(noteId));
+    if (!existing) return;
+    setDraft((current) => ({ ...current, id: existing.id, updated_at: existing.updated_at }));
+    setDuplicates([]);
+    setMessage("Vas a actualizar el feedback existente con estos datos.");
+  }
+
+  async function toggleStatus(note) {
+    if (note.source === "task" || lock.current) return;
+    const nextStatus = note.feedback?.estado === "resuelto" ? "pendiente" : "resuelto";
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const saved = await request(`/api/notas/${note.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback: { ...note.feedback, estado: nextStatus }, expected_updated_at: note.updated_at }),
+      });
+      setNotes((rows) => rows.map((item) => item.id === saved.id ? saved : item));
+      setSelected(saved);
+      setMessage(nextStatus === "resuelto" ? "Feedback marcado como resuelto." : "Feedback volvió a pendiente.");
+    } catch (reason) { setError(reason.message || "No se pudo cambiar el estado."); }
+    finally { lock.current = false; setBusy(false); }
   }
 
   async function trashAction(note) {
@@ -262,6 +313,11 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
 
   const change = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
   const changeMeta = (key, value) => setDraft((current) => ({ ...current, feedback: { ...current.feedback, [key]: value } }));
+  const toggleResponsible = (name) => setDraft((current) => {
+    const selected = feedbackResponsibles(current);
+    const responsables = selected.includes(name) ? selected.filter((item) => item !== name) : [...selected, name];
+    return { ...current, feedback: { ...current.feedback, responsables, responsable: responsables[0] || "" } };
+  });
   const sectionTitle = section === "clients" ? "Feedback de clientes" : "Feedback del equipo";
   const sectionCopy = section === "clients" ? "Pedidos, correcciones y comentarios de cada cliente." : "Conclusiones y acuerdos de nuestras reuniones internas.";
 
@@ -289,7 +345,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     {loading ? <div className="rf-loading" role="status"><span/><span/><span/></div> : <div className="rf-grid">
       {visible.map((note) => <button type="button" className="rf-note-card" key={note.id} onClick={() => openNote(note)}>
         <span className="rf-note-icon" aria-hidden="true">▤</span>
-        <span className="rf-note-copy"><small>{section === "clients" ? resolveFeedbackClient(note, clientOptions) : CATEGORY_LABELS[note.categoria] || "General"}</small><strong>{note.titulo || "Sin título"}</strong><em>{note.feedback?.responsable || note.modificado_por || "Equipo RENDER"} · {formatDate(note.updated_at)}</em></span>
+        <span className="rf-note-copy"><small>{section === "clients" ? resolveFeedbackClient(note, clientOptions) : CATEGORY_LABELS[note.categoria] || "General"} · <i className={`rf-status ${note.feedback?.estado === "resuelto" ? "is-resolved" : ""}`}>{note.feedback?.estado === "resuelto" ? "Resuelto" : "Pendiente"}</i></small><strong>{note.titulo || "Sin título"}</strong><em>{feedbackResponsibles(note).join(", ") || note.modificado_por || "Equipo RENDER"} · {formatDate(note.updated_at)}</em></span>
         <span className="rf-note-arrow" aria-hidden="true">›</span>
       </button>)}
       {!visible.length && !error && <div className="rf-empty"><span>▤</span><strong>{query ? "No encontramos resultados" : trash ? "La Papelera está vacía" : `Todavía no hay feedback de ${section === "clients" ? "clientes" : "equipo"}`}</strong><p>{query ? "Probá con otra búsqueda." : "Creá una nota para guardar la información importante."}</p></div>}
@@ -305,10 +361,13 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
               {section === "clients" && <label className="rf-wide">Cliente<input ref={!draft.id ? titleRef : undefined} required list="rf-clients" maxLength={200} value={draft.feedback.cliente} onChange={(event) => changeMeta("cliente", event.target.value)}/><datalist id="rf-clients">{clientOptions.map((name) => <option key={name} value={name}/>)}</datalist></label>}
               <label className="rf-wide">Título<input ref={section === "team" || draft.id ? titleRef : undefined} required value={draft.titulo} placeholder={section === "team" ? "Ej.: Reunión semanal de comunicación" : "Ej.: Corrección de campaña de septiembre"} onChange={(event) => change("titulo", event.target.value)}/></label>
               <label className="rf-wide">Detalle<textarea required rows={9} value={draft.contenido} placeholder="Escribí el feedback completo…" onChange={(event) => change("contenido", event.target.value)}/></label>
-              <label>Responsable · opcional<input list="rf-users" maxLength={200} value={draft.feedback.responsable} onChange={(event) => changeMeta("responsable", event.target.value)}/><datalist id="rf-users">{users.map((user) => <option key={user.id || user.usuario} value={user.nombre || user.usuario}/>)}</datalist></label>
+              <fieldset className="rf-people rf-wide"><legend>Responsables <small>Elegí al menos uno</small></legend><div>{users.map((user) => { const name = user.nombre || user.usuario; return <label key={user.id || user.usuario} className={feedbackResponsibles(draft).includes(name) ? "selected" : ""}><input type="checkbox" checked={feedbackResponsibles(draft).includes(name)} onChange={() => toggleResponsible(name)}/><span>{name}</span></label>; })}</div></fieldset>
               <label>Categoría<select value={draft.categoria} onChange={(event) => change("categoria", event.target.value)}>{EDITABLE_CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
+              <label>Vigencia<select value={draft.feedback.vigencia || "puntual"} onChange={(event) => changeMeta("vigencia", event.target.value)}><option value="puntual">Puntual</option><option value="permanente">Permanente</option></select></label>
+              <label>Estado<select value={draft.feedback.estado || "pendiente"} onChange={(event) => changeMeta("estado", event.target.value)}><option value="pendiente">Pendiente</option><option value="resuelto">Resuelto</option></select></label>
               <label className="rf-wide">Referencia · opcional<input maxLength={2000} placeholder="Enlace, mensaje o dato relacionado" value={draft.feedback.referencia} onChange={(event) => changeMeta("referencia", event.target.value)}/></label>
             </div>
+            {duplicates.length > 0 && <section className="rf-duplicates" role="alert"><strong>Encontré un feedback parecido</strong><p>Podés actualizar el anterior o guardar este como uno nuevo.</p>{duplicates.map((item) => <div key={item.id}><span>{item.cliente} · {item.titulo}</span><button type="button" onClick={() => updateDuplicate(item.id)}>Modificar anterior</button></div>)}<button type="button" className="rf-save-anyway" onClick={() => void persistDraft({ skipDuplicateCheck: true })}>Crear uno nuevo igualmente</button></section>}
             <div className="rf-form-actions"><button type="button" onClick={closePanel}>Cancelar</button><button className="rf-primary" disabled={conflict} type="submit">{busy ? "Guardando…" : "Guardar feedback"}</button></div>
           </fieldset>
           {conflict && <p className="rf-conflict" role="alert">Otra persona guardó una versión más reciente. Tu texto sigue acá para que puedas copiarlo antes de volver a cargar.</p>}
@@ -316,8 +375,8 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
           <div className="rf-detail-heading"><span>{resolveFeedbackClient(selected, clientOptions) || CATEGORY_LABELS[selected.categoria] || "Reunión"}</span><h2>{selected.titulo}</h2><p>Actualizado por {selected.modificado_por} · {formatDate(selected.updated_at)}</p></div>
           <div className="rf-detail-content">{selected.contenido || "Sin contenido."}</div>
           {selected.feedback?.referencia && <section className="rf-reference"><span>REFERENCIA</span><Reference text={selected.feedback.referencia}/></section>}
-          <dl className="rf-detail-meta"><div><dt>Responsable</dt><dd>{selected.feedback?.responsable || "Sin asignar"}</dd></div><div><dt>Categoría</dt><dd>{CATEGORY_LABELS[selected.categoria] || "General"}</dd></div><div><dt>Creado por</dt><dd>{selected.creado_por}</dd></div></dl>
-          <footer className="rf-detail-actions">{selected.source === "task" ? <button className="rf-primary" onClick={() => openTask(selected.task_id)}>Abrir tarea relacionada</button> : trash ? <button className="rf-primary" disabled={busy} onClick={() => trashAction(selected)}>Restaurar feedback</button> : <><button className="rf-danger" disabled={busy} onClick={() => trashAction(selected)}>Mover a Papelera</button><button className="rf-primary" disabled={busy} onClick={() => editNote(selected)}>Editar feedback</button></>}</footer>
+          <dl className="rf-detail-meta"><div><dt>Responsables</dt><dd>{feedbackResponsibles(selected).join(", ") || "Sin asignar"}</dd></div><div><dt>Estado</dt><dd>{selected.feedback?.estado === "resuelto" ? "Resuelto" : "Pendiente"}</dd></div><div><dt>Vigencia</dt><dd>{selected.feedback?.vigencia === "permanente" ? "Permanente" : "Puntual"}</dd></div><div><dt>Categoría</dt><dd>{CATEGORY_LABELS[selected.categoria] || "General"}</dd></div><div><dt>Creado por</dt><dd>{selected.creado_por}</dd></div></dl>
+          <footer className="rf-detail-actions">{selected.source === "task" ? <button className="rf-primary" onClick={() => openTask(selected.task_id)}>Abrir tarea relacionada</button> : trash ? <button className="rf-primary" disabled={busy} onClick={() => trashAction(selected)}>Restaurar feedback</button> : <><button className="rf-danger" disabled={busy} onClick={() => trashAction(selected)}>Mover a Papelera</button><button disabled={busy} onClick={() => toggleStatus(selected)}>{selected.feedback?.estado === "resuelto" ? "Marcar pendiente" : "Marcar resuelto"}</button><button className="rf-primary" disabled={busy} onClick={() => editNote(selected)}>Editar feedback</button></>}</footer>
         </div>}
       </section>
     </div>}

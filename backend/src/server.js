@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { normalizeFeedback } from "./feedback-fields.js";
+import { findSimilarFeedback } from "./feedback-workflow.js";
 import fs from "node:fs";
 import path from "node:path";
 import dns from "node:dns";
@@ -16,6 +17,7 @@ import {
   notificarAsignacionSinInterrumpir as notificarAsignacionPorCorreoSinInterrumpir,
 } from "./email-notifications.js";
 import { destinatariosNuevosDeAsignacion, encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
+import { encolarNotificacionPrivadaFeedback } from "./private-feedback-notifications.js";
 import { setupDemoClientes } from "./setup-demo-data.js";
 import { shouldSetupDemoData } from "./hosting-config.js";
 import { requireAuthentication, requireRole } from "./auth.js";
@@ -72,6 +74,12 @@ function notificarAsignacionSinInterrumpir(opciones) {
   }
 }
 
+function notificarFeedbackSinInterrumpir(opciones) {
+  void encolarNotificacionPrivadaFeedback(opciones).catch((error) => {
+    console.error(`No se pudo encolar la notificación privada del feedback ${opciones.nota.id}:`, error.message);
+  });
+}
+
 const googleClient = process.env.GOOGLE_CLIENT_ID
   ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
   : null;
@@ -108,6 +116,7 @@ router.get("/health", (_req, res) => {
 router.use("/integraciones/wilson", createWilsonRouter({
   pool,
   notifyAssignment: notificarAsignacionSinInterrumpir,
+  notifyFeedback: notificarFeedbackSinInterrumpir,
   confirmProduction: ({ taskId, actor }) => confirmProductionVisit(taskId, actor),
 }));
 
@@ -312,6 +321,23 @@ router.get("/notas/nuevas", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.get("/notas/similares", async (req, res, next) => {
+  try {
+    const cliente = String(req.query.cliente || "").trim();
+    const titulo = String(req.query.titulo || "").trim();
+    const contenido = String(req.query.contenido || "").trim();
+    const excludeId = Number(req.query.exclude_id || 0);
+    if (!cliente || (!titulo && !contenido)) return res.json({ similares: [] });
+    const result = await pool.query(
+      `SELECT id,titulo,contenido,feedback,updated_at FROM notas_compartidas
+       WHERE eliminado_at IS NULL AND COALESCE(feedback->>'cliente','') ILIKE $1
+         AND ($2::bigint=0 OR id<>$2) ORDER BY updated_at DESC LIMIT 100`,
+      [cliente, Number.isInteger(excludeId) && excludeId > 0 ? excludeId : 0],
+    );
+    return res.json({ similares: findSimilarFeedback({ cliente, titulo, contenido }, result.rows) });
+  } catch (error) { return next(error); }
+});
+
 router.post("/notas", async (req, res, next) => {
   try {
     const actor = getTaskActor(req.auth);
@@ -322,13 +348,18 @@ router.post("/notas", async (req, res, next) => {
     let feedback;
     try { feedback = normalizeFeedback(req.body?.feedback ?? {}); }
     catch (error) { return res.status(400).json({ error: error.message }); }
+    if (feedback.flujo === "feedback" && !feedback.responsables.length) {
+      return res.status(422).json({ error: "Elegí al menos una persona responsable." });
+    }
     const result = await pool.query(
       `INSERT INTO notas_compartidas (titulo,contenido,categoria,creado_por,modificado_por,feedback)
        VALUES ($1,$2,$3,$4,$4,$5)
        RETURNING id,titulo,contenido,categoria,feedback,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
       [titulo, contenido, categoria, actor, JSON.stringify(feedback)],
     );
-    res.status(201).json(result.rows[0]);
+    const saved = result.rows[0];
+    res.status(201).json(saved);
+    if (feedback.flujo === "feedback") notificarFeedbackSinInterrumpir({ pool, nota: saved, actor });
   } catch (error) { next(error); }
 });
 
@@ -338,7 +369,13 @@ router.patch("/notas/:id", async (req, res, next) => {
     const sets = [];
     const params = [];
     if (Object.prototype.hasOwnProperty.call(req.body || {}, "feedback")) {
-      try { params.push(JSON.stringify(normalizeFeedback(req.body.feedback))); }
+      try {
+        const feedback = normalizeFeedback(req.body.feedback);
+        if (feedback.flujo === "feedback" && !feedback.responsables.length) {
+          return res.status(422).json({ error: "Elegí al menos una persona responsable." });
+        }
+        params.push(JSON.stringify(feedback));
+      }
       catch (error) { return res.status(400).json({ error: error.message }); }
       sets.push(`feedback=$${params.length}`);
     }
