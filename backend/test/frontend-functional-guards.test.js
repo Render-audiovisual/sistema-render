@@ -226,8 +226,9 @@ test("Tareas conserva únicamente Papelera como acción secundaria", () => {
   assert.match(workspaceSource, /Volver a tareas activas/);
   assert.doesNotMatch(workspaceSource, />Activas<\/button><button[^>]*>Archivadas</);
   assert.match(workspaceStyles, /grid-template-columns:repeat\(5,minmax\(230px,1fr\)\)/);
-  assert.match(workspaceStyles, /grid-template-columns:repeat\(5,82vw\)/);
-  assert.match(workspaceStyles, /scroll-snap-type:x proximity/);
+  assert.match(workspaceStyles, /\.ros-board-four\{display:block;grid-template-columns:none/);
+  assert.match(workspaceStyles, /scroll-snap-type:none/);
+  assert.match(workspaceStyles, /\.ros-column\{margin:0 0 18px;min-width:0;scroll-snap-align:none;width:100%\}/);
 });
 
 test("la revisión de videos permite al Líder entregarlos a Oriana", () => {
