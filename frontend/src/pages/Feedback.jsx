@@ -2,12 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { CATEGORIAS_NOTA } from "./BlocNotas.jsx";
 import { markFeedbackSeen } from "../features/render-os/utils/feedback-notifications.js";
+import { isClientFeedback, normalizeFeedbackText, resolveFeedbackClient } from "../features/render-os/utils/feedback-client.js";
 import "./Feedback.css";
 
 const EDITABLE_CATEGORIES = CATEGORIAS_NOTA.filter((category) => category.id !== "todas");
 const CATEGORY_LABELS = Object.fromEntries(EDITABLE_CATEGORIES.map((category) => [category.id, category.label]));
-const normalize = (text) => String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-const isClientNote = (note) => Boolean(String(note?.feedback?.cliente || "").trim());
 const emptyDraft = (section) => ({
   titulo: "",
   contenido: "",
@@ -72,7 +71,6 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
       const noteId = linkedNoteId.current;
       const linkedNote = rows.find((note) => note.id === noteId);
       if (linkedNote) {
-        setSection(isClientNote(linkedNote) ? "clients" : "team");
         setSelected(linkedNote);
       }
       linkedNoteId.current = null;
@@ -124,7 +122,14 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
   }
 
   function editNote(note) {
-    const next = { ...note, feedback: { ...emptyDraft(section).feedback, ...note.feedback } };
+    const next = {
+      ...note,
+      feedback: {
+        ...emptyDraft(section).feedback,
+        ...note.feedback,
+        cliente: resolveFeedbackClient(note, clientOptions),
+      },
+    };
     setSelected(note);
     setDraft(next);
     setBaseline(JSON.stringify(next));
@@ -200,11 +205,26 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     ...notes.map((note) => note.feedback?.cliente),
   ].filter(Boolean))].sort((left, right) => left.localeCompare(right, "es")), [clients, notes]);
 
+  useEffect(() => {
+    if (selected && !draft) {
+      setSection(isClientFeedback(selected, clientOptions) ? "clients" : "team");
+    }
+  }, [clientOptions, selected?.id, Boolean(draft)]);
+
   const visible = useMemo(() => notes.filter((note) => {
-    const belongsToSection = section === "clients" ? isClientNote(note) : !isClientNote(note);
-    const searchable = [note.titulo, note.contenido, note.categoria, ...Object.values(note.feedback || {})].join(" ");
-    return belongsToSection && normalize(searchable).includes(normalize(query));
-  }), [notes, section, query]);
+    const belongsToClients = isClientFeedback(note, clientOptions);
+    const belongsToSection = section === "clients" ? belongsToClients : !belongsToClients;
+    const searchable = [
+      note.titulo,
+      note.contenido,
+      note.categoria,
+      note.creado_por,
+      note.modificado_por,
+      resolveFeedbackClient(note, clientOptions),
+      ...Object.values(note.feedback || {}),
+    ].join(" ");
+    return belongsToSection && normalizeFeedbackText(searchable).includes(normalizeFeedbackText(query));
+  }), [notes, section, query, clientOptions]);
 
   const change = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
   const changeMeta = (key, value) => setDraft((current) => ({ ...current, feedback: { ...current.feedback, [key]: value } }));
@@ -235,7 +255,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     {loading ? <div className="rf-loading" role="status"><span/><span/><span/></div> : <div className="rf-grid">
       {visible.map((note) => <button type="button" className="rf-note-card" key={note.id} onClick={() => openNote(note)}>
         <span className="rf-note-icon" aria-hidden="true">▤</span>
-        <span className="rf-note-copy"><small>{section === "clients" ? note.feedback?.cliente : CATEGORY_LABELS[note.categoria] || "General"}</small><strong>{note.titulo || "Sin título"}</strong><em>{note.feedback?.responsable || note.modificado_por || "Equipo RENDER"} · {formatDate(note.updated_at)}</em></span>
+        <span className="rf-note-copy"><small>{section === "clients" ? resolveFeedbackClient(note, clientOptions) : CATEGORY_LABELS[note.categoria] || "General"}</small><strong>{note.titulo || "Sin título"}</strong><em>{note.feedback?.responsable || note.modificado_por || "Equipo RENDER"} · {formatDate(note.updated_at)}</em></span>
         <span className="rf-note-arrow" aria-hidden="true">›</span>
       </button>)}
       {!visible.length && !error && <div className="rf-empty"><span>▤</span><strong>{query ? "No encontramos resultados" : trash ? "La Papelera está vacía" : `Todavía no hay feedback de ${section === "clients" ? "clientes" : "equipo"}`}</strong><p>{query ? "Probá con otra búsqueda." : "Creá una nota para guardar la información importante."}</p></div>}
@@ -259,7 +279,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
           </fieldset>
           {conflict && <p className="rf-conflict" role="alert">Otra persona guardó una versión más reciente. Tu texto sigue acá para que puedas copiarlo antes de volver a cargar.</p>}
         </form> : selected && <div className="rf-detail">
-          <div className="rf-detail-heading"><span>{isClientNote(selected) ? selected.feedback.cliente : CATEGORY_LABELS[selected.categoria] || "Reunión"}</span><h2>{selected.titulo}</h2><p>Actualizado por {selected.modificado_por} · {formatDate(selected.updated_at)}</p></div>
+          <div className="rf-detail-heading"><span>{resolveFeedbackClient(selected, clientOptions) || CATEGORY_LABELS[selected.categoria] || "Reunión"}</span><h2>{selected.titulo}</h2><p>Actualizado por {selected.modificado_por} · {formatDate(selected.updated_at)}</p></div>
           <div className="rf-detail-content">{selected.contenido || "Sin contenido."}</div>
           {selected.feedback?.referencia && <section className="rf-reference"><span>REFERENCIA</span><Reference text={selected.feedback.referencia}/></section>}
           <dl className="rf-detail-meta"><div><dt>Responsable</dt><dd>{selected.feedback?.responsable || "Sin asignar"}</dd></div><div><dt>Categoría</dt><dd>{CATEGORY_LABELS[selected.categoria] || "General"}</dd></div><div><dt>Creado por</dt><dd>{selected.creado_por}</dd></div></dl>

@@ -1,16 +1,29 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { resolveFeedbackClient } from "../../frontend/src/features/render-os/utils/feedback-client.js";
 
 const feedbackSource = readFileSync(new URL("../../frontend/src/pages/Feedback.jsx", import.meta.url), "utf8");
 const feedbackStyles = readFileSync(new URL("../../frontend/src/pages/Feedback.css", import.meta.url), "utf8");
+const feedbackClientSource = readFileSync(new URL("../../frontend/src/features/render-os/utils/feedback-client.js", import.meta.url), "utf8");
 
 test("Feedback separa las notas del equipo de las notas de clientes", () => {
-  assert.match(feedbackSource, /const isClientNote =/);
+  assert.match(feedbackSource, /isClientFeedback/);
+  assert.match(feedbackSource, /resolveFeedbackClient/);
   assert.match(feedbackSource, /aria-label="Tipo de feedback"/);
   assert.match(feedbackSource, />Equipo</);
   assert.match(feedbackSource, />Clientes</);
-  assert.match(feedbackSource, /section === "clients" \? isClientNote\(note\) : !isClientNote\(note\)/);
+  assert.match(feedbackSource, /section === "clients" \? belongsToClients : !belongsToClients/);
+  assert.match(feedbackClientSource, /matches\.length === 1 \? matches\[0\] : ""/);
+  assert.match(feedbackSource, /note\.creado_por/);
+});
+
+test("Feedback recupera el cliente de notas antiguas sin metadata", () => {
+  const clients = ["Búnker Training", "Litoral Maq", "Lavalle Market"];
+  assert.equal(resolveFeedbackClient({ titulo: "Correcciones BUNKER - Federico", feedback: {} }, clients), "Búnker Training");
+  assert.equal(resolveFeedbackClient({ titulo: "Litoral - revisión de piezas", feedback: {} }, clients), "Litoral Maq");
+  assert.equal(resolveFeedbackClient({ titulo: "Reunión semanal del equipo", feedback: {} }, clients), "");
+  assert.equal(resolveFeedbackClient({ titulo: "Nota general", feedback: { cliente: "Moketa" } }, clients), "Moketa");
 });
 
 test("Feedback presenta resúmenes compactos y abre el contenido en un panel", () => {
