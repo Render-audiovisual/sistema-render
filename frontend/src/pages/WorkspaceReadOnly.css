@@ -1818,29 +1818,6 @@
   .render-workspace .ros-main{overflow-x:hidden}
   .render-workspace .ros-page{padding-bottom:86px}
 
-  .render-workspace .ros-title-row{gap:12px;margin:0;padding:16px 12px 14px}
-  .render-workspace .ros-title-copy{gap:3px}
-  .render-workspace .ros-title-row h1{font-size:28px}
-  .render-workspace .ros-title-row p{font-size:13px;line-height:1.45}
-  .render-workspace .ros-title-actions{gap:8px;grid-template-columns:1fr}
-  .render-workspace .ros-top-search{font-size:16px;min-height:48px;width:100%}
-  .render-workspace .ros-primary-button{border-radius:12px;font-size:15px;min-height:48px;width:100%}
-
-  .render-workspace .ros-controls{align-items:stretch;border-radius:14px;display:grid!important;gap:9px;margin:0 10px;min-height:0;padding:9px}
-  .render-workspace .ros-controls>div:first-child,
-  .render-workspace .ros-view-tabs{display:grid!important;flex-wrap:nowrap;grid-template-columns:1fr 1fr;max-width:none;overflow:visible;padding:4px;width:100%}
-  .render-workspace .ros-view-tabs button{border:0;border-radius:9px;justify-content:center;min-height:44px;padding:9px 8px;width:100%}
-  .render-workspace .ros-view-tabs button.active{background:#202418;border:0;box-shadow:0 3px 9px #20241820;color:#f5f6ef}
-  .render-workspace .ros-feedback-link{align-self:stretch;background:#f7f9f3;border-color:#dce3d3;justify-content:center;margin:0;min-height:44px;width:100%}
-  .render-workspace .ros-feedback-link::before{display:none}
-  .render-workspace .ros-controls .ros-controls-meta{border-top:1px solid #e5e8df;gap:8px;justify-content:space-between;margin:0;padding:8px 3px 1px;width:100%}
-  .render-workspace .ros-controls-meta>span{font-size:11px;margin:0;padding:0;white-space:normal}
-  .render-workspace .ros-controls .ros-archive-link{font-size:12px;min-height:40px;padding:8px 10px}
-  .render-workspace .ros-filter-toggle{border-radius:10px;font-size:13px;margin:8px 10px 0;min-height:44px;padding:10px 12px;width:calc(100% - 20px)}
-  .render-workspace .ros-filter-toggle span{font-size:11px}
-  .render-workspace .ros-filter-bar{margin-inline:10px}
-  .render-workspace .ros-filter-bar select{font-size:16px;min-height:48px}
-
   .render-workspace .ros-board,
   .render-workspace .ros-board-four{display:block;grid-template-columns:none;margin:12px 10px 0;overflow:visible;padding:0;scroll-snap-type:none;width:calc(100% - 20px)}
   .render-workspace .ros-column{margin:0 0 18px;min-width:0;scroll-snap-align:none;width:100%}

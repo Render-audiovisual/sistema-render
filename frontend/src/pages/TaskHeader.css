@@ -13,3 +13,87 @@
 .render-workspace .ros-filter-bar{background:#f8f9f6;border:1px solid #e2e5df;border-radius:10px;margin:20px 28px;padding:16px;gap:16px}
 .render-workspace .ros-filter-bar label>span{font-size:11px;color:#62695c}
 @media(max-width:700px){.render-workspace .ros-title-row{padding:20px;align-items:stretch}.render-workspace .ros-title-actions{width:100%}.render-workspace .ros-top-search{min-width:0;flex:1 1 100%}.render-workspace .ros-controls{margin-inline:20px}.render-workspace .ros-filter-bar{margin:16px 20px}.render-workspace .ros-title-row h1{font-size:28px}}
+
+/* Mobile is a deliberate composition, not a wrapped desktop header. */
+@media(max-width:600px){
+  .render-workspace .ros-title-row{gap:12px;margin:0;padding:16px 12px 14px}
+  .render-workspace .ros-title-copy{gap:3px}
+  .render-workspace .ros-title-row h1{font-size:28px}
+  .render-workspace .ros-title-row p{font-size:13px;line-height:1.45}
+  .render-workspace .ros-title-actions{display:grid;gap:8px;grid-template-columns:1fr}
+  .render-workspace .ros-top-search{font-size:16px;min-height:48px;width:100%}
+  .render-workspace .ros-primary-button{border-radius:12px;font-size:15px;min-height:48px;width:100%}
+
+  .render-workspace .ros-controls{
+    align-items:stretch;
+    background:#fff;
+    border:1px solid #dfe3d8;
+    border-radius:14px;
+    display:grid!important;
+    gap:8px;
+    grid-template-columns:minmax(0,1fr)!important;
+    margin:0!important;
+    min-height:0;
+    overflow:visible;
+    padding:8px;
+    width:100%;
+  }
+  .render-workspace .ros-controls>div:first-child,
+  .render-workspace .ros-view-tabs{
+    background:#f1f3ec;
+    border:1px solid #e3e7dc;
+    border-radius:11px;
+    display:grid!important;
+    gap:4px;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;
+    max-width:none;
+    overflow:visible;
+    padding:4px;
+    width:100%;
+  }
+  .render-workspace .ros-controls .ros-view-tabs button{
+    background:transparent;
+    border:0;
+    border-radius:8px;
+    color:#62695c;
+    font-size:12px;
+    justify-content:center;
+    min-height:42px;
+    padding:8px 5px;
+    width:100%;
+  }
+  .render-workspace .ros-controls .ros-view-tabs button.active{
+    background:#202418;
+    border:0;
+    box-shadow:0 3px 9px #20241820;
+    color:#f5f6ef;
+  }
+  .render-workspace .ros-controls .ros-feedback-link{
+    align-self:stretch;
+    background:#f8faf5;
+    border:1px solid #dce3d3;
+    border-radius:10px;
+    color:#4c5545;
+    justify-content:center;
+    margin:0;
+    min-height:44px;
+    padding:10px 12px;
+    width:100%;
+  }
+  .render-workspace .ros-feedback-link::before{display:none}
+  .render-workspace .ros-controls .ros-controls-meta{
+    border-top:1px solid #e5e8df;
+    gap:8px;
+    justify-content:space-between;
+    margin:0;
+    overflow:visible;
+    padding:8px 3px 1px;
+    width:100%;
+  }
+  .render-workspace .ros-controls-meta>span{font-size:11px;margin:0;padding:0;white-space:normal}
+  .render-workspace .ros-controls .ros-archive-link{background:transparent;border:0;border-radius:8px;font-size:12px;min-height:40px;padding:8px 10px}
+  .render-workspace .ros-filter-toggle{border-radius:10px;font-size:13px;margin:8px 0 0;min-height:44px;padding:10px 12px;width:100%}
+  .render-workspace .ros-filter-toggle span{font-size:11px}
+  .render-workspace .ros-filter-bar{margin:8px 0 0}
+  .render-workspace .ros-filter-bar select{font-size:16px;min-height:48px}
+}
