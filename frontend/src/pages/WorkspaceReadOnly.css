@@ -607,6 +607,7 @@
 .render-workspace .ros-empty-column:is(button){background:transparent;border:0;cursor:pointer;width:100%}
 .render-workspace .ros-empty-column:is(button):hover{background:#eceee8;color:#555852}
 .render-workspace .ros-filter-toggle{display:none}
+.render-workspace .ros-mobile-board-nav{display:none}
 
 @media(max-width:640px){
   .render-workspace .ros-filter-toggle{align-items:center;background:#fafaf8;border:0;border-bottom:1px solid #ecece8;color:#565954;display:flex;font-size:10px;font-weight:700;gap:7px;justify-content:flex-start;padding:11px 14px;width:100%}
@@ -1814,13 +1815,51 @@
    En pantallas táctiles no mostramos fragmentos de columnas laterales: cada
    estado es una sección completa para que el equipo pueda leer y actuar. */
 @media(max-width:600px){
-  .render-workspace{overflow-x:hidden;padding-bottom:calc(28px + env(safe-area-inset-bottom))}
-  .render-workspace .ros-main{overflow-x:hidden}
+  .render-workspace{overflow-x:clip;padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+  .render-workspace .ros-main{overflow-x:clip}
   .render-workspace .ros-page{padding-bottom:86px}
 
+  .render-workspace .ros-mobile-board-nav{
+    -webkit-overflow-scrolling:touch;
+    align-items:center;
+    background:#f5f6efee;
+    backdrop-filter:blur(16px) saturate(135%);
+    border-block:1px solid #dfe3d8;
+    display:flex;
+    gap:6px;
+    margin:10px 0 0;
+    overflow-x:auto;
+    padding:8px 4px;
+    position:sticky;
+    scroll-margin-top:58px;
+    scrollbar-width:none;
+    top:58px;
+    z-index:8;
+  }
+  .render-workspace .ros-mobile-board-nav::-webkit-scrollbar{display:none}
+  .render-workspace .ros-mobile-board-nav button{
+    align-items:center;
+    background:#fff;
+    border:1px solid #dfe3d8;
+    border-radius:999px;
+    color:#62695c;
+    display:flex;
+    flex:0 0 auto;
+    font-size:12px;
+    font-weight:650;
+    gap:7px;
+    min-height:44px;
+    padding:8px 11px;
+  }
+  .render-workspace .ros-mobile-board-nav button i{border-radius:50%;height:7px;width:7px}
+  .render-workspace .ros-mobile-board-nav button b{align-items:center;background:#eef0ea;border-radius:999px;color:#697064;display:flex;font-size:10px;height:22px;justify-content:center;min-width:22px;padding:0 6px}
+  .render-workspace .ros-mobile-board-nav button.active{background:#202418;border-color:#202418;box-shadow:0 5px 14px #2024181f;color:#f5f6ef}
+  .render-workspace .ros-mobile-board-nav button.active b{background:#b5fc00;color:#202418}
+
   .render-workspace .ros-board,
-  .render-workspace .ros-board-four{display:block;grid-template-columns:none;margin:12px 10px 0;overflow:visible;padding:0;scroll-snap-type:none;width:calc(100% - 20px)}
-  .render-workspace .ros-column{margin:0 0 18px;min-width:0;scroll-snap-align:none;width:100%}
+  .render-workspace .ros-board-four{display:block;grid-template-columns:none;margin:8px 0 0;overflow:visible;padding:0;scroll-snap-type:none;width:100%}
+  .render-workspace .ros-column{display:none;margin:0;min-width:0;scroll-snap-align:none;width:100%}
+  .render-workspace .ros-column.is-mobile-active{animation:ros-mobile-column-enter .22s cubic-bezier(.22,.8,.22,1) both;display:block}
   .render-workspace .ros-column>header{min-height:40px;padding:5px 4px 9px}
   .render-workspace .ros-column>header span,.render-workspace .ros-column>header strong{font-size:14px}
   .render-workspace .ros-column>header small{font-size:11px;height:24px;min-width:24px}
@@ -1835,4 +1874,9 @@
 
   .wilson-launcher{bottom:calc(14px + env(safe-area-inset-bottom));height:48px;justify-content:center;min-height:48px;padding:0;right:12px;width:48px}
   .wilson-launcher>span:nth-child(2),.wilson-launcher>svg{display:none}
+}
+@keyframes ros-mobile-column-enter{from{opacity:.55;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:600px) and (prefers-reduced-motion:reduce){
+  .render-workspace .ros-column.is-mobile-active{animation:none}
+  .render-workspace .ros-mobile-board-nav{scroll-behavior:auto}
 }

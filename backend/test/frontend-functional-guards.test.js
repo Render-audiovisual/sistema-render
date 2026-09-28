@@ -228,7 +228,10 @@ test("Tareas conserva únicamente Papelera como acción secundaria", () => {
   assert.match(workspaceStyles, /grid-template-columns:repeat\(5,minmax\(230px,1fr\)\)/);
   assert.match(workspaceStyles, /\.ros-board-four\{display:block;grid-template-columns:none/);
   assert.match(workspaceStyles, /scroll-snap-type:none/);
-  assert.match(workspaceStyles, /\.ros-column\{margin:0 0 18px;min-width:0;scroll-snap-align:none;width:100%\}/);
+  assert.match(workspaceStyles, /\.ros-column\{display:none;margin:0;min-width:0;scroll-snap-align:none;width:100%\}/);
+  assert.match(workspaceStyles, /\.ros-column\.is-mobile-active/);
+  assert.match(workspaceSource, /aria-label="Estados del tablero"/);
+  assert.match(workspaceSource, /selectMobileBoardColumn/);
   const taskHeaderStyles = readFileSync(new URL("../../frontend/src/pages/TaskHeader.css", import.meta.url), "utf8");
   assert.match(taskHeaderStyles, /grid-template-columns:minmax\(0,1fr\)!important/);
   assert.match(taskHeaderStyles, /\.ros-controls \.ros-view-tabs button\.active/);
