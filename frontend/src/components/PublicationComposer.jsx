@@ -171,6 +171,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
   const [uploadingMaterial, setUploadingMaterial] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedAssets, setUploadedAssets] = useState([]);
+  const [driveReconnectRequired, setDriveReconnectRequired] = useState(false);
   const [sourceSelection, setSourceSelection] = useState("");
   const fileInputRef = useRef(null);
   const uploadsRef = useRef([]);
@@ -272,6 +273,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
     if (!uploads.length || uploadingMaterial) return;
     setUploadingMaterial(true);
     setFileError("");
+    setDriveReconnectRequired(false);
     setNotice("");
     setUploadProgress(0);
     try {
@@ -294,6 +296,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
       setNotice(`${completed.length === 1 ? "Archivo guardado" : "Archivos guardados"} en el Drive privado de Render.`);
     } catch (error) {
       setFileError(error.message || "No se pudo guardar el material en Drive.");
+      setDriveReconnectRequired(error.body?.code === "GOOGLE_DRIVE_RECONNECT_REQUIRED");
     } finally {
       setUploadingMaterial(false);
     }
@@ -438,7 +441,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
                 {uploadingMaterial && <div className="publisher-upload-progress"><i style={{ width: `${uploadProgress}%` }}/></div>}
               </div>
             )}
-            {fileError && <p className="publisher-file-error" role="alert">{fileError}</p>}
+            {fileError && <div className="publisher-file-error" role="alert"><span>{fileError}</span>{driveReconnectRequired && <a href="/drive">Volver a conectar Drive</a>}</div>}
             <div className="publisher-upload-alternative"><span>También podés usar un archivo que ya está online</span><button type="button" onClick={() => setShowDriveField((visible) => !visible)}>{showDriveField ? "Ocultar enlace" : "Elegir desde Drive"}</button></div>
             {showDriveField && <label className="publisher-field publisher-field-wide publisher-drive-field"><span>{draft.type === "carrusel" ? "Enlaces de Drive" : "Enlace de Drive"}</span><textarea rows={draft.type === "carrusel" ? 4 : 2} value={draft.material} onChange={(event) => { setField("material", event.target.value); if (event.target.value) clearUploads(); }} placeholder={draft.type === "carrusel" ? "Pegá un enlace por línea, en el orden del carrusel" : "Pegá el enlace del video final"}/><small>{draft.type === "carrusel" ? `${materialCount(draft)} piezas enlazadas` : "Render validará el acceso antes de publicar."}</small></label>}
           </div>

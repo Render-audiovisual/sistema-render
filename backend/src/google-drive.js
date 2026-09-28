@@ -42,6 +42,24 @@ async function authorizedClient(pool) {
   return client;
 }
 
+export function isDriveReconnectError(error) {
+  const details = [
+    error?.message,
+    error?.code,
+    error?.response?.data?.error,
+    error?.response?.data?.error_description,
+    error?.cause?.message,
+  ].filter(Boolean).join(" ");
+  return /invalid_grant|token.*(?:expired|revoked)|expired.*token|revoked.*token/i.test(details);
+}
+
+function reconnectResponse(res) {
+  return res.status(503).json({
+    error: "La conexión con Google Drive venció. Un Líder debe volver a conectarla.",
+    code: "GOOGLE_DRIVE_RECONNECT_REQUIRED",
+  });
+}
+
 async function driveRequest(client, url, options = {}) {
   const authHeaders = await client.getRequestHeaders();
   const headers = typeof authHeaders.entries === "function"
@@ -137,8 +155,19 @@ export function createGoogleDriveRouter({ express, pool, requireRole }) {
   router.get("/status", async (_req, res, next) => {
     try {
       const configured = Boolean(driveClient());
-      const connected = Boolean(await savedCredentials(pool));
-      res.json({ configured, connected, roots: DRIVE_ROOTS });
+      const client = await authorizedClient(pool);
+      let connected = false;
+      let reconnectRequired = false;
+      if (client) {
+        try {
+          await client.getRequestHeaders();
+          connected = true;
+        } catch (error) {
+          if (!isDriveReconnectError(error)) throw error;
+          reconnectRequired = true;
+        }
+      }
+      res.json({ configured, connected, reconnectRequired, roots: DRIVE_ROOTS });
     } catch (error) { next(error); }
   });
 
@@ -266,6 +295,11 @@ export function createGoogleDriveRouter({ express, pool, requireRole }) {
       await driveRequest(client, `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(req.params.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
       res.json({ ok: true });
     } catch (error) { next(error); }
+  });
+
+  router.use((error, _req, res, next) => {
+    if (isDriveReconnectError(error)) return reconnectResponse(res);
+    return next(error);
   });
   return router;
 }

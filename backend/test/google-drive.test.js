@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { DRIVE_ROOTS, normalizeDriveName, resolveDriveRoot } from "../src/google-drive.js";
+import { DRIVE_ROOTS, isDriveReconnectError, normalizeDriveName, resolveDriveRoot } from "../src/google-drive.js";
 
 test("normaliza nombres de clientes y carpetas sin depender de acentos", () => {
   assert.equal(normalizeDriveName("El Ángel Azul — Estudiantil"), "el angel azul estudiantil");
@@ -37,4 +37,10 @@ test("las publicaciones reutilizan RENDER_UPLOADS y exigen rol operativo", () =>
   assert.match(source, /publication-upload-plan/);
   assert.match(source, /publication-upload-plan", requireRole\("admin", "community"\)/);
   assert.match(source, /resolveTaskFolder\(client, \{\}\)/);
+});
+
+test("detecta una autorización de Drive vencida o revocada", () => {
+  assert.equal(isDriveReconnectError({ response: { data: { error: "invalid_grant" } } }), true);
+  assert.equal(isDriveReconnectError(new Error("Token has been expired or revoked")), true);
+  assert.equal(isDriveReconnectError(new Error("Carpeta no encontrada")), false);
 });
