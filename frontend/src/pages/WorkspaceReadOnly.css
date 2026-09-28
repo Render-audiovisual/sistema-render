@@ -1880,3 +1880,81 @@
   .render-workspace .ros-column.is-mobile-active{animation:none}
   .render-workspace .ros-mobile-board-nav{scroll-behavior:auto}
 }
+
+/* Segunda pasada de movimiento: una sola curva, recorridos mínimos y sin
+   cambios bruscos de display en los controles de trabajo. */
+.render-workspace .ros-toast{
+  animation:ros-toast-enter .16s cubic-bezier(.2,.8,.2,1) both;
+}
+.render-workspace .ros-modal-backdrop{
+  animation:ros-overlay-enter .14s ease-out both;
+}
+.render-workspace .ros-modal-backdrop>.ros-modal{
+  animation:ros-modal-enter .19s cubic-bezier(.2,.8,.2,1) both;
+  transform-origin:50% 12%;
+}
+.render-workspace .ros-people-options,
+.render-workspace .ros-optional-fields{
+  animation:ros-disclosure-enter .14s cubic-bezier(.2,.8,.2,1) both;
+}
+.render-workspace .ros-state{
+  animation:ros-state-enter .16s ease-out both;
+}
+@keyframes ros-toast-enter{
+  from{opacity:0;transform:translate3d(-50%,-4px,0)}
+  to{opacity:1;transform:translate3d(-50%,0,0)}
+}
+@keyframes ros-overlay-enter{
+  from{background-color:#17171700}
+  to{background-color:#17171738}
+}
+@keyframes ros-modal-enter{
+  from{opacity:0;transform:translate3d(0,8px,0)}
+  to{opacity:1;transform:translate3d(0,0,0)}
+}
+@keyframes ros-disclosure-enter{
+  from{opacity:0;transform:translate3d(0,-2px,0)}
+  to{opacity:1;transform:translate3d(0,0,0)}
+}
+@keyframes ros-state-enter{from{opacity:.88}to{opacity:1}}
+
+@media(max-width:640px){
+  .render-workspace .ros-filter-bar,
+  .render-workspace .ros-filter-bar.open{
+    display:grid;
+    grid-template-columns:1fr;
+    overflow:hidden;
+    transition:max-height .18s cubic-bezier(.2,.8,.2,1),opacity .12s ease-out,
+      transform .18s cubic-bezier(.2,.8,.2,1),padding .18s cubic-bezier(.2,.8,.2,1),
+      margin-bottom .18s cubic-bezier(.2,.8,.2,1),border-width 0s linear .18s;
+  }
+  .render-workspace .ros-filter-bar{
+    border-width:0;
+    margin-bottom:0;
+    max-height:0;
+    opacity:0;
+    padding-block:0;
+    pointer-events:none;
+    transform:translate3d(0,-2px,0);
+    visibility:hidden;
+  }
+  .render-workspace .ros-filter-bar.open{
+    border-width:1px;
+    margin-bottom:12px;
+    max-height:520px;
+    opacity:1;
+    padding-block:12px;
+    pointer-events:auto;
+    transform:translate3d(0,0,0);
+    transition-delay:0s;
+    visibility:visible;
+  }
+}
+
+@media(prefers-reduced-motion:reduce){
+  .render-workspace :is(.ros-toast,.ros-modal-backdrop,.ros-modal-backdrop>.ros-modal,.ros-people-options,.ros-optional-fields,.ros-state){
+    animation:none;
+  }
+  .render-workspace .ros-filter-bar,
+  .render-workspace .ros-filter-bar.open{transition:none}
+}
