@@ -1770,11 +1770,11 @@
 .render-workspace .ros-feedback-link::before{background:#d8ddd2;content:"";height:24px;margin-left:-19px;margin-right:8px;width:1px}
 .render-workspace .ros-feedback-link>span{color:#68745a;font-size:14px;line-height:1}
 .render-workspace .ros-feedback-link:hover{background:#eef3e6;border-color:#cbd7bd;box-shadow:0 4px 14px #28301f10}
-.render-workspace .ros-feedback-link:active{box-shadow:0 1px 4px #28301f12;transform:scale(.975)}
+.render-workspace .ros-feedback-link:active{background:#eaf0e2;box-shadow:0 1px 4px #28301f12}
 .render-workspace .ros-feedback-link.has-new{background:#f2f8e7;border-color:#bfd693;color:#29331f}
 .render-workspace .ros-feedback-link>b{
   align-items:center;
-  animation:ros-feedback-arrival .35s cubic-bezier(.2,.8,.2,1);
+  animation:ros-feedback-arrival .18s cubic-bezier(.2,.8,.2,1);
   background:#9ee600;
   border-radius:999px;
   color:#1f2917;
@@ -1786,15 +1786,15 @@
   min-width:20px;
   padding:0 6px;
 }
-@keyframes ros-feedback-arrival{from{opacity:0;transform:scale(.72)}to{opacity:1;transform:scale(1)}}
+@keyframes ros-feedback-arrival{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:translateY(0)}}
 /* Movimiento funcional: confirma el toque y orienta al cambiar de vista sin
    desplazar el contenido ni competir con el trabajo. */
-.render-workspace button:not(:disabled):active{transform:scale(.975)}
-.render-workspace .ros-task-card:active{box-shadow:0 2px 7px #20212412;transform:scale(.992)}
-.render-workspace :is(.ros-board,.ros-task-list,.ros-calendar,.ros-project-grid,.ros-no-results){animation:ros-surface-enter .2s cubic-bezier(.22,.8,.22,1) both}
-.render-workspace .ros-filter-bar.open{animation:ros-surface-enter .18s cubic-bezier(.22,.8,.22,1) both}
+.render-workspace button:not(:disabled):active{filter:brightness(.98);transform:none}
+.render-workspace .ros-task-card:active{background:#fbfcf9;box-shadow:0 2px 7px #20212412;transform:none}
+.render-workspace :is(.ros-board,.ros-task-list,.ros-calendar,.ros-project-grid,.ros-no-results){animation:ros-surface-enter .16s cubic-bezier(.2,.8,.2,1) both}
+.render-workspace .ros-filter-bar.open{animation:ros-surface-enter .14s cubic-bezier(.2,.8,.2,1) both}
 .render-workspace .ros-controls button{transition:background-color .16s ease,border-color .16s ease,color .16s ease,transform .12s ease}
-@keyframes ros-surface-enter{from{opacity:.72;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes ros-surface-enter{from{opacity:.9;transform:translateY(2px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:900px){
   .render-workspace .ros-controls{align-items:flex-start;flex-wrap:wrap}
   .render-workspace .ros-feedback-link{margin:4px 0 8px 14px}
@@ -1859,7 +1859,7 @@
   .render-workspace .ros-board,
   .render-workspace .ros-board-four{display:block;grid-template-columns:none;margin:8px 0 0;overflow:visible;padding:0;scroll-snap-type:none;width:100%}
   .render-workspace .ros-column{display:none;margin:0;min-width:0;scroll-snap-align:none;width:100%}
-  .render-workspace .ros-column.is-mobile-active{animation:ros-mobile-column-enter .22s cubic-bezier(.22,.8,.22,1) both;display:block}
+  .render-workspace .ros-column.is-mobile-active{animation:ros-mobile-column-enter .16s cubic-bezier(.2,.8,.2,1) both;display:block}
   .render-workspace .ros-column>header{min-height:40px;padding:5px 4px 9px}
   .render-workspace .ros-column>header span,.render-workspace .ros-column>header strong{font-size:14px}
   .render-workspace .ros-column>header small{font-size:11px;height:24px;min-width:24px}
@@ -1875,7 +1875,7 @@
   .wilson-launcher{bottom:calc(14px + env(safe-area-inset-bottom));height:48px;justify-content:center;min-height:48px;padding:0;right:12px;width:48px}
   .wilson-launcher>span:nth-child(2),.wilson-launcher>svg{display:none}
 }
-@keyframes ros-mobile-column-enter{from{opacity:.55;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes ros-mobile-column-enter{from{opacity:.88;transform:translateY(2px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:600px) and (prefers-reduced-motion:reduce){
   .render-workspace .ros-column.is-mobile-active{animation:none}
   .render-workspace .ros-mobile-board-nav{scroll-behavior:auto}

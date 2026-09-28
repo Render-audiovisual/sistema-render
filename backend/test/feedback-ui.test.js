@@ -65,7 +65,7 @@ test("Tareas abre Feedback sin recargar ni romper el marco de la aplicación", (
   assert.match(feedbackStyles, /animation:rf-page-enter/);
   assert.match(feedbackStyles, /button:not\(:disabled\):active\{transform:scale\(\.975\)\}/);
   assert.match(workspaceStyles, /animation:ros-surface-enter/);
-  assert.match(workspaceStyles, /button:not\(:disabled\):active\{transform:scale\(\.975\)\}/);
+  assert.match(workspaceStyles, /button:not\(:disabled\):active\{filter:brightness\(\.98\);transform:none\}/);
   assert.match(feedbackStyles, /prefers-reduced-motion:reduce/);
   assert.match(workspaceStyles, /prefers-reduced-motion:reduce/);
 });

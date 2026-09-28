@@ -8,11 +8,11 @@
 }
 .render-workspace .ros-board .ros-task-card.is-dragging {
   border-color: #91a96c;
-  box-shadow: 0 12px 28px #20241826;
-  transform: scale(1.025);
+  box-shadow: 0 10px 24px #2024181f;
+  opacity: .96;
 }
 @media (prefers-reduced-motion: reduce) {
   .render-workspace .ros-board .ros-column > div,
   .render-workspace .ros-board .ros-task-card { transition: none; }
-  .render-workspace .ros-board .ros-task-card.is-dragging { transform: none; }
+  .render-workspace .ros-board .ros-task-card.is-dragging { opacity: 1; }
 }

@@ -79,7 +79,7 @@ function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, editor
 }
 
 function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onTrashAction }) {
-  const windowMotion = useTaskWindowMotion(task?.id, onClose, true);
+  const windowMotion = useTaskWindowMotion(task?.id, onClose);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(task || {});
   const [comments, setComments] = useState([]);
@@ -611,7 +611,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     column.id,
     visible.filter((task) => column.states.includes(task.estado)).length,
   ])), [visible]);
-  useTaskBoardMotion(boardRef, visible, view, true);
+  useTaskBoardMotion(boardRef, visible, view);
   const paginatedTaskCount = tasks.filter((task) => !task.__renderOsDirectOnly).length;
   const hasFilters = responsible !== "all" || client !== "all" || sector !== "all" || priority !== "all" || area !== "all";
   const activeFilterCount = [responsible, client, sector, priority, area].filter((value) => value !== "all").length;
@@ -705,10 +705,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const clearFilters = () => { setQuery(""); setResponsible("all"); setClient("all"); setSector("all"); setPriority("all"); setArea("all"); };
   const selectMobileBoardColumn = useCallback((columnId) => {
     setMobileBoardColumn(columnId);
-    window.requestAnimationFrame(() => mobileBoardNavRef.current?.scrollIntoView({
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-      block: "start",
-    }));
+    window.requestAnimationFrame(() => mobileBoardNavRef.current?.scrollIntoView({ behavior: "auto", block: "start" }));
   }, []);
 
   return <><section className="ros-page">
