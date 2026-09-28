@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { apiRequest } from "../features/render-os/services/render-os-api.js";
 
 const STORAGE_KEY = "render-publicaciones-preview-v1";
 
@@ -33,6 +34,34 @@ function platformLabel(platforms) {
   if (platforms.instagram) return "Instagram";
   if (platforms.facebook) return "Facebook";
   return "Sin plataforma";
+}
+
+function platformsForItem(item) {
+  if (item.platforms) return item.platforms;
+  return Object.fromEntries((item.targets || []).map((target) => [target.platform, true]));
+}
+
+function dispatchDateTimeLabel(item) {
+  if (!item.scheduledAt) return dateTimeLabel(item.date, item.time);
+  const parsed = new Date(item.scheduledAt);
+  if (Number.isNaN(parsed.getTime())) return "Sin fecha";
+  return new Intl.DateTimeFormat("es-AR", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed);
+}
+
+async function loadDispatchQueue() {
+  try {
+    const result = await apiRequest("/api/publicacion-envios");
+    return Array.isArray(result) ? result : [];
+  } catch (error) {
+    if ([404, 503].includes(error.status)) return readPreviewQueue();
+    throw error;
+  }
 }
 
 function emptyDraft(publication, clients) {
@@ -98,6 +127,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
   );
   const [draft, setDraft] = useState(() => emptyDraft(null, clients));
   const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!draft.clientId && clients.length) setDraft((current) => ({ ...current, clientId: clients[0].id }));
@@ -125,7 +155,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
     return "";
   }, [draft]);
 
-  const simulate = (mode) => {
+  const simulate = async (mode) => {
     if (!canPublish) {
       setNotice("Solo una community manager o un Líder puede preparar envíos.");
       return;
@@ -134,21 +164,54 @@ export function PublicationComposer({ publications, clients, canPublish }) {
       setNotice(validation);
       return;
     }
-    const client = clients.find((item) => Number(item.id) === Number(draft.clientId));
-    const next = {
-      ...draft,
-      id: `preview-${Date.now()}`,
-      clientName: client?.nombre || "Cliente",
-      status: mode === "now" ? "lista_para_publicar" : "programada",
-      createdAt: new Date().toISOString(),
-      previewOnly: true,
-    };
-    const queue = [next, ...readPreviewQueue()].slice(0, 40);
-    savePreviewQueue(queue);
-    window.dispatchEvent(new CustomEvent("render:publication-preview-updated"));
-    setNotice(mode === "now"
-      ? "Simulación lista. No se envió nada a Meta."
-      : "Programación simulada. No se modificó el calendario real.");
+    setSaving(true);
+    setNotice("");
+    try {
+      const materials = draft.material.split(/\n+/).map((item) => item.trim()).filter(Boolean);
+      const scheduledAt = new Date(`${draft.date}T${draft.time}:00-03:00`).toISOString();
+      const requestKey = window.crypto?.randomUUID?.() || `render-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      try {
+        await apiRequest("/api/publicacion-envios", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId: draft.clientId,
+            publicationId: draft.publicationId || null,
+            type: draft.type,
+            caption: draft.caption,
+            firstComment: draft.firstComment,
+            materials,
+            platforms: draft.platforms,
+            scheduledAt,
+            collaborators: draft.collaborators,
+            location: draft.location,
+            tags: draft.tags,
+            mode,
+            requestKey,
+          }),
+        });
+      } catch (error) {
+        if (![404, 503].includes(error.status)) throw error;
+        const client = clients.find((item) => Number(item.id) === Number(draft.clientId));
+        const next = {
+          ...draft,
+          id: `preview-${Date.now()}`,
+          clientName: client?.nombre || "Cliente",
+          status: mode === "now" ? "lista_para_publicar" : "programada",
+          createdAt: new Date().toISOString(),
+          previewOnly: true,
+        };
+        savePreviewQueue([next, ...readPreviewQueue()].slice(0, 40));
+      }
+      window.dispatchEvent(new CustomEvent("render:publication-preview-updated"));
+      setNotice(mode === "now"
+        ? "Simulación lista. No se envió nada a Meta."
+        : "Programación simulada. El calendario editorial no fue modificado.");
+    } catch (error) {
+      setNotice(error.message || "No se pudo guardar la simulación.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -208,8 +271,8 @@ export function PublicationComposer({ publications, clients, canPublish }) {
 
           {notice && <div className="publisher-notice" role="status">{notice}</div>}
           <div className="publisher-actions">
-            <button type="button" className="publisher-secondary" disabled={!canPublish} onClick={() => simulate("schedule")}>Probar programación</button>
-            <button type="button" className="publisher-primary" disabled={!canPublish} onClick={() => simulate("now")}>Probar “Publicar ahora”</button>
+            <button type="button" className="publisher-secondary" disabled={!canPublish || saving} onClick={() => simulate("schedule")}>{saving ? "Guardando…" : "Probar programación"}</button>
+            <button type="button" className="publisher-primary" disabled={!canPublish || saving} onClick={() => simulate("now")}>{saving ? "Guardando…" : "Probar “Publicar ahora”"}</button>
           </div>
         </div>
 
@@ -231,11 +294,25 @@ export function PublicationComposer({ publications, clients, canPublish }) {
 
 export function PublicationPreviewQueue({ mode }) {
   const [items, setItems] = useState(readPreviewQueue);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   useEffect(() => {
-    const refresh = () => setItems(readPreviewQueue());
+    let active = true;
+    const refresh = async () => {
+      try {
+        const result = await loadDispatchQueue();
+        if (active) { setItems(result); setError(""); }
+      } catch (requestError) {
+        if (active) setError(requestError.message || "No se pudieron cargar los envíos.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    refresh();
     window.addEventListener("render:publication-preview-updated", refresh);
     window.addEventListener("storage", refresh);
     return () => {
+      active = false;
       window.removeEventListener("render:publication-preview-updated", refresh);
       window.removeEventListener("storage", refresh);
     };
@@ -245,10 +322,14 @@ export function PublicationPreviewQueue({ mode }) {
   return (
     <section className="publisher-queue">
       <div className="publisher-mode-banner"><span>Prototipo local</span><p>Estos registros son simulaciones guardadas solamente en este navegador.</p></div>
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="publisher-empty"><span>◌</span><h3>Cargando envíos</h3><p>Estamos ordenando la bandeja de publicaciones.</p></div>
+      ) : error ? (
+        <div className="publisher-empty"><span>!</span><h3>No pudimos cargar la bandeja</h3><p>{error}</p></div>
+      ) : filtered.length === 0 ? (
         <div className="publisher-empty"><span>{mode === "history" ? "✓" : "◷"}</span><h3>{mode === "history" ? "Todavía no hay pruebas de publicación" : "Todavía no hay pruebas programadas"}</h3><p>Prepará una publicación para comprobar cómo se verá esta bandeja.</p></div>
       ) : (
-        <div className="publisher-queue-list">{filtered.map((item) => <article key={item.id}><div className="publisher-avatar">{item.clientName?.slice(0, 1)}</div><div><strong>{item.clientName}</strong><span>{item.type === "carrusel" ? "Carrusel" : "Reel"} · {platformLabel(item.platforms)}</span></div><time>{dateTimeLabel(item.date, item.time)}</time><b>{mode === "history" ? "Simulada" : "Programada"}</b></article>)}</div>
+        <div className="publisher-queue-list">{filtered.map((item) => <article key={item.id}><div className="publisher-avatar">{item.clientName?.slice(0, 1)}</div><div><strong>{item.clientName}</strong><span>{item.type === "carrusel" ? "Carrusel" : "Reel"} · {platformLabel(platformsForItem(item))}</span></div><time>{dispatchDateTimeLabel(item)}</time><b>{mode === "history" ? "Simulada" : "Programada"}</b></article>)}</div>
       )}
     </section>
   );

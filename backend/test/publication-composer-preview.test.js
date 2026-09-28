@@ -17,6 +17,7 @@ const appSource = readFileSync(
 
 test("el prototipo de publicación nunca llama a Meta ni modifica datos reales", () => {
   assert.match(composerSource, /Ningún botón publica contenido real/);
+  assert.match(composerSource, /apiRequest\("\/api\/publicacion-envios"/);
   assert.match(composerSource, /window\.localStorage\.setItem/);
   assert.doesNotMatch(composerSource, /fetch\(/);
   assert.doesNotMatch(composerSource, /graph\.facebook\.com|graph\.instagram\.com/);

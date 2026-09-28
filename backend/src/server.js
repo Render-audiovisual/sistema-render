@@ -36,6 +36,7 @@ import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { filterReportDataForUser } from "./report-access.js";
 import { createGoogleDrivePublicRouter, createGoogleDriveRouter } from "./google-drive.js";
+import { createPublicationDispatchRouter } from "./publication-dispatch.js";
 import { normalizeClientConfiguration, normalizePeriod } from "./client-config.js";
 import { reconcileEditorialCalendar } from "./editorial-calendar.js";
 import { buildMiaStatePendingMarker } from "./mia-task-digest.js";
@@ -272,6 +273,7 @@ router.use(requireAuthentication);
 
 router.use("/drive", createGoogleDriveRouter({ express, pool, requireRole }));
 router.use("/wilson", createWilsonChatRouter({ express, pool }));
+router.use("/publicacion-envios", createPublicationDispatchRouter({ express, pool, requireRole }));
 
 const NOTAS_CATEGORIAS = new Set(["general", "diseno", "web", "reunion", "contenido"]);
 
