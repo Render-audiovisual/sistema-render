@@ -1938,6 +1938,13 @@
     transform:translate3d(0,-2px,0);
     visibility:hidden;
   }
+  .render-workspace .ros-filter-bar:not(.open){
+    border-width:0!important;
+    gap:0;
+    margin:0 14px!important;
+    min-height:0;
+    padding:0!important;
+  }
   .render-workspace .ros-filter-bar.open{
     border-width:1px;
     margin-bottom:12px;
@@ -2154,6 +2161,7 @@
   .render-workspace .ros-controls .ros-controls-meta{grid-column:1;justify-content:space-between}
   .render-workspace .ros-filter-toggle{margin-inline:10px;width:calc(100% - 20px)}
   .render-workspace .ros-filter-bar,.render-workspace .ros-filter-bar.open{grid-template-columns:1fr;margin-inline:10px}
+  .render-workspace .ros-filter-bar:not(.open){margin-inline:10px!important}
   .render-workspace .ros-mobile-board-nav{padding-inline:10px;top:48px}
   .render-workspace .ros-board,.render-workspace .ros-board-four{margin-inline:10px;width:calc(100% - 20px)}
   .render-workspace .ros-task-card{padding:13px}
