@@ -1803,7 +1803,7 @@
 @media(max-width:640px){
   .render-workspace .ros-view-tabs{max-width:100%;overflow-x:auto;width:100%}
   .render-workspace .ros-feedback-link{align-self:flex-start;margin:4px 8px 8px}
-  .render-workspace .ros-feedback-link::before{display:none}
+  .render-workspace .ros-feedback-link::before{content:none}
 }
 @media(prefers-reduced-motion:reduce){
   .render-workspace .ros-feedback-link,.render-workspace .ros-feedback-link>b,
@@ -1957,4 +1957,205 @@
   }
   .render-workspace .ros-filter-bar,
   .render-workspace .ros-filter-bar.open{transition:none}
+}
+
+/* Responsive operativo unificado.
+   Tablet y celular comparten navegación por estado; el corte de 600px queda
+   reservado para ajustes de densidad propios de teléfonos. */
+@media(max-width:1024px){
+  .render-workspace{overflow-x:clip}
+  .render-workspace .ros-main{min-width:0;overflow-x:clip;width:100%}
+  .render-workspace .ros-page{
+    border-radius:14px;
+    margin:0 auto;
+    max-width:100%;
+    overflow:hidden;
+    padding:0 0 52px;
+    width:100%;
+  }
+
+  .render-workspace .ros-title-row{
+    align-items:stretch;
+    display:grid;
+    gap:14px;
+    grid-template-columns:1fr;
+    margin:0;
+    padding:20px 18px 16px;
+  }
+  .render-workspace .ros-title-copy{align-items:baseline;display:flex;gap:12px}
+  .render-workspace .ros-title-copy p{display:block;font-size:12px;white-space:normal}
+  .render-workspace .ros-title-actions{
+    display:grid;
+    gap:10px;
+    grid-template-columns:minmax(0,1fr) auto;
+    width:100%;
+  }
+  .render-workspace .ros-top-search{display:block;min-width:0;width:100%}
+  .render-workspace .ros-primary-button{min-height:44px;padding-inline:18px}
+
+  .render-workspace .ros-controls{
+    align-items:center;
+    display:grid;
+    gap:8px;
+    grid-template-columns:minmax(0,1fr) auto;
+    margin:0 14px;
+    min-height:0;
+    padding:8px;
+  }
+  .render-workspace .ros-view-tabs{
+    -webkit-overflow-scrolling:touch;
+    display:flex;
+    min-width:0;
+    overflow-x:auto;
+    scrollbar-width:none;
+  }
+  .render-workspace .ros-view-tabs::-webkit-scrollbar{height:0;width:0}
+  .render-workspace .ros-controls button{min-height:44px;padding:9px 12px}
+  .render-workspace .ros-feedback-link{margin:0;min-height:44px;padding:8px 12px;white-space:nowrap}
+  .render-workspace .ros-feedback-link::before{content:none}
+  .render-workspace .ros-controls .ros-controls-meta{
+    border-top:1px solid #ecefe6;
+    grid-column:1/-1;
+    justify-content:flex-end;
+    margin:0;
+    padding:7px 3px 0;
+    width:100%;
+  }
+
+  .render-workspace .ros-filter-toggle{
+    align-items:center;
+    background:#fff;
+    border:1px solid var(--ros-line);
+    border-radius:10px;
+    color:var(--ros-graphite);
+    display:flex;
+    font-size:13px;
+    font-weight:650;
+    gap:8px;
+    justify-content:flex-start;
+    margin:10px 14px 0;
+    min-height:44px;
+    padding:10px 12px;
+    width:calc(100% - 28px);
+  }
+  .render-workspace .ros-filter-toggle b{
+    align-items:center;
+    background:var(--ros-graphite);
+    border-radius:999px;
+    color:var(--ros-lime);
+    display:inline-flex;
+    font-size:10px;
+    height:21px;
+    justify-content:center;
+    min-width:21px;
+  }
+  .render-workspace .ros-filter-toggle span{color:#7c8377;font-size:11px;margin-left:auto}
+  .render-workspace .ros-filter-bar,
+  .render-workspace .ros-filter-bar.open{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    margin:0 14px;
+    overflow:hidden;
+    transition:max-height .18s cubic-bezier(.2,.8,.2,1),opacity .12s ease-out,
+      transform .18s cubic-bezier(.2,.8,.2,1),padding .18s cubic-bezier(.2,.8,.2,1),
+      margin-bottom .18s cubic-bezier(.2,.8,.2,1),border-width 0s linear .18s;
+  }
+  .render-workspace .ros-filter-bar{
+    border-width:0;
+    margin-bottom:0;
+    max-height:0;
+    opacity:0;
+    padding-block:0;
+    pointer-events:none;
+    transform:translate3d(0,-2px,0);
+    visibility:hidden;
+  }
+  .render-workspace .ros-filter-bar.open{
+    border-width:1px;
+    margin-bottom:12px;
+    max-height:520px;
+    opacity:1;
+    padding:12px;
+    pointer-events:auto;
+    transform:translate3d(0,0,0);
+    transition-delay:0s;
+    visibility:visible;
+  }
+
+  .render-workspace .ros-mobile-board-nav{
+    -webkit-overflow-scrolling:touch;
+    align-items:center;
+    background:#f5f6efee;
+    backdrop-filter:blur(16px) saturate(135%);
+    border-block:1px solid #dfe3d8;
+    display:flex;
+    gap:7px;
+    margin:10px 0 0;
+    overflow-x:auto;
+    padding:8px 14px;
+    position:sticky;
+    scrollbar-width:none;
+    top:58px;
+    z-index:8;
+  }
+  .render-workspace .ros-mobile-board-nav::-webkit-scrollbar{height:0;width:0}
+  .render-workspace .ros-mobile-board-nav button{
+    align-items:center;
+    background:#fff;
+    border:1px solid #dfe3d8;
+    border-radius:999px;
+    color:#62695c;
+    display:flex;
+    flex:0 0 auto;
+    font-size:12px;
+    font-weight:650;
+    gap:7px;
+    min-height:44px;
+    padding:8px 12px;
+  }
+  .render-workspace .ros-mobile-board-nav button i{border-radius:50%;height:7px;width:7px}
+  .render-workspace .ros-mobile-board-nav button b{align-items:center;background:#eef0ea;border-radius:999px;color:#697064;display:flex;font-size:10px;height:22px;justify-content:center;min-width:22px;padding:0 6px}
+  .render-workspace .ros-mobile-board-nav button.active{background:#202418;border-color:#202418;box-shadow:0 5px 14px #2024181f;color:#f5f6ef}
+  .render-workspace .ros-mobile-board-nav button.active b{background:#b5fc00;color:#202418}
+
+  .render-workspace .ros-board,
+  .render-workspace .ros-board-four{
+    display:block;
+    grid-template-columns:none;
+    margin:8px 14px 0;
+    overflow:visible;
+    padding:0;
+    scroll-snap-type:none;
+    width:calc(100% - 28px);
+  }
+  .render-workspace .ros-column{display:block;margin:0;min-width:0;width:100%}
+  .render-workspace .ros-column>header{min-height:42px;padding:6px 4px 9px}
+  .render-workspace .ros-column>header span,.render-workspace .ros-column>header strong{font-size:14px}
+  .render-workspace .ros-column>div{border-radius:14px;min-height:0;padding:8px}
+  .render-workspace .ros-task-card{border-radius:12px;margin-bottom:8px;padding:14px}
+  .render-workspace .ros-task-card h3{font-size:16px;line-height:1.35}
+
+  .render-workspace .ros-task-list,
+  .render-workspace .ros-calendar,
+  .render-workspace .ros-project-grid,
+  .render-workspace .ros-no-results{margin:14px}
+  .render-workspace .ros-project-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+@media(max-width:600px){
+  .render-workspace .ros-page{border-radius:0;padding-bottom:84px}
+  .render-workspace .ros-title-row{padding:17px 12px 13px}
+  .render-workspace .ros-title-copy{align-items:flex-start;display:grid;gap:3px}
+  .render-workspace .ros-title-actions{grid-template-columns:1fr}
+  .render-workspace .ros-primary-button{width:100%}
+  .render-workspace .ros-controls{grid-template-columns:1fr;margin-inline:10px}
+  .render-workspace .ros-view-tabs{width:100%}
+  .render-workspace .ros-feedback-link{justify-self:start}
+  .render-workspace .ros-controls .ros-controls-meta{grid-column:1;justify-content:space-between}
+  .render-workspace .ros-filter-toggle{margin-inline:10px;width:calc(100% - 20px)}
+  .render-workspace .ros-filter-bar,.render-workspace .ros-filter-bar.open{grid-template-columns:1fr;margin-inline:10px}
+  .render-workspace .ros-mobile-board-nav{padding-inline:10px;top:48px}
+  .render-workspace .ros-board,.render-workspace .ros-board-four{margin-inline:10px;width:calc(100% - 20px)}
+  .render-workspace .ros-task-card{padding:13px}
+  .render-workspace .ros-project-grid{grid-template-columns:1fr}
 }

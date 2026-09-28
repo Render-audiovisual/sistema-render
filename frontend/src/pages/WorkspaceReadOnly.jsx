@@ -587,7 +587,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const [dragOver, setDragOver] = useState("");
   const [newFeedbackCount, setNewFeedbackCount] = useState(0);
   const [mobileBoardColumn, setMobileBoardColumn] = useState(BOARD_COLUMNS[0].id);
-  const compactBoard = useMediaQuery("(max-width: 600px)");
+  const compactBoard = useMediaQuery("(max-width: 1024px)");
   const boardRef = useRef(null);
   const mobileBoardNavRef = useRef(null);
   const today = getHoyLocalISO();
