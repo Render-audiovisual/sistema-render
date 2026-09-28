@@ -113,6 +113,22 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     return !lock.current && (!dirty || window.confirm("Tenés cambios sin guardar. ¿Querés descartarlos?"));
   }
 
+  function backToTasks() {
+    if (!canLeave()) return;
+    const fromTasks = window.history.state?.fromTasks;
+    if (typeof fromTasks === "string") {
+      try {
+        const origin = new URL(fromTasks, window.location.origin);
+        if (origin.origin === window.location.origin && origin.pathname === "/workspace/tareas") {
+          window.history.back();
+          return;
+        }
+      } catch { /* Un origen inválido vuelve al tablero canónico. */ }
+    }
+    window.history.pushState({}, "", "/workspace/tareas");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+
   function openNote(note) {
     if (!canLeave()) return;
     setSelected(note);
@@ -324,7 +340,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
   return <main className="render-feedback">
     <header className="rf-header">
       <div><span className="rf-eyebrow">NOTAS Y SEGUIMIENTO</span><h1>Feedback</h1><p>Todo lo importante, ordenado y fácil de consultar.</p></div>
-      <button className="rf-primary" disabled={busy || trash} onClick={createNote}>+ Nuevo feedback</button>
+      <div className="rf-header-actions"><button className="rf-back-tasks" type="button" onClick={backToTasks}>← Volver a tareas</button><button className="rf-primary" disabled={busy || trash} onClick={createNote}>+ Nuevo feedback</button></div>
     </header>
 
     <nav className="rf-section-switch" aria-label="Tipo de feedback">

@@ -60,8 +60,14 @@ test("Tareas abre Feedback sin recargar ni romper el marco de la aplicación", (
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");
   assert.match(appSource, /window\.addEventListener\("popstate", syncPath\)/);
-  assert.match(workspaceSource, /window\.history\.pushState\(\{\}, "", "\/feedback"\)/);
+  assert.match(workspaceSource, /fromTasks: window\.location\.href/);
+  assert.match(workspaceSource, /window\.history\.pushState\([\s\S]*?"\/feedback"\)/);
   assert.match(workspaceSource, /onClick=\{openFeedback\}/);
+  assert.match(workspaceSource, /<button className=\{`ros-feedback-link/);
+  assert.match(feedbackSource, /← Volver a tareas/);
+  assert.match(feedbackSource, /window\.history\.state\?\.fromTasks/);
+  assert.match(feedbackSource, /window\.history\.back\(\)/);
+  assert.match(feedbackSource, /window\.history\.pushState\(\{\}, "", "\/workspace\/tareas"\)/);
   assert.match(feedbackStyles, /animation:rf-page-enter/);
   assert.match(feedbackStyles, /button:not\(:disabled\):active\{transform:scale\(\.975\)\}/);
   assert.match(workspaceStyles, /animation:ros-surface-enter/);
