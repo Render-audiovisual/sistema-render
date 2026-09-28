@@ -136,6 +136,14 @@ test("Tareas evita renders globales y mantiene los hooks en el nivel del compone
   assert.doesNotMatch(workspaceSource, /const incorporateRelatedTasks = useCallback\(\(items\) => \{\s*const refreshFeedbackCount/);
 });
 
+test("el tablero móvil renderiza solo el proceso visible y conserva todos los contadores", () => {
+  const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
+  assert.match(workspaceSource, /useMediaQuery\("\(max-width: 600px\)"\)/);
+  assert.match(workspaceSource, /compactBoard\s*\?\s*BOARD_COLUMNS\.filter/);
+  assert.match(workspaceSource, /renderedBoardColumns\.map/);
+  assert.match(workspaceSource, /className="ros-mobile-board-nav"[\s\S]*BOARD_COLUMNS\.map/);
+});
+
 test("abrir una tarea no compite con el arrastre de la tarjeta", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   assert.match(workspaceSource, /className="ros-card-drag-handle" draggable="true"/);
