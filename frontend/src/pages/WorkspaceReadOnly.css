@@ -2077,6 +2077,13 @@
     transform:translate3d(0,-2px,0);
     visibility:hidden;
   }
+  .render-workspace .ros-filter-bar:not(.open){
+    border-width:0!important;
+    gap:0;
+    margin:0 14px!important;
+    min-height:0;
+    padding:0!important;
+  }
   .render-workspace .ros-filter-bar.open{
     border-width:1px;
     margin-bottom:12px;
