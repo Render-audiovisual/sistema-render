@@ -110,7 +110,7 @@ export function App() {
     if (path === "/calendario") {
       // Alias histórico: el calendario ahora vive como pestaña dentro del
       // módulo unificado de Publicaciones (no se rompen links guardados).
-      return <PublicacionesPage tabInicial="calendario" />;
+      return <PublicacionesPage tabInicial="calendario" sesion={sesion} />;
     }
     if (path === "/calendario-estructura") {
       return <HistoriasPage initialTab="estructura" />;
@@ -131,7 +131,7 @@ export function App() {
       return <EmpleadosPage />;
     }
     if (path === "/planificacion-publicaciones") {
-      return <PublicacionesPage />;
+      return <PublicacionesPage sesion={sesion} />;
     }
     window.location.href = rutaPropia || "/login";
     return null;

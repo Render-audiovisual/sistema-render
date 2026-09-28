@@ -3,6 +3,7 @@ import { etiquetaCortaPublicacion, fechaISODesde, getCheckPublicacionLabel, getE
 import { COLUMNAS_PUBLICACION, DIAS_SEMANA, ESTADOS_PUBLICACION, MESES, RESPONSABLES_EQUIPO, TIPOS_PUBLICACION } from "../constants.js";
 import { Modal } from "../components/Modal.jsx";
 import { PageState } from "../components/PageState.jsx";
+import { PublicationComposer, PublicationPreviewQueue } from "../components/PublicationComposer.jsx";
 import { formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
 export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, contextMonth, onMonthChange }) {
@@ -991,11 +992,11 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
   );
 }
 
-export function PublicacionesPage({ tabInicial = "calendario" }) {
+export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
   const initialContext = readUrlContext(window.location.search, { tab: tabInicial, cliente: "", mes: "" });
   const initialDate = readMonthContext(initialContext.mes, new Date().getFullYear(), new Date().getMonth());
   const [tabPrincipal, setTabPrincipal] = useState(
-    ["calendario", "lista", "planilla"].includes(initialContext.tab) ? initialContext.tab : tabInicial,
+    ["calendario", "preparar", "programadas", "historial", "lista", "planilla"].includes(initialContext.tab) ? initialContext.tab : tabInicial,
   );
   const [clienteSeleccionado, setClienteSeleccionado] = useState(Number(initialContext.cliente) || null);
   const [clientes, setClientes] = useState([]);
@@ -1014,7 +1015,7 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
     const restoreContext = () => {
       const context = readUrlContext(window.location.search, { tab: "calendario", cliente: "", mes: "" });
       const date = readMonthContext(context.mes, hoyDate.getFullYear(), hoyDate.getMonth());
-      setTabPrincipal(["calendario", "lista", "planilla"].includes(context.tab) ? context.tab : "calendario");
+      setTabPrincipal(["calendario", "preparar", "programadas", "historial", "lista", "planilla"].includes(context.tab) ? context.tab : "calendario");
       setClienteSeleccionado(Number(context.cliente) || null);
       setYear(date.year);
       setMonth(date.month);
@@ -1083,8 +1084,12 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
 
   const TABS_PRINCIPALES = [
     { id: "calendario", label: "Calendario" },
+    { id: "preparar", label: "Preparar" },
+    { id: "programadas", label: "Programadas" },
+    { id: "historial", label: "Historial" },
     { id: "lista", label: "Seguimiento" },
   ];
+  const canPublish = ["admin", "community"].includes(sesion?.usuario?.rol);
 
   const cambiarVista = (tab) => {
     pushUrlContext({ tab });
@@ -1096,7 +1101,7 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
       <div className="frame">
         <div className="content">
           <header className="module-intro">
-            <div><h2>¿Qué tenemos que publicar y cuándo?</h2><p>Consultá las fechas de cada Reel y Carrusel, por cliente y por semana.</p></div>
+            <div><h2>Publicaciones</h2><p>Planificá, prepará y controlá los Reels y Carruseles de cada cliente.</p></div>
           </header>
           {errorClientes && <PageState compact type="error" title={errorClientes} description="La vista, el cliente y el mes siguen guardados." onRetry={() => window.location.reload()} />}
 
@@ -1168,6 +1173,14 @@ export function PublicacionesPage({ tabInicial = "calendario" }) {
                 {tabPrincipal === "lista" && (
                   <PublicacionesGeneralTab clientes={clientes} onIrACliente={irAPlanillaDeCliente} />
                 )}
+
+                {tabPrincipal === "preparar" && (
+                  <PublicationComposer publications={publicaciones} clients={clientes} canPublish={canPublish}/>
+                )}
+
+                {tabPrincipal === "programadas" && <PublicationPreviewQueue mode="scheduled"/>}
+
+                {tabPrincipal === "historial" && <PublicationPreviewQueue mode="history"/>}
 
                 {tabPrincipal === "planilla" && clienteActual && (
                   <PublicacionesPlanillaTab
