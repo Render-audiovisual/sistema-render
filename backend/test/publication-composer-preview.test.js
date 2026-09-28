@@ -42,3 +42,14 @@ test("el preparador contempla los datos acordados para Instagram y Facebook", ()
   assert.match(composerSource, /Proponer con Mía/);
   assert.match(composerSource, /Probar programación/);
 });
+
+test("el preparador permite cargar material local con reglas claras por formato", () => {
+  assert.match(composerSource, /type="file"/);
+  assert.match(composerSource, /Seleccionar MP4/);
+  assert.match(composerSource, /Seleccionar fotos/);
+  assert.match(composerSource, /video\/mp4/);
+  assert.match(composerSource, /image\/jpeg/);
+  assert.match(composerSource, /entre 2 y 10 piezas/);
+  assert.match(composerSource, /Elegir desde Drive/);
+  assert.match(composerSource, /URL\.revokeObjectURL/);
+});

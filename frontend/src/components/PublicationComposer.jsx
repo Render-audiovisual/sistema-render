@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 
 const STORAGE_KEY = "render-publicaciones-preview-v1";
@@ -86,6 +86,11 @@ function materialCount(draft) {
   return draft.material.split(/\n+/).map((item) => item.trim()).filter(Boolean).length;
 }
 
+function formatFileSize(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
 function suggestionFor(draft, clients, publications) {
   const client = clients.find((item) => Number(item.id) === Number(draft.clientId));
   const publication = publications.find((item) => Number(item.id) === Number(draft.publicationId));
@@ -94,9 +99,10 @@ function suggestionFor(draft, clients, publications) {
   return `${client?.nombre || "Nuestro cliente"} presenta ${subject}.\n\nDescubrí todos los detalles y contanos qué te parece. ✨`;
 }
 
-function PublicationPreview({ draft, clients }) {
+function PublicationPreview({ draft, clients, uploads }) {
   const client = clients.find((item) => Number(item.id) === Number(draft.clientId));
-  const assets = materialCount(draft);
+  const assets = uploads.length || materialCount(draft);
+  const firstUpload = uploads[0];
   return (
     <aside className="publisher-preview" aria-label="Vista previa de la publicación">
       <div className="publisher-preview-head">
@@ -105,9 +111,14 @@ function PublicationPreview({ draft, clients }) {
         <span className="publisher-preview-menu">•••</span>
       </div>
       <div className={`publisher-preview-media is-${draft.type}`}>
-        <span aria-hidden="true">{draft.type === "carrusel" ? "▧" : "▶"}</span>
-        <strong>{draft.type === "carrusel" ? `${assets || 0} piezas` : "Vista previa del reel"}</strong>
-        <small>{draft.material ? "Material listo para validar" : "Agregá el material de Drive"}</small>
+        {firstUpload ? (
+          draft.type === "reel"
+            ? <video src={firstUpload.previewUrl} controls muted playsInline aria-label={`Vista previa de ${firstUpload.name}`}/>
+            : <div className="publisher-preview-carousel">{uploads.slice(0, 4).map((file, index) => file.type.startsWith("image/") ? <img key={file.id} src={file.previewUrl} alt={`Pieza ${index + 1}`}/> : <video key={file.id} src={file.previewUrl} muted aria-label={`Pieza ${index + 1}`}/>)}</div>
+        ) : (
+          <><span aria-hidden="true">{draft.type === "carrusel" ? "▧" : "▶"}</span><strong>{draft.type === "carrusel" ? `${assets || 0} piezas` : "Vista previa del reel"}</strong><small>{draft.material ? "Material listo para validar" : "Subí el archivo o elegilo desde Drive"}</small></>
+        )}
+        {draft.type === "carrusel" && uploads.length > 0 && <b className="publisher-preview-count">1/{uploads.length}</b>}
       </div>
       <div className="publisher-preview-copy">
         <strong>{client?.nombre || "Cliente"}</strong>
@@ -128,6 +139,13 @@ export function PublicationComposer({ publications, clients, canPublish }) {
   const [draft, setDraft] = useState(() => emptyDraft(null, clients));
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploads, setUploads] = useState([]);
+  const [fileError, setFileError] = useState("");
+  const [showDriveField, setShowDriveField] = useState(false);
+  const fileInputRef = useRef(null);
+  const uploadsRef = useRef([]);
+
+  useEffect(() => () => uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl)), []);
 
   useEffect(() => {
     if (!draft.clientId && clients.length) setDraft((current) => ({ ...current, clientId: clients[0].id }));
@@ -135,8 +153,61 @@ export function PublicationComposer({ publications, clients, canPublish }) {
 
   const selectPublication = (id) => {
     const publication = candidates.find((item) => Number(item.id) === Number(id));
+    uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    uploadsRef.current = [];
+    setUploads([]);
     setDraft(emptyDraft(publication, clients));
     setNotice("");
+  };
+
+  const clearUploads = () => {
+    uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    uploadsRef.current = [];
+    setUploads([]);
+    setFileError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const changeType = (type) => {
+    clearUploads();
+    setField("type", type);
+  };
+
+  const chooseFiles = (fileList) => {
+    const incoming = Array.from(fileList || []);
+    const allowed = draft.type === "reel"
+      ? incoming.filter((file) => file.type === "video/mp4" || file.name.toLowerCase().endsWith(".mp4"))
+      : incoming.filter((file) => ["image/jpeg", "image/png", "image/webp", "video/mp4"].includes(file.type));
+    if (!incoming.length) return;
+    if (allowed.length !== incoming.length) {
+      setFileError(draft.type === "reel" ? "Para un Reel seleccioná un archivo MP4." : "Usá JPG, PNG, WebP o MP4.");
+      return;
+    }
+    if (draft.type === "reel" && allowed.length !== 1) {
+      setFileError("Un Reel necesita un solo archivo MP4.");
+      return;
+    }
+    if (draft.type === "carrusel" && (allowed.length < 2 || allowed.length > 10)) {
+      setFileError("Seleccioná entre 2 y 10 piezas para el carrusel.");
+      return;
+    }
+    if (allowed.some((file) => file.size > (draft.type === "reel" ? 500 : 50) * 1024 * 1024)) {
+      setFileError(draft.type === "reel" ? "El MP4 supera los 500 MB." : "Una de las piezas supera los 50 MB.");
+      return;
+    }
+    uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    const selected = allowed.map((file, index) => ({
+      id: `${file.name}-${file.size}-${index}`,
+      file,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      previewUrl: URL.createObjectURL(file),
+    }));
+    uploadsRef.current = selected;
+    setUploads(selected);
+    setFileError("");
+    setField("material", "");
   };
 
   const setField = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
@@ -148,12 +219,12 @@ export function PublicationComposer({ publications, clients, canPublish }) {
   const validation = useMemo(() => {
     if (!draft.clientId) return "Elegí un cliente.";
     if (!draft.platforms.instagram && !draft.platforms.facebook) return "Elegí al menos una plataforma.";
-    if (!draft.material.trim()) return "Agregá el enlace del material de Drive.";
-    if (draft.type === "carrusel" && materialCount(draft) < 2) return "Un carrusel necesita al menos dos piezas.";
+    if (!uploads.length && !draft.material.trim()) return "Subí el material o elegilo desde Drive.";
+    if (draft.type === "carrusel" && !uploads.length && materialCount(draft) < 2) return "Un carrusel necesita al menos dos piezas.";
     if (!draft.caption.trim()) return "Escribí o generá el copy.";
     if (!draft.date || !draft.time) return "Elegí fecha y hora.";
     return "";
-  }, [draft]);
+  }, [draft, uploads]);
 
   const simulate = async (mode) => {
     if (!canPublish) {
@@ -171,6 +242,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
       const scheduledAt = new Date(`${draft.date}T${draft.time}:00-03:00`).toISOString();
       const requestKey = window.crypto?.randomUUID?.() || `render-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       try {
+        if (uploads.length) throw Object.assign(new Error("local_file_preview"), { status: 503 });
         await apiRequest("/api/publicacion-envios", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -200,6 +272,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
           status: mode === "now" ? "lista_para_publicar" : "programada",
           createdAt: new Date().toISOString(),
           previewOnly: true,
+          uploadedFiles: uploads.map((file) => ({ name: file.name, type: file.type, size: file.size })),
         };
         savePreviewQueue([next, ...readPreviewQueue()].slice(0, 40));
       }
@@ -241,14 +314,28 @@ export function PublicationComposer({ publications, clients, canPublish }) {
 
           <div className="publisher-fields-grid">
             <label className="publisher-field"><span>Cliente</span><select value={draft.clientId} onChange={(event) => setField("clientId", Number(event.target.value))}>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label>
-            <label className="publisher-field"><span>Formato</span><select value={draft.type} onChange={(event) => setField("type", event.target.value)}><option value="reel">Reel</option><option value="carrusel">Carrusel</option></select></label>
+            <label className="publisher-field"><span>Formato</span><select value={draft.type} onChange={(event) => changeType(event.target.value)}><option value="reel">Reel</option><option value="carrusel">Carrusel</option></select></label>
           </div>
 
-          <label className="publisher-field publisher-field-wide">
-            <span>{draft.type === "carrusel" ? "Piezas desde Drive" : "Video desde Drive"}</span>
-            <textarea rows={draft.type === "carrusel" ? 4 : 2} value={draft.material} onChange={(event) => setField("material", event.target.value)} placeholder={draft.type === "carrusel" ? "Pegá un enlace por línea, en el orden del carrusel" : "Pegá el enlace del video final"}/>
-            <small>{draft.type === "carrusel" ? `${materialCount(draft)} piezas cargadas` : "El servidor validará formato, duración y acceso antes de publicar."}</small>
-          </label>
+          <div className="publisher-upload-block">
+            <div className="publisher-upload-heading"><div><span>Material</span><strong>{draft.type === "reel" ? "Subí el video terminado" : "Subí las piezas del carrusel"}</strong></div><small>{draft.type === "reel" ? "MP4 · hasta 500 MB" : "JPG, PNG, WebP o MP4 · de 2 a 10 piezas"}</small></div>
+            <input ref={fileInputRef} className="publisher-file-input" type="file" accept={draft.type === "reel" ? ".mp4,video/mp4" : ".jpg,.jpeg,.png,.webp,.mp4,image/jpeg,image/png,image/webp,video/mp4"} multiple={draft.type === "carrusel"} onChange={(event) => chooseFiles(event.target.files)}/>
+            {uploads.length === 0 ? (
+              <div className="publisher-dropzone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); chooseFiles(event.dataTransfer.files); }}>
+                <span className="publisher-upload-icon" aria-hidden="true">↑</span>
+                <div><strong>{draft.type === "reel" ? "Arrastrá el MP4 acá" : "Arrastrá las fotos acá"}</strong><small>o elegí los archivos desde tu computadora</small></div>
+                <button type="button" className="publisher-upload-button" onClick={() => fileInputRef.current?.click()}>{draft.type === "reel" ? "Seleccionar MP4" : "Seleccionar fotos"}</button>
+              </div>
+            ) : (
+              <div className="publisher-uploaded-files">
+                <div className="publisher-files-toolbar"><strong>{uploads.length} {uploads.length === 1 ? "archivo listo" : "archivos listos"}</strong><div><button type="button" onClick={() => fileInputRef.current?.click()}>Cambiar</button><button type="button" className="is-danger" onClick={clearUploads}>Quitar</button></div></div>
+                <div className="publisher-file-grid">{uploads.map((file, index) => <article key={file.id}>{file.type.startsWith("image/") ? <img src={file.previewUrl} alt=""/> : <video src={file.previewUrl} muted/>}<div><b>{draft.type === "carrusel" ? `${index + 1}. ` : ""}{file.name}</b><span>{formatFileSize(file.size)}</span></div></article>)}</div>
+              </div>
+            )}
+            {fileError && <p className="publisher-file-error" role="alert">{fileError}</p>}
+            <div className="publisher-upload-alternative"><span>También podés usar un archivo que ya está online</span><button type="button" onClick={() => setShowDriveField((visible) => !visible)}>{showDriveField ? "Ocultar enlace" : "Elegir desde Drive"}</button></div>
+            {showDriveField && <label className="publisher-field publisher-field-wide publisher-drive-field"><span>{draft.type === "carrusel" ? "Enlaces de Drive" : "Enlace de Drive"}</span><textarea rows={draft.type === "carrusel" ? 4 : 2} value={draft.material} onChange={(event) => { setField("material", event.target.value); if (event.target.value) clearUploads(); }} placeholder={draft.type === "carrusel" ? "Pegá un enlace por línea, en el orden del carrusel" : "Pegá el enlace del video final"}/><small>{draft.type === "carrusel" ? `${materialCount(draft)} piezas enlazadas` : "Render validará el acceso antes de publicar."}</small></label>}
+          </div>
 
           <div className="publisher-divider" />
           <div className="publisher-section-head"><div><span>Paso 2</span><h3>Prepará el mensaje</h3></div><button type="button" className="publisher-secondary" onClick={() => setField("caption", suggestionFor(draft, clients, publications))}>✦ Proponer con Mía</button></div>
@@ -278,11 +365,11 @@ export function PublicationComposer({ publications, clients, canPublish }) {
 
         <div className="publisher-sticky-preview">
           <div className="publisher-preview-label"><span>Vista previa</span><small>{dateTimeLabel(draft.date, draft.time)}</small></div>
-          <PublicationPreview draft={draft} clients={clients}/>
+          <PublicationPreview draft={draft} clients={clients} uploads={uploads}/>
           <div className="publisher-checklist">
             <strong>Antes de publicar</strong>
             <span className={draft.clientId ? "done" : ""}>Cliente y cuenta</span>
-            <span className={draft.material.trim() ? "done" : ""}>Material de Drive</span>
+            <span className={uploads.length || draft.material.trim() ? "done" : ""}>Material cargado</span>
             <span className={draft.caption.trim() ? "done" : ""}>Copy revisado</span>
             <span className={!validation ? "done" : ""}>Configuración completa</span>
           </div>
