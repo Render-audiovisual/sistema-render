@@ -78,6 +78,7 @@ const catalog = {
     { id: 8, usuario: "german", nombre: "Germán", rol: "produccion" },
     { id: 9, usuario: "oriana", nombre: "Oriana", rol: "community" },
     { id: 10, usuario: "lider", nombre: "Líder", rol: "lider" },
+    { id: 15, usuario: "ana", nombre: "Ana Mayerro", rol: "community" },
     { id: 11, usuario: "mariano", nombre: "Mariano Meza", rol: "diseno" },
   ],
 };
@@ -131,6 +132,20 @@ test("Wilson acepta varios responsables y conserva uno principal", () => {
   assert.equal(result.task.asignado_a, "Líder");
   assert.deepEqual(result.task.colaboradores, ["Oriana", "Mariano Meza"]);
   assert.deepEqual(result.task.responsables, ["Líder", "Oriana", "Mariano Meza"]);
+});
+
+test("Wilson resuelve los nombres habituales de Ana Mayerro", () => {
+  for (const alias of ["Ana", "Ana May", "Ana Nay", "Ana Mayerro"]) {
+    const result = buildWilsonTask({
+      titulo: "Bunker | Publicación",
+      cliente: "Búnker Training",
+      responsable: alias,
+      sector: "community",
+    }, catalog);
+    assert.deepEqual(result.errors, [], alias);
+    assert.equal(result.task.asignado_a, "Ana Mayerro", alias);
+  }
+  assert.deepEqual(wilsonPersonAliases("Ana May"), ["ana", "ana may", "ana nay", "ana mayerro"]);
 });
 
 test("Wilson no descarta responsables adicionales desconocidos", () => {
@@ -267,6 +282,20 @@ test("la API técnica de WhatsApp exige usuario y grupo permitidos dentro de la 
   assert.equal(teamContinued, true);
   assert.equal(teamRequest.wilson.actorName, "Augusto");
   assert.equal(teamRequest.wilson.actorRole, "diseno");
+
+  const anaRequest = {
+    ...request,
+    headers: sign("nonce-wa-ana", {
+      "x-wilson-actor-id": "+5493794317710", "x-wilson-actor-name": "Nombre de perfil distinto",
+      "x-wilson-group-id": "",
+    }),
+  };
+  let anaContinued = false;
+  ownerMiddleware(anaRequest, response(), () => { anaContinued = true; });
+  assert.equal(anaContinued, true);
+  assert.equal(anaRequest.wilson.actorName, "Ana Mayerro");
+  assert.equal(anaRequest.wilson.actorRole, "community");
+  assert.equal(anaRequest.wilson.privateChat, true);
 
   const privateRequest = {
     ...request,

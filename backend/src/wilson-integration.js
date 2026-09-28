@@ -20,6 +20,7 @@ const DEFAULT_ALLOWED_WHATSAPP_ID_HASHES = [
   "5028709cf82d1cc48f174b565e3ca8bf07efb7ccc3e20d2a713dc88bd9957819",
   "571fe5c68e0b986e380c466bffe5ec2e283c7d812a2717fe243fbff366a58a46",
   "f1e60232f9cb2d8abc631090c963c389fc46d83e1ffae025e1342182bdce29d1",
+  "9047d18e25d15cdd650813a3f1c23bc3f84595be2bd91d1bc189d8f957d01a35",
 ];
 const DEFAULT_WHATSAPP_GROUP_HASHES = [
   "2e0c668340e7a99aede30b6867a22268a59590fa5fc8f930f1897dc53b88de41",
@@ -40,6 +41,7 @@ const KNOWN_WHATSAPP_ACCOUNTS = [
   { hash: "571fe5c68e0b986e380c466bffe5ec2e283c7d812a2717fe243fbff366a58a46", name: "Luciano", role: "edicion", leader: false },
   { hash: "f1e60232f9cb2d8abc631090c963c389fc46d83e1ffae025e1342182bdce29d1", name: "Mariano Meza", role: "diseno", leader: false },
   { hash: "2e945d6cb00e0f5f616176c007825af691f1398ead3e12787800bd8e6c6968c6", name: "Oriana", role: "community", leader: false },
+  { hash: "9047d18e25d15cdd650813a3f1c23bc3f84595be2bd91d1bc189d8f957d01a35", name: "Ana Mayerro", role: "community", leader: false },
 ];
 const SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
 const CONFIRMATION_MAX_AGE_MS = 15 * 60 * 1000;
@@ -189,6 +191,7 @@ function canonicalWilsonPerson(value) {
   const normalized = normalizeWilsonText(value);
   if (["luciano", "milton", "milton luciano"].includes(normalized)) return "luciano";
   if (["mariano", "mariano mesa", "mariano meza", "mesa", "meza"].includes(normalized)) return "mariano meza";
+  if (["ana", "ana may", "ana nay", "ana mayerro"].includes(normalized)) return "ana mayerro";
   return normalized;
 }
 
@@ -197,6 +200,7 @@ export function wilsonPersonAliases(value) {
   if (["agus", "agustin", "lider"].includes(canonical)) return ["agus", "agustin", "lider"];
   if (canonical === "luciano") return ["luciano", "milton", "milton luciano"];
   if (canonical === "mariano meza") return ["mariano", "mariano mesa", "mariano meza", "mesa", "meza"];
+  if (canonical === "ana mayerro") return ["ana", "ana may", "ana nay", "ana mayerro"];
   if (canonical === "german") return ["german", "germán"];
   return canonical ? [canonical] : [];
 }
