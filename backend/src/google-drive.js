@@ -178,6 +178,18 @@ export function createGoogleDriveRouter({ express, pool, requireRole }) {
     } catch (error) { next(error); }
   });
 
+  router.get("/publication-upload-plan", requireRole("admin", "community"), async (_req, res, next) => {
+    try {
+      const client = await authorizedClient(pool);
+      if (!client) return res.status(503).json({ error: "Un líder debe conectar el Drive de Render." });
+      const destination = await resolveTaskFolder(client, {});
+      if (destination.status !== "resolved") {
+        return res.status(503).json({ error: destination.reason || "No encontramos la carpeta privada de publicaciones." });
+      }
+      return res.json(destination);
+    } catch (error) { return next(error); }
+  });
+
   router.post("/uploads", async (req, res, next) => {
     try {
       const client = await authorizedClient(pool);

@@ -49,23 +49,26 @@ export function normalizePublicationDispatch(body = {}) {
   const type = cleanText(body.type ?? body.tipo, 20).toLowerCase();
   const caption = cleanText(body.caption ?? body.copy, 2200);
   const firstComment = cleanText(body.firstComment ?? body.primer_comentario, 2200);
-  const mode = body.mode === "now" ? "now" : "schedule";
+  const mode = ["now", "draft"].includes(body.mode) ? body.mode : "schedule";
+  const isDraft = mode === "draft";
   const platforms = normalizePlatforms(body.platforms ?? body.plataformas);
   const materials = normalizeMaterials(body.materials ?? body.material);
-  const scheduledAt = new Date(body.scheduledAt ?? body.programada_para ?? "");
+  const scheduledValue = body.scheduledAt ?? body.programada_para ?? "";
+  const scheduledAt = scheduledValue ? new Date(scheduledValue) : null;
   const requestKey = cleanText(body.requestKey ?? body.idempotency_key, 100);
 
   if (!clientId) throw new Error("Elegí un cliente válido.");
   if (body.publicationId && !publicationId) throw new Error("La publicación planificada no es válida.");
   if (!["reel", "carrusel"].includes(type)) throw new Error("Elegí Reel o Carrusel.");
-  if (!caption) throw new Error("Escribí o generá el copy.");
-  if (!platforms.length) throw new Error("Elegí al menos una plataforma.");
-  if (!materials.length) throw new Error("Agregá el material de Drive.");
-  if (type === "reel" && materials.length !== 1) throw new Error("Un Reel necesita un solo video.");
-  if (type === "carrusel" && (materials.length < 2 || materials.length > 10)) {
+  if (!isDraft && !caption) throw new Error("Escribí o generá el copy.");
+  if (!isDraft && !platforms.length) throw new Error("Elegí al menos una plataforma.");
+  if (!isDraft && !materials.length) throw new Error("Agregá el material de Drive.");
+  if (!isDraft && type === "reel" && materials.length !== 1) throw new Error("Un Reel necesita un solo video.");
+  if (!isDraft && type === "carrusel" && (materials.length < 2 || materials.length > 10)) {
     throw new Error("Un carrusel necesita entre 2 y 10 piezas.");
   }
-  if (Number.isNaN(scheduledAt.getTime())) throw new Error("Elegí una fecha y hora válidas.");
+  if (!isDraft && (!scheduledAt || Number.isNaN(scheduledAt.getTime()))) throw new Error("Elegí una fecha y hora válidas.");
+  if (isDraft && scheduledAt && Number.isNaN(scheduledAt.getTime())) throw new Error("La fecha del borrador no es válida.");
   if (!/^[a-zA-Z0-9-]{8,100}$/.test(requestKey)) throw new Error("La operación no tiene una clave segura.");
 
   return {
@@ -77,8 +80,8 @@ export function normalizePublicationDispatch(body = {}) {
     mode,
     platforms,
     materials,
-    scheduledAt: scheduledAt.toISOString(),
-    status: mode === "now" ? "lista_para_publicar" : "programada",
+    scheduledAt: scheduledAt?.toISOString() || null,
+    status: isDraft ? "borrador" : (mode === "now" ? "lista_para_publicar" : "programada"),
     requestKey,
     options: {
       collaborators: cleanText(body.collaborators, 500),
@@ -103,6 +106,7 @@ const DISPATCH_SELECT = `
     e.opciones AS "options",
     e.preview_only AS "previewOnly",
     e.created_at AS "createdAt",
+    e.updated_at AS "updatedAt",
     COALESCE((
       SELECT json_agg(json_build_object('url', m.drive_url, 'position', m.posicion) ORDER BY m.posicion)
       FROM publicacion_envio_materiales m WHERE m.envio_id=e.id
@@ -117,7 +121,7 @@ const DISPATCH_SELECT = `
 export function createPublicationDispatchRouter({ express, pool, requireRole }) {
   const router = express.Router();
 
-  router.get("/", async (req, res, next) => {
+  router.get("/", requireRole("admin", "community"), async (req, res, next) => {
     try {
       const status = req.query.estado ? String(req.query.estado) : null;
       if (status && !PUBLICATION_DISPATCH_STATES.has(status)) {
@@ -133,6 +137,60 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
       return res.json(result.rows);
     } catch (error) {
       return next(error);
+    }
+  });
+
+  router.patch("/:id", requireRole("admin", "community"), async (req, res, next) => {
+    const id = positiveInteger(req.params.id);
+    if (!id) return res.status(400).json({ error: "Borrador inválido." });
+    let payload;
+    try {
+      payload = normalizePublicationDispatch(req.body);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const existing = await client.query("SELECT id FROM publicacion_envios WHERE id=$1 AND estado='borrador' FOR UPDATE", [id]);
+      if (!existing.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "El borrador no existe o ya fue programado." });
+      }
+      const clientExists = await client.query("SELECT id FROM clientes WHERE id=$1", [payload.clientId]);
+      if (!clientExists.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Cliente no encontrado." });
+      }
+      await client.query(
+        `UPDATE publicacion_envios SET
+           publicacion_id=$2,cliente_id=$3,tipo=$4,copy=$5,primer_comentario=$6,
+           programada_para=$7,opciones=$8::jsonb,estado=$9,updated_at=now()
+         WHERE id=$1`,
+        [id, payload.publicationId, payload.clientId, payload.type, payload.caption, payload.firstComment, payload.scheduledAt, JSON.stringify(payload.options), payload.status],
+      );
+      await client.query("DELETE FROM publicacion_envio_materiales WHERE envio_id=$1", [id]);
+      await client.query("DELETE FROM publicacion_envio_destinos WHERE envio_id=$1", [id]);
+      for (let index = 0; index < payload.materials.length; index += 1) {
+        await client.query(
+          "INSERT INTO publicacion_envio_materiales(envio_id,posicion,drive_url) VALUES($1,$2,$3)",
+          [id, index + 1, payload.materials[index]],
+        );
+      }
+      for (const platform of payload.platforms) {
+        await client.query(
+          "INSERT INTO publicacion_envio_destinos(envio_id,plataforma,estado) VALUES($1,$2,'simulada')",
+          [id, platform],
+        );
+      }
+      await client.query("COMMIT");
+      const result = await pool.query(`${DISPATCH_SELECT} WHERE e.id=$1`, [id]);
+      return res.json(result.rows[0]);
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      return next(error);
+    } finally {
+      client.release();
     }
   });
 

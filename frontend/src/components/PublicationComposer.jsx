@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
+import { publicationUploadPlan, uploadFileToDrive } from "../features/drive/drive-api.js";
 
 const STORAGE_KEY = "render-publicaciones-preview-v1";
 
@@ -82,6 +83,29 @@ function emptyDraft(publication, clients) {
   };
 }
 
+function savedDraft(dispatch, clients) {
+  const base = emptyDraft(null, clients);
+  const scheduled = dispatch?.scheduledAt ? new Date(dispatch.scheduledAt) : null;
+  return {
+    ...base,
+    publicationId: dispatch?.publicationId || "",
+    clientId: dispatch?.clientId || base.clientId,
+    type: dispatch?.type || "reel",
+    material: (dispatch?.assets || []).map((asset) => asset.url).filter(Boolean).join("\n"),
+    caption: dispatch?.caption || "",
+    firstComment: dispatch?.firstComment || "",
+    collaborators: dispatch?.options?.collaborators || "",
+    location: dispatch?.options?.location || "",
+    tags: dispatch?.options?.tags || "",
+    date: scheduled && !Number.isNaN(scheduled.getTime()) ? scheduled.toISOString().slice(0, 10) : base.date,
+    time: scheduled && !Number.isNaN(scheduled.getTime()) ? scheduled.toTimeString().slice(0, 5) : base.time,
+    platforms: {
+      instagram: (dispatch?.targets || []).some((target) => target.platform === "instagram"),
+      facebook: (dispatch?.targets || []).some((target) => target.platform === "facebook"),
+    },
+  };
+}
+
 function materialCount(draft) {
   return draft.material.split(/\n+/).map((item) => item.trim()).filter(Boolean).length;
 }
@@ -142,6 +166,12 @@ export function PublicationComposer({ publications, clients, canPublish }) {
   const [uploads, setUploads] = useState([]);
   const [fileError, setFileError] = useState("");
   const [showDriveField, setShowDriveField] = useState(false);
+  const [savedDrafts, setSavedDrafts] = useState([]);
+  const [draftId, setDraftId] = useState(null);
+  const [uploadingMaterial, setUploadingMaterial] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadedAssets, setUploadedAssets] = useState([]);
+  const [sourceSelection, setSourceSelection] = useState("");
   const fileInputRef = useRef(null);
   const uploadsRef = useRef([]);
 
@@ -151,11 +181,35 @@ export function PublicationComposer({ publications, clients, canPublish }) {
     if (!draft.clientId && clients.length) setDraft((current) => ({ ...current, clientId: clients[0].id }));
   }, [clients, draft.clientId]);
 
+  const refreshDrafts = async () => {
+    try {
+      const result = await apiRequest("/api/publicacion-envios?estado=borrador");
+      setSavedDrafts(Array.isArray(result) ? result : []);
+    } catch (error) {
+      if (![404, 503].includes(error.status)) setNotice(error.message || "No se pudieron cargar los borradores.");
+    }
+  };
+
+  useEffect(() => { refreshDrafts(); }, []);
+
   const selectPublication = (id) => {
+    setSourceSelection(id);
+    if (String(id).startsWith("draft:")) {
+      const selected = savedDrafts.find((item) => Number(item.id) === Number(String(id).slice(6)));
+      if (!selected) return;
+      clearUploads();
+      setDraftId(selected.id);
+      setDraft(savedDraft(selected, clients));
+      setShowDriveField(Boolean(selected.assets?.length));
+      setNotice("Borrador recuperado. Podés seguir editándolo.");
+      return;
+    }
     const publication = candidates.find((item) => Number(item.id) === Number(id));
     uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     uploadsRef.current = [];
     setUploads([]);
+    setUploadedAssets([]);
+    setDraftId(null);
     setDraft(emptyDraft(publication, clients));
     setNotice("");
   };
@@ -164,6 +218,8 @@ export function PublicationComposer({ publications, clients, canPublish }) {
     uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     uploadsRef.current = [];
     setUploads([]);
+    setUploadedAssets([]);
+    setUploadProgress(0);
     setFileError("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -206,8 +262,41 @@ export function PublicationComposer({ publications, clients, canPublish }) {
     }));
     uploadsRef.current = selected;
     setUploads(selected);
+    setUploadedAssets([]);
+    setUploadProgress(0);
     setFileError("");
     setField("material", "");
+  };
+
+  const uploadMaterial = async () => {
+    if (!uploads.length || uploadingMaterial) return;
+    setUploadingMaterial(true);
+    setFileError("");
+    setNotice("");
+    setUploadProgress(0);
+    try {
+      const destination = await publicationUploadPlan();
+      if (destination.status !== "resolved" || !destination.folder?.id) throw new Error(destination.reason || "No encontramos la carpeta privada de publicaciones.");
+      const completed = [];
+      for (let index = 0; index < uploads.length; index += 1) {
+        const item = uploads[index];
+        const uploaded = await uploadFileToDrive(item.file, {
+          parentId: destination.folder.id,
+          duplicateAction: "keep",
+          onProgress: (progress) => setUploadProgress(Math.round(((index + progress / 100) / uploads.length) * 100)),
+        });
+        if (!uploaded?.webViewLink) throw new Error(`No pudimos confirmar la carga de ${item.name}.`);
+        completed.push(uploaded);
+      }
+      setUploadedAssets(completed);
+      setDraft((current) => ({ ...current, material: completed.map((item) => item.webViewLink).join("\n") }));
+      setUploadProgress(100);
+      setNotice(`${completed.length === 1 ? "Archivo guardado" : "Archivos guardados"} en el Drive privado de Render.`);
+    } catch (error) {
+      setFileError(error.message || "No se pudo guardar el material en Drive.");
+    } finally {
+      setUploadingMaterial(false);
+    }
   };
 
   const setField = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
@@ -231,8 +320,12 @@ export function PublicationComposer({ publications, clients, canPublish }) {
       setNotice("Solo una community manager o un Líder puede preparar envíos.");
       return;
     }
-    if (validation) {
+    if (mode !== "draft" && validation) {
       setNotice(validation);
+      return;
+    }
+    if (uploads.length && uploadedAssets.length !== uploads.length) {
+      setNotice("Primero guardá el material en el Drive privado de Render.");
       return;
     }
     setSaving(true);
@@ -242,9 +335,8 @@ export function PublicationComposer({ publications, clients, canPublish }) {
       const scheduledAt = new Date(`${draft.date}T${draft.time}:00-03:00`).toISOString();
       const requestKey = window.crypto?.randomUUID?.() || `render-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       try {
-        if (uploads.length) throw Object.assign(new Error("local_file_preview"), { status: 503 });
-        await apiRequest("/api/publicacion-envios", {
-          method: "POST",
+        const saved = await apiRequest(draftId ? `/api/publicacion-envios/${draftId}` : "/api/publicacion-envios", {
+          method: draftId ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             clientId: draft.clientId,
@@ -254,7 +346,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
             firstComment: draft.firstComment,
             materials,
             platforms: draft.platforms,
-            scheduledAt,
+            scheduledAt: mode === "draft" ? (draft.date && draft.time ? scheduledAt : null) : scheduledAt,
             collaborators: draft.collaborators,
             location: draft.location,
             tags: draft.tags,
@@ -262,6 +354,13 @@ export function PublicationComposer({ publications, clients, canPublish }) {
             requestKey,
           }),
         });
+        if (mode === "draft") {
+          setDraftId(saved.id);
+          await refreshDrafts();
+        } else {
+          setDraftId(null);
+          await refreshDrafts();
+        }
       } catch (error) {
         if (![404, 503].includes(error.status)) throw error;
         const client = clients.find((item) => Number(item.id) === Number(draft.clientId));
@@ -269,7 +368,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
           ...draft,
           id: `preview-${Date.now()}`,
           clientName: client?.nombre || "Cliente",
-          status: mode === "now" ? "lista_para_publicar" : "programada",
+          status: mode === "draft" ? "borrador" : (mode === "now" ? "lista_para_publicar" : "programada"),
           createdAt: new Date().toISOString(),
           previewOnly: true,
           uploadedFiles: uploads.map((file) => ({ name: file.name, type: file.type, size: file.size })),
@@ -277,9 +376,11 @@ export function PublicationComposer({ publications, clients, canPublish }) {
         savePreviewQueue([next, ...readPreviewQueue()].slice(0, 40));
       }
       window.dispatchEvent(new CustomEvent("render:publication-preview-updated"));
-      setNotice(mode === "now"
-        ? "Simulación lista. No se envió nada a Meta."
-        : "Programación simulada. El calendario editorial no fue modificado.");
+      setNotice(mode === "draft"
+        ? "Borrador guardado. Podés retomarlo más tarde."
+        : mode === "now"
+          ? "Simulación lista. No se envió nada a Meta."
+          : "Programación simulada. El calendario editorial no fue modificado.");
     } catch (error) {
       setNotice(error.message || "No se pudo guardar la simulación.");
     } finally {
@@ -303,12 +404,15 @@ export function PublicationComposer({ publications, clients, canPublish }) {
 
           <label className="publisher-field publisher-field-wide">
             <span>Publicación planificada</span>
-            <select value={draft.publicationId} onChange={(event) => selectPublication(event.target.value)}>
+            <select value={sourceSelection} onChange={(event) => selectPublication(event.target.value)}>
               <option value="">Nueva publicación sin planificación</option>
+              {savedDrafts.length > 0 && <optgroup label="Borradores guardados">{savedDrafts.map((item) => <option key={`draft-${item.id}`} value={`draft:${item.id}`}>{item.clientName} · {item.type === "carrusel" ? "Carrusel" : "Reel"} · Borrador #{item.id}</option>)}</optgroup>}
+              <optgroup label="Calendario editorial">
               {candidates.map((item) => {
                 const client = clients.find((candidate) => candidate.id === item.cliente_id);
                 return <option key={item.id} value={item.id}>{item.fecha_programada} · {client?.nombre || "Cliente"} · {item.tipo === "carrusel" ? "Carrusel" : "Reel"}</option>;
               })}
+              </optgroup>
             </select>
           </label>
 
@@ -330,6 +434,8 @@ export function PublicationComposer({ publications, clients, canPublish }) {
               <div className="publisher-uploaded-files">
                 <div className="publisher-files-toolbar"><strong>{uploads.length} {uploads.length === 1 ? "archivo listo" : "archivos listos"}</strong><div><button type="button" onClick={() => fileInputRef.current?.click()}>Cambiar</button><button type="button" className="is-danger" onClick={clearUploads}>Quitar</button></div></div>
                 <div className="publisher-file-grid">{uploads.map((file, index) => <article key={file.id}>{file.type.startsWith("image/") ? <img src={file.previewUrl} alt=""/> : <video src={file.previewUrl} muted/>}<div><b>{draft.type === "carrusel" ? `${index + 1}. ` : ""}{file.name}</b><span>{formatFileSize(file.size)}</span></div></article>)}</div>
+                <div className="publisher-drive-upload-action"><div><strong>{uploadedAssets.length === uploads.length ? "Material privado listo" : "Guardalo antes de continuar"}</strong><small>{uploadedAssets.length === uploads.length ? "Los enlaces quedaron vinculados al borrador." : "Se subirá a RENDER_UPLOADS, sin publicar en redes."}</small></div><button type="button" disabled={uploadingMaterial || uploadedAssets.length === uploads.length} onClick={uploadMaterial}>{uploadingMaterial ? `${uploadProgress}%` : uploadedAssets.length === uploads.length ? "Guardado en Drive" : "Subir a Drive"}</button></div>
+                {uploadingMaterial && <div className="publisher-upload-progress"><i style={{ width: `${uploadProgress}%` }}/></div>}
               </div>
             )}
             {fileError && <p className="publisher-file-error" role="alert">{fileError}</p>}
@@ -358,6 +464,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
 
           {notice && <div className="publisher-notice" role="status">{notice}</div>}
           <div className="publisher-actions">
+            <button type="button" className="publisher-draft-button" disabled={!canPublish || saving || uploadingMaterial} onClick={() => simulate("draft")}>{saving ? "Guardando…" : draftId ? "Actualizar borrador" : "Guardar borrador"}</button>
             <button type="button" className="publisher-secondary" disabled={!canPublish || saving} onClick={() => simulate("schedule")}>{saving ? "Guardando…" : "Probar programación"}</button>
             <button type="button" className="publisher-primary" disabled={!canPublish || saving} onClick={() => simulate("now")}>{saving ? "Guardando…" : "Probar “Publicar ahora”"}</button>
           </div>

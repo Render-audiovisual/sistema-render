@@ -31,3 +31,10 @@ test("Drive usa credenciales separadas del inicio de sesión con Google", () => 
   assert.match(source, /GOOGLE_DRIVE_CLIENT_SECRET/);
   assert.doesNotMatch(source, /new OAuth2Client\(process\.env\.GOOGLE_CLIENT_ID/);
 });
+
+test("las publicaciones reutilizan RENDER_UPLOADS y exigen rol operativo", () => {
+  const source = readFileSync(new URL("../src/google-drive.js", import.meta.url), "utf8");
+  assert.match(source, /publication-upload-plan/);
+  assert.match(source, /publication-upload-plan", requireRole\("admin", "community"\)/);
+  assert.match(source, /resolveTaskFolder\(client, \{\}\)/);
+});

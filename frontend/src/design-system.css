@@ -683,7 +683,8 @@ textarea {
 .publisher-files-toolbar button:active,
 .publisher-upload-alternative button:active,
 .publisher-primary:active:not(:disabled),
-.publisher-secondary:active:not(:disabled) {
+.publisher-secondary:active:not(:disabled),
+.publisher-draft-button:active:not(:disabled) {
   transform: scale(.985);
 }
 
@@ -691,7 +692,8 @@ textarea {
 .publisher-files-toolbar button:focus-visible,
 .publisher-upload-alternative button:focus-visible,
 .publisher-primary:focus-visible,
-.publisher-secondary:focus-visible {
+.publisher-secondary:focus-visible,
+.publisher-draft-button:focus-visible {
   box-shadow: var(--render-focus);
   outline: none;
 }
@@ -750,6 +752,38 @@ textarea {
 .publisher-file-grid span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .publisher-file-grid b { font-size: 11px; }
 .publisher-file-grid span { color: var(--render-muted); font-size: 10px; margin-top: 3px; }
+
+.publisher-drive-upload-action {
+  align-items: center;
+  background: #f4f7ed;
+  border-top: 1px solid var(--render-line);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.publisher-drive-upload-action strong,
+.publisher-drive-upload-action small { display: block; }
+.publisher-drive-upload-action strong { color: #405037; font-size: 12px; }
+.publisher-drive-upload-action small { color: var(--render-muted); font-size: 10px; margin-top: 3px; }
+.publisher-drive-upload-action button {
+  background: #263020;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 42px;
+  min-width: 126px;
+  padding: 9px 13px;
+}
+.publisher-drive-upload-action button:disabled { cursor: default; opacity: .62; }
+.publisher-upload-progress { background: #e3e8da; height: 5px; overflow: hidden; }
+.publisher-upload-progress i { background: #8dba00; display: block; height: 100%; transition: width .2s ease; }
 
 .publisher-file-error {
   background: #fff2f0;
@@ -831,7 +865,8 @@ textarea {
 }
 
 .publisher-primary,
-.publisher-secondary {
+.publisher-secondary,
+.publisher-draft-button {
   border: 1px solid var(--render-line-strong);
   border-radius: 10px;
   cursor: pointer;
@@ -845,10 +880,14 @@ textarea {
 
 .publisher-primary { background: var(--render-accent); border-color: var(--render-accent); box-shadow: 0 5px 14px rgba(126, 171, 0, .16); color: var(--render-accent-ink); }
 .publisher-secondary { background: var(--render-surface); color: var(--render-ink-soft); }
+.publisher-draft-button { background: transparent; border-color: transparent; color: #596451; margin-right: auto; }
+.publisher-draft-button:hover:not(:disabled) { background: #f0f3ea; }
 .publisher-primary:hover:not(:disabled),
-.publisher-secondary:hover:not(:disabled) { transform: translateY(-1px); }
+.publisher-secondary:hover:not(:disabled),
+.publisher-draft-button:hover:not(:disabled) { transform: translateY(-1px); }
 .publisher-primary:disabled,
-.publisher-secondary:disabled { cursor: not-allowed; opacity: .45; }
+.publisher-secondary:disabled,
+.publisher-draft-button:disabled { cursor: not-allowed; opacity: .45; }
 
 .publisher-notice {
   background: #f2f5e9;
@@ -1028,6 +1067,8 @@ textarea {
   .publisher-dropzone { grid-template-columns: auto 1fr; padding: 15px; }
   .publisher-upload-button { grid-column: 1 / -1; width: 100%; }
   .publisher-file-grid { grid-template-columns: 1fr; }
+  .publisher-drive-upload-action { align-items: stretch; flex-direction: column; }
+  .publisher-drive-upload-action button { width: 100%; }
   .publisher-upload-alternative { align-items: flex-start; flex-direction: column; gap: 4px; }
   .publisher-fields-grid,
   .publisher-platforms { grid-template-columns: 1fr; }
@@ -1035,6 +1076,7 @@ textarea {
   .publisher-checklist { margin-top: 12px; }
   .publisher-actions { align-items: stretch; flex-direction: column-reverse; }
   .publisher-actions button { width: 100%; }
+  .publisher-draft-button { margin-right: 0; }
   .publisher-queue-list article { grid-template-columns: auto 1fr; }
   .publisher-queue-list article :is(time, b) { grid-column: 2; justify-self: start; }
 }

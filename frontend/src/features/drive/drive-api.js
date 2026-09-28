@@ -13,6 +13,7 @@ export async function driveRequest(url, options) {
 export const driveStatus = () => driveRequest("/api/drive/status");
 export const driveFiles = (parent, query = "") => driveRequest(`/api/drive/files?parent=${encodeURIComponent(parent)}&q=${encodeURIComponent(query)}`);
 export const driveUploadPlan = (taskId) => driveRequest(`/api/drive/upload-plan?task_id=${encodeURIComponent(taskId)}`);
+export const publicationUploadPlan = () => driveRequest("/api/drive/publication-upload-plan");
 
 export async function uploadFileToDrive(file, { parentId, taskId, duplicateAction, onProgress }) {
   const session = await driveRequest("/api/drive/uploads", {

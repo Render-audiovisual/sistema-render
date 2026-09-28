@@ -52,4 +52,8 @@ test("el preparador permite cargar material local con reglas claras por formato"
   assert.match(composerSource, /entre 2 y 10 piezas/);
   assert.match(composerSource, /Elegir desde Drive/);
   assert.match(composerSource, /URL\.revokeObjectURL/);
+  assert.match(composerSource, /Subir a Drive/);
+  assert.match(composerSource, /Guardar borrador/);
+  assert.match(composerSource, /Borradores guardados/);
+  assert.match(composerSource, /publicationUploadPlan/);
 });

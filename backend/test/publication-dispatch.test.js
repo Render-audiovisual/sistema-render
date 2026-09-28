@@ -52,10 +52,28 @@ test("valida la cantidad de materiales de Reels y carruseles", () => {
   assert.equal(carousel.materials.length, 2);
 });
 
+test("un borrador conserva datos parciales sin habilitar una publicación real", () => {
+  const draft = normalizePublicationDispatch({
+    clientId: 8,
+    type: "carrusel",
+    mode: "draft",
+    caption: "",
+    materials: [],
+    platforms: [],
+    requestKey: "draft-987b3c98-4764-4cd3-a6e4",
+  });
+  assert.equal(draft.status, "borrador");
+  assert.equal(draft.scheduledAt, null);
+  assert.deepEqual(draft.materials, []);
+  assert.deepEqual(draft.platforms, []);
+});
+
 test("la API exige community o Líder y mantiene el modo preview", () => {
   const source = readFileSync(new URL("../src/publication-dispatch.js", import.meta.url), "utf8");
   const migration = readFileSync(new URL("../migrations/037_publicacion_envios.sql", import.meta.url), "utf8");
   assert.match(source, /requireRole\("admin", "community"\)/);
+  assert.match(source, /router\.patch\("\/:id"/);
+  assert.match(source, /estado='borrador' FOR UPDATE/);
   assert.match(source, /error\.code === "23505"/);
   assert.match(source, /preview_only\)\s*VALUES[\s\S]*TRUE/);
   assert.doesNotMatch(source, /graph\.facebook\.com|graph\.instagram\.com/);
