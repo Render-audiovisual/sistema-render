@@ -567,8 +567,8 @@
   .render-workspace .ros-task-workspace-header>.ros-copy-task-link::after{content:"↗";font-size:18px}
 }
 
-/* Selector múltiple de responsables. El primero conserva el contrato de
-   responsable principal; los siguientes se guardan como colaboradores. */
+/* Selector múltiple de responsables equivalentes. El orden solo mantiene
+   compatibilidad con el almacenamiento anterior y no expresa jerarquía. */
 .ros-people-picker{display:grid;gap:9px;position:relative}
 .ros-people-picker-label{align-items:end;display:flex;justify-content:space-between}
 .ros-people-picker-label>span{color:#555854;font-size:9px;font-weight:700}

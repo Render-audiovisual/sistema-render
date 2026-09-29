@@ -69,7 +69,7 @@ test("los avisos de flujo excluyen a la persona que realizó la acción", async 
   assert.deepEqual(enviados, ["lider@example.com"]);
 });
 
-test("RENDER OS notifica al responsable principal y a colaboradores sin duplicados", async () => {
+test("RENDER OS notifica a todas las personas responsables sin duplicados", async () => {
   const tarea = {
     id: 45,
     titulo: "Tarea compartida",

@@ -512,8 +512,8 @@ export function TareaDetallePanel({
           {!modoEdicion && (
             <div className="td-readable-summary">
               <div>
-                <span>Responsable</span>
-                <strong>{tarea.asignado_a}</strong>
+                <span>Responsables</span>
+                <strong>{[tarea.asignado_a, ...colaboradores].filter(Boolean).join(", ")}</strong>
               </div>
               <div>
                 <span>Vencimiento</span>
@@ -527,12 +527,6 @@ export function TareaDetallePanel({
                 <span>Estado</span>
                 <strong style={{ color: est.fg }}>{est.label}</strong>
               </div>
-              {colaboradores.length > 0 && (
-                <div className="td-summary-wide">
-                  <span>Otros responsables</span>
-                  <strong>{colaboradores.join(", ")}</strong>
-                </div>
-              )}
             </div>
           )}
         </header>
@@ -547,7 +541,7 @@ export function TareaDetallePanel({
           <>
             <div className="td-panel-body td-edit-form">
               <label className="td-panel-field">
-                <span>Responsable</span>
+                <span>Primera persona a cargo *</span>
                 <select
                   className="sheet-cell"
                   value={tarea.asignado_a}
@@ -584,7 +578,7 @@ export function TareaDetallePanel({
               </label>
 
               <fieldset className="td-panel-field td-edit-wide td-collaborators">
-                <legend>Otros responsables</legend>
+                <legend>Sumar personas a cargo</legend>
                 <div>
                   {RESPONSABLES_EQUIPO.filter((nombre) => nombre !== tarea.asignado_a).map((nombre) => (
                     <label key={nombre}>
@@ -1219,7 +1213,7 @@ export function NuevaTareaWizard({ clientes, onCreada, onCerrar }) {
                 </label>
               </div>
               <fieldset className="td-collaborators" style={{ marginTop: "10px" }}>
-                <legend>Otros responsables</legend>
+                <legend>Sumar personas a cargo</legend>
                 <div>
                   {RESPONSABLES_EQUIPO.filter((nombre) => nombre !== asignadoA).map((nombre) => (
                     <label key={nombre}>

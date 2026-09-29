@@ -9,6 +9,7 @@ import {
   buildWilsonSignatureMessage,
   buildWilsonFeedback,
   buildWilsonTask,
+  wilsonTaskForResponse,
   buildWilsonTaskUpdate,
   canWilsonAssignPrivately,
   findWilsonDuplicates,
@@ -121,7 +122,7 @@ test("Wilson exige cliente, responsable y sector reales, pero permite omitir la 
   assert.equal(withoutDate.task.fecha_vencimiento, null);
 });
 
-test("Wilson acepta varios responsables y conserva uno principal", () => {
+test("Wilson acepta varios responsables equivalentes", () => {
   const result = buildWilsonTask({
     titulo: "Bunker | Historias con texto y CTA",
     cliente: "Búnker Training",
@@ -132,6 +133,15 @@ test("Wilson acepta varios responsables y conserva uno principal", () => {
   assert.equal(result.task.asignado_a, "Líder");
   assert.deepEqual(result.task.colaboradores, ["Oriana", "Mariano Meza"]);
   assert.deepEqual(result.task.responsables, ["Líder", "Oriana", "Mariano Meza"]);
+  const response = wilsonTaskForResponse({
+    ...result.task,
+    id: 42,
+    propiedades_extra: { workspace: "render_os", colaboradores: result.task.colaboradores },
+  });
+  assert.deepEqual(response.responsables, ["Líder", "Oriana", "Mariano Meza"]);
+  assert.equal("asignado_a" in response, false);
+  assert.equal("colaboradores" in response, false);
+  assert.equal("colaboradores" in response.propiedades_extra, false);
 });
 
 test("Wilson resuelve los nombres habituales de Ana Mayerro", () => {

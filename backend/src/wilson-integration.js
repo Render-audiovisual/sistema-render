@@ -516,7 +516,7 @@ export function findWilsonDuplicates(candidate, existingTasks) {
       && similarity(task.titulo, candidate.titulo) >= 0.5) reasons.push("misma fecha, sector y responsable con título similar");
     return reasons.length ? [{
       id: task.id, titulo: task.titulo, cliente_nombre: task.cliente_nombre,
-      asignado_a: task.asignado_a, fecha_vencimiento: task.fecha_vencimiento,
+      responsables: taskAssignees(task), fecha_vencimiento: task.fecha_vencimiento,
       estado: task.estado, razones: reasons,
       url: `https://sistema.rendercorrientes.com/workspace/tareas?task=${task.id}`,
     }] : [];
@@ -547,8 +547,23 @@ async function validate(db, body) {
   return { ...normalized, duplicates: findWilsonDuplicates(task, existing.rows) };
 }
 
+export function wilsonTaskForResponse(task, { includeUrl = true } = {}) {
+  if (!task) return task;
+  const { asignado_a: _legacyAssignee, colaboradores: _legacyCollaborators, ...visibleTask } = task;
+  const properties = task.propiedades_extra && typeof task.propiedades_extra === "object"
+    ? { ...task.propiedades_extra }
+    : task.propiedades_extra;
+  if (properties) delete properties.colaboradores;
+  return {
+    ...visibleTask,
+    ...(properties ? { propiedades_extra: properties } : {}),
+    responsables: taskAssignees(task),
+    ...(includeUrl && task.id ? { url: `https://sistema.rendercorrientes.com/workspace/tareas?task=${task.id}` } : {}),
+  };
+}
+
 function taskWithUrl(task) {
-  return { ...task, url: `https://sistema.rendercorrientes.com/workspace/tareas?task=${task.id}` };
+  return wilsonTaskForResponse(task);
 }
 
 function hasOwn(value, key) {
@@ -719,7 +734,14 @@ function taskAssignees(task = {}) {
   const collaborators = Array.isArray(task.colaboradores)
     ? task.colaboradores
     : Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [];
-  return [task.asignado_a, ...collaborators].filter(Boolean);
+  const seen = new Set();
+  const declared = Array.isArray(task.responsables) ? task.responsables : [];
+  return [task.asignado_a, ...collaborators, ...declared].filter((name) => {
+    const key = canonicalWilsonPerson(name);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function privateAssignmentListError(req, env, task) {
@@ -754,7 +776,18 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
   router.get("/catalogo", async (_req, res, next) => {
     try {
       const catalog = await loadCatalog(pool);
-      res.json({ ...catalog, sectors: [...new Set(SECTORS.values())], priorities: [...PRIORITIES] });
+      res.json({
+        ...catalog,
+        sectors: [...new Set(SECTORS.values())],
+        priorities: [...PRIORITIES],
+        assignment_contract: {
+          field: "responsables",
+          minimum: 1,
+          equivalent: true,
+          label: "Responsables",
+          instruction: "Usá una sola lista de responsables. Todas las personas están a cargo por igual; nunca comuniques un responsable principal ni colaboradores.",
+        },
+      });
     } catch (error) { next(error); }
   });
 
@@ -877,9 +910,18 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         ? privateAssignmentListError(req, env, result.task)
         : null;
       if (permissionError) {
-        return res.status(403).json({ ...result, task: null, errors: [...result.errors, permissionError] });
+        return res.status(403).json({
+          ...result,
+          task: null,
+          duplicates: result.duplicates.map((task) => wilsonTaskForResponse(task)),
+          errors: [...result.errors, permissionError],
+        });
       }
-      res.status(result.errors.length ? 422 : 200).json(result);
+      res.status(result.errors.length ? 422 : 200).json({
+        ...result,
+        task: result.task ? wilsonTaskForResponse(result.task, { includeUrl: false }) : null,
+        duplicates: result.duplicates.map((task) => wilsonTaskForResponse(task)),
+      });
     } catch (error) { next(error); }
   });
 
@@ -1162,8 +1204,14 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          WHERE t.propiedades_extra->>'workspace'='render_os'
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
            AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
-           AND ($1::boolean OR LOWER(t.asignado_a)=ANY($2::text[]))
-           AND ($3::boolean OR LOWER(t.asignado_a)=ANY($4::text[]))
+           AND ($1::boolean OR LOWER(t.asignado_a)=ANY($2::text[]) OR EXISTS (
+             SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(t.propiedades_extra->'colaboradores')='array'
+               THEN t.propiedades_extra->'colaboradores' ELSE '[]'::jsonb END) responsable(nombre)
+             WHERE LOWER(responsable.nombre)=ANY($2::text[])))
+           AND ($3::boolean OR LOWER(t.asignado_a)=ANY($4::text[]) OR EXISTS (
+             SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(t.propiedades_extra->'colaboradores')='array'
+               THEN t.propiedades_extra->'colaboradores' ELSE '[]'::jsonb END) responsable(nombre)
+             WHERE LOWER(responsable.nombre)=ANY($4::text[])))
            AND ($5::boolean OR LOWER(COALESCE(c.nombre,'')) LIKE ANY($6::text[]))
            AND ($7::boolean OR t.estado NOT IN ('publicada','completada','cancelada','archivada'))
            AND t.id>$8 ORDER BY t.id ASC LIMIT $9`,
@@ -1187,7 +1235,10 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
          WHERE t.propiedades_extra->>'workspace'='render_os'
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
-           AND ($2::boolean IS FALSE OR LOWER(t.asignado_a)=ANY($3::text[]))
+           AND ($2::boolean IS FALSE OR LOWER(t.asignado_a)=ANY($3::text[]) OR EXISTS (
+             SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(t.propiedades_extra->'colaboradores')='array'
+               THEN t.propiedades_extra->'colaboradores' ELSE '[]'::jsonb END) responsable(nombre)
+             WHERE LOWER(responsable.nombre)=ANY($3::text[])))
          ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC LIMIT $1`,
         [limit, restrictToOwn, actorAliases],
       );
@@ -1205,7 +1256,10 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
          WHERE t.propiedades_extra->>'workspace'='render_os'
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
-           AND LOWER(t.asignado_a)=ANY($1::text[])
+           AND (LOWER(t.asignado_a)=ANY($1::text[]) OR EXISTS (
+             SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(t.propiedades_extra->'colaboradores')='array'
+               THEN t.propiedades_extra->'colaboradores' ELSE '[]'::jsonb END) responsable(nombre)
+             WHERE LOWER(responsable.nombre)=ANY($1::text[])))
            AND (t.estado <> 'publicada'
              OR t.fecha_vencimiento >= date_trunc('month', CURRENT_DATE)
              OR t.updated_at >= date_trunc('month', CURRENT_DATE))
@@ -1255,7 +1309,10 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          WHERE t.propiedades_extra->>'workspace'='render_os'
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
            AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
-           AND LOWER(t.asignado_a)=ANY($1::text[])
+           AND (LOWER(t.asignado_a)=ANY($1::text[]) OR EXISTS (
+             SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(t.propiedades_extra->'colaboradores')='array'
+               THEN t.propiedades_extra->'colaboradores' ELSE '[]'::jsonb END) responsable(nombre)
+             WHERE LOWER(responsable.nombre)=ANY($1::text[])))
            AND t.estado <> 'publicada'
          ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC LIMIT 150`,
         [wilsonPersonAliases(target.name)],
@@ -1269,7 +1326,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       const task = await loadWilsonTask(pool, req.params.id);
       if (!task) return res.status(404).json({ error: "La tarea no existe en RENDER OS o está archivada." });
       if (req.wilson.privateChat && !isWilsonLeader(req, env)
-        && canonicalWilsonPerson(task.asignado_a) !== canonicalWilsonPerson(req.wilson.actorName)) {
+        && !reviewTaskOwnedBy(task, req.wilson.actorName)) {
         return res.status(403).json({ error: "Esta tarea no pertenece a tu reporte personal." });
       }
       return res.json({ task: taskWithUrl(task) });

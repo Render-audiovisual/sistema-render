@@ -93,12 +93,12 @@ def request(method, path, *, telegram_user_id, confirmed_by, payload=None, idemp
 
 def task_payload(args):
     description = (args.desc or "").replace("\\n", "\n").strip()
+    responsables = [args.assignee_name, *args.additional_assignee]
     return {
         "titulo": args.name.strip(),
         "descripcion": description,
         "cliente": args.client,
-        "responsable": args.assignee_name,
-        "colaboradores": args.additional_assignee,
+        "responsables": responsables,
         "fecha_vencimiento": args.due,
         "sector": SECTORS[args.list],
         "prioridad": PRIORITIES[args.priority],
@@ -142,13 +142,14 @@ def update_payload(args):
         "descripcion": args.desc,
         "append_descripcion": args.append_desc,
         "cliente": args.client,
-        "responsable": args.assignee_name,
         "fecha_vencimiento": args.due,
         "material": args.material,
         "referencia": args.reference,
     }
-    if args.additional_assignee is not None:
-        payload["colaboradores"] = args.additional_assignee
+    if args.assignee_name is not None or args.additional_assignee is not None:
+        payload["responsables"] = [
+            name for name in [args.assignee_name, *(args.additional_assignee or [])] if name
+        ]
     for key, value in values.items():
         if value is not None:
             payload[key] = value.replace("\\n", "\n").strip() if isinstance(value, str) else value
