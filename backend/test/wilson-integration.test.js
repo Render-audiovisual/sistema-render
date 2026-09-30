@@ -215,7 +215,7 @@ test("la API técnica valida firma e ID autorizado de Telegram", () => {
   assert.equal(request.wilson.telegramUserId, "111");
 });
 
-test("la API técnica de WhatsApp exige usuario y grupo permitidos dentro de la firma", () => {
+test("la API técnica de WhatsApp permite participantes de grupos autorizados y protege privados", () => {
   const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
   const now = 1785960000000;
   const timestamp = String(now / 1000);
@@ -250,6 +250,31 @@ test("la API técnica de WhatsApp exige usuario y grupo permitidos dentro de la 
   assert.equal(continued, true);
   assert.equal(request.wilson.actorName, "Augusto");
   assert.equal(request.wilson.groupId, "grupo-render");
+
+  const clientParticipantRequest = {
+    ...request,
+    headers: sign("nonce-wa-client-participant", {
+      "x-wilson-actor-id": "cliente-sin-alta-individual",
+      "x-wilson-actor-name": "Cliente del grupo",
+    }),
+  };
+  let clientParticipantContinued = false;
+  middleware(clientParticipantRequest, response(), () => { clientParticipantContinued = true; });
+  assert.equal(clientParticipantContinued, true);
+  assert.equal(clientParticipantRequest.wilson.actorName, "Cliente del grupo");
+  assert.equal(clientParticipantRequest.wilson.groupId, "grupo-render");
+
+  const unknownPrivateRequest = {
+    ...request,
+    headers: sign("nonce-wa-unknown-private", {
+      "x-wilson-actor-id": "cliente-sin-alta-individual",
+      "x-wilson-actor-name": "Cliente del grupo",
+      "x-wilson-group-id": "",
+    }),
+  };
+  const unknownPrivate = response();
+  middleware(unknownPrivateRequest, unknownPrivate, () => assert.fail());
+  assert.equal(unknownPrivate.statusCode, 403);
 
   const internationalRequest = {
     ...request,

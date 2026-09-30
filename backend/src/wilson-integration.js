@@ -282,6 +282,9 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
     const actorName = String(req.headers?.["x-wilson-actor-name"] || "").trim();
     const whatsapp = whatsappConfig(env);
     const knownAccount = channel === "whatsapp" ? knownWhatsappAccount(actorId) : null;
+    const privateChat = channel === "whatsapp" && !groupId;
+    const allowedWhatsappGroup = channel === "whatsapp" && !privateChat
+      && matchesIdentifier(groupId, whatsapp.groupIds, DEFAULT_WHATSAPP_GROUP_HASHES);
     const allowedIds = channel === "whatsapp"
       ? whatsapp.allowedIds
       : csv(env.WILSON_ALLOWED_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(","));
@@ -291,13 +294,13 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
         || Boolean(knownAccount)
         || matchesIdentifier(actorId, allowedIds, DEFAULT_ALLOWED_WHATSAPP_ID_HASHES)
         || matchesIdentifier(actorId, [], OWNER_WHATSAPP_ID_HASHES)
+        || allowedWhatsappGroup
       : allowedIds.includes(actorId);
     if (!actorAllowed) return res.status(403).json({ error: `Esta cuenta de ${channel === "whatsapp" ? "WhatsApp" : "Telegram"} no puede operar tareas.` });
-    const privateChat = channel === "whatsapp" && !groupId;
     if (privateChat && !knownAccount) {
       return res.status(403).json({ error: "Esta cuenta de WhatsApp no puede usar el asistente privado." });
     }
-    if (channel === "whatsapp" && !privateChat && !matchesIdentifier(groupId, whatsapp.groupIds, DEFAULT_WHATSAPP_GROUP_HASHES)) {
+    if (channel === "whatsapp" && !privateChat && !allowedWhatsappGroup) {
       return res.status(403).json({ error: "Este grupo de WhatsApp no puede operar tareas." });
     }
     const timestampMs = Number(timestamp) * 1000;
