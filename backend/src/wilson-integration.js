@@ -271,6 +271,10 @@ export function validateWilsonConfirmation({ confirmed, confirmedAt, now = Date.
   return null;
 }
 
+export function canWilsonGroupParticipantPropose(wilson, operation) {
+  return !wilson?.groupParticipantOnly || operation === "crear";
+}
+
 export function requireWilsonService(env = process.env, now = () => Date.now()) {
   return (req, res, next) => {
     const timestamp = String(req.headers?.["x-wilson-timestamp"] || "").trim();
@@ -289,13 +293,13 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
       ? whatsapp.allowedIds
       : csv(env.WILSON_ALLOWED_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(","));
     const systemActorId = String(env.WILSON_SYSTEM_ACTOR_ID || "").trim();
-    const actorAllowed = channel === "whatsapp"
+    const actorIndividuallyAllowed = channel === "whatsapp"
       ? (Boolean(systemActorId) && actorId === systemActorId)
         || Boolean(knownAccount)
         || matchesIdentifier(actorId, allowedIds, DEFAULT_ALLOWED_WHATSAPP_ID_HASHES)
         || matchesIdentifier(actorId, [], OWNER_WHATSAPP_ID_HASHES)
-        || allowedWhatsappGroup
       : allowedIds.includes(actorId);
+    const actorAllowed = actorIndividuallyAllowed || allowedWhatsappGroup;
     if (!actorAllowed) return res.status(403).json({ error: `Esta cuenta de ${channel === "whatsapp" ? "WhatsApp" : "Telegram"} no puede operar tareas.` });
     if (privateChat && !knownAccount) {
       return res.status(403).json({ error: "Esta cuenta de WhatsApp no puede usar el asistente privado." });
@@ -329,6 +333,7 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
       channel, actorId, groupId: conversationId, privateChat,
       actorName: knownAccount?.name || actorName || (channel === "telegram" ? "Usuario de Telegram" : "Usuario de WhatsApp"),
       actorRole: knownAccount?.role || "",
+      groupParticipantOnly: channel === "whatsapp" && allowedWhatsappGroup && !actorIndividuallyAllowed,
       telegramUserId: channel === "telegram" ? actorId : "",
       confirmedBy: knownAccount?.name || actorName || (channel === "telegram" ? "Usuario de Telegram" : "Usuario de WhatsApp"),
     };
@@ -1133,6 +1138,9 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       if (req.wilson.channel !== "whatsapp") return res.status(400).json({ error: "Esta confirmación es exclusiva de WhatsApp." });
       const operation = String(req.body?.operacion || "").trim().toLowerCase();
       if (!CONFIRMABLE_OPERATIONS.has(operation)) return res.status(422).json({ error: "Operación no confirmable." });
+      if (!canWilsonGroupParticipantPropose(req.wilson, operation)) {
+        return res.status(403).json({ error: "Este participante puede crear tareas, pero no modificar operaciones existentes." });
+      }
       const createsWithoutTarget = new Set(["crear", "crear_feedback"]);
       const taskId = createsWithoutTarget.has(operation) ? null : Number(req.body?.tarea_id);
       if (!createsWithoutTarget.has(operation) && (!Number.isInteger(taskId) || taskId <= 0)) {

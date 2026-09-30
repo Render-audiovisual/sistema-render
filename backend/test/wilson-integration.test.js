@@ -11,6 +11,7 @@ import {
   buildWilsonTask,
   wilsonTaskForResponse,
   buildWilsonTaskUpdate,
+  canWilsonGroupParticipantPropose,
   canWilsonAssignPrivately,
   findWilsonDuplicates,
   normalizeWilsonText,
@@ -263,6 +264,12 @@ test("la API técnica de WhatsApp permite participantes de grupos autorizados y 
   assert.equal(clientParticipantContinued, true);
   assert.equal(clientParticipantRequest.wilson.actorName, "Cliente del grupo");
   assert.equal(clientParticipantRequest.wilson.groupId, "grupo-render");
+  assert.equal(clientParticipantRequest.wilson.groupParticipantOnly, true);
+  assert.equal(canWilsonGroupParticipantPropose(clientParticipantRequest.wilson, "crear"), true);
+  assert.equal(canWilsonGroupParticipantPropose(clientParticipantRequest.wilson, "editar"), false);
+  assert.equal(canWilsonGroupParticipantPropose(clientParticipantRequest.wilson, "archivar"), false);
+  assert.equal(canWilsonGroupParticipantPropose(clientParticipantRequest.wilson, "eliminar"), false);
+  assert.equal(canWilsonGroupParticipantPropose(clientParticipantRequest.wilson, "confirmar_grabacion"), false);
 
   const unknownPrivateRequest = {
     ...request,
@@ -305,6 +312,8 @@ test("la API técnica de WhatsApp permite participantes de grupos autorizados y 
   assert.equal(ownerContinued, true);
   assert.equal(ownerRequest.wilson.actorName, "Agustín");
   assert.equal(ownerRequest.wilson.actorRole, "lider");
+  assert.equal(ownerRequest.wilson.groupParticipantOnly, false);
+  assert.equal(canWilsonGroupParticipantPropose(ownerRequest.wilson, "editar"), true);
 
   const teamRequest = {
     ...request,
