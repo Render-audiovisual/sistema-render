@@ -47,7 +47,11 @@ function parseImage(dataUrl) {
 
 export function createMoodboardsRouter({ pool }) {
   const router = express.Router();
-  const uploadDir = process.env.MOODBOARD_UPLOAD_DIR || path.join(process.cwd(), "storage", "moodboards");
+  const hostingerVersionsMarker = `${path.sep}hbuilds${path.sep}versions${path.sep}`;
+  const persistentRoot = process.cwd().includes(hostingerVersionsMarker)
+    ? process.cwd().split(hostingerVersionsMarker)[0]
+    : process.cwd();
+  const uploadDir = process.env.MOODBOARD_UPLOAD_DIR || path.join(persistentRoot, "storage", "moodboards");
   fs.mkdirSync(uploadDir, { recursive: true });
 
   router.get("/boards", async (_req, res, next) => {

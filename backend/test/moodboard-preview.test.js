@@ -5,6 +5,7 @@ import test from "node:test";
 const app = fs.readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
 const page = fs.readFileSync(new URL("../../frontend/src/pages/MoodboardPreview.jsx", import.meta.url), "utf8");
 const styles = fs.readFileSync(new URL("../../frontend/src/pages/MoodboardPreview.css", import.meta.url), "utf8");
+const backend = fs.readFileSync(new URL("../src/moodboards.js", import.meta.url), "utf8");
 
 test("el moodboard productivo queda disponible para todo el equipo", () => {
   assert.match(app, /path === "\/moodboards"/);
@@ -25,4 +26,10 @@ test("la galería tipo Pinterest se adapta a móvil y movimiento reducido", () =
   assert.match(styles, /columns:4 235px/);
   assert.match(styles, /@media\(max-width:900px\)/);
   assert.match(styles, /prefers-reduced-motion:reduce/);
+});
+
+test("las imágenes quedan fuera de la carpeta versionada de Hostinger", () => {
+  assert.match(backend, /hbuilds/);
+  assert.match(backend, /MOODBOARD_UPLOAD_DIR/);
+  assert.match(backend, /storage.*moodboards/);
 });
