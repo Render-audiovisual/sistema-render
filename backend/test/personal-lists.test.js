@@ -68,4 +68,7 @@ test("Lista está disponible para todos y ofrece editor por bloques y plantillas
   assert.match(pageSource, /Lunes.*Martes.*Miércoles/);
   assert.match(pageSource, /Todo se guarda automáticamente/);
   assert.match(pageSource, /solo vos podés verlo/);
+  assert.match(pageSource, /personal-list-rail-toggle/);
+  assert.match(pageSource, /personal-table-navigator/);
+  assert.match(pageSource, /scrollToColumn/);
 });

@@ -106,6 +106,8 @@ function TableActions({ label, children }) {
 function TableBlock({ content, onChange }) {
   const columns = content.columnas || [];
   const rows = content.filas || [];
+  const tableScrollRef = useRef(null);
+  const [activeColumn, setActiveColumn] = useState(0);
   const setColumns = (nextColumns, nextRows = rows) => onChange({ ...content, columnas: nextColumns, filas: nextRows });
   const updateColumn = (id, title) => setColumns(columns.map((column) => column.id === id ? { ...column, titulo: title } : column));
   const addColumn = () => { if (columns.length >= 14) return; const column = { id: uid("col"), titulo: `Columna ${columns.length + 1}` }; setColumns([...columns, column], rows.map((row) => ({ ...row, celdas: { ...row.celdas, [column.id]: { texto: "", completado: false } } }))); };
@@ -115,10 +117,30 @@ function TableBlock({ content, onChange }) {
   const removeRow = (row) => onChange({ ...content, filas: rows.filter((current) => current.id !== row.id) });
   const moveRow = (index, direction) => { const target = index + direction; if (target < 0 || target >= rows.length) return; const next = [...rows]; [next[index], next[target]] = [next[target], next[index]]; onChange({ ...content, filas: next }); };
   const updateCell = (rowId, columnId, changes) => onChange({ ...content, filas: rows.map((row) => row.id === rowId ? { ...row, celdas: { ...row.celdas, [columnId]: { ...row.celdas[columnId], ...changes } } } : row) });
+  useEffect(() => setActiveColumn((current) => Math.min(current, Math.max(0, columns.length - 1))), [columns.length]);
+  const scrollToColumn = (index) => {
+    const next = Math.max(0, Math.min(index, columns.length - 1));
+    const container = tableScrollRef.current;
+    const headers = container?.querySelectorAll("thead th");
+    const target = headers?.[next + 1];
+    if (container && target) container.scrollTo({ left: Math.max(0, target.offsetLeft - 50), behavior: "smooth" });
+    setActiveColumn(next);
+  };
+  const detectVisibleColumn = () => {
+    const container = tableScrollRef.current;
+    const headers = container?.querySelectorAll("thead th");
+    if (!container || !headers?.length) return;
+    const marker = container.scrollLeft + 54;
+    let closest = 0;
+    let distance = Number.POSITIVE_INFINITY;
+    columns.forEach((_, index) => { const current = Math.abs((headers[index + 1]?.offsetLeft || 0) - marker); if (current < distance) { distance = current; closest = index; } });
+    setActiveColumn((current) => current === closest ? current : closest);
+  };
   return <div className="personal-table-block">
     <div className="personal-table-heading"><div className="personal-table-title"><span>Tabla</span><input className="personal-block-title" value={content.titulo || ""} onChange={(event) => onChange({ ...content, titulo: event.target.value })} aria-label="Título de la tabla"/></div><div className="personal-table-primary-actions"><button type="button" onClick={addRow}><span>+</span> Fila</button><button type="button" onClick={addColumn} disabled={columns.length >= 14}><span>+</span> Columna</button></div></div>
     <p className="personal-table-mobile-hint">Deslizá para ver todas las columnas →</p>
-    <div className="personal-table-scroll" tabIndex="0" aria-label="Tabla desplazable"><table style={{ minWidth: `${Math.max(560, columns.length * 178 + 50)}px` }}><thead><tr><th className="personal-table-row-tools"><span aria-hidden="true">#</span></th>{columns.map((column, index) => <th key={column.id}><div className="personal-table-column-head"><input value={column.titulo} onChange={(event) => updateColumn(column.id, event.target.value)} aria-label="Nombre de columna"/><TableActions label={`Opciones de ${column.titulo || "columna"}`}><button type="button" disabled={index === 0} onClick={() => moveColumn(index, -1)} aria-label="Mover columna a la izquierda">←</button><button type="button" disabled={index === columns.length - 1} onClick={() => moveColumn(index, 1)} aria-label="Mover columna a la derecha">→</button><button className="danger" type="button" disabled={columns.length === 1} onClick={() => removeColumn(column)} aria-label="Eliminar columna">×</button></TableActions></div></th>)}</tr></thead>
+    {columns.length > 1 && <div className="personal-table-navigator" role="group" aria-label="Navegar por las columnas"><button type="button" disabled={activeColumn === 0} onClick={() => scrollToColumn(activeColumn - 1)} aria-label="Columna anterior">‹</button><div><span>Columna</span><strong>{columns[activeColumn]?.titulo || `Columna ${activeColumn + 1}`}</strong><small>{activeColumn + 1} de {columns.length}</small></div><button type="button" disabled={activeColumn === columns.length - 1} onClick={() => scrollToColumn(activeColumn + 1)} aria-label="Columna siguiente">›</button></div>}
+    <div ref={tableScrollRef} className="personal-table-scroll" tabIndex="0" aria-label="Tabla desplazable" onScroll={detectVisibleColumn}><table style={{ minWidth: `${Math.max(560, columns.length * 178 + 50)}px` }}><thead><tr><th className="personal-table-row-tools"><span aria-hidden="true">#</span></th>{columns.map((column, index) => <th key={column.id}><div className="personal-table-column-head"><input value={column.titulo} onChange={(event) => updateColumn(column.id, event.target.value)} aria-label="Nombre de columna"/><TableActions label={`Opciones de ${column.titulo || "columna"}`}><button type="button" disabled={index === 0} onClick={() => moveColumn(index, -1)} aria-label="Mover columna a la izquierda">←</button><button type="button" disabled={index === columns.length - 1} onClick={() => moveColumn(index, 1)} aria-label="Mover columna a la derecha">→</button><button className="danger" type="button" disabled={columns.length === 1} onClick={() => removeColumn(column)} aria-label="Eliminar columna">×</button></TableActions></div></th>)}</tr></thead>
       <tbody>{rows.map((row, rowIndex) => <tr key={row.id}><td className="personal-table-row-tools"><TableActions label={`Opciones de la fila ${rowIndex + 1}`}><button type="button" disabled={rowIndex === 0} onClick={() => moveRow(rowIndex, -1)} aria-label="Subir fila">↑</button><button type="button" disabled={rowIndex === rows.length - 1} onClick={() => moveRow(rowIndex, 1)} aria-label="Bajar fila">↓</button><button className="danger" type="button" onClick={() => removeRow(row)} aria-label="Eliminar fila">×</button></TableActions></td>{columns.map((column) => { const cell = row.celdas?.[column.id] || { texto: "", completado: false }; return <td key={column.id} className={cell.completado ? "complete" : ""}><label className="personal-cell-check"><input type="checkbox" checked={Boolean(cell.completado)} onChange={(event) => updateCell(row.id, column.id, { completado: event.target.checked })}/><span>✓</span></label><textarea rows="2" value={cell.texto} onChange={(event) => updateCell(row.id, column.id, { texto: event.target.value })} placeholder="Agregar nota…" aria-label={`${column.titulo}, fila ${rowIndex + 1}`}/></td>; })}</tr>)}</tbody></table></div>
     {!rows.length && <button className="personal-table-empty" type="button" onClick={addRow}>+ Agregar la primera fila</button>}
   </div>;
@@ -144,6 +166,7 @@ export function PersonalListsPage() {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState(() => globalThis.matchMedia?.("(min-width: 981px)").matches ?? true);
   const timers = useRef(new Map());
   const pendingSaves = useRef(0);
   const activeList = useMemo(() => lists.find((list) => Number(list.id) === Number(activeId)) || lists[0] || null, [lists, activeId]);
@@ -209,10 +232,11 @@ export function PersonalListsPage() {
   if (loading) return <main className="personal-lists-page is-empty"><div className="personal-list-loading"><i/><span>Cargando tu espacio…</span></div></main>;
   if (!lists.length) return <main className="personal-lists-page is-empty"><section className="personal-list-empty"><span>📝</span><h1>Tu espacio, a tu manera</h1><p>Creá páginas privadas con tablas, listas y checklists.</p><button type="button" onClick={() => setTemplateOpen(true)}>+ Crear mi primera página</button></section>{templateOpen && <TemplateDialog templates={templates} creating={creating} onChoose={createList} onClose={() => setTemplateOpen(false)} onDelete={deleteTemplate}/>} {error && <div className="personal-list-toast error">{error}</div>}</main>;
 
-  return <main className="personal-lists-page">
-    <aside className="personal-list-rail" aria-label="Mis páginas"><div className="personal-list-rail-heading"><span>Mis páginas</span><button type="button" onClick={() => setTemplateOpen(true)} aria-label="Crear página">+</button></div><div className="personal-list-tabs">{lists.map((list) => <button key={list.id} className={Number(list.id) === Number(activeList.id) ? "active" : ""} type="button" onClick={() => setActiveId(list.id)}><span>{list.emoji}</span><strong>{list.titulo}</strong></button>)}</div><p>Privado · solo vos podés verlo</p></aside>
+  return <main className={`personal-lists-page ${railOpen ? "rail-open" : "rail-closed"}`}>
+    <button className="personal-list-rail-scrim" type="button" onClick={() => setRailOpen(false)} aria-label="Cerrar páginas" tabIndex={railOpen ? 0 : -1}/>
+    <aside id="personal-list-pages" className="personal-list-rail" aria-label="Mis páginas" aria-hidden={!railOpen} inert={!railOpen ? true : undefined}><div className="personal-list-rail-heading"><span>Mis páginas</span><div><button type="button" onClick={() => setTemplateOpen(true)} aria-label="Crear página">+</button><button className="personal-list-rail-close" type="button" onClick={() => setRailOpen(false)} aria-label="Cerrar panel de páginas">‹</button></div></div><div className="personal-list-tabs">{lists.map((list) => <button key={list.id} className={Number(list.id) === Number(activeList.id) ? "active" : ""} type="button" onClick={() => { setActiveId(list.id); if (globalThis.matchMedia?.("(max-width: 980px)").matches) setRailOpen(false); }}><span>{list.emoji}</span><strong>{list.titulo}</strong></button>)}</div><p>Privado · solo vos podés verlo</p></aside>
     <article className="personal-list-document">
-      <div className="personal-list-toolbar"><span>Página personal</span><div><SavingStatus status={status}/><button type="button" onClick={() => setSaveTemplateOpen(true)}>Guardar plantilla</button><button className="danger" type="button" onClick={deleteList}>Eliminar página</button></div></div>
+      <div className="personal-list-toolbar"><div className="personal-list-toolbar-start"><button className="personal-list-rail-toggle" type="button" onClick={() => setRailOpen((current) => !current)} aria-expanded={railOpen} aria-controls="personal-list-pages"><span aria-hidden="true">{railOpen ? "‹" : "☰"}</span><strong>{railOpen ? "Ocultar" : "Páginas"}</strong></button><span>Página personal</span></div><div><SavingStatus status={status}/><button type="button" onClick={() => setSaveTemplateOpen(true)}>Guardar plantilla</button><button className="danger" type="button" onClick={deleteList}>Eliminar página</button></div></div>
       {error && <div className="personal-list-error" role="alert"><span>{error}</span><button type="button" onClick={load}>Reintentar</button></div>}
       <div className="personal-list-cover"/><div className="personal-list-content"><div className="personal-emoji-wrap"><button className="personal-list-emoji" type="button" onClick={() => setEmojiOpen((current) => !current)} aria-label="Cambiar emoji">{activeList.emoji}</button>{emojiOpen && <EmojiPicker value={activeList.emoji} onClose={() => setEmojiOpen(false)} onSelect={(emoji) => { setEmojiOpen(false); saveListMeta({ emoji }); }}/>}</div>
         <input className="personal-list-title" value={activeList.titulo} aria-label="Título de la página" onChange={(event) => replaceList(activeList.id, (list) => ({ ...list, titulo: event.target.value }))} onBlur={(event) => saveListMeta({ titulo: event.target.value })}/><p className="personal-list-hint">Combiná bloques y ordenalos como te resulte más cómodo. Todo se guarda automáticamente.</p>
