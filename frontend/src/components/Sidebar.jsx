@@ -7,6 +7,7 @@ function SidebarIcon({ name }) {
     home: <><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.5 21v-7h5v7"/></>,
     tasks: <><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 8 1.5 1.5L12 7"/><path d="M14 8h3"/><path d="m8 14 1.5 1.5L12 13"/><path d="M14 14h3"/></>,
     list: <><path d="m5 7 1.5 1.5L9 6"/><path d="M11 7h8"/><path d="m5 13 1.5 1.5L9 12"/><path d="M11 13h8"/><path d="m5 19 1.5 1.5L9 18"/><path d="M11 19h8"/></>,
+    moodboard: <><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m5 18 4.5-4.5 3 3 2.5-2.5 4 4"/></>,
     content: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6M7 16h8"/></>,
     clients: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
     reports: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,
@@ -31,6 +32,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
     trabajo: [
       { href: "/workspace/tareas", label: "Tareas", icon: "tasks" },
       { href: "/lista", label: "Lista", icon: "list" },
+      { href: "/moodboards", label: "Moodboard", icon: "moodboard" },
       { href: "/drive", label: "Drive", icon: "drive" },
     ],
     planificacion: [

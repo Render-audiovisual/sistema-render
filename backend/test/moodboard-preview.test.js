@@ -5,6 +5,7 @@ import test from "node:test";
 const app = fs.readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
 const page = fs.readFileSync(new URL("../../frontend/src/pages/MoodboardPreview.jsx", import.meta.url), "utf8");
 const styles = fs.readFileSync(new URL("../../frontend/src/pages/MoodboardPreview.css", import.meta.url), "utf8");
+const sidebar = fs.readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
 const backend = fs.readFileSync(new URL("../src/moodboards.js", import.meta.url), "utf8");
 
 test("el moodboard productivo queda disponible para todo el equipo", () => {
@@ -32,4 +33,8 @@ test("las imágenes quedan fuera de la carpeta versionada de Hostinger", () => {
   assert.match(backend, /hbuilds/);
   assert.match(backend, /MOODBOARD_UPLOAD_DIR/);
   assert.match(backend, /storage.*moodboards/);
+});
+
+test("el menú principal muestra Moodboard inmediatamente después de Lista", () => {
+  assert.match(sidebar, /href: "\/lista", label: "Lista"[\s\S]*?href: "\/moodboards", label: "Moodboard"/);
 });
