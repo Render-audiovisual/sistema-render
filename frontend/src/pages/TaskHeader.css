@@ -245,7 +245,8 @@
   .render-workspace .ros-controls-meta { width: 100%; justify-content: flex-end; border-top: 1px solid #eef0eb; }
 }
 
-/* En móvil la navegación conserva una sola fila desplazable, como una barra de documento. */
+/* En móvil todas las vistas quedan visibles: no escondemos acciones primarias
+   detrás de una fila horizontal difícil de descubrir. */
 @media (max-width: 600px) {
   .render-workspace .ros-page { --task-gutter: 12px; }
   .render-workspace .ros-title-row { gap: 12px; padding-block: 14px 12px; }
@@ -270,30 +271,41 @@
   }
   .render-workspace .ros-primary-navigation {
     display:grid;
-    gap:6px;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:7px;
     width:100%;
     overflow:visible;
   }
   .render-workspace .ros-primary-navigation::-webkit-scrollbar,
   .render-workspace .ros-view-tabs::-webkit-scrollbar { display: none; }
   .render-workspace .ros-view-tabs {
-    -webkit-overflow-scrolling:touch;
-    display:flex;
-    width:100%;
-    overflow-x:auto;
-    overscroll-behavior-inline:contain;
-    scroll-snap-type:x proximity;
-    scrollbar-width:none;
+    display:contents;
   }
   .render-workspace .ros-controls .ros-view-tabs button {
-    flex: 0 0 auto;
+    width:100%;
     min-height: 44px;
-    padding-inline: 10px;
+    padding-inline:9px;
+    border:1px solid #e1e5dd;
+    border-radius:10px;
+    background:#f7f8f4;
     font-size: 12px;
-    scroll-snap-align:start;
+    overflow:hidden;
+  }
+  .render-workspace .ros-controls .ros-view-tabs button.active {
+    border-color:#cbd5ba;
+    background:#eef3e5;
+    box-shadow:inset 0 -2px 0 #526b21;
+  }
+  .render-workspace .ros-controls .ros-view-tabs button:focus-visible,
+  .render-workspace .ros-feedback-link:focus-visible {
+    outline:3px solid rgba(82,107,33,.22);
+    outline-offset:2px;
   }
   .render-workspace .ros-feedback-link {
-    justify-self:start;
+    grid-column:1/-1;
+    justify-self:stretch;
+    justify-content:center;
+    width:100%;
     margin:0;
     min-height:44px;
     padding-inline:12px !important;
@@ -304,9 +316,10 @@
   .render-workspace .ros-feedback-link::before { display:none; }
   .render-workspace .ros-controls .ros-controls-meta {
     width: 100%;
-    justify-content: flex-end;
+    min-height:36px;
+    justify-content:flex-end;
     margin: 0;
-    padding: 6px 0 0;
+    padding:4px 0 0;
     border-top: 1px solid #eef0eb;
   }
   .render-workspace .ros-controls-meta > span { display: none; }
@@ -327,13 +340,30 @@
   .render-workspace .ros-filter-bar select { min-height: 46px; font-size: 16px; }
 
   .render-workspace .ros-mobile-board-nav {
-    gap:6px;
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:7px;
     margin-top:8px;
-    padding:7px var(--task-gutter);
+    padding:8px var(--task-gutter);
+    position:static;
+    overflow:visible;
   }
   .render-workspace .ros-mobile-board-nav button {
+    width:100%;
     min-height:44px;
+    justify-content:flex-start;
     padding:7px 10px;
+    overflow:hidden;
+  }
+  .render-workspace .ros-mobile-board-nav button span {
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .render-workspace .ros-mobile-board-nav button b {
+    margin-left:auto;
+    flex:0 0 auto;
   }
   .render-workspace .ros-board,
   .render-workspace .ros-board-four {
@@ -399,7 +429,27 @@
   .render-workspace .ros-title-row p { display:none; }
   .render-workspace .ros-primary-button { padding-inline:11px; }
   .render-workspace .ros-controls .ros-view-tabs button,
-  .render-workspace .ros-feedback-link { padding-inline:9px !important; }
+  .render-workspace .ros-feedback-link { padding-inline:7px !important; }
+  .render-workspace .ros-controls .ros-view-tabs button { font-size:11.5px; }
+  .render-workspace .ros-mobile-board-nav button{
+    gap:4px;
+    padding-inline:7px;
+  }
+  .render-workspace .ros-mobile-board-nav button i{
+    height:6px;
+    width:6px;
+  }
+  .render-workspace .ros-mobile-board-nav button span{
+    overflow:visible;
+    font-size:11px;
+    text-overflow:clip;
+  }
+  .render-workspace .ros-mobile-board-nav button b{
+    font-size:9px;
+    height:20px;
+    min-width:20px;
+    padding-inline:5px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

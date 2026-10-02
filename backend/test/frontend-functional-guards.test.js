@@ -260,9 +260,19 @@ test("Tareas conserva únicamente Papelera como acción secundaria", () => {
   assert.match(taskHeaderStyles, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto/);
   assert.match(taskHeaderStyles, /\.ros-controls button\.active/);
   assert.match(workspaceSource, /className="ros-primary-navigation" aria-label="Vistas de tareas"/);
-  assert.match(taskHeaderStyles, /\.ros-primary-navigation\s*\{[\s\S]*?overflow-x:\s*auto/);
+  assert.match(taskHeaderStyles, /\.ros-primary-navigation\s*\{[\s\S]*?display:grid;[\s\S]*?grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(taskHeaderStyles, /\.ros-view-tabs\s*\{\s*display:contents/);
+  assert.match(taskHeaderStyles, /\.ros-feedback-link\s*\{[\s\S]*?grid-column:1\/-1/);
+  assert.match(taskHeaderStyles, /\.ros-mobile-board-nav\s*\{[\s\S]*?grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(taskHeaderStyles, /\.ros-mobile-board-nav button\s*\{[\s\S]*?min-height:44px/);
   assert.match(taskHeaderStyles, /\.ros-task-list-head\s*\{\s*display:none/);
   assert.match(taskHeaderStyles, /\.ros-task-list\s*>\s*button\s*\{[\s\S]*?min-width:0/);
+});
+
+test("las vistas de Historias permanecen completas en celular", () => {
+  const designSystemStyles = readFileSync(new URL("../../frontend/src/design-system.css", import.meta.url), "utf8");
+  assert.match(designSystemStyles, /\.historias-viewport \.stories-view-switch\s*\{[\s\S]*?grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(designSystemStyles, /\.historias-viewport \.stories-view-switch button:nth-child\(3\)\s*\{\s*grid-column:1\/-1/);
 });
 
 test("la revisión de videos permite al Líder entregarlos a Oriana", () => {
