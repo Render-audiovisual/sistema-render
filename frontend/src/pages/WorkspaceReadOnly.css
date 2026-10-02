@@ -604,7 +604,7 @@
 .render-workspace .ros-controls button.active{border-bottom-color:#242724;color:#242724;font-weight:700}
 .render-workspace .ros-filter-bar button,.render-workspace .ros-load-more button,.render-workspace .ros-comment-create button,.render-workspace .ros-detail-actions button{border-radius:8px;min-height:38px}
 .render-workspace button:disabled{box-shadow:none!important;cursor:not-allowed!important;opacity:.48;transform:none!important}
-.render-workspace .ros-state>button{background:#fff;border:1px solid #d7d8d2;border-radius:8px;color:#3f423d;font-size:10px;font-weight:700;margin-top:14px;min-height:38px;padding:8px 14px}
+.render-workspace .ros-state>button{background:#fff;border:1px solid #d7d8d2;border-radius:9px;color:#3f423d;font-size:11px;font-weight:700;margin-top:14px;min-height:44px;padding:10px 16px}
 .render-workspace .ros-empty-column:is(button){background:transparent;border:0;cursor:pointer;width:100%}
 .render-workspace .ros-empty-column:is(button):hover{background:#eceee8;color:#555852}
 .render-workspace .ros-filter-toggle{display:none}

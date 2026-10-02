@@ -47,6 +47,14 @@
   --render-type-body: 14px;
   --render-type-title: clamp(28px, 3vw, 38px);
 
+  --render-sidebar-width: 236px;
+  --render-mobile-header-height: 64px;
+  --render-control-height: 44px;
+  --render-page-gutter: clamp(16px, 3vw, 40px);
+  --render-content-max: 1500px;
+  --render-motion-fast: 160ms;
+  --render-motion-standard: 220ms;
+
   font-family: var(--render-font);
   color: var(--render-ink);
   background: var(--render-canvas);
@@ -1480,9 +1488,32 @@ textarea {
 }
 /* Cambio de sección liviano: evita una pantalla congelada mientras se descarga
    únicamente el módulo solicitado. */
-.route-loading{align-content:center;background:#f7f8f3;color:#252b20;display:grid;gap:8px;justify-items:center;margin-left:280px;min-height:100vh;text-align:center}
+.route-loading{align-content:center;background:#f7f8f3;color:#252b20;display:grid;gap:8px;justify-items:center;margin-left:var(--render-sidebar-width);min-height:100dvh;text-align:center}
 .route-loading>span{animation:route-loading-spin .75s linear infinite;border:2px solid #dfe4d8;border-radius:50%;border-top-color:#637545;height:28px;width:28px}
 .route-loading strong{font-size:14px}.route-loading small{color:#858b80;font-size:11px}
 @keyframes route-loading-spin{to{transform:rotate(360deg)}}
-@media(max-width:900px){.route-loading{margin-left:0;padding-top:64px}}
+@media(max-width:980px){.route-loading{margin-left:0;padding-top:var(--render-mobile-header-height)}}
 @media(prefers-reduced-motion:reduce){.route-loading>span{animation-duration:1.8s}}
+
+/* Controles táctiles: la acción conserva el mismo peso visual, pero nunca
+   obliga a acertar sobre un objetivo menor al recomendado en celular. */
+@media(max-width:980px){
+  :is(.historias-viewport,.publicaciones-viewport) :is(.stories-view-switch,.editorial-view-toggle) button,
+  .publicaciones-viewport .publications-plan-action,
+  .reportes-page .reportes-periods button,
+  .reportes-page .report-filmmaker-label,
+  .profile-identity-card .profile-photo-actions .btn,
+  .profile-setting-form .btn,
+  .usuarios-access-filter button,
+  .usuarios-alert button,
+  .render-workspace .ros-state>button,
+  .page-state>.btn{
+    min-height:var(--render-control-height);
+  }
+  .reportes-page .report-filmmaker-label{
+    align-items:center;
+    display:flex;
+    font-size:11px;
+  }
+  .usuarios-alert button{padding:8px 10px}
+}
