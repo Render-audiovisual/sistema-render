@@ -6,13 +6,13 @@ function SidebarIcon({ name }) {
   const paths = {
     home: <><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9.5V21h13V9.5"/><path d="M9.5 21v-7h5v7"/></>,
     tasks: <><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 8 1.5 1.5L12 7"/><path d="M14 8h3"/><path d="m8 14 1.5 1.5L12 13"/><path d="M14 14h3"/></>,
+    list: <><path d="m5 7 1.5 1.5L9 6"/><path d="M11 7h8"/><path d="m5 13 1.5 1.5L9 12"/><path d="M11 13h8"/><path d="m5 19 1.5 1.5L9 18"/><path d="M11 19h8"/></>,
     content: <><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10M7 12h6M7 16h8"/></>,
     clients: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></>,
     reports: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></>,
     salary: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M7 15h3"/></>,
     profile: <><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></>,
     users: <><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M14 15a5 5 0 0 1 7 4.5"/></>,
-    chat: <><path d="M21 12a8 8 0 0 1-8.5 8 9 9 0 0 1-3.7-1L4 21l1.6-4.2A8 8 0 1 1 21 12Z"/><path d="M8 12h.01M12 12h.01M16 12h.01"/></>,
   };
   return <svg className="sidebar-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name] || paths.content}</svg>;
 }
@@ -30,6 +30,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
     ] : [],
     trabajo: [
       { href: "/workspace/tareas", label: "Tareas", icon: "tasks" },
+      { href: "/lista", label: "Lista", icon: "list" },
       { href: "/drive", label: "Drive", icon: "drive" },
     ],
     planificacion: [
@@ -48,10 +49,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
       { href: "/reportes-historias", label: "Reportes", icon: "reports" },
       ...(esAdmin ? [
         { href: "/sueldos", label: "Finanzas", icon: "salary" },
-        { href: "/wilson-conversaciones", label: "Conversaciones", icon: "chat" },
-      ] : [
-        { href: "/workspace/tareas?wilson=open", label: "Conversaciones", icon: "chat" },
-      ]),
+      ] : []),
     ],
     admin: esAdmin ? [
       { href: "/clientes", label: "Clientes", icon: "clients" },

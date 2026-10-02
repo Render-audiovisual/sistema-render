@@ -18,7 +18,7 @@ import { SueldosPage } from "./pages/Sueldos.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
 import { DrivePage } from "./pages/Drive.jsx";
-import { WilsonConversationsPage } from "./pages/WilsonConversations.jsx";
+import { PersonalListsPage } from "./pages/PersonalLists.jsx";
 
 export function App() {
   const [path, setPath] = React.useState(window.location.pathname);
@@ -57,8 +57,8 @@ export function App() {
   }
 
   const rutasCompartidas = esAdmin
-    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/bloc-notas", "/drive", "/wilson-conversaciones"]
-    : ["/perfil", "/workspace/tareas", "/bloc-notas", "/drive", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias"];
+    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive"]
+    : ["/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias"];
   const rutaPermitida =
     esAdmin || path === "/feedback" || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -67,7 +67,7 @@ export function App() {
     return null;
   }
 
-  if (path === "/piezas") {
+  if (path === "/piezas" || path === "/wilson-conversaciones") {
     window.location.replace("/workspace/tareas");
     return null;
   }
@@ -76,14 +76,14 @@ export function App() {
     if (path === "/workspace/tareas") {
       return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
     }
+    if (path === "/lista") {
+      return <PersonalListsPage />;
+    }
     if (path === "/bloc-notas" || path === "/feedback") {
       return <FeedbackPage sesion={sesion} />;
     }
     if (path === "/drive") {
       return <DrivePage sesion={sesion} />;
-    }
-    if (path === "/wilson-conversaciones") {
-      return <WilsonConversationsPage />;
     }
     if (path === "/lider") {
       return <LiderDashboard />;

@@ -163,13 +163,15 @@ test("la navegación de empleados expone trabajo y contenido, pero no gestión s
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
   const utilsSource = readFileSync(new URL("../../frontend/src/utils.jsx", import.meta.url), "utf8");
-  assert.match(appSource, /: \["\/perfil", "\/workspace\/tareas", "\/bloc-notas", "\/drive", "\/planificacion-historias", "\/planificacion-publicaciones", "\/reportes-historias"\]/);
+  assert.match(appSource, /: \["\/perfil", "\/workspace\/tareas", "\/lista", "\/bloc-notas", "\/drive", "\/planificacion-historias", "\/planificacion-publicaciones", "\/reportes-historias"\]/);
   assert.match(sidebarSource, /planificacion: \[/);
   assert.match(sidebarSource, /inicio: esAdmin \?/);
   assert.match(sidebarSource, /gestion: \[/);
   assert.match(sidebarSource, /href: "\/reportes-historias", label: "Reportes"/);
   assert.match(sidebarSource, /href: "\/sueldos", label: "Finanzas"/);
-  assert.match(sidebarSource, /href: "\/workspace\/tareas\?wilson=open"/);
+  assert.doesNotMatch(sidebarSource, /label: "Conversaciones"/);
+  assert.doesNotMatch(sidebarSource, /wilson=open/);
+  assert.doesNotMatch(appSource, /<WilsonConversationsPage/);
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
   const finanzasSource = readFileSync(new URL("../../frontend/src/pages/Sueldos.jsx", import.meta.url), "utf8");
   assert.doesNotMatch(reportesSource, /report-section-tabs/);
@@ -241,8 +243,8 @@ test("Tareas conserva únicamente Papelera como acción secundaria", () => {
   assert.match(workspaceSource, /aria-label="Estados del tablero"/);
   assert.match(workspaceSource, /selectMobileBoardColumn/);
   const taskHeaderStyles = readFileSync(new URL("../../frontend/src/pages/TaskHeader.css", import.meta.url), "utf8");
-  assert.match(taskHeaderStyles, /grid-template-columns:minmax\(0,1fr\)!important/);
-  assert.match(taskHeaderStyles, /\.ros-controls \.ros-view-tabs button\.active/);
+  assert.match(taskHeaderStyles, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto/);
+  assert.match(taskHeaderStyles, /\.ros-controls button\.active/);
 });
 
 test("la revisión de videos permite al Líder entregarlos a Oriana", () => {
