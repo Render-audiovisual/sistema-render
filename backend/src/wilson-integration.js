@@ -385,8 +385,13 @@ function resolveWilsonUser(pool) {
         WHERE whatsapp_id_hash=$1 AND whatsapp_habilitado IS TRUE LIMIT 1`, [hash]);
       const known = knownWhatsappAccount(req.wilson.actorId);
       if (!result.rows[0] && known) {
-        result = await pool.query(`SELECT id,usuario,nombre,rol FROM usuarios
-          WHERE lower(nombre)=lower($1) OR lower(usuario)=lower($2) ORDER BY id LIMIT 1`, [known.name, normalizeWilsonText(known.name).split(" ")[0]]);
+        result = known.leader
+          ? await pool.query(`SELECT id,usuario,nombre,rol FROM usuarios
+              WHERE lower(usuario)='lider' OR lower(nombre)='líder' OR rol='admin'
+              ORDER BY CASE WHEN lower(usuario)='lider' THEN 0 ELSE 1 END,id LIMIT 1`)
+          : await pool.query(`SELECT id,usuario,nombre,rol FROM usuarios
+              WHERE lower(nombre)=lower($1) OR lower(usuario)=lower($2) ORDER BY id LIMIT 1`,
+            [known.name, normalizeWilsonText(known.name).split(" ")[0]]);
       }
       const user = result.rows[0];
       if (!user) {

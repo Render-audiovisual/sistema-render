@@ -6,6 +6,7 @@ import { nextReminderDate, resolveListItem } from "../src/mia-personal-lists.js"
 
 const migration = readFileSync(new URL("../migrations/042_mia_listas_personales.sql", import.meta.url), "utf8");
 const integration = readFileSync(new URL("../src/wilson-integration.js", import.meta.url), "utf8");
+const francoFix = readFileSync(new URL("../migrations/043_corregir_identidad_francos_whatsapp.sql", import.meta.url), "utf8");
 const client = readFileSync(new URL("../scripts/mia_render_os_task.py", import.meta.url), "utf8");
 
 const rows = [{
@@ -34,6 +35,8 @@ test("la identidad se vincula por hash y las propuestas no tienen vencimiento", 
   assert.doesNotMatch(migration, /mia_lista_propuestas[\s\S]*expires_at/);
   assert.match(integration, /unlinked_whatsapp/);
   assert.match(integration, /alertUnlinkedWhatsapp/);
+  assert.match(integration, /lower\(usuario\)='lider'/);
+  assert.match(francoFix, /lower\(usuario\) <> 'lider'/);
 });
 
 test("el cliente firmado expone consulta, propuesta y confirmación de Lista", () => {
