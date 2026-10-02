@@ -14,6 +14,7 @@ test("el moodboard productivo queda disponible para todo el equipo", () => {
   assert.match(page, /Aprobadas/);
   assert.match(page, /Descartadas/);
   assert.match(page, /Pegar enlace/);
+  assert.doesNotMatch(page, /Memoria visual compartida|moodboard-rail-tip/);
 });
 
 test("el moodboard contempla clientes compartidos, tareas y límites de archivo", () => {
