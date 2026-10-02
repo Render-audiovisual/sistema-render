@@ -128,6 +128,12 @@ class DeliveryGuardTests(unittest.TestCase):
         self.assertTrue(worker.confirmed_transport_receipt({"payload":{"result":{"messageId":"receipt"}}}))
         self.assertFalse(worker.confirmed_transport_receipt({"dryRun":True,"messageId":"receipt"}))
 
+    def test_existing_vps_group_suppression_keeps_private_reels_enabled(self):
+        self.assertTrue(worker.suppress_group_followup({"kind":"event","text":"Reel listo para revisar"}))
+        self.assertTrue(worker.suppress_group_followup({"kind":"digest","title":"Carrusel atrasado"}))
+        self.assertFalse(worker.suppress_group_followup({"kind":"private","text":"Reel atrasado"}))
+        self.assertFalse(worker.suppress_group_followup({"kind":"event","text":"Visita completada"}))
+
 
 if __name__ == "__main__":
     unittest.main()

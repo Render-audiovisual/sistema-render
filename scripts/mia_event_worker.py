@@ -26,6 +26,7 @@ DEFAULT_ACCOUNT = "render-3794145157"
 DEFAULT_CLIENT = pathlib.Path(__file__).with_name("mia_render_os_task.py")
 DEFAULT_LOCK = pathlib.Path("/tmp/mia-render-os-events.lock")
 DEFAULT_LEDGER = pathlib.Path(__file__).resolve().parent / "state" / "mia-deliveries.sqlite3"
+SUPPRESSED_GROUP_TERMS = ("reel", "carrusel")
 
 
 def delivery_key(event, account):
@@ -90,6 +91,14 @@ def format_event(event):
         return text
     label = "Abrir lista" if event.get("motivo") == "recordatorio_lista" else "Abrir tarea"
     return f"{text}\n\n{label}: {task_url}"
+
+
+def suppress_group_followup(event):
+    """Preserve the VPS rule: reel/carrusel updates go privately, not to groups."""
+    if event.get("kind") == "private":
+        return False
+    text = " ".join(str(event.get(key) or "") for key in ("text", "title", "task_title")).lower()
+    return any(term in text for term in SUPPRESSED_GROUP_TERMS)
 
 
 def private_recipients():
@@ -190,9 +199,23 @@ def main():
                   + [{**event, "kind": "event"} for event in response.get("events") or []]
                   + [{**digest, "kind": "digest"} for digest in digest_response.get("digests") or []])[:limit]
         delivered = []
+        suppressed = []
         errors = []
         for event in events:
             try:
+                if suppress_group_followup(event):
+                    if args.send:
+                        if event.get("kind") == "digest":
+                            payload = json.dumps({
+                                "destination": event["destination"], "period": event["period"],
+                                "level": event["level"], "task_ids": event.get("task_ids", []),
+                                "clients": event.get("clients", []),
+                            }, ensure_ascii=False)
+                            run_json(client_command(identity, "ack-group-digest", "--fingerprint", event["id"], "--payload", payload))
+                        else:
+                            run_json(client_command(identity, "ack-event", "--task-id", str(event["task_id"]), "--event-id", str(event["id"])))
+                    suppressed.append({"event_id": event.get("id"), "reason": "reel_or_carrusel_group_followup"})
+                    continue
                 if args.send and event.get("kind") == "private":
                     check = run_json(client_command(identity, "verify-private-notification",
                         "--notification-id", str(event["id"]), "--fingerprint", str(event["fingerprint"])))
@@ -229,6 +252,7 @@ def main():
             "mode": "send" if args.send else "dry-run",
             "pending": len(events),
             "delivered": len(delivered),
+            "suppressed": suppressed,
             "errors": errors,
             "results": delivered,
         }, ensure_ascii=False, indent=2))
