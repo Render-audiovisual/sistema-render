@@ -1478,3 +1478,11 @@ textarea {
   .wilson-admin-page { padding: 82px 12px 74px; }
   .wilson-admin-layout > aside button { min-width: 190px; }
 }
+/* Cambio de sección liviano: evita una pantalla congelada mientras se descarga
+   únicamente el módulo solicitado. */
+.route-loading{align-content:center;background:#f7f8f3;color:#252b20;display:grid;gap:8px;justify-items:center;margin-left:280px;min-height:100vh;text-align:center}
+.route-loading>span{animation:route-loading-spin .75s linear infinite;border:2px solid #dfe4d8;border-radius:50%;border-top-color:#637545;height:28px;width:28px}
+.route-loading strong{font-size:14px}.route-loading small{color:#858b80;font-size:11px}
+@keyframes route-loading-spin{to{transform:rotate(360deg)}}
+@media(max-width:900px){.route-loading{margin-left:0;padding-top:64px}}
+@media(prefers-reduced-motion:reduce){.route-loading>span{animation-duration:1.8s}}

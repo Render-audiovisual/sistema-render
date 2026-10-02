@@ -102,6 +102,18 @@ test("Tareas conserva una sola interfaz y navega en la misma pestaña", () => {
   assert.match(sidebarSource, /href=\{enlace\.href\}[\s\S]*?target="_self"/);
 });
 
+test("Inicio rápido no consulta datos y el menú cambia de sección sin recargar la aplicación", () => {
+  const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
+  const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
+  const quickHomeSource = readFileSync(new URL("../../frontend/src/pages/QuickHome.jsx", import.meta.url), "utf8");
+
+  assert.match(appSource, /React\.lazy/);
+  assert.match(appSource, /path === "\/inicio"/);
+  assert.match(sidebarSource, /event\.preventDefault\(\)/);
+  assert.match(sidebarSource, /onNavigate\(href\)/);
+  assert.doesNotMatch(quickHomeSource, /fetch\(|apiRequest|apiJson/);
+});
+
 test("todo el equipo puede abrir el formulario y crear únicamente tareas RENDER OS", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   const serverSource = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
@@ -163,7 +175,9 @@ test("la navegación de empleados expone trabajo y contenido, pero no gestión s
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
   const utilsSource = readFileSync(new URL("../../frontend/src/utils.jsx", import.meta.url), "utf8");
-  assert.match(appSource, /: \["\/perfil", "\/workspace\/tareas", "\/lista", "\/bloc-notas", "\/drive", "\/moodboards", "\/planificacion-historias", "\/planificacion-publicaciones", "\/reportes-historias"\]/);
+  assert.match(appSource, /: \["\/inicio", "\/perfil", "\/workspace\/tareas", "\/lista", "\/bloc-notas", "\/drive", "\/moodboards", "\/planificacion-historias", "\/planificacion-publicaciones", "\/reportes-historias"\]/);
+  assert.match(appSource, /React\.lazy/);
+  assert.match(appSource, /QuickHomePage/);
   assert.match(sidebarSource, /planificacion: \[/);
   assert.match(sidebarSource, /inicio: esAdmin \?/);
   assert.match(sidebarSource, /gestion: \[/);

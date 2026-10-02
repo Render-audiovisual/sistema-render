@@ -18,7 +18,7 @@ function SidebarIcon({ name }) {
   return <svg className="sidebar-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name] || paths.content}</svg>;
 }
 
-export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel }) {
+export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, getRolLabel }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const esAdmin = sesion?.usuario?.rol === "admin";
   const rutaTablero = getRutaUsuario(sesion?.usuario?.usuario, sesion?.usuario?.rol);
@@ -64,6 +64,12 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
 
   const enlacesCuenta = seccionesNav.cuenta;
   const cuentaActiva = enlacesCuenta.some((enlace) => path === enlace.href);
+  const navigate = (event, href) => {
+    if (!onNavigate || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    setMenuAbierto(false);
+    onNavigate(href);
+  };
 
   useEffect(() => {
     const cerrarConEscape = (event) => {
@@ -79,6 +85,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
         key={enlace.href}
         href={enlace.href}
         target="_self"
+        onClick={(event) => navigate(event, enlace.href)}
         className={`sidebar-link ${path === enlace.href ? "active" : ""}`}
       >
         {enlace.icon && <SidebarIcon name={enlace.icon}/>}
@@ -94,7 +101,7 @@ export function Sidebar({ path, sesion, onCerrarSesion, ROL_LABELS, getRolLabel 
   return (
     <nav className="sidebar" aria-label="Navegación principal">
       <div className="sidebar-header">
-        <a className="brand-mark" href={rutaPrincipal} aria-label={esAdmin ? "Ir al Inicio" : "Ir a Tareas"}>
+        <a className="brand-mark" href={rutaPrincipal} aria-label={esAdmin ? "Ir al Inicio" : "Ir a Tareas"} onClick={(event) => navigate(event, rutaPrincipal)}>
           <span className="brand-initial">R</span>
           <span className="brand-greeting">
             <strong>Hola, {primerNombre}</strong>

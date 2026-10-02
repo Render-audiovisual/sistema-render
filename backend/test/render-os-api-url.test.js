@@ -14,7 +14,7 @@ test("la consulta paginada de RENDER OS envía filtros al backend sin modo Archi
     archiveMode: "active",
   }), "https://render.local");
   assert.equal(url.searchParams.get("workspace"), "render_os");
-  assert.equal(url.searchParams.get("limit"), "100");
+  assert.equal(url.searchParams.get("limit"), "50");
   assert.equal(url.searchParams.get("offset"), "100");
   assert.equal(url.searchParams.has("solo_archivadas"), false);
   assert.equal(url.searchParams.get("q"), "reel lanzamiento");

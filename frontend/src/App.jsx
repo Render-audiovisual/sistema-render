@@ -1,25 +1,32 @@
 import React from "react";
 import { cerrarSesion, getRutaUsuario, getSesion } from "./utils.jsx";
 import { getRolLabel, ROL_LABELS } from "./constants.js";
-import { AugustoDashboard } from "./pages/dashboards/Augusto.jsx";
-import { FeedbackPage } from "./pages/Feedback.jsx";
-import { ClientesAdminPage } from "./pages/Clientes.jsx";
-import { EmpleadosPage } from "./pages/Empleados.jsx";
-import { GermanDashboard } from "./pages/dashboards/German.jsx";
-import { HistoriasPage } from "./pages/Historias.jsx";
-import { LiderDashboard } from "./pages/dashboards/Lider.jsx";
 import { LoginPage } from "./pages/Login.jsx";
-import { LucianoDashboard } from "./pages/dashboards/Luciano.jsx";
-import { OrianaDashboard } from "./pages/dashboards/Oriana.jsx";
-import { PerfilPage } from "./pages/Perfil.jsx";
-import { PublicacionesPage } from "./pages/Publicaciones.jsx";
-import { ReportesEquipoPage } from "./pages/Reportes.jsx";
-import { SueldosPage } from "./pages/Sueldos.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
-import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
-import { DrivePage } from "./pages/Drive.jsx";
-import { PersonalListsPage } from "./pages/PersonalLists.jsx";
-import { MoodboardPreviewPage } from "./pages/MoodboardPreview.jsx";
+import { QuickHomePage } from "./pages/QuickHome.jsx";
+
+const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
+const AugustoDashboard = lazyNamed(() => import("./pages/dashboards/Augusto.jsx"), "AugustoDashboard");
+const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPage");
+const ClientesAdminPage = lazyNamed(() => import("./pages/Clientes.jsx"), "ClientesAdminPage");
+const EmpleadosPage = lazyNamed(() => import("./pages/Empleados.jsx"), "EmpleadosPage");
+const GermanDashboard = lazyNamed(() => import("./pages/dashboards/German.jsx"), "GermanDashboard");
+const HistoriasPage = lazyNamed(() => import("./pages/Historias.jsx"), "HistoriasPage");
+const LiderDashboard = lazyNamed(() => import("./pages/dashboards/Lider.jsx"), "LiderDashboard");
+const LucianoDashboard = lazyNamed(() => import("./pages/dashboards/Luciano.jsx"), "LucianoDashboard");
+const OrianaDashboard = lazyNamed(() => import("./pages/dashboards/Oriana.jsx"), "OrianaDashboard");
+const PerfilPage = lazyNamed(() => import("./pages/Perfil.jsx"), "PerfilPage");
+const PublicacionesPage = lazyNamed(() => import("./pages/Publicaciones.jsx"), "PublicacionesPage");
+const ReportesEquipoPage = lazyNamed(() => import("./pages/Reportes.jsx"), "ReportesEquipoPage");
+const SueldosPage = lazyNamed(() => import("./pages/Sueldos.jsx"), "SueldosPage");
+const WorkspaceReadOnlyPage = lazyNamed(() => import("./pages/WorkspaceReadOnly.jsx"), "WorkspaceReadOnlyPage");
+const DrivePage = lazyNamed(() => import("./pages/Drive.jsx"), "DrivePage");
+const PersonalListsPage = lazyNamed(() => import("./pages/PersonalLists.jsx"), "PersonalListsPage");
+const MoodboardPreviewPage = lazyNamed(() => import("./pages/MoodboardPreview.jsx"), "MoodboardPreviewPage");
+
+function RouteLoading() {
+  return <main className="route-loading" aria-live="polite"><span aria-hidden="true"/><strong>Abriendo sección…</strong><small>Cargando solamente lo necesario.</small></main>;
+}
 
 export function App() {
   const [path, setPath] = React.useState(window.location.pathname);
@@ -31,8 +38,16 @@ export function App() {
     return () => window.removeEventListener("popstate", syncPath);
   }, []);
 
+  const navigate = React.useCallback((href) => {
+    const next = new URL(href, window.location.origin);
+    if (next.origin !== window.location.origin) return;
+    window.history.pushState({}, "", `${next.pathname}${next.search}${next.hash}`);
+    setPath(next.pathname);
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, []);
+
   if (path === "/agustin" || path === "/franco") {
-    window.location.href = "/lider";
+    window.location.href = "/inicio";
     return null;
   }
 
@@ -58,8 +73,8 @@ export function App() {
   }
 
   const rutasCompartidas = esAdmin
-    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
-    : ["/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias"];
+    ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
+    : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias"];
   const rutaPermitida =
     esAdmin || path === "/feedback" || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -74,6 +89,9 @@ export function App() {
   }
 
   const dashboard = (() => {
+    if (path === "/inicio") {
+      return <QuickHomePage sesion={sesion} onNavigate={navigate} />;
+    }
     if (path === "/workspace/tareas") {
       return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;
     }
@@ -147,14 +165,16 @@ export function App() {
 
   // El moodboard usa una pizarra visual de ancho completo y su propio
   // selector de marcas. El botón “Volver a tareas” conserva la navegación.
+  const loadedDashboard = <React.Suspense fallback={<RouteLoading />}>{dashboard}</React.Suspense>;
+
   if (path === "/moodboards") {
-    return dashboard;
+    return loadedDashboard;
   }
 
   return (
     <>
-      <Sidebar path={path} sesion={sesion} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
-      {dashboard}
+      <Sidebar path={path} sesion={sesion} onNavigate={navigate} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
+      {loadedDashboard}
     </>
   );
 }
