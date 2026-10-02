@@ -302,7 +302,7 @@
     outline:3px solid rgba(82,107,33,.22);
     outline-offset:2px;
   }
-  .render-workspace .ros-feedback-link {
+  .render-workspace .ros-controls .ros-feedback-link {
     grid-column:1/-1;
     justify-self:stretch;
     justify-content:center;
@@ -314,7 +314,7 @@
     border-radius:9px !important;
     background:#f7f8f4 !important;
   }
-  .render-workspace .ros-feedback-link::before { display:none; }
+  .render-workspace .ros-controls .ros-feedback-link::before { display:none; }
   .render-workspace .ros-controls .ros-controls-meta {
     width: 100%;
     min-height:36px;
