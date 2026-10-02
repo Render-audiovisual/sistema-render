@@ -245,9 +245,9 @@
   .render-workspace .ros-controls-meta { width: 100%; justify-content: flex-end; border-top: 1px solid #eef0eb; }
 }
 
-/* En móvil todas las vistas quedan visibles: no escondemos acciones primarias
-   detrás de una fila horizontal difícil de descubrir. */
-@media (max-width: 600px) {
+/* En celular, tablet y paneles angostos todas las vistas quedan visibles:
+   no escondemos acciones primarias detrás de una fila horizontal. */
+@media (max-width: 1024px) {
   .render-workspace .ros-page { --task-gutter: 12px; }
   .render-workspace .ros-title-row { gap: 12px; padding-block: 14px 12px; }
   .render-workspace .ros-title-copy { display:flex; align-items:center; gap: 9px; }
