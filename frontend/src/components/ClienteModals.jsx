@@ -380,6 +380,16 @@ export function DetalleClienteModal({
 
           <div className="modal-actions cliente-detail-actions">
             <button
+              className="btn"
+              type="button"
+              onClick={() => {
+                window.history.pushState({}, "", `/moodboards?cliente=${cliente.id}`);
+                window.dispatchEvent(new PopStateEvent("popstate"));
+              }}
+            >
+              ✦ Abrir moodboard
+            </button>
+            <button
               className="btn primary"
               type="button"
               disabled={enviando !== null}

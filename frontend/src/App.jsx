@@ -19,6 +19,7 @@ import { Sidebar } from "./components/Sidebar.jsx";
 import { WorkspaceReadOnlyPage } from "./pages/WorkspaceReadOnly.jsx";
 import { DrivePage } from "./pages/Drive.jsx";
 import { PersonalListsPage } from "./pages/PersonalLists.jsx";
+import { MoodboardPreviewPage } from "./pages/MoodboardPreview.jsx";
 
 export function App() {
   const [path, setPath] = React.useState(window.location.pathname);
@@ -57,8 +58,8 @@ export function App() {
   }
 
   const rutasCompartidas = esAdmin
-    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive"]
-    : ["/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias"];
+    ? ["/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
+    : ["/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias"];
   const rutaPermitida =
     esAdmin || path === "/feedback" || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -78,6 +79,9 @@ export function App() {
     }
     if (path === "/lista") {
       return <PersonalListsPage />;
+    }
+    if (path === "/moodboards") {
+      return <MoodboardPreviewPage />;
     }
     if (path === "/bloc-notas" || path === "/feedback") {
       return <FeedbackPage sesion={sesion} />;
@@ -139,6 +143,12 @@ export function App() {
 
   if (!dashboard) {
     return null;
+  }
+
+  // El moodboard usa una pizarra visual de ancho completo y su propio
+  // selector de marcas. El botón “Volver a tareas” conserva la navegación.
+  if (path === "/moodboards") {
+    return dashboard;
   }
 
   return (

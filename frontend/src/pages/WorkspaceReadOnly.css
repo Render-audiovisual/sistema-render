@@ -32,6 +32,7 @@
   background:#f7f8fa;
   min-height:100vh;
 }
+.ros-moodboard-link{margin:4px 0 18px;border:1px solid #dce4d3;border-radius:10px;background:#f6f9f2;color:#46533e;padding:10px 13px;font-weight:700;cursor:pointer;transition:transform .18s ease,background .18s ease,border-color .18s ease}.ros-moodboard-link:hover{background:#eef5e7;border-color:#c8d8b9;transform:translateY(-1px)}
 .render-workspace .ros-main{
   background:transparent;
   border:0;

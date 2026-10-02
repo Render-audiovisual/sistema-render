@@ -43,6 +43,7 @@ import { normalizeClientConfiguration, normalizePeriod } from "./client-config.j
 import { reconcileEditorialCalendar } from "./editorial-calendar.js";
 import { buildMiaStatePendingMarker } from "./mia-task-digest.js";
 import { scheduleRenderOsTrashCleanup } from "./task-trash-retention.js";
+import { createMoodboardsRouter } from "./moodboards.js";
 import {
   getStateNotification,
   isTaskFinalizer,
@@ -88,7 +89,7 @@ const googleClient = process.env.GOOGLE_CLIENT_ID
   : null;
 
 app.use(compression());
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "15mb" }));
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -272,6 +273,7 @@ router.post("/login/google", async (req, res, next) => {
 router.use("/drive", createGoogleDrivePublicRouter({ express, pool }));
 
 router.use(requireAuthentication);
+router.use("/moodboards", createMoodboardsRouter({ pool }));
 
 router.use("/drive", createGoogleDriveRouter({ express, pool, requireRole }));
 router.use("/wilson", createWilsonChatRouter({ express, pool }));
