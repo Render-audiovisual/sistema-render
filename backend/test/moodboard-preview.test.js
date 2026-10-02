@@ -31,6 +31,7 @@ test("la galería tipo Pinterest se adapta a móvil y movimiento reducido", () =
 
 test("el moodboard conserva el menú principal y separa el scroll de clientes y galería", () => {
   assert.doesNotMatch(app, /if \(path === "\/moodboards"\) \{\s*return loadedDashboard/);
+  assert.doesNotMatch(page, /Volver a tareas|moodboard-back/);
   assert.match(styles, /\.moodboard-preview-shell\{[^}]*overflow:hidden/);
   assert.match(styles, /\.moodboard-brand-rail nav\{[^}]*overflow-y:auto/);
   assert.match(styles, /\.moodboard-workspace\{[^}]*overflow-y:auto/);
