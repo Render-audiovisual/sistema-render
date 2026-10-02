@@ -2069,6 +2069,7 @@ router.post("/tareas", async (req, res, next) => {
     }
     if (workspace === "render_os") {
       propiedadesExtra.workspace = "render_os";
+      if (estadoFinal === "publicada") propiedadesExtra.finalizada_at = new Date().toISOString();
     }
     const nuevaTarea = { titulo, subtipo, tipo_tarea, propiedades_extra: propiedadesExtra };
     if (isProductionVisitTask(nuevaTarea)) {
@@ -2330,6 +2331,11 @@ router.patch("/tareas/:id", async (req, res, next) => {
           ...(body.propiedades_extra || {}),
           mia_notificacion_pendiente: pendingEvent,
         };
+      }
+      if (body.estado === "publicada" && estadoAnterior !== "publicada") {
+        body.propiedades_extra = { ...(body.propiedades_extra || {}), finalizada_at: new Date().toISOString() };
+      } else if (estadoAnterior === "publicada" && body.estado !== "publicada") {
+        body.propiedades_extra = { ...(body.propiedades_extra || {}), finalizada_at: null };
       }
     }
 
