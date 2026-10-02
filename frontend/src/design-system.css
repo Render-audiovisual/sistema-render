@@ -1495,6 +1495,17 @@ textarea {
 @media(max-width:980px){.route-loading{margin-left:0;padding-top:var(--render-mobile-header-height)}}
 @media(prefers-reduced-motion:reduce){.route-loading>span{animation-duration:1.8s}}
 
+/* Respuesta física común: breve y predecible para las acciones principales. */
+:is(.btn,.primary-btn,.secondary-btn,.ghost-btn,.ros-primary-button,.rf-primary,.publications-plan-action,.finance-contract-primary,.finance-contract-secondary,.drive-page-header a,.drive-connect button){
+  transition:background-color var(--render-motion-fast) ease,border-color var(--render-motion-fast) ease,color var(--render-motion-fast) ease,box-shadow var(--render-motion-fast) ease,transform var(--render-motion-fast) ease;
+}
+:is(.btn,.primary-btn,.secondary-btn,.ghost-btn,.ros-primary-button,.rf-primary,.publications-plan-action,.finance-contract-primary,.finance-contract-secondary,.drive-page-header a,.drive-connect button):active:not(:disabled){transform:scale(.975)}
+:is(button,.btn,.primary-btn,.secondary-btn,.ghost-btn):disabled{cursor:not-allowed}
+
+@media(prefers-reduced-motion:reduce){
+  :is(.btn,.primary-btn,.secondary-btn,.ghost-btn,.ros-primary-button,.rf-primary,.publications-plan-action,.finance-contract-primary,.finance-contract-secondary,.drive-page-header a,.drive-connect button){transition:none}
+}
+
 /* Controles táctiles: la acción conserva el mismo peso visual, pero nunca
    obliga a acertar sobre un objetivo menor al recomendado en celular. */
 @media(max-width:980px){
@@ -1514,6 +1525,8 @@ textarea {
   .moodboard-status-tabs button,
   .moodboard-category-filter select,
   .moodboard-category-edit,
+  .rf-fields .rf-people label,
+  .publisher-files-toolbar button,
   .render-workspace .ros-state>button,
   .page-state>.btn{
     min-height:var(--render-control-height);

@@ -22,3 +22,15 @@
 .moodboard-state-actions button.active.aprobada{background:#e5f4e9;border-color:#a8d3b5;color:#1e6e43}.moodboard-state-actions button.active.libre{background:#eff1ed;border-color:#bdc4b9}.moodboard-state-actions button.active.descartada{background:#f8e9e7;border-color:#dfbab5;color:#93443f}
 .moodboard-loading-page{min-height:100vh;display:grid;place-content:center;gap:12px;text-align:center;background:#f4f5f1;color:#283022}.moodboard-loading-page span,.moodboard-spinner{display:inline-block;color:#719300;animation:moodboard-pulse 1.1s ease-in-out infinite}.moodboard-error{margin:14px auto;max-width:1500px;padding:12px 14px;border:1px solid #e4b9b5;border-radius:10px;background:#fff3f1;color:#8f3d38;font-size:12px}.moodboard-image-loading{min-height:180px;display:grid;place-items:center;background:linear-gradient(120deg,#e9ede5,#f8faf6,#e9ede5);background-size:200% 100%;animation:moodboard-shimmer 1.3s linear infinite}.moodboard-image-loading span{color:#718166}.moodboard-link-preview.detail{text-decoration:none}
 @keyframes moodboard-pulse{50%{opacity:.35;transform:scale(.88)}}@keyframes moodboard-shimmer{to{background-position:-200% 0}}
+
+/* Pulido final: controles claros y legibles sin alterar la galería. */
+.moodboard-search{height:44px}
+.moodboard-search input{font-size:13px}
+.moodboard-status-tabs button,.moodboard-category-filter select,.moodboard-category-edit{min-height:44px;font-size:12px}
+.moodboard-card-category,.moodboard-status-badge,.moodboard-card-tags span,.moodboard-card-copy footer{font-size:10px}
+.moodboard-detail-panel>header button,.moodboard-composer>header button,.moodboard-category-modal>header button{width:44px;height:44px}
+.moodboard-state-actions button,.moodboard-kind-tabs button,.moodboard-composer>footer button,.moodboard-category-modal footer button,.moodboard-category-add button{min-height:44px;height:44px;font-size:11px}
+.moodboard-category-list input,.moodboard-category-add input{height:44px;font-size:12px}
+.moodboard-category-list button,.moodboard-delete{align-items:center;display:inline-flex;min-height:44px;font-size:11px}
+.moodboard-state-actions button,.moodboard-kind-tabs button,.moodboard-composer>footer button,.moodboard-category-modal footer button,.moodboard-category-list button,.moodboard-category-edit{transition:background-color 160ms ease,border-color 160ms ease,box-shadow 160ms ease,transform 160ms ease}
+.moodboard-state-actions button:active,.moodboard-kind-tabs button:active,.moodboard-composer>footer button:active,.moodboard-category-modal footer button:active,.moodboard-category-list button:active,.moodboard-category-edit:active{transform:scale(.975)}
