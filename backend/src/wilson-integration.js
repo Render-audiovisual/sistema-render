@@ -8,6 +8,7 @@ import { findSimilarFeedback } from "./feedback-workflow.js";
 import { getProductionProgress, isProductionVisitTask } from "./production-visits.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { getStateNotification, validateProductionHandoff } from "./task-workflow.js";
+import { createMiaPersonalListsRouter, enqueueDuePersonalListReminders } from "./mia-personal-lists.js";
 
 const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
 const DEFAULT_ALLOWED_TELEGRAM_IDS = ["1826333320", "1890547269"];
@@ -294,7 +295,7 @@ export function canWilsonGroupParticipantPropose(wilson, operation) {
   return !wilson?.groupParticipantOnly || operation === "crear";
 }
 
-export function requireWilsonService(env = process.env, now = () => Date.now()) {
+export function requireWilsonService(env = process.env, now = () => Date.now(), { allowSignedUnknownWhatsappPrivate = false } = {}) {
   return (req, res, next) => {
     const timestamp = String(req.headers?.["x-wilson-timestamp"] || "").trim();
     const nonce = String(req.headers?.["x-wilson-nonce"] || "").trim();
@@ -318,9 +319,10 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
         || matchesIdentifier(actorId, allowedIds, DEFAULT_ALLOWED_WHATSAPP_ID_HASHES)
         || matchesIdentifier(actorId, [], OWNER_WHATSAPP_ID_HASHES)
       : allowedIds.includes(actorId);
-    const actorAllowed = actorIndividuallyAllowed || allowedWhatsappGroup;
+    const actorAllowed = actorIndividuallyAllowed || allowedWhatsappGroup
+      || (allowSignedUnknownWhatsappPrivate && channel === "whatsapp" && privateChat);
     if (!actorAllowed) return res.status(403).json({ error: `Esta cuenta de ${channel === "whatsapp" ? "WhatsApp" : "Telegram"} no puede operar tareas.` });
-    if (privateChat && !knownAccount) {
+    if (privateChat && !knownAccount && !allowSignedUnknownWhatsappPrivate) {
       return res.status(403).json({ error: "Esta cuenta de WhatsApp no puede usar el asistente privado." });
     }
     if (channel === "whatsapp" && !privateChat && !allowedWhatsappGroup) {
@@ -357,6 +359,51 @@ export function requireWilsonService(env = process.env, now = () => Date.now()) 
       confirmedBy: knownAccount?.name || actorName || (channel === "telegram" ? "Usuario de Telegram" : "Usuario de WhatsApp"),
     };
     return next();
+  };
+}
+
+async function alertUnlinkedWhatsapp(pool, req) {
+  const day = new Date().toISOString().slice(0, 10);
+  const actor = crypto.createHash("sha256").update(String(req.wilson.actorId || "").replace(/^\+/, "")).digest("hex");
+  for (const leader of [{ nombre: "Agustín", clave: "agustin" }, { nombre: "Franco", clave: "franco" }]) {
+    const fingerprint = crypto.createHash("sha256").update(`whatsapp-sin-vincular:${actor}:${leader.clave}:${day}`).digest("hex");
+    await pool.query(`INSERT INTO mia_private_task_notifications
+      (fingerprint,destinatario,destinatario_clave,tarea_id,motivo,mensaje,tarea_url,detalles)
+      VALUES($1,$2,$3,0,'whatsapp_sin_vincular',$4,$5,$6::jsonb)
+      ON CONFLICT(fingerprint) DO NOTHING`, [fingerprint, leader.nombre, leader.clave,
+      "⚠️ Mía recibió un pedido de Lista desde un WhatsApp que no está vinculado. No modifiqué nada. Vinculalo desde Usuarios y accesos.",
+      "https://sistema.rendercorrientes.com/empleados", JSON.stringify({ actor_hash: actor })]);
+  }
+}
+
+function resolveWilsonUser(pool) {
+  return async (req, res, next) => {
+    if (req.wilson.channel !== "whatsapp" || !req.wilson.privateChat) return next();
+    try {
+      const hash = crypto.createHash("sha256").update(String(req.wilson.actorId || "").replace(/^\+/, "")).digest("hex");
+      let result = await pool.query(`SELECT id,usuario,nombre,rol FROM usuarios
+        WHERE whatsapp_id_hash=$1 AND whatsapp_habilitado IS TRUE LIMIT 1`, [hash]);
+      const known = knownWhatsappAccount(req.wilson.actorId);
+      if (!result.rows[0] && known) {
+        result = await pool.query(`SELECT id,usuario,nombre,rol FROM usuarios
+          WHERE lower(nombre)=lower($1) OR lower(usuario)=lower($2) ORDER BY id LIMIT 1`, [known.name, normalizeWilsonText(known.name).split(" ")[0]]);
+      }
+      const user = result.rows[0];
+      if (!user) {
+        await alertUnlinkedWhatsapp(pool, req);
+        return res.status(403).json({
+          error: "Este WhatsApp todavía no está vinculado a un usuario de Render OS. No modifiqué nada y avisé a Agustín y Franco.",
+          code: "unlinked_whatsapp",
+        });
+      }
+      req.wilson.userId = Number(user.id);
+      req.wilson.actorName = user.nombre;
+      req.wilson.actorRole = user.rol;
+      req.wilson.confirmedBy = user.nombre;
+      req.wilson.isLeader = known?.leader === true || user.rol === "admin"
+        || ["agustin", "franco"].includes(normalizeWilsonText(user.usuario));
+      return next();
+    } catch (error) { return next(error); }
   };
 }
 
@@ -798,7 +845,9 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       leaderAccounts: whatsapp.leaderIds.length || DEFAULT_LEADER_WHATSAPP_ID_HASHES.length,
     });
   }
-  router.use(requireWilsonService(env));
+  router.use(requireWilsonService(env, () => Date.now(), { allowSignedUnknownWhatsappPrivate: true }));
+  router.use(resolveWilsonUser(pool));
+  router.use("/lista-personal", createMiaPersonalListsRouter({ express, pool }));
 
   router.get("/catalogo", async (_req, res, next) => {
     try {
@@ -813,6 +862,12 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
           equivalent: true,
           label: "Responsables",
           instruction: "Usá una sola lista de responsables. Todas las personas están a cargo por igual; nunca comuniques un responsable principal ni colaboradores.",
+        },
+        personal_list_contract: {
+          visibility: "private",
+          operations: ["crear", "editar", "completar", "reabrir", "eliminar", "recordar", "reprogramar_recordatorio", "cancelar_recordatorio"],
+          confirmation_expires: false,
+          instruction: "Tarea es visible para el equipo; Lista es privada. Si no está claro, preguntá: tarea, lista o ambas. En grupos continuá todo lo relativo a Lista por privado. Nunca modifiques sin mostrar resumen y recibir confirmación. Si hay coincidencias, enumeralas y no adivines. Si pide recordatorio sin hora, preguntá a qué hora.",
         },
       });
     } catch (error) { next(error); }
@@ -1382,6 +1437,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     if (!isWilsonSystemActor(req, env)) return res.status(403).json({ error: "Esta cola es exclusiva del proceso automático de MIA." });
     const limit = Math.max(1, Math.min(Number(req.query.limit) || 20, 50));
     try {
+      await enqueueDuePersonalListReminders(pool, { limit });
       const result = await pool.query(
         `WITH candidates AS (
            SELECT id FROM mia_private_task_notifications

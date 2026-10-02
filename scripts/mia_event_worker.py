@@ -82,7 +82,10 @@ def format_event(event):
     task_url = str(event.get("task_url") or event.get("url") or "").strip()
     if not text:
         raise ValueError("El evento no contiene texto.")
-    return f"{text}\n\nAbrir tarea: {task_url}" if task_url else text
+    if not task_url:
+        return text
+    label = "Abrir lista" if event.get("motivo") == "recordatorio_lista" else "Abrir tarea"
+    return f"{text}\n\n{label}: {task_url}"
 
 
 def private_recipients():

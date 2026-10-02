@@ -21,6 +21,9 @@ export function EmpleadosPage() {
   const [googleEmailEdicion, setGoogleEmailEdicion] = useState("");
   const [editandoGoogleEmail, setEditandoGoogleEmail] = useState(false);
   const [guardandoGoogleEmail, setGuardandoGoogleEmail] = useState(false);
+  const [whatsappEdicion, setWhatsappEdicion] = useState("");
+  const [editandoWhatsapp, setEditandoWhatsapp] = useState(false);
+  const [guardandoWhatsapp, setGuardandoWhatsapp] = useState(false);
   const [enviandoInvitacion, setEnviandoInvitacion] = useState(false);
   const [editandoDatos, setEditandoDatos] = useState(false);
   const [guardandoDatos, setGuardandoDatos] = useState(false);
@@ -93,8 +96,34 @@ export function EmpleadosPage() {
     setUsuarioAdministrado(u);
     setCorreoEdicion(u.email_notificaciones || "");
     setEditandoCorreo(false);
+    setWhatsappEdicion("");
+    setEditandoWhatsapp(false);
     setFormError(null);
     setMensaje(null);
+  };
+
+  const guardarWhatsapp = (u, valor = whatsappEdicion) => {
+    setGuardandoWhatsapp(true);
+    setFormError(null);
+    fetch(`/api/usuarios/${u.id}/whatsapp`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ whatsapp: valor }),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "No se pudo vincular WhatsApp.");
+        return data;
+      })
+      .then((data) => {
+        setMensaje(data.whatsapp_vinculado ? `WhatsApp vinculado para ${data.nombre}.` : `WhatsApp desvinculado para ${data.nombre}.`);
+        setUsuarioAdministrado(data);
+        setWhatsappEdicion("");
+        setEditandoWhatsapp(false);
+        cargarUsuarios();
+      })
+      .catch((err) => setFormError(err.message))
+      .finally(() => setGuardandoWhatsapp(false));
   };
 
   const cerrarAdministracion = () => {
@@ -595,6 +624,46 @@ export function EmpleadosPage() {
 
             <div className="usuarios-panel-body">
               {formError && <div className="usuarios-alert is-error">{formError}</div>}
+
+              <section className="usuarios-panel-section">
+                <div className="usuarios-panel-section-title">
+                  <div>
+                    <strong>WhatsApp de Mía</strong>
+                    <span>Permite administrar la Lista privada y recibir recordatorios</span>
+                  </div>
+                  {!editandoWhatsapp && (
+                    <button className="btn" type="button" onClick={() => { setWhatsappEdicion(""); setEditandoWhatsapp(true); }}>
+                      {usuarioAdministrado.whatsapp_vinculado ? "Cambiar" : "Vincular"}
+                    </button>
+                  )}
+                </div>
+                {editandoWhatsapp ? (
+                  <div className="usuarios-email-editor">
+                    <label className="form-field">
+                      <span>Número con código de país</span>
+                      <input type="tel" value={whatsappEdicion} placeholder="+54 9 3794..." onChange={(event) => setWhatsappEdicion(event.target.value)} autoFocus />
+                      <small>El número se guarda protegido; después solo se muestra su estado.</small>
+                    </label>
+                    <div className="usuarios-inline-actions">
+                      {usuarioAdministrado.whatsapp_vinculado && (
+                        <button className="btn" type="button" disabled={guardandoWhatsapp} onClick={() => guardarWhatsapp(usuarioAdministrado, "")}>Desvincular</button>
+                      )}
+                      <button className="btn" type="button" disabled={guardandoWhatsapp} onClick={() => setEditandoWhatsapp(false)}>Cancelar</button>
+                      <button className="btn primary" type="button" disabled={guardandoWhatsapp || !whatsappEdicion.trim()} onClick={() => guardarWhatsapp(usuarioAdministrado)}>
+                        {guardandoWhatsapp ? "Guardando..." : "Vincular WhatsApp"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`usuarios-notification-card ${usuarioAdministrado.whatsapp_vinculado ? "is-ready" : "is-pending"}`}>
+                    <i className={`usuarios-dot ${usuarioAdministrado.whatsapp_vinculado ? "is-ready" : "is-pending"}`} />
+                    <div>
+                      <strong>{usuarioAdministrado.whatsapp_vinculado ? "WhatsApp vinculado" : "WhatsApp pendiente"}</strong>
+                      <span>{usuarioAdministrado.whatsapp_vinculado ? "Mía reconoce a esta persona y puede operar su Lista privada." : "Mía no modificará su Lista hasta que se vincule el número."}</span>
+                    </div>
+                  </div>
+                )}
+              </section>
 
               <section className="usuarios-panel-section">
                 <div className="usuarios-panel-section-title">

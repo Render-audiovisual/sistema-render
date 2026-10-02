@@ -4,6 +4,7 @@ import { findSimilarFeedback } from "./feedback-workflow.js";
 import fs from "node:fs";
 import path from "node:path";
 import dns from "node:dns";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import compression from "compression";
@@ -457,7 +458,7 @@ router.post("/notas/:id/restaurar", async (req, res, next) => {
 router.get("/usuarios", async (req, res, next) => {
   try {
     const fields = req.auth.rol === "admin"
-      ? "id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at"
+      ? "id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, (whatsapp_id_hash IS NOT NULL AND whatsapp_habilitado IS TRUE) AS whatsapp_vinculado, created_at"
       : "id, usuario, nombre, rol, foto_perfil, created_at";
     const result = await pool.query(`SELECT ${fields} FROM usuarios ORDER BY id`);
     res.json(result.rows);
@@ -756,6 +757,29 @@ function normalizarEmailNotificaciones(value) {
   if (!email) return null;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
 }
+
+function normalizarWhatsapp(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15 ? digits : null;
+}
+
+router.patch("/usuarios/:id/whatsapp", requireRole("admin"), async (req, res, next) => {
+  try {
+    const raw = typeof req.body.whatsapp === "string" ? req.body.whatsapp.trim() : "";
+    const number = raw ? normalizarWhatsapp(raw) : null;
+    if (raw && !number) return res.status(400).json({ error: "El número de WhatsApp no es válido." });
+    const hash = number ? crypto.createHash("sha256").update(number).digest("hex") : null;
+    const updated = await pool.query(`UPDATE usuarios SET whatsapp_id_hash=$1,whatsapp_habilitado=$2
+      WHERE id=$3 RETURNING id,usuario,nombre,rol,email_notificaciones,google_email,foto_perfil,
+      (whatsapp_id_hash IS NOT NULL AND whatsapp_habilitado IS TRUE) AS whatsapp_vinculado,created_at`,
+    [hash, Boolean(number), req.params.id]);
+    if (!updated.rows[0]) return res.status(404).json({ error: "Usuario no encontrado." });
+    return res.json(updated.rows[0]);
+  } catch (error) {
+    if (error.code === "23505") return res.status(409).json({ error: "Ese WhatsApp ya está vinculado a otra persona." });
+    return next(error);
+  }
+});
 
 router.patch("/usuarios/:id/email-notificaciones", requireRole("admin"), async (req, res, next) => {
   try {

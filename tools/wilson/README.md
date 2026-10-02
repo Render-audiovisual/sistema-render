@@ -144,3 +144,38 @@ Se exige al menos uno y, al guardar, cada responsable recibe un aviso privado
 por WhatsApp. Para una solicitud mixta, Mía valida feedback y tarea, muestra un
 solo resumen al usuario y, después del mismo “sí”, ejecuta las dos altas con sus
 confirmaciones técnicas correspondientes.
+
+## Lista privada y recordatorios personales
+
+Mía distingue siempre entre `Tarea` (visible para el equipo) y `Lista` (privada
+del usuario). Si el pedido no aclara el destino, pregunta: “¿Querés guardarlo
+como tarea del equipo, en tu lista privada o en ambas?”. Las dos copias son
+independientes; terminar una tarea pública nunca tacha automáticamente la Lista.
+
+La Lista se opera únicamente en chat privado. Si el pedido comienza en un grupo,
+Mía responde que continuará por privado y no muestra allí el contenido, las
+opciones ni la confirmación. Antes de crear, editar, tachar, reabrir, eliminar o
+programar un recordatorio debe ejecutar `propose-list`, mostrar exactamente el
+resumen y esperar `confirmo`. Esta confirmación no vence, pero una propuesta
+nueva reemplaza la anterior. Si hay más de una coincidencia, muestra el listado
+numerado devuelto por la API y nunca adivina.
+
+```bash
+python3 scripts/mia_render_os_task.py personal-list \
+  --actor-id '<whatsapp>' --actor-name 'Augusto'
+
+python3 scripts/mia_render_os_task.py propose-list --operation crear \
+  --payload '{"texto":"Terminar carrusel de Búnker","recordar_en":"2026-10-03T08:00:00-03:00","repeticion":"una_vez"}' \
+  --actor-id '<whatsapp>' --actor-name 'Augusto'
+
+python3 scripts/mia_render_os_task.py confirm-list --confirmation-token '<token>' \
+  --actor-id '<whatsapp>' --actor-name 'Augusto'
+```
+
+Si falta la hora, Mía pregunta “¿A qué hora querés que te lo recuerde?”. Admite
+una vez, diario, días hábiles, semanal o cada N días. “Listo”, “pasalo para
+mañana” y frases similares se resuelven primero contra `personal-list`; ante
+varias coincidencias se pide elegir. Agustín y Franco pueden indicar `--user-id`
+para asistir técnicamente a otra persona; el uso normal siempre apunta al dueño
+del WhatsApp. Un número sin vincular no modifica datos y genera un aviso privado
+deduplicado para ambos líderes.

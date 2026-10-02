@@ -102,6 +102,14 @@ def main():
     commands.add_parser("report")
     fast_context = commands.add_parser("fast-context")
     fast_context.add_argument("--person")
+    personal_list = commands.add_parser("personal-list")
+    personal_list.add_argument("--user-id", type=int)
+    propose_list = commands.add_parser("propose-list")
+    propose_list.add_argument("--operation", required=True, choices=("crear", "editar", "completar", "reabrir", "eliminar", "recordar", "reprogramar_recordatorio", "cancelar_recordatorio"))
+    propose_list.add_argument("--payload", required=True)
+    propose_list.add_argument("--user-id", type=int)
+    confirm_list = commands.add_parser("confirm-list")
+    confirm_list.add_argument("--confirmation-token", required=True)
     commands.add_parser("events")
     commands.add_parser("group-digests")
     private_notifications = commands.add_parser("private-notifications")
@@ -169,6 +177,16 @@ def main():
     elif args.cmd == "fast-context":
         query = "" if not args.person else "?" + urllib.parse.urlencode({"persona": args.person})
         result = request("GET", f"/contexto-rapido{query}", args)
+    elif args.cmd == "personal-list":
+        query = "" if not args.user_id else "?" + urllib.parse.urlencode({"usuario_id": args.user_id})
+        result = request("GET", f"/lista-personal{query}", args)
+    elif args.cmd == "propose-list":
+        result = request("POST", "/lista-personal/propuestas", args, payload={
+            "operacion": args.operation, "usuario_id": args.user_id,
+            "payload": json.loads(args.payload),
+        })
+    elif args.cmd == "confirm-list":
+        result = request("POST", "/lista-personal/confirmar", args, payload={"confirmacion_token": args.confirmation_token})
     elif args.cmd == "events":
         result = request("GET", "/eventos-pendientes", args)
     elif args.cmd == "group-digests":
