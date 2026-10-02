@@ -1505,11 +1505,23 @@ textarea {
   .profile-identity-card .profile-photo-actions .btn,
   .profile-setting-form .btn,
   .usuarios-access-filter button,
+  .usuarios-search,
+  .usuarios-search input,
   .usuarios-alert button,
+  .salary-period-control button,
+  .finance-income-detail summary,
+  .finance-detail-columns summary,
+  .moodboard-status-tabs button,
+  .moodboard-category-filter select,
+  .moodboard-category-edit,
   .render-workspace .ros-state>button,
   .page-state>.btn{
     min-height:var(--render-control-height);
   }
+  .usuarios-search input{font-size:16px;width:100%}
+  .salary-period-control button{height:var(--render-control-height);width:var(--render-control-height)}
+  .finance-income-detail summary,.finance-detail-columns summary{align-items:center;display:flex}
+  .moodboard-status-tabs button,.moodboard-category-edit{align-items:center;display:inline-flex}
   .reportes-page .report-filmmaker-label{
     align-items:center;
     display:flex;

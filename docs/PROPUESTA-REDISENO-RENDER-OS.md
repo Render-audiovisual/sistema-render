@@ -215,10 +215,34 @@ Esta propuesta ya empezó a aplicarse sobre la base real del sistema:
 | Publicaciones | Sin desborde | Sin desborde | Sin desborde | Controles táctiles corregidos |
 | Clientes | Sin desborde | Sin desborde | Sin desborde | Pendiente revisión detallada |
 | Reportes | Sin desborde | Sin desborde | Sin desborde | Controles táctiles corregidos |
-| Finanzas | Sin desborde | Sin desborde | Sin desborde | Pendiente revisión detallada |
+| Finanzas | Sin desborde | Sin desborde | Sin desborde | Contratos convertidos a tarjetas responsive |
 | Perfil | Sin desborde | Sin desborde | Sin desborde | Controles táctiles corregidos |
 | Usuarios | Sin desborde | Sin desborde | Sin desborde | Controles táctiles corregidos |
 
 La ausencia de desborde confirma la estructura, pero no reemplaza la revisión visual y funcional de cada estado. Esa revisión continúa por fases antes de considerar terminado el objetivo.
 
 Referencia de revisión: [Web Interface Guidelines de Vercel](https://github.com/vercel-labs/web-interface-guidelines), consultada el 2 de octubre de 2026.
+
+## 12. Segunda etapa: revisión visual con datos reales
+
+La segunda revisión se realizó sobre las rutas de producción con sesión activa, tanto en 390 px como en 1280 px. Esto permitió detectar problemas que no aparecían en estados vacíos o sin conexión al backend.
+
+### Correcciones incorporadas
+
+- **Tareas:** el buscador y “Nueva tarea” dejan de competir por ancho en celular; las vistas tienen desplazamiento horizontal propio; Feedback queda claramente separado y visible; filtros, Papelera y estados respetan un área táctil de 44 px.
+- **Lista:** las acciones de cada pendiente pasan a un menú compacto en celular, evitando que el texto quede cortado; el botón de eliminar página deja de aparecer vacío; se conserva el acceso directo en escritorio.
+- **Drive:** pestañas, búsqueda, enlace externo y migas de navegación alcanzan tamaño táctil y se pueden recorrer horizontalmente sin cortar contenido.
+- **Finanzas:** se eliminó la tabla rígida de contratos. En escritorio conserva una lectura por columnas y en celular cada contrato se transforma en una tarjeta con etiquetas, campos, estado y acciones completas. El formulario de alta también pasa de cinco columnas a una sola columna en celular.
+- **Perfil y Usuarios:** se normalizaron botones de foto, filtros de acceso y búsqueda para evitar controles táctiles demasiado pequeños.
+
+### Verificación técnica de esta etapa
+
+- Build productivo del frontend sin errores.
+- Suite del backend: 342 pruebas, 339 aprobadas y 3 omitidas por requerir infraestructura de QA; 0 fallidas.
+- Verificación de whitespace y conflictos de diff sin errores.
+- Auditoría automatizada de ancho en las 13 rutas principales a 390 px.
+- Auditoría de estructura a 1280 px, confirmando que las correcciones comunes eliminan las diferencias históricas de ancho en Inicio, Drive y Lista.
+
+### Criterio de cierre
+
+El trabajo no se considera terminado con una comprobación de ancho. Cada módulo debe conservar datos, acciones y estados reales, y debe volver a revisarse en producción después del despliegue autorizado. La publicación no forma parte automática de esta propuesta: se realizará únicamente cuando exista autorización explícita para subir el commit y desplegarlo.

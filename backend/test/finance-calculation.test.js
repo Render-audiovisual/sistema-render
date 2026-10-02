@@ -139,6 +139,17 @@ test("la administración de contratos usa la API autenticada y conserva el histo
   assert.doesNotMatch(backend, /FROM contratos_financieros WHERE activo/);
 });
 
+test("los contratos financieros se adaptan a celular sin una tabla horizontal", () => {
+  const frontend = readFileSync(new URL("../../frontend/src/pages/Sueldos.jsx", import.meta.url), "utf8");
+  const styles = readFileSync(new URL("../../frontend/src/styles.css", import.meta.url), "utf8");
+  const clientsPanel = frontend.slice(frontend.indexOf("function ClientsPanel"), frontend.indexOf("export function SueldosPage"));
+  assert.doesNotMatch(clientsPanel, /<table|<tr|<td/);
+  assert.match(clientsPanel, /finance-contract-card/);
+  assert.match(clientsPanel, /finance-contract-status/);
+  assert.match(styles, /@media \(max-width:700px\)[\s\S]*\.finance-contract-card \{ grid-template-columns: repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(styles, /\.finance-contract-primary,\.finance-contract-secondary,\.finance-contract-status \{ min-height: 44px/);
+});
+
 test("los comparativos financieros calculan la nómina del mes anterior", () => {
   const backend = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
   assert.match(backend, /loadPayrollForCollectionPeriod\(period\)/);

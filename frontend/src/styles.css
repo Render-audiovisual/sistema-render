@@ -12602,10 +12602,70 @@ tr:hover .sheet-row-actions {
 .finance-detail-columns summary { cursor: pointer; padding: 15px 17px; color: var(--text); font-size: 13px; font-weight: 800; }
 .finance-detail-columns p { display: flex; justify-content: space-between; gap: 18px; margin: 0; padding: 10px 17px; border-top: 1px solid #e7eadf; color: var(--muted); font-size: 12px; }
 .finance-detail-columns p strong { flex-shrink: 0; color: var(--text); font-variant-numeric: tabular-nums; }
+.finance-contracts { display: grid; gap: 16px; min-width: 0; }
+.finance-contract-add { border: 1px solid var(--border); border-radius: 16px; padding: 18px; background: #fafbf8; }
+.finance-contract-add h3 { margin: 0 0 14px; color: var(--text); font-size: 14px; font-weight: 800; }
+.finance-contract-add-grid { display: grid; grid-template-columns: minmax(180px,1.5fr) minmax(140px,1fr) minmax(145px,.9fr) minmax(145px,.9fr) auto; align-items: end; gap: 10px; }
+.finance-contract-add-grid label,.finance-contract-field { display: grid; gap: 6px; min-width: 0; }
+.finance-contract-add-grid label > span,.finance-contract-field > span { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .065em; text-transform: uppercase; }
+.finance-contract-add-grid label small { font-size: 9px; font-weight: 700; letter-spacing: 0; text-transform: none; }
+.finance-contract-add-grid input,.finance-contract-field input { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; border: 1px solid #dfe3d8; border-radius: 10px; background: #fff; padding: 9px 11px; color: var(--text); font: 650 13px/1.2 inherit; outline: none; }
+.finance-contract-add-grid input:focus-visible,.finance-contract-field input:focus-visible { border-color: #8cac3c; box-shadow: 0 0 0 3px rgba(181,252,0,.22); }
+.finance-contract-primary,.finance-contract-secondary,.finance-contract-status { min-height: 44px; border-radius: 10px; padding: 9px 13px; font: 800 12px/1 inherit; cursor: pointer; transition: transform .16s ease,box-shadow .16s ease,background-color .16s ease,border-color .16s ease; }
+.finance-contract-primary { border: 1px solid #9ddb00; background: #b5fc00; color: #18200d; box-shadow: 0 3px 0 rgba(93,126,13,.22); }
+.finance-contract-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(125,169,15,.18); }
+.finance-contract-primary:disabled { border-color: #dfe2d8; background: #eceee8; color: #9ca095; box-shadow: none; cursor: not-allowed; }
+.finance-contract-secondary { border: 1px solid var(--border); background: #fff; color: var(--text); }
+.finance-contract-secondary:hover { border-color: #b8beaf; background: #f7f8f4; }
+.finance-contract-list { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+.finance-contract-list-heading,.finance-contract-card { display: grid; grid-template-columns: minmax(130px,1.35fr) minmax(110px,1fr) minmax(100px,.8fr) minmax(100px,.8fr) minmax(88px,.7fr) minmax(92px,.7fr); align-items: center; gap: 12px; }
+.finance-contract-list-heading { min-height: 42px; padding: 0 14px; background: #f6f7f2; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .065em; text-transform: uppercase; }
+.finance-contract-list-heading span:nth-child(n+2) { text-align: center; }
+.finance-contract-card { min-height: 68px; padding: 12px 14px; border-top: 1px solid #eceee7; }
+.finance-contract-list-heading + .finance-contract-card { border-top: 0; }
+.finance-contract-card.is-editing { background: #fffaf0; }
+.finance-contract-card.is-inactive { background: #fafafa; }
+.finance-contract-card.is-inactive .finance-contract-field:not(.is-status) { opacity: .58; }
+.finance-contract-field > span { display: none; }
+.finance-contract-field strong { min-width: 0; overflow-wrap: anywhere; color: var(--text); font-size: 13px; }
+.finance-contract-field b { color: var(--muted); font-size: 11px; font-weight: 650; text-align: center; }
+.finance-contract-field.is-amount strong { text-align: center; font-variant-numeric: tabular-nums; }
+.finance-contract-field.is-status { justify-items: center; }
+.finance-contract-status { min-width: 76px; border: 1px solid transparent; }
+.finance-contract-status.is-active { border-color: #bfd7cd; background: #e8f4ef; color: #205f4d; }
+.finance-contract-status.is-disabled { border-color: #ebc8c8; background: #fff0f0; color: #a73b3b; }
+.finance-contract-actions { display: flex; justify-content: center; gap: 7px; min-width: 0; }
+.finance-contract-actions .finance-contract-primary,.finance-contract-actions .finance-contract-secondary { min-width: 0; padding-inline: 10px; }
+.finance-dashboard,.finance-dashboard > *,.finance-panel,.finance-billing-hero > div { min-width: 0; }
+.finance-billing-hero strong { overflow-wrap: anywhere; }
 @media (max-width:1050px) { .finance-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width:1050px) { .finance-entry-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width:1100px) { .finance-contract-add-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }.finance-contract-add-grid .finance-contract-primary { grid-column: 1/-1; }.finance-contract-list-heading,.finance-contract-card { grid-template-columns: minmax(120px,1.25fr) minmax(100px,1fr) minmax(90px,.8fr) minmax(90px,.8fr) minmax(82px,.7fr) minmax(84px,.7fr); gap: 8px; } }
 @media (max-width:700px) { .finance-dashboard { gap: 14px; }.finance-dashboard .salary-hero { align-items: stretch; }.finance-period-select { min-width: 0; }.finance-billing-hero { min-height: 210px; flex-direction: column; align-items: stretch; }.finance-billing-hero > b { align-self: flex-start; }.finance-metrics { grid-template-columns: 1fr; }.finance-panel > header { align-items: flex-start; flex-direction: column; margin-bottom: 16px; }.finance-chart { overflow-x: auto; }.finance-chart-column { min-width: 72px; }.finance-client-table { border: 0; overflow: visible; }.finance-client-row.is-heading { display: none; }.finance-client-row { grid-template-columns: 1fr auto; gap: 7px 14px; margin-bottom: 9px; border: 1px solid var(--border); border-radius: 12px; padding: 14px; }.finance-client-row > span { grid-column: 1/-1; }.finance-client-row b { grid-column: 2; grid-row: 1; }.finance-client-table footer { border-radius: 12px; flex-direction: column; }.finance-client-table footer strong { font-size: 22px; } }
 @media (max-width:700px) { .finance-entry-grid,.finance-detail-columns,.finance-metrics.finance-metrics-unified { grid-template-columns: 1fr; }.finance-result-row,.finance-exchange-note { grid-template-columns: 1fr; gap: 14px; }.finance-result-row .btn { width: 100%; }.finance-result-row em,.finance-exchange-note small { grid-column: 1; } }
+@media (max-width:700px) {
+  .finance-billing-hero { overflow: hidden; padding: 24px 20px; }
+  .finance-billing-hero strong { font-size: clamp(34px,11vw,48px); letter-spacing: -.05em; }
+  .finance-panel { padding: 18px; }
+  .finance-income-detail p,.finance-detail-columns p { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .finance-contract-add { padding: 16px; }
+  .finance-contract-add-grid { grid-template-columns: 1fr; }
+  .finance-contract-add-grid .finance-contract-primary { grid-column: 1; width: 100%; }
+  .finance-contract-list { overflow: visible; border: 0; background: transparent; }
+  .finance-contract-list-heading { display: none; }
+  .finance-contract-card { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px 12px; min-height: 0; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: #fff; box-shadow: 0 6px 18px rgba(31,36,24,.035); }
+  .finance-contract-list-heading + .finance-contract-card { border-top: 1px solid var(--border); }
+  .finance-contract-field { align-content: start; }
+  .finance-contract-field > span { display: block; }
+  .finance-contract-field.is-name { grid-column: 1/-1; }
+  .finance-contract-field.is-name strong { font-size: 16px; }
+  .finance-contract-field.is-amount strong,.finance-contract-field b { text-align: left; }
+  .finance-contract-field.is-status { justify-items: stretch; }
+  .finance-contract-status { width: 100%; }
+  .finance-contract-actions { grid-column: 1/-1; justify-content: stretch; }
+  .finance-contract-actions > button { flex: 1; }
+}
+@media (max-width:420px) { .finance-contract-card { grid-template-columns: 1fr; }.finance-contract-field.is-name,.finance-contract-actions { grid-column: 1; } }
 @media (max-width:760px) {
   .clientes-portfolio-commercial { grid-column: 1/-1; }
   .cliente-detail-agreement { grid-template-columns: 1fr; }

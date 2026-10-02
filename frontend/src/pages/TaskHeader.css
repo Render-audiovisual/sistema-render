@@ -253,11 +253,11 @@
   .render-workspace .ros-page-emoji { width: 34px; height: 34px; flex-basis: 34px; border-radius:8px; font-size: 17px; }
   .render-workspace .ros-title-row h1 { font-size: 25px; }
   .render-workspace .ros-title-row p { margin-top:2px; font-size: 11.5px; white-space:normal; }
-  .render-workspace .ros-title-actions { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .render-workspace .ros-title-actions { grid-template-columns: 1fr; gap: 8px; }
   .render-workspace .ros-top-search,
   .render-workspace .ros-primary-button { min-height: 44px; }
   .render-workspace .ros-top-search { padding-inline:12px; font-size:16px; }
-  .render-workspace .ros-primary-button { width:auto; padding-inline:13px; font-size:13px; white-space:nowrap; }
+  .render-workspace .ros-primary-button { width:100%; padding-inline:13px; font-size:13px; white-space:nowrap; }
 
   .render-workspace .ros-controls {
     display: flex !important;
@@ -269,35 +269,39 @@
     overflow: visible;
   }
   .render-workspace .ros-primary-navigation {
-    gap: 0;
-    width: 100%;
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
-    scroll-snap-type:x proximity;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+    display:grid;
+    gap:6px;
+    width:100%;
+    overflow:visible;
   }
   .render-workspace .ros-primary-navigation::-webkit-scrollbar,
   .render-workspace .ros-view-tabs::-webkit-scrollbar { display: none; }
-  .render-workspace .ros-view-tabs { flex:0 0 auto; width:auto; overflow:visible; }
+  .render-workspace .ros-view-tabs {
+    -webkit-overflow-scrolling:touch;
+    display:flex;
+    width:100%;
+    overflow-x:auto;
+    overscroll-behavior-inline:contain;
+    scroll-snap-type:x proximity;
+    scrollbar-width:none;
+  }
   .render-workspace .ros-controls .ros-view-tabs button {
     flex: 0 0 auto;
-    min-height: 40px;
+    min-height: 44px;
     padding-inline: 10px;
     font-size: 12px;
     scroll-snap-align:start;
   }
   .render-workspace .ros-feedback-link {
-    flex:0 0 auto;
-    margin:0 0 0 3px;
-    min-height:40px;
-    padding-inline:10px !important;
-    border:0 !important;
-    border-bottom:2px solid transparent !important;
-    border-radius:0 !important;
-    scroll-snap-align:start;
+    justify-self:start;
+    margin:0;
+    min-height:44px;
+    padding-inline:12px !important;
+    border:1px solid #e1e5dd !important;
+    border-radius:9px !important;
+    background:#f7f8f4 !important;
   }
-  .render-workspace .ros-feedback-link::before { display:block; height:20px; margin:0 5px 0 0; }
+  .render-workspace .ros-feedback-link::before { display:none; }
   .render-workspace .ros-controls .ros-controls-meta {
     width: 100%;
     justify-content: flex-end;
@@ -306,10 +310,10 @@
     border-top: 1px solid #eef0eb;
   }
   .render-workspace .ros-controls-meta > span { display: none; }
-  .render-workspace .ros-controls .ros-archive-link { min-height: 36px; padding-inline:8px; }
+  .render-workspace .ros-controls .ros-archive-link { min-height: 44px; padding-inline:10px; }
   .render-workspace .ros-filter-toggle {
     width: calc(100% - (var(--task-gutter) * 2));
-    min-height: 40px;
+    min-height: 44px;
     margin-top: 8px;
     border-radius: 9px;
   }
@@ -328,7 +332,7 @@
     padding:7px var(--task-gutter);
   }
   .render-workspace .ros-mobile-board-nav button {
-    min-height:40px;
+    min-height:44px;
     padding:7px 10px;
   }
   .render-workspace .ros-board,

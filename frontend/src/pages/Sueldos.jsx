@@ -75,51 +75,63 @@ function ClientsPanel({ contracts, onUpdate, ars }) {
   };
 
   return (
-    <div style={{ display: "grid", gap: "16px" }}>
+    <div className="finance-contracts">
       {error && <div className="salary-state is-error"><strong>No se pudo actualizar el contrato.</strong><span>{error}</span></div>}
-      <div style={{ border: "1px solid var(--border)", borderRadius: "12px", padding: "16px", background: "#fafbf8" }}>
-        <h3 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: 700 }}>Agregar cliente</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr auto", gap: "10px", alignItems: "end" }}>
-          <input type="text" placeholder="Nombre cliente" value={newClient.nombre} onChange={(e) => setNewClient({ ...newClient, nombre: e.target.value })} style={{ padding: "8px", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "13px" }} />
-          <input type="number" placeholder="Monto" value={newClient.importe_mensual} onChange={(e) => setNewClient({ ...newClient, importe_mensual: e.target.value })} style={{ padding: "8px", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "13px" }} />
-          <input type="date" value={newClient.inicia_el} onChange={(e) => setNewClient({ ...newClient, inicia_el: e.target.value })} style={{ padding: "8px", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "13px" }} />
-          <button onClick={handleAdd} disabled={loading || !newClient.nombre || !newClient.importe_mensual} style={{ padding: "8px 12px", background: newClient.nombre && newClient.importe_mensual ? "#b5fc00" : "#ddd", border: 0, borderRadius: "8px", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}>+ Agregar</button>
+      <section className="finance-contract-add" aria-labelledby="finance-add-client-title">
+        <h3 id="finance-add-client-title">Agregar cliente</h3>
+        <div className="finance-contract-add-grid">
+          <label>
+            <span>Cliente</span>
+            <input type="text" placeholder="Nombre del cliente" value={newClient.nombre} onChange={(event) => setNewClient({ ...newClient, nombre: event.target.value })} />
+          </label>
+          <label>
+            <span>Monto mensual</span>
+            <input type="number" min="0" placeholder="Monto" value={newClient.importe_mensual} onChange={(event) => setNewClient({ ...newClient, importe_mensual: event.target.value })} />
+          </label>
+          <label>
+            <span>Inicia</span>
+            <input type="date" value={newClient.inicia_el} onChange={(event) => setNewClient({ ...newClient, inicia_el: event.target.value })} />
+          </label>
+          <label>
+            <span>Finaliza <small>(opcional)</small></span>
+            <input type="date" value={newClient.finaliza_el || ""} onChange={(event) => setNewClient({ ...newClient, finaliza_el: event.target.value })} />
+          </label>
+          <button type="button" className="finance-contract-primary" onClick={handleAdd} disabled={loading || !newClient.nombre || !newClient.importe_mensual}>
+            {loading ? "Guardando…" : "+ Agregar"}
+          </button>
         </div>
-      </div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-          <thead>
-            <tr style={{ background: "#f6f7f2", borderBottom: "1px solid var(--border)" }}>
-              <th style={{ padding: "10px", textAlign: "left", fontWeight: 700, color: "var(--muted)" }}>Cliente</th>
-              <th style={{ padding: "10px", textAlign: "right", fontWeight: 700, color: "var(--muted)" }}>Monto mensual</th>
-              <th style={{ padding: "10px", textAlign: "center", fontWeight: 700, color: "var(--muted)" }}>Inicia</th>
-              <th style={{ padding: "10px", textAlign: "center", fontWeight: 700, color: "var(--muted)" }}>Finaliza</th>
-              <th style={{ padding: "10px", textAlign: "center", fontWeight: 700, color: "var(--muted)" }}>Estado</th>
-              <th style={{ padding: "10px", textAlign: "center", fontWeight: 700, color: "var(--muted)" }}>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(contracts || []).map((c) => editing === c.id ? (
-              <tr key={c.id} style={{ background: "#fff7e9", borderBottom: "1px solid var(--border)" }}>
-                <td style={{ padding: "10px" }}><input type="text" defaultValue={c.nombre} id={`name-${c.id}`} style={{ width: "100%", padding: "4px", fontSize: "12px" }} /></td>
-                <td style={{ padding: "10px" }}><input type="number" defaultValue={c.importe_mensual} id={`amount-${c.id}`} style={{ width: "100%", padding: "4px", fontSize: "12px", textAlign: "right" }} /></td>
-                <td style={{ padding: "10px" }}><input type="date" defaultValue={c.inicia_el} id={`start-${c.id}`} style={{ width: "100%", padding: "4px", fontSize: "12px" }} /></td>
-                <td style={{ padding: "10px" }}><input type="date" defaultValue={c.finaliza_el || ""} id={`end-${c.id}`} style={{ width: "100%", padding: "4px", fontSize: "12px" }} /></td>
-                <td style={{ padding: "10px", textAlign: "center" }}>{c.activo ? "✓ Activo" : "✕ Inactivo"}</td>
-                <td style={{ padding: "10px", textAlign: "center" }}><button onClick={() => handleEdit(c.id, { nombre: document.getElementById(`name-${c.id}`).value, importe_mensual: Number(document.getElementById(`amount-${c.id}`).value), inicia_el: document.getElementById(`start-${c.id}`).value, finaliza_el: document.getElementById(`end-${c.id}`).value || null })} style={{ padding: "4px 8px", background: "#b5fc00", border: 0, borderRadius: "4px", cursor: "pointer", fontSize: "11px", marginRight: "4px" }}>✓</button><button onClick={() => setEditing(null)} style={{ padding: "4px 8px", background: "#ddd", border: 0, borderRadius: "4px", cursor: "pointer", fontSize: "11px" }}>✕</button></td>
-              </tr>
-            ) : (
-              <tr key={c.id} style={{ borderBottom: "1px solid #eceee7", opacity: c.activo ? 1 : 0.5, textDecoration: c.activo ? "none" : "line-through" }}>
-                <td style={{ padding: "10px", color: c.activo ? "var(--text)" : "var(--muted)" }}>{c.nombre}</td>
-                <td style={{ padding: "10px", textAlign: "right", fontWeight: 700, color: c.activo ? "var(--text)" : "var(--muted)" }}>{ars.format(c.importe_mensual)}</td>
-                <td style={{ padding: "10px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>{c.inicia_el}</td>
-                <td style={{ padding: "10px", textAlign: "center", color: "var(--muted)", fontSize: "12px" }}>{c.finaliza_el || "—"}</td>
-                <td style={{ padding: "10px", textAlign: "center" }}><button onClick={() => handleToggleActive(c.id, c.activo)} style={{ padding: "4px 8px", background: c.activo ? "#2d5a4e" : "#ffcccc", color: c.activo ? "#fff" : "#cc3333", border: 0, borderRadius: "4px", cursor: "pointer", fontSize: "11px", marginRight: "4px", fontWeight: 700 }}>{c.activo ? "✓ Activo" : "✕ Baja"}</button></td>
-                <td style={{ padding: "10px", textAlign: "center" }}><button onClick={() => setEditing(c.id)} style={{ padding: "4px 8px", background: "transparent", border: "1px solid var(--border)", borderRadius: "4px", cursor: "pointer", fontSize: "11px" }}>Editar</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      </section>
+
+      <div className="finance-contract-list">
+        <div className="finance-contract-list-heading" aria-hidden="true">
+          <span>Cliente</span><span>Monto mensual</span><span>Inicia</span><span>Finaliza</span><span>Estado</span><span>Acciones</span>
+        </div>
+        {(contracts || []).map((contract) => editing === contract.id ? (
+          <article className="finance-contract-card is-editing" key={contract.id}>
+            <label className="finance-contract-field is-name"><span>Cliente</span><input type="text" defaultValue={contract.nombre} id={`name-${contract.id}`} /></label>
+            <label className="finance-contract-field is-amount"><span>Monto mensual</span><input type="number" min="0" defaultValue={contract.importe_mensual} id={`amount-${contract.id}`} /></label>
+            <label className="finance-contract-field"><span>Inicia</span><input type="date" defaultValue={contract.inicia_el} id={`start-${contract.id}`} /></label>
+            <label className="finance-contract-field"><span>Finaliza</span><input type="date" defaultValue={contract.finaliza_el || ""} id={`end-${contract.id}`} /></label>
+            <div className="finance-contract-field is-status"><span>Estado</span><strong>{contract.activo ? "Activo" : "Inactivo"}</strong></div>
+            <div className="finance-contract-actions">
+              <button type="button" className="finance-contract-primary" disabled={loading} onClick={() => handleEdit(contract.id, { nombre: document.getElementById(`name-${contract.id}`).value, importe_mensual: Number(document.getElementById(`amount-${contract.id}`).value), inicia_el: document.getElementById(`start-${contract.id}`).value, finaliza_el: document.getElementById(`end-${contract.id}`).value || null })}>Guardar</button>
+              <button type="button" className="finance-contract-secondary" onClick={() => setEditing(null)}>Cancelar</button>
+            </div>
+          </article>
+        ) : (
+          <article className={`finance-contract-card${contract.activo ? "" : " is-inactive"}`} key={contract.id}>
+            <div className="finance-contract-field is-name"><span>Cliente</span><strong>{contract.nombre}</strong></div>
+            <div className="finance-contract-field is-amount"><span>Monto mensual</span><strong>{ars.format(contract.importe_mensual)}</strong></div>
+            <div className="finance-contract-field"><span>Inicia</span><b>{contract.inicia_el}</b></div>
+            <div className="finance-contract-field"><span>Finaliza</span><b>{contract.finaliza_el || "Sin fecha"}</b></div>
+            <div className="finance-contract-field is-status">
+              <span>Estado</span>
+              <button type="button" className={`finance-contract-status ${contract.activo ? "is-active" : "is-disabled"}`} disabled={loading} onClick={() => handleToggleActive(contract.id, contract.activo)} aria-label={`${contract.activo ? "Dar de baja" : "Reactivar"} a ${contract.nombre}`}>{contract.activo ? "Activo" : "Baja"}</button>
+            </div>
+            <div className="finance-contract-actions"><button type="button" className="finance-contract-secondary" onClick={() => setEditing(contract.id)}>Editar</button></div>
+          </article>
+        ))}
+        {!contracts?.length && <div className="finance-empty">Todavía no hay contratos cargados.</div>}
       </div>
     </div>
   );
