@@ -9,6 +9,8 @@ import { getProductionProgress, isProductionVisitTask } from "./production-visit
 import { rankTaskPriorities } from "./task-priority.js";
 import { getStateNotification, validateProductionHandoff } from "./task-workflow.js";
 import { createMiaPersonalListsRouter, enqueueDuePersonalListReminders } from "./mia-personal-lists.js";
+import { createMiaSupervisorRouter, acknowledgeSupervisorDelivery, supervisorNotificationDeliverable } from "./mia-supervisor.js";
+import { isSupervisorLeader } from "./mia-supervisor-policy.js";
 
 const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
 const DEFAULT_ALLOWED_TELEGRAM_IDS = ["1826333320", "1890547269"];
@@ -365,7 +367,12 @@ export function requireWilsonService(env = process.env, now = () => Date.now(), 
 async function alertUnlinkedWhatsapp(pool, req) {
   const day = new Date().toISOString().slice(0, 10);
   const actor = crypto.createHash("sha256").update(String(req.wilson.actorId || "").replace(/^\+/, "")).digest("hex");
-  for (const leader of [{ nombre: "Agustín", clave: "agustin" }, { nombre: "Franco", clave: "franco" }]) {
+  const leaders = await pool.query(`SELECT COALESCE(i.display_name,u.nombre) nombre,
+      COALESCE(i.notification_key,u.usuario) clave FROM usuarios u
+    LEFT JOIN mia_whatsapp_identities i ON i.usuario_id=u.id AND i.enabled IS TRUE
+    WHERE u.rol IN ('admin','lider') AND u.whatsapp_habilitado IS TRUE
+      AND (i.actor_hash IS NOT NULL OR u.whatsapp_id_hash IS NOT NULL)`);
+  for (const leader of leaders.rows) {
     const fingerprint = crypto.createHash("sha256").update(`whatsapp-sin-vincular:${actor}:${leader.clave}:${day}`).digest("hex");
     await pool.query(`INSERT INTO mia_private_task_notifications
       (fingerprint,destinatario,destinatario_clave,tarea_id,motivo,mensaje,tarea_url,detalles)
@@ -376,25 +383,23 @@ async function alertUnlinkedWhatsapp(pool, req) {
   }
 }
 
-function resolveWilsonUser(pool) {
+function resolveWilsonUser(pool, env = process.env) {
   return async (req, res, next) => {
-    if (req.wilson.channel !== "whatsapp" || !req.wilson.privateChat) return next();
+    if (req.wilson.channel !== "whatsapp") return next();
+    if (!req.wilson.privateChat && req.wilson.actorId === String(env.WILSON_SYSTEM_ACTOR_ID || "")) return next();
     try {
       const hash = crypto.createHash("sha256").update(String(req.wilson.actorId || "").replace(/^\+/, "")).digest("hex");
-      let result = await pool.query(`SELECT id,usuario,nombre,rol FROM usuarios
-        WHERE whatsapp_id_hash=$1 AND whatsapp_habilitado IS TRUE LIMIT 1`, [hash]);
-      const known = knownWhatsappAccount(req.wilson.actorId);
-      if (!result.rows[0] && known) {
-        result = known.leader
-          ? await pool.query(`SELECT id,usuario,nombre,rol FROM usuarios
-              WHERE lower(usuario)='lider' OR lower(nombre)='líder' OR rol='admin'
-              ORDER BY CASE WHEN lower(usuario)='lider' THEN 0 ELSE 1 END,id LIMIT 1`)
-          : await pool.query(`SELECT id,usuario,nombre,rol FROM usuarios
-              WHERE lower(nombre)=lower($1) OR lower(usuario)=lower($2) ORDER BY id LIMIT 1`,
-            [known.name, normalizeWilsonText(known.name).split(" ")[0]]);
-      }
+      const result = await pool.query(`SELECT u.id,u.usuario,u.nombre,u.rol FROM usuarios u
+        WHERE u.whatsapp_habilitado IS TRUE AND (u.whatsapp_id_hash=$1
+          OR EXISTS(SELECT 1 FROM mia_whatsapp_identities i WHERE i.usuario_id=u.id AND i.actor_hash=$1 AND i.enabled IS TRUE))
+        ORDER BY CASE WHEN lower(usuario)='lider' THEN 0 ELSE 1 END,u.id LIMIT 1`, [hash]);
       const user = result.rows[0];
       if (!user) {
+        if (!req.wilson.privateChat) {
+          req.wilson.actorRole = "";
+          req.wilson.isLeader = false;
+          return next();
+        }
         await alertUnlinkedWhatsapp(pool, req);
         return res.status(403).json({
           error: "Este WhatsApp todavía no está vinculado a un usuario de Render OS. No modifiqué nada y avisé a Agustín y Franco.",
@@ -405,8 +410,7 @@ function resolveWilsonUser(pool) {
       req.wilson.actorName = user.nombre;
       req.wilson.actorRole = user.rol;
       req.wilson.confirmedBy = user.nombre;
-      req.wilson.isLeader = known?.leader === true || user.rol === "admin"
-        || ["agustin", "franco"].includes(normalizeWilsonText(user.usuario));
+      req.wilson.isLeader = isSupervisorLeader(user);
       return next();
     } catch (error) { return next(error); }
   };
@@ -788,10 +792,7 @@ async function consumeWilsonConfirmation(db, req, res, operation, taskId = null)
 
 function isWilsonLeader(req, env) {
   if (req.wilson.channel === "telegram") return csv(env.WILSON_LEADER_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(",")).includes(req.wilson.actorId);
-  const knownAccount = knownWhatsappAccount(req.wilson.actorId);
-  if (knownAccount) return knownAccount.leader;
-  return matchesIdentifier(req.wilson.actorId, whatsappConfig(env).leaderIds, DEFAULT_LEADER_WHATSAPP_ID_HASHES)
-    || matchesIdentifier(req.wilson.actorId, [], OWNER_WHATSAPP_ID_HASHES);
+  return Boolean(req.wilson.userId) && isSupervisorLeader({ rol: req.wilson.actorRole });
 }
 
 function canWilsonAssignFromRequest(req, env, assignee) {
@@ -851,8 +852,9 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     });
   }
   router.use(requireWilsonService(env, () => Date.now(), { allowSignedUnknownWhatsappPrivate: true }));
-  router.use(resolveWilsonUser(pool));
+  router.use(resolveWilsonUser(pool, env));
   router.use("/lista-personal", createMiaPersonalListsRouter({ express, pool }));
+  router.use("/supervisor", createMiaSupervisorRouter({ express, pool, env, isSystemActor: (req) => isWilsonSystemActor(req, env) }));
 
   router.get("/catalogo", async (_req, res, next) => {
     try {
@@ -873,6 +875,12 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
           operations: ["crear", "editar", "completar", "reabrir", "eliminar", "recordar", "reprogramar_recordatorio", "cancelar_recordatorio"],
           confirmation_expires: false,
           instruction: "Tarea es visible para el equipo; Lista es privada. Si no está claro, preguntá: tarea, lista o ambas. En grupos continuá todo lo relativo a Lista por privado. Nunca modifiques sin mostrar resumen y recibir confirmación. Si hay coincidencias, enumeralas y no adivines. Si pide recordatorio sin hora, preguntá a qué hora.",
+        },
+        supervisor_contract: {
+          coordinator: "Mía", scope: "render_os", private_followups: true,
+          work_days: "lunes a sábado", work_windows: ["08:00–13:00", "17:00–21:30"],
+          timezone: "America/Argentina/Buenos_Aires", max_attempts: 3, retry_work_minutes: 180,
+          instruction: "Usá supervisor/contexto para seguimiento. Una fecha sugerida necesita aceptación del responsable. Respuestas operativas requieren el texto real, estado, motivo, fecha si posterga e ID original del mensaje. Nunca inventes esos datos. Las respuestas de seguimiento son exclusivamente privadas; los clientes no reciben información de empleados ni líderes.",
         },
       });
     } catch (error) { next(error); }
@@ -1442,12 +1450,22 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     if (!isWilsonSystemActor(req, env)) return res.status(403).json({ error: "Esta cola es exclusiva del proceso automático de MIA." });
     const limit = Math.max(1, Math.min(Number(req.query.limit) || 20, 50));
     try {
+      if (req.query.dry_run === "true") {
+        const preview = await pool.query(`SELECT id,fingerprint,destinatario,destinatario_clave,tarea_id,feedback_id,motivo,mensaje,tarea_url,intentos,created_at
+          FROM mia_private_task_notifications WHERE cancelled_at IS NULL AND estado='pending'
+          AND (not_before IS NULL OR not_before<=NOW()) ORDER BY created_at,id LIMIT $1`, [limit]);
+        return res.json({ notifications: preview.rows, dry_run: true });
+      }
       await enqueueDuePersonalListReminders(pool, { limit });
       const result = await pool.query(
         `WITH candidates AS (
            SELECT id FROM mia_private_task_notifications
-           WHERE estado='pending'
-              OR (estado='sending' AND claimed_at < NOW()-INTERVAL '10 minutes')
+           WHERE cancelled_at IS NULL AND (not_before IS NULL OR not_before<=NOW())
+             AND (estado='pending' OR (estado='sending' AND claimed_at < NOW()-INTERVAL '10 minutes'))
+             AND (detalles->>'supervisor' IS DISTINCT FROM 'true' OR ($2::boolean
+               AND EXTRACT(ISODOW FROM NOW() AT TIME ZONE 'America/Argentina/Cordoba')<=6
+               AND ((NOW() AT TIME ZONE 'America/Argentina/Cordoba')::time >= TIME '08:00' AND (NOW() AT TIME ZONE 'America/Argentina/Cordoba')::time < TIME '13:00'
+                 OR (NOW() AT TIME ZONE 'America/Argentina/Cordoba')::time >= TIME '17:00' AND (NOW() AT TIME ZONE 'America/Argentina/Cordoba')::time < TIME '21:30')))
            ORDER BY created_at,id
            FOR UPDATE SKIP LOCKED
            LIMIT $1
@@ -1459,10 +1477,21 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          RETURNING notification.id,notification.fingerprint,notification.destinatario,
            notification.destinatario_clave,notification.tarea_id,notification.feedback_id,notification.motivo,
            notification.mensaje,notification.tarea_url,notification.intentos,notification.created_at`,
-        [limit],
+        [limit, env.MIA_SUPERVISOR_ENABLED === "true"],
       );
       return res.json({ notifications: result.rows });
     } catch (error) { return next(error); }
+  });
+
+  router.get("/notificaciones-privadas/:id/verificar", async (req, res, next) => {
+    if (!isWilsonSystemActor(req, env)) return res.status(403).json({ error: "Verificación exclusiva del proceso automático de Mía." });
+    try {
+      const result = await pool.query(`SELECT * FROM mia_private_task_notifications WHERE id=$1 AND fingerprint=$2`, [req.params.id,req.query.fingerprint]);
+      const notification = result.rows[0];
+      const deliverable = notification && notification.estado !== "delivered" && !notification.cancelled_at
+        && await supervisorNotificationDeliverable(pool, notification, { env });
+      return res.json({ deliverable: Boolean(deliverable) });
+    } catch(error) { return next(error); }
   });
 
   router.post("/notificaciones-privadas/:id/entregada", async (req, res, next) => {
@@ -1472,17 +1501,28 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     if (!Number.isInteger(id) || id <= 0 || !/^[a-f0-9]{64}$/.test(fingerprint)) {
       return res.status(400).json({ error: "Notificación privada inválida." });
     }
+    const client = await pool.connect();
     try {
-      const result = await pool.query(
+      await client.query("BEGIN");
+      const result = await client.query(
         `UPDATE mia_private_task_notifications
          SET estado='delivered',delivered_at=NOW()
          WHERE id=$1 AND fingerprint=$2 AND estado='sending'
-         RETURNING id`,
+           AND cancelled_at IS NULL
+         RETURNING *`,
         [id, fingerprint],
       );
-      if (!result.rows[0]) return res.status(409).json({ error: "La notificación ya fue entregada o cambió." });
+      if (!result.rows[0]) {
+        const previous = await client.query(`SELECT estado FROM mia_private_task_notifications WHERE id=$1 AND fingerprint=$2`, [id,fingerprint]);
+        await client.query("COMMIT");
+        if (previous.rows[0]?.estado === "delivered") return res.json({ delivered: true, id, idempotent: true });
+        return res.status(409).json({ error: "La notificación cambió o fue cancelada." });
+      }
+      await acknowledgeSupervisorDelivery(client, result.rows[0]);
+      await client.query("COMMIT");
       return res.json({ delivered: true, id });
-    } catch (error) { return next(error); }
+    } catch (error) { await client.query("ROLLBACK").catch(() => {}); return next(error); }
+    finally { client.release(); }
   });
 
   router.get("/resumenes-grupos", async (req, res, next) => {
@@ -1514,6 +1554,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         .filter((digest) => !(window.type === "semanal_mensual" && digest.destination === "comunicacion")) : [];
       const digests = [...weeklyDigests, ...generalDigests]
         .map((digest) => ({ ...digest, schedule_type: window.type }));
+      if (req.query.dry_run === "true") return res.json({ digests, dry_run: true });
       if (!digests.length) return res.json({ digests: [] });
       const claimed = [];
       for (const digest of digests) {

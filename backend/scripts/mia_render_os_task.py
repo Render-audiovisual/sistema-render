@@ -111,9 +111,30 @@ def main():
     confirm_list = commands.add_parser("confirm-list")
     confirm_list.add_argument("--confirmation-token", required=True)
     commands.add_parser("events")
-    commands.add_parser("group-digests")
+    group_digests = commands.add_parser("group-digests")
+    group_digests.add_argument("--dry-run", action="store_true")
     private_notifications = commands.add_parser("private-notifications")
     private_notifications.add_argument("--limit", type=int, default=20)
+    private_notifications.add_argument("--dry-run", action="store_true")
+    commands.add_parser("supervisor-context")
+    supervisor_tick = commands.add_parser("supervisor-tick")
+    supervisor_tick.add_argument("--apply", action="store_true")
+    supervisor_reply = commands.add_parser("supervisor-reply")
+    supervisor_reply.add_argument("--task-id", required=True, type=int)
+    supervisor_reply.add_argument("--message-id", required=True)
+    supervisor_reply.add_argument("--payload", required=True)
+    supervisor_blocker = commands.add_parser("supervisor-blocker-reply")
+    supervisor_blocker.add_argument("--task-id", required=True, type=int)
+    supervisor_blocker.add_argument("--message-id", required=True)
+    supervisor_blocker.add_argument("--payload", required=True)
+    supervisor_date = commands.add_parser("supervisor-accept-date")
+    supervisor_date.add_argument("--task-id", required=True, type=int)
+    supervisor_date.add_argument("--message-id", required=True)
+    supervisor_date.add_argument("--proposal-id", required=True)
+    supervisor_date.add_argument("--date")
+    verify_private = commands.add_parser("verify-private-notification")
+    verify_private.add_argument("--notification-id", required=True, type=int)
+    verify_private.add_argument("--fingerprint", required=True)
     resolve_review = commands.add_parser("resolve-review")
     resolve_review.add_argument("--references", required=True)
     preview_review = commands.add_parser("preview-review")
@@ -190,9 +211,22 @@ def main():
     elif args.cmd == "events":
         result = request("GET", "/eventos-pendientes", args)
     elif args.cmd == "group-digests":
-        result = request("GET", "/resumenes-grupos", args)
+        result = request("GET", "/resumenes-grupos" + ("?dry_run=true" if args.dry_run else ""), args)
     elif args.cmd == "private-notifications":
-        result = request("GET", f"/notificaciones-privadas?limit={max(1, min(args.limit, 50))}", args)
+        result = request("GET", f"/notificaciones-privadas?limit={max(1, min(args.limit, 50))}" + ("&dry_run=true" if args.dry_run else ""), args)
+    elif args.cmd == "supervisor-context":
+        result = request("GET", "/supervisor/contexto", args)
+    elif args.cmd == "supervisor-tick":
+        result = request("POST", "/supervisor/tick", args, payload={"dry_run": not args.apply})
+    elif args.cmd == "supervisor-reply":
+        result = request("POST", f"/supervisor/tareas/{args.task_id}/respuesta", args, payload={**json.loads(args.payload), "message_id": args.message_id})
+    elif args.cmd == "supervisor-blocker-reply":
+        result = request("POST", f"/supervisor/tareas/{args.task_id}/bloqueo", args, payload={**json.loads(args.payload), "message_id": args.message_id})
+    elif args.cmd == "supervisor-accept-date":
+        result = request("POST", f"/supervisor/tareas/{args.task_id}/fecha", args, payload={"message_id": args.message_id, "proposal_id": args.proposal_id, "fecha": args.date})
+    elif args.cmd == "verify-private-notification":
+        query = urllib.parse.urlencode({"fingerprint": args.fingerprint})
+        result = request("GET", f"/notificaciones-privadas/{args.notification_id}/verificar?{query}", args)
     elif args.cmd == "resolve-review":
         result = request("POST", "/tareas/resolver-revision", args, payload={"referencias": json.loads(args.references)})
     elif args.cmd == "preview-review":

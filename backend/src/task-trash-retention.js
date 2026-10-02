@@ -40,12 +40,12 @@ export async function purgeExpiredCompletedRenderOsTasks(pool) {
   );
 }
 
-export function scheduleRenderOsTrashCleanup(pool, intervalMs = 60 * 60 * 1000) {
+export function scheduleRenderOsTrashCleanup(pool, intervalMs = 60 * 60 * 1000, env = process.env) {
   const clean = async () => {
     try {
       const [trash, completed] = await Promise.all([
         purgeExpiredRenderOsTrash(pool),
-        purgeExpiredCompletedRenderOsTasks(pool),
+        env.TASK_COMPLETED_CLEANUP_ENABLED === "true" ? purgeExpiredCompletedRenderOsTasks(pool) : Promise.resolve({ rowCount: 0 }),
       ]);
       if (trash.rowCount > 0) console.log(`${trash.rowCount} tareas vencidas eliminadas de Papelera`);
       if (completed.rowCount > 0) console.log(`${completed.rowCount} tareas finalizadas hace 15 días eliminadas definitivamente`);

@@ -51,6 +51,8 @@ def guarded_delivery(event, *, account, ledger_path):
     event_id = event.get("id")
     if not event_id:
         raise ValueError("Falta el identificador estable del evento.")
+    # Validate local addressing before persisting an uncertain transport attempt.
+    target_for_event(event)
     key = delivery_key(event, account)
     ledger_path = pathlib.Path(ledger_path)
     ledger_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -72,6 +74,8 @@ def guarded_delivery(event, *, account, ledger_path):
         db.commit()
         # Any exception/crash from this point leaves the durable uncertain marker.
         result = deliver_event(event, account=account, send=True)
+        if not confirmed_transport_receipt(result):
+            raise RuntimeError("El transporte no devolvió un recibo de mensaje; envío retenido como incierto.")
         db.execute("UPDATE deliveries SET status='sent',updated_at=CURRENT_TIMESTAMP WHERE id=?", (key,))
         db.commit()
         return result
@@ -120,7 +124,7 @@ def client_command(identity, *arguments):
     ]
 
 
-def deliver_event(event, *, account, send):
+def target_for_event(event):
     destination = str(event.get("destination") or "")
     if event.get("kind") == "private":
         target = private_recipients().get(str(event.get("destinatario_clave") or "").strip().lower())
@@ -130,6 +134,19 @@ def deliver_event(event, *, account, send):
         target = DESTINATION_GROUPS.get(destination)
     if not target:
         raise ValueError(f"Destino de MIA desconocido: {destination or '(vacío)'}")
+    return target
+
+
+def confirmed_transport_receipt(result):
+    if not isinstance(result, dict) or result.get("dryRun") is True or result.get("error"):
+        return False
+    if result.get("messageId"):
+        return True
+    return any(confirmed_transport_receipt(value) for value in result.values() if isinstance(value, dict))
+
+
+def deliver_event(event, *, account, send):
+    target = target_for_event(event)
     command = [
         "openclaw", "message", "send",
         "--channel", "whatsapp",
@@ -166,8 +183,9 @@ def main():
             return 0
 
         response = run_json(client_command(identity, "events"))
-        digest_response = run_json(client_command(identity, "group-digests"))
-        private_response = run_json(client_command(identity, "private-notifications", "--limit", str(limit)))
+        read_mode = [] if args.send else ["--dry-run"]
+        digest_response = run_json(client_command(identity, "group-digests", *read_mode))
+        private_response = run_json(client_command(identity, "private-notifications", "--limit", str(limit), *read_mode))
         events = ([{**event, "kind": "private", "text": event.get("mensaje")} for event in private_response.get("notifications") or []]
                   + [{**event, "kind": "event"} for event in response.get("events") or []]
                   + [{**digest, "kind": "digest"} for digest in digest_response.get("digests") or []])[:limit]
@@ -175,6 +193,11 @@ def main():
         errors = []
         for event in events:
             try:
+                if args.send and event.get("kind") == "private":
+                    check = run_json(client_command(identity, "verify-private-notification",
+                        "--notification-id", str(event["id"]), "--fingerprint", str(event["fingerprint"])))
+                    if check.get("deliverable") is not True:
+                        continue
                 result = (guarded_delivery(event, account=args.account, ledger_path=args.ledger_file)
                           if args.send else deliver_event(event, account=args.account, send=False))
                 if args.send:

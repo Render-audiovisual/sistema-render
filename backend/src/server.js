@@ -43,6 +43,7 @@ import { normalizeClientConfiguration, normalizePeriod } from "./client-config.j
 import { reconcileEditorialCalendar } from "./editorial-calendar.js";
 import { buildMiaStatePendingMarker } from "./mia-task-digest.js";
 import { scheduleRenderOsTrashCleanup } from "./task-trash-retention.js";
+import { scheduleMiaSupervisor } from "./mia-supervisor.js";
 import { createMoodboardsRouter } from "./moodboards.js";
 import {
   getStateNotification,
@@ -3675,5 +3676,6 @@ if (process.env.RENDER_DISABLE_SERVER_START !== "true") (async () => {
     scheduleEditorialCalendar();
     scheduleRenderOsTrashCleanup(pool);
     scheduleWilsonMessages(pool);
+    scheduleMiaSupervisor(pool);
   });
 })();

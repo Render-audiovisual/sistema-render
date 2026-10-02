@@ -1,5 +1,6 @@
 """Offline regression tests: no subprocesses, backend calls or WhatsApp sends."""
 import pathlib
+import os
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -14,6 +15,9 @@ class DeliveryGuardTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.path = pathlib.Path(self.tmp.name) / "receipts.sqlite3"
         self.event = {"id": "event-123", "kind": "event", "destination": "edicion"}
+        self.environ = patch.dict(os.environ, {"MIA_PRIVATE_RECIPIENTS_JSON": '{"test":"test-target"}'})
+        self.environ.start()
+        self.addCleanup(self.environ.stop)
 
     def send(self, event=None):
         return worker.guarded_delivery(event or self.event, account="test", ledger_path=self.path)
@@ -63,7 +67,7 @@ class DeliveryGuardTests(unittest.TestCase):
         for kind in ("event", "digest", "private"):
             with self.subTest(kind=kind):
                 with patch.object(worker, "deliver_event", return_value={"messageId": "test"}) as send:
-                    event = {**self.event, "kind": kind}
+                    event = {**self.event, "kind": kind, **({"destinatario_clave":"test"} if kind == "private" else {})}
                     self.send(event)
                     self.send(event)
                     self.assertEqual(send.call_count, 1)
@@ -103,6 +107,26 @@ class DeliveryGuardTests(unittest.TestCase):
             with self.assertRaises(worker.sqlite3.Error):
                 self.send()
             send.assert_not_called()
+
+    def test_no_receipt_is_uncertain_and_not_acknowledged(self):
+        with patch.object(worker, "deliver_event", return_value={"status":"ok"}) as send:
+            with self.assertRaisesRegex(RuntimeError, "recibo"):
+                self.send()
+            with self.assertRaisesRegex(RuntimeError, "incierto"):
+                self.send()
+            self.assertEqual(send.call_count, 1)
+
+    def test_missing_private_mapping_does_not_poison_the_ledger(self):
+        event = {**self.event, "kind":"private", "destinatario_clave":"unlinked"}
+        with patch.object(worker, "deliver_event") as send:
+            with self.assertRaises(ValueError):
+                self.send(event)
+            send.assert_not_called()
+            self.assertFalse(self.path.exists())
+
+    def test_nested_receipt_is_accepted_but_dry_run_is_not(self):
+        self.assertTrue(worker.confirmed_transport_receipt({"payload":{"result":{"messageId":"receipt"}}}))
+        self.assertFalse(worker.confirmed_transport_receipt({"dryRun":True,"messageId":"receipt"}))
 
 
 if __name__ == "__main__":
