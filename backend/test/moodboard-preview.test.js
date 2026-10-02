@@ -25,8 +25,16 @@ test("el moodboard contempla clientes compartidos, tareas y límites de archivo"
 
 test("la galería tipo Pinterest se adapta a móvil y movimiento reducido", () => {
   assert.match(styles, /columns:4 235px/);
-  assert.match(styles, /@media\(max-width:900px\)/);
+  assert.match(styles, /@media\(max-width:980px\)/);
   assert.match(styles, /prefers-reduced-motion:reduce/);
+});
+
+test("el moodboard conserva el menú principal y separa el scroll de clientes y galería", () => {
+  assert.doesNotMatch(app, /if \(path === "\/moodboards"\) \{\s*return loadedDashboard/);
+  assert.match(styles, /\.moodboard-preview-shell\{[^}]*overflow:hidden/);
+  assert.match(styles, /\.moodboard-brand-rail nav\{[^}]*overflow-y:auto/);
+  assert.match(styles, /\.moodboard-workspace\{[^}]*overflow-y:auto/);
+  assert.match(styles, /\.moodboard-header\{[^}]*position:sticky/);
 });
 
 test("las imágenes quedan fuera de la carpeta versionada de Hostinger", () => {

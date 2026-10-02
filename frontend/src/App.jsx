@@ -163,13 +163,7 @@ export function App() {
     return null;
   }
 
-  // El moodboard usa una pizarra visual de ancho completo y su propio
-  // selector de marcas. El botón “Volver a tareas” conserva la navegación.
   const loadedDashboard = <React.Suspense fallback={<RouteLoading />}>{dashboard}</React.Suspense>;
-
-  if (path === "/moodboards") {
-    return loadedDashboard;
-  }
 
   return (
     <>
