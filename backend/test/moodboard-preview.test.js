@@ -38,6 +38,12 @@ test("el moodboard conserva el menú principal y separa el scroll de clientes y 
   assert.match(styles, /\.moodboard-header\{[^}]*position:sticky/);
 });
 
+test("el formulario nuevo se centra en la galería sin cubrir los dos menús", () => {
+  assert.match(styles, /\.moodboard-compose-layer\{[^}]*left:534px/);
+  assert.match(styles, /\.moodboard-compose-layer\{[^}]*justify-content:center/);
+  assert.match(styles, /@media\(max-width:980px\)[\s\S]*?\.moodboard-compose-layer\{[^}]*inset:64px 0 0/);
+});
+
 test("las imágenes quedan fuera de la carpeta versionada de Hostinger", () => {
   assert.match(backend, /hbuilds/);
   assert.match(backend, /MOODBOARD_UPLOAD_DIR/);
