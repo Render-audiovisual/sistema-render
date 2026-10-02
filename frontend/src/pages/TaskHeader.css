@@ -124,6 +124,7 @@
   background: #fff;
 }
 
+.render-workspace .ros-primary-navigation,
 .render-workspace .ros-controls > div:first-child,
 .render-workspace .ros-view-tabs {
   display: flex;
@@ -135,6 +136,10 @@
   border: 0;
   border-radius: 0;
   background: transparent;
+}
+
+.render-workspace .ros-primary-navigation {
+  flex: 0 1 auto;
 }
 
 .render-workspace .ros-controls :is(button, a) {
@@ -236,71 +241,76 @@
   .render-workspace .ros-title-row { grid-template-columns: 1fr; gap: 16px; }
   .render-workspace .ros-title-actions { grid-template-columns: minmax(0, 1fr) auto; }
   .render-workspace .ros-controls { flex-wrap: wrap; padding-block: 6px; }
+  .render-workspace .ros-primary-navigation { max-width: 100%; }
   .render-workspace .ros-controls-meta { width: 100%; justify-content: flex-end; border-top: 1px solid #eef0eb; }
 }
 
 /* En móvil la navegación conserva una sola fila desplazable, como una barra de documento. */
 @media (max-width: 600px) {
-  .render-workspace .ros-page { --task-gutter: 14px; }
-  .render-workspace .ros-title-row { gap: 14px; padding-block: 18px 14px; }
-  .render-workspace .ros-title-copy { gap: 10px; }
-  .render-workspace .ros-page-emoji { width: 36px; height: 36px; flex-basis: 36px; font-size: 18px; }
-  .render-workspace .ros-title-row h1 { font-size: 27px; }
-  .render-workspace .ros-title-row p { font-size: 12.5px; }
-  .render-workspace .ros-title-actions { grid-template-columns: 1fr; gap: 8px; }
+  .render-workspace .ros-page { --task-gutter: 12px; }
+  .render-workspace .ros-title-row { gap: 12px; padding-block: 14px 12px; }
+  .render-workspace .ros-title-copy { display:flex; align-items:center; gap: 9px; }
+  .render-workspace .ros-page-emoji { width: 34px; height: 34px; flex-basis: 34px; border-radius:8px; font-size: 17px; }
+  .render-workspace .ros-title-row h1 { font-size: 25px; }
+  .render-workspace .ros-title-row p { margin-top:2px; font-size: 11.5px; white-space:normal; }
+  .render-workspace .ros-title-actions { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .render-workspace .ros-top-search,
-  .render-workspace .ros-primary-button { min-height: 46px; font-size: 16px; }
+  .render-workspace .ros-primary-button { min-height: 44px; }
+  .render-workspace .ros-top-search { padding-inline:12px; font-size:16px; }
+  .render-workspace .ros-primary-button { width:auto; padding-inline:13px; font-size:13px; white-space:nowrap; }
 
   .render-workspace .ros-controls {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 5px 8px;
+    display: flex !important;
+    flex-wrap:wrap;
+    gap: 0;
     min-height: 0;
-    padding: 4px 0 8px;
+    margin-inline:var(--task-gutter);
+    padding: 0 0 7px;
     overflow: visible;
   }
-  .render-workspace .ros-controls > div:first-child,
-  .render-workspace .ros-view-tabs {
-    grid-column: 1 / -1;
+  .render-workspace .ros-primary-navigation {
     gap: 0;
     width: 100%;
-    padding-bottom: 2px;
     overflow-x: auto;
     overscroll-behavior-inline: contain;
+    scroll-snap-type:x proximity;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
   }
+  .render-workspace .ros-primary-navigation::-webkit-scrollbar,
   .render-workspace .ros-view-tabs::-webkit-scrollbar { display: none; }
+  .render-workspace .ros-view-tabs { flex:0 0 auto; width:auto; overflow:visible; }
   .render-workspace .ros-controls .ros-view-tabs button {
     flex: 0 0 auto;
-    min-height: 42px;
-    padding-inline: 11px;
+    min-height: 40px;
+    padding-inline: 10px;
     font-size: 12px;
+    scroll-snap-align:start;
   }
   .render-workspace .ros-feedback-link {
-    grid-column: 1;
-    justify-self: start;
-    margin: 0;
-    min-height: 38px;
-    padding-inline: 9px !important;
-    border: 1px solid #e1e5dc !important;
-    border-radius: 8px !important;
+    flex:0 0 auto;
+    margin:0 0 0 3px;
+    min-height:40px;
+    padding-inline:10px !important;
+    border:0 !important;
+    border-bottom:2px solid transparent !important;
+    border-radius:0 !important;
+    scroll-snap-align:start;
   }
-  .render-workspace .ros-feedback-link::before { display: none; }
+  .render-workspace .ros-feedback-link::before { display:block; height:20px; margin:0 5px 0 0; }
   .render-workspace .ros-controls .ros-controls-meta {
-    grid-column: 2;
-    width: auto;
+    width: 100%;
     justify-content: flex-end;
     margin: 0;
-    padding: 0;
-    border: 0;
+    padding: 6px 0 0;
+    border-top: 1px solid #eef0eb;
   }
   .render-workspace .ros-controls-meta > span { display: none; }
-  .render-workspace .ros-controls .ros-archive-link { min-height: 38px; }
+  .render-workspace .ros-controls .ros-archive-link { min-height: 36px; padding-inline:8px; }
   .render-workspace .ros-filter-toggle {
     width: calc(100% - (var(--task-gutter) * 2));
-    min-height: 42px;
-    margin-top: 10px;
+    min-height: 40px;
+    margin-top: 8px;
     border-radius: 9px;
   }
   .render-workspace .ros-filter-bar {
@@ -311,6 +321,81 @@
   }
   .render-workspace .ros-filter-bar.open { display: grid; }
   .render-workspace .ros-filter-bar select { min-height: 46px; font-size: 16px; }
+
+  .render-workspace .ros-mobile-board-nav {
+    gap:6px;
+    margin-top:8px;
+    padding:7px var(--task-gutter);
+  }
+  .render-workspace .ros-mobile-board-nav button {
+    min-height:40px;
+    padding:7px 10px;
+  }
+  .render-workspace .ros-board,
+  .render-workspace .ros-board-four {
+    margin-inline:var(--task-gutter);
+    width:calc(100% - (var(--task-gutter) * 2));
+  }
+  .render-workspace .ros-column > header { min-height:36px; padding:3px 3px 7px; }
+  .render-workspace .ros-column > header span,
+  .render-workspace .ros-column > header strong { font-size:13px; }
+  .render-workspace .ros-column > div { padding:6px; border-radius:12px; }
+  .render-workspace .ros-task-card { padding:12px; border-radius:11px; }
+  .render-workspace .ros-task-card h3 { font-size:15px; }
+
+  .render-workspace .ros-task-list {
+    display:grid;
+    gap:8px;
+    margin:10px var(--task-gutter);
+    overflow:visible;
+    border:0;
+    background:transparent;
+  }
+  .render-workspace .ros-task-list-head { display:none; }
+  .render-workspace .ros-task-list > button {
+    min-width:0;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:7px 10px;
+    padding:13px;
+    border:1px solid #e0e4da;
+    border-radius:11px;
+    background:#fff;
+    box-shadow:0 2px 8px rgba(32,36,24,.05);
+  }
+  .render-workspace .ros-task-list > button > strong {
+    grid-column:1/-1;
+    font-size:15px;
+    line-height:1.35;
+  }
+  .render-workspace .ros-task-list > button > :nth-child(3),
+  .render-workspace .ros-task-list > button > :nth-child(4) {
+    grid-column:1/-1;
+    overflow:hidden;
+    color:#737a6f;
+    font-size:12px;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .render-workspace .ros-task-list > button > :nth-child(5) {
+    justify-self:start;
+    padding:4px 7px;
+    border-radius:999px;
+    background:#f0f2ec;
+    color:#4e5649;
+    font-weight:650;
+  }
+  .render-workspace .ros-task-list > button > :nth-child(6) {
+    align-self:center;
+    justify-self:end;
+    color:#777e72;
+  }
+}
+
+@media (max-width: 370px) {
+  .render-workspace .ros-title-row p { display:none; }
+  .render-workspace .ros-primary-button { padding-inline:11px; }
+  .render-workspace .ros-controls .ros-view-tabs button,
+  .render-workspace .ros-feedback-link { padding-inline:9px !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {

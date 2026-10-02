@@ -245,6 +245,10 @@ test("Tareas conserva únicamente Papelera como acción secundaria", () => {
   const taskHeaderStyles = readFileSync(new URL("../../frontend/src/pages/TaskHeader.css", import.meta.url), "utf8");
   assert.match(taskHeaderStyles, /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto/);
   assert.match(taskHeaderStyles, /\.ros-controls button\.active/);
+  assert.match(workspaceSource, /className="ros-primary-navigation" aria-label="Vistas de tareas"/);
+  assert.match(taskHeaderStyles, /\.ros-primary-navigation\s*\{[\s\S]*?overflow-x:\s*auto/);
+  assert.match(taskHeaderStyles, /\.ros-task-list-head\s*\{\s*display:none/);
+  assert.match(taskHeaderStyles, /\.ros-task-list\s*>\s*button\s*\{[\s\S]*?min-width:0/);
 });
 
 test("la revisión de videos permite al Líder entregarlos a Oriana", () => {
