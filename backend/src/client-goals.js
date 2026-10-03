@@ -76,7 +76,7 @@ export async function readGoals(db, period) {
     if (!clients.some(client => client.clave === stored.clave)) clients.push({ ...stored, cliente_id: stored.cuentas[0]?.id });
   }
   const assignments = await loadGoalAssignments(db, clients, period);
-  return { periodo: period, inicio_seguimiento: GOALS_START_PERIOD, clientes: clients.map((client, index) => {
+  return { periodo: period, inicio_seguimiento: GOALS_START_PERIOD, clientes: clients.map(client => {
     const stored = byKey.get(client.clave);
     return { ...client, ...(stored || {}), preparado: Boolean(stored), responsables_por_formato: assignments.get(client.clave),
       piezas: stored ? pieces.rows.filter(piece => piece.objetivo_id === stored.id) : [] };
@@ -196,11 +196,13 @@ async function loadGoalAssignments(db, clients, period) {
     WHERE cliente_id=ANY($1::int[]) AND vigente_desde <= $2::date ORDER BY cliente_id,vigente_desde DESC`,
   [ids, `${period}-01`]);
   const tasks = await db.query(`SELECT t.cliente_id,t.titulo,t.subtipo,t.tipo_tarea,t.historia_id,t.tarea_padre_id,
+    to_char(COALESCE(p.fecha_programada,t.fecha_vencimiento,t.created_at),'YYYY-MM') periodo_asignacion,
     t.asignado_a,t.propiedades_extra,p.tipo pieza_tipo FROM tareas t LEFT JOIN publicaciones p ON p.id=t.publicacion_id
     WHERE t.cliente_id=ANY($1::int[]) AND t.propiedades_extra->>'workspace'='render_os'
       AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
       AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
-      AND COALESCE(t.propiedades_extra->>'objetivo_periodo',to_char(p.fecha_programada,'YYYY-MM'),to_char(t.fecha_vencimiento,'YYYY-MM'))=$2`, [ids,period]);
+      AND COALESCE(p.fecha_programada,t.fecha_vencimiento,t.created_at) < ($2 || '-01')::date + INTERVAL '1 month'
+      ORDER BY COALESCE(p.fecha_programada,t.fecha_vencimiento,t.created_at) DESC,t.id DESC`, [ids,period]);
   const users = (await db.query('SELECT id,nombre,usuario FROM usuarios ORDER BY id')).rows;
   return new Map(clients.map(client => [client.clave, Object.fromEntries(['video','carrusel'].map(type => {
     const accountIds = new Set(client.cuentas.map(account => account.id));
@@ -209,7 +211,14 @@ async function loadGoalAssignments(db, clients, period) {
     const names = new Set(publications.rows.filter(row => accountIds.has(row.cliente_id) && row.tipo === type).flatMap(row =>
       [row.responsable, row[type === 'video' ? 'responsable_edición' : 'responsable_diseño'], row.responsable_revisión, row.responsable_publicacion]).filter(Boolean).map(name => name.trim().toLowerCase()));
     if (type === 'carrusel') designers.rows.filter(row => accountIds.has(row.cliente_id)).forEach(row => { if (row.disenador_responsable) names.add(row.disenador_responsable.trim().toLowerCase()); });
-    tasks.rows.filter(row => accountIds.has(row.cliente_id) && goalTaskType(row) === type).forEach(row => {
+    // Las ediciones hijas aportan la identidad del editor, pero siguen sin
+    // contarse como piezas adicionales en candidateTasks/prepareGoal.
+    const relevantTasks = tasks.rows.filter(row => accountIds.has(row.cliente_id) && goalTaskType({...row,tarea_padre_id:null}) === type);
+    // Si no existe una configuración explícita, heredar la última asignación
+    // registrada para ese cliente/formato, no deducir personas por su rol.
+    const taskMonth = relevantTasks.some(row => row.periodo_asignacion === period) ? period : relevantTasks[0]?.periodo_asignacion;
+    const sourceTasks = relevantTasks.filter(row => row.periodo_asignacion === taskMonth);
+    (taskMonth === period || !names.size ? sourceTasks : []).forEach(row => {
       for (const name of [row.asignado_a,...(Array.isArray(row.propiedades_extra?.colaboradores) ? row.propiedades_extra.colaboradores : [])]) {
         if (typeof name === 'string' && name.trim()) names.add(name.trim().toLowerCase());
       }
@@ -232,7 +241,7 @@ export async function reconcileMonthlyGoals(pool, period) {
       if (missing.length) { result.pendientes.push({ clave: client.clave, motivo: 'Faltan responsables configurados', formatos: missing.map(([type]) => type) }); continue; }
       const responsibleByType = Object.fromEntries(Object.entries(byType).map(([type, users]) => [type, users.map(user => user.id)]));
       const prepared = await prepareGoal(pool, { period, key:client.clave, responsibleByType,
-        responsibleIds:[...new Set(Object.values(responsibleByType).flat())], actor:'Generación mensual automática' });
+        responsibleIds:[...new Set(Object.values(responsibleByType).flat())], persistResponsibles:true, actor:'Generación mensual automática' });
       result.creadas += prepared.creadas; result.vinculadas += prepared.vinculadas;
     } catch (error) {
       if (!error.status) throw error;

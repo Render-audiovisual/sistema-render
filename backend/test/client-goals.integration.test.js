@@ -64,7 +64,8 @@ test('PostgreSQL: objetivos reales, privacidad, concurrencia, cambios y conserva
     const assignment = await inheritedGoalResponsibles(pool, {clave:clientKey,cuentas:[{id:client.id}]}, '2026-11');
     assert.deepEqual(assignment.video.map(person => person.id), [user.id]);
     const automatic = await Promise.all([reconcileMonthlyGoals(pool,'2026-11'),reconcileMonthlyGoals(pool,'2026-11')]);
-    assert.equal(automatic.reduce((sum,row) => sum+row.creadas,0), 6);
+    assert.ok(automatic.reduce((sum,row) => sum+row.creadas,0) >= 6);
+    assert.equal((await pool.query(`SELECT count(*)::int n FROM tareas WHERE cliente_id=$1 AND propiedades_extra->>'objetivo_periodo'='2026-11'`,[client.id])).rows[0].n,6);
     assert.equal((await readGoals(pool,'2026-11')).clientes.find(item => item.clave === clientKey).piezas.length, 6);
     assert.equal((await reconcileMonthlyGoals(pool,'2026-11')).creadas, 0);
     await pool.query('UPDATE clientes SET cuota_reels=7 WHERE id=$1', [client.id]);

@@ -62,3 +62,11 @@ test('la automatización no modifica períodos anteriores al inicio', async () =
   const db = {query() { throw new Error('No consultar historial'); }};
   assert.equal((await reconcileMonthlyGoals(db,'2026-09')).creadas,0);
 });
+test('hereda la última asignación del cliente cuando el mes nuevo aún no tiene tareas', async () => {
+  const responses = [[],[],[],[
+    {cliente_id:1,titulo:'Reel 1',tipo_tarea:'edicion',tarea_padre_id:8,asignado_a:'Luciano',periodo_asignacion:'2026-09',propiedades_extra:{}},
+    {cliente_id:1,titulo:'Reel 2',tipo_tarea:'edicion',asignado_a:'Editor anterior',periodo_asignacion:'2026-08',propiedades_extra:{}},
+  ],[{id:1,nombre:'Luciano',usuario:'luciano'},{id:2,nombre:'Editor anterior',usuario:'anterior'}]];
+  const result = await inheritedGoalResponsibles({query:async () => ({rows:responses.shift()})},{clave:'cliente-1',cuentas:[{id:1}]},'2026-10');
+  assert.deepEqual(result.video,[{id:1,nombre:'Luciano'}]);
+});
