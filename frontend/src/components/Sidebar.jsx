@@ -31,6 +31,7 @@ export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, 
     ] : [],
     trabajo: [
       { href: "/workspace/tareas", label: "Tareas", icon: "tasks" },
+      { href: "/clientes", label: "Clientes", icon: "clients" },
       { href: "/lista", label: "Lista", icon: "list" },
       { href: "/moodboards", label: "Moodboard", icon: "moodboard" },
       { href: "/drive", label: "Drive", icon: "drive" },
@@ -53,9 +54,7 @@ export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, 
         { href: "/sueldos", label: "Finanzas", icon: "salary" },
       ] : []),
     ],
-    admin: esAdmin ? [
-      { href: "/clientes", label: "Clientes", icon: "clients" },
-    ] : [],
+    admin: [],
     cuenta: [
       { href: "/perfil", label: "Perfil", icon: "profile" },
       ...(esAdmin ? [{ href: "/empleados", label: "Usuarios", icon: "users" }] : []),

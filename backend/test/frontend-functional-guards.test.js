@@ -175,7 +175,7 @@ test("la navegación de empleados expone trabajo y contenido, pero no gestión s
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
   const utilsSource = readFileSync(new URL("../../frontend/src/utils.jsx", import.meta.url), "utf8");
-  assert.match(appSource, /: \["\/inicio", "\/perfil", "\/workspace\/tareas", "\/lista", "\/bloc-notas", "\/drive", "\/moodboards", "\/planificacion-historias", "\/planificacion-publicaciones", "\/reportes-historias"\]/);
+  assert.match(appSource, /: \["\/inicio", "\/perfil", "\/workspace\/tareas", "\/lista", "\/bloc-notas", "\/drive", "\/moodboards", "\/planificacion-historias", "\/planificacion-publicaciones", "\/reportes-historias", "\/clientes"\]/);
   assert.match(appSource, /React\.lazy/);
   assert.match(appSource, /QuickHomePage/);
   assert.match(sidebarSource, /planificacion: \[/);

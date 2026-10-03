@@ -45,6 +45,7 @@ import { buildMiaStatePendingMarker } from "./mia-task-digest.js";
 import { scheduleRenderOsTrashCleanup } from "./task-trash-retention.js";
 import { scheduleMiaSupervisor } from "./mia-supervisor.js";
 import { createMoodboardsRouter } from "./moodboards.js";
+import { createClientGoalsRouter, reconcileMonthlyGoals } from "./client-goals.js";
 import {
   getStateNotification,
   isTaskFinalizer,
@@ -274,6 +275,7 @@ router.post("/login/google", async (req, res, next) => {
 router.use("/drive", createGoogleDrivePublicRouter({ express, pool }));
 
 router.use(requireAuthentication);
+router.use("/cliente-objetivos", createClientGoalsRouter({ pool }));
 router.use("/moodboards", createMoodboardsRouter({ pool }));
 
 router.use("/drive", createGoogleDriveRouter({ express, pool, requireRole }));
@@ -3623,19 +3625,28 @@ app.use((err, _req, res, _next) => {
 // con await de nivel superior (ERR_REQUIRE_ASYNC_MODULE).
 function scheduleEditorialCalendar() {
   let lastRun = "";
-  let currentPrepared = false;
-  const check = async () => {
+  let currentPrepared = "";
+  let running = false;
+  const reconcile = async () => {
     const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Argentina/Cordoba", year: "numeric", month: "2-digit", day: "2-digit",
     }).formatToParts(new Date()).reduce((acc, part) => ({ ...acc, [part.type]: part.value }), {});
     const current = `${parts.year}-${parts.month}`;
-    if (!currentPrepared) {
+    if (currentPrepared !== current) {
       try {
         await reconcileEditorialCalendar(pool, current);
-        currentPrepared = true;
+        currentPrepared = current;
         console.log(`Calendario editorial ${current} preparado`);
       } catch (error) {
         console.error("No se pudo preparar el calendario editorial actual", error.message);
+      }
+    }
+    // Después del calendario para reutilizar sus publicaciones. Reintenta al
+    // arrancar y cada hora, incluso si las asignaciones se completan más tarde.
+    if (currentPrepared === current) {
+      const goals = await reconcileMonthlyGoals(pool, current);
+      if (goals.creadas || goals.vinculadas || goals.pendientes.length) {
+        console.log("Objetivos mensuales", JSON.stringify(goals));
       }
     }
     if (Number(parts.day) < 28) return;
@@ -3649,6 +3660,13 @@ function scheduleEditorialCalendar() {
     } catch (error) {
       console.error("No se pudo actualizar el calendario editorial automático", error.message);
     }
+  };
+  const check = async () => {
+    if (running) return;
+    running = true;
+    try { await reconcile(); }
+    catch (error) { console.error("No se pudieron preparar los objetivos mensuales", error.message); }
+    finally { running = false; }
   };
   check();
   const timer = setInterval(check, 60 * 60 * 1000);

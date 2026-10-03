@@ -80,7 +80,7 @@ export function ClientesAdminPage() {
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [nuevoCliente, setNuevoCliente] = useState(emptyClientForm);
-  const [mesSeleccionado, setMesSeleccionado] = useState(() => getMesISO());
+  const [mesSeleccionado, setMesSeleccionado] = useState(() => new URLSearchParams(window.location.search).get('periodo') || getMesISO());
   const [filtroEstado, setFiltroEstado] = useState("activos");
   const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [altaClienteAbierta, setAltaClienteAbierta] = useState(false);
@@ -273,6 +273,7 @@ export function ClientesAdminPage() {
               <p>Revisá el avance acordado y detectá rápidamente qué necesita atención.</p>
             </div>
             <div className="clientes-top-actions">
+              <a className="btn" href={`/clientes?periodo=${mesSeleccionado}`}>Ver objetivos mensuales</a>
               <div className="clientes-heading-meta">
                 <span>{totales.clientesActivos} activos</span>
               </div>

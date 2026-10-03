@@ -9,6 +9,7 @@ const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => (
 const AugustoDashboard = lazyNamed(() => import("./pages/dashboards/Augusto.jsx"), "AugustoDashboard");
 const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPage");
 const ClientesAdminPage = lazyNamed(() => import("./pages/Clientes.jsx"), "ClientesAdminPage");
+const ClientesObjetivosPage = lazyNamed(() => import("./pages/ClientesObjetivos.jsx"), "ClientesObjetivosPage");
 const EmpleadosPage = lazyNamed(() => import("./pages/Empleados.jsx"), "EmpleadosPage");
 const GermanDashboard = lazyNamed(() => import("./pages/dashboards/German.jsx"), "GermanDashboard");
 const HistoriasPage = lazyNamed(() => import("./pages/Historias.jsx"), "HistoriasPage");
@@ -74,7 +75,7 @@ export function App() {
 
   const rutasCompartidas = esAdmin
     ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
-    : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias"];
+    : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes"];
   const rutaPermitida =
     esAdmin || path === "/feedback" || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -127,7 +128,8 @@ export function App() {
       return null;
     }
     if (path === "/clientes") {
-      return <ClientesAdminPage />;
+      return esAdmin && new URLSearchParams(window.location.search).get("gestion") === "1"
+        ? <ClientesAdminPage /> : <ClientesObjetivosPage sesion={sesion} />;
     }
     if (path === "/calendario") {
       // Alias histórico: el calendario ahora vive como pestaña dentro del
