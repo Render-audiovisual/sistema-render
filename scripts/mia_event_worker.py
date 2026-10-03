@@ -14,6 +14,9 @@ import pathlib
 import subprocess
 import sqlite3
 import sys
+import re
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 
 DESTINATION_GROUPS = {
@@ -27,6 +30,13 @@ DEFAULT_CLIENT = pathlib.Path(__file__).with_name("mia_render_os_task.py")
 DEFAULT_LOCK = pathlib.Path("/tmp/mia-render-os-events.lock")
 DEFAULT_LEDGER = pathlib.Path(__file__).resolve().parent / "state" / "mia-deliveries.sqlite3"
 SUPPRESSED_GROUP_TERMS = ("reel", "carrusel")
+
+def proactive_window(now=None):
+    local = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo("America/Argentina/Buenos_Aires"))
+    minute = local.hour * 60 + local.minute
+    if local.weekday() == 6 or not (480 <= minute < 780 or 1020 <= minute < 1290):
+        return None
+    return f"{local.date().isoformat()}:{'am' if minute < 780 else 'pm'}"
 
 
 def delivery_key(event, account):
@@ -53,7 +63,7 @@ def guarded_delivery(event, *, account, ledger_path):
     if not event_id:
         raise ValueError("Falta el identificador estable del evento.")
     # Validate local addressing before persisting an uncertain transport attempt.
-    target_for_event(event)
+    target = target_for_event(event)
     key = delivery_key(event, account)
     ledger_path = pathlib.Path(ledger_path)
     ledger_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -61,6 +71,7 @@ def guarded_delivery(event, *, account, ledger_path):
         os.chmod(ledger_path, 0o600)
         db.execute("PRAGMA synchronous=FULL")
         db.execute("CREATE TABLE IF NOT EXISTS deliveries (id TEXT PRIMARY KEY, status TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+        db.execute("CREATE TABLE IF NOT EXISTS private_contacts (id TEXT PRIMARY KEY, last_attempt REAL NOT NULL, supervisor_window TEXT)")
         db.execute("BEGIN IMMEDIATE")
         row = db.execute("SELECT status, updated_at <= datetime('now', '-24 hours') FROM deliveries WHERE id=?", (key,)).fetchone()
         if row and row[0] == "acked" and row[1] and event.get("kind") == "digest":
@@ -71,6 +82,22 @@ def guarded_delivery(event, *, account, ledger_path):
             if row[0] in ("sent", "acked"):
                 return {"status": "already_sent", "resend": False}
             raise RuntimeError("Envío incierto retenido para revisión; no se reenviará automáticamente.")
+        if event.get("kind") == "private":
+            # Hash the actual destination, not its alias; two aliases cannot bypass limits.
+            actual_target = str(target).split("@", 1)[0]
+            normalized_target = re.sub(r"\D", "", actual_target) if re.search(r"\d{6}", re.sub(r"\D", "", actual_target)) else actual_target
+            recipient = hashlib.sha256(normalized_target.encode()).hexdigest()
+            previous = db.execute("SELECT last_attempt, supervisor_window FROM private_contacts WHERE id=?", (recipient,)).fetchone()
+            now = datetime.now(timezone.utc)
+            is_supervisor = str(event.get("motivo", "")).startswith("supervisor_")
+            window = proactive_window(now) if is_supervisor else None
+            if previous and now.timestamp() - previous[0] < 600:
+                db.commit()
+                return {"status": "deferred", "reason": "recipient_cooldown"}
+            if is_supervisor and (window is None or previous and previous[1] == window):
+                db.commit()
+                return {"status": "deferred", "reason": "work_window_quota"}
+            db.execute("INSERT INTO private_contacts(id,last_attempt,supervisor_window) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET last_attempt=excluded.last_attempt, supervisor_window=COALESCE(excluded.supervisor_window,private_contacts.supervisor_window)", (recipient, now.timestamp(), window))
         db.execute("INSERT INTO deliveries(id,status) VALUES (?, 'uncertain')", (key,))
         db.commit()
         # Any exception/crash from this point leaves the durable uncertain marker.
@@ -223,6 +250,9 @@ def main():
                         continue
                 result = (guarded_delivery(event, account=args.account, ledger_path=args.ledger_file)
                           if args.send else deliver_event(event, account=args.account, send=False))
+                if result.get("status") == "deferred":
+                    suppressed.append({"event_id": event.get("id"), "reason": result["reason"]})
+                    continue  # No ACK and no attempt increment for a message not delivered.
                 if args.send:
                     if event.get("kind") == "private":
                         run_json(client_command(

@@ -150,18 +150,18 @@ export function validateSupervisorReport(input, task, now = new Date()) {
   const state = input.estado;
   const date = input.nueva_fecha || null;
   const errors = [];
-  if (text.length < 12 || text.length > 6000 || EMPTY_RESPONSE.test(normalize(text))) errors.push('Necesito una actualización completa: estado, motivo y nueva fecha si se posterga.');
-  if (!STATUS_WORDS[state]?.test(normalize(text))) errors.push('Indicá el estado real dentro del mensaje.');
-  if (reason.length < 8 || EMPTY_RESPONSE.test(normalize(reason)) || !normalize(text).includes(normalize(reason))) errors.push('Explicá el motivo de la demora o qué está bloqueando, con información concreta.');
+  if (text.length < 3 || text.length > 6000 || EMPTY_RESPONSE.test(normalize(text))) errors.push('¿En qué estado está la tarea?');
+  if (!STATUS_WORDS[state]?.test(normalize(text))) errors.push('¿En qué estado está la tarea?');
+  if (reason.length < 8 || EMPTY_RESPONSE.test(normalize(reason)) || !normalize(text).includes(normalize(reason))) errors.push(state==='bloqueada'?'¿Qué necesitás para destrabarla?':'¿Qué demoró la entrega?');
   const postponed = state !== 'lista_para_revision' && (!task.fecha_vencimiento || task.fecha_vencimiento < localClock(now).date);
-  if ((postponed || date) && (!validDate(date) || date < localClock(now).date)) errors.push('Necesito una nueva fecha válida, desde hoy en adelante.');
+  if ((postponed || date) && (!validDate(date) || date < localClock(now).date)) errors.push('¿Para qué fecha estimás entregarla?');
   if (date) {
     const [, month, day] = String(date).split('-');
     const evidence = String(input.fecha_texto || '');
     const literal = evidence === date || evidence === `${day}/${month}/${date.slice(0,4)}` || evidence === `${Number(day)}/${Number(month)}/${date.slice(0,4)}`;
     const relative = normalize(evidence) === 'hoy' ? localClock(now).date === date
       : normalize(evidence) === 'manana' && new Date(Date.parse(`${localClock(now).date}T12:00:00Z`) + 86400000).toISOString().slice(0,10) === date;
-    if ((!literal && !relative) || !normalize(text).includes(normalize(evidence)) || !evidence) errors.push('La fecha debe estar expresada en el mensaje original; no la inventes.');
+    if ((!literal && !relative) || !normalize(text).includes(normalize(evidence)) || !evidence) errors.push('¿Qué día acordamos para la entrega?');
   }
   const blocker = input.bloqueo_usuario_id === undefined || input.bloqueo_usuario_id === null ? null : Number(input.bloqueo_usuario_id);
   if (blocker !== null && (!Number.isInteger(blocker) || blocker <= 0 || state !== 'bloqueada')) errors.push('La persona que puede destrabar el bloqueo no es válida.');

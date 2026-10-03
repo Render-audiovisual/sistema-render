@@ -6,7 +6,7 @@ import pg from 'pg';
 import express from 'express';
 import {createWilsonRouter,buildWilsonSignatureMessage} from '../src/wilson-integration.js';
 import { runMiaSupervisor,acceptSupervisorDeadline,recordSupervisorReply,recordSupervisorBlockerReply,
-  acknowledgeSupervisorDelivery,supervisorNotificationDeliverable } from '../src/mia-supervisor.js';
+  acknowledgeSupervisorDelivery,supervisorNotificationDeliverable,notificationContactAllowed } from '../src/mia-supervisor.js';
 
 const connection = process.env.MIA_SUPERVISOR_TEST_DATABASE_URL;
 const now = new Date('2026-10-02T13:00:00Z');
@@ -29,6 +29,7 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
   for (const name of ['011_tareas_comentarios.sql','017_integracion_auditoria.sql','031_mia_private_task_notifications.sql']) await pool.query(fs.readFileSync(new URL(`../migrations/${name}`,import.meta.url),'utf8'));
   await pool.query('ALTER TABLE mia_private_task_notifications ADD COLUMN feedback_id BIGINT');
   await pool.query(fs.readFileSync(new URL('../migrations/046_mia_supervisor.sql',import.meta.url),'utf8'));
+  await pool.query(fs.readFileSync(new URL('../migrations/047_mia_supervisor_calma.sql',import.meta.url),'utf8'));
   await pool.query(`INSERT INTO usuarios(usuario,nombre,rol,whatsapp_id_hash) VALUES
     ('lider','Líder','admin',$1),('disenador','Diseñador','diseno',$2),('produccion','Productor','produccion',$3),('franco','Franco Romero','diseno',$4)`,
     [hash('leader-qa'),hash('designer-qa'),hash('producer-qa'),hash('chovy-qa')]);
@@ -37,13 +38,14 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
   const chovy={ privateChat:true,userId:4,actorId:'chovy-qa',actorName:'Franco',actorRole:'admin',isLeader:true }; // Forged claims must not grant privileges.
   const producer={ privateChat:true,userId:3,actorId:'producer-qa',actorName:'Productor' };
   const createTask=async(title,fields={})=>{
-    const result=await pool.query(`INSERT INTO tareas(titulo,asignado_a,fecha_vencimiento,propiedades_extra) VALUES($1,$2,$3,$4::jsonb) RETURNING id`,
-      [title,fields.owner || 'Diseñador',fields.date || null,JSON.stringify({ workspace:'render_os',...(fields.extra || {}) })]);
+    const result=await pool.query(`INSERT INTO tareas(titulo,asignado_a,fecha_vencimiento,propiedades_extra,created_at,updated_at) VALUES($1,$2,$3,$4::jsonb,$5,$5) RETURNING id`,
+      [title,fields.owner || 'Diseñador',fields.date || null,JSON.stringify({ workspace:'render_os',...(fields.extra || {}) }),now]);
     return result.rows[0].id;
   };
   const count=async(table)=>(await pool.query(`SELECT count(*)::int count FROM ${table}`)).rows[0].count;
   const deliver=async(at)=>{
-    const notifications=(await pool.query(`SELECT * FROM mia_private_task_notifications WHERE cancelled_at IS NULL AND estado='pending' AND supervisor_followup_id IS NOT NULL ORDER BY id`)).rows;
+    const notifications=(await pool.query(`SELECT * FROM mia_private_task_notifications WHERE cancelled_at IS NULL AND estado='pending'
+      AND batch_parent_id IS NULL AND (supervisor_followup_id IS NOT NULL OR detalles ? 'members' AND motivo='supervisor_seguimiento') ORDER BY id`)).rows;
     const db=await pool.connect();
     try {
       await db.query('BEGIN');
@@ -86,7 +88,7 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
     assert.equal(await supervisorNotificationDeliverable(pool,notification,{ env,now }),false);
   });
 
-  await t.test('vencimiento por responsable: exactamente tres entregas separadas por tres horas laborales',async()=>{
+  await t.test('vencimiento por responsable: tres entregas en franjas diferentes antes de escalar',async()=>{
     await pool.query(`UPDATE tareas SET estado='publicada'`);
     const id=await createTask('Carrusel vencido',{ date:'2026-09-30',extra:{ colaboradores:['Productor'] } });
     await runMiaSupervisor(pool,{ dryRun:false,now,env });
@@ -100,23 +102,25 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
     const second=new Date('2026-10-02T20:00:00Z');
     await runMiaSupervisor(pool,{ dryRun:false,now:second,env });
     assert.equal((await deliver(second)).length,2);
-    const third=new Date('2026-10-02T23:00:00Z');
+    const third=new Date('2026-10-03T12:00:00Z');
     await runMiaSupervisor(pool,{ dryRun:false,now:third,env });
     assert.equal((await deliver(third)).length,2);
     assert.equal((await pool.query(`SELECT count(*)::int c FROM mia_private_task_notifications WHERE tarea_id=$1 AND motivo='supervisor_escalacion'`,[id])).rows[0].c,0);
-    await runMiaSupervisor(pool,{ dryRun:false,now:new Date('2026-10-03T12:30:00Z'),env });
+    await runMiaSupervisor(pool,{ dryRun:false,now:new Date('2026-10-03T20:00:00Z'),env });
     records=(await pool.query(`SELECT * FROM mia_supervisor_followups WHERE tarea_id=$1`,[id])).rows;
     assert.deepEqual(records.map((r)=>r.estado),['escalated','escalated']);
     const leaders=(await pool.query(`SELECT destinatario_clave,mensaje FROM mia_private_task_notifications WHERE tarea_id=$1 AND motivo='supervisor_escalacion'`,[id])).rows;
-    assert.equal(leaders.length,4); // Ambos líderes reciben el caso de cada responsable.
+    assert.equal(leaders.length,6); // Cuatro hallazgos agrupados en dos resúmenes para líderes.
     assert.ok(leaders.every((n)=>['lider_agustin','lider_franco'].includes(n.destinatario_clave)));
-    assert.match(leaders[0].mensaje,/3 pedidos privados entregados/);
+    assert.match(leaders[0].mensaje,/3 avisos entregados/);
   });
 
   await t.test('rechaza respuesta vacía, registra texto real y cancela recordatorios obsoletos',async()=>{
     const id=await createTask('Otra tarea atrasada',{ date:'2026-09-30' });
     await runMiaSupervisor(pool,{ dryRun:false,now,env });
-    await assert.rejects(recordSupervisorReply(pool,{ actor,taskId:id,messageId:'empty',input:{ texto:'👍' },now,env }),{ status:422 });
+    const partial=await recordSupervisorReply(pool,{ actor,taskId:id,messageId:'empty',input:{ texto:'👍' },now,env });
+    assert.equal(partial.needs_more,true);
+    assert.equal(partial.message,'¿En qué estado está la tarea?');
     const input={ texto:'Estoy editando; faltan las fotos del producto y lo entrego mañana.',estado:'en_progreso',motivo:'faltan las fotos del producto',nueva_fecha:'2026-10-03',fecha_texto:'mañana' };
     const result=await recordSupervisorReply(pool,{ actor,taskId:id,messageId:'report-1',input,now,env });
     assert.equal(result.recorded,true);
@@ -156,7 +160,7 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
     const notices=(await pool.query(`SELECT * FROM mia_private_task_notifications WHERE tarea_id=$1 AND supervisor_followup_id IS NOT NULL ORDER BY id`,[id])).rows;
     assert.equal(notices.length,2);
     for (let i=0;i<2;i++) {
-      assert.equal(await supervisorNotificationDeliverable(pool,notices[i],{env,now}),true);
+      assert.equal(await supervisorNotificationDeliverable(pool,notices[i],{env,now,ignoreContact:true}),true);
       const db=await pool.connect();
       try {
         await db.query('BEGIN');
@@ -176,7 +180,7 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
     const result=await recordSupervisorReply(pool,{actor,taskId:id,messageId:'parent-block',input,now,env});
     assert.equal(result.contacted,1);
     const notice=(await pool.query(`SELECT * FROM mia_private_task_notifications WHERE tarea_id=$1 AND motivo='supervisor_destrabar'`,[id])).rows[0];
-    assert.equal(await supervisorNotificationDeliverable(pool,notice,{env,now}),true);
+    assert.equal(await supervisorNotificationDeliverable(pool,notice,{env,now,ignoreContact:true}),true);
     const help={texto:'Las fotos del producto ya están en la carpeta; pueden continuar.',motivo:'Las fotos del producto ya están en la carpeta'};
     await assert.rejects(recordSupervisorBlockerReply(pool,{actor:chovy,taskId:id,messageId:'unasked',input:help,now,env}),{status:403});
     assert.equal((await recordSupervisorBlockerReply(pool,{actor:producer,taskId:id,messageId:'parent-help',input:help,now,env})).recorded,true);
@@ -202,13 +206,14 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
   });
 
   await t.test('propuesta de tarea vinculada a publicación conserva el snapshot al aceptar',async()=>{
+    await pool.query(`DELETE FROM mia_supervisor_conversations; DELETE FROM mia_supervisor_inbound;`);
     const publication=(await pool.query(`INSERT INTO publicaciones(fecha_programada) VALUES('2026-11-01') RETURNING id`)).rows[0].id;
     const id=await createTask('Reel vinculado a publicación');
     await pool.query(`UPDATE tareas SET publicacion_id=$2 WHERE id=$1`,[id,publication]);
     await runMiaSupervisor(pool,{dryRun:false,now,env});
     const proposal=(await pool.query(`SELECT * FROM mia_supervisor_proposals WHERE tarea_id=$1 AND estado='pending'`,[id])).rows[0];
     const notice=(await pool.query(`SELECT * FROM mia_private_task_notifications WHERE tarea_id=$1 AND supervisor_followup_id IS NOT NULL`,[id])).rows[0];
-    assert.equal(await supervisorNotificationDeliverable(pool,notice,{env,now}),true);
+    assert.equal(await supervisorNotificationDeliverable(pool,notice,{env,now,ignoreContact:true}),true);
     assert.equal((await acceptSupervisorDeadline(pool,{actor,taskId:id,proposalId:proposal.id,messageId:'publication-deadline',now,env})).accepted,true);
   });
 
@@ -266,7 +271,85 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
       assert.equal(audit.status,200);
       assert.equal(audit.body.readonly,true);
       assert.ok(audit.body.muestras.every(row=>!row.texto.includes('Carrusel vencido')&&!row.texto.includes('Diseñador')));
+      assert.equal((await send('mia-qa','/supervisor/conversacion',{method:'POST',body:{message_id:'technical-inbound'},groupId:'grupo-qa'})).status,403);
+      assert.equal((await send('designer-qa','/supervisor/conversacion',{method:'POST',body:{message_id:'real-inbound'}})).status,200);
       assert.equal((await send('designer-qa',`/supervisor/tareas/${other}/respuesta`,{method:'POST',body:{message_id:'not-owner',texto:'Estoy editando, recibí las fotos y lo entrego mañana.',estado:'en_progreso',motivo:'recibí las fotos',nueva_fecha:'2026-10-03',fecha_texto:'mañana'}})).status,403);
     } finally {await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}
+  });
+
+  const cleanScenario=async()=>{
+    await pool.query(`UPDATE tareas SET estado='publicada'; UPDATE mia_private_task_notifications SET cancelled_at=NOW() WHERE estado<>'delivered';
+      DELETE FROM mia_private_contact_limits; DELETE FROM mia_supervisor_conversations; DELETE FROM mia_supervisor_inbound;`);
+  };
+  await t.test('agrupa compatibles; una entrega cuenta una vez por tarea, nunca una ráfaga',async()=>{
+    await cleanScenario();
+    const ids=await Promise.all([createTask('Carrusel de promoción',{date:'2026-09-30'}),createTask('Reel de producto',{date:'2026-09-30'})]);
+    await runMiaSupervisor(pool,{dryRun:false,now,env});
+    await runMiaSupervisor(pool,{dryRun:false,now,env});
+    const roots=(await pool.query(`SELECT * FROM mia_private_task_notifications WHERE estado='pending' AND cancelled_at IS NULL AND batch_parent_id IS NULL AND motivo='supervisor_seguimiento'`)).rows;
+    assert.equal(roots.length,1);
+    assert.equal(roots[0].detalles.members.length,2);
+    assert.match(roots[0].mensaje,/Carrusel de promoción/);
+    assert.match(roots[0].mensaje,/Reel de producto/);
+    assert.equal((roots[0].mensaje.match(/\?/g)||[]).length,1);
+    assert.ok(roots[0].mensaje.length<320);
+    const delivered=await deliver(now);
+    assert.equal(delivered.length,1);
+    const followups=(await pool.query(`SELECT attempts FROM mia_supervisor_followups WHERE tarea_id=ANY($1::int[])`,[ids])).rows;
+    assert.deepEqual(followups.map(f=>f.attempts),[1,1]);
+    const third=await createTask('Otra tarea',{date:'2026-09-30'});
+    await runMiaSupervisor(pool,{dryRun:false,now:new Date('2026-10-02T15:00:00Z'),env});
+    const pending=(await pool.query(`SELECT * FROM mia_private_task_notifications WHERE tarea_id=$1 AND cancelled_at IS NULL AND batch_parent_id IS NULL ORDER BY id DESC LIMIT 1`,[third])).rows[0];
+    assert.equal(await notificationContactAllowed(pool,pending,new Date('2026-10-02T15:00:00Z')),false);
+    assert.equal(await notificationContactAllowed(pool,pending,new Date('2026-10-02T20:00:00Z')),true);
+    assert.equal(await notificationContactAllowed(pool,{...pending,detalles:{}},new Date('2026-10-02T13:09:00Z')),false);
+    assert.equal(await notificationContactAllowed(pool,{...pending,detalles:{}},new Date('2026-10-02T13:11:00Z')),true);
+  });
+  await t.test('un integrante obsoleto cancela el bloque antes del transporte y conserva el otro',async()=>{
+    await cleanScenario();
+    const first=await createTask('Ya completada',{date:'2026-09-30'}),second=await createTask('Aún pendiente',{date:'2026-09-30'});
+    await runMiaSupervisor(pool,{dryRun:false,now,env});
+    const batch=(await pool.query(`SELECT * FROM mia_private_task_notifications WHERE detalles ? 'members' AND estado='pending' AND cancelled_at IS NULL AND motivo='supervisor_seguimiento'`)).rows[0];
+    await pool.query(`UPDATE tareas SET estado='publicada' WHERE id=$1`,[first]);
+    assert.equal(await supervisorNotificationDeliverable(pool,batch,{env,now,ignoreContact:true}),false);
+    await runMiaSupervisor(pool,{dryRun:false,now,env});
+    await runMiaSupervisor(pool,{dryRun:false,now,env});
+    assert.ok((await pool.query(`SELECT cancelled_at FROM mia_private_task_notifications WHERE id=$1`,[batch.id])).rows[0].cancelled_at);
+    const remaining=(await pool.query(`SELECT * FROM mia_private_task_notifications WHERE tarea_id=$1 AND cancelled_at IS NULL AND batch_parent_id IS NULL`,[second])).rows[0];
+    assert.equal(await supervisorNotificationDeliverable(pool,remaining,{env,now}),true);
+  });
+  await t.test('respuestas parciales guardan contexto, preguntan solo lo que falta y frenan seguimientos',async()=>{
+    await cleanScenario();
+    const id=await createTask('Editar promoción',{date:'2026-09-30'});
+    await runMiaSupervisor(pool,{dryRun:false,now,env});
+    const partial=await recordSupervisorReply(pool,{actor,taskId:id,messageId:'partial-1',now,env,
+      input:{texto:'Estoy editando porque faltan las fotos del producto.',estado:'en_progreso',motivo:'faltan las fotos del producto'}});
+    assert.equal(partial.needs_more,true);
+    assert.equal(partial.message,'¿Para qué fecha estimás entregarla?');
+    await runMiaSupervisor(pool,{dryRun:false,now:new Date('2026-10-02T14:00:00Z'),env});
+    assert.equal((await pool.query(`SELECT count(*)::int n FROM mia_private_task_notifications WHERE tarea_id=$1 AND cancelled_at IS NULL`,[id])).rows[0].n,0);
+    const finished=await recordSupervisorReply(pool,{actor,taskId:id,messageId:'partial-2',now,env,
+      input:{texto:'Lo entrego mañana.',nueva_fecha:'2026-10-03',fecha_texto:'mañana'}});
+    assert.equal(finished.recorded,true);
+    assert.equal(finished.fecha_vencimiento,'2026-10-03');
+  });
+  await t.test('alias del líder no elude límites; Franco socio conserva destino independiente',async()=>{
+    await cleanScenario();
+    await pool.query(`INSERT INTO mia_private_contact_limits(actor_hash,last_delivered_at,supervisor_window) VALUES($1,$2,'2026-10-02:am')`,[hash('leader-qa'),now]);
+    assert.equal(await notificationContactAllowed(pool,{destinatario_clave:'lider',detalles:{supervisor:true}},new Date('2026-10-02T15:00:00Z')),false);
+    assert.equal(await notificationContactAllowed(pool,{destinatario_clave:'lider_agustin',detalles:{supervisor:true}},new Date('2026-10-02T15:00:00Z')),false);
+    assert.equal(await notificationContactAllowed(pool,{destinatario_clave:'lider_franco',detalles:{supervisor:true}},new Date('2026-10-02T15:00:00Z')),true);
+  });
+  await t.test('migración cancela únicamente mensajes viejos no entregados, sin borrar tareas o historial',async()=>{
+    const id=await createTask('Conservar datos');
+    await pool.query(`INSERT INTO mia_private_task_notifications(fingerprint,destinatario,destinatario_clave,tarea_id,motivo,mensaje,tarea_url,detalles,estado)
+      VALUES($1,'QA','disenador',$3,'supervisor_seguimiento','Formato viejo','https://example.com','{"supervisor":true}','pending'),
+      ($2,'QA','disenador',$3,'supervisor_seguimiento','Ya entregado','https://example.com','{"supervisor":true}','delivered')`,[hash('old-message'),hash('history-message'),id]);
+    const tasksBefore=await count('tareas'),noticesBefore=await count('mia_private_task_notifications');
+    await pool.query(fs.readFileSync(new URL('../migrations/047_mia_supervisor_calma.sql',import.meta.url),'utf8'));
+    assert.equal(await count('tareas'),tasksBefore);
+    assert.equal(await count('mia_private_task_notifications'),noticesBefore);
+    assert.ok((await pool.query(`SELECT cancelled_at FROM mia_private_task_notifications WHERE fingerprint=$1`,[hash('old-message')])).rows[0].cancelled_at);
+    assert.equal((await pool.query(`SELECT cancelled_at FROM mia_private_task_notifications WHERE fingerprint=$1`,[hash('history-message')])).rows[0].cancelled_at,null);
   });
 });

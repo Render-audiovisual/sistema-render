@@ -1452,7 +1452,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     try {
       if (req.query.dry_run === "true") {
         const preview = await pool.query(`SELECT id,fingerprint,destinatario,destinatario_clave,tarea_id,feedback_id,motivo,mensaje,tarea_url,intentos,created_at
-          FROM mia_private_task_notifications WHERE cancelled_at IS NULL AND estado='pending'
+          FROM mia_private_task_notifications WHERE cancelled_at IS NULL AND batch_parent_id IS NULL AND estado='pending'
           AND (not_before IS NULL OR not_before<=NOW()) ORDER BY created_at,id LIMIT $1`, [limit]);
         return res.json({ notifications: preview.rows, dry_run: true });
       }
@@ -1460,7 +1460,13 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       const result = await pool.query(
         `WITH candidates AS (
            SELECT id FROM mia_private_task_notifications
-           WHERE cancelled_at IS NULL AND (not_before IS NULL OR not_before<=NOW())
+           WHERE cancelled_at IS NULL AND batch_parent_id IS NULL AND (not_before IS NULL OR not_before<=NOW())
+             AND NOT EXISTS(SELECT 1 FROM mia_private_contact_limits l WHERE l.actor_hash=COALESCE(
+               (SELECT actor_hash FROM mia_whatsapp_identities WHERE notification_key=destinatario_clave AND enabled IS TRUE),
+               (SELECT whatsapp_id_hash FROM usuarios WHERE LOWER(usuario)=destinatario_clave LIMIT 1))
+               AND (l.last_delivered_at>NOW()-INTERVAL '10 minutes' OR detalles->>'supervisor'='true' AND l.supervisor_window=
+                 to_char(NOW() AT TIME ZONE 'America/Argentina/Cordoba','YYYY-MM-DD')||':'||CASE WHEN
+                 (NOW() AT TIME ZONE 'America/Argentina/Cordoba')::time<TIME '13:00' THEN 'am' ELSE 'pm' END))
              AND (estado='pending' OR (estado='sending' AND claimed_at < NOW()-INTERVAL '10 minutes'))
              AND (detalles->>'supervisor' IS DISTINCT FROM 'true' OR ($2::boolean
                AND EXTRACT(ISODOW FROM NOW() AT TIME ZONE 'America/Argentina/Cordoba')<=6
@@ -1476,7 +1482,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          WHERE notification.id=candidates.id
          RETURNING notification.id,notification.fingerprint,notification.destinatario,
            notification.destinatario_clave,notification.tarea_id,notification.feedback_id,notification.motivo,
-           notification.mensaje,notification.tarea_url,notification.intentos,notification.created_at`,
+           notification.mensaje,notification.tarea_url,notification.intentos,notification.created_at,notification.detalles`,
         [limit, env.MIA_SUPERVISOR_ENABLED === "true"],
       );
       return res.json({ notifications: result.rows });

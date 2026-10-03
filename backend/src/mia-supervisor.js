@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { supervisorReasoning } from './mia-supervisor-reasoning.js';
+import {followupMessage,taskLabel,batchMessage,shortText,supervisorWindow,nextSupervisorWindow} from './mia-supervisor-messages.js';
 import {
   addSupervisorWorkMinutes, detectSupervisorSignals, fingerprint, isSupervisorLeader,
   isSupervisorWorkTime, localClock, normalize, proposalSnapshot, proposeSupervisorDeadline,
@@ -50,11 +51,13 @@ async function comment(db, taskId, content, author = 'Mía · Supervisor') {
 }
 
 async function queue(db, task, recipient, reason, text, dedupe, details, env, followup = null, attempt = null) {
-  const fp = fingerprint(['mia-supervisor', dedupe, recipient.clave]);
+  const fp = fingerprint(['mia-supervisor-v2', dedupe, recipient.clave]);
   const result = await db.query(`INSERT INTO mia_private_task_notifications
     (fingerprint,destinatario,destinatario_clave,tarea_id,motivo,mensaje,tarea_url,detalles,supervisor_followup_id,supervisor_attempt)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10) ON CONFLICT(fingerprint) DO NOTHING RETURNING id`,
-    [fp, recipient.nombre, recipient.clave, task.id, `supervisor_${reason}`, text, urlFor(task, env), JSON.stringify({ supervisor: true, ...details }), followup, attempt]);
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10) ON CONFLICT(fingerprint) DO UPDATE
+      SET cancelled_at=NULL,estado='pending',batch_parent_id=NULL,mensaje=EXCLUDED.mensaje,detalles=EXCLUDED.detalles
+      WHERE mia_private_task_notifications.cancelled_at IS NOT NULL AND mia_private_task_notifications.estado<>'delivered' RETURNING id`,
+    [fp, recipient.nombre, recipient.clave, task.id, `supervisor_${reason}`, text, urlFor(task, env), JSON.stringify({ supervisor: true,message_version:2,label:taskLabel(task), ...details }), followup, attempt]);
   return result.rows.length;
 }
 
@@ -67,19 +70,69 @@ async function queueLeaders(db, snapshot, task, reason, text, dedupe, details, e
 }
 
 function followupText(task, user, followup, proposal) {
-  if (followup.tipo === 'missing_date') return `Hola ${user.nombre}, “${task.titulo}” todavía no tiene fecha. `
-    + `Propongo ${proposal.fecha}: ${proposal.razon}\n¿Te sirve ese plazo? Confirmalo o decime una fecha alternativa. Propuesta: ${proposal.id}. Tarea #${task.id}.`;
-  const number = followup.attempts + 1;
-  return `Hola ${user.nombre}, te escribo por “${task.titulo}”${task.cliente_nombre ? ` (${task.cliente_nombre})` : ''}, vencida el ${task.fecha_vencimiento}. `
-    + (number > 1 ? 'Todavía necesito una actualización concreta para organizar el trabajo. ' : '')
-    + `Contame en qué estado está, qué demoró o bloqueó el avance y para cuándo estimás entregarla. Si necesitás material o ayuda, decime quién puede destrabarlo. Tarea #${task.id}.`;
+  return followupMessage(task,followup.tipo,proposal);
+}
+
+/** A shared account has two people; legacy aliases resolve to the same actual person. */
+export async function notificationContactAllowed(db,notification,now=new Date()) {
+  if(notification.batch_parent_id) return true;
+  const limits=await db.query(`SELECT l.* FROM mia_private_contact_limits l WHERE actor_hash=COALESCE(
+    (SELECT actor_hash FROM mia_whatsapp_identities WHERE notification_key=$1 AND enabled IS TRUE),
+    (SELECT whatsapp_id_hash FROM usuarios WHERE LOWER(usuario)=$1 LIMIT 1))`,[notification.destinatario_clave]);
+  const limit=limits.rows[0];
+  if(limit?.last_delivered_at && new Date(now)-new Date(limit.last_delivered_at)<10*60000) return false;
+  if(notification.detalles?.supervisor) {
+    const inbound=await db.query(`SELECT 1 FROM mia_supervisor_inbound WHERE actor_hash=COALESCE(
+      (SELECT actor_hash FROM mia_whatsapp_identities WHERE notification_key=$1 AND enabled IS TRUE),
+      (SELECT whatsapp_id_hash FROM usuarios WHERE LOWER(usuario)=$1 LIMIT 1))
+      AND last_inbound_at>$2::timestamptz-INTERVAL '4 hours'`,[notification.destinatario_clave,now]);
+    if(inbound.rows.length) return false;
+  }
+  return !notification.detalles?.supervisor || !limit?.supervisor_window || limit.supervisor_window!==supervisorWindow(now);
+}
+
+export async function consolidateSupervisorNotifications(db,now=new Date()) {
+  const pending=(await db.query(`SELECT * FROM mia_private_task_notifications WHERE detalles->>'supervisor'='true'
+    AND batch_parent_id IS NULL AND cancelled_at IS NULL AND estado='pending' ORDER BY
+    CASE WHEN motivo='supervisor_escalacion' THEN 0 WHEN motivo='supervisor_seguimiento' THEN 1 ELSE 2 END,created_at,id`)).rows;
+  // Recheck all pending messages; after edits/completion, obsolete notices never remain deliverable.
+  const available=[];
+  for(const notice of pending) {
+    if(await supervisorNotificationDeliverable(db,notice,{env:{MIA_SUPERVISOR_ENABLED:'true'},now,ignoreContact:true})) available.push(notice);
+    else {
+      await db.query(`UPDATE mia_private_task_notifications SET cancelled_at=$2 WHERE id=$1`,[notice.id,now]);
+      await db.query(`UPDATE mia_private_task_notifications SET batch_parent_id=NULL WHERE batch_parent_id=$1 AND estado='pending'`,[notice.id]);
+    }
+  }
+  const groups=new Map();
+  for(const notice of available.filter(n=>!n.detalles.members)) {
+    const key=notice.destinatario_clave;
+    const list=groups.get(key)||[];list.push(notice);groups.set(key,list);
+  }
+  for(const rows of groups.values()) {
+    const first=rows[0];
+    const leaders=first.motivo!=='supervisor_seguimiento' && !first.detalles.source_message_id;
+    const compatible=leaders?rows.filter(n=>n.motivo!=='supervisor_seguimiento'&&!n.detalles.source_message_id)
+      :rows.filter(n=>n.motivo===first.motivo && n.detalles.type===first.detalles.type
+        && (first.detalles.type==='overdue' || n.detalles.proposed_date===first.detalles.proposed_date)).slice(0,2);
+    if(compatible.length<2) continue;
+    const fp=fingerprint(['supervisor-batch-v2',compatible.map(n=>n.id)]);
+    const inserted=await db.query(`INSERT INTO mia_private_task_notifications
+      (fingerprint,destinatario,destinatario_clave,tarea_id,motivo,mensaje,tarea_url,detalles)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb) ON CONFLICT(fingerprint) DO UPDATE SET cancelled_at=NULL,estado='pending'
+      WHERE mia_private_task_notifications.estado<>'delivered' RETURNING id`,
+      [fp,first.destinatario,first.destinatario_clave,first.tarea_id,first.motivo,batchMessage(compatible),first.tarea_url,
+        JSON.stringify({supervisor:true,message_version:2,members:compatible.map(n=>n.id)})]);
+    if(inserted.rows[0]) await db.query(`UPDATE mia_private_task_notifications SET batch_parent_id=$1 WHERE id=ANY($2::bigint[])`,[inserted.rows[0].id,compatible.map(n=>n.id)]);
+  }
 }
 
 /** Dry-run always performs SELECTs only, including when production is disabled. */
 export async function runMiaSupervisor(pool, { dryRun = true, now = new Date(), env = process.env, maxEvents = 50 } = {}) {
   if (!dryRun && !enabled(env)) return { enabled: false, writes: 0, reason: 'disabled' };
   const db = dryRun ? pool : await pool.connect();
-  const result = { enabled: enabled(env), dry_run: dryRun, within_work_hours: isSupervisorWorkTime(now), tasks_checked: 0, proposals: [], signals: [], queued: 0, escalated: 0 };
+  const result = { enabled: enabled(env), dry_run: dryRun, within_work_hours: isSupervisorWorkTime(now), tasks_checked: 0, proposals: [], signals: [], queued: 0, escalated: 0,
+    communication_policy:{version:2,max_proactive_per_person_per_window:1,global_private_cooldown_minutes:10,active_conversation_pause_hours:4} };
   try {
     if (!dryRun) {
       await db.query('BEGIN');
@@ -94,6 +147,7 @@ export async function runMiaSupervisor(pool, { dryRun = true, now = new Date(), 
     const today = localClock(now).date;
     const proposals = await db.query(`SELECT *,to_char(fecha,'YYYY-MM-DD') fecha FROM mia_supervisor_proposals WHERE estado='pending'`);
     const follows = await db.query(`SELECT * FROM mia_supervisor_followups WHERE estado IN ('waiting','escalated') ORDER BY id`);
+    const conversations=(await db.query(`SELECT * FROM mia_supervisor_conversations WHERE last_inbound_at>$1::timestamptz-INTERVAL '4 hours'`,[now])).rows;
     const current = new Set();
     for (const task of active) {
       const owners = snapshot.users.filter((u) => userOwnsSupervisorTask(u, task));
@@ -132,12 +186,13 @@ export async function runMiaSupervisor(pool, { dryRun = true, now = new Date(), 
           if (!followup) continue;
         }
         if (followup.estado !== 'waiting' || (followup.next_attempt_at && new Date(followup.next_attempt_at) > new Date(now))) continue;
+        if(conversations.some(c=>Number(c.usuario_id)===Number(owner.id))) continue;
+        if(followup.attempts>0 && task.updated_at && new Date(task.updated_at)>new Date(followup.last_delivered_at)
+          && new Date(now)-new Date(task.updated_at)<4*3600000) continue;
         if (followup.attempts >= 3) {
           if (!reachableLeaders.length) continue;
           const overdueDays = task.fecha_vencimiento ? Math.floor((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${task.fecha_vencimiento}T12:00:00Z`)) / 86400000) : null;
-          const text = `Necesito ayuda para destrabar “${task.titulo}”. Responsable: ${owner.nombre}. `
-            + `${overdueDays === null ? 'Sigue sin fecha acordada' : `Vencida hace ${overdueDays} días`}. Hubo 3 pedidos privados entregados y no recibí una actualización válida. `
-            + 'Recomendación: contactar en privado, revisar el bloqueo y acordar un plazo viable.';
+          const text = `${taskLabel(task)} sigue sin actualización después de 3 avisos entregados a ${shortText(owner.nombre,32)}. Necesito que revisen el bloqueo con esa persona.`;
           result.queued += await queueLeaders(db, snapshot, task, 'escalacion', text, ['escalation',followup.id], { followup_id: followup.id, attempts: 3, overdue_days: overdueDays }, env);
           await db.query(`UPDATE mia_supervisor_followups SET estado='escalated',updated_at=$2 WHERE id=$1`, [followup.id,now]);
           await audit(db, 'escalar_sin_respuesta', task.id, { responsable_id: owner.id, attempts: 3 });
@@ -147,14 +202,14 @@ export async function runMiaSupervisor(pool, { dryRun = true, now = new Date(), 
         if (!overdue && !proposal?.id) continue;
         const recipients = recipientsFor(owner, snapshot.identities);
         if (!recipients.length) {
-          result.queued += await queueLeaders(db, snapshot, task, 'contacto_faltante', `No puedo contactar en privado a ${owner.nombre} por “${task.titulo}”: su WhatsApp no está vinculado. Vinculalo desde Usuarios y accesos para continuar el seguimiento.`, ['unlinked',task.id,owner.id], { usuario_id: owner.id }, env);
+          result.queued += await queueLeaders(db, snapshot, task, 'contacto_faltante', `No pude avisarle a ${shortText(owner.nombre,32)} por ${taskLabel(task)}: falta vincular su WhatsApp. Vinculen su número en Usuarios y accesos.`, ['unlinked',task.id,owner.id], { usuario_id: owner.id }, env);
           continue;
         }
         for (const recipient of recipients) result.queued += await queue(db, task, recipient, 'seguimiento', followupText(task, owner, followup, proposal),
-          [followup.id,followup.attempts + 1], { cycle_key: key, proposal_id: proposal?.id || null, due_date: task.fecha_vencimiento }, env, followup.id, followup.attempts + 1);
+          [followup.id,followup.attempts + 1], { cycle_key: key, proposal_id: proposal?.id || null, due_date: task.fecha_vencimiento,type:followup.tipo,proposed_date:proposal?.fecha }, env, followup.id, followup.attempts + 1);
       }
       if (!owners.length && !dryRun && result.within_work_hours) result.queued += await queueLeaders(db, snapshot, task, 'responsable_faltante',
-        `“${task.titulo}” no tiene un responsable vinculado a una cuenta. Necesito que lo asignen para acordar una fecha y seguir el avance.`, ['missing_owner',task.id,task.asignado_a], {}, env);
+        `${taskLabel(task)} no tiene responsables vinculados. Asignen al menos una persona desde la tarea.`, ['missing_owner',task.id,task.asignado_a], {}, env);
     }
     if (!dryRun) {
       // Close obsolete deadline/ownership cycles and invalidate messages still in the outbox.
@@ -179,11 +234,14 @@ export async function runMiaSupervisor(pool, { dryRun = true, now = new Date(), 
         if (!task) continue;
         const advice = result.reasoning_checked ? { status:'budget_deferred' } : await supervisorReasoning(signal,snapshot.tasks,{ env });
         result.reasoning_checked = true;
-        result.queued += await queueLeaders(db, snapshot, task, 'senal', `Detecté una señal para revisar.\nProblema: ${signal.problema}\nTareas: ${signal.task_ids.map((id) => '#' + id).join(', ')}\nCausa probable: ${signal.causa}\nAcción recomendada: ${advice.status === 'advisory' ? advice.recomendacion : signal.accion}`,
+        const signalText=signal.tipo==='saturacion'?`${shortText(snapshot.users.find(u=>Number(u.id)===signal.user_id)?.nombre,32)} tiene ${signal.task_ids.length} tareas vencidas. Revisen prioridades y carga con esa persona.`
+          :`${taskLabel(task)} necesita revisión de prioridades. ${shortText(signal.accion,110)}`;
+        result.queued += await queueLeaders(db, snapshot, task, 'senal', signalText,
           [signal.fingerprint,stored.rows[0].generation], { signal: signal.fingerprint,generation:stored.rows[0].generation }, env);
         await audit(db, 'detectar_senal', task.id, { ...signal,reasoning:advice });
       }
     }
+    if (!dryRun && result.within_work_hours) await consolidateSupervisorNotifications(db,now);
     if (!dryRun) await db.query('COMMIT');
     return result;
   } catch (error) {
@@ -193,6 +251,20 @@ export async function runMiaSupervisor(pool, { dryRun = true, now = new Date(), 
 }
 
 export async function acknowledgeSupervisorDelivery(db, notification, now = new Date()) {
+  if(!notification.batch_parent_id) await db.query(`INSERT INTO mia_private_contact_limits(actor_hash,last_delivered_at,supervisor_window)
+    SELECT COALESCE((SELECT actor_hash FROM mia_whatsapp_identities WHERE notification_key=$1 AND enabled IS TRUE),
+      (SELECT whatsapp_id_hash FROM usuarios WHERE LOWER(usuario)=$1 LIMIT 1)),$2,$3
+    WHERE COALESCE((SELECT actor_hash FROM mia_whatsapp_identities WHERE notification_key=$1 AND enabled IS TRUE),
+      (SELECT whatsapp_id_hash FROM usuarios WHERE LOWER(usuario)=$1 LIMIT 1)) IS NOT NULL
+    ON CONFLICT(actor_hash) DO UPDATE SET last_delivered_at=EXCLUDED.last_delivered_at,
+      supervisor_window=COALESCE(EXCLUDED.supervisor_window,mia_private_contact_limits.supervisor_window)`,
+    [notification.destinatario_clave,now,notification.detalles?.supervisor?supervisorWindow(now):null]);
+  if(notification.detalles?.members) {
+    const children=(await db.query(`UPDATE mia_private_task_notifications SET estado='delivered',delivered_at=$2
+      WHERE batch_parent_id=$1 AND estado<>'delivered' RETURNING *`,[notification.id,now])).rows;
+    for(const child of children.sort((a,b)=>Number(a.supervisor_followup_id)-Number(b.supervisor_followup_id))) await acknowledgeSupervisorDelivery(db,child,now);
+    return;
+  }
   if (!notification.supervisor_followup_id) return;
   // Serialize distinct recipients of a shared account before checking all ACKs.
   // Otherwise concurrent transactions can each see the other's delivery pending.
@@ -203,12 +275,21 @@ export async function acknowledgeSupervisorDelivery(db, notification, now = new 
       AND NOT EXISTS(SELECT 1 FROM mia_private_task_notifications n
         WHERE n.supervisor_followup_id=$1 AND n.supervisor_attempt=$2
           AND n.cancelled_at IS NULL AND n.estado<>'delivered')`,
-    [notification.supervisor_followup_id, attempt, now, addSupervisorWorkMinutes(now,180)]);
+    [notification.supervisor_followup_id, attempt, now, nextSupervisorWindow(now)]);
 }
 
-export async function supervisorNotificationDeliverable(db, notification, { env = process.env, now = new Date() } = {}) {
+export async function supervisorNotificationDeliverable(db, notification, { env = process.env, now = new Date(),ignoreContact=false } = {}) {
+  if(!notification) return false;
+  if(!ignoreContact && !await notificationContactAllowed(db,notification,now)) return false;
   if (!notification.detalles?.supervisor) return true;
   if (!enabled(env) || !isSupervisorWorkTime(now)) return false;
+  if(notification.detalles.message_version!==2) return false;
+  if(notification.detalles.members) {
+    const children=(await db.query(`SELECT * FROM mia_private_task_notifications WHERE batch_parent_id=$1`,[notification.id])).rows;
+    if(children.length!==notification.detalles.members.length) return false;
+    for(const child of children) if(child.cancelled_at || !await supervisorNotificationDeliverable(db,child,{env,now,ignoreContact:true})) return false;
+    return true;
+  }
   const taskResult = await db.query(`SELECT t.*,to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento,
     to_char(p.fecha_programada,'YYYY-MM-DD') publicacion_fecha_programada
     FROM tareas t LEFT JOIN publicaciones p ON p.id=t.publicacion_id WHERE t.id=$1`, [notification.tarea_id]);
@@ -229,6 +310,13 @@ export async function supervisorNotificationDeliverable(db, notification, { env 
   const f = followup.rows[0];
   if (!f || f.estado !== (notification.supervisor_followup_id ? 'waiting' : 'escalated') || !userOwnsSupervisorTask(f,task)
     || (notification.supervisor_followup_id && Number(f.attempts) >= Number(notification.supervisor_attempt))) return false;
+  if(notification.supervisor_followup_id) {
+    const conversation=await db.query(`SELECT 1 FROM mia_supervisor_conversations WHERE usuario_id=$1 AND tarea_id=$2
+      AND last_inbound_at>$3::timestamptz-INTERVAL '4 hours'`,[f.usuario_id,task.id,now]);
+    if(conversation.rows.length) return false;
+    if(Number(f.attempts)>0 && task.updated_at && new Date(task.updated_at)>new Date(f.last_delivered_at)
+      && new Date(now)-new Date(task.updated_at)<4*3600000) return false;
+  }
   if (f.tipo === 'missing_date') {
     const proposal = await db.query(`SELECT snapshot_hash,to_char(fecha,'YYYY-MM-DD') fecha FROM mia_supervisor_proposals WHERE tarea_id=$1 AND estado='pending'`, [task.id]);
     return proposal.rows[0]?.snapshot_hash === proposalSnapshot(task) && f.cycle_key === cycleKey(task,{ id:f.usuario_id },proposal.rows[0]);
@@ -287,11 +375,13 @@ async function supervisorReplyTransaction(pool, { actor,taskId,messageId,payload
       await db.query('COMMIT');
       return { ...previous.rows[0].resultado, idempotent: true };
     }
+    await db.query(`INSERT INTO mia_supervisor_inbound(actor_hash,last_inbound_at,message_id) VALUES($1,$2,$3)
+      ON CONFLICT(actor_hash) DO UPDATE SET last_inbound_at=EXCLUDED.last_inbound_at,message_id=EXCLUDED.message_id`,[actorHash,now,messageId]);
     const task = await loadTask(db,taskId);
     const blocker = allowBlocker && supervisorBlockerAllowed(user,task);
     if (!userOwnsSupervisorTask(user,task) && !isSupervisorLeader(user) && !blocker) throw fail('Solo los responsables o un Líder pueden responder por esta tarea.',403);
     const result = await operation(db,user,task);
-    await db.query(`UPDATE mia_supervisor_followups SET estado='answered',updated_at=$3 WHERE tarea_id=$1 AND (usuario_id=$2 OR $4) AND estado IN ('waiting','escalated')`, [task.id,user.id,now,isSupervisorLeader(user)]);
+    if(!result.needs_more) await db.query(`UPDATE mia_supervisor_followups SET estado='answered',updated_at=$3 WHERE tarea_id=$1 AND (usuario_id=$2 OR $4) AND estado IN ('waiting','escalated')`, [task.id,user.id,now,isSupervisorLeader(user)]);
     await db.query(`UPDATE mia_private_task_notifications n SET cancelled_at=$3 FROM mia_supervisor_followups f
       WHERE n.supervisor_followup_id=f.id AND f.tarea_id=$1 AND (f.usuario_id=$2 OR $4) AND n.estado<>'delivered'`, [task.id,user.id,now,isSupervisorLeader(user)]);
     await db.query(`INSERT INTO mia_supervisor_replies(usuario_id,tarea_id,actor_hash,message_id,payload_hash,contenido,reporte,resultado,created_at)
@@ -305,8 +395,13 @@ async function supervisorReplyTransaction(pool, { actor,taskId,messageId,payload
 export async function recordSupervisorReply(pool, { actor, taskId, messageId, input, env = process.env, now = new Date() }) {
   if (!enabled(env)) throw fail('El supervisor todavía no está activado.',503);
   return supervisorReplyTransaction(pool,{ actor,taskId,messageId,payload:input,now },async (db,user,task) => {
-    const parsed = validateSupervisorReport(input,task,now);
-    if (!parsed.valid) throw fail(parsed.errors.join(' '));
+    const previous=(await db.query(`SELECT report FROM mia_supervisor_conversations WHERE usuario_id=$1 AND tarea_id=$2 FOR UPDATE`,[user.id,task.id])).rows[0]?.report||{};
+    const combined={...previous,...Object.fromEntries(Object.entries(input).filter(([key,value])=>!['message_id','texto'].includes(key)&&value!==undefined&&value!==null&&value!=='')),texto:[previous.texto,input.texto].filter(Boolean).join('\n')};
+    const parsed = validateSupervisorReport(combined,task,now);
+    await db.query(`INSERT INTO mia_supervisor_conversations(usuario_id,tarea_id,last_inbound_at,report) VALUES($1,$2,$3,$4::jsonb)
+      ON CONFLICT(usuario_id,tarea_id) DO UPDATE SET last_inbound_at=EXCLUDED.last_inbound_at,report=EXCLUDED.report`,[user.id,task.id,now,JSON.stringify(combined)]);
+    if (!parsed.valid) return {recorded:false,needs_more:true,tarea_id:Number(task.id),message:parsed.errors[0]};
+    await db.query(`UPDATE mia_supervisor_conversations SET report='{}'::jsonb WHERE usuario_id=$1 AND tarea_id=$2`,[user.id,task.id]);
     const r = parsed.report;
     const nextState = ['pendiente','en_progreso'].includes(r.estado) ? r.estado : task.estado;
     const props = { ...task.propiedades_extra, supervisor_ultimo_reporte: { ...r,usuario_id:Number(user.id),fecha:new Date(now).toISOString() } };
@@ -328,10 +423,10 @@ export async function recordSupervisorReply(pool, { actor, taskId, messageId, in
       await db.query(`UPDATE tareas SET propiedades_extra=$2::jsonb WHERE id=$1`, [task.id,JSON.stringify(props)]);
       for (const person of people.filter((p) => Number(p.id) !== Number(user.id))) {
         for (const recipient of recipientsFor(person,snapshot.identities)) contacted += await queue(db,task,recipient,'destrabar',
-          `Hola ${recipient.nombre}, necesito tu ayuda con “${task.titulo}”. ${user.nombre} está esperando: ${r.motivo}. ¿Podés confirmar qué falta y cuándo estará disponible? Respondé con el ID de la tarea #${task.id}.`,
+          `${taskLabel(task)} está bloqueada: ${shortText(r.motivo,100)}. ¿Qué necesitás para destrabarla?`,
           ['blocker',task.id,messageId,person.id],{ blocker_user_id:person.id,source_message_id:messageId },env);
       }
-      if (!contacted) contacted += await queueLeaders(db,snapshot,task,'destrabar',`Necesito destrabar “${task.titulo}”. ${user.nombre}: ${r.motivo}. No tengo una persona con WhatsApp vinculado que pueda resolverlo. Acción: definir quién consigue el material o la aprobación y acordar la fecha.`,['blocker-leaders',task.id,messageId],{ source_message_id:messageId },env);
+      if (!contacted) contacted += await queueLeaders(db,snapshot,task,'destrabar',`${taskLabel(task)} está bloqueada: ${shortText(r.motivo,90)}. Definan quién puede ayudar y vinculen su WhatsApp.`,['blocker-leaders',task.id,messageId],{ source_message_id:messageId },env);
     }
     return { recorded:true,tarea_id:Number(task.id),fecha_vencimiento:r.nueva_fecha || task.fecha_vencimiento,contacted,
       requires_review_flow:r.estado==='lista_para_revision',message:r.estado==='lista_para_revision' ? 'Registré el avance. Para pasar a Revisar se conservan los controles de material y confirmación habituales.' : 'Registré tu actualización y la fecha en la tarea.' };
@@ -350,7 +445,7 @@ export async function recordSupervisorBlockerReply(pool, { actor,taskId,messageI
     let queued = 0;
     for (const owner of snapshot.users.filter((u) => userOwnsSupervisorTask(u,task))) {
       for (const recipient of recipientsFor(owner,snapshot.identities)) queued += await queue(db,task,recipient,'respuesta_bloqueo',
-        `${user.nombre} respondió por “${task.titulo}”: ${text}\nRevisá si esto permite continuar y confirmame tu estado y plazo.`,['blocker-reply',task.id,messageId],{ source_message_id:task.propiedades_extra?.supervisor_bloqueo?.source_message_id },env);
+        `${shortText(user.nombre,32)} respondió por ${taskLabel(task)}: ${shortText(detail,100)}. ¿Podés continuar?`,['blocker-reply',task.id,messageId],{ source_message_id:task.propiedades_extra?.supervisor_bloqueo?.source_message_id },env);
     }
     await audit(db,'responder_bloqueo',task.id,{ usuario_id:Number(user.id),message_id:messageId },actor);
     return { recorded:true,tarea_id:Number(task.id),contacted:queued,message:'Compartí tu respuesta en privado con los responsables y quedó registrada en la tarea.' };
@@ -380,7 +475,7 @@ export function createMiaSupervisorRouter({ express,pool,isSystemActor,env=proce
     if (!isSystemActor(req)) throw fail('Lectura exclusiva del proceso operativo de Mía.',403);
     const rows = (await pool.query(`SELECT n.destinatario_clave,n.mensaje,n.motivo,n.delivered_at,t.titulo,c.nombre cliente
       FROM mia_private_task_notifications n LEFT JOIN tareas t ON t.id=n.tarea_id LEFT JOIN clientes c ON c.id=t.cliente_id
-      WHERE n.detalles->>'supervisor'='true' AND n.estado='delivered' AND n.delivered_at>=NOW()-INTERVAL '7 days'
+      WHERE n.detalles->>'supervisor'='true' AND n.batch_parent_id IS NULL AND n.estado='delivered' AND n.delivered_at>=NOW()-INTERVAL '7 days'
       ORDER BY n.delivered_at,n.id LIMIT 1000`)).rows;
     const users=(await pool.query('SELECT nombre,usuario FROM usuarios')).rows;
     const titles=(await pool.query(`SELECT DISTINCT titulo FROM tareas WHERE titulo IS NOT NULL`)).rows;
@@ -416,11 +511,26 @@ export function createMiaSupervisorRouter({ express,pool,isSystemActor,env=proce
     const frequencies=[...byPerson.values()].map((list,i)=>({persona:`Persona ${i+1}`,enviados:list.length,
       minimo_entre_mensajes_segundos:list.length>1?Math.min(...list.slice(1).map((row,index)=>(new Date(row.delivered_at)-new Date(list[index].delivered_at))/1000)):null,
       texto_repetido:list.length-new Set(list.map(row=>row.mensaje)).size}));
-    return res.json({readonly:true,enviados:rows.length,personas:byPerson.size,frecuencias:frequencies,muestras:samples});
+    const readiness=(await pool.query(`SELECT
+      COUNT(*) FILTER(WHERE estado<>'delivered' AND cancelled_at IS NULL AND detalles->>'message_version' IS DISTINCT FROM '2')::int legacy_pending,
+      COUNT(*) FILTER(WHERE cancelled_at IS NOT NULL AND detalles->>'message_version' IS DISTINCT FROM '2')::int legacy_cancelled,
+      COUNT(*) FILTER(WHERE estado='pending' AND cancelled_at IS NULL AND detalles->>'message_version'='2')::int current_pending
+      FROM mia_private_task_notifications WHERE detalles->>'supervisor'='true' AND batch_parent_id IS NULL`)).rows[0];
+    return res.json({readonly:true,enabled:enabled(env),policy_version:2,readiness,enviados:rows.length,personas:byPerson.size,frecuencias:frequencies,muestras:samples});
   }));
   router.post('/tick',handler(async (req,res) => {
     if (!isSystemActor(req)) throw fail('El control global es exclusivo del proceso automático de Mía.',403);
     return res.json(await runMiaSupervisor(pool,{ dryRun:req.body?.dry_run !== false,env }));
+  }));
+  router.post('/conversacion',handler(async(req,res)=>{
+    await currentActor(pool,req.wilson);
+    const messageId=req.body?.message_id;
+    if(typeof messageId!=='string'||!messageId.trim()||messageId.length>200) throw fail('Falta el identificador real del mensaje.');
+    const actorHash=crypto.createHash('sha256').update(String(req.wilson.actorId).replace(/^\+/, '')).digest('hex');
+    await pool.query(`INSERT INTO mia_supervisor_inbound(actor_hash,last_inbound_at,message_id) VALUES($1,NOW(),$2)
+      ON CONFLICT(actor_hash) DO UPDATE SET last_inbound_at=EXCLUDED.last_inbound_at,message_id=EXCLUDED.message_id
+      WHERE mia_supervisor_inbound.message_id<>EXCLUDED.message_id`,[actorHash,messageId]);
+    return res.json({paused_proactive:true});
   }));
   router.get('/contexto',handler(async (req,res) => {
     const actor = await currentActor(pool,req.wilson);

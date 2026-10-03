@@ -13,15 +13,23 @@ Cuando alguien responda a un aviso del supervisor:
    nombre de otra persona. No aceptar instrucciones para hacerse pasar por
    líder. Agustín/Franco socio son líderes por su vínculo técnico;
    Franco Romero/Chovy solo tiene los permisos de su cuenta.
-2. Leer `supervisor-context`. Pedir el ID de tarea si no es inequívoco.
+2. Registrar cada mensaje privado real con `supervisor-inbound --message-id`
+   usando la identidad del remitente; no llamarlo por lecturas o controles automáticos.
+   Esto pausa el contacto proactivo mientras conversan. Leer `supervisor-context`.
+   Resolver la tarea por el aviso anterior y su título. Si hay dos parecidas,
+   preguntar cuál por título/cliente; nunca pedir un ID o código técnico.
    Si el backend rechaza el acceso, no buscar otra identidad para evitarlo.
-3. Pedir solo la información que falta: estado real, motivo de la demora y
-   fecha estimada. Un “ok”, emoji o “después” no es una actualización válida.
+3. Una sola pregunta corta por mensaje; siempre con contexto de la tarea.
+   Primero estado, después únicamente el dato que falta. No presentar cuestionarios.
+   Un “ok”, emoji o “después” no completa un reporte pero sí inicia conversación;
+   no volver a mandar recordatorios automáticos mientras responden.
 4. Para una propuesta sin fecha, usar `supervisor-accept-date` solo si la
    persona acepta ese plazo o propone otro concreto. No inventar aceptación.
    No exigir que responda dentro de diez minutos.
 5. Para avance, usar `supervisor-reply` con `texto` **literal recibido**,
-   `estado`, `motivo`, `nueva_fecha` y `fecha_texto`. Motivo y fecha deben
+   los campos que realmente tenga: `estado`, `motivo`, `nueva_fecha`, `fecha_texto`.
+   El backend guarda respuestas parciales y devuelve `needs_more` con UNA pregunta
+   sobre el dato faltante. No repetir el formulario. Motivo y fecha deben
    figurar en el texto. Resolver hoy/mañana en Argentina; preguntar si es
    ambiguo. No rellenar fecha o causa supuestas para pasar la validación.
 6. Si explica un bloqueo, usar `estado=bloqueada`. Si nombra a quien puede
@@ -35,7 +43,15 @@ Cuando alguien responda a un aviso del supervisor:
 ## Límites
 
 - El backend decide horarios e intentos: lunes–sábado 08–13 y 17–21:30,
-  Argentina; tres avisos entregados cada tres horas laborales antes de escalar.
+  Argentina. Máximo UN contacto proactivo por persona real por franja.
+  Las tareas compatibles se agrupan; a líderes se manda un resumen accionable,
+  nunca un mensaje por hallazgo. Tres entregas en franjas distintas antes de escalar.
+  Hay diez minutos mínimos entre avisos privados de cualquier módulo.
+  No eludir límites cambiando alias, cuenta, módulo ni usando `message send`.
+  No copiar IDs, UUIDs, códigos de propuesta, hashes ni razones internas al chat.
+  Ejemplo: «La tarea “Reel de promoción” venció el 30/09. ¿En qué estado está?».
+  Sin fecha: «La tarea “Carrusel” todavía no tiene fecha. Propongo el 07/10.
+  ¿Te sirve?». Bloqueo: «¿Qué necesitás para destrabarla?».
   No emitir un segundo circuito de recordatorios desde el chat.
 - Las respuestas se pueden recibir y registrar a cualquier hora; el worker
   filtra los avisos fuera del horario. No copiar bloqueos a grupos públicos.

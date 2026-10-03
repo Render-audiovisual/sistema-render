@@ -117,6 +117,8 @@ def main():
     private_notifications.add_argument("--limit", type=int, default=20)
     private_notifications.add_argument("--dry-run", action="store_true")
     commands.add_parser("supervisor-context")
+    supervisor_inbound = commands.add_parser("supervisor-inbound")
+    supervisor_inbound.add_argument("--message-id", required=True)
     supervisor_tick = commands.add_parser("supervisor-tick")
     supervisor_tick.add_argument("--apply", action="store_true")
     supervisor_reply = commands.add_parser("supervisor-reply")
@@ -216,6 +218,8 @@ def main():
         result = request("GET", f"/notificaciones-privadas?limit={max(1, min(args.limit, 50))}" + ("&dry_run=true" if args.dry_run else ""), args)
     elif args.cmd == "supervisor-context":
         result = request("GET", "/supervisor/contexto", args)
+    elif args.cmd == "supervisor-inbound":
+        result = request("POST", "/supervisor/conversacion", args, payload={"message_id": args.message_id})
     elif args.cmd == "supervisor-tick":
         result = request("POST", "/supervisor/tick", args, payload={"dry_run": not args.apply})
     elif args.cmd == "supervisor-reply":

@@ -14,10 +14,16 @@ privadas se pueden registrar fuera de esas franjas.
 
 - Sin fecha: propone un plazo según carga, complejidad y dependencias, lo deja
   en comentarios y pide acuerdo. No carga una fecha sin aceptación.
-- Vencida: pide estado, motivo concreto y nuevo plazo; respuestas vagas o
-  emojis no detienen el seguimiento. La fecha debe figurar en el mensaje real.
-- Reintenta después de tres horas **laborales**, hasta tres entregas efectivas.
+- Vencida: una pregunta sobre estado. Luego solo pregunta el dato faltante.
+  Respuestas parciales quedan guardadas; no inventa motivos ni fechas.
+  Cualquier conversación real pausa contactos proactivos durante cuatro horas.
+- Máximo un contacto proactivo por persona real por franja laboral.
+  Reintenta en otra franja, hasta tres entregas efectivas; no a las tres horas.
   No cuenta una reserva o fallo de WhatsApp como intento entregado.
+- Agrupa dos tareas compatibles y los hallazgos para líderes. No cuenta un
+  intento para tareas que no fueron mencionadas en el mensaje agrupado.
+  Diez minutos de cooldown global entre avisos privados de distintos módulos,
+  verificado también en VPS por destino real (no por alias).
 - Si no hay respuesta, escala en privado a ambos líderes. Si hay un bloqueo,
   contacta al usuario indicado o a los responsables de la tarea dependiente.
 - No elimina tareas, no publica cambios de código y no pasa a revisión sin
@@ -35,6 +41,8 @@ grupo, nombre, método, ruta y cuerpo. No poner claves en Git.
 | Simular control (solo SELECT) | POST /supervisor/tick `{"dry_run":true}` | supervisor-tick |
 | Aplicar control | POST /supervisor/tick `{"dry_run":false}` | supervisor-tick --apply |
 | Leer contexto permitido | GET /supervisor/contexto | supervisor-context |
+| Registrar conversación privada real | POST /supervisor/conversacion | supervisor-inbound |
+| Auditoría anonimizada exclusiva del proceso técnico | GET /supervisor/comunicaciones | consulta firmada |
 | Acordar fecha | POST /supervisor/tareas/:id/fecha | supervisor-accept-date |
 | Registrar avance | POST /supervisor/tareas/:id/respuesta | supervisor-reply |
 | Responder bloqueo solicitado | POST /supervisor/tareas/:id/bloqueo | supervisor-blocker-reply |
@@ -60,7 +68,9 @@ y opcionalmente `fecha` en ISO.
 
 1. Desplegar el commit en Hostinger con `MIA_SUPERVISOR_ENABLED=false` y
    `TASK_COMPLETED_CLEANUP_ENABLED=false`. El arranque normal aplica la
-   migración 046 una vez. Confirmar previamente que las migraciones
+   migraciones 046 y 047 una vez. 047 cancela mensajes antiguos pendientes,
+   conserva recibos/historial y prepara los límites y respuestas parciales.
+   Confirmar previamente que las migraciones
    históricas —especialmente 044, de limpieza— ya figuran en `_migrations`.
 2. Verificar tablas de 046 y las identidades de ambos líderes (sin imprimir
    hashes/credenciales). Revisar roles y WhatsApp habilitado en Usuarios.
@@ -72,8 +82,9 @@ y opcionalmente `fecha` en ISO.
 4. Incorporar `ops/openclaw/AGENTS-SUPERVISOR.md` como instrucciones operativas
    de Mía **sin sustituir** las reglas de identidad/seguridad existentes.
 5. Completar `MIA_PRIVATE_RECIPIENTS_JSON` en el archivo de credenciales del
-   VPS: `lider_agustin` y `lider_franco` apuntan a los socios; `franco` a
-   Chovy. Mantener destinos normales existentes. Backend solo guarda hashes,
+   VPS: `lider_agustin` y `lider_franco` apuntan a los socios. No usar `franco`
+   sin vínculo verificado de Chovy; se retiró el alias ambiguo. Mantener destinos
+   normales existentes. Backend solo guarda hashes,
    el worker conserva los números fuera de Git.
 6. Con la identidad técnica ya configurada, ejecutar `supervisor-tick` sin
    `--apply`. Debe devolver `dry_run:true`, propuestas y señales sin escribir.
@@ -107,3 +118,12 @@ python3 scripts/test_mia_delivery_guard.py
 Para detenerlo, poner `MIA_SUPERVISOR_ENABLED=false` y reiniciar backend:
 cesan controles y se filtran envíos del supervisor, sin borrar datos ni
 detener avisos normales. No revertir la migración ni eliminar historial.
+
+## Corrección de intensidad — 03/10/2026
+
+Auditoría firmada y anonimizada: 262 mensajes del supervisor para ocho destinos;
+un destino recibió 76 y el intervalo mínimo observado fue 19,019 segundos.
+Había bloques de 366–409 caracteres con estimaciones internas, UUID y varias
+peticiones a la vez. La corrección reemplaza ese formato por una pregunta con
+título/cliente y fecha DD/MM; guarda los identificadores solo como metadatos.
+La pausa se aplicó mediante MIA_SUPERVISOR_ENABLED=false, sin desconectar canales.

@@ -134,6 +134,49 @@ class DeliveryGuardTests(unittest.TestCase):
         self.assertFalse(worker.suppress_group_followup({"kind":"private","text":"Reel atrasado"}))
         self.assertFalse(worker.suppress_group_followup({"kind":"event","text":"Visita completada"}))
 
+    def test_global_private_cooldown_between_different_modules(self):
+        event={**self.event,"kind":"private","destinatario_clave":"test","motivo":"asignacion"}
+        with patch.object(worker,"deliver_event",return_value={"messageId":"test"}) as send:
+            self.send(event)
+            result=self.send({**event,"id":"different-module","motivo":"recordatorio_lista"})
+            self.assertEqual(result["status"],"deferred")
+            self.assertEqual(result["reason"],"recipient_cooldown")
+            self.assertEqual(send.call_count,1)
+            with worker.sqlite3.connect(self.path) as db:
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM deliveries").fetchone()[0],1)
+
+    def test_supervisor_once_per_person_work_window_even_after_cooldown(self):
+        event={**self.event,"kind":"private","destinatario_clave":"test","motivo":"supervisor_seguimiento"}
+        with patch.object(worker,"proactive_window",return_value="2026-10-03:am"),patch.object(worker,"deliver_event",return_value={"messageId":"test"}) as send:
+            self.send(event)
+            with worker.sqlite3.connect(self.path) as db:
+                db.execute("UPDATE private_contacts SET last_attempt=last_attempt-3600")
+            self.assertEqual(self.send({**event,"id":"other-task"})["reason"],"work_window_quota")
+            self.assertEqual(send.call_count,1)
+            with patch.object(worker,"proactive_window",return_value="2026-10-03:pm"):
+                self.send({**event,"id":"other-task"})
+            self.assertEqual(send.call_count,2)
+
+    def test_aliases_for_same_actual_phone_do_not_bypass_cooldown(self):
+        event={**self.event,"kind":"private","destinatario_clave":"test"}
+        with patch.dict(os.environ,{"MIA_PRIVATE_RECIPIENTS_JSON":'{"test":"test-target","alias":"test-target"}'}),patch.object(worker,"deliver_event",return_value={"messageId":"test"}) as send:
+            self.send(event)
+            self.assertEqual(self.send({**event,"id":"another-alias","destinatario_clave":"alias"})["status"],"deferred")
+            self.assertEqual(send.call_count,1)
+
+    def test_uncertain_send_also_holds_global_recipient_cooldown(self):
+        event={**self.event,"kind":"private","destinatario_clave":"test"}
+        with patch.object(worker,"deliver_event",side_effect=TimeoutError) as send:
+            with self.assertRaises(TimeoutError): self.send(event)
+            self.assertEqual(self.send({**event,"id":"other-module"})["status"],"deferred")
+            self.assertEqual(send.call_count,1)
+
+    def test_window_boundaries_and_sunday(self):
+        for hour,expected in (("08:00","am"),("12:59","am"),("13:00",None),("17:00","pm"),("21:29","pm"),("21:30",None)):
+            date=worker.datetime.fromisoformat(f"2026-10-03T{hour}:00-03:00")
+            self.assertEqual(worker.proactive_window(date),f"2026-10-03:{expected}" if expected else None)
+        self.assertIsNone(worker.proactive_window(worker.datetime.fromisoformat("2026-10-04T09:00:00-03:00")))
+
 
 if __name__ == "__main__":
     unittest.main()
