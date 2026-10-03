@@ -376,6 +376,48 @@ export function scheduleMiaSupervisor(pool, { env = process.env, intervalMs = 30
 export function createMiaSupervisorRouter({ express,pool,isSystemActor,env=process.env }) {
   const router = express.Router();
   const handler = (fn) => (req,res,next) => Promise.resolve(fn(req,res)).catch((error) => error.status ? res.status(error.status).json({ error:error.message }) : next(error));
+  router.get('/comunicaciones',handler(async(req,res)=>{
+    if (!isSystemActor(req)) throw fail('Lectura exclusiva del proceso operativo de Mía.',403);
+    const rows = (await pool.query(`SELECT n.destinatario_clave,n.mensaje,n.motivo,n.delivered_at,t.titulo,c.nombre cliente
+      FROM mia_private_task_notifications n LEFT JOIN tareas t ON t.id=n.tarea_id LEFT JOIN clientes c ON c.id=t.cliente_id
+      WHERE n.detalles->>'supervisor'='true' AND n.estado='delivered' AND n.delivered_at>=NOW()-INTERVAL '7 days'
+      ORDER BY n.delivered_at,n.id LIMIT 1000`)).rows;
+    const users=(await pool.query('SELECT nombre,usuario FROM usuarios')).rows;
+    const titles=(await pool.query(`SELECT DISTINCT titulo FROM tareas WHERE titulo IS NOT NULL`)).rows;
+    const clients=(await pool.query(`SELECT nombre FROM clientes WHERE nombre IS NOT NULL`)).rows;
+    const people=new Map(),tasks=new Map();
+    const samples=rows.slice(0,30).map((row)=>{
+      if(!people.has(row.destinatario_clave)) people.set(row.destinatario_clave,`Persona ${people.size+1}`);
+      let text=row.mensaje;
+      if(row.titulo) {
+        if(!tasks.has(row.titulo)) tasks.set(row.titulo,`Tarea ${tasks.size+1}`);
+        text=text.split(row.titulo).join(tasks.get(row.titulo));
+      }
+      if(row.cliente) text=text.split(row.cliente).join('Cliente');
+      for(const title of titles.map(t=>t.titulo).filter(Boolean).sort((a,b)=>b.length-a.length)) {
+        if(!tasks.has(title)) tasks.set(title,`Tarea ${tasks.size+1}`);
+        text=text.split(title).join(tasks.get(title));
+      }
+      for(const client of clients.map(c=>c.nombre).sort((a,b)=>b.length-a.length)) text=text.split(client).join('Cliente');
+      for(const name of [...users.flatMap(u=>[u.nombre,u.usuario]),'Agustín','Franco socio'].filter(Boolean).sort((a,b)=>b.length-a.length)) {
+        const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+        text=text.replace(new RegExp(`\\b${escaped}\\b`,'gi'),'Persona');
+      }
+      return {persona:people.get(row.destinatario_clave),fecha:row.delivered_at,motivo:row.motivo,
+        caracteres:row.mensaje.length,preguntas:(row.mensaje.match(/\?/g)||[]).length,
+        codigos_tecnicos:/[0-9a-f]{8}-[0-9a-f-]{27,}|Tarea #\d+|Propuesta:/.test(row.mensaje),
+        texto:text.replace(/https?:\/\/\S+/gi,'[enlace]').replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi,'[correo]')
+          .replace(/\+?\d[\d ()-]{9,}\d/g,'[teléfono]').replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi,'[código]').replace(/#\d+/g,'[número]')};
+    });
+    const byPerson=new Map();
+    for(const row of rows) {
+      const list=byPerson.get(row.destinatario_clave)||[];list.push(row);byPerson.set(row.destinatario_clave,list);
+    }
+    const frequencies=[...byPerson.values()].map((list,i)=>({persona:`Persona ${i+1}`,enviados:list.length,
+      minimo_entre_mensajes_segundos:list.length>1?Math.min(...list.slice(1).map((row,index)=>(new Date(row.delivered_at)-new Date(list[index].delivered_at))/1000)):null,
+      texto_repetido:list.length-new Set(list.map(row=>row.mensaje)).size}));
+    return res.json({readonly:true,enviados:rows.length,personas:byPerson.size,frecuencias:frequencies,muestras:samples});
+  }));
   router.post('/tick',handler(async (req,res) => {
     if (!isSystemActor(req)) throw fail('El control global es exclusivo del proceso automático de Mía.',403);
     return res.json(await runMiaSupervisor(pool,{ dryRun:req.body?.dry_run !== false,env }));

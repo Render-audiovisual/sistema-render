@@ -261,6 +261,11 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
       assert.equal(dry.status,200,JSON.stringify(dry.body));
       assert.equal(dry.body.dry_run,true);
       assert.equal(await count('mia_supervisor_proposals'),before);
+      assert.equal((await send('designer-qa','/supervisor/comunicaciones')).status,403);
+      const audit=await send('mia-qa','/supervisor/comunicaciones',{groupId:'grupo-qa'});
+      assert.equal(audit.status,200);
+      assert.equal(audit.body.readonly,true);
+      assert.ok(audit.body.muestras.every(row=>!row.texto.includes('Carrusel vencido')&&!row.texto.includes('Diseñador')));
       assert.equal((await send('designer-qa',`/supervisor/tareas/${other}/respuesta`,{method:'POST',body:{message_id:'not-owner',texto:'Estoy editando, recibí las fotos y lo entrego mañana.',estado:'en_progreso',motivo:'recibí las fotos',nueva_fecha:'2026-10-03',fecha_texto:'mañana'}})).status,403);
     } finally {await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}
   });
