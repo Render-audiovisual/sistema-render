@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const migration = readFileSync(new URL("../migrations/051_progreso_edicion_auditable.sql", import.meta.url), "utf8");
+const backfillRepair = readFileSync(new URL("../migrations/052_reubicar_backfill_progreso_edicion.sql", import.meta.url), "utf8");
 const reports = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
 
 test("el progreso se persiste por tarea real y cuenta revisión o publicación", () => {
@@ -19,6 +20,12 @@ test("la baja se registra sin borrar el historial y la purga no descuenta", () =
 
 test("el lote conversacional de 67 se revierte de forma acotada", () => {
   assert.match(migration, /DELETE FROM entregas_edicion[\s\S]*fuente = 'whatsapp-franco-2026-10-05-septiembre'/);
+});
+
+test("el backfill conserva el mes operativo aunque updated_at haya sido tocado", () => {
+  assert.match(migration, /t\.fecha_vencimiento::timestamp AT TIME ZONE 'America\/Argentina\/Buenos_Aires'/);
+  assert.match(backfillRepair, /pe\.created_at < TIMESTAMPTZ '2026-10-05 18:00:00\+00'/);
+  assert.match(backfillRepair, /t\.fecha_vencimiento <= CURRENT_DATE/);
 });
 
 test("la barra usa el registro operativo y no el módulo de sueldos", () => {
