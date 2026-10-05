@@ -1394,36 +1394,26 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       return res.status(400).json({ error: "Usá un período válido con formato YYYY-MM." });
     }
     try {
-      const [deliveries, reviews] = await Promise.all([
-        pool.query(
-          `SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
-                  cliente_etiqueta,categoria,importe,fuente,fuente_item,confirmado_por
-           FROM entregas_edicion
-           WHERE editor_clave='luciano' AND to_char(fecha_entrega,'YYYY-MM')=$1
-           ORDER BY fecha_entrega,id`,
-          [period],
-        ),
-        pool.query(
-          `SELECT t.id,t.titulo,t.estado,t.asignado_a,c.nombre AS cliente_nombre,
-                  to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.updated_at
-           FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
-           WHERE t.propiedades_extra->>'workspace'='render_os'
-             AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
-             AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
-             AND LOWER(t.asignado_a)=ANY($1::text[])
-             AND t.tipo_tarea='edicion' AND t.estado='en_revision'
-           ORDER BY t.id`,
-          [wilsonPersonAliases("Luciano")],
-        ),
-      ]);
+      const deliveries = await pool.query(
+        `SELECT pe.id,pe.tarea_id,pe.editor_clave,pe.titulo_snapshot,pe.estado_actual,
+                to_char(pe.entregada_at AT TIME ZONE 'America/Argentina/Buenos_Aires','YYYY-MM-DD') AS fecha_entrega,
+                c.nombre AS cliente_nombre
+         FROM progreso_edicion_entregas pe LEFT JOIN clientes c ON c.id=pe.cliente_id
+         WHERE pe.editor_clave='luciano' AND pe.activa IS TRUE
+           AND to_char(pe.entregada_at AT TIME ZONE 'America/Argentina/Buenos_Aires','YYYY-MM')=$1
+         ORDER BY pe.entregada_at,pe.id`,
+        [period],
+      );
+      const reviews = deliveries.rows.filter((item) => item.estado_actual === "en_revision");
+      const completed = deliveries.rows.filter((item) => item.estado_actual === "publicada");
       return res.json({
         periodo: period,
         editor: "Luciano",
-        entregas_registradas: deliveries.rows.length,
-        en_revision_actuales: reviews.rows.length,
-        total_operativo: deliveries.rows.length + reviews.rows.length,
+        finalizadas_registradas: completed.length,
+        en_revision_actuales: reviews.length,
+        total_operativo: deliveries.rows.length,
         entregas: deliveries.rows,
-        revisiones: reviews.rows.map(taskWithUrl),
+        revisiones: reviews,
       });
     } catch (error) { return next(error); }
   });

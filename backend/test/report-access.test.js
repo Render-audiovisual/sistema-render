@@ -29,6 +29,7 @@ const data = {
     { id: 2, nombre: "Germán", rol: "produccion" },
   ],
   entregasEdicion: [{ id: 9, editor_clave: "luciano" }],
+  progresoEdicion: [{ id: 10, editor_clave: "luciano", estado_actual: "en_revision", activa: true }],
 };
 
 test("el reporte de un diseñador contiene solo sus carruseles", () => {
@@ -63,6 +64,7 @@ test("el administrador conserva el reporte completo", () => {
 test("edición recibe únicamente su registro confirmado", () => {
   const result = filterReportDataForUser(data, { nombre: "Luciano", rol: "edicion" });
   assert.deepEqual(result.entregasEdicion.map((item) => item.id), [9]);
+  assert.deepEqual(result.progresoEdicion.map((item) => item.id), [10]);
 });
 
 test("el endpoint del reporte está disponible tras la autenticación compartida", () => {
