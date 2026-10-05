@@ -338,13 +338,14 @@
 }
 
 @media (max-width: 600px) {
-  .render-workspace .ros-task-workspace-header { min-height:54px;padding:6px 7px; }
+  .render-workspace .ros-drawer.ros-task-workspace>.ros-task-workspace-header { min-height:56px;padding:6px 7px; }
+  .render-workspace .ros-task-workspace-header>button { min-height:44px;min-width:44px; }
   .render-workspace .ros-task-workspace-header>.ros-task-back { padding:0 8px; }
   .render-workspace .ros-task-back>b,
   .render-workspace .ros-task-window-icon,
   .render-workspace .ros-task-window-title small { display:none; }
-  .render-workspace .ros-task-window-title strong { font-size:10px; }
-  .render-workspace .ros-task-workspace-header>.ros-copy-task-link { font-size:0;padding:0;width:40px; }
+  .render-workspace .ros-task-window-title strong { font-size:12px; }
+  .render-workspace .ros-task-workspace-header>.ros-copy-task-link { font-size:0;min-height:44px;padding:0;width:44px; }
   .render-workspace .ros-task-workspace-header>.ros-copy-task-link::after { content:"↗";font-size:17px; }
   .render-workspace .ros-task-main-column,
   .render-workspace .ros-task-context-rail,
@@ -355,13 +356,24 @@
   .render-workspace .ros-task-document-heading h2,
   .render-workspace .ros-task-document-heading .ros-title-input { font-size:29px;line-height:1.12; }
   .render-workspace .ros-task-hero { padding-bottom:20px; }
+  .render-workspace .ros-task-document-kind { font-size:12px; }
+  .render-workspace .ros-task-document-kind .ros-area-badge { font-size:12px; }
+  .render-workspace .ros-task-hero-meta { color:#757c71;font-size:12px; }
+  .render-workspace .ros-moodboard-link { font-size:14px;min-height:44px; }
   .render-workspace .ros-task-document-properties>div { gap:10px;grid-template-columns:104px minmax(0,1fr);min-height:44px;padding-inline:4px; }
+  .render-workspace .ros-task-document-properties>div>span { font-size:13px; }
+  .render-workspace .ros-task-document-properties>div>strong { font-size:14px; }
+  .render-workspace .ros-inline-property { font-size:16px;min-height:44px;min-width:0; }
+  .render-workspace .ros-task-people-property :is(.ros-selected-people,.ros-people-options) strong { font-size:14px; }
+  .render-workspace .ros-task-people-property :is(.ros-selected-people,.ros-people-options) small { font-size:12px; }
+  .render-workspace .ros-task-people-property :is(.ros-selected-people,.ros-people-options)>button { min-height:44px; }
+  .render-workspace .ros-task-people-property .ros-add-person { font-size:14px!important;min-height:44px; }
   .render-workspace .ros-content-workspace { padding-block:23px; }
   .render-workspace .ros-block-heading { align-items:flex-start;display:grid;gap:4px; }
   .render-workspace .ros-content-editor-header { padding:11px 12px; }
   .render-workspace .ros-content-tools { flex-wrap:nowrap;overflow-x:auto;padding:7px 8px;scrollbar-width:none; }
   .render-workspace .ros-content-tools>span { display:none; }
-  .render-workspace .ros-content-tools button { flex:0 0 auto;min-height:38px;white-space:nowrap; }
+  .render-workspace .ros-content-tools button { flex:0 0 auto;font-size:13px;min-height:44px;white-space:nowrap; }
   .render-workspace .ros-content-textarea { font-size:16px;line-height:1.62;min-height:380px;padding:18px 14px; }
   .render-workspace .ros-task-operations { margin-top:22px;padding:13px; }
   .render-workspace .ros-task-operations .ros-operations-heading { display:grid; }

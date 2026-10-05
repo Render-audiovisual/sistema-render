@@ -4,6 +4,7 @@ import { PageState } from '../components/PageState.jsx';
 import './ClientesObjetivos.css';
 
 const STATES = { pendiente: 'Pendiente', en_progreso: 'En proceso', en_revision: 'En revisión', programada: 'Programada', publicada: 'Completado' };
+const AUTO_UPDATE_ERROR = 'No se pudo actualizar el avance. Reintentaremos automáticamente.';
 const currentMonth = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Cordoba', year: 'numeric', month: '2-digit' }).format(new Date()).split('-').slice(0, 2).join('-');
 function monthLabel(period) { const [year, month] = period.split('-').map(Number); return new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, 1))); }
 async function api(url, options = {}) {
@@ -18,7 +19,6 @@ const pieceLabel = piece => piece.tipo === 'video' ? `Reel ${piece.numero}` : pi
 function GoalIcon({ name, className = '' }) {
   const shapes = {
     clients: <><circle cx="9" cy="8" r="3" /><path d="M3 20v-2a6 6 0 0 1 12 0v2M17 5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 4v2" /></>,
-    search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></>,
     refresh: <><path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 13 3M18 18A8 8 0 0 1 5 15" /></>,
     video: <><rect x="3" y="4" width="18" height="16" rx="3" /><path d="m10 8 6 4-6 4Z" /></>,
     carousel: <><rect x="3" y="6" width="15" height="15" rx="3" /><path d="M7 3h11a3 3 0 0 1 3 3v11M7 15l3-3 4 5M7.5 10h.01" /></>,
@@ -54,7 +54,7 @@ function useGoalModalFocus() {
 export function ClientesObjetivosPage({ sesion }) {
   const [period, setPeriod] = useState(() => new URLSearchParams(window.location.search).get('periodo') || currentMonth());
   const [data, setData] = useState(null), [error, setError] = useState(''), [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState(''), [selectedKey, setSelectedKey] = useState(''), [selectedPiece, setSelectedPiece] = useState(null);
+  const [selectedKey, setSelectedKey] = useState(''), [selectedPiece, setSelectedPiece] = useState(null);
   const [revision, setRevision] = useState(0), [preparing, setPreparing] = useState(false), [notice, setNotice] = useState('');
   const canManage = ['admin', 'community'].includes(sesion?.usuario?.rol);
   const isDemo = ['127.0.0.1', 'localhost'].includes(window.location.hostname) && sesion?.usuario?.usuario === 'community-demo';
@@ -78,14 +78,15 @@ export function ClientesObjetivosPage({ sesion }) {
         const result = await api(`/api/cliente-objetivos?periodo=${encodeURIComponent(period)}`, { signal: controller.signal });
         setData(result);
         setSelectedPiece(piece => piece ? result.clientes.flatMap(client => client.piezas).find(item => item.id === piece.id) || null : null);
-      } catch (reason) { if (reason.name !== 'AbortError') setNotice('No se pudo actualizar el avance. Usá Actualizar para reintentar.'); }
+        setNotice(current => current === AUTO_UPDATE_ERROR ? '' : current);
+      } catch (reason) { if (reason.name !== 'AbortError') setNotice(AUTO_UPDATE_ERROR); }
     };
     const timer = setInterval(update, 30000);
     document.addEventListener('visibilitychange', update);
     return () => { clearInterval(timer); controller.abort(); document.removeEventListener('visibilitychange', update); };
   }, [period]);
   const clients = data?.clientes || [];
-  const filtered = clients.filter(client => `${client.nombre} ${client.cuentas.map(account => account.nombre).join(' ')}`.toLocaleLowerCase('es').includes(query.toLocaleLowerCase('es')));
+  const filtered = clients;
   const client = filtered.find(item => item.clave === selectedKey) || filtered[0];
   const total = client ? client.reels + client.carruseles : 0;
   const completed = client?.piezas.filter(done).length || 0;
@@ -96,15 +97,14 @@ export function ClientesObjetivosPage({ sesion }) {
       <div className="cg-header-actions"><label className="cg-month"><span>Mes de trabajo</span><input aria-label="Mes de trabajo" type="month" value={period} onChange={event => { if (event.target.value) { setPeriod(event.target.value); setNotice(''); } }} /></label>
         {sesion?.usuario?.rol === 'admin' && <a className="cg-button" href={`/clientes?gestion=1&periodo=${period}`}>Administración</a>}
       </div></header>
-    <div className="cg-toolbar"><label className="cg-search"><GoalIcon name="search" /><input aria-label="Buscar cliente" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar cliente…" /></label><span className="cg-toolbar-caption">Objetivos · {monthLabel(period)}</span><button className="cg-button" onClick={refresh} disabled={loading}><GoalIcon name="refresh" className={loading ? 'is-spinning' : ''} />Actualizar</button></div>
     {isDemo && <p className="cg-demo" role="note"><span>Vista de ejemplo</span>Los cambios de esta vista no afectan al sistema publicado.</p>}
     {notice && <p className="cg-notice" role="status">{notice}</p>}
     {loading ? <GoalLoading /> : error ? <PageState type="error" title="No pudimos cargar los objetivos" description={error} onRetry={refresh} /> : clients.length === 0 ? <PageState type="empty" title="No hay clientes para este mes" description="Elegí otro período para consultar su seguimiento." /> : <div className="cg-layout">
       <aside className="cg-clients" aria-label="Elegir cliente"><div className="cg-clients-heading"><span>Clientes</span><span>{filtered.length}</span></div>
         <div className="cg-client-items">{filtered.map(item => {
           const count = item.piezas.filter(done).length, quantity = item.reels + item.carruseles;
-          return <button className={`cg-client${item.clave === selectedKey ? ' is-selected' : ''}`} key={item.clave} aria-pressed={item.clave === selectedKey} onClick={() => { setSelectedKey(item.clave); setSelectedPiece(null); }}>
-            <span className="cg-avatar" aria-hidden="true">{item.nombre.slice(0, 1)}</span><span className="cg-client-text"><strong>{item.nombre}</strong><small>{item.preparado ? `${count} de ${quantity} completados` : 'Objetivo por preparar'}</small><span className="cg-client-progress" aria-hidden="true"><span style={{width:`${quantity ? Math.min(100, count / quantity * 100) : 0}%`}} /></span></span><GoalIcon name="arrow" className="cg-client-arrow" />
+          return <button className={`cg-client${item.clave === selectedKey ? ' is-selected' : ''}`} key={item.clave} aria-pressed={item.clave === selectedKey} aria-label={`${item.nombre}: ${item.preparado ? `${count} de ${quantity} completados` : 'Objetivo por preparar'}`} onClick={() => { setSelectedKey(item.clave); setSelectedPiece(null); }}>
+            <span className="cg-avatar" aria-hidden="true">{item.nombre.slice(0, 1)}</span><span className="cg-client-text"><strong>{item.nombre}</strong><span className="cg-client-progress" aria-hidden="true"><span style={{width:`${quantity ? Math.min(100, count / quantity * 100) : 0}%`}} /></span></span><GoalIcon name="arrow" className="cg-client-arrow" />
           </button>;
         })}{filtered.length === 0 && <p className="cg-muted">No encontramos ese cliente.</p>}</div>
       </aside>
