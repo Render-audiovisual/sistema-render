@@ -33,3 +33,12 @@ test("Mia reserva los resúmenes de forma atómica antes de enviarlos", () => {
   assert.match(source, /if \(reservation\.rows\[0\]\) claimed\.push\(digest\)/);
   assert.match(source, /status: "delivered"/);
 });
+
+test("la auditoría de edición cruza el registro histórico con revisiones activas", () => {
+  assert.match(source, /router\.get\("\/auditoria-edicion"/);
+  assert.match(source, /Esta auditoría es exclusiva de líderes por chat privado/);
+  assert.match(source, /FROM entregas_edicion/);
+  assert.match(source, /editor_clave='luciano'/);
+  assert.match(source, /t\.tipo_tarea='edicion' AND t\.estado='en_revision'/);
+  assert.match(source, /total_operativo: deliveries\.rows\.length \+ reviews\.rows\.length/);
+});

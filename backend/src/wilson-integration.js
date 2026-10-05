@@ -1385,6 +1385,49 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     } catch (error) { return next(error); }
   });
 
+  router.get("/auditoria-edicion", async (req, res, next) => {
+    if (!req.wilson.privateChat || !isWilsonLeader(req, env)) {
+      return res.status(403).json({ error: "Esta auditoría es exclusiva de líderes por chat privado." });
+    }
+    const period = String(req.query.periodo || "").trim();
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
+      return res.status(400).json({ error: "Usá un período válido con formato YYYY-MM." });
+    }
+    try {
+      const [deliveries, reviews] = await Promise.all([
+        pool.query(
+          `SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
+                  cliente_etiqueta,categoria,importe,fuente,fuente_item,confirmado_por
+           FROM entregas_edicion
+           WHERE editor_clave='luciano' AND to_char(fecha_entrega,'YYYY-MM')=$1
+           ORDER BY fecha_entrega,id`,
+          [period],
+        ),
+        pool.query(
+          `SELECT t.id,t.titulo,t.estado,t.asignado_a,c.nombre AS cliente_nombre,
+                  to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.updated_at
+           FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+           WHERE t.propiedades_extra->>'workspace'='render_os'
+             AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+             AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
+             AND LOWER(t.asignado_a)=ANY($1::text[])
+             AND t.tipo_tarea='edicion' AND t.estado='en_revision'
+           ORDER BY t.id`,
+          [wilsonPersonAliases("Luciano")],
+        ),
+      ]);
+      return res.json({
+        periodo: period,
+        editor: "Luciano",
+        entregas_registradas: deliveries.rows.length,
+        en_revision_actuales: reviews.rows.length,
+        total_operativo: deliveries.rows.length + reviews.rows.length,
+        entregas: deliveries.rows,
+        revisiones: reviews.rows.map(taskWithUrl),
+      });
+    } catch (error) { return next(error); }
+  });
+
   router.get("/contexto-rapido", async (req, res, next) => {
     if (!req.wilson.privateChat) return res.status(400).json({ error: "Este contexto se consulta únicamente por chat privado." });
     const requestedName = String(req.query.persona || req.wilson.actorName).trim();
