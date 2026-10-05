@@ -32,3 +32,11 @@ test('elimina la franja de búsqueda sin desactivar la actualización ni el rein
   assert.match(source, /onRetry=\{refresh\}/);
   assert.match(source, /current === AUTO_UPDATE_ERROR \? '' : current/);
 });
+
+test('el encabezado conserva el selector mensual sin el botón Administración', () => {
+  const header = source.slice(source.indexOf('<header className="cg-header">'), source.indexOf('{isDemo &&'));
+  assert.ok(header.length > 0);
+  assert.doesNotMatch(header, /Administración|gestion=1/);
+  assert.match(header, /aria-label="Mes de trabajo" type="month"/);
+  assert.match(header, /setPeriod\(event.target.value\)/);
+});

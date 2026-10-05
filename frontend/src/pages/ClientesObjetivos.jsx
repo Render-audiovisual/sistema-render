@@ -95,7 +95,6 @@ export function ClientesObjetivosPage({ sesion }) {
   return <main className="client-goals" aria-label="Objetivos mensuales de clientes"><div className="frame"><div className="content cg-content">
     <header className="cg-header"><div className="cg-heading-group"><span className="cg-page-icon"><GoalIcon name="clients" /></span><div><span className="cg-eyebrow">Seguimiento del equipo</span><h1>Clientes</h1><p>Todo el contenido del mes, en un mismo lugar.</p></div></div>
       <div className="cg-header-actions"><label className="cg-month"><span>Mes de trabajo</span><input aria-label="Mes de trabajo" type="month" value={period} onChange={event => { if (event.target.value) { setPeriod(event.target.value); setNotice(''); } }} /></label>
-        {sesion?.usuario?.rol === 'admin' && <a className="cg-button" href={`/clientes?gestion=1&periodo=${period}`}>Administración</a>}
       </div></header>
     {isDemo && <p className="cg-demo" role="note"><span>Vista de ejemplo</span>Los cambios de esta vista no afectan al sistema publicado.</p>}
     {notice && <p className="cg-notice" role="status">{notice}</p>}
