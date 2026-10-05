@@ -106,6 +106,11 @@
 .cg-content-editor textarea { resize:vertical; }
 .cg-board-footer { flex-wrap:wrap; }
 .cg-responsables { display:grid; gap:8px; border:0; padding:16px 0; margin:0; }.cg-responsables legend { font-size:14px; font-weight:600; padding:0; }.cg-responsables>small { color:var(--cg-muted); font-size:12px; line-height:1.5; margin-bottom:8px; }.cg-responsables label { display:flex; gap:12px; align-items:center; min-height:48px; padding:12px; border:1px solid var(--cg-line); border-radius:9px; background:#f9faf8; font-size:14px; cursor:pointer; }.cg-responsables label:has(input:checked) { border-color:#afc792; background:#f0f6e9; }.cg-responsables input { width:19px; height:19px; accent-color:var(--cg-done); flex-shrink:0; }
+.cg-shared-responsables .cg-responsables { grid-template-columns:repeat(2,minmax(0,1fr)); min-width:0; }
+.cg-shared-responsables .cg-responsables>small { grid-column:1/-1; }
+.cg-shared-responsables .cg-responsables legend { max-width:100%; overflow-wrap:anywhere; }
+.cg-shared-responsables .cg-responsables label { min-width:0; overflow-wrap:anywhere; }
+@media(max-width:480px) { .cg-shared-responsables .cg-responsables { grid-template-columns:minmax(0,1fr); } }
 .cg-loading { padding-top:28px; }.cg-loading-label { display:flex; align-items:center; gap:10px; color:var(--cg-muted); font-size:13px; }.cg-loading-label .cg-icon,.cg-icon.is-spinning { animation:cg-spin 1.2s linear infinite; }
 .cg-skeleton-layout { display:grid; grid-template-columns:232px minmax(0,1fr); gap:56px; margin-top:24px; }.cg-skeleton-clients { display:grid; gap:12px; align-content:start; }.cg-skeleton-clients>span { height:84px; border-radius:12px; }.cg-skeleton-board>span { display:block; border-radius:8px; }.cg-skeleton-title { width:48%; height:28px; margin-bottom:32px; }.cg-skeleton-progress { height:8px; margin-bottom:32px; }.cg-skeleton-pieces { display:grid; grid-template-columns:1fr 1fr; gap:14px; }.cg-skeleton-pieces>span { height:84px; border-radius:12px; }.cg-skeleton-layout span { background:#edf0ed; animation:cg-pulse 1.6s ease-in-out infinite; }
 @keyframes cg-enter { from { opacity:.6; } to { opacity:1; } } @keyframes cg-spin { to { transform:rotate(360deg); } } @keyframes cg-pulse { 50% { background:#f6f8f5; } }

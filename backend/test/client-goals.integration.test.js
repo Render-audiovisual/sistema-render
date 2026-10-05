@@ -118,6 +118,9 @@ test('PostgreSQL: feed compartido, formato heredado y cliente sin asignación', 
     VALUES($1,$3,true,0,0),($2,$3,true,0,0) RETURNING id`,[`Cuenta A QA ${suffix}`,`Cuenta B QA ${suffix}`,group.id])).rows;
   const missing = (await pool.query(`INSERT INTO clientes(nombre,activo,cuota_reels,cuota_carruseles) VALUES($1,true,1,0) RETURNING id`,[`Sin asignación QA ${suffix}`])).rows[0];
   const ids = [...clients.map(client => client.id),missing.id];
+  const accountUsers = (await pool.query(`INSERT INTO usuarios(usuario,nombre,rol,password_hash)
+    VALUES($1,$2,'community','QA'),($3,$4,'diseno','QA') RETURNING id,nombre`,
+  [`account-a-qa-${suffix}`,`Equipo A QA ${suffix}`,`account-b-qa-${suffix}`,`Equipo B QA ${suffix}`])).rows;
   try {
     const publication = (await pool.query(`INSERT INTO publicaciones(cliente_id,tipo,estado,fecha_programada,idea,copy)
       VALUES($1,'carrusel','pendiente','2026-10-04','Pieza cuenta B','Copy B') RETURNING id`,[clients[1].id])).rows[0];
@@ -131,15 +134,41 @@ test('PostgreSQL: feed compartido, formato heredado y cliente sin asignación', 
     const november = (await readGoals(pool,'2026-11')).clientes.find(client => client.clave === `grupo-${group.id}`);
     assert.equal(november.piezas.length,2); assert.ok(november.piezas.every(piece => piece.responsables.includes(`Editor QA ${suffix}`)));
     assert.equal((await readGoals(pool,'2026-11')).clientes.find(client => client.clave === `cliente-${missing.id}`).preparado,false);
+    const before = (await pool.query('SELECT * FROM tareas WHERE cliente_id=ANY($1::int[]) ORDER BY id',[clients.map(client => client.id)])).rows;
+    const settings = {period:'2026-10',key:`grupo-${group.id}`,responsibleIds:[user.id,...accountUsers.map(person => person.id)],
+      responsibleByType:{video:[user.id],carrusel:accountUsers.map(person => person.id)},
+      responsibleByAccount:{[clients[0].id]:[accountUsers[0].id],[clients[1].id]:[accountUsers[1].id]},persistResponsibles:true,actor:'QA'};
+    for (const responsibleByAccount of [{[clients[0].id]:[user.id]}, {[clients[0].id]:[user.id],[missing.id]:[user.id]}]) {
+      await assert.rejects(prepareGoal(pool,{...settings,responsibleByAccount}), /objetivo compartido/);
+    }
+    assert.equal((await prepareGoal(pool,settings)).creadas,0);
+    assert.deepEqual((await pool.query('SELECT * FROM tareas WHERE cliente_id=ANY($1::int[]) ORDER BY id',[clients.map(client => client.id)])).rows,before);
+    const configured = (await readGoals(pool,'2026-10')).clientes.find(client => client.clave === settings.key);
+    assert.deepEqual(configured.responsables_por_cuenta[clients[0].id], [accountUsers[0]]);
+    assert.deepEqual(configured.responsables_por_cuenta[clients[1].id], [accountUsers[1]]);
+    assert.equal(configured.reels,1); assert.equal(configured.carruseles,1);
+    const accountBPublication = (await pool.query(`INSERT INTO publicaciones(cliente_id,tipo,estado,fecha_programada,idea)
+      VALUES($1,'carrusel','pendiente','2026-12-04','Cuenta B diciembre') RETURNING id`,[clients[1].id])).rows[0];
+    await Promise.all([reconcileMonthlyGoals(pool,'2026-12'),reconcileMonthlyGoals(pool,'2026-12')]);
+    const december = (await readGoals(pool,'2026-12')).clientes.find(client => client.clave === settings.key);
+    assert.equal(december.piezas.length,2);
+    assert.deepEqual(december.piezas.find(piece => piece.publicacion_id === accountBPublication.id).responsables,[accountUsers[1].nombre]);
+    assert.deepEqual(december.piezas.find(piece => piece.tipo === 'video').responsables,[`Editor QA ${suffix}`]);
+    await reconcileMonthlyGoals(pool,'2027-01');
+    const january = (await readGoals(pool,'2027-01')).clientes.find(client => client.clave === settings.key);
+    assert.equal(january.piezas.length,2);
+    assert.deepEqual(january.piezas.find(piece => piece.tipo === 'carrusel').responsables,[accountUsers[0].nombre]);
+    assert.deepEqual(january.responsables_por_cuenta,configured.responsables_por_cuenta);
   } finally {
     await pool.query('DELETE FROM cliente_objetivo_eventos WHERE pieza_id IN(SELECT p.id FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id WHERE o.cliente_id=ANY($1::int[]))',[ids]);
     await pool.query('DELETE FROM cliente_objetivo_piezas WHERE objetivo_id IN(SELECT id FROM cliente_objetivos_mensuales WHERE cliente_id=ANY($1::int[]))',[ids]);
     await pool.query('DELETE FROM cliente_objetivos_mensuales WHERE cliente_id=ANY($1::int[])',[ids]);
     await pool.query('DELETE FROM cliente_objetivo_responsables WHERE clave=$1',[`grupo-${group.id}`]);
+    await pool.query('DELETE FROM cliente_objetivo_responsables WHERE clave=ANY($1::text[])',[clients.map(client => `cliente-${client.id}`)]);
     await pool.query('DELETE FROM tareas WHERE cliente_id=ANY($1::int[])',[ids]);
     await pool.query('DELETE FROM publicaciones WHERE cliente_id=ANY($1::int[])',[ids]);
     await pool.query('DELETE FROM clientes WHERE id=ANY($1::int[])',[ids]);
     await pool.query('DELETE FROM grupos_feed WHERE id=$1',[group.id]);
-    await pool.query('DELETE FROM usuarios WHERE id=$1',[user.id]); await pool.end();
+    await pool.query('DELETE FROM usuarios WHERE id=ANY($1::int[])',[[user.id,...accountUsers.map(person => person.id)]]); await pool.end();
   }
 });

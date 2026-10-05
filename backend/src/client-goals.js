@@ -76,14 +76,16 @@ export async function readGoals(db, period) {
     if (!clients.some(client => client.clave === stored.clave)) clients.push({ ...stored, cliente_id: stored.cuentas[0]?.id });
   }
   const assignments = await loadGoalAssignments(db, clients, period);
+  const accountAssignments = await loadGoalAccountAssignments(db, clients);
   return { periodo: period, inicio_seguimiento: GOALS_START_PERIOD, clientes: clients.map(client => {
     const stored = byKey.get(client.clave);
     return { ...client, ...(stored || {}), preparado: Boolean(stored), responsables_por_formato: assignments.get(client.clave),
+      responsables_por_cuenta: accountAssignments.get(client.clave) || {},
       piezas: stored ? pieces.rows.filter(piece => piece.objetivo_id === stored.id) : [] };
   }) };
 }
 
-export async function prepareGoal(pool, { period, key, responsibleIds, responsibleByType, actor, persistResponsibles = false }) {
+export async function prepareGoal(pool, { period, key, responsibleIds, responsibleByType, responsibleByAccount, actor, persistResponsibles = false }) {
   goalPeriod(period);
   if (period < GOALS_START_PERIOD) throw fail('El nuevo seguimiento comienza en octubre de 2026. El historial anterior no se modifica.');
   if (!Array.isArray(responsibleIds) || !responsibleIds.length || responsibleIds.length > 20 ||
@@ -91,6 +93,11 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
   if (responsibleByType && (Object.keys(responsibleByType).some(type => !['video','carrusel'].includes(type)) ||
     ['video','carrusel'].some(type => !Array.isArray(responsibleByType[type]) ||
       responsibleByType[type].some(id => !responsibleIds.includes(id))))) throw fail('Revisá los responsables de cada formato.');
+  if (responsibleByAccount !== undefined && (!responsibleByAccount || typeof responsibleByAccount !== 'object' || Array.isArray(responsibleByAccount) ||
+    Object.entries(responsibleByAccount).some(([id, selected]) => !/^[1-9]\d*$/.test(id) || !Array.isArray(selected) ||
+      !selected.length || selected.some(userId => !responsibleIds.includes(userId))))) {
+    throw fail('Revisá los responsables de carruseles de cada cuenta.');
+  }
   const db = await pool.connect();
   try {
     await db.query('BEGIN');
@@ -98,9 +105,19 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
     await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`objetivo:${period}:${key}`]);
     const client = (await loadGoalClients(db, period)).find(item => item.clave === key);
     if (!client) throw fail('No hay un cliente activo para ese mes.', 404);
+    if (responsibleByAccount !== undefined && (client.cuentas.length < 2 ||
+      Object.keys(responsibleByAccount).length !== client.cuentas.length ||
+      client.cuentas.some(account => !Object.hasOwn(responsibleByAccount, String(account.id))))) {
+      throw fail('Las cuentas deben pertenecer al mismo objetivo compartido.');
+    }
     if (client.reels > 100 || client.carruseles > 100) throw fail('Revisá el objetivo mensual antes de generar tareas.');
-    const users = await db.query('SELECT id,nombre,usuario FROM usuarios WHERE id=ANY($1::int[]) ORDER BY id', [[...new Set(responsibleIds)]]);
-    if (users.rows.length !== new Set(responsibleIds).size) throw fail('Uno de los responsables ya no está disponible.');
+    // El generador mensual también reutiliza las parejas por cuenta, sin
+    // repartir ni duplicar la cuota del feed y sin tocar tareas ya vinculadas.
+    const storedAccounts = (await loadGoalAccountAssignments(db, [client])).get(key) || {};
+    const accountIds = responsibleByAccount ?? Object.fromEntries(Object.entries(storedAccounts).map(([id, people]) => [id, people.map(person => person.id)]));
+    const allIds = [...new Set([...responsibleIds, ...Object.values(accountIds).flat()])];
+    const users = await db.query('SELECT id,nombre,usuario FROM usuarios WHERE id=ANY($1::int[]) ORDER BY id', [allIds]);
+    if (users.rows.length !== allIds.length) throw fail('Uno de los responsables ya no está disponible.');
     const namesByType = {};
     for (const type of ['video', 'carrusel']) {
       const selected = responsibleByType?.[type] || responsibleIds;
@@ -112,6 +129,15 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
         await db.query('DELETE FROM cliente_objetivo_responsables WHERE clave=$1 AND tipo=$2', [key, type]);
         for (const user of users.rows.filter(user => selected.includes(user.id))) {
           await db.query('INSERT INTO cliente_objetivo_responsables(clave,tipo,usuario_id,actualizado_por) VALUES($1,$2,$3,$4)', [key, type, user.id, actor]);
+        }
+      }
+    }
+    if (persistResponsibles && responsibleByAccount !== undefined) {
+      for (const account of client.cuentas) {
+        const accountKey = `cliente-${account.id}`;
+        await db.query("DELETE FROM cliente_objetivo_responsables WHERE clave=$1 AND tipo='carrusel'", [accountKey]);
+        for (const userId of new Set(accountIds[account.id])) {
+          await db.query("INSERT INTO cliente_objetivo_responsables(clave,tipo,usuario_id,actualizado_por) VALUES($1,'carrusel',$2,$3)", [accountKey, userId, actor]);
         }
       }
     }
@@ -143,7 +169,6 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
     let created = 0, reused = 0;
     const seenPublications = new Set();
     for (const [type, quota] of [['video', objective.reels], ['carrusel', objective.carruseles]]) {
-      const names = namesByType[type];
       const available = candidateTasks(candidates.rows, type);
       for (let index = 1; index <= quota; index++) {
         if (used.has(`${type}:${index}`)) continue;
@@ -154,11 +179,15 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
           const piece = publications.rows.find(row => row.tipo === type && !seenPublications.has(row.id) &&
             !candidates.rows.some(candidate => Number(candidate.publicacion_id) === row.id));
           if (piece) seenPublications.add(piece.id);
+          const accountId = piece?.cliente_id || client.cliente_id;
+          const names = type === 'carrusel' && accountIds[accountId]?.length
+            ? users.rows.filter(user => accountIds[accountId].includes(user.id)).map(user => user.nombre || user.usuario)
+            : namesByType[type];
           const label = type === 'video' ? `Reel ${index}` : `Carrusel ${index}`;
           const title = type === 'carrusel' && piece?.idea ? piece.idea : `${label} · ${objective.nombre}`;
           const result = await db.query(`INSERT INTO tareas(titulo,estado,asignado_a,cliente_id,publicacion_id,tipo_tarea,subtipo,
             propiedades_extra,fecha_vencimiento) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9) RETURNING *`,
-          [title, piece?.estado === 'publicada' ? 'publicada' : 'pendiente', names[0], piece?.cliente_id || client.cliente_id, piece?.id || null,
+          [title, piece?.estado === 'publicada' ? 'publicada' : 'pendiente', names[0], accountId, piece?.id || null,
             type === 'video' ? 'edicion' : 'diseno', type === 'video' ? 'reel' : 'carrusel',
             JSON.stringify({ workspace: 'render_os', objetivo_periodo: period, colaboradores: names.slice(1),
               ...(piece ? { origen_pieza: true } : {}), copy_trabajo: piece?.copy || '' }), piece?.fecha_programada || null]);
@@ -180,6 +209,19 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
 
 export async function inheritedGoalResponsibles(db, client, period) {
   return (await loadGoalAssignments(db, [client], period)).get(client.clave);
+}
+
+async function loadGoalAccountAssignments(db, clients) {
+  const shared = clients.filter(client => client.cuentas.length > 1);
+  if (!shared.length) return new Map();
+  const result = await db.query(`SELECT r.clave,u.id,COALESCE(u.nombre,u.usuario) nombre
+    FROM cliente_objetivo_responsables r JOIN usuarios u ON u.id=r.usuario_id
+    WHERE r.clave=ANY($1::text[]) AND r.tipo='carrusel' ORDER BY u.id`,
+  [shared.flatMap(client => client.cuentas.map(account => `cliente-${account.id}`))]);
+  return new Map(shared.map(client => [client.clave, Object.fromEntries(client.cuentas.flatMap(account => {
+    const people = result.rows.filter(row => row.clave === `cliente-${account.id}`).map(({id,nombre}) => ({id,nombre}));
+    return people.length ? [[account.id,people]] : [];
+  }))]));
 }
 
 async function loadGoalAssignments(db, clients, period) {
@@ -296,6 +338,7 @@ export function createClientGoalsRouter({ pool }) {
   router.post('/preparar', requireRole('admin', 'community'), async (req, res, next) => {
     try { res.json(await prepareGoal(pool, { period: req.body.periodo, key: String(req.body.clave || ''),
       responsibleIds: req.body.responsables, responsibleByType:req.body.responsables_por_formato,
+      responsibleByAccount:req.body.responsables_por_cuenta,
       persistResponsibles:true, actor: req.auth.nombre || req.auth.usuario })); }
     catch (error) { if (error.status) return res.status(error.status).json({ error: error.message }); next(error); }
   });

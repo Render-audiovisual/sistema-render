@@ -33,6 +33,12 @@ test('preparar objetivos nunca modifica septiembre y requiere personas reales', 
   await assert.rejects(prepareGoal(db, { period: '2026-10', responsibleIds: [] }), /responsable/);
   await assert.rejects(prepareGoal(db, { period: '2026-10', responsibleIds: ['1'] }), /responsable/);
 });
+test('la asignación por cuenta sólo acepta listas explícitas de usuarios seleccionados', async () => {
+  const db = { connect() { throw new Error('No debe abrir una conexión'); } };
+  for (const responsibleByAccount of [null,[],{'1':[]},{'1':['1']},{'1':[2]},{'grupo-1':[1]},{'1':{video:[1]}}]) {
+    await assert.rejects(prepareGoal(db,{period:'2026-10',responsibleIds:[1],responsibleByAccount}), /cuenta/);
+  }
+});
 test('el seguimiento es aditivo, durable y sincroniza los cambios de tarea dentro de la transacción', () => {
   const migration = readFileSync(new URL('../migrations/048_cliente_objetivos_mensuales.sql', import.meta.url), 'utf8');
   assert.match(migration, /REFERENCES tareas\(id\) ON DELETE SET NULL/);
