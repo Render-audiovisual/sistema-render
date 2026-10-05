@@ -158,9 +158,21 @@ test("el tablero móvil renderiza solo el proceso visible y conserva todos los c
 
 test("abrir una tarea no compite con el arrastre de la tarjeta", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
-  assert.match(workspaceSource, /className="ros-card-drag-handle" draggable="true"/);
-  assert.match(workspaceSource, /onClick=\{\(\) => onOpen\(task\.id\)\}/);
-  assert.doesNotMatch(workspaceSource, /<article[^>]+draggable=\{canMove\}/);
+  assert.match(workspaceSource, /<article[^>]+draggable=\{canMove\}/);
+  assert.match(workspaceSource, /dragRef\.current\.suppressClick/);
+  assert.match(workspaceSource, /dragRef\.current\.blocked/);
+  assert.match(workspaceSource, /event\.target !== event\.currentTarget/);
+  assert.doesNotMatch(workspaceSource, /className="ros-card-drag-handle" draggable="true"/);
+});
+
+test('el tablero compacto permite soltar tarjetas sobre los botones de procesos', () => {
+  const workspaceSource = readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx', import.meta.url),'utf8');
+  assert.match(workspaceSource,/onDrop=\{\(event\) => dropOnProcessButton\(event,column\)\}/);
+  assert.match(workspaceSource,/if \(canUserMoveTaskToState\(task, sesion\?\.usuario, status\)\) selectMobileBoardColumn/);
+  assert.match(workspaceSource,/event.dataTransfer.dropEffect = 'move'/);
+  const css = readFileSync(new URL('../../frontend/src/pages/TaskBoardMotion.css',import.meta.url),'utf8');
+  assert.match(css,/\.ros-page \{ overflow:clip; \}/);
+  assert.match(css,/\.ros-mobile-board-nav \{ position:sticky; top:58px/);
 });
 
 test("los dashboards personales leen y actualizan únicamente RENDER OS", () => {

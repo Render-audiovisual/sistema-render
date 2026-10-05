@@ -3,16 +3,15 @@ import { useLayoutEffect, useRef, useState } from "react";
 // A task behaves like a Notion page: short fade, tiny displacement, fast exit.
 export function animateTaskWindow(panel, backdrop, closing = false) {
   if (!panel?.animate || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return [];
-  const duration = closing ? 130 : 190;
+  const duration = closing ? 80 : 120;
   const easing = closing ? "cubic-bezier(.4, 0, 1, 1)" : "cubic-bezier(.2, .8, .2, 1)";
   const options = { duration, easing, fill: "both" };
   const resting = { transform: "translate3d(0, 0, 0)", opacity: 1 };
-  const offset = { transform: "translate3d(0, 10px, 0)", opacity: 0 };
+  const offset = { transform: "translate3d(0, 4px, 0)", opacity: 0 };
   const panelFrames = closing ? [resting, offset] : [offset, resting];
-  const backdropColor = window.getComputedStyle(backdrop || panel).backgroundColor;
   const backdropFrames = closing
-    ? [{ backgroundColor: backdropColor }, { backgroundColor: "transparent" }]
-    : [{ backgroundColor: "transparent" }, { backgroundColor: backdropColor }];
+    ? [{ opacity: 1 }, { opacity: 0 }]
+    : [{ opacity: 0 }, { opacity: 1 }];
   return [
     panel.animate(panelFrames, options),
     ...(backdrop?.animate ? [backdrop.animate(backdropFrames, options)] : []),
@@ -25,6 +24,7 @@ export function useTaskWindowMotion(taskId, onClose) {
   const running = useRef([]);
   const generation = useRef(0);
   const closingRef = useRef(false);
+  const closeTimer = useRef(null);
   const [closing, setClosing] = useState(false);
   useLayoutEffect(() => {
     generation.current++;
@@ -39,7 +39,7 @@ export function useTaskWindowMotion(taskId, onClose) {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const stop = () => running.current.forEach((animation) => animation.cancel());
     media.addEventListener("change", stop);
-    return () => { generation.current++; stop(); media.removeEventListener("change", stop); };
+    return () => { generation.current++; window.clearTimeout(closeTimer.current); stop(); media.removeEventListener("change", stop); };
   }, [taskId]);
 
   const close = () => {
@@ -50,8 +50,16 @@ export function useTaskWindowMotion(taskId, onClose) {
     running.current.forEach((animation) => animation.cancel());
     const exit = animateTaskWindow(panelRef.current, backdropRef.current, true);
     running.current = exit;
-    const finish = () => { if (ticket === generation.current) onClose(); };
+    let finished = false;
+    const finish = () => {
+      if (finished || ticket !== generation.current) return;
+      finished = true;
+      window.clearTimeout(closeTimer.current);
+      onClose();
+    };
     if (!exit.length) { finish(); return; }
+    // Una animación suspendida no puede dejar el panel bloqueado.
+    closeTimer.current = window.setTimeout(finish, 160);
     Promise.all(exit.map((animation) => animation.finished)).then(finish, finish);
   };
   return { panelRef, backdropRef, closing, close };

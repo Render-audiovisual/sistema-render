@@ -1,4 +1,13 @@
 /* Feedback for the existing native drag interaction, without delaying saves. */
+.render-workspace .ros-board .ros-task-card.can-move { cursor:grab; }
+.render-workspace .ros-board .ros-task-card.can-move:active { cursor:grabbing; }
+.render-workspace .ros-board .ros-task-card.can-move :is(h3,p,.ros-card-badges,footer,.ros-card-summary,.ros-card-tags) { user-select:none; }
+.render-workspace .ros-board .ros-task-card :is(select,input,button,a,textarea) { cursor:auto; }
+.render-workspace .ros-mobile-board-nav button.drag-over { outline:2px solid #91a96c; outline-offset:-2px; box-shadow:0 0 0 3px #91a96c33; }
+@media(max-width:1024px) {
+  .render-workspace .ros-page { overflow:clip; }
+  .render-workspace .ros-mobile-board-nav { position:sticky; top:58px; z-index:8; background:#f6f7f3; }
+}
 .render-workspace .ros-board .ros-column > div {
   transition: background-color 240ms ease-out, box-shadow 240ms ease-out;
 }

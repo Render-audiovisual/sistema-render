@@ -11,8 +11,8 @@ export async function apiRequest(url, options) {
   return body;
 }
 
-export function apiJson(url) {
-  return apiRequest(url).then((body) => Array.isArray(body) ? body : []);
+export function apiJson(url, options) {
+  return apiRequest(url, options).then((body) => Array.isArray(body) ? body : []);
 }
 
 export function buildTaskPageUrl(options = {}) {
@@ -38,10 +38,10 @@ export async function apiTaskPage(options = {}) {
   return { items, total: Number.isFinite(totalHeader) ? totalHeader : (settings.offset || 0) + items.length };
 }
 
-export function apiTaskById(id) {
-  return apiRequest(`/api/tareas/${id}?${WORKSPACE_QUERY}`);
+export function apiTaskById(id, options) {
+  return apiRequest(`/api/tareas/${id}?${WORKSPACE_QUERY}`, options);
 }
 
-export function apiSubtasks(id) {
-  return apiJson(`/api/tareas/${id}/subtareas?${WORKSPACE_QUERY}`);
+export function apiSubtasks(id, options) {
+  return apiJson(`/api/tareas/${id}/subtareas?${WORKSPACE_QUERY}`, options);
 }

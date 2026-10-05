@@ -6,7 +6,7 @@
 
 .render-workspace .ros-drawer-backdrop {
   align-items:stretch;
-  backdrop-filter:blur(3px) saturate(105%);
+  backdrop-filter:none;
   background:rgba(20,23,18,.34);
   display:flex;
   justify-content:flex-end;
@@ -28,9 +28,9 @@
 .render-workspace .ros-task-workspace:focus { outline:none; }
 
 .render-workspace .ros-drawer.ros-task-workspace>.ros-task-workspace-header {
-  -webkit-backdrop-filter:blur(18px) saturate(150%);
-  backdrop-filter:blur(18px) saturate(150%);
-  background:rgba(255,255,255,.9);
+  -webkit-backdrop-filter:none;
+  backdrop-filter:none;
+  background:#fff;
   border-bottom:1px solid #e7e9e4;
   color:#2d322b;
   flex:0 0 auto;
