@@ -191,6 +191,11 @@ def main():
     confirm_production = commands.add_parser("confirm-production")
     confirm_production.add_argument("--task-id", required=True, type=int)
     confirm_production.add_argument("--confirmation-token", required=True)
+    correct_production = commands.add_parser("correct-production")
+    correct_production.add_argument("--task-id", required=True, type=int)
+    correct_production.add_argument("--record-id", required=True)
+    correct_production.add_argument("--amount", required=True, type=int)
+    correct_production.add_argument("--confirmation-token", required=True)
 
     args = parser.parse_args()
     if args.cmd == "list":
@@ -271,6 +276,8 @@ def main():
         result = request("POST", f"/tareas/{args.task_id}/archivar", args, payload=operation_payload({}, args.confirmation_token), idempotency_key=args.idempotency_key)
     elif args.cmd == "confirm-production":
         result = request("POST", f"/tareas/{args.task_id}/confirmar-grabacion", args, payload=operation_payload({}, args.confirmation_token))
+    elif args.cmd == "correct-production":
+        result = request("PATCH", f"/tareas/{args.task_id}/produccion/registros/{urllib.parse.quote(args.record_id, safe='')}", args, payload=operation_payload({"cantidad": args.amount}, args.confirmation_token))
     else:
         result = request("DELETE", f"/tareas/{args.task_id}", args, payload=operation_payload({}, args.confirmation_token))
     print(json.dumps(result, ensure_ascii=False, indent=2))

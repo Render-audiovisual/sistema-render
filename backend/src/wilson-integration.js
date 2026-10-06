@@ -5,7 +5,7 @@ import { buildMiaGroupDigests, buildMiaWeeklyCarruselDigest, miaGroupDigestWindo
 import { destinatariosNuevosDeAsignacion } from "./private-task-notifications.js";
 import { normalizeFeedback } from "./feedback-fields.js";
 import { findSimilarFeedback } from "./feedback-workflow.js";
-import { getProductionProgress, isProductionVisitTask } from "./production-visits.js";
+import { getProductionProgress, isProductionVisitTask, nextProductionPeriod } from "./production-visits.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { getStateNotification, validateProductionHandoff } from "./task-workflow.js";
 import { createMiaPersonalListsRouter, enqueueDuePersonalListReminders } from "./mia-personal-lists.js";
@@ -1695,6 +1695,72 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       await writeWilsonAudit(client, req, { action: "confirmar_grabacion", taskId });
       await client.query("COMMIT");
       return res.json(result);
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      return next(error);
+    } finally { client.release(); }
+  });
+
+  router.patch("/tareas/:id/produccion/registros/:recordId", async (req, res, next) => {
+    if (req.wilson.channel !== "whatsapp") return res.status(400).json({ error: "Esta corrección se realiza desde WhatsApp." });
+    if (!isWilsonLeader(req, env)) return res.status(403).json({ error: "Solo Agustín o Franco pueden corregir el conteo de producción." });
+    const taskId = Number(req.params.id);
+    const amount = Number(req.body?.cantidad);
+    if (!Number.isInteger(taskId) || taskId <= 0) return res.status(400).json({ error: "Tarea inválida." });
+    if (!Number.isInteger(amount) || amount <= 0) return res.status(400).json({ error: "La cantidad debe ser un entero mayor que cero." });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const task = await loadWilsonTask(client, taskId, { forUpdate: true });
+      if (!task || !isProductionVisitTask(task)) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Visita no encontrada." });
+      }
+      if (!await consumeWilsonConfirmation(client, req, res, "editar", taskId)) {
+        await client.query("ROLLBACK");
+        return undefined;
+      }
+      const records = Array.isArray(task.propiedades_extra?.produccion_registros)
+        ? task.propiedades_extra.produccion_registros : [];
+      const index = records.findIndex((item) => String(item.id) === String(req.params.recordId));
+      if (index < 0) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Registro de producción no encontrado." });
+      }
+      const previous = Number(records[index].cantidad);
+      const corrected = [...records];
+      const recordedBefore = records.slice(0, index).reduce((total, item) => total + (Number(item.cantidad) || 0), 0);
+      const planned = getProductionProgress(task).planned;
+      const remainingAtRecord = Math.max(planned - recordedBefore, 0);
+      const regularAmount = planned > 0 ? Math.min(amount, remainingAtRecord) : amount;
+      const advanceAmount = amount - regularAmount;
+      corrected[index] = {
+        ...corrected[index], cantidad: amount, cantidad_mes_actual: regularAmount,
+        cantidad_adelanto: advanceAmount, periodo_adelanto: advanceAmount > 0 ? nextProductionPeriod(corrected[index].fecha) : null,
+        corregido_desde: previous, corregido_por: req.wilson.actorName || "Líder", corregido_at: new Date().toISOString(),
+      };
+      const properties = {
+        ...task.propiedades_extra,
+        produccion_registros: corrected,
+        produccion_esperando_confirmacion: false,
+        produccion_confirmada_at: null,
+        produccion_confirmada_por: null,
+        mia_notificacion_pendiente: { tipo: "correccion_grabacion", anterior: previous, nuevo: amount, creado_en: new Date().toISOString() },
+        workspace: "render_os",
+      };
+      const updated = await client.query(
+        `UPDATE tareas SET propiedades_extra=$2::jsonb,updated_at=NOW() WHERE id=$1
+         RETURNING id,titulo,asignado_a,cliente_id,estado,propiedades_extra,
+         to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,tipo_tarea,subtipo,
+         prioridad,aclaraciones,material_referencia,tarea_padre_id,created_at,updated_at`,
+        [task.id, JSON.stringify(properties)],
+      );
+      await writeWilsonAudit(client, req, {
+        action: "corregir_registro_produccion", taskId,
+        details: { recordId: String(req.params.recordId), previous, amount },
+      });
+      await client.query("COMMIT");
+      return res.json({ updated: true, previous, amount, task: taskWithUrl(updated.rows[0]) });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       return next(error);
