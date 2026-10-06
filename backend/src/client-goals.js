@@ -364,9 +364,10 @@ export async function goalLinkOptions(db, taskId, period) {
     FROM cliente_objetivos_mensuales WHERE periodo=$1::date AND
       EXISTS(SELECT 1 FROM jsonb_array_elements(cuentas) cuenta WHERE (cuenta->>'id')::int=$2)`,
   [`${period}-01`, task.cliente_id])).rows[0] || null;
-  const slots = objective ? (await db.query(`SELECT id,tipo,numero,tarea_id,titulo,estado,updated_at
-    FROM cliente_objetivo_piezas WHERE objetivo_id=$1 AND tipo=$2 AND estado='pendiente'
-      AND completada_at IS NULL AND publicacion_id IS NULL ORDER BY numero`,
+  const slots = objective ? (await db.query(`SELECT p.id,p.tipo,p.numero,p.tarea_id,p.publicacion_id,p.titulo,p.estado,p.updated_at
+    FROM cliente_objetivo_piezas p LEFT JOIN publicaciones pub ON pub.id=p.publicacion_id
+    WHERE p.objetivo_id=$1 AND p.tipo=$2 AND p.estado='pendiente' AND p.completada_at IS NULL
+      AND (p.publicacion_id IS NULL OR pub.estado='pendiente') ORDER BY p.numero`,
   [objective.id, task.formato_objetivo])).rows : [];
   return { tarea: { id: task.id, titulo: task.titulo, estado: task.estado, tipo: task.formato_objetivo,
     updated_at: task.updated_at }, vinculo_actual: linked, objetivo: objective, casilleros: slots };
@@ -381,21 +382,22 @@ export async function linkGoalTask(pool, pieceId, body, actor) {
   try {
     await db.query('BEGIN');
     await db.query("SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
-    const before = (await db.query(`SELECT p.tarea_id,o.clave,to_char(o.periodo,'YYYY-MM') periodo
+    const before = (await db.query(`SELECT p.tarea_id,p.publicacion_id,o.clave,to_char(o.periodo,'YYYY-MM') periodo
       FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id WHERE p.id=$1`, [pieceId])).rows[0];
     if (!before) throw fail('El casillero no existe.', 404);
     await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`objetivo:${before.periodo}:${before.clave}`]);
     // Mismo orden que los triggers de estados: tarea antes de casillero.
     await db.query('SELECT id FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',
       [[body.tarea_id, before.tarea_id].filter(Boolean)]);
-    await db.query(`SELECT p.id FROM publicaciones p JOIN tareas t ON t.publicacion_id=p.id
-      WHERE t.id=$1 FOR UPDATE OF p`, [body.tarea_id]);
+    await db.query(`SELECT p.id FROM publicaciones p WHERE p.id=$2 OR p.id IN
+      (SELECT publicacion_id FROM tareas WHERE id=$1) ORDER BY p.id FOR UPDATE`, [body.tarea_id,before.publicacion_id]);
     const task = await goalLinkTask(db, body.tarea_id);
     const piece = (await db.query(`SELECT p.*,to_char(o.periodo,'YYYY-MM') periodo,o.cuentas
       FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id
       WHERE p.id=$1 FOR UPDATE OF p`, [pieceId])).rows[0];
     if (!sameVersion(task.updated_at, body.expected_tarea_updated_at) ||
-      !sameVersion(piece.updated_at, body.expected_pieza_updated_at) || before.tarea_id !== piece.tarea_id) {
+      !sameVersion(piece.updated_at, body.expected_pieza_updated_at) || before.tarea_id !== piece.tarea_id ||
+      before.publicacion_id !== piece.publicacion_id) {
       throw fail('La tarea o el casillero cambiaron. Cerrá y volvé a abrir la vinculación.', 409);
     }
     if (piece.periodo < GOALS_START_PERIOD || !piece.cuentas.some(account => Number(account.id) === task.cliente_id) ||
@@ -405,8 +407,9 @@ export async function linkGoalTask(pool, pieceId, body, actor) {
     if (piece.tarea_id === task.id || await taskFamilyLink(db, task, pieceId)) {
       throw fail('Esta tarea o una etapa de la misma pieza ya cuenta en un objetivo mensual.', 409);
     }
-    if (piece.estado !== 'pendiente' || piece.completada_at || piece.publicacion_id) {
-      throw fail('Elegí un casillero pendiente sin publicación vinculada. No se reemplaza trabajo ya realizado.', 409);
+    const oldPublication = piece.publicacion_id && (await db.query('SELECT estado FROM publicaciones WHERE id=$1',[piece.publicacion_id])).rows[0];
+    if (piece.estado !== 'pendiente' || piece.completada_at || (piece.publicacion_id && oldPublication?.estado !== 'pendiente')) {
+      throw fail('Elegí un casillero pendiente. No se reemplaza trabajo ya realizado o programado.', 409);
     }
     const oldTask = piece.tarea_id && (await db.query('SELECT estado FROM tareas WHERE id=$1', [piece.tarea_id])).rows[0];
     if (oldTask && oldTask.estado !== 'pendiente') throw fail('La tarea inicial ya está en proceso. Elegí otro casillero.', 409);
@@ -423,7 +426,8 @@ export async function linkGoalTask(pool, pieceId, body, actor) {
     const count = (await db.query(`SELECT count(*) FILTER(WHERE estado='publicada')::int completadas,count(*)::int total
       FROM cliente_objetivo_piezas WHERE objetivo_id=$1 AND tipo=$2`, [piece.objetivo_id,piece.tipo])).rows[0];
     await db.query('COMMIT');
-    return { pieza_id:pieceId, tarea_id:task.id, tarea_anterior_id:piece.tarea_id, periodo:piece.periodo,
+    return { pieza_id:pieceId, tarea_id:task.id, tarea_anterior_id:piece.tarea_id,
+      publicacion_anterior_id:piece.publicacion_id, periodo:piece.periodo,
       tipo:piece.tipo, numero:piece.numero, ...count };
   } catch (error) {
     await db.query('ROLLBACK');

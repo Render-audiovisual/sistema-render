@@ -34,6 +34,11 @@ test('Vínculo mensual: atomicidad, privacidad, duplicados y conservación de ta
       assert.equal(opts.casilleros.length,8); assert.equal(opts.tarea.tipo,'video');
       assert.ok(!JSON.stringify(opts).includes('abono'));
       const [slot,second] = opts.casilleros;
+      const planned = (await pool.query(`INSERT INTO publicaciones(cliente_id,tipo,estado,fecha_programada,idea,copy)
+        VALUES($1,'video','pendiente','2026-10-06','Reel planificado','Copy de la planificación') RETURNING *`,[ids[0]])).rows[0];
+      await pool.query('UPDATE cliente_objetivo_piezas SET publicacion_id=$2 WHERE id=$1',[slot.id,planned.id]);
+      const plannedOptions = await goalLinkOptions(pool,source.id,'2026-10');
+      assert.ok(plannedOptions.casilleros.some(piece => piece.id===slot.id && piece.publicacion_id===planned.id));
       const snapshots = (await pool.query('SELECT * FROM tareas WHERE id=ANY($1::int[]) ORDER BY id',[[source.id,slot.tarea_id]])).rows;
       await assert.rejects(linkGoalTask(pool,slot.id,{...payload(source,slot),estado:'publicada'},'QA'), {status:400});
       await assert.rejects(linkGoalTask(pool,slot.id,{...payload(source,slot),expected_tarea_updated_at:'2000-01-01'},'QA'), {status:409});
@@ -51,6 +56,8 @@ test('Vínculo mensual: atomicidad, privacidad, duplicados y conservación de ta
       assert.equal((await pool.query('SELECT copy FROM cliente_objetivo_piezas WHERE id=$1',[slot.id])).rows[0].copy,'Copy conservado');
       const audit = (await pool.query('SELECT * FROM cliente_objetivo_vinculos WHERE pieza_id=$1',[slot.id])).rows[0];
       assert.equal(audit.tarea_anterior_id,slot.tarea_id); assert.equal(audit.registro_anterior.titulo,slot.titulo);
+      assert.equal(audit.registro_anterior.publicacion_id,planned.id);
+      assert.deepEqual((await pool.query('SELECT * FROM publicaciones WHERE id=$1',[planned.id])).rows[0],planned);
       assert.equal((await goalLinkOptions(pool,source.id,'2026-10')).vinculo_actual.id,slot.id);
       await assert.rejects(linkGoalTask(pool,second.id,payload(source,second),'QA'),{status:409});
       await pool.query("UPDATE tareas SET estado='publicada' WHERE id=$1",[slot.tarea_id]);
@@ -61,6 +68,10 @@ test('Vínculo mensual: atomicidad, privacidad, duplicados y conservación de ta
       const competing = await makeTask('Reel concurrente');
       const doneSlot = (await pool.query('SELECT * FROM cliente_objetivo_piezas WHERE id=$1',[slot.id])).rows[0];
       await assert.rejects(linkGoalTask(pool,slot.id,payload(competing,doneSlot),'QA'),{status:409});
+      await pool.query('UPDATE cliente_objetivo_piezas SET publicacion_id=$2 WHERE id=$1',[second.id,planned.id]);
+      await pool.query("UPDATE publicaciones SET estado='publicada' WHERE id=$1",[planned.id]);
+      await assert.rejects(linkGoalTask(pool,second.id,payload(competing,second),'QA'),{status:409});
+      await pool.query("UPDATE publicaciones SET estado='pendiente' WHERE id=$1",[planned.id]);
       const third = opts.casilleros[2];
       const simultaneous = await Promise.allSettled([linkGoalTask(pool,second.id,payload(competing,second),'QA'),linkGoalTask(pool,third.id,payload(competing,third),'QA')]);
       assert.equal(simultaneous.filter(item => item.status==='fulfilled').length,1);
@@ -88,6 +99,7 @@ test('Vínculo mensual: atomicidad, privacidad, duplicados y conservación de ta
       await pool.query('DELETE FROM cliente_objetivo_piezas WHERE objetivo_id IN(SELECT id FROM cliente_objetivos_mensuales WHERE cliente_id=ANY($1::int[]))',[ids]);
       await pool.query('DELETE FROM cliente_objetivos_mensuales WHERE cliente_id=ANY($1::int[])',[ids]);
       await pool.query('DELETE FROM tareas WHERE cliente_id=ANY($1::int[])',[ids]);
+      await pool.query('DELETE FROM publicaciones WHERE cliente_id=ANY($1::int[])',[ids]);
       await pool.query('DELETE FROM clientes WHERE id=ANY($1::int[])',[ids]);
       await pool.query('DELETE FROM usuarios WHERE id=$1',[user.id]); await pool.end();
     }
