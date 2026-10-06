@@ -15,6 +15,7 @@ import { DriveUploader } from "../features/drive/DriveUploader.jsx";
 import { useTaskBoardMotion } from "../features/render-os/useTaskBoardMotion.js";
 import { useTaskWindowMotion } from "../features/render-os/useTaskWindowMotion.js";
 import { useMediaQuery } from "../features/render-os/useMediaQuery.js";
+import { GoalTaskLink } from "../features/render-os/GoalTaskLink.jsx";
 import "./WorkspaceReadOnly.css";
 import "./TaskDetailCompact.css";
 import "./RenderApplePolish.css";
@@ -414,6 +415,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           <div><span>▦ <b>Entrega</b></span>{canEditTask ? <input className="ros-inline-property" aria-label="Fecha de entrega" type="date" value={draft.fecha_vencimiento ?? task.fecha_vencimiento ?? ""} disabled={saving} onChange={(event) => saveInlineField("fecha_vencimiento", event.target.value, "actualizó la fecha de entrega")}/> : <strong>{formatDate(task.fecha_vencimiento)}</strong>}</div>
           {(canEditTask || String(task.prioridad || "").toLowerCase() !== "media") && <div><span>⚑ <b>Prioridad</b></span>{canEditTask ? <select className="ros-inline-property" aria-label="Prioridad" value={draft.prioridad ?? task.prioridad ?? "media"} disabled={saving} onChange={(event) => saveInlineField("prioridad", event.target.value, "actualizó la prioridad de la tarea")}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select> : <strong>{task.prioridad || "Sin definir"}</strong>}</div>}
         </div>
+        <GoalTaskLink task={task} canManage={['admin', 'community'].includes(sesion?.usuario?.rol)}/>
         <TaskContentWorkspace task={task} metadata={metadata} editing={canEditTask || editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={null} onCancelEdit={cancelEditing} onSaveEdit={save} saving={saving} canSave={Boolean(draft.titulo?.trim() && draft.asignado_a)}/>
         {hasOperationalControls && <section className="ros-task-operations" aria-labelledby={`ros-task-operations-${task.id}`}>
           <div className="ros-block-heading ros-operations-heading"><div><h3 id={`ros-task-operations-${task.id}`}>Flujo de trabajo</h3></div><small>Acciones y avance de la tarea</small></div>
