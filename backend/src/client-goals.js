@@ -321,8 +321,127 @@ export async function editGoalContent(pool, id, body = {}) {
   finally { db.release(); }
 }
 
+const positiveId = value => Number.isSafeInteger(value) && value > 0;
+const sameVersion = (actual, expected) => typeof expected === 'string' &&
+  Number.isFinite(Date.parse(expected)) && new Date(actual).getTime() === Date.parse(expected);
+
+async function goalLinkTask(db, id) {
+  if (!positiveId(id)) throw fail('Elegí una tarea válida.');
+  const task = (await db.query(`SELECT t.*,p.tipo pieza_tipo,p.copy pieza_copy,
+    COALESCE(t.propiedades_extra->>'objetivo_periodo',to_char(p.fecha_programada,'YYYY-MM'),
+      to_char(t.fecha_vencimiento,'YYYY-MM')) periodo_trabajo
+    FROM tareas t LEFT JOIN publicaciones p ON p.id=t.publicacion_id WHERE t.id=$1`, [id])).rows[0];
+  if (!task || task.propiedades_extra?.workspace !== 'render_os' ||
+    String(task.propiedades_extra?.papelera_render_os) === 'true' ||
+    String(task.propiedades_extra?.archivada_render_os) === 'true') throw fail('La tarea no está disponible en el tablero.', 404);
+  // Una edición hija sólo se vincula explícitamente cuando está terminada;
+  // jamás se cuenta una visita, historia o etapa de producción como entrega.
+  const type = goalTaskType({ ...task, tarea_padre_id: null });
+  if (!type || (task.tarea_padre_id && (task.tipo_tarea !== 'edicion' || task.estado !== 'publicada'))) {
+    throw fail('Sólo podés vincular reels o carruseles. Una subtarea de edición debe estar completada.');
+  }
+  return { ...task, formato_objetivo: type };
+}
+
+async function taskFamilyLink(db, task, exceptPiece = 0) {
+  return (await db.query(`SELECT p.id,p.numero,p.tipo,to_char(o.periodo,'YYYY-MM') periodo
+    FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id
+    LEFT JOIN tareas t ON t.id=p.tarea_id WHERE p.id<>$1 AND
+      (p.tarea_id=$2 OR (p.publicacion_id IS NOT NULL AND p.publicacion_id=$3)
+        OR COALESCE(t.tarea_padre_id,t.id)=$4) LIMIT 1`,
+  [exceptPiece, task.id, task.publicacion_id, task.tarea_padre_id || task.id])).rows[0] || null;
+}
+
+export async function goalLinkOptions(db, taskId, period) {
+  goalPeriod(period);
+  if (period < GOALS_START_PERIOD) throw fail('El seguimiento comienza en octubre de 2026.');
+  const task = await goalLinkTask(db, taskId);
+  const linked = await taskFamilyLink(db, task);
+  if (task.periodo_trabajo && task.periodo_trabajo !== period && !linked) {
+    throw fail(`La tarea corresponde a ${task.periodo_trabajo}. Elegí ese mes para vincularla.`);
+  }
+  const objective = (await db.query(`SELECT id,nombre,reels,carruseles,to_char(periodo,'YYYY-MM') periodo
+    FROM cliente_objetivos_mensuales WHERE periodo=$1::date AND
+      EXISTS(SELECT 1 FROM jsonb_array_elements(cuentas) cuenta WHERE (cuenta->>'id')::int=$2)`,
+  [`${period}-01`, task.cliente_id])).rows[0] || null;
+  const slots = objective ? (await db.query(`SELECT id,tipo,numero,tarea_id,titulo,estado,updated_at
+    FROM cliente_objetivo_piezas WHERE objetivo_id=$1 AND tipo=$2 AND estado='pendiente'
+      AND completada_at IS NULL AND publicacion_id IS NULL ORDER BY numero`,
+  [objective.id, task.formato_objetivo])).rows : [];
+  return { tarea: { id: task.id, titulo: task.titulo, estado: task.estado, tipo: task.formato_objetivo,
+    updated_at: task.updated_at }, vinculo_actual: linked, objetivo: objective, casilleros: slots };
+}
+
+export async function linkGoalTask(pool, pieceId, body, actor) {
+  if (!positiveId(pieceId) || !positiveId(body?.tarea_id) ||
+    Object.keys(body).some(key => !['tarea_id','expected_tarea_updated_at','expected_pieza_updated_at'].includes(key)) ||
+    !Number.isFinite(Date.parse(body.expected_tarea_updated_at)) ||
+    !Number.isFinite(Date.parse(body.expected_pieza_updated_at))) throw fail('Recargá los datos antes de vincular.');
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN');
+    await db.query("SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
+    const before = (await db.query(`SELECT p.tarea_id,o.clave,to_char(o.periodo,'YYYY-MM') periodo
+      FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id WHERE p.id=$1`, [pieceId])).rows[0];
+    if (!before) throw fail('El casillero no existe.', 404);
+    await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`objetivo:${before.periodo}:${before.clave}`]);
+    // Mismo orden que los triggers de estados: tarea antes de casillero.
+    await db.query('SELECT id FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',
+      [[body.tarea_id, before.tarea_id].filter(Boolean)]);
+    await db.query(`SELECT p.id FROM publicaciones p JOIN tareas t ON t.publicacion_id=p.id
+      WHERE t.id=$1 FOR UPDATE OF p`, [body.tarea_id]);
+    const task = await goalLinkTask(db, body.tarea_id);
+    const piece = (await db.query(`SELECT p.*,to_char(o.periodo,'YYYY-MM') periodo,o.cuentas
+      FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id
+      WHERE p.id=$1 FOR UPDATE OF p`, [pieceId])).rows[0];
+    if (!sameVersion(task.updated_at, body.expected_tarea_updated_at) ||
+      !sameVersion(piece.updated_at, body.expected_pieza_updated_at) || before.tarea_id !== piece.tarea_id) {
+      throw fail('La tarea o el casillero cambiaron. Cerrá y volvé a abrir la vinculación.', 409);
+    }
+    if (piece.periodo < GOALS_START_PERIOD || !piece.cuentas.some(account => Number(account.id) === task.cliente_id) ||
+      piece.tipo !== task.formato_objetivo || (task.periodo_trabajo && task.periodo_trabajo !== piece.periodo)) {
+      throw fail('Cliente, mes y formato deben coincidir con el objetivo.');
+    }
+    if (piece.tarea_id === task.id || await taskFamilyLink(db, task, pieceId)) {
+      throw fail('Esta tarea o una etapa de la misma pieza ya cuenta en un objetivo mensual.', 409);
+    }
+    if (piece.estado !== 'pendiente' || piece.completada_at || piece.publicacion_id) {
+      throw fail('Elegí un casillero pendiente sin publicación vinculada. No se reemplaza trabajo ya realizado.', 409);
+    }
+    const oldTask = piece.tarea_id && (await db.query('SELECT estado FROM tareas WHERE id=$1', [piece.tarea_id])).rows[0];
+    if (oldTask && oldTask.estado !== 'pendiente') throw fail('La tarea inicial ya está en proceso. Elegí otro casillero.', 409);
+    const people = [...new Set([task.asignado_a, ...(Array.isArray(task.propiedades_extra?.colaboradores)
+      ? task.propiedades_extra.colaboradores : [])].filter(value => typeof value === 'string' && value.trim()))];
+    await db.query(`INSERT INTO cliente_objetivo_vinculos(pieza_id,tarea_anterior_id,tarea_nueva_id,registro_anterior,actualizado_por)
+      VALUES($1,$2,$3,$4::jsonb,$5)`, [pieceId,piece.tarea_id,task.id,JSON.stringify(piece),actor]);
+    await db.query(`UPDATE cliente_objetivo_piezas SET tarea_id=$2,publicacion_id=$3,titulo=$4,copy=$5,
+      responsables=$6::jsonb,estado=$7,completada_at=CASE WHEN $7='publicada' THEN now() ELSE NULL END,
+      updated_at=now() WHERE id=$1`, [pieceId,task.id,task.publicacion_id,task.titulo,
+      task.propiedades_extra?.copy_trabajo || task.pieza_copy || '',JSON.stringify(people),task.estado]);
+    if (piece.estado !== task.estado) await db.query(`INSERT INTO cliente_objetivo_eventos
+      (pieza_id,estado_anterior,estado_nuevo,tarea_id) VALUES($1,$2,$3,$4)`, [pieceId,piece.estado,task.estado,task.id]);
+    const count = (await db.query(`SELECT count(*) FILTER(WHERE estado='publicada')::int completadas,count(*)::int total
+      FROM cliente_objetivo_piezas WHERE objetivo_id=$1 AND tipo=$2`, [piece.objetivo_id,piece.tipo])).rows[0];
+    await db.query('COMMIT');
+    return { pieza_id:pieceId, tarea_id:task.id, tarea_anterior_id:piece.tarea_id, periodo:piece.periodo,
+      tipo:piece.tipo, numero:piece.numero, ...count };
+  } catch (error) {
+    await db.query('ROLLBACK');
+    if (error.code === '23505') throw fail('La tarea o publicación ya está vinculada. Recargá los datos.', 409);
+    throw error;
+  } finally { db.release(); }
+}
+
 export function createClientGoalsRouter({ pool }) {
   const router = express.Router();
+  router.get('/tareas/:id/vinculo', requireRole('admin', 'community'), async (req, res, next) => {
+    try { res.json(await goalLinkOptions(pool, Number(req.params.id), req.query.periodo)); }
+    catch (error) { if (error.status) return res.status(error.status).json({error:error.message}); next(error); }
+  });
+  router.post('/piezas/:id/vincular', requireRole('admin', 'community'), async (req, res, next) => {
+    try { res.json(await linkGoalTask(pool, Number(req.params.id), req.body, req.auth.nombre || req.auth.usuario)); }
+    catch (error) { if (error.status) return res.status(error.status).json({error:error.message}); next(error); }
+  });
   router.get('/', async (req, res, next) => {
     try { res.json(await readGoals(pool, goalPeriod(req.query.periodo))); }
     catch (error) { if (error.status) return res.status(error.status).json({ error: error.message }); next(error); }
