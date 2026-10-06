@@ -67,6 +67,7 @@ function LinkDialog({ task, onClose }) {
       {result ? <div role="status" className="ros-goal-success"><strong>✓ Tarea vinculada a {result.tipo === 'video' ? 'Reel' : 'Carrusel'} {result.numero}</strong>
         <p>{result.completadas} de {result.total} {result.tipo === 'video' ? 'reels' : 'carruseles'} completados en {result.periodo}.</p>
         <p>Las cantidades del objetivo no cambiaron. La tarea inicial{result.tarea_anterior_id ? ` #${result.tarea_anterior_id}` : ''} se conserva fuera de este casillero.</p>
+        {result.publicacion_anterior_id && <p>La publicación planificada #{result.publicacion_anterior_id} también se conserva, sin cambios.</p>}
         <a href={`/clientes?periodo=${result.periodo}`}>Ver avance del cliente →</a><button type="button" onClick={onClose}>Listo</button></div>
         : <form onSubmit={submit}>
           <label>Mes de trabajo<input aria-label="Mes del objetivo" type="month" min="2026-10" required value={period} disabled={saving} onChange={event => setPeriod(event.target.value)}/></label>
@@ -81,7 +82,8 @@ function LinkDialog({ task, onClose }) {
               {data.objetivo && !data.casilleros.length && <p>No hay casilleros pendientes disponibles para este formato.</p>}
               {slot && <div className="ros-goal-summary"><strong>{data.objetivo.nombre} · {period}</strong>
                 <p>Esta tarea ocupará {slot.tipo === 'video' ? 'Reel' : 'Carrusel'} {slot.numero}.{data.tarea.estado === 'publicada' ? ' Contará como completada inmediatamente.' : ' Contará cuando se finalice.'}</p>
-                {slot.tarea_id && <p>Se reemplaza el enlace de la tarea #{slot.tarea_id}, no la tarea. Su información e historial no se eliminan.</p>}</div>}
+                {slot.tarea_id && <p>Se reemplaza el enlace de la tarea #{slot.tarea_id}, no la tarea. Su información e historial no se eliminan.</p>}
+                {slot.publicacion_id && <p>La publicación planificada #{slot.publicacion_id} deja este casillero, pero se conserva sin cambios.</p>}</div>}
             </>}
           <footer><button type="button" onClick={onClose} disabled={saving}>Cancelar</button>
             <button type="submit" className="ros-goal-primary" disabled={loading || saving || !slot || Boolean(data?.vinculo_actual)}>
