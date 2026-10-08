@@ -4,6 +4,8 @@ Todo el equipo ingresa a `/inicio`. El tablero existente sigue en `/workspace/ta
 
 ## Qué muestra
 
+El diseño del Inicio reutiliza los tokens de `frontend/src/design-system.css`: fondo, tipografía Poppins, acento lima, separadores, radios y controles del resto del sistema. Una lista principal evita duplicar la primera tarea; el feedback ocupa un panel secundario y los accesos a módulos son compactos.
+
 - Tareas propias por nombre/usuario y colaboradores, conservando permisos existentes.
 - Orden: vencidas, hoy, próximos siete días, en proceso y futuras/sin fecha.
 - Las tareas en revisión se muestran como espera, no como producción que debe repetir el autor.
