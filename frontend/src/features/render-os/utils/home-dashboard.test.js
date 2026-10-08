@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activeTasks, belongsToUser, dashboardCharts, dashboardToday, isWaitingReview, orderTasks, pendingFeedback, taskPeople } from "./home-dashboard.js";
+import { activeTasks, belongsToUser, dashboardCharts, dashboardToday, isReelTask, isWaitingReview, orderTasks, pendingFeedback, taskPeople } from "./home-dashboard.js";
 
 test("approved reviews remain actionable for the community publisher", () => {
   const approved = { estado: "en_revision", asignado_a: "Oriana", propiedades_extra: { revision_aprobada: true } };
@@ -16,6 +16,13 @@ test("personal assignment matches names and usernames, accents and collaborators
   assert.equal(belongsToUser(taskPeople(task), { nombre: "Otro", usuario: "german" }), true);
   assert.equal(belongsToUser(taskPeople(task), { nombre: "Lucia" }), false);
   assert.equal(belongsToUser([""], {}), false);
+});
+test("personal reel view includes editing and explicit reels without pulling in production videos", () => {
+  assert.equal(isReelTask({ tipo_tarea: "edicion", titulo: "Corte corto" }), true);
+  assert.equal(isReelTask({ subtipo: "reel", titulo: "Pieza social" }), true);
+  assert.equal(isReelTask({ titulo: "Video institucional" }), true);
+  assert.equal(isReelTask({ tipo_tarea: "produccion", titulo: "Visita para grabar 7 videos" }), false);
+  assert.equal(isReelTask({ tipo_tarea: "diseno", titulo: "Carrusel" }), false);
 });
 test("priorities cover overdue, today, next seven days, progress and undated tasks without mutation", () => {
   const tasks = [
@@ -83,11 +90,11 @@ test("team loads count each open task only under its principal assignee", () => 
     { propiedades_extra: { colaboradores: ["Luis"] } },
     { asignado_a: "Luis", estado: "publicada" },
   ], "2026-10-08", true);
-  assert.deepEqual(chart.loads, [{ name: "Ana", count: 2, late: 1 }, { name: "Sin responsable principal", count: 1, late: 0 }]);
+  assert.deepEqual(chart.loads, [{ name: "Ana", count: 2, late: 1, reviews: 1 }, { name: "Sin responsable principal", count: 1, late: 0, reviews: 0 }]);
   assert.equal(chart.loads.reduce((sum, entry) => sum + entry.count, 0), 3);
 });
 
 test("personal loads group open records by client including the missing-client bucket", () => {
   const chart = dashboardCharts([{ cliente_nombre: "Cliente A" }, { cliente_nombre: "Cliente A" }, {}, { cliente_nombre: "Cliente B", estado: "publicada" }], "2026-10-08");
-  assert.deepEqual(chart.loads, [{ name: "Cliente A", count: 2, late: 0 }, { name: "Sin cliente", count: 1, late: 0 }]);
+  assert.deepEqual(chart.loads, [{ name: "Cliente A", count: 2, late: 0, reviews: 0 }, { name: "Sin cliente", count: 1, late: 0, reviews: 0 }]);
 });

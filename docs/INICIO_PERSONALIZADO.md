@@ -11,7 +11,8 @@ Los estados incluyen finalizadas registradas, no un porcentaje de cumplimiento m
 - Tareas propias por nombre/usuario y colaboradores, conservando permisos existentes.
 - Orden: vencidas, hoy, próximos siete días, en proceso y futuras/sin fecha.
 - Las tareas en revisión se muestran como espera, no como producción que debe repetir el autor.
-- Administradores pueden alternar Mi trabajo/Equipo y ver revisiones, tareas sin fecha y carga por responsable.
+- Administradores ingresan en Rendimiento del equipo y pueden alternar a Mis reels. La vista del equipo muestra carga abierta, vencidas y revisiones de todos los responsables con tareas abiertas. Mis reels filtra edición y piezas explícitamente clasificadas como reel/video, asignadas o compartidas con el usuario conectado.
+- Las barras comparan la cantidad de tareas abiertas dentro de la vista; el tramo rojo marca vencidas. No representan una cuota mensual de publicaciones. La fila inferior de atajos fue retirada.
 - Feedback asignado pendiente e indicaciones permanentes separados. El origen devuelve las 500 notas más recientes.
 - Cada elemento abre la tarea o nota existente; Inicio no cambia responsables, estados, notas ni cuotas.
 - Día operativo calculado en America/Argentina/Cordoba.
