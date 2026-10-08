@@ -4,12 +4,14 @@ Todo el equipo ingresa a `/inicio`. El tablero existente sigue en `/workspace/ta
 
 ## Qué muestra
 
-El diseño del Inicio reutiliza los tokens de `frontend/src/design-system.css`: fondo, tipografía Poppins, acento lima, separadores, radios y controles del resto del sistema. Una lista principal evita duplicar la primera tarea; el feedback ocupa un panel secundario y los accesos a módulos son compactos.
+El diseño del Inicio reutiliza los tokens de `frontend/src/design-system.css`: fondo, tipografía Poppins, acento lima, separadores, radios y controles del resto del sistema. Una cuadrícula de paneles reemplaza la lista larga: indicadores, distribución por estado, agenda de siete días, tres tarjetas prioritarias, feedback y carga de trabajo.
+
+Los estados incluyen finalizadas registradas, no un porcentaje de cumplimiento mensual. La agenda cuenta abiertas con vencimiento desde hoy hasta hoy + 6. La carga agrupa por responsable principal (equipo) o cliente (vista personal), sin duplicar colaboradores. Archivadas y papelera se excluyen. Seleccionar estado, día o grupo filtra las tres tarjetas. Animaciones breves respetan `prefers-reduced-motion`.
 
 - Tareas propias por nombre/usuario y colaboradores, conservando permisos existentes.
 - Orden: vencidas, hoy, próximos siete días, en proceso y futuras/sin fecha.
 - Las tareas en revisión se muestran como espera, no como producción que debe repetir el autor.
-- Administradores pueden alternar Mi trabajo/Equipo y ver revisiones, tareas sin fecha o responsable.
+- Administradores pueden alternar Mi trabajo/Equipo y ver revisiones, tareas sin fecha y carga por responsable.
 - Feedback asignado pendiente e indicaciones permanentes separados. El origen devuelve las 500 notas más recientes.
 - Cada elemento abre la tarea o nota existente; Inicio no cambia responsables, estados, notas ni cuotas.
 - Día operativo calculado en America/Argentina/Cordoba.
