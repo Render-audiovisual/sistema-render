@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { apiJson, apiTaskPage } from "../features/render-os/services/render-os-api.js";
-import { activeTasks, belongsToUser, dashboardToday, orderTasks, pendingFeedback, priorityForTask, taskPeople } from "../features/render-os/utils/home-dashboard.js";
+import { activeTasks, belongsToUser, dashboardToday, isWaitingReview, orderTasks, pendingFeedback, priorityForTask, taskPeople } from "../features/render-os/utils/home-dashboard.js";
 import { formatDate } from "../features/render-os/utils/task-formatters.js";
 import { STATUSES } from "../features/render-os/constants.js";
 import "./QuickHome.css";
@@ -58,10 +58,10 @@ export function QuickHomePage({ sesion, onNavigate }) {
   const link = (href, children, className = "") => <a key={href} className={className} href={href} onClick={(event) => open(event, href)}>{children}</a>;
   const active = activeTasks(tasks);
   const scoped = active.filter((task) => team || belongsToUser(taskPeople(task), user));
-  const ordered = orderTasks(scoped.filter((task) => team || task.estado !== "en_revision"), today);
+  const ordered = orderTasks(scoped.filter((task) => team || !isWaitingReview(task)), today);
   const late = scoped.filter((task) => priorityForTask(task, today).rank === 0);
   const dueToday = scoped.filter((task) => task.fecha_vencimiento === today);
-  const reviews = scoped.filter((task) => task.estado === "en_revision");
+  const reviews = scoped.filter(isWaitingReview);
   const visible = filter === "late" ? orderTasks(late, today) : filter === "reviews" ? orderTasks(reviews, today) : ordered;
   const feedback = pendingFeedback(notes, user, team);
   const permanentFeedback = pendingFeedback(notes, user, team, true);
@@ -77,8 +77,8 @@ export function QuickHomePage({ sesion, onNavigate }) {
         <button type="button" aria-pressed={filter === "reviews"} onClick={() => setFilter("reviews")}><strong>{reviews.length}</strong><span>{team ? "Para revisar" : "Esperando revisión"}</span></button>
       </section>
       <div className="qh-columns"><section className="qh-priorities" aria-labelledby="qh-priorities-title"><header className="qh-section-head"><div><h2 id="qh-priorities-title">{filter === "reviews" ? team ? "Para revisar" : "Esperando revisión" : filter === "late" ? "Entregas vencidas" : team ? "Prioridades del equipo" : "Qué hacer primero"}</h2><p>{filter === "reviews" && !team ? "Ya enviaste estas tareas. Coordiná la aprobación antes de continuar." : "Vencidas, hoy, próximos 7 días y trabajo en proceso."}</p></div>{link("/workspace/tareas", "Ver tablero →")}</header>
-        {next && (team || next.estado !== "en_revision") && <div className={`qh-next qh-tone-${priorityForTask(next, today).tone}`}><span className="qh-eyebrow">{filter === "reviews" ? "Siguiente revisión" : "Primera prioridad"}</span>{link(`/workspace/tareas?task=${encodeURIComponent(next.id)}`, <><strong>{next.titulo || "Sin título"}</strong><span>Abrir tarea →</span></>)}<p>{next.cliente_nombre || "Sin cliente"} · {formatDate(next.fecha_vencimiento)}</p></div>}
-        <div className="qh-task-list">{visible.slice(0, 8).map((task) => { const priority = priorityForTask(task, today); return link(`/workspace/tareas?task=${encodeURIComponent(task.id)}`, <><div className="qh-task-copy"><strong>{task.titulo || "Sin título"}</strong><small>{task.cliente_nombre || "Sin cliente"} · {taskPeople(task).join(", ") || "Sin responsable"}</small><small>{STATUSES.find((status) => status.id === task.estado)?.label || task.estado}</small></div><div className="qh-task-deadline"><span className={`qh-badge qh-tone-${priority.tone}`}>{priority.label}</span><time>{formatDate(task.fecha_vencimiento)}</time></div></>, "qh-task"); })}</div>
+        {next && (team || !isWaitingReview(next)) && <div className={`qh-next qh-tone-${priorityForTask(next, today).tone}`}><span className="qh-eyebrow">{filter === "reviews" ? "Siguiente revisión" : "Primera prioridad"}</span>{link(`/workspace/tareas?task=${encodeURIComponent(next.id)}`, <><strong>{next.titulo || "Sin título"}</strong><span>Abrir tarea →</span></>)}<p>{next.cliente_nombre || "Sin cliente"} · {formatDate(next.fecha_vencimiento)}</p></div>}
+        <div className="qh-task-list">{visible.slice(0, 8).map((task) => { const priority = priorityForTask(task, today); return link(`/workspace/tareas?task=${encodeURIComponent(task.id)}`, <><div className="qh-task-copy"><strong>{task.titulo || "Sin título"}</strong><small>{task.cliente_nombre || "Sin cliente"} · {taskPeople(task).join(", ") || "Sin responsable"}</small><small>{task.estado === "en_revision" && !isWaitingReview(task) ? "Lista para publicar" : STATUSES.find((status) => status.id === task.estado)?.label || task.estado}</small></div><div className="qh-task-deadline"><span className={`qh-badge qh-tone-${priority.tone}`}>{priority.label}</span><time>{formatDate(task.fecha_vencimiento)}</time></div></>, "qh-task"); })}</div>
         {!visible.length && <p className="qh-empty">{filter === "reviews" ? "No hay tareas pendientes de revisión en esta vista." : filter === "late" ? "No hay entregas vencidas en esta vista." : team ? "El equipo no tiene tareas abiertas." : reviews.length ? "Tu trabajo abierto está esperando revisión. Consultá esa vista para coordinar las aprobaciones." : "No tenés tareas abiertas asignadas. Consultá el tablero para coordinar el próximo trabajo."}</p>}
         {visible.length > 8 && <p className="qh-list-note">Mostrando 8 de {visible.length}. {link("/workspace/tareas", "Ver todas en el tablero")}</p>}
       </section><aside className="qh-side"><section className="qh-feedback" aria-labelledby="qh-feedback-title">

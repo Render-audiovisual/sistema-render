@@ -1,6 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activeTasks, belongsToUser, dashboardToday, orderTasks, pendingFeedback, taskPeople } from "./home-dashboard.js";
+import { activeTasks, belongsToUser, dashboardToday, isWaitingReview, orderTasks, pendingFeedback, taskPeople } from "./home-dashboard.js";
+
+test("approved reviews remain actionable for the community publisher", () => {
+  const approved = { estado: "en_revision", asignado_a: "Oriana", propiedades_extra: { revision_aprobada: true } };
+  assert.equal(isWaitingReview(approved), false);
+  assert.equal(isWaitingReview({ ...approved, propiedades_extra: { revision_aprobada: "true" } }), false);
+  assert.equal(isWaitingReview({ ...approved, propiedades_extra: {} }), true);
+  assert.equal(activeTasks([approved]).length, 1);
+  assert.equal(belongsToUser(taskPeople(approved), { nombre: "Oriana" }), true);
+});
 
 test("personal assignment matches names and usernames, accents and collaborators", () => {
   const task = { asignado_a: "Luciano", propiedades_extra: { colaboradores: ["Germán"] } };

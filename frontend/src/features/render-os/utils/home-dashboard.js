@@ -14,6 +14,9 @@ export function taskPeople(task) {
 export function activeTasks(tasks) {
   return tasks.filter((task) => task.estado !== "publicada" && ![true, "true"].includes(task.propiedades_extra?.papelera_render_os) && ![true, "true"].includes(task.propiedades_extra?.archivada_render_os));
 }
+export function isWaitingReview(task) {
+  return task.estado === "en_revision" && ![true, "true"].includes(task.propiedades_extra?.revision_aprobada);
+}
 export function priorityForTask(task, today) {
   const date = task.fecha_vencimiento;
   if (date && date < today) return { rank: 0, label: "Vencida", tone: "late" };
