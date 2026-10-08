@@ -124,7 +124,13 @@ export async function reconcileEditorialCalendar(db, period) {
   const desired = buildEditorialSlots({ period: normalized, clients: clientsAdjusted, occupied: fixed });
   const desiredKeys = new Set(desired.map((item) => item.calendario_clave));
   const removable = existingResult.rows.filter((item) => item.origen_calendario === "automatico" && !item.fecha_bloqueada && item.estado !== "publicada" && !desiredKeys.has(item.calendario_clave));
-  if (removable.length) await db.query("DELETE FROM publicaciones WHERE id = ANY($1::int[])", [removable.map((item) => item.id)]);
+  // Removing a publication cascades to its tasks. Keep every publication with
+  // recorded work, even when its automatic slot is no longer in the quota.
+  const removed = removable.length ? await db.query(`
+    DELETE FROM publicaciones AS publication
+    WHERE publication.id = ANY($1::int[])
+      AND NOT EXISTS (SELECT 1 FROM tareas task WHERE task.publicacion_id = publication.id)
+    RETURNING publication.id`, [removable.map((item) => item.id)]) : { rows: [] };
   let created = 0;
   let updated = 0;
   for (const slot of desired) {
@@ -138,5 +144,6 @@ export async function reconcileEditorialCalendar(db, period) {
       RETURNING (xmax = 0) AS inserted`, [slot.cliente_id, slot.tipo, slot.fecha_programada, slot.calendario_clave]);
     if (result.rows[0].inserted) created += 1; else updated += 1;
   }
-  return { periodo: normalized, creadas: created, actualizadas: updated, eliminadas: removable.length, preservadas: fixed.length };
+  return { periodo: normalized, creadas: created, actualizadas: updated, eliminadas: removed.rows.length,
+    preservadas: fixed.length + removable.length - removed.rows.length };
 }
