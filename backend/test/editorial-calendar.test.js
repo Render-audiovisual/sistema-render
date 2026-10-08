@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildEditorialSlots, normalizeEditorialPeriod } from "../src/editorial-calendar.js";
+import { buildEditorialSlots, normalizeEditorialPeriod, reconcileEditorialCalendar } from "../src/editorial-calendar.js";
 
 test("distribuye cuotas sin superar cinco publicaciones por día", () => {
   const slots = buildEditorialSlots({ period: "2026-09", clients: Array.from({ length: 5 }, (_, index) => ({ id: index + 1, nombre: `Cliente ${index}`, activo: true, cuota_reels: 4, cuota_carruseles: 4 })) });
@@ -22,3 +22,25 @@ test("gastronomía prefiere domingos sin configuración", () => {
 });
 
 test("rechaza períodos inválidos", () => assert.throws(() => normalizeEditorialPeriod("agosto"), /AAAA-MM/));
+
+test("al bajar una cuota conserva publicaciones con tareas y cuenta únicamente los espacios eliminados", async () => {
+  const existing = [1, 2].map((id) => ({ id, cliente_id: 7, tipo: "video", estado: "pendiente",
+    fecha_programada: "2026-10-10", origen_calendario: "automatico", calendario_clave: `7:video:${id}`, fecha_bloqueada: false }));
+  const calls = [];
+  const db = { async query(sql, params) {
+    calls.push({ sql, params });
+    if (calls.length === 1) return { rows: [{ id: 7, nombre: "Cliente", activo: true, cuota_reels: 0, cuota_carruseles: 0 }] };
+    if (calls.length === 2) return { rows: existing };
+    // The database returns only the empty slot: publication 1 has a task.
+    assert.match(sql, /DELETE FROM publicaciones AS publication/);
+    assert.match(sql, /NOT EXISTS \(SELECT 1 FROM tareas task WHERE task\.publicacion_id = publication\.id\)/);
+    assert.match(sql, /RETURNING publication\.id/);
+    assert.deepEqual(params, [[1, 2]]);
+    return { rows: [{ id: 2 }] };
+  } };
+  const result = await reconcileEditorialCalendar(db, "2026-10");
+  assert.equal(calls.length, 3);
+  assert.equal(result.eliminadas, 1);
+  assert.equal(result.preservadas, 1);
+  assert.equal(result.creadas, 0);
+});

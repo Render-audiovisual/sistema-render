@@ -3,9 +3,19 @@ import test from "node:test";
 import {
   purgeExpiredCompletedRenderOsTasks,
   purgeExpiredRenderOsTrash,
+  scheduleRenderOsTrashCleanup,
   TASK_COMPLETED_RETENTION_DAYS,
   TASK_TRASH_RETENTION_DAYS,
 } from "../src/task-trash-retention.js";
+
+test("el arranque conserva todas las tareas sin activar explícitamente el borrado automático", () => {
+  let queries = 0;
+  const pool = { query() { queries += 1; throw new Error("No debe borrar tareas"); } };
+  for (const env of [{}, { TASK_COMPLETED_CLEANUP_ENABLED: "true" }, { TASK_AUTOMATIC_DELETION_ENABLED: "false" }]) {
+    assert.equal(scheduleRenderOsTrashCleanup(pool, 1000, env), null);
+  }
+  assert.equal(queries, 0);
+});
 
 test("la Papelera elimina definitivamente las tareas de RENDER OS después de 10 días", async () => {
   let query = "";

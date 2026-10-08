@@ -41,6 +41,9 @@ export async function purgeExpiredCompletedRenderOsTasks(pool) {
 }
 
 export function scheduleRenderOsTrashCleanup(pool, intervalMs = 60 * 60 * 1000, env = process.env) {
+  // Preserve the agency's task history by default, including recoverable trash.
+  // Cleanup must be deliberately enabled; the completed flag alone is insufficient.
+  if (env.TASK_AUTOMATIC_DELETION_ENABLED !== "true") return null;
   const clean = async () => {
     try {
       const [trash, completed] = await Promise.all([
