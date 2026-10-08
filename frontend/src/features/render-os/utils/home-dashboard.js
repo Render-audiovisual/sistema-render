@@ -11,6 +11,13 @@ export function belongsToUser(names, user) {
 export function taskPeople(task) {
   return [...new Set([task.asignado_a, ...(Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [])].filter(Boolean))];
 }
+export function isReelTask(task) {
+  if (task.tipo_tarea === "edicion") return true;
+  const subtype = normalize(task.subtipo);
+  if (["reel", "video"].includes(subtype)) return true;
+  if (["produccion", "diseno", "community"].includes(task.tipo_tarea)) return false;
+  return /\b(reel|video)\b/.test(normalize(task.titulo));
+}
 export function activeTasks(tasks) {
   return tasks.filter((task) => task.estado !== "publicada" && ![true, "true"].includes(task.propiedades_extra?.papelera_render_os) && ![true, "true"].includes(task.propiedades_extra?.archivada_render_os));
 }
@@ -44,9 +51,10 @@ export function dashboardCharts(tasks, today, team = false) {
   for (const task of open) {
     // One task belongs to one group; collaborators don't inflate totals.
     const name = team ? task.asignado_a || "Sin responsable principal" : task.cliente_nombre || "Sin cliente";
-    const current = loads.get(name) || { name, count: 0, late: 0 };
+    const current = loads.get(name) || { name, count: 0, late: 0, reviews: 0 };
     current.count += 1;
     if (task.fecha_vencimiento && task.fecha_vencimiento < today) current.late += 1;
+    if (isWaitingReview(task)) current.reviews += 1;
     loads.set(name, current);
   }
   return { stages, agenda, loads: [...loads.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)), total: tasks.length };
