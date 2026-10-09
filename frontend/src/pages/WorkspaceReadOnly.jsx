@@ -332,7 +332,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const registerProduction = async (finish = false) => {
-    if (registeringProduction || metadata.produccion_confirmada_at) return;
+    if (registeringProduction) return;
     setRegisteringProduction(true);
     try {
       await onRegisterProduction(task, Number(productionAmount), productionDate, finish);
@@ -427,13 +427,13 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           <header><div><span>VISITA DE PRODUCCIÓN</span><strong>{productionProgress.recorded}{productionProgress.planned ? ` de ${productionProgress.planned}` : ""} videos grabados</strong></div>{productionProgress.complete ? <b>{productionPhase?.label || "Completa"}</b> : <b className="pending">{productionProgress.planned ? `Faltan ${productionProgress.remaining}` : "Sin cantidad prevista"}</b>}</header>
           <div className="ros-production-progress"><i style={{ width: `${productionProgress.planned ? Math.min(100, (productionProgress.recorded / productionProgress.planned) * 100) : 0}%` }}/></div>
           {editing && isAdmin && <label className="ros-production-planned"><span>Videos previstos</span><input type="number" min="1" step="1" value={draft.produccion_videos_previstos || ""} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}
-          {!editing && canRegisterProduction && !productionProgress.complete && !metadata.produccion_confirmada_at && <div className="ros-production-entry ros-production-simple">
-            <p>Registrá los videos que grabaste. No necesitás una cantidad prevista para terminar la visita.</p>
+          {!editing && canRegisterProduction && <div className="ros-production-entry ros-production-simple">
+            <p>Registrá los videos que grabaste, aunque la visita ya esté terminada o confirmada.</p>
             {productionProgress.recorded > 0 && <p>Ya hay {productionProgress.recorded} videos registrados. Ingresá solo los nuevos; usá 0 si ya registraste todos.</p>}
             <label><span>Videos grabados sin registrar</span><input inputMode="numeric" type="number" min="0" step="1" value={productionAmount} onChange={(event) => setProductionAmount(event.target.value)}/></label>
             <label><span>Fecha de grabación</span><input type="date" value={productionDate} max={getHoyLocalISO()} onChange={(event) => setProductionDate(event.target.value)}/></label>
             <button type="button" disabled={registeringProduction || !productionDate || !Number.isSafeInteger(Number(productionAmount)) || Number(productionAmount) <= 0} onClick={() => registerProduction(false)}>{registeringProduction ? "Guardando…" : "Guardar avance"}</button>
-            <button type="button" disabled={registeringProduction || !productionDate || productionAmount === "" || !Number.isSafeInteger(Number(productionAmount)) || Number(productionAmount) < 0 || productionProgress.recorded + Number(productionAmount) <= 0} onClick={() => registerProduction(true)}>{registeringProduction ? "Guardando…" : "Guardar y terminar visita"}</button>
+            {!productionProgress.complete && !metadata.produccion_confirmada_at && <button type="button" disabled={registeringProduction || !productionDate || productionAmount === "" || !Number.isSafeInteger(Number(productionAmount)) || Number(productionAmount) < 0 || productionProgress.recorded + Number(productionAmount) <= 0} onClick={() => registerProduction(true)}>{registeringProduction ? "Guardando…" : "Guardar y terminar visita"}</button>}
           </div>}
           {productionProgress.complete && !metadata.produccion_confirmada_at && !isLeader && <div className="ros-production-waiting"><strong>✓ Visita marcada como completa</strong><span>Franco o Agustín deben confirmarla antes de enviarla a Edición.</span></div>}
           {canConfirmProduction && <div className="ros-production-confirm"><div><strong>Grabación completa</strong><span>Franco o Agustín deben confirmarla antes de crear la edición para Luciano.</span></div><button type="button" disabled={confirmingProduction} onClick={confirmProduction}>{confirmingProduction ? "Confirmando…" : "Confirmar y enviar a edición"}</button></div>}
