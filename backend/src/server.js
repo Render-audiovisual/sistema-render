@@ -2575,10 +2575,10 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
       return res.status(409).json({ error: "La tarea cambió mientras registrabas los videos. Revisá la última versión." });
     }
     const progress = getProductionProgress(task);
-    if (task.propiedades_extra?.produccion_confirmada_at || isProductionComplete(task)) {
-      await client.query("ROLLBACK");
-      return res.status(409).json({ error: "La visita ya está terminada. Revisá sus registros antes de agregar videos." });
-    }
+    // Recording production is independent of the visit's workflow status.
+    const wasCompleted = isProductionComplete(task);
+    const wasConfirmed = Boolean(task.propiedades_extra?.produccion_confirmada_at);
+    const preserveState = wasCompleted || wasConfirmed || ["en_revision", "aprobada", "publicada", "programada"].includes(task.estado);
     if (progress.recorded + amount <= 0) {
       await client.query("ROLLBACK");
       return res.status(400).json({ error: "Indicá cuántos videos grabaste antes de terminar la visita." });
@@ -2601,9 +2601,9 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
       record.cantidad_adelanto = advanceAmount;
       record.periodo_adelanto = nextProductionPeriod(date);
     }
-    const completed = finished || (progress.planned > 0 && progress.recorded + amount >= progress.planned);
-    const nextState = getProductionTaskState({ planned: progress.planned, recorded: progress.recorded + amount, finished });
-    const workflowProperties = completed ? {
+    const completed = wasCompleted || wasConfirmed || finished || (progress.planned > 0 && progress.recorded + amount >= progress.planned);
+    const nextState = preserveState ? task.estado : getProductionTaskState({ planned: progress.planned, recorded: progress.recorded + amount, finished });
+    const workflowProperties = (wasCompleted || wasConfirmed) ? {} : completed ? {
       produccion_finalizada_at: new Date().toISOString(),
       produccion_finalizada_por: getTaskActor(req.auth),
       produccion_esperando_confirmacion: true,
