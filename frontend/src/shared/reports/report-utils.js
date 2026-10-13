@@ -1,3 +1,33 @@
+// Un cierre de dirección afecta solamente el reporte de un mes completo ya
+// terminado. Nunca modifica los registros fuente ni el período móvil de 30 días.
+export function getMonthlyReportClosure(closures = [], userId, period, range, today) {
+  if (!['mes_actual', 'mes_pasado'].includes(period) || userId == null) return null;
+  const month = range?.desde?.slice(0, 7);
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month || '') || month >= String(today).slice(0, 7)) return null;
+  const [year, number] = month.split('-').map(Number);
+  const next = number === 12 ? `${year + 1}-01` : `${year}-${String(number + 1).padStart(2, '0')}`;
+  if (range.desde !== `${month}-01` || range.hasta !== `${next}-01`) return null;
+  return closures.find((closure) =>
+    closure.periodo === month
+    && String(closure.usuario_id) === String(userId)
+    && Number(closure.porcentaje) === 100
+  ) || null;
+}
+
+export function applyMonthlyClosureToPerformance(performance, closure) {
+  if (!closure) return performance;
+  return {
+    ...performance,
+    cierreMensual: closure,
+    registroOriginal: { carga: performance.carga, atrasadas: performance.atrasadas },
+    avanceObjetivo: 100,
+    cumplimiento: 100,
+    estadoObjetivo: { label: 'Completado', bg: '#e3ede5', fg: 'var(--success)' },
+    carga: 0,
+    atrasadas: [],
+  };
+}
+
 export function isFilmingTask(task = {}) {
   const text = `${task.titulo || ""} ${task.subtipo || ""} ${task.propiedades_extra?.clickup_lista || ""}`.toLocaleLowerCase("es");
   return task.tipo_tarea === "produccion" || text.includes("filmar") || text.includes("grabac") || text.includes("filmación");

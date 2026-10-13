@@ -475,7 +475,7 @@ router.get("/usuarios", async (req, res, next) => {
 router.get("/reportes/datos", async (req, res, next) => {
   try {
     const mesConfiguracion = normalizePeriod(req.query.mes_configuracion);
-    const [tareas, historias, publicaciones, clientes, usuarios, tareasRenderOs, entregasEdicion, progresoEdicion] = await Promise.all([
+    const [tareas, historias, publicaciones, clientes, usuarios, tareasRenderOs, entregasEdicion, progresoEdicion, cierresMensuales] = await Promise.all([
       pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
         to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,t.subtipo,
         t.created_at,t.updated_at,c.nombre AS cliente_nombre
@@ -515,6 +515,12 @@ router.get("/reportes/datos", async (req, res, next) => {
         pe.activa,c.nombre AS cliente_nombre
         FROM progreso_edicion_entregas pe LEFT JOIN clientes c ON c.id=pe.cliente_id
         WHERE pe.activa IS TRUE ORDER BY pe.entregada_at,pe.id`),
+      pool.query(`SELECT usuario_id,to_char(periodo,'YYYY-MM') AS periodo,
+        nombre_snapshot,porcentaje,motivo,autorizado_por,created_at
+        FROM reporte_cierres_mensuales
+        WHERE periodo=$1::date
+          AND periodo < date_trunc('month', now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
+        ORDER BY usuario_id`, [mesConfiguracion]),
     ]);
     res.json(filterReportDataForUser({
       tareas: tareas.rows,
@@ -525,6 +531,7 @@ router.get("/reportes/datos", async (req, res, next) => {
       tareasRenderOs: tareasRenderOs.rows,
       entregasEdicion: entregasEdicion.rows,
       progresoEdicion: progresoEdicion.rows,
+      cierresMensuales: cierresMensuales.rows,
     }, req.auth));
   } catch (error) {
     next(error);

@@ -49,7 +49,11 @@ export function summarizeRenderOsByDay(tasks = []) {
 }
 
 export function filterReportDataForUser(data, auth = {}) {
-  const reportData = { ...data, resumenRenderOsPorDia: summarizeRenderOsByDay(data.tareasRenderOs) };
+  const cierresMensuales = (data.cierresMensuales || []).filter((cierre) =>
+    auth.rol === 'admin'
+    || (auth.id != null && String(cierre.usuario_id) === String(auth.id))
+  );
+  const reportData = { ...data, cierresMensuales, resumenRenderOsPorDia: summarizeRenderOsByDay(data.tareasRenderOs) };
   if (auth.rol === "admin") return reportData;
   const identity = auth.nombre || auth.usuario || "";
   const ownTask = (task) => belongsTo(task.asignado_a, identity)

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
 import { pushUrlContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
-import { getEditingResponsible, belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getDesignerCarouselTaskSummary, getReportPeriodRange, isCarouselTask, isCompletedForEmployeeReport, isEditingTask, mergeReportTaskSources, summarizeTaskDeliveries } from "../shared/reports/report-utils.js";
+import { getMonthlyReportClosure, applyMonthlyClosureToPerformance, getEditingResponsible, belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getDesignerCarouselTaskSummary, getReportPeriodRange, isCarouselTask, isCompletedForEmployeeReport, isEditingTask, mergeReportTaskSources, summarizeTaskDeliveries } from "../shared/reports/report-utils.js";
 import { groupProductionByClient } from "../features/render-os/utils/production-visits.js";
 
 export function ResumenEntregableEquipo({
@@ -13,7 +13,25 @@ export function ResumenEntregableEquipo({
   verbo = "realizados",
   verboSingular = "realizado",
   enRevision = false,
+  cierreMensual = null,
 }) {
+  if (cierreMensual) {
+    return (
+      <div className="report-metric" style={{ paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", fontSize: "13px" }}>
+          <strong>{etiqueta}</strong>
+          <span style={{ color: "var(--success)", fontWeight: 600 }}>Completado · 100%</span>
+        </div>
+        <div className="report-progress-bar" role="progressbar" aria-label={etiqueta} aria-valuemin={0} aria-valuemax={100} aria-valuenow={100}>
+          <div className="report-progress-fill" style={{ width: "100%", background: "var(--success)" }} />
+        </div>
+        <div style={{ fontSize: "12px", color: "var(--muted)", lineHeight: 1.5 }}>
+          Cierre manual del mes · sin pendientes en el reporte.
+          <details><summary>Ver registro original</summary>{realizados} de {total} registrados en el sistema. Los datos operativos se conservan.</details>
+        </div>
+      </div>
+    );
+  }
   if (enRevision) {
     return (
       <div style={{ paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
@@ -60,7 +78,7 @@ export function ResumenEntregableEquipo({
   );
 }
 
-export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMes = false, fechaLimite = "" }) {
+export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMes = false, fechaLimite = "", cierreMensual = null }) {
   const inicial = (nombre || "?").trim().charAt(0).toUpperCase();
   return (
     <article
@@ -110,7 +128,7 @@ export function TarjetaEntregablesEquipo({ nombre, rol, metricas = [], proximoMe
       ) : (
         <div style={{ display: "grid", gap: "12px" }}>
           {metricas.map((metrica) => (
-            <ResumenEntregableEquipo key={metrica.etiqueta} {...metrica} />
+            <ResumenEntregableEquipo key={metrica.etiqueta} {...metrica} cierreMensual={cierreMensual} />
           ))}
         </div>
       )}
@@ -159,6 +177,7 @@ export function ReportesEquipoPage() {
   const [usuarios, setUsuarios] = useState([]);
   const [resumenRenderOsPorDia, setResumenRenderOsPorDia] = useState({});
   const [progresoEdicion, setProgresoEdicion] = useState([]);
+  const [cierresMensuales, setCierresMensuales] = useState([]);
   const initialPeriod = readUrlContext(window.location.search, { periodo: "mes_actual" }).periodo;
   const [periodo, setPeriodo] = useState(
     ["mes_actual", "mes_pasado", "ultimos_30"].includes(initialPeriod) ? initialPeriod : "mes_actual",
@@ -205,6 +224,7 @@ export function ReportesEquipoPage() {
         setTareasRenderOs(Array.isArray(data.tareasRenderOs) ? data.tareasRenderOs : []);
         setResumenRenderOsPorDia(data.resumenRenderOsPorDia && typeof data.resumenRenderOsPorDia === "object" ? data.resumenRenderOsPorDia : {});
         setProgresoEdicion(Array.isArray(data.progresoEdicion) ? data.progresoEdicion : []);
+        setCierresMensuales(Array.isArray(data.cierresMensuales) ? data.cierresMensuales : []);
         setError(null);
       })
       .catch((err) => {
@@ -244,6 +264,11 @@ export function ReportesEquipoPage() {
   };
 
   const rangoPeriodo = useMemo(() => getReportPeriodRange(periodo, ahora), [periodo, ahora]);
+  const cierreParaUsuario = useCallback((usuario) => getMonthlyReportClosure(
+    cierresMensuales, usuario?.id, periodo, rangoPeriodo, hoyISO,
+  ), [cierresMensuales, periodo, rangoPeriodo, hoyISO]);
+  const cierreParaCuenta = (cuenta) => cierreParaUsuario(usuarios.find((usuario) => usuario.usuario === cuenta));
+  const cierrePropio = cierreParaUsuario(usuarios.find((usuario) => usuario.usuario === usuarioSesion?.usuario));
 
   const enPeriodo = useCallback((fechaISO) =>
     typeof fechaISO === "string" &&
@@ -354,7 +379,7 @@ export function ReportesEquipoPage() {
       return { label: "Atrasado", bg: "#f7e6e3", fg: "var(--danger)" };
     })();
 
-    return {
+    return applyMonthlyClosureToPerformance({
       nombre,
       rol,
       objetivoMensual,
@@ -367,8 +392,8 @@ export function ReportesEquipoPage() {
       cumplimiento,
       tiempoPromedio,
       productividad,
-    };
-  }), [empleados, tareasReporte, tareasRenderOs, usuarios, rangoPeriodo, hoyISO, enPeriodo, ESTADO_FINAL_TAREA, OBJETIVOS_MENSUALES_EQUIPO]);
+    }, cierreParaUsuario(usuarios.find((usuario) => usuario.nombre === nombre)));
+  }), [empleados, tareasReporte, tareasRenderOs, usuarios, rangoPeriodo, hoyISO, enPeriodo, ESTADO_FINAL_TAREA, OBJETIVOS_MENSUALES_EQUIPO, cierreParaUsuario]);
 
   const PRIORIDAD_ESTADO = useMemo(() => ({ Atrasado: 0, "En riesgo": 1, "Al día": 2, "Sin objetivo": 3 }), []);
 
@@ -476,6 +501,7 @@ export function ReportesEquipoPage() {
   const tarjetasEntregables = [
     {
       nombre: "Augusto",
+      cierreMensual: cierreParaCuenta("augusto"),
       rol: "Diseño",
       metricas: [{ etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesAugusto }],
     },
@@ -492,11 +518,13 @@ export function ReportesEquipoPage() {
     },
     {
       nombre: "Oriana",
+      cierreMensual: cierreParaCuenta("oriana"),
       rol: "Publicación",
       metricas: metricasOriana,
     },
     {
       nombre: "Mariano Meza",
+      cierreMensual: cierreParaCuenta("mariano"),
       rol: "Diseño y contenido",
       proximoMes: !marianoActivo,
       metricas: [
@@ -554,11 +582,11 @@ export function ReportesEquipoPage() {
                       : <TarjetaEntregablesEquipo key={tarjeta.nombre} {...tarjeta} fechaLimite={tarjeta.nombre === "Luciano" ? "" : fechaLimite}/>
                   ))
                 ) : belongsToPerson(nombrePropio, "Oriana") ? (
-                  <TarjetaEntregablesEquipo nombre="Oriana" rol="Publicación" metricas={metricasOriana} fechaLimite={fechaLimite}/>
+                  <TarjetaEntregablesEquipo nombre="Oriana" rol="Publicación" metricas={metricasOriana} fechaLimite={fechaLimite} cierreMensual={cierrePropio}/>
                 ) : belongsToPerson(nombrePropio, "Augusto") ? (
-                  <TarjetaEntregablesEquipo nombre="Augusto" rol="Diseño" metricas={[{ etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesAugusto }]} fechaLimite={fechaLimite}/>
+                  <TarjetaEntregablesEquipo nombre="Augusto" rol="Diseño" metricas={[{ etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesAugusto }]} fechaLimite={fechaLimite} cierreMensual={cierrePropio}/>
                 ) : belongsToPerson(nombrePropio, "Mariano") ? (
-                  <TarjetaEntregablesEquipo nombre="Mariano Meza" rol="Diseño y contenido" metricas={[{ etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesMariano }]} fechaLimite={fechaLimite}/>
+                  <TarjetaEntregablesEquipo nombre="Mariano Meza" rol="Diseño y contenido" metricas={[{ etiqueta: "Carruseles entregados", verbo: "entregados", verboSingular: "entregado", ...carruselesMariano }]} fechaLimite={fechaLimite} cierreMensual={cierrePropio}/>
                 ) : belongsToPerson(nombrePropio, "Germán") ? (
                   <TarjetaFilmacionesGerman clientes={filmacionesGerman} fechaLimite={fechaLimite}/>
                 ) : (
@@ -633,7 +661,7 @@ export function ReportesEquipoPage() {
                               <span style={{ color: "#bbb" }}>—</span>
                             )}
                           </td>
-                          <td style={{ padding: "10px", textAlign: "center", color: "#2e7d32", fontWeight: "600" }}>{f.terminadas}</td>
+                          <td style={{ padding: "10px", textAlign: "center", color: "#2e7d32", fontWeight: "600" }}>{f.cierreMensual ? "Cierre mensual" : f.terminadas}</td>
                           <td style={{ padding: "10px", textAlign: "center" }}>
                             {f.avanceObjetivo === null ? (
                               <span style={{ color: "#bbb", fontSize: "12px" }}>Sin objetivo</span>
@@ -682,7 +710,9 @@ export function ReportesEquipoPage() {
                 </table>
                   </div>
                   <div className="caption" style={{ marginTop: "8px", marginBottom: "20px" }}>
-                    El 100% se calcula contra el objetivo mensual de tu rol. El estado compara lo hecho con el ritmo esperado del mes y marca atrasos si hay vencidas.
+                    {cierrePropio
+                      ? `Mes ${cierrePropio.periodo} cerrado al 100% por dirección. Es un ajuste exclusivo del reporte: no modifica tareas, publicaciones ni sueldos.`
+                      : "El 100% se calcula contra el objetivo mensual de tu rol. El estado compara lo hecho con el ritmo esperado del mes y marca atrasos si hay vencidas."}
                   </div>
                 </>
               )}
@@ -705,12 +735,12 @@ export function ReportesEquipoPage() {
                     </thead>
                     <tbody>
                       {piezasPorResponsable.map((f) => {
-                        const avance = f.total > 0 ? Math.round((f.publicadas / f.total) * 100) : 0;
+                        const avance = cierrePropio ? 100 : f.total > 0 ? Math.round((f.publicadas / f.total) * 100) : 0;
                         return (
                           <tr key={f.nombre} style={{ borderBottom: "1px solid #eee" }}>
                             <td style={{ padding: "10px 12px", fontWeight: "600", fontSize: "13px" }}>{f.nombre}</td>
                             <td style={{ padding: "10px", textAlign: "center" }}>{f.total}</td>
-                            <td style={{ padding: "10px", textAlign: "center", color: "#2e7d32" }}>{f.publicadas}</td>
+                            <td style={{ padding: "10px", textAlign: "center", color: "#2e7d32" }}>{cierrePropio ? "Cierre mensual" : f.publicadas}</td>
                             <td style={{ padding: "10px", textAlign: "center" }}>
                               <div style={{ display: "inline-block", width: "60px", height: "6px", background: "#e0e0e0", borderRadius: "3px", overflow: "hidden", verticalAlign: "middle" }}>
                                 <div
