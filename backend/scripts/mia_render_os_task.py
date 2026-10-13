@@ -143,6 +143,12 @@ def main():
     preview_review.add_argument("--task-ids", required=True)
     confirm_review = commands.add_parser("confirm-review")
     confirm_review.add_argument("--confirmation-token", required=True)
+    resolve_finalization = commands.add_parser("resolve-finalization")
+    resolve_finalization.add_argument("--references", required=True)
+    preview_finalization = commands.add_parser("preview-finalization")
+    preview_finalization.add_argument("--task-ids", required=True)
+    confirm_finalization = commands.add_parser("confirm-finalization")
+    confirm_finalization.add_argument("--confirmation-token", required=True)
     ack_event = commands.add_parser("ack-event")
     ack_event.add_argument("--task-id", required=True, type=int)
     ack_event.add_argument("--event-id", required=True)
@@ -242,6 +248,12 @@ def main():
         result = request("POST", "/lotes/revision/previsualizar", args, payload={"task_ids": json.loads(args.task_ids)})
     elif args.cmd == "confirm-review":
         result = request("POST", "/lotes/revision/confirmar", args, payload={"confirmacion_token": args.confirmation_token})
+    elif args.cmd == "resolve-finalization":
+        result = request("POST", "/tareas/resolver-finalizacion", args, payload={"referencias": json.loads(args.references)})
+    elif args.cmd == "preview-finalization":
+        result = request("POST", "/lotes/finalizacion/previsualizar", args, payload={"task_ids": json.loads(args.task_ids)})
+    elif args.cmd == "confirm-finalization":
+        result = request("POST", "/lotes/finalizacion/confirmar", args, payload={"confirmacion_token": args.confirmation_token})
     elif args.cmd == "ack-event":
         result = request("POST", f"/eventos/{args.task_id}/entregado", args, payload={"evento_id": args.event_id})
     elif args.cmd == "ack-group-digest":

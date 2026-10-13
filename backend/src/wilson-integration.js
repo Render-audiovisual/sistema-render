@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
 import express from "express";
 import fs from "node:fs";
 import { buildMiaGroupDigests, buildMiaWeeklyCarruselDigest, miaGroupDigestWindow } from "./mia-group-digest.js";
@@ -1213,6 +1214,212 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       return res.json({
         updated: true, task_ids: ids,
         text: `Listo. ${req.wilson.actorName} confirmó y pasé ${ids.length} tarea${ids.length === 1 ? "" : "s"} a Revisar.`,
+      });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      return next(error);
+    } finally { client.release(); }
+  });
+
+  router.post("/tareas/resolver-finalizacion", async (req, res, next) => {
+    if (!req.wilson.privateChat) return res.status(403).json({ error: "La finalización se solicita por privado para conservar los permisos del equipo." });
+    try {
+      const references = Array.isArray(req.body?.referencias) ? req.body.referencias : [];
+      if (!references.length || references.length > REVIEW_BATCH_MAX_TASKS) {
+        return res.status(400).json({ error: `Indicá entre 1 y ${REVIEW_BATCH_MAX_TASKS} tareas.` });
+      }
+      const result = await pool.query(
+        `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,t.prioridad,t.propiedades_extra,
+          to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento,t.updated_at,c.nombre cliente_nombre
+         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+         WHERE t.propiedades_extra->>'workspace'='render_os'
+           AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+           AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
+           AND t.estado IN ('pendiente','en_progreso','en_revision')
+         ORDER BY t.fecha_vencimiento NULLS LAST,t.id`,
+      );
+      const allowed = isWilsonLeader(req, env)
+        ? result.rows
+        : result.rows.filter((task) => reviewTaskOwnedBy(task, req.wilson.actorName));
+      return res.json(resolveReviewTaskReferences(references, allowed));
+    } catch (error) { return next(error); }
+  });
+
+  router.post("/lotes/finalizacion/previsualizar", async (req, res, next) => {
+    if (!req.wilson.privateChat) return res.status(403).json({ error: "La finalización se solicita por privado para conservar los permisos del equipo." });
+    if (req.wilson.channel !== "whatsapp") return res.status(400).json({ error: "Esta función se confirma desde WhatsApp." });
+    const rawIds = Array.isArray(req.body?.task_ids) ? req.body.task_ids : [];
+    const ids = normalizeReviewBatchIds(rawIds);
+    if (!ids.length || ids.length !== rawIds.length) {
+      return res.status(400).json({ error: `El listado debe contener entre 1 y ${REVIEW_BATCH_MAX_TASKS} tareas válidas y sin duplicados.` });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query(
+        `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
+          t.material_referencia,t.propiedades_extra,t.updated_at,
+          to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento,c.nombre cliente_nombre
+         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+         WHERE t.id=ANY($1::int[]) AND t.propiedades_extra->>'workspace'='render_os'
+           AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+           AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
+         ORDER BY array_position($1::int[],t.id) FOR UPDATE OF t`,
+        [ids],
+      );
+      if (result.rows.length !== ids.length) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ error: "Una o más tareas ya no están disponibles. Volvé a preparar el listado." });
+      }
+      const invalidState = result.rows.find((task) => !["pendiente", "en_progreso", "en_revision"].includes(task.estado));
+      if (invalidState) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: `“${invalidState.titulo}” ya no puede finalizarse. Prepará nuevamente el listado.` });
+      }
+      const invalidHandoff = result.rows.find((task) => reviewHandoffError(task));
+      if (invalidHandoff) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({
+          error: `“${invalidHandoff.titulo}” todavía no puede finalizarse: ${reviewHandoffError(invalidHandoff)}`,
+        });
+      }
+      if (!isWilsonLeader(req, env)) {
+        const foreign = result.rows.find((task) => !reviewTaskOwnedBy(task, req.wilson.actorName));
+        if (foreign) {
+          await client.query("ROLLBACK");
+          return res.status(403).json({ error: "Solo podés informar y confirmar tareas propias." });
+        }
+      }
+      const snapshots = result.rows.map((task) => ({
+        id: Number(task.id), titulo: task.titulo, cliente_nombre: task.cliente_nombre,
+        asignado_a: task.asignado_a, estado: task.estado, updated_at: new Date(task.updated_at).toISOString(),
+      }));
+      const token = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + CONFIRMATION_MAX_AGE_MS);
+      await client.query(
+        `UPDATE integracion_confirmaciones SET used_at=NOW()
+         WHERE integracion='wilson' AND canal='whatsapp' AND actor_id=$1 AND grupo_id=$2
+           AND operacion='finalizar_lote' AND used_at IS NULL`,
+        [req.wilson.actorId, req.wilson.groupId],
+      );
+      await client.query(
+        `INSERT INTO integracion_confirmaciones
+          (token,integracion,canal,actor_id,grupo_id,operacion,tarea_id,payload_hash,expires_at,
+           payload,informante_actor_id,informante_actor_nombre)
+         VALUES($1,'wilson','whatsapp',$2,$3,'finalizar_lote',NULL,$4,$5,$6::jsonb,$2,$7)`,
+        [token, req.wilson.actorId, req.wilson.groupId,
+          buildWilsonConfirmationHash({ operation: "finalizar_lote", payload: { task_ids: ids } }),
+          expiresAt, JSON.stringify({ tasks: snapshots }), req.wilson.actorName],
+      );
+      await client.query("COMMIT");
+      const lines = snapshots.map((task, index) => `${index + 1}. ${task.titulo}${task.cliente_nombre ? ` — ${task.cliente_nombre}` : ""}`);
+      return res.status(201).json({
+        confirmacion_token: token, expires_at: expiresAt.toISOString(), task_ids: ids, tasks: snapshots,
+        text: `Entendí que terminaste:\n${lines.join("\n")}\n\nVoy a pasar ${ids.length === 1 ? "esta tarea" : `estas ${ids.length} tareas`} a Finalizadas. ¿Confirmás?`,
+      });
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      return next(error);
+    } finally { client.release(); }
+  });
+
+  router.post("/lotes/finalizacion/confirmar", async (req, res, next) => {
+    if (!req.wilson.privateChat) return res.status(403).json({ error: "La finalización se solicita por privado para conservar los permisos del equipo." });
+    if (req.wilson.channel !== "whatsapp") return res.status(400).json({ error: "Esta función se confirma desde WhatsApp." });
+    const token = String(req.body?.confirmacion_token || "").trim();
+    if (!token) return res.status(400).json({ error: "Falta la confirmación del listado." });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const confirmationResult = await client.query(
+        `SELECT token,actor_id,grupo_id,payload,informante_actor_id,informante_actor_nombre,expires_at
+         FROM integracion_confirmaciones
+         WHERE token=$1 AND integracion='wilson' AND canal='whatsapp' AND operacion='finalizar_lote'
+           AND grupo_id=$2 AND used_at IS NULL AND expires_at>NOW() FOR UPDATE`,
+        [token, req.wilson.groupId],
+      );
+      const confirmation = confirmationResult.rows[0];
+      if (!confirmation) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "La confirmación no existe, ya fue utilizada o venció después de 15 minutos." });
+      }
+      if (req.wilson.actorId !== confirmation.informante_actor_id && !isWilsonLeader(req, env)) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ error: "Este listado solo puede confirmarlo quien informó el trabajo, Franco o Agustín." });
+      }
+      const snapshots = Array.isArray(confirmation.payload?.tasks) ? confirmation.payload.tasks : [];
+      const ids = normalizeReviewBatchIds(snapshots.map((task) => task.id));
+      const currentResult = ids.length ? await client.query(
+        `SELECT id,titulo,asignado_a,estado,tipo_tarea,subtipo,material_referencia,
+          cliente_id,fecha_vencimiento,prioridad,propiedades_extra,updated_at,historia_id,publicacion_id
+         FROM tareas WHERE id=ANY($1::int[]) FOR UPDATE`, [ids],
+      ) : { rows: [] };
+      const currentById = new Map(currentResult.rows.map((task) => [Number(task.id), task]));
+      const changed = snapshots.filter((snapshot) => {
+        const task = currentById.get(Number(snapshot.id));
+        return !task || reviewBatchSnapshotChanged(task, snapshot);
+      });
+      if (changed.length || currentResult.rows.length !== snapshots.length) {
+        await client.query(`UPDATE integracion_confirmaciones SET used_at=NOW() WHERE token=$1`, [token]);
+        await writeWilsonAudit(client, req, {
+          action: "cancelar_lote_finalizacion", outcome: "conflicto",
+          details: { token, informante: confirmation.informante_actor_nombre, changed_task_ids: changed.map((task) => task.id) },
+        });
+        await client.query("COMMIT");
+        return res.status(409).json({
+          error: "El listado cambió antes de confirmarse. No modifiqué ninguna tarea. Prepará un resumen nuevo.",
+          changed_task_ids: changed.map((task) => task.id),
+        });
+      }
+      const invalidHandoff = currentResult.rows.find((task) => reviewHandoffError(task));
+      if (invalidHandoff) {
+        await client.query(`UPDATE integracion_confirmaciones SET used_at=NOW() WHERE token=$1`, [token]);
+        await writeWilsonAudit(client, req, {
+          action: "cancelar_lote_finalizacion", outcome: "validacion",
+          details: { token, informante: confirmation.informante_actor_nombre, task_id: Number(invalidHandoff.id) },
+        });
+        await client.query("COMMIT");
+        return res.status(409).json({
+          error: `“${invalidHandoff.titulo}” todavía no puede finalizarse: ${reviewHandoffError(invalidHandoff)} No modifiqué ninguna tarea.`,
+        });
+      }
+      const confirmedAt = new Date().toISOString();
+      await client.query(
+        `UPDATE tareas SET estado='publicada',
+          propiedades_extra=propiedades_extra||$2::jsonb,updated_at=NOW()
+         WHERE id=ANY($1::int[])`,
+        [ids, JSON.stringify({
+          origen_integracion: "wilson", finalizada_at: confirmedAt, mia_finalizacion_confirmada_at: confirmedAt,
+          mia_finalizacion_informada_por: confirmation.informante_actor_nombre,
+          mia_finalizacion_confirmada_por: req.wilson.actorName,
+        })],
+      );
+      for (const task of currentResult.rows) {
+        await publishPieceLinkedToCompletedTask(client, { ...task, estado: "publicada" });
+      }
+      await client.query(`UPDATE integracion_confirmaciones SET used_at=NOW() WHERE token=$1`, [token]);
+      for (const snapshot of snapshots) {
+        await writeWilsonAudit(client, req, {
+          action: "finalizar_desde_mia", taskId: Number(snapshot.id),
+          details: { token, informante: confirmation.informante_actor_nombre, confirmado_por: req.wilson.actorName, estado_anterior: snapshot.estado },
+        });
+      }
+      await client.query("COMMIT");
+      for (const task of currentResult.rows) {
+        const event = getStateNotification({ ...task, estado: "publicada" }, task.estado);
+        if (event) {
+          notifyAssignment?.({
+            pool,
+            tarea: { ...task, estado: "publicada" },
+            motivo: event.motivo,
+            nombresDestinatarios: event.recipients,
+            actor: req.wilson.actorName,
+          });
+        }
+      }
+      return res.json({
+        updated: true, task_ids: ids,
+        text: `Listo. ${req.wilson.actorName} confirmó y pasé ${ids.length} tarea${ids.length === 1 ? "" : "s"} a Finalizadas.`,
       });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});

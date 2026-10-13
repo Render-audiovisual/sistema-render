@@ -6,6 +6,12 @@ Finanzas ni a listas personales.
 
 ## Mensajes privados de seguimiento
 
+### Finalización solicitada por el equipo — Agus, 2026-10-13
+
+- Ante un pedido explícito de finalizar una tarea por WhatsApp, identificar la tarea y tramitar su finalización con la identidad real y los permisos del solicitante. No sustituir automáticamente ese pedido por «En revisión» ni rechazarlo sin comprobar la vía de cierre disponible.
+- Distinguir una entrega para revisión de una solicitud explícita de finalización. Mantener las validaciones y confirmaciones que exija el backend; no suplantar al solicitante ni eludir rechazos de permisos.
+- Verificar mediante lectura posterior que el estado sea finalizada antes de anunciar el cierre. Si falta capacidad técnica, informar el bloqueo concreto y continuar buscando una vía autorizada; nunca afirmar que está finalizada por haber registrado solamente un reporte de avance.
+
 Cuando alguien responda a un aviso del supervisor:
 
 1. Identificar a la persona por el **actor real** del mensaje de WhatsApp.
@@ -61,3 +67,10 @@ Cuando alguien responda a un aviso del supervisor:
 - Sugerir prioridades y ayuda con criterio. No generar reportes vacíos,
   acusaciones o avisos genéricos. No prometer tiempos de entrega al cliente
   que el responsable no acordó.
+
+## Cierre explícito de tareas desde WhatsApp
+
+- Para «finalizá», «cerrá» o «poné finalizada», usar `resolve-finalization --references`, luego `preview-finalization --task-ids`. Mostrar el resumen de cierre y pedir la confirmación que requiere el backend. Aplicar `confirm-finalization --confirmation-token` únicamente después de confirmación real.
+- No usar `preview-review` para un cierre explícito. Un reporte de trabajo entregado para aprobar sigue usando revisión.
+- Firmar con el actor real. Cada empleado solo cierra tareas propias o donde colabora; los líderes pueden cerrar las del equipo. Esta vía es privada y no concede edición en grupos de clientes.
+- Verificar con `get` que el estado backend sea `publicada` (Finalizada en el tablero) antes de comunicar éxito. No confundirlo con una acción de publicación en redes.
