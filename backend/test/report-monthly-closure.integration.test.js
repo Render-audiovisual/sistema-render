@@ -17,8 +17,8 @@ test('PostgreSQL: cierre idempotente de tres usuarios, septiembre solamente, sin
       await client.query(`CREATE SCHEMA ${schema}`);
       await client.query(`SET LOCAL search_path TO ${schema}`);
       await client.query(`CREATE TABLE usuarios(id INTEGER PRIMARY KEY, usuario TEXT UNIQUE, nombre TEXT, rol TEXT);
-        INSERT INTO usuarios VALUES (11,'oriana','Oriana','community'),(12,'augusto','Augusto','diseno'),
-          (13,'mariano','Mariano Meza','diseno'),(14,'agustin','Agustín','admin'),(15,'luciano','Luciano','edicion');
+        INSERT INTO usuarios VALUES (11,'Oriana','Oriana','community'),(12,'Augusto','Augusto','diseno'),
+          (13,'Mariano','Mariano Meza','diseno'),(14,'agustin','Agustín','admin'),(15,'luciano','Luciano','edicion');
         CREATE TABLE tareas(id INTEGER, estado TEXT, fecha DATE);
         INSERT INTO tareas VALUES (1,'pendiente','2026-09-12'),(2,'en_progreso','2026-10-13');
         CREATE TABLE publicaciones(id INTEGER, estado TEXT);
@@ -30,6 +30,10 @@ test('PostgreSQL: cierre idempotente de tres usuarios, septiembre solamente, sin
       const sql = readFileSync(new URL('../migrations/054_cierre_reportes_septiembre_2026.sql', import.meta.url), 'utf8');
       await client.query(sql);
       await client.query(sql);
+      assert.equal((await client.query('SELECT count(*)::int n FROM reporte_cierres_mensuales')).rows[0].n, 0);
+      const correction = readFileSync(new URL('../migrations/055_cierre_reportes_identidad_septiembre_2026.sql', import.meta.url), 'utf8');
+      await client.query(correction);
+      await client.query(correction);
       const result = (await client.query("SELECT usuario_id,to_char(periodo,'YYYY-MM') AS periodo,porcentaje,motivo,autorizado_por FROM reporte_cierres_mensuales ORDER BY usuario_id")).rows;
       assert.deepEqual(result.map(row => [row.usuario_id, row.periodo, row.porcentaje]), [[11,'2026-09',100],[12,'2026-09',100],[13,'2026-09',100]]);
       assert.ok(result.every(row => row.motivo && row.autorizado_por));

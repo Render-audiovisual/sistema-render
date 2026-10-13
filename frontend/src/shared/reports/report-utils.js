@@ -1,5 +1,12 @@
 // Un cierre de dirección afecta solamente el reporte de un mes completo ya
 // terminado. Nunca modifica los registros fuente ni el período móvil de 30 días.
+export function findReportAccountUser(users = [], account = '') {
+  const key = String(account).trim().toLowerCase();
+  if (!key) return null;
+  const matches = users.filter(user => String(user.usuario || '').trim().toLowerCase() === key);
+  return matches.length === 1 ? matches[0] : null;
+}
+
 export function getMonthlyReportClosure(closures = [], userId, period, range, today) {
   if (!['mes_actual', 'mes_pasado'].includes(period) || userId == null) return null;
   const month = range?.desde?.slice(0, 7);

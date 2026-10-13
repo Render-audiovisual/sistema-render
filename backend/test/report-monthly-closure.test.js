@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { getMonthlyReportClosure, applyMonthlyClosureToPerformance } from '../../frontend/src/shared/reports/report-utils.js';
+import { findReportAccountUser, getMonthlyReportClosure, applyMonthlyClosureToPerformance } from '../../frontend/src/shared/reports/report-utils.js';
 import { filterReportDataForUser } from '../src/report-access.js';
 
 const closures = [11, 12, 13].map(usuario_id => ({ usuario_id, periodo: '2026-09', porcentaje: 100 }));
@@ -10,6 +10,17 @@ const performance = { avanceObjetivo: 0, cumplimiento: null, estadoObjetivo: { l
   terminadas: 0, atrasadas: [{ id: 42 }], productividad: '0.0' };
 const getClosure = (id, period = 'mes_pasado', range = september, today = '2026-10-13') =>
   getMonthlyReportClosure(closures, id, period, range, today);
+
+test('resuelve cuentas reales con mayúsculas, sin confundir Augusto con Agustín ni elegir duplicados', () => {
+  const users = [{ id: 11, usuario: 'Oriana' }, { id: 12, usuario: 'Augusto' }, { id: 13, usuario: 'Mariano' }, { id: 99, usuario: 'Agustin' }];
+  for (const [name, id] of [['oriana', 11], [' AUGUSTO ', 12], ['Mariano', 13]]) {
+    assert.equal(findReportAccountUser(users, name).id, id);
+    assert.equal(getClosure(findReportAccountUser(users, name).id).porcentaje, 100);
+  }
+  assert.equal(findReportAccountUser(users, ''), null);
+  assert.equal(findReportAccountUser(users, 'August'), null);
+  assert.equal(findReportAccountUser([...users, { id: 90, usuario: 'oriana' }], 'Oriana'), null);
+});
 
 test('septiembre se cierra al 100% para los tres IDs autorizados sin inventar entregas', () => {
   for (const id of [11, 12, 13]) {
@@ -64,6 +75,10 @@ test('la migración es exclusivamente un cierre de reportes de septiembre, no mo
   assert.match(sql, /DATE '2026-09-01'/);
   assert.doesNotMatch(sql, /\b(?:UPDATE|DELETE|TRUNCATE)\b/i);
   assert.doesNotMatch(sql, /\b(?:INSERT INTO|ALTER TABLE)\s+(?:tareas|historias|publicaciones|entregas_edicion|cliente_objetivos_mensuales)/i);
+  const correction = readFileSync(new URL('../migrations/055_cierre_reportes_identidad_septiembre_2026.sql', import.meta.url), 'utf8');
+  assert.match(correction, /DATE '2026-09-01'/);
+  assert.match(correction, /coincidencias=1/);
+  assert.doesNotMatch(correction, /\b(?:UPDATE|DELETE|TRUNCATE)\b/i);
   const server = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
   const payroll = server.slice(server.indexOf('async function loadPayrollForCollectionPeriod'), server.indexOf('async function loadPayrollForCollectionPeriod') + 4000);
   assert.doesNotMatch(payroll, /reporte_cierres_mensuales/);

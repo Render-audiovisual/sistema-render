@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO, getSesion } from "../utils.jsx";
 import { ROL_LABELS, ESTADO_FINAL_TAREA } from "../constants.js";
 import { pushUrlContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
-import { getMonthlyReportClosure, applyMonthlyClosureToPerformance, getEditingResponsible, belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getDesignerCarouselTaskSummary, getReportPeriodRange, isCarouselTask, isCompletedForEmployeeReport, isEditingTask, mergeReportTaskSources, summarizeTaskDeliveries } from "../shared/reports/report-utils.js";
+import { findReportAccountUser, getMonthlyReportClosure, applyMonthlyClosureToPerformance, getEditingResponsible, belongsToPerson, filterItemsByPeriod, filterRenderOsTasksByPeriod, formatPeriodDeadline, getDesignerCarouselTaskSummary, getReportPeriodRange, isCarouselTask, isCompletedForEmployeeReport, isEditingTask, mergeReportTaskSources, summarizeTaskDeliveries } from "../shared/reports/report-utils.js";
 import { groupProductionByClient } from "../features/render-os/utils/production-visits.js";
 
 export function ResumenEntregableEquipo({
@@ -267,8 +267,8 @@ export function ReportesEquipoPage() {
   const cierreParaUsuario = useCallback((usuario) => getMonthlyReportClosure(
     cierresMensuales, usuario?.id, periodo, rangoPeriodo, hoyISO,
   ), [cierresMensuales, periodo, rangoPeriodo, hoyISO]);
-  const cierreParaCuenta = (cuenta) => cierreParaUsuario(usuarios.find((usuario) => usuario.usuario === cuenta));
-  const cierrePropio = cierreParaUsuario(usuarios.find((usuario) => usuario.usuario === usuarioSesion?.usuario));
+  const cierreParaCuenta = (cuenta) => cierreParaUsuario(findReportAccountUser(usuarios, cuenta));
+  const cierrePropio = cierreParaCuenta(usuarioSesion?.usuario);
 
   const enPeriodo = useCallback((fechaISO) =>
     typeof fechaISO === "string" &&
