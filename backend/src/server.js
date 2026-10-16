@@ -2278,21 +2278,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
         ? "No tenés permiso para completar esta tarea."
         : "No tenés permiso para reabrir esta tarea completada." });
     }
-    if (esRenderOS && body.estado === "en_revision" && estadoAnterior !== "en_revision" && tareaAnteriorCompleta) {
-      const visitaParaEntregar = {
-        ...tareaAnteriorCompleta,
-        ...body,
-        propiedades_extra: {
-          ...(tareaAnteriorCompleta.propiedades_extra || {}),
-          ...(body.propiedades_extra || {}),
-        },
-      };
-      const errorEntrega = validateProductionHandoff(visitaParaEntregar);
-      if (errorEntrega) return res.status(400).json({ error: errorEntrega });
-      if (isProductionVisitTask(visitaParaEntregar) && !visitaParaEntregar.propiedades_extra?.produccion_confirmada_at) {
-        return res.status(400).json({ error: "La grabación completa debe ser confirmada por Franco o Agustín antes de enviarla a edición." });
-      }
-    }
+    // Review is independent of production completion and handoff confirmation.
     if (Object.prototype.hasOwnProperty.call(body, "tipo_tarea")) {
       if (body.tipo_tarea !== null && !TIPOS_TAREA_VALIDOS.includes(body.tipo_tarea)) {
         return res.status(400).json({ error: "Sector (tipo_tarea) inválido." });
