@@ -49,7 +49,9 @@ export function validateProductionHandoff(task = {}) {
   if (!isProductionVisitTask(task)) return null;
   const progress = getProductionProgress(task);
   if (!isProductionComplete(task)) {
-    return `Todavía faltan ${progress.remaining || progress.planned || 1} videos para enviar esta visita a edición.`;
+    return progress.planned > 0 && progress.remaining > 0
+      ? `Todavía faltan ${progress.remaining} videos respecto del objetivo planificado para enviar esta visita a edición.`
+      : "La producción todavía no tiene una declaración de finalización para enviarla a edición.";
   }
   if (!String(task.material_referencia || "").trim()) {
     return "Pegá el enlace de la carpeta de Google Drive antes de enviar la visita a edición.";

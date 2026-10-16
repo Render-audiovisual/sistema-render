@@ -1074,13 +1074,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         await client.query("ROLLBACK");
         return res.status(409).json({ error: `“${invalidState.titulo}” ya no puede pasar a Revisar. Prepará nuevamente el listado.` });
       }
-      const invalidHandoff = result.rows.find((task) => reviewHandoffError(task));
-      if (invalidHandoff) {
-        await client.query("ROLLBACK");
-        return res.status(409).json({
-          error: `“${invalidHandoff.titulo}” todavía no puede pasar a Revisar: ${reviewHandoffError(invalidHandoff)}`,
-        });
-      }
+      // Review requests feedback, not production handoff or declaration.
       if (!isWilsonLeader(req, env)) {
         const foreign = result.rows.find((task) => !reviewTaskOwnedBy(task, req.wilson.actorName));
         if (foreign) {
@@ -1168,18 +1162,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
           changed_task_ids: changed.map((task) => task.id),
         });
       }
-      const invalidHandoff = currentResult.rows.find((task) => reviewHandoffError(task));
-      if (invalidHandoff) {
-        await client.query(`UPDATE integracion_confirmaciones SET used_at=NOW() WHERE token=$1`, [token]);
-        await writeWilsonAudit(client, req, {
-          action: "cancelar_lote_revision", outcome: "validacion",
-          details: { token, informante: confirmation.informante_actor_nombre, task_id: Number(invalidHandoff.id) },
-        });
-        await client.query("COMMIT");
-        return res.status(409).json({
-          error: `“${invalidHandoff.titulo}” todavía no puede pasar a Revisar: ${reviewHandoffError(invalidHandoff)} No modifiqué ninguna tarea.`,
-        });
-      }
+      // Preserve production records and confirmation; only the review state changes.
       const confirmedAt = new Date().toISOString();
       await client.query(
         `UPDATE tareas SET estado='en_revision',
