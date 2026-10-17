@@ -12,6 +12,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import { checkDatabaseConnection, pool } from "./db.js";
+import { initializeWithRetry, isDatabaseConnectionError } from "./service-startup.js";
 import {
   enviarInstruccionesAcceso,
   normalizarNombre,
@@ -66,6 +67,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const app = express();
 const router = express.Router();
 const port = Number(process.env.PORT || 3000);
+let databaseReady = process.env.RENDER_DISABLE_SERVER_START === "true";
 
 function notificarAsignacionSinInterrumpir(opciones) {
   const esRenderOS = opciones?.tarea?.propiedades_extra?.workspace === "render_os";
@@ -116,7 +118,17 @@ router.use((req, res, next) => {
 });
 
 router.get("/health", (_req, res) => {
-  res.json({ ok: true });
+  res.status(databaseReady ? 200 : 503).json({ ok: databaseReady });
+});
+
+// Mantener el HTTP y el frontend disponibles durante la recuperación, sin
+// ejecutar operaciones contra un esquema que todavía no terminó de iniciar.
+router.use((_req, res, next) => {
+  if (databaseReady) return next();
+  res.set("Retry-After", "5").status(503).json({
+    error: "El sistema se está reconectando. Tu solicitud puede reintentarse.",
+    code: "DATABASE_NOT_READY",
+  });
 });
 
 router.use("/integraciones/wilson", createWilsonRouter({
@@ -3616,6 +3628,12 @@ if (fs.existsSync(distDir)) {
 // traces por defecto en vez de JSON — riesgo de filtrar detalles internos.
 app.use((err, _req, res, _next) => {
   console.error(err);
+  if (isDatabaseConnectionError(err)) {
+    return res.set("Retry-After", "5").status(503).json({
+      error: "La conexión se interrumpió. Reintentá la solicitud.",
+      code: "DATABASE_UNAVAILABLE",
+    });
+  }
   res.status(err.status || 500).json({ error: "Error interno del servidor." });
 });
 
@@ -3672,27 +3690,30 @@ function scheduleEditorialCalendar() {
   timer.unref?.();
 }
 
-if (process.env.RENDER_DISABLE_SERVER_START !== "true") (async () => {
-  try {
-    await checkDatabaseConnection();
-    await runMigrations(pool);
-    if (shouldSetupDemoData()) {
-      await setupDemoClientes();
-      console.log("Postgres connection OK and demo data prepared");
-    } else {
-      console.log("Postgres connection OK");
-    }
-  } catch (error) {
-    console.error("Postgres connection failed");
-    console.error(error.message);
-    process.exit(1);
-  }
-
+if (process.env.RENDER_DISABLE_SERVER_START !== "true") {
+  // Hostinger exige listen() inmediato. La conexión y las migraciones se
+  // preparan después; una caída de Postgres no debe dejar HTTP sin arrancar.
   app.listen(port, () => {
     console.log(`Backend listening on http://localhost:${port}`);
-    scheduleEditorialCalendar();
-    scheduleRenderOsTrashCleanup(pool);
-    scheduleWilsonMessages(pool);
-    scheduleMiaSupervisor(pool);
+    void initializeWithRetry({
+      initialize: async () => {
+        await checkDatabaseConnection();
+        await runMigrations(pool);
+        if (shouldSetupDemoData()) await setupDemoClientes();
+      },
+      onReady: () => {
+        databaseReady = true;
+        console.log("Postgres connection OK");
+        scheduleEditorialCalendar();
+        scheduleRenderOsTrashCleanup(pool);
+        scheduleWilsonMessages(pool);
+        scheduleMiaSupervisor(pool);
+      },
+      onError: (error, delayMs) => {
+        console.error("Postgres no disponible; se reintenta el arranque", {
+          code: error.code || "INITIALIZATION_ERROR", delayMs,
+        });
+      },
+    }).catch((error) => console.error("No se pudieron iniciar los servicios", error.message));
   });
-})();
+}
