@@ -47,6 +47,7 @@ import { projectDomainConflict } from "./project-errors.js";
 import { createEditorialPublicationRouter } from "./editorial-publication.js";
 import { createEditingDeliveriesRouter } from "./editing-deliveries.js";
 import { editingDeliveryDomainConflict } from "./editing-deliveries-errors.js";
+import { normalizeExpectedEditingDelivery, assertCurrentEditingApprover, assertEditingApprovalDelivery } from "./editing-approval.js";
 import { editorialPublicationDomainConflict } from "./editorial-publication-errors.js";
 import { annotateEditorialEvidence } from "./editorial-evidence-read.js";
 import { resolveUserRole } from "./user-roles.js";
@@ -2299,7 +2300,9 @@ router.patch("/tareas/:id", async (req, res, next) => {
     catch (error) { return res.status(400).json({ error: error.message }); }
     const { id } = req.params;
     const body = req.body;
-    const stateOnlyRequest = Object.keys(body).every((key) => ["estado", "expected_updated_at", "expected_revision"].includes(key));
+    const expectedEditingDelivery = normalizeExpectedEditingDelivery(body.expected_entrega_id);
+    if (expectedEditingDelivery && body.estado !== 'aprobada') return res.status(400).json({ error: "La entrega observada solo se usa al aprobar." });
+    const stateOnlyRequest = Object.keys(body).every((key) => ["estado", "expected_updated_at", "expected_revision", "expected_entrega_id"].includes(key));
     let asignadoAnterior = null;
     let estadoAnterior = null;
     let colaboradoresAnteriores = [];
@@ -2474,6 +2477,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
       if (transition) return res.status(transition.status).json({ error: transition.error });
       if (body.estado === "aprobada" && estadoAnterior !== "aprobada") {
         body.propiedades_extra = { ...(body.propiedades_extra || {}), revision_aprobada: true,
+          revision_aprobada_entrega_id: expectedEditingDelivery,
           revision_aprobada_por_id: req.auth.id, revision_aprobada_por: getTaskActor(req.auth),
           revision_aprobada_at: new Date().toISOString() };
       } else if (["pendiente", "en_progreso", "en_revision"].includes(body.estado) && body.estado !== estadoAnterior) {
@@ -2562,7 +2566,10 @@ router.patch("/tareas/:id", async (req, res, next) => {
       `UPDATE tareas AS t SET ${sets.join(", ")}
        WHERE ${where}
        RETURNING id, revision, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
-      valores, assignment, (db, task) => syncProductionVisitFromTask(db, task, req.auth.id),
+      valores, assignment, async (db, task) => {
+        if (body.estado === 'aprobada' && estadoAnterior !== 'aprobada') await assertEditingApprovalDelivery(db, task, expectedEditingDelivery);
+        await syncProductionVisitFromTask(db, task, req.auth.id);
+      }, body.estado === 'aprobada' && estadoAnterior !== 'aprobada' ? db => assertCurrentEditingApprover(db, req.auth) : null,
     );
 
     if (result.rows.length === 0) {
@@ -2628,6 +2635,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
 router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
   try {
+    const expectedEditingDelivery = normalizeExpectedEditingDelivery(req.body?.expected_entrega_id);
     if (!isTaskLeader(req.auth)) {
       return res.status(403).json({ error: "Solo Franco o Agustín pueden aprobar una tarea para publicación." });
     }
@@ -2690,10 +2698,11 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
          historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones,
          material_referencia, tarea_padre_id, created_at, updated_at`,
       [req.params.id, JSON.stringify({ revision_aprobada: true, revision_aprobada_por: actor, revision_aprobada_por_id: req.auth.id,
-        revision_aprobada_at: new Date().toISOString(), edicion_responsable: tarea.propiedades_extra?.edicion_responsable || tarea.asignado_a,
+        revision_aprobada_at: new Date().toISOString(), revision_aprobada_entrega_id: expectedEditingDelivery, edicion_responsable: tarea.propiedades_extra?.edicion_responsable || tarea.asignado_a,
         edicion_responsable_id: tarea.propiedades_extra?.edicion_responsable_id || previousAssignment.asignado_a_id,
         responsable_publicacion: publisher, responsable_publicacion_id: publisherResult.rows[0].id,
         colaboradores: approvedAssignment.collaboratorNames, workspace: "render_os" }), publisher, req.body.expected_revision], approvedAssignment,
+      async (db, task) => assertEditingApprovalDelivery(db, task, expectedEditingDelivery), db => assertCurrentEditingApprover(db, req.auth),
     );
     if (!result.rows[0]) return res.status(409).json({ error: "La tarea ya fue aprobada o cambió de estado." });
     const aprobada = result.rows[0];

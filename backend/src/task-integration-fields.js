@@ -1,4 +1,4 @@
-export const isReservedTaskIntegrationField = key => /^wilson_/i.test(key) || key.toLowerCase() === 'origen_integracion';
+export const isReservedTaskIntegrationField = key => /^wilson_/i.test(key) || ['origen_integracion', 'revision_aprobada_entrega_id'].includes(key.toLowerCase());
 
 // Verified server workflows emit integration evidence; browser users do not.
 export function assertTaskBusinessInput(input) {

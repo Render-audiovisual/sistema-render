@@ -2,10 +2,11 @@ import { annotateTaskAssignments, replaceTaskAssignments } from "./task-assignme
 
 // Task fields and ID relations form a single commit. A failed relation write
 // must not leave a successfully saved task with missing access permissions.
-export async function persistAssignedTask(pool, sql, values, assignment, afterSave = null) {
+export async function persistAssignedTask(pool, sql, values, assignment, afterSave = null, beforeSave = null) {
   const db = await pool.connect();
   try {
     await db.query("BEGIN");
+    if (beforeSave) await beforeSave(db);
     if (assignment) {
       const ids = [...new Set([assignment.ownerId, ...assignment.collaboratorIds].filter(id => id !== null))];
       const active = await db.query("SELECT id FROM usuarios WHERE id=ANY($1::integer[]) AND activo=TRUE FOR SHARE", [ids]);

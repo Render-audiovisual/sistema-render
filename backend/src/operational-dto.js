@@ -22,6 +22,7 @@ const nullableString = value => value === null ? null : string(value);
 const finiteNumber = value => value === null ? null : typeof value === 'number' && Number.isFinite(value) ? value : OMIT;
 const boolean = value => value === null || typeof value === 'boolean' ? value : OMIT;
 const id = value => value === null ? null : Number.isSafeInteger(value) && value > 0 ? value : OMIT;
+const uuid = value => value === null ? null : typeof value === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value) ? value.toLowerCase() : OMIT;
 const fields = names => Object.fromEntries(names.trim().split(/\s+/).map(key => [key, scalar]));
 const object = schema => value => {
   if (!value || typeof value !== 'object' || Array.isArray(value) || value instanceof Date) return OMIT;
@@ -85,6 +86,7 @@ const taskProperties = object({
     produccion_confirmada_por_id origen_integracion mia_revision_confirmada_at
     mia_revision_informada_por mia_revision_confirmada_por`),
   colaboradores: strings, etiquetas: strings, guiones: scripts,
+  revision_aprobada_entrega_id: uuid,
   coordinada: boolean,
   produccion_registros: array(productionRecord), drive_archivos: attachments,
   adjuntos: attachments, attachments, uploads: attachments,
@@ -186,6 +188,18 @@ function dto(source, auth, schema, projections = {}) {
  * New fields must be added explicitly here, including nested record fields.
  */
 export function taskOperationalDto(task, auth = {}) {
+  const props = ownValue(task, 'propiedades_extra');
+  if (ownValue(auth, 'rol') === 'admin' && props && props !== OMIT && typeof props === 'object'
+    && Object.hasOwn(props, 'revision_aprobada_entrega_id')) {
+    const taskDescriptors = Object.getOwnPropertyDescriptors(task);
+    const propDescriptors = Object.getOwnPropertyDescriptors(props);
+    delete propDescriptors.revision_aprobada_entrega_id;
+    const closedProps = Object.defineProperties({}, propDescriptors);
+    const binding = uuid(ownValue(props, 'revision_aprobada_entrega_id'));
+    if (binding !== OMIT) closedProps.revision_aprobada_entrega_id = binding;
+    taskDescriptors.propiedades_extra = { value: closedProps, enumerable: true, configurable: true, writable: true };
+    return Object.defineProperties({}, taskDescriptors);
+  }
   return dto(task, auth, taskSchema, { propiedades_extra: { resumen: 'resumen', copy_trabajo: 'copy_trabajo',
     edicion_responsable: 'edicion_responsable', responsable_publicacion: 'responsable_publicacion' } });
 }

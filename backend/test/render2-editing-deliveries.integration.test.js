@@ -5,7 +5,7 @@ import { access, readFile } from 'node:fs/promises';
 import { startLocalHarness, request, fixturePassword } from '../scripts/render2-local-test.js';
 
 const marker = 'QA_EDITING_FINANCE_55615';
-const approvalKeys = ['revision_aprobada', 'revision_aprobada_por', 'revision_aprobada_por_id', 'revision_aprobada_at', 'finalizada_at'];
+const approvalKeys = ['revision_aprobada', 'revision_aprobada_por', 'revision_aprobada_por_id', 'revision_aprobada_at', 'finalizada_at', 'revision_aprobada_entrega_id'];
 test('editing deliveries: explicit immutable versions on canonical principal production tasks', {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 240000,
 }, async t => {
@@ -47,7 +47,10 @@ test('editing deliveries: explicit immutable versions on canonical principal pro
   const submit = (id, body, token = editor) => api(route(id), token, 'POST', body);
   const patch = async (id, estado, token = admin) => {
     const detail = checked(await api(`/tareas/${id}?workspace=render_os`));
-    return checked(await api(`/tareas/${id}?workspace=render_os`, token, 'PATCH', { estado, expected_revision: detail.revision }));
+    const deliveries = estado === 'aprobada' ? (await read(id)).deliveries : [];
+    const latest = [...deliveries].sort((a, b) => b.task_revision - a.task_revision || b.recorded_at.localeCompare(a.recorded_at) || b.id.localeCompare(a.id))[0];
+    return checked(await api(`/tareas/${id}?workspace=render_os`, token, 'PATCH', { estado, expected_revision: detail.revision,
+      ...(latest ? { expected_entrega_id: latest.id } : {}) }));
   };
   const [publication] = await fixture.query(`INSERT INTO publicaciones(cliente_id,tipo,estado,fecha_programada,copy,metadata)
     VALUES ($1,'video','lista','2026-10-29','QA original editorial copy','{"qa_preserve":"yes"}') RETURNING id`, [client.id]);

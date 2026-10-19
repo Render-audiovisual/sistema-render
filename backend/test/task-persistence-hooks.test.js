@@ -15,6 +15,21 @@ function fixture() {
 }
 const assignment = { ownerId: 2, collaboratorIds: [] };
 
+test('current approver hook runs inside transaction before any task or assignment write and fails closed', async () => {
+  const f = fixture();
+  await persistAssignedTask(f.pool, 'INSERT INTO tareas QA', [], assignment, null, async db => {
+    assert.equal(db, f.db);
+    assert.deepEqual(f.calls, ['BEGIN']);
+    await db.query('CURRENT APPROVER QA');
+  });
+  assert.ok(f.calls.indexOf('CURRENT APPROVER QA') < f.calls.indexOf('INSERT INTO tareas QA'));
+  const denied = fixture();
+  await assert.rejects(persistAssignedTask(denied.pool, 'INSERT INTO tareas QA', [], assignment, null, async () => {
+    throw Object.assign(new Error('Revoked approver'), {status:401});
+  }), {status:401});
+  assert.deepEqual(denied.calls, ['BEGIN','ROLLBACK','RELEASE']);
+});
+
 test('source registry hook uses the task transaction after stable memberships and before commit', async () => {
   const f = fixture();
   const result = await persistAssignedTask(f.pool, 'INSERT INTO tareas QA', [], assignment, async (db, task) => {

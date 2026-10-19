@@ -35,7 +35,7 @@ export function decodeEditingDeliveries(dto, taskId, mutation = false) {
     const fields = deliveryInput(row); seen.add(row.id.toLowerCase());
     return { id: row.id.toLowerCase(), task_id: row.task_id, actor_id: row.actor_id, task_revision: row.task_revision,
       ...fields, recorded_at: row.recorded_at };
-  }).sort((a, b) => Date.parse(a.recorded_at) - Date.parse(b.recorded_at) || a.id.localeCompare(b.id));
+  }).sort((a, b) => a.task_revision - b.task_revision || Date.parse(a.recorded_at) - Date.parse(b.recorded_at) || a.id.localeCompare(b.id));
   const result = { task: { id: taskId, revision: dto.task.revision, estado: dto.task.estado }, deliveries, can_deliver: dto.can_deliver };
   if (mutation) {
     if (!uuid(dto.delivery_id) || !seen.has(dto.delivery_id.toLowerCase()) || typeof dto.replayed !== 'boolean') invalid();
@@ -44,12 +44,38 @@ export function decodeEditingDeliveries(dto, taskId, mutation = false) {
   return result;
 }
 
-export function createEditingDeliveriesModel({ task, sesion, readSession, request, onChange = () => {}, onSaved = async () => {}, uuid: newUuid = () => crypto.randomUUID() }) {
+export function editingReviewContext(state, observedTask) {
+  const task = { id: observedTask.id, revision: observedTask.revision, estado: observedTask.estado };
+  const blocked = status => ({ status, task, latestDelivery: null, can_deliver: false });
+  if (state.loading || state.busy) return blocked('loading');
+  if (state.error || state.conflict || state.uncertain || !state.data) return blocked('error');
+  try {
+    const dto = decodeEditingDeliveries(state.data, task.id);
+    const latest = dto.deliveries.at(-1);
+    return { status: 'ready', task: dto.task, latestDelivery: latest ? { id: latest.id, task_revision: latest.task_revision, url: latest.url } : null,
+      can_deliver: dto.can_deliver };
+  } catch { return blocked('error'); }
+}
+
+export function createEditingDeliveriesModel({ task, sesion, readSession, request, onChange = () => {}, onReviewContext = () => {}, onSaved = async () => {}, uuid: newUuid = () => crypto.randomUUID() }) {
   if (!isEditingDeliveryTask(task)) throw new Error('Esta tarea no admite entregas de edición.');
   const endpoint = `/api/tareas-edicion/${task.id}/entregas`;
   let disposed = false, generation = 0, controller = null, attempt = null;
+  const observedTask = { id: task.id, revision: task.revision, estado: task.estado };
+  let lastReviewContext = null;
   let state = { data: null, loading: false, busy: false, conflict: false, uncertain: false, error: '', message: '', accepted: null };
-  const publish = fields => { if (!disposed) { state = { ...state, ...fields }; onChange({ ...state }); } };
+  const emitReview = context => {
+    const signature = JSON.stringify(context);
+    if (signature !== lastReviewContext) {
+      lastReviewContext = signature;
+      // A consumer failure must not turn an accepted mutation into an uncertain retry.
+      try { onReviewContext(context); } catch { /* Parent owns its rendering lifecycle. */ }
+    }
+  };
+  const publish = fields => { if (!disposed) {
+    state = { ...state, ...fields }; onChange({ ...state });
+    emitReview(editingReviewContext(state, observedTask));
+  } };
   const guard = createEditorialSessionGuard(sesion, readSession, () => {
     generation++; controller?.abort(); attempt = null;
     publish({ data: null, accepted: null, loading: false, busy: false, uncertain: false, error: 'La sesión cambió. Volvé a abrir la tarea desde la sesión actual.', message: '' });
@@ -104,6 +130,10 @@ export function createEditingDeliveriesModel({ task, sesion, readSession, reques
       return send();
     },
     retry: send,
-    dispose() { disposed = true; generation++; controller?.abort(); guard.cancel(); attempt = null; },
+    dispose() {
+      if (disposed) return;
+      disposed = true; generation++; controller?.abort(); guard.cancel(); attempt = null;
+      emitReview(editingReviewContext({ data: null }, observedTask));
+    },
   };
 }

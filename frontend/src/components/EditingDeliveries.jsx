@@ -4,22 +4,24 @@ import { getSesion } from '../utils.jsx';
 import { createEditingDeliveriesModel, deliveryUrl, isEditingDeliveryTask } from './EditingDeliveries.model.js';
 import './EditingDeliveries.css';
 
-export function EditingDeliveries({ task, sesion, onSaved, onDirty, onBusy }) {
+export function EditingDeliveries({ task, sesion, onSaved, onDirty, onBusy, onReviewContext }) {
   if (!isEditingDeliveryTask(task)) return null;
-  return <DeliverySection key={`${task.id}:${sesion?.usuario?.id}:${sesion?.usuario?.rol}:${sesion?.token || ''}`} task={task} sesion={sesion} onSaved={onSaved} onDirty={onDirty} onBusy={onBusy} />;
+  return <DeliverySection key={`${task.id}:${sesion?.usuario?.id}:${sesion?.usuario?.rol}:${sesion?.token || ''}`} task={task} sesion={sesion} onSaved={onSaved} onDirty={onDirty} onBusy={onBusy} onReviewContext={onReviewContext} />;
 }
 function DeliveryEntry({ item }) {
   return <article className="editing-delivery-entry"><a href={item.url} target="_blank" rel="noopener noreferrer">Abrir versión entregada ↗</a>
     <small>Actor #{item.actor_id} · {new Date(item.recorded_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Cordoba' })} (Córdoba) · Versión de tarea {item.task_revision}</small>
     {item.notes && <p>{item.notes}</p>}</article>;
 }
-function DeliverySection({ task, sesion, onSaved, onDirty, onBusy }) {
+function DeliverySection({ task, sesion, onSaved, onDirty, onBusy, onReviewContext }) {
   const [url, setUrl] = useState(''), [notes, setNotes] = useState('');
   const [state, setState] = useState({ loading: true, busy: false, data: null, uncertain: false, accepted: null });
-  const model = useRef(null), saved = useRef(onSaved);
+  const model = useRef(null), saved = useRef(onSaved), reviewContext = useRef(onReviewContext);
   saved.current = onSaved;
+  reviewContext.current = onReviewContext;
   useEffect(() => {
     const instance = createEditingDeliveriesModel({ task, sesion, readSession: getSesion, request: apiRequest, onChange: setState,
+      onReviewContext: context => reviewContext.current?.(context),
       onSaved: async (dto, isCurrent) => { await saved.current?.(dto, isCurrent); } });
     model.current = instance; void instance.refresh();
     return () => { instance.dispose(); if (model.current === instance) model.current = null; };

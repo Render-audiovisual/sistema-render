@@ -79,7 +79,7 @@ test("source contract: stable IDs, explicit history warning, admin leadership an
   assert.match(source, /canUserEditTask\(task, sesion.usuario\) && \(isAdmin \|\| sesion.usuario.rol === "produccion"\)/);
   assert.match(source, /Asignación histórica sin vincular/);
   assert.match(source, /El nombre histórico no concede acceso/);
-  assert.match(source, /body: JSON.stringify\(\{ responsable_publicacion_id, expected_revision: task.revision \}\)/);
+  assert.match(source, /body: JSON.stringify\(\{ responsable_publicacion_id, expected_revision: review\?\.revision \?\? task.revision, \.\.\.deliveryPrecondition \}\)/);
   assert.match(source, /value=\{user.id\}/);
   assert.match(source, /buildTaskAssignmentInput\(\{ ownerId: draft.asignado_a_id, collaboratorIds: draft.colaborador_ids \|\| \[\] \}\)/);
 });
@@ -91,9 +91,10 @@ test("approval sends selected publisher ID, keeps display label; generic approva
   const updates = [];
   const users = [{ id: 1, nombre: "Alex", rol: "community" }, { id: 2, nombre: "Alex", rol: "admin" }, { id: 3, nombre: "Other", rol: "diseno" }];
   const task = { id: 5, revision: 7, cliente_nombre: "Client" };
-  const approve = new Function("users", "apiRequest", "tasksRef", "setTasks", "logActivity", "notify", "updateTask", `${body}\nreturn approveTask;`)(
+  const sesion = {token:'synthetic-session'}; let currentSession = sesion;
+  const approve = new Function("users", "apiRequest", "tasksRef", "setTasks", "logActivity", "notify", "updateTask", "sesion", "getSesion", `${body}\nreturn approveTask;`)(
     users, async (url, request) => { requests.push(JSON.parse(request.body)); return task; },
-    { current: [task] }, () => {}, async () => {}, (message) => notices.push(message), async (id, changes) => updates.push({id,changes}),
+    { current: [task] }, () => {}, async () => {}, (message) => notices.push(message), async (id, changes) => updates.push({id,changes}), sesion, () => currentSession,
   );
   await approve(task, 2);
   assert.deepEqual(requests, [{ responsable_publicacion_id: 2, expected_revision: 7 }]);
@@ -103,6 +104,9 @@ test("approval sends selected publisher ID, keeps display label; generic approva
   for (const id of [null, "2", 0, -1, 1.5, 3, 999]) {
     await assert.rejects(approve(task, id), /responsable de publicación válido/);
   }
+  assert.equal(requests.length, 1);
+  currentSession = {token:'different-synthetic-session'};
+  await assert.rejects(approve(task, 2), /sesión cambió/);
   assert.equal(requests.length, 1);
 });
 

@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createEditingDeliveriesModel, decodeEditingDeliveries, deliveryInput, deliveryUrl, isEditingDeliveryTask } from '../components/EditingDeliveries.model.js';
+import { createEditingDeliveriesModel, decodeEditingDeliveries, deliveryInput, deliveryUrl, editingReviewContext, isEditingDeliveryTask } from '../components/EditingDeliveries.model.js';
 
 const key = '00000000-0000-4000-8000-000000000001';
 const eventId = '00000000-0000-4000-8000-000000000002';
-const task = { id: 17, revision: 7, tipo_tarea: 'edicion', propiedades_extra: { workspace: 'render_os' }, material_referencia: 'https://example.org/raw' };
+const task = { id: 17, revision: 7, estado: 'en_revision', tipo_tarea: 'edicion', propiedades_extra: { workspace: 'render_os' }, material_referencia: 'https://example.org/raw' };
 const session = () => ({ token: 'test-token', usuario: { id: 4, rol: 'edicion' } });
 const event = () => ({ id: eventId, task_id: 17, actor_id: 4, task_revision: 8, url: 'https://example.org/edit', notes: 'Versión editada', recorded_at: '2026-10-19T15:00:00.000Z' });
 const history = (revision = 7, deliveries = [], can_deliver = true) => ({ task: { id: 17, revision, estado: 'en_revision' }, deliveries, can_deliver });
@@ -40,6 +40,88 @@ test('closed DTO drops arbitrary task/event fields and sorts newest last', () =>
   assert.equal(JSON.stringify(result).includes('never'), false);
   assert.equal(result.deliveries.at(-1).id, eventId);
   assert.deepEqual(Object.keys(result.deliveries[0]), ['id', 'task_id', 'actor_id', 'task_revision', 'url', 'notes', 'recorded_at']);
+});
+
+test('latest delivery means highest task revision, then timestamp and UUID, never wall clock alone', () => {
+  const newestRevision = { ...event(), id: '00000000-0000-4000-8000-000000000004', task_revision: 9, recorded_at: '2026-10-18T12:00:00Z' };
+  const laterClock = { ...event(), task_revision: 8, recorded_at: '2026-10-19T15:00:00Z' };
+  const sameRevision = { ...newestRevision, id: '00000000-0000-4000-8000-000000000003' };
+  const earlierClock = { ...newestRevision, id: '00000000-0000-4000-8000-000000000005', recorded_at: '2026-10-18T11:00:00Z' };
+  const data = history(10, [newestRevision, laterClock, sameRevision, earlierClock]);
+  assert.equal(decodeEditingDeliveries(data, 17).deliveries.at(-1).id, newestRevision.id);
+  const context = editingReviewContext({ data }, task);
+  assert.deepEqual(context.latestDelivery, { id: newestRevision.id, task_revision: 9, url: newestRevision.url });
+});
+
+test('review context is closed, distinguishes empty history, and blocks loading/error/uncertain/conflict/busy', () => {
+  const data = history(8, [{ ...event(), financial_secret: 'never' }]);
+  const ready = editingReviewContext({ data }, task);
+  assert.deepEqual(ready, { status: 'ready', task: { id: 17, revision: 8, estado: 'en_revision' },
+    latestDelivery: { id: eventId, task_revision: 8, url: input.url }, can_deliver: true });
+  assert.deepEqual(Object.keys(ready.latestDelivery), ['id', 'task_revision', 'url']);
+  const empty = editingReviewContext({ data: history(7, [], false) }, task);
+  assert.equal(empty.status, 'ready'); assert.equal(empty.latestDelivery, null); assert.equal(empty.can_deliver, false);
+  for (const block of [{ loading: true }, { busy: true }, { error: 'failed' }, { uncertain: true }, { conflict: true }]) {
+    const context = editingReviewContext({ data, ...block }, task);
+    assert.equal(context.status, block.loading || block.busy ? 'loading' : 'error');
+    assert.equal(context.latestDelivery, null); assert.equal(context.can_deliver, false);
+  }
+  assert.equal(editingReviewContext({ data: { ...data, task: { ...data.task, id: 99 } } }, task).status, 'error');
+  const legacy = editingReviewContext({ data: { ...history(8, [event()], false), task: { id: 17, revision: 8, estado: 'programada' } } }, task);
+  assert.equal(legacy.status, 'ready'); assert.equal(legacy.task.estado, 'programada'); assert.equal(legacy.can_deliver, false);
+});
+
+test('review callback emits loading/ready and clears to a closed error context on cleanup', async () => {
+  const contexts = [], wait = deferred();
+  const { model } = fixture(() => wait.promise, { onReviewContext: value => contexts.push(value) });
+  const pending = model.refresh();
+  assert.deepEqual(contexts.at(-1), { status: 'loading', task: { id: 17, revision: 7, estado: 'en_revision' }, latestDelivery: null, can_deliver: false });
+  wait.resolve(history(8, [event()])); await pending;
+  assert.equal(contexts.at(-1).status, 'ready'); assert.equal(contexts.at(-1).latestDelivery.id, eventId);
+  model.dispose();
+  assert.deepEqual(contexts.at(-1), { status: 'error', task: { id: 17, revision: 7, estado: 'en_revision' }, latestDelivery: null, can_deliver: false });
+  const count = contexts.length; model.dispose(); assert.equal(contexts.length, count);
+});
+
+test('obsolete reads after session drift or disposal cannot emit ready review context', async () => {
+  for (const mode of ['session', 'selection']) {
+    const contexts = [], wait = deferred();
+    const { model, currentSession } = fixture(() => wait.promise, { onReviewContext: value => contexts.push(value) });
+    const pending = model.refresh();
+    if (mode === 'session') currentSession.token = 'replacement'; else model.dispose();
+    wait.resolve(history(8, [event()])); await pending;
+    assert.equal(contexts.at(-1).status, 'error'); assert.equal(contexts.some(value => value.status === 'ready'), false);
+    model.dispose();
+  }
+});
+
+test('review remains loading throughout accepted write and awaited parent refresh; then emits exact observed DTO revision', async () => {
+  const contexts = [], parent = deferred();
+  const { model } = fixture(async (url, options = {}) => options.method ? accepted() : history(), {
+    onReviewContext: context => contexts.push(context), onSaved: async () => { await parent.promise; },
+  });
+  await model.refresh(); const sending = model.submit(input); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(contexts.at(-1).status, 'loading'); assert.equal(contexts.at(-1).latestDelivery, null);
+  parent.resolve(); await sending;
+  assert.deepEqual(contexts.at(-1), { status: 'ready', task: { id: 17, revision: 8, estado: 'en_revision' }, latestDelivery: { id: eventId, task_revision: 8, url: input.url }, can_deliver: true });
+  model.dispose();
+});
+
+test('409 and uncertain writes invalidate reviewer context until explicit resolution', async () => {
+  for (const status of [408, 409]) {
+    const contexts = [];
+    const { model } = fixture(async (url, options = {}) => {
+      if (options.method) throw Object.assign(new Error(), { status }); return history(8, [event()]);
+    }, { onReviewContext: context => contexts.push(context) });
+    await model.refresh(); await model.submit(input);
+    assert.equal(contexts.at(-1).status, 'error'); assert.equal(contexts.at(-1).latestDelivery, null); model.dispose();
+  }
+});
+
+test('review callback failure cannot convert accepted delivery into uncertain retry', async () => {
+  const { model } = fixture(async (url, options = {}) => options.method ? accepted() : history(), { onReviewContext: () => { throw new Error('consumer failure'); } });
+  await model.refresh(); await model.submit(input);
+  assert.ok(model.snapshot.accepted); assert.equal(model.snapshot.uncertain, false); assert.equal(model.snapshot.busy, false); model.dispose();
 });
 
 test('DTO rejects identity/version/date/unsafe URL and incomplete mutation receipts', () => {
@@ -197,6 +279,8 @@ test('component source contract: separated material/history, no storage or gener
   const text = readFileSync(new URL('../components/EditingDeliveries.jsx', import.meta.url), 'utf8');
   assert.match(text, /Material de origen/); assert.match(text, /Sin entrega registrada/); assert.match(text, /Entregar versión y enviar a revisión/);
   assert.match(text, /onDirty\?\.\(false\)/); assert.match(text, /onBusy\?\.\(false\)/); assert.match(text, /await saved.current\?\.\(dto, isCurrent\)/);
+  assert.match(text, /onReviewContext: context => reviewContext.current\?\.\(context\)/);
+  assert.doesNotMatch(text, /expected_entrega_id|aprobar-publicacion|Aprobar revisión|Aprobar y enviar/);
   assert.match(text, /state\.uncertain/); assert.doesNotMatch(text, /localStorage|sessionStorage|Object\.assign\(task|\.\.\.dto\.task/);
   const css = readFileSync(new URL('../components/EditingDeliveries.css', import.meta.url), 'utf8');
   assert.match(css, /min-height:44px/); assert.match(css, /focus-visible/);

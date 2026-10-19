@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getRolLabel } from "../constants.js";
-import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea } from "../utils.jsx";
+import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea, getSesion } from "../utils.jsx";
 import { AREAS, BOARD_COLUMNS, STATUSES, TASK_TYPES, canonicalTaskState, isTaskCompleted } from "../features/render-os/constants.js";
 import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
 import { areaForTask, emojiForTaskCard, formatDate, formatDateTime, initials, personForTask } from "../features/render-os/utils/task-formatters.js";
@@ -124,6 +124,11 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [editing, setEditing] = useState(false);
   const [deliveryDirty, setDeliveryDirty] = useState(false);
   const [deliveryBusy, setDeliveryBusy] = useState(false);
+  const [editingReview, setEditingReview] = useState(null);
+  const [reviewAcknowledged, setReviewAcknowledged] = useState(false);
+  const [reviewRefreshing, setReviewRefreshing] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  useEffect(() => { setReviewAcknowledged(false); }, [task?.id, task?.revision, sesion?.token, editingReview?.latestDelivery?.id, editingReview?.task?.revision]);
   useEffect(() => {
     const warn = event => { if (deliveryDirty || deliveryBusy) { event.preventDefault(); event.returnValue = ""; } };
     const beforeNavigation = event => {
@@ -267,6 +272,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const canChangeTaskState = canUserMoveTask(task, sesion?.usuario);
   const availableTaskStatuses = STATUSES.filter((item) => item.id === canonicalTaskState(task.estado) || canUserMoveTaskToState(task, sesion?.usuario, item.id));
   const canApproveForOriana = isLeader && task.estado === "en_revision";
+  const usesEditingReview = task.tipo_tarea === 'edicion' && metadata.workspace === 'render_os';
+  const editingReviewReady = editingReview?.status === 'ready' && editingReview.task?.id === task.id && editingReview.task?.revision === task.revision;
+  const mayApproveObservedDelivery = !usesEditingReview || (!reviewRefreshing && editingReviewReady && (!editingReview.latestDelivery || reviewAcknowledged));
   const productionProgress = getProductionVisitProgress(task);
   const productionPhase = getProductionPhase(task);
   const canRegisterProduction = Number.isSafeInteger(sesion?.usuario?.id) && sesion.usuario.id > 0
@@ -467,10 +475,24 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const approveForOriana = async (withPublisher = false) => {
-    if (!canApproveForOriana || approving || (withPublisher && !selectedPublisher)) return;
+    if (!canApproveForOriana || approving || deliveryBusy || !mayApproveObservedDelivery || (withPublisher && !selectedPublisher)) return;
     setApproving(true);
-    try { await onApprove(task, withPublisher ? selectedPublisher.id : undefined); }
+    try { await onApprove(task, withPublisher ? selectedPublisher.id : undefined, usesEditingReview ? { revision: editingReview.task.revision, deliveryId: editingReview.latestDelivery?.id || null } : null); }
+    catch (error) { if (getSesion()?.token === sesion?.token) { setReviewAcknowledged(false); setReviewError(error.message || 'No se pudo aprobar. Actualizá la tarea y el historial antes de volver a revisar.'); } }
     finally { setApproving(false); }
+  };
+
+  const refreshReviewTask = async () => {
+    if (reviewRefreshing || deliveryBusy || approving) return;
+    const token = sesion?.token;
+    if (!token || getSesion()?.token !== token) return;
+    setReviewRefreshing(true); setReviewAcknowledged(false); setReviewError('');
+    try {
+      const refreshed = await apiTaskById(task.id);
+      if (getSesion()?.token !== token) return;
+      window.dispatchEvent(new CustomEvent('render-os:related-tasks', { detail: [refreshed] }));
+    } catch { if (getSesion()?.token === token) setReviewError('No se pudo actualizar la tarea. Reintentá antes de aprobar.'); }
+    finally { setReviewRefreshing(false); }
   };
 
   const saveProductionDrive = async () => {
@@ -542,8 +564,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           <div className="ros-block-heading ros-operations-heading"><div><h3 id={`ros-task-operations-${task.id}`}>Flujo de trabajo</h3></div><small>Acciones y avance de la tarea</small></div>
         {esperandoMaterial(task) && <div className="ros-warning-banner">Esperando material: la tarea de origen todavía no está terminada.</div>}
         {areaForTask(task) === "edicion" && canChangeTaskState && ["pendiente", "en_progreso"].includes(task.estado) && <section className="ros-approval-handoff"><div><strong>¿Terminaste la edición?</strong><span>{task.tipo_tarea === "edicion" && metadata.workspace === "render_os" ? "Registrá el enlace de la versión editada para enviarla a revisión. Publicar es otro paso." : "Cambiar el estado no registra una entrega ni publica el contenido."}</span></div>{task.tipo_tarea === "edicion" && metadata.workspace === "render_os" ? <button type="button" disabled={saving || deliveryBusy} onClick={() => { deliverySectionRef.current?.scrollIntoView({ block: "center" }); deliverySectionRef.current?.querySelector("input")?.focus(); }}>Registrar entrega</button> : <button type="button" disabled={saving} onClick={async () => { setSaving(true); try { await onUpdate(task.id, { estado: "en_revision" }, "envió la tarea a revisión sin registrar una entrega"); } finally { setSaving(false); } }}>Enviar tarea a revisión</button>}</section>}
-        {canApproveForOriana && <section className="ros-approval-handoff"><div><strong>La tarea está esperando aprobación</strong><span>Aprobá la revisión. Si corresponde, también podés elegir quién publica.</span></div><button type="button" disabled={approving || saving} onClick={() => approveForOriana()}>{approving ? "Aprobando…" : "Aprobar revisión"}</button><label>Publica (opcional)<select value={publicationResponsible ?? ""} onChange={(event) => setPublicationResponsible(event.target.value ? Number(event.target.value) : null)}><option value="">Elegí quién publica</option>{users.filter((user) => Number.isSafeInteger(user.id) && user.id > 0 && ["admin", "community"].includes(user.rol)).map((user) => <option key={user.id} value={user.id}>{user.nombre} · #{user.id}</option>)}</select></label><button type="button" disabled={approving || !selectedPublisher} onClick={() => approveForOriana(true)}>{approving ? "Enviando…" : `Aprobar y enviar${selectedPublisher ? ` a ${selectedPublisher.nombre}` : ""}`}</button></section>}
-        {task.estado === "aprobada" && <div className="ros-approved-banner">✓ Aprobada por {metadata.revision_aprobada_por || "Líder"}. {metadata.responsable_publicacion ? `${metadata.responsable_publicacion} se encarga de publicarla.` : "Lista para finalizar."}</div>}
+        {canApproveForOriana && <section className="ros-approval-handoff"><div><strong>La tarea está esperando aprobación</strong><span>Aprobá la revisión. Si corresponde, también podés elegir quién publica.</span>{usesEditingReview && (!editingReviewReady ? <span>Actualizá el historial de entregas antes de aprobar.</span> : editingReview.latestDelivery ? <label><a href={editingReview.latestDelivery.url} target="_blank" rel="noopener noreferrer">Ver entrega · versión de tarea {editingReview.latestDelivery.task_revision} ↗</a><span><input type="checkbox" checked={reviewAcknowledged} disabled={approving || deliveryBusy} onChange={event => setReviewAcknowledged(event.target.checked)}/> Revisé esta versión y la apruebo.</span></label> : <span>Sin entrega registrada: esta aprobación de tarea no certifica un archivo.</span>)}</div><button type="button" disabled={approving || saving || deliveryBusy || !mayApproveObservedDelivery} onClick={() => approveForOriana()}>{approving ? "Aprobando…" : "Aprobar revisión"}</button><label>Publica (opcional)<select value={publicationResponsible ?? ""} onChange={(event) => setPublicationResponsible(event.target.value ? Number(event.target.value) : null)}><option value="">Elegí quién publica</option>{users.filter((user) => Number.isSafeInteger(user.id) && user.id > 0 && ["admin", "community"].includes(user.rol)).map((user) => <option key={user.id} value={user.id}>{user.nombre} · #{user.id}</option>)}</select></label><button type="button" disabled={approving || deliveryBusy || !mayApproveObservedDelivery || !selectedPublisher} onClick={() => approveForOriana(true)}>{approving ? "Enviando…" : `Aprobar y enviar${selectedPublisher ? ` a ${selectedPublisher.nombre}` : ""}`}</button></section>}
+        {canApproveForOriana && usesEditingReview && <div className="ros-work-block"><button type="button" disabled={reviewRefreshing || approving || deliveryBusy} onClick={refreshReviewTask}>{reviewRefreshing ? 'Actualizando…' : 'Actualizar tarea para revisar'}</button><small>Si cambió la versión, actualizá también el historial de entregas y volvé a revisar.</small>{reviewError && <p role="alert">{reviewError}</p>}</div>}
+        {task.estado === "aprobada" && <div className="ros-approved-banner">✓ Aprobada por {metadata.revision_aprobada_por || "Líder"}. {metadata.responsable_publicacion ? `${metadata.responsable_publicacion} se encarga de publicarla.` : "Lista para finalizar."}<small style={{display:'block',overflowWrap:'anywhere'}}>{metadata.revision_aprobada === true && typeof metadata.revision_aprobada_entrega_id === 'string' ? `Entrega vinculada: ${metadata.revision_aprobada_entrega_id}` : 'Sin versión de entrega vinculada; no certifica un archivo.'}</small></div>}
         {isProductionVisit && !registry.usesIndividual && <section className="ros-production-visit">
           <header><div><span>VISITA DE PRODUCCIÓN</span><strong>{productionProgress.recorded}{productionProgress.planned ? ` de ${productionProgress.planned}` : ""} videos grabados</strong></div>{productionProgress.complete ? <b>{productionPhase?.label || "Completa"}</b> : <b className="pending">{productionProgress.planned ? `Faltan ${productionProgress.remaining}` : "Sin cantidad prevista"}</b>}</header>
           <div className="ros-production-progress"><i style={{ width: `${productionProgress.planned ? Math.min(100, (productionProgress.recorded / productionProgress.planned) * 100) : 0}%` }}/></div>
@@ -566,7 +589,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         </section>}
         <section className="ros-work-block"><div className="ros-block-heading"><div><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3></div><small>Archivos y enlaces</small></div>{registry.vinculo?.tipo === "origen" && <p>Consultá el material de esta visita en Producciones. <a href={`/producciones?visita=${encodeURIComponent(registry.vinculo.id)}`}>Abrir visita en Producciones ↗</a></p>}{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && registry.vinculo?.tipo !== "origen" && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <><div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{driveFiles.filter((file) => file.url !== task.material_referencia).map((file) => <a className="ros-file" href={file.url} target="_blank" rel="noreferrer" key={file.id}><span>▤</span><div><strong>{file.name}</strong><small>Google Drive · {file.uploaded_by || "Equipo"}</small></div><b>↗</b></a>)}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{registry.vinculo?.tipo !== "origen" && !task.material_referencia && driveFiles.length === 0 && links.length === 0 && <p className="ros-compact-empty">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "Sin material vinculado."}</p>}</div><DriveUploader task={task} onUploaded={async () => { const refreshed = await apiTaskById(task.id); window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: [refreshed] })); }}/></>}</section>
         {(origin || task.tarea_padre_id || subtasks.length > 0) && <section className="ros-work-block ros-work-organization"><h3>Organización del trabajo</h3>{(origin || task.tarea_padre_id) && <div className="ros-context-list">{origin && <a className="ros-calendar-origin" href={origin.href}><div><span>{origin.calendarLabel}</span><strong>{origin.label}</strong><small>Fecha de publicación</small></div><time>{formatDate(origin.date)}</time><b>Ver calendario</b></a>}{task.tarea_padre_id && <button type="button" onClick={() => onOpen(Number(task.tarea_padre_id))}><strong>Depende de la tarea #{task.tarea_padre_id}</strong><span>Estado: {STATUSES.find((item) => item.id === canonicalTaskState(task.tarea_padre_estado))?.label || "Sin datos"}</span></button>}</div>}<div className="ros-subtasks">{subtasks.map((subtask) => <button type="button" key={subtask.id} onClick={() => onOpen(subtask.id)}><span>{subtask.titulo}</span><b>{STATUSES.find((item) => item.id === canonicalTaskState(subtask.estado))?.label || subtask.estado}</b></button>)}</div></section>}
-        {task.tipo_tarea === "edicion" && metadata.workspace === "render_os" && <div ref={deliverySectionRef}><EditingDeliveries task={task} sesion={sesion} onDirty={setDeliveryDirty} onBusy={setDeliveryBusy} onSaved={async (_result, isCurrent) => {
+        {task.tipo_tarea === "edicion" && metadata.workspace === "render_os" && <div ref={deliverySectionRef}><EditingDeliveries task={task} sesion={sesion} onReviewContext={setEditingReview} onDirty={setDeliveryDirty} onBusy={setDeliveryBusy} onSaved={async (_result, isCurrent) => {
           if (!isCurrent()) return;
           const refreshed = await apiTaskById(task.id);
           if (!isCurrent()) return;
@@ -1062,13 +1085,17 @@ export function WorkspaceReadOnlyPage({ sesion }) {
 
   const notify = (message, type = "success") => { setToast({ message, type }); window.clearTimeout(window.__rosToastTimer); window.__rosToastTimer = window.setTimeout(() => setToast(null), 3500); };
   const logActivity = (taskId, message) => apiRequest(`/api/tareas/${taskId}/comentarios?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER", contenido: `[Actividad] ${message}` }) });
-  const updateTask = (id, changes, activity) => {
+  const updateTask = (id, changes, activity, observedRevision = null) => {
+    const observedToken = sesion?.token;
     const run = async () => {
+      if (observedRevision !== null && (!observedToken || getSesion()?.token !== observedToken)) throw new Error('La sesión cambió. Volvé a abrir la tarea antes de aprobar.');
       const previous = tasksRef.current.find((task) => task.id === id);
       if (!previous) throw new Error("La tarea ya no está disponible.");
+      if (observedRevision !== null && previous.revision !== observedRevision) throw Object.assign(new Error("La tarea cambió desde la revisión. Actualizá y revisá la entrega antes de aprobar."), { status: 409 });
       setTasks((current) => current.map((task) => task.id === id ? { ...task, ...changes } : task));
       try {
         const updated = await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: previous.revision, expected_updated_at: previous.updated_at || undefined }) });
+        if (observedRevision !== null && getSesion()?.token !== observedToken) return updated;
         const selectedClient = clients.find((item) => String(item.id) === String(updated.cliente_id));
         const complete = { ...previous, ...updated, cliente_nombre: selectedClient?.nombre || null };
         tasksRef.current = tasksRef.current.map((task) => task.id === id ? complete : task);
@@ -1078,14 +1105,17 @@ export function WorkspaceReadOnlyPage({ sesion }) {
           try { await logActivity(id, activity); }
           catch { historyFailed = true; }
         }
+        if (observedRevision !== null && getSesion()?.token !== observedToken) return complete;
         notify(historyFailed ? "Cambio guardado, pero no se pudo registrar la actividad." : "Cambio guardado en la tarea real.", historyFailed ? "error" : "success");
         return complete;
       } catch (reason) {
+        if (observedRevision !== null && getSesion()?.token !== observedToken) throw reason;
         if (reason.status === 409) {
           let currentTask = null;
           try {
             currentTask = await apiTaskById(id);
-            if (canRetryTaskUpdate(previous, currentTask, changes)) {
+            if (observedRevision !== null && getSesion()?.token !== observedToken) throw reason;
+            if (observedRevision === null && canRetryTaskUpdate(previous, currentTask, changes)) {
               const retried = await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: currentTask.revision, expected_updated_at: currentTask.updated_at || undefined }) });
               const selectedClient = clients.find((item) => String(item.id) === String(retried.cliente_id));
               const complete = { ...currentTask, ...retried, cliente_nombre: selectedClient?.nombre || currentTask.cliente_nombre || null };
@@ -1102,6 +1132,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
             tasksRef.current = tasksRef.current.map((task) => task.id === id ? currentTask : task);
             setTasks((current) => current.map((task) => task.id === id ? currentTask : task));
           } catch {
+            if (observedRevision !== null && getSesion()?.token !== observedToken) throw reason;
             if (currentTask) {
               tasksRef.current = tasksRef.current.map((task) => task.id === id ? currentTask : task);
               setTasks((current) => current.map((task) => task.id === id ? currentTask : task));
@@ -1215,21 +1246,29 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       throw reason;
     }
   };
-  const approveTask = async (task, responsable_publicacion_id) => {
+  const approveTask = async (task, responsable_publicacion_id, review = null) => {
+    const observedToken = sesion?.token;
     try {
-      if (responsable_publicacion_id === undefined) return await updateTask(task.id, { estado: "aprobada" }, "aprobó la revisión de la tarea");
+      if (!observedToken || getSesion()?.token !== observedToken) throw new Error('La sesión cambió. Volvé a abrir la tarea antes de aprobar.');
+      const usesDelivery = task.tipo_tarea === 'edicion' && task.propiedades_extra?.workspace === 'render_os';
+      if (usesDelivery && (!review || review.revision !== task.revision)) throw new Error("Actualizá el historial y revisá la versión antes de aprobar.");
+      const deliveryPrecondition = review?.deliveryId ? { expected_entrega_id: review.deliveryId } : {};
+      if (responsable_publicacion_id === undefined) return await updateTask(task.id, { estado: "aprobada", ...deliveryPrecondition }, "aprobó la revisión de la tarea", review?.revision ?? null);
       const publisher = users.find((user) => user.id === responsable_publicacion_id && ["admin", "community"].includes(user.rol));
       if (responsable_publicacion_id !== undefined && (!Number.isSafeInteger(responsable_publicacion_id) || responsable_publicacion_id <= 0 || !publisher)) throw new Error("Elegí un responsable de publicación válido.");
       const responsable_publicacion = publisher?.nombre;
-      const updated = await apiRequest(`/api/tareas/${task.id}/aprobar-publicacion?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responsable_publicacion_id, expected_revision: task.revision }) });
+      const updated = await apiRequest(`/api/tareas/${task.id}/aprobar-publicacion?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responsable_publicacion_id, expected_revision: review?.revision ?? task.revision, ...deliveryPrecondition }) });
+      if (getSesion()?.token !== observedToken) return updated;
       const complete = { ...task, ...updated, cliente_nombre: task.cliente_nombre || null };
       tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? complete : item);
       setTasks((current) => current.map((item) => item.id === task.id ? complete : item));
       try { await logActivity(task.id, publisher ? `aprobó el material y lo envió a ${responsable_publicacion}` : "aprobó la revisión de la tarea"); }
       catch { /* La aprobación ya quedó guardada. */ }
+      if (getSesion()?.token !== observedToken) return complete;
       notify(publisher ? `Tarea aprobada y enviada a ${responsable_publicacion}.` : "Revisión aprobada.");
       return complete;
     } catch (reason) {
+      if (getSesion()?.token !== observedToken) throw reason;
       notify(reason.message || "No se pudo aprobar la tarea.", "error");
       throw reason;
     }

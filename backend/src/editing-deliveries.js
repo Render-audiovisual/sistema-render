@@ -109,7 +109,7 @@ export function createEditingDeliveriesRouter({ express, pool }) {
           if (transition) throw fail(transition.error, transition.status);
           const updated = (await db.query(`UPDATE tareas SET estado='en_revision',
             propiedades_extra=propiedades_extra || jsonb_build_object('revision_aprobada',false,
-              'revision_aprobada_por',NULL,'revision_aprobada_por_id',NULL,'revision_aprobada_at',NULL,'finalizada_at',NULL),
+              'revision_aprobada_por',NULL,'revision_aprobada_por_id',NULL,'revision_aprobada_at',NULL,'finalizada_at',NULL,'revision_aprobada_entrega_id',NULL),
             updated_at=clock_timestamp() WHERE id=$1 AND revision=$2 RETURNING id,revision,estado`, [id, input.expected_revision])).rows[0];
           if (!updated) throw fail('La tarea cambió. Actualizá antes de reintentar.', 409);
           deliveryId = randomUUID();

@@ -102,7 +102,8 @@ test("source wiring covers all views, state filter, generic approval PATCH and s
   assert.match(source,/repeat\(5, minmax\(220px, 1fr\)\)/);
   assert.match(source,/const canApproveForOriana = isLeader && task.estado === "en_revision";/);
   assert.match(source,/Aprobar revisión/);
-  assert.match(source,/updateTask\(task.id, \{ estado: "aprobada" \}/);
+  assert.match(source,/updateTask\(task.id, \{ estado: "aprobada", \.\.\.deliveryPrecondition \}/);
+  assert.match(source,/observedRevision === null && canRetryTaskUpdate/);
   assert.match(source,/estado: \["pendiente", "en_progreso", "en_revision"\].includes\(initialStatus\) \? initialStatus : "pendiente"/);
   assert.doesNotMatch(source,/estado:\s*["']publicada["']|ESTADO_FINAL_TAREA/);
 });
