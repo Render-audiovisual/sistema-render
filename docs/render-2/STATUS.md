@@ -401,6 +401,16 @@ Final verification:1065 backend passed/26 opt-in skipped/0 failed;259 frontend p
 
 Implemented and verified locally, not deployed or globally deployment-ready. Preexisting App/Vite/preview changes preserved and excluded from this integration. Calendar caps2000 events with explicit truncation and filters; project milestones/personal reminders remain unintegrated, and editorial links open existing contextual screens. Global independent-account onboarding/session hardening, external integrations, correction/decision history, native-history dirty handling and remaining module/design consolidation still require work. No push, existing database mutation, production migration or deployment. Goal remains active.
 
+## Twenty-fourth integration — project milestones in the shared calendar (2026-10-19)
+
+Principal calendar now reads actual project milestones with the same authenticated read-only repeatable-read transaction. Closed kind/source `hito`, milestone UUID/key, persisted planned date and three explicit milestone states; existing parent-project context link. Mine uses project responsible/member IDs only, never names/admin privilege/linked-task assignment. Team retains existing shared project metadata access. Archived projects/inactive clients and undated milestones excluded. Project delivery dates alone do not invent milestones; task deadlines and milestones coexist independently. Completed/cancelled milestones do not claim actual completion dates or publication. Existing four source DTOs remain unchanged. No migrations, operational writes or browser business persistence.
+
+Archimedes owned backend and5 added tests; Herschel frontend/filter/closed decoder/state labels and5 added tests; Wegener authored8 actual HTTP/SQL tests; Darwin independently reviewed scope/privacy/bounds and executed43 focused tests. Coordinator owned addendum/integration/tests/browser/docs, preserving existing App/Vite/preview changes. Superpowers guided contract-first disjoint ownership and final verification.
+
+Final evidence:1070 backend pass/27 opt-in skipped/0 failed,264 frontend pass/0 failed, build123 modules. All twenty opted-in principal HTTP/PostgreSQL suites237/237 passed without skips/failures. Actual built principal browser verified non-admin responsible, milestone filter/day/context link, real project edit October20→21, Back and reload removing old day/restoring new day, mobile390px without horizontal overflow. See CALENDAR_PROJECTS_QA.md. Owned disposable fixtures removed, tab closed and viewport reset.
+
+Implemented/verified locally only, not deployed or globally deployment-ready. Personal reminder calendar integration, broader identity/session hardening, external Drive/publication services, immutable approval/correction history, native-history dirty handling, all-module design consolidation and retirement of parallel implementations remain master gates. No phase/master completion claim or production access.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

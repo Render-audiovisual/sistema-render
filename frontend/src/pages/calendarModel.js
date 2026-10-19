@@ -1,7 +1,7 @@
 import { createEditorialSessionGuard } from '../components/EditorialPublicationControl.model.js';
 import { confirmationDate, isConfirmedPublication } from '../shared/editorial/publication-evidence.js';
 
-export const CALENDAR_KINDS = { all: 'Todos', tarea: 'Entregas de tareas', visita: 'Visitas', programacion: 'Programación', publicacion: 'Publicaciones confirmadas' };
+export const CALENDAR_KINDS = { all: 'Todos', tarea: 'Entregas de tareas', visita: 'Visitas', hito: 'Hitos de proyectos', programacion: 'Programación', publicacion: 'Publicaciones confirmadas' };
 const positive = n => Number.isSafeInteger(n) && n > 0 && n <= 2147483647;
 const uuid = s => typeof s === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(s);
 export function calendarDay(value) {
@@ -61,6 +61,8 @@ function eventHref(row) {
     if (url.pathname !== '/workspace/tareas' || keys.length !== 1 || p.get('task') !== String(row.source_id)) throw new Error();
   } else if (row.source === 'visita') {
     if (url.pathname !== '/producciones' || keys.some(k => !['visita', 'mes'].includes(k)) || p.get('visita') !== row.source_id || (p.has('mes') && p.get('mes') !== row.date.slice(0, 7))) throw new Error();
+  } else if (row.source === 'hito') {
+    if (url.pathname !== '/proyectos' || keys.length !== 1 || !uuid(p.get('proyecto'))) throw new Error();
   } else {
     const story = row.source === 'historia';
     if (url.pathname !== (story ? '/planificacion-historias' : '/planificacion-publicaciones') || keys.length !== 3 ||
@@ -77,13 +79,15 @@ export function decodeCalendar(dto, selection) {
   if (new Set(clients.map(c => c.id)).size !== clients.length) invalid();
   const seen = new Set();
   const events = dto.events.map(row => {
-    if (!row || !['tarea', 'visita', 'programacion', 'publicacion'].includes(row.kind) ||
+    if (!row || !['tarea', 'visita', 'hito', 'programacion', 'publicacion'].includes(row.kind) ||
         (selection.tipo !== 'all' && row.kind !== selection.tipo) || !calendarDay(row.date) || row.date < grid.desde || row.date >= grid.hasta ||
         !((row.kind === 'tarea' && row.source === 'tarea' && positive(row.source_id)) || (row.kind === 'visita' && row.source === 'visita' && uuid(row.source_id)) ||
+          (row.kind === 'hito' && row.source === 'hito' && uuid(row.source_id)) ||
           (['programacion', 'publicacion'].includes(row.kind) && ['historia', 'publicacion'].includes(row.source) && positive(row.source_id))) ||
         row.key !== `${row.kind}:${row.source}:${row.source_id}` || seen.has(row.key) || typeof row.title !== 'string' || row.title.length > 160 ||
         !(row.cliente_id === null || positive(row.cliente_id)) || (row.kind !== 'tarea' && !positive(row.cliente_id)) || (row.cliente_id === null ? row.cliente_nombre !== null : typeof row.cliente_nombre !== 'string' || row.cliente_nombre.length > 250) ||
         (selection.cliente && row.cliente_id !== Number(selection.cliente)) || !(row.estado === null || typeof row.estado === 'string' && row.estado.length <= 80) ||
+        (row.kind === 'hito' && !['pendiente', 'completado', 'cancelado'].includes(row.estado)) ||
         !Array.isArray(row.responsable_ids) || !row.responsable_ids.every(positive)) invalid();
     let evidence = null;
     if (row.kind === 'publicacion') {
@@ -100,7 +104,7 @@ export function decodeCalendar(dto, selection) {
   return { range: { desde: grid.desde, hasta: grid.hasta }, scope: dto.scope, kind: dto.kind, timezone: dto.timezone, clients, events, truncated: dto.truncated };
 }
 export function calendarEventLabel(event) {
-  return ({ tarea: 'Entrega de tarea', visita: 'Visita de producción', programacion: 'Programación editorial', publicacion: 'Publicación confirmada manualmente' })[event.kind];
+  return ({ tarea: 'Entrega de tarea', visita: 'Visita de producción', hito: 'Hito de proyecto', programacion: 'Programación editorial', publicacion: 'Publicación confirmada manualmente' })[event.kind];
 }
 export function calendarEventTitle(event) {
   const prefix = `${calendarEventLabel(event)} · `;
@@ -108,6 +112,9 @@ export function calendarEventTitle(event) {
 }
 export function calendarTaskState(value) {
   return ({ pendiente: 'Pendiente', en_progreso: 'En progreso', en_revision: 'En revisión', aprobada: 'Aprobada', finalizada: 'Finalizada', publicada: 'Finalizada' })[value] || 'Estado de trabajo sin clasificar';
+}
+export function calendarMilestoneState(value) {
+  return ({ pendiente: 'Hito pendiente', completado: 'Hito completado', cancelado: 'Hito cancelado' })[value] || 'Estado de hito sin clasificar';
 }
 export function createCalendarLoader({ request, sesion, readSession, onInvalidated = () => {} }) {
   let generation = 0, controller = null, disposed = false;

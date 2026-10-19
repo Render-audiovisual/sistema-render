@@ -4,7 +4,7 @@ import { annotateEditorialEvidence } from './editorial-evidence-read.js';
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 export const CALENDAR_TIMEZONE = 'America/Argentina/Cordoba';
 const LIMIT = 2000;
-const KINDS = ['all', 'tarea', 'visita', 'programacion', 'publicacion'];
+const KINDS = ['all', 'tarea', 'visita', 'programacion', 'publicacion', 'hito'];
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const id = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
 const text = (value, max) => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max) : '';
@@ -62,6 +62,19 @@ export const CALENDAR_VISIT_SQL = `SELECT v.id,v.titulo,v.cliente_id,c.nombre AS
    OR EXISTS(SELECT 1 FROM tareas source WHERE source.id=v.tarea_origen_id AND ${visibleTask('source')} AND ${assigned('source')}))
  ORDER BY v.fecha,v.id LIMIT 2001`;
 
+export const CALENDAR_MILESTONE_SQL = `SELECT h.id,h.proyecto_id,h.titulo,h.estado,p.cliente_id,c.nombre AS cliente_nombre,
+ to_char(h.fecha,'YYYY-MM-DD') AS date,
+ ARRAY(SELECT DISTINCT members.usuario_id FROM (
+   SELECT p.responsable_id AS usuario_id
+   UNION SELECT m.usuario_id FROM proyecto_miembros m WHERE m.proyecto_id=p.id
+ ) members ORDER BY members.usuario_id) AS responsable_ids
+ FROM proyecto_hitos h JOIN proyectos p ON p.id=h.proyecto_id JOIN clientes c ON c.id=p.cliente_id
+ WHERE NOT p.archivado AND c.activo IS DISTINCT FROM FALSE
+ AND h.fecha >= $1::date AND h.fecha < $2::date AND ($3::int IS NULL OR p.cliente_id=$3)
+ AND ($5::boolean OR p.responsable_id=$4
+   OR EXISTS(SELECT 1 FROM proyecto_miembros m WHERE m.proyecto_id=p.id AND m.usuario_id=$4))
+ ORDER BY h.fecha,h.id LIMIT 2001`;
+
 export function calendarEditorialSql(domain, kind) {
   if (!['historia', 'publicacion'].includes(domain) || !KINDS.includes(kind)) throw new TypeError('Dominio/tipo inválido.');
   const table = domain === 'historia' ? 'historias' : 'publicaciones';
@@ -106,11 +119,11 @@ function closedEvidence(row) {
 }
 
 /** Pure closed projection. Editorial rows must first be server-annotated. */
-export function buildCalendarEvents({ tasks = [], visits = [], historias = [], publicaciones = [] }, filters) {
+export function buildCalendarEvents({ tasks = [], visits = [], historias = [], publicaciones = [], hitos = [] }, filters) {
   const result = new Map();
   const add = (row, kind, source, date, href, label, evidence = null) => {
     if (!day(date) || date < filters.desde || date >= filters.hasta || (filters.kind !== 'all' && filters.kind !== kind)) return;
-    if (source === 'visita' ? typeof row.id !== 'string' || !UUID.test(row.id) : !id(row.id)) return;
+    if (['visita', 'hito'].includes(source) ? typeof row.id !== 'string' || !UUID.test(row.id) : !id(row.id)) return;
     if (row.cliente_id !== null && !id(row.cliente_id)) return;
     if (filters.cliente_id !== null && row.cliente_id !== filters.cliente_id) return;
     const key = `${kind}:${source}:${row.id}`;
@@ -120,6 +133,10 @@ export function buildCalendarEvents({ tasks = [], visits = [], historias = [], p
   };
   for (const row of tasks) add(row, 'tarea', 'tarea', row.date, `/workspace/tareas?task=${row.id}`, `Entrega de tarea · ${text(row.titulo, 160)}`);
   for (const row of visits) add(row, 'visita', 'visita', row.date, `/producciones?visita=${row.id}&mes=${row.date?.slice(0, 7)}`, `Visita de producción · ${text(row.titulo, 160)}`);
+  for (const row of hitos) {
+    if (typeof row.proyecto_id !== 'string' || !UUID.test(row.proyecto_id) || !['pendiente', 'completado', 'cancelado'].includes(row.estado)) continue;
+    add(row, 'hito', 'hito', row.date, `/proyectos?proyecto=${row.proyecto_id}`, `Hito de proyecto · ${text(row.titulo, 160)}`);
+  }
   for (const [source, rows] of [['historia', historias], ['publicacion', publicaciones]]) {
     for (const row of rows) {
       const proof = closedEvidence(row), actual = proof ? actualDate(proof.confirmation.occurred_at) : null;
@@ -149,7 +166,7 @@ export async function readCalendar(pool, auth, query) {
     const clients = (await db.query('SELECT id,nombre FROM clientes WHERE activo IS DISTINCT FROM FALSE ORDER BY nombre,id')).rows
       .filter(row => id(row.id)).map(row => ({ id: row.id, nombre: text(row.nombre, 250) }));
     const values = [filters.desde, filters.hasta, filters.cliente_id, user.id, filters.scope === 'team'];
-    const data = { tasks: [], visits: [], historias: [], publicaciones: [] };
+    const data = { tasks: [], visits: [], historias: [], publicaciones: [], hitos: [] };
     let truncated = false;
     const fetch = async sql => {
       const rows = (await db.query(sql, values)).rows;
@@ -158,6 +175,7 @@ export async function readCalendar(pool, auth, query) {
     };
     if (['all', 'tarea'].includes(filters.kind)) data.tasks = await fetch(CALENDAR_TASK_SQL);
     if (['all', 'visita'].includes(filters.kind)) data.visits = await fetch(CALENDAR_VISIT_SQL);
+    if (['all', 'hito'].includes(filters.kind)) data.hitos = await fetch(CALENDAR_MILESTONE_SQL);
     if (['all', 'programacion', 'publicacion'].includes(filters.kind)) {
       for (const domain of ['historia', 'publicacion']) {
         const rows = await fetch(calendarEditorialSql(domain, filters.kind));

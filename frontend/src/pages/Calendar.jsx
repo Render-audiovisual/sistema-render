@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
 import { navigateWithinApp } from '../shared/navigation/location.js';
-import { CALENDAR_KINDS, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarQuery, calendarTaskState, cordobaToday, createCalendarLoader, readCalendarSelection, shiftCalendarMonth } from './calendarModel.js';
+import { CALENDAR_KINDS, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarMilestoneState, calendarQuery, calendarTaskState, cordobaToday, createCalendarLoader, readCalendarSelection, shiftCalendarMonth } from './calendarModel.js';
 import './Calendar.css';
 
 const dateLabel = (day, options) => {
@@ -55,7 +55,7 @@ function CalendarContent({ sesion, onNavigate }) {
   const byDay = new Map(); for (const event of data?.events || []) { if (!byDay.has(event.date)) byDay.set(event.date, []); byDay.get(event.date).push(event); }
   const agenda = byDay.get(selection.dia) || [];
   return <main className="principal-calendar" aria-label="Calendario"><div className="principal-calendar-shell">
-    <header className="principal-calendar-header"><div><h1>Calendario</h1><p>Entregas, visitas y contenido · Córdoba</p></div><button type="button" onClick={() => setRetry(value => value + 1)} disabled={status === 'loading'}>Actualizar</button></header>
+    <header className="principal-calendar-header"><div><h1>Calendario</h1><p>Entregas, visitas, hitos y contenido · Córdoba</p></div><button type="button" onClick={() => setRetry(value => value + 1)} disabled={status === 'loading'}>Actualizar</button></header>
     <div className="principal-calendar-toolbar"><div className="principal-calendar-month"><button type="button" aria-label="Mes anterior" onClick={() => change(shiftCalendarMonth(selection, -1))}>‹</button><h2>{dateLabel(`${selection.mes}-01`, { month: 'long', year: 'numeric' })}</h2><button type="button" aria-label="Mes siguiente" onClick={() => change(shiftCalendarMonth(selection, 1))}>›</button><button type="button" onClick={() => change({ mes: today.slice(0, 7), dia: today })}>Hoy</button></div>
       <div className="principal-calendar-filters"><label>Ámbito<select value={selection.scope} onChange={event => change({ scope: event.target.value })}><option value="mine">Lo mío</option><option value="team">Equipo</option></select></label>
         <label>Tipo<select value={selection.tipo} onChange={event => change({ tipo: event.target.value })}>{Object.entries(CALENDAR_KINDS).map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label>
@@ -73,7 +73,8 @@ function CalendarContent({ sesion, onNavigate }) {
         {data && agenda.length === 0 && <p>{data.truncated ? 'No hay eventos mostrados para este día en la vista parcial.' : 'Sin eventos para este día con estos filtros.'}</p>}
         {data && <ol>{agenda.map(item => <li key={item.key}><small>{calendarEventLabel(item)}</small><h3>{calendarEventTitle(item)}</h3><p>{item.cliente_nombre || 'Sin cliente'}</p>
           {item.kind === 'tarea' && <span className="principal-calendar-state">{calendarTaskState(item.estado)}</span>}
-          <a href={item.href} onClick={event => follow(event, item.href)}>{['historia', 'publicacion'].includes(item.source) ? 'Abrir contexto editorial' : item.kind === 'visita' ? 'Abrir visita' : 'Abrir tarea'} ↗</a>
+          {item.kind === 'hito' && <span className="principal-calendar-state">{calendarMilestoneState(item.estado)}</span>}
+          <a href={item.href} onClick={event => follow(event, item.href)}>{['historia', 'publicacion'].includes(item.source) ? 'Abrir contexto editorial' : item.kind === 'visita' ? 'Abrir visita' : item.kind === 'hito' ? 'Abrir proyecto' : 'Abrir tarea'} ↗</a>
         </li>)}</ol>}
       </section></div>
   </div></main>;

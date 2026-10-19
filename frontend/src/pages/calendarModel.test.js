@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { addCalendarDays, calendarDay, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarQuery, calendarTaskState, cordobaToday, createCalendarLoader, decodeCalendar, readCalendarSelection, shiftCalendarMonth } from './calendarModel.js';
+import { addCalendarDays, calendarDay, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarMilestoneState, calendarQuery, calendarTaskState, cordobaToday, createCalendarLoader, decodeCalendar, readCalendarSelection, shiftCalendarMonth } from './calendarModel.js';
 
 const selection = readCalendarSelection('?mes=2026-10&dia=2026-10-19', '2026-10-19');
 const visitId = '00000000-0000-4000-8000-000000000001';
@@ -10,6 +10,7 @@ const proof = () => ({ classification: 'confirmada_manualmente', revision: 1, co
 const taskEvent = () => ({ key: 'tarea:tarea:10', kind: 'tarea', source: 'tarea', source_id: 10, date: '2026-10-19', title: 'Entrega de tarea · Editar video', cliente_id: 3, cliente_nombre: 'Cliente', estado: 'publicada', href: '/workspace/tareas?task=10', responsable_ids: [4], evidence: null });
 const visitEvent = () => ({ ...taskEvent(), key: `visita:visita:${visitId}`, kind: 'visita', source: 'visita', source_id: visitId, estado: null, href: `/producciones?visita=${visitId}&mes=2026-10` });
 const editorialEvent = (actual = false) => ({ ...taskEvent(), key: `${actual ? 'publicacion' : 'programacion'}:historia:10`, kind: actual ? 'publicacion' : 'programacion', source: 'historia', href: '/planificacion-historias?vista=checklist&cliente=3&mes=2026-10', evidence: actual ? proof() : null });
+const milestoneEvent = () => ({ ...taskEvent(), key: `hito:hito:${visitId}`, kind: 'hito', source: 'hito', source_id: visitId, title: 'Hito de proyecto · Presentar identidad', estado: 'pendiente', href: `/proyectos?proyecto=${eventId}` });
 function dto(filters = selection, events = []) {
   const { desde, hasta } = calendarGrid(filters.mes);
   return { range: { desde, hasta }, scope: filters.scope, kind: filters.tipo, timezone: 'America/Argentina/Cordoba', clients: [{ id: 3, nombre: 'Cliente' }], events, truncated: false };
@@ -66,6 +67,55 @@ test('decoder accepts all four sources, null visit state and closed manual proof
   assert.equal(result.events.length, 4); assert.equal(new Set(result.events.map(e => e.key)).size, 4);
   assert.equal(result.events.find(e => e.kind === 'visita').estado, null);
   assert.equal(result.events.find(e => e.kind === 'publicacion').evidence.confirmation.source, 'manual');
+});
+
+test('milestones accept UUID identity and existing project context without colliding with visit UUID or task', () => {
+  const result = decodeCalendar(dto(selection, [milestoneEvent(), visitEvent(), taskEvent()]), selection);
+  assert.equal(result.events.length, 3); assert.equal(new Set(result.events.map(row => row.key)).size, 3);
+  const row = result.events.find(row => row.kind === 'hito');
+  assert.equal(row.source_id, visitId); assert.equal(row.href, `/proyectos?proyecto=${eventId}`);
+  assert.equal(row.evidence, null); assert.equal(calendarEventLabel(row), 'Hito de proyecto');
+  assert.equal(calendarEventTitle(row), 'Presentar identidad');
+  assert.equal(calendarEventTitle({ ...row, title: 'Presentar identidad' }), 'Presentar identidad');
+});
+
+test('milestone filter round-trips URL/API query and excludes other kinds and mismatched clients/range', () => {
+  const filters = readCalendarSelection('?mes=2026-10&dia=2026-10-19&scope=team&tipo=hito&cliente=3');
+  assert.equal(filters.tipo, 'hito');
+  assert.equal(new URL(calendarQuery(filters), 'https://example.org').searchParams.get('kind'), 'hito');
+  assert.deepEqual(readCalendarSelection(new URL(calendarHref(filters), 'https://example.org').search), filters);
+  assert.equal(decodeCalendar(dto(filters, [milestoneEvent()]), filters).events.length, 1);
+  assert.throws(() => decodeCalendar(dto(filters, [taskEvent()]), filters));
+  for (const patch of [{ cliente_id: 9 }, { cliente_id: null, cliente_nombre: null }, { date: null }, { date: '2026-12-01' }]) {
+    assert.throws(() => decodeCalendar(dto(filters, [{ ...milestoneEvent(), ...patch }]), filters));
+  }
+});
+
+test('milestone rejects non-UUID source identity and wrong source/key pair', () => {
+  for (const patch of [{ source_id: 10 }, { source_id: 'not-a-uuid' }, { source: 'tarea' }, { source: 'visita' }, { key: `visita:visita:${visitId}` }]) {
+    assert.throws(() => decodeCalendar(dto(selection, [{ ...milestoneEvent(), ...patch }]), selection));
+  }
+});
+
+test('milestone href permits only one project UUID query on the existing project route', () => {
+  for (const href of ['/proyectos', '/proyectos?proyecto=10', '/proyectos?proyecto=not-a-uuid', `/proyectos?proyecto=${eventId}&hito=${visitId}`,
+    `/proyectos?proyecto=${eventId}&mes=2026-10`, `/proyectos?proyecto=${eventId}&proyecto=${visitId}`, `/proyectos?proyecto=${eventId}#hito`,
+    `/proyectos/${eventId}`, `https://evil.example/proyectos?proyecto=${eventId}`, `//evil.example/proyectos?proyecto=${eventId}`]) {
+    assert.throws(() => decodeCalendar(dto(selection, [{ ...milestoneEvent(), href }]), selection));
+  }
+});
+
+test('milestone states stay distinct from task/publication and imply no actual completion date', () => {
+  for (const [estado, label] of [['pendiente', 'Hito pendiente'], ['completado', 'Hito completado'], ['cancelado', 'Hito cancelado']]) {
+    const row = decodeCalendar(dto(selection, [{ ...milestoneEvent(), estado }]), selection).events[0];
+    assert.equal(calendarMilestoneState(row.estado), label); assert.equal(row.date, '2026-10-19'); assert.equal(row.evidence, null);
+  }
+  for (const estado of [null, 'finalizada', 'publicada', 'aprobada', 'en_revision', 'unknown']) {
+    assert.throws(() => decodeCalendar(dto(selection, [{ ...milestoneEvent(), estado }]), selection));
+  }
+  assert.equal(calendarTaskState('publicada'), 'Finalizada');
+  assert.equal(calendarMilestoneState('publicada'), 'Estado de hito sin clasificar');
+  assert.throws(() => decodeCalendar(dto(selection, [{ ...milestoneEvent(), evidence: proof() }]), selection));
 });
 
 test('decoder drops arbitrary metadata and client financial fields', () => {
@@ -186,5 +236,8 @@ test('source contracts protect day-only instant selection, history cleanup, hone
   assert.match(jsx, /toLocaleUpperCase\('es-AR'\) \+ label.slice\(1\)/);
   assert.match(jsx, /count === 1 \? 'evento' : 'eventos'/);
   assert.match(jsx, /calendarEventTitle\(item\).*<\/h3>/);
+  assert.match(jsx, /Entregas, visitas, hitos y contenido/);
+  assert.match(jsx, /item.kind === 'hito'.*calendarMilestoneState\(item.estado\)/);
+  assert.match(jsx, /item.kind === 'hito' \? 'Abrir proyecto'/);
   assert.equal((jsx.match(/<main\b/g) || []).length, 1);
 });

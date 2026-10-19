@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeCalendarQuery, buildCalendarEvents, calendarEditorialSql, CALENDAR_TASK_SQL,
-  CALENDAR_VISIT_SQL, readCalendar, createCalendarRouter } from '../src/calendar.js';
+  CALENDAR_VISIT_SQL, CALENDAR_MILESTONE_SQL, readCalendar, createCalendarRouter } from '../src/calendar.js';
 
 const UUID = '10000000-0000-4000-8000-000000000001';
 const VISIT = '20000000-0000-4000-8000-000000000002';
+const PROJECT = '30000000-0000-4000-8000-000000000003';
 const AUTH = { id: 4, rol: 'edicion', activo: true, session_version: 2 };
 const QUERY = { desde: '2026-02-01', hasta: '2026-03-01' };
 const TIME = '2026-03-01T02:30:00.000Z';
 const task = (extra = {}) => ({ id: 8, titulo: 'Editar', estado: 'finalizada', date: '2026-02-10', cliente_id: 7, cliente_nombre: 'Cliente', responsable_ids: [4], ...extra });
+const milestone = (extra = {}) => task({ id: UUID, proyecto_id: PROJECT, titulo: 'Prototipo', estado: 'pendiente', responsable_ids: [9, 4, 9], ...extra });
 const piece = (extra = {}) => ({ id: 1, cliente_id: 7, cliente_nombre: 'Cliente', estado: 'publicada', fecha_programada: '2026-03-12', 'fecha_publicación_real': new Date(TIME), responsable_ids: [4], ...extra });
 const proof = () => ({ classification: 'confirmada_manualmente', revision: 3,
   confirmation: { id: UUID, actor_id: 9, occurred_at: TIME, recorded_at: TIME, source: 'manual' } });
@@ -90,7 +92,7 @@ test('client narrowing preserves null-client shared tasks only without explicit 
   assert.equal(build({ tasks: [task()] }, { ...QUERY, cliente_id: '8' }).length, 0);
 });
 
-function harness({ user = { ...AUTH }, tasks = [], visits = [], historias = [], publicaciones = [], evidenceRows = [], fault } = {}) {
+function harness({ user = { ...AUTH }, tasks = [], visits = [], historias = [], publicaciones = [], hitos = [], evidenceRows = [], fault } = {}) {
   const calls = [];
   let released = false;
   const db = { release() { released = true; }, async query(sql, params = []) {
@@ -100,6 +102,7 @@ function harness({ user = { ...AUTH }, tasks = [], visits = [], historias = [], 
     if (sql.startsWith('SELECT id,nombre FROM clientes')) return { rows: [{ id: 7, nombre: 'Cliente', salario: 'SECRET' }] };
     if (sql === CALENDAR_TASK_SQL) return { rows: tasks };
     if (sql === CALENDAR_VISIT_SQL) return { rows: visits };
+    if (sql === CALENDAR_MILESTONE_SQL) return { rows: hitos };
     if (sql.startsWith('SELECT p.id AS piece_id')) return { rows: evidenceRows };
     if (sql.includes('FROM historias p')) return { rows: historias };
     if (sql.includes('FROM publicaciones p')) return { rows: publicaciones };
@@ -195,4 +198,76 @@ test('router exposes single read-only GET and no-store headers', async () => {
   assert.deepEqual(header, ['Cache-Control', 'no-store']);
   assert.equal(payload.timezone, 'America/Argentina/Cordoba');
   assert.deepEqual(payload.clients, [{ id: 7, nombre: 'Cliente' }]);
+});
+
+test('milestones retain planned date and all persisted milestone states with exact parent context', () => {
+  assert.equal(normalizeCalendarQuery({ ...QUERY, kind: 'hito' }).kind, 'hito');
+  for (const estado of ['pendiente', 'completado', 'cancelado']) {
+    const [event] = build({ hitos: [milestone({ estado, descripcion: 'SECRET', metadata: { salario: 'SECRET' } })] });
+    assert.equal(event.key, `hito:hito:${UUID}`);
+    assert.equal(event.source_id, UUID);
+    assert.equal(event.kind, 'hito');
+    assert.equal(event.source, 'hito');
+    assert.equal(event.date, '2026-02-10');
+    assert.equal(event.estado, estado);
+    assert.equal(event.title, 'Hito de proyecto · Prototipo');
+    assert.equal(event.href, `/proyectos?proyecto=${PROJECT}`);
+    assert.deepEqual(event.responsable_ids, [4, 9]);
+    assert.equal(event.evidence, null);
+    assert.equal(Object.hasOwn(event, 'proyecto_id'), false);
+    assert.doesNotMatch(JSON.stringify(event), /SECRET|descripcion|metadata|salario/);
+  }
+});
+
+test('milestone projection rejects missing dates/invalid UUID context and does not deduplicate linked-task deadlines', () => {
+  for (const change of [{ date: null }, { date: '2026-02-30' }, { id: 8 }, { proyecto_id: 'invalid' }, { proyecto_id: `${PROJECT}&admin=true` }, { estado: 'aprobada' }]) {
+    assert.equal(build({ hitos: [milestone(change)] }).length, 0);
+  }
+  assert.equal(build({ tasks: [task()], hitos: [milestone()] }).length, 2);
+  assert.equal(build({ tasks: [task()], hitos: [milestone()] }, { ...QUERY, kind: 'hito' }).length, 1);
+  assert.equal(build({ hitos: [milestone()] }, { ...QUERY, cliente_id: '8' }).length, 0);
+  assert.equal(build({ hitos: [milestone({ titulo: 'x'.repeat(1000) })] })[0].title.length, 160);
+});
+
+test('milestone SQL uses only project owner/member IDs with shared team and date/client bounds', () => {
+  assert.match(CALENDAR_MILESTONE_SQL, /FROM proyecto_hitos h JOIN proyectos p ON p.id=h.proyecto_id JOIN clientes/);
+  assert.match(CALENDAR_MILESTONE_SQL, /NOT p.archivado AND c.activo IS DISTINCT FROM FALSE/);
+  assert.match(CALENDAR_MILESTONE_SQL, /h.fecha >= \$1::date AND h.fecha < \$2::date/);
+  assert.match(CALENDAR_MILESTONE_SQL, /\$3::int IS NULL OR p.cliente_id=\$3/);
+  assert.match(CALENDAR_MILESTONE_SQL, /\$5::boolean OR p.responsable_id=\$4/);
+  assert.match(CALENDAR_MILESTONE_SQL, /m.proyecto_id=p.id AND m.usuario_id=\$4/);
+  assert.match(CALENDAR_MILESTONE_SQL, /SELECT DISTINCT members.usuario_id/);
+  assert.match(CALENDAR_MILESTONE_SQL, /ORDER BY h.fecha,h.id LIMIT 2001/);
+  assert.doesNotMatch(CALENDAR_MILESTONE_SQL, /tarea_asignaciones|proyecto_tareas|nombre\s*=|rol|fecha_entrega|p.estado|h.estado\s*(?:=|IN)|descripcion|SELECT \*/);
+});
+
+test('milestone kind queries only milestones; all includes them in the same read-only snapshot for every role', async () => {
+  for (const rol of ['admin', 'diseno', 'edicion', 'produccion', 'community', 'programacion']) {
+    const user = { ...AUTH, rol }, h = harness({ user, hitos: [milestone()] });
+    const result = await readCalendar(h.pool, user, { ...QUERY, kind: 'hito' });
+    assert.equal(result.events.length, 1);
+    const source = h.calls.find(c => c.sql === CALENDAR_MILESTONE_SQL);
+    assert.deepEqual(source.params, [QUERY.desde, QUERY.hasta, null, AUTH.id, false]);
+    assert.equal(h.calls.some(c => c.sql === CALENDAR_TASK_SQL || c.sql === CALENDAR_VISIT_SQL || c.sql.includes('FROM historias p')), false);
+    assert.equal(h.calls[0].sql, 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    assert.equal(h.calls.at(-1).sql, 'COMMIT');
+  }
+  const all = harness({ tasks: [task()], hitos: [milestone()] });
+  const result = await readCalendar(all.pool, AUTH, { ...QUERY, scope: 'team', cliente_id: '7' });
+  assert.equal(result.events.length, 2);
+  assert.deepEqual(all.calls.find(c => c.sql === CALENDAR_MILESTONE_SQL).params, [QUERY.desde, QUERY.hasta, 7, AUTH.id, true]);
+  const taskOnly = harness({ tasks: [task()], hitos: [milestone()] });
+  assert.equal((await readCalendar(taskOnly.pool, AUTH, { ...QUERY, kind: 'tarea' })).events.length, 1);
+  assert.equal(taskOnly.calls.some(c => c.sql === CALENDAR_MILESTONE_SQL), false);
+});
+
+test('milestone source and final combined limits preserve explicit truncation', async () => {
+  const overflow = harness({ hitos: Array.from({ length: 2001 }, () => milestone({ date: null })) });
+  const result = await readCalendar(overflow.pool, AUTH, { ...QUERY, kind: 'hito' });
+  assert.equal(result.events.length, 0);
+  assert.equal(result.truncated, true);
+  const tasks = Array.from({ length: 2000 }, (_, n) => task({ id: n + 1 }));
+  const combined = await readCalendar(harness({ tasks, hitos: [milestone()] }).pool, AUTH, QUERY);
+  assert.equal(combined.events.length, 2000);
+  assert.equal(combined.truncated, true);
 });
