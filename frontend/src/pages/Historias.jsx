@@ -1,4 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { EditorialPublicationControl } from '../components/EditorialPublicationControl.jsx';
+import { editorialFields, mergeEditorialStatus } from '../components/EditorialPublicationControl.model.js';
+import { isConfirmedPublication, isHistoricalPublication } from '../shared/editorial/publication-evidence.js';
 import { getHoyLocalISO, getInicialesCliente, getSesion, payloadColumnaPlanilla } from "../utils.jsx";
 import { COLUMNAS_MULTILINEA, COLUMNAS_PLANILLA, DIAS_SEMANA, DIAS_SEMANA_CLIENTE, ESTADOS_HISTORIA, MESES, MESES_CLIENTE, RESPONSABLES_EQUIPO } from "../constants.js";
 import { parseJsonArrayResponse } from "../shared/http/response-utils.js";
@@ -62,8 +65,11 @@ export function HistoriasPlanillaTab({
     requestAnimationFrame(() => enfocarCelda(idx, "fecha"));
   }, [ultimoIdCreado, filasVisibles, enfocarCelda]);
 
-  const actualizarLocal = useCallback((historiaId, campos) => onActualizarLocal(historiaId, campos), [onActualizarLocal]);
-  const guardarEnServidor = useCallback((historiaId, campos) => onGuardarServidor(historiaId, campos), [onGuardarServidor]);
+  const actualizarLocal = useCallback((historiaId, campos) => onActualizarLocal(historiaId, editorialFields(historias.find(h => h.id === historiaId), campos, getSesion()?.usuario?.rol === 'admin')), [onActualizarLocal, historias]);
+  const guardarEnServidor = useCallback((historiaId, campos) => {
+    const safe = editorialFields(historias.find(h => h.id === historiaId), campos, getSesion()?.usuario?.rol === 'admin');
+    if (Object.keys(safe).length) onGuardarServidor(historiaId, safe);
+  }, [onGuardarServidor, historias]);
 
   // onBlur de las celdas de texto: recorta espacios y sincroniza el
   // estado local con lo mismo que se manda al servidor (evita que quede
@@ -235,7 +241,7 @@ export function HistoriasPlanillaTab({
                 const dow = fecha.getDay();
                 const esFinde = dow === 0 || dow === 6;
                 const esHoy = h.fecha_programada === hoyISO;
-                const estaAtrasada = h.fecha_programada < hoyISO && h.estado !== "publicada";
+                const estaAtrasada = h.fecha_programada < hoyISO && !isConfirmedPublication(h);
                 const est = estadoPorId[h.estado] || ESTADOS_HISTORIA[0];
                 // Franjeado sutil por día (no por fila): ayuda a distinguir
                 // rápido dónde termina un día y empieza el siguiente, igual
@@ -371,6 +377,7 @@ export function HistoriasPlanillaTab({
                         className="sheet-cell"
                         data-cell={`${rowIndex}:estado`}
                         value={h.estado}
+                        disabled={getSesion()?.usuario?.rol !== 'admin' || isConfirmedPublication(h)}
                         onChange={(e) => {
                           actualizarLocal(h.id, { estado: e.target.value });
                           guardarEnServidor(h.id, { estado: e.target.value });
@@ -379,9 +386,10 @@ export function HistoriasPlanillaTab({
                         style={{ background: est.bg, color: est.fg, fontWeight: "600", border: "1px solid transparent" }}
                       >
                         {ESTADOS_HISTORIA.map((e) => (
-                          <option key={e.id} value={e.id}>{e.label}</option>
+                          <option key={e.id} value={e.id} disabled={e.id === 'publicada'}>{e.label}</option>
                         ))}
                       </select>
+                      <EditorialPublicationControl dominio="historia" pieza={h} onSaved={dto => onActualizarLocal(h.id, mergeEditorialStatus(h, dto))} />
                     </td>
                     <td data-label="Acciones">
                       <div className="sheet-row-actions">
@@ -673,39 +681,9 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
       });
   }, [year, month]);
 
-  const marcarPublicada = useCallback(async (clienteId, fecha, publicada) => {
-    const nuevoEstado = publicada ? "publicada" : "pendiente";
+  const marcarPlanificacion = useCallback(async (clienteId, fecha, publicada) => {
     const key = `${clienteId}:${fecha}`;
-    const historiasDelDia = historiasPorClienteFecha[key] || [];
-
     setGuardandoId(key);
-    setChecks((prev) => {
-      const existe = prev.some((check) => check.cliente_id === clienteId && check.fecha === fecha);
-      if (existe) {
-        return prev.map((check) =>
-          check.cliente_id === clienteId && check.fecha === fecha
-            ? { ...check, publicado: publicada }
-            : check,
-        );
-      }
-      return [
-        ...prev,
-        {
-          id: `local-${key}`,
-          cliente_id: clienteId,
-          fecha,
-          publicado: publicada,
-          confirmado_por: getSesion()?.usuario?.nombre || null,
-        },
-      ];
-    });
-    onHistoriasActualizadas((prev) =>
-      prev.map((h) =>
-        h.cliente_id === clienteId && h.fecha_programada === fecha
-          ? { ...h, estado: nuevoEstado }
-          : h,
-      ),
-    );
     try {
       const checkRes = await fetch("/api/check-publicacion", {
         method: "POST",
@@ -714,21 +692,11 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
           cliente_id: clienteId,
           fecha,
           publicado: publicada,
-          confirmado_por: getSesion()?.usuario?.nombre || "Sistema",
         }),
       });
-      if (!checkRes.ok) throw new Error("No se pudo guardar el OK");
-
-      await Promise.all(
-        historiasDelDia.map(async (h) => {
-          const res = await fetch(`/api/historias/${h.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ estado: nuevoEstado }),
-          });
-          if (!res.ok) throw new Error("No se pudo guardar");
-        }),
-      );
+      if (!checkRes.ok) throw new Error("No se pudo guardar la planificación");
+      const saved = await checkRes.json();
+      setChecks(prev => [...prev.filter(check => !(check.cliente_id === clienteId && check.fecha === fecha)), saved]);
       setError(null);
     } catch (err) {
       console.error("Error actualizando checklist", err);
@@ -736,7 +704,7 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
     } finally {
       setGuardandoId(null);
     }
-  }, [historiasPorClienteFecha, onHistoriasActualizadas]);
+  }, []);
 
   return (
     <>
@@ -784,8 +752,8 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
                 dias.reduce((sum, d) => {
                   const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
                   const check = checksPorClienteFecha[`${c.id}:${d.iso}`];
-                  const publicadaPorHistorias = items.length > 0 && items.every((h) => h.estado === "publicada");
-                  return sum + (check?.publicado || publicadaPorHistorias ? 1 : 0);
+                  const publicadaPorHistorias = items.length > 0 && items.every(isConfirmedPublication);
+                  return sum + (publicadaPorHistorias ? 1 : 0);
                 }, 0),
               0,
             );
@@ -793,8 +761,8 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
               clientes.reduce((sum, c) => {
                 const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
                 const check = checksPorClienteFecha[`${c.id}:${d.iso}`];
-                const publicadaPorHistorias = items.length > 0 && items.every((h) => h.estado === "publicada");
-                return sum + (check?.publicado || publicadaPorHistorias ? 1 : 0);
+                const publicadaPorHistorias = items.length > 0 && items.every(isConfirmedPublication);
+                return sum + (publicadaPorHistorias ? 1 : 0);
               }, 0),
             );
 
@@ -821,8 +789,8 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
                     const totalCliente = dias.reduce((sum, d) => {
                       const items = historiasPorClienteFecha[`${c.id}:${d.iso}`] || [];
                       const check = checksPorClienteFecha[`${c.id}:${d.iso}`];
-                      const publicadaPorHistorias = items.length > 0 && items.every((h) => h.estado === "publicada");
-                      return sum + (check?.publicado || publicadaPorHistorias ? 1 : 0);
+                      const publicadaPorHistorias = items.length > 0 && items.every(isConfirmedPublication);
+                      return sum + (publicadaPorHistorias ? 1 : 0);
                     }, 0);
 
                     return (
@@ -833,9 +801,9 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
                           const items = historiasPorClienteFecha[key] || [];
                           const check = checksPorClienteFecha[key];
                           const hayHistorias = items.length > 0;
-                          const publicadasDia = items.filter((h) => h.estado === "publicada").length;
-                          const todasPublicadas = Boolean(check?.publicado) || (hayHistorias && publicadasDia === items.length);
-                          const algunasPublicadas = !check?.publicado && publicadasDia > 0 && publicadasDia < items.length;
+                          const publicadasDia = items.filter(isConfirmedPublication).length;
+                          const todasPublicadas = hayHistorias && publicadasDia === items.length;
+                          const algunasPublicadas = publicadasDia > 0 && publicadasDia < items.length;
                           return (
                             <td
                               key={d.iso}
@@ -849,19 +817,20 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
                                 hayHistorias
                                   ? `${items.length} historia${items.length > 1 ? "s" : ""} · ${publicadasDia} publicada${publicadasDia !== 1 ? "s" : ""}`
                                   : check?.publicado
-                                    ? "OK marcado en checklist"
+                                    ? "Anotación de planificación (no confirma publicación)"
                                     : "Sin historias planificadas"
                               }
                             >
                               <button
                                 type="button"
                                 className="check-sheet-toggle"
-                                disabled={guardandoId === key}
-                                aria-label={todasPublicadas ? "Quitar OK" : "Marcar OK"}
-                                onClick={() => marcarPublicada(c.id, d.iso, !todasPublicadas)}
+                                disabled={guardandoId === key || getSesion()?.usuario?.rol !== 'admin'}
+                                aria-label={check?.publicado ? "Quitar marca de planificación" : "Marcar planificación"}
+                                onClick={() => marcarPlanificacion(c.id, d.iso, !check?.publicado)}
                               >
-                                {guardandoId === key ? "..." : (todasPublicadas ? "✓" : "")}
+                                {guardandoId === key ? "..." : (check?.publicado ? "Plan" : "—")}
                               </button>
+                              {items.length > 0 && <details className="ep-day-pieces"><summary>{items.length} historias · {publicadasDia} confirmadas</summary>{items.map(h => <div key={h.id}><span>{h.copy || `Historia #${h.id}`}</span><EditorialPublicationControl dominio="historia" pieza={h} onSaved={dto => onHistoriasActualizadas(prev => prev.map(row => row.id === h.id ? mergeEditorialStatus(row, dto) : row))} /></div>)}</details>}
                             </td>
                           );
                         })}
@@ -884,7 +853,7 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
         </>
       )}
 
-      <div className="caption check-help">Elegí una semana y marcá cada día cuando las historias estén publicadas.</div>
+      <div className="caption check-help">Las marcas del día son anotaciones de planificación, no prueba de publicación. Los totales cuentan días con todas sus historias confirmadas manualmente. Confirmá cada pieza en su registro.</div>
     </>
   );
 }
@@ -1474,9 +1443,9 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     ? historias.filter((h) => String(h.cliente_id) === filtroClientePlanilla)
     : historias;
   const historiasMes = historiasPlanillaVisibles.filter((h) => h.fecha_programada?.startsWith(mesPrefix));
-  const publicadasMes = historiasMes.filter((h) => h.estado === "publicada").length;
+  const publicadasMes = historiasMes.filter(isConfirmedPublication).length;
   const pendientesMes = historiasMes.length - publicadasMes;
-  const atrasadasMes = historiasMes.filter((h) => h.fecha_programada < hoyISO && h.estado !== "publicada").length;
+  const atrasadasMes = historiasMes.filter((h) => h.fecha_programada < hoyISO && !isConfirmedPublication(h)).length;
 
   const cambiarVista = (siguienteVista) => {
     pushUrlContext({ vista: siguienteVista });
@@ -1530,7 +1499,8 @@ export function HistoriasPage({ initialTab = "estructura" }) {
                   {vista === "checklist" && (
                     <div className="checklist-context-stats" aria-label="Resumen del checklist">
                       <span><strong>{historiasMes.length}</strong> historias</span>
-                      <span className="ok"><strong>{publicadasMes}</strong> publicadas</span>
+                      <span className="ok"><strong>{publicadasMes}</strong> confirmadas manualmente</span>
+                      <span>{historiasMes.filter(isHistoricalPublication).length} históricas sin confirmación · cohorte programada del mes</span>
                       <span className="warn"><strong>{pendientesMes}</strong> pendientes</span>
                       <span className={atrasadasMes > 0 ? "danger" : ""}><strong>{atrasadasMes}</strong> vencidas</span>
                     </div>
@@ -1542,7 +1512,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
                 <div className="stories-overview" aria-label="Resumen del período">
                   <div><span>Planificadas</span><strong>{historiasMes.length}</strong></div>
                   <div><span>Pendientes</span><strong>{pendientesMes}</strong></div>
-                  <div className="is-success"><span>Publicadas</span><strong>{publicadasMes}</strong></div>
+                  <div className="is-success"><span>Confirmadas manualmente</span><strong>{publicadasMes}</strong></div>
                   <div className={atrasadasMes > 0 ? "is-danger" : ""}><span>Atrasadas</span><strong>{atrasadasMes}</strong></div>
                 </div>
               )}

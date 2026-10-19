@@ -1,4 +1,8 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { EditorialPublicationControl } from '../components/EditorialPublicationControl.jsx';
+import { editorialFields, mergeEditorialStatus } from '../components/EditorialPublicationControl.model.js';
+import { isConfirmedPublication, isHistoricalPublication } from '../shared/editorial/publication-evidence.js';
+import { getSesion } from '../utils.jsx';
 import { etiquetaCortaPublicacion, fechaISODesde, getCheckPublicacionLabel, getEstadoHistoriaLabel, getGrillaMes, getHoyLocalISO, getTipoPublicacionLabel, payloadColumnaPublicacion, sumarDiasISO } from "../utils.jsx";
 import { COLUMNAS_PUBLICACION, DIAS_SEMANA, ESTADOS_PUBLICACION, MESES, RESPONSABLES_EQUIPO, TIPOS_PUBLICACION } from "../constants.js";
 import { Modal } from "../components/Modal.jsx";
@@ -6,7 +10,7 @@ import { PageState } from "../components/PageState.jsx";
 import { PublicationComposer, PublicationPreviewQueue } from "../components/PublicationComposer.jsx";
 import { formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 
-export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, contextMonth, onMonthChange }) {
+export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, contextMonth, onMonthChange, sesion, onPublicationSaved }) {
   const hoy = new Date();
   const [localYear, setLocalYear] = useState(hoy.getFullYear());
   const [localMonth, setLocalMonth] = useState(hoy.getMonth());
@@ -76,8 +80,8 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
     Object.values(tmp).forEach((items) => {
       items.sort((a, b) => {
         if (a.estado === b.estado) return a.cliente_nombre.localeCompare(b.cliente_nombre);
-        if (a.estado === "publicada") return 1;
-        if (b.estado === "publicada") return -1;
+        if (isConfirmedPublication(a)) return 1;
+        if (isConfirmedPublication(b)) return -1;
         return a.estado.localeCompare(b.estado);
       });
     });
@@ -102,13 +106,13 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
     const piezasDelMes = piezas.filter(
       (pz) => pz.fecha_programada?.slice(0, 7) === mesISO,
     );
-    const pendientesDelMes = piezasDelMes.filter((pz) => pz.estado !== "publicada");
-    const publicadasDelMes = piezasDelMes.filter((pz) => pz.estado === "publicada");
+    const pendientesDelMes = piezasDelMes.filter((pz) => !isConfirmedPublication(pz));
+    const publicadasDelMes = piezasDelMes.filter((pz) => isConfirmedPublication(pz));
     const pendientesVencidas = piezas.filter(
-      (pz) => pz.fecha_programada < hoyISO && pz.estado !== "publicada",
+      (pz) => pz.fecha_programada < hoyISO && !isConfirmedPublication(pz),
     );
     const pendientesHoy = piezas.filter(
-      (pz) => pz.fecha_programada === hoyISO && pz.estado !== "publicada",
+      (pz) => pz.fecha_programada === hoyISO && !isConfirmedPublication(pz),
     );
     const proximos7 = piezas.filter(
       (pz) =>
@@ -164,6 +168,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
   }, []);
 
   const cambiarEstadoPublicacion = useCallback(async (publicacion, nuevoEstado) => {
+    if (nuevoEstado === 'publicada' || isConfirmedPublication(publicacion) || getSesion()?.usuario?.rol !== 'admin') return;
     setGuardandoId(publicacion.id);
     setError(null);
     try {
@@ -321,7 +326,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
                       }}
                       title={`${dia} de ${MESES[month].toLowerCase()} — ${pz.tipoLabel} — ${pz.cliente_nombre}`}
                     >
-                      <span>{pz.tipo === "carrusel" ? "Carrusel" : "Reel"}</span><strong>{pz.cliente_nombre}</strong>{pz.estado === "publicada" && <i aria-label="Publicado">✓</i>}
+                      <span>{pz.tipo === "carrusel" ? "Carrusel" : "Reel"}</span><strong>{pz.cliente_nombre}</strong>{isConfirmedPublication(pz) && <i aria-label="Confirmada manualmente">✓</i>}
                     </div>
                   ))}
                   {ocultos > 0 && (
@@ -367,7 +372,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
                       <span>{pz.tipoLabel} · {pz.fecha_programada}</span>
                     </span>
                     <span className="day-publication-badge">
-                      {pz.estado === "publicada" ? "✓" : pz.tipo === "carrusel" ? "C" : "V"}
+                      {isConfirmedPublication(pz) ? "✓" : pz.tipo === "carrusel" ? "C" : "V"}
                     </span>
                   </button>
                 ))}
@@ -396,19 +401,19 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
                   <div>{getEstadoHistoriaLabel(piezaSel.estado)}</div>
                 </div>
                 <div className="detail-field">
-                  <div className="detail-label">Check publicación</div>
+                  <div className="detail-label">Registro de publicación</div>
                   <div>
-                    {getCheckPublicacionLabel(piezaSel.estado)}
+                    {isConfirmedPublication(piezaSel) ? 'Confirmada manualmente' : piezaSel.estado === 'publicada' ? 'Histórica sin confirmación' : 'Sin confirmación'}
                   </div>
                 </div>
                 {piezaSel.fecha_publicación_real && (
                   <div className="detail-field">
-                    <div className="detail-label">Marcada publicada</div>
+                    <div className="detail-label">Fecha registrada (histórica si no hay confirmación)</div>
                     <div>{piezaSel.fecha_publicación_real}</div>
                   </div>
                 )}
                 <div className="detail-field">
-                  <label className="detail-label" htmlFor="publication-date">Fecha de publicación</label>
+                  <label className="detail-label" htmlFor="publication-date">Fecha programada</label>
                   <input id="publication-date" type="date" value={piezaSel.fecha_programada || ""} disabled={guardandoId === piezaSel.id} onChange={(event) => cambiarFecha(piezaSel, event.target.value)} />
                 </div>
                 <div className="detail-field">
@@ -437,18 +442,16 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
                 ) : <p className="publication-linked-tasks-empty">No hay tareas vinculadas disponibles para tu usuario.</p>}
               </section>
               <div className="modal-actions">
-                <button
-                  className="btn primary"
-                  type="button"
-                  disabled={guardandoId === piezaSel.id || piezaSel.estado === "publicada"}
-                  onClick={() => cambiarEstadoPublicacion(piezaSel, "publicada")}
-                >
-                  {guardandoId === piezaSel.id ? "Guardando..." : "Marcar publicado"}
-                </button>
+                <EditorialPublicationControl dominio="publicacion" pieza={piezaSel} sesion={sesion} onSaved={dto => {
+                  const merge = row => row.id === dto.piece.id ? mergeEditorialStatus(row, dto) : row;
+                  setPiezas(prev => prev.map(merge));
+                  setPiezaSel(prev => prev ? merge(prev) : prev);
+                  setDiaSel(prev => prev ? { ...prev, items: prev.items.map(merge) } : prev); onPublicationSaved?.(dto);
+                }} />
                 <button
                   className="btn"
                   type="button"
-                  disabled={guardandoId === piezaSel.id || piezaSel.estado === "lista"}
+                  disabled={guardandoId === piezaSel.id || piezaSel.estado === "lista" || isConfirmedPublication(piezaSel) || getSesion()?.usuario?.rol !== "admin"}
                   onClick={() => cambiarEstadoPublicacion(piezaSel, "lista")}
                 >
                   Volver a pendiente
@@ -456,7 +459,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
                 <button
                   className="btn"
                   type="button"
-                  disabled={guardandoId === piezaSel.id || piezaSel.estado === "bloqueada"}
+                  disabled={guardandoId === piezaSel.id || piezaSel.estado === "bloqueada" || isConfirmedPublication(piezaSel) || getSesion()?.usuario?.rol !== "admin"}
                   onClick={() => cambiarEstadoPublicacion(piezaSel, "bloqueada")}
                 >
                   No publicado / revisar
@@ -479,7 +482,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
   );
 }
 
-export function PublicacionesGeneralTab({ clientes, onIrACliente }) {
+export function PublicacionesGeneralTab({ clientes, onIrACliente, sesion, onPublicationSaved }) {
   const [publicaciones, setPublicaciones] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -610,6 +613,7 @@ export function PublicacionesGeneralTab({ clientes, onIrACliente }) {
                       <span style={{ background: est.bg, color: est.fg, fontWeight: "600", fontSize: "11px", padding: "3px 8px", borderRadius: "10px" }}>
                         {est.label}
                       </span>
+                      <EditorialPublicationControl dominio="publicacion" pieza={p} sesion={sesion} onSaved={dto => { setPublicaciones(prev => prev.map(row => row.id === p.id ? mergeEditorialStatus(row, dto) : row)); onPublicationSaved?.(dto); }} />
                     </td>
                   </tr>
                 );
@@ -622,7 +626,7 @@ export function PublicacionesGeneralTab({ clientes, onIrACliente }) {
   );
 }
 
-export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month }) {
+export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month, sesion, onPublicationSaved }) {
   const [publicaciones, setPublicaciones] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -665,10 +669,13 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
   }, [publicaciones]);
 
   const actualizarLocal = (id, campos) => {
+    campos = editorialFields(publicaciones.find(p => p.id === id), campos, getSesion()?.usuario?.rol === 'admin');
     setPublicaciones((prev) => prev.map((p) => (p.id === id ? { ...p, ...campos } : p)));
   };
 
   const guardarEnServidor = async (id, campos) => {
+    campos = editorialFields(publicaciones.find(p => p.id === id), campos, getSesion()?.usuario?.rol === 'admin');
+    if (!Object.keys(campos).length) return;
     try {
       const res = await fetch(`/api/publicaciones/${id}`, {
         method: "PATCH",
@@ -938,6 +945,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                         className="sheet-cell"
                         data-cell={`${rowIndex}:estado`}
                         value={p.estado}
+                        disabled={getSesion()?.usuario?.rol !== 'admin' || isConfirmedPublication(p)}
                         onChange={(e) => {
                           actualizarLocal(p.id, { estado: e.target.value });
                           guardarEnServidor(p.id, { estado: e.target.value });
@@ -946,9 +954,10 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                         style={{ background: est.bg, color: est.fg, fontWeight: "600", border: "1px solid transparent" }}
                       >
                         {ESTADOS_PUBLICACION.map((e) => (
-                          <option key={e.id} value={e.id}>{e.label}</option>
+                          <option key={e.id} value={e.id} disabled={e.id === 'publicada'}>{e.label}</option>
                         ))}
                       </select>
+                      <EditorialPublicationControl dominio="publicacion" pieza={p} sesion={sesion} onSaved={dto => { setPublicaciones(prev => prev.map(row => row.id === p.id ? mergeEditorialStatus(row, dto) : row)); onPublicationSaved?.(dto); }} />
                     </td>
                     <td>
                       <div className="sheet-row-actions">
@@ -1076,10 +1085,10 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
   const publicacionesClienteMes = publicaciones.filter(
     (p) => p.cliente_id === clienteSeleccionado && p.fecha_programada?.startsWith(mesPrefix),
   );
-  const publicadasCliente = publicacionesClienteMes.filter((p) => p.estado === "publicada").length;
+  const publicadasCliente = publicacionesClienteMes.filter(isConfirmedPublication).length;
   const pendientesCliente = publicacionesClienteMes.length - publicadasCliente;
   const atrasadasCliente = publicacionesClienteMes.filter(
-    (p) => p.fecha_programada < hoyISO && p.estado !== "publicada",
+    (p) => p.fecha_programada < hoyISO && !isConfirmedPublication(p),
   ).length;
 
   const TABS_PRINCIPALES = [
@@ -1154,7 +1163,8 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
                   <div className="stories-overview publications-overview" aria-label="Resumen del cliente y período">
                     <div><span>Planificadas</span><strong>{publicacionesClienteMes.length}</strong></div>
                     <div><span>Pendientes</span><strong>{pendientesCliente}</strong></div>
-                    <div className="is-success"><span>Publicadas</span><strong>{publicadasCliente}</strong></div>
+                    <div className="is-success"><span>Confirmadas manualmente</span><strong>{publicadasCliente}</strong></div>
+                    <div><span>Históricas sin confirmación · cohorte programada</span><strong>{publicacionesClienteMes.filter(isHistoricalPublication).length}</strong></div>
                     <div className={atrasadasCliente > 0 ? "is-danger" : ""}><span>Atrasadas</span><strong>{atrasadasCliente}</strong></div>
                   </div>
                 </>
@@ -1163,6 +1173,8 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
               <div className="h-body">
                 {tabPrincipal === "calendario" && (
                   <PublicacionesCalendarioTab
+                    sesion={sesion}
+                    onPublicationSaved={dto => setPublicaciones(prev => prev.map(row => row.id === dto.piece.id ? mergeEditorialStatus(row, dto) : row))}
                     onIrAPlanilla={irAPlanillaDeCliente}
                     contextYear={year}
                     contextMonth={month}
@@ -1171,7 +1183,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
                 )}
 
                 {tabPrincipal === "lista" && (
-                  <PublicacionesGeneralTab clientes={clientes} onIrACliente={irAPlanillaDeCliente} />
+                  <PublicacionesGeneralTab sesion={sesion} onPublicationSaved={dto => setPublicaciones(prev => prev.map(row => row.id === dto.piece.id ? mergeEditorialStatus(row, dto) : row))} clientes={clientes} onIrACliente={irAPlanillaDeCliente} />
                 )}
 
                 {tabPrincipal === "preparar" && (
@@ -1184,6 +1196,8 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
 
                 {tabPrincipal === "planilla" && clienteActual && (
                   <PublicacionesPlanillaTab
+                    sesion={sesion}
+                    onPublicationSaved={dto => setPublicaciones(prev => prev.map(row => row.id === dto.piece.id ? mergeEditorialStatus(row, dto) : row))}
                     key={`pub-${clienteSeleccionado}`}
                     clienteId={clienteSeleccionado}
                     clienteNombre={clienteNombre}

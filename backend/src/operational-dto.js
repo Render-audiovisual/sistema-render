@@ -120,6 +120,18 @@ const taskSchema = {
   comentarios: array(object(fields('id tarea_id contenido usuario usuario_id autor autor_id created_at updated_at'))),
   ediciones_vinculadas: array(object(fields('id titulo estado revision tarea_padre_id'))),
 };
+const publicationEvidence = object({
+  classification: value => ['confirmada_manualmente', 'historica_sin_confirmacion', 'no_publicada'].includes(value) ? value : OMIT,
+  revision: value => Number.isSafeInteger(value) && value >= 0 ? value : OMIT,
+  confirmation: value => value === null ? null : object({
+    id: string, actor_id: id, occurred_at: scalar, recorded_at: scalar,
+    source: value => value === 'manual' ? value : OMIT,
+  })(value),
+});
+export function editorialEvidenceDto(value) {
+  const result = publicationEvidence(value);
+  return result === OMIT ? undefined : result;
+}
 const editorialSchema = {
   ...fields(`id revision origen cliente_id cliente_nombre tipo estado fecha_programada idea copy
     material_referencia aclaraciones prioridad responsable duracion_segundos num_imagenes
@@ -131,6 +143,7 @@ const editorialSchema = {
     notas_revisión notas_bloqueador origen_calendario calendario_clave fecha_bloqueada
     created_at updated_at tarea_id tarea_estado tarea_revision`),
   metadata: editorialMetadata, colaborador_ids: ids, colaboradores: strings,
+  publicacion_evidencia: publicationEvidence,
   adjuntos: attachments, attachments, uploads: attachments,
 };
 const clientSchema = {
@@ -177,6 +190,16 @@ export function taskOperationalDto(task, auth = {}) {
     edicion_responsable: 'edicion_responsable', responsable_publicacion: 'responsable_publicacion' } });
 }
 export function editorialOperationalDto(piece, auth = {}) {
+  // Existing admin fields retain their contract, but this new server-owned
+  // evidence tree is closed for every role. Never evaluate a proof getter.
+  if (ownValue(auth, 'rol') === 'admin' && piece && Object.hasOwn(piece, 'publicacion_evidencia')) {
+    const descriptors = Object.getOwnPropertyDescriptors(piece);
+    delete descriptors.publicacion_evidencia;
+    const result = Object.defineProperties({}, descriptors);
+    const evidence = editorialEvidenceDto(ownValue(piece, 'publicacion_evidencia'));
+    if (evidence !== undefined) result.publicacion_evidencia = evidence;
+    return result;
+  }
   return dto(piece, auth, editorialSchema, { metadata: { idea: 'Idea', copy: 'Copy',
     material_referencia: 'Material', aclaraciones: 'Aclaración' } });
 }

@@ -1,3 +1,5 @@
+import { isConfirmedPublication, isHistoricalPublication, confirmationDate, historicalPublicationDate } from '../editorial/publication-evidence.js';
+
 // Report-only projections. Never resolve identities from names or inspect finance metadata.
 const personId = value => Number.isSafeInteger(value) && value > 0;
 const recordId = value => (typeof value === 'string' && value.trim()) || personId(value);
@@ -156,26 +158,32 @@ export function editorialRecords(stories, publications) {
       rows.set(key, { key, id: item.id, domain, cliente_id: personId(item.cliente_id) ? item.cliente_id : null,
         formato: domain === 'historia' ? 'historias' : item.tipo === 'carrusel' ? 'carruseles' : ['video', 'reel'].includes(item.tipo) ? 'reels' : 'otros',
         estado: text(item.estado), programada: editorialDate(item.fecha_programada),
-        publicada: editorialDate(item['fecha_publicación_real']) });
+        publicada: confirmationDate(item),
+        historica: isHistoricalPublication(item),
+        historica_fecha: historicalPublicationDate(item),
+        confirmada: isConfirmedPublication(item) });
     }
   }
   return [...rows.values()];
 }
 
 export function summarizeEditorialRecords(records, range) {
+  records = [...new Map(array(records).filter(row => personId(row?.id) && ['historia', 'publicacion'].includes(row.domain))
+    .map(row => [`${row.domain}:${row.id}`, row])).values()];
   return ['carruseles', 'reels', 'historias', 'otros'].map(formato => {
     const rows = records.filter(row => row.formato === formato);
     const states = new Map();
     for (const row of rows) {
-      if (!inReportRange(row.programada, range) && !inReportRange(row.publicada, range)) continue;
+      if (!inReportRange(row.programada, range) && !inReportRange(row.publicada, range) && !inReportRange(row.historica_fecha, range)) continue;
       const state = row.estado || 'Sin estado';
       states.set(state, (states.get(state) || 0) + 1);
     }
     return { formato, programadas: rows.filter(row => inReportRange(row.programada, range)).length,
       estados: [...states].map(([estado, total]) => ({ estado, total })),
-      publicadas: rows.filter(row => row.estado === 'publicada' && inReportRange(row.publicada, range)).length,
-      legacy: rows.filter(row => row.estado === 'publicada' && !row.publicada && inReportRange(row.programada, range)).length,
-      legacySinFecha: rows.filter(row => row.estado === 'publicada' && !row.publicada && !row.programada).length };
+      publicadas: rows.filter(row => row.confirmada === true && inReportRange(row.publicada, range)).length,
+      historicalFechadas: rows.filter(row => row.historica === true && inReportRange(row.historica_fecha, range)).length,
+      legacy: rows.filter(row => row.historica === true && !row.historica_fecha && inReportRange(row.programada, range)).length,
+      legacySinFecha: rows.filter(row => row.historica === true && !row.historica_fecha && !row.programada).length };
   });
 }
 

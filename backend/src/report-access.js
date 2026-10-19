@@ -1,3 +1,5 @@
+import { editorialEvidenceDto, editorialOperationalDto } from './operational-dto.js';
+
 function normalize(value = "") {
   return String(value)
     .normalize("NFD")
@@ -115,11 +117,17 @@ function productionReportDto(source) {
 
 function nonAdminReportDto(data) {
   const rows = (key, dto) => rowsOf(data, key).map(dto);
+  const editorial = (item, fields) => {
+    const result = pickScalars(item, fields);
+    const evidence = editorialEvidenceDto(ownValue(item, 'publicacion_evidencia'));
+    if (evidence !== undefined) result.publicacion_evidencia = evidence;
+    return result;
+  };
   return {
     tareas: rows("tareas", taskReportDto),
     tareasRenderOs: rows("tareasRenderOs", taskReportDto),
-    historias: rows("historias", (item) => pickScalars(item, ["id", "cliente_id", "estado", "fecha_programada", "fecha_publicación_real", "responsable", "responsable_diseño"])),
-    publicaciones: rows("publicaciones", (item) => pickScalars(item, ["id", "cliente_id", "tipo", "estado", "fecha_programada", "fecha_publicación_real", "responsable", "responsable_diseño"])),
+    historias: rows("historias", (item) => editorial(item, ["id", "cliente_id", "estado", "fecha_programada", "fecha_publicación_real", "responsable", "responsable_diseño"])),
+    publicaciones: rows("publicaciones", (item) => editorial(item, ["id", "cliente_id", "tipo", "estado", "fecha_programada", "fecha_publicación_real", "responsable", "responsable_diseño"])),
     clientes: rows("clientes", (item) => {
       const result = pickScalars(item, ["id", "nombre", "activo", "cuota_carruseles", "disenador_responsable", "grupo_feed_id", "cuota_feed_carruseles"]);
       for (const key of ['cuota_reels', 'cuota_feed_reels']) {
@@ -136,7 +144,10 @@ function nonAdminReportDto(data) {
 }
 
 export function filterReportDataForUser(data, auth = {}) {
-  if (ownValue(auth, 'rol') === "admin") return { ...data, resumenRenderOsPorDia: summarizeRenderOsByDay(data.tareasRenderOs) };
+  if (ownValue(auth, 'rol') === "admin") return { ...data,
+    ...(Array.isArray(ownValue(data, 'historias')) ? { historias: data.historias.map(item => editorialOperationalDto(item, auth)) } : {}),
+    ...(Array.isArray(ownValue(data, 'publicaciones')) ? { publicaciones: data.publicaciones.map(item => editorialOperationalDto(item, auth)) } : {}),
+    resumenRenderOsPorDia: summarizeRenderOsByDay(data.tareasRenderOs) };
   const role = ownValue(auth, 'rol'), userId = ownValue(auth, 'id');
   if (!positiveId(userId) || ownValue(auth, 'activo') === false) {
     return { ...nonAdminReportDto(ownValue(data, 'producciones') !== undefined ? { producciones: {} } : {}), resumenRenderOsPorDia: {} };

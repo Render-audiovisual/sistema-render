@@ -1,3 +1,6 @@
+import { isConfirmedPublication, isHistoricalPublication, confirmationDate } from './shared/editorial/publication-evidence.js';
+
+const uniquePieces = items => [...new Map((Array.isArray(items) ? items : []).filter(item => Number.isSafeInteger(item?.id) && item.id > 0).map(item => [item.id, item])).values()];
 export function getMesISO(fecha = new Date()) {
   return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -68,18 +71,24 @@ export function getEstadoCuota({ cuota, realizadas, planificadas, avanceDelMes }
 
 // Editorial publication is evidenced by the piece, never by a completed task.
 export function getResumenClientes(clientes, historias, publicaciones, { mes, avanceDelMes }) {
+  historias = uniquePieces(historias);
+  publicaciones = uniquePieces(publicaciones);
   return clientes.map((cliente) => {
     const historiasMes = historias.filter(
       (historia) => historia.cliente_id === cliente.id && esDelMes(historia.fecha_programada, mes),
     );
     const publicacionesMes = getPublicacionesDelMismoFeed(cliente, clientes, publicaciones)
       .filter((publicacion) => esDelMes(publicacion.fecha_programada, mes));
-    const historiasPublicadas = historiasMes.filter(
-      (historia) => historia.estado === "publicada" || Boolean(historia.fecha_publicación_real),
-    );
-    const publicacionesPublicadas = publicacionesMes.filter(
-      (publicacion) => publicacion.estado === "publicada" || Boolean(publicacion.fecha_publicación_real),
-    );
+    const historiasPublicadas = historiasMes.filter(isConfirmedPublication);
+    const publicacionesPublicadas = publicacionesMes.filter(isConfirmedPublication);
+    const historiasSinConfirmacion = historiasMes.filter(isHistoricalPublication).length;
+    const historicas = publicacionesMes.filter(isHistoricalPublication);
+    const reelsSinConfirmacion = historicas.filter(item => ['reel', 'video'].includes(item.tipo)).length;
+    const carruselesSinConfirmacion = historicas.filter(item => item.tipo === 'carrusel').length;
+    const historiasPublicadasEnMesReal = historias.filter(item => item.cliente_id === cliente.id && esDelMes(confirmationDate(item), mes)).length;
+    const actualFeed = getPublicacionesDelMismoFeed(cliente, clientes, publicaciones).filter(item => esDelMes(confirmationDate(item), mes));
+    const reelsPublicadosEnMesReal = actualFeed.filter(item => ['reel', 'video'].includes(item.tipo)).length;
+    const carruselesPublicadosEnMesReal = actualFeed.filter(item => item.tipo === 'carrusel').length;
     const reelsPublicados = publicacionesPublicadas.filter(
       (publicacion) => publicacion.tipo === "reel" || publicacion.tipo === "video",
     ).length;
@@ -122,6 +131,14 @@ export function getResumenClientes(clientes, historias, publicaciones, { mes, av
       cuotaTotal,
       piezasPlanificadas,
       piezasPublicadas,
+      historiasSinConfirmacion,
+      reelsSinConfirmacion,
+      carruselesSinConfirmacion,
+      totalSinConfirmacion: historiasSinConfirmacion + reelsSinConfirmacion + carruselesSinConfirmacion,
+      historiasPublicadasEnMesReal,
+      reelsPublicadosEnMesReal,
+      carruselesPublicadosEnMesReal,
+      piezasPublicadasEnMesReal: historiasPublicadasEnMesReal + reelsPublicadosEnMesReal + carruselesPublicadosEnMesReal,
       porcentajeGeneral: calcularPorcentajeCuota(piezasPublicadas, cuotaTotal),
       reelsPublicados,
       carruselesPublicados,
@@ -149,6 +166,9 @@ export function getTotalesCartera(filas) {
   const carruselesPublicados = sumar(feedsUnicos, (cliente) => cliente.carruselesPublicados);
   const piezasPublicadas = historiasPublicadas + reelsPublicados + carruselesPublicados;
   const piezasContratadas = cuotaHistorias + cuotaReels + cuotaCarruseles;
+  const historiasSinConfirmacion = sumar(activas, item => item.historiasSinConfirmacion || 0);
+  const reelsSinConfirmacion = sumar(feedsUnicos, item => item.reelsSinConfirmacion || 0);
+  const carruselesSinConfirmacion = sumar(feedsUnicos, item => item.carruselesSinConfirmacion || 0);
   return {
     clientesActivos: activas.length,
     cuotaHistorias,
@@ -160,6 +180,12 @@ export function getTotalesCartera(filas) {
     carruselesPublicados,
     piezasPublicadas,
     piezasContratadas,
+    historiasSinConfirmacion,
+    reelsSinConfirmacion,
+    carruselesSinConfirmacion,
+    totalSinConfirmacion: historiasSinConfirmacion + reelsSinConfirmacion + carruselesSinConfirmacion,
+    piezasPublicadasEnMesReal: sumar(activas, item => item.historiasPublicadasEnMesReal || 0)
+      + sumar(feedsUnicos, item => (item.reelsPublicadosEnMesReal || 0) + (item.carruselesPublicadosEnMesReal || 0)),
     porcentajePlanificacionHistorias: calcularPorcentajeCuota(historiasPlanificadas, cuotaHistorias),
     porcentajeHistorias: calcularPorcentajeCuota(historiasPublicadas, cuotaHistorias),
     porcentajeReels: calcularPorcentajeCuota(reelsPublicados, cuotaReels),

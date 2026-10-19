@@ -46,6 +46,7 @@ import { createProjectsRouter } from "./projects.js";
 import { projectDomainConflict } from "./project-errors.js";
 import { createEditorialPublicationRouter } from "./editorial-publication.js";
 import { editorialPublicationDomainConflict } from "./editorial-publication-errors.js";
+import { annotateEditorialEvidence } from "./editorial-evidence-read.js";
 import { resolveUserRole } from "./user-roles.js";
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
@@ -573,14 +574,16 @@ router.get("/reportes/datos", async (req, res, next) => {
         cliente_etiqueta,categoria,importe,fuente,fuente_item,confirmado_por
         FROM entregas_edicion ORDER BY fecha_entrega,fuente_item`),
     ]);
-    const [assignedTasks, assignedWorkspaceTasks, producciones] = await Promise.all([
+    const [assignedTasks, assignedWorkspaceTasks, producciones, historiasConEvidencia, publicacionesConEvidencia] = await Promise.all([
       annotateTaskAssignments(pool, tareas.rows), annotateTaskAssignments(pool, tareasRenderOs.rows),
       loadProductionReport(pool, productionRange),
+      annotateEditorialEvidence(pool, 'historia', historias.rows),
+      annotateEditorialEvidence(pool, 'publicacion', publicaciones.rows),
     ]);
     res.json(filterReportDataForUser({
       tareas: assignedTasks,
-      historias: historias.rows,
-      publicaciones: publicaciones.rows,
+      historias: historiasConEvidencia,
+      publicaciones: publicacionesConEvidencia,
       clientes: clientes.rows,
       usuarios: usuarios.rows,
       tareasRenderOs: assignedWorkspaceTasks,
@@ -1756,7 +1759,7 @@ router.patch("/historias/:id", requireRole("admin"), async (req, res, next) => {
                  idea, copy, material_referencia, aclaraciones, prioridad, responsable,
                  responsable_diseño, responsable_revisión, to_char(fecha_diseño_entrega, 'YYYY-MM-DD') AS fecha_diseño_entrega,
                  to_char(fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
-                 notas_diseño, notas_revisión, notas_bloqueador, metadata, created_at, updated_at`,
+                 fecha_publicación_real, notas_diseño, notas_revisión, notas_bloqueador, metadata, created_at, updated_at`,
       [
         estado || null,
         idea || null,
@@ -1787,7 +1790,7 @@ router.patch("/historias/:id", requireRole("admin"), async (req, res, next) => {
     }
 
     await completeLinkedAutoTasks(pool, { estado: result.rows[0].estado, historiaId: Number(id) });
-    res.json(editorialOperationalDto(result.rows[0], req.auth));
+    res.json(editorialOperationalDto((await annotateEditorialEvidence(pool, 'historia', result.rows))[0], req.auth));
   } catch (error) {
     next(error);
   }
@@ -1848,7 +1851,7 @@ router.get("/historias", async (req, res, next) => {
       WHERE h.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
       ORDER BY h.fecha_programada DESC, h.id
     `);
-    res.json(result.rows.map((row) => editorialOperationalDto(row, req.auth)));
+    res.json((await annotateEditorialEvidence(pool, 'historia', result.rows)).map((row) => editorialOperationalDto(row, req.auth)));
   } catch (error) {
     next(error);
   }
@@ -1935,7 +1938,7 @@ router.patch("/publicaciones/:id", requireRole("admin"), async (req, res, next) 
                  to_char(fecha_diseño_entrega, 'YYYY-MM-DD') AS fecha_diseño_entrega,
                  to_char(fecha_edición_entrega, 'YYYY-MM-DD') AS fecha_edición_entrega,
                  to_char(fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
-                 to_char(fecha_publicación_real, 'YYYY-MM-DD HH24:MI') AS fecha_publicación_real,
+                 fecha_publicación_real,
                  origen_calendario, calendario_clave, fecha_bloqueada, metadata, created_at, updated_at`,
       [
         estado || null,
@@ -1966,7 +1969,7 @@ router.patch("/publicaciones/:id", requireRole("admin"), async (req, res, next) 
     }
 
     await completeLinkedAutoTasks(pool, { estado: result.rows[0].estado, publicacionId: Number(id) });
-    res.json(editorialOperationalDto(result.rows[0], req.auth));
+    res.json(editorialOperationalDto((await annotateEditorialEvidence(pool, 'publicacion', result.rows))[0], req.auth));
   } catch (error) {
     next(error);
   }
@@ -2023,7 +2026,7 @@ router.get("/publicaciones", async (req, res, next) => {
         to_char(p.fecha_diseño_entrega, 'YYYY-MM-DD') AS fecha_diseño_entrega,
         to_char(p.fecha_edición_entrega, 'YYYY-MM-DD') AS fecha_edición_entrega,
         to_char(p.fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
-        to_char(p.fecha_publicación_real, 'YYYY-MM-DD HH24:MI') AS fecha_publicación_real,
+        p.fecha_publicación_real,
         p.origen_calendario,
         p.calendario_clave,
         p.fecha_bloqueada,
@@ -2035,7 +2038,7 @@ router.get("/publicaciones", async (req, res, next) => {
       WHERE $1::boolean OR p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
       ORDER BY p.fecha_programada DESC, p.id
     `, [incluirArchivadas]);
-    res.json(result.rows.map((row) => editorialOperationalDto(row, req.auth)));
+    res.json((await annotateEditorialEvidence(pool, 'publicacion', result.rows)).map((row) => editorialOperationalDto(row, req.auth)));
   } catch (error) {
     next(error);
   }

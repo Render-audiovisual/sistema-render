@@ -127,10 +127,14 @@ test('UI requests bounded report DTO and does not use local identities, name mat
   assert.doesNotMatch(source, /data\?\.(finance|sueldos|contratos)|\/api\/(sueldos|contratos)/);
 });
 
-test('editorial actual-date counts require published state and valid real date, separate from schedule and legacy', () => {
-  const records = editorialRecords([{ id: 1, estado: 'publicada', fecha_programada: '2026-09-15', 'fecha_publicación_real': '2026-10-02T12:00:00Z' }], [
+const confirmedEditorial = (item, occurred_at) => ({ ...item, cliente_id: item.cliente_id || 1, estado: 'publicada',
+  'fecha_publicación_real': occurred_at, publicacion_evidencia: { classification: 'confirmada_manualmente', revision: 1,
+    confirmation: { id: `34349ff1-15c7-4d7b-9c14-${String(item.id).padStart(12, '0')}`, actor_id: 1, source: 'manual', occurred_at, recorded_at: occurred_at } } });
+
+test('editorial actual-date counts require explicit manual evidence, separate from schedule and legacy', () => {
+  const records = editorialRecords([confirmedEditorial({ id: 1, fecha_programada: '2026-09-15' }, '2026-10-02T12:00:00Z')], [
     { id: 1, tipo: 'carrusel', estado: 'publicada', fecha_programada: '2026-10-10' },
-    { id: 2, tipo: 'video', estado: 'publicada', fecha_programada: '2026-10-11', 'fecha_publicación_real': '2026-11-01T00:00:00Z' },
+    confirmedEditorial({ id: 2, tipo: 'video', fecha_programada: '2026-10-11' }, '2026-11-01T03:00:00Z'),
     { id: 3, tipo: 'video', estado: 'lista', fecha_programada: '2026-10-12', 'fecha_publicación_real': '2026-10-12' },
     { id: 4, tipo: 'video', estado: 'publicada', 'fecha_publicación_real': '2026-02-30' },
   ]);
@@ -173,7 +177,7 @@ test('task drilldown keeps actual IDs, dates, domain-safe links and format/state
 
 test('explicit client/feed quota dedup preserves zero, missing and conflicting values without division', () => {
   const clients = [{ id: 1, nombre: 'A', grupo_feed_id: 7, cuota_feed_carruseles: 8, cuota_feed_reels: 4 }, { id: 2, nombre: 'B', grupo_feed_id: 7, cuota_feed_carruseles: 8, cuota_feed_reels: 4 }, { id: 3, nombre: 'C', cuota_carruseles: 0 }, { id: 4, nombre: 'Inactive', activo: false, cuota_carruseles: 30 }];
-  const records = editorialRecords([], [{ id: 1, cliente_id: 1, tipo: 'carrusel', estado: 'publicada', 'fecha_publicación_real': '2026-10-05' }, { id: 2, cliente_id: 2, tipo: 'carrusel', estado: 'publicada', 'fecha_publicación_real': '2026-10-05' }]);
+  const records = editorialRecords([], [confirmedEditorial({ id: 1, cliente_id: 1, tipo: 'carrusel' }, '2026-10-05T12:00:00Z'), confirmedEditorial({ id: 2, cliente_id: 2, tipo: 'carrusel' }, '2026-10-05T12:00:00Z')]);
   const rows = clientQuotaReport(clients, records, range);
   assert.equal(rows.length, 2);
   assert.equal(rows[0].carruseles, 8);
@@ -186,8 +190,8 @@ test('explicit client/feed quota dedup preserves zero, missing and conflicting v
 
 test('quota publication cells explicitly describe partial visible scope, including zero', () => {
   const source = readFileSync(new URL('../../frontend/src/pages/Reportes.jsx', import.meta.url), 'utf8');
-  assert.match(source, /Carruseles publicados visibles con fecha real en el rango/);
-  assert.match(source, /Reels publicados visibles con fecha real en el rango/);
+  assert.match(source, /Carruseles confirmados en el período real/);
+  assert.match(source, /Reels confirmados en el período real/);
   assert.match(source, /Solo incluye piezas visibles según tus permisos; no mide el cumplimiento global de la cuota\./);
   assert.match(source, /formato === 'carruseles'\)\.publicadas\} visibles/);
   assert.match(source, /formato === 'reels'\)\.publicadas\} visibles/);

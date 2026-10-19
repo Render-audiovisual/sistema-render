@@ -72,6 +72,12 @@ test('client publication totals rely on pieces, never linked or unlinked complet
   const options = { mes: '2026-10', avanceDelMes: 0.5, tareas: tasks.map(task => ({ ...task, publicacion_id: 1 })) };
   assert.equal(getResumenClientes(clients, [], publications, options)[0].piezasPublicadas, 0);
   publications[0].fecha_publicación_real = '2026-10-19T10:00:00Z';
+  assert.equal(getResumenClientes(clients, [], publications, options)[0].piezasPublicadas, 0);
+  publications[0].estado = 'publicada';
+  assert.equal(getResumenClientes(clients, [], publications, options)[0].piezasPublicadas, 0);
+  publications[0].publicacion_evidencia = { classification: 'confirmada_manualmente', revision: 1,
+    confirmation: { id: '34349ff1-15c7-4d7b-9c14-000000000001', actor_id: 1, source: 'manual',
+      occurred_at: '2026-10-19T10:00:00Z', recorded_at: '2026-10-19T10:00:00Z' } };
   assert.equal(getResumenClientes(clients, [], publications, options)[0].piezasPublicadas, 1);
   assert.equal(getResumenClientes(clients, [], [], options)[0].piezasPlanificadas, 0);
 });

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { productionReportRange, loadProductionReport, loadProductionTaskContext } from '../src/production-reporting.js';
+import { editorialRecords, summarizeEditorialRecords, clientQuotaReport } from '../../frontend/src/shared/reports/production-registry-report.js';
 
 test('production reports use inclusive/exclusive calendar bounds including leap years and year rollover', () => {
   assert.deepEqual(productionReportRange({}, '2028-02-01'), { desde: '2028-02-01', hasta: '2028-03-01' });
@@ -65,4 +66,38 @@ test('task context rejects non IDs and does not invent a link for legacy or abse
   const db = { query: async () => ({ rows: [] }) };
   for (const id of [null, 0, -1, '12', 1.5, Infinity]) await assert.rejects(loadProductionTaskContext(db, id), error => error.status === 400);
   assert.deepEqual(await loadProductionTaskContext(db, 12), { vinculo: null });
+});
+
+test('editorial summaries separate confirmed actual Córdoba period from dated and undated historical coverage', () => {
+  const proof = { classification: 'confirmada_manualmente', revision: 1, confirmation: {
+    id: '00000000-0000-4000-8000-000000000001', actor_id: 22, source: 'manual',
+    occurred_at: '2026-10-01T02:00:00.000Z', recorded_at: '2026-10-02T12:00:00.000Z' } };
+  const confirmed = { id: 1, cliente_id: 1, tipo: 'video', estado: 'publicada', fecha_programada: '2026-10-02',
+    'fecha_publicación_real': proof.confirmation.occurred_at, publicacion_evidencia: proof };
+  const legacyDated = { id: 2, cliente_id: 1, tipo: 'video', estado: 'publicada', fecha_programada: '2026-10-03', 'fecha_publicación_real': '2026-10-04T12:00:00Z' };
+  const legacyUndated = { id: 3, cliente_id: 1, tipo: 'video', estado: 'publicada', fecha_programada: '2026-10-03' };
+  const legacyNoPlan = { id: 4, cliente_id: 1, tipo: 'video', estado: 'publicada' };
+  const records = editorialRecords([], [confirmed, confirmed, legacyDated, legacyUndated, legacyNoPlan]);
+  assert.equal(records.length, 4);
+  const [october] = summarizeEditorialRecords([...records, ...records], { desde: '2026-10-01', hasta: '2026-11-01' }).filter(row => row.formato === 'reels');
+  assert.equal(october.programadas, 3); assert.equal(october.publicadas, 0);
+  assert.equal(october.historicalFechadas, 1); assert.equal(october.legacy, 1); assert.equal(october.legacySinFecha, 1);
+  const september = summarizeEditorialRecords(records, { desde: '2026-09-01', hasta: '2026-10-01' }).find(row => row.formato === 'reels');
+  assert.equal(september.publicadas, 1); assert.equal(september.programadas, 0);
+  const [group] = clientQuotaReport([{ id: 1, grupo_feed_id: 7, cuota_feed_reels: 4, cuota_feed_carruseles: 2 },
+    { id: 2, grupo_feed_id: 7, cuota_feed_reels: 4, cuota_feed_carruseles: 2 }], records, { desde: '2026-10-01', hasta: '2026-11-01' });
+  assert.equal(group.reels, 4); assert.equal(group.metrics.find(row => row.formato === 'reels').publicadas, 0);
+});
+
+test('report domain IDs remain distinct, metadata/task flags never prove publication, stale roots lose credit', () => {
+  const fakeProof = { classification: 'confirmada_manualmente', revision: 1, confirmation: {
+    id: '00000000-0000-4000-8000-000000000001', actor_id: 22, source: 'manual',
+    occurred_at: '2026-10-05T12:00:00Z', recorded_at: '2026-10-05T13:00:00Z' } };
+  const base = { id: 1, cliente_id: 1, estado: 'publicada', fecha_programada: '2026-10-05', 'fecha_publicación_real': '2026-10-05T12:00:00Z' };
+  const rows = editorialRecords([{ ...base, metadata: { publicacion_evidencia: fakeProof } }], [
+    { ...base, tipo: 'carrusel', publicacion_evidencia: fakeProof, 'fecha_publicación_real': '2026-10-06T12:00:00Z' }]);
+  assert.equal(rows.length, 2); assert.notEqual(rows[0].key, rows[1].key);
+  const summary = summarizeEditorialRecords(rows, { desde: '2026-10-01', hasta: '2026-11-01' });
+  assert.equal(summary.reduce((sum, row) => sum + row.publicadas, 0), 0);
+  assert.equal(summary.reduce((sum, row) => sum + row.historicalFechadas, 0), 2);
 });

@@ -60,7 +60,7 @@ export function ClienteCuotaResumen({ etiqueta, publicados, cuota }) {
           <div className="cliente-quota-progress" aria-label={`${porcentaje}% de la cuota de ${etiqueta}`}>
             <span style={{ width: `${Math.min(porcentaje, 100)}%` }} />
           </div>
-          <small>{publicados} publicados · {cuotaNumero - Math.min(publicados, cuotaNumero)} pendientes</small>
+          <small>{publicados} confirmados · {cuotaNumero - Math.min(publicados, cuotaNumero)} sin confirmar</small>
         </>
       )}
       {cuotaNumero === 0 && <small>Este formato no forma parte del acuerdo mensual.</small>}
@@ -250,7 +250,8 @@ export function ClientesAdminPage() {
     [filasTodas, filtroEstado],
   );
   const totales = useMemo(() => getTotalesCartera(filasTodas), [filasTodas]);
-  const getAlertaCliente = (cliente) => cliente.estadoGeneral.label;
+  const getAlertaCliente = (cliente) => cliente.totalSinConfirmacion > 0
+    ? "Revisar registros sin confirmar" : cliente.estadoGeneral.label;
 
   return (
     <main aria-label="Administración de clientes">
@@ -298,11 +299,14 @@ export function ClientesAdminPage() {
                       ? "Cartera inactiva"
                       : "Todos los clientes"}
                 </strong>
-                <span>Producción publicada, acuerdo mensual y estado del mes</span>
+                <span>Publicaciones confirmadas del mes planificado y acuerdo mensual</span>
               </div>
             </div>
 
             {error && <PageState compact type="error" title={error} description="Tus datos no fueron modificados." onRetry={() => cargarClientes()} />}
+            {!cargando && !error && <p className="caption" role="note" aria-label="Cobertura de publicaciones">
+              {totales.piezasPublicadas} confirmadas manualmente del mes planificado · {totales.piezasPublicadasEnMesReal ?? 0} con publicación real en este mes · {totales.totalSinConfirmacion ?? 0} registros históricos sin confirmación.
+            </p>}
             {cargando ? (
               <PageState title="Cargando clientes…" description="Conservamos el cliente y período seleccionados." />
             ) : (
@@ -332,13 +336,14 @@ export function ClientesAdminPage() {
                         <small>Abono mensual</small>
                       </div>
                       <div className="clientes-portfolio-progress">
-                        <strong>{publicadas} de {comprometidas} publicados</strong>
+                        <strong>{publicadas} de {comprometidas} confirmados</strong>
+                        {cliente.totalSinConfirmacion > 0 && <small>{cliente.totalSinConfirmacion} registros históricos sin confirmar</small>}
                         <span><i style={{ width: `${Math.min(progreso, 100)}%` }} /></span>
                         <small>{progreso}% del acuerdo mensual</small>
                       </div>
                       <div className="clientes-portfolio-status">
                         <strong className={cliente.estadoGeneral.color === "rojo" ? "attention" : ""}>{getAlertaCliente(cliente)}</strong>
-                        <small>{pendientes ? `${pendientes} pendientes` : "Sin pendientes"}</small>
+                        <small>{pendientes ? `${pendientes} sin confirmación` : "Acuerdo con confirmación completa"}</small>
                       </div>
                       <button className="btn clientes-portfolio-action" type="button"
                         onClick={(event) => { event.stopPropagation(); setClienteSeleccionado(cliente); }}>
@@ -402,7 +407,7 @@ export function ClientesAdminPage() {
                       </div>
                       <div>
                         <span>Historias</span>
-                        <strong>{cliente.historiasPublicadas} de {cliente.cuotaHistorias} publicadas</strong>
+                        <strong>{cliente.historiasPublicadas} de {cliente.cuotaHistorias} confirmadas</strong>
                         <small>{cliente.historiasMes} planificadas · {cliente.porcentajeHistorias}% del acuerdo</small>
                       </div>
                       <div>
@@ -411,7 +416,7 @@ export function ClientesAdminPage() {
                         <small>
                           {cliente.cuotaHistorias === 0
                             ? "Historias no incluidas."
-                            : `${Math.max(cliente.cuotaHistorias - cliente.historiasPublicadas, 0)} contratadas pendientes.`}
+                            : `${Math.max(cliente.cuotaHistorias - cliente.historiasPublicadas, 0)} contratadas sin confirmar.`}
                         </small>
                       </div>
                     </div>
@@ -441,10 +446,10 @@ export function ClientesAdminPage() {
             )}
 
             <div className="caption">
-              El avance de publicación usa el estado editorial registrado de historias,
-              reels y carruseles del mes planificado. Finalizar una tarea no publica
-              su contenido. Los registros históricos no verifican por sí solos una
-              publicación real. Los formatos sin planificación se muestran por separado.
+              El acuerdo usa confirmaciones manuales de piezas planificadas para este mes.
+              La fecha real se cuenta aparte, en horario de Córdoba. Los registros históricos
+              sin confirmación no prueban que el contenido siga pendiente: requieren revisión.
+              Finalizar una tarea o marcar una checklist no confirma una publicación.
             </div>
           </div>
         </div>
