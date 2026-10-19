@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import { startLocalHarness, request, fixturePassword } from '../scripts/render2-local-test.js';
 import { proposalSnapshot } from '../src/mia-supervisor-policy.js';
 
@@ -106,6 +106,13 @@ test('production registry: historical invariance and real per-video HTTP workflo
     assert.equal(reuseIndex.length, 1);
     assert.match(reuseIndex[0].indexdef, /UNIQUE.*produccion_videos.*\(visita_id, video_origen_id\)/);
     await fixture.query("INSERT INTO _migrations(nombre) VALUES ('059_production_registry.sql')");
+    // 060 depends on 059 and is also deferred by this fixture. Install it only
+    // after all 059 history/empty-registry assertions above, before HTTP use.
+    const editorialMigrations = (await readdir(new URL('../migrations/', import.meta.url)))
+      .filter(name => /^060_.*\.sql$/.test(name));
+    assert.equal(editorialMigrations.length, 1);
+    await fixture.query(await readFile(new URL(`../migrations/${editorialMigrations[0]}`, import.meta.url), 'utf8'));
+    await fixture.query('INSERT INTO _migrations(nombre) VALUES ($1)', [editorialMigrations[0]]);
   });
   await t.test('task POST registers one visit with no inferred videos; task-only date/client writes and deletion reject', async () => {
     const [client] = await fixture.query("INSERT INTO clientes(nombre) VALUES ('QA source task client') RETURNING id");

@@ -61,6 +61,12 @@ test('canonical task workflow: approval, finalization and editorial independence
     assert.deepEqual((await fixture.query('SELECT estado FROM tareas WHERE id=ANY($1::int[]) ORDER BY id', [legacy])).map(row => row.estado),
       ['publicada', 'programada']);
     await fixture.query("INSERT INTO _migrations(nombre) VALUES ('058_task_work_states.sql')");
+    // 060 replaces this same synchronization function; install it only after
+    // the independent populated-history 058 invariance assertion has passed.
+    const editorialMigration = await readFile(new URL('../migrations/060_production_editorial_links.sql', import.meta.url), 'utf8');
+    await fixture.query(editorialMigration);
+    assert.deepEqual(await history(), before, '060 must also preserve the populated workflow history');
+    await fixture.query("INSERT INTO _migrations(nombre) VALUES ('060_production_editorial_links.sql')");
   });
 
   const detail = async id => {

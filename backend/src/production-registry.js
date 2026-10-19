@@ -2,6 +2,8 @@ import crypto from 'node:crypto';
 import { isProductionVisitTask, isValidProductionDate } from './production-visits.js';
 import { annotateTaskAssignments, replaceTaskAssignments } from './task-assignments.js';
 import { taskOperationalDto } from './operational-dto.js';
+import { productionEditorialConflict } from './production-link-errors.js';
+import { registerProductionEditorialRoutes, lockProductionEditorialContext, lockProductionObjectiveLinks, rejectLegacyProductionSource, assertProductionLineageAvailable } from './production-editorial.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const positive = value => Number.isSafeInteger(value) && value > 0;
@@ -74,6 +76,7 @@ const VISITS = `SELECT v.id,v.tarea_origen_id,v.cliente_id,c.nombre cliente_nomb
   ARRAY(SELECT p.usuario_id FROM produccion_visita_participantes p WHERE p.visita_id=v.id ORDER BY p.usuario_id) participante_ids
   FROM produccion_visitas v JOIN clientes c ON c.id=v.cliente_id`;
 const VIDEOS = `SELECT pv.id,pv.visita_id,pv.video_origen_id,pv.titulo,pv.guion,pv.estado,pv.material_url,pv.observaciones,
+  pv.publicacion_id,pv.tarea_entrega_id,pv.cliente_editorial_id,
   pv.tarea_edicion_id,pv.editor_id,to_char(pv.fecha_entrega,'YYYY-MM-DD') fecha_entrega,t.estado tarea_estado,
   (SELECT a.usuario_id FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.tipo='responsable' LIMIT 1) editor_actual_id,
   to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_entrega_actual,t.cliente_id tarea_cliente_id
@@ -81,6 +84,7 @@ const VIDEOS = `SELECT pv.id,pv.visita_id,pv.video_origen_id,pv.titulo,pv.guion,
 const PHOTOS = `SELECT id,visita_id,tipo,estado,drive_url,observaciones FROM produccion_fotos`;
 const scalarFields = (row, fields) => Object.fromEntries(fields.filter(key => row[key] === null || ['string', 'number', 'boolean'].includes(typeof row[key])).map(key => [key, row[key]]));
 const videoDto = row => ({...scalarFields(row, ['id', 'visita_id', 'video_origen_id', 'titulo', 'guion', 'estado', 'material_url', 'observaciones', 'tarea_edicion_id', 'editor_id', 'fecha_entrega', 'tarea_estado', 'fecha', 'cliente_id', 'cliente_nombre', 'editor_actual_id', 'fecha_entrega_actual', 'tarea_cliente_id']),
+  ...Object.fromEntries(['publicacion_id','tarea_entrega_id','cliente_editorial_id'].map(key => [key,positive(row[key]) ? row[key] : null])),
   editor_handoff_id: positive(row.editor_id) ? row.editor_id : null,
   fecha_entrega_handoff: date(row.fecha_entrega) ? row.fecha_entrega : null });
 function visitDto(row, videos, photos) {
@@ -169,9 +173,11 @@ export function createProductionRegistryRouter({ express, pool }) {
     try { return await fn(req, res); }
     catch (error) { if (error.status) return res.status(error.status).json({ error: error.message });
       if (error.code === '23505') return res.status(409).json({ error: 'El origen ya está vinculado. Recargá la visita.' });
+      if (productionEditorialConflict(error)) return res.status(409).json({ error: 'El vínculo cambió o es incompatible. Recargá los datos antes de continuar.' });
       return next(error); }
   };
   const routeId = req => { if (!uuid(req.params.id)) throw fail('Visita inválida.'); return req.params.id; };
+  registerProductionEditorialRoutes(router,{pool,handle,transaction,readVisits,bump,lockVisit,activeClient});
   router.get('/', handle(async (req, res) => {
     if (typeof req.query.mes !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.mes)) throw fail('Elegí un mes YYYY-MM válido.');
     const client = req.query.cliente_id;
@@ -222,7 +228,7 @@ export function createProductionRegistryRouter({ express, pool }) {
           // the new source client in its fresh post-lock read below.
           await db.query('SELECT id FROM produccion_videos WHERE visita_id=$1 ORDER BY id FOR UPDATE',[id]);
           if ((await db.query(`SELECT pv.id FROM produccion_videos pv WHERE pv.visita_id=$1 AND
-            (pv.tarea_edicion_id IS NOT NULL OR pv.video_origen_id IS NOT NULL OR EXISTS(SELECT 1 FROM produccion_videos child WHERE child.video_origen_id=pv.id)) LIMIT 1`,[id])).rows.length) throw fail('La visita tiene edición o videos retomados. Revisá manualmente el cambio de cliente.',409);
+            (pv.tarea_edicion_id IS NOT NULL OR pv.publicacion_id IS NOT NULL OR pv.video_origen_id IS NOT NULL OR EXISTS(SELECT 1 FROM produccion_videos child WHERE child.video_origen_id=pv.id)) LIMIT 1`,[id])).rows.length) throw fail('La visita tiene edición, vínculo editorial o videos retomados. Revisá manualmente el cambio de cliente.',409);
         }
       }
       if (current.tarea_origen_id && (own(input,'fecha') || own(input,'cliente_id'))) await db.query('UPDATE tareas SET fecha_vencimiento=$2,cliente_id=$3,updated_at=now() WHERE id=$1',[current.tarea_origen_id,input.fecha??current.fecha,input.cliente_id??current.cliente_id]);
@@ -238,6 +244,7 @@ export function createProductionRegistryRouter({ express, pool }) {
       if(partial&&!uuid(req.params.itemId)) throw fail('Registro inválido.');
       const input=validateProductionItem(req.body,kind,{partial,reuse:!!req.body?.video_origen_id});
       const visita=await transaction(pool,async db=>{
+        if(input.video_origen_id) await lockProductionObjectiveLinks(db);
         const current=await lockVisit(db,id);checkRevision(current,req.body.expected_revision);
         const table=kind==='videos'?'produccion_videos':'produccion_fotos';
         if(partial) {
@@ -247,6 +254,9 @@ export function createProductionRegistryRouter({ express, pool }) {
           const source=(await db.query(`SELECT pv.id,pv.visita_id,pv.titulo,pv.guion,pv.estado FROM produccion_videos pv JOIN produccion_visitas v ON v.id=pv.visita_id
             WHERE pv.id=$1 AND v.cliente_id=$2 FOR UPDATE OF pv`,[input.video_origen_id,current.cliente_id])).rows[0];
           if(!source||source.visita_id===id||!unresolved.includes(source.estado)) throw fail('El video pendiente no pertenece a otra visita de este cliente.',404);
+          // No implicit editorial transfer: neither a bound source nor a bound
+          // ancestor/descendant may spawn another independent delivery task.
+          await assertProductionLineageAvailable(db,source.id,{includeSelf:true});
           // The joined visit was not locked: READ COMMITTED may have used its
           // old client while waiting for the source video lock. Read afresh.
           const sourceVisit=(await db.query('SELECT cliente_id FROM produccion_visitas WHERE id=$1',[source.visita_id])).rows[0];
@@ -268,9 +278,14 @@ export function createProductionRegistryRouter({ express, pool }) {
     keys(req.body,['expected_revision','editor_id','fecha_entrega']);revision(req.body);
     if(!positive(req.body.editor_id)||!date(req.body.fecha_entrega)) throw fail('Elegí editor y fecha de entrega válidos.');
     const result=await transaction(pool,async db=>{
-      const visit=await lockVisit(db,id);
+      // Never discover an existing delivery task after taking a visit/video lock.
+      const discovered=(await db.query(`${VIDEOS} WHERE pv.id=$1 AND pv.visita_id=$2`,[req.params.videoId,id])).rows[0];
+      if(!discovered) throw fail('Video no encontrado en esta visita.',404);
+      const context=discovered.publicacion_id ? await lockProductionEditorialContext(db,id,req.params.videoId,{}, {lockVisit}) : null;
+      const visit=context?.visit ?? await lockVisit(db,id);
       const video=(await db.query(`${VIDEOS} WHERE pv.id=$1 AND pv.visita_id=$2 FOR UPDATE OF pv`,[req.params.videoId,id])).rows[0];
       if(!video) throw fail('Video no encontrado en esta visita.',404);
+      if((video.publicacion_id??null)!==(discovered.publicacion_id??null) || (video.tarea_entrega_id??null)!==(discovered.tarea_entrega_id??null)) throw fail('El vínculo editorial cambió. Recargá la visita.',409);
       if(video.tarea_edicion_id) {
         if(video.editor_id!==req.body.editor_id||video.fecha_entrega!==req.body.fecha_entrega) throw fail('El video ya fue enviado con otro editor o fecha.',409);
         const task=(await db.query("SELECT t.*,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento FROM tareas t WHERE t.id=$1",[video.tarea_edicion_id])).rows[0];
@@ -282,15 +297,35 @@ export function createProductionRegistryRouter({ express, pool }) {
       const material=url(video.material_url||visit.drive_url);if(!material) throw fail('Vinculá el material del video o la carpeta de la visita.');
       const [editor]=await activePeople(db,[req.body.editor_id],true);
       if(visit.tarea_origen_id) {
-        const source=await sourceTask(db,visit.tarea_origen_id,{available:false});
-        if((source.propiedades_extra?.produccion_registros||[]).length || source.propiedades_extra?.produccion_confirmada_at
-          || (await db.query("SELECT id FROM tareas WHERE propiedades_extra->>'origen_visita_id'=$1 LIMIT 1",[String(visit.tarea_origen_id)])).rows.length) throw fail('La visita tiene producción agregada histórica. Requiere revisión manual antes de crear edición por video.',409);
+        const source=context?.source ?? await sourceTask(db,visit.tarea_origen_id,{available:false});
+        await rejectLegacyProductionSource(db,visit,source);
       }
       const metadata={workspace:'render_os',origen_produccion_video_id:video.id,produccion_visita_id:id,guiones:video.guion};
-      const task=(await db.query(`INSERT INTO tareas(titulo,asignado_a,cliente_id,estado,tipo_tarea,subtipo,fecha_vencimiento,material_referencia,aclaraciones,propiedades_extra)
+      let task;
+      let collaboratorIds=[];
+      if(context) {
+        const canonical=context.task,publication=context.publication,slot=context.slot;
+        if(!canonical || canonical.id!==video.tarea_entrega_id || canonical.publicacion_id!==video.publicacion_id
+          || canonical.cliente_id!==visit.cliente_id || canonical.estado!=='pendiente' || canonical.historia_id
+          || canonical.tipo_tarea==='produccion' || canonical.propiedades_extra?.workspace!=='render_os'
+          || ['archivada_render_os','papelera_render_os'].some(key=>[true,'true'].includes(canonical.propiedades_extra?.[key]))
+          || !publication || publication.cliente_id!==visit.cliente_id || !['video','reel'].includes(publication.tipo)
+          || publication.estado!=='pendiente' || (slot && (slot.tarea_id!==canonical.id || slot.publicacion_id!==publication.id
+            || slot.estado!=='pendiente' || slot.completada_at))) throw fail('La entrega editorial ya empezó o dejó de ser compatible.',409);
+        const [assigned]=await annotateTaskAssignments(db,[canonical]);
+        const memberIds=[...new Set([assigned.asignado_a_id,...assigned.colaborador_ids].filter(id=>positive(id)&&id!==editor.id))];
+        const members=memberIds.length ? (await db.query('SELECT id,nombre FROM usuarios WHERE id=ANY($1::int[]) AND activo IS TRUE ORDER BY id FOR SHARE',[memberIds])).rows : [];
+        collaboratorIds=members.map(member=>member.id);
+        metadata.colaboradores=members.map(member=>member.nombre);
+        // Keep editorial copy/origin markers and workflow state; guion is separate.
+        task=(await db.query(`UPDATE tareas SET asignado_a=$2,fecha_vencimiento=$3,material_referencia=$4,
+          tipo_tarea='edicion',subtipo='video',propiedades_extra=propiedades_extra || $5::jsonb,updated_at=now()
+          WHERE id=$1 RETURNING *,to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento`,
+        [canonical.id,editor.nombre,req.body.fecha_entrega,material,JSON.stringify(metadata)])).rows[0];
+      } else task=(await db.query(`INSERT INTO tareas(titulo,asignado_a,cliente_id,estado,tipo_tarea,subtipo,fecha_vencimiento,material_referencia,aclaraciones,propiedades_extra)
         VALUES($1,$2,$3,'pendiente','edicion','video',$4,$5,$6,$7::jsonb)
         RETURNING *,to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento`,[`${visit.cliente_nombre} | Edición | ${video.titulo}`,editor.nombre,visit.cliente_id,req.body.fecha_entrega,material,video.observaciones,JSON.stringify(metadata)])).rows[0];
-      await replaceTaskAssignments(db,task.id,{ownerId:editor.id,collaboratorIds:[]});
+      await replaceTaskAssignments(db,task.id,{ownerId:editor.id,collaboratorIds});
       await db.query('UPDATE produccion_videos SET tarea_edicion_id=$3,editor_id=$4,fecha_entrega=$5,actualizado_por_id=$6,updated_at=now() WHERE id=$1 AND visita_id=$2',[video.id,id,task.id,editor.id,req.body.fecha_entrega,req.auth.id]);
       await bump(db,id,req.auth.id);
       return {created:true,task:taskOperationalDto((await annotateTaskAssignments(db,[task]))[0],req.auth),visita:(await readVisits(db,'WHERE v.id=$1',[id]))[0]};

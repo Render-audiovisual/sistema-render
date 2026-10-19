@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { STATUSES, BOARD_COLUMNS, canonicalTaskState, isTaskCompleted } from "../../frontend/src/features/render-os/constants.js";
 import { canUserMoveTaskToState, canRetryTaskUpdate } from "../../frontend/src/features/render-os/utils/task-state.js";
 import { getProductionPhase } from "../../frontend/src/features/render-os/utils/production-visits.js";
-import { getCanonicalTaskContentMetadata } from "../../frontend/src/features/render-os/utils/task-content.js";
+import { getCanonicalTaskContentMetadata, isLinkedProductionEditorialTask } from "../../frontend/src/features/render-os/utils/task-content.js";
 
 const source = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
 const admin = {id:1,rol:"admin"};
@@ -84,7 +84,7 @@ test("saving content on historical task does not emit a state change or mutate a
     let changes;
     const context = {task:original,draft:{...original,estado:draftState,aclaraciones:"Updated text"},
       metadata:{},tags:[],collaborators:[],canEditTask:true,canEditVisitClient:true,canEditVisitDate:true,isProductionVisit:false,productionProgress:{},
-      getCanonicalTaskContentMetadata,canonicalTaskState,canUserMoveTaskToState,sesion:{usuario:admin},
+      getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask,canonicalTaskState,canUserMoveTaskToState,sesion:{usuario:admin},
       setSaving:()=>{},setEditing:()=>{},onUpdate:async(id,value)=>{changes=value;},onApprove:()=>assert.fail("no approval during content edit")};
     const save = new Function(...Object.keys(context),`${body}\nreturn save;`)(...Object.values(context));
     await save();

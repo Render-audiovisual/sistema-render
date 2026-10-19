@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { buildTaskAssignmentInput } from "../../frontend/src/shared/task-assignment-input.js";
-import { getCanonicalTaskContentMetadata } from "../../frontend/src/features/render-os/utils/task-content.js";
+import { getCanonicalTaskContentMetadata, isLinkedProductionEditorialTask } from "../../frontend/src/features/render-os/utils/task-content.js";
 import { canonicalTaskState } from "../../frontend/src/features/render-os/constants.js";
 
 const source = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
@@ -49,8 +49,8 @@ test("saving content preserves collaborators without resending assignments or di
   const task = { id: 5, titulo: "Original", asignado_a_id: 1, colaborador_ids: [2], propiedades_extra: { colaboradores: ["Alex"], resumen: "Keep", etiquetas: ["tag"] } };
   let changes;
   const noop = () => {};
-  const save = new Function("task", "draft", "metadata", "tags", "collaborators", "canEditTask", "isProductionVisit", "productionProgress", "getCanonicalTaskContentMetadata", "setSaving", "setEditing", "onUpdate", "canonicalTaskState", "canEditVisitClient", "canEditVisitDate", `${body}\nreturn save;`)(
-    task, { ...task, aclaraciones: "New content" }, task.propiedades_extra, ["tag"], ["Alex"], true, false, {}, getCanonicalTaskContentMetadata, noop, noop, async (id, value) => { changes = value; }, canonicalTaskState, true, true,
+  const save = new Function("task", "draft", "metadata", "tags", "collaborators", "canEditTask", "isProductionVisit", "productionProgress", "getCanonicalTaskContentMetadata", "setSaving", "setEditing", "onUpdate", "canonicalTaskState", "canEditVisitClient", "canEditVisitDate", "isLinkedProductionEditorialTask", `${body}\nreturn save;`)(
+    task, { ...task, aclaraciones: "New content" }, task.propiedades_extra, ["tag"], ["Alex"], true, false, {}, getCanonicalTaskContentMetadata, noop, noop, async (id, value) => { changes = value; }, canonicalTaskState, true, true, isLinkedProductionEditorialTask,
   );
   await save();
   assert.equal(changes.aclaraciones, "New content");

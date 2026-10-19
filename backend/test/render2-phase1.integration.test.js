@@ -114,6 +114,9 @@ test('principal Phase 1 HTTP sessions, DTO privacy and publication boundary', {
   await fixture.query(await readFile(new URL('../migrations/058_task_work_states.sql', import.meta.url), 'utf8'));
   assert.deepEqual(await history(), before, 'Installing 058 also preserves all historical rows');
   await fixture.query("INSERT INTO _migrations(nombre) VALUES ('058_task_work_states.sql')");
+  await fixture.query(await readFile(new URL('../migrations/060_production_editorial_links.sql', import.meta.url), 'utf8'));
+  assert.deepEqual(await history(), before, 'Installing 060 preserves all history after 055 and 058');
+  await fixture.query("INSERT INTO _migrations(nombre) VALUES ('060_production_editorial_links.sql')");
   const changeState = async (id, estado) => {
     const detail = await api(`/tareas/${id}?workspace=render_os`, { token: fresh });
     const changed = await api(`/tareas/${id}?workspace=render_os`, { token: fresh, method: 'PATCH',

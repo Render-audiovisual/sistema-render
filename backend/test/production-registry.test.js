@@ -18,6 +18,8 @@ function fixture({linked=true,legacy=false,wrongScope=false,failAssignments=fals
     if(sql==='BEGIN'){prior=structuredClone({visit,video,source,task,tasksCreated});return{rows:[]};}
     if(sql==='ROLLBACK'){({visit,video,source,task,tasksCreated}=prior);return{rows:[]};}
     if(sql==='COMMIT')return{rows:[]};
+    if(sql==="SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))")return{rows:[]};
+    if(sql.startsWith('WITH RECURSIVE familia AS'))return{rows:[]};
     if(sql.startsWith('SELECT tarea_origen_id FROM produccion_visitas'))return{rows:[{tarea_origen_id:visit.tarea_origen_id}]};
     if(sql.startsWith('SELECT id,cliente_id,to_char'))return{rows:linked?[{id:visitId,cliente_id:visit.cliente_id,fecha:visit.fecha}]:[]};
     if(sql.startsWith('SELECT v.cliente_id FROM produccion_videos'))return{rows:[]};
@@ -138,6 +140,9 @@ test('child mutations require aggregate revision and reject cross-visit child ID
 test('manual pending reuse copies full script/title, preserves source and links by UUID',async()=>{
   const f=fixture();const origin='44444444-4444-4444-8444-444444444444';
   assert.equal((await f.run('post','/:id/videos',{expected_revision:1,video_origen_id:origin})).statusCode,201);
+  const advisory=f.calls.findIndex(call=>call.sql==="SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
+  const visitLock=f.calls.findIndex(call=>call.sql.startsWith('SELECT tarea_origen_id FROM produccion_visitas'));
+  assert.ok(advisory>0 && visitLock>advisory,'Lineage serialization precedes any visit/source lock');
   const insert=f.calls.find(call=>call.sql.startsWith('INSERT INTO produccion_videos('));
   assert.ok(insert.params.includes('Guion completo'));assert.ok(insert.params.includes('Video 1'));assert.ok(insert.params.includes(origin));
   assert.equal(f.calls.some(call=>call.sql.startsWith('UPDATE produccion_videos')),false);

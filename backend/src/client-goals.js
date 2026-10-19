@@ -164,12 +164,16 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
         AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
         AND COALESCE(t.propiedades_extra->>'objetivo_periodo',to_char(p.fecha_programada,'YYYY-MM'),to_char(t.fecha_vencimiento,'YYYY-MM'))=$2
         AND NOT EXISTS(SELECT 1 FROM cliente_objetivo_piezas link WHERE link.tarea_id=t.id OR link.publicacion_id=t.publicacion_id)
-      ORDER BY (t.estado IN ('finalizada','publicada')) DESC,t.id FOR UPDATE OF t`, [ids, period]);
+      ORDER BY t.id FOR UPDATE OF t`, [ids, period]);
     const publications = await db.query(`SELECT p.id,p.cliente_id,p.tipo,p.idea,p.copy,p.estado,
       to_char(p.fecha_programada,'YYYY-MM-DD') fecha_programada
       FROM publicaciones p WHERE p.cliente_id=ANY($1::int[]) AND to_char(p.fecha_programada,'YYYY-MM')=$2
         AND NOT EXISTS(SELECT 1 FROM cliente_objetivo_piezas link WHERE link.publicacion_id=p.id)
-      ORDER BY (p.estado='publicada') DESC,p.id FOR UPDATE OF p`, [ids, period]);
+      ORDER BY p.id FOR UPDATE OF p`, [ids, period]);
+    // Acquire row locks in canonical ID order, then preserve the existing
+    // completion/publication preference in memory (never in lock acquisition).
+    candidates.rows.sort((a, b) => Number(isTaskFinalized(b)) - Number(isTaskFinalized(a)) || a.id - b.id);
+    publications.rows.sort((a, b) => Number(b.estado === 'publicada') - Number(a.estado === 'publicada') || a.id - b.id);
     let created = 0, reused = 0;
     const seenPublications = new Set();
     for (const [type, quota] of [['video', objective.reels], ['carrusel', objective.carruseles]]) {
@@ -401,6 +405,11 @@ export async function linkGoalTask(pool, pieceId, body, actor) {
       !sameVersion(piece.updated_at, body.expected_pieza_updated_at) || before.tarea_id !== piece.tarea_id ||
       before.publicacion_id !== piece.publicacion_id) {
       throw fail('La tarea o el casillero cambiaron. Cerrá y volvé a abrir la vinculación.', 409);
+    }
+    // A generic task replacement cannot silently clear or swap an existing
+    // editorial publication. It must not auto-link that publication either.
+    if (piece.publicacion_id && piece.publicacion_id !== task.publicacion_id) {
+      throw fail('El casillero ya tiene una publicación. Elegí su tarea canónica; no se reemplaza ni se borra ese vínculo.', 409);
     }
     if (piece.periodo < GOALS_START_PERIOD || !piece.cuentas.some(account => Number(account.id) === task.cliente_id) ||
       piece.tipo !== task.formato_objetivo || (task.periodo_trabajo && task.periodo_trabajo !== piece.periodo)) {

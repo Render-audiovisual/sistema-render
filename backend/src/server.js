@@ -29,6 +29,7 @@ import { taskOperationalDto, editorialOperationalDto, clientOperationalDto } fro
 import { createProductionRegistryRouter, syncProductionVisitFromTask } from "./production-registry.js";
 import { rejectMixedProductionRecording } from "./production-registry-compatibility.js";
 import { loadProductionReport, loadProductionTaskContext, productionReportRange } from "./production-reporting.js";
+import { productionEditorialConflict } from "./production-link-errors.js";
 import { normalizeTaskState, taskTransitionError, isTaskFinalized } from "./workflow-contract.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
@@ -3837,6 +3838,9 @@ if (fs.existsSync(distDir)) {
 // Error handler centralizado: sin esto, Express devuelve HTML/stack
 // traces por defecto en vez de JSON — riesgo de filtrar detalles internos.
 app.use((err, _req, res, _next) => {
+  if (productionEditorialConflict(err)) {
+    return res.status(409).json({ error: "El contenido está vinculado a una producción. Revisá la pieza, el objetivo y su tarea antes de cambiar la relación." });
+  }
   console.error(err);
   res.status(err.status || 500).json({ error: "Error interno del servidor." });
 });

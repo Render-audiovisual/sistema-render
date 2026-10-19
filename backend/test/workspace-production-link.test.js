@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {canonicalTaskState} from '../../frontend/src/features/render-os/constants.js';
-import {getCanonicalTaskContentMetadata} from '../../frontend/src/features/render-os/utils/task-content.js';
+import {getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask} from '../../frontend/src/features/render-os/utils/task-content.js';
 const workspace=readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
 const productions=readFileSync(new URL('../../frontend/src/pages/Productions.jsx',import.meta.url),'utf8');
 const extract=(source,start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
@@ -112,7 +112,7 @@ test('saving linked source text cannot rewrite registry date/client or legacy pr
   const writes=[];
   const context={task:original,draft:{...original,aclaraciones:'New text',cliente_id:9,fecha_vencimiento:'2026-10-30',produccion_videos_previstos:0},
     canEditTask:true,canEditVisitClient:false,canEditVisitDate:false,legacyProductionEnabled:false,isProductionVisit:true,productionProgress:{planned:3},
-    metadata:original.propiedades_extra,tags:[],collaborators:[],canonicalTaskState,getCanonicalTaskContentMetadata,
+    metadata:original.propiedades_extra,tags:[],collaborators:[],canonicalTaskState,getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask,
     setSaving:()=>{},setEditing:()=>{},onUpdate:async(id,data)=>writes.push(data)};
   const save=new Function(...Object.keys(context),`${extract(workspace,'  const save = async','  const saveInlineField =')}return save;`)(...Object.values(context));
   await save();
@@ -125,7 +125,7 @@ test('linked editing task can save delivery date but never client changes',async
   const permissions=registryState(task,{status:'ready',key:'10:7',vinculo:{...link,tipo:'edicion'}});
   const context={task:original,draft:{...original,cliente_id:9,fecha_vencimiento:'2026-10-30'},
     canEditTask:true,canEditVisitClient:permissions.clientEditable,canEditVisitDate:permissions.dateEditable,
-    legacyProductionEnabled:false,isProductionVisit:false,productionProgress:{},metadata:{},tags:[],collaborators:[],canonicalTaskState,getCanonicalTaskContentMetadata,
+    legacyProductionEnabled:false,isProductionVisit:false,productionProgress:{},metadata:{},tags:[],collaborators:[],canonicalTaskState,getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask,
     setSaving:()=>{},setEditing:()=>{},onUpdate:async(id,data)=>writes.push(data)};
   const save=new Function(...Object.keys(context),`${extract(workspace,'  const save = async','  const saveInlineField =')}return save;`)(...Object.values(context));
   await save();

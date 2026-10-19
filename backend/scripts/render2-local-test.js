@@ -58,7 +58,7 @@ export function fixtureWilsonEnvironment(config = {}) {
   return result;
 }
 
-export async function startLocalHarness({ port = 55594, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, supervisorEnabled = false, wilson = {} } = {}) {
+export async function startLocalHarness({ port = 55594, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, supervisorEnabled = false, wilson = {} } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   if (typeof supervisorEnabled !== 'boolean') throw new Error('Invalid supervisor fixture option');
   const wilsonEnv = fixtureWilsonEnvironment(wilson);
@@ -112,6 +112,7 @@ export async function startLocalHarness({ port = 55594, deferGoalMigration = fal
         RENDER2_DEFER_ASSIGNMENT_MIGRATION: String(deferAssignmentMigration),
         RENDER2_DEFER_TASK_STATE_MIGRATION: String(deferTaskStateMigration),
         RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION: String(deferProductionRegistryMigration),
+        RENDER2_DEFER_PRODUCTION_EDITORIAL_MIGRATION: String(deferProductionEditorialMigration),
         PGOPTIONS: '-c statement_timeout=15000' }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
     const ready = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Fixture startup timeout')), 90000);
@@ -165,6 +166,7 @@ async function fixtureChild() {
     ...(process.env.RENDER2_DEFER_TASK_STATE_MIGRATION === 'true' || process.env.RENDER2_DEFER_GOAL_MIGRATION === 'true'
       ? ['058_task_work_states.sql'] : []),
     ...(process.env.RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION === 'true' ? ['059_production_registry.sql'] : []),
+    ...(process.env.RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION === 'true' || process.env.RENDER2_DEFER_GOAL_MIGRATION === 'true' || process.env.RENDER2_DEFER_TASK_STATE_MIGRATION === 'true' || process.env.RENDER2_DEFER_PRODUCTION_EDITORIAL_MIGRATION === 'true' ? ['060_production_editorial_links.sql'] : []),
   ];
   const migrationPool = deferredMigrations.length ? {
     connect: () => pool.connect(),

@@ -98,7 +98,8 @@ test('completed editing child can link under either final alias but not approval
 test('SQL completion reads cover both task finals while editorial predicates remain published only',()=>{
   const goals=readFileSync(new URL('../src/client-goals.js',import.meta.url),'utf8');
   assert.match(goals,/count\(\*\) FILTER\(WHERE estado IN \('finalizada','publicada'\)\)/);
-  assert.match(goals,/ORDER BY \(p.estado='publicada'\)/);
+  assert.match(goals,/ORDER BY p.id FOR UPDATE OF p/);
+  assert.match(goals,/publications.rows.sort\(\(a, b\) => Number\(b.estado === 'publicada'\) - Number\(a.estado === 'publicada'\) \|\| a.id - b.id\)/);
   const wilson=readFileSync(new URL('../src/wilson-integration.js',import.meta.url),'utf8');
   assert.match(wilson,/t.estado NOT IN \('finalizada','publicada'\)/);
   const supervisor=readFileSync(new URL('../src/mia-supervisor.js',import.meta.url),'utf8');

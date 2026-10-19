@@ -182,6 +182,24 @@ Next central integration: explicitly connect each production video to an existin
 
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
+## Ninth integration — explicit production/editorial delivery identity (2026-10-19)
+
+Implemented locally: additive migration 060 and explicit admin-only per-video association to an existing pending publication/task or empty monthly video objective. Empty objectives create one draft publication and reuse their task; existing pieces create no task/publication/slot. Manual handoff reuses that delivery task, chooses a real editor ID and separate deadline, preserves current active normalized collaborators and never infers grants from names. Visit, delivery, programmed and actual-publication dates remain distinct. No historical backfill or commercial-row reinterpretation.
+
+Archimedes owned registry/editorial transactions; Arendt owned migration and goal consistency; Herschel owned progressive per-video UI and scoped script/copy preservation; Darwin independently reviewed locks/contracts; Wegener authored independent HTTP/SQL QA; Confucius audited remaining Feedback replay risk. Coordinator integrated shared server error mapping, fixture upgrade order and full regressions. Named domain conflicts return safe 409; unexpected SQL/injected failures remain rollback/500, not falsely reported business conflicts.
+
+Composite references, canonical delivery uniqueness, whole-lineage checks, optimistic versions and shared advisory/ordered row locks protect associations against concurrent writers. Objective candidate locking preserves prior ranking semantics. Copy synchronization now locks publication before objective slot. Editing a linked production script no longer clears editorial copy; original video script stays in the registry. Existing unlinked/legacy behavior remains, without automatic fusion.
+
+Verification: **757 backend tests passed, 16 opt-in skipped; 100/100 principal isolated HTTP/PostgreSQL tests passed with zero skips/failures; frontend build passed** after final script-copy changes. Frontend page regression previously passed 152 tests in this block. Tests include populated historical invariance, two-visit claim races, continuation races, active/revoked collaborator bindings, canonical task reuse, full rollback/retry, ordinary-writer tuple protection, nonempty copy preservation and finalization without publication. Fixtures use new disposable clusters and exact cleanup hooks; ordinary startup and existing databases were not used.
+
+Principal browser smoke before the final scoped script editor correction verified explicit goal choice/manual date, canonical task #1 retained through handoff, mobile 390px without horizontal document overflow, reload persistence and a single objective piece. Screenshots: `/private/tmp/render2-editorial-desktop.png`, `/private/tmp/render2-editorial-mobile.png`. The late script-copy fix has regression/HTTP/build evidence, not a fresh browser certification. Interactive fixture `/private/tmp/render2-local-YU37d8` stopped and removal confirmed. Only disposable synthetic data removed.
+
+**Development implemented/tested only; not deployment-ready as a whole; not deployed.** No real roster, Drive OAuth/upload, hosting or production publication verification. Migration 060 needs coordinated staging rehearsal with API/frontend; no production migration executed. See `PRODUCTION_EDITORIAL_CONTRACT.md` and `PRODUCTION_EDITORIAL_QA.md`.
+
+Critical open security gate: `FEEDBACK_REPLAY_FINDINGS.md` documents client-writable trusted provenance and global mutable feedback replay keys. Durable actor/operation/key/payload receipts and trusted server provenance are next; Phase 1 remains open. Editorial-linked pending/repeat continuation deliberately rejects rather than duplicates until an audited transfer policy exists. Visit closure, personal backend dashboard, projects/development, global design/navigation and parallel implementation retirement remain unfinished. This is not completion of Phase 2 or the master goal.
+
+### Original checklist
+
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.
 2. Route task authorization and new assignment writes through IDs; update operational UI/API DTOs together and prove rename/collaborator-removal tests with PostgreSQL.
 3. Adopt independent approval/finalization transition storage and explicit authorized publication recording, preserving original historical state values.

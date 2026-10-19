@@ -155,6 +155,100 @@ function EditingAssignment({video, users}) {
     <div><dt>Al enviar</dt><dd>{personLabel(handoffId)}<small>Entrega: {handoffDate ? <time dateTime={handoffDate}>{handoffDate}</time> : 'Sin fecha registrada'}</small></dd></div>
   </dl>;
 }
+function buildProductionEditorialInput({revision,kind,candidate,plannedDate,acknowledged}) {
+  if (!positiveId(revision) || !candidate || !positiveId(candidate.tarea_id) || !positiveId(candidate.tarea_revision)) throw new Error('Actualizá los candidatos y elegí una tarea válida antes de confirmar.');
+  const data = {expected_revision:revision,tarea_id:candidate.tarea_id,expected_tarea_revision:candidate.tarea_revision};
+  const version = value => typeof value === 'string' && value.trim().length > 0;
+  if (kind === 'piece') {
+    if (!positiveId(candidate.publicacion_id) || !version(candidate.publicacion_updated_at)) throw new Error('Falta la versión de la publicación. Actualizá los candidatos.');
+    data.publicacion_id = candidate.publicacion_id;
+    data.expected_publicacion_updated_at = candidate.publicacion_updated_at;
+    if (candidate.objetivo_pieza_id != null) {
+      if (!positiveId(candidate.objetivo_pieza_id) || !version(candidate.objetivo_updated_at) || !acknowledged) throw new Error('Confirmá también el casillero de objetivo vinculado a esta publicación.');
+      data.objetivo_pieza_id = candidate.objetivo_pieza_id;
+      data.expected_objetivo_updated_at = candidate.objetivo_updated_at;
+    }
+    return {path:'vincular-pieza',data};
+  }
+  if (kind !== 'goal' || !positiveId(candidate.objetivo_pieza_id) || !version(candidate.objetivo_updated_at)) throw new Error('Elegí un casillero de objetivo válido.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(plannedDate || '') || !Number.isFinite(Date.parse(`${plannedDate}T12:00:00Z`)) || new Date(`${plannedDate}T12:00:00Z`).toISOString().slice(0,10) !== plannedDate) throw new Error('Elegí manualmente una fecha de programación válida.');
+  return {path:'vincular-objetivo',data:{...data,objetivo_pieza_id:candidate.objetivo_pieza_id,expected_objetivo_updated_at:candidate.objetivo_updated_at,fecha_programada:plannedDate}};
+}
+function EditorialLinkSummary({video}) {
+  if (!positiveId(video.publicacion_id) || !positiveId(video.tarea_entrega_id)) return null;
+  return <p className="prod-editorial-link">Publicación #{video.publicacion_id} · <a href={`/workspace/tareas?task=${video.tarea_entrega_id}`}>Tarea de entrega #{video.tarea_entrega_id} ↗</a></p>;
+}
+function EditorialAssociation({visit,video,busy,onWrite,onDirty}) {
+  const [open,setOpen] = useState(false);
+  const [period,setPeriod] = useState(visit.fecha.slice(0,7));
+  const [kind,setKind] = useState('piece');
+  const [choice,setChoice] = useState('');
+  const [plannedDate,setPlannedDate] = useState('');
+  const [acknowledged,setAcknowledged] = useState(false);
+  const [catalog,setCatalog] = useState({status:'idle',data:null,revision:null,period:null});
+  const [refreshKey,setRefreshKey] = useState(0);
+  const [needsRefresh,setNeedsRefresh] = useState(false);
+  const [error,setError] = useState('');
+  const [saved,setSaved] = useState(false);
+  const [submitting,setSubmitting] = useState(false);
+  const submitLock = useRef(false);
+  const currentVisit = useRef(visit);
+  currentVisit.current = visit;
+  useEffect(()=>{
+    if (!open) return;
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {setCatalog(current=>({...current,status:'error'}));setError('Elegí un mes válido.');return;}
+    const controller = new AbortController();
+    const revision = currentVisit.current.revision; // Captured when candidates are explicitly loaded, not silently refreshed on visit changes.
+    setCatalog(current=>({...current,status:'loading'}));setError('');
+    apiRequest(`/api/producciones/${encodeURIComponent(visit.id)}/videos/${encodeURIComponent(video.id)}/vinculo?periodo=${encodeURIComponent(period)}`,{signal:controller.signal})
+      .then(data=>{
+        if (!Object.hasOwn(data,'actual') || !Array.isArray(data.publicaciones) || !Array.isArray(data.casilleros)) throw new Error('La lista de candidatos no es válida.');
+        if (!controller.signal.aborted) {setCatalog({status:'ready',data,revision,period});setNeedsRefresh(false);setAcknowledged(false);}
+      })
+      .catch(reason=>{if(!controller.signal.aborted){setCatalog(current=>({...current,status:'error'}));setError(reason.message);}});
+    return()=>controller.abort();
+  },[open,period,refreshKey,visit.id,video.id]);
+  const options = kind === 'piece' ? catalog.data?.publicaciones || [] : catalog.data?.casilleros || [];
+  const candidate = options.find(item=>String(kind === 'piece' ? item.publicacion_id : item.objetivo_pieza_id) === choice);
+  const actual = catalog.data?.actual;
+  const alreadyLinked = positiveId(video.publicacion_id) || Boolean(actual) || saved;
+  const unavailable = Boolean(choice && !candidate);
+  const catalogReady = catalog.status === 'ready' && catalog.period === period && !needsRefresh;
+  const requiresGoalAck = kind === 'piece' && candidate?.objetivo_pieza_id != null;
+  const submit = async event => {
+    event.preventDefault();setError('');
+    if (busy || submitLock.current) return;
+    try {
+      if (!catalogReady || alreadyLinked) throw new Error('Actualizá los candidatos antes de confirmar la vinculación.');
+      const input = buildProductionEditorialInput({revision:catalog.revision,kind,candidate,plannedDate,acknowledged});
+      if (video.tarea_edicion_id && video.tarea_edicion_id !== candidate.tarea_id) throw new Error('La tarea elegida no coincide con la tarea de edición existente. No se fusionarán tareas.');
+      submitLock.current=true;setSubmitting(true);
+      await onWrite({...visit,revision:catalog.revision},`/videos/${encodeURIComponent(video.id)}/${input.path}`,'POST',input.data);
+      setSaved(true);onDirty(`editorial:${video.id}`,false);
+    } catch(reason) {
+      if (reason.status === 409) setNeedsRefresh(true);
+      setError(reason.status === 409 ? `${reason.message} Actualizá los candidatos y revisá la selección antes de volver a confirmar.` : reason.message);
+    } finally {submitLock.current=false;setSubmitting(false);}
+  };
+  return <details className="prod-editorial-association" onToggle={event=>setOpen(event.currentTarget.open)}><summary>Vincular pieza u objetivo</summary>
+    {open && <form className="prod-form" onSubmit={submit} onChange={()=>onDirty(`editorial:${video.id}`,true)}>
+      <p className="prod-muted prod-wide">Vinculá una entrega del mismo cliente usando su tarea existente. No publica el contenido ni lo envía a edición.</p>
+      <label>Mes del objetivo<input type="month" required value={period} disabled={busy || submitting} onChange={event=>{setPeriod(event.target.value);setNeedsRefresh(true);}}/></label>
+      <div className="prod-editorial-refresh"><button type="button" disabled={busy || submitting || catalog.status === 'loading'} onClick={()=>{setNeedsRefresh(true);setRefreshKey(value=>value+1);}}>Actualizar candidatos</button></div>
+      {catalog.status === 'loading' && <p className="prod-muted prod-wide" role="status">Cargando publicaciones y casilleros compatibles…</p>}
+      {error && <p className="prod-error prod-wide" role="alert">{error}</p>}
+      {alreadyLinked ? <p className="prod-muted prod-wide" role="status">{saved ? 'Vinculación guardada.' : 'Este video ya tiene una vinculación editorial.'} {actual && <>Publicación #{actual.publicacion_id} · <a href={`/workspace/tareas?task=${actual.tarea_entrega_id}`}>Tarea #{actual.tarea_entrega_id} ↗</a>{actual.objetivo_pieza_id ? ` · Casillero #${actual.objetivo_pieza_id}` : ''}.</>} El editor y la fecha de entrega se eligen por separado en “Enviar a edición”.</p> : <>
+        <fieldset className="prod-editorial-kind prod-wide" disabled={busy || submitting}><legend>Qué querés vincular</legend><label><input type="radio" name={`editorial-kind-${video.id}`} value="piece" checked={kind === 'piece'} onChange={()=>{setKind('piece');setChoice('');setAcknowledged(false);}}/>Publicación existente</label><label><input type="radio" name={`editorial-kind-${video.id}`} value="goal" checked={kind === 'goal'} onChange={()=>{setKind('goal');setChoice('');setAcknowledged(false);}}/>Casillero vacío de objetivo</label></fieldset>
+        <label className="prod-wide">{kind === 'piece' ? 'Publicación existente' : 'Casillero vacío'}<select value={choice} required disabled={busy || submitting || !catalogReady} onChange={event=>{setChoice(event.target.value);setAcknowledged(false);}}><option value="">{kind === 'piece' ? 'Elegí una publicación' : 'Elegí un casillero'}</option>{unavailable && <option disabled value={choice}>La selección anterior ya no está disponible</option>}{options.map(item=><option key={kind === 'piece' ? item.publicacion_id : item.objetivo_pieza_id} value={kind === 'piece' ? item.publicacion_id : item.objetivo_pieza_id}>{item.titulo || (kind === 'piece' ? `Publicación #${item.publicacion_id}` : `Video ${item.numero}`)} · tarea #{item.tarea_id}{item.objetivo_pieza_id ? ` · casillero #${item.objetivo_pieza_id}` : ''}{item.fecha_programada ? ` · ${item.fecha_programada}` : ''}</option>)}</select></label>
+        {catalogReady && !options.length && <p className="prod-muted prod-wide">No hay {kind === 'piece' ? 'publicaciones compatibles' : 'casilleros vacíos compatibles'} para este mes. No se adoptan tareas duplicadas ni trabajos ya iniciados.</p>}
+        {candidate && <p className="prod-editorial-review prod-wide">Se conservará la <a href={`/workspace/tareas?task=${candidate.tarea_id}`}>tarea de entrega #{candidate.tarea_id} ↗</a>{kind === 'piece' ? ` y la publicación #${candidate.publicacion_id}` : '; se creará una publicación borrador en el casillero elegido'}. No se crea otra tarea.{video.tarea_edicion_id ? ` Tarea de edición actual: #${video.tarea_edicion_id}.` : ''}</p>}
+        {requiresGoalAck && <label className="prod-editorial-ack prod-wide"><input type="checkbox" checked={acknowledged} disabled={busy || submitting || !catalogReady} onChange={event=>setAcknowledged(event.target.checked)}/>Confirmo que también se conserva el casillero #{candidate.objetivo_pieza_id}{candidate.periodo ? ` de ${candidate.periodo}` : ''} vinculado a esta publicación.</label>}
+        {kind === 'goal' && <label className="prod-wide">Fecha de programación<input type="date" required value={plannedDate} disabled={busy || submitting} onChange={event=>setPlannedDate(event.target.value)}/><small>Elegí la fecha editorial. Es distinta de la visita y de la entrega de edición. El guion no se usa como copy.</small></label>}
+        <footer className="prod-wide"><button type="submit" disabled={busy || submitting || !catalogReady || !candidate || (requiresGoalAck && !acknowledged) || (kind === 'goal' && !plannedDate)}>{submitting ? 'Vinculando…' : 'Confirmar vinculación'}</button></footer>
+      </>}
+    </form>}
+  </details>;
+}
 function VisitDetail({visit, users, busy, isAdmin, onWrite, onDirty}) {
   const [adding, setAdding] = useState({});
   return <section className="prod-panel prod-detail" aria-label="Detalle de visita"><header className="prod-detail-heading"><span>{visit.cliente_nombre}</span><h2>{visit.titulo}</h2><p>{dateLabel(visit.fecha)}</p><SafeLink url={visit.drive_url}/></header>
@@ -165,8 +259,10 @@ function VisitDetail({visit, users, busy, isAdmin, onWrite, onDirty}) {
       {(visit[kind] || []).map(item=><article className="prod-media" key={item.id}><header><h4>{item.titulo || item.tipo}</h4><span className={`prod-status is-${item.estado}`}>{(kind === 'videos' ? VIDEO_STATES : PHOTO_STATES)[item.estado] || item.estado}</span></header><SafeLink url={item.material_url || item.drive_url}/>
         {item.tarea_edicion_id && <a className="prod-task-link" href={`/workspace/tareas?task=${item.tarea_edicion_id}`}>Edición · {TASK_STATES[item.tarea_estado] || item.tarea_estado || 'Ver tarea'} ↗</a>}
         {item.tarea_edicion_id && <EditingAssignment video={item} users={users}/>}
+        {kind === 'videos' && <EditorialLinkSummary video={item}/>}
         {kind === 'videos' && item.guion && <details><summary>Ver guion</summary><p className="prod-script">{item.guion}</p></details>}
         <details><summary>Editar {kind === 'videos' ? 'video' : 'fotos'}</summary><MediaForm visit={visit} item={item} kind={kind} busy={busy} onWrite={onWrite} onDirty={onDirty}/></details>
+        {isAdmin && kind === 'videos' && <EditorialAssociation visit={visit} video={item} busy={busy} onWrite={onWrite} onDirty={onDirty}/>}
         {isAdmin && kind === 'videos' && item.estado === 'grabado' && !item.tarea_edicion_id && <SendToEditing visit={visit} video={item} users={users} busy={busy} onWrite={onWrite} onDirty={onDirty}/>}
       </article>)}{!visit[kind]?.length && <p className="prod-empty">Sin {kind} registrados.</p>}
       {adding[kind] && <MediaForm key={`${visit.id}:${kind}:new`} visit={visit} kind={kind} busy={busy} onWrite={onWrite} onDirty={onDirty} onCreated={()=>setAdding(current=>({...current,[kind]:false}))}/>}
