@@ -103,6 +103,13 @@ test('editing deliveries: explicit immutable versions on canonical principal pro
     assert.deepEqual(await snapshot(false), before, 'No historical task/raw/approval/lineage/editorial/goal rewrite');
     assert.deepEqual(await fixture.query('SELECT * FROM task_editing_deliveries'), []);
     await fixture.query('INSERT INTO _migrations(nombre) VALUES ($1)', [migration]);
+    // Current approval writers also require the forward review ledger. Install
+    // its deferred dependency only after proving the original065 invariance.
+    const current = await snapshot();
+    await fixture.query(await readFile(new URL('../migrations/068_task_editing_reviews.sql', import.meta.url), 'utf8'));
+    assert.deepEqual(await snapshot(), current);
+    assert.deepEqual(await fixture.query('SELECT * FROM task_editing_reviews'), []);
+    await fixture.query('INSERT INTO _migrations(nombre) VALUES ($1)', ['068_task_editing_reviews.sql']);
   });
   await t.test('existing handed-off artifacts/states do not infer events; closed shared GET is read-only', async () => {
     assert.deepEqual(await fixture.query('SELECT * FROM task_editing_deliveries'), []);

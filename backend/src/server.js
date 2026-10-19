@@ -50,6 +50,7 @@ import { createEditorialPublicationRouter } from "./editorial-publication.js";
 import { createEditingDeliveriesRouter } from "./editing-deliveries.js";
 import { editingDeliveryDomainConflict } from "./editing-deliveries-errors.js";
 import { normalizeExpectedEditingDelivery, assertCurrentEditingApprover, assertEditingApprovalDelivery } from "./editing-approval.js";
+import { createEditingReviewsRouter, recordEditingApproval, editingReviewDomainConflict } from "./editing-reviews.js";
 import { createCalendarRouter } from "./calendar.js";
 import { editorialPublicationDomainConflict } from "./editorial-publication-errors.js";
 import { annotateEditorialEvidence } from "./editorial-evidence-read.js";
@@ -310,6 +311,7 @@ router.use('/inicio', createPersonalHomeRouter({ express, pool }));
 router.use('/proyectos', createProjectsRouter({ express, pool }));
 router.use('/editorial-publicacion', createEditorialPublicationRouter({ express, pool }));
 router.use('/tareas-edicion', createEditingDeliveriesRouter({ express, pool }));
+router.use('/tareas-edicion', createEditingReviewsRouter({ express, pool }));
 router.use('/calendario', createCalendarRouter({ express, pool }));
 
 router.get("/sesion", (req, res) => res.json({ usuario: req.auth }));
@@ -2587,7 +2589,10 @@ router.patch("/tareas/:id", async (req, res, next) => {
        WHERE ${where}
        RETURNING id, revision, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
       valores, assignment, async (db, task) => {
-        if (body.estado === 'aprobada' && estadoAnterior !== 'aprobada') await assertEditingApprovalDelivery(db, task, expectedEditingDelivery);
+        if (body.estado === 'aprobada' && estadoAnterior !== 'aprobada') {
+          const deliveryId = await assertEditingApprovalDelivery(db, task, expectedEditingDelivery);
+          if (deliveryId) await recordEditingApproval(db, task, req.auth, deliveryId);
+        }
         await syncProductionVisitFromTask(db, task, req.auth.id);
       }, body.estado === 'aprobada' && estadoAnterior !== 'aprobada' ? db => assertCurrentEditingApprover(db, req.auth) : null,
     );
@@ -2722,7 +2727,10 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
         edicion_responsable_id: tarea.propiedades_extra?.edicion_responsable_id || previousAssignment.asignado_a_id,
         responsable_publicacion: publisher, responsable_publicacion_id: publisherResult.rows[0].id,
         colaboradores: approvedAssignment.collaboratorNames, workspace: "render_os" }), publisher, req.body.expected_revision], approvedAssignment,
-      async (db, task) => assertEditingApprovalDelivery(db, task, expectedEditingDelivery), db => assertCurrentEditingApprover(db, req.auth),
+      async (db, task) => {
+        const deliveryId = await assertEditingApprovalDelivery(db, task, expectedEditingDelivery);
+        if (deliveryId) await recordEditingApproval(db, task, req.auth, deliveryId);
+      }, db => assertCurrentEditingApprover(db, req.auth),
     );
     if (!result.rows[0]) return res.status(409).json({ error: "La tarea ya fue aprobada o cambió de estado." });
     const aprobada = result.rows[0];
@@ -3900,6 +3908,9 @@ if (fs.existsSync(distDir)) {
 // Error handler centralizado: sin esto, Express devuelve HTML/stack
 // traces por defecto en vez de JSON — riesgo de filtrar detalles internos.
 app.use((err, _req, res, _next) => {
+  if (editingReviewDomainConflict(err)) {
+    return res.status(409).json({ error: 'La tarea conserva decisiones de revisión. Consultá su historial; no se puede eliminar ni sobrescribir.' });
+  }
   if (editingDeliveryDomainConflict(err)) {
     return res.status(409).json({ error: "La tarea conserva entregas registradas. Revisá su historial; no se puede eliminar ni sobrescribir." });
   }
