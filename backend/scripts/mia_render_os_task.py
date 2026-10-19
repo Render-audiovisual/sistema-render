@@ -60,7 +60,7 @@ def sign_request(method, path, payload, *, actor_id, actor_name, group_id):
 def request(method, path, args, *, payload=None, idempotency_key=None):
     actor_id, actor_name, group_id = identity(args)
     base_url = os.environ.get("RENDER_OS_API_URL", DEFAULT_BASE_URL).rstrip("/")
-    signature_path = f"{urllib.parse.urlparse(base_url).path}{urllib.parse.urlsplit(path).path}"
+    signature_path = f"{urllib.parse.urlparse(base_url).path}{path}"
     timestamp, nonce, signature, body = sign_request(
         method, signature_path, payload, actor_id=actor_id, actor_name=actor_name, group_id=group_id,
     )

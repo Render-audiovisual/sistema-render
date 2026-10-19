@@ -1,7 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { assertFixtureIdentity, cleanEnvironment } from '../scripts/render2-local-test.js';
+import { assertFixtureIdentity, cleanEnvironment, fixtureWilsonEnvironment } from '../scripts/render2-local-test.js';
+
+test('fixture integration options cannot override database, startup or secret guards', () => {
+  for (const key of ['DATABASE_URL', 'JWT_SECRET', 'NODE_ENV', 'RENDER_DISABLE_SERVER_START', 'privateKey']) {
+    assert.throws(() => fixtureWilsonEnvironment({ [key]: 'untrusted' }));
+  }
+  assert.throws(() => fixtureWilsonEnvironment({ publicKey: null }));
+  assert.deepEqual(fixtureWilsonEnvironment({ telegramUserBindings: '{"synthetic":91001}' }),
+    { WILSON_TELEGRAM_USER_BINDINGS: '{"synthetic":91001}' });
+  assert.deepEqual(fixtureWilsonEnvironment(), {});
+});
 
 test('fixture identity rejects remote, reused and mismatched targets before migration', () => {
   const valid = { root: '/private/tmp/render2-local-ABC123', cwd: '/private/tmp/render2-local-ABC123', port: '55594',

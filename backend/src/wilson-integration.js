@@ -10,11 +10,9 @@ import { rankTaskPriorities } from "./task-priority.js";
 import { getStateNotification, validateProductionHandoff } from "./task-workflow.js";
 import { createMiaPersonalListsRouter, enqueueDuePersonalListReminders } from "./mia-personal-lists.js";
 import { createMiaSupervisorRouter, acknowledgeSupervisorDelivery, supervisorNotificationDeliverable } from "./mia-supervisor.js";
-import { isSupervisorLeader } from "./mia-supervisor-policy.js";
 import { annotateTaskAssignments, replaceTaskAssignments, resolveTaskAssignments } from "./task-assignments.js";
 
 const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
-const DEFAULT_ALLOWED_TELEGRAM_IDS = ["1826333320", "1890547269"];
 const DEFAULT_ALLOWED_WHATSAPP_ID_HASHES = [
   "6dcb148275f19084819c4428ce778efde4141d5e42d16ce95aacbec52f88e36a",
   "82dbca966460791f7150fbab9343d1a8418686a0f0d393777c487be1cd7c7893",
@@ -101,12 +99,12 @@ export function normalizeReviewBatchIds(values) {
     .slice(0, REVIEW_BATCH_MAX_TASKS);
 }
 
-export function reviewTaskOwnedBy(task = {}, actorName = "") {
-  const actor = canonicalWilsonPerson(actorName);
-  if (!actor) return false;
-  if (canonicalWilsonPerson(task.asignado_a) === actor) return true;
-  const collaborators = Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [];
-  return collaborators.some((name) => canonicalWilsonPerson(name) === actor);
+const validUserId = id => Number.isSafeInteger(id) && id > 0;
+
+export function reviewTaskOwnedBy(task = {}, userId) {
+  if (!validUserId(userId)) return false;
+  return task.asignado_a_id === userId
+    || (Array.isArray(task.colaborador_ids) && task.colaborador_ids.includes(userId));
 }
 
 export function reviewBatchSnapshotChanged(task = {}, snapshot = {}) {
@@ -201,13 +199,18 @@ function knownWhatsappAccount(value) {
   return KNOWN_WHATSAPP_ACCOUNTS.find((account) => account.hash === hash) || null;
 }
 
-export function canWilsonAssignPrivately({ actorName, actorRole, leader = false }, assignee) {
-  if (leader) return true;
-  const actor = canonicalWilsonPerson(actorName);
-  const target = normalizeWilsonText(assignee);
-  if (!actor || !target) return false;
-  if (canonicalWilsonPerson(target) === actor) return true;
-  return actorRole === "community" && ["augusto", "mariano mesa", "mariano meza", "mariano"].includes(target);
+export function canWilsonAssignPrivately({ userId, actorRole }, assigneeId) {
+  return validUserId(userId) && validUserId(assigneeId)
+    && (actorRole === "admin" || userId === assigneeId);
+}
+
+export function telegramWilsonUserId(env, actorId) {
+  try {
+    const bindings = JSON.parse(env.WILSON_TELEGRAM_USER_BINDINGS || "{}");
+    if (!bindings || typeof bindings !== "object" || Array.isArray(bindings)) return null;
+    const id = Object.hasOwn(bindings, actorId) ? bindings[actorId] : null;
+    return validUserId(id) ? id : null;
+  } catch { return null; }
 }
 
 function canonicalWilsonPerson(value) {
@@ -226,11 +229,6 @@ export function wilsonPersonAliases(value) {
   if (canonical === "ana mayerro") return ["ana", "ana may", "ana nay", "ana mayerro"];
   if (canonical === "german") return ["german", "germán"];
   return canonical ? [canonical] : [];
-}
-
-function knownWilsonPerson(value) {
-  const canonical = canonicalWilsonPerson(value);
-  return KNOWN_WHATSAPP_ACCOUNTS.find((account) => canonicalWilsonPerson(account.name) === canonical) || null;
 }
 
 export function buildMiaFastContext(tasks = [], person = {}, { today = argentinaDate(), limit = 6 } = {}) {
@@ -304,6 +302,7 @@ export function requireWilsonService(env = process.env, now = () => Date.now(), 
     const nonce = String(req.headers?.["x-wilson-nonce"] || "").trim();
     const signature = String(req.headers?.["x-wilson-signature"] || "").trim();
     const channel = String(req.headers?.["x-wilson-channel"] || "telegram").trim().toLowerCase();
+    if (!["telegram", "whatsapp"].includes(channel)) return res.status(403).json({ error: "Canal no autorizado." });
     const actorId = String(req.headers?.["x-wilson-actor-id"] || req.headers?.["x-telegram-user-id"] || req.body?.telegram_user_id || "").trim();
     const groupId = String(req.headers?.["x-wilson-group-id"] || "").trim();
     const actorName = String(req.headers?.["x-wilson-actor-name"] || "").trim();
@@ -314,14 +313,14 @@ export function requireWilsonService(env = process.env, now = () => Date.now(), 
       && matchesIdentifier(groupId, whatsapp.groupIds, DEFAULT_WHATSAPP_GROUP_HASHES);
     const allowedIds = channel === "whatsapp"
       ? whatsapp.allowedIds
-      : csv(env.WILSON_ALLOWED_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(","));
+      : [];
     const systemActorId = String(env.WILSON_SYSTEM_ACTOR_ID || "").trim();
     const actorIndividuallyAllowed = channel === "whatsapp"
       ? (Boolean(systemActorId) && actorId === systemActorId)
         || Boolean(knownAccount)
         || matchesIdentifier(actorId, allowedIds, DEFAULT_ALLOWED_WHATSAPP_ID_HASHES)
         || matchesIdentifier(actorId, [], OWNER_WHATSAPP_ID_HASHES)
-      : allowedIds.includes(actorId);
+      : telegramWilsonUserId(env, actorId) !== null || (Boolean(systemActorId) && actorId === systemActorId);
     const actorAllowed = actorIndividuallyAllowed || allowedWhatsappGroup
       || (allowSignedUnknownWhatsappPrivate && channel === "whatsapp" && privateChat);
     if (!actorAllowed) return res.status(403).json({ error: `Esta cuenta de ${channel === "whatsapp" ? "WhatsApp" : "Telegram"} no puede operar tareas.` });
@@ -338,11 +337,12 @@ export function requireWilsonService(env = process.env, now = () => Date.now(), 
     }
     for (const [savedNonce, expiresAt] of usedNonces) if (expiresAt <= now()) usedNonces.delete(savedNonce);
     if (usedNonces.has(nonce)) return res.status(409).json({ error: "La solicitud de Wilson ya fue utilizada." });
-    const path = `${req.baseUrl}${req.path}`;
+    // Sign the exact request target, including query parameters. v1 omits
+    // channel/group/actor binding and must never be accepted as a fallback.
+    const path = req.originalUrl || `${req.baseUrl || ""}${req.url || req.path}`;
     const signatureVersion = String(req.headers?.["x-wilson-signature-version"] || "").trim();
-    const message = signatureVersion === "2"
-      ? buildWilsonSignatureMessage({ timestamp, nonce, channel, actorId, groupId, actorName, method: req.method, path, body: req.body })
-      : buildWilsonSignatureMessage({ timestamp, nonce, telegramUserId: actorId, method: req.method, path, body: req.body });
+    if (signatureVersion !== "2") return res.status(401).json({ error: "Wilson requiere firma versión 2." });
+    const message = buildWilsonSignatureMessage({ timestamp, nonce, channel, actorId, groupId, actorName, method: req.method, path, body: req.body });
     const publicKey = env.WILSON_PUBLIC_KEY || DEFAULT_PUBLIC_KEY;
     let valid = false;
     try {
@@ -356,7 +356,7 @@ export function requireWilsonService(env = process.env, now = () => Date.now(), 
     req.wilson = {
       channel, actorId, groupId: conversationId, privateChat,
       actorName: knownAccount?.name || actorName || (channel === "telegram" ? "Usuario de Telegram" : "Usuario de WhatsApp"),
-      actorRole: knownAccount?.role || "",
+      actorRole: "", // Transport metadata never grants a database role.
       groupParticipantOnly: channel === "whatsapp" && allowedWhatsappGroup && !actorIndividuallyAllowed,
       telegramUserId: channel === "telegram" ? actorId : "",
       confirmedBy: knownAccount?.name || actorName || (channel === "telegram" ? "Usuario de Telegram" : "Usuario de WhatsApp"),
@@ -384,34 +384,45 @@ async function alertUnlinkedWhatsapp(pool, req) {
   }
 }
 
-function resolveWilsonUser(pool, env = process.env) {
+export function wilsonSystemRouteAllowed(method, path) {
+  return (method === "GET" && ["/eventos-pendientes", "/notificaciones-privadas", "/resumenes-grupos", "/supervisor/comunicaciones"].includes(path))
+    || (method === "GET" && /^\/notificaciones-privadas\/\d+\/verificar$/.test(path))
+    || (method === "POST" && (/^\/notificaciones-privadas\/\d+\/entregada$/.test(path)
+      || /^\/resumenes-grupos\/[a-f0-9]{64}\/entregado$/.test(path)
+      || /^\/eventos\/\d+\/entregado$/.test(path) || path === "/supervisor/tick"));
+}
+
+export function resolveWilsonUser(pool, env = process.env) {
   return async (req, res, next) => {
-    if (req.wilson.channel !== "whatsapp") return next();
-    if (!req.wilson.privateChat && req.wilson.actorId === String(env.WILSON_SYSTEM_ACTOR_ID || "")) return next();
+    // Clear any transport/display claims before establishing DB authority.
+    Object.assign(req.wilson, { userId: null, actorRole: "", isLeader: false, systemActor: false });
+    if (env.WILSON_SYSTEM_ACTOR_ID && req.wilson.actorId === String(env.WILSON_SYSTEM_ACTOR_ID)) {
+      if (!wilsonSystemRouteAllowed(req.method, req.path)) return res.status(403).json({ error: "Actor automático sin permisos humanos." });
+      req.wilson.systemActor = true;
+      return next();
+    }
     try {
       const hash = crypto.createHash("sha256").update(String(req.wilson.actorId || "").replace(/^\+/, "")).digest("hex");
-      const result = await pool.query(`SELECT u.id,u.usuario,u.nombre,u.rol FROM usuarios u
+      const telegramId = telegramWilsonUserId(env, req.wilson.actorId);
+      if (req.wilson.channel === "telegram" && telegramId === null) return res.status(403).json({ error: "Telegram sin vínculo explícito.", code: "unlinked_telegram" });
+      const result = req.wilson.channel === "telegram"
+        ? await pool.query('SELECT id,usuario,nombre,rol,activo FROM usuarios WHERE id=$1', [telegramId])
+        : await pool.query(`SELECT u.id,u.usuario,u.nombre,u.rol,u.activo FROM usuarios u
         WHERE u.whatsapp_habilitado IS TRUE AND (u.whatsapp_id_hash=$1
           OR EXISTS(SELECT 1 FROM mia_whatsapp_identities i WHERE i.usuario_id=u.id AND i.actor_hash=$1 AND i.enabled IS TRUE))
-        ORDER BY CASE WHEN lower(usuario)='lider' THEN 0 ELSE 1 END,u.id LIMIT 1`, [hash]);
+        ORDER BY u.id`, [hash]);
       const user = result.rows[0];
-      if (!user) {
-        if (!req.wilson.privateChat) {
-          req.wilson.actorRole = "";
-          req.wilson.isLeader = false;
-          return next();
-        }
-        await alertUnlinkedWhatsapp(pool, req);
+      if (result.rows.length !== 1 || user.activo !== true || !validUserId(Number(user.id))) {
         return res.status(403).json({
-          error: "Este WhatsApp todavía no está vinculado a un usuario de Render OS. No modifiqué nada y avisé a Agustín y Franco.",
-          code: "unlinked_whatsapp",
+          error: "La cuenta externa debe estar vinculada a un único usuario activo de Render OS.",
+          code: "unlinked_or_ambiguous_identity",
         });
       }
       req.wilson.userId = Number(user.id);
       req.wilson.actorName = user.nombre;
       req.wilson.actorRole = user.rol;
       req.wilson.confirmedBy = user.nombre;
-      req.wilson.isLeader = isSupervisorLeader(user);
+      req.wilson.isLeader = user.rol === "admin";
       return next();
     } catch (error) { return next(error); }
   };
@@ -430,8 +441,9 @@ function exactMatch(items, value, fields) {
 
 function exactWilsonUser(users, value) {
   const aliases = new Set(wilsonPersonAliases(value));
-  return users.find((user) => ["nombre", "usuario"]
+  const matches = users.filter((user) => user.activo !== false && ["nombre", "usuario"]
     .some((field) => aliases.has(normalizeWilsonText(user[field]))));
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 function normalizedAssignees(input, users) {
@@ -462,12 +474,15 @@ function normalizedAssignees(input, users) {
 }
 
 export function buildWilsonTask(input, { clients, users }) {
+  return buildWilsonTaskFields(input, clients, normalizedAssignees(input, users));
+}
+
+function buildWilsonTaskFields(input, clients, assignees) {
   const title = String(input.titulo || "").trim();
   const dueDate = String(input.fecha_vencimiento || input.vencimiento || "").trim();
   const client = input.cliente_id
     ? clients.find((item) => String(item.id) === String(input.cliente_id))
     : exactMatch(clients, input.cliente, ["nombre"]);
-  const assignees = normalizedAssignees(input, users);
   const sector = SECTORS.get(String(input.sector || input.lista || input.tipo_tarea || "").trim().toLowerCase());
   const priority = String(input.prioridad || "media").trim().toLowerCase();
   const hasPlannedProductionVideos = hasOwn(input, "produccion_videos_previstos")
@@ -610,12 +625,12 @@ export function findWilsonDuplicates(candidate, existingTasks) {
 async function loadCatalog(db) {
   const [clients, users] = await Promise.all([
     db.query("SELECT id,nombre FROM clientes WHERE activo IS TRUE ORDER BY nombre"),
-    db.query("SELECT id,usuario,nombre,rol FROM usuarios ORDER BY nombre"),
+    db.query("SELECT id,usuario,nombre,rol FROM usuarios WHERE activo IS TRUE ORDER BY nombre"),
   ]);
   return { clients: clients.rows, users: users.rows };
 }
 
-async function validate(db, body) {
+async function validate(db, body, actor) {
   const normalized = buildWilsonTask(body, await loadCatalog(db));
   if (normalized.errors.length) return { ...normalized, duplicates: [] };
   const task = normalized.task;
@@ -625,8 +640,10 @@ async function validate(db, body) {
      FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
      WHERE t.propiedades_extra->>'workspace'='render_os'
        AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
-       AND t.cliente_id=$1 ORDER BY t.id DESC LIMIT 100`,
-    [task.cliente_id],
+       AND t.cliente_id=$1
+       AND ($2::boolean OR EXISTS(SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=$3))
+       ORDER BY t.id DESC LIMIT 100`,
+    [task.cliente_id, actor?.actorRole === "admin" && validUserId(actor?.userId), actor?.userId || null],
   );
   return { ...normalized, duplicates: findWilsonDuplicates(task, existing.rows) };
 }
@@ -707,12 +724,18 @@ export async function resolveWilsonTaskAssignmentWrite(db, input, normalizedTask
     asignado_a: normalizedTask.asignado_a, colaboradores: normalizedTask.colaboradores,
   });
   const [current] = await annotateTaskAssignments(db, [currentTask]);
-  const selection = collaboratorsSelected
-    ? { colaboradores: normalizedTask.colaboradores }
-    : { colaborador_ids: current.colaborador_ids };
+  const selection = collaboratorsSelected ? { colaboradores: normalizedTask.colaboradores } : {};
   if (ownerSelected) selection.asignado_a = normalizedTask.asignado_a;
-  else if (current.asignado_a_id !== null) selection.asignado_a_id = current.asignado_a_id;
-  return resolveTaskAssignments(db, selection, { requireOwner: ownerSelected });
+  const selected = await resolveTaskAssignments(db, selection, { requireOwner: ownerSelected });
+  const ownerId = ownerSelected ? selected.ownerId : current.asignado_a_id;
+  // Untouched bindings are not new selections: keep even renamed/inactive IDs
+  // without revalidating them or resolving their historical display labels.
+  return {
+    ...selected,
+    ownerId,
+    collaboratorIds: (collaboratorsSelected ? selected.collaboratorIds : current.colaborador_ids)
+      .filter(id => id !== ownerId),
+  };
 }
 
 export function buildWilsonTaskUpdate(input, currentTask, catalog) {
@@ -723,6 +746,8 @@ export function buildWilsonTaskUpdate(input, currentTask, catalog) {
       ? input.descripcion
       : currentTask.aclaraciones;
   const hasResponsables = hasOwn(input, "responsables");
+  const ownerSelected = hasResponsables || hasOwn(input, "responsable") || hasOwn(input, "asignado_a");
+  const collaboratorsSelected = hasResponsables || hasOwn(input, "colaboradores");
   const merged = {
     titulo: hasOwn(input, "titulo") ? input.titulo : currentTask.titulo,
     descripcion: description,
@@ -732,11 +757,11 @@ export function buildWilsonTaskUpdate(input, currentTask, catalog) {
     cliente: hasOwn(input, "cliente") ? input.cliente : currentTask.cliente_nombre,
     responsable: hasOwn(input, "responsable")
       ? input.responsable
-      : hasOwn(input, "asignado_a") ? input.asignado_a : hasResponsables ? undefined : currentTask.asignado_a,
+      : hasOwn(input, "asignado_a") ? input.asignado_a : undefined,
     responsables: hasResponsables ? input.responsables : undefined,
     colaboradores: hasOwn(input, "colaboradores")
       ? input.colaboradores
-      : hasResponsables ? undefined : currentTask.propiedades_extra?.colaboradores || [],
+      : undefined,
     fecha_vencimiento: hasOwn(input, "fecha_vencimiento") ? input.fecha_vencimiento : currentTask.fecha_vencimiento,
     sector: hasOwn(input, "sector") ? input.sector : currentTask.tipo_tarea,
     prioridad: hasOwn(input, "prioridad") ? input.prioridad : currentTask.prioridad,
@@ -749,7 +774,13 @@ export function buildWilsonTaskUpdate(input, currentTask, catalog) {
       ? input.produccion_videos_previstos
       : currentTask.propiedades_extra?.produccion_videos_previstos,
   };
-  return buildWilsonTask(merged, catalog);
+  const explicit = ownerSelected || collaboratorsSelected
+    ? normalizedAssignees(merged, catalog.users) : { unknown: [] };
+  return buildWilsonTaskFields(merged, catalog.clients, {
+    primary: ownerSelected ? explicit.primary : { nombre: currentTask.asignado_a },
+    collaborators: collaboratorsSelected ? explicit.collaborators : currentTask.propiedades_extra?.colaboradores || [],
+    unknown: explicit.unknown,
+  });
 }
 
 async function loadWilsonTask(db, taskId, { forUpdate = false } = {}) {
@@ -765,7 +796,7 @@ async function loadWilsonTask(db, taskId, { forUpdate = false } = {}) {
      ${forUpdate ? "FOR UPDATE OF t" : ""}`,
     [taskId],
   );
-  return result.rows[0] || null;
+  return (await annotateTaskAssignments(db, result.rows))[0] || null;
 }
 
 async function writeWilsonAudit(db, req, { action, taskId = null, outcome = "ok", details = {} }) {
@@ -809,24 +840,17 @@ async function consumeWilsonConfirmation(db, req, res, operation, taskId = null)
   return false;
 }
 
-function isWilsonLeader(req, env) {
-  if (req.wilson.channel === "telegram") return csv(env.WILSON_LEADER_TELEGRAM_IDS || DEFAULT_ALLOWED_TELEGRAM_IDS.join(",")).includes(req.wilson.actorId);
-  return Boolean(req.wilson.userId) && isSupervisorLeader({ rol: req.wilson.actorRole });
+export function isWilsonLeader(req) {
+  return validUserId(req.wilson?.userId) && req.wilson.actorRole === "admin" && !req.wilson.systemActor;
 }
 
-function canWilsonAssignFromRequest(req, env, assignee) {
-  if (!req.wilson.privateChat) return true;
-  return canWilsonAssignPrivately({
-    actorName: req.wilson.actorName,
-    actorRole: req.wilson.actorRole,
-    leader: isWilsonLeader(req, env),
-  }, assignee);
-}
-
-function privateAssignmentError(req, env, assignee) {
-  return canWilsonAssignFromRequest(req, env, assignee)
-    ? null
-    : "Desde el chat privado solo podés crear o modificar tareas permitidas para tu rol.";
+export async function resolveWilsonPersonFilter(db, value) {
+  const rows = (await db.query(`SELECT id,nombre,usuario,rol FROM usuarios
+    WHERE activo IS TRUE AND (lower(nombre)=lower($1) OR lower(usuario)=lower($1))`, [value])).rows;
+  if (rows.length !== 1 || !validUserId(Number(rows[0].id))) {
+    throw Object.assign(new Error("La persona debe corresponder a un único usuario activo."), { status: 404 });
+  }
+  return { ...rows[0], id: Number(rows[0].id) };
 }
 
 function taskAssignees(task = {}) {
@@ -843,21 +867,25 @@ function taskAssignees(task = {}) {
   });
 }
 
-function privateAssignmentListError(req, env, task) {
-  return taskAssignees(task).some((assignee) => !canWilsonAssignFromRequest(req, env, assignee))
-    ? "Desde el chat privado solo podés crear o modificar tareas permitidas para tu rol."
+async function privateAssignmentListError(req, env, task, db) {
+  const assignment = Object.hasOwn(task, "ownerId") ? task : await resolveTaskAssignments(db, {
+    asignado_a: task.asignado_a, colaboradores: task.colaboradores || [],
+  });
+  const ids = [assignment.ownerId, ...assignment.collaboratorIds].filter(id => id !== null);
+  return !ids.length || ids.some(id => !canWilsonAssignPrivately(req.wilson, id))
+    ? "Solo podés asignar tareas a tu identidad vinculada; otras asignaciones requieren admin."
     : null;
 }
 
 function privateCurrentTaskError(req, env, task) {
-  return taskAssignees(task).some((assignee) => canWilsonAssignFromRequest(req, env, assignee))
+  return isWilsonLeader(req) || reviewTaskOwnedBy(task, req.wilson.userId)
     ? null
     : "Desde el chat privado solo podés crear o modificar tareas permitidas para tu rol.";
 }
 
 function isWilsonSystemActor(req, env) {
   const systemActorId = String(env.WILSON_SYSTEM_ACTOR_ID || "").trim();
-  return Boolean(systemActorId) && req.wilson.actorId === systemActorId;
+  return Boolean(systemActorId) && req.wilson.systemActor === true && req.wilson.actorId === systemActorId;
 }
 
 export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, confirmProduction, env = process.env }) {
@@ -873,6 +901,8 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
   router.use(requireWilsonService(env, () => Date.now(), { allowSignedUnknownWhatsappPrivate: true }));
   router.use(resolveWilsonUser(pool, env));
   router.use("/lista-personal", createMiaPersonalListsRouter({ express, pool }));
+  // Supervisor routes revalidate the linked actor and normalized membership;
+  // employee follow-ups must remain available after the ID migration.
   router.use("/supervisor", createMiaSupervisorRouter({ express, pool, env, isSystemActor: (req) => isWilsonSystemActor(req, env) }));
 
   router.get("/catalogo", async (_req, res, next) => {
@@ -1019,9 +1049,9 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
 
   router.post("/tareas/validar", async (req, res, next) => {
     try {
-      const result = await validate(pool, req.body);
+      const result = await validate(pool, req.body, req.wilson);
       const permissionError = result.task
-        ? privateAssignmentListError(req, env, result.task)
+        ? await privateAssignmentListError(req, env, result.task, pool)
         : null;
       if (permissionError) {
         return res.status(403).json({
@@ -1055,9 +1085,10 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
            AND t.estado IN ('pendiente','en_progreso')
          ORDER BY t.fecha_vencimiento NULLS LAST,t.id`,
       );
+      const annotated = await annotateTaskAssignments(pool, result.rows);
       const allowed = isWilsonLeader(req, env)
-        ? result.rows
-        : result.rows.filter((task) => reviewTaskOwnedBy(task, req.wilson.actorName));
+        ? annotated
+        : annotated.filter((task) => reviewTaskOwnedBy(task, req.wilson.userId));
       return res.json(resolveReviewTaskReferences(references, allowed));
     } catch (error) { return next(error); }
   });
@@ -1087,6 +1118,11 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         await client.query("ROLLBACK");
         return res.status(404).json({ error: "Una o más tareas ya no están disponibles. Volvé a preparar el listado." });
       }
+      result.rows = await annotateTaskAssignments(client, result.rows);
+      if (!isWilsonLeader(req) && result.rows.some(task => !reviewTaskOwnedBy(task, req.wilson.userId))) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ error: "Solo podés informar y confirmar tareas propias." });
+      }
       const invalidState = result.rows.find((task) => !["pendiente", "en_progreso"].includes(task.estado));
       if (invalidState) {
         await client.query("ROLLBACK");
@@ -1098,13 +1134,6 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         return res.status(409).json({
           error: `“${invalidHandoff.titulo}” todavía no puede pasar a Revisar: ${reviewHandoffError(invalidHandoff)}`,
         });
-      }
-      if (!isWilsonLeader(req, env)) {
-        const foreign = result.rows.find((task) => !reviewTaskOwnedBy(task, req.wilson.actorName));
-        if (foreign) {
-          await client.query("ROLLBACK");
-          return res.status(403).json({ error: "Solo podés informar y confirmar tareas propias." });
-        }
       }
       const snapshots = result.rows.map((task) => ({
         id: Number(task.id), titulo: task.titulo, cliente_nombre: task.cliente_nombre,
@@ -1169,6 +1198,11 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
           cliente_id,fecha_vencimiento,prioridad,propiedades_extra,updated_at
          FROM tareas WHERE id=ANY($1::int[]) FOR UPDATE`, [ids],
       ) : { rows: [] };
+      currentResult.rows = await annotateTaskAssignments(client, currentResult.rows);
+      if (!isWilsonLeader(req) && currentResult.rows.some(task => !reviewTaskOwnedBy(task, req.wilson.userId))) {
+        await client.query("ROLLBACK");
+        return res.status(403).json({ error: "La asignación del listado cambió. Prepará una confirmación nueva." });
+      }
       const currentById = new Map(currentResult.rows.map((task) => [Number(task.id), task]));
       const changed = snapshots.filter((snapshot) => {
         const task = currentById.get(Number(snapshot.id));
@@ -1255,6 +1289,13 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       if (operation === "eliminar" && !isWilsonLeader(req, env)) {
         return res.status(403).json({ error: "Solo Agustín o Franco pueden eliminar definitivamente una tarea." });
       }
+      if (["editar", "archivar", "confirmar_grabacion"].includes(operation)) {
+        const task = await loadWilsonTask(pool, taskId);
+        if (!task || privateCurrentTaskError(req, env, task)
+          || (operation === "confirmar_grabacion" && !isWilsonLeader(req))) {
+          return res.status(403).json({ error: "No tenés permiso para confirmar esta tarea." });
+        }
+      }
       const payload = req.body?.payload && typeof req.body.payload === "object" ? req.body.payload : {};
       const token = crypto.randomUUID();
       const expiresAt = new Date(Date.now() + CONFIRMATION_MAX_AGE_MS);
@@ -1291,10 +1332,9 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          WHERE t.propiedades_extra->>'workspace'='render_os'
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
            AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
-           AND LOWER(t.asignado_a)=ANY($1::text[])
-           AND t.tipo_tarea='produccion' AND t.id>$2
+           AND t.tipo_tarea='produccion' AND t.id>$1
          ORDER BY t.id ASC LIMIT 101`,
-        [wilsonPersonAliases("Germán"), after],
+        [after],
       );
       const page = result.rows.slice(0, 100);
       return res.json({ tasks: page.filter(isProductionVisitTask).map(taskWithUrl),
@@ -1311,6 +1351,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     if (person.length > 100 || clients.length > 10 || clients.some(x=>x.length>100)) return res.status(400).json({error:"Filtros demasiado extensos"});
     const limit = 50;
     try {
+      const target = person ? await resolveWilsonPersonFilter(pool, person) : null;
       const result = await pool.query(
         `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.aclaraciones,t.material_referencia,
                 t.propiedades_extra,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
@@ -1321,18 +1362,12 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          WHERE t.propiedades_extra->>'workspace'='render_os'
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
            AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
-           AND ($1::boolean OR LOWER(t.asignado_a)=ANY($2::text[]) OR EXISTS (
-             SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(t.propiedades_extra->'colaboradores')='array'
-               THEN t.propiedades_extra->'colaboradores' ELSE '[]'::jsonb END) responsable(nombre)
-             WHERE LOWER(responsable.nombre)=ANY($2::text[])))
-           AND ($3::boolean OR LOWER(t.asignado_a)=ANY($4::text[]) OR EXISTS (
-             SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(t.propiedades_extra->'colaboradores')='array'
-               THEN t.propiedades_extra->'colaboradores' ELSE '[]'::jsonb END) responsable(nombre)
-             WHERE LOWER(responsable.nombre)=ANY($4::text[])))
+           AND ($1::boolean OR EXISTS (SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=$2))
+           AND ($3::boolean OR EXISTS (SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=$4))
            AND ($5::boolean OR LOWER(COALESCE(c.nombre,'')) LIKE ANY($6::text[]))
            AND ($7::boolean OR t.estado NOT IN ('publicada','completada','cancelada','archivada'))
            AND t.id>$8 ORDER BY t.id ASC LIMIT $9`,
-        [isWilsonLeader(req,env),wilsonPersonAliases(req.wilson.actorName),!person,wilsonPersonAliases(person),
+        [isWilsonLeader(req,env),req.wilson.userId,!person,target?.id || null,
          clients.length===0,clients.map(x=>'%'+x+'%'),req.query.pendientes==='false',after,limit+1]);
       const rows=result.rows.slice(0,limit);
       return res.json({tasks:rows.map(taskWithUrl),next_after:result.rows.length>limit?rows.at(-1).id:null});
@@ -1342,8 +1377,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
   router.get("/tareas", async (req, res, next) => {
     try {
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 100));
-      const restrictToOwn = req.wilson.privateChat && !isWilsonLeader(req, env);
-      const actorAliases = wilsonPersonAliases(req.wilson.actorName);
+      const restrictToOwn = !isWilsonLeader(req, env);
       const result = await pool.query(
         `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,t.prioridad,
                 t.propiedades_extra,t.aclaraciones,t.material_referencia,
@@ -1352,12 +1386,9 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
          WHERE t.propiedades_extra->>'workspace'='render_os'
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
-           AND ($2::boolean IS FALSE OR LOWER(t.asignado_a)=ANY($3::text[]) OR EXISTS (
-             SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(t.propiedades_extra->'colaboradores')='array'
-               THEN t.propiedades_extra->'colaboradores' ELSE '[]'::jsonb END) responsable(nombre)
-             WHERE LOWER(responsable.nombre)=ANY($3::text[])))
+           AND ($2::boolean IS FALSE OR EXISTS (SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=$3))
          ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC LIMIT $1`,
-        [limit, restrictToOwn, actorAliases],
+        [limit, restrictToOwn, req.wilson.userId],
       );
       return res.json({ tasks: result.rows.map(taskWithUrl), limit });
     } catch (error) { return next(error); }
@@ -1373,15 +1404,12 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
          WHERE t.propiedades_extra->>'workspace'='render_os'
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
-           AND (LOWER(t.asignado_a)=ANY($1::text[]) OR EXISTS (
-             SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(t.propiedades_extra->'colaboradores')='array'
-               THEN t.propiedades_extra->'colaboradores' ELSE '[]'::jsonb END) responsable(nombre)
-             WHERE LOWER(responsable.nombre)=ANY($1::text[])))
+           AND EXISTS (SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=$1)
            AND (t.estado <> 'publicada'
              OR t.fecha_vencimiento >= date_trunc('month', CURRENT_DATE)
              OR t.updated_at >= date_trunc('month', CURRENT_DATE))
          ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC LIMIT 100`,
-        [wilsonPersonAliases(req.wilson.actorName)],
+        [req.wilson.userId],
       );
       const today = argentinaDate();
       const nextWeek = new Date(`${today}T00:00:00Z`);
@@ -1406,18 +1434,13 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
 
   router.get("/contexto-rapido", async (req, res, next) => {
     if (!req.wilson.privateChat) return res.status(400).json({ error: "Este contexto se consulta únicamente por chat privado." });
-    const requestedName = String(req.query.persona || req.wilson.actorName).trim();
-    const target = knownWilsonPerson(requestedName) || {
-      name: req.wilson.actorName, role: req.wilson.actorRole || "equipo",
-    };
-    if (canonicalWilsonPerson(target.name) !== canonicalWilsonPerson(req.wilson.actorName) && !isWilsonLeader(req, env)) {
-      return res.status(403).json({ error: "Solo un líder puede consultar el contexto de otra persona." });
-    }
-    if (req.query.persona && !knownWilsonPerson(requestedName)
-      && canonicalWilsonPerson(requestedName) !== canonicalWilsonPerson(req.wilson.actorName)) {
-      return res.status(404).json({ error: "No encontré a esa persona en el equipo de Render." });
-    }
     try {
+      const selected = req.query.persona ? await resolveWilsonPersonFilter(pool, String(req.query.persona).trim())
+        : { id: req.wilson.userId, nombre: req.wilson.actorName, rol: req.wilson.actorRole };
+      if (selected.id !== req.wilson.userId && !isWilsonLeader(req)) {
+        return res.status(403).json({ error: "Solo admin puede consultar el contexto de otra persona." });
+      }
+      const target = { name: selected.nombre || selected.usuario, role: selected.rol || "equipo" };
       const result = await pool.query(
         `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,t.prioridad,
                 t.propiedades_extra,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
@@ -1426,13 +1449,10 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          WHERE t.propiedades_extra->>'workspace'='render_os'
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
            AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
-           AND (LOWER(t.asignado_a)=ANY($1::text[]) OR EXISTS (
-             SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(t.propiedades_extra->'colaboradores')='array'
-               THEN t.propiedades_extra->'colaboradores' ELSE '[]'::jsonb END) responsable(nombre)
-             WHERE LOWER(responsable.nombre)=ANY($1::text[])))
+           AND EXISTS (SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=$1)
            AND t.estado <> 'publicada'
          ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC LIMIT 150`,
-        [wilsonPersonAliases(target.name)],
+        [selected.id],
       );
       return res.json(buildMiaFastContext(result.rows, target));
     } catch (error) { return next(error); }
@@ -1442,8 +1462,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     try {
       const task = await loadWilsonTask(pool, req.params.id);
       if (!task) return res.status(404).json({ error: "La tarea no existe en RENDER OS o está archivada." });
-      if (req.wilson.privateChat && !isWilsonLeader(req, env)
-        && !reviewTaskOwnedBy(task, req.wilson.actorName)) {
+      if (!isWilsonLeader(req, env) && !reviewTaskOwnedBy(task, req.wilson.userId)) {
         return res.status(403).json({ error: "Esta tarea no pertenece a tu reporte personal." });
       }
       return res.json({ task: taskWithUrl(task) });
@@ -1752,7 +1771,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         changedFields.push("colaboradores");
       }
       const assignmentsChanged = Boolean(assignment);
-      const targetPermissionError = assignmentsChanged ? privateAssignmentListError(req, env, task) : null;
+      const targetPermissionError = assignmentsChanged ? await privateAssignmentListError(req, env, assignment, client) : null;
       if (targetPermissionError) {
         await client.query("ROLLBACK");
         return res.status(403).json({ error: targetPermissionError });
@@ -1826,16 +1845,21 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
            AND t.propiedades_extra->>'wilson_idempotency_key'=$1 LIMIT 1`, [key],
       );
       if (prior.rows[0]) {
+        const [priorTask] = await annotateTaskAssignments(client, [prior.rows[0]]);
+        if (privateCurrentTaskError(req, env, priorTask)) {
+          await client.query("ROLLBACK");
+          return res.status(403).json({ error: "No tenés acceso a la tarea de esa operación anterior." });
+        }
         await client.query("COMMIT");
-        return res.json({ created: false, idempotent: true, task: taskWithUrl(prior.rows[0]) });
+        return res.json({ created: false, idempotent: true, task: taskWithUrl(priorTask) });
       }
       if (!await consumeWilsonConfirmation(client, req, res, "crear")) {
         await client.query("ROLLBACK");
         return undefined;
       }
-      const result = await validate(client, req.body);
+      const result = await validate(client, req.body, req.wilson);
       if (result.errors.length) { await client.query("ROLLBACK"); return res.status(422).json(result); }
-      const permissionError = privateAssignmentListError(req, env, result.task);
+      const permissionError = await privateAssignmentListError(req, env, result.task, client);
       if (permissionError) {
         await client.query("ROLLBACK");
         return res.status(403).json({ error: permissionError });
@@ -1888,7 +1912,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`wilson:archive:${req.params.id}:${key}`]);
       const current = await loadWilsonTask(client, req.params.id, { forUpdate: true });
       if (!current) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La tarea no existe en RENDER OS o ya está archivada." }); }
-      const permissionError = privateAssignmentError(req, env, current.asignado_a);
+      const permissionError = privateCurrentTaskError(req, env, current);
       if (permissionError) {
         await client.query("ROLLBACK");
         return res.status(403).json({ error: permissionError });

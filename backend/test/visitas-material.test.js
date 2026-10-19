@@ -20,6 +20,6 @@ test('reject invalid cursors before querying',async()=>{
 test('pagination continues past 100 rows even if non-visits occupy page',async()=>{
  const rows=Array.from({length:101},(_,i)=>({id:i+1,tipo_tarea:'produccion',titulo:i===0?'Otra producción':'Visita producción',comentarios:[{contenido:'Drive'}]}));
  const r=await run({rows});assert.equal(r.body.next_after,100);assert.equal(r.body.tasks.length,99);assert.deepEqual(r.body.tasks[0].comentarios,[{contenido:'Drive'}]);
- const last=await run({after:'100',rows:rows.slice(100)});assert.equal(last.body.next_after,null);assert.equal(last.body.tasks[0].id,101);assert.equal(last.query.args[1],100);
+ const last=await run({after:'100',rows:rows.slice(100)});assert.equal(last.body.next_after,null);assert.equal(last.body.tasks[0].id,101);assert.equal(last.query.args[0],100);
  assert.match(r.query.sql,/tarea_comentarios/);assert.match(r.query.sql,/origen_visita_id/);assert.match(r.query.sql,/papelera_render_os/);
 });

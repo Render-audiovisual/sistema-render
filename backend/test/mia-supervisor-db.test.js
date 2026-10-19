@@ -21,7 +21,7 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
   await admin.query(`CREATE SCHEMA ${schema}`);
   const pool=new pg.Pool({ connectionString:connection,options:`-c search_path=${schema}` });
   t.after(async()=>{ await pool.end(); await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end(); });
-  await pool.query(`CREATE TABLE usuarios(id SERIAL PRIMARY KEY,usuario TEXT,nombre TEXT,rol TEXT,whatsapp_id_hash CHAR(64),whatsapp_habilitado BOOLEAN DEFAULT TRUE);
+  await pool.query(`CREATE TABLE usuarios(id SERIAL PRIMARY KEY,usuario TEXT,nombre TEXT,rol TEXT,activo BOOLEAN DEFAULT TRUE,whatsapp_id_hash CHAR(64),whatsapp_habilitado BOOLEAN DEFAULT TRUE);
     CREATE TABLE clientes(id SERIAL PRIMARY KEY,nombre TEXT);
     CREATE TABLE publicaciones(id SERIAL PRIMARY KEY,fecha_programada DATE);
     CREATE TABLE tareas(id SERIAL PRIMARY KEY,titulo TEXT,asignado_a TEXT,estado TEXT DEFAULT 'pendiente',prioridad TEXT DEFAULT 'media',tipo_tarea TEXT DEFAULT 'diseno',subtipo TEXT,
@@ -30,6 +30,7 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
   await pool.query('ALTER TABLE mia_private_task_notifications ADD COLUMN feedback_id BIGINT');
   await pool.query(fs.readFileSync(new URL('../migrations/046_mia_supervisor.sql',import.meta.url),'utf8'));
   await pool.query(fs.readFileSync(new URL('../migrations/047_mia_supervisor_calma.sql',import.meta.url),'utf8'));
+  await pool.query(fs.readFileSync(new URL('../migrations/056_task_assignments.sql',import.meta.url),'utf8'));
   await pool.query(`INSERT INTO usuarios(usuario,nombre,rol,whatsapp_id_hash) VALUES
     ('lider','Líder','admin',$1),('disenador','Diseñador','diseno',$2),('produccion','Productor','produccion',$3),('franco','Franco Romero','diseno',$4)`,
     [hash('leader-qa'),hash('designer-qa'),hash('producer-qa'),hash('chovy-qa')]);
@@ -40,6 +41,8 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
   const createTask=async(title,fields={})=>{
     const result=await pool.query(`INSERT INTO tareas(titulo,asignado_a,fecha_vencimiento,propiedades_extra,created_at,updated_at) VALUES($1,$2,$3,$4::jsonb,$5,$5) RETURNING id`,
       [title,fields.owner || 'Diseñador',fields.date || null,JSON.stringify({ workspace:'render_os',...(fields.extra || {}) }),now]);
+    if (fields.ownerId !== null) await pool.query(`INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES($1,$2,'responsable')`,[result.rows[0].id,fields.ownerId ?? 2]);
+    for (const id of fields.collaboratorIds || []) await pool.query(`INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES($1,$2,'colaborador')`,[result.rows[0].id,id]);
     return result.rows[0].id;
   };
   const count=async(table)=>(await pool.query(`SELECT count(*)::int count FROM ${table}`)).rows[0].count;
@@ -90,7 +93,7 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
 
   await t.test('vencimiento por responsable: tres entregas en franjas diferentes antes de escalar',async()=>{
     await pool.query(`UPDATE tareas SET estado='publicada'`);
-    const id=await createTask('Carrusel vencido',{ date:'2026-09-30',extra:{ colaboradores:['Productor'] } });
+    const id=await createTask('Carrusel vencido',{ date:'2026-09-30',collaboratorIds:[3],extra:{ colaboradores:['Productor'] } });
     await runMiaSupervisor(pool,{ dryRun:false,now,env });
     const notifications=await deliver(now);
     assert.equal(notifications.length,2);
@@ -155,7 +158,7 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
   });
 
   await t.test('cuenta compartida: el primer ACK no invalida al segundo líder',async()=>{
-    const id=await createTask('Seguimiento del líder compartido',{owner:'Líder',date:'2026-09-30'});
+    const id=await createTask('Seguimiento del líder compartido',{owner:'Líder',ownerId:1,date:'2026-09-30'});
     await runMiaSupervisor(pool,{dryRun:false,now,env});
     const notices=(await pool.query(`SELECT * FROM mia_private_task_notifications WHERE tarea_id=$1 AND supervisor_followup_id IS NOT NULL ORDER BY id`,[id])).rows;
     assert.equal(notices.length,2);
@@ -173,7 +176,7 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
   });
 
   await t.test('autoriza al responsable de dependencia y cancela pedidos superados',async()=>{
-    const parent=await createTask('Fotos de producto',{owner:'Productor',date:'2026-09-30'});
+    const parent=await createTask('Fotos de producto',{owner:'Productor',ownerId:3,date:'2026-09-30'});
     const id=await createTask('Carrusel dependiente',{date:'2026-09-30'});
     await pool.query(`UPDATE tareas SET tarea_padre_id=$2 WHERE id=$1`,[id,parent]);
     const input={texto:'Estoy bloqueada porque faltan las fotos del producto; puedo entregar mañana.',estado:'bloqueada',motivo:'faltan las fotos del producto',nueva_fecha:'2026-10-03',fecha_texto:'mañana'};
@@ -189,7 +192,7 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
   });
 
   await t.test('ACKs concurrentes de una cuenta compartida cuentan una sola entrega',async()=>{
-    const id=await createTask('ACK concurrente de socios',{owner:'Líder',date:'2026-09-30'});
+    const id=await createTask('ACK concurrente de socios',{owner:'Líder',ownerId:1,date:'2026-09-30'});
     await runMiaSupervisor(pool,{dryRun:false,now,env});
     const notices=(await pool.query(`SELECT * FROM mia_private_task_notifications WHERE tarea_id=$1 AND supervisor_followup_id IS NOT NULL ORDER BY id`,[id])).rows;
     assert.equal(notices.length,2);
@@ -247,8 +250,8 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
         const res=await fetch(`http://127.0.0.1:${server.address().port}${fullPath}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});
         return {status:res.status,body:await res.json(),headers};
       };
-      const own=await createTask('Privada al responsable',{owner:'Diseñador'});
-      const other=await createTask('Solo para otro responsable',{owner:'Productor'});
+      const own=await createTask('Privada al responsable',{owner:'Diseñador',ownerId:2});
+      const other=await createTask('Solo para otro responsable',{owner:'Productor',ownerId:3});
       const designer=await send('designer-qa','/supervisor/contexto');
       assert.equal(designer.status,200);
       assert.ok(designer.body.tasks.some(t=>t.id===own));

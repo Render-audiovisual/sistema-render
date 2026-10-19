@@ -33,9 +33,10 @@ test("la identidad se vincula por hash y las propuestas no tienen vencimiento", 
   assert.match(migration, /whatsapp_id_hash CHAR\(64\)/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS mia_lista_propuestas/);
   assert.doesNotMatch(migration, /mia_lista_propuestas[\s\S]*expires_at/);
-  assert.match(integration, /unlinked_whatsapp/);
+  assert.match(integration, /unlinked_or_ambiguous_identity/);
   assert.match(integration, /alertUnlinkedWhatsapp/);
-  assert.match(integration, /lower\(usuario\)='lider'/);
+  assert.doesNotMatch(integration, /ORDER BY CASE WHEN lower\(usuario\)='lider'/);
+  assert.match(integration, /user\.activo !== true/);
   assert.match(francoFix, /lower\(usuario\) <> 'lider'/);
 });
 

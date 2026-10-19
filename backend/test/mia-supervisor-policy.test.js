@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {
   addSupervisorWorkMinutes, isSupervisorWorkTime, localClock, nextSupervisorWorkTime,
   userOwnsSupervisorTask, isSupervisorLeader, proposeSupervisorDeadline, validateSupervisorReport,
-  detectSupervisorSignals, supervisorTaskActive,
+  detectSupervisorSignals, supervisorTaskActive, proposalSnapshot,
 } from '../src/mia-supervisor-policy.js';
 import { supervisorReasoning } from '../src/mia-supervisor-reasoning.js';
 
 const user = { id:1,usuario:'disenador',nombre:'Diseñador',rol:'diseno' };
-const task = { id:1,titulo:'Optimizar Instagram: actualizar íconos e historias destacadas',asignado_a:'Diseñador',
+const task = { id:1,titulo:'Optimizar Instagram: actualizar íconos e historias destacadas',asignado_a:'Diseñador',asignado_a_id:1,colaborador_ids:[],
   estado:'pendiente',tipo_tarea:'diseno',prioridad:'media',fecha_vencimiento:null,propiedades_extra:{ workspace:'render_os' } };
 const now = new Date('2026-10-02T13:00:00Z'); // Viernes 10:00 Argentina.
 
@@ -30,14 +30,14 @@ test('la autorización de líder depende del rol técnico y no del nombre Franco
   assert.equal(isSupervisorLeader({ usuario:'lider',nombre:'Franco',rol:'diseno' }),false);
   assert.equal(isSupervisorLeader({ nombre:'Franco Romero',rol:'produccion' }),false);
   assert.equal(isSupervisorLeader({ rol:'admin' }),true);
-  assert.equal(isSupervisorLeader({ rol:'lider' }),true);
+  assert.equal(isSupervisorLeader({ rol:'lider' }),false);
   assert.equal(userOwnsSupervisorTask({ usuario:'franco',nombre:'Franco Romero',rol:'diseno' },{ ...task,asignado_a:'Líder' }),false);
 });
 
 test('todos los responsables cuentan por igual en la carga y la propuesta de plazo', () => {
   const second = { id:2,usuario:'otro',nombre:'Otro',rol:'edicion' };
-  const shared = { ...task,propiedades_extra:{ workspace:'render_os',colaboradores:['Otro'] } };
-  const backlog = Array.from({ length:5 },(_,i)=>({ ...task,id:10+i,titulo:'Campaña completa',asignado_a:'Otro' }));
+  const shared = { ...task,colaborador_ids:[2],propiedades_extra:{ workspace:'render_os',colaboradores:['Otro'] } };
+  const backlog = Array.from({ length:5 },(_,i)=>({ ...task,id:10+i,titulo:'Campaña completa',asignado_a:'Otro',asignado_a_id:2 }));
   const baseline = proposeSupervisorDeadline(shared,[shared],[user,second],now);
   const loaded = proposeSupervisorDeadline(shared,[shared,...backlog],[user,second],now);
   assert.ok(loaded.fecha>baseline.fecha);
@@ -99,4 +99,31 @@ test('una caída o respuesta inválida del modelo no cambia reglas ni inventa ac
   const signal={ task_ids:[1] };
   assert.equal((await supervisorReasoning(signal,[task],{ env,fetchImpl:async()=>{ throw Error('timeout'); } })).status,'unavailable');
   assert.equal((await supervisorReasoning(signal,[task],{ env,fetchImpl:async()=>({ ok:true,json:async()=>({ status:'completed',output:[{content:[{type:'output_text',text:'{"recomendacion":"Cambiar todo", "tarea_ids":[900]}'}]}] }) }) })).status,'invalid_output');
+});
+
+test('ownership usa IDs: homónimos, renombre, historial sin vincular y revocación', () => {
+  const renamed = { ...user,nombre:'Nuevo nombre',usuario:'nuevo' };
+  assert.equal(userOwnsSupervisorTask(renamed,task),true);
+  assert.equal(userOwnsSupervisorTask({ ...user,id:2 },task),false);
+  const shared = { ...task,colaborador_ids:[2],propiedades_extra:{ workspace:'render_os',colaboradores:[user.nombre] } };
+  assert.equal(userOwnsSupervisorTask({ ...user,id:2 },shared),true);
+  assert.equal(userOwnsSupervisorTask({ ...user,id:2 },{ ...shared,colaborador_ids:[] }),false);
+  assert.equal(userOwnsSupervisorTask(user,{ ...task,asignado_a_id:null }),false);
+  assert.equal(userOwnsSupervisorTask({ ...user,activo:false },task),false);
+  for (const id of [undefined,null,'1',0,-1,1.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1]) {
+    assert.equal(userOwnsSupervisorTask({ ...user,id },{ ...task,asignado_a_id:id,colaborador_ids:[id] }),false);
+  }
+  for (const [nombre,asignado_a] of [['Luciano','Milton'],['Ana Mayerro','Ana'],['Mariano Meza','Mariano'],['Líder','Agustín']]) {
+    assert.equal(userOwnsSupervisorTask({ id:1,nombre,rol:'admin' },{ asignado_a }),false);
+  }
+});
+
+test('snapshot detecta cambios de IDs con nombres iguales y no depende del orden ni renombres', () => {
+  const original = { ...task,colaborador_ids:[2,3] };
+  const hash = proposalSnapshot(original);
+  assert.notEqual(hash,proposalSnapshot({ ...original,asignado_a_id:4 }));
+  assert.notEqual(hash,proposalSnapshot({ ...original,colaborador_ids:[2] }));
+  assert.notEqual(hash,proposalSnapshot({ ...original,colaborador_ids:[2,4] }));
+  assert.equal(hash,proposalSnapshot({ ...original,colaborador_ids:[3,2] }));
+  assert.equal(hash,proposalSnapshot({ ...original,asignado_a:'Renombrado',propiedades_extra:{ ...original.propiedades_extra,colaboradores:['Renombrado'] } }));
 });

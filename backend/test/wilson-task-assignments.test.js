@@ -62,7 +62,7 @@ test("owner-only PATCH preserves collaborators by stable ID despite renamed disp
   }, current);
   assert.equal(assignment.ownerId, 33);
   assert.deepEqual(assignment.collaboratorIds, [22]);
-  assert.deepEqual(db.calls[1].params, [[22], [users[2].nombre]]);
+  assert.deepEqual(db.calls[1].params, [[], [users[2].nombre]]);
 });
 
 test("collaborator-only PATCH preserves owner ID and clears collaborators explicitly", async () => {
@@ -75,7 +75,7 @@ test("collaborator-only PATCH preserves owner ID and clears collaborators explic
   }, current);
   assert.equal(assignment.ownerId, 11);
   assert.deepEqual(assignment.collaboratorIds, []);
-  assert.deepEqual(db.calls[1].params, [[11], []]);
+  assert.equal(db.calls.length, 1); // Only membership read: untouched owner is not reselected.
 });
 
 test("partial legacy reassignment does not backfill the untouched owner or collaborators", async () => {

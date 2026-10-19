@@ -39,9 +39,11 @@ test("la fecha permite desambiguar y preparar una única tarea", () => {
 });
 
 test("un empleado solo puede informar tareas propias o donde colabora", () => {
-  assert.equal(reviewTaskOwnedBy(task(1), "Mariano"), true);
-  assert.equal(reviewTaskOwnedBy(task(1), "Augusto"), false);
-  assert.equal(reviewTaskOwnedBy(task(1, { propiedades_extra: { colaboradores: ["Augusto"] } }), "Augusto"), true);
+  assert.equal(reviewTaskOwnedBy(task(1, { asignado_a_id: 1 }), 1), true);
+  assert.equal(reviewTaskOwnedBy(task(1, { asignado_a_id: 1 }), 2), false);
+  assert.equal(reviewTaskOwnedBy(task(1, { colaborador_ids: [2] }), 2), true);
+  assert.equal(reviewTaskOwnedBy(task(1, { propiedades_extra: { colaboradores: ["Augusto"] } }), 2), false);
+  assert.equal(reviewTaskOwnedBy(task(1), "Mariano"), false);
 });
 
 test("cualquier cambio de estado, responsable o versión invalida el lote", () => {

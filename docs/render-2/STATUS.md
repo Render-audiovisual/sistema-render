@@ -73,6 +73,24 @@ Important rollout gate: historical name-only tasks deliberately remain unbound/r
 
 The principal app and preview have not yet been consolidated visually or operationally. Phase 1 remains open: five-state storage/transitions, explicit review/publication capabilities, remaining integration authorization boundaries and broader privacy/concurrency coverage must be resolved before claiming the core contracts complete. No production change has occurred.
 
+## Third integration — external identity and supervisor boundaries (2026-10-19)
+
+Implemented locally: Wilson human requests now resolve one active database identity, including explicit numeric Telegram actor bindings. Current DB admin role replaces hardcoded external owner/name privilege. Task reads/writes/review use normalized membership even in groups; review confirmation rechecks membership after task locks. Transport claims never grant a role. The service actor is limited to existing service endpoints. V2 signatures bind the full request target, including query, and both Python clients were adapted together.
+
+Supervisor snapshot/task loads use ID membership and active users. Replays for replies, agreed dates and blocker responses now check current identity, operation, task and permissions before returning a previous result; legacy unscoped hashes fail closed. Authorized completed-task replay does not repeat writes. Employee follow-ups remain available, rather than hiding the supervisor behind an admin-only gate.
+
+Archimedes implemented Wilson, Herschel migrated supervisor identity/replay, Arendt performed independent read-only review, Wegener exercised signed HTTP QA, and the coordinator integrated harness/client changes and regressions. QA found a real title-only PATCH failure with homonyms; the fix preserves omitted memberships without re-resolving historical labels. Renamed owners were then verified over HTTP on both channels.
+
+Verification:
+
+- Full backend: **501 passed, 10 opt-in cases skipped, 0 failures**.
+- Signed Wilson HTTP/PostgreSQL: **12 passed, 0 failed, 0 skipped**, repeated after final readiness. Independent RSA framing and actual current-role, disabled/ambiguous-account, homonym, group, revoked membership, review and rename checks. See `WILSON_QA.md`.
+- Existing supervisor PostgreSQL integration: **19 passed, 0 failed, 0 skipped**, run with a fresh guarded harness on 55597 and an isolated synthetic schema; exact fixture cleanup completed. New relink/replay-specific cases use mocked transaction tests, not a claim of real HTTP replay coverage.
+- Original session/financial/publication and assignment HTTP/PostgreSQL regressions rerun: **17 passed, 0 failed, 0 skipped**. Injected assignment SQL error is intentional rollback coverage.
+- Python signing-framing test invokes only a pure function: no keys, credentials, network or external transports used. No visual changes or new browser certification in this block.
+
+This is **implemented and tested in development**, not production-ready as a whole. Before an authorized release, real account mappings and a coordinated server/client signing cutover are required. No mappings of real people were invented. `WILSON_IDENTITY.md` records compatibility gates and unresolved feedback ACL, durable replay, idempotency, capability and callback-transaction work. Phase 1 remains open; canonical task transitions, audiovisual per-video persistence, shared projects/dashboard, unified navigation/design and retirement of parallel operational implementations remain pending. Nothing has been deployed.
+
 ## Original next-integration checklist (items 1–2 now implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

@@ -171,15 +171,13 @@ test("Wilson no descarta responsables adicionales desconocidos", () => {
   assert.match(result.errors.join(" "), /Persona inexistente/);
 });
 
-test("los permisos privados respetan rol, identidad y el alias Milton de Luciano", () => {
-  assert.equal(canWilsonAssignPrivately({ actorName: "Augusto", actorRole: "diseno" }, "Augusto"), true);
-  assert.equal(canWilsonAssignPrivately({ actorName: "Luciano", actorRole: "edicion" }, "Milton"), true);
-  assert.equal(canWilsonAssignPrivately({ actorName: "Oriana", actorRole: "community" }, "Mariano Meza"), true);
-  assert.equal(canWilsonAssignPrivately({ actorName: "Oriana", actorRole: "community" }, "Mariano Meza"), true);
-  assert.equal(canWilsonAssignPrivately({ actorName: "Oriana", actorRole: "community" }, "Augusto"), true);
-  assert.equal(canWilsonAssignPrivately({ actorName: "Oriana", actorRole: "community" }, "Germán"), false);
-  assert.equal(canWilsonAssignPrivately({ actorName: "Augusto", actorRole: "diseno" }, "Mariano"), false);
-  assert.equal(canWilsonAssignPrivately({ actorName: "Franco", actorRole: "lider", leader: true }, "Germán"), true);
+test("los permisos privados usan IDs y rol del servidor, no alias ni nombres", () => {
+  assert.equal(canWilsonAssignPrivately({ userId: 1, actorRole: "diseno" }, 1), true);
+  assert.equal(canWilsonAssignPrivately({ userId: 1, actorRole: "edicion" }, 2), false);
+  assert.equal(canWilsonAssignPrivately({ userId: 1, actorRole: "community" }, 2), false);
+  assert.equal(canWilsonAssignPrivately({ userId: 1, actorRole: "admin" }, 2), true);
+  assert.equal(canWilsonAssignPrivately({ actorName: "Franco", actorRole: "lider", leader: true }, 2), false);
+  assert.equal(canWilsonAssignPrivately({ userId: 1, actorRole: "edicion" }, "Milton"), false);
   assert.deepEqual(wilsonPersonAliases("Germán"), ["german", "germán"]);
   assert.deepEqual(wilsonPersonAliases("Luciano"), ["luciano", "milton", "milton luciano"]);
 });
@@ -201,10 +199,10 @@ test("la API técnica valida firma e ID autorizado de Telegram", () => {
   const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
   const now = 1785960000000;
   const timestamp = String(now / 1000);
-  const headers = { "x-telegram-user-id": "111", "x-wilson-timestamp": timestamp, "x-wilson-nonce": "nonce-prueba" };
-  const message = buildWilsonSignatureMessage({ timestamp, nonce: "nonce-prueba", telegramUserId: "111", method: "GET", path: "/api/integraciones/wilson/catalogo", body: undefined });
+  const headers = { "x-telegram-user-id": "111", "x-wilson-signature-version": "2", "x-wilson-timestamp": timestamp, "x-wilson-nonce": "nonce-prueba" };
+  const message = buildWilsonSignatureMessage({ timestamp, nonce: "nonce-prueba", channel: "telegram", actorId: "111", method: "GET", path: "/api/integraciones/wilson/catalogo", body: undefined });
   headers["x-wilson-signature"] = crypto.sign("sha256", Buffer.from(message), privateKey).toString("base64");
-  const middleware = requireWilsonService({ WILSON_PUBLIC_KEY: publicKey.export({ type: "spki", format: "pem" }), WILSON_ALLOWED_TELEGRAM_IDS: "111,222" }, () => now);
+  const middleware = requireWilsonService({ WILSON_PUBLIC_KEY: publicKey.export({ type: "spki", format: "pem" }), WILSON_TELEGRAM_USER_BINDINGS: '{"111":91001,"222":91002}' }, () => now);
   const response = () => ({ statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } });
   const denied = response();
   middleware({ headers: { ...headers, "x-telegram-user-id": "999" }, body: undefined, method: "GET", baseUrl: "/api/integraciones/wilson", path: "/catalogo" }, denied, () => assert.fail());
@@ -311,7 +309,7 @@ test("la API técnica de WhatsApp permite participantes de grupos autorizados y 
   ownerMiddleware(ownerRequest, response(), () => { ownerContinued = true; });
   assert.equal(ownerContinued, true);
   assert.equal(ownerRequest.wilson.actorName, "Agustín");
-  assert.equal(ownerRequest.wilson.actorRole, "lider");
+  assert.equal(ownerRequest.wilson.actorRole, "");
   assert.equal(ownerRequest.wilson.groupParticipantOnly, false);
   assert.equal(canWilsonGroupParticipantPropose(ownerRequest.wilson, "editar"), true);
 
@@ -325,7 +323,7 @@ test("la API técnica de WhatsApp permite participantes de grupos autorizados y 
   ownerMiddleware(teamRequest, response(), () => { teamContinued = true; });
   assert.equal(teamContinued, true);
   assert.equal(teamRequest.wilson.actorName, "Augusto");
-  assert.equal(teamRequest.wilson.actorRole, "diseno");
+  assert.equal(teamRequest.wilson.actorRole, "");
 
   const anaRequest = {
     ...request,
@@ -338,7 +336,7 @@ test("la API técnica de WhatsApp permite participantes de grupos autorizados y 
   ownerMiddleware(anaRequest, response(), () => { anaContinued = true; });
   assert.equal(anaContinued, true);
   assert.equal(anaRequest.wilson.actorName, "Ana Mayerro");
-  assert.equal(anaRequest.wilson.actorRole, "community");
+  assert.equal(anaRequest.wilson.actorRole, "");
   assert.equal(anaRequest.wilson.privateChat, true);
 
   const privateRequest = {

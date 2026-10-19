@@ -5,7 +5,7 @@ export const SUPERVISOR_WORK_WINDOWS = [[480, 780], [1020, 1290]];
 const ACTIVE = new Set(['pendiente', 'en_progreso', 'en_revision', 'programada']);
 export const normalize = (value) => String(value || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 export const fingerprint = (value) => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export const isSupervisorLeader = (user) => ['admin', 'lider'].includes(user?.rol); // admin es el rol Líder existente en RENDER OS.
+export const isSupervisorLeader = (user) => user?.rol === 'admin'; // admin es el rol Líder existente en RENDER OS.
 
 export function localClock(now = new Date()) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
@@ -65,12 +65,9 @@ export function taskOwnerNames(task) {
 }
 
 export function userOwnsSupervisorTask(user, task) {
-  const aliases = [user?.nombre, user?.usuario].map(normalize).filter(Boolean);
-  if (aliases.includes('lider') && isSupervisorLeader(user)) aliases.push('agus', 'agustin', 'franco socio', 'franco altamirano');
-  if (aliases.includes('luciano')) aliases.push('milton');
-  if (aliases.includes('ana mayerro')) aliases.push('ana', 'ana may', 'ana nay');
-  if (aliases.includes('mariano meza')) aliases.push('mariano', 'mariano mesa');
-  return taskOwnerNames(task).some((name) => aliases.includes(name));
+  if (!Number.isSafeInteger(user?.id) || user.id <= 0 || user.activo === false) return false;
+  return task?.asignado_a_id === user.id
+    || (Array.isArray(task?.colaborador_ids) && task.colaborador_ids.includes(user.id));
 }
 
 export function estimateTaskMinutes(task) {
@@ -85,7 +82,9 @@ export function estimateTaskMinutes(task) {
 }
 
 export function proposalSnapshot(task) {
-  return fingerprint([task.id, task.titulo, task.aclaraciones, task.estado, taskOwnerNames(task), task.tarea_padre_id,
+  const collaboratorIds = [...new Set((Array.isArray(task.colaborador_ids) ? task.colaborador_ids : [])
+    .filter((id) => Number.isSafeInteger(id) && id > 0))].sort((a, b) => a - b);
+  return fingerprint([task.id, task.titulo, task.aclaraciones, task.estado, task.asignado_a_id ?? null, collaboratorIds, task.tarea_padre_id,
     task.publicacion_fecha_programada, task.fecha_vencimiento, task.prioridad,
     task.tipo_tarea, task.subtipo,
     task.propiedades_extra?.estimacion_horas, task.propiedades_extra?.produccion_videos_previstos]);

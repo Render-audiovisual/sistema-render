@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { annotateTaskAssignments } from './task-assignments.js';
 import { supervisorReasoning } from './mia-supervisor-reasoning.js';
 import {followupMessage,taskLabel,batchMessage,shortText,supervisorWindow,nextSupervisorWindow} from './mia-supervisor-messages.js';
 import {
@@ -27,10 +28,10 @@ async function loadSnapshot(db, lock = false) {
     to_char(p.fecha_programada,'YYYY-MM-DD') publicacion_fecha_programada,c.nombre cliente_nombre
     FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id LEFT JOIN publicaciones p ON p.id=t.publicacion_id
     WHERE ${ACTIVE_SQL} ORDER BY t.id${lock ? ' FOR UPDATE OF t' : ''}`);
-  const users = await db.query(`SELECT id,usuario,nombre,rol,whatsapp_id_hash,whatsapp_habilitado FROM usuarios ORDER BY id`);
+  const users = await db.query(`SELECT id,usuario,nombre,rol,activo,whatsapp_id_hash,whatsapp_habilitado FROM usuarios WHERE activo IS TRUE ORDER BY id`);
   const identities = await db.query(`SELECT actor_hash,usuario_id,notification_key,display_name FROM mia_whatsapp_identities WHERE enabled IS TRUE`);
   const replies = await db.query(`SELECT usuario_id,tarea_id,reporte,created_at FROM mia_supervisor_replies WHERE created_at >= NOW()-INTERVAL '14 days'`);
-  return { tasks: tasks.rows, users: users.rows, identities: identities.rows, replies: replies.rows };
+  return { tasks: await annotateTaskAssignments(db, tasks.rows), users: users.rows, identities: identities.rows, replies: replies.rows };
 }
 
 function recipientsFor(user, identities) {
@@ -293,7 +294,7 @@ export async function supervisorNotificationDeliverable(db, notification, { env 
   const taskResult = await db.query(`SELECT t.*,to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento,
     to_char(p.fecha_programada,'YYYY-MM-DD') publicacion_fecha_programada
     FROM tareas t LEFT JOIN publicaciones p ON p.id=t.publicacion_id WHERE t.id=$1`, [notification.tarea_id]);
-  const task = taskResult.rows[0];
+  const [task] = await annotateTaskAssignments(db, taskResult.rows);
   if (!supervisorTaskActive(task)) return false;
   if (!notification.supervisor_followup_id) {
     if (notification.detalles.signal) {
@@ -306,9 +307,9 @@ export async function supervisorNotificationDeliverable(db, notification, { env 
     if (!notification.detalles.followup_id) return true;
   }
   const followupId = notification.supervisor_followup_id || notification.detalles.followup_id;
-  const followup = await db.query(`SELECT f.*,u.nombre,u.usuario,u.rol FROM mia_supervisor_followups f JOIN usuarios u ON u.id=f.usuario_id WHERE f.id=$1`, [followupId]);
+  const followup = await db.query(`SELECT f.*,u.nombre,u.usuario,u.rol FROM mia_supervisor_followups f JOIN usuarios u ON u.id=f.usuario_id WHERE f.id=$1 AND u.activo IS TRUE`, [followupId]);
   const f = followup.rows[0];
-  if (!f || f.estado !== (notification.supervisor_followup_id ? 'waiting' : 'escalated') || !userOwnsSupervisorTask(f,task)
+  if (!f || f.estado !== (notification.supervisor_followup_id ? 'waiting' : 'escalated') || !userOwnsSupervisorTask({ ...f, id: f.usuario_id },task)
     || (notification.supervisor_followup_id && Number(f.attempts) >= Number(notification.supervisor_attempt))) return false;
   if(notification.supervisor_followup_id) {
     const conversation=await db.query(`SELECT 1 FROM mia_supervisor_conversations WHERE usuario_id=$1 AND tarea_id=$2
@@ -326,27 +327,32 @@ export async function supervisorNotificationDeliverable(db, notification, { env 
 
 async function currentActor(db, actor) {
   if (!actor.privateChat || !actor.userId) throw fail('El seguimiento se responde por WhatsApp privado con una cuenta vinculada.',403);
-  const user = await db.query(`SELECT id,usuario,nombre,rol FROM usuarios WHERE id=$1 AND whatsapp_habilitado IS TRUE
+  const user = await db.query(`SELECT id,usuario,nombre,rol FROM usuarios WHERE id=$1 AND activo IS TRUE AND whatsapp_habilitado IS TRUE
     AND (whatsapp_id_hash=$2 OR EXISTS(SELECT 1 FROM mia_whatsapp_identities i WHERE i.usuario_id=usuarios.id AND i.actor_hash=$2 AND i.enabled IS TRUE))`,
     [actor.userId,crypto.createHash('sha256').update(String(actor.actorId).replace(/^\+/, '')).digest('hex')]);
   if (!user.rows[0]) throw fail('La cuenta de WhatsApp no está vinculada o fue deshabilitada.',403);
   return user.rows[0];
 }
 
-async function loadTask(db, id) {
+async function loadTask(db, id, { allowCompleted = false } = {}) {
   if (!Number.isInteger(Number(id)) || Number(id) <= 0) throw fail('Tarea inválida.');
   const result = await db.query(`SELECT t.*,to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento,
     to_char(p.fecha_programada,'YYYY-MM-DD') publicacion_fecha_programada
     FROM tareas t LEFT JOIN publicaciones p ON p.id=t.publicacion_id
     WHERE t.id=$1 AND ${ACTIVE_SQL} FOR UPDATE OF t`, [id]);
-  if (!result.rows[0] || !supervisorTaskActive(result.rows[0])) throw fail('La tarea no está activa en RENDER OS.',404);
-  return result.rows[0];
+  const row = result.rows[0];
+  // Only an authorized replay may read a completed task; trash/archive stay excluded.
+  const completedReplay = allowCompleted && row?.estado === 'publicada'
+    && supervisorTaskActive({ ...row, estado: 'pendiente' });
+  if (!row || (!supervisorTaskActive(row) && !completedReplay)) throw fail('La tarea no está activa en RENDER OS.',404);
+  const [task] = await annotateTaskAssignments(db, result.rows);
+  return task;
 }
 
 export async function acceptSupervisorDeadline(pool, { actor, taskId, proposalId, date, messageId, env = process.env, now = new Date() }) {
   if (!enabled(env)) throw fail('El supervisor todavía no está activado.',503);
   if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(proposalId || ''))) throw fail('Propuesta inválida.');
-  return supervisorReplyTransaction(pool, { actor, taskId, messageId, payload: { proposalId, date }, now }, async (db,user,task) => {
+  return supervisorReplyTransaction(pool, { actor, taskId, messageId, operationName:'accept_deadline', payload: { proposalId, date }, now }, async (db,user,task) => {
     const proposal = await db.query(`SELECT *,to_char(fecha,'YYYY-MM-DD') fecha FROM mia_supervisor_proposals WHERE id=$1 AND tarea_id=$2 AND estado='pending' FOR UPDATE`, [proposalId,task.id]);
     const p = proposal.rows[0];
     if (!p || p.snapshot_hash !== proposalSnapshot(task)) throw fail('La propuesta cambió; pedí una nueva fecha antes de confirmar.',409);
@@ -360,26 +366,30 @@ export async function acceptSupervisorDeadline(pool, { actor, taskId, proposalId
   });
 }
 
-async function supervisorReplyTransaction(pool, { actor,taskId,messageId,payload,now,allowBlocker=false }, operation) {
+async function supervisorReplyTransaction(pool, { actor,taskId,messageId,operationName,payload,now,allowBlocker=false }, operation) {
   if (typeof messageId !== 'string' || !messageId.trim() || messageId.length > 200) throw fail('Falta el ID estable del mensaje de WhatsApp.');
   const actorHash = crypto.createHash('sha256').update(String(actor.actorId).replace(/^\+/, '')).digest('hex');
-  const payloadHash = fingerprint([taskId,payload]);
+  const payloadHash = fingerprint([operationName,taskId,payload]);
   const db = await pool.connect();
   try {
     await db.query('BEGIN');
     await db.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`mia-supervisor:reply:${actorHash}:${messageId}`]);
     const user = await currentActor(db,actor);
-    const previous = await db.query(`SELECT payload_hash,resultado FROM mia_supervisor_replies WHERE actor_hash=$1 AND message_id=$2`, [actorHash,messageId]);
-    if (previous.rows[0]) {
-      if (previous.rows[0].payload_hash !== payloadHash) throw fail('Ese mensaje ya se usó con otro contenido.',409);
+    const previous = await db.query(`SELECT usuario_id,tarea_id,payload_hash,resultado FROM mia_supervisor_replies WHERE actor_hash=$1 AND message_id=$2`, [actorHash,messageId]);
+    const cached = previous.rows[0];
+    if (cached && cached.usuario_id !== user.id) throw fail('Ese mensaje pertenece a otra cuenta vinculada.',403);
+    if (cached && (cached.tarea_id !== Number(taskId) || cached.payload_hash !== payloadHash)) throw fail('Ese mensaje ya se usó para otra operación o contenido.',409);
+    const task = await loadTask(db,taskId,{ allowCompleted:Boolean(cached) });
+    const blocker = allowBlocker && supervisorBlockerAllowed(user,task);
+    const authorized = allowBlocker ? blocker || isSupervisorLeader(user)
+      : userOwnsSupervisorTask(user,task) || isSupervisorLeader(user);
+    if (!authorized) throw fail('Solo los responsables o un Líder pueden responder por esta tarea.',403);
+    if (cached) {
       await db.query('COMMIT');
-      return { ...previous.rows[0].resultado, idempotent: true };
+      return { ...cached.resultado, idempotent: true };
     }
     await db.query(`INSERT INTO mia_supervisor_inbound(actor_hash,last_inbound_at,message_id) VALUES($1,$2,$3)
       ON CONFLICT(actor_hash) DO UPDATE SET last_inbound_at=EXCLUDED.last_inbound_at,message_id=EXCLUDED.message_id`,[actorHash,now,messageId]);
-    const task = await loadTask(db,taskId);
-    const blocker = allowBlocker && supervisorBlockerAllowed(user,task);
-    if (!userOwnsSupervisorTask(user,task) && !isSupervisorLeader(user) && !blocker) throw fail('Solo los responsables o un Líder pueden responder por esta tarea.',403);
     const result = await operation(db,user,task);
     if(!result.needs_more) await db.query(`UPDATE mia_supervisor_followups SET estado='answered',updated_at=$3 WHERE tarea_id=$1 AND (usuario_id=$2 OR $4) AND estado IN ('waiting','escalated')`, [task.id,user.id,now,isSupervisorLeader(user)]);
     await db.query(`UPDATE mia_private_task_notifications n SET cancelled_at=$3 FROM mia_supervisor_followups f
@@ -394,7 +404,7 @@ async function supervisorReplyTransaction(pool, { actor,taskId,messageId,payload
 
 export async function recordSupervisorReply(pool, { actor, taskId, messageId, input, env = process.env, now = new Date() }) {
   if (!enabled(env)) throw fail('El supervisor todavía no está activado.',503);
-  return supervisorReplyTransaction(pool,{ actor,taskId,messageId,payload:input,now },async (db,user,task) => {
+  return supervisorReplyTransaction(pool,{ actor,taskId,messageId,operationName:'record_reply',payload:input,now },async (db,user,task) => {
     const previous=(await db.query(`SELECT report FROM mia_supervisor_conversations WHERE usuario_id=$1 AND tarea_id=$2 FOR UPDATE`,[user.id,task.id])).rows[0]?.report||{};
     const combined={...previous,...Object.fromEntries(Object.entries(input).filter(([key,value])=>!['message_id','texto'].includes(key)&&value!==undefined&&value!==null&&value!=='')),texto:[previous.texto,input.texto].filter(Boolean).join('\n')};
     const parsed = validateSupervisorReport(combined,task,now);
@@ -435,7 +445,7 @@ export async function recordSupervisorReply(pool, { actor, taskId, messageId, in
 
 export async function recordSupervisorBlockerReply(pool, { actor,taskId,messageId,input,env=process.env,now=new Date() }) {
   if (!enabled(env)) throw fail('El supervisor todavía no está activado.',503);
-  return supervisorReplyTransaction(pool,{ actor,taskId,messageId,payload:input,now,allowBlocker:true },async (db,user,task) => {
+  return supervisorReplyTransaction(pool,{ actor,taskId,messageId,operationName:'blocker_reply',payload:input,now,allowBlocker:true },async (db,user,task) => {
     if (!supervisorBlockerAllowed(user,task) && !isSupervisorLeader(user)) throw fail('Esta ayuda no fue solicitada a tu cuenta.',403);
     const text = typeof input.texto === 'string' ? input.texto.trim() : '';
     const detail = typeof input.motivo === 'string' ? input.motivo.trim() : '';

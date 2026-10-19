@@ -56,6 +56,10 @@ def canonical_json(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def signature_message(timestamp, nonce, method, path, telegram_user_id, body_hash):
+    return "\n".join(("v2", timestamp, nonce, "telegram", str(telegram_user_id), "", "", method.upper(), path, body_hash))
+
+
 def sign_request(method, path, telegram_user_id, payload):
     if not PRIVATE_KEY_PATH.exists():
         raise RuntimeError("Falta la clave privada de RENDER OS para Wilson.")
@@ -63,7 +67,7 @@ def sign_request(method, path, telegram_user_id, payload):
     nonce = str(uuid.uuid4())
     body = "" if payload is None else canonical_json(payload)
     body_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
-    message = "\n".join((timestamp, nonce, str(telegram_user_id), method.upper(), path, body_hash))
+    message = signature_message(timestamp, nonce, method, path, telegram_user_id, body_hash)
     signed = subprocess.run(
         ["openssl", "dgst", "-sha256", "-sign", str(PRIVATE_KEY_PATH)],
         input=message.encode("utf-8"), capture_output=True, check=True,
@@ -78,6 +82,8 @@ def request(method, path, *, telegram_user_id, confirmed_by, payload=None, idemp
     headers = {
         "Content-Type": "application/json",
         "X-Telegram-User-Id": str(telegram_user_id),
+        "X-Wilson-Channel": "telegram",
+        "X-Wilson-Signature-Version": "2",
         "X-Wilson-Confirmed-By": confirmed_by,
         "X-Wilson-Timestamp": timestamp,
         "X-Wilson-Nonce": nonce,

@@ -44,8 +44,23 @@ export async function request(base, route, { token, method = 'GET', body } = {})
   return { status: response.status, body: await response.json() };
 }
 
-export async function startLocalHarness({ port = 55594, deferGoalMigration = false, deferAssignmentMigration = false } = {}) {
+export function fixtureWilsonEnvironment(config = {}) {
+  const allowed = new Set(['publicKey', 'telegramUserBindings', 'allowedTelegramIds', 'allowedWhatsappIds', 'allowedWhatsappGroups', 'systemActorId']);
+  for (const key of Object.keys(config)) if (!allowed.has(key)) throw new Error('Unsupported fixture integration option');
+  const result = {};
+  const fields = { publicKey: 'WILSON_PUBLIC_KEY', telegramUserBindings: 'WILSON_TELEGRAM_USER_BINDINGS',
+    allowedTelegramIds: 'WILSON_ALLOWED_TELEGRAM_IDS', allowedWhatsappIds: 'WILSON_ALLOWED_WHATSAPP_IDS',
+    allowedWhatsappGroups: 'WILSON_ALLOWED_WHATSAPP_GROUP_IDS', systemActorId: 'WILSON_SYSTEM_ACTOR_ID' };
+  for (const [key, value] of Object.entries(config)) {
+    if (typeof value !== 'string' || value.length > 12000) throw new Error('Invalid fixture integration option');
+    result[fields[key]] = value;
+  }
+  return result;
+}
+
+export async function startLocalHarness({ port = 55594, deferGoalMigration = false, deferAssignmentMigration = false, wilson = {} } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
+  const wilsonEnv = fixtureWilsonEnvironment(wilson);
   const root = await mkdtemp('/private/tmp/render2-local-');
   const data = `${root}/data`;
   const env = cleanEnvironment();
@@ -90,8 +105,8 @@ export async function startLocalHarness({ port = 55594, deferGoalMigration = fal
     command('createdb', ['-h', '127.0.0.1', '-p', String(port), '-U', 'render2_fixture', 'render2_local_test']);
     const url = `postgresql://render2_fixture@127.0.0.1:${port}/render2_local_test`;
     const secret = randomBytes(32).toString('hex');
-    child = fork(self, ['--fixture-child'], { cwd: root,
-      env: { ...env, DATABASE_URL: url, JWT_SECRET: secret, RENDER2_FIXTURE_ROOT: root,
+    child = fork(self, ['--fixture-child'], { cwd: root, execArgv: [],
+      env: { ...env, ...wilsonEnv, DATABASE_URL: url, JWT_SECRET: secret, RENDER2_FIXTURE_ROOT: root,
         RENDER2_FIXTURE_PORT: String(port), RENDER2_DEFER_GOAL_MIGRATION: String(deferGoalMigration),
         RENDER2_DEFER_ASSIGNMENT_MIGRATION: String(deferAssignmentMigration),
         PGOPTIONS: '-c statement_timeout=15000' }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
