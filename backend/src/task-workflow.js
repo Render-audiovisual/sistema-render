@@ -1,6 +1,7 @@
 import { normalizarNombre } from "./email-notifications.js";
 import { getProductionProgress, isProductionVisitTask, isProductionComplete } from "./production-visits.js";
 
+// Notification delivery targets only; these names never grant authority.
 export const TASK_LEADERS = ["Agustín", "Franco"];
 
 function taskText(task = {}) {
@@ -8,15 +9,12 @@ function taskText(task = {}) {
 }
 
 export function isTaskLeader(auth = {}) {
-  if (auth.rol === "admin") return true;
-  const identity = normalizarNombre(`${auth.nombre || ""} ${auth.usuario || ""}`);
-  return identity.includes("franco") || identity.includes("agustin") || identity.includes("lider");
+  // auth must be the verified identity supplied by authentication middleware.
+  return auth.rol === "admin";
 }
 
 export function isTaskFinalizer(auth = {}) {
-  if (auth.rol === "admin" || auth.rol === "community") return true;
-  const identity = normalizarNombre(`${auth.nombre || ""} ${auth.usuario || ""}`);
-  return identity.includes("franco");
+  return auth.rol === "admin" || auth.rol === "community";
 }
 
 export function isCarouselTask(task = {}) {

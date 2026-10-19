@@ -35,6 +35,7 @@ import {
   USUARIO_A_RUTA,
 } from "./constants.js";
 import { getDefaultUserRoute, normalizeUserKey } from "./shared/session/route-utils.js";
+import { parseCurrentSession, logoutCurrentSession } from "./shared/session/current-session.js";
 
 export function calcularPorcentajePublicadas(items) {
   if (items.length === 0) return 0;
@@ -490,22 +491,9 @@ export function getRutaUsuario(usuario, rol) {
 }
 
 export function getSesion() {
-  const raw = localStorage.getItem("render_sesion");
-  if (!raw) {
-    return null;
-  }
   try {
-    const sesion = JSON.parse(raw);
-    if (!sesion?.token || !sesion?.usuario) {
-      localStorage.removeItem("render_sesion");
-      return null;
-    }
-    if (getUsuarioKey(sesion?.usuario?.usuario) === "agustin") {
-      return {
-        ...sesion,
-        usuario: { ...sesion.usuario, usuario: "lider", nombre: "Líder" },
-      };
-    }
+    const sesion = parseCurrentSession(localStorage.getItem("render_sesion"));
+    if (!sesion) localStorage.removeItem("render_sesion");
     return sesion;
   } catch {
     return null;
@@ -513,6 +501,8 @@ export function getSesion() {
 }
 
 export function guardarSesion(token, usuario) {
+  // Migration debt: existing bearer persistence remains XSS-readable. No new
+  // token stores are introduced; server authorization must never trust this DTO.
   localStorage.setItem("render_sesion", JSON.stringify({ token, usuario }));
 }
 
@@ -526,9 +516,14 @@ export function inicialesUsuario(nombre) {
     .toUpperCase();
 }
 
-export function cerrarSesion() {
-  localStorage.removeItem("render_sesion");
-  window.location.href = "/login";
+export async function cerrarSesion() {
+  return logoutCurrentSession({
+    token: getSesion()?.token,
+    fetchImpl: window.fetch.bind(window),
+    clear: () => localStorage.removeItem("render_sesion"),
+    reportFailure: (message) => window.alert(message),
+    navigate: () => { window.location.href = "/login"; },
+  });
 }
 
 export function getSectorTarea(id) {

@@ -52,8 +52,13 @@ export function nextProductionPeriod(dateValue) {
 }
 
 export function canRecordProduction(auth = {}) {
-  if (auth.rol === "admin") return true;
-  return normalizeProductionText(auth.nombre || auth.usuario).split(/\s+/)[0] === "german";
+  // All authenticated members may record. Callers must supply the persisted
+  // identity from authentication middleware, never request-body identity data.
+  // Role-only legacy callers fail closed, including admins. Decimal strings
+  // are accepted for database drivers that return integer IDs as strings.
+  const id = auth.id;
+  if (typeof id !== "number" && !(typeof id === "string" && /^[1-9]\d*$/.test(id))) return false;
+  return Number.isSafeInteger(Number(id)) && Number(id) > 0;
 }
 
 export function isValidProductionDate(value) {

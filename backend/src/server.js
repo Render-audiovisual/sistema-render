@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import compression from "compression";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import { checkDatabaseConnection, pool } from "./db.js";
 import {
@@ -21,7 +20,8 @@ import { destinatariosNuevosDeAsignacion, encolarNotificacionPrivadaTarea } from
 import { encolarNotificacionPrivadaFeedback } from "./private-feedback-notifications.js";
 import { setupDemoClientes } from "./setup-demo-data.js";
 import { shouldSetupDemoData } from "./hosting-config.js";
-import { requireAuthentication, requireRole } from "./auth.js";
+import { requireAuthentication, requireRole, requireCurrentIdentity, issueUserToken } from "./auth.js";
+import { administerUser } from "./user-administration.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
@@ -136,7 +136,7 @@ router.post("/login", async (req, res, next) => {
     }
 
     const result = await pool.query(
-      `SELECT id, usuario, nombre, rol, foto_perfil, password_hash
+      `SELECT id, usuario, nombre, rol, foto_perfil, password_hash, activo, session_version
        FROM usuarios
        WHERE lower(usuario) = lower($1)
           OR lower(google_email) = lower($1)
@@ -155,24 +155,16 @@ router.post("/login", async (req, res, next) => {
       usuarioDB.password_hash,
     );
 
-    if (!passwordValida) {
+    if (!passwordValida || usuarioDB.activo !== true) {
       return res.status(401).json({ error: "Usuario o contraseña incorrectos." });
     }
 
-    const token = jwt.sign(
-      {
-        id: usuarioDB.id,
-        usuario: usuarioDB.usuario,
-        nombre: usuarioDB.nombre,
-        rol: usuarioDB.rol,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "30d" },
-    );
+    const token = issueUserToken(usuarioDB);
 
     res.json({
       token,
       usuario: {
+        id: usuarioDB.id,
         usuario: usuarioDB.usuario,
         nombre: usuarioDB.nombre,
         rol: usuarioDB.rol,
@@ -208,57 +200,53 @@ router.post("/login/google", async (req, res, next) => {
       return res.status(401).json({ error: "Token de Google inválido o vencido." });
     }
 
-    if (!payload?.email_verified) {
+    if (payload?.email_verified !== true || typeof payload.sub !== "string" || !payload.sub
+      || typeof payload.email !== "string" || !payload.email) {
       return res
         .status(401)
         .json({ error: "Tu cuenta de Google no tiene el email verificado." });
     }
 
     const porGoogleId = await pool.query(
-      "SELECT id, usuario, nombre, rol, foto_perfil FROM usuarios WHERE google_id = $1",
+      "SELECT id, usuario, nombre, rol, foto_perfil, activo, session_version FROM usuarios WHERE google_id = $1",
       [payload.sub],
     );
+    if (porGoogleId.rows.length > 1) return res.status(403).json({ error: "La identidad de Google debe vincularse a una única cuenta." });
     let usuarioDB = porGoogleId.rows[0] || null;
 
     if (!usuarioDB) {
       const porEmail = await pool.query(
-        "SELECT id, usuario, nombre, rol, foto_perfil FROM usuarios WHERE lower(google_email) = lower($1)",
-        [payload.email],
+        "SELECT id, usuario, nombre, rol, foto_perfil, activo, session_version FROM usuarios WHERE lower(google_email) = lower($1) AND (google_id IS NULL OR google_id=$2)",
+        [payload.email, payload.sub],
       );
+      if (porEmail.rows.length > 1) return res.status(403).json({ error: "El correo de Google está vinculado a varias cuentas." });
       usuarioDB = porEmail.rows[0] || null;
 
-      if (usuarioDB) {
+      if (usuarioDB?.activo === true) {
         // Primer login con Google de esta persona: guardamos el google_id
         // para no depender solo del email en los próximos logins (el email
         // de Google podría cambiar, el sub no).
-        await pool.query("UPDATE usuarios SET google_id = $1 WHERE id = $2", [
-          payload.sub,
-          usuarioDB.id,
-        ]);
+        const linked = await pool.query(`UPDATE usuarios SET google_id=$1
+          WHERE id=$2 AND activo=TRUE AND (google_id IS NULL OR google_id=$1)
+          RETURNING id,usuario,nombre,rol,foto_perfil,activo,session_version`, [payload.sub, usuarioDB.id]);
+        if (!linked.rows.length) return res.status(409).json({ error: "La vinculación cambió. Volvé a iniciar sesión." });
+        usuarioDB = linked.rows[0];
       }
     }
 
-    if (!usuarioDB) {
+    if (!usuarioDB || usuarioDB.activo !== true) {
       return res.status(403).json({
         error:
           "Tu cuenta de Google no está vinculada a ningún usuario de Render. Pedile al líder que te vincule.",
       });
     }
 
-    const token = jwt.sign(
-      {
-        id: usuarioDB.id,
-        usuario: usuarioDB.usuario,
-        nombre: usuarioDB.nombre,
-        rol: usuarioDB.rol,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: "30d" },
-    );
+    const token = issueUserToken(usuarioDB);
 
     res.json({
       token,
       usuario: {
+        id: usuarioDB.id,
         usuario: usuarioDB.usuario,
         nombre: usuarioDB.nombre,
         rol: usuarioDB.rol,
@@ -275,6 +263,35 @@ router.post("/login/google", async (req, res, next) => {
 router.use("/drive", createGoogleDrivePublicRouter({ express, pool }));
 
 router.use(requireAuthentication);
+router.use(requireCurrentIdentity(pool));
+
+router.get("/sesion", (req, res) => res.json({ usuario: req.auth }));
+router.post("/logout", async (req, res, next) => {
+  try {
+    // This first rollout revokes all sessions of the account, not other users.
+    await pool.query("UPDATE usuarios SET session_version=session_version+1 WHERE id=$1", [req.auth.id]);
+    res.json({ ok: true });
+  } catch (error) { next(error); }
+});
+
+router.patch("/usuarios/:id/acceso", requireRole("admin"), async (req, res, next) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1 || typeof req.body.activo !== "boolean") {
+    return res.status(400).json({ error: "Indicá un usuario válido y su estado activo." });
+  }
+  if (id === Number(req.auth.id) && !req.body.activo) {
+    return res.status(409).json({ error: "No podés desactivar tu propia cuenta." });
+  }
+  try {
+    const { rows } = await administerUser(pool, id, { activo: req.body.activo }, db => db.query(`UPDATE usuarios SET activo=$2,session_version=session_version+1
+      WHERE id=$1 RETURNING id,usuario,nombre,rol,activo`, [id, req.body.activo]));
+    if (!rows.length) return res.status(404).json({ error: "Usuario no encontrado." });
+    res.json(rows[0]);
+  } catch (error) {
+    if ([404, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
+    next(error);
+  }
+});
 router.use("/cliente-objetivos", createClientGoalsRouter({ pool }));
 router.use("/moodboards", createMoodboardsRouter({ pool }));
 
@@ -834,7 +851,7 @@ router.patch("/usuarios/:id/google-email", requireRole("admin"), async (req, res
     // cuenta de Google que ya no corresponde.
     const updated = await pool.query(
       `UPDATE usuarios
-       SET google_email = $1, google_id = NULL
+       SET google_email = $1, google_id = NULL, session_version=session_version+1
        WHERE id = $2
        RETURNING id, usuario, nombre, rol, google_email, foto_perfil, created_at`,
       [email, req.params.id],
@@ -881,10 +898,10 @@ router.post("/usuarios/:id/invitacion", requireRole("admin"), async (req, res, n
 router.delete("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const { id } = req.params;
-    const result = await pool.query(
+    const result = await administerUser(pool, id, { delete: true }, db => db.query(
       "DELETE FROM usuarios WHERE id = $1 RETURNING id",
       [id],
-    );
+    ));
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Usuario no encontrado." });
@@ -892,6 +909,7 @@ router.delete("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
 
     res.json({ ok: true });
   } catch (error) {
+    if ([404, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });
@@ -937,7 +955,7 @@ router.patch("/usuarios/perfil", async (req, res, next) => {
 
     const updated = await pool.query(
       `UPDATE usuarios
-       SET usuario = $1
+       SET usuario = $1, session_version=session_version+1
        WHERE id = $2
        RETURNING id, usuario, nombre, rol, foto_perfil, created_at`,
       [usuarioNuevo, usuarioDB.id],
@@ -1015,7 +1033,7 @@ router.patch("/usuarios/password", async (req, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(password_nueva, 10);
-    await pool.query("UPDATE usuarios SET password_hash = $1 WHERE id = $2", [
+    await pool.query("UPDATE usuarios SET password_hash = $1, session_version=session_version+1 WHERE id = $2", [
       passwordHash,
       found.rows[0].id,
     ]);
@@ -1037,19 +1055,20 @@ router.patch("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
       return res.status(400).json({ error: "Los datos del empleado no son válidos." });
     }
 
-    const updated = await pool.query(
+    const updated = await administerUser(pool, req.params.id, { rol: rolNormalizado }, db => db.query(
       `UPDATE usuarios
-       SET nombre = $1, usuario = $2, rol = $3
+       SET nombre = $1, usuario = $2, rol = $3, session_version=session_version+1
        WHERE id = $4
        RETURNING id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at`,
       [nombre, usuario, rolNormalizado, req.params.id],
-    );
+    ));
 
     if (updated.rows.length === 0) {
       return res.status(404).json({ error: "Usuario no encontrado." });
     }
     return res.json(updated.rows[0]);
   } catch (error) {
+    if ([404, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     if (error.code === "23505") {
       return res.status(409).json({ error: "Ya existe ese usuario." });
     }

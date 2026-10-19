@@ -48,9 +48,55 @@ export function summarizeRenderOsByDay(tasks = []) {
   }, {});
 }
 
+// Report DTOs are allowlists: new database/JSON fields stay private by default.
+// Scalars only, so an object hidden under an allowed key cannot bypass the DTO.
+function pickScalars(source, fields) {
+  const result = {};
+  for (const key of fields) {
+    const value = source?.[key];
+    if (value === null || ["string", "number", "boolean"].includes(typeof value)) result[key] = value;
+    else if (value instanceof Date) result[key] = value.toISOString();
+  }
+  return result;
+}
+
+function taskReportDto(task) {
+  const result = pickScalars(task, [
+    "id", "titulo", "asignado_a", "estado", "fecha_vencimiento", "tipo_tarea",
+    "subtipo", "created_at", "updated_at", "cliente_nombre",
+  ]);
+  const extra = task.propiedades_extra;
+  result.propiedades_extra = pickScalars(extra, [
+    "workspace", "archivada_render_os", "edicion_responsable", "clickup_lista",
+    "clickup_cerrada_at", "reporte_fuente", "reporte_periodo", "revision_aprobada",
+    "produccion_videos_previstos", "produccion_finalizada_at", "produccion_confirmada_at",
+  ]);
+  if (Array.isArray(extra?.colaboradores)) {
+    result.propiedades_extra.colaboradores = extra.colaboradores.filter((name) => typeof name === "string");
+  }
+  if (Array.isArray(extra?.produccion_registros)) {
+    result.propiedades_extra.produccion_registros = extra.produccion_registros.map((record) => pickScalars(record, ["cantidad", "fecha"]));
+  }
+  return result;
+}
+
+function nonAdminReportDto(data) {
+  const rows = (key, dto) => (data[key] || []).map(dto);
+  return {
+    tareas: rows("tareas", taskReportDto),
+    tareasRenderOs: rows("tareasRenderOs", taskReportDto),
+    historias: rows("historias", (item) => pickScalars(item, ["id", "cliente_id", "estado", "fecha_programada", "responsable", "responsable_diseño"])),
+    publicaciones: rows("publicaciones", (item) => pickScalars(item, ["id", "cliente_id", "tipo", "estado", "fecha_programada", "responsable", "responsable_diseño"])),
+    clientes: rows("clientes", (item) => pickScalars(item, ["id", "nombre", "activo", "cuota_carruseles", "disenador_responsable", "grupo_feed_id", "cuota_feed_carruseles"])),
+    usuarios: rows("usuarios", (item) => pickScalars(item, ["id", "usuario", "nombre", "rol"])),
+    entregasEdicion: rows("entregasEdicion", (item) => pickScalars(item, ["id", "editor_clave", "fecha_entrega", "cliente_etiqueta", "categoria", "fuente", "fuente_item", "confirmado_por"])),
+  };
+}
+
 export function filterReportDataForUser(data, auth = {}) {
+  if (auth.rol === "admin") return { ...data, resumenRenderOsPorDia: summarizeRenderOsByDay(data.tareasRenderOs) };
+  data = nonAdminReportDto(data);
   const reportData = { ...data, resumenRenderOsPorDia: summarizeRenderOsByDay(data.tareasRenderOs) };
-  if (auth.rol === "admin") return reportData;
   const identity = auth.nombre || auth.usuario || "";
   const ownTask = (task) => belongsTo(task.asignado_a, identity)
     || (auth.rol === "edicion" && belongsTo(task.propiedades_extra?.edicion_responsable, identity))

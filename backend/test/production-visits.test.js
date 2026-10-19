@@ -58,10 +58,27 @@ test("separa los videos por mes y normaliza los nombres de clientes", () => {
   assert.equal(august.reduce((total, item) => total + item.objetivo, 0), 40);
 });
 
-test("solo Germán y el rol Líder pueden registrar grabaciones", () => {
-  assert.equal(canRecordProduction({ rol: "admin", nombre: "Agustín" }), true);
-  assert.equal(canRecordProduction({ rol: "produccion", nombre: "Germán Beltzer" }), true);
-  assert.equal(canRecordProduction({ rol: "produccion", nombre: "Otra persona" }), false);
+test("cualquier miembro con identidad persistida puede registrar grabaciones sin depender del nombre o rol", () => {
+  for (const rol of ["admin", "community", "produccion", "diseno", "edicion", "programacion", "unknown", undefined]) {
+    for (const nombre of ["Germán Beltzer", "Persona renombrada", "Franco", "Agustín", "Líder"]) {
+      for (const id of [1, 42, "42", Number.MAX_SAFE_INTEGER]) {
+        assert.equal(canRecordProduction({ id, rol, nombre, usuario: nombre }), true, `${rol}/${nombre}/${id}`);
+      }
+      assert.equal(canRecordProduction({ rol, nombre, usuario: nombre }), false);
+    }
+  }
+});
+
+test("nombres impostores y roles privilegiados no sustituyen un ID positivo válido", () => {
+  for (const id of [undefined, null, 0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1,
+    "", "0", "-1", "1.5", " 1", "1 ", "1e2", "0x10", "01", "9007199254740992", true, {}, [], [1]]) {
+    assert.equal(canRecordProduction({ id, rol: "admin", nombre: "Germán", usuario: "lider" }), false, String(id));
+    assert.equal(canRecordProduction({ id, rol: "unknown", nombre: "Franco" }), false, String(id));
+  }
+  assert.equal(canRecordProduction(), false);
+});
+
+test("valida fechas de registro reales en formato ISO", () => {
   assert.equal(isValidProductionDate("2026-08-05"), true);
   assert.equal(isValidProductionDate("05/08/2026"), false);
   assert.equal(isValidProductionDate("2026-02-31"), false);

@@ -26,19 +26,33 @@ test("los videos en revisión llegan solo a los líderes", () => {
   assert.deepEqual(getStateNotification(task, "en_progreso").recipients, ["Agustín", "Franco"]);
 });
 
-test("Franco y el administrador pueden aprobar una revisión", () => {
-  assert.equal(isTaskLeader({ rol: "programacion", nombre: "Franco Romero" }), true);
+test("solo el rol administrador puede aprobar una revisión", () => {
+  assert.equal(isTaskLeader({ rol: "programacion", nombre: "Franco Romero" }), false);
   assert.equal(isTaskLeader({ rol: "admin", nombre: "Agustín" }), true);
   assert.equal(isTaskLeader({ rol: "diseno", nombre: "Augusto" }), false);
 });
 
-test("community managers, administradores y Franco pueden finalizar o reabrir tareas", () => {
+test("solo community managers y administradores pueden finalizar o reabrir tareas", () => {
   assert.equal(isTaskFinalizer({ rol: "admin", nombre: "Líder", usuario: "lider" }), true);
-  assert.equal(isTaskFinalizer({ rol: "programacion", nombre: "Franco Romero", usuario: "Franco" }), true);
+  assert.equal(isTaskFinalizer({ rol: "programacion", nombre: "Franco Romero", usuario: "Franco" }), false);
   assert.equal(isTaskFinalizer({ rol: "community", nombre: "Oriana", usuario: "Oriana" }), true);
   assert.equal(isTaskFinalizer({ rol: "community", nombre: "Ana Mayerro", usuario: "Ana" }), true);
   assert.equal(isTaskFinalizer({ rol: "diseno", nombre: "Augusto", usuario: "Augusto" }), false);
   assert.equal(isTaskFinalizer({ rol: "produccion", nombre: "Germán", usuario: "German" }), false);
+});
+
+test("renombrar usuarios o imitar nombres de líderes no cambia su autoridad", () => {
+  for (const rol of ["admin", "community", "diseno", "edicion", "produccion", "programacion", "unknown", undefined]) {
+    for (const nombre of ["Persona renombrada", "Franco Romero", "Agustín", "Líder", "franco agustin lider"]) {
+      const auth = { id: 42, rol, nombre, usuario: nombre };
+      assert.equal(isTaskLeader(auth), rol === "admin", `${rol}/${nombre}: leader`);
+      assert.equal(isTaskFinalizer(auth), rol === "admin" || rol === "community", `${rol}/${nombre}: finalizer`);
+    }
+  }
+  assert.equal(isTaskLeader(), false);
+  assert.equal(isTaskFinalizer(), false);
+  assert.equal(isTaskLeader({ rol: "ADMIN", nombre: "Agustín" }), false);
+  assert.equal(isTaskFinalizer({ rol: "Community", nombre: "Franco" }), false);
 });
 
 test("una visita exige completar los videos y adjuntar Drive", () => {
