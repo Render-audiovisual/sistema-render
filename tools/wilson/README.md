@@ -1,31 +1,89 @@
 # Wilson → RENDER OS
 
+Compatibilidad local bajo contrato; no certifica despliegue, transporte real
+ni entrega de notificaciones en producción.
+
 Este cliente reemplaza la creación de tareas en ClickUp. Wilson debe:
 
 1. obtener cliente y responsable desde `catalog`;
 2. completar cliente, responsable, fecha y sector sin inventarlos;
 3. ejecutar `validate` y mostrar el borrador y los posibles duplicados;
-4. esperar una confirmación individual de Franco o Agustín;
-5. ejecutar `create` una sola vez con una clave de idempotencia estable;
+4. solicitar token exacto con `propose` y esperar confirmación humana de una identidad mapeada autorizada;
+5. ejecutar `create` con ese token y la misma clave de idempotencia estable;
 6. responder con responsable, vencimiento y el enlace directo devuelto.
 
 Para una tarea existente, Wilson puede usar `get` para leerla y `update` para
 editar título, descripción, cliente, responsable, fecha, sector, prioridad,
 material o referencia. `--append-desc` agrega un bloque al brief sin borrar lo
 anterior y evita repetir exactamente el mismo bloque. Toda edición requiere
-confirmación de Franco o Agustín y una clave de idempotencia estable.
+token exacto, clave de idempotencia estable y la revisión observada en GET.
+Los nombres y `--confirmed-by` son etiquetas legacy, nunca permisos. El backend
+resuelve el usuario interno actual y controla membresía, rol y transporte.
 
 Ejemplo:
 
 ```bash
 python3 tools/wilson/render_os_task.py get --task-id 1421 \
-  --telegram-user-id 1826333320 --confirmed-by Franco
+  --telegram-user-id '<actor-mapeado>'
+
+python3 tools/wilson/render_os_task.py propose --operation editar --task-id 1421 \
+  --payload '{"append_descripcion":"VIDEO 2 — NUEVO BRIEF","expected_revision":7}' \
+  --telegram-user-id '<actor-mapeado>' --idempotency-key '<uuid-estable>'
 
 python3 tools/wilson/render_os_task.py update --task-id 1421 \
   --append-desc "VIDEO 2 — NUEVO BRIEF" \
-  --telegram-user-id 1826333320 --confirmed-by Franco \
-  --idempotency-key "<uuid>"
+  --telegram-user-id '<actor-mapeado>' --expected-revision 7 \
+  --confirmation-token '<token-exacto>' --idempotency-key '<uuid-estable>'
 ```
+
+La revisión 7 es ilustrativa: usar exactamente la que vio el usuario, sin
+consultar otra para rebasar silenciosamente la intención. Para eliminar,
+un admin puede obtener la revisión archivada mediante `get --include-archived`.
+Los comandos `archive` y `delete` también requieren token, key y revisión;
+esta última puede ir en `--payload '{"expected_revision":7}'` o
+`--expected-revision 7`. Sus propuestas usan `archivar` y `eliminar`.
+
+En WhatsApp usar el cliente canónico `backend/scripts/mia_render_os_task.py`,
+o el wrapper compatible `scripts/mia_render_os_task.py`. Los flags de identidad
+van **antes** del subcomando. Ejemplo de intención idéntica:
+
+```bash
+python3 scripts/mia_render_os_task.py --actor-id '<actor>' --actor-name '<etiqueta>' \
+  propose --operation editar --task-id 1421 --idempotency-key '<uuid-estable>' \
+  --payload '{"append_descripcion":"Nuevo brief","expected_revision":7}'
+
+python3 scripts/mia_render_os_task.py --actor-id '<actor>' --actor-name '<etiqueta>' \
+  update --task-id 1421 --idempotency-key '<uuid-estable>' \
+  --confirmation-token '<token-exacto>' \
+  --payload '{"append_descripcion":"Nuevo brief","expected_revision":7}'
+```
+
+Para las cuatro operaciones, propuesta y mutación envían la misma key en el
+cuerpo y header. El helper Python `task_operation_payload` valida sin HTTP;
+editar/archivar/eliminar exigen entero positivo observado, sin timestamp
+alternativo ni revisión generada. Crear no necesita revisión. Las claves
+vacías, controles, más de 200 caracteres o desacuerdos se rechazan localmente.
+Omisión, `null`, cadenas vacías y listas vacías de negocio no se reinterpretan
+en el CLI; el backend valida cuáles son válidas. Un no-op confirmado también
+puede tener recibo sin aumentar la revisión.
+
+Telegram permite elegir cliente con `--client-id` y dueño/colaboradores con
+`--assignee-id` / `--collaborator-id` repetible. Los nombres siguen como
+selectores de negocio solo si el servidor los resuelve sin ambigüedad. Para
+editar con omisiones, vaciados o eliminación de todos los colaboradores,
+también acepta `update --payload '<json-exacto>'` (sin mezclar flags de negocio),
+incluyendo `colaborador_ids: []` y `expected_revision` observada. Para
+proponer una creación, usar el mismo JSON que construyen los flags de create:
+titulo, descripcion, cliente o cliente_id, responsables o asignado_a_id y
+colaborador_ids, fecha_vencimiento, sector, prioridad, material, referencia y
+permitir_duplicado. No pasar `confirmado:true`: ya no sustituye al token.
+
+El recibo nuevo describe un resultado mínimo; un retry puede devolver el DTO
+actual, una tarea archivada sin contenido o un tombstone. No asumir que siempre
+existe `task` ni presentar el DTO actual como snapshot original. No reintentar
+con otra key o revisión para evadir un 409. Tras cambios de intención,
+selección o expiración, volver a mostrarla y renovar la confirmación. Ver
+[contrato de recibos](../../docs/render-2/TASK_RECEIPTS_CONTRACT.md).
 
 El alta siempre queda en estado `pendiente` y en
 `propiedades_extra.workspace = "render_os"`. Si la API informa un posible
@@ -44,15 +102,16 @@ esperar que Franco o Agustín confirmen. La confirmación dura quince minutos y 
 ejecuta con el cliente firmado `scripts/mia_render_os_task.py`:
 
 ```bash
-python3 scripts/mia_render_os_task.py propose --operation confirmar_grabacion \
-  --task-id 1421 --payload '{}' --actor-id '<id>' --actor-name 'Franco' --group-id '<grupo>'
+python3 scripts/mia_render_os_task.py --actor-id '<id>' --actor-name '<etiqueta>' --group-id '<grupo>' \
+  propose --operation confirmar_grabacion --task-id 1421 --payload '{"expected_revision":7}'
 
-python3 scripts/mia_render_os_task.py confirm-production --task-id 1421 \
-  --confirmation-token '<token>' --actor-id '<id>' --actor-name 'Franco' --group-id '<grupo>'
+python3 scripts/mia_render_os_task.py --actor-id '<id>' --actor-name '<etiqueta>' --group-id '<grupo>' \
+  confirm-production --task-id 1421 --expected-revision 7 --confirmation-token '<token>'
 ```
 
-El backend valida que la visita esté completa y tenga Drive, registra quién
-confirmó y crea una sola tarea de edición vinculada para Luciano.
+Este flujo de producción es independiente de los cuatro recibos de tareas;
+no se cambió su política aquí. El backend valida visita/Drive y los vínculos
+vigentes; nunca deducir autoridad o destinatario de un nombre de ejemplo.
 
 ## Informar tareas terminadas desde un grupo
 
@@ -128,15 +187,14 @@ duplicados, Mía ofrece modificar el anterior o crear uno nuevo; nunca decide po
 su cuenta. El alta confirmada usa `crear_feedback` y una idempotency key estable:
 
 ```bash
-python3 scripts/mia_render_os_task.py validate-feedback --payload '<json>' \
-  --actor-id '<id>' --actor-name 'Oriana'
+python3 scripts/mia_render_os_task.py --actor-id '<id>' --actor-name '<etiqueta>' \
+  validate-feedback --payload '<json>'
 
-python3 scripts/mia_render_os_task.py propose --operation crear_feedback \
-  --payload '<mismo-json>' --actor-id '<id>' --actor-name 'Oriana'
+python3 scripts/mia_render_os_task.py --actor-id '<id>' --actor-name '<etiqueta>' \
+  propose --operation crear_feedback --idempotency-key '<uuid>' --payload '<mismo-json>'
 
-python3 scripts/mia_render_os_task.py create-feedback --payload '<mismo-json>' \
-  --confirmation-token '<token>' --idempotency-key '<uuid>' \
-  --actor-id '<id>' --actor-name 'Oriana'
+python3 scripts/mia_render_os_task.py --actor-id '<id>' --actor-name '<etiqueta>' \
+  create-feedback --payload '<mismo-json>' --confirmation-token '<token>' --idempotency-key '<uuid>'
 ```
 
 Los responsables son equivalentes: no se comunica un responsable principal.

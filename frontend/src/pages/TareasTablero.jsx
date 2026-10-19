@@ -3,6 +3,13 @@ import { esperandoMaterial, extraerUrlsTarea, fechaISODesde, formatearFechaTarea
 import { DIAS_SEMANA, ESTADO_FINAL_TAREA, ESTADOS_TAREA, MESES, PRIORIDADES_TAREA, RESPONSABLES_EQUIPO, SECTORES_TAREA, SUBTIPOS_SUGERIDOS } from "../constants.js";
 import { Modal } from "../components/Modal.jsx";
 
+export function stripTaskIntegrationMetadata(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([key]) =>
+    !/^wilson_/i.test(key) && key.toLowerCase() !== "origen_integracion",
+  ));
+}
+
 export function TareasTableroPage() {
   const sesion = getSesion();
   const esAdmin = sesion?.usuario?.rol === "admin";
@@ -381,7 +388,7 @@ export function TareaDetallePanel({
 
   const actualizarMetadatos = (campos) => {
     onActualizarCampo(tarea.id, {
-      propiedades_extra: { ...tarea.propiedades_extra, ...campos },
+      propiedades_extra: stripTaskIntegrationMetadata({ ...tarea.propiedades_extra, ...campos }),
     });
   };
 

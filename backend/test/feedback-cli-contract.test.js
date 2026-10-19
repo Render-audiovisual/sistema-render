@@ -78,12 +78,9 @@ test('missing keys/CAS, contradictory and malformed inputs fail before HTTP with
   }
 });
 
-test('non-feedback proposal and task mutation payloads remain unchanged', () => {
-  const proposal = cli(propose('crear', { titulo: 'Tarea' }));
+test('unrelated production proposal stays unchanged by receipt upgrade', () => {
+  const proposal = cli(propose('confirmar_grabacion', { expected_revision: 7 }, ['--task-id', '8']));
   assert.equal(proposal.error, null);
-  assert.deepEqual(proposal.calls[0].payload, { operacion: 'crear', tarea_id: null, payload: { titulo: 'Tarea' } });
-  const mutation = cli(['create', '--payload', '{"titulo":"Tarea"}', '--confirmation-token', 'synthetic', '--idempotency-key', 'task-key']);
-  assert.equal(mutation.error, null);
-  assert.deepEqual(mutation.calls[0].payload, { titulo: 'Tarea', confirmacion_token: 'synthetic' });
-  assert.equal(mutation.calls[0].idempotency_key, 'task-key');
+  assert.deepEqual(proposal.calls[0].payload, { operacion: 'confirmar_grabacion', tarea_id: 8, payload: { expected_revision: 7 } });
+  assert.equal(proposal.calls[0].idempotency_key, null);
 });

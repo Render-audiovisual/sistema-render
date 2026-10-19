@@ -40,6 +40,7 @@ import { createWilsonChatRouter, scheduleWilsonMessages } from "./wilson-chat.js
 import { readMigrationIdentity, readMigrationStatus } from "./migrations.js";
 import { resolveStartupPolicy, assertBackgroundJobsAllowed, assertStartupMigrationStatus } from "./startup-policy.js";
 import { assertCoreSchemaReady } from "./startup-schema.js";
+import { assertTaskBusinessInput } from "./task-integration-fields.js";
 import { resolveUserRole } from "./user-roles.js";
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
@@ -130,6 +131,11 @@ router.get("/health", (_req, res) => {
 router.use("/integraciones/wilson", createWilsonRouter({
   pool,
   notifyAssignment: notificarAsignacionSinInterrumpir,
+  notifyTaskReceiptEmail: (options) => {
+    if (String(process.env.TASK_NOTIFICATION_CHANNEL || "dual").trim().toLowerCase() !== "whatsapp") {
+      notificarAsignacionPorCorreoSinInterrumpir(options);
+    }
+  },
   notifyFeedback: notificarFeedbackSinInterrumpir,
   confirmProduction: ({ taskId, actor, db, expectedRevision, actorId }) => confirmProductionVisit(taskId, actor, { db, expectedRevision, actorId }),
 }));
@@ -946,8 +952,8 @@ router.delete("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
 
     res.json({ ok: true });
   } catch (error) {
-    if (error.code === "23503" && error.constraint === "feedback_operation_receipts_actor_user_id_fkey") {
-      return res.status(409).json({ error: "Este usuario tiene un historial de confirmaciones. Desactivá su cuenta en lugar de eliminarla." });
+    if (error.code === "23503" && ["feedback_operation_receipts_actor_user_id_fkey", "task_operation_receipts_actor_user_id_fkey", "tarea_asignaciones_usuario_id_fkey"].includes(error.constraint)) {
+      return res.status(409).json({ error: "Este usuario conserva asignaciones o un historial de confirmaciones. Desactivá su cuenta en lugar de eliminarla." });
     }
     if ([404, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
@@ -2054,6 +2060,8 @@ router.get("/publicaciones/:id/tareas", async (req, res, next) => {
 
 router.post("/tareas", async (req, res, next) => {
   try {
+    try { assertTaskBusinessInput(req.body); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
     const {
       titulo,
       asignado_a,
@@ -2272,6 +2280,8 @@ async function crearTareaEdicionDesdeVisita(visita, db = pool) {
 
 router.patch("/tareas/:id", async (req, res, next) => {
   try {
+    try { assertTaskBusinessInput(req.body); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
     const { id } = req.params;
     const body = req.body;
     const stateOnlyRequest = Object.keys(body).every((key) => ["estado", "expected_updated_at", "expected_revision"].includes(key));

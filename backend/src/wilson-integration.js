@@ -18,6 +18,12 @@ import { annotateTaskAssignments, replaceTaskAssignments, resolveTaskAssignments
 import { isTaskFinalized } from "./workflow-contract.js";
 import { taskOperationalDto, clientOperationalDto } from "./operational-dto.js";
 import { syncProductionVisitFromTask } from "./production-registry.js";
+import { lockProductionObjectiveLinks } from "./production-editorial.js";
+import { productionEditorialConflict } from "./production-link-errors.js";
+import { encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
+import { canonicalTaskOperationIntent, taskOperationKey, taskOperationIntentHash, taskOperationConfirmationHash,
+  TASK_RECEIPT_OPERATIONS, taskOperationReceiptDto, findTaskOperationReceipt, insertTaskOperationReceipt,
+  consumeTaskOperationConfirmation, lockTaskOperationResources } from "./task-operation-receipts.js";
 
 const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
 const DEFAULT_ALLOWED_WHATSAPP_ID_HASHES = [
@@ -642,7 +648,7 @@ async function validate(db, body, actor) {
   if (normalized.errors.length) return { ...normalized, duplicates: [] };
   const task = normalized.task;
   const existing = await db.query(
-    `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.material_referencia,
+    `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.material_referencia,
             to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,c.nombre AS cliente_nombre
      FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
      WHERE t.propiedades_extra->>'workspace'='render_os'
@@ -804,7 +810,7 @@ export function buildWilsonTaskUpdate(input, currentTask, catalog) {
   });
 }
 
-async function loadWilsonTask(db, taskId, { forUpdate = false } = {}) {
+async function loadWilsonTask(db, taskId, { forUpdate = false, includeArchived = false } = {}) {
   const result = await db.query(
     `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.cliente_id,t.estado,t.propiedades_extra,
             to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
@@ -813,7 +819,7 @@ async function loadWilsonTask(db, taskId, { forUpdate = false } = {}) {
      FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
      WHERE t.id=$1
        AND t.propiedades_extra->>'workspace'='render_os'
-       AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+       ${includeArchived ? '' : "AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true' AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'"}
      ${forUpdate ? "FOR UPDATE OF t" : ""}`,
     [taskId],
   );
@@ -931,12 +937,126 @@ function privateCurrentTaskError(req, env, task) {
     : "Desde el chat privado solo podés crear o modificar tareas permitidas para tu rol.";
 }
 
+const taskOperationHidden=task=>['archivada_render_os','papelera_render_os'].some(key=>[true,'true'].includes(task.propiedades_extra?.[key]));
+const taskOperationError=(message,status=409)=>Object.assign(new Error(message),{status});
+function requireTaskOperationHuman(wilson,operation) {
+  requireFeedbackHuman(wilson,operation);
+  if(operation==='eliminar'&&wilson.actorRole!=='admin')throw taskOperationError('Solo admin puede eliminar definitivamente tareas.',403);
+}
+async function lockTaskOperationActor(db,req,operation,env) {
+  requireTaskOperationHuman(req.wilson,operation);
+  const actor=await lockFeedbackActor(db,req.wilson,{telegramUserId:telegramWilsonUserId(env,req.wilson.actorId)});
+  Object.assign(req.wilson,{actorName:actor.nombre,actorRole:actor.rol,confirmedBy:actor.nombre});
+  requireTaskOperationHuman(req.wilson,operation);
+  return actor;
+}
+async function lockTaskOperationRow(db,id) {
+  const result=await db.query(`SELECT t.*,c.nombre cliente_nombre,to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento
+    FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id WHERE t.id=$1 FOR UPDATE OF t`,[id]);
+  return (await annotateTaskAssignments(db,result.rows))[0]??null;
+}
+function assertTaskOperationAccess(req,task) {
+  if(task.propiedades_extra?.workspace!=='render_os'||privateCurrentTaskError(req,null,task))throw taskOperationError('No tenés acceso actual a esta tarea.',403);
+}
+async function taskOperationReplay(db,req,receipt) {
+  const task=await lockTaskOperationRow(db,receipt.task_id);
+  const result={idempotent:true,created:false,updated:false,archived:false,deleted:false,task_id:receipt.task_id,
+    receipt:taskOperationReceiptDto(receipt),task:null};
+  if(!task)return{...result,task_deleted:true};
+  assertTaskOperationAccess(req,task);
+  if(taskOperationHidden(task))return{...result,task_archived:true};
+  return{...result,task:taskWithUrl(task,wilsonOperationalAuth(req.wilson)),result_current:true};
+}
+
+/** Resolve ONLY explicit selectors; untouched historic labels never establish IDs. */
+export async function prepareWilsonTaskOperation(db,intent,current=null) {
+  const b=intent.business,catalog=await loadCatalog(db),selections={};
+  const ownerSelected=hasOwn(b,'asignado_a_id')||hasOwn(b,'asignado_a');
+  const collaboratorsSelected=hasOwn(b,'colaborador_ids')||hasOwn(b,'colaboradores');
+  let clientId=current?.cliente_id,clientName=current?.cliente_nombre;
+  if(hasOwn(b,'cliente_id')||hasOwn(b,'cliente')) {
+    const matches=hasOwn(b,'cliente_id')?catalog.clients.filter(row=>row.id===b.cliente_id)
+      :catalog.clients.filter(row=>normalizeWilsonText(row.nombre)===normalizeWilsonText(b.cliente));
+    if(matches.length!==1)throw taskOperationError('Elegí un único cliente activo.',422);
+    const row=(await db.query('SELECT id,nombre FROM clientes WHERE id=$1 AND activo IS TRUE FOR SHARE',[matches[0].id])).rows[0];
+    if(!row || (!hasOwn(b,'cliente_id')&&normalizeWilsonText(row.nombre)!==normalizeWilsonText(b.cliente)))throw taskOperationError('El cliente seleccionado cambió. Renová la confirmación.');
+    clientId=row.id;clientName=row.nombre;selections.cliente_id=row.id;
+  }
+  const labelSelections=[];
+  function person(value,byId) {
+    const selected=byId?catalog.users.find(user=>user.id===value):exactWilsonUser(catalog.users,value);
+    if(!selected)throw taskOperationError('La selección debe coincidir con un único usuario activo.',422);
+    if(!byId)labelSelections.push({label:value,id:selected.id});
+    return selected.id;
+  }
+  let resolved=null;
+  if(ownerSelected||collaboratorsSelected) {
+    const selected={};
+    if(ownerSelected)selected.asignado_a_id=person(b.asignado_a_id??b.asignado_a,hasOwn(b,'asignado_a_id'));
+    if(collaboratorsSelected)selected.colaborador_ids=(b.colaborador_ids??b.colaboradores).map(value=>person(value,hasOwn(b,'colaborador_ids')));
+    resolved=await resolveTaskAssignments(db,selected,{requireOwner:ownerSelected});
+    if(labelSelections.length) {
+      // The catalogue was read before waiting on selected users. Recheck the
+      // original labels against fresh rows AFTER those identity locks, never
+      // silently adopt an ID whose name/username no longer matches the choice.
+      const fresh=(await db.query('SELECT id,usuario,nombre,rol FROM usuarios WHERE activo IS TRUE ORDER BY nombre')).rows;
+      if(labelSelections.some(choice=>exactWilsonUser(fresh,choice.label)?.id!==choice.id))throw taskOperationError('Los responsables seleccionados cambiaron. Renová la confirmación.');
+    }
+    if(ownerSelected)selections.asignado_a_id=resolved.ownerId;
+    if(collaboratorsSelected)selections.colaborador_ids=[...resolved.collaboratorIds].sort((a,c)=>a-c);
+  }
+  if(!current&&!ownerSelected)throw taskOperationError('Elegí un responsable activo por ID o etiqueta inequívoca.',422);
+  let assignment=null;
+  if(!current||ownerSelected||collaboratorsSelected) {
+    const ownerId=ownerSelected?resolved.ownerId:current.asignado_a_id;
+    const collaboratorIds=(collaboratorsSelected?resolved.collaboratorIds:(current?.colaborador_ids??[])).filter(id=>id!==ownerId);
+    assignment={ownerId,collaboratorIds};
+  }
+  let ownerName=ownerSelected?resolved.ownerName:current?.asignado_a;
+  let collaboratorNames=collaboratorsSelected?resolved.collaboratorNames:current?.propiedades_extra?.colaboradores??[];
+  if(assignment) {
+    const ids=[...new Set([assignment.ownerId,...assignment.collaboratorIds].filter(validUserId))];
+    const people=ids.length?(await db.query('SELECT id,nombre FROM usuarios WHERE id=ANY($1::int[]) ORDER BY id',[ids])).rows:[];
+    ownerName=people.find(user=>user.id===assignment.ownerId)?.nombre??ownerName;
+    collaboratorNames=assignment.collaboratorIds.map(id=>people.find(user=>user.id===id)?.nombre).filter(Boolean);
+  }
+  const choose=(key,fallback)=>hasOwn(b,key)?b[key]:fallback;
+  const raw={titulo:choose('titulo',current?.titulo),cliente_id:clientId,sector:choose('sector',current?.tipo_tarea),
+    fecha_vencimiento:choose('fecha_vencimiento',current?.fecha_vencimiento),subtipo:choose('subtipo',current?.subtipo),
+    prioridad:choose('prioridad',current?.prioridad??'media'),material:choose('material',current?.material_referencia),
+    referencia:choose('referencia',current?.propiedades_extra?.referencia),
+    produccion_videos_previstos:choose('produccion_videos_previstos',current?.propiedades_extra?.produccion_videos_previstos),
+    descripcion:hasOwn(b,'append_descripcion')?appendWilsonDescription(current?.aclaraciones,b.append_descripcion):choose('descripcion',current?.aclaraciones)};
+  const clients=[...catalog.clients];
+  if(current&&!clients.some(client=>client.id===clientId))clients.push({id:clientId,nombre:clientName});
+  const result=buildWilsonTaskFields(raw,clients,{primary:ownerName?{nombre:ownerName}:null,collaborators:collaboratorNames,unknown:[]});
+  if(result.errors.length)throw taskOperationError(result.errors.join(' '),422);
+  return{task:result.task,assignment,selections};
+}
+
+function assertTaskOperationSelectionPermission(req,selections) {
+  const ids=[selections.asignado_a_id,...(selections.colaborador_ids??[])].filter(validUserId);
+  if(ids.some(id=>!canWilsonAssignPrivately(req.wilson,id)))throw taskOperationError('Solo podés seleccionar tu identidad; otras asignaciones requieren admin.',403);
+}
+
+async function prepareTaskOperationTarget(db,req,intent) {
+  await lockProductionObjectiveLinks(db);
+  if(intent.operation==='crear')return null;
+  await lockTaskOperationResources(db,intent.target_id);
+  const task=await lockTaskOperationRow(db,intent.target_id);
+  if(!task)throw taskOperationError('La tarea no existe.',404);
+  assertTaskOperationAccess(req,task);
+  if(task.revision!==intent.expected_revision)throw taskOperationError('La tarea cambió. Recargá su revisión y confirmá nuevamente.');
+  if(intent.operation==='eliminar'?!taskOperationHidden(task):taskOperationHidden(task))throw taskOperationError(intent.operation==='eliminar'?'Archivá la tarea antes de eliminarla.':'La tarea está archivada o en papelera.');
+  return task;
+}
+
 function isWilsonSystemActor(req, env) {
   const systemActorId = String(env.WILSON_SYSTEM_ACTOR_ID || "").trim();
   return Boolean(systemActorId) && req.wilson.systemActor === true && req.wilson.actorId === systemActorId;
 }
 
-export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, confirmProduction, env = process.env }) {
+export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEmail, notifyFeedback, confirmProduction, env = process.env }) {
   const router = express.Router();
   if (env.NODE_ENV !== "test") {
     const whatsapp = whatsappConfig(env);
@@ -1135,7 +1255,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         return res.status(400).json({ error: `Indicá entre 1 y ${REVIEW_BATCH_MAX_TASKS} tareas.` });
       }
       const result = await pool.query(
-        `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,t.prioridad,t.propiedades_extra,
+        `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,t.prioridad,t.propiedades_extra,
           to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento,t.updated_at,c.nombre cliente_nombre
          FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
          WHERE t.propiedades_extra->>'workspace'='render_os'
@@ -1163,7 +1283,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     try {
       await client.query("BEGIN");
       const result = await client.query(
-        `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
+        `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
           t.material_referencia,t.propiedades_extra,t.updated_at,
           to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento,c.nombre cliente_nombre
          FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
@@ -1337,6 +1457,27 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     try {
       const operation = String(req.body?.operacion || "").trim().toLowerCase();
       if (!CONFIRMABLE_OPERATIONS.has(operation)) return res.status(422).json({ error: "Operación no confirmable." });
+      if(TASK_RECEIPT_OPERATIONS.includes(operation)) {
+        requireTaskOperationHuman(req.wilson,operation);
+        const payload=req.body?.payload;
+        const intent=canonicalTaskOperationIntent(payload,{operation,targetId:operation==='crear'?null:Number(req.body?.tarea_id)});
+        const key=taskOperationKey(req.headers,{idempotency_key:payload.idempotency_key??req.body.idempotency_key});
+        if(payload.idempotency_key!==undefined&&req.body.idempotency_key!==undefined)taskOperationKey({'idempotency-key':payload.idempotency_key},{idempotency_key:req.body.idempotency_key});
+        const db=await pool.connect();
+        try {
+          await db.query('BEGIN');
+          const actor=await lockTaskOperationActor(db,req,operation,env);
+          const current=await prepareTaskOperationTarget(db,req,intent);
+          const prepared=['crear','editar'].includes(operation)?await prepareWilsonTaskOperation(db,intent,current):{selections:{}};
+          assertTaskOperationSelectionPermission(req,prepared.selections);
+          const token=crypto.randomUUID(),expiresAt=new Date(Date.now()+CONFIRMATION_MAX_AGE_MS);
+          await db.query(`INSERT INTO integracion_confirmaciones(token,integracion,canal,actor_id,grupo_id,operacion,tarea_id,payload_hash,expires_at)
+            VALUES($1,'wilson',$2,$3,$4,$5,$6,$7,$8)`,[token,req.wilson.channel,req.wilson.actorId,req.wilson.groupId||'',operation,intent.target_id,
+            taskOperationConfirmationHash({intent,userId:actor.id,key,selections:prepared.selections}),expiresAt]);
+          await db.query('COMMIT');
+          return res.status(201).json({confirmacion_token:token,operacion:operation,tarea_id:intent.target_id,expires_at:expiresAt.toISOString()});
+        } catch(error){await db.query('ROLLBACK').catch(()=>{});throw error;}finally{db.release();}
+      }
       if(['crear_feedback','editar_feedback'].includes(operation)) {
         requireFeedbackHuman(req.wilson,operation);
         const payload=req.body?.payload;
@@ -1441,7 +1582,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     try {
       const target = person ? await resolveWilsonPersonFilter(pool, person) : null;
       const result = await pool.query(
-        `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.aclaraciones,t.material_referencia,
+        `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.estado,t.aclaraciones,t.material_referencia,
                 t.propiedades_extra,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
                 c.nombre AS cliente_nombre,
                 COALESCE((SELECT jsonb_agg(jsonb_build_object('contenido',tc.contenido,'created_at',tc.created_at))
@@ -1467,7 +1608,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 100));
       const restrictToOwn = !isWilsonLeader(req, env);
       const result = await pool.query(
-        `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,t.prioridad,
+        `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,t.prioridad,
                 t.propiedades_extra,t.aclaraciones,t.material_referencia,
                 to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
                 t.created_at,t.updated_at,c.nombre AS cliente_nombre
@@ -1486,7 +1627,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     if (!req.wilson.privateChat) return res.status(400).json({ error: "Este reporte se consulta únicamente por chat privado." });
     try {
       const result = await pool.query(
-        `SELECT t.id,t.titulo,t.estado,t.prioridad,t.tipo_tarea,
+        `SELECT t.id,t.revision,t.titulo,t.estado,t.prioridad,t.tipo_tarea,
                 to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
                 c.nombre AS cliente_nombre
          FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
@@ -1530,7 +1671,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       }
       const target = { name: selected.nombre || selected.usuario, role: selected.rol || "equipo" };
       const result = await pool.query(
-        `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,t.prioridad,
+        `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,t.prioridad,
                 t.propiedades_extra,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
                 t.created_at,t.updated_at,c.nombre AS cliente_nombre
          FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
@@ -1548,7 +1689,10 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
 
   router.get("/tareas/:id", async (req, res, next) => {
     try {
-      const task = await loadWilsonTask(pool, req.params.id);
+      if(req.query?.include_archived!==undefined&&!['true','false'].includes(req.query.include_archived))return res.status(400).json({error:'include_archived inválido.'});
+      const includeArchived=req.query?.include_archived==='true';
+      if(includeArchived&&!isWilsonLeader(req))return res.status(403).json({error:'Solo admin puede consultar tareas archivadas.'});
+      const task = await loadWilsonTask(pool, req.params.id,{includeArchived});
       if (!task) return res.status(404).json({ error: "La tarea no existe en RENDER OS o está archivada." });
       if (!isWilsonLeader(req, env) && !reviewTaskOwnedBy(task, req.wilson.userId)) {
         return res.status(403).json({ error: "Esta tarea no pertenece a tu reporte personal." });
@@ -1666,7 +1810,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         timeZone: "America/Argentina/Cordoba", year: "numeric", month: "2-digit", day: "2-digit",
       }).format(new Date());
       const result = await pool.query(
-        `SELECT t.id,t.titulo,t.estado,t.asignado_a,t.prioridad,t.tipo_tarea,t.subtipo,t.propiedades_extra,
+        `SELECT t.id,t.revision,t.titulo,t.estado,t.asignado_a,t.prioridad,t.tipo_tarea,t.subtipo,t.propiedades_extra,
           to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento,c.nombre cliente_nombre
          FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
          WHERE t.propiedades_extra->>'workspace'='render_os'
@@ -1812,258 +1956,133 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     });
   });
 
-  router.patch("/tareas/:id", async (req, res, next) => {
-    const key = String(req.headers?.["idempotency-key"] || req.body?.idempotency_key || "").trim();
-    if (!key) return res.status(400).json({ error: "Falta idempotency_key." });
-    const client = await pool.connect();
+  // The four receipt-backed operations share atomic identity/CAS/token rules.
+  async function executeTaskReceiptOperation(req,res,next,operation) {
+    let client,response,status=200,email=null;
     try {
-      await client.query("BEGIN");
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`wilson:update:${req.params.id}:${key}`]);
-      const current = await loadWilsonTask(client, req.params.id, { forUpdate: true });
-      if (!current) {
-        await client.query("ROLLBACK");
-        return res.status(404).json({ error: "La tarea no existe en RENDER OS o está archivada." });
+      requireTaskOperationHuman(req.wilson,operation);
+      const intent=canonicalTaskOperationIntent(req.body||{}, {operation,targetId:operation==='crear'?null:Number(req.params.id)});
+      const key=taskOperationKey(req.headers,req.body),payloadHash=taskOperationIntentHash(intent);
+      client=await pool.connect();
+      await client.query('BEGIN');
+      const actor=await lockTaskOperationActor(client,req,operation,env);
+      const prior=await findTaskOperationReceipt(client,{userId:actor.id,operation,key,payloadHash});
+      // Both replay and first execution acquire the established global lock
+      // before any task lock. No registry-to-existing-task lock inversion.
+      if(prior) {
+        await lockProductionObjectiveLinks(client);
+        response=await taskOperationReplay(client,req,prior);
+        await client.query('COMMIT');
+        return res.json(response);
       }
-      const currentPermissionError = privateCurrentTaskError(req, env, current);
-      if (currentPermissionError) {
-        await client.query("ROLLBACK");
-        return res.status(403).json({ error: currentPermissionError });
-      }
-      if (current.propiedades_extra?.wilson_last_update_key === key) {
-        await client.query("COMMIT");
-        return res.json({ updated: false, idempotent: true, changed_fields: [], task: taskWithUrl(current, wilsonOperationalAuth(req.wilson)) });
-      }
-      if (!await consumeWilsonConfirmation(client, req, res, "editar", Number(req.params.id))) {
-        await client.query("ROLLBACK");
-        return undefined;
-      }
-
-      const result = buildWilsonTaskUpdate(req.body, current, await loadCatalog(client));
-      if (result.errors.length) {
-        await client.query("ROLLBACK");
-        return res.status(422).json(wilsonTaskValidationResponse(result, wilsonOperationalAuth(req.wilson)));
-      }
-      const task = result.task;
-      const assignment = await resolveWilsonTaskAssignmentWrite(client, req.body, task, current);
-      if (!assignment) {
-        task.asignado_a = current.asignado_a;
-        task.colaboradores = current.propiedades_extra?.colaboradores || [];
-      }
-      const comparisons = {
-        titulo: [current.titulo, task.titulo],
-        asignado_a: [current.asignado_a, task.asignado_a],
-        colaboradores: [
-          JSON.stringify(current.propiedades_extra?.colaboradores || []),
-          JSON.stringify(task.colaboradores || []),
-        ],
-        cliente_id: [String(current.cliente_id), String(task.cliente_id)],
-        fecha_vencimiento: [current.fecha_vencimiento, task.fecha_vencimiento],
-        tipo_tarea: [current.tipo_tarea, task.tipo_tarea],
-        subtipo: [current.subtipo || "", task.subtipo || ""],
-        prioridad: [current.prioridad, task.prioridad],
-        aclaraciones: [current.aclaraciones || "", task.aclaraciones || ""],
-        material_referencia: [current.material_referencia || "", task.material_referencia || ""],
-        referencia: [current.propiedades_extra?.referencia || "", task.referencia || ""],
-        produccion_videos_previstos: [
-          Number(current.propiedades_extra?.produccion_videos_previstos) || null,
-          task.produccion_videos_previstos,
-        ],
-      };
-      const changedFields = Object.entries(comparisons)
-        .filter(([, [before, after]]) => before !== after)
-        .map(([field]) => field);
-      // Explicit reselection also persists IDs when display labels are equal.
-      if (assignment && !changedFields.includes("asignado_a") && !changedFields.includes("colaboradores")) {
-        changedFields.push("colaboradores");
-      }
-      const assignmentsChanged = Boolean(assignment);
-      const targetPermissionError = assignmentsChanged ? await privateAssignmentListError(req, env, assignment, client) : null;
-      if (targetPermissionError) {
-        await client.query("ROLLBACK");
-        return res.status(403).json({ error: targetPermissionError });
-      }
-      if (!changedFields.length) {
-        await client.query("COMMIT");
-        return res.json({ updated: false, idempotent: false, changed_fields: [], task: taskWithUrl(current, wilsonOperationalAuth(req.wilson)) });
-      }
-
-      const properties = {
-        ...current.propiedades_extra,
-        origen_integracion: "wilson",
-        wilson_last_update_key: key,
-        wilson_last_update_channel: req.wilson.channel,
-        wilson_last_update_actor_id: req.wilson.actorId,
-        wilson_last_update_confirmado_por: req.wilson.confirmedBy,
-        wilson_last_update_at: new Date().toISOString(),
-      };
-      if (task.referencia) properties.referencia = task.referencia;
-      else delete properties.referencia;
-      if (task.produccion_videos_previstos !== null) properties.produccion_videos_previstos = task.produccion_videos_previstos;
-      else delete properties.produccion_videos_previstos;
-      if (task.colaboradores.length) properties.colaboradores = task.colaboradores;
-      else delete properties.colaboradores;
-      const updated = await client.query(
-        `UPDATE tareas SET titulo=$2,asignado_a=$3,cliente_id=$4,fecha_vencimiento=$5,
-          tipo_tarea=$6,subtipo=$7,prioridad=$8,aclaraciones=$9,material_referencia=$10,
-          propiedades_extra=$11::jsonb,updated_at=NOW()
-         WHERE id=$1
-         RETURNING id,titulo,asignado_a,cliente_id,estado,propiedades_extra,
-          to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,tipo_tarea,subtipo,
-          prioridad,aclaraciones,material_referencia,created_at,updated_at`,
-        [current.id,task.titulo,task.asignado_a,task.cliente_id,task.fecha_vencimiento,
-          task.tipo_tarea,task.subtipo,task.prioridad,task.aclaraciones,task.material_referencia,
-          JSON.stringify(properties)],
-      );
-      if (assignment) await replaceTaskAssignments(client, current.id, assignment);
-      await syncProductionVisitFromTask(client, updated.rows[0], req.wilson.userId);
-      await writeWilsonAudit(client, req, { action: "editar_tarea", taskId: current.id, details: { changedFields, idempotencyKey: key } });
-      await client.query("COMMIT");
-      const updatedTask = { ...updated.rows[0], cliente_nombre: task.cliente_nombre };
-      res.json({ updated: true, idempotent: false, changed_fields: changedFields, task: taskWithUrl(updatedTask, wilsonOperationalAuth(req.wilson)) });
-      const newAssignees = destinatariosNuevosDeAsignacion({
-        asignadoAnterior: current.asignado_a,
-        asignadoActual: task.asignado_a,
-        colaboradoresAnteriores: current.propiedades_extra?.colaboradores || [],
-        colaboradoresActuales: task.colaboradores,
-        cambioAsignado: changedFields.includes("asignado_a"),
-        cambioColaboradores: changedFields.includes("colaboradores"),
-      });
-      if (newAssignees.length) notifyAssignment?.({
-        pool, tarea: updatedTask, motivo: "reasignada", nombresDestinatarios: newAssignees,
-      });
-      return undefined;
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
-      return next(error);
-    } finally { client.release(); }
-  });
-
-  router.post("/tareas", async (req, res, next) => {
-    const key = String(req.headers?.["idempotency-key"] || req.body?.idempotency_key || "").trim();
-    if (!key) return res.status(400).json({ error: "Falta idempotency_key." });
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`wilson:${key}`]);
-      const prior = await client.query(
-        `SELECT t.*,c.nombre AS cliente_nombre,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento
-         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
-         WHERE t.propiedades_extra->>'workspace'='render_os'
-           AND t.propiedades_extra->>'wilson_idempotency_key'=$1 LIMIT 1`, [key],
-      );
-      if (prior.rows[0]) {
-        const [priorTask] = await annotateTaskAssignments(client, [prior.rows[0]]);
-        if (privateCurrentTaskError(req, env, priorTask)) {
-          await client.query("ROLLBACK");
-          return res.status(403).json({ error: "No tenés acceso a la tarea de esa operación anterior." });
+      const current=await prepareTaskOperationTarget(client,req,intent);
+      const prepared=['crear','editar'].includes(operation)?await prepareWilsonTaskOperation(client,intent,current):{selections:{}};
+      assertTaskOperationSelectionPermission(req,prepared.selections);
+      const changedFields=[];
+      const desired=prepared.task;
+      if(operation==='editar') {
+        const comparisons={
+          titulo:[current.titulo,desired.titulo],asignado_a:[current.asignado_a,desired.asignado_a],
+          colaboradores:[JSON.stringify(current.propiedades_extra?.colaboradores||[]),JSON.stringify(desired.colaboradores||[])],
+          cliente_id:[current.cliente_id,desired.cliente_id],fecha_vencimiento:[current.fecha_vencimiento,desired.fecha_vencimiento],
+          tipo_tarea:[current.tipo_tarea,desired.tipo_tarea],subtipo:[current.subtipo||null,desired.subtipo],
+          prioridad:[current.prioridad,desired.prioridad],aclaraciones:[current.aclaraciones||null,desired.aclaraciones],
+          material_referencia:[current.material_referencia||null,desired.material_referencia],
+          referencia:[current.propiedades_extra?.referencia||null,desired.referencia],
+          produccion_videos_previstos:[current.propiedades_extra?.produccion_videos_previstos??null,desired.produccion_videos_previstos],
+        };
+        for(const [field,[before,after]] of Object.entries(comparisons))if(before!==after)changedFields.push(field);
+        if(prepared.assignment) {
+          if(current.asignado_a_id!==prepared.assignment.ownerId)changedFields.push('asignado_a_id');
+          if(JSON.stringify([...current.colaborador_ids].sort((a,b)=>a-b))!==JSON.stringify([...prepared.assignment.collaboratorIds].sort((a,b)=>a-b)))changedFields.push('colaborador_ids');
         }
-        await client.query("COMMIT");
-        return res.json({ created: false, idempotent: true, task: taskWithUrl(priorTask, wilsonOperationalAuth(req.wilson)) });
       }
-      if (!await consumeWilsonConfirmation(client, req, res, "crear")) {
-        await client.query("ROLLBACK");
-        return undefined;
+      if(operation==='crear'&&!intent.permitir_duplicado) {
+        const existing=await client.query(`SELECT t.id,t.revision,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.material_referencia,
+          to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento,c.nombre cliente_nombre
+          FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id WHERE t.propiedades_extra->>'workspace'='render_os'
+          AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+          AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true' AND t.cliente_id=$1
+          AND ($2::boolean OR EXISTS(SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=$3))
+          ORDER BY t.id DESC LIMIT 100`,[desired.cliente_id,isWilsonLeader(req),actor.id]);
+        const duplicates=findWilsonDuplicates(desired,existing.rows);
+        if(duplicates.length)throw Object.assign(taskOperationError('Encontré una posible tarea duplicada.'),{duplicates});
       }
-      const result = await validate(client, req.body, req.wilson);
-      if (result.errors.length) { await client.query("ROLLBACK"); return res.status(422).json(wilsonTaskValidationResponse(result, wilsonOperationalAuth(req.wilson))); }
-      const permissionError = await privateAssignmentListError(req, env, result.task, client);
-      if (permissionError) {
-        await client.query("ROLLBACK");
-        return res.status(403).json({ error: permissionError });
-      }
-      if (result.duplicates.length && req.body.permitir_duplicado !== true) {
-        await client.query("ROLLBACK");
-        return res.status(409).json({ error: "Encontré una posible tarea duplicada.", duplicates: result.duplicates.map(task => taskWithUrl(task, wilsonOperationalAuth(req.wilson))) });
-      }
-      const task = result.task;
-      const assignment = await resolveWilsonTaskAssignmentWrite(client, req.body, task);
-      const properties = {
-        workspace: "render_os", Origen: `Creada por Wilson desde ${req.wilson.channel === "whatsapp" ? "WhatsApp" : "Telegram"}`, origen_integracion: "wilson",
-        wilson_idempotency_key: key, wilson_channel: req.wilson.channel, wilson_actor_id: req.wilson.actorId,
-        wilson_confirmado_por: req.wilson.confirmedBy, ...(task.referencia ? { referencia: task.referencia } : {}),
-        ...(task.colaboradores.length ? { colaboradores: task.colaboradores } : {}),
-        ...(task.produccion_videos_previstos !== null ? { produccion_videos_previstos: task.produccion_videos_previstos } : {}),
-      };
-      const inserted = await client.query(
-        `INSERT INTO tareas (titulo,asignado_a,cliente_id,estado,requiere_aprobacion,propiedades_extra,
+      await consumeTaskOperationConfirmation(client,req,intent,key,prepared.selections);
+      let task=current,outcome;
+      if(operation==='crear') {
+        const properties={workspace:'render_os',Origen:`Creada por Wilson desde ${req.wilson.channel==='whatsapp'?'WhatsApp':'Telegram'}`,
+          origen_integracion:'wilson',wilson_channel:req.wilson.channel,wilson_actor_id:req.wilson.actorId,
+          wilson_confirmado_por:actor.nombre,colaboradores:desired.colaboradores};
+        if(desired.referencia)properties.referencia=desired.referencia;
+        if(desired.produccion_videos_previstos!==null)properties.produccion_videos_previstos=desired.produccion_videos_previstos;
+        task=(await client.query(`INSERT INTO tareas(titulo,asignado_a,cliente_id,estado,requiere_aprobacion,propiedades_extra,
           fecha_vencimiento,tipo_tarea,subtipo,prioridad,aclaraciones,material_referencia)
-         VALUES ($1,$2,$3,'pendiente',false,$4::jsonb,$5,$6,$7,$8,$9,$10)
-         RETURNING id,titulo,asignado_a,cliente_id,estado,propiedades_extra,
-          to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,tipo_tarea,subtipo,prioridad,
-          aclaraciones,material_referencia,created_at,updated_at`,
-        [task.titulo,task.asignado_a,task.cliente_id,JSON.stringify(properties),task.fecha_vencimiento,
-          task.tipo_tarea,task.subtipo,task.prioridad,task.aclaraciones,task.material_referencia],
-      );
-      await replaceTaskAssignments(client, inserted.rows[0].id, assignment);
-      await writeWilsonAudit(client, req, { action: "crear_tarea", taskId: inserted.rows[0].id, details: { idempotencyKey: key } });
-      await client.query("COMMIT");
-      const createdTask = { ...inserted.rows[0], cliente_nombre: task.cliente_nombre };
-      res.status(201).json({ created: true, idempotent: false, task: taskWithUrl(createdTask, wilsonOperationalAuth(req.wilson)) });
-      notifyAssignment?.({ pool, tarea: createdTask, motivo: "creada" });
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
-      next(error);
-    } finally { client.release(); }
-  });
-
-  router.post("/tareas/:id/archivar", async (req, res, next) => {
-    const key = String(req.headers?.["idempotency-key"] || req.body?.idempotency_key || "").trim();
-    if (!key) return res.status(400).json({ error: "Falta idempotency_key." });
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      if (!await consumeWilsonConfirmation(client, req, res, "archivar", Number(req.params.id))) {
-        await client.query("ROLLBACK");
-        return undefined;
+          VALUES($1,$2,$3,'pendiente',false,$4::jsonb,$5,$6,$7,$8,$9,$10)
+          RETURNING *,to_char(fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento`,
+        [desired.titulo,desired.asignado_a,desired.cliente_id,JSON.stringify(properties),desired.fecha_vencimiento,
+          desired.tipo_tarea,desired.subtipo,desired.prioridad,desired.aclaraciones,desired.material_referencia])).rows[0];
+        await replaceTaskAssignments(client,task.id,prepared.assignment);
+        await syncProductionVisitFromTask(client,task,actor.id);
+        outcome='created';status=201;
+      } else if(operation==='editar') {
+        outcome=changedFields.length?'updated':'unchanged';
+        if(changedFields.length) {
+          const properties={...current.propiedades_extra,origen_integracion:'wilson'};
+          if(prepared.assignment)properties.colaboradores=desired.colaboradores;
+          if(desired.referencia)properties.referencia=desired.referencia;else delete properties.referencia;
+          if(desired.produccion_videos_previstos!==null)properties.produccion_videos_previstos=desired.produccion_videos_previstos;else delete properties.produccion_videos_previstos;
+          task=(await client.query(`UPDATE tareas SET titulo=$2,asignado_a=$3,cliente_id=$4,fecha_vencimiento=$5,tipo_tarea=$6,
+            subtipo=$7,prioridad=$8,aclaraciones=$9,material_referencia=$10,propiedades_extra=$11::jsonb,updated_at=NOW()
+            WHERE id=$1 AND revision=$12 RETURNING *,to_char(fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento`,
+          [current.id,desired.titulo,desired.asignado_a,desired.cliente_id,desired.fecha_vencimiento,desired.tipo_tarea,desired.subtipo,
+            desired.prioridad,desired.aclaraciones,desired.material_referencia,JSON.stringify(properties),intent.expected_revision])).rows[0];
+          if(!task)throw taskOperationError('La tarea cambió.');
+          if(prepared.assignment)await replaceTaskAssignments(client,task.id,prepared.assignment);
+          await syncProductionVisitFromTask(client,task,actor.id);
+        }
+      } else if(operation==='archivar') {
+        task=(await client.query(`UPDATE tareas SET propiedades_extra=propiedades_extra||'{"archivada_render_os":true}'::jsonb,updated_at=NOW()
+          WHERE id=$1 AND revision=$2 RETURNING *,to_char(fecha_vencimiento,'YYYY-MM-DD') fecha_vencimiento`,[current.id,intent.expected_revision])).rows[0];
+        if(!task)throw taskOperationError('La tarea cambió.');
+        await syncProductionVisitFromTask(client,task,actor.id);
+        outcome='archived';
+      } else {
+        await client.query('DELETE FROM tareas WHERE id=$1 AND revision=$2',[current.id,intent.expected_revision]);
+        outcome='deleted';
       }
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`wilson:archive:${req.params.id}:${key}`]);
-      const current = await loadWilsonTask(client, req.params.id, { forUpdate: true });
-      if (!current) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La tarea no existe en RENDER OS o ya está archivada." }); }
-      const permissionError = privateCurrentTaskError(req, env, current);
-      if (permissionError) {
-        await client.query("ROLLBACK");
-        return res.status(403).json({ error: permissionError });
+      await writeWilsonAudit(client,req,{action:{crear:'crear_tarea',editar:'editar_tarea',archivar:'archivar_tarea',eliminar:'eliminar_tarea'}[operation],
+        taskId:task.id,details:{outcome,changed_fields:changedFields}});
+      if(['created','updated'].includes(outcome)) {
+        const assigned=(await annotateTaskAssignments(client,[task]))[0];
+        const beforeIds=new Set(current?[current.asignado_a_id,...current.colaborador_ids].filter(validUserId):[]);
+        const recipientIds=[...new Set([assigned.asignado_a_id,...assigned.colaborador_ids].filter(id=>validUserId(id)&&!beforeIds.has(id)&&id!==actor.id))];
+        if(recipientIds.length) {
+          const options={pool:client,tarea:assigned,motivo:operation==='crear'?'creada':'reasignada',destinatarioIds:recipientIds,actorId:actor.id,actor:actor.nombre,env};
+          await encolarNotificacionPrivadaTarea(options);
+          email={...options,pool};
+        }
+        task=assigned;
       }
-      const properties = { ...current.propiedades_extra, archivada_render_os: true, wilson_archive_key: key };
-      const updated = await client.query(
-        `UPDATE tareas SET propiedades_extra=$2::jsonb,updated_at=NOW() WHERE id=$1 RETURNING id,titulo,estado,propiedades_extra,updated_at`,
-        [current.id, JSON.stringify(properties)],
-      );
-      await writeWilsonAudit(client, req, { action: "archivar_tarea", taskId: current.id, details: { idempotencyKey: key } });
-      await client.query("COMMIT");
-      return res.json({ archived: true, task: taskWithUrl(updated.rows[0], wilsonOperationalAuth(req.wilson)) });
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
+      const receipt=await insertTaskOperationReceipt(client,{userId:actor.id,operation,key,payloadHash,task,outcome,changedFields});
+      response={idempotent:false,created:outcome==='created',updated:outcome==='updated',archived:outcome==='archived',deleted:outcome==='deleted',
+        task_id:task.id,id:task.id,receipt:taskOperationReceiptDto(receipt),changed_fields:changedFields,
+        task:outcome==='deleted'?null:taskWithUrl(task,wilsonOperationalAuth(req.wilson))};
+      await client.query('COMMIT');
+    } catch(error) {
+      if(client)await client.query('ROLLBACK').catch(()=>{});
+      if(error.status)return res.status(error.status).json({error:error.message,...(error.duplicates?{duplicates:error.duplicates.map(task=>taskWithUrl(task,wilsonOperationalAuth(req.wilson)))}:{})});
+      if(productionEditorialConflict(error)||(error.code==='23503'&&['produccion_visitas_tarea_origen_id_fkey','produccion_videos_tarea_edicion_id_fkey'].includes(error.constraint)))return res.status(409).json({error:'La tarea conserva vínculos de Producciones/editorial. No se pueden borrar o cambiar sus relaciones.'});
       return next(error);
-    } finally { client.release(); }
-  });
-
-  router.delete("/tareas/:id", async (req, res, next) => {
-    if (!isWilsonLeader(req, env)) return res.status(403).json({ error: "Solo Agustín o Franco pueden eliminar definitivamente una tarea." });
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      if (!await consumeWilsonConfirmation(client, req, res, "eliminar", Number(req.params.id))) {
-        await client.query("ROLLBACK");
-        return undefined;
-      }
-      const result = await client.query(
-        `SELECT id,titulo FROM tareas WHERE id=$1
-           AND propiedades_extra->>'workspace'='render_os'
-           AND propiedades_extra->>'archivada_render_os'='true' FOR UPDATE`,
-        [req.params.id],
-      );
-      const task = result.rows[0];
-      if (!task) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La tarea no existe en la Papelera de RENDER OS." }); }
-      await writeWilsonAudit(client, req, { action: "eliminar_tarea", taskId: task.id, details: { titulo: task.titulo } });
-      await client.query("DELETE FROM tareas WHERE id=$1", [task.id]);
-      await client.query("COMMIT");
-      return res.json({ deleted: true, id: task.id });
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
-      return next(error);
-    } finally { client.release(); }
-  });
-
+    } finally {client?.release();}
+    // Email-only, best effort: a failure cannot roll back an already committed
+    // receipt and must never enqueue another private notification.
+    if(email)try{await notifyTaskReceiptEmail?.(email);}catch{/* Delivery remains uncertified. */}
+    return res.status(status).json(response);
+  }
+  router.post("/tareas",(req,res,next)=>executeTaskReceiptOperation(req,res,next,'crear'));
+  router.patch("/tareas/:id",(req,res,next)=>executeTaskReceiptOperation(req,res,next,'editar'));
+  router.post("/tareas/:id/archivar",(req,res,next)=>executeTaskReceiptOperation(req,res,next,'archivar'));
+  router.delete("/tareas/:id",(req,res,next)=>executeTaskReceiptOperation(req,res,next,'eliminar'));
   return router;
 }

@@ -178,17 +178,27 @@ export async function notificarAsignacionTarea({
   actor = "",
   env = process.env,
   transporter,
+  destinatarioIds,
+  actorId,
 }) {
+  const byId = destinatarioIds !== undefined;
+  const positive = value => Number.isSafeInteger(value) && value > 0;
+  if (byId && (!Array.isArray(destinatarioIds) || destinatarioIds.some(id => !positive(id)) || !positive(actorId))) {
+    throw Object.assign(new Error("Destinatarios de correo inválidos."), { status: 400 });
+  }
   if (!configuracionCorreoDisponible(env)) {
     return { enviado: false, razon: "correo_no_configurado" };
   }
 
   const nombres = Array.isArray(nombresDestinatarios) ? nombresDestinatarios : responsablesNotificables(tarea);
-  const candidatos = await Promise.all(nombres.map((name) => buscarDestinatario(pool, name)));
+  const candidatos = byId
+    ? (await pool.query("SELECT id,usuario,nombre,email_notificaciones FROM usuarios WHERE id=ANY($1::integer[]) AND activo IS TRUE ORDER BY id", [[...new Set(destinatarioIds)]])).rows
+    : await Promise.all(nombres.map((name) => buscarDestinatario(pool, name)));
   const actorNormalizado = normalizarNombre(actor);
   const destinatarios = candidatos.filter((candidate, index, items) => {
     if (!candidate?.email_notificaciones) return false;
-    const esActor = actorNormalizado && [candidate.nombre, candidate.usuario].some((value) => normalizarNombre(value) === actorNormalizado);
+    const esActor = byId ? candidate.id === actorId
+      : actorNormalizado && [candidate.nombre, candidate.usuario].some((value) => normalizarNombre(value) === actorNormalizado);
     return !esActor && items.findIndex((item) => item?.email_notificaciones === candidate.email_notificaciones) === index;
   });
   if (destinatarios.length === 0) {

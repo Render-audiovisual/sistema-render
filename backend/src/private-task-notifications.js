@@ -71,12 +71,23 @@ export function crearMensajePrivadoTarea({ tarea, clienteNombre, motivo = "cread
 
 export async function encolarNotificacionPrivadaTarea({
   pool, tarea, motivo = "creada", detalle = "", nombresDestinatarios, actor = "", env = process.env,
+  destinatarioIds, actorId,
 }) {
+  const byId = destinatarioIds !== undefined;
+  const positive = value => Number.isSafeInteger(value) && value > 0;
+  if (byId && (!Array.isArray(destinatarioIds) || destinatarioIds.some(id => !positive(id)) || !positive(actorId))) {
+    throw Object.assign(new Error("Destinatarios de notificación inválidos."), { status: 400 });
+  }
   const nombres = Array.isArray(nombresDestinatarios) ? nombresDestinatarios : responsablesNotificables(tarea);
-  const candidatos = await resolverUsuarios(pool, nombres);
+  // Receipt-backed operations select real IDs; legacy callers keep their old
+  // label behavior. A name/leader alias cannot redirect this new enqueue path.
+  const candidatos = byId
+    ? (await pool.query("SELECT id,usuario,nombre FROM usuarios WHERE id=ANY($1::integer[]) AND activo IS TRUE ORDER BY id", [[...new Set(destinatarioIds)]])).rows
+    : await resolverUsuarios(pool, nombres);
   const actorNormalizado = normalizarNombre(actor);
   const destinatarios = candidatos.filter((candidate, index, items) => {
     if (!candidate) return false;
+    if (byId) return candidate.id !== actorId && items.findIndex(item => item?.id === candidate.id) === index;
     const clave = normalizarNombre(candidate.usuario);
     const esActor = actorNormalizado && [candidate.nombre, candidate.usuario]
       .some((value) => normalizarNombre(value) === actorNormalizado);
@@ -97,7 +108,8 @@ export async function encolarNotificacionPrivadaTarea({
   for (const destinatario of destinatarios) {
     const destinatarioClave = normalizarNombre(destinatario.usuario);
     const fingerprint = crypto.createHash("sha256").update(JSON.stringify([
-      Number(tarea.id), motivo, destinatarioClave, eventVersion, String(detalle || "").trim(),
+      ...(byId ? ["task-recipient-id-v1", Number(tarea.id), motivo, destinatario.id, tarea.revision ?? eventVersion]
+        : [Number(tarea.id), motivo, destinatarioClave, eventVersion]), String(detalle || "").trim(),
     ])).digest("hex");
     const result = await pool.query(
       `INSERT INTO mia_private_task_notifications
@@ -106,7 +118,8 @@ export async function encolarNotificacionPrivadaTarea({
        ON CONFLICT(fingerprint) DO NOTHING
        RETURNING id,fingerprint`,
       [fingerprint, destinatario.nombre, destinatarioClave, tarea.id, motivo, mensaje.text, mensaje.url,
-        JSON.stringify({ cliente: clienteNombre, actor: actor || null })],
+        JSON.stringify({ cliente: clienteNombre, actor: actor || null,
+          ...(byId ? { destinatario_usuario_id: destinatario.id, actor_usuario_id: actorId } : {}) })],
     );
     if (result.rows[0]) entregas.push(result.rows[0]);
   }

@@ -452,7 +452,8 @@ test('production registry: historical invariance and real per-video HTTP workflo
   });
   await t.test('signed Wilson cannot change linked source date, client or classification; rejected confirmations stay unused', async () => {
     for (const changes of [{ fecha_vencimiento: '2099-01-09' }, { cliente_id: sourceLink.clientId }, { sector: 'edicion' }]) {
-      const payload = { ...changes, idempotency_key: crypto.randomUUID() };
+      const [observed] = await fixture.query('SELECT revision FROM tareas WHERE id=$1', [sourceLink.taskId]);
+      const payload = { ...changes, idempotency_key: crypto.randomUUID(), expected_revision: observed.revision };
       const issued = await signed('/confirmaciones', { operacion: 'editar', tarea_id: sourceLink.taskId, payload });
       assert.equal(issued.status, 201, JSON.stringify(issued.body));
       const token = issued.body.confirmacion_token;

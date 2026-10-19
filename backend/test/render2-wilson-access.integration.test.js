@@ -74,10 +74,9 @@ test('Wilson signed HTTP resolves current external identity and stable task memb
   const foreignId = await newTask('QA Wilson foreign task', user.impostor);
   const snapshot = id => fixture.query('SELECT * FROM tareas WHERE id=$1', [id]);
   const edit = async (actorId, id, title, options = {}) => {
-    const payload = { titulo: title, idempotency_key: crypto.randomUUID() };
-    if (options.channel === 'telegram') return signed(actorId, `/tareas/${id}`, {
-      ...options, method: 'PATCH', body: { ...payload, confirmado: true },
-    });
+    const observed = await signed(actorId, `/tareas/${id}`, options);
+    if (observed.status !== 200) return observed;
+    const payload = { titulo: title, idempotency_key: crypto.randomUUID(), expected_revision: observed.body.task.revision };
     const confirmation = await signed(actorId, '/confirmaciones', { ...options, method: 'POST',
       body: { operacion: 'editar', tarea_id: id, payload } });
     if (confirmation.status !== 201) return confirmation;

@@ -184,13 +184,18 @@ test("PATCH and archive deny label impostors before mutating tasks", async () =>
     const calls = [];
     const client = {release() {},async query(sql) {
       calls.push(sql);
-      if (sql.includes("UPDATE integracion_confirmaciones")) return {rows:[{token:"confirmed"}]};
-      if (sql.includes("FROM tareas t")) return {rows:[{id:100,asignado_a:"Franco",propiedades_extra:{}}]};
+      if (sql.startsWith('SELECT id,usuario,nombre,rol,activo,whatsapp_id_hash')) return {rows:[{id:11,nombre:'Franco',rol:'edicion',activo:true,whatsapp_habilitado:true,whatsapp_id_hash:crypto.createHash('sha256').update('external').digest('hex')}]};
+      if (sql.startsWith('SELECT u.id FROM usuarios')) return {rows:[{id:11}]};
+      if (sql.includes("FROM tareas t")) return {rows:[{id:100,revision:7,asignado_a:"Franco",propiedades_extra:{workspace:'render_os'}}]};
+      if (sql.startsWith('SELECT tarea_id, usuario_id, tipo')) return {rows:[{tarea_id:100,usuario_id:22,tipo:'responsable'}]};
       return {rows:[]};
     }};
     const res = response();
-    await route({connect:async()=>client},method,path)({wilson:actor,params:{id:"100"},headers:{"idempotency-key":"update"},body:{confirmacion_token:"confirmed"}},res,error=>{throw error;});
+    await route({connect:async()=>client},method,path)({wilson:{...actor},params:{id:"100"},headers:{"idempotency-key":"update"},body:{expected_revision:7,...(method==='patch'?{titulo:'Cambio válido'}:{}),confirmacion_token:'11111111-1111-4111-8111-111111111111'}},res,error=>{throw error;});
     assert.equal(res.statusCode,403);
+    assert.ok(calls.some(sql=>sql.includes('FROM task_operation_receipts')));
+    assert.ok(calls.some(sql=>sql.includes('FROM tareas t')&&sql.includes('FOR UPDATE')));
+    assert.equal(calls.some(sql=>sql.includes('UPDATE integracion_confirmaciones')),false);
     assert.equal(calls.some(sql=>sql.includes("UPDATE tareas")),false);
     assert.equal(calls.at(-1),"ROLLBACK");
   }

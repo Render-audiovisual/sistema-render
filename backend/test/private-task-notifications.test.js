@@ -78,3 +78,40 @@ test("encola una vez por destinatario, excluye al actor y tolera reintentos", as
   assert.equal(inserts[0][1], "Germán");
   assert.equal(inserts[0][2], "german");
 });
+
+test("receipt notifications bind recipient/actor IDs despite homonyms and leader aliases", async () => {
+  const calls = [];
+  const pool = { async query(sql, params) {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT id,usuario,nombre')) {
+      assert.deepEqual(params, [[11, 12]]);
+      return { rows: [{ id: 11, usuario: 'qa_actor', nombre: 'Agustín' }, { id: 12, usuario: 'qa_other', nombre: 'Agustín' }] };
+    }
+    if (sql.includes('INSERT INTO mia_private_task_notifications')) return { rows: [{ id: 1, fingerprint: params[0] }] };
+    throw new Error('Unexpected query');
+  } };
+  const result = await encolarNotificacionPrivadaTarea({ pool, tarea: { id: 99, revision: 4, titulo: 'QA' },
+    actor: 'Agustín', actorId: 11, destinatarioIds: [11, 12, 12], nombresDestinatarios: ['líder'] });
+  assert.equal(result.encolado, true);
+  const inserts = calls.filter(call => call.sql.includes('INSERT INTO'));
+  assert.equal(inserts.length, 1);
+  assert.equal(inserts[0].params[2], 'qa_other');
+  assert.equal(JSON.parse(inserts[0].params[7]).destinatario_usuario_id, 12);
+  assert.equal(JSON.parse(inserts[0].params[7]).actor_usuario_id, 11);
+  assert.ok(!calls.some(call => call.sql === 'SELECT usuario, nombre FROM usuarios'));
+});
+
+test("receipt notifications reject malformed identity selections before querying and propagate queue faults", async () => {
+  let calls = 0;
+  const pool = { async query(sql) {
+    calls++;
+    if (sql.startsWith('SELECT id,usuario,nombre')) return { rows: [{ id: 2, usuario: 'qa', nombre: 'QA' }] };
+    throw new Error('QA queue fault');
+  } };
+  for (const selected of [[0], ['2'], null, {}]) {
+    await assert.rejects(encolarNotificacionPrivadaTarea({ pool, tarea: { id: 1 }, destinatarioIds: selected, actorId: 1 }), { status: 400 });
+  }
+  await assert.rejects(encolarNotificacionPrivadaTarea({ pool, tarea: { id: 1 }, destinatarioIds: [2] }), { status: 400 });
+  assert.equal(calls, 0);
+  await assert.rejects(encolarNotificacionPrivadaTarea({ pool, tarea: { id: 1 }, destinatarioIds: [2], actorId: 1 }), /QA queue fault/);
+});

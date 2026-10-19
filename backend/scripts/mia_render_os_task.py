@@ -87,6 +87,33 @@ def operation_payload(extra, confirmation_token):
     return {**(extra or {}), "confirmacion_token": confirmation_token}
 
 
+def task_operation_payload(payload, key=None, expected_revision=None, *, requires_revision=False):
+    if not isinstance(payload, dict):
+        raise RuntimeError("El payload de tarea debe ser un objeto JSON.")
+    result = dict(payload)
+    body_key = result.get("idempotency_key")
+    for value in ([body_key] if "idempotency_key" in result else []) + ([key] if key is not None else []):
+        if (not isinstance(value, str) or not value.strip() or len(value.strip()) > 200
+                or any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in value)):
+            raise RuntimeError("idempotency_key debe ser texto no vacío de hasta 200 caracteres, sin controles.")
+    if key is not None and body_key is not None and key.strip() != body_key.strip():
+        raise RuntimeError("--idempotency-key no coincide con el payload.")
+    effective_key = key if key is not None else body_key
+    if effective_key is None:
+        raise RuntimeError("La operación de tarea requiere idempotency_key.")
+    result["idempotency_key"] = effective_key.strip()
+    if requires_revision:
+        revision = result.get("expected_revision")
+        if expected_revision is not None:
+            if "expected_revision" in result and (type(revision) is not int or revision != expected_revision):
+                raise RuntimeError("--expected-revision no coincide con el payload.")
+            revision = expected_revision
+        if type(revision) is not int or not 0 < revision <= 2147483647:
+            raise RuntimeError("Se requiere expected_revision entero positivo observado en GET o --expected-revision; no se consulta ni genera automáticamente.")
+        result["expected_revision"] = revision
+    return result
+
+
 def feedback_payload(payload, key=None, *, editing=False, expected_updated_at=None):
     if not isinstance(payload, dict):
         raise RuntimeError("El payload de feedback debe ser un objeto JSON.")
@@ -180,6 +207,7 @@ def main():
     ack_private.add_argument("--fingerprint", required=True)
     get_task = commands.add_parser("get")
     get_task.add_argument("--task-id", required=True, type=int)
+    get_task.add_argument("--include-archived", action="store_true", help="Lectura de papelera solo para admin.")
     get_feedback = commands.add_parser("get-feedback")
     get_feedback.add_argument("--feedback-id", required=True, type=int)
     validate = commands.add_parser("validate")
@@ -191,6 +219,7 @@ def main():
     propose.add_argument("--task-id", type=int)
     propose.add_argument("--payload", default="{}")
     propose.add_argument("--idempotency-key")
+    propose.add_argument("--expected-revision", type=int)
     create = commands.add_parser("create")
     create.add_argument("--payload", required=True)
     create.add_argument("--confirmation-token", required=True)
@@ -210,13 +239,19 @@ def main():
     update.add_argument("--payload", required=True)
     update.add_argument("--confirmation-token", required=True)
     update.add_argument("--idempotency-key", required=True)
+    update.add_argument("--expected-revision", type=int)
     archive = commands.add_parser("archive")
     archive.add_argument("--task-id", required=True, type=int)
     archive.add_argument("--idempotency-key", required=True)
     archive.add_argument("--confirmation-token", required=True)
+    archive.add_argument("--expected-revision", type=int)
+    archive.add_argument("--payload", default="{}")
     delete = commands.add_parser("delete")
     delete.add_argument("--task-id", required=True, type=int)
     delete.add_argument("--confirmation-token", required=True)
+    delete.add_argument("--idempotency-key", required=True)
+    delete.add_argument("--expected-revision", type=int)
+    delete.add_argument("--payload", default="{}")
     confirm_production = commands.add_parser("confirm-production")
     confirm_production.add_argument("--task-id", required=True, type=int)
     confirm_production.add_argument("--expected-revision", required=True, type=int)
@@ -274,7 +309,7 @@ def main():
     elif args.cmd == "ack-private-notification":
         result = request("POST", f"/notificaciones-privadas/{args.notification_id}/entregada", args, payload={"fingerprint": args.fingerprint})
     elif args.cmd == "get":
-        result = request("GET", f"/tareas/{args.task_id}", args)
+        result = request("GET", f"/tareas/{args.task_id}" + ("?include_archived=true" if args.include_archived else ""), args)
     elif args.cmd == "get-feedback":
         result = request("GET", f"/feedback/{args.feedback_id}", args)
     elif args.cmd == "validate":
@@ -287,13 +322,16 @@ def main():
         payload = json.loads(args.payload)
         if args.operation in ("crear_feedback", "editar_feedback"):
             payload = feedback_payload(payload, args.idempotency_key, editing=args.operation == "editar_feedback")
+        elif args.operation in ("crear", "editar", "archivar", "eliminar"):
+            payload = task_operation_payload(payload, args.idempotency_key, args.expected_revision, requires_revision=args.operation != "crear")
         result = request("POST", "/confirmaciones", args, payload={
             "operacion": args.operation,
             "tarea_id": args.task_id,
             "payload": payload,
-        })
+        }, idempotency_key=payload.get("idempotency_key") if args.operation != "confirmar_grabacion" else None)
     elif args.cmd == "create":
-        result = request("POST", "/tareas", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token), idempotency_key=args.idempotency_key)
+        payload = task_operation_payload(json.loads(args.payload), args.idempotency_key)
+        result = request("POST", "/tareas", args, payload=operation_payload(payload, args.confirmation_token), idempotency_key=payload["idempotency_key"])
     elif args.cmd == "create-feedback":
         payload = feedback_payload(json.loads(args.payload), args.idempotency_key)
         result = request("POST", "/feedback", args, payload=operation_payload(payload, args.confirmation_token), idempotency_key=payload["idempotency_key"])
@@ -301,13 +339,16 @@ def main():
         payload = feedback_payload(json.loads(args.payload), args.idempotency_key, editing=True, expected_updated_at=args.expected_updated_at)
         result = request("PATCH", f"/feedback/{args.feedback_id}", args, payload=operation_payload(payload, args.confirmation_token), idempotency_key=payload["idempotency_key"])
     elif args.cmd == "update":
-        result = request("PATCH", f"/tareas/{args.task_id}", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token), idempotency_key=args.idempotency_key)
+        payload = task_operation_payload(json.loads(args.payload), args.idempotency_key, args.expected_revision, requires_revision=True)
+        result = request("PATCH", f"/tareas/{args.task_id}", args, payload=operation_payload(payload, args.confirmation_token), idempotency_key=payload["idempotency_key"])
     elif args.cmd == "archive":
-        result = request("POST", f"/tareas/{args.task_id}/archivar", args, payload=operation_payload({}, args.confirmation_token), idempotency_key=args.idempotency_key)
+        payload = task_operation_payload(json.loads(args.payload), args.idempotency_key, args.expected_revision, requires_revision=True)
+        result = request("POST", f"/tareas/{args.task_id}/archivar", args, payload=operation_payload(payload, args.confirmation_token), idempotency_key=payload["idempotency_key"])
     elif args.cmd == "confirm-production":
         result = request("POST", f"/tareas/{args.task_id}/confirmar-grabacion", args, payload=operation_payload({"expected_revision": args.expected_revision}, args.confirmation_token))
     else:
-        result = request("DELETE", f"/tareas/{args.task_id}", args, payload=operation_payload({}, args.confirmation_token))
+        payload = task_operation_payload(json.loads(args.payload), args.idempotency_key, args.expected_revision, requires_revision=True)
+        result = request("DELETE", f"/tareas/{args.task_id}", args, payload=operation_payload(payload, args.confirmation_token), idempotency_key=payload["idempotency_key"])
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

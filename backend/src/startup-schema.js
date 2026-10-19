@@ -13,6 +13,7 @@ export const CORE_SCHEMA_COLUMNS = Object.freeze({
   produccion_fotos: { id: 'uuid', visita_id: 'uuid', estado: 'text' },
   notas_compartidas: { id: 'integer', feedback: 'jsonb', updated_at: 'timestamp with time zone' },
   feedback_operation_receipts: { actor_user_id: 'integer', operation: 'text', payload_hash: 'text', note_id: 'bigint' },
+  task_operation_receipts: { actor_user_id: 'integer', operation: 'text', payload_hash: 'text', task_id: 'bigint', task_revision: 'integer' },
 });
 
 export async function assertCoreSchemaReady(db) {

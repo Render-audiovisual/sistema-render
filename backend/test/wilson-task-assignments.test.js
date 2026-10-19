@@ -101,22 +101,38 @@ test("explicit full selection replaces membership and deduplicates selected IDs"
 
 test("route wiring keeps confirmation, locking, atomic assignment writes and rollback hooks", () => {
   const source = readFileSync(new URL("../src/wilson-integration.js", import.meta.url), "utf8");
-  const patch = source.slice(source.indexOf('router.patch("/tareas/:id"'), source.indexOf('router.post("/tareas",'));
-  const create = source.slice(source.indexOf('router.post("/tareas",'), source.indexOf('router.post("/tareas/:id/archivar"'));
-  for (const route of [patch, create]) {
-    assert.match(route, /query\("BEGIN"\)/);
-    assert.match(route, /consumeWilsonConfirmation/);
-    assert.match(route, /query\("ROLLBACK"\)/);
-    assert.match(route, /finally \{ client.release\(\); \}/);
-    const write = route.indexOf("await replaceTaskAssignments(");
-    const audit = route.indexOf("await writeWilsonAudit(");
-    const commit = route.indexOf('await client.query("COMMIT")', audit);
-    assert.ok(write > 0 && write < audit && audit < commit);
-    assert.ok(route.indexOf("await resolveWilsonTaskAssignmentWrite(") < write);
+  const start = source.indexOf('async function executeTaskReceiptOperation(');
+  const end = source.indexOf('  router.post("/tareas",', start);
+  assert.ok(start >= 0 && end > start, 'shared receipt mutator must exist');
+  const mutator = source.slice(start, end);
+  assert.match(source, /router\.post\("\/tareas",\(req,res,next\)=>executeTaskReceiptOperation\(req,res,next,'crear'\)\)/);
+  assert.match(source, /router\.patch\("\/tareas\/:id",\(req,res,next\)=>executeTaskReceiptOperation\(req,res,next,'editar'\)\)/);
+  assert.match(mutator, /await client.query\('BEGIN'\)/);
+  assert.match(mutator, /if\(client\)await client.query\('ROLLBACK'\).catch\(\(\)=>\{\}\)/);
+  assert.match(mutator, /finally \{client\?\.release\(\);\}/);
+  const ordered = ["await client.query('BEGIN')", 'await lockTaskOperationActor(', 'await findTaskOperationReceipt(',
+    'const current=await prepareTaskOperationTarget(', 'await prepareWilsonTaskOperation(', 'await consumeTaskOperationConfirmation(',
+    'INSERT INTO tareas', 'await replaceTaskAssignments(client,task.id,prepared.assignment)',
+    'await writeWilsonAudit(', 'await insertTaskOperationReceipt('];
+  let previous = -1;
+  for (const fragment of ordered) {
+    const position = mutator.indexOf(fragment);
+    assert.ok(position > previous, `${fragment} must occur in transaction order`);
+    previous = position;
   }
-  assert.match(patch, /loadWilsonTask\(client, req.params.id, \{ forUpdate: true \}\)/);
-  assert.match(patch, /if \(assignment\) await replaceTaskAssignments\(client, current.id, assignment\)/);
-  assert.match(patch, /if \(!assignment\) \{\s*task.asignado_a = current.asignado_a/);
-  assert.ok(create.indexOf("if (prior.rows[0])") < create.indexOf("await resolveWilsonTaskAssignmentWrite("));
-  assert.ok(create.indexOf("INSERT INTO tareas") < create.indexOf("await replaceTaskAssignments("));
+  assert.ok(mutator.indexOf("await client.query('COMMIT')", previous) > previous, 'mutation receipt commits after assignment and audit');
+  assert.ok(mutator.indexOf('if(prior)') < mutator.indexOf('await prepareWilsonTaskOperation('), 'exact replay precedes new selection resolution');
+  const editStart = mutator.indexOf("} else if(operation==='editar')");
+  const editEnd = mutator.indexOf("} else if(operation==='archivar')", editStart);
+  assert.ok(editStart > 0 && editEnd > editStart);
+  const edit = mutator.slice(editStart, editEnd);
+  assert.match(edit, /if\(changedFields.length\) \{/);
+  assert.match(edit, /WHERE id=\$1 AND revision=\$12 RETURNING/);
+  assert.match(edit, /if\(prepared.assignment\)await replaceTaskAssignments\(client,task.id,prepared.assignment\)/);
+  assert.ok(edit.indexOf('UPDATE tareas') < edit.indexOf('await replaceTaskAssignments('));
+  assert.match(source, /await lockTaskOperationResources\(db,intent.target_id\);\s*const task=await lockTaskOperationRow\(db,intent.target_id\)/);
+  assert.match(source, /task.revision!==intent.expected_revision/);
+  assert.match(source, /const ownerId=ownerSelected\?resolved.ownerId:current.asignado_a_id/);
+  assert.match(source, /collaboratorsSelected\?resolved.collaboratorIds:\(current\?\.colaborador_ids\?\?\[\]\)/);
+  assert.doesNotMatch(mutator, /INSERT INTO tarea_comentarios/);
 });

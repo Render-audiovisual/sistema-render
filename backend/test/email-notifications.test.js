@@ -39,6 +39,27 @@ test("normaliza acentos y mayúsculas", () => {
   assert.equal(normalizarNombre("  GERMÁN "), "german");
 });
 
+test("avisos por ID no confunden homónimos ni excluyen al destinatario por nombre", async () => {
+  const enviados = [];
+  const result = await notificarAsignacionTarea({
+    pool: { async query(sql, params) {
+      assert.match(sql, /id=ANY/);
+      assert.deepEqual(params, [[11, 12]]);
+      return { rows: [
+        { id: 11, nombre: 'Agustín', usuario: 'owner_a', email_notificaciones: 'actor@example.com' },
+        { id: 12, nombre: 'Agustín', usuario: 'member_a', email_notificaciones: 'member@example.com' },
+      ] };
+    } },
+    tarea: { id: 87, titulo: 'Prueba por identidad' },
+    destinatarioIds: [11, 12, 12], actorId: 11, actor: 'Agustín',
+    env: { SMTP_HOST: 'smtp.example.com', SMTP_USER: 'test@example.com', SMTP_PASS: 'fixture' },
+    transporter: { async sendMail(options) { enviados.push(options.to); return { messageId: 'fake' }; } },
+  });
+  assert.equal(result.enviado, true);
+  assert.deepEqual(enviados, ['member@example.com']);
+  await assert.rejects(notificarAsignacionTarea({ destinatarioIds: ['12'], actorId: 11, env: {} }), { status: 400 });
+});
+
 test("resuelve Germán, el Líder y Franco sin mezclar sus cuentas", async () => {
   assert.equal(
     (await buscarDestinatario(pool, "Germán")).email_notificaciones,
