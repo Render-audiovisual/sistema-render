@@ -1,6 +1,5 @@
-/* Fuente Poppins: precargada en index.html con <link rel="preconnect"> +
-   <link rel="stylesheet"> — llega en paralelo con el JS en vez de esperar
-   a que se ejecute este CSS (que antes la traía con @import). */
+/* Base heredada: los valores compartidos provienen de design-system.css.
+   La tipografía del sistema no requiere descargas ni credenciales externas. */
 
 * {
   box-sizing: border-box;
@@ -15,29 +14,28 @@ body,
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 34%),
-    linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
-  color: #111827;
-  font-family: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--render-canvas);
+  color: var(--render-ink);
+  font-family: var(--render-font);
 }
 
 :root {
   color-scheme: light;
-  --bg: #ffffff;
-  --surface: #ffffff;
-  --surface-soft: #f8fafc;
-  --surface-muted: #eef2ff;
-  --border: rgba(15, 23, 42, 0.08);
-  --border-strong: #ddd;
-  --text: #111827;
-  --muted: #667085;
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
-  --success: #188038;
-  --warning: #f59e0b;
-  --danger: #dc2626;
-  --shadow: 0 24px 60px rgba(15, 23, 42, 0.10);
-  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --bg: var(--render-surface);
+  --surface: var(--render-surface);
+  --surface-soft: var(--render-surface-soft);
+  --surface-muted: var(--render-surface-muted);
+  --border: var(--render-line);
+  --border-strong: var(--render-line-strong);
+  --text: var(--render-ink);
+  --muted: var(--render-muted);
+  --accent: var(--render-accent);
+  --accent-strong: var(--render-accent-hover);
+  --success: var(--render-success);
+  --warning: var(--render-warning);
+  --danger: var(--render-danger);
+  --shadow: var(--render-shadow-raised);
+  --shadow-sm: var(--render-shadow-card);
   --shadow-md: var(--shadow);
 
   /* Escala tipográfica */
@@ -409,7 +407,7 @@ main {
   color: #596054;
   cursor: pointer;
   display: inline-flex;
-  font: 600 11px/1 Poppins, sans-serif;
+  font: 600 11px/1 var(--render-font);
   justify-content: center;
   min-height: 34px;
   padding: 0 12px;
@@ -3547,7 +3545,7 @@ textarea:disabled {
 .cliente-weekday-picker small { color: #74796d; display: block; font-size: 10px; margin-top: 9px; }
 .cal-grid.is-hidden { display: none; }
 .editorial-view-toggle { background: #f0f2eb; border-radius: 9px; display: flex; padding: 3px; }
-.editorial-view-toggle button { background: transparent; border: 0; border-radius: 7px; color: #687064; cursor: pointer; font: 600 11px/1 Poppins, sans-serif; padding: 9px 12px; }
+.editorial-view-toggle button { background: transparent; border: 0; border-radius: 7px; color: #687064; cursor: pointer; font: 600 11px/1 var(--render-font); padding: 9px 12px; }
 .editorial-view-toggle button.active { background: #1d3937; color: #b5fc00; }
 .publicaciones-viewport .cal-toolbar .btn.primary { background: #1d3937; border-color: #1d3937; color: #b5fc00; }
 .publicaciones-viewport .cal-toolbar .btn.primary:hover { background: #294a47; border-color: #294a47; }
@@ -3929,7 +3927,7 @@ textarea:disabled {
   border-radius: 7px;
   color: #263126;
   display: block;
-  font: 500 11px/1.35 Poppins, sans-serif;
+  font: 500 11px/1.35 var(--render-font);
   height: 52px;
   outline: 0;
   overflow: auto;
@@ -5845,7 +5843,7 @@ textarea:disabled {
   border-radius: 8px;
   color: #6d7368;
   cursor: pointer;
-  font: 600 11px/1 Poppins, sans-serif;
+  font: 600 11px/1 var(--render-font);
   min-height: 40px;
   padding: 0 12px;
 }
@@ -5879,7 +5877,7 @@ textarea:disabled {
   border: 1px solid #d7ddd2;
   border-radius: 8px;
   color: #20261f;
-  font: 500 11px/1.3 Poppins, sans-serif;
+  font: 500 11px/1.3 var(--render-font);
   min-height: 40px;
   outline: 0;
   padding: 0 12px;
@@ -10757,19 +10755,19 @@ tr:hover .sheet-row-actions {
 
 /* RENDER OS · identidad aprobada aplicada al menú principal. */
 .sidebar {
-  background: linear-gradient(180deg,#171a13 0%,#202418 100%);
-  border-right-color: rgba(245,246,239,.08);
-  box-shadow: 12px 0 34px rgba(23,26,19,.13);
+  background: var(--render-sidebar);
+  border-right-color: var(--render-line);
+  box-shadow: none;
 }
-.sidebar-header{border-bottom-color:rgba(245,246,239,.09)}
+.sidebar-header{border-bottom-color:var(--render-line)}
 .brand-initial {
-  background:#b5fc00;
-  border-color:#c7ff3d;
-  box-shadow:0 7px 18px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,255,255,.42);
-  color:#202418;
+  background:var(--render-accent);
+  border-color:var(--render-accent-border);
+  box-shadow:none;
+  color:var(--render-accent-ink);
 }
-.brand-greeting>strong,.brand-mark{color:#f5f6ef}
-.brand-greeting>small{color:#a6aa9f}
+.brand-greeting>strong,.brand-mark{color:var(--render-sidebar-text)}
+.brand-greeting>small{color:var(--render-sidebar-muted)}
 .sidebar-content{background:rgba(245,246,239,.018);border-color:rgba(245,246,239,.055)}
 .sidebar-link{color:#b8bcb2}
 .sidebar-link:hover{background:rgba(245,246,239,.065);color:#f5f6ef}

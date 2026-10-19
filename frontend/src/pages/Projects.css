@@ -1,8 +1,8 @@
-.projects-page{--pr-bg:#fff;--pr-soft:#f5f5f7;--pr-line:#e5e7eb;--pr-text:#1d1d1f;--pr-muted:#667085;--pr-blue:#0071e3;background:var(--pr-bg);box-sizing:border-box;color:var(--pr-text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;margin-left:var(--render-sidebar-width,236px);min-height:100dvh;padding:32px;width:calc(100% - var(--render-sidebar-width,236px))}
+.projects-page{--pr-bg:var(--render-surface);--pr-soft:var(--render-surface-soft);--pr-line:var(--render-line);--pr-text:var(--render-ink);--pr-muted:var(--render-muted);--pr-blue:var(--render-accent);background:var(--pr-bg);box-sizing:border-box;color:var(--pr-text);font:14px/1.5 var(--render-font);margin-left:var(--render-sidebar-width,236px);min-height:100dvh;padding:32px;width:calc(100% - var(--render-sidebar-width,236px))}
 .projects-page *{box-sizing:border-box}
 .pr-shell{max-width:1600px;margin:0 auto;min-width:0}
 .projects-page h1,.projects-page h2,.projects-page h3,.projects-page p{margin:0}
-.projects-page h1{font-size:24px;font-weight:650;letter-spacing:-.03em;line-height:1.25}
+.projects-page h1{font-size:24px;font-weight:600;letter-spacing:-.03em;line-height:1.25}
 .projects-page h2{font-size:20px;line-height:1.3;letter-spacing:-.025em;font-weight:600}
 .projects-page h3,.pr-editor h2{font-size:16px;line-height:1.4;letter-spacing:-.015em;font-weight:600}
 .projects-page a{color:var(--pr-blue);text-decoration:none;overflow-wrap:anywhere;text-underline-offset:3px}
@@ -11,9 +11,9 @@
 .projects-page button{background:var(--pr-bg);border:1px solid var(--pr-line);border-radius:9px;color:var(--pr-text);cursor:pointer;min-height:44px;padding:8px 12px;transition:background .15s ease}
 .projects-page button:hover:not(:disabled){background:var(--pr-soft)}
 .projects-page button:disabled{opacity:.5;cursor:default}
-.projects-page .pr-primary{background:var(--pr-blue);border-color:var(--pr-blue);color:#fff;font-weight:550}
-.projects-page .pr-primary:hover:not(:disabled){background:#005ebd}
-.projects-page :is(a,button,input,select,textarea,summary):focus-visible{outline:3px solid var(--pr-blue);outline-offset:3px}
+.projects-page .pr-primary{background:var(--pr-blue);border-color:var(--pr-blue);color:var(--render-accent-ink);font-weight:550}
+.projects-page .pr-primary:hover:not(:disabled){background:var(--render-accent-hover)}
+.projects-page :is(a,button,input,select,textarea,summary):focus-visible{outline:2px solid var(--render-accent);outline-offset:3px}
 .projects-page input:not([type=checkbox]),.projects-page select,.projects-page textarea{background:var(--pr-bg);border:1px solid var(--pr-line);border-radius:8px;color:var(--pr-text);min-width:0;min-height:44px;padding:8px 10px;width:100%}
 .projects-page textarea{resize:vertical}
 .projects-page label{display:grid;gap:8px;font-size:12px;font-weight:500;min-width:0}
@@ -31,7 +31,7 @@
 .pr-project-list li+li{border-top:1px solid var(--pr-line)}
 .pr-project-list li a{display:grid;gap:4px;padding:16px;color:var(--pr-text);min-height:88px;border-left:3px solid transparent;text-decoration:none}
 .pr-project-list li a:hover{background:var(--pr-soft)}
-.pr-project-list li a[aria-current=page]{background:#edf5ff;border-left-color:var(--pr-blue)}
+.pr-project-list li a[aria-current=page]{background:var(--render-sidebar-raised);border-left-color:var(--pr-blue)}
 .pr-project-list strong{font-weight:600;overflow-wrap:anywhere}
 .pr-project-list li span{font-size:12px;color:var(--pr-muted);overflow-wrap:anywhere}
 .pr-pagination{display:flex;justify-content:space-between;gap:8px;padding:12px 16px;border-top:1px solid var(--pr-line)}
@@ -57,8 +57,8 @@
 .pr-items p,.pr-items a{margin-top:8px}
 .pr-items button,.pr-stages button{flex-shrink:0}
 .pr-stage-dot{width:12px;height:12px;flex-shrink:0;border:2px solid var(--pr-line);border-radius:50%;margin-top:4px}
-.pr-stage-dot.is-en_progreso{border-color:var(--pr-blue);background:#edf5ff}
-.pr-stage-dot.is-completada{border-color:var(--pr-blue);background:var(--pr-blue)}
+.pr-stage-dot.is-en_progreso{border-color:#0071e3;background:#edf5ff}
+.pr-stage-dot.is-completada{border-color:#0071e3;background:#0071e3}
 .pr-section-note{padding:12px 16px;border-top:1px solid var(--pr-line);font-size:12px;color:var(--pr-muted)}
 .pr-empty,.pr-select-prompt{padding:24px;color:var(--pr-muted);font-size:13px}
 .pr-select-prompt h2{font-size:18px;color:var(--pr-text);margin-bottom:8px}

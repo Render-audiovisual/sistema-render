@@ -43,8 +43,8 @@
 
 .render-workspace .ros-inline-title-input:hover,
 .render-workspace .ros-inline-title-input:focus {
-  background: #fafbf8;
-  border-color: #dce2d5;
+  background: var(--render-surface-soft);
+  border-color: var(--render-accent);
   outline: 0;
 }
 
@@ -80,7 +80,7 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
-  color: #30352d;
+  color: var(--render-ink);
   cursor: pointer;
   font-family: inherit;
   font-size: 11px;
@@ -92,8 +92,8 @@
 
 .render-workspace .ros-inline-property:hover,
 .render-workspace .ros-inline-property:focus {
-  background: #f5f8ee;
-  border-color: #d7dfc9;
+  background: var(--render-surface-muted);
+  border-color: var(--render-accent);
   outline: 0;
 }
 
@@ -159,16 +159,16 @@
 }
 
 .render-workspace .ros-material-grid .ros-file {
-  background: #fafbf8;
-  border: 1px solid #e0e4dc;
+  background: var(--render-surface-soft);
+  border: 1px solid var(--render-line);
   border-radius: 9px;
   min-height: 64px;
   padding: 10px 12px;
 }
 
 .render-workspace .ros-material-grid .ros-file:hover {
-  background: #f5f8ee;
-  border-color: #cbd8b6;
+  background: var(--render-surface-muted);
+  border-color: var(--render-accent);
 }
 
 .render-workspace .ros-material-grid .ros-file > span {
@@ -188,7 +188,7 @@
 }
 
 .render-workspace .ros-material-grid .ros-file > b {
-  color: #66705e;
+  color: var(--render-muted);
   font-size: 12px;
 }
 
@@ -203,8 +203,8 @@
 
 .render-workspace .ros-context-list .ros-calendar-origin {
   align-items: center;
-  background: #f8faf3;
-  border: 1px solid #dce4ce;
+  background: var(--render-accent-soft);
+  border: 1px solid var(--render-accent-border);
   border-radius: 10px;
   display: grid;
   gap: 16px;
@@ -215,8 +215,8 @@
 }
 
 .render-workspace .ros-context-list .ros-calendar-origin:hover {
-  background: #f3f7e9;
-  border-color: #c7d7aa;
+  background: var(--render-accent-soft);
+  border-color: var(--render-accent-border);
 }
 
 .render-workspace .ros-calendar-origin > div {
@@ -226,38 +226,38 @@
 }
 
 .render-workspace .ros-calendar-origin > div > span {
-  color: #597020;
+  color: var(--render-accent);
   font-size: 9px;
   font-weight: 700;
 }
 
 .render-workspace .ros-calendar-origin > div > strong {
-  color: #30352d;
+  color: var(--render-accent);
   font-size: 14px;
   font-weight: 600;
 }
 
 .render-workspace .ros-calendar-origin > div > small {
-  color: #7d8478;
+  color: var(--render-accent);
   font-size: 9px;
 }
 
 .render-workspace .ros-calendar-origin > time {
-  color: #30352d;
+  color: var(--render-accent);
   font-size: 15px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .render-workspace .ros-calendar-origin > b {
-  color: #52661f;
+  color: var(--render-accent);
   font-size: 10px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 .render-workspace .ros-task-comments-footer {
-  border-top: 1px solid #e6e8e3;
+  border-top: 1px solid var(--render-line);
   margin: 4px auto 0;
   max-width: 680px;
   padding: 20px 24px 32px;
@@ -265,7 +265,7 @@
 }
 
 .render-workspace .ros-task-comments-footer > h3 {
-  color: #30352d;
+  color: var(--render-ink);
   font-size: 14px;
   font-weight: 600;
   margin: 0 0 14px;
@@ -301,18 +301,18 @@
 }
 
 .render-workspace .ros-task-comments-footer .ros-comment-body strong {
-  color: #30352d;
+  color: var(--render-ink);
   font-size: 11px;
   font-weight: 600;
 }
 
 .render-workspace .ros-task-comments-footer .ros-comment-body time {
-  color: #8b9187;
+  color: var(--render-muted);
   font-size: 10px;
 }
 
 .render-workspace .ros-task-comments-footer .ros-comment-body p {
-  color: #4f554c;
+  color: var(--render-ink-soft);
   font-size: 11px;
   line-height: 1.55;
   margin: 6px 0 0;
@@ -321,8 +321,8 @@
 
 .render-workspace .ros-task-comments-footer .ros-comment-create {
   align-items: center;
-  background: #fafbf8;
-  border: 1px solid #e0e4dc;
+  background: var(--render-surface-soft);
+  border: 1px solid var(--render-line);
   border-radius: 10px;
   display: grid;
   gap: 12px;
@@ -334,9 +334,9 @@
 .render-workspace .ros-task-comments-footer .ros-comment-create textarea {
   background: transparent;
   border: 0;
-  border-bottom: 1px solid #dfe2dc;
+  border-bottom: 1px solid var(--render-line);
   border-radius: 0;
-  color: #30352d;
+  color: var(--render-ink);
   line-height: 1.5;
   max-height: 120px;
   min-height: 44px;
@@ -345,7 +345,7 @@
 }
 
 .render-workspace .ros-task-comments-footer .ros-comment-create textarea:focus {
-  border-bottom-color: #8bb800;
+  border-bottom-color: var(--render-accent);
   outline: 0;
 }
 
