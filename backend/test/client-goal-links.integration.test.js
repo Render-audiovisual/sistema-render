@@ -5,6 +5,7 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import { prepareGoal, goalLinkOptions, linkGoalTask, createClientGoalsRouter } from '../src/client-goals.js';
 import { runMigrations } from '../src/migrations.js';
+if (process.env.RENDER_GOALS_TEST_DATABASE === 'true') throw new Error('Legacy goal QA is quarantined: use the guarded render2 principal fixtures, never an existing DATABASE_URL. Historical assertions remain reference-only.');
 import { requireAuthentication } from '../src/auth.js';
 
 test('Vínculo mensual: atomicidad, privacidad, duplicados y conservación de tareas',

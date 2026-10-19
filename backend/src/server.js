@@ -18,8 +18,6 @@ import {
 } from "./email-notifications.js";
 import { destinatariosNuevosDeAsignacion, encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
 import { encolarNotificacionPrivadaFeedback } from "./private-feedback-notifications.js";
-import { setupDemoClientes } from "./setup-demo-data.js";
-import { shouldSetupDemoData } from "./hosting-config.js";
 import { requireAuthentication, requireRole, requireCurrentIdentity, issueUserToken } from "./auth.js";
 import { administerUser } from "./user-administration.js";
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
@@ -39,7 +37,9 @@ import { buildAutomaticFinanceSummary, previousPeriod } from "./automatic-financ
 import { getCardDollarRate } from "./exchange-rate.js";
 import { createWilsonRouter } from "./wilson-integration.js";
 import { createWilsonChatRouter, scheduleWilsonMessages } from "./wilson-chat.js";
-import { runMigrations } from "./migrations.js";
+import { readMigrationIdentity, readMigrationStatus } from "./migrations.js";
+import { resolveStartupPolicy, assertBackgroundJobsAllowed, assertStartupMigrationStatus } from "./startup-policy.js";
+import { assertCoreSchemaReady } from "./startup-schema.js";
 import { resolveUserRole } from "./user-roles.js";
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
@@ -74,7 +74,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const app = express();
 const router = express.Router();
-const port = Number(process.env.PORT || 3000);
 
 function notificarAsignacionSinInterrumpir(opciones) {
   const esRenderOS = opciones?.tarea?.propiedades_extra?.workspace === "render_os";
@@ -3908,25 +3907,37 @@ function scheduleEditorialCalendar() {
 
 if (process.env.RENDER_DISABLE_SERVER_START !== "true") (async () => {
   try {
+    // Configuration and schema inspection never authorize migration, seeding or jobs.
+    const startup = resolveStartupPolicy(process.env);
     await checkDatabaseConnection();
-    await runMigrations(pool);
-    if (shouldSetupDemoData()) {
-      await setupDemoClientes();
-      console.log("Postgres connection OK and demo data prepared");
-    } else {
-      console.log("Postgres connection OK");
+    const identity = await readMigrationIdentity(pool);
+    if (identity.database !== startup.target.database || identity.username !== startup.target.username
+      || identity.port !== startup.target.port) {
+      throw new Error("Configured database identity does not match.");
     }
-  } catch (error) {
-    console.error("Postgres connection failed");
-    console.error(error.message);
+    assertStartupMigrationStatus(await readMigrationStatus(pool));
+    await assertCoreSchemaReady(pool);
+    assertBackgroundJobsAllowed(startup, identity);
+
+    const server = app.listen(startup.port, startup.host, () => {
+      const actualPort = server.address().port;
+      console.log(`Backend listening on http://${startup.host}:${actualPort}`);
+      // No default jobs, including their immediate first tick. Each service is explicit.
+      for (const job of startup.jobs) {
+        if (job === "editorial") scheduleEditorialCalendar();
+        if (job === "trash") scheduleRenderOsTrashCleanup(pool);
+        if (job === "wilson") scheduleWilsonMessages(pool);
+        if (job === "supervisor") scheduleMiaSupervisor(pool);
+      }
+      process.send?.({ type: "render-startup-ready", port: actualPort });
+    });
+    server.once("error", () => {
+      console.error("No se pudo abrir el puerto de Render. No se aplicaron migraciones ni se activaron jobs.");
+      process.exit(1);
+    });
+  } catch {
+    // Driver/configuration errors may include private connection details.
+    console.error("Render no inició. Revisá DATABASE_URL, RENDER_DB_ENVIRONMENT y el esquema con migrate.js status. El arranque no aplica migraciones, seeds ni reparaciones.");
     process.exit(1);
   }
-
-  app.listen(port, () => {
-    console.log(`Backend listening on http://localhost:${port}`);
-    scheduleEditorialCalendar();
-    scheduleRenderOsTrashCleanup(pool);
-    scheduleWilsonMessages(pool);
-    scheduleMiaSupervisor(pool);
-  });
 })();

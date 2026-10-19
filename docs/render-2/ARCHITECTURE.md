@@ -4,6 +4,8 @@ Status: source inspection, not a production certification. No database queried, 
 
 This document captures the pre-rescue architecture review. Subsequent local patches and guarded fixture executions are tracked in `STATUS.md` and `LOCAL_TESTING.md`; use those for current implementation and verification status.
 
+Current startup delta (2026-10-19): start/dev/hosting entrypoints no longer migrate or seed, and jobs are opt-in behind target approval. Runtime inspects ledger/core public schema before listening. Migration runner requires explicit approved identity/plan and one locked client; fixtures require fresh physical isolation. Legacy goal opt-ins/preview bootstrap are quarantined before DB use. See `STARTUP_SAFETY_CONTRACT.md` and actual coordinator evidence in `STARTUP_SAFETY_QA.md`. No production rollout or overall security completion is implied; task mutation replay P1 remains documented in `TASK_REPLAY_FINDINGS.md`.
+
 ## Current → target
 
 | Area | Observed source | Phase 0/1 contract |
@@ -32,7 +34,7 @@ Available read-only discovery: `/opt/homebrew/opt/postgresql@16/bin/{initdb,pg_c
 
 Smallest useful future harness: one Node test coordinator with a new `mktemp`-style private directory, fresh PostgreSQL cluster, private Unix socket and TCP disabled. Use a unique database such as `render2_principal_qa`, separate owner/application roles, synthetic fixtures and a random identity marker. Never read `.env`, `DATABASE_URL`, sandbox `.runtime`, or production exports. Construct a sanitized child environment, explicit socket/database/role configuration, and verify current database/user, socket cluster path and marker before any SQL. Fail closed on any mismatch; no existing cluster reuse.
 
-Two layers: (a) use `runMigrations(injectedPool)` solely in the fresh disposable database to prove the actual principal migration chain builds; inspect deterministic synthetic defaults and establish the pre-fixture baseline; (b) insert fictional fixtures and test actual principal routers/queries with a restricted application pool. Test new upgrade SQL separately against a pre-change synthetic populated schema, asserting preserved IDs, archives, amounts and periods. Do not rerun historic destructive migrations on those fixtures.
+Two layers: (a) use `runMigrations(injectedPool,logger,{approval,deferredMigrations})` solely in the verified fresh disposable database with its actual approved identity/plan to prove the principal chain builds; inspect deterministic synthetic defaults and establish the pre-fixture baseline; (b) insert fictional fixtures and test actual principal routers/queries. Test new upgrade SQL separately against a pre-change synthetic populated schema, asserting preserved IDs, archives, amounts and periods. Do not rerun historic destructive migrations on populated fixtures.
 
 Prefer an injected Express app factory. Existing `RENDER_DISABLE_SERVER_START=true` suppresses principal startup/migrations/schedulers, but importing `server.js` still loads dotenv and global dependencies: it is **not** an isolation boundary. Avoid that import until environment/connection injection and external-integration stubs are verified. `db.js` derives TLS from whether a URL contains `localhost`; explicit socket pool injection also avoids its `127.0.0.1` TLS mismatch. Harness lifecycle must stop only its verified cluster, close pools, and retain failure logs without tokens; no broad cleanup command.
 
@@ -49,7 +51,7 @@ node --test backend/test/task-access.test.js backend/test/finance-calculation.te
 /opt/homebrew/opt/postgresql@16/bin/postgres --version
 ```
 
-Commands are recommendations, not results from this review. Reinspect tests if other agents change imports. Do not use broad `npm test`, `npm start --prefix backend`, `npm run setup`, seed scripts, sandbox suites or integration opt-ins without isolating all side effects. Principal `start` and server auto-start run migrations; server startup schedules background jobs.
+Commands are recommendations, not results from this original review. Reinspect tests if other agents change imports. Do not use broad discovery with privileges, start ordinary configured services, seed scripts, sandbox suites or integration opt-ins without isolating effects. Originally start/server auto-start migrated and scheduled jobs; the startup-safety integration above removes those implicit paths. This does not authorize other legacy mutating CLIs or workers.
 
 Required harness cases: duplicate/retried requests; two writers with the same expected version (one commit, one 409); transaction rollback without partial piece/finance updates; forged/stale identity; renamed/shared account; archived completed contribution; missing vs zero payment; invalid date/month and year rollover; mixed currencies and proration boundary; financial fields absent from employee DTOs. Static route-regex tests are not HTTP authorization proof.
 

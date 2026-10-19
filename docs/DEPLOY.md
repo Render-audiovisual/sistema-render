@@ -1,121 +1,79 @@
-# Deploy — Render Platform
+# Arranque y preparación explícita — Render Platform
 
-Este documento reemplaza al servidor misterioso de `66.94.104.21`: acá está
-todo lo necesario para levantar el sistema en un servidor nuevo, de forma
-reproducible, sin depender de que alguien recuerde comandos sueltos.
+Este procedimiento describe el contrato local de seguridad, no una aprobación de despliegue. Render2 no se declara listo para producción. Ver [contrato de arranque](render-2/STARTUP_SAFETY_CONTRACT.md) y [estado de integración](render-2/STATUS.md).
 
-## Qué cambió respecto al server viejo
+## Separar build, migración y arranque
 
-- **Antes:** frontend (Vite, puerto 5173) y backend (Express, puerto 3001)
-  corrían como dos procesos separados. Funcionaba solo porque estaban en la
-  misma máquina — el proxy de Vite reenviaba `/api/*` a `localhost:3001`.
-  En cualquier hosting con servicios separados esto se rompe.
-- **Ahora:** un solo proceso. El backend sirve la API bajo `/api/*` **y**
-  los archivos estáticos del frontend ya compilado, desde el mismo puerto.
-  No hace falta CORS ni coordinar dos URLs.
-- **Antes:** no existía ningún `schema.sql`. Las tablas del servidor viejo
-  se crearon a mano, en algún momento, por alguien — no reproducible.
-- **Ahora:** `backend/migrations/000_initial_schema.sql` crea las 8 tablas
-  desde cero. `npm start` corre las migraciones automáticamente antes de
-  arrancar (es seguro correrlas más de una vez).
+El backend sirve /api y el frontend compilado desde un mismo proceso. El build no autoriza cambios de datos. `npm start`, `npm run start:hostinger` y `npm run dev:backend` no deben ejecutar migraciones, seeds ni jobs implícitos.
 
-## Variables de entorno necesarias
+- Instalar dependencias y compilar en una fase separada.
+- Configurar explícitamente DATABASE_URL (PostgreSQL) y RENDER_DB_ENVIRONMENT: development, sandbox, test o production. No se aceptan destinos heredados de PGHOST/PGDATABASE ni entornos desconocidos.
+- Mantener SETUP_DEMO_DATA=false, RENDER_BACKGROUND_JOBS vacío y RENDER_ALLOW_BACKGROUND_WRITES=false.
+- Antes de escuchar, el servidor comprueba el ledger sin crearlo ni repararlo. Ledger ausente/inválido, archivos pendientes o nombres aplicados desconocidos impiden arrancar.
+- Un rechazo de arranque no autoriza a crear una baseline, alterar el ledger ni repetir la cadena histórica.
 
-| Variable | Para qué | Ejemplo |
-|---|---|---|
-| `DATABASE_URL` | Conexión a Postgres | `postgres://user:pass@host:5432/render_platform` |
-| `PORT` | Puerto donde escucha el server | `3001` (o el que asigne el hosting) |
-| `JWT_SECRET` | Firma los tokens de sesión | generar con `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
-| `GOOGLE_CLIENT_ID` | Verifica los tokens de login con Google (backend) | el Client ID de OAuth creado en Google Cloud Console |
-| `SMTP_HOST` | Servidor de correo para avisos de tareas | `smtp.gmail.com` |
-| `SMTP_PORT` | Puerto SMTP | `465` |
-| `SMTP_SECURE` | Usar TLS desde el inicio | `true` |
-| `SMTP_USER` | Cuenta que envía los avisos | `notificaciones@ejemplo.com` |
-| `SMTP_PASS` | Contraseña de aplicación del correo | secreto del proveedor |
-| `EMAIL_FROM` | Remitente visible (opcional si coincide con `SMTP_USER`) | `RENDER <notificaciones@ejemplo.com>` |
-| `EMAIL_REPLY_TO` | Dirección para respuestas (opcional) | `equipo@ejemplo.com` |
-| `APP_URL` | URL usada en el botón “Abrir tarea” | `https://sistema.rendercorrientes.com` |
-| `WILSON_ALLOWED_TELEGRAM_IDS` | IDs numéricos autorizados para confirmar altas, separados por coma | `123,456` |
-| `WILSON_PUBLIC_KEY` | Clave pública alternativa para rotar la firma de Wilson sin cambiar código | PEM pública |
+No imprimir URLs, credenciales, claves, tokens ni contenido SQL en diagnósticos. HOST=127.0.0.1 permite limitar la escucha local; PORT=0 permite un puerto efímero para verificaciones autorizadas.
 
-**`JWT_SECRET` es obligatorio.** Sin él, el login no genera tokens válidos.
-Nunca lo dejes vacío ni reutilices uno de otro proyecto.
+## Inspección y migración local autorizada
 
-**`GOOGLE_CLIENT_ID` es opcional** — sin él, el botón de Google simplemente
-no aparece y el login por usuario/contraseña sigue funcionando igual. El
-frontend necesita la misma Client ID en `VITE_GOOGLE_CLIENT_ID`
-(`frontend/.env.example`), pero esa variable se hornea en el bundle al
-correr `npm run build` — hay que tenerla seteada en el entorno donde se
-compila, no alcanza con setearla donde corre el server después.
+Sin subcomando, el CLI muestra ayuda sin conectar:
 
-Los avisos por email se envían solamente al crear una tarea o cuando cambia
-su responsable. Si el SMTP no está configurado o el integrante no tiene
-`email_notificaciones`, la tarea se guarda igual y el envío se omite. Para
-Gmail se debe usar una contraseña de aplicación; nunca la contraseña normal
-de la cuenta.
-
-## Primer deploy, paso a paso
-
-1. **Base de datos:** crear una instancia de Postgres (16 o superior) en el
-   mismo hosting, o usar una externa. Copiar su `DATABASE_URL`.
-
-2. **Build:**
-   ```
-   npm run build
-   ```
-   Compila el frontend a `frontend/dist`.
-
-3. **Start:**
-   ```
-   npm start
-   ```
-   Instala dependencias del backend, corre las migraciones pendientes
-   (crea las 8 tablas si no existen) y arranca el server. Sirve la API en
-   `/api/*` y el frontend compilado en todo lo demás.
-
-4. **Crear los 6 usuarios** (una sola vez, después del primer deploy):
-   ```
-   SEED_PASSWORD_DEFAULT="una-contraseña-fuerte" npm run seed:usuarios
-   ```
-   Crea `agustin`, `franco` (admin), `augusto` (diseño), `luciano`
-   (edición), `german` (producción), `oriana` (community) — son los únicos
-   usuarios que el frontend reconoce (ver `USUARIO_A_RUTA` en
-   `frontend/src/main.jsx`). Todos arrancan con la misma contraseña inicial;
-   cada uno puede cambiarla después desde `/perfil`. Correr este comando de
-   nuevo no pisa contraseñas ya cambiadas — solo crea los usuarios que
-   falten.
-
-5. **Clientes:** se siembran solos en el primer arranque (`clientes` ya
-   tenía un seed en `backend/src/setup-demo-data.js`, no cambió).
-
-6. **Vincular las cuentas de Google** (una sola vez, opcional): con
-   `GOOGLE_CLIENT_ID` configurado, cada persona necesita que se le cargue
-   su `google_email` antes de poder usar el botón de Google. Se hace con un
-   `UPDATE` directo (`UPDATE usuarios SET google_email = '...' WHERE
-   usuario = 'lider';`) o desde `PATCH /usuarios/:id/google-email`.
-   Mientras no esté cargado, esa persona sigue entrando con usuario y
-   contraseña sin ningún problema — ambos métodos conviven.
-
-## Desarrollo local (sin tocar nada de esto)
-
-Sigue funcionando exactamente igual que antes:
+```sh
+npm run migrate
 ```
-cd backend && npm run dev     # Express en :3001
-cd frontend && npm run dev    # Vite en :5173, proxya /api a :3001
+
+Solo después de autorizar un destino local no productivo identificado:
+
+```sh
+npm run migrate -- status
 ```
-El server detecta que no existe `frontend/dist` y no intenta servir
-estáticos — usa el flujo de Vite dev normal.
 
-## ⚠️ Pendiente de seguridad (heredado, no resuelto en este deploy)
+Status inspecciona sin escribir y entrega identidad segura, nombres/hashes pendientes y hash del plan. Aplicar requiere aprobación explícita del plan y de la identidad observados:
 
-`docs/DIAGNOSTICO_RENDER.md` ya lo marcaba como crítico y sigue así: **las
-rutas de la API no validan el token JWT.** Cualquiera con la URL puede leer
-y modificar clientes, historias, publicaciones y tareas sin loguearse. Esto
-no se tocó en este trabajo porque es un cambio de seguridad grande que
-merece revisión aparte, no algo para meter de paso. No lo dejes en producción
-con datos reales de clientes sin resolver esto primero.
+La salida JSON tiene forma `{environment, identity, status, planHash: "HASHSTRING"}`.
+Al parsearla como `parsed`, el hash es `parsed.planHash` (string), no
+`parsed.plan.planHash`. `buildMigrationPlan(...)` devuelve directamente ese
+string; no un objeto contenedor. Usar ese valor observado para `--plan`.
 
-El login con Google (`POST /login/google`) no cambia nada de esto: emite el
-mismo JWT, con el mismo `JWT_SECRET`, que ya emitía `POST /login`. El día
-que se agregue el middleware que valide `jwt.verify(...)` en las rutas
-protegidas, no le importa por cuál de los dos caminos se emitió el token.
+```sh
+npm run migrate -- apply --plan HASH_APROBADO --database BASE_CONFIRMADA --user USUARIO_CONFIRMADO
+```
+
+Los valores anteriores son placeholders, no instrucciones para una base existente. El runner vuelve a comprobar identidad y plan bajo lock; un cambio invalida la aprobación. Producción no admite apply ni override en este bloque. No ejecutar migraciones contra una base desconocida. La cadena histórica incluye DML y eliminaciones: que un archivo figure como pendiente no autoriza su ejecución.
+
+El comando raíz delega directamente al CLI, pasando argumentos sin instalar dependencias. Desde backend, la misma interfaz usa `npm run migrate -- ...`.
+
+## Arranque normal
+
+Con dependencias instaladas, frontend compilado y esquema previamente aprobado/completo:
+
+```sh
+npm start
+```
+
+En el directorio raíz, `npm run start:hostinger` ejecuta directamente el servidor, sin migraciones ni instalación. Esto no certifica el hosting ni despliega nada. Configurar JWT_SECRET propio y las integraciones necesarias mediante gestión segura del entorno; consultar backend/.env.example sin copiar secretos a logs.
+
+Google requiere el Client ID correspondiente tanto en backend como al compilar frontend (VITE_GOOGLE_CLIENT_ID). SMTP y Drive son integraciones separadas; esta política de arranque no verifica proveedores ni convierte las APIs de negocio en solo lectura.
+
+## Sin bootstrap automático
+
+`npm run setup --prefix backend` está bloqueado y termina con código 1 sin conectar a DB. El código histórico de demo/seed permanece como referencia, no se ejecuta. SETUP_DEMO_DATA=true se rechaza durante el arranque ordinario incluso en desarrollo.
+
+No recomendar seed:usuarios como alta de Render2, ni crear cuentas de líderes compartidas o contraseñas iniciales comunes. Los scripts explícitos históricos de seed/import/backfill no están certificados por este bloque. Altas, vínculos reales y recuperación de cuentas requieren procedimientos autorizados por separado; ver [recuperación de administrador existente](RECUPERACION_ADMIN.md).
+
+## Jobs y workers: autorización separada
+
+RENDER_BACKGROUND_JOBS es una lista explícita sin duplicados de editorial,trash,wilson,supervisor; por defecto está vacía. Los flags antiguos de cada servicio no bastan. Los jobs seleccionados requieren RENDER_ALLOW_BACKGROUND_WRITES=true, destino no productivo loopback e identidad real verificada. Producción queda bloqueada para habilitación de jobs en este bloque.
+
+Sin opt-in no se registra scheduler ni primer tick. Las unidades externas ops/openclaw/mia-render-os-events.timer y scripts/systemd/render-visit-material.timer son independientes y llaman workers con --send: no habilitarlas para QA ni asumir que arrancar npm las controla.
+
+## Desarrollo y QA
+
+```sh
+npm run dev:backend
+npm run dev:frontend
+```
+
+Desarrollo respeta las mismas restricciones de arranque; no prepara DB automáticamente. Las fixtures nuevas y descartables tienen su autorización y guardas propias: [pruebas locales](render-2/LOCAL_TESTING.md). No usar una URL loopback o un nombre de base como autorización suficiente.
+
+El preview-client-goals y los opt-ins antiguos de integración de objetivos quedan bloqueados antes de conectar; su código/assertions son referencia histórica. No afirmar que esa QA fue migrada exitosamente. No iniciar servidores ordinarios, ejecutar fixtures, migraciones ni workers sin autorización específica.

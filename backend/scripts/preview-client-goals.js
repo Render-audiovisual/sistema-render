@@ -1,8 +1,11 @@
 // Vista local con datos ficticios. Nunca conectar este script a producción.
-import pg from 'pg';
-import bcrypt from 'bcryptjs';
-import { runMigrations } from '../src/migrations.js';
-import { prepareGoal } from '../src/client-goals.js';
+throw new Error('Preview legacy de objetivos deshabilitado: no autoriza un fixture por URL o nombre de base. Usá exclusivamente el harness principal aislado aprobado. El código histórico se conserva debajo como referencia, no fue migrado ni ejecutado.');
+
+// No third-party/DB module is loaded before the unconditional legacy gate.
+const { default: pg } = await import('pg');
+const { default: bcrypt } = await import('bcryptjs');
+const { runMigrations } = await import('../src/migrations.js');
+const { prepareGoal } = await import('../src/client-goals.js');
 
 const url = new URL(process.env.DATABASE_URL || 'http://invalid');
 if (!['localhost', '127.0.0.1'].includes(url.hostname) || url.pathname !== '/render_goals_qa') {

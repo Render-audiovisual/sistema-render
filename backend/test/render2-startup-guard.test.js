@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { assertFixtureIdentity, cleanEnvironment, fixtureWilsonEnvironment } from '../scripts/render2-local-test.js';
 
 test('fixture integration options cannot override database, startup or secret guards', () => {
@@ -50,4 +51,41 @@ test('principal server disabled import performs no DB, listener, fetch or schedu
     cwd: new URL('..', import.meta.url), env: cleanEnvironment(), timeout: 15000, encoding: 'utf8',
   });
   assert.equal(result.status, 0, result.stderr || result.error?.message);
+});
+
+test('legacy goal QA opt-ins fail before touching an existing database', () => {
+  for (const file of ['client-goals.integration.test.js', 'client-goal-links.integration.test.js']) {
+    const target = new URL(file, import.meta.url).href;
+    const script = `
+      import assert from 'node:assert/strict';
+      import net from 'node:net';
+      import pg from 'pg';
+      const fail = () => { throw new Error('Forbidden legacy database side effect'); };
+      net.Socket.prototype.connect = fail;
+      pg.Pool.prototype.query = fail;
+      pg.Pool.prototype.connect = fail;
+      process.env.RENDER_GOALS_TEST_DATABASE = 'true';
+      await assert.rejects(import(${JSON.stringify(target)}), /Legacy goal QA is quarantined/);
+    `;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: new URL('..', import.meta.url), env: cleanEnvironment(), timeout: 10000, encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr || result.error?.message);
+  }
+});
+
+test('actual startup wiring invokes only the independently selected services', () => {
+  const source = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
+  const start = source.indexOf('      for (const job of startup.jobs)');
+  const end = source.indexOf('      process.send?.', start);
+  assert.ok(start > 0 && end > start);
+  const names = ['editorial', 'trash', 'wilson', 'supervisor'];
+  for (const selected of [[], ...names.map(name => [name]), names]) {
+    const calls = [], pool = {};
+    const run = new Function('startup', 'pool', 'scheduleEditorialCalendar', 'scheduleRenderOsTrashCleanup',
+      'scheduleWilsonMessages', 'scheduleMiaSupervisor', source.slice(start, end));
+    run({ jobs: selected }, pool, ...names.map(name => (...args) => calls.push({ name, args })));
+    assert.deepEqual(calls.map(call => call.name), selected);
+    for (const call of calls) assert.deepEqual(call.args, call.name === 'editorial' ? [] : [pool]);
+  }
 });

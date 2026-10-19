@@ -9,6 +9,7 @@ import { runMigrations } from '../src/migrations.js';
 import { requireAuthentication } from '../src/auth.js';
 
 const enabled = process.env.RENDER_GOALS_TEST_DATABASE === 'true';
+if (enabled) throw new Error('Legacy goal QA is quarantined: use the guarded render2 principal fixtures, never an existing DATABASE_URL. Historical assertions remain reference-only.');
 test('PostgreSQL: objetivos reales, privacidad, concurrencia, cambios y conservación', { skip: !enabled && 'requiere PostgreSQL QA local' }, async () => {
   const url = new URL(process.env.DATABASE_URL);
   assert.ok(['localhost','127.0.0.1'].includes(url.hostname));

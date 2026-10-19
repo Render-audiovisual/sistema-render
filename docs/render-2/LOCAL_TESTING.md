@@ -1,5 +1,17 @@
 # Principal backend: isolated local HTTP QA
 
+## Current startup/runner update (2026-10-19)
+
+Ordinary server startup no longer authorizes migrations, seeds or default schedulers. See `STARTUP_SAFETY_CONTRACT.md` / `STARTUP_SAFETY_QA.md`. It requires explicit DATABASE_URL and RENDER_DB_ENVIRONMENT, ready ledger/core public schema, and rejects demo startup. Default CLI is help without a connection; migration apply requires reviewed local target identity and current plan. No production apply override is provided. Do not infer permission to connect an existing DB from these command capabilities.
+
+The harness now reads actual identity/status and computes the real filtered plan before calling `runMigrations(pool,logger,{approval,deferredMigrations})`. Approval purpose isolated-fixture requires matching generated cwd/data directory and empty public schema; no fake ledger rows hide deferred files. Runtime defaults remain inert through RENDER_DISABLE_SERVER_START=true. Existing deferred-upgrade tests still apply the actual SQL and verify populated synthetic history.
+
+`startLocalHarness({clusterOnly:true})` returns base:null and no imported/listening app. `launchActual({entry:'server'|'migrate',args,env,omitDatabaseUrl})` launches only those actual principal entrypoints in a sanitized, tracked child against the owned fixture. Arbitrary DB/key/host/Node-option overrides are rejected; even omitted URL uses fixture-only PG fallback to contain regressions. `ready`, `done`, `stop`, output and observed interval registrations are available. Cleanup stops every launched child before its exact cluster. This is test infrastructure, not another operational Render implementation.
+
+Latest verification: **830 backend tests passed / 18 opt-in skipped; 129 isolated HTTP/SQL/process tests passed across eleven suites / zero skipped**, frontend pages152 passed and build passed. Startup guard5 and core-schema4 pure cases are included in backend totals. The 13-case actual startup suite verifies no implicit SQL attempts/intervals, schema failures, approved concurrent apply and rollback/lock recovery. External services/production not tested. Historical results below remain prior snapshots, not current totals.
+
+Legacy `RENDER_GOALS_TEST_DATABASE=true` runners and `preview-client-goals.js` now reject before connecting; their historical assertions/code are preserved, not represented as current passing QA. Use guarded principal suites instead. Do not reactivate those paths or replay their historical functions on an existing database.
+
 This is **not** the sandbox schema. `backend/scripts/render2-local-test.js` starts a new PostgreSQL cluster under `/private/tmp/render2-local-*`, bound only to `127.0.0.1:55594`, and creates only `render2_local_test` as `render2_fixture`. It never accepts an existing DATABASE_URL, database, or cluster directory. A busy port fails; it does not reuse the listener.
 
 Before migrations the child checks its generated working directory, exact loopback URL, PostgreSQL database/user/address/port/data_directory and an empty public schema. Direct `--fixture-child` invocation with ordinary application environment is rejected. This is an accident-prevention boundary, not a sandbox against a malicious local OS user.

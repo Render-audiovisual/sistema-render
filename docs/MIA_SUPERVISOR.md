@@ -64,14 +64,16 @@ de revisión habitual. Para bloqueo, `bloqueo_usuario_id` es opcional y debe
 referirse a un usuario real. Para aceptar plazo: `proposal_id`, `message_id`
 y opcionalmente `fecha` en ISO.
 
-## Publicar y activar sin mensajes de QA
+## Preparación explícita sin mensajes de QA (no autorización de despliegue)
 
-1. Desplegar el commit en Hostinger con `MIA_SUPERVISOR_ENABLED=false` y
-   `TASK_COMPLETED_CLEANUP_ENABLED=false`. El arranque normal aplica la
-   migraciones 046 y 047 una vez. 047 cancela mensajes antiguos pendientes,
-   conserva recibos/historial y prepara los límites y respuestas parciales.
-   Confirmar previamente que las migraciones
-   históricas —especialmente 044, de limpieza— ya figuran en `_migrations`.
+1. Mantener `MIA_SUPERVISOR_ENABLED=false`,
+   `TASK_COMPLETED_CLEANUP_ENABLED=false`, `RENDER_BACKGROUND_JOBS` vacío y
+   `RENDER_ALLOW_BACKGROUND_WRITES=false`. El arranque no aplica migraciones
+   ni prepara datos. Revisar identidad y ledger sin repararlos; faltantes o
+   desconocidos bloquean el arranque. No repetir migraciones históricas,
+   especialmente 044. Ver [arranque seguro](DEPLOY.md). Cualquier migración
+   necesita autorización y plan explícitos; producción no admite apply en
+   este bloque local.
 2. Verificar tablas de 046 y las identidades de ambos líderes (sin imprimir
    hashes/credenciales). Revisar roles y WhatsApp habilitado en Usuarios.
 3. Actualizar **también el VPS**, no solo Hostinger:
@@ -90,10 +92,12 @@ y opcionalmente `fecha` en ISO.
    `--apply`. Debe devolver `dry_run:true`, propuestas y señales sin escribir.
    `python3 .../mia_event_worker.py --dry-run` no reserva mensajes ni envía
    WhatsApp. Nunca usar `--send` para QA.
-7. Solo después de verificar el dry-run, habilitar
-   `MIA_SUPERVISOR_ENABLED=true` en Hostinger y reiniciar/desplegar. El backend
-   controla cada cinco minutos y la cola utiliza el timer de eventos existente.
-   No hace falta otro cron para generar seguimientos.
+7. Verificar un dry-run no autoriza activar producción. La habilitación local
+   requiere destino no productivo loopback verificado,
+   `RENDER_BACKGROUND_JOBS=supervisor`, `RENDER_ALLOW_BACKGROUND_WRITES=true`
+   y `MIA_SUPERVISOR_ENABLED=true`. Producción permanece bloqueada para jobs
+   hasta aprobación separada. El timer externo de entrega es independiente;
+   no habilitar `--send` para QA ni asumir que estos flags lo controlan.
 8. Razonamiento externo opcional: habilitar aparte
    `MIA_SUPERVISOR_REASONING_ENABLED=true` y `OPENAI_API_KEY` después de
    verificar disponibilidad de `MIA_SUPERVISOR_REASONING_MODEL`. Fallos del

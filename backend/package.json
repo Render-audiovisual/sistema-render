@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "test": "node --test test/*.test.js",
-    "start": "node scripts/migrate.js && node src/server.js",
+    "start": "node src/server.js",
     "db:check": "node src/db-check.js",
     "recover:admin": "node scripts/recover-admin-password.js",
     "migrate": "node scripts/migrate.js",
@@ -15,7 +15,7 @@
     "importar:publicaciones": "node scripts/importar-publicaciones.js",
     "backfill:tareas": "node scripts/backfill-tareas-roles.js",
     "backfill:tarea-padre-edicion": "node scripts/backfill-tarea-padre-edicion.js",
-    "setup": "npm run migrate && node -e \"import('./src/setup-demo-data.js').then(m => m.setupDemoClientes()).then(() => process.exit(0))\" && npm run seed:usuarios"
+    "setup": "node scripts/setup-disabled.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

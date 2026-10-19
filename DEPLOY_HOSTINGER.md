@@ -1,5 +1,14 @@
 # Deploy a Hostinger
 
+Contrato local, no autorización ni afirmación de despliegue. Antes de preparar
+un servicio consultar [arranque seguro](docs/DEPLOY.md) y
+[contrato](docs/render-2/STARTUP_SAFETY_CONTRACT.md).
+Build, migración aprobada y arranque son fases separadas. Ni `npm start` ni
+`npm run start:hostinger` instalan dependencias, migran o siembran datos.
+La base debe declararse y tener ledger/esquema completos: si falta algo,
+el servidor debe abortar, no repararlo. `setup` está deshabilitado.
+No ejecutar seeds históricos ni bootstrap de cuentas compartidas.
+
 ## Opción 1: Frontend solo (SPA estática) 
 
 Si alojas solo el frontend en Hostinger:
@@ -28,13 +37,19 @@ npm run build
 
 ---
 
-## Opción 2: Full stack (Recomendado)
+## Opción 2: Full stack
 
 Si tienes Node.js disponible en Hostinger:
 
 1. Compilar frontend: `cd frontend && npm run build`
 2. Subir TODO (backend + frontend compilado)
 3. El `server.js` ya maneja los redirects automáticamente
+4. Configurar DATABASE_URL y RENDER_DB_ENVIRONMENT explícitos, sin imprimir
+   secretos. Mantener SETUP_DEMO_DATA=false, RENDER_BACKGROUND_JOBS vacío y
+   RENDER_ALLOW_BACKGROUND_WRITES=false. No usar el arranque para aplicar SQL.
+5. La CLI de migración permite ayuda/status/apply separados; apply solo para
+   un destino local no productivo autorizado y con plan/identidad confirmados.
+   No hay override de producción en este bloque. Ver docs/DEPLOY.md.
 
 ---
 
