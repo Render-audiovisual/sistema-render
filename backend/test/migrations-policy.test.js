@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { MigrationPolicyError, readMigrationIdentity, readMigrationStatus, buildMigrationPlan, runMigrations } from '../src/migrations.js';
 
 const identity = { database: 'unit', username: 'unit', address: '127.0.0.1', port: 55401 };
@@ -88,8 +89,14 @@ test('one dedicated client applies one pending file and ledger atomically withou
   assert.deepEqual(statements.slice(-4), ['SELECT pg_advisory_unlock(728194, 1) AS unlocked', 'RESET search_path', 'RESET lock_timeout', 'RESET statement_timeout']);
   assert.equal(statements.filter(sql => sql === 'BEGIN').length, 1);
   assert.equal(statements.filter(sql => sql === 'COMMIT').length, 1);
-  assert.equal(m.queries.find(({ sql }) => sql.startsWith('INSERT INTO public._migrations')).params[0], all.at(-1).name);
-  assert.ok(!statements.some(sql => sql.includes('ON CONFLICT')));
+  const ledgerWrites = m.queries.filter(({ sql }) => sql.startsWith('INSERT INTO public._migrations'));
+  assert.equal(ledgerWrites.length, 1);
+  assert.equal(ledgerWrites[0].params[0], all.at(-1).name);
+  // Migration bodies may legitimately define UPSERT triggers. The migration
+  // ledger itself must never swallow duplicate/concurrent application errors.
+  assert.ok(ledgerWrites.every(({ sql }) => !/ON\s+CONFLICT/i.test(sql)));
+  const actualBody = readFileSync(new URL(`../migrations/${all.at(-1).name}`, import.meta.url), 'utf8');
+  assert.equal(statements.filter(sql => sql === actualBody).length, 1);
   assert.deepEqual(m.releases, [false]);
 });
 test('SQL failure rolls back, sanitizes error and releases lock; uncertain cleanup destroys client', async () => {

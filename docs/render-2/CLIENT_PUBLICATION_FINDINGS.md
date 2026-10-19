@@ -51,3 +51,9 @@ Before changing the metric, agree on API, schema, UI labels and quota-period sem
 - DTOs carry only the approved evidence fields; client-supplied metadata cannot forge server-controlled provenance or broaden publication permissions.
 
 No whole-phase or production readiness claim is made. The legacy metric/provenance and historia-writer issues remain explicitly unresolved until that integration has a reviewed contract, implementation and verification.
+
+## Backend progress: explicit confirmation064
+
+The new principal `/api/editorial-publicacion/:dominio/:id` contract now provides server-authorized manual confirmation/withdrawal, durable actor/request replay, observed revision checks and immutable provenance in additive064. Existing editorial rows are unchanged and initially have no confirmation. Relevant later legacy changes invalidate the new current reference; task completion cannot create one. See EDITORIAL_CONFIRMATION_CONTRACT.md and EDITORIAL_CONFIRMATION_QA.md for scope and actual test evidence.
+
+This does not repair or certify old metric classification, old PATCH publication controls, or external publication verification. UI, client overview and report adoption must follow before this gate can close. No historical row is promoted by the new schema or read API.
