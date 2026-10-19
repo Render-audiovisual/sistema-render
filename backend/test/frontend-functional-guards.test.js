@@ -197,16 +197,16 @@ test("la navegación de empleados expone trabajo y contenido, pero no gestión s
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
   const utilsSource = readFileSync(new URL("../../frontend/src/utils.jsx", import.meta.url), "utf8");
-  assert.match(appSource, /: \["\/inicio", "\/perfil", "\/workspace\/tareas", "\/lista", "\/bloc-notas", "\/drive", "\/moodboards", "\/planificacion-historias", "\/planificacion-publicaciones", "\/reportes-historias", "\/clientes"\]/);
+  assert.match(appSource, /: \["\/inicio", "\/perfil", "\/workspace\/tareas", "\/lista", "\/bloc-notas", "\/drive", "\/moodboards", "\/planificacion-historias", "\/planificacion-publicaciones", "\/reportes-historias", "\/clientes", \.\.\.\(canUseSharedCalendarRole\(sesion.usuario.rol\) \? \["\/calendario", "\/calendario-estructura"\] : \[\]\)\]/);
   assert.match(appSource, /React\.lazy/);
   assert.match(appSource, /QuickHomePage/);
   assert.match(sidebarSource, /getNavigationGroups/);
   assert.match(sidebarSource, /const rutaPrincipal = "\/inicio"/);
-  const sharedHrefs = ["/inicio", "/workspace/tareas", "/proyectos", "/producciones", "/clientes", "/lista", "/moodboards", "/drive", "/feedback", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil"];
+  const sharedHrefs = ["/inicio", "/calendario", "/workspace/tareas", "/proyectos", "/producciones", "/clientes", "/lista", "/moodboards", "/drive", "/feedback", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil"];
   for (const role of ["diseno", "edicion", "produccion", "community", "programacion"]) {
     const links = getNavigationGroups(role).flatMap(group => group.links);
     assert.deepEqual(links.map(link => link.href).sort(), [...sharedHrefs].sort());
-    for (const href of ["/sueldos", "/empleados", "/calendario"]) assert.equal(links.some(link => link.href === href), false, `${role} no recibe ${href}`);
+    for (const href of ["/sueldos", "/empleados", "/clientes?gestion=1"]) assert.equal(links.some(link => link.href === href), false, `${role} no recibe ${href}`);
     assert.equal(links.some(link => link.href === "/wilson-conversaciones" || link.href.includes("wilson=open")), false);
   }
   const adminLinks = getNavigationGroups("admin").flatMap(group => group.links);

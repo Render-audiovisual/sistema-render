@@ -1,4 +1,8 @@
 // Presentation only. Server authorization remains authoritative.
+export function canUseSharedCalendarRole(role) {
+  return ['admin', 'diseno', 'edicion', 'produccion', 'community', 'programacion'].includes(role);
+}
+
 export function getNavigationGroups(role) {
   const admin = role === "admin";
   return [
@@ -6,7 +10,7 @@ export function getNavigationGroups(role) {
       { href: "/inicio", label: "Inicio", icon: "home" },
       { href: "/workspace/tareas", label: "Tareas", icon: "tasks" },
       { href: "/lista", label: "Mi lista", icon: "list" },
-      ...(admin ? [{ href: "/calendario", label: "Calendario", icon: "calendar" }] : []),
+      ...(canUseSharedCalendarRole(role) ? [{ href: "/calendario", label: "Calendario", icon: "calendar" }] : []),
     ] },
     { id: "operation", label: "Operación", links: [
       { href: "/clientes", label: "Clientes y objetivos", icon: "clients" },

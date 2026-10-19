@@ -154,14 +154,14 @@ test("mobile focus-trap/Escape and breakpoint listeners are bounded and clean up
 
 test("collapse never filters navigation destinations or expands employee permissions", () => {
   assert.match(source, /getNavigationGroups\(sesion\?\.usuario\?\.rol\)/);
-  const shared = ["/inicio", "/workspace/tareas", "/proyectos", "/producciones", "/clientes", "/lista", "/moodboards", "/drive", "/feedback", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil"].sort();
+  const shared = ["/inicio", "/calendario", "/workspace/tareas", "/proyectos", "/producciones", "/clientes", "/lista", "/moodboards", "/drive", "/feedback", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil"].sort();
   for (const role of ["diseno", "edicion", "produccion", "community", "programacion"]) {
     const links = getNavigationGroups(role).flatMap(group => group.links);
     assert.deepEqual(links.map(link => link.href).sort(), shared);
-    assert.equal(links.some(link => ["/sueldos", "/empleados", "/calendario", "/clientes?gestion=1"].includes(link.href)), false);
+    assert.equal(links.some(link => ["/sueldos", "/empleados", "/clientes?gestion=1"].includes(link.href)), false);
   }
   const admin = getNavigationGroups("admin").flatMap(group => group.links);
-  assert.deepEqual(admin.map(link => link.href).sort(), [...shared, "/sueldos", "/empleados", "/calendario", "/clientes?gestion=1"].sort());
+  assert.deepEqual(admin.map(link => link.href).sort(), [...shared, "/sueldos", "/empleados", "/clientes?gestion=1"].sort());
   assert.equal(getNavigationGroups("admin").find(group => group.id === "account").links.find(link => link.href === "/clientes?gestion=1")?.label, "Gestionar clientes");
   assert.equal(isNavigationActive("/feedback", "/bloc-notas"), true);
   assert.equal(isNavigationActive("/planificacion-historias", "/calendario-estructura"), true);

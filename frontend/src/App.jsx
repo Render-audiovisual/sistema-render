@@ -5,6 +5,7 @@ import { LoginPage } from "./pages/Login.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { QuickHomePage } from "./pages/QuickHome.jsx";
 import { navigateWithinApp, readRouteKey } from "./shared/navigation/location.js";
+import { canUseSharedCalendarRole } from "./components/navigation.js";
 
 const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
 const AugustoDashboard = lazyNamed(() => import("./pages/dashboards/Augusto.jsx"), "AugustoDashboard");
@@ -27,6 +28,7 @@ const DrivePage = lazyNamed(() => import("./pages/Drive.jsx"), "DrivePage");
 const PersonalListsPage = lazyNamed(() => import("./pages/PersonalLists.jsx"), "PersonalListsPage");
 const MoodboardPreviewPage = lazyNamed(() => import("./pages/MoodboardPreview.jsx"), "MoodboardPreviewPage");
 const ProductionsPage = lazyNamed(() => import("./pages/Productions.jsx"), "ProductionsPage");
+const CalendarPage = lazyNamed(() => import("./pages/Calendar.jsx"), "CalendarPage");
 
 function RouteLoading() {
   return <main className="route-loading" aria-live="polite"><span aria-hidden="true"/><strong>Abriendo sección…</strong><small>Cargando solamente lo necesario.</small></main>;
@@ -75,7 +77,7 @@ export function App() {
 
   const rutasCompartidas = esAdmin
     ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
-    : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes"];
+    : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes", ...(canUseSharedCalendarRole(sesion.usuario.rol) ? ["/calendario", "/calendario-estructura"] : [])];
   const rutaPermitida =
     esAdmin || path === "/proyectos" || path === "/feedback" || path === "/producciones" || rutasCompartidas.includes(path) || rutaPropia === path;
 
@@ -138,9 +140,7 @@ export function App() {
         ? <ClientesAdminPage /> : <ClientesObjetivosPage sesion={sesion} />;
     }
     if (path === "/calendario") {
-      // Alias histórico: el calendario ahora vive como pestaña dentro del
-      // módulo unificado de Publicaciones (no se rompen links guardados).
-      return <PublicacionesPage tabInicial="calendario" sesion={sesion} />;
+      return <CalendarPage sesion={sesion} onNavigate={navigate} />;
     }
     if (path === "/calendario-estructura") {
       return <HistoriasPage initialTab="estructura" />;

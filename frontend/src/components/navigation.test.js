@@ -6,6 +6,7 @@ import { getNavigationGroups, isNavigationActive } from "./navigation.js";
 const employeeRoles = ["diseno", "edicion", "produccion", "community", "programacion"];
 const shared = new Map([
   ["/inicio", ["Inicio"]],
+  ["/calendario", ["Calendario"]],
   ["/workspace/tareas", ["Tareas"]],
   ["/proyectos", ["Proyectos"]],
   ["/producciones", ["Producciones"]],
@@ -20,7 +21,6 @@ const shared = new Map([
   ["/perfil", ["Perfil"]],
 ]);
 const adminOnly = new Map([
-  ["/calendario", "Calendario"],
   ["/sueldos", "Finanzas"],
   ["/empleados", "Usuarios"],
   ["/clientes?gestion=1", "Gestionar clientes"],
@@ -51,7 +51,7 @@ for (const role of ["admin", ...employeeRoles]) {
   });
 }
 
-test("all supported employees share the same operational destinations, with no calendar/finance/account-management grant", () => {
+test("all supported employees share calendar and operational destinations, without finance/account-management grants", () => {
   const reference = sortedHrefs(linksFor(employeeRoles[0]));
   for (const role of employeeRoles) {
     const links = linksFor(role);
@@ -60,7 +60,7 @@ test("all supported employees share the same operational destinations, with no c
   }
 });
 
-test("only exact admin role includes Calendario, Finanzas and Usuarios", () => {
+test("only exact admin role includes Finanzas and Usuarios", () => {
   const links = linksFor("admin");
   for (const [href, label] of adminOnly) {
     const labels = href === "/empleados" ? [label, "Usuarios y equipo"] : [label];
