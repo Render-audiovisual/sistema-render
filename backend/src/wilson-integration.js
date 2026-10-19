@@ -1881,9 +1881,11 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         await client.query("ROLLBACK");
         return undefined;
       }
-      const result = await confirmProduction({ taskId, actor: req.wilson.actorName || "Líder" });
+      const actor = req.wilson.actorName || "Líder";
+      const result = await confirmProduction({ taskId, actor, client });
       await writeWilsonAudit(client, req, { action: "confirmar_grabacion", taskId });
       await client.query("COMMIT");
+      if (result.editing_task) notifyAssignment({ pool, tarea: result.editing_task, motivo: "creada", actor });
       return res.json(result);
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});

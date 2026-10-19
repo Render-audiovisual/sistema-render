@@ -135,7 +135,7 @@ router.use("/integraciones/wilson", createWilsonRouter({
   pool,
   notifyAssignment: notificarAsignacionSinInterrumpir,
   notifyFeedback: notificarFeedbackSinInterrumpir,
-  confirmProduction: ({ taskId, actor }) => confirmProductionVisit(taskId, actor),
+  confirmProduction: ({ taskId, actor, client }) => confirmProductionVisit(taskId, actor, client),
 }));
 
 router.post("/login", async (req, res, next) => {
@@ -2183,9 +2183,9 @@ const TAREA_COLUMNAS_EDITABLES = [
   "tarea_padre_id",
 ];
 
-async function crearTareaEdicionDesdeVisita(visita) {
+async function crearTareaEdicionDesdeVisita(visita, db = pool) {
   const cliente = visita.cliente_id
-    ? await pool.query("SELECT nombre FROM clientes WHERE id = $1", [visita.cliente_id])
+    ? await db.query("SELECT nombre FROM clientes WHERE id = $1", [visita.cliente_id])
     : { rows: [] };
   const clienteNombre = cliente.rows[0]?.nombre || "Sin cliente";
   const cantidad = getProductionProgress(visita).recorded;
@@ -2200,7 +2200,7 @@ async function crearTareaEdicionDesdeVisita(visita) {
     `Cantidad esperada: ${cantidad} videos.`,
     "Revisar la carpeta completa, separar el material por pieza y pasar cada entrega a revisión.",
   ].join("\n");
-  const result = await pool.query(
+  const result = await db.query(
     `INSERT INTO tareas (
        titulo, asignado_a, cliente_id, estado, propiedades_extra, fecha_vencimiento,
        tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id
@@ -2646,10 +2646,11 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
   }
 });
 
-async function confirmProductionVisit(taskId, actor) {
-  const client = await pool.connect();
+async function confirmProductionVisit(taskId, actor, transactionClient = null) {
+  const ownsTransaction = !transactionClient;
+  const client = transactionClient || await pool.connect();
   try {
-    await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN");
     const current = await client.query(
       `SELECT id,titulo,asignado_a,cliente_id,estado,propiedades_extra,
         to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,tipo_tarea,subtipo,
@@ -2680,14 +2681,14 @@ async function confirmProductionVisit(taskId, actor) {
        prioridad,aclaraciones,material_referencia,tarea_padre_id,created_at,updated_at`,
       [task.id, JSON.stringify(properties)],
     );
-    const editingTask = await crearTareaEdicionDesdeVisita({ ...task, propiedades_extra: properties });
-    await client.query("COMMIT");
-    if (editingTask) notificarAsignacionSinInterrumpir({ pool, tarea: editingTask, motivo: "creada", actor });
+    const editingTask = await crearTareaEdicionDesdeVisita({ ...task, propiedades_extra: properties }, client);
+    if (ownsTransaction) await client.query("COMMIT");
+    if (ownsTransaction && editingTask) notificarAsignacionSinInterrumpir({ pool, tarea: editingTask, motivo: "creada", actor });
     return { task: updated.rows[0], editing_task: editingTask, created: Boolean(editingTask) };
   } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
+    if (ownsTransaction) await client.query("ROLLBACK").catch(() => {});
     throw error;
-  } finally { client.release(); }
+  } finally { if (ownsTransaction) client.release(); }
 }
 
 router.post("/tareas/:id/produccion/confirmar", async (req, res, next) => {
