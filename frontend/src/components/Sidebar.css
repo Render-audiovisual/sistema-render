@@ -1,0 +1,77 @@
+/* Principal navigation: scoped styles, independent of legacy module palettes. */
+.sidebar {
+  background: #f7f8fa;
+  border-right: 1px solid #e4e7ec;
+  box-shadow: none;
+  color: #202735;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  gap: 16px;
+}
+.sidebar .sidebar-header { border-bottom-color: #e4e7ec; }
+.sidebar .brand-initial { background: #253347; color: #fff; border-radius: 9px; }
+.sidebar .brand-greeting > strong { color: #202735; font-size: 13px; }
+.sidebar .brand-greeting > small { color: #667085; font-size: 11px; }
+.sidebar .sidebar-drawer { background: #f7f8fa; }
+.sidebar .sidebar-content {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 2px 8px;
+  scrollbar-width: none;
+}
+.sidebar .sidebar-content::-webkit-scrollbar { display: none; }
+.sidebar .sidebar-group { display: grid; flex-shrink: 0; gap: 2px; margin: 0 0 12px; }
+.sidebar .sidebar-group-label {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  line-height: 1.5;
+  margin: 0;
+  padding: 8px 10px 4px;
+}
+.sidebar .sidebar-link {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  box-shadow: none;
+  color: #465164;
+  font-size: 13px;
+  font-weight: 500;
+  gap: 10px;
+  min-height: 40px;
+  padding: 8px 10px;
+  width: 100%;
+}
+.sidebar .sidebar-link:hover { background: #eceff3; color: #202735; }
+.sidebar .sidebar-link.active {
+  background: #e8effb;
+  border-color: #d8e4f7;
+  color: #2156a5;
+  font-weight: 600;
+}
+.sidebar .sidebar-link.active .sidebar-icon { color: #2156a5; }
+.sidebar .sidebar-icon { flex-shrink: 0; height: 18px; width: 18px; }
+.sidebar .account-menu { border-top: 1px solid #e4e7ec; flex-shrink: 0; padding-top: 10px; }
+.sidebar .account-trigger { border-radius: 8px; color: #465164; }
+.sidebar .account-trigger::after { color: #667085; margin-right: 6px; }
+.sidebar .account-trigger:hover,
+.sidebar .account-menu[open] > .account-trigger,
+.sidebar .account-menu.active > .account-trigger { background: #eceff3; border-color: #e4e7ec; }
+.sidebar .user-name { color: #202735; }
+.sidebar .user-role { color: #667085; }
+.sidebar .user-avatar { background: #e1e8f2; color: #344964; }
+.sidebar .account-menu-panel { background: #fff; border-color: #e4e7ec; box-shadow: 0 8px 28px #17243b12; }
+.sidebar :is(a, button, summary):focus-visible { outline: 2px solid #2563b8; outline-offset: 2px; }
+@media (max-width: 980px) {
+  .sidebar .sidebar-menu-toggle { background: #fff; border-color: #d5dce5; color: #344964; }
+  .sidebar .sidebar-menu-toggle span { background: #344964; }
+  .sidebar .sidebar-link { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar :is(.sidebar-link, .sidebar-drawer, .sidebar-backdrop) { transition: none; }
+}

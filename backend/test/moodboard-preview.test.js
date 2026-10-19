@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
+import { getNavigationGroups } from "../../frontend/src/components/navigation.js";
 
 const app = fs.readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
 const page = fs.readFileSync(new URL("../../frontend/src/pages/MoodboardPreview.jsx", import.meta.url), "utf8");
@@ -51,6 +52,15 @@ test("las imágenes quedan fuera de la carpeta versionada de Hostinger", () => {
   assert.match(backend, /storage.*moodboards/);
 });
 
-test("el menú principal muestra Moodboard inmediatamente después de Lista", () => {
-  assert.match(sidebar, /href: "\/lista", label: "Lista"[\s\S]*?href: "\/moodboards", label: "Moodboard"/);
+test("el menú principal muestra Moodboards como recurso compartido para todos los roles", () => {
+  assert.match(sidebar, /getNavigationGroups/);
+  for (const role of ["admin", "diseno", "edicion", "produccion", "community", "programacion"]) {
+    const groups = getNavigationGroups(role);
+    const resources = groups.find(group => group.id === "resources");
+    assert.ok(resources, `Grupo de recursos para ${role}`);
+    const moodboards = resources.links.filter(link => link.href === "/moodboards");
+    assert.equal(moodboards.length, 1);
+    assert.ok(["Moodboard", "Moodboards"].includes(moodboards[0].label));
+    assert.equal(groups.flatMap(group => group.links).filter(link => link.href === "/moodboards").length, 1);
+  }
 });

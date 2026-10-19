@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { normalizePersonalListEmoji, normalizePersonalListText } from "../src/personal-lists.js";
 import { normalizeBlockContent, normalizeBlocks } from "../src/personal-list-blocks.js";
+import { getNavigationGroups } from "../../frontend/src/components/navigation.js";
 
 const migration = readFileSync(new URL("../migrations/040_listas_personales.sql", import.meta.url), "utf8");
 const blocksMigration = readFileSync(new URL("../migrations/041_listas_bloques_personalizables.sql", import.meta.url), "utf8");
@@ -61,7 +62,16 @@ test("tablas, listados y checklists se validan antes de persistir", () => {
 test("Lista está disponible para todos y ofrece editor por bloques y plantillas", () => {
   assert.match(appSource, /"\/lista"/);
   assert.match(appSource, /<PersonalListsPage/);
-  assert.match(sidebarSource, /href: "\/lista", label: "Lista"/);
+  assert.match(sidebarSource, /getNavigationGroups/);
+  for (const role of ["admin", "diseno", "edicion", "produccion", "community", "programacion"]) {
+    const groups = getNavigationGroups(role);
+    const personal = groups.find(group => group.id === "personal");
+    assert.ok(personal, `Grupo personal para ${role}`);
+    const list = personal.links.filter(link => link.href === "/lista");
+    assert.equal(list.length, 1);
+    assert.ok(["Lista", "Mi lista"].includes(list[0].label));
+    assert.equal(groups.flatMap(group => group.links).filter(link => link.href === "/lista").length, 1);
+  }
   assert.match(pageSource, /type="checkbox"/);
   assert.match(pageSource, /Agregar bloque/);
   assert.match(pageSource, /Guardar como plantilla/);

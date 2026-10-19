@@ -5,6 +5,7 @@ import test from "node:test";
 import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../../frontend/src/features/render-os/utils/task-view-state.js";
 import { normalizeSelectionRect, selectionRectsIntersect } from "../../frontend/src/features/render-os/utils/selection-geometry.js";
 import { parseJsonArrayResponse } from "../../frontend/src/shared/http/response-utils.js";
+import { getNavigationGroups } from "../../frontend/src/components/navigation.js";
 
 test("parseJsonArrayResponse acepta únicamente respuestas HTTP exitosas con listas", async () => {
   const items = [{ id: 1 }];
@@ -199,13 +200,17 @@ test("la navegación de empleados expone trabajo y contenido, pero no gestión s
   assert.match(appSource, /: \["\/inicio", "\/perfil", "\/workspace\/tareas", "\/lista", "\/bloc-notas", "\/drive", "\/moodboards", "\/planificacion-historias", "\/planificacion-publicaciones", "\/reportes-historias", "\/clientes"\]/);
   assert.match(appSource, /React\.lazy/);
   assert.match(appSource, /QuickHomePage/);
-  assert.match(sidebarSource, /planificacion: \[/);
+  assert.match(sidebarSource, /getNavigationGroups/);
   assert.match(sidebarSource, /const rutaPrincipal = "\/inicio"/);
-  assert.match(sidebarSource, /inicio: \[\s*\{ href: rutaPrincipal, label: "Inicio"/);
-  assert.match(sidebarSource, /gestion: \[/);
-  assert.match(sidebarSource, /href: "\/reportes-historias", label: "Reportes"/);
-  assert.match(sidebarSource, /href: "\/sueldos", label: "Finanzas"/);
-  assert.match(sidebarSource, /\.\.\.\(esAdmin \? \[\s*\{ href: "\/sueldos", label: "Finanzas"/);
+  const sharedHrefs = ["/inicio", "/workspace/tareas", "/proyectos", "/producciones", "/clientes", "/lista", "/moodboards", "/drive", "/feedback", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/perfil"];
+  for (const role of ["diseno", "edicion", "produccion", "community", "programacion"]) {
+    const links = getNavigationGroups(role).flatMap(group => group.links);
+    assert.deepEqual(links.map(link => link.href).sort(), [...sharedHrefs].sort());
+    for (const href of ["/sueldos", "/empleados", "/calendario"]) assert.equal(links.some(link => link.href === href), false, `${role} no recibe ${href}`);
+    assert.equal(links.some(link => link.href === "/wilson-conversaciones" || link.href.includes("wilson=open")), false);
+  }
+  const adminLinks = getNavigationGroups("admin").flatMap(group => group.links);
+  for (const href of ["/sueldos", "/empleados", "/calendario"]) assert.equal(adminLinks.some(link => link.href === href), true);
   assert.doesNotMatch(sidebarSource, /label: "Conversaciones"/);
   assert.doesNotMatch(sidebarSource, /wilson=open/);
   assert.doesNotMatch(appSource, /<WilsonConversationsPage/);
