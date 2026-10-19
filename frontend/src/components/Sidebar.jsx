@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { getRutaUsuario, inicialesUsuario } from "../utils.jsx";
+import { inicialesUsuario } from "../utils.jsx";
 
 function SidebarIcon({ name }) {
   if (name === "drive") return <svg className="sidebar-icon sidebar-drive-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#0F9D58" d="m8.1 3-5.8 10 3.2 5.5 5.8-10z"/><path fill="#4285F4" d="M5.5 18.5h11.6l3.2-5.5H8.7z"/><path fill="#F4B400" d="M8.1 3h6.4l5.8 10h-6.4z"/></svg>;
@@ -21,14 +21,13 @@ function SidebarIcon({ name }) {
 export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, getRolLabel }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const esAdmin = sesion?.usuario?.rol === "admin";
-  const rutaTablero = getRutaUsuario(sesion?.usuario?.usuario, sesion?.usuario?.rol);
-  const rutaPrincipal = esAdmin ? (rutaTablero || "/lider") : "/workspace/tareas";
+  const rutaPrincipal = "/inicio";
   const primerNombre = sesion?.usuario?.nombre?.trim().split(/\s+/)[0] || "equipo";
 
   const seccionesNav = {
-    inicio: esAdmin ? [
+    inicio: [
       { href: rutaPrincipal, label: "Inicio", icon: "home" },
-    ] : [],
+    ],
     trabajo: [
       { href: "/workspace/tareas", label: "Tareas", icon: "tasks" },
       { href: "/producciones", label: "Producciones", icon: "content" },
@@ -101,7 +100,7 @@ export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, 
   return (
     <nav className="sidebar" aria-label="Navegación principal">
       <div className="sidebar-header">
-        <a className="brand-mark" href={rutaPrincipal} aria-label={esAdmin ? "Ir al Inicio" : "Ir a Tareas"} onClick={(event) => navigate(event, rutaPrincipal)}>
+        <a className="brand-mark" href={rutaPrincipal} aria-label="Ir al Inicio" onClick={(event) => navigate(event, rutaPrincipal)}>
           <span className="brand-initial">R</span>
           <span className="brand-greeting">
             <strong>Hola, {primerNombre}</strong>

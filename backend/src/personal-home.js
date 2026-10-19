@@ -1,0 +1,105 @@
+import { SYSTEM_USER_ROLES } from './user-roles.js';
+
+const fail = (message, status) => Object.assign(new Error(message), { status });
+
+// Explicit projections, not whole-row JSON: even administrators' personal home
+// is operational, and must never become an alternate financial endpoint.
+const taskJson = alias => `jsonb_build_object('id',${alias}.id,'titulo',${alias}.titulo,
+  'estado',${alias}.estado,'prioridad',${alias}.prioridad,'revision',${alias}.revision,
+  'fecha_vencimiento',to_char(${alias}.fecha_vencimiento,'YYYY-MM-DD'),
+  'cliente',CASE WHEN ${alias}.cliente_id IS NULL THEN NULL ELSE jsonb_build_object('id',${alias}.cliente_id,'nombre',${alias}.cliente_nombre) END,
+  'href','/workspace/tareas?task='||${alias}.id)`;
+
+export const PERSONAL_HOME_SQL = `WITH
+  day AS (SELECT (statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date AS today),
+  visible AS MATERIALIZED (
+    SELECT t.id,t.titulo,CASE WHEN t.estado='en_revision' AND t.propiedades_extra->'revision_aprobada'='true'::jsonb
+      THEN 'aprobada' ELSE t.estado END AS estado,t.prioridad,t.revision,t.fecha_vencimiento,t.updated_at,
+      t.cliente_id,c.nombre AS cliente_nombre
+    FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+    WHERE t.propiedades_extra->>'workspace'='render_os'
+      AND COALESCE(t.propiedades_extra->>'archivada_render_os','false')<>'true'
+      AND COALESCE(t.propiedades_extra->>'papelera_render_os','false')<>'true'
+      AND (t.cliente_id IS NULL OR c.activo IS DISTINCT FROM FALSE)
+  ),
+  mine AS MATERIALIZED (SELECT v.* FROM visible v WHERE EXISTS (
+    SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=v.id AND a.usuario_id=$1)),
+  open AS MATERIALIZED (SELECT * FROM mine WHERE estado NOT IN ('finalizada','publicada')),
+  reviews AS MATERIALIZED (SELECT * FROM visible v WHERE estado='en_revision' AND
+    ($2::boolean OR EXISTS(SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=v.id AND a.usuario_id=$1))),
+  client_work AS (SELECT cliente_id AS id,cliente_nombre AS nombre,count(*)::int AS open FROM open
+    WHERE cliente_id IS NOT NULL GROUP BY cliente_id,cliente_nombre),
+  my_visits AS MATERIALIZED (
+    SELECT v.id,v.titulo,v.fecha,v.cliente_id,c.nombre AS cliente_nombre
+    FROM produccion_visitas v JOIN clientes c ON c.id=v.cliente_id CROSS JOIN day
+    WHERE c.activo IS DISTINCT FROM FALSE AND v.fecha BETWEEN day.today AND day.today+7
+      AND (v.tarea_origen_id IS NULL OR EXISTS(SELECT 1 FROM visible source WHERE source.id=v.tarea_origen_id))
+      AND (EXISTS(SELECT 1 FROM produccion_visita_participantes p WHERE p.visita_id=v.id AND p.usuario_id=$1)
+        OR EXISTS(SELECT 1 FROM mine m WHERE m.id=v.tarea_origen_id)
+        OR EXISTS(SELECT 1 FROM produccion_videos pv JOIN mine m ON m.id=COALESCE(pv.tarea_entrega_id,pv.tarea_edicion_id)
+          WHERE pv.visita_id=v.id))
+  )
+SELECT jsonb_build_object(
+  'version',1,'generated_at',statement_timestamp(),'today',to_char(day.today,'YYYY-MM-DD'),
+  'summary',jsonb_build_object(
+    'open',(SELECT count(*)::int FROM open),
+    'overdue',(SELECT count(*)::int FROM open WHERE fecha_vencimiento<day.today),
+    'today',(SELECT count(*)::int FROM open WHERE fecha_vencimiento=day.today),
+    'upcoming',(SELECT count(*)::int FROM open WHERE fecha_vencimiento>day.today AND fecha_vencimiento<=day.today+7),
+    'undated',(SELECT count(*)::int FROM open WHERE fecha_vencimiento IS NULL),
+    'awaiting_review',(SELECT count(*)::int FROM open WHERE estado='en_revision')),
+  'tasks',COALESCE((SELECT jsonb_agg(${taskJson('q')} ORDER BY q.rank) FROM (
+    SELECT o.*,row_number() OVER (ORDER BY fecha_vencimiento ASC NULLS LAST,
+      CASE prioridad WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END,id) AS rank FROM open o
+    ORDER BY rank LIMIT 12) q),'[]'::jsonb),
+  'review',jsonb_build_object('scope',CASE WHEN $2::boolean THEN 'team' ELSE 'personal' END,
+    'total',(SELECT count(*)::int FROM reviews),
+    'items',COALESCE((SELECT jsonb_agg(${taskJson('q')} ORDER BY q.rank) FROM (
+      SELECT r.*,row_number() OVER(ORDER BY fecha_vencimiento ASC NULLS LAST,id) AS rank
+      FROM reviews r ORDER BY rank LIMIT 8) q),'[]'::jsonb)),
+  'clients',COALESCE((SELECT jsonb_agg(to_jsonb(q) ORDER BY q.open DESC,q.nombre,q.id)
+    FROM (SELECT * FROM client_work ORDER BY open DESC,nombre,id LIMIT 8) q),'[]'::jsonb),
+  'visits',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',q.id,'titulo',q.titulo,
+    'fecha',to_char(q.fecha,'YYYY-MM-DD'),'cliente',jsonb_build_object('id',q.cliente_id,'nombre',q.cliente_nombre),
+    'href','/producciones?visita='||q.id||'&mes='||to_char(q.fecha,'YYYY-MM')) ORDER BY q.fecha,q.id)
+    FROM (SELECT * FROM my_visits ORDER BY fecha,id LIMIT 8) q),'[]'::jsonb),
+  'activity',COALESCE((SELECT jsonb_agg(jsonb_build_object('task_id',q.id,'titulo',q.titulo,
+    'estado',q.estado,'updated_at',q.updated_at,'href','/workspace/tareas?task='||q.id) ORDER BY q.updated_at DESC,q.id DESC)
+    FROM (SELECT * FROM mine ORDER BY updated_at DESC,id DESC LIMIT 8) q),'[]'::jsonb),
+  'list_totals',jsonb_build_object('clients',(SELECT count(*)::int FROM client_work),
+    'visits',(SELECT count(*)::int FROM my_visits),'activity',(SELECT count(*)::int FROM mine)),
+  'capabilities',jsonb_build_object('projects',false)
+) AS home FROM day`;
+
+export async function readPersonalHome(pool, auth) {
+  if (!Number.isSafeInteger(auth?.id) || auth.id < 1) throw fail('Necesitás una identidad verificada.', 403);
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const user = (await db.query('SELECT id,nombre,rol,activo,session_version FROM usuarios WHERE id=$1', [auth.id])).rows[0];
+    if (!user || !user.activo || user.session_version !== auth.session_version) throw fail('La sesión ya no está activa.', 401);
+    if (!SYSTEM_USER_ROLES.includes(user.rol)) throw fail('Este perfil no tiene acceso al inicio operativo.', 403);
+    const result = await db.query(PERSONAL_HOME_SQL, [user.id, user.rol === 'admin']);
+    if (!result.rows[0]?.home) throw new Error('No se pudo leer el inicio operativo.');
+    const home = { ...result.rows[0].home, user: { id: user.id, nombre: user.nombre } };
+    await db.query('COMMIT');
+    return home;
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally { db.release(); }
+}
+
+export function createPersonalHomeRouter({ express, pool }) {
+  const router = express.Router();
+  router.get('/', async (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    if (Object.keys(req.query ?? {}).length) return res.status(400).json({ error: 'El inicio usa tu sesión, no filtros de identidad.' });
+    try { return res.json(await readPersonalHome(pool, req.auth)); }
+    catch (error) {
+      if ([401, 403].includes(error.status)) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
+  });
+  return router;
+}

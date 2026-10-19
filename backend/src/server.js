@@ -41,6 +41,7 @@ import { readMigrationIdentity, readMigrationStatus } from "./migrations.js";
 import { resolveStartupPolicy, assertBackgroundJobsAllowed, assertStartupMigrationStatus } from "./startup-policy.js";
 import { assertCoreSchemaReady } from "./startup-schema.js";
 import { assertTaskBusinessInput } from "./task-integration-fields.js";
+import { createPersonalHomeRouter } from "./personal-home.js";
 import { resolveUserRole } from "./user-roles.js";
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
@@ -278,6 +279,7 @@ router.use("/drive", createGoogleDrivePublicRouter({ express, pool }));
 
 router.use(requireAuthentication);
 router.use(requireCurrentIdentity(pool));
+router.use('/inicio', createPersonalHomeRouter({ express, pool }));
 
 router.get("/sesion", (req, res) => res.json({ usuario: req.auth }));
 router.post("/logout", async (req, res, next) => {
