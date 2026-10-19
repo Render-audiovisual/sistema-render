@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getMesActualISO } from "../utils.jsx";
 import {
   calcularCuotaHistoriasPorDias,
@@ -16,6 +16,7 @@ import { EditarCuotaClienteModal, DetalleClienteModal } from "../components/Clie
 import { Modal } from "../components/Modal.jsx";
 import { PageState } from "../components/PageState.jsx";
 import { readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+import { createClientOverviewLoader } from "./clientOverview.js";
 
 const CLIENT_COLORS = ["#547aa5", "#6f72a8", "#4f8a7a", "#a36d5d", "#8a6fa5", "#647c99"];
 const RUBROS = ["Gastronomía", "Tecnología", "Turismo", "Educación", "Automotor", "Comercio", "Salud", "Servicios"];
@@ -75,7 +76,8 @@ export function ClientesAdminPage() {
   const [clientes, setClientes] = useState([]);
   const [historias, setHistorias] = useState([]);
   const [publicaciones, setPublicaciones] = useState([]);
-  const [tareasFinalizadas, setTareasFinalizadas] = useState([]);
+  const overviewLoader = useRef(null);
+  if (!overviewLoader.current) overviewLoader.current = createClientOverviewLoader((...args) => fetch(...args));
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(true);
@@ -95,33 +97,20 @@ export function ClientesAdminPage() {
   const cargarClientes = ({ silencioso = false } = {}) => {
     if (!silencioso) setCargando(true);
     setError(null);
-    Promise.all([
-      fetch(`/api/clientes?periodo=${mesSeleccionado}`).then(validarRespuestaApi),
-      fetch("/api/historias").then(validarRespuestaApi),
-      fetch("/api/publicaciones").then(validarRespuestaApi),
-      fetch("/api/tareas?workspace=render_os&estado=publicada").then(validarRespuestaApi),
-    ])
-      .then(([clientesApi, historiasApi, publicacionesApi, tareasApi]) => {
-        setClientes(clientesApi);
-        setHistorias(historiasApi);
-        setPublicaciones(publicacionesApi);
-        setTareasFinalizadas(tareasApi);
+    overviewLoader.current.load(mesSeleccionado)
+      .then((data) => {
+        if (!data) return;
+        setClientes(data.clientes);
+        setHistorias(data.historias);
+        setPublicaciones(data.publicaciones);
+        setCargando(false);
       })
       .catch((err) => {
         console.error("No se pudo cargar el tablero de clientes", err);
         setError("No se pudo cargar el tablero de clientes.");
-      })
-      .finally(() => {
-        if (!silencioso) setCargando(false);
+        setCargando(false);
       });
   };
-
-  async function validarRespuestaApi(response) {
-    const data = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(data?.error || `No se pudo cargar la información (${response.status}).`);
-    if (!Array.isArray(data)) throw new Error("El servidor devolvió información inválida.");
-    return data;
-  }
 
   useEffect(() => {
     if (contextRestored || clientes.length === 0) return;
@@ -154,6 +143,7 @@ export function ClientesAdminPage() {
     return () => {
       clearInterval(intervalo);
       document.removeEventListener("visibilitychange", alVolverVisible);
+      overviewLoader.current.cancel();
     };
   }, [mesSeleccionado]);
 
@@ -251,9 +241,8 @@ export function ClientesAdminPage() {
     () => getResumenClientes(clientes, historias, publicaciones, {
       mes: mesSeleccionado,
       avanceDelMes: getAvanceMes(mesSeleccionado),
-      tareas: tareasFinalizadas,
     }),
-    [clientes, historias, publicaciones, tareasFinalizadas, mesSeleccionado],
+    [clientes, historias, publicaciones, mesSeleccionado],
   );
   const filas = useMemo(
     () => filasTodas.filter((cliente) =>
@@ -452,9 +441,10 @@ export function ClientesAdminPage() {
             )}
 
             <div className="caption">
-              Historias sale de la checklist: las marcadas OK cuentan como
-              publicadas. Si un cliente no tiene historias planificadas, queda
-              gris y no se lo castiga como incumplido.
+              El avance de publicación usa el estado editorial registrado de historias,
+              reels y carruseles del mes planificado. Finalizar una tarea no publica
+              su contenido. Los registros históricos no verifican por sí solos una
+              publicación real. Los formatos sin planificación se muestran por separado.
             </div>
           </div>
         </div>
