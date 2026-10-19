@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { normalizeFeedback } from "./feedback-fields.js";
+import { normalizeFeedback, assertFeedbackBusinessInput } from "./feedback-fields.js";
 import { findSimilarFeedback } from "./feedback-workflow.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -386,6 +386,8 @@ router.get("/notas/similares", async (req, res, next) => {
 
 router.post("/notas", async (req, res, next) => {
   try {
+    try { assertFeedbackBusinessInput(req.body || {}); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
     const actor = getTaskActor(req.auth);
     const titulo = String(req.body?.titulo || "Nueva nota").trim() || "Nueva nota";
     const contenido = String(req.body?.contenido || "");
@@ -411,6 +413,8 @@ router.post("/notas", async (req, res, next) => {
 
 router.patch("/notas/:id", async (req, res, next) => {
   try {
+    try { assertFeedbackBusinessInput(req.body || {}); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
     const actor = getTaskActor(req.auth);
     const sets = [];
     const params = [];
@@ -423,7 +427,8 @@ router.patch("/notas/:id", async (req, res, next) => {
         params.push(JSON.stringify(feedback));
       }
       catch (error) { return res.status(400).json({ error: error.message }); }
-      sets.push(`feedback=$${params.length}`);
+      // Merge only normalized business fields; caller cannot erase trusted or historical provenance.
+      sets.push(`feedback=COALESCE(feedback,'{}'::jsonb)||$${params.length}::jsonb`);
     }
     if (Object.prototype.hasOwnProperty.call(req.body || {}, "titulo")) {
       params.push(String(req.body.titulo || "").trim() || "Nueva nota");
@@ -942,6 +947,9 @@ router.delete("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
 
     res.json({ ok: true });
   } catch (error) {
+    if (error.code === "23503" && error.constraint === "feedback_operation_receipts_actor_user_id_fkey") {
+      return res.status(409).json({ error: "Este usuario tiene un historial de confirmaciones. Desactivá su cuenta en lugar de eliminarla." });
+    }
     if ([404, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
   }

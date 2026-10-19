@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { normalizeFeedback } from '../src/feedback-fields.js';
+import { normalizeFeedback, assertFeedbackBusinessInput } from '../src/feedback-fields.js';
 
 // Execute the actual notes handlers with a fake pool: no server start, migrations,
 // timers, messages or database access. This also covers the legacy notes API.
@@ -14,7 +14,7 @@ function harness(results = []) {
   const routes = new Map(); const calls = [];
   const router = Object.fromEntries(['get','post','patch','delete'].map((method) => [method, (path, fn) => routes.set(`${method} ${path}`, fn)]));
   const pool = { query: async (sql, params) => { calls.push({ sql, params }); return results.shift() || { rows: [] }; } };
-  new Function('router','pool','normalizeFeedback','getTaskActor', source.slice(start,end))(router,pool,normalizeFeedback,() => 'empleado');
+  new Function('router','pool','normalizeFeedback','getTaskActor','assertFeedbackBusinessInput', source.slice(start,end))(router,pool,normalizeFeedback,() => 'empleado',assertFeedbackBusinessInput);
   return { calls, async run(route, body = {}, query = {}) {
     const response = { code: 200, status(code) { this.code = code; return this; }, json(data) { this.data = data; return this; } };
     await routes.get(route)({ body, query, params: { id: 8 }, auth: { rol: 'empleado' } }, response, (error) => { throw error; });
@@ -47,6 +47,25 @@ test('invalid metadata rejected before query', async () => {
   const h = harness();
   assert.equal((await h.run('post /notas', { feedback: [] })).code, 400);
   assert.equal(h.calls.length, 0);
+});
+
+test('all browser create and edit paths reject provenance before SQL', async () => {
+  for (const route of ['post /notas', 'patch /notas/:id']) {
+    for (const key of ['origen','confirmado_por','confirmado_por_id','confirmado_at','provenance_version','wilson_idempotency_key']) {
+      for (const payload of [{ [key]: 'forged' }, { feedback: { [key]: null } }]) {
+        const h = harness();
+        assert.equal((await h.run(route, payload)).code, 400);
+        assert.equal(h.calls.length, 0);
+      }
+    }
+  }
+});
+
+test('browser metadata updates merge business values without replacing provenance', async () => {
+  const h = harness([{ rows: [{ id: 8 }] }]);
+  await h.run('patch /notas/:id', { feedback: { cliente: 'QA client', estado: 'resuelto' } });
+  assert.match(h.calls[0].sql, /feedback=COALESCE\(feedback,'\{\}'::jsonb\)\|\|\$1::jsonb/);
+  assert.deepEqual(Object.keys(JSON.parse(h.calls[0].params[0])).sort(), ['cliente','estado','flujo','referencia','responsable','responsables','vigencia']);
 });
 test('new feedback count uses the last seen timestamp and ignores deleted notes', async () => {
   const h = harness([{ rows: [{ cantidad: 2 }] }]);

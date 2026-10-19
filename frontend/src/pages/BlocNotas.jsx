@@ -98,7 +98,7 @@ export function BlocNotasPage() {
         try {
           const updated = await apiRequest(`/api/notas/${noteId}`, {
             method: "PATCH", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...nextDraft, expected_updated_at: base.updated_at }),
+            body: JSON.stringify({ titulo: nextDraft.titulo, contenido: nextDraft.contenido, categoria: nextDraft.categoria, expected_updated_at: base.updated_at }),
           });
           latestVersion.current.set(updated.id, updated);
           setNotes((current) => [updated, ...current.filter((note) => note.id !== updated.id)]);

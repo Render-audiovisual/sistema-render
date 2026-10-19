@@ -14,6 +14,15 @@ const emptyDraft = (section) => ({
   feedback: { cliente: "", responsable: "", responsables: [], referencia: "", estado: "pendiente", vigencia: "puntual", flujo: "feedback" },
 });
 
+export function feedbackBusinessInput(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    ["cliente", "responsable", "responsables", "referencia", "estado", "vigencia", "flujo"]
+      .filter((key) => Object.prototype.hasOwnProperty.call(value, key))
+      .map((key) => [key, value[key]]),
+  );
+}
+
 function feedbackResponsibles(note) {
   const values = Array.isArray(note?.feedback?.responsables) ? note.feedback.responsables : [note?.feedback?.responsable];
   return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
@@ -204,7 +213,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
         titulo: draft.titulo.trim(),
         contenido: draft.contenido,
         categoria: draft.categoria,
-        feedback: { ...draft.feedback, responsables, responsable: responsables[0], cliente: section === "team" ? "" : clientName, flujo: "feedback" },
+        feedback: { ...feedbackBusinessInput(draft.feedback), responsables, responsable: responsables[0], cliente: section === "team" ? "" : clientName, flujo: "feedback" },
         ...(draft.id ? { expected_updated_at: draft.updated_at } : {}),
       };
       const saved = await request(draft.id ? `/api/notas/${draft.id}` : "/api/notas", {
@@ -250,7 +259,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     try {
       const saved = await request(`/api/notas/${note.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ feedback: { ...note.feedback, estado: nextStatus }, expected_updated_at: note.updated_at }),
+        body: JSON.stringify({ feedback: { ...feedbackBusinessInput(note.feedback), estado: nextStatus }, expected_updated_at: note.updated_at }),
       });
       setNotes((rows) => rows.map((item) => item.id === saved.id ? saved : item));
       setSelected(saved);

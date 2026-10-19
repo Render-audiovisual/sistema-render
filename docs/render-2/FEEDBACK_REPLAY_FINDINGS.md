@@ -1,6 +1,12 @@
 # Feedback replay: confirmed P1 and next contract
 
-Status: read-only source audit plus pure synthetic checks; no database, network, server, real payload or credentials used. Application changes deferred to the main integration agent. Not a global-readiness or production approval.
+## Remediation evidence — local development only
+
+The vulnerable snapshot and reproduction below are retained as audit history, not current expected behavior. Commit following `f7a4447` implements the bounded replacement documented in `FEEDBACK_RECEIPTS_CONTRACT.md`: browser provenance rejection/preservation, actor/operation/key/hash-scoped durable receipts, exact tokens for both feedback channels, current identity/transport checks, transactional Wilson enqueue and purge-safe minimal results. Historical JSON is not promoted. The old reproduction now rejects reserved fields instead of demonstrating a successful forged replay.
+
+Coordinator final verification: **796 principal backend tests passed / 17 opt-in skipped; 116 isolated HTTP/PostgreSQL tests passed / zero skipped**, including the independent 16-test feedback suite and real note/token lock waits past expiry. Frontend page tests **152 passed**, build passed, scoped employee desktop/mobile edit/status/reload smoke passed. This resolves this particular P1 in tested development scope, not all security gates or deployment readiness. No production database, real account, external delivery or deployment was used. Remaining browser-notification crash gap, receipt retention review, broader replay/capability/session work and real identity rollout remain explicit in STATUS.
+
+Original audit status: read-only source plus pure synthetic checks; no database, network, server, real payload or credentials used by the audit. Subsequent remediation and isolated coordinator verification are recorded above. Not a global-readiness or production approval.
 
 ## Confirmed evidence
 

@@ -3,7 +3,11 @@ import express from "express";
 import fs from "node:fs";
 import { buildMiaGroupDigests, buildMiaWeeklyCarruselDigest, miaGroupDigestWindow } from "./mia-group-digest.js";
 import { destinatariosNuevosDeAsignacion } from "./private-task-notifications.js";
-import { normalizeFeedback } from "./feedback-fields.js";
+import { normalizeFeedback, withServerFeedbackProvenance } from "./feedback-fields.js";
+import { encolarNotificacionPrivadaFeedback } from "./private-feedback-notifications.js";
+import { SYSTEM_USER_ROLES } from "./user-roles.js";
+import { canonicalFeedbackIntent, feedbackIdempotencyKey, feedbackIntentHash, feedbackConfirmationHash,
+  lockFeedbackActor, findFeedbackReceipt, feedbackReplayResponse, insertFeedbackReceipt, feedbackNoteDto } from "./feedback-receipts.js";
 import { findSimilarFeedback } from "./feedback-workflow.js";
 import { getProductionProgress, isProductionVisitTask } from "./production-visits.js";
 import { rankTaskPriorities } from "./task-priority.js";
@@ -857,6 +861,33 @@ async function consumeWilsonConfirmation(db, req, res, operation, taskId = null)
   return false;
 }
 
+function requireFeedbackHuman(wilson, operation = null) {
+  if (!validUserId(wilson?.userId) || wilson.systemActor || !SYSTEM_USER_ROLES.includes(wilson.actorRole)) {
+    throw Object.assign(new Error('Necesitás una identidad humana activa con rol autorizado.'), {status:403});
+  }
+  if(operation && !canWilsonGroupParticipantPropose(wilson,operation))throw Object.assign(new Error('Este participante no puede modificar feedback desde este grupo.'),{status:403});
+}
+
+export async function consumeFeedbackConfirmation(db, req, intent, key) {
+  const token=req.body?.confirmacion_token;
+  if(typeof token!=='string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(token)) throw Object.assign(new Error('Falta una confirmación exacta de feedback.'),{status:400});
+  const params=[token,req.wilson.channel,req.wilson.actorId,req.wilson.groupId||'',intent.operation,intent.target_id,
+    feedbackConfirmationHash({intent,userId:req.wilson.userId,key})];
+  // Acquire the exact token first: UPDATE predicates can run before waiting for
+  // an unchanged row lock. Expiry must be evaluated only AFTER that wait.
+  const locked=await db.query(`SELECT token FROM integracion_confirmaciones
+    WHERE token=$1 AND integracion='wilson' AND canal=$2 AND actor_id=$3 AND grupo_id=$4
+      AND operacion=$5 AND tarea_id IS NOT DISTINCT FROM $6::integer AND payload_hash=$7
+    FOR UPDATE`,params);
+  if(!locked.rows.length)throw Object.assign(new Error('La confirmación no corresponde a esta intención. Renovála.'),{status:409});
+  const result=await db.query(`UPDATE integracion_confirmaciones SET used_at=clock_timestamp()
+    WHERE token=$1 AND integracion='wilson' AND canal=$2 AND actor_id=$3 AND grupo_id=$4
+      AND operacion=$5 AND tarea_id IS NOT DISTINCT FROM $6::integer AND payload_hash=$7
+      AND used_at IS NULL AND expires_at>clock_timestamp() RETURNING token`,
+  params);
+  if(!result.rows.length)throw Object.assign(new Error('La confirmación no corresponde a esta intención, ya fue usada o venció. Renovála.'),{status:409});
+}
+
 export function isWilsonLeader(req) {
   return validUserId(req.wilson?.userId) && req.wilson.actorRole === "admin" && !req.wilson.systemActor;
 }
@@ -954,38 +985,49 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
 
   router.post("/feedback/validar", async (req, res, next) => {
     try {
-      const result = await validateWilsonFeedback(pool, req.body || {});
+      requireFeedbackHuman(req.wilson);
+      const intent=canonicalFeedbackIntent(req.body||{}, {operation:'crear_feedback'});
+      const result = await validateWilsonFeedback(pool, intent.business);
       return res.status(result.errors.length ? 422 : 200).json(result);
-    } catch (error) { return next(error); }
+    } catch (error) { if(error.status)return res.status(error.status).json({error:error.message});return next(error); }
   });
 
   router.get("/feedback/:id", async (req, res, next) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Feedback inválido." });
     try {
+      requireFeedbackHuman(req.wilson);
       const result = await pool.query(
         `SELECT id,titulo,contenido,categoria,feedback,creado_por,modificado_por,created_at,updated_at
          FROM notas_compartidas WHERE id=$1 AND eliminado_at IS NULL`, [id],
       );
       if (!result.rows[0]) return res.status(404).json({ error: "Feedback no encontrado." });
-      return res.json({ feedback: result.rows[0] });
-    } catch (error) { return next(error); }
+      return res.json({ feedback: feedbackNoteDto(result.rows[0]) });
+    } catch (error) { if(error.status)return res.status(error.status).json({error:error.message});return next(error); }
   });
 
   router.patch("/feedback/:id", async (req, res, next) => {
     const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Feedback inválido." });
-    const client = await pool.connect();
+    if (!validUserId(id)) return res.status(400).json({ error: "Feedback inválido." });
+    let client;
     try {
+      requireFeedbackHuman(req.wilson,'editar_feedback');
+      const intent=canonicalFeedbackIntent(req.body||{}, {operation:'editar_feedback',targetId:id});
+      const key=feedbackIdempotencyKey(req.headers,req.body);
+      const payloadHash=feedbackIntentHash(intent);
+      client=await pool.connect();
       await client.query("BEGIN");
+      const actor=await lockFeedbackActor(client,req.wilson,{telegramUserId:telegramWilsonUserId(env,req.wilson.actorId)});
+      Object.assign(req.wilson,{actorName:actor.nombre,actorRole:actor.rol,confirmedBy:actor.nombre});
+      const prior=await findFeedbackReceipt(client,{userId:actor.id,operation:intent.operation,key,payloadHash});
+      if(prior) {const replay=await feedbackReplayResponse(client,prior);await client.query('COMMIT');return res.json(replay);}
       const current = await client.query(
-        `SELECT id,titulo,contenido,categoria,feedback,updated_at FROM notas_compartidas
-         WHERE id=$1 AND eliminado_at IS NULL FOR UPDATE`, [id],
+        `SELECT id,titulo,contenido,categoria,feedback,updated_at,
+           date_trunc('milliseconds',updated_at)=date_trunc('milliseconds',$2::timestamptz) AS version_matches FROM notas_compartidas
+         WHERE id=$1 AND eliminado_at IS NULL FOR UPDATE`, [id,intent.expected_updated_at],
       );
       if (!current.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Feedback no encontrado." }); }
-      if (!await consumeWilsonConfirmation(client, req, res, "editar_feedback", id)) {
-        await client.query("ROLLBACK"); return undefined;
-      }
+      if(current.rows[0].version_matches!==true)throw Object.assign(new Error('El feedback cambió. Recargá y confirmá la nueva versión.'),{status:409});
       const merged = {
         seccion: current.rows[0].feedback?.cliente ? "cliente" : "equipo",
         cliente: current.rows[0].feedback?.cliente,
@@ -995,17 +1037,21 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         vigencia: current.rows[0].feedback?.vigencia || "puntual",
         estado: current.rows[0].feedback?.estado || "pendiente",
         referencia: current.rows[0].feedback?.referencia || "",
-        ...(req.body || {}),
+        ...intent.business,
       };
+      if(Object.hasOwn(intent.business,'cliente_id'))delete merged.cliente;
+      if((Object.hasOwn(intent.business,'cliente_id')||Object.hasOwn(intent.business,'cliente')) && !Object.hasOwn(intent.business,'seccion'))merged.seccion='cliente';
+      if(merged.seccion==='equipo') {merged.cliente='';delete merged.cliente_id;}
       const validation = await validateWilsonFeedback(client, merged);
       const duplicates = validation.duplicates.filter((item) => Number(item.id) !== id);
       if (validation.errors.length) { await client.query("ROLLBACK"); return res.status(422).json(validation); }
-      if (duplicates.length && req.body.permitir_duplicado !== true) {
+      if (duplicates.length && !intent.permitir_duplicado) {
         await client.query("ROLLBACK");
         return res.status(409).json({ error: "Encontré otro feedback parecido. Revisalo antes de actualizar.", duplicates });
       }
       const entry = validation.feedback;
-      entry.feedback = normalizeFeedback({ ...entry.feedback, origen: "mia_whatsapp", confirmado_por: req.wilson.confirmedBy });
+      await consumeFeedbackConfirmation(client,req,intent,key);
+      entry.feedback = withServerFeedbackProvenance(entry.feedback,{userId:actor.id,name:actor.nombre,channel:req.wilson.channel});
       const updated = await client.query(
         `UPDATE notas_compartidas SET titulo=$1,contenido=$2,categoria=$3,feedback=$4::jsonb,
            modificado_por=$5,updated_at=NOW() WHERE id=$6
@@ -1013,55 +1059,55 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         [entry.titulo, entry.contenido, entry.categoria, JSON.stringify(entry.feedback), req.wilson.actorName, id],
       );
       await writeWilsonAudit(client, req, { action: "editar_feedback", details: { feedback_id: id } });
+      const receipt=await insertFeedbackReceipt(client,{userId:actor.id,operation:intent.operation,key,payloadHash,note:updated.rows[0]});
       await client.query("COMMIT");
-      return res.json({ updated: true, feedback: updated.rows[0], text: `Listo. Actualicé “${updated.rows[0].titulo}”.` });
+      return res.json({ updated: true,idempotent:false,feedback_id:id,receipt,feedback:feedbackNoteDto(updated.rows[0]),text: `Listo. Actualicé “${updated.rows[0].titulo}”.` });
     } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
+      if(client)await client.query("ROLLBACK").catch(() => {});
+      if(error.status)return res.status(error.status).json({error:error.message});
       return next(error);
-    } finally { client.release(); }
+    } finally { client?.release(); }
   });
 
   router.post("/feedback", async (req, res, next) => {
-    const key = String(req.headers?.["idempotency-key"] || req.body?.idempotency_key || "").trim();
-    if (!key) return res.status(400).json({ error: "Falta idempotency_key." });
-    const client = await pool.connect();
+    let client;
     try {
+      requireFeedbackHuman(req.wilson,'crear_feedback');
+      const intent=canonicalFeedbackIntent(req.body||{}, {operation:'crear_feedback'});
+      const key=feedbackIdempotencyKey(req.headers,req.body);
+      const payloadHash=feedbackIntentHash(intent);
+      client=await pool.connect();
       await client.query("BEGIN");
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`wilson-feedback:${key}`]);
-      const prior = await client.query(
-        `SELECT id,titulo,contenido,categoria,feedback,creado_por,modificado_por,created_at,updated_at
-         FROM notas_compartidas WHERE feedback->>'wilson_idempotency_key'=$1 LIMIT 1`, [key],
-      );
-      if (prior.rows[0]) { await client.query("COMMIT"); return res.json({ created: false, idempotent: true, feedback: prior.rows[0] }); }
-      if (!await consumeWilsonConfirmation(client, req, res, "crear_feedback")) {
-        await client.query("ROLLBACK"); return undefined;
-      }
-      const result = await validateWilsonFeedback(client, req.body || {});
+      const actor=await lockFeedbackActor(client,req.wilson,{telegramUserId:telegramWilsonUserId(env,req.wilson.actorId)});
+      Object.assign(req.wilson,{actorName:actor.nombre,actorRole:actor.rol,confirmedBy:actor.nombre});
+      const prior=await findFeedbackReceipt(client,{userId:actor.id,operation:intent.operation,key,payloadHash});
+      if(prior) {const replay=await feedbackReplayResponse(client,prior);await client.query('COMMIT');return res.json(replay);}
+      const result = await validateWilsonFeedback(client, intent.business);
       if (result.errors.length) { await client.query("ROLLBACK"); return res.status(422).json(result); }
-      if (result.duplicates.length && req.body.permitir_duplicado !== true) {
+      if (result.duplicates.length && !intent.permitir_duplicado) {
         await client.query("ROLLBACK");
         return res.status(409).json({ error: "Encontré un feedback parecido. Podés modificar el anterior o confirmar uno nuevo.", duplicates: result.duplicates });
       }
       const entry = result.feedback;
-      entry.feedback = normalizeFeedback({
-        ...entry.feedback, origen: "mia_whatsapp", wilson_idempotency_key: key, confirmado_por: req.wilson.confirmedBy,
-      });
+      await consumeFeedbackConfirmation(client,req,intent,key);
+      entry.feedback = withServerFeedbackProvenance(entry.feedback,{userId:actor.id,name:actor.nombre,channel:req.wilson.channel});
       const inserted = await client.query(
         `INSERT INTO notas_compartidas(titulo,contenido,categoria,creado_por,modificado_por,feedback)
          VALUES($1,$2,$3,$4,$4,$5::jsonb)
          RETURNING id,titulo,contenido,categoria,feedback,creado_por,modificado_por,created_at,updated_at`,
         [entry.titulo, entry.contenido, entry.categoria, req.wilson.actorName, JSON.stringify(entry.feedback)],
       );
-      await writeWilsonAudit(client, req, { action: "crear_feedback", details: { feedback_id: inserted.rows[0].id, idempotencyKey: key } });
+      await writeWilsonAudit(client, req, { action: "crear_feedback", details: { feedback_id: inserted.rows[0].id } });
+      const saved=inserted.rows[0];
+      await encolarNotificacionPrivadaFeedback({pool:client,nota:saved,actor:actor.nombre,env});
+      const receipt=await insertFeedbackReceipt(client,{userId:actor.id,operation:intent.operation,key,payloadHash,note:saved});
       await client.query("COMMIT");
-      const saved = inserted.rows[0];
-      res.status(201).json({ created: true, idempotent: false, feedback: saved, text: `Listo. Guardé “${saved.titulo}” en Feedback.` });
-      notifyFeedback?.({ pool, nota: saved, actor: req.wilson.actorName });
-      return undefined;
+      return res.status(201).json({ created: true,idempotent: false,feedback_id:saved.id,receipt,feedback:feedbackNoteDto(saved),text: `Listo. Guardé “${saved.titulo}” en Feedback.` });
     } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
+      if(client)await client.query("ROLLBACK").catch(() => {});
+      if(error.status)return res.status(error.status).json({error:error.message});
       return next(error);
-    } finally { client.release(); }
+    } finally { client?.release(); }
   });
 
   router.post("/tareas/validar", async (req, res, next) => {
@@ -1289,9 +1335,37 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
 
   router.post("/confirmaciones", async (req, res, next) => {
     try {
-      if (req.wilson.channel !== "whatsapp") return res.status(400).json({ error: "Esta confirmación es exclusiva de WhatsApp." });
       const operation = String(req.body?.operacion || "").trim().toLowerCase();
       if (!CONFIRMABLE_OPERATIONS.has(operation)) return res.status(422).json({ error: "Operación no confirmable." });
+      if(['crear_feedback','editar_feedback'].includes(operation)) {
+        requireFeedbackHuman(req.wilson,operation);
+        const payload=req.body?.payload;
+        const targetId=operation==='crear_feedback'?null:Number(req.body?.tarea_id);
+        const intent=canonicalFeedbackIntent(payload,{operation,targetId});
+        const key=feedbackIdempotencyKey(req.headers,{idempotency_key:payload.idempotency_key??req.body.idempotency_key});
+        if(payload.idempotency_key!==undefined && req.body.idempotency_key!==undefined)feedbackIdempotencyKey({'idempotency-key':payload.idempotency_key},{idempotency_key:req.body.idempotency_key});
+        const db=await pool.connect();
+        try {
+          await db.query('BEGIN');
+          const actor=await lockFeedbackActor(db,req.wilson,{telegramUserId:telegramWilsonUserId(env,req.wilson.actorId)});
+          if(targetId!==null) {
+            const note=(await db.query(`SELECT id,date_trunc('milliseconds',updated_at)=date_trunc('milliseconds',$2::timestamptz) AS version_matches
+              FROM notas_compartidas WHERE id=$1 AND eliminado_at IS NULL FOR SHARE`,[targetId,intent.expected_updated_at])).rows[0];
+            if(!note)throw Object.assign(new Error('Feedback no encontrado.'),{status:404});
+            if(note.version_matches!==true)throw Object.assign(new Error('El feedback cambió. Recargá antes de confirmar.'),{status:409});
+          }
+          const token=crypto.randomUUID(),expiresAt=new Date(Date.now()+CONFIRMATION_MAX_AGE_MS);
+          await db.query(`INSERT INTO integracion_confirmaciones
+            (token,integracion,canal,actor_id,grupo_id,operacion,tarea_id,payload_hash,expires_at)
+            VALUES($1,'wilson',$2,$3,$4,$5,$6,$7,$8)`,
+          [token,req.wilson.channel,req.wilson.actorId,req.wilson.groupId||'',operation,targetId,
+            feedbackConfirmationHash({intent,userId:actor.id,key}),expiresAt]);
+          await db.query('COMMIT');
+          return res.status(201).json({confirmacion_token:token,operacion:operation,tarea_id:targetId,expires_at:expiresAt.toISOString()});
+        } catch(error) {await db.query('ROLLBACK').catch(()=>{});throw error;}
+        finally {db.release();}
+      }
+      if (req.wilson.channel !== "whatsapp") return res.status(400).json({ error: "Esta confirmación es exclusiva de WhatsApp." });
       if (!canWilsonGroupParticipantPropose(req.wilson, operation)) {
         return res.status(403).json({ error: "Este participante puede crear tareas, pero no modificar operaciones existentes." });
       }
@@ -1321,7 +1395,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
           buildWilsonConfirmationHash({ operation, taskId, payload }), expiresAt],
       );
       return res.status(201).json({ confirmacion_token: token, operacion: operation, tarea_id: taskId, expires_at: expiresAt.toISOString() });
-    } catch (error) { return next(error); }
+    } catch (error) { if(error.status)return res.status(error.status).json({error:error.message});return next(error); }
   });
 
   // Read-only, keyset-paginated intake. Comments need not update tareas.updated_at.

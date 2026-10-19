@@ -87,6 +87,32 @@ def operation_payload(extra, confirmation_token):
     return {**(extra or {}), "confirmacion_token": confirmation_token}
 
 
+def feedback_payload(payload, key=None, *, editing=False, expected_updated_at=None):
+    if not isinstance(payload, dict):
+        raise RuntimeError("El payload de feedback debe ser un objeto JSON.")
+    result = dict(payload)
+    body_key = result.get("idempotency_key")
+    for value in ([body_key] if "idempotency_key" in result else []) + ([key] if key is not None else []):
+        if not isinstance(value, str) or not value.strip() or len(value.strip()) > 200:
+            raise RuntimeError("idempotency_key debe ser texto no vacío de hasta 200 caracteres.")
+    if key is not None and body_key is not None and key.strip() != body_key.strip():
+        raise RuntimeError("--idempotency-key no coincide con idempotency_key del payload.")
+    effective_key = key if key is not None else body_key
+    if effective_key is None:
+        raise RuntimeError("Feedback requiere --idempotency-key o idempotency_key en el payload.")
+    result["idempotency_key"] = effective_key.strip()
+    if editing:
+        version = result.get("expected_updated_at")
+        if expected_updated_at is not None:
+            if version is not None and version != expected_updated_at:
+                raise RuntimeError("--expected-updated-at no coincide con expected_updated_at del payload.")
+            version = expected_updated_at
+        if not isinstance(version, str) or not version.strip():
+            raise RuntimeError("Editar feedback requiere expected_updated_at observado en el JSON o --expected-updated-at; no se genera automáticamente.")
+        result["expected_updated_at"] = version
+    return result
+
+
 def add_identity_arguments(parser):
     parser.add_argument("--actor-id")
     parser.add_argument("--actor-name")
@@ -164,6 +190,7 @@ def main():
     propose.add_argument("--operation", required=True, choices=("crear", "editar", "archivar", "eliminar", "confirmar_grabacion", "crear_feedback", "editar_feedback"))
     propose.add_argument("--task-id", type=int)
     propose.add_argument("--payload", default="{}")
+    propose.add_argument("--idempotency-key")
     create = commands.add_parser("create")
     create.add_argument("--payload", required=True)
     create.add_argument("--confirmation-token", required=True)
@@ -176,6 +203,8 @@ def main():
     update_feedback.add_argument("--feedback-id", required=True, type=int)
     update_feedback.add_argument("--payload", required=True)
     update_feedback.add_argument("--confirmation-token", required=True)
+    update_feedback.add_argument("--idempotency-key", required=True)
+    update_feedback.add_argument("--expected-updated-at")
     update = commands.add_parser("update")
     update.add_argument("--task-id", required=True, type=int)
     update.add_argument("--payload", required=True)
@@ -253,19 +282,24 @@ def main():
     elif args.cmd == "validate-feedback":
         result = request("POST", "/feedback/validar", args, payload=json.loads(args.payload))
     elif args.cmd == "propose":
-        if args.operation != "crear" and not args.task_id:
+        if args.operation not in ("crear", "crear_feedback") and not args.task_id:
             raise RuntimeError("Esta operación necesita --task-id.")
+        payload = json.loads(args.payload)
+        if args.operation in ("crear_feedback", "editar_feedback"):
+            payload = feedback_payload(payload, args.idempotency_key, editing=args.operation == "editar_feedback")
         result = request("POST", "/confirmaciones", args, payload={
             "operacion": args.operation,
             "tarea_id": args.task_id,
-            "payload": json.loads(args.payload),
+            "payload": payload,
         })
     elif args.cmd == "create":
         result = request("POST", "/tareas", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token), idempotency_key=args.idempotency_key)
     elif args.cmd == "create-feedback":
-        result = request("POST", "/feedback", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token), idempotency_key=args.idempotency_key)
+        payload = feedback_payload(json.loads(args.payload), args.idempotency_key)
+        result = request("POST", "/feedback", args, payload=operation_payload(payload, args.confirmation_token), idempotency_key=payload["idempotency_key"])
     elif args.cmd == "update-feedback":
-        result = request("PATCH", f"/feedback/{args.feedback_id}", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token))
+        payload = feedback_payload(json.loads(args.payload), args.idempotency_key, editing=True, expected_updated_at=args.expected_updated_at)
+        result = request("PATCH", f"/feedback/{args.feedback_id}", args, payload=operation_payload(payload, args.confirmation_token), idempotency_key=payload["idempotency_key"])
     elif args.cmd == "update":
         result = request("PATCH", f"/tareas/{args.task_id}", args, payload=operation_payload(json.loads(args.payload), args.confirmation_token), idempotency_key=args.idempotency_key)
     elif args.cmd == "archive":

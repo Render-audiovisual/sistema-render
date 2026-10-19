@@ -1,7 +1,39 @@
+const SERVER_FEEDBACK_FIELDS = new Set([
+  'origen', 'confirmado_por', 'confirmado_por_id', 'confirmado_at',
+  'provenance_version', 'wilson_idempotency_key',
+]);
+
+// Shared editing is intentional, but caller-controlled JSON is never proof of confirmation.
+export function assertFeedbackBusinessInput(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw Object.assign(new Error('Los datos del feedback no son válidos.'), { status: 400 });
+  }
+  for (const key of SERVER_FEEDBACK_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) {
+      throw Object.assign(new Error('El origen y la confirmación del feedback los registra el servidor.'), { status: 400 });
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'feedback')) assertFeedbackBusinessInput(value.feedback);
+}
+
+export function withServerFeedbackProvenance(business, { userId, name, channel, at = new Date().toISOString() }) {
+  if (!Number.isSafeInteger(userId) || userId <= 0 || typeof name !== 'string' || !name.trim()
+    || !['whatsapp', 'telegram'].includes(channel) || !Number.isFinite(Date.parse(at))) {
+    throw new Error('Identidad de confirmación de feedback inválida.');
+  }
+  return {
+    ...normalizeFeedback(business),
+    origen: channel === 'whatsapp' ? 'mia_whatsapp' : 'wilson_telegram',
+    confirmado_por: name.trim(), confirmado_por_id: userId,
+    confirmado_at: new Date(at).toISOString(), provenance_version: 1,
+  };
+}
+
 export function normalizeFeedback(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw Object.assign(new Error('Los datos del feedback no son válidos.'), { status: 400 });
   }
+  assertFeedbackBusinessInput(value);
   const result = {};
   for (const [key, max] of Object.entries({ cliente: 200, responsable: 200, referencia: 2000 })) {
     if (value[key] != null && typeof value[key] !== 'string') {
@@ -28,12 +60,5 @@ export function normalizeFeedback(value) {
   result.estado = value.estado === 'resuelto' ? 'resuelto' : 'pendiente';
   result.vigencia = value.vigencia === 'permanente' ? 'permanente' : 'puntual';
   result.flujo = value.flujo === 'feedback' ? 'feedback' : '';
-  if (value.origen === 'mia_whatsapp') result.origen = 'mia_whatsapp';
-  if (typeof value.wilson_idempotency_key === 'string' && value.wilson_idempotency_key.trim()) {
-    result.wilson_idempotency_key = value.wilson_idempotency_key.trim().slice(0, 200);
-  }
-  if (typeof value.confirmado_por === 'string' && value.confirmado_por.trim()) {
-    result.confirmado_por = value.confirmado_por.trim().slice(0, 200);
-  }
   return result;
 }
