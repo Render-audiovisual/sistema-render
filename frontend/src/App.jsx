@@ -5,6 +5,7 @@ import { LoginPage } from "./pages/Login.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { QuickHomePage } from "./pages/QuickHome.jsx";
 import { navigateWithinApp, readRouteKey } from "./shared/navigation/location.js";
+import { canonicalLegacyRoute, replaceLegacyRoute } from "./shared/navigation/legacy-routes.js";
 import { canUseSharedCalendarRole } from "./components/navigation.js";
 
 const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
@@ -38,6 +39,8 @@ export function App() {
   const [route, setRoute] = React.useState(() => readRouteKey(window));
   const path = route.split(/[?#]/, 1)[0];
   let sesion = getSesion();
+  const legacyDestination = canonicalLegacyRoute(route);
+  const sessionToken = sesion?.token;
 
   React.useEffect(() => {
     const syncPath = () => setRoute(readRouteKey(window));
@@ -45,14 +48,14 @@ export function App() {
     return () => window.removeEventListener("popstate", syncPath);
   }, []);
 
+  // Subscribe first: direct authenticated alias loads emit popstate immediately.
+  React.useEffect(() => {
+    if (sessionToken && legacyDestination) replaceLegacyRoute(window, legacyDestination);
+  }, [sessionToken, legacyDestination]);
+
   const navigate = React.useCallback((href) => {
     navigateWithinApp(window, href);
   }, []);
-
-  if (path === "/agustin" || path === "/franco") {
-    window.location.href = "/inicio";
-    return null;
-  }
 
   if (path === "/login") {
     if (sesion) {
@@ -75,6 +78,8 @@ export function App() {
     return null;
   }
 
+  if (legacyDestination) return <RouteLoading />;
+
   const rutasCompartidas = esAdmin
     ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
     : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes", ...(canUseSharedCalendarRole(sesion.usuario.rol) ? ["/calendario", "/calendario-estructura"] : [])];
@@ -83,11 +88,6 @@ export function App() {
 
   if (!rutaPermitida) {
     window.location.href = rutaPropia || "/";
-    return null;
-  }
-
-  if (path === "/piezas" || path === "/wilson-conversaciones") {
-    window.location.replace("/workspace/tareas");
     return null;
   }
 
@@ -130,10 +130,6 @@ export function App() {
     }
     if (path === "/augusto") {
       return <AugustoDashboard />;
-    }
-    if (path === "/equipo") {
-      window.location.href = "/reportes-historias";
-      return null;
     }
     if (path === "/clientes") {
       return esAdmin && new URLSearchParams(window.location.search).get("gestion") === "1"

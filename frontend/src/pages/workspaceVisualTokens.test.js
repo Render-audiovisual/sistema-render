@@ -77,6 +77,13 @@ test('document surfaces, quiet accents and keyboard focus use shared tokens', ()
 const paint = /^(?:--ros-(?:ink|muted|line|soft|lime(?:-hover|-muted)?|graphite(?:-soft|-deep)?|warm|neutral|accent-strong)|background(?:-color)?|color|border(?:-(?:top|bottom|left|right|block))?(?:-color)?|outline(?:-color)?|box-shadow|text-decoration-color|scrollbar-color|font-family|font-weight)$/;
 function structure(node) {
   if (node.type === 'comment') return null;
+  // New recorded-context component styles have their own integration guards;
+  // retain the exact migration baseline for every preexisting task rule.
+  if (node.type === 'rule' && [
+    '.render-workspace .ros-recorded-context dl', '.render-workspace .ros-recorded-context dl>div',
+    '.render-workspace .ros-recorded-context dt', '.render-workspace .ros-recorded-context dd',
+    '.render-workspace .ros-recorded-context p', '.render-workspace .ros-recorded-context a',
+  ].includes(node.selector)) return null;
   if (node.type === 'decl') return [node.prop, !!node.important, paint.test(node.prop) ? null : node.value];
   return [node.type, node.selector || node.name, node.params, ...(node.nodes || []).map(structure).filter(Boolean)];
 }

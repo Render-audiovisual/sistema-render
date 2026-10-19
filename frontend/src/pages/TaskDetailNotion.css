@@ -389,6 +389,13 @@
   .render-workspace .ros-task-hero-meta span+span::before { display:none; }
 }
 
+.render-workspace .ros-recorded-context dl { display:grid;gap:12px;margin:12px 0 0; }
+.render-workspace .ros-recorded-context dl>div { min-width:0; }
+.render-workspace .ros-recorded-context dt { color:var(--render-muted);font-size:12px; }
+.render-workspace .ros-recorded-context dd { margin:4px 0 0; }
+.render-workspace .ros-recorded-context p { margin:0;overflow-wrap:anywhere;white-space:pre-wrap; }
+.render-workspace .ros-recorded-context a { align-items:center;color:var(--render-accent);display:flex;min-height:44px;overflow-wrap:anywhere;text-underline-offset:3px; }
+
 @media (prefers-reduced-motion: reduce) {
   .render-workspace .ros-task-workspace-body { scroll-behavior:auto; }
 }

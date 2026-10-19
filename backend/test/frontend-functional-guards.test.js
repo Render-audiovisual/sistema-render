@@ -98,7 +98,8 @@ test("Tareas conserva una sola interfaz y navega en la misma pestaña", () => {
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
 
-  assert.match(appSource, /window\.location\.replace\("\/workspace\/tareas"\)/);
+  assert.match(appSource, /replaceLegacyRoute\(window, legacyDestination\)/);
+  assert.match(appSource, /canonicalLegacyRoute\(route\)/);
   assert.doesNotMatch(appSource, /TareasTableroPage/);
   assert.match(sidebarSource, /href=\{enlace\.href\}[\s\S]*?target="_self"/);
 });

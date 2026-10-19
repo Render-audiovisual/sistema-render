@@ -19,6 +19,7 @@ import { useMediaQuery } from "../features/render-os/useMediaQuery.js";
 import { GoalTaskLink } from "../features/render-os/GoalTaskLink.jsx";
 import { EditingDeliveries } from "../components/EditingDeliveries.jsx";
 import { EditingReviews } from "../components/EditingReviews.jsx";
+import { TaskRecordedContext } from "../components/TaskRecordedContext.jsx";
 import { refreshEditingTask } from "../components/editingTaskRefresh.js";
 import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
 import { navigateWithinApp, requestAppNavigation } from "../shared/navigation/location.js";
@@ -569,6 +570,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         {!registry.ready && registryLookup.status !== "error" && <p role="status">Buscando visita de producción… Los controles de producción quedan bloqueados hasta verificar el vínculo.</p>}
         {!registry.ready && registryLookup.status === "error" && <div className="ros-warning-banner" role="alert">No se pudo verificar el vínculo de producción: {registryLookup.error}. No se habilitarán registros históricos sin verificarlo. <button type="button" onClick={() => setRegistryRetry(value => value + 1)}>Reintentar vínculo</button></div>}
         {registry.vinculo && <section className="ros-work-block"><h3>Visita vinculada</h3><p>{registry.vinculo.videos_grabados} de {registry.vinculo.videos_total} videos grabados · {registry.vinculo.fotos_total} registros de fotos</p><a href={`/producciones?visita=${encodeURIComponent(registry.vinculo.id)}`}>Abrir visita en Producciones ↗</a>{registry.vinculo.tipo === "origen" && <p>La fecha y el cliente de esta tarea se editan desde la visita.</p>}{registry.vinculo.tipo === "edicion" && <p>El cliente de esta tarea viene de la visita. La fecha de entrega de edición se puede editar en esta tarea.</p>}{registry.usesIndividual && <p>El registro individual de videos y fotos se administra en Producciones. El flujo agregado histórico queda solo como historial.</p>}</section>}
+        <TaskRecordedContext task={task}/>
         <TaskContentWorkspace task={task} metadata={metadata} editing={canEditTask || editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={null} onCancelEdit={cancelEditing} onSaveEdit={save} saving={saving} canSave={Boolean(canEditTask && draft.titulo?.trim())}/>
         {hasOperationalControls && <section className="ros-task-operations" aria-labelledby={`ros-task-operations-${task.id}`}>
           <div className="ros-block-heading ros-operations-heading"><div><h3 id={`ros-task-operations-${task.id}`}>Flujo de trabajo</h3></div><small>Acciones y avance de la tarea</small></div>
