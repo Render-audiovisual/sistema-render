@@ -24,7 +24,7 @@ function SidebarIcon({ name }) {
   return <svg className="sidebar-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name] || paths.content}</svg>;
 }
 
-export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, getRolLabel }) {
+export function Sidebar({ path, search = "", sesion, onNavigate, onCerrarSesion, ROL_LABELS, getRolLabel }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 980px)").matches);
@@ -35,7 +35,7 @@ export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, 
 
   const groups = getNavigationGroups(sesion?.usuario?.rol);
   const enlacesCuenta = groups.find((group) => group.id === "account").links;
-  const cuentaActiva = enlacesCuenta.some((enlace) => isNavigationActive(enlace.href, path));
+  const cuentaActiva = enlacesCuenta.some((enlace) => isNavigationActive(enlace.href, path, search));
   const navigate = (event, href) => {
     if (!onNavigate || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
@@ -83,8 +83,8 @@ export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, 
         aria-label={enlace.label}
         title={enlace.label}
         onClick={(event) => navigate(event, enlace.href)}
-        className={`sidebar-link ${isNavigationActive(enlace.href, path) ? "active" : ""}`}
-        aria-current={isNavigationActive(enlace.href, path) ? "page" : undefined}
+        className={`sidebar-link ${isNavigationActive(enlace.href, path, search) ? "active" : ""}`}
+        aria-current={isNavigationActive(enlace.href, path, search) ? "page" : undefined}
       >
         {enlace.icon && <SidebarIcon name={enlace.icon}/>}
         {enlace.description ? (

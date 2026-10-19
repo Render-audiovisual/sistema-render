@@ -26,12 +26,17 @@ export function getNavigationGroups(role) {
     ] },
     { id: "account", label: "Cuenta", links: [
       { href: "/perfil", label: "Perfil", icon: "profile" },
+      ...(admin ? [{ href: "/clientes?gestion=1", label: "Gestionar clientes", icon: "clients" }] : []),
       ...(admin ? [{ href: "/empleados", label: "Usuarios y equipo", icon: "users" }] : []),
     ] },
   ];
 }
 
-export function isNavigationActive(href, pathname) {
+export function isNavigationActive(href, pathname, search = "") {
   const aliases = { "/bloc-notas": "/feedback", "/calendario-estructura": "/planificacion-historias" };
+  if (pathname === "/clientes" && ["/clientes", "/clientes?gestion=1"].includes(href)) {
+    const management = new URLSearchParams(search).get("gestion") === "1";
+    return href === (management ? "/clientes?gestion=1" : "/clientes");
+  }
   return href === (aliases[pathname] || pathname);
 }

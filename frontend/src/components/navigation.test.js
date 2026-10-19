@@ -23,6 +23,7 @@ const adminOnly = new Map([
   ["/calendario", "Calendario"],
   ["/sueldos", "Finanzas"],
   ["/empleados", "Usuarios"],
+  ["/clientes?gestion=1", "Gestionar clientes"],
 ]);
 const linksFor = role => getNavigationGroups(role).flatMap(group => group.links);
 const sortedHrefs = links => links.map(link => link.href).sort();
@@ -74,12 +75,31 @@ test("only exact admin role includes Calendario, Finanzas and Usuarios", () => {
 test("active destination matching is exact, never prefix-based or active for every route", () => {
   const routes = [...shared.keys(), ...adminOnly.keys()];
   for (const href of routes) {
-    for (const pathname of routes) assert.equal(isNavigationActive(href, pathname), href === pathname, `${href} vs ${pathname}`);
-    assert.equal(isNavigationActive(href, `${href}-extra`), false);
-    assert.equal(isNavigationActive(href, `${href}/unrelated`), false);
+    for (const route of routes) {
+      const { pathname, search } = new URL(route, "https://render.test");
+      assert.equal(isNavigationActive(href, pathname, search), href === route, `${href} vs ${route}`);
+    }
+    const { pathname, search } = new URL(href, "https://render.test");
+    assert.equal(isNavigationActive(href, `${pathname}-extra`, search), false);
+    assert.equal(isNavigationActive(href, `${pathname}/unrelated`, search), false);
   }
   assert.equal(isNavigationActive("/clientes", "/cliente"), false);
   assert.equal(isNavigationActive("/inicio", "/"), false);
+});
+
+test("client management is an admin account link and never simultaneously active with client objectives", () => {
+  const account = getNavigationGroups("admin").find(group => group.id === "account");
+  assert.equal(account.links.filter(link => link.href === "/clientes?gestion=1").length, 1);
+  assert.equal(account.links.find(link => link.href === "/clientes?gestion=1").label, "Gestionar clientes");
+  for (const role of employeeRoles) assert.equal(linksFor(role).some(link => link.href === "/clientes?gestion=1"), false);
+  for (const [search, management] of [["", false], ["?cliente_id=11", false], ["?gestion=0&cliente_id=11", false], ["?gestion=1", true], ["?cliente_id=11&gestion=1&tab=datos", true]]) {
+    const base = isNavigationActive("/clientes", "/clientes", search);
+    const admin = isNavigationActive("/clientes?gestion=1", "/clientes", search);
+    assert.equal(base, !management);
+    assert.equal(admin, management);
+    assert.equal(Number(base) + Number(admin), 1);
+  }
+  assert.equal(isNavigationActive("/proyectos", "/proyectos", "?proyecto=uuid&tab=etapas"), true);
 });
 
 test("legacy notes and story-calendar paths activate only their canonical destination", () => {

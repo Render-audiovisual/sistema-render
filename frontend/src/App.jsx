@@ -4,6 +4,7 @@ import { getRolLabel, ROL_LABELS } from "./constants.js";
 import { LoginPage } from "./pages/Login.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { QuickHomePage } from "./pages/QuickHome.jsx";
+import { navigateWithinApp, readRouteKey } from "./shared/navigation/location.js";
 
 const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
 const AugustoDashboard = lazyNamed(() => import("./pages/dashboards/Augusto.jsx"), "AugustoDashboard");
@@ -32,21 +33,18 @@ function RouteLoading() {
 }
 
 export function App() {
-  const [path, setPath] = React.useState(window.location.pathname);
+  const [route, setRoute] = React.useState(() => readRouteKey(window));
+  const path = route.split(/[?#]/, 1)[0];
   let sesion = getSesion();
 
   React.useEffect(() => {
-    const syncPath = () => setPath(window.location.pathname);
+    const syncPath = () => setRoute(readRouteKey(window));
     window.addEventListener("popstate", syncPath);
     return () => window.removeEventListener("popstate", syncPath);
   }, []);
 
   const navigate = React.useCallback((href) => {
-    const next = new URL(href, window.location.origin);
-    if (next.origin !== window.location.origin) return;
-    window.history.pushState({}, "", `${next.pathname}${next.search}${next.hash}`);
-    setPath(next.pathname);
-    window.scrollTo({ top: 0, behavior: "auto" });
+    navigateWithinApp(window, href);
   }, []);
 
   if (path === "/agustin" || path === "/franco") {
@@ -177,7 +175,7 @@ export function App() {
 
   return (
     <>
-      <Sidebar path={path} sesion={sesion} onNavigate={navigate} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
+      <Sidebar path={path} search={window.location.search} sesion={sesion} onNavigate={navigate} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
       {loadedDashboard}
     </>
   );

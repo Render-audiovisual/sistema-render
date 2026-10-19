@@ -199,16 +199,27 @@ function ProjectsSession({ sesion, onNavigate, request }) {
     selectionRef.current = { id, invalid: false };
   }
   useEffect(() => {
+    let approvedHref = null;
+    const beforeNavigation = event => {
+      const next = new URL(event.detail.href, window.location.origin);
+      const destination = next.pathname === "/proyectos" ? projectLocation(next.href) : null;
+      if (destination && destination.id === selectionRef.current.id && !destination.invalid) return;
+      if (!canLeave()) { event.preventDefault(); return; }
+      approvedHref = next.href;
+      queueMicrotask(() => { approvedHref = null; });
+    };
     const navigate = () => {
       if (window.location.pathname !== "/proyectos") return;
       const next = projectLocation(window.location.href);
       if (next.id === selectionRef.current.id && !next.invalid) return;
-      if (!canLeave()) { window.history.replaceState(window.history.state, "", projectLocationUrl(window.location.href, selectionRef.current.id)); return; }
+      if (approvedHref !== window.location.href && !canLeave()) { window.history.replaceState(window.history.state, "", projectLocationUrl(window.location.href, selectionRef.current.id)); return; }
+      approvedHref = null;
       setForm(null); setMessage(""); setSelection(next); selectionRef.current = next;
     };
     const warn = event => { const current = formRef.current; if (current?.busy || (current && JSON.stringify(current.draft) !== JSON.stringify(current.initial))) { event.preventDefault(); event.returnValue = ""; } };
+    window.addEventListener("render:before-navigation", beforeNavigation);
     window.addEventListener("popstate", navigate); window.addEventListener("beforeunload", warn);
-    return () => { window.removeEventListener("popstate", navigate); window.removeEventListener("beforeunload", warn); };
+    return () => { window.removeEventListener("render:before-navigation", beforeNavigation); window.removeEventListener("popstate", navigate); window.removeEventListener("beforeunload", warn); };
   }, []);
 
   async function loadCatalog() {

@@ -80,7 +80,7 @@ test("every menu link keeps a real anchor, current state, accessible name and to
   assert.match(links, /href=\{enlace\.href\}/);
   assert.match(links, /aria-label=\{enlace\.label\}/);
   assert.match(links, /title=\{enlace\.label\}/);
-  assert.match(links, /aria-current=\{isNavigationActive\(enlace\.href, path\) \? "page" : undefined\}/);
+  assert.match(links, /aria-current=\{isNavigationActive\(enlace\.href, path, search\) \? "page" : undefined\}/);
   assert.match(links, /<span className="sidebar-link-text">\{enlace\.label\}<\/span>/);
   assert.doesNotMatch(links, /collapsed\s*\?/);
   const hiding = rules.filter(rule => selectors(rule.selector).some(selector => selector.endsWith(" .sidebar-link-text")) && declaration(rule, "display").includes("none"));
@@ -158,10 +158,11 @@ test("collapse never filters navigation destinations or expands employee permiss
   for (const role of ["diseno", "edicion", "produccion", "community", "programacion"]) {
     const links = getNavigationGroups(role).flatMap(group => group.links);
     assert.deepEqual(links.map(link => link.href).sort(), shared);
-    assert.equal(links.some(link => ["/sueldos", "/empleados", "/calendario"].includes(link.href)), false);
+    assert.equal(links.some(link => ["/sueldos", "/empleados", "/calendario", "/clientes?gestion=1"].includes(link.href)), false);
   }
   const admin = getNavigationGroups("admin").flatMap(group => group.links);
-  assert.deepEqual(admin.map(link => link.href).sort(), [...shared, "/sueldos", "/empleados", "/calendario"].sort());
+  assert.deepEqual(admin.map(link => link.href).sort(), [...shared, "/sueldos", "/empleados", "/calendario", "/clientes?gestion=1"].sort());
+  assert.equal(getNavigationGroups("admin").find(group => group.id === "account").links.find(link => link.href === "/clientes?gestion=1")?.label, "Gestionar clientes");
   assert.equal(isNavigationActive("/feedback", "/bloc-notas"), true);
   assert.equal(isNavigationActive("/planificacion-historias", "/calendario-estructura"), true);
   assert.equal(isNavigationActive("/calendario", "/calendario-estructura"), false);
