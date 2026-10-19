@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getSesion } from '../utils.jsx';
 import { buildCoordinationPatch, canEditTaskCoordination, coordinateSnapshot } from './taskCoordination.js';
+import './TaskCoordination.css';
 
 // Parent keys this component by task identity and incorporates dirty/busy in its guard.
 export function TaskCoordination({ task, sesion, onUpdate, onDraftStateChange }) {
@@ -66,7 +67,7 @@ export function TaskCoordination({ task, sesion, onUpdate, onDraftStateChange })
   }
 
   if (!allowed && !editor) return null;
-  return <section className="ros-work-block ros-recorded-context">
+  return <section className="ros-work-block ros-recorded-context ros-task-coordination">
     <h3>Coordinación registrada</h3>
     <p>Texto de coordinación de la tarea; no modifica fechas ni registra una visita.</p>
     {!editor ? current.valid

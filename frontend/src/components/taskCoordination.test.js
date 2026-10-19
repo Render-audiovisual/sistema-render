@@ -107,7 +107,13 @@ test('component source pins captured revision/session, explicit reset and parent
   assert.match(source, /maxLength=\{2000\}/);
   assert.match(source, /<option value="" disabled=\{editor.snapshot.coordinada !== undefined\}>Sin registrar/);
   assert.match(source, /<label>Horario o indicaciones/);
-  assert.doesNotMatch(source, /fetch\(|apiRequest|apiTaskById|dangerouslySetInnerHTML|JSON\.stringify|type="(?:date|datetime-local)"|\.css['"]|localStorage/);
+  assert.match(source, /import '\.\/TaskCoordination\.css';/);
+  const styles = readFileSync(new URL('./TaskCoordination.css', import.meta.url), 'utf8');
+  assert.match(styles, /\.render-workspace \.ros-task-coordination fieldset \{ border:0/);
+  assert.match(styles, /min-height:44px/);
+  assert.match(styles, /var\(--render-accent\)/);
+  assert.doesNotMatch(styles, /!important|@import|:root/);
+  assert.doesNotMatch(source.replace("import './TaskCoordination.css';", ''), /fetch\(|apiRequest|apiTaskById|dangerouslySetInnerHTML|JSON\.stringify|type="(?:date|datetime-local)"|\.css['"]|localStorage/);
   // No effect resets/rebases the editor when task props change.
   assert.doesNotMatch(source, /useEffect\([\s\S]*?setEditor[\s\S]*?\}, \[task/);
 });

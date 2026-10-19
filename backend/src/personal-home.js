@@ -10,6 +10,67 @@ const taskJson = alias => `jsonb_build_object('id',${alias}.id,'titulo',${alias}
   'cliente',CASE WHEN ${alias}.cliente_id IS NULL THEN NULL ELSE jsonb_build_object('id',${alias}.cliente_id,'nombre',${alias}.cliente_nombre) END,
   'href','/workspace/tareas?task='||${alias}.id)`;
 
+// Historical labels select a work queue, never the authenticated identity.
+// Keep this separate from review: pending/in-progress escalations also matter.
+export const HOME_ESCALATIONS_SQL = `WITH escalated AS MATERIALIZED (
+  SELECT t.id,t.titulo,CASE WHEN t.estado='en_revision' AND t.propiedades_extra->'revision_aprobada'='true'::jsonb
+    THEN 'aprobada' ELSE t.estado END AS estado,t.prioridad,t.revision,t.fecha_vencimiento,
+    t.cliente_id,c.nombre AS cliente_nombre
+  FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+  WHERE t.propiedades_extra->>'workspace'='render_os'
+    AND t.estado NOT IN ('finalizada','publicada')
+    AND jsonb_typeof(t.propiedades_extra->'escalada_a')='string'
+    AND t.propiedades_extra->>'escalada_a' IN ('Líder','Agustín','Franco')
+    AND COALESCE(t.propiedades_extra->>'archivada_render_os','false')<>'true'
+    AND COALESCE(t.propiedades_extra->>'papelera_render_os','false')<>'true'
+    AND (t.cliente_id IS NULL OR c.activo IS DISTINCT FROM FALSE)
+), page AS (
+  SELECT e.*,row_number() OVER (ORDER BY fecha_vencimiento ASC NULLS LAST,
+    CASE prioridad WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END,id) AS rank
+  FROM escalated e ORDER BY rank OFFSET $1 LIMIT $2
+)
+SELECT jsonb_build_object('version',1,'offset',$1::integer,'limit',$2::integer,
+  'total',(SELECT count(*)::int FROM escalated),
+  'has_more',(SELECT count(*) FROM escalated)>$1::integer+$2::integer,
+  'items',COALESCE((SELECT jsonb_agg(${taskJson('q')} ORDER BY q.rank) FROM page q),'[]'::jsonb)) AS queue`;
+
+export function parseEscalationPage(query = {}) {
+  if (Object.keys(query).some(key => !['offset', 'limit'].includes(key))) throw fail('Filtros de escalaciones no válidos.', 400);
+  const parse = (value, fallback, min, max) => {
+    if (value === undefined) return fallback;
+    if (typeof value !== 'string' || !/^(0|[1-9][0-9]*)$/.test(value)) throw fail('Paginación no válida.', 400);
+    const number = Number(value);
+    if (!Number.isSafeInteger(number) || number < min || number > max) throw fail('Paginación fuera de rango.', 400);
+    return number;
+  };
+  return { offset: parse(query.offset, 0, 0, 1000000), limit: parse(query.limit, 20, 1, 50) };
+}
+
+async function verifiedHomeUser(db, auth) {
+  const user = (await db.query('SELECT id,nombre,rol,activo,session_version FROM usuarios WHERE id=$1', [auth.id])).rows[0];
+  if (!user || !user.activo || user.session_version !== auth.session_version) throw fail('La sesión ya no está activa.', 401);
+  if (!SYSTEM_USER_ROLES.includes(user.rol)) throw fail('Este perfil no tiene acceso al inicio operativo.', 403);
+  return user;
+}
+
+export async function readHomeEscalations(pool, auth, query = {}) {
+  if (!Number.isSafeInteger(auth?.id) || auth.id < 1) throw fail('Necesitás una identidad verificada.', 403);
+  const { offset, limit } = parseEscalationPage(query);
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const user = await verifiedHomeUser(db, auth);
+    if (user.rol !== 'admin') throw fail('Solo dirección puede consultar las escalaciones del equipo.', 403);
+    const result = await db.query(HOME_ESCALATIONS_SQL, [offset, limit]);
+    if (!result.rows[0]?.queue) throw new Error('No se pudieron leer las escalaciones.');
+    await db.query('COMMIT');
+    return result.rows[0].queue;
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally { db.release(); }
+}
+
 export const PERSONAL_HOME_SQL = `WITH
   day AS (SELECT (statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date AS today),
   visible AS MATERIALIZED (
@@ -87,9 +148,7 @@ export async function readPersonalHome(pool, auth) {
   const db = await pool.connect();
   try {
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    const user = (await db.query('SELECT id,nombre,rol,activo,session_version FROM usuarios WHERE id=$1', [auth.id])).rows[0];
-    if (!user || !user.activo || user.session_version !== auth.session_version) throw fail('La sesión ya no está activa.', 401);
-    if (!SYSTEM_USER_ROLES.includes(user.rol)) throw fail('Este perfil no tiene acceso al inicio operativo.', 403);
+    const user = await verifiedHomeUser(db, auth);
     const result = await db.query(PERSONAL_HOME_SQL, [user.id, user.rol === 'admin']);
     if (!result.rows[0]?.home) throw new Error('No se pudo leer el inicio operativo.');
     const home = { ...result.rows[0].home, user: { id: user.id, nombre: user.nombre } };
@@ -103,6 +162,14 @@ export async function readPersonalHome(pool, auth) {
 
 export function createPersonalHomeRouter({ express, pool }) {
   const router = express.Router();
+  router.get('/escalaciones', async (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    try { return res.json(await readHomeEscalations(pool, req.auth, req.query)); }
+    catch (error) {
+      if ([400, 401, 403].includes(error.status)) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
+  });
   router.get('/', async (req, res, next) => {
     res.set('Cache-Control', 'no-store');
     if (Object.keys(req.query ?? {}).length) return res.status(400).json({ error: 'El inicio usa tu sesión, no filtros de identidad.' });

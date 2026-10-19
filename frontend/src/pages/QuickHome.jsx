@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
+import { HomeEscalations } from "../components/HomeEscalations.jsx";
 import { createPersonalHomeLoader, homeDate, homeDeadline, homeStateLabel, personalHomeNavigate, subscribePersonalHomeRefresh } from "./personalHome.js";
 import "./QuickHome.css";
 
@@ -95,6 +96,7 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
         </dl>
         <div className="qh-columns">
           <div className="qh-primary-column">
+            <HomeEscalations sesion={sesion} onNavigate={onNavigate} request={request}/>
             <section className="qh-section" aria-labelledby="qh-work-title">
               <header className="qh-section-heading"><div><h2 id="qh-work-title">Tu próximo trabajo</h2><p>Primero lo vencido, después lo que sigue.</p></div>
                 <ListCount shown={data.tasks.length} total={data.summary.open}/></header>

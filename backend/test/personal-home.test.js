@@ -28,7 +28,12 @@ function fake({ account = user, result = { rows: [{ home: payload() }] }, fail, 
 }
 function routerHarness(pool) {
   let handler;
-  const router = { get(path, callback) { assert.equal(path, '/'); assert.equal(handler, undefined); handler = callback; } };
+  const routes = new Set();
+  const router = { get(path, callback) {
+    assert.ok(['/', '/escalaciones'].includes(path));
+    assert.ok(!routes.has(path)); routes.add(path);
+    if (path === '/') { assert.equal(handler, undefined); handler = callback; }
+  } };
   assert.equal(createPersonalHomeRouter({ express: { Router: () => router }, pool }), router);
   return { async invoke(request = {}) {
     const response = { code: 200, headers: {}, set(key, value) { this.headers[key] = value; return this; },
