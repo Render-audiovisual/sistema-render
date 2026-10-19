@@ -248,7 +248,7 @@ test('canonical task workflow: approval, finalization and editorial independence
       'Persisted Render OS visit must keep state, metadata, revision and bindings when workspace query is omitted');
     assert.equal((await patch(visit, production, { estado: 'finalizada' })).status, 400);
     const recorded = await api(`/tareas/${visit}/produccion/registros`, { token: production, method: 'POST',
-      body: { cantidad: 1, fecha: '2026-10-25' } });
+      body: { cantidad: 1, fecha: '2026-10-25', expected_revision: (await detail(visit, production)).revision } });
     assert.equal(recorded.status, 201, JSON.stringify(recorded.body));
     await assertState(visit, await patch(visit, production, { estado: 'finalizada' }), 'finalizada');
   });

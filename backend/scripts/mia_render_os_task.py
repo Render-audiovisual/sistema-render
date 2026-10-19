@@ -190,6 +190,7 @@ def main():
     delete.add_argument("--confirmation-token", required=True)
     confirm_production = commands.add_parser("confirm-production")
     confirm_production.add_argument("--task-id", required=True, type=int)
+    confirm_production.add_argument("--expected-revision", required=True, type=int)
     confirm_production.add_argument("--confirmation-token", required=True)
 
     args = parser.parse_args()
@@ -270,7 +271,7 @@ def main():
     elif args.cmd == "archive":
         result = request("POST", f"/tareas/{args.task_id}/archivar", args, payload=operation_payload({}, args.confirmation_token), idempotency_key=args.idempotency_key)
     elif args.cmd == "confirm-production":
-        result = request("POST", f"/tareas/{args.task_id}/confirmar-grabacion", args, payload=operation_payload({}, args.confirmation_token))
+        result = request("POST", f"/tareas/{args.task_id}/confirmar-grabacion", args, payload=operation_payload({"expected_revision": args.expected_revision}, args.confirmation_token))
     else:
         result = request("DELETE", f"/tareas/{args.task_id}", args, payload=operation_payload({}, args.confirmation_token))
     print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -788,7 +788,7 @@ export function buildWilsonTaskUpdate(input, currentTask, catalog) {
 
 async function loadWilsonTask(db, taskId, { forUpdate = false } = {}) {
   const result = await db.query(
-    `SELECT t.id,t.titulo,t.asignado_a,t.cliente_id,t.estado,t.propiedades_extra,
+    `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.cliente_id,t.estado,t.propiedades_extra,
             to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
             t.tipo_tarea,t.subtipo,t.prioridad,t.aclaraciones,t.material_referencia,
             t.created_at,t.updated_at,c.nombre AS cliente_nombre
@@ -1320,7 +1320,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     if (!Number.isSafeInteger(after) || after < 0) return res.status(400).json({ error: "Cursor inválido." });
     try {
       const result = await pool.query(
-        `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
+        `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
                 t.propiedades_extra,t.aclaraciones,t.material_referencia,
                 to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
                 t.created_at,t.updated_at,c.nombre AS cliente_nombre,
@@ -1692,21 +1692,36 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     if (!isWilsonLeader(req, env)) return res.status(403).json({ error: "Solo Agustín o Franco pueden confirmar la grabación." });
     const taskId = Number(req.params.id);
     if (!Number.isInteger(taskId) || taskId <= 0) return res.status(400).json({ error: "Tarea inválida." });
+    const expectedRevision = req.body?.expected_revision;
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+      return res.status(400).json({ error: "Recargá la visita: falta una revisión válida para confirmar la grabación." });
+    }
     const client = await pool.connect();
+    let result;
     try {
       await client.query("BEGIN");
       if (!await consumeWilsonConfirmation(client, req, res, "confirmar_grabacion", taskId)) {
         await client.query("ROLLBACK");
         return undefined;
       }
-      const result = await confirmProduction({ taskId, actor: req.wilson.actorName || "Líder" });
+      result = await confirmProduction({
+        taskId, actor: req.wilson.actorName, db: client,
+        expectedRevision, actorId: req.wilson.userId,
+      });
       await writeWilsonAudit(client, req, { action: "confirmar_grabacion", taskId });
       await client.query("COMMIT");
-      return res.json(result);
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       return next(error);
     } finally { client.release(); }
+    // The external-transaction callback does not notify. Do so only after the
+    // token, production work and audit have committed on this same client.
+    if (result?.created && result.editing_task) {
+      try {
+        await notifyAssignment?.({ pool, tarea: result.editing_task, motivo: "creada", actor: req.wilson.actorName });
+      } catch { /* Notification failure cannot undo an already committed task. */ }
+    }
+    return res.json(result);
   });
 
   router.patch("/tareas/:id", async (req, res, next) => {

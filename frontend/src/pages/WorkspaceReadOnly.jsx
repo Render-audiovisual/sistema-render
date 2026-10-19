@@ -118,6 +118,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [archiving, setArchiving] = useState(false);
   const [productionAmount, setProductionAmount] = useState(1);
   const [productionDate, setProductionDate] = useState(getHoyLocalISO());
+  const [productionCorrections, setProductionCorrections] = useState({});
   const [productionDriveLink, setProductionDriveLink] = useState("");
   const [registeringProduction, setRegisteringProduction] = useState(false);
   const [savingProductionDrive, setSavingProductionDrive] = useState(false);
@@ -140,6 +141,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     setLinkCopied(false);
     setProductionAmount(1);
     setProductionDate(getHoyLocalISO());
+    setProductionCorrections({});
     setProductionDriveLink(task.material_referencia || "");
     setPublicationResponsible(task.responsable_publicacion_id ?? task.propiedades_extra?.responsable_publicacion_id ?? null);
     apiJson(`/api/tareas/${task.id}/comentarios?workspace=render_os`, { signal: controller.signal })
@@ -159,7 +161,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     setDraft(current => editing || (previous && (current.titulo !== previous.titulo ||
       String(current.aclaraciones || '').trim() !== getUnifiedTaskContent(previous).trim()))
       ? current : { ...task, aclaraciones: getUnifiedTaskContent(task) });
-  }, [task?.updated_at]);
+  }, [task?.updated_at, task?.revision]);
 
   useEffect(() => {
     if (!task) return undefined;
@@ -368,6 +370,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     try {
       await onRegisterProduction(task, Number(productionAmount), productionDate, finish);
       setProductionAmount(1);
+    } catch {
+      // The parent refreshes conflicts. Keep amount/date for an explicit resubmission.
     } finally {
       setRegisteringProduction(false);
     }
@@ -377,7 +381,20 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     if (!canConfirmProduction || confirmingProduction) return;
     setConfirmingProduction(true);
     try { await onConfirmProduction(task); }
+    catch { /* The parent reports the conflict; no automatic confirmation retry. */ }
     finally { setConfirmingProduction(false); }
+  };
+
+  const correctProduction = async (record) => {
+    const value = window.prompt("Cantidad correcta de videos:", productionCorrections[record.id] ?? String(record.cantidad));
+    if (value === null) return;
+    setProductionCorrections((current) => ({ ...current, [record.id]: value }));
+    try {
+      const updated = await onCorrectProduction(task, record, Number(value));
+      if (updated) setProductionCorrections((current) => { const next = { ...current }; delete next[record.id]; return next; });
+    } catch {
+      // Keep the entered correction as the next prompt's default after refresh.
+    }
   };
 
   const approveForOriana = async (withPublisher = false) => {
@@ -472,7 +489,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {metadata.produccion_confirmada_at && <div className="ros-approved-banner">✓ Grabación confirmada por {metadata.produccion_confirmada_por}. La edición quedó vinculada.</div>}
           {!editing && canRegisterProduction && <div className="ros-production-drive"><label><span>Carpeta de material en Google Drive</span><input inputMode="url" placeholder="https://drive.google.com/…" value={productionDriveLink} onChange={(event) => setProductionDriveLink(event.target.value)}/></label><button type="button" disabled={savingProductionDrive || !productionDriveLink.trim() || productionDriveLink.trim() === String(task.material_referencia || "").trim()} onClick={saveProductionDrive}>{savingProductionDrive ? "Guardando…" : task.material_referencia ? "Actualizar enlace" : "Vincular Drive"}</button></div>}
 
-          {Array.isArray(metadata.produccion_registros) && metadata.produccion_registros.length > 0 && <details><summary>Ver registros</summary>{metadata.produccion_registros.slice().reverse().map((record) => <div key={record.id || `${record.fecha}-${record.created_at}`}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario || "Equipo"}{record.corregido_at ? ` · Corregido por ${record.corregido_por}` : ""}</span>{canRegisterProduction && !metadata.produccion_confirmada_at && <button type="button" onClick={() => { const value = window.prompt("Cantidad correcta de videos:", String(record.cantidad)); if (value !== null) onCorrectProduction(task, record, Number(value)); }}>Corregir</button>}</div>)}</details>}
+          {Array.isArray(metadata.produccion_registros) && metadata.produccion_registros.length > 0 && <details><summary>Ver registros</summary>{metadata.produccion_registros.slice().reverse().map((record) => <div key={record.id || `${record.fecha}-${record.created_at}`}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario || "Equipo"}{record.corregido_at ? ` · Corregido por ${record.corregido_por}` : ""}</span>{canRegisterProduction && !metadata.produccion_confirmada_at && <button type="button" onClick={() => correctProduction(record)}>Corregir</button>}</div>)}</details>}
         </section>}
         </section>}
         <section className="ros-work-block"><div className="ros-block-heading"><div><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3></div><small>Archivos y enlaces</small></div>{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <><div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{driveFiles.filter((file) => file.url !== task.material_referencia).map((file) => <a className="ros-file" href={file.url} target="_blank" rel="noreferrer" key={file.id}><span>▤</span><div><strong>{file.name}</strong><small>Google Drive · {file.uploaded_by || "Equipo"}</small></div><b>↗</b></a>)}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{!task.material_referencia && driveFiles.length === 0 && links.length === 0 && <p className="ros-compact-empty">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "Sin material vinculado."}</p>}</div><DriveUploader task={task} onUploaded={async () => { const refreshed = await apiTaskById(task.id); window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: [refreshed] })); }}/></>}</section>
@@ -1047,42 +1064,55 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       throw reason;
     }
   };
+  const productionTaskSnapshot = (task) => {
+    // CAS must describe the version the user saw, never a silent rebase from tasksRef.
+    const snapshot = task;
+    if (!Number.isSafeInteger(snapshot.revision) || snapshot.revision < 1) throw new Error("Recargá la tarea antes de modificar la producción: falta su revisión actual.");
+    return snapshot;
+  };
+  const refreshProductionConflict = async (task) => {
+    try {
+      const currentTask = await apiTaskById(task.id);
+      const refreshed = { ...task, ...currentTask };
+      tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? refreshed : item);
+      setTasks((current) => current.map((item) => item.id === task.id ? refreshed : item));
+      notify("La producción cambió. Recargamos la tarea; conservamos tus datos ingresados. Revisá el avance antes de volver a enviar.", "error");
+    } catch {
+      notify("La producción cambió y no se pudo recargar. Conservamos tus datos ingresados; recargá la tarea antes de volver a enviar.", "error");
+    }
+  };
   const registerProduction = async (task, cantidad, fecha, finalizar = false) => {
     try {
+      const snapshot = productionTaskSnapshot(task);
       const updated = await apiRequest(`/api/tareas/${task.id}/produccion/registros?workspace=render_os`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cantidad, fecha, finalizar, expected_updated_at: task.updated_at || undefined }),
+        body: JSON.stringify({ cantidad, fecha, finalizar, expected_revision: snapshot.revision, expected_updated_at: snapshot.updated_at || undefined }),
       });
-      const complete = { ...task, ...updated, cliente_nombre: task.cliente_nombre || null };
+      const complete = { ...snapshot, ...updated, cliente_nombre: snapshot.cliente_nombre || null };
       tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? complete : item);
       setTasks((current) => current.map((item) => item.id === task.id ? complete : item));
       notify(`${cantidad} video${cantidad === 1 ? "" : "s"} registrado${cantidad === 1 ? "" : "s"} en la visita.`);
       return complete;
     } catch (reason) {
-      if (reason.status === 409) {
-        try {
-          const currentTask = await apiTaskById(task.id);
-          tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? currentTask : item);
-          setTasks((current) => current.map((item) => item.id === task.id ? currentTask : item));
-        } catch {
-          // Se conserva la tarea actual si la recarga también falla.
-        }
-      }
-      notify(reason.message || "No se pudo registrar la grabación.", "error");
+      if (reason.status === 409) await refreshProductionConflict(task);
+      else notify(reason.message || "No se pudo registrar la grabación.", "error");
       throw reason;
     }
   };
   const confirmProduction = async (task) => {
     try {
-      const result = await apiRequest(`/api/tareas/${task.id}/produccion/confirmar?workspace=render_os`, { method: "POST" });
-      const updated = { ...task, ...result.task, cliente_nombre: task.cliente_nombre || null };
+      const snapshot = productionTaskSnapshot(task);
+      const result = await apiRequest(`/api/tareas/${task.id}/produccion/confirmar?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected_revision: snapshot.revision }) });
+      const updated = { ...snapshot, ...result.task, cliente_nombre: snapshot.cliente_nombre || null };
       const additions = result.editing_task ? [{ ...result.editing_task, cliente_nombre: task.cliente_nombre || null }] : [];
+      tasksRef.current = mergeRelatedTasks(tasksRef.current.map((item) => item.id === task.id ? updated : item), additions);
       setTasks((current) => mergeRelatedTasks(current.map((item) => item.id === task.id ? updated : item), additions));
       notify(result.created ? "Grabación confirmada. Se creó la edición para Luciano." : "Grabación confirmada.");
       return updated;
     } catch (reason) {
-      notify(reason.message || "No se pudo confirmar la grabación.", "error");
+      if (reason.status === 409) await refreshProductionConflict(task);
+      else notify(reason.message || "No se pudo confirmar la grabación.", "error");
       throw reason;
     }
   };
@@ -1092,15 +1122,18 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       return null;
     }
     try {
+      const snapshot = productionTaskSnapshot(task);
       const updated = await apiRequest(`/api/tareas/${task.id}/produccion/registros/${record.id}?workspace=render_os`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cantidad }),
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cantidad, expected_revision: snapshot.revision }),
       });
-      const complete = { ...task, ...updated, cliente_nombre: task.cliente_nombre || null };
+      const complete = { ...snapshot, ...updated, cliente_nombre: snapshot.cliente_nombre || null };
+      tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? complete : item);
       setTasks((current) => current.map((item) => item.id === task.id ? complete : item));
       notify(`Registro corregido de ${record.cantidad} a ${cantidad} videos.`);
       return complete;
     } catch (reason) {
-      notify(reason.message || "No se pudo corregir el registro.", "error");
+      if (reason.status === 409) await refreshProductionConflict(task);
+      else notify(reason.message || "No se pudo corregir el registro.", "error");
       throw reason;
     }
   };
