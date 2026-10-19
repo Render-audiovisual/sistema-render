@@ -3,6 +3,7 @@ import { buildTaskAccessClause, getTaskActor } from "./task-access.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { canRecordProduction, getProductionProgress, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { taskOperationalDto } from "./operational-dto.js";
+import { rejectMixedProductionRecording } from "./production-registry-compatibility.js";
 
 const TZ = "America/Argentina/Cordoba";
 const taskComplete = task => ["finalizada", "publicada"].includes(task.estado);
@@ -367,6 +368,7 @@ export function createWilsonChatRouter({ express, pool }) {
       if (!canRecordProduction(req.auth)) { await client.query("ROLLBACK"); return res.status(403).json({ error: "No tenés permiso para confirmar este registro." }); }
       const taskResult = await client.query(`SELECT * FROM tareas WHERE id=$1 FOR UPDATE`, [action.tarea_id]); const task = taskResult.rows[0];
       if (!task || !isProductionVisitTask(task)) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La visita ya no está disponible." }); }
+      await rejectMixedProductionRecording(client, task.id);
       const progress = getProductionProgress(task); const amount = Number(action.payload.cantidad); const date = action.payload.fecha;
       const record = { id: crypto.randomUUID(), cantidad: amount, fecha: date, usuario: getTaskActor(req.auth), created_at: new Date().toISOString(), periodo_objetivo: date.slice(0, 7) };
       const regular = progress.planned > 0 ? Math.min(amount, progress.remaining) : amount; if (amount > regular) Object.assign(record, { cantidad_mes_actual: regular, cantidad_adelanto: amount - regular, periodo_adelanto: nextProductionPeriod(date) });

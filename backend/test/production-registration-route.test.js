@@ -5,20 +5,22 @@ import * as production from '../src/production-visits.js';
 import { buildTaskAccessClause, getTaskActor } from '../src/task-access.js';
 import crypto from 'node:crypto';
 import { taskOperationalDto } from '../src/operational-dto.js';
+import { rejectMixedProductionRecording } from '../src/production-registry-compatibility.js';
 
 const source = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
 const routeSource = source.slice(source.indexOf('router.post("/tareas/:id/produccion/registros"'), source.indexOf('\nasync function confirmProductionVisit'));
-async function register(body, metadata = {}, auth = { id: 7, nombre: 'Germán', rol: 'produccion' }) {
+async function register(body, metadata = {}, auth = { id: 7, nombre: 'Germán', rol: 'produccion' }, normalized = false) {
   body = { expected_revision: 1, ...body };
   let handler; let updated = null;
   const task = { id: 1753, revision: 1, titulo: 'Moketa | Visita producción', tipo_tarea: 'produccion', asignado_a: 'Germán', updated_at: '2026-09-16T10:00:00Z', propiedades_extra: metadata };
   const client = { release() {}, async query(sql, args) {
+    if (sql.includes('FROM produccion_visitas')) return { rows: normalized ? [{id:'normalized-visit'}] : [] };
     if (sql.includes('SELECT')) return { rows: [task] };
     if (sql.includes('UPDATE tareas')) { updated = { ...task, estado: args[2], propiedades_extra: { ...metadata, ...JSON.parse(args[1]) } }; return { rows: [updated] }; }
     return { rows: [] };
   }};
   const bindings = { router: { post(_path, fn) { handler = fn; } }, pool: { async connect() { return client; } }, ...production, buildTaskAccessClause, getTaskActor, crypto,
-    annotateTaskAssignments: async (_db, rows) => rows, taskOperationalDto };
+    annotateTaskAssignments: async (_db, rows) => rows, taskOperationalDto, rejectMixedProductionRecording };
   new Function(...Object.keys(bindings), routeSource)(...Object.values(bindings));
   const response = { code: 200, status(value) { this.code = value; return this; }, json(value) { this.body = value; return this; } };
   await handler({ body, auth, params: { id: '1753' } }, response, error => { throw error; });
@@ -32,6 +34,9 @@ test('Moketa: actual count without a planned count can complete the visit and st
   assert.equal(result.updated.propiedades_extra.produccion_registros[0].cantidad_adelanto, undefined);
   assert.equal(result.updated.propiedades_extra.produccion_confirmada_at, null);
   assert.equal(production.isProductionComplete(result.updated), true);
+});
+test('normalized media prevents legacy quantity writes before task mutation', async () => {
+  await assert.rejects(register({ cantidad: 3, fecha: '2026-09-16' }, {}, { id: 7, nombre: 'Germán', rol: 'produccion' }, true), error => error.status === 409);
 });
 test('saving a partial unplanned recording does not complete it', async () => {
   const result = await register({ cantidad: 2, fecha: '2026-09-16' });

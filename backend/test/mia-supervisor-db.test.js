@@ -31,6 +31,7 @@ test('supervisor completo: PostgreSQL aislado, transacciones, permisos y entrega
   await pool.query(fs.readFileSync(new URL('../migrations/046_mia_supervisor.sql',import.meta.url),'utf8'));
   await pool.query(fs.readFileSync(new URL('../migrations/047_mia_supervisor_calma.sql',import.meta.url),'utf8'));
   await pool.query(fs.readFileSync(new URL('../migrations/056_task_assignments.sql',import.meta.url),'utf8'));
+  await pool.query(fs.readFileSync(new URL('../migrations/059_production_registry.sql',import.meta.url),'utf8'));
   await pool.query(`INSERT INTO usuarios(usuario,nombre,rol,whatsapp_id_hash) VALUES
     ('lider','Líder','admin',$1),('disenador','Diseñador','diseno',$2),('produccion','Productor','produccion',$3),('franco','Franco Romero','diseno',$4)`,
     [hash('leader-qa'),hash('designer-qa'),hash('producer-qa'),hash('chovy-qa')]);

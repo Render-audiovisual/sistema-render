@@ -74,6 +74,7 @@ const taskProperties = object({
     motivo_bloqueo escalada_a motivo coordinada horario destrabada_por fecha_destrabe
     wilson_confirmado_por bloqueada archivada_render_os archivada_at archivada_por
     papelera_render_os papelera_at papelera_por automatica_render_os origen_pieza origen_visita_id
+    origen_produccion_video_id produccion_visita_id
     clickup_lista clickup_id clickup_url clickup_cerrada_at reporte_fuente reporte_periodo
     objetivo_periodo objetivo_id objetivo_pieza_id objetivo_clave objetivo_tipo objetivo_numero
     edicion_responsable edicion_responsable_id responsable_publicacion responsable_publicacion_id

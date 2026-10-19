@@ -24,6 +24,7 @@ const WorkspaceReadOnlyPage = lazyNamed(() => import("./pages/WorkspaceReadOnly.
 const DrivePage = lazyNamed(() => import("./pages/Drive.jsx"), "DrivePage");
 const PersonalListsPage = lazyNamed(() => import("./pages/PersonalLists.jsx"), "PersonalListsPage");
 const MoodboardPreviewPage = lazyNamed(() => import("./pages/MoodboardPreview.jsx"), "MoodboardPreviewPage");
+const ProductionsPage = lazyNamed(() => import("./pages/Productions.jsx"), "ProductionsPage");
 
 function RouteLoading() {
   return <main className="route-loading" aria-live="polite"><span aria-hidden="true"/><strong>Abriendo sección…</strong><small>Cargando solamente lo necesario.</small></main>;
@@ -77,7 +78,7 @@ export function App() {
     ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
     : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes"];
   const rutaPermitida =
-    esAdmin || path === "/feedback" || rutasCompartidas.includes(path) || rutaPropia === path;
+    esAdmin || path === "/feedback" || path === "/producciones" || rutasCompartidas.includes(path) || rutaPropia === path;
 
   if (!rutaPermitida) {
     window.location.href = rutaPropia || "/";
@@ -90,6 +91,9 @@ export function App() {
   }
 
   const dashboard = (() => {
+    if (path === "/producciones") {
+      return <ProductionsPage sesion={sesion} />;
+    }
     if (path === "/inicio") {
       return <QuickHomePage sesion={sesion} onNavigate={navigate} />;
     }

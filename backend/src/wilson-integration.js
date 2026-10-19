@@ -13,6 +13,7 @@ import { createMiaSupervisorRouter, acknowledgeSupervisorDelivery, supervisorNot
 import { annotateTaskAssignments, replaceTaskAssignments, resolveTaskAssignments } from "./task-assignments.js";
 import { isTaskFinalized } from "./workflow-contract.js";
 import { taskOperationalDto, clientOperationalDto } from "./operational-dto.js";
+import { syncProductionVisitFromTask } from "./production-registry.js";
 
 const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
 const DEFAULT_ALLOWED_WHATSAPP_ID_HASHES = [
@@ -1840,6 +1841,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
           JSON.stringify(properties)],
       );
       if (assignment) await replaceTaskAssignments(client, current.id, assignment);
+      await syncProductionVisitFromTask(client, updated.rows[0], req.wilson.userId);
       await writeWilsonAudit(client, req, { action: "editar_tarea", taskId: current.id, details: { changedFields, idempotencyKey: key } });
       await client.query("COMMIT");
       const updatedTask = { ...updated.rows[0], cliente_nombre: task.cliente_nombre };

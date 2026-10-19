@@ -31,6 +31,7 @@ export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, 
     ] : [],
     trabajo: [
       { href: "/workspace/tareas", label: "Tareas", icon: "tasks" },
+      { href: "/producciones", label: "Producciones", icon: "content" },
       { href: "/clientes", label: "Clientes", icon: "clients" },
       { href: "/lista", label: "Lista", icon: "list" },
       { href: "/moodboards", label: "Moodboard", icon: "moodboard" },

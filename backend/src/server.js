@@ -26,6 +26,8 @@ import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments
 import { persistAssignedTask } from "./task-persistence.js";
 import { correctProductionRecord } from "./production-record-updates.js";
 import { taskOperationalDto, editorialOperationalDto, clientOperationalDto } from "./operational-dto.js";
+import { createProductionRegistryRouter, syncProductionVisitFromTask } from "./production-registry.js";
+import { rejectMixedProductionRecording } from "./production-registry-compatibility.js";
 import { normalizeTaskState, taskTransitionError, isTaskFinalized } from "./workflow-contract.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
@@ -298,6 +300,7 @@ router.patch("/usuarios/:id/acceso", requireRole("admin"), async (req, res, next
   }
 });
 router.use("/cliente-objetivos", createClientGoalsRouter({ pool }));
+router.use("/producciones", createProductionRegistryRouter({ express, pool }));
 router.use("/moodboards", createMoodboardsRouter({ pool }));
 
 router.use("/drive", createGoogleDriveRouter({ express, pool, requireRole }));
@@ -485,9 +488,9 @@ router.post("/notas/:id/restaurar", async (req, res, next) => {
 router.get("/usuarios", async (req, res, next) => {
   try {
     const fields = req.auth.rol === "admin"
-      ? "id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, (whatsapp_id_hash IS NOT NULL AND whatsapp_habilitado IS TRUE) AS whatsapp_vinculado, created_at"
-      : "id, usuario, nombre, rol, foto_perfil, created_at";
-    const result = await pool.query(`SELECT ${fields} FROM usuarios ORDER BY id`);
+      ? "id, usuario, nombre, rol, activo, email_notificaciones, google_email, foto_perfil, (whatsapp_id_hash IS NOT NULL AND whatsapp_habilitado IS TRUE) AS whatsapp_vinculado, created_at"
+      : "id, usuario, nombre, rol, activo, foto_perfil, created_at";
+    const result = await pool.query(`SELECT ${fields} FROM usuarios ${req.auth.rol === "admin" ? "" : "WHERE activo IS TRUE"} ORDER BY id`);
     res.json(result.rows);
   } catch (error) {
     next(error);
@@ -2130,7 +2133,7 @@ router.post("/tareas", async (req, res, next) => {
         aclaraciones || null,
         material_referencia || null,
         tarea_padre_id || null,
-      ], assignment,
+      ], assignment, (db, task) => syncProductionVisitFromTask(db, task, req.auth.id),
     );
 
     const tareaCreada = result.rows[0];
@@ -2502,7 +2505,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
       `UPDATE tareas AS t SET ${sets.join(", ")}
        WHERE ${where}
        RETURNING id, revision, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
-      valores, assignment,
+      valores, assignment, (db, task) => syncProductionVisitFromTask(db, task, req.auth.id),
     );
 
     if (result.rows.length === 0) {
@@ -2698,6 +2701,7 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
       await client.query("ROLLBACK");
       return res.status(409).json({ error: "La tarea cambió mientras registrabas los videos. Revisá la última versión." });
     }
+    await rejectMixedProductionRecording(client, task.id);
     const progress = getProductionProgress(task);
     if (task.propiedades_extra?.produccion_confirmada_at || isProductionComplete(task)) {
       await client.query("ROLLBACK");
@@ -2788,6 +2792,7 @@ async function confirmProductionVisit(taskId, actor, { db = null, expectedRevisi
       throw Object.assign(new Error("La visita cambió. Revisá la última versión antes de confirmar."), { status: 409 });
     }
     if (!isProductionVisitTask(task)) { const error = new Error("Esta tarea no es una visita de producción."); error.status = 400; throw error; }
+    await rejectMixedProductionRecording(client, task.id);
     const validation = validateProductionHandoff(task);
     if (validation) { const error = new Error(validation); error.status = 400; throw error; }
     if (task.propiedades_extra?.produccion_confirmada_at) {
@@ -2857,6 +2862,7 @@ router.patch("/tareas/:id/produccion/registros/:recordId", async (req, res, next
     const task = current.rows[0];
     if (!task || !isProductionVisitTask(task)) throw Object.assign(new Error("Visita no encontrada o no asignada a tu cuenta."), { status: 404 });
     if (task.revision !== req.body.expected_revision) throw Object.assign(new Error("La visita cambió. Revisá sus registros antes de corregir."), { status: 409 });
+    await rejectMixedProductionRecording(client, task.id);
     const { records: corrected, previous } = correctProductionRecord(task, {
       recordId: req.params.recordId, amount, actorName: getTaskActor(req.auth), actorId: req.auth.id, now: new Date(),
     });
@@ -2913,6 +2919,7 @@ router.delete("/tareas/:id", requireRole("admin"), async (req, res, next) => {
     }
     res.json({ ok: true });
   } catch (error) {
+    if (error.code === "23503") return res.status(409).json({ error: "La tarea tiene registros vinculados. Conservá su historial; no se puede eliminar." });
     next(error);
   }
 });

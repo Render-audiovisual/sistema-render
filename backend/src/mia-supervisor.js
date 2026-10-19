@@ -350,6 +350,14 @@ async function loadTask(db, id, { allowCompleted = false } = {}) {
   return task;
 }
 
+// Caller holds the task lock. Follow the registry's source-task -> visit lock
+// order and never create/backfill a registry entry from a follow-up response.
+async function guardSupervisorSourceDate(db, taskId, requestedDate) {
+  const source = (await db.query(`SELECT id,to_char(fecha,'YYYY-MM-DD') fecha
+    FROM produccion_visitas WHERE tarea_origen_id=$1 FOR UPDATE`, [taskId])).rows[0];
+  if (source && source.fecha !== requestedDate) throw fail('Esta fecha está vinculada a Producciones. Cambiá la visita desde allí.',409);
+}
+
 export async function acceptSupervisorDeadline(pool, { actor, taskId, proposalId, date, messageId, env = process.env, now = new Date() }) {
   if (!enabled(env)) throw fail('El supervisor todavía no está activado.',503);
   if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(proposalId || ''))) throw fail('Propuesta inválida.');
@@ -359,6 +367,7 @@ export async function acceptSupervisorDeadline(pool, { actor, taskId, proposalId
     if (!p || p.snapshot_hash !== proposalSnapshot(task)) throw fail('La propuesta cambió; pedí una nueva fecha antes de confirmar.',409);
     const chosen = date || p.fecha;
     if (!validDate(chosen) || chosen < localClock(now).date) throw fail('La fecha acordada debe ser válida y desde hoy en adelante.');
+    await guardSupervisorSourceDate(db, task.id, chosen);
     await db.query(`UPDATE tareas SET fecha_vencimiento=$2,updated_at=$3 WHERE id=$1`, [task.id,chosen,now]);
     await db.query(`UPDATE mia_supervisor_proposals SET estado='accepted',accepted_by=$2,accepted_at=$3 WHERE id=$1`, [p.id,user.id,now]);
     await comment(db,task.id,`${user.nombre} acordó la entrega para ${chosen}. Propuesta ${p.id}.`);
@@ -414,6 +423,7 @@ export async function recordSupervisorReply(pool, { actor, taskId, messageId, in
     if (!parsed.valid) return {recorded:false,needs_more:true,tarea_id:Number(task.id),message:parsed.errors[0]};
     await db.query(`UPDATE mia_supervisor_conversations SET report='{}'::jsonb WHERE usuario_id=$1 AND tarea_id=$2`,[user.id,task.id]);
     const r = parsed.report;
+    if (r.nueva_fecha) await guardSupervisorSourceDate(db, task.id, r.nueva_fecha);
     const nextState = ['pendiente','en_progreso'].includes(r.estado) ? r.estado : task.estado;
     const props = { ...task.propiedades_extra, supervisor_ultimo_reporte: { ...r,usuario_id:Number(user.id),fecha:new Date(now).toISOString() } };
     if (r.estado === 'bloqueada') props.supervisor_bloqueo = { motivo:r.motivo,usuario_id:r.bloqueo_usuario_id,source_message_id:messageId,desde:new Date(now).toISOString() };
