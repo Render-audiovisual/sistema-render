@@ -58,7 +58,7 @@ export function fixtureWilsonEnvironment(config = {}) {
   return result;
 }
 
-export async function startLocalHarness({ port = 55594, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, clusterOnly = false, supervisorEnabled = false, wilson = {} } = {}) {
+export async function startLocalHarness({ port = 55594, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, clusterOnly = false, supervisorEnabled = false, wilson = {} } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   if (typeof supervisorEnabled !== 'boolean') throw new Error('Invalid supervisor fixture option');
   if (typeof clusterOnly !== 'boolean') throw new Error('Invalid cluster-only fixture option');
@@ -118,6 +118,7 @@ export async function startLocalHarness({ port = 55594, deferGoalMigration = fal
         RENDER2_DEFER_PRODUCTION_EDITORIAL_MIGRATION: String(deferProductionEditorialMigration),
         RENDER2_DEFER_FEEDBACK_RECEIPTS_MIGRATION: String(deferFeedbackReceiptsMigration),
         RENDER2_DEFER_TASK_RECEIPTS_MIGRATION: String(deferTaskReceiptsMigration),
+        RENDER2_DEFER_PROJECTS_MIGRATION: String(deferProjectsMigration),
         RENDER2_FIXTURE_CLUSTER_ONLY: String(clusterOnly),
         PGOPTIONS: '-c statement_timeout=15000' }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
     const ready = await new Promise((resolve, reject) => {
@@ -225,6 +226,11 @@ async function fixtureChild() {
   const deferredMigrations = [
     ...(process.env.RENDER2_DEFER_FEEDBACK_RECEIPTS_MIGRATION === 'true' ? ['061_feedback_operation_receipts.sql'] : []),
     ...(process.env.RENDER2_DEFER_TASK_RECEIPTS_MIGRATION === 'true' ? ['062_task_operation_receipts.sql'] : []),
+    // 063's reciprocal guards depend on the actual 060 relationship columns.
+    // Older populated-upgrade fixtures must defer the dependent SQL as well.
+    ...(['RENDER2_DEFER_PROJECTS_MIGRATION','RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION',
+      'RENDER2_DEFER_GOAL_MIGRATION','RENDER2_DEFER_TASK_STATE_MIGRATION','RENDER2_DEFER_PRODUCTION_EDITORIAL_MIGRATION']
+      .some(key => process.env[key] === 'true') ? ['063_projects.sql'] : []),
     ...(process.env.RENDER2_DEFER_GOAL_MIGRATION === 'true' ? ['055_decouple_goal_publication.sql'] : []),
     ...(process.env.RENDER2_DEFER_ASSIGNMENT_MIGRATION === 'true' ? ['056_task_assignments.sql'] : []),
     ...(process.env.RENDER2_DEFER_TASK_STATE_MIGRATION === 'true' || process.env.RENDER2_DEFER_GOAL_MIGRATION === 'true'

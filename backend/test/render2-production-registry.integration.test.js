@@ -113,6 +113,8 @@ test('production registry: historical invariance and real per-video HTTP workflo
     assert.equal(editorialMigrations.length, 1);
     await fixture.query(await readFile(new URL(`../migrations/${editorialMigrations[0]}`, import.meta.url), 'utf8'));
     await fixture.query('INSERT INTO _migrations(nombre) VALUES ($1)', [editorialMigrations[0]]);
+    await fixture.query(await readFile(new URL('../migrations/063_projects.sql', import.meta.url), 'utf8'));
+    await fixture.query("INSERT INTO _migrations(nombre) VALUES ('063_projects.sql')");
   });
   await t.test('task POST registers one visit with no inferred videos; task-only date/client writes and deletion reject', async () => {
     const [client] = await fixture.query("INSERT INTO clientes(nombre) VALUES ('QA source task client') RETURNING id");

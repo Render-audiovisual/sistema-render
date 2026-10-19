@@ -37,7 +37,7 @@ export function canonicalTaskOperationIntent(input,{operation,targetId=null}={})
     if(key==='sector') {
       const normalized=result.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
       const sector=normalized==='comunidad'?'community':normalized;
-      if(!['diseno','edicion','produccion','community','administracion'].includes(sector))throw fail('Sector inválido.');return sector;
+      if(!['diseno','edicion','produccion','community','administracion','desarrollo'].includes(sector))throw fail('Sector inválido.');return sector;
     }
     if(key==='prioridad'){const priority=result.toLowerCase();if(!['baja','media','alta'].includes(priority))throw fail('Prioridad inválida.');return priority;}
     return result;

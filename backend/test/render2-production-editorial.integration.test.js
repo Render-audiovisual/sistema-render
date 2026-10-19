@@ -85,6 +85,8 @@ test('production editorial: canonical delivery identity and atomic association',
     }
     assert.deepEqual(after, before, 'No backfill, identity inference, task creation or historical rewrite');
     await fixture.query('INSERT INTO _migrations(nombre) VALUES ($1)', [names[0]]);
+    await fixture.query(await readFile(new URL('../migrations/063_projects.sql', import.meta.url), 'utf8'));
+    await fixture.query("INSERT INTO _migrations(nombre) VALUES ('063_projects.sql')");
   });
   const readVisit = async id => ok(await api(`/producciones/${id}`, undefined, admin, 'GET')).visita;
   const video = async () => {

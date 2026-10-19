@@ -8,6 +8,7 @@ import { QuickHomePage } from "./pages/QuickHome.jsx";
 const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
 const AugustoDashboard = lazyNamed(() => import("./pages/dashboards/Augusto.jsx"), "AugustoDashboard");
 const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPage");
+const ProjectsPage = lazyNamed(() => import("./pages/Projects.jsx"), "ProjectsPage");
 const ClientesAdminPage = lazyNamed(() => import("./pages/Clientes.jsx"), "ClientesAdminPage");
 const ClientesObjetivosPage = lazyNamed(() => import("./pages/ClientesObjetivos.jsx"), "ClientesObjetivosPage");
 const EmpleadosPage = lazyNamed(() => import("./pages/Empleados.jsx"), "EmpleadosPage");
@@ -78,7 +79,7 @@ export function App() {
     ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
     : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes"];
   const rutaPermitida =
-    esAdmin || path === "/feedback" || path === "/producciones" || rutasCompartidas.includes(path) || rutaPropia === path;
+    esAdmin || path === "/proyectos" || path === "/feedback" || path === "/producciones" || rutasCompartidas.includes(path) || rutaPropia === path;
 
   if (!rutaPermitida) {
     window.location.href = rutaPropia || "/";
@@ -91,6 +92,9 @@ export function App() {
   }
 
   const dashboard = (() => {
+    if (path === "/proyectos") {
+      return <ProjectsPage sesion={sesion} />;
+    }
     if (path === "/producciones") {
       return <ProductionsPage sesion={sesion} />;
     }

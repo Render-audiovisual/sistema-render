@@ -3,6 +3,7 @@ export function areaForTask(task) {
   if (task.tipo_tarea === "administracion" && (text.includes("video") || text.includes("reel"))) return "planificacion";
   if (text.includes("chatbot") || text.includes("bot ")) return "chatbots";
   if (text.includes("web") || text.includes("landing") || text.includes("página")) return "web";
+  if (task.tipo_tarea === "desarrollo") return "desarrollo";
   if (text.includes("cartel")) return "carteleria";
   if (text.includes("carrusel")) return "carruseles";
   if (text.includes("historia") || text.includes("flyer") || text.includes("community")) return "historias";
@@ -16,6 +17,7 @@ export function emojiForTaskCard(task) {
   if (task.tipo_tarea === "administracion" && (text.includes("video") || text.includes("reel"))) return "🗓️";
   if (text.includes("chatbot") || text.includes("bot ")) return "🤖";
   if (text.includes("web") || text.includes("landing") || text.includes("página")) return "💻";
+  if (task.tipo_tarea === "desarrollo") return "💻";
   if (text.includes("cartel")) return "🪧";
   if (text.includes("carrusel") || task.tipo_tarea === "diseno") return "🎠";
   if (text.includes("historia") || text.includes("flyer") || text.includes("community") || task.tipo_tarea === "community") return "🎨";

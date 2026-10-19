@@ -117,11 +117,12 @@ test('principal personal home: stable personal IDs, bounded operational DTO and 
     if (task.fecha_vencimiento !== null) assert.match(task.fecha_vencimiento, /^\d{4}-\d{2}-\d{2}$/);
   };
   const checkDTO = data => {
-    sortedKeys(data, ['version', 'generated_at', 'today', 'user', 'summary', 'tasks', 'review', 'clients', 'visits', 'activity', 'capabilities', 'list_totals']);
+    sortedKeys(data, ['version', 'generated_at', 'today', 'user', 'summary', 'tasks', 'review', 'clients', 'visits', 'activity', 'projects', 'capabilities', 'list_totals']);
     assert.equal(data.version, 1); sortedKeys(data.user, ['id', 'nombre']);
     sortedKeys(data.summary, ['open', 'overdue', 'today', 'upcoming', 'undated', 'awaiting_review']);
-    sortedKeys(data.review, ['scope', 'total', 'items']); sortedKeys(data.list_totals, ['clients', 'visits', 'activity']);
-    assert.deepEqual(data.capabilities, { projects: false });
+    sortedKeys(data.review, ['scope', 'total', 'items']); sortedKeys(data.list_totals, ['clients', 'visits', 'activity', 'projects']);
+    assert.deepEqual(data.capabilities, { projects: true });
+    assert.deepEqual(data.projects, []);
     assert.ok(Number.isFinite(Date.parse(data.generated_at)));
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Cordoba', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(data.generated_at));
     assert.equal(data.today, day); assert.equal(data.today, clock.today);
@@ -176,7 +177,7 @@ test('principal personal home: stable personal IDs, bounded operational DTO and 
     assert.equal(new Set(data.tasks.map(row => row.id)).size, data.tasks.length);
     assert.equal(data.clients.length, Math.min(8, expected.clientCounts.size));
     for (const row of data.clients) assert.equal(row.open, expected.clientCounts.get(row.id));
-    assert.deepEqual(data.list_totals, { clients: expected.clientCounts.size, visits: expected.visits.length, activity: expected.mine.length });
+    assert.deepEqual(data.list_totals, { clients: expected.clientCounts.size, visits: expected.visits.length, activity: expected.mine.length, projects: 0 });
     assert.equal(data.visits.length, Math.min(8, expected.visits.length));
     assert.equal(new Set(data.visits.map(row => row.id)).size, data.visits.length);
     for (const row of data.visits) assert.ok(expected.visits.some(visit => visit.id === row.id));

@@ -38,6 +38,12 @@ export const PERSONAL_HOME_SQL = `WITH
         OR EXISTS(SELECT 1 FROM mine m WHERE m.id=v.tarea_origen_id)
         OR EXISTS(SELECT 1 FROM produccion_videos pv JOIN mine m ON m.id=COALESCE(pv.tarea_entrega_id,pv.tarea_edicion_id)
           WHERE pv.visita_id=v.id))
+  ),
+  my_projects AS MATERIALIZED (
+    SELECT p.id,p.titulo,p.tipo,p.estado,p.fecha_entrega,p.revision,p.cliente_id,c.nombre AS cliente_nombre
+    FROM proyectos p JOIN clientes c ON c.id=p.cliente_id
+    WHERE NOT p.archivado AND p.estado NOT IN ('finalizado','cancelado') AND c.activo IS DISTINCT FROM FALSE
+      AND (p.responsable_id=$1 OR EXISTS(SELECT 1 FROM proyecto_miembros m WHERE m.proyecto_id=p.id AND m.usuario_id=$1))
   )
 SELECT jsonb_build_object(
   'version',1,'generated_at',statement_timestamp(),'today',to_char(day.today,'YYYY-MM-DD'),
@@ -66,9 +72,14 @@ SELECT jsonb_build_object(
   'activity',COALESCE((SELECT jsonb_agg(jsonb_build_object('task_id',q.id,'titulo',q.titulo,
     'estado',q.estado,'updated_at',q.updated_at,'href','/workspace/tareas?task='||q.id) ORDER BY q.updated_at DESC,q.id DESC)
     FROM (SELECT * FROM mine ORDER BY updated_at DESC,id DESC LIMIT 8) q),'[]'::jsonb),
+  'projects',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',q.id,'titulo',q.titulo,'tipo',q.tipo,
+    'estado',q.estado,'fecha_entrega',to_char(q.fecha_entrega,'YYYY-MM-DD'),'revision',q.revision,
+    'cliente',jsonb_build_object('id',q.cliente_id,'nombre',q.cliente_nombre),'href','/proyectos?proyecto='||q.id)
+    ORDER BY q.fecha_entrega ASC NULLS LAST,q.id) FROM (
+      SELECT * FROM my_projects ORDER BY fecha_entrega ASC NULLS LAST,id LIMIT 8) q),'[]'::jsonb),
   'list_totals',jsonb_build_object('clients',(SELECT count(*)::int FROM client_work),
-    'visits',(SELECT count(*)::int FROM my_visits),'activity',(SELECT count(*)::int FROM mine)),
-  'capabilities',jsonb_build_object('projects',false)
+    'visits',(SELECT count(*)::int FROM my_visits),'activity',(SELECT count(*)::int FROM mine),'projects',(SELECT count(*)::int FROM my_projects)),
+  'capabilities',jsonb_build_object('projects',true)
 ) AS home FROM day`;
 
 export async function readPersonalHome(pool, auth) {

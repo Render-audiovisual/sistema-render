@@ -55,9 +55,20 @@ export function parsePersonalHome(value, userId, allowTeamReview = false) {
     if (!count(value.list_totals?.[key]) || value.list_totals[key] < list.length) invalid();
     list_totals[key] = value.list_totals[key];
   }
-  if (summary.open < tasks.length || review.total < review.items.length || value.capabilities?.projects !== false) invalid();
+  if (typeof value.capabilities?.projects !== 'boolean') invalid();
+  const hasProjects = value.capabilities.projects;
+  const projects = hasProjects ? rows(value.projects, 8, item => {
+    if (!item || !uuid.test(item.id) || !text(item.titulo) || !text(item.tipo) || !text(item.estado)
+      || !positive(item.revision) || !(item.fecha_entrega === null || date(item.fecha_entrega))
+      || item.href !== `/proyectos?proyecto=${item.id}`) invalid();
+    return { id: item.id, titulo: item.titulo, tipo: item.tipo, estado: item.estado,
+      revision: item.revision, fecha_entrega: item.fecha_entrega, cliente: client(item.cliente), href: item.href };
+  }) : [];
+  if (hasProjects && (!count(value.list_totals?.projects) || value.list_totals.projects < projects.length)) invalid();
+  list_totals.projects = hasProjects ? value.list_totals.projects : 0;
+  if (summary.open < tasks.length || review.total < review.items.length) invalid();
   return { version: 1, generated_at: value.generated_at, today: value.today, user: { id: userId, nombre: value.user.nombre },
-    summary, tasks, review, clients, visits, activity, list_totals, capabilities: { projects: false } };
+    summary, tasks, review, clients, visits, activity, projects, list_totals, capabilities: { projects: hasProjects } };
 }
 
 export function homeDate(value, full = false) {

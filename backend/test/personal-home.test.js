@@ -138,7 +138,7 @@ test('SQL projections explicitly allowlist task and operational fields without o
     assert.ok(match[0].includes(`'${key}',`));
   assert.doesNotMatch(sql, /(?:row_to_json|to_jsonb|to_json)\(t\)|t\.\*|jsonb?_agg\(t\)|aclaraciones|descripcion|contenido|password|session_version|importe|abono|salario|payload|feedback/);
   assert.match(sql, /client_work AS \(SELECT cliente_id AS id,cliente_nombre AS nombre,count\(\*\)::int AS open FROM open/);
-  assert.match(sql, /'capabilities',jsonb_build_object\('projects',false\)/);
+  assert.match(sql, /'capabilities',jsonb_build_object\('projects',true\)/);
 });
 
 test('legacy boolean approval is a read-only state projection before personal/review counts', () => {
@@ -152,10 +152,10 @@ test('legacy boolean approval is a read-only state projection before personal/re
 
 test('SQL counts are unbounded while lists have explicit deterministic limits and truncation totals', () => {
   assert.equal((sql.match(/LIMIT 12/g) || []).length, 1);
-  assert.equal((sql.match(/LIMIT 8/g) || []).length, 4);
+  assert.equal((sql.match(/LIMIT 8/g) || []).length, 5);
   assert.match(sql, /'open',\(SELECT count\(\*\)::int FROM open\)/);
   assert.match(sql, /'total',\(SELECT count\(\*\)::int FROM reviews\)/);
-  assert.match(sql, /'list_totals',jsonb_build_object\('clients',\(SELECT count\(\*\)::int FROM client_work\), 'visits',\(SELECT count\(\*\)::int FROM my_visits\),'activity',\(SELECT count\(\*\)::int FROM mine\)\)/);
+  assert.match(sql, /'list_totals',jsonb_build_object\('clients',\(SELECT count\(\*\)::int FROM client_work\), 'visits',\(SELECT count\(\*\)::int FROM my_visits\),'activity',\(SELECT count\(\*\)::int FROM mine\),'projects',\(SELECT count\(\*\)::int FROM my_projects\)\)/);
   assert.match(sql, /ORDER BY fecha_vencimiento ASC NULLS LAST, CASE prioridad WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END,id/);
   assert.match(sql, /FROM mine ORDER BY updated_at DESC,id DESC LIMIT 8/);
   assert.match(sql, /'awaiting_review',\(SELECT count\(\*\)::int FROM open WHERE estado='en_revision'\)/);

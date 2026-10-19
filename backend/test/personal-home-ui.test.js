@@ -38,7 +38,7 @@ test('home DTO projection keeps operational fields and totals, never arbitrary m
     const result = parsePersonalHome(input, 11, admin);
     assert.equal(result.summary.open, 15);
     assert.equal(result.tasks[0].revision, 7);
-    assert.deepEqual(result.list_totals, input.list_totals);
+    assert.deepEqual(result.list_totals, { ...input.list_totals, projects: 0 });
     assert.equal(JSON.stringify(result).includes(secret), false);
     assert.deepEqual(input, before);
   }
@@ -50,6 +50,31 @@ test('same display name cannot substitute for current stable user ID; team queue
   const data = fixture(); data.review.scope = 'team';
   assert.throws(() => parsePersonalHome(data, 11));
   assert.equal(parsePersonalHome(data, 11, true).review.scope, 'team');
+});
+
+test('connected assigned projects retain bounded totals and safe real links, without metadata or financial bags', () => {
+  const data = fixture();
+  const id = '00000000-0000-4000-8000-000000000063';
+  data.capabilities.projects = true;
+  data.list_totals.projects = 12;
+  data.projects = [{ id, titulo: 'Web institucional', tipo: 'web', estado: 'en_curso', revision: 3,
+    fecha_entrega: '2026-11-03', cliente: {id: 1, nombre: 'Cliente', importe: secret},
+    href: `/proyectos?proyecto=${id}`, finanzas: {sueldo: secret}, descripcion: secret }];
+  const before = structuredClone(data);
+  const result = parsePersonalHome(data, 11);
+  assert.equal(result.capabilities.projects, true);
+  assert.equal(result.projects.length, 1);
+  assert.equal(result.projects[0].revision, 3);
+  assert.equal(result.list_totals.projects, 12);
+  assert.equal(JSON.stringify(result).includes(secret), false);
+  assert.deepEqual(data, before);
+  for (const change of [
+    value => { value.projects[0].href = 'https://example.invalid/private'; },
+    value => { value.projects[0].revision = 0; },
+    value => { value.projects[0].fecha_entrega = '2026-02-30'; },
+    value => { value.list_totals.projects = 0; },
+    value => { value.projects = Array(9).fill(value.projects[0]); },
+  ]) { const invalid = structuredClone(data); change(invalid); assert.throws(() => parsePersonalHome(invalid, 11)); }
 });
 
 test('bounded lists retain exact larger counts and support empty, undated, unknown historical and finalized states', () => {
@@ -70,7 +95,7 @@ test('bounded lists retain exact larger counts and support empty, undated, unkno
   empty.tasks = []; empty.review.items = []; empty.review.total = 0;
   empty.clients = []; empty.visits = []; empty.activity = [];
   empty.list_totals = { clients: 0, visits: 0, activity: 0 };
-  assert.deepEqual(parsePersonalHome(empty, 11), empty);
+  assert.deepEqual(parsePersonalHome(empty, 11), {...empty, projects: [], list_totals: {...empty.list_totals, projects: 0}});
 });
 
 test('malformed or external links and impossible totals/dates fail closed instead of inventing success', () => {
@@ -175,7 +200,9 @@ test('principal UI binds state to session identity, keeps honest totals and oper
   assert.match(source, /href=\{task\.href\}/);
   assert.match(source, /href=\{visit\.href\}/);
   assert.match(source, /role="alert"/); assert.match(source, /role="status"/);
-  assert.doesNotMatch(source, /localStorage|sessionStorage|Math\.random|\/sueldos|\/finanzas|\/proyectos|dangerouslySetInnerHTML/);
+  assert.doesNotMatch(source, /localStorage|sessionStorage|Math\.random|\/sueldos|\/finanzas|dangerouslySetInnerHTML/);
+  assert.match(source, /data\.capabilities\.projects &&/);
+  assert.match(source, /href=\{project.href\}/);
   assert.match(css, /min-height:44px/); assert.match(css, /focus-visible/); assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /max-width:1440px/); assert.match(css, /@media\(max-width:440px\)/);
 });

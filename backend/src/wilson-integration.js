@@ -82,6 +82,7 @@ const CONFIRMATION_MAX_AGE_MS = 15 * 60 * 1000;
 const usedNonces = new Map();
 
 const SECTORS = new Map([
+  ["desarrollo", "desarrollo"],
   ["diseno", "diseno"], ["diseño", "diseno"],
   ["edicion", "edicion"], ["edición", "edicion"],
   ["produccion", "produccion"], ["producción", "produccion"],

@@ -28,6 +28,7 @@ export const AREAS = [
   { id: "edicion", label: "Edición", icon: "▶", color: "#2d8f75" },
   { id: "historias", label: "Flyers / historias", icon: "◇", color: "#d34f75" },
   { id: "web", label: "Páginas web", icon: "◫", color: "#3278cc" },
+  { id: "desarrollo", label: "Desarrollo", icon: "⌘", color: "#1754a1" },
   { id: "chatbots", label: "Chatbots", icon: "✦", color: "#9a6a24" },
   { id: "carteleria", label: "Cartelería", icon: "▱", color: "#68717f" },
 ];
@@ -38,4 +39,5 @@ export const TASK_TYPES = [
   { id: "produccion", label: "Producción" },
   { id: "community", label: "Community" },
   { id: "administracion", label: "Administración" },
+  { id: "desarrollo", label: "Desarrollo" },
 ];

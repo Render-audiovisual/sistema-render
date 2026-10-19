@@ -42,6 +42,8 @@ import { resolveStartupPolicy, assertBackgroundJobsAllowed, assertStartupMigrati
 import { assertCoreSchemaReady } from "./startup-schema.js";
 import { assertTaskBusinessInput } from "./task-integration-fields.js";
 import { createPersonalHomeRouter } from "./personal-home.js";
+import { createProjectsRouter } from "./projects.js";
+import { projectDomainConflict } from "./project-errors.js";
 import { resolveUserRole } from "./user-roles.js";
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
@@ -280,6 +282,7 @@ router.use("/drive", createGoogleDrivePublicRouter({ express, pool }));
 router.use(requireAuthentication);
 router.use(requireCurrentIdentity(pool));
 router.use('/inicio', createPersonalHomeRouter({ express, pool }));
+router.use('/proyectos', createProjectsRouter({ express, pool }));
 
 router.get("/sesion", (req, res) => res.json({ usuario: req.auth }));
 router.post("/logout", async (req, res, next) => {
@@ -2205,6 +2208,7 @@ const TIPOS_TAREA_VALIDOS = [
   "produccion",
   "community",
   "administracion",
+  "desarrollo",
 ];
 const PRIORIDADES_TAREA_VALIDAS = ["baja", "media", "alta"];
 
@@ -3126,6 +3130,7 @@ router.get("/tareas", async (req, res, next) => {
         WHEN t.tipo_tarea = 'administracion' AND (${areaText} LIKE '%video%' OR ${areaText} LIKE '%reel%') THEN 'planificacion'
         WHEN ${areaText} LIKE '%chatbot%' OR ${areaText} LIKE '%bot %' THEN 'chatbots'
         WHEN ${areaText} LIKE '%web%' OR ${areaText} LIKE '%landing%' OR ${areaText} LIKE '%página%' THEN 'web'
+        WHEN t.tipo_tarea = 'desarrollo' THEN 'desarrollo'
         WHEN ${areaText} LIKE '%cartel%' THEN 'carteleria'
         WHEN ${areaText} LIKE '%carrusel%' THEN 'carruseles'
         WHEN ${areaText} LIKE '%historia%' OR ${areaText} LIKE '%flyer%' OR ${areaText} LIKE '%community%' THEN 'historias'
@@ -3857,6 +3862,9 @@ if (fs.existsSync(distDir)) {
 // Error handler centralizado: sin esto, Express devuelve HTML/stack
 // traces por defecto en vez de JSON — riesgo de filtrar detalles internos.
 app.use((err, _req, res, _next) => {
+  if (projectDomainConflict(err)) {
+    return res.status(409).json({ error: "El registro conserva vínculos de un proyecto. Revisá su cliente y sus tareas; no elimines su historial." });
+  }
   if (productionEditorialConflict(err)) {
     return res.status(409).json({ error: "El contenido está vinculado a una producción. Revisá la pieza, el objetivo y su tarea antes de cambiar la relación." });
   }

@@ -46,6 +46,7 @@ SECTORS = {
     "organizacion": "administracion",
     "barbi": "administracion",
     "administracion": "administracion",
+    "desarrollo": "desarrollo",
 }
 
 PRIORITIES = {1: "alta", 2: "alta", 3: "media", 4: "baja"}

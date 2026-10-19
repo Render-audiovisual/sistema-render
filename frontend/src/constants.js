@@ -85,6 +85,7 @@ export const SECTORES_TAREA = [
   { id: "produccion", label: "Producción", bg: "#0f2b28", fg: "#4db6ac" },
   { id: "edicion", label: "Edición", bg: "#17233a", fg: "#64b5f6" },
   { id: "community", label: "Community", bg: "#331825", fg: "#f06292" },
+  { id: "desarrollo", label: "Desarrollo", bg: "#eaf2ff", fg: "#1754a1" },
 ];
 
 export const ESTADOS_TAREA = [

@@ -14,6 +14,13 @@ export const CORE_SCHEMA_COLUMNS = Object.freeze({
   notas_compartidas: { id: 'integer', feedback: 'jsonb', updated_at: 'timestamp with time zone' },
   feedback_operation_receipts: { actor_user_id: 'integer', operation: 'text', payload_hash: 'text', note_id: 'bigint' },
   task_operation_receipts: { actor_user_id: 'integer', operation: 'text', payload_hash: 'text', task_id: 'bigint', task_revision: 'integer' },
+  proyectos: { id: 'uuid', cliente_id: 'integer', responsable_id: 'integer', revision: 'integer', request_hash: 'text' },
+  proyecto_miembros: { proyecto_id: 'uuid', usuario_id: 'integer' },
+  proyecto_etapas: { id: 'uuid', proyecto_id: 'uuid', posicion: 'integer' },
+  proyecto_hitos: { id: 'uuid', proyecto_id: 'uuid', etapa_id: 'uuid' },
+  proyecto_entregables: { id: 'uuid', proyecto_id: 'uuid', aprobado_por_id: 'integer' },
+  proyecto_tareas: { proyecto_id: 'uuid', tarea_id: 'integer' },
+  proyecto_actividad: { proyecto_id: 'uuid', actor_id: 'integer' },
 });
 
 export async function assertCoreSchemaReady(db) {
