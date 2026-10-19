@@ -229,7 +229,7 @@ export function EmpleadosPage() {
   };
 
   const iniciarEdicionGoogleEmail = () => {
-    setGoogleEmailEdicion(usuarioAdministrado?.google_email || usuarioAdministrado?.email_notificaciones || "");
+    setGoogleEmailEdicion(usuarioAdministrado?.google_email || "");
     setEditandoGoogleEmail(true);
     setFormError(null);
     setMensaje(null);
@@ -568,7 +568,7 @@ export function EmpleadosPage() {
                     placeholder="nombre@gmail.com"
                     onChange={(e) => setEmailNotificaciones(e.target.value)}
                   />
-                  <small>Puede agregarse después desde Administrar.</small>
+                  <small>Solo para avisos, no para iniciar sesión. Ingresá con el usuario de acceso o el email de Google configurado explícitamente por un administrador. Puede agregarse después desde Administrar.</small>
                 </label>
               </div>
 
@@ -769,7 +769,7 @@ export function EmpleadosPage() {
                 <div className="usuarios-panel-section-title">
                   <div>
                     <strong>Correo de avisos</strong>
-                    <span>Destino de las notificaciones</span>
+                    <span>Solo para avisos, no para iniciar sesión</span>
                   </div>
                   {!editandoCorreo && (
                     <button className="btn" type="button" onClick={iniciarEdicionCorreo}>
@@ -833,7 +833,7 @@ export function EmpleadosPage() {
                 <div className="usuarios-panel-section-title">
                   <div>
                     <strong>Acceso con Google</strong>
-                    <span>Ingreso directo sin contraseña</span>
+                    <span>Email de acceso configurado explícitamente por un administrador</span>
                   </div>
                   {!editandoGoogleEmail && (
                     <button className="btn" type="button" onClick={iniciarEdicionGoogleEmail}>
@@ -845,7 +845,7 @@ export function EmpleadosPage() {
                 {editandoGoogleEmail ? (
                   <div className="usuarios-email-editor">
                     <label className="form-field">
-                      <span>Email de Google</span>
+                      <span>Email de Google para acceso</span>
                       <input
                         type="email"
                         value={googleEmailEdicion}
@@ -885,8 +885,8 @@ export function EmpleadosPage() {
                       </strong>
                       <span>
                         {usuarioAdministrado.google_email
-                          ? "Esta persona puede ingresar con su cuenta de Google."
-                          : "Esta persona ingresa solo con contraseña."}
+                          ? "Puede ingresar con Google o usar su usuario de acceso o este email con contraseña. El correo de avisos no habilita el acceso."
+                          : "Ingresá con el usuario de acceso y contraseña. El correo de avisos no habilita el acceso con Google ni con contraseña."}
                       </span>
                     </div>
                   </div>

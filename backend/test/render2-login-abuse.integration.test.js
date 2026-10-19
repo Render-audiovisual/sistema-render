@@ -22,7 +22,8 @@ test('public login abuse: durable PostgreSQL limits, bounded failures and unchan
     [112001, true, null, hash], [112002, false, null, hash],
     [112003, true, 'qa-login-ambiguous@example.invalid', hash], [112004, true, null, hash],
     [112005, true, null, spacedHash],
-  ]) await fixture.query(`INSERT INTO usuarios(id,usuario,nombre,rol,password_hash,activo,session_version,email_notificaciones)
+  // Ambiguity must involve an actual configured login identifier, never notification routing.
+  ]) await fixture.query(`INSERT INTO usuarios(id,usuario,nombre,rol,password_hash,activo,session_version,google_email)
     VALUES ($1,$2,'QA login synthetic identity','edicion',$3,$4,1,$5)`,
   [id, id === 112004 ? 'qa-login-ambiguous@example.invalid' : `qa_login_${id}`, passwordHash, active, alias]);
   const [client] = await fixture.query("INSERT INTO clientes(nombre) VALUES ('QA auth invariant client') RETURNING id");

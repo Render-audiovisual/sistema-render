@@ -4,6 +4,8 @@ Target policy for approval/implementation; not an assertion that principal endpo
 
 Baseline findings below were captured before rescue patches. See `STATUS.md` for the current implemented subset and `LOCAL_TESTING.md` for isolated HTTP results; this target matrix must not be mistaken for a completed permission rollout.
 
+Latest login identity integration: see `LOGIN_IDENTITY_CONTRACT.md` and `LOGIN_IDENTITY_QA.md`. Principal password candidate lookup now uses only canonical `usuario` and admin-configured `google_email`, never notification routing. Google first binding uses stable-ID/email/session-version/activity/subject conditional UPDATE and current RETURNING; provider verification remains mandatory. No real account roster, aliases or shared historical identities were created, merged or reinterpreted. Independent production onboarding remains unverified. Read the integration QA status before treating these implementation notes as runtime evidence.
+
 ## Current gaps and explicit policy decisions
 
 - Principal `auth.js` calls `jwt.verify(token, secret)` and `requireRole` trusts the signed `rol`; principal login currently signs 30-day name/role claims. Target: explicit algorithm/issuer/audience/expiry and typed identity validation; database-resolved active user/current capabilities and revocation. Missing auth configuration must fail closed; unavailable auth storage must not fall back to token roles.

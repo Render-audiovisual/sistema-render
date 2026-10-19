@@ -1,0 +1,26 @@
+# Login identity separation and Google first-binding CAS
+
+Local principal only; no configured DB/production/real accounts/provider requests. Existing worktree dirt preserved. This bounded integration advances independent server identity; it does not establish a verified production roster or retire all parallel apps.
+
+## Evidence and decisions
+
+Current server password login resolves usuario OR google_email OR email_notificaciones with LIMIT2. Notification delivery changes therefore alter authentication identifiers and can collide with an otherwise valid username. Existing permissions contract requires notification routing not grant login identity. Remove notification-email lookup, retain canonical username and explicitly admin-configured Google email, same strict input/password/current active ID/session semantics and duplicate-candidate denial. No automatic legacy alias backfill or guess by person name. Existing notification-only login users must use canonical username or deliberately configured Google email; stage communication before rollout.
+
+Current first Google binding reads an eligible google_email row, then conditionally sets subject without rechecking email/session_version. An intervening admin email reset or revocation can be overwritten by an old provider-email decision. Preserve subject-first resolution and verified provider token path, but use an exact read→conditional UPDATE compare-and-set. No table changes, migrations, new public bypass/test route or account auto-provisioning.
+
+## Shared resolver contract (worker owns)
+
+NEW backend/src/login-identity.js exports `resolveGoogleLoginIdentity(pool,payload)` and `findPasswordLoginIdentity(pool,identifier)`. Password helper returns unique row or null (query projected current fields+password_hash, LIMIT2), only usuario/google_email. Google resolver receives claims only after actual Google library verification in server; also defensively checks strict email_verified true, scalar nonempty bounded subject/email and valid email shape. No credential/sub/email logging. Returns active account row projected id,usuario,nombre,rol,foto_perfil,activo,session_version; throws safe status-bearing Error for expected401 invalid claims,403 unknown/inactive/ambiguous,409 changed linking/uniqueness race. Unexpected storage errors propagate to existing generic error handling.
+
+Google subject exact match first (LIMIT2); do not remap existing subject by changed provider email. Otherwise choose unique configured google_email (case-insensitive), eligible subject null/same, active; conditional UPDATE includes selected stable id, lower(google_email)=lower(expected email), observed session_version, activo=TRUE and eligible google_id. PostgreSQL rechecks predicates after row-lock waits. Zero rows=>409, known23505=>safe409, never silently bind another subject/account or retry writes. Concurrent identical binding may succeed idempotently to same account; conflicting identities fail closed. Existing unique subject/email indexes remain authoritative. No broad lock across provider network call. Return only UPDATE RETURNING current identity, not stale selected row. Subsequent current-identity middleware still revokes any token whose session version changes after selection.
+
+## Ownership
+
+- Coordinator: contract, server.js integration (only shared server writer), source contracts/test adaptations, final regression/build/docs/commit. Existing Google token verification/audience and login limiter execute before resolver. No request-controlled verifier or test env bypass.
+- Archimedes: ONLY new login-identity.js + backend/test/login-identity.test.js. Pure fake-pool tests, no server/DB/provider startup. READY freeze.
+- Wegener: ONLY new backend/test/render2-login-identity.integration.test.js + docs/render-2/LOGIN_IDENTITY_QA.md. Use existing startLocalHarness dedicated55628 fresh physical PostgreSQL. Author tests, do not start fixture until coordinator explicitly requests. Actual principal HTTP password/admin email update/login/current-user behavior; actual resolver+SQL with controlled read→admin concurrent mutation→UPDATE barrier to prove changed email/session/deactivation/conflicting subject not overwritten; subject-first changed email and same-subject concurrency. These SQL resolver tests do not claim actual external Google verification. No harness/server/schema edits.
+- Darwin: read-only independent code review after worker/main READY; concrete P1/P2 only, no edits/server/DB.
+
+## Acceptance
+
+Unique canonical/configured Google-email password login remains, notification email alone rejected and cannot shadow another canonical login, active ID role/session enforced, ambiguity denied. Google unverified/unknown/duplicate/inactive rejects; existing subject survives changed email attribute; first-link CAS refuses admin reset/revoke/deactivate races, handles uniqueness safely; actual concurrent same subject links same ID, no writes to tasks/business history. Verify fresh physical fixture cleanup, full backend/frontend regression and existing principal HTTP suites. No production deployment. Real Google/Drive/provider, roster/recovery/onboarding and session transport remain gates. Do not claim implemented=browser/provider validated.

@@ -21,6 +21,7 @@ import { encolarNotificacionPrivadaFeedback } from "./private-feedback-notificat
 import { requireAuthentication, requireRole, requireCurrentIdentity, issueUserToken } from "./auth.js";
 import { reserveLoginAttempt } from "./login-abuse.js";
 import { passwordLoginInput, googleLoginInput } from "./login-input.js";
+import { findPasswordLoginIdentity, resolveGoogleLoginIdentity } from "./login-identity.js";
 import { administerUser } from "./user-administration.js";
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { persistAssignedTask } from "./task-persistence.js";
@@ -179,21 +180,10 @@ router.post("/login", async (req, res, next) => {
     const { usuario: identificador, password } = passwordLoginInput(req.body);
     if (!await allowLoginAttempt(req, res, identificador)) return;
 
-    const result = await pool.query(
-      `SELECT id, usuario, nombre, rol, foto_perfil, password_hash, activo, session_version
-       FROM usuarios
-       WHERE lower(usuario) = lower($1)
-          OR lower(google_email) = lower($1)
-          OR lower(email_notificaciones) = lower($1)
-       LIMIT 2`,
-      [identificador],
-    );
-
-    if (result.rows.length !== 1) {
+    const usuarioDB = await findPasswordLoginIdentity(pool, identificador);
+    if (!usuarioDB) {
       return res.status(401).json({ error: "Usuario o contraseña incorrectos." });
     }
-
-    const usuarioDB = result.rows[0];
     const passwordValida = await bcrypt.compare(
       password,
       usuarioDB.password_hash,
@@ -249,39 +239,7 @@ router.post("/login/google", async (req, res, next) => {
         .json({ error: "Tu cuenta de Google no tiene el email verificado." });
     }
 
-    const porGoogleId = await pool.query(
-      "SELECT id, usuario, nombre, rol, foto_perfil, activo, session_version FROM usuarios WHERE google_id = $1",
-      [payload.sub],
-    );
-    if (porGoogleId.rows.length > 1) return res.status(403).json({ error: "La identidad de Google debe vincularse a una única cuenta." });
-    let usuarioDB = porGoogleId.rows[0] || null;
-
-    if (!usuarioDB) {
-      const porEmail = await pool.query(
-        "SELECT id, usuario, nombre, rol, foto_perfil, activo, session_version FROM usuarios WHERE lower(google_email) = lower($1) AND (google_id IS NULL OR google_id=$2)",
-        [payload.email, payload.sub],
-      );
-      if (porEmail.rows.length > 1) return res.status(403).json({ error: "El correo de Google está vinculado a varias cuentas." });
-      usuarioDB = porEmail.rows[0] || null;
-
-      if (usuarioDB?.activo === true) {
-        // Primer login con Google de esta persona: guardamos el google_id
-        // para no depender solo del email en los próximos logins (el email
-        // de Google podría cambiar, el sub no).
-        const linked = await pool.query(`UPDATE usuarios SET google_id=$1
-          WHERE id=$2 AND activo=TRUE AND (google_id IS NULL OR google_id=$1)
-          RETURNING id,usuario,nombre,rol,foto_perfil,activo,session_version`, [payload.sub, usuarioDB.id]);
-        if (!linked.rows.length) return res.status(409).json({ error: "La vinculación cambió. Volvé a iniciar sesión." });
-        usuarioDB = linked.rows[0];
-      }
-    }
-
-    if (!usuarioDB || usuarioDB.activo !== true) {
-      return res.status(403).json({
-        error:
-          "Tu cuenta de Google no está vinculada a ningún usuario de Render. Pedile al líder que te vincule.",
-      });
-    }
+    const usuarioDB = await resolveGoogleLoginIdentity(pool, payload);
 
     const token = issueUserToken(usuarioDB);
 
@@ -297,6 +255,12 @@ router.post("/login/google", async (req, res, next) => {
     });
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ error: 'Datos de acceso inválidos.' });
+    const identityErrors = {
+      401: "La identidad de Google no es válida o no está verificada.",
+      403: "Tu cuenta de Google no tiene una vinculación activa y única. Consultá con un líder.",
+      409: "La vinculación cambió. Volvé a iniciar sesión.",
+    };
+    if (Object.hasOwn(identityErrors, error.status)) return res.status(error.status).json({ error: identityErrors[error.status] });
     next(error);
   }
 });
