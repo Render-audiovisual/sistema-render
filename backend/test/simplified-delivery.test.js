@@ -5,6 +5,7 @@ import { validateProductionHandoff } from '../src/task-workflow.js';
 import { getProductionVisitProgress, groupProductionByClient } from '../../frontend/src/features/render-os/utils/production-visits.js';
 import { getEditingResponsible, summarizeTaskDeliveries } from '../../frontend/src/shared/reports/report-utils.js';
 import { filterReportDataForUser } from '../src/report-access.js';
+import { canEmployeePatchTask } from '../src/task-access.js';
 
 const visit = (metadata = {}) => ({ titulo: 'Moketa | Visita producción | 16/09', tipo_tarea: 'produccion', cliente_nombre: 'Moketa', material_referencia: 'https://drive.google.com/drive/folders/example', propiedades_extra: metadata });
 test('a visit with no plan can be finished with its actual recorded count', () => {
@@ -24,11 +25,26 @@ test('actual completion may be below plan but still requires real recordings and
   assert.equal(isProductionComplete(visit({ produccion_registros: [{ cantidad: 3 }] })), false);
 });
 test('handing publication to another person retains editing credit without marking the video published', () => {
-  const task = { id: 1, asignado_a: 'Oriana', tipo_tarea: 'edicion', estado: 'en_revision', propiedades_extra: { edicion_responsable: 'Luciano', revision_aprobada: true } };
+  const task = { id: 1, asignado_a: 'Oriana', asignado_a_id: 2, colaborador_ids: [], tipo_tarea: 'edicion', estado: 'en_revision', propiedades_extra: { edicion_responsable: 'Luciano', edicion_responsable_id: 7, revision_aprobada: true } };
   assert.equal(getEditingResponsible(task), 'Luciano');
   assert.deepEqual(summarizeTaskDeliveries([task]), { realizados: 1, pendientes: 0, total: 1 });
   const data = { tareas: [], tareasRenderOs: [task], usuarios: [], clientes: [], historias: [], publicaciones: [] };
-  assert.equal(filterReportDataForUser(data, { rol: 'edicion', nombre: 'Luciano' }).tareasRenderOs.length, 1);
-  assert.equal(filterReportDataForUser(data, { rol: 'edicion', nombre: 'Otro editor' }).tareasRenderOs.length, 0);
+  const credited = filterReportDataForUser(data, { id: 7, rol: 'edicion', nombre: 'Luciano' });
+  assert.equal(credited.tareasRenderOs.length, 1);
+  assert.equal(credited.tareasRenderOs[0].propiedades_extra.edicion_responsable_id, 7);
+  assert.equal(filterReportDataForUser(data, { id: 8, rol: 'edicion', nombre: 'Luciano' }).tareasRenderOs.length, 0);
+  assert.equal(filterReportDataForUser(data, { id: 7, rol: 'edicion', nombre: 'Editor renombrado' }).tareasRenderOs.length, 1);
+  assert.equal(filterReportDataForUser(data, { id: 7, rol: 'diseno', nombre: 'Luciano' }).tareasRenderOs.length, 0);
+  for (const id of [undefined, null, '7', 0, -1, 7.1, {}, true]) {
+    const legacy = { ...data, tareasRenderOs: [{ ...task, propiedades_extra: { ...task.propiedades_extra, edicion_responsable_id: id } }] };
+    assert.equal(filterReportDataForUser(legacy, { id: 7, rol: 'edicion', nombre: 'Luciano' }).tareasRenderOs.length, 0);
+  }
   assert.equal(task.estado, 'en_revision');
+});
+
+test('employee request metadata cannot forge stable editing credit', () => {
+  for (const role of ['edicion', 'diseno', 'produccion', 'community', 'programacion']) {
+    assert.equal(canEmployeePatchTask({ propiedades_extra: { edicion_responsable_id: 7 } }, { workspace: 'render_os', role }), false);
+    assert.equal(canEmployeePatchTask({ propiedades_extra: { edicion_responsable: 'Luciano' } }, { workspace: 'render_os', role }), false);
+  }
 });

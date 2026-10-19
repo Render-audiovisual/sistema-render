@@ -83,7 +83,7 @@ test("saving content on historical task does not emit a state change or mutate a
     const original = {...task,titulo:"Historical",estado:"publicada",propiedades_extra:{}};
     let changes;
     const context = {task:original,draft:{...original,estado:draftState,aclaraciones:"Updated text"},
-      metadata:{},tags:[],collaborators:[],canEditTask:true,isProductionVisit:false,productionProgress:{},
+      metadata:{},tags:[],collaborators:[],canEditTask:true,canEditVisitClient:true,canEditVisitDate:true,isProductionVisit:false,productionProgress:{},
       getCanonicalTaskContentMetadata,canonicalTaskState,canUserMoveTaskToState,sesion:{usuario:admin},
       setSaving:()=>{},setEditing:()=>{},onUpdate:async(id,value)=>{changes=value;},onApprove:()=>assert.fail("no approval during content edit")};
     const save = new Function(...Object.keys(context),`${body}\nreturn save;`)(...Object.values(context));

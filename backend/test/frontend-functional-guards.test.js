@@ -223,34 +223,43 @@ test("Clientes muestra el abono mensual sin inventar estados de cobranza", () =>
   assert.doesNotMatch(modalsSource, /Estado del pago|Sin registrar/);
 });
 
-test("el reporte personal de Oriana separa carruseles, reels e historias publicadas", () => {
+test("el reporte conserva formatos y piezas personales por ID sin inferir publicación de tareas", async () => {
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
-  assert.match(reportesSource, /resumenOperativo\("carruseles"\)/);
-  assert.match(reportesSource, /resumenOperativo\("ediciones"\)/);
-  assert.match(reportesSource, /resumenOperativo\("reels_planificados"\)/);
-  assert.match(reportesSource, /resumenRenderOsPorDia/);
-  assert.match(reportesSource, /etiqueta: "Carruseles entregados"/);
-  assert.match(reportesSource, /etiqueta: "Reels publicados"/);
-  assert.match(reportesSource, /etiqueta: "Historias publicadas"/);
-  assert.match(reportesSource, /belongsToPerson\(nombrePropio, "Oriana"\)/);
+  const { employeeFormatBreakdown, personalEditorialReport } = await import('../../frontend/src/shared/reports/production-registry-report.js');
+  const range = { desde: '2026-10-01', hasta: '2026-11-01' };
+  const tasks = [{ id: 1, asignado_a_id: 7, publicacion_id: 8, titulo: 'Carrusel', estado: 'finalizada', fecha_vencimiento: '2026-10-04' }];
+  assert.equal(employeeFormatBreakdown(tasks, 7, range).find(row => row.formato === 'carruseles').finalizadas, 1);
+  const report = personalEditorialReport(tasks, 7, [], [{ id: 8, tipo: 'carrusel', estado: 'lista', fecha_programada: '2026-10-04' }], range);
+  assert.equal(report.rows[0].programadas, 1);
+  assert.equal(report.rows[0].publicadas, 0);
+  assert.equal(personalEditorialReport(tasks, 9, [], [], range).available, false);
+  assert.match(reportesSource, /employeeFormatBreakdown\(tasks, person.id, range\)/);
+  assert.match(reportesSource, /personalEditorialReport\(tasks, person.id, data.historias, data.publicaciones, range\)/);
+  assert.match(reportesSource, /sin atribución verificable/);
+  assert.doesNotMatch(reportesSource, /belongsToPerson/);
 });
 
 test("el reporte se actualiza al volver a la pestaña y periódicamente", () => {
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
-  assert.match(reportesSource, /fetch\(`\/api\/reportes\/datos\?mes_configuracion=/);
-  assert.match(reportesSource, /setInterval\(\(\) => cargarReporte\(true\), 30000\)/);
-  assert.match(reportesSource, /window\.addEventListener\("focus", actualizarAlVolver\)/);
-  assert.match(reportesSource, /document\.addEventListener\("visibilitychange", actualizarAlVolver\)/);
+  assert.match(reportesSource, /new URLSearchParams\(\{ desde: range.desde, hasta: range.hasta/);
+  assert.match(reportesSource, /fetch\(['"]\/api\/reportes\/datos\?/);
+  assert.match(reportesSource, /setInterval\(refresh, 30000\)/);
+  assert.match(reportesSource, /addEventListener\(['"]focus['"], refresh\)/);
+  assert.match(reportesSource, /addEventListener\(['"]visibilitychange['"], refresh\)/);
+  assert.match(reportesSource, /document.visibilityState === 'visible'/);
+  assert.match(reportesSource, /removeEventListener\(['"]focus['"], refresh\)/);
+  assert.match(reportesSource, /popstate/);
 });
 
 test("Reportes prioriza rendimiento y conserva una barra de avance accesible", () => {
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
-  const stylesSource = readFileSync(new URL("../../frontend/src/styles.css", import.meta.url), "utf8");
-  assert.match(reportesSource, /<h2>¿Cómo rindió el equipo este mes\?<\/h2>/);
-  assert.match(reportesSource, /Objetivos, trabajo realizado y pendientes, sin información económica/);
-  assert.match(reportesSource, /Ver grabaciones por cliente/);
-  assert.match(stylesSource, /@keyframes report-progress-shine/);
-  assert.match(stylesSource, /@media \(prefers-reduced-motion:reduce\)/);
+  assert.match(reportesSource, /<h2 id="rpr-employees">Trabajo por persona/);
+  assert.match(reportesSource, /<progress aria-label=.*max=\{format.total\} value=\{format.finalizadas\}/);
+  assert.match(reportesSource, /format.total > 0/);
+  assert.match(reportesSource, /aria-expanded=\{selectedPerson === person.id\}/);
+  assert.match(reportesSource, /<h2 id="rpr-quotas">Cuotas por cliente y feed/);
+  assert.match(reportesSource, /cuotas son referencia mensual, sin porcentaje/);
+  assert.doesNotMatch(reportesSource, /OBJETIVOS_MENSUALES_EQUIPO/);
 });
 
 test("Tareas conserva únicamente Papelera como acción secundaria", () => {

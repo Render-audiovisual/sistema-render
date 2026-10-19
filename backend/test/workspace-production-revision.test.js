@@ -120,7 +120,7 @@ test("correction prompt retains failed input for explicit resubmission",async()=
   const defaults=[];
   let calls=0;
   const run=()=>{
-    const context={task,productionCorrections:corrections,setProductionCorrections:fn=>{corrections=fn(corrections);},
+    const context={task,canRegisterProduction:true,productionCorrections:corrections,setProductionCorrections:fn=>{corrections=fn(corrections);},
       window:{prompt:(_label,value)=>{defaults.push(value);return "7";}},
       onCorrectProduction:async()=>{calls++;throw conflict;}};
     return new Function(...Object.keys(context),`${body}\nreturn correctProduction;`)(...Object.values(context))({id:99,cantidad:1});

@@ -49,8 +49,8 @@ test("saving content preserves collaborators without resending assignments or di
   const task = { id: 5, titulo: "Original", asignado_a_id: 1, colaborador_ids: [2], propiedades_extra: { colaboradores: ["Alex"], resumen: "Keep", etiquetas: ["tag"] } };
   let changes;
   const noop = () => {};
-  const save = new Function("task", "draft", "metadata", "tags", "collaborators", "canEditTask", "isProductionVisit", "productionProgress", "getCanonicalTaskContentMetadata", "setSaving", "setEditing", "onUpdate", "canonicalTaskState", `${body}\nreturn save;`)(
-    task, { ...task, aclaraciones: "New content" }, task.propiedades_extra, ["tag"], ["Alex"], true, false, {}, getCanonicalTaskContentMetadata, noop, noop, async (id, value) => { changes = value; }, canonicalTaskState,
+  const save = new Function("task", "draft", "metadata", "tags", "collaborators", "canEditTask", "isProductionVisit", "productionProgress", "getCanonicalTaskContentMetadata", "setSaving", "setEditing", "onUpdate", "canonicalTaskState", "canEditVisitClient", "canEditVisitDate", `${body}\nreturn save;`)(
+    task, { ...task, aclaraciones: "New content" }, task.propiedades_extra, ["tag"], ["Alex"], true, false, {}, getCanonicalTaskContentMetadata, noop, noop, async (id, value) => { changes = value; }, canonicalTaskState, true, true,
   );
   await save();
   assert.equal(changes.aclaraciones, "New content");

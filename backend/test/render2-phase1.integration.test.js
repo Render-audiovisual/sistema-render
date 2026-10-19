@@ -45,6 +45,10 @@ test('principal Phase 1 HTTP sessions, DTO privacy and publication boundary', {
   await fixture.query(`INSERT INTO entregas_edicion
     (editor_clave,fecha_entrega,cliente_etiqueta,categoria,importe,fuente,fuente_item,confirmado_por)
     VALUES ('Luciano QA','2026-10-19','QA sentinel','A',987654.32,'render2-fixture',91003,'Franco QA')`);
+  const [privateTask] = await fixture.query(`INSERT INTO tareas(titulo,asignado_a,tipo_tarea,estado,propiedades_extra)
+    VALUES ('QA nonempty ID report','Luciano QA','edicion','pendiente',
+      '{"workspace":"render_os","importe":987654.32}') RETURNING id`);
+  await fixture.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES ($1,91003,'responsable')", [privateTask.id]);
   const leaderReport = await api('/reportes/datos', { token: franco });
   assert.equal(leaderReport.status, 200);
   assert.ok(leaderReport.body.entregasEdicion.some(row => Number(row.importe) === 987654.32));
@@ -58,7 +62,8 @@ test('principal Phase 1 HTTP sessions, DTO privacy and publication boundary', {
     }
   };
   assertNoMoney(report.body);
-  assert.ok(report.body.entregasEdicion.some(row => row.fuente === 'render2-fixture'), 'Employee must see own nonempty DTO without amount');
+  assert.deepEqual(report.body.entregasEdicion, [], 'Name-only historical deliveries must not infer an employee identity');
+  assert.ok(report.body.tareasRenderOs.some(row => row.id === privateTask.id && row.asignado_a_id === 91003), 'Employee must see a real nonempty ID-bound DTO without its stored amount');
   const designerReport = await api('/reportes/datos', { token: designer });
   assert.equal(designerReport.status, 200);
   assertNoMoney(designerReport.body);

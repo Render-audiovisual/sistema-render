@@ -105,6 +105,16 @@ function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, editor
   </section>;
 }
 
+function taskProductionRegistryState(task, lookup) {
+  const key = `${task.id}:${task.revision ?? task.updated_at ?? ""}`;
+  const ready = lookup.key === key && lookup.status === "ready";
+  const vinculo = ready ? lookup.vinculo : null;
+  return { ready, vinculo, usesIndividual: vinculo?.usa_registro_individual === true,
+    legacyEnabled: ready && vinculo?.usa_registro_individual !== true,
+    clientEditable: ready && !vinculo,
+    dateEditable: ready && vinculo?.tipo !== "origen" };
+}
+
 function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onTrashAction }) {
   const windowMotion = useTaskWindowMotion(task?.id, onClose);
   const [editing, setEditing] = useState(false);
@@ -125,10 +135,44 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [approving, setApproving] = useState(false);
   const [publicationResponsible, setPublicationResponsible] = useState(null);
   const [confirmingProduction, setConfirmingProduction] = useState(false);
+  const [registryLookup, setRegistryLookup] = useState({ status: "loading", key: null, vinculo: null });
+  const [registryRetry, setRegistryRetry] = useState(0);
   const [linkCopied, setLinkCopied] = useState(false);
   const archivePendingRef = useRef(false);
   const scriptEditorRef = useRef(null);
   const isAdmin = Number.isSafeInteger(sesion?.usuario?.id) && sesion.usuario.id > 0 && sesion.usuario.rol === "admin";
+
+  useEffect(() => {
+    if (!task) return;
+    const controller = new AbortController();
+    const key = `${task.id}:${task.revision ?? task.updated_at ?? ""}`;
+    let refreshQueued = false;
+    const refreshRegistry = () => {
+      if (document.visibilityState !== "visible" || refreshQueued) return;
+      refreshQueued = true;
+      controller.abort();
+      setRegistryLookup({status:"loading", key, vinculo:null});
+      setRegistryRetry(value => value + 1);
+    };
+    window.addEventListener("focus", refreshRegistry);
+    document.addEventListener("visibilitychange", refreshRegistry);
+    setRegistryLookup({status:"loading", key, vinculo:null});
+    apiRequest(`/api/producciones/tareas/${task.id}`, {signal:controller.signal})
+      .then(data => {
+        if (!Object.hasOwn(data, "vinculo") || (data.vinculo !== null &&
+          (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(data.vinculo.id) ||
+           !["origen", "edicion"].includes(data.vinculo.tipo) || typeof data.vinculo.usa_registro_individual !== "boolean"))) {
+          throw new Error("La respuesta del vínculo de producción no es válida.");
+        }
+        if (!controller.signal.aborted) setRegistryLookup({status:"ready", key, vinculo:data.vinculo});
+      })
+      .catch(reason => { if (!controller.signal.aborted) setRegistryLookup({status:"error", key, vinculo:null, error:reason.message}); });
+    return () => {
+      controller.abort();
+      window.removeEventListener("focus", refreshRegistry);
+      document.removeEventListener("visibilitychange", refreshRegistry);
+    };
+  }, [task?.id, task?.revision, task?.updated_at, registryRetry]);
 
   useEffect(() => {
     if (!task) return;
@@ -199,6 +243,10 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const metadata = task.propiedades_extra || {};
   const driveFiles = Array.isArray(metadata.drive_archivos) ? metadata.drive_archivos : [];
   const isProductionVisit = isProductionVisitTask(task);
+  const registry = taskProductionRegistryState(task, registryLookup);
+  const legacyProductionEnabled = registry.legacyEnabled;
+  const canEditVisitClient = registry.clientEditable;
+  const canEditVisitDate = registry.dateEditable;
   const isLeader = isAdmin;
   const canChangeTaskState = canUserMoveTask(task, sesion?.usuario);
   const availableTaskStatuses = STATUSES.filter((item) => item.id === canonicalTaskState(task.estado) || canUserMoveTaskToState(task, sesion?.usuario, item.id));
@@ -206,8 +254,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const productionProgress = getProductionVisitProgress(task);
   const productionPhase = getProductionPhase(task);
   const canRegisterProduction = Number.isSafeInteger(sesion?.usuario?.id) && sesion.usuario.id > 0
-    && canUserEditTask(task, sesion.usuario) && (isAdmin || sesion.usuario.rol === "produccion");
-  const canConfirmProduction = isLeader && isProductionVisit && productionProgress.complete && !metadata.produccion_confirmada_at;
+    && canUserEditTask(task, sesion.usuario) && (isAdmin || sesion.usuario.rol === "produccion") && legacyProductionEnabled;
+  const canConfirmProduction = legacyProductionEnabled && isLeader && isProductionVisit && productionProgress.complete && !metadata.produccion_confirmada_at;
   const isTrashed = metadata.papelera_render_os === true;
   const tags = Array.isArray(metadata.etiquetas) ? metadata.etiquetas : [];
   const collaborators = Array.isArray(metadata.colaboradores) ? metadata.colaboradores : [];
@@ -239,6 +287,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     const fields = ["titulo", "cliente_id", "estado", "fecha_vencimiento", "prioridad", "tipo_tarea", "subtipo", "aclaraciones", "material_referencia"];
     const nullable = ["cliente_id", "fecha_vencimiento", "tipo_tarea", "subtipo", "aclaraciones", "material_referencia"];
     const changes = Object.fromEntries(fields
+      .filter((field) => (field !== "cliente_id" || canEditVisitClient) && (field !== "fecha_vencimiento" || canEditVisitDate))
       .filter((field) => field === "estado"
         ? canonicalTaskState(draft.estado) !== canonicalTaskState(task.estado)
         : String(draft[field] ?? "") !== String(task[field] ?? ""))
@@ -248,9 +297,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
       etiquetas: draft.etiquetas === undefined ? tags : String(draft.etiquetas || "").split(",").map((item) => item.trim()).filter(Boolean),
       colaboradores: Array.isArray(draft.colaboradores) ? draft.colaboradores : collaborators,
     });
-    if (isProductionVisit) nextMetadata.produccion_videos_previstos = draft.produccion_videos_previstos === undefined ? productionProgress.planned : Math.max(0, Number(draft.produccion_videos_previstos) || 0);
+    if (isProductionVisit && legacyProductionEnabled) nextMetadata.produccion_videos_previstos = draft.produccion_videos_previstos === undefined ? productionProgress.planned : Math.max(0, Number(draft.produccion_videos_previstos) || 0);
     const previousEditableMetadata = { resumen: metadata.resumen || "", etiquetas: tags, colaboradores: collaborators, guiones: metadata.guiones || "", copy_trabajo: metadata.copy_trabajo || "" };
-    if (isProductionVisit) previousEditableMetadata.produccion_videos_previstos = productionProgress.planned;
+    if (isProductionVisit && legacyProductionEnabled) previousEditableMetadata.produccion_videos_previstos = productionProgress.planned;
     if (JSON.stringify(nextMetadata) !== JSON.stringify(previousEditableMetadata)) {
       changes.propiedades_extra = nextMetadata;
     }
@@ -268,6 +317,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
 
   const saveInlineField = async (field, value, activity = "editó los datos de la tarea") => {
     if (saving || (field === "estado" ? !canChangeTaskState : !canEditTask)) return;
+    if ((field === "cliente_id" && !canEditVisitClient) || (field === "fecha_vencimiento" && !canEditVisitDate)) return;
     if (field === "estado" && (value === canonicalTaskState(task.estado) || !canUserMoveTaskToState(task, sesion?.usuario, value))) return;
     const nullable = ["cliente_id", "fecha_vencimiento", "tipo_tarea", "subtipo", "material_referencia"];
     const nextValue = value === "" && nullable.includes(field) ? null : value;
@@ -386,6 +436,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const correctProduction = async (record) => {
+    if (!canRegisterProduction) return;
     const value = window.prompt("Cantidad correcta de videos:", productionCorrections[record.id] ?? String(record.cantidad));
     if (value === null) return;
     setProductionCorrections((current) => ({ ...current, [record.id]: value }));
@@ -459,12 +510,15 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         <div className="ros-task-document-properties">
           <div><span>◉ <b>Estado</b></span>{isAdmin || canChangeTaskState ? <select className="ros-inline-property" aria-label="Estado" value={canonicalTaskState(draft.estado ?? task.estado ?? "pendiente")} disabled={saving} onChange={(event) => saveInlineField("estado", event.target.value, "actualizó el estado de la tarea")}>{availableTaskStatuses.map((item) => <option key={item.id} value={item.id} disabled={isProductionVisit && item.id === "finalizada" && !productionProgress.complete}>{item.label}</option>)}</select> : <strong className="ros-task-document-status"><i style={{ background: status.color }}/>{status.label}</strong>}</div>
           <div className="ros-task-people-property is-inline-editing"><span>♙ <b>Responsables</b></span>{canEditTask ? <TaskPeoplePicker compact users={users} primaryId={draft.asignado_a_id ?? task.asignado_a_id ?? null} collaboratorIds={draft.colaborador_ids ?? task.colaborador_ids ?? []} disabled={saving} onChange={saveInlinePeople}/> : <strong className="ros-task-assignees">{assignedPeople.length ? assignedPeople.map(({ id, person }) => <span className="ros-task-assignee" key={id}><Avatar person={person} name={person?.nombre || `Usuario #${id}`}/><span>{person?.nombre || `Usuario #${id}`}<small>Responsable · #{id}</small></span></span>) : <span>{[task.asignado_a, ...collaborators].filter(Boolean).join(", ") || "Sin responsables"}</span>}</strong>}</div>
-          <div><span>▥ <b>Cliente</b></span>{canEditTask ? <select className="ros-inline-property" aria-label="Cliente" value={draft.cliente_id ?? task.cliente_id ?? ""} disabled={saving} onChange={(event) => saveInlineField("cliente_id", event.target.value ? Number(event.target.value) : "", "actualizó el cliente de la tarea")}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select> : <strong>{task.cliente_nombre || "Sin cliente"}</strong>}</div>
-          <div><span>▦ <b>Entrega</b></span>{canEditTask ? <input className="ros-inline-property" aria-label="Fecha de entrega" type="date" value={draft.fecha_vencimiento ?? task.fecha_vencimiento ?? ""} disabled={saving} onChange={(event) => saveInlineField("fecha_vencimiento", event.target.value, "actualizó la fecha de entrega")}/> : <strong>{formatDate(task.fecha_vencimiento)}</strong>}</div>
+          <div><span>▥ <b>Cliente</b></span>{canEditTask && canEditVisitClient ? <select className="ros-inline-property" aria-label="Cliente" value={draft.cliente_id ?? task.cliente_id ?? ""} disabled={saving} onChange={(event) => saveInlineField("cliente_id", event.target.value ? Number(event.target.value) : "", "actualizó el cliente de la tarea")}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select> : <strong>{task.cliente_nombre || "Sin cliente"}</strong>}</div>
+          <div><span>▦ <b>{registry.vinculo?.tipo === "origen" ? "Fecha de visita" : "Entrega"}</b></span>{canEditTask && canEditVisitDate ? <input className="ros-inline-property" aria-label="Fecha de entrega" type="date" value={draft.fecha_vencimiento ?? task.fecha_vencimiento ?? ""} disabled={saving} onChange={(event) => saveInlineField("fecha_vencimiento", event.target.value, "actualizó la fecha de entrega")}/> : <strong>{formatDate(task.fecha_vencimiento)}</strong>}</div>
           {(canEditTask || String(task.prioridad || "").toLowerCase() !== "media") && <div><span>⚑ <b>Prioridad</b></span>{canEditTask ? <select className="ros-inline-property" aria-label="Prioridad" value={draft.prioridad ?? task.prioridad ?? "media"} disabled={saving} onChange={(event) => saveInlineField("prioridad", event.target.value, "actualizó la prioridad de la tarea")}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select> : <strong>{task.prioridad || "Sin definir"}</strong>}</div>}
         </div>
         {hasUnmappedAssignment && <div className="ros-warning-banner" role="status">Asignación histórica sin vincular a un usuario. {isAdmin ? "Elegí responsables para asignarla explícitamente; no se vinculará por nombre." : "El nombre histórico no concede acceso de edición. Pedí a un administrador que asigne responsables."}</div>}
         <GoalTaskLink task={task} canManage={['admin', 'community'].includes(sesion?.usuario?.rol)}/>
+        {!registry.ready && registryLookup.status !== "error" && <p role="status">Buscando visita de producción… Los controles de producción quedan bloqueados hasta verificar el vínculo.</p>}
+        {!registry.ready && registryLookup.status === "error" && <div className="ros-warning-banner" role="alert">No se pudo verificar el vínculo de producción: {registryLookup.error}. No se habilitarán registros históricos sin verificarlo. <button type="button" onClick={() => setRegistryRetry(value => value + 1)}>Reintentar vínculo</button></div>}
+        {registry.vinculo && <section className="ros-work-block"><h3>Visita vinculada</h3><p>{registry.vinculo.videos_grabados} de {registry.vinculo.videos_total} videos grabados · {registry.vinculo.fotos_total} registros de fotos</p><a href={`/producciones?visita=${encodeURIComponent(registry.vinculo.id)}`}>Abrir visita en Producciones ↗</a>{registry.vinculo.tipo === "origen" && <p>La fecha y el cliente de esta tarea se editan desde la visita.</p>}{registry.vinculo.tipo === "edicion" && <p>El cliente de esta tarea viene de la visita. La fecha de entrega de edición se puede editar en esta tarea.</p>}{registry.usesIndividual && <p>El registro individual de videos y fotos se administra en Producciones. El flujo agregado histórico queda solo como historial.</p>}</section>}
         <TaskContentWorkspace task={task} metadata={metadata} editing={canEditTask || editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={null} onCancelEdit={cancelEditing} onSaveEdit={save} saving={saving} canSave={Boolean(canEditTask && draft.titulo?.trim())}/>
         {hasOperationalControls && <section className="ros-task-operations" aria-labelledby={`ros-task-operations-${task.id}`}>
           <div className="ros-block-heading ros-operations-heading"><div><h3 id={`ros-task-operations-${task.id}`}>Flujo de trabajo</h3></div><small>Acciones y avance de la tarea</small></div>
@@ -472,10 +526,10 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         {areaForTask(task) === "edicion" && canChangeTaskState && ["pendiente", "en_progreso"].includes(task.estado) && <section className="ros-approval-handoff"><div><strong>¿Terminaste la edición?</strong><span>Entregala para revisión. Publicarla es un paso separado.</span></div><button type="button" disabled={saving} onClick={async () => { setSaving(true); try { await onUpdate(task.id, { estado: "en_revision" }, "terminó la edición y la entregó para revisión"); } finally { setSaving(false); } }}>Terminar edición y enviar a revisión</button></section>}
         {canApproveForOriana && <section className="ros-approval-handoff"><div><strong>La tarea está esperando aprobación</strong><span>Aprobá la revisión. Si corresponde, también podés elegir quién publica.</span></div><button type="button" disabled={approving || saving} onClick={() => approveForOriana()}>{approving ? "Aprobando…" : "Aprobar revisión"}</button><label>Publica (opcional)<select value={publicationResponsible ?? ""} onChange={(event) => setPublicationResponsible(event.target.value ? Number(event.target.value) : null)}><option value="">Elegí quién publica</option>{users.filter((user) => Number.isSafeInteger(user.id) && user.id > 0 && ["admin", "community"].includes(user.rol)).map((user) => <option key={user.id} value={user.id}>{user.nombre} · #{user.id}</option>)}</select></label><button type="button" disabled={approving || !selectedPublisher} onClick={() => approveForOriana(true)}>{approving ? "Enviando…" : `Aprobar y enviar${selectedPublisher ? ` a ${selectedPublisher.nombre}` : ""}`}</button></section>}
         {task.estado === "aprobada" && <div className="ros-approved-banner">✓ Aprobada por {metadata.revision_aprobada_por || "Líder"}. {metadata.responsable_publicacion ? `${metadata.responsable_publicacion} se encarga de publicarla.` : "Lista para finalizar."}</div>}
-        {isProductionVisit && <section className="ros-production-visit">
+        {isProductionVisit && !registry.usesIndividual && <section className="ros-production-visit">
           <header><div><span>VISITA DE PRODUCCIÓN</span><strong>{productionProgress.recorded}{productionProgress.planned ? ` de ${productionProgress.planned}` : ""} videos grabados</strong></div>{productionProgress.complete ? <b>{productionPhase?.label || "Completa"}</b> : <b className="pending">{productionProgress.planned ? `Faltan ${productionProgress.remaining}` : "Sin cantidad prevista"}</b>}</header>
           <div className="ros-production-progress"><i style={{ width: `${productionProgress.planned ? Math.min(100, (productionProgress.recorded / productionProgress.planned) * 100) : 0}%` }}/></div>
-          {editing && isAdmin && <label className="ros-production-planned"><span>Videos previstos</span><input type="number" min="1" step="1" value={draft.produccion_videos_previstos || ""} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}
+          {editing && isAdmin && legacyProductionEnabled && <label className="ros-production-planned"><span>Videos previstos</span><input type="number" min="1" step="1" value={draft.produccion_videos_previstos || ""} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}
           {!editing && canRegisterProduction && !productionProgress.complete && !metadata.produccion_confirmada_at && <div className="ros-production-entry ros-production-simple">
             <p>Registrá los videos que grabaste. No necesitás una cantidad prevista para terminar la visita.</p>
             {productionProgress.recorded > 0 && <p>Ya hay {productionProgress.recorded} videos registrados. Ingresá solo los nuevos; usá 0 si ya registraste todos.</p>}
@@ -492,11 +546,11 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {Array.isArray(metadata.produccion_registros) && metadata.produccion_registros.length > 0 && <details><summary>Ver registros</summary>{metadata.produccion_registros.slice().reverse().map((record) => <div key={record.id || `${record.fecha}-${record.created_at}`}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario || "Equipo"}{record.corregido_at ? ` · Corregido por ${record.corregido_por}` : ""}</span>{canRegisterProduction && !metadata.produccion_confirmada_at && <button type="button" onClick={() => correctProduction(record)}>Corregir</button>}</div>)}</details>}
         </section>}
         </section>}
-        <section className="ros-work-block"><div className="ros-block-heading"><div><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3></div><small>Archivos y enlaces</small></div>{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <><div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{driveFiles.filter((file) => file.url !== task.material_referencia).map((file) => <a className="ros-file" href={file.url} target="_blank" rel="noreferrer" key={file.id}><span>▤</span><div><strong>{file.name}</strong><small>Google Drive · {file.uploaded_by || "Equipo"}</small></div><b>↗</b></a>)}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{!task.material_referencia && driveFiles.length === 0 && links.length === 0 && <p className="ros-compact-empty">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "Sin material vinculado."}</p>}</div><DriveUploader task={task} onUploaded={async () => { const refreshed = await apiTaskById(task.id); window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: [refreshed] })); }}/></>}</section>
+        <section className="ros-work-block"><div className="ros-block-heading"><div><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3></div><small>Archivos y enlaces</small></div>{registry.vinculo?.tipo === "origen" && <p>Consultá el material de esta visita en Producciones. <a href={`/producciones?visita=${encodeURIComponent(registry.vinculo.id)}`}>Abrir visita en Producciones ↗</a></p>}{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && registry.vinculo?.tipo !== "origen" && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <><div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{driveFiles.filter((file) => file.url !== task.material_referencia).map((file) => <a className="ros-file" href={file.url} target="_blank" rel="noreferrer" key={file.id}><span>▤</span><div><strong>{file.name}</strong><small>Google Drive · {file.uploaded_by || "Equipo"}</small></div><b>↗</b></a>)}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{registry.vinculo?.tipo !== "origen" && !task.material_referencia && driveFiles.length === 0 && links.length === 0 && <p className="ros-compact-empty">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "Sin material vinculado."}</p>}</div><DriveUploader task={task} onUploaded={async () => { const refreshed = await apiTaskById(task.id); window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: [refreshed] })); }}/></>}</section>
         {(origin || task.tarea_padre_id || subtasks.length > 0) && <section className="ros-work-block ros-work-organization"><h3>Organización del trabajo</h3>{(origin || task.tarea_padre_id) && <div className="ros-context-list">{origin && <a className="ros-calendar-origin" href={origin.href}><div><span>{origin.calendarLabel}</span><strong>{origin.label}</strong><small>Fecha de publicación</small></div><time>{formatDate(origin.date)}</time><b>Ver calendario</b></a>}{task.tarea_padre_id && <button type="button" onClick={() => onOpen(Number(task.tarea_padre_id))}><strong>Depende de la tarea #{task.tarea_padre_id}</strong><span>Estado: {STATUSES.find((item) => item.id === canonicalTaskState(task.tarea_padre_estado))?.label || "Sin datos"}</span></button>}</div>}<div className="ros-subtasks">{subtasks.map((subtask) => <button type="button" key={subtask.id} onClick={() => onOpen(subtask.id)}><span>{subtask.titulo}</span><b>{STATUSES.find((item) => item.id === canonicalTaskState(subtask.estado))?.label || subtask.estado}</b></button>)}</div></section>}
           </main>
           <aside className="ros-task-context-rail">
-        <details className="ros-more-information" open={editing}><summary>Más información</summary><div className={`ros-properties ${editing ? "editing" : ""}`}><label><span>Estado</span>{editing ? <select value={canonicalTaskState(draft.estado || "pendiente")} onChange={(event) => setDraft({ ...draft, estado: event.target.value })}>{availableTaskStatuses.filter((item) => item.id !== "aprobada" || task.estado === "aprobada").map((item) => <option key={item.id} value={item.id} disabled={isProductionVisit && item.id === "finalizada" && !productionProgress.complete}>{item.label}</option>)}</select> : <strong><i style={{ color: status.color }}>●</i>{status.label}</strong>}</label><label><span>Cliente</span>{editing ? <select value={draft.cliente_id || ""} onChange={(event) => setDraft({ ...draft, cliente_id: event.target.value ? Number(event.target.value) : "" })}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select> : <strong>{task.cliente_nombre || "Sin cliente"}</strong>}</label><label><span>Vencimiento</span>{editing ? <input type="date" value={draft.fecha_vencimiento || ""} onChange={(event) => setDraft({ ...draft, fecha_vencimiento: event.target.value })}/> : <strong>{formatDate(task.fecha_vencimiento)}</strong>}</label><label><span>Prioridad</span>{editing ? <select value={draft.prioridad || "media"} onChange={(event) => setDraft({ ...draft, prioridad: event.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select> : <strong>{task.prioridad || "Media"}</strong>}</label><label><span>Sector</span>{editing ? <select value={draft.tipo_tarea || ""} onChange={(event) => setDraft({ ...draft, tipo_tarea: event.target.value })}><option value="">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select> : <strong>{task.tipo_tarea || "Sin definir"}</strong>}</label></div>{editing && <div className="ros-edit-extras"><label><span>Subtipo</span><input value={draft.subtipo || ""} onChange={(event) => setDraft({ ...draft, subtipo: event.target.value })}/></label><label><span>Resumen corto</span><input value={draft.resumen || ""} onChange={(event) => setDraft({ ...draft, resumen: event.target.value })}/></label><label><span>Etiquetas</span><input value={draft.etiquetas || ""} onChange={(event) => setDraft({ ...draft, etiquetas: event.target.value })}/></label></div>}<div className="ros-origin"><span>ID #{task.id}</span><span>Creada: {formatDate(task.created_at)}</span><span>Actualizada: {formatDate(task.updated_at)}</span></div></details>
+        <details className="ros-more-information" open={editing}><summary>Más información</summary><div className={`ros-properties ${editing ? "editing" : ""}`}><label><span>Estado</span>{editing ? <select value={canonicalTaskState(draft.estado || "pendiente")} onChange={(event) => setDraft({ ...draft, estado: event.target.value })}>{availableTaskStatuses.filter((item) => item.id !== "aprobada" || task.estado === "aprobada").map((item) => <option key={item.id} value={item.id} disabled={isProductionVisit && item.id === "finalizada" && !productionProgress.complete}>{item.label}</option>)}</select> : <strong><i style={{ color: status.color }}>●</i>{status.label}</strong>}</label><label><span>Cliente</span>{editing && canEditVisitClient ? <select value={draft.cliente_id || ""} onChange={(event) => setDraft({ ...draft, cliente_id: event.target.value ? Number(event.target.value) : "" })}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select> : <strong>{task.cliente_nombre || "Sin cliente"}</strong>}</label><label><span>{registry.vinculo?.tipo === "origen" ? "Fecha de visita" : "Vencimiento"}</span>{editing && canEditVisitDate ? <input type="date" value={draft.fecha_vencimiento || ""} onChange={(event) => setDraft({ ...draft, fecha_vencimiento: event.target.value })}/> : <strong>{formatDate(task.fecha_vencimiento)}</strong>}</label><label><span>Prioridad</span>{editing ? <select value={draft.prioridad || "media"} onChange={(event) => setDraft({ ...draft, prioridad: event.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select> : <strong>{task.prioridad || "Media"}</strong>}</label><label><span>Sector</span>{editing ? <select value={draft.tipo_tarea || ""} onChange={(event) => setDraft({ ...draft, tipo_tarea: event.target.value })}><option value="">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select> : <strong>{task.tipo_tarea || "Sin definir"}</strong>}</label></div>{editing && <div className="ros-edit-extras"><label><span>Subtipo</span><input value={draft.subtipo || ""} onChange={(event) => setDraft({ ...draft, subtipo: event.target.value })}/></label><label><span>Resumen corto</span><input value={draft.resumen || ""} onChange={(event) => setDraft({ ...draft, resumen: event.target.value })}/></label><label><span>Etiquetas</span><input value={draft.etiquetas || ""} onChange={(event) => setDraft({ ...draft, etiquetas: event.target.value })}/></label></div>}<div className="ros-origin"><span>ID #{task.id}</span><span>Creada: {formatDate(task.created_at)}</span><span>Actualizada: {formatDate(task.updated_at)}</span></div></details>
           </aside>
         </div>
         <section className="ros-task-comments-footer">

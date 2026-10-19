@@ -28,6 +28,7 @@ import { correctProductionRecord } from "./production-record-updates.js";
 import { taskOperationalDto, editorialOperationalDto, clientOperationalDto } from "./operational-dto.js";
 import { createProductionRegistryRouter, syncProductionVisitFromTask } from "./production-registry.js";
 import { rejectMixedProductionRecording } from "./production-registry-compatibility.js";
+import { loadProductionReport, loadProductionTaskContext, productionReportRange } from "./production-reporting.js";
 import { normalizeTaskState, taskTransitionError, isTaskFinalized } from "./workflow-contract.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
@@ -300,6 +301,15 @@ router.patch("/usuarios/:id/acceso", requireRole("admin"), async (req, res, next
   }
 });
 router.use("/cliente-objetivos", createClientGoalsRouter({ pool }));
+router.get("/producciones/tareas/:id", async (req, res, next) => {
+  try {
+    if (!/^[1-9]\d*$/.test(req.params.id)) return res.status(400).json({ error: "Tarea inválida." });
+    res.json(await loadProductionTaskContext(pool, Number(req.params.id)));
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
+    next(error);
+  }
+});
 router.use("/producciones", createProductionRegistryRouter({ express, pool }));
 router.use("/moodboards", createMoodboardsRouter({ pool }));
 
@@ -500,25 +510,30 @@ router.get("/usuarios", async (req, res, next) => {
 router.get("/reportes/datos", async (req, res, next) => {
   try {
     const mesConfiguracion = normalizePeriod(req.query.mes_configuracion);
+    const productionRange = productionReportRange(req.query, mesConfiguracion);
     const [tareas, historias, publicaciones, clientes, usuarios, tareasRenderOs, entregasEdicion] = await Promise.all([
-      pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
+      pool.query(`SELECT t.id,t.cliente_id,t.historia_id,t.publicacion_id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
+        EXISTS(SELECT 1 FROM produccion_visitas v WHERE v.tarea_origen_id=t.id AND
+          (EXISTS(SELECT 1 FROM produccion_videos pv WHERE pv.visita_id=v.id)
+           OR EXISTS(SELECT 1 FROM produccion_fotos pf WHERE pf.visita_id=v.id))) produccion_registro_individual,
         to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,t.subtipo,
         t.created_at,t.updated_at,c.nombre AS cliente_nombre
         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
         WHERE t.propiedades_extra->>'workspace' IS DISTINCT FROM 'render_os'`),
-      pool.query(`SELECT id,cliente_id,estado,to_char(fecha_programada,'YYYY-MM-DD') AS fecha_programada,
+      pool.query(`SELECT id,cliente_id,estado,to_char(fecha_programada,'YYYY-MM-DD') AS fecha_programada,fecha_publicación_real,
         responsable,responsable_diseño FROM historias
         WHERE metadata->>'archivado_tablero' IS DISTINCT FROM 'true'`),
-      pool.query(`SELECT id,cliente_id,tipo,estado,to_char(fecha_programada,'YYYY-MM-DD') AS fecha_programada,
+      pool.query(`SELECT id,cliente_id,tipo,estado,to_char(fecha_programada,'YYYY-MM-DD') AS fecha_programada,fecha_publicación_real,
         responsable,responsable_diseño FROM publicaciones
         WHERE metadata->>'archivado_tablero' IS DISTINCT FROM 'true'`),
       pool.query(`SELECT c.id,c.nombre,c.activo,
         COALESCE(cfg.cuota_carruseles,c.cuota_carruseles) AS cuota_carruseles,
+        COALESCE(cfg.cuota_reels,c.cuota_reels) AS cuota_reels,
         cfg.disenador_responsable,c.grupo_feed_id,
-        gf.cuota_carruseles AS cuota_feed_carruseles
+        gf.cuota_carruseles AS cuota_feed_carruseles,gf.cuota_reels AS cuota_feed_reels
         FROM clientes c
         LEFT JOIN LATERAL (
-          SELECT cc.cuota_carruseles,cc.disenador_responsable
+          SELECT cc.cuota_carruseles,cc.cuota_reels,cc.disenador_responsable
           FROM cliente_configuraciones cc
           WHERE cc.cliente_id=c.id AND cc.vigente_desde <= $1::date
           ORDER BY cc.vigente_desde DESC LIMIT 1
@@ -526,7 +541,10 @@ router.get("/reportes/datos", async (req, res, next) => {
         LEFT JOIN grupos_feed gf ON gf.id=c.grupo_feed_id
         ORDER BY c.nombre`, [mesConfiguracion]),
       pool.query(`SELECT id,usuario,nombre,rol FROM usuarios ORDER BY id`),
-      pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
+      pool.query(`SELECT t.id,t.cliente_id,t.historia_id,t.publicacion_id,t.titulo,t.asignado_a,t.estado,t.propiedades_extra,
+        EXISTS(SELECT 1 FROM produccion_visitas v WHERE v.tarea_origen_id=t.id AND
+          (EXISTS(SELECT 1 FROM produccion_videos pv WHERE pv.visita_id=v.id)
+           OR EXISTS(SELECT 1 FROM produccion_fotos pf WHERE pf.visita_id=v.id))) produccion_registro_individual,
         to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.tipo_tarea,t.subtipo,
         t.created_at,t.updated_at,c.nombre AS cliente_nombre
         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
@@ -536,16 +554,22 @@ router.get("/reportes/datos", async (req, res, next) => {
         cliente_etiqueta,categoria,importe,fuente,fuente_item,confirmado_por
         FROM entregas_edicion ORDER BY fecha_entrega,fuente_item`),
     ]);
+    const [assignedTasks, assignedWorkspaceTasks, producciones] = await Promise.all([
+      annotateTaskAssignments(pool, tareas.rows), annotateTaskAssignments(pool, tareasRenderOs.rows),
+      loadProductionReport(pool, productionRange),
+    ]);
     res.json(filterReportDataForUser({
-      tareas: tareas.rows,
+      tareas: assignedTasks,
       historias: historias.rows,
       publicaciones: publicaciones.rows,
       clientes: clientes.rows,
       usuarios: usuarios.rows,
-      tareasRenderOs: tareasRenderOs.rows,
+      tareasRenderOs: assignedWorkspaceTasks,
       entregasEdicion: entregasEdicion.rows,
+      producciones,
     }, req.auth));
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });

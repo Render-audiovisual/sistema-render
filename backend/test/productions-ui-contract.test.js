@@ -159,7 +159,7 @@ test('visit creation sends only creation fields, never expected_revision',async(
   const noop=()=>{};
   const context={writeLock:{current:false},setBusy:noop,visitDTO:value=>value,
     apiRequest:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {...data,id:visit.id,revision:1};},
-    setCreating:noop,setSelected:noop,setMonth:noop,setDay:noop,setReload:noop,setNotice:noop};
+    setCreating:noop,setSelected:noop,setMonth:noop,setDay:noop,setReload:noop,setNotice:noop,writeProductionLocation:noop};
   const create=new Function(...Object.keys(context),`${body}\nreturn createVisit;`)(...Object.values(context));
   await create(data);
   assert.deepEqual(requests,[{url:'/api/producciones',body:data}]);

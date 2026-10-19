@@ -6,25 +6,17 @@ function normalize(value = "") {
     .toLowerCase();
 }
 
-function belongsTo(value, identity) {
-  const left = normalize(value).split(/\s+/)[0];
-  const right = normalize(identity).split(/\s+/)[0];
-  return Boolean(left && right && left === right);
-}
-
-const MARIANO_CLIENTS = new Set([
-  "iphone shop", "luzin", "lucin", "rpm", "rpm chevrolet", "lavalle market",
-  "la valle market", "el angel azul estudiantil", "angel azul estudiantil",
-  "joyeria cristal", "cristal joyeria", "cristal joyerias",
-]);
-
-function clientBelongsToDesigner(client, identity) {
-  const isMariano = belongsTo(identity, "Mariano");
-  const isAugusto = belongsTo(identity, "Augusto");
-  if (!isMariano && !isAugusto) return false;
-  const belongsToMariano = MARIANO_CLIENTS.has(normalize(client?.nombre).replace(/[^a-z0-9]+/g, " ").trim());
-  return isMariano ? belongsToMariano : !belongsToMariano;
-}
+const positiveId = value => Number.isSafeInteger(value) && value > 0;
+const ownValue = (source, key) => {
+  if (!source || typeof source !== 'object') return undefined;
+  const descriptor = Object.getOwnPropertyDescriptor(source, key);
+  return descriptor && Object.hasOwn(descriptor, 'value') ? descriptor.value : undefined;
+};
+const idList = value => Array.isArray(value) ? value.filter(positiveId) : [];
+const rowsOf = (source, key) => {
+  const rows = ownValue(source, key);
+  return Array.isArray(rows) ? rows.filter(row => row && typeof row === 'object' && !Array.isArray(row)) : [];
+};
 
 function renderOsCategory(task = {}) {
   const text = normalize(`${task.titulo || ""} ${task.subtipo || ""} ${task.tipo_tarea || ""}`);
@@ -53,9 +45,12 @@ export function summarizeRenderOsByDay(tasks = []) {
 function pickScalars(source, fields) {
   const result = {};
   for (const key of fields) {
-    const value = source?.[key];
-    if (value === null || ["string", "number", "boolean"].includes(typeof value)) result[key] = value;
-    else if (value instanceof Date) result[key] = value.toISOString();
+    const value = ownValue(source, key);
+    if (value === null || ["string", "boolean"].includes(typeof value)
+      || (typeof value === 'number' && Number.isFinite(value))) result[key] = value;
+    else if (value instanceof Date) {
+      try { const time = Date.prototype.getTime.call(value); if (Number.isFinite(time)) result[key] = new Date(time).toISOString(); } catch { /* Invalid Date object. */ }
+    }
   }
   return result;
 }
@@ -63,74 +58,136 @@ function pickScalars(source, fields) {
 function taskReportDto(task) {
   const result = pickScalars(task, [
     "id", "titulo", "asignado_a", "estado", "fecha_vencimiento", "tipo_tarea",
-    "subtipo", "created_at", "updated_at", "cliente_nombre",
+    "subtipo", "created_at", "updated_at", "cliente_nombre", "revision",
   ]);
-  const extra = task.propiedades_extra;
+  const clientId = ownValue(task, 'cliente_id');
+  if (positiveId(clientId) || clientId === null) result.cliente_id = clientId;
+  for (const key of ['historia_id', 'publicacion_id']) {
+    const value = ownValue(task, key);
+    if (positiveId(value) || value === null) result[key] = value;
+  }
+  result.asignado_a_id = positiveId(ownValue(task, 'asignado_a_id')) ? ownValue(task, 'asignado_a_id') : null;
+  result.colaborador_ids = idList(ownValue(task, 'colaborador_ids'));
+  const individual = ownValue(task, 'produccion_registro_individual');
+  if (typeof individual === 'boolean') result.produccion_registro_individual = individual;
+  const extra = ownValue(task, 'propiedades_extra');
   result.propiedades_extra = pickScalars(extra, [
     "workspace", "archivada_render_os", "edicion_responsable", "clickup_lista",
     "clickup_cerrada_at", "reporte_fuente", "reporte_periodo", "revision_aprobada",
     "produccion_videos_previstos", "produccion_finalizada_at", "produccion_confirmada_at",
   ]);
-  if (Array.isArray(extra?.colaboradores)) {
-    result.propiedades_extra.colaboradores = extra.colaboradores.filter((name) => typeof name === "string");
+  const creditedEditorId = ownValue(extra, 'edicion_responsable_id');
+  if (positiveId(creditedEditorId)) result.propiedades_extra.edicion_responsable_id = creditedEditorId;
+  const collaborators = ownValue(extra, 'colaboradores');
+  if (Array.isArray(collaborators)) {
+    result.propiedades_extra.colaboradores = collaborators.filter((name) => typeof name === "string");
   }
-  if (Array.isArray(extra?.produccion_registros)) {
-    result.propiedades_extra.produccion_registros = extra.produccion_registros.map((record) => pickScalars(record, ["cantidad", "fecha"]));
+  if (Array.isArray(ownValue(extra, 'produccion_registros'))) {
+    result.propiedades_extra.produccion_registros = rowsOf(extra, 'produccion_registros').map((record) => pickScalars(record, ["cantidad", "fecha"]));
   }
   return result;
 }
 
+const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
+function registryRow(row, scalars, uuidFields, idFields, enums = {}) {
+  const result = pickScalars(row, scalars);
+  for (const key of uuidFields) { const value = ownValue(row, key); if (uuid(value) || value === null) result[key] = value; }
+  for (const key of idFields) { const value = ownValue(row, key); if (positiveId(value) || value === null) result[key] = value; }
+  for (const [key, values] of Object.entries(enums)) {
+    const value = ownValue(row, key);
+    if (value === null || values.includes(value)) result[key] = value;
+  }
+  return result;
+}
+function productionReportDto(source) {
+  const result = pickScalars(source, ['desde', 'hasta']);
+  result.visitas = rowsOf(source, 'visitas').map(visit => ({
+    ...registryRow(visit, ['cliente_nombre', 'fecha', 'titulo'], ['id'], ['tarea_origen_id', 'cliente_id']),
+    participante_ids: idList(ownValue(visit, 'participante_ids')),
+    videos: rowsOf(visit, 'videos').map(video => registryRow(video, ['titulo', 'fecha_entrega_actual'], ['id'],
+      ['tarea_edicion_id', 'editor_actual_id'], { estado: ['planificado', 'grabado', 'pendiente', 'repetir'],
+        tarea_estado: ['pendiente', 'en_progreso', 'en_revision', 'aprobada', 'finalizada', 'publicada'] })),
+    fotos: rowsOf(visit, 'fotos').map(photo => registryRow(photo, ['tipo'], ['id'], [],
+      { estado: ['realizada', 'pendiente', 'repetir'] })),
+  }));
+  return result;
+}
+
 function nonAdminReportDto(data) {
-  const rows = (key, dto) => (data[key] || []).map(dto);
+  const rows = (key, dto) => rowsOf(data, key).map(dto);
   return {
     tareas: rows("tareas", taskReportDto),
     tareasRenderOs: rows("tareasRenderOs", taskReportDto),
-    historias: rows("historias", (item) => pickScalars(item, ["id", "cliente_id", "estado", "fecha_programada", "responsable", "responsable_diseño"])),
-    publicaciones: rows("publicaciones", (item) => pickScalars(item, ["id", "cliente_id", "tipo", "estado", "fecha_programada", "responsable", "responsable_diseño"])),
-    clientes: rows("clientes", (item) => pickScalars(item, ["id", "nombre", "activo", "cuota_carruseles", "disenador_responsable", "grupo_feed_id", "cuota_feed_carruseles"])),
+    historias: rows("historias", (item) => pickScalars(item, ["id", "cliente_id", "estado", "fecha_programada", "fecha_publicación_real", "responsable", "responsable_diseño"])),
+    publicaciones: rows("publicaciones", (item) => pickScalars(item, ["id", "cliente_id", "tipo", "estado", "fecha_programada", "fecha_publicación_real", "responsable", "responsable_diseño"])),
+    clientes: rows("clientes", (item) => {
+      const result = pickScalars(item, ["id", "nombre", "activo", "cuota_carruseles", "disenador_responsable", "grupo_feed_id", "cuota_feed_carruseles"]);
+      for (const key of ['cuota_reels', 'cuota_feed_reels']) {
+        const value = ownValue(item, key);
+        if (typeof value === 'number' && Number.isFinite(value) && value >= 0) result[key] = value;
+      }
+      return result;
+    }),
     usuarios: rows("usuarios", (item) => pickScalars(item, ["id", "usuario", "nombre", "rol"])),
-    entregasEdicion: rows("entregasEdicion", (item) => pickScalars(item, ["id", "editor_clave", "fecha_entrega", "cliente_etiqueta", "categoria", "fuente", "fuente_item", "confirmado_por"])),
+    entregasEdicion: rows("entregasEdicion", (item) => ({ ...pickScalars(item, ["id", "editor_clave", "fecha_entrega", "cliente_etiqueta", "categoria", "fuente", "fuente_item", "confirmado_por"]),
+      ...(positiveId(ownValue(item, 'editor_id')) ? { editor_id: ownValue(item, 'editor_id') } : {}) })).filter(item => positiveId(item.editor_id)),
+    ...(ownValue(data, 'producciones') !== undefined ? { producciones: productionReportDto(ownValue(data, 'producciones')) } : {}),
   };
 }
 
 export function filterReportDataForUser(data, auth = {}) {
-  if (auth.rol === "admin") return { ...data, resumenRenderOsPorDia: summarizeRenderOsByDay(data.tareasRenderOs) };
+  if (ownValue(auth, 'rol') === "admin") return { ...data, resumenRenderOsPorDia: summarizeRenderOsByDay(data.tareasRenderOs) };
+  const role = ownValue(auth, 'rol'), userId = ownValue(auth, 'id');
+  if (!positiveId(userId) || ownValue(auth, 'activo') === false) {
+    return { ...nonAdminReportDto(ownValue(data, 'producciones') !== undefined ? { producciones: {} } : {}), resumenRenderOsPorDia: {} };
+  }
   data = nonAdminReportDto(data);
-  const reportData = { ...data, resumenRenderOsPorDia: summarizeRenderOsByDay(data.tareasRenderOs) };
-  const identity = auth.nombre || auth.usuario || "";
-  const ownTask = (task) => belongsTo(task.asignado_a, identity)
-    || (auth.rol === "edicion" && belongsTo(task.propiedades_extra?.edicion_responsable, identity))
-    || (Array.isArray(task.propiedades_extra?.colaboradores)
-      && task.propiedades_extra.colaboradores.some((name) => belongsTo(name, identity)));
-  const ownUsers = data.usuarios.filter((user) => belongsTo(user.nombre || user.usuario, identity));
-  const ownEditingDeliveries = (data.entregasEdicion || []).filter((item) => belongsTo(item.editor_clave, identity));
+  if (!['community', 'diseno', 'produccion', 'edicion', 'programacion'].includes(role)) {
+    return { ...nonAdminReportDto({}),
+      usuarios: data.usuarios.filter(user => positiveId(user.id) && user.id === userId),
+      ...(data.producciones ? { producciones: data.producciones } : {}), resumenRenderOsPorDia: {} };
+  }
+  // Aggregation must follow authorization, never expose other users' activity.
+  const reportData = data;
+  const scopedReport = selected => ({ ...selected, resumenRenderOsPorDia: summarizeRenderOsByDay(selected.tareasRenderOs) });
+  const currentMember = task => task.asignado_a_id === userId || task.colaborador_ids.includes(userId);
+  const ownTask = task => currentMember(task)
+    || (role === 'edicion' && task.propiedades_extra.edicion_responsable_id === userId);
+  // Historical editing credit does not grant access to linked editorial rows.
+  const linkedTasks = [...data.tareas, ...data.tareasRenderOs].filter(currentMember);
+  const storyIds = new Set(linkedTasks.map(task => task.historia_id).filter(positiveId));
+  const publicationIds = new Set(linkedTasks.map(task => task.publicacion_id).filter(positiveId));
+  const ownStories = data.historias.filter(item => positiveId(item.id) && storyIds.has(item.id));
+  const ownPublications = data.publicaciones.filter(item => positiveId(item.id) && publicationIds.has(item.id));
+  const ownUsers = data.usuarios.filter(user => positiveId(user.id) && user.id === userId);
+  const ownEditingDeliveries = data.entregasEdicion.filter(item => item.editor_id === userId);
 
-  if (auth.rol === "community") {
-    return { ...reportData, tareas: data.tareas.filter(ownTask), tareasRenderOs: [], clientes: [], usuarios: ownUsers };
+  if (role === "community") {
+    return scopedReport({ ...reportData, tareas: data.tareas.filter(ownTask), tareasRenderOs: [], clientes: [], usuarios: ownUsers, entregasEdicion: ownEditingDeliveries });
   }
-  if (auth.rol === "diseno") {
-    const assignedIds = new Set(data.clientes.filter((client) => clientBelongsToDesigner(client, identity)).map((client) => Number(client.id)));
-    return {
+  if (role === "diseno") {
+    return scopedReport({
       ...reportData,
       tareas: data.tareas.filter(ownTask),
       tareasRenderOs: data.tareasRenderOs.filter(ownTask),
-      historias: [],
-      publicaciones: data.publicaciones.filter((item) => item.tipo === "carrusel" && assignedIds.has(Number(item.cliente_id))),
+      historias: ownStories,
+      publicaciones: ownPublications.filter(item => item.tipo === 'carrusel'),
       usuarios: ownUsers,
-    };
+      entregasEdicion: ownEditingDeliveries,
+    });
   }
-  if (auth.rol === "produccion") {
-    return {
+  if (role === "produccion") {
+    return scopedReport({
       ...reportData,
       tareas: data.tareas.filter(ownTask),
       tareasRenderOs: data.tareasRenderOs.filter(ownTask),
-      historias: [], publicaciones: [], clientes: [], usuarios: ownUsers,
-    };
+      historias: ownStories, publicaciones: ownPublications, clientes: [], usuarios: ownUsers, entregasEdicion: ownEditingDeliveries,
+    });
   }
-  return {
+  return scopedReport({
     ...reportData,
     tareas: data.tareas.filter(ownTask),
     tareasRenderOs: data.tareasRenderOs.filter(ownTask), entregasEdicion: ownEditingDeliveries,
-    historias: [], publicaciones: [], clientes: [], usuarios: ownUsers,
-  };
+    historias: ownStories, publicaciones: ownPublications, clientes: [], usuarios: ownUsers,
+  });
 }

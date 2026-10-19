@@ -24,6 +24,19 @@ function shiftProductionMonth(month, amount) {
 const monthLabel = month => new Intl.DateTimeFormat('es-AR', {month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${month}-01T12:00:00Z`));
 const dateLabel = date => new Intl.DateTimeFormat('es-AR', {weekday:'long',day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(`${date}T12:00:00Z`));
 const visitDTO = data => data?.visita || data;
+function productionLocation(href) {
+  const url = new URL(href);
+  const id = url.searchParams.get('visita');
+  if (id && !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)) throw new Error('El enlace de la visita no es válido.');
+  const month = url.searchParams.get('mes');
+  return {id,month:/^\d{4}-(0[1-9]|1[0-2])$/.test(month || '') ? month : null};
+}
+function writeProductionLocation({id = null, month, replace = false}) {
+  const url = new URL(window.location.href);
+  if (id) url.searchParams.set('visita',id); else url.searchParams.delete('visita');
+  if (month) url.searchParams.set('mes',month);
+  if (url.href !== window.location.href) window.history[replace ? 'replaceState' : 'pushState'](window.history.state,'',url);
+}
 
 // CAS always uses the visit version supplied by the visible form, never a newer hidden ref.
 async function productionWrite({ visit, path = '', method = 'PATCH', data, request = apiRequest, refresh }) {
@@ -181,6 +194,7 @@ export function ProductionsPage({sesion}) {
   const [reload, setReload] = useState(0);
   const writeLock = useRef(false);
   const openVersion = useRef(0);
+  const navigationRef = useRef(null);
   const dirty = useRef(new Set());
   const isAdmin = positiveId(sesion?.usuario?.id) && sesion.usuario.rol === 'admin';
   const onDirty = useCallback((key,value)=>{if(value) dirty.current.add(key); else dirty.current.delete(key);},[]);
@@ -207,12 +221,44 @@ export function ProductionsPage({sesion}) {
     setVisits(current=>current.map(visit=>visit.id === id ? value : visit));
     return value;
   };
-  const openVisit = async id => {
-    if(!mayLeave()) return;
+  const openVisit = async (id, {history = true, checkDirty = true} = {}) => {
+    if(checkDirty && !mayLeave()) return;
     const version=++openVersion.current;setCreating(false);setSelected(null);setDetailLoading(true);setError('');
-    try {const value=visitDTO(await apiRequest(`/api/producciones/${encodeURIComponent(id)}`));if(version===openVersion.current)setSelected(value);}
+    try {
+      const value=visitDTO(await apiRequest(`/api/producciones/${encodeURIComponent(id)}`));
+      if(version===openVersion.current) {
+        setSelected(value);setMonth(value.fecha.slice(0,7));setDay(value.fecha);
+        if(history) writeProductionLocation({id:value.id,month:value.fecha.slice(0,7)});
+      }
+    }
     catch(reason){if(version===openVersion.current)setError(reason.message);}
     finally{if(version===openVersion.current)setDetailLoading(false);}
+  };
+  const restoreProductionLocation = async () => {
+    if(!mayLeave()) {
+      writeProductionLocation({id:selected?.id,month});
+      return;
+    }
+    try {
+      const location=productionLocation(window.location.href);
+      if(location.id) await openVisit(location.id,{history:false,checkDirty:false});
+      else {
+        ++openVersion.current;setSelected(null);setCreating(false);setDetailLoading(false);setError('');
+        const restoredMonth=location.month || today.slice(0,7);
+        setMonth(restoredMonth);setDay(restoredMonth===today.slice(0,7) ? today : `${restoredMonth}-01`);
+      }
+    }catch(reason){++openVersion.current;setSelected(null);setDetailLoading(false);setError(reason.message);}
+  };
+  navigationRef.current = restoreProductionLocation;
+  useEffect(()=>{
+    const restore=()=>{void navigationRef.current();};
+    restore();window.addEventListener('popstate',restore);
+    return()=>{++openVersion.current;window.removeEventListener('popstate',restore);};
+  },[]);
+  const retryProductionPage = () => {
+    setReload(value=>value+1);
+    if(selected) void refreshVisit(selected.id).catch(reason=>setError(reason.message));
+    else void navigationRef.current();
   };
   const writeVisit = async (visit,path,method,data) => {
     if(writeLock.current) throw new Error('Hay otra operación en curso.');
@@ -233,9 +279,10 @@ export function ProductionsPage({sesion}) {
     try {
       const value=visitDTO(await apiRequest('/api/producciones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}));
       setCreating(false);setSelected(value);setMonth(value.fecha.slice(0,7));setDay(value.fecha);setReload(current=>current+1);setNotice('Visita creada.');
+      writeProductionLocation({id:value.id,month:value.fecha.slice(0,7)});
     } finally{writeLock.current=false;setBusy(false);}
   };
-  const navigateMonth = amount => {if(!mayLeave())return;const next=shiftProductionMonth(month,amount);++openVersion.current;setMonth(next);setDay(`${next}-01`);setDetailLoading(false);setSelected(null);setCreating(false);};
+  const navigateMonth = amount => {if(!mayLeave())return;const next=shiftProductionMonth(month,amount);++openVersion.current;setMonth(next);setDay(`${next}-01`);setDetailLoading(false);setSelected(null);setCreating(false);writeProductionLocation({month:next});};
   const filtered = visits.filter(visit=>!clientId || visit.cliente_id === Number(clientId));
   const selectedDayVisits = filtered.filter(visit=>visit.fecha === day);
   const resume = async video => {
@@ -243,8 +290,8 @@ export function ProductionsPage({sesion}) {
     try {await writeVisit(selected,'/videos','POST',{video_origen_id:video.id});}catch{/* Conflict message already visible. */}
   };
   return <main className="productions-page"><header className="prod-page-heading"><div><h1>Producciones</h1><p>Visitas, guiones y material del equipo.</p></div><button className="prod-primary" type="button" disabled={busy} onClick={()=>{if(mayLeave()){++openVersion.current;setDetailLoading(false);setSelected(null);setCreating(true);}}}>Nueva visita</button></header>
-    <nav className="prod-toolbar" aria-label="Vistas de producciones"><div className="prod-tabs">{[['calendar','Calendario'],['pending','Banco de pendientes']].map(([id,label])=><button type="button" key={id} aria-pressed={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div><label>Cliente<select value={clientId} onChange={e=>setClientId(e.target.value)}><option value="">Todos los clientes</option>{clients.map(client=><option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label><button type="button" disabled={busy} onClick={()=>setReload(value=>value+1)}>Actualizar</button></nav>
-    {notice && <p className="prod-notice" role="status">{notice}</p>}{error && <p className="prod-error" role="alert">{error} <button type="button" onClick={()=>setReload(value=>value+1)}>Reintentar</button></p>}
+    <nav className="prod-toolbar" aria-label="Vistas de producciones"><div className="prod-tabs">{[['calendar','Calendario'],['pending','Banco de pendientes']].map(([id,label])=><button type="button" key={id} aria-pressed={tab===id} onClick={()=>setTab(id)}>{label}</button>)}</div><label>Cliente<select value={clientId} onChange={e=>setClientId(e.target.value)}><option value="">Todos los clientes</option>{clients.map(client=><option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label><button type="button" disabled={busy} onClick={retryProductionPage}>Actualizar</button></nav>
+    {notice && <p className="prod-notice" role="status">{notice}</p>}{error && <p className="prod-error" role="alert">{error} <button type="button" onClick={retryProductionPage}>Reintentar</button></p>}
     <div className="prod-layout"><section className="prod-schedule" aria-label={tab==='calendar' ? 'Calendario de visitas' : 'Guiones pendientes'}>
       <header className="prod-month-nav"><button type="button" aria-label="Mes anterior" disabled={busy} onClick={()=>navigateMonth(-1)}>‹</button><h2>{monthLabel(month)}</h2><button type="button" aria-label="Mes siguiente" disabled={busy} onClick={()=>navigateMonth(1)}>›</button></header>
       {loading ? <p className="prod-empty" role="status">Cargando producciones…</p> : tab === 'calendar' ? <>

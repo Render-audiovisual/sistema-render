@@ -6,7 +6,7 @@ const secret = "PRIVATE_FINANCIAL_SENTINEL";
 function fixture() {
   const privateFields = { importe: secret, sueldo_base: secret, tarifa_facil: secret, costo: secret, future_finance: { amount: secret } };
   const task = {
-    id: 1, titulo: "Carrusel", asignado_a: "Augusto", estado: "publicada",
+    id: 1, titulo: "Carrusel", asignado_a: "Augusto", asignado_a_id: 6, colaborador_ids: [], cliente_id: 5, publicacion_id: 4, estado: "publicada",
     fecha_vencimiento: "2026-10-19", tipo_tarea: "edicion", ...privateFields,
     propiedades_extra: {
       ...privateFields, edicion_responsable: "Augusto", colaboradores: ["Augusto", { importe: secret }],
@@ -18,15 +18,15 @@ function fixture() {
     },
   };
   return {
-    tareas: [task, { ...task, id: 2, asignado_a: "Otro", propiedades_extra: {} }],
+    tareas: [task, { ...task, id: 2, asignado_a: "Otro", asignado_a_id: 9, propiedades_extra: {} }],
     tareasRenderOs: [task],
     historias: [{ id: 3, estado: "publicada", ...privateFields }],
     publicaciones: [{ id: 4, cliente_id: 5, tipo: "carrusel", ...privateFields }],
     clientes: [{ id: 5, nombre: "Moketa", cuota_carruseles: 4, ...privateFields }],
     usuarios: [{ id: 6, nombre: "Augusto", ...privateFields }],
     entregasEdicion: [
-      { id: 7, editor_clave: "Augusto", fecha_entrega: "2026-10-19", categoria: "facil", ...privateFields },
-      { id: 8, editor_clave: "Otro", ...privateFields },
+      { id: 7, editor_clave: "Augusto", editor_id: 6, fecha_entrega: "2026-10-19", categoria: "facil", ...privateFields },
+      { id: 8, editor_clave: "Otro", editor_id: 9, ...privateFields },
     ],
     finanzas: privateFields,
     resumenRenderOsPorDia: { importe: secret },
@@ -37,16 +37,21 @@ for (const rol of ["community", "diseno", "produccion", "edicion", "programacion
   test(`non-admin ${rol}: safe DTOs remove financial data without changing row visibility`, () => {
     const input = fixture();
     const before = structuredClone(input);
-    const result = filterReportDataForUser(input, { rol, nombre: "Augusto" });
+    const result = filterReportDataForUser(input, { id: 6, rol, nombre: "Augusto" });
     assert.equal(JSON.stringify(result).includes(secret), false);
     assert.deepEqual(Object.keys(result).sort(), ["tareas", "tareasRenderOs", "historias", "publicaciones", "clientes", "usuarios", "entregasEdicion", "resumenRenderOsPorDia"].sort());
+    if (["unknown", undefined].includes(rol)) {
+      for (const key of Object.keys(result)) assert.deepEqual(result[key], key === 'resumenRenderOsPorDia' ? {} : key === 'usuarios' ? [{ id: 6, nombre: 'Augusto' }] : []);
+      assert.deepEqual(input, before);
+      return;
+    }
     assert.deepEqual(result.tareas.map((item) => item.id), [1]);
     assert.deepEqual(result.usuarios.map((item) => item.id), [6]);
     assert.deepEqual(result.tareasRenderOs.map((item) => item.id), rol === "community" ? [] : [1]);
     assert.deepEqual(result.historias.map((item) => item.id), rol === "community" ? [3] : []);
-    assert.deepEqual(result.publicaciones.map((item) => item.id), ["community", "diseno"].includes(rol) ? [4] : []);
+    assert.deepEqual(result.publicaciones.map((item) => item.id), [4]);
     assert.deepEqual(result.clientes.map((item) => item.id), rol === "diseno" ? [5] : []);
-    assert.deepEqual(result.entregasEdicion.map((item) => item.id), ["community", "diseno", "produccion"].includes(rol) ? [7, 8] : [7]);
+    assert.deepEqual(result.entregasEdicion.map((item) => item.id), [7]);
     assert.equal(result.entregasEdicion[0].categoria, "facil");
     assert.equal(Object.hasOwn(result.entregasEdicion[0], "importe"), false);
     assert.deepEqual(result.tareas[0].propiedades_extra, {
@@ -54,7 +59,7 @@ for (const rol of ["community", "diseno", "produccion", "edicion", "programacion
       colaboradores: ["Augusto"], produccion_videos_previstos: 4,
       produccion_registros: [{ cantidad: 3, fecha: "2026-10-19" }],
     });
-    assert.deepEqual(result.resumenRenderOsPorDia, { "2026-10-19": { carruseles: { total: 1, publicadas: 1 } } });
+    assert.deepEqual(result.resumenRenderOsPorDia, rol === 'community' ? {} : { "2026-10-19": { carruseles: { total: 1, publicadas: 1 } } });
     assert.deepEqual(input, before);
     result.tareas[0].propiedades_extra.produccion_registros[0].cantidad = 99;
     assert.deepEqual(input, before);
