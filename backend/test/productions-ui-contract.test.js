@@ -147,7 +147,7 @@ test('successful mutation plus failed detail reload is not reported as a failed 
 test('conflict refresh does not key forms by revision or silently discard unsaved input',()=>{
   assert.match(source,/VisitDetail key=\{selected.id\}/);
   assert.doesNotMatch(source,/key=\{selected.revision\}/);
-  assert.match(source,/beforeunload/);
+  assert.match(source,/useNavigationGuard/);
   assert.match(source,/Hay cambios sin guardar/);
   assert.match(source,/throw error; \/\/ Never retry/);
 });

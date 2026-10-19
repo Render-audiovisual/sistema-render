@@ -182,7 +182,7 @@ test('popstate listener uses latest handler, cleans up and never stores business
   assert.doesNotMatch(productions,/localStorage|sessionStorage/);
 });
 
-test('actual popstate restore opens URL UUID without push; blank URL restores calendar; dirty cancel retains current view',async()=>{
+test('committed popstate restores UUID or calendar without a second dirty prompt or history rollback',async()=>{
   const read=new Function(`${locationFns}return productionLocation;`)();
   for(const [href,allow] of [[`https://render.test/producciones?visita=${id}`,true],['https://render.test/producciones?mes=2026-08',true],[`https://render.test/producciones?visita=${id}`,false]]) {
     const calls=[];const state={selected:{id:'current'},month:'2026-10'};
@@ -191,8 +191,7 @@ test('actual popstate restore opens URL UUID without push; blank URL restores ca
       setSelected:value=>{state.selected=value;},setCreating:()=>{},setDetailLoading:()=>{},setError:()=>{},setMonth:value=>{state.month=value;},setDay:()=>{}};
     const restore=new Function(...Object.keys(context),`${extract(productions,'  const restoreProductionLocation =','  navigationRef.current =')}return restoreProductionLocation;`)(...Object.values(context));
     await restore();
-    if(!allow) assert.deepEqual(calls,[['write',{id:'current',month:'2026-10'}]]);
-    else if(href.includes('visita=')) assert.deepEqual(calls,[['open',id,{history:false,checkDirty:false}]]);
+    if(href.includes('visita=')) assert.deepEqual(calls,[['open',id,{history:false,checkDirty:false}]]);
     else {assert.equal(state.selected,null);assert.equal(state.month,'2026-08');assert.equal(calls.length,0);}
   }
 });

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getHoyLocalISO } from '../utils.jsx';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
+import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import './Productions.css';
 
 const VIDEO_STATES = { planificado:'Planificado', grabado:'Grabado', pendiente:'Pendiente', repetir:'Repetir' };
@@ -292,10 +293,10 @@ export function ProductionsPage({sesion}) {
   const openVersion = useRef(0);
   const navigationRef = useRef(null);
   const dirty = useRef(new Set());
+  useNavigationGuard(() => ({ dirty: dirty.current.size > 0, busy: writeLock.current }));
   const isAdmin = positiveId(sesion?.usuario?.id) && sesion.usuario.rol === 'admin';
   const onDirty = useCallback((key,value)=>{if(value) dirty.current.add(key); else dirty.current.delete(key);},[]);
   const mayLeave = () => { if (writeLock.current) return false; if (dirty.current.size && !window.confirm('Hay cambios sin guardar. ¿Querés descartarlos?')) return false; dirty.current.clear(); return true; };
-  useEffect(()=>{const guard=event=>{if(dirty.current.size){event.preventDefault();event.returnValue='';}};window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);},[]);
   useEffect(()=>{
     const controller = new AbortController();setLoading(true);setError('');
     Promise.all([apiRequest(`/api/producciones?mes=${encodeURIComponent(month)}`,{signal:controller.signal}),apiRequest('/api/usuarios',{signal:controller.signal}),apiRequest('/api/clientes',{signal:controller.signal})])
@@ -330,13 +331,10 @@ export function ProductionsPage({sesion}) {
     catch(reason){if(version===openVersion.current)setError(reason.message);}
     finally{if(version===openVersion.current)setDetailLoading(false);}
   };
-  const restoreProductionLocation = async () => {
-    if(!mayLeave()) {
-      writeProductionLocation({id:selected?.id,month});
-      return;
-    }
+  const restoreProductionLocation = async ({discardDrafts = false} = {}) => {
     try {
       const location=productionLocation(window.location.href);
+      if(discardDrafts) dirty.current.clear();
       if(location.id) await openVisit(location.id,{history:false,checkDirty:false});
       else {
         ++openVersion.current;setSelected(null);setCreating(false);setDetailLoading(false);setError('');
@@ -347,11 +345,12 @@ export function ProductionsPage({sesion}) {
   };
   navigationRef.current = restoreProductionLocation;
   useEffect(()=>{
-    const restore=()=>{void navigationRef.current();};
+    const restore=event=>{void navigationRef.current({discardDrafts:event?.type === 'popstate'});};
     restore();window.addEventListener('popstate',restore);
     return()=>{++openVersion.current;window.removeEventListener('popstate',restore);};
   },[]);
   const retryProductionPage = () => {
+    if(!selected && !mayLeave()) return;
     setReload(value=>value+1);
     if(selected) void refreshVisit(selected.id).catch(reason=>setError(reason.message));
     else void navigationRef.current();

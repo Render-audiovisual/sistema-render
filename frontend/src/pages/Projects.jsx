@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
+import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
+import { navigateWithinApp } from "../shared/navigation/location.js";
 import { PROJECT_TYPES, PROJECT_STATES, STAGE_STATES, MILESTONE_STATES, DELIVERABLE_STATES, PROJECT_ACTIVITY, buildProjectMutation, createProjectsTransport, observedProjectTask, parseProject, parseProjectsPage, projectDate, projectError, projectHref, projectLocation, projectLocationUrl, projectsListUrl, safeProjectUrl } from "./projectsModel.js";
 import "./Projects.css";
 
@@ -192,34 +194,35 @@ function ProjectsSession({ sesion, onNavigate, request }) {
     if (current?.busy || mutationBusy.current) return false;
     return !current || JSON.stringify(current.draft) === JSON.stringify(current.initial) || window.confirm("Tenés cambios sin guardar. ¿Querés descartarlos?");
   }
+  function navigationStatus(context = {}) {
+    if (context.type !== "unload" && context.to) {
+      const next = new URL(context.to, window.location.origin);
+      const destination = next.origin === window.location.origin && next.pathname === "/proyectos" ? projectLocation(next.href) : null;
+      // Same-project context changes do not replace the open form or its draft.
+      if (destination && destination.id === selectionRef.current.id && !destination.invalid) return { dirty: false, busy: false };
+    }
+    const current = formRef.current;
+    return { dirty: Boolean(current && JSON.stringify(current.draft) !== JSON.stringify(current.initial)),
+      busy: Boolean(current?.busy || mutationBusy.current) };
+  }
+  useNavigationGuard(navigationStatus);
   function selectProject(id, replace = false) {
     const url = projectLocationUrl(window.location.href, id);
     window.history[replace ? "replaceState" : "pushState"](window.history.state, "", url);
-    setForm(null); setMessage(""); setSelection({ id, invalid: false });
+    setForm(null); formRef.current = null; setMessage(""); setSelection({ id, invalid: false });
     selectionRef.current = { id, invalid: false };
   }
   useEffect(() => {
-    let approvedHref = null;
-    const beforeNavigation = event => {
-      const next = new URL(event.detail.href, window.location.origin);
-      const destination = next.pathname === "/proyectos" ? projectLocation(next.href) : null;
-      if (destination && destination.id === selectionRef.current.id && !destination.invalid) return;
-      if (!canLeave()) { event.preventDefault(); return; }
-      approvedHref = next.href;
-      queueMicrotask(() => { approvedHref = null; });
-    };
     const navigate = () => {
       if (window.location.pathname !== "/proyectos") return;
       const next = projectLocation(window.location.href);
       if (next.id === selectionRef.current.id && !next.invalid) return;
-      if (approvedHref !== window.location.href && !canLeave()) { window.history.replaceState(window.history.state, "", projectLocationUrl(window.location.href, selectionRef.current.id)); return; }
-      approvedHref = null;
-      setForm(null); setMessage(""); setSelection(next); selectionRef.current = next;
+      // Shared navigation protection has already accepted any cancelable exit.
+      // Unsupported/noncancelable traversals are restored normally, never trapped.
+      setForm(null); formRef.current = null; setMessage(""); setSelection(next); selectionRef.current = next;
     };
-    const warn = event => { const current = formRef.current; if (current?.busy || (current && JSON.stringify(current.draft) !== JSON.stringify(current.initial))) { event.preventDefault(); event.returnValue = ""; } };
-    window.addEventListener("render:before-navigation", beforeNavigation);
-    window.addEventListener("popstate", navigate); window.addEventListener("beforeunload", warn);
-    return () => { window.removeEventListener("render:before-navigation", beforeNavigation); window.removeEventListener("popstate", navigate); window.removeEventListener("beforeunload", warn); };
+    window.addEventListener("popstate", navigate);
+    return () => { window.removeEventListener("popstate", navigate); };
   }, []);
 
   async function loadCatalog() {
@@ -245,7 +248,7 @@ function ProjectsSession({ sesion, onNavigate, request }) {
     if (key === "tarea_id") transport.cancel("task");
     setForm(current => !current || current.busy ? current : { ...current, draft: { ...current.draft, [key]: value }, ...(key === "tarea_id" ? { observedTask: null, lookupBusy: false } : {}) });
   }
-  function cancelForm() { if (canLeave()) setForm(null); }
+  function cancelForm() { if (canLeave()) { setForm(null); formRef.current = null; } }
   function moveStage(index, offset) {
     const ids = [...form.draft.etapa_ids], target = index + offset;
     if (target < 0 || target >= ids.length) return;
@@ -292,8 +295,9 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   }
   function openTask(event, href) {
     if (!plainClick(event)) return;
-    if (!canLeave()) { event.preventDefault(); return; }
-    if (onNavigate) { event.preventDefault(); onNavigate(href); }
+    event.preventDefault();
+    if (onNavigate) onNavigate(href);
+    else navigateWithinApp(window, href);
   }
 
   return <main className="projects-page" aria-label="Proyectos de Render"><div className="pr-shell">

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
-function harness(tasks) {
+function harness(tasks, allowNavigation = true) {
   const selected = [], incorporated = [], errors = [], requests = [];
   const tasksLatestRef = {current:tasks}, openRequestRef = {current:null};
   const window = {location:{href:'http://localhost/workspace/tareas?view=board&cliente=2'},history:{
@@ -13,8 +13,8 @@ function harness(tasks) {
   const apiTaskById = (id,options) => new Promise((resolve,reject) => requests.push({id,options,resolve,reject}));
   const callbacks = source.slice(source.indexOf('  const openTask = useCallback'),source.indexOf('  useEffect(() => {\n    const onPop'));
   const {openTask,closeTask} = new Function('useCallback','tasksLatestRef','openRequestRef','setSelectedId',
-    'apiTaskById','incorporateRelatedTasks','onError','window',`${callbacks};return {openTask,closeTask};`)
-  (fn=>fn,tasksLatestRef,openRequestRef,id=>selected.push(id),apiTaskById,items=>incorporated.push(items),message=>errors.push(message),window);
+    'apiTaskById','incorporateRelatedTasks','onError','window','requestAppNavigation',`${callbacks};return {openTask,closeTask};`)
+  (fn=>fn,tasksLatestRef,openRequestRef,id=>selected.push(id),apiTaskById,items=>incorporated.push(items),message=>errors.push(message),window,()=>allowNavigation);
   return {openTask,closeTask,tasksLatestRef,requests,selected,incorporated,errors,window};
 }
 
@@ -63,6 +63,13 @@ test('sin caché espera datos reales y un fallo no abre un detalle inexistente',
   const pending = h.openTask(1); assert.deepEqual(h.selected,[]);
   h.requests[0].reject(new Error('No disponible')); await pending;
   assert.deepEqual(h.selected,[]); assert.deepEqual(h.errors,['No disponible']);
+});
+
+test('cancelar cambio de tarea conserva selección y URL sin abrir ni solicitar otra tarea', async () => {
+  const h = harness([{id:1}], false), href = h.window.location.href;
+  await h.openTask(1);
+  assert.deepEqual(h.selected, []); assert.deepEqual(h.requests, []);
+  assert.equal(h.window.location.href, href);
 });
 
 test('el detalle conserva borradores, cancela consultas y no reenfoca con cada actualización', () => {

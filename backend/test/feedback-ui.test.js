@@ -31,7 +31,7 @@ test("Feedback incorpora pedidos cargados por Wilson como tareas", () => {
   assert.match(feedbackSource, /task\.propiedades_extra\?\.wilson_confirmado_por/);
   assert.match(feedbackSource, /source: "task"/);
   assert.match(feedbackSource, /Abrir tarea relacionada/);
-  assert.match(feedbackSource, /window\.dispatchEvent\(new PopStateEvent\("popstate"\)\)/);
+  assert.match(feedbackSource, /return navigateWithinApp\(window, destination\)/);
 });
 
 test("Feedback presenta resúmenes compactos y abre el contenido en un panel", () => {
@@ -66,8 +66,8 @@ test("Tareas abre Feedback sin recargar ni romper el marco de la aplicación", (
   assert.match(workspaceSource, /<button className=\{`ros-feedback-link/);
   assert.match(feedbackSource, /← Volver a tareas/);
   assert.match(feedbackSource, /window\.history\.state\?\.fromTasks/);
-  assert.match(feedbackSource, /window\.history\.back\(\)/);
-  assert.match(feedbackSource, /window\.history\.pushState\(\{\}, "", "\/workspace\/tareas"\)/);
+  assert.match(feedbackSource, /return navigateWithinApp\(window, `\$\{origin.pathname\}\$\{origin.search\}\$\{origin.hash\}`\)/);
+  assert.match(feedbackSource, /return navigateWithinApp\(window, "\/workspace\/tareas"\)/);
   assert.match(feedbackStyles, /animation:rf-page-enter/);
   assert.match(feedbackStyles, /button:not\(:disabled\):active\{transform:scale\(\.975\)\}/);
   assert.match(workspaceStyles, /animation:ros-surface-enter/);

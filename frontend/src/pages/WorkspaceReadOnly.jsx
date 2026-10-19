@@ -20,6 +20,9 @@ import { GoalTaskLink } from "../features/render-os/GoalTaskLink.jsx";
 import { EditingDeliveries } from "../components/EditingDeliveries.jsx";
 import { EditingReviews } from "../components/EditingReviews.jsx";
 import { refreshEditingTask } from "../components/editingTaskRefresh.js";
+import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
+import { navigateWithinApp, requestAppNavigation } from "../shared/navigation/location.js";
+import { isTaskDraftDirty, keepsTaskOpen } from "./taskNavigationGuard.js";
 import "./WorkspaceReadOnly.css";
 import "./TaskDetailCompact.css";
 import "./RenderApplePolish.css";
@@ -135,15 +138,6 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [reviewRefreshing, setReviewRefreshing] = useState(false);
   const [reviewError, setReviewError] = useState('');
   useEffect(() => { setReviewAcknowledged(false); }, [task?.id, task?.revision, sesion?.token, editingReview?.latestDelivery?.id, editingReview?.task?.revision]);
-  useEffect(() => {
-    const warn = event => { if (deliveryDirty || deliveryBusy) { event.preventDefault(); event.returnValue = ""; } };
-    const beforeNavigation = event => {
-      if (deliveryBusy || (deliveryDirty && !window.confirm("Hay una entrega sin guardar. ¿Querés descartarla?"))) event.preventDefault();
-    };
-    window.addEventListener("beforeunload", warn);
-    window.addEventListener("render:before-navigation", beforeNavigation);
-    return () => { window.removeEventListener("beforeunload", warn); window.removeEventListener("render:before-navigation", beforeNavigation); };
-  }, [deliveryDirty, deliveryBusy]);
   const [draft, setDraft] = useState(() => task ? { ...task, aclaraciones: getUnifiedTaskContent(task) } : {});
   const draftSourceRef = useRef(task);
   const [comments, setComments] = useState([]);
@@ -155,7 +149,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [productionAmount, setProductionAmount] = useState(1);
   const [productionDate, setProductionDate] = useState(getHoyLocalISO());
   const [productionCorrections, setProductionCorrections] = useState({});
-  const [productionDriveLink, setProductionDriveLink] = useState("");
+  const [productionDriveLink, setProductionDriveLink] = useState(task?.material_referencia || "");
   const [registeringProduction, setRegisteringProduction] = useState(false);
   const [savingProductionDrive, setSavingProductionDrive] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -165,6 +159,13 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [registryRetry, setRegistryRetry] = useState(0);
   const [linkCopied, setLinkCopied] = useState(false);
   const archivePendingRef = useRef(false);
+  const closeApprovedRef = useRef(false);
+  const taskDraftDirty = isTaskDraftDirty(task, draft) || Boolean(comment.trim()) || deliveryDirty
+    || (isProductionVisitTask(task || {}) && productionDriveLink.trim() !== String(task?.material_referencia || '').trim());
+  const taskWriteBusy = saving || commenting || archiving || registeringProduction || savingProductionDrive || approving || confirmingProduction || deliveryBusy;
+  useNavigationGuard(({ to }) => closeApprovedRef.current || keepsTaskOpen(to, task?.id)
+    ? { dirty: false, busy: false }
+    : { dirty: taskDraftDirty, busy: taskWriteBusy || archivePendingRef.current });
   const scriptEditorRef = useRef(null);
   const deliverySectionRef = useRef(null);
   async function refreshEditingTaskAfterSave(_result, isCurrent) {
@@ -411,9 +412,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const closeDetail = () => {
-    if (windowMotion.closing || deliveryBusy) return;
-    const contentDirty = String(draft.aclaraciones || "").trim() !== getUnifiedTaskContent(task).trim();
-    if ((editing || contentDirty || deliveryDirty) && !window.confirm("Hay cambios sin guardar. ¿Querés descartarlos?")) return;
+    if (windowMotion.closing || taskWriteBusy || archivePendingRef.current) return;
+    if (taskDraftDirty && !window.confirm("Hay cambios sin guardar. ¿Querés descartarlos?")) return;
+    closeApprovedRef.current = true;
     windowMotion.close();
   };
 
@@ -554,8 +555,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           <div className="ros-task-hero-meta"><span>Tarea #{task.id}</span><span>Actualizada {formatDate(task.updated_at)}</span></div>
         </div>
         {task.cliente_id && <button className="ros-moodboard-link" type="button" onClick={() => {
-          window.history.pushState({}, "", `/moodboards?cliente=${task.cliente_id}&task=${task.id}`);
-          window.dispatchEvent(new PopStateEvent("popstate"));
+          navigateWithinApp(window, `/moodboards?cliente=${task.cliente_id}&task=${task.id}`);
         }}>✦ Ver moodboard de {task.cliente_nombre || "la marca"}</button>}
         <div className="ros-task-document-properties">
           <div><span>◉ <b>Estado</b></span>{isAdmin || canChangeTaskState ? <select className="ros-inline-property" aria-label="Estado" value={canonicalTaskState(draft.estado ?? task.estado ?? "pendiente")} disabled={saving} onChange={(event) => saveInlineField("estado", event.target.value, "actualizó el estado de la tarea")}>{availableTaskStatuses.map((item) => <option key={item.id} value={item.id} disabled={isProductionVisit && item.id === "finalizada" && !productionProgress.complete}>{item.label}</option>)}</select> : <strong className="ros-task-document-status"><i style={{ background: status.color }}/>{status.label}</strong>}</div>
@@ -639,12 +639,14 @@ function TaskPeoplePicker({ users, primaryId, collaboratorIds, onChange, compact
   </div>;
 }
 
-function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, onCreate }) {
+function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, onCreate, onCreated }) {
   const [draft, setDraft] = useState({ titulo: "", asignado_a: "", asignado_a_id: null, colaborador_ids: [], cliente_id: "", estado: ["pendiente", "en_progreso", "en_revision"].includes(initialStatus) ? initialStatus : "pendiente", tipo_tarea: "", subtipo: "", prioridad: "media", fecha_vencimiento: "", aclaraciones: "", material_referencia: "", resumen: "", etiquetas: "", colaboradores: [], produccion_videos_previstos: "" });
   const [saving, setSaving] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [suggestionMessage, setSuggestionMessage] = useState("");
   const manuallyEdited = useRef(new Set());
+  const completedRef = useRef(false);
+  useNavigationGuard(() => ({ dirty: !completedRef.current && isNewTaskDraftDirty(draft), busy: !completedRef.current && saving }));
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -655,7 +657,7 @@ function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, on
     if (saving || !Number.isSafeInteger(draft.asignado_a_id) || draft.asignado_a_id <= 0) return;
     setSaving(true);
     try {
-      await onCreate({
+      const created = await onCreate({
         ...draft,
         ...buildTaskAssignmentInput({ ownerId: draft.asignado_a_id, collaboratorIds: draft.colaborador_ids || [] }),
         cliente_id: draft.cliente_id ? Number(draft.cliente_id) : null,
@@ -668,6 +670,8 @@ function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, on
         etiquetas: draft.etiquetas.split(",").map((item) => item.trim()).filter(Boolean),
         produccion_videos_previstos: isProductionVisitTask(draft) && draft.produccion_videos_previstos !== "" ? Number(draft.produccion_videos_previstos) : undefined,
       });
+      completedRef.current = true;
+      onCreated(created);
     } catch {
       // El modal permanece abierto y el contenedor muestra el error.
     } finally {
@@ -675,6 +679,7 @@ function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, on
     }
   };
   const closeModal = () => {
+    if (saving) return;
     if (isNewTaskDraftDirty(draft) && !window.confirm("La tarea todavía no fue creada. ¿Querés descartarla?")) return;
     onClose();
   };
@@ -908,13 +913,15 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     openRequestRef.current = controller;
     const cached = tasksLatestRef.current.find(task => task.id === id);
     const show = () => {
-      setSelectedId(id);
       const url = new URL(window.location.href);
-      if (url.searchParams.get('task') === String(id)) return;
+      if (url.searchParams.get('task') === String(id)) { setSelectedId(id); return true; }
       url.searchParams.set("task", String(id));
+      if (!requestAppNavigation(window, url.href)) return false;
+      setSelectedId(id);
       window.history.pushState({ task: id }, "", url);
+      return true;
     };
-    if (cached) show();
+    if (cached && !show()) return;
     try {
       const task = await apiTaskById(id, { signal: controller.signal });
       if (controller.signal.aborted || openRequestRef.current !== controller) return;
@@ -958,6 +965,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     void onUpdate(task.id, { estado: status }, `movió la tarea de ${STATUSES.find((item) => item.id === canonicalTaskState(task.estado))?.label || task.estado} a ${STATUSES.find((item) => item.id === status)?.label || status}`).catch(() => {});
   }, [onError, onUpdate, onApprove, sesion?.usuario]);
   const openFeedback = useCallback(() => {
+    if (!requestAppNavigation(window, "/feedback")) return;
     window.history.pushState({ ...window.history.state, fromTasks: window.location.href }, "", "/feedback");
     window.dispatchEvent(new PopStateEvent("popstate"));
   }, []);
@@ -992,7 +1000,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
   {selected && <TaskDetail key={selected.id} task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onCorrectProduction={onCorrectProduction} onConfirmProduction={onConfirmProduction} onApprove={onApprove} onTrashAction={async (task, action) => { await onBulkAction([task.id], action); closeTask(); }}/>}
-  {creatingStatus && <NewTaskModal users={users} clients={clients} initialStatus={creatingStatus} onClose={() => setCreatingStatus(null)} onCreate={async (draft) => { const created = await onCreate(draft); setCreatingStatus(null); openTask(created.id); }}/>}</>;
+  {creatingStatus && <NewTaskModal users={users} clients={clients} initialStatus={creatingStatus} onClose={() => setCreatingStatus(null)} onCreate={onCreate} onCreated={created => { setCreatingStatus(null); void openTask(created.id); }}/>}</>;
 }
 
 export function WorkspaceReadOnlyPage({ sesion }) {

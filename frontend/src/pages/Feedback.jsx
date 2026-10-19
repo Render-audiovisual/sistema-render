@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
+import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
+import { navigateWithinApp } from "../shared/navigation/location.js";
 import { CATEGORIAS_NOTA } from "./BlocNotas.jsx";
 import { markFeedbackSeen } from "../features/render-os/utils/feedback-notifications.js";
 import { isClientFeedback, normalizeFeedbackText, resolveFeedbackClient } from "../features/render-os/utils/feedback-client.js";
@@ -60,14 +62,29 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
   const titleRef = useRef(null);
   const lock = useRef(false);
   const linkedNoteId = useRef(Number(initialParams.get("note")) || null);
+  const restoreLocationRef = useRef(null);
   const dirty = Boolean(draft && JSON.stringify(draft) !== baseline);
   const panelOpen = Boolean(selected || draft);
-
+  useNavigationGuard(() => ({ dirty, busy: lock.current }));
+  restoreLocationRef.current = () => {
+    if (!["/feedback", "/bloc-notas"].includes(window.location.pathname)) return;
+    const params = new URLSearchParams(window.location.search);
+    const noteId = Number(params.get("note")) || null;
+    const note = notes.find(item => item.id === noteId) || null;
+    linkedNoteId.current = note ? null : noteId;
+    setSection(params.get("section") === "team" ? "team" : "clients");
+    setTrash(params.get("mode") === "trash");
+    setSelected(note);
+    setDraft(null);
+    setBaseline("");
+    setConflict(false);
+    setDuplicates([]);
+  };
   useEffect(() => {
-    const warn = (event) => { if (dirty || lock.current) { event.preventDefault(); event.returnValue = ""; } };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+    const restore = () => restoreLocationRef.current?.();
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
 
   useEffect(() => {
     if (!panelOpen) return undefined;
@@ -111,6 +128,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
   useEffect(() => { if (draft) titleRef.current?.focus(); }, [draft?.id, Boolean(draft)]);
 
   useEffect(() => {
+    if (!["/feedback", "/bloc-notas"].includes(window.location.pathname)) return;
     const url = new URL(window.location.href);
     url.searchParams.set("section", section);
     trash ? url.searchParams.set("mode", "trash") : url.searchParams.delete("mode");
@@ -123,19 +141,16 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
   }
 
   function backToTasks() {
-    if (!canLeave()) return;
     const fromTasks = window.history.state?.fromTasks;
     if (typeof fromTasks === "string") {
       try {
         const origin = new URL(fromTasks, window.location.origin);
         if (origin.origin === window.location.origin && origin.pathname === "/workspace/tareas") {
-          window.history.back();
-          return;
+          return navigateWithinApp(window, `${origin.pathname}${origin.search}${origin.hash}`);
         }
       } catch { /* Un origen inválido vuelve al tablero canónico. */ }
     }
-    window.history.pushState({}, "", "/workspace/tareas");
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    return navigateWithinApp(window, "/workspace/tareas");
   }
 
   function openNote(note) {
@@ -150,8 +165,18 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
 
   function openTask(taskId) {
     const destination = `/workspace/tareas?task=${taskId}`;
-    window.history.pushState({}, "", destination);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    return navigateWithinApp(window, destination);
+  }
+
+  function changeSection(nextSection) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("section", nextSection);
+    url.searchParams.delete("note");
+    if (!navigateWithinApp(window, `${url.pathname}${url.search}${url.hash}`)) return;
+    setSection(nextSection);
+    setSelected(null);
+    setDraft(null);
+    setBaseline("");
   }
 
   function createNote() {
@@ -353,8 +378,8 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     </header>
 
     <nav className="rf-section-switch" aria-label="Tipo de feedback">
-      <button type="button" aria-pressed={section === "team"} className={section === "team" ? "active" : ""} onClick={() => { if (canLeave()) { setSection("team"); setSelected(null); setDraft(null); } }}><span>♙</span><b>Equipo</b></button>
-      <button type="button" aria-pressed={section === "clients"} className={section === "clients" ? "active" : ""} onClick={() => { if (canLeave()) { setSection("clients"); setSelected(null); setDraft(null); } }}><span>◎</span><b>Clientes</b></button>
+      <button type="button" aria-pressed={section === "team"} className={section === "team" ? "active" : ""} onClick={() => changeSection("team")}><span>♙</span><b>Equipo</b></button>
+      <button type="button" aria-pressed={section === "clients"} className={section === "clients" ? "active" : ""} onClick={() => changeSection("clients")}><span>◎</span><b>Clientes</b></button>
     </nav>
 
     <section className="rf-intro"><div><h2>{trash ? `Papelera · ${sectionTitle}` : sectionTitle}</h2><p>{sectionCopy}</p></div><button className="rf-trash-toggle" disabled={busy} onClick={() => { if (canLeave()) { setSelected(null); setDraft(null); setTrash(!trash); setQuery(""); } }}>{trash ? "← Volver" : "Papelera"}</button></section>

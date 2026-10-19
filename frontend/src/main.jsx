@@ -3,6 +3,9 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 import "./design-system.css";
 import { App } from "./App.jsx";
+import { installUnsavedNavigation } from "./shared/navigation/unsaved.js";
+
+installUnsavedNavigation(window);
 
 // Toda la app llama a la API con rutas relativas ("/api/..."). Eso funciona
 // solo cuando el mismo servidor sirve la API y el frontend (el deploy
