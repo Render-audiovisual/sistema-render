@@ -192,6 +192,10 @@ export function DetalleProduccionGermanModal({ produccion, onClose, onActualizad
   const [error, setError] = useState(null);
 
   const handleCoordinarFecha = () => {
+    if (!Number.isSafeInteger(produccion.revision) || produccion.revision < 1) {
+      setError("Recargá la tarea antes de coordinarla.");
+      return;
+    }
     const horario = window.prompt(
       "¿Para cuándo se coordina? (ej: 2026-07-25 10:00)",
       produccion.propiedades_extra?.horario || "",
@@ -206,11 +210,14 @@ export function DetalleProduccionGermanModal({ produccion, onClose, onActualizad
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         propiedades_extra: { horario, coordinada: true },
+        expected_revision: produccion.revision,
       }),
     })
       .then((response) => {
         if (!response.ok) {
-          throw new Error("No se pudo coordinar la fecha.");
+          throw new Error(response.status === 409
+            ? "La tarea cambió. Cerrá y recargá antes de coordinarla de nuevo."
+            : "No se pudo coordinar la fecha.");
         }
         return response.json();
       })
@@ -218,8 +225,8 @@ export function DetalleProduccionGermanModal({ produccion, onClose, onActualizad
         onActualizado();
         onClose();
       })
-      .catch(() => {
-        setError("No se pudo coordinar la fecha. Intentá de nuevo.");
+      .catch((reason) => {
+        setError(reason.message || "No se pudo coordinar la fecha. Intentá de nuevo.");
         setEnviando(null);
       });
   };

@@ -56,5 +56,17 @@ test("producción conserva únicamente la coordinación de sus tareas histórica
   assert.equal(canEmployeePatchTask({ propiedades_extra: { archivada_render_os: true } }, { workspace: "historical", role: "produccion" }), false);
   assert.equal(canEmployeePatchTask({ material_referencia: "https://drive.google.com/folder" }, { workspace: "render_os", role: "produccion" }), true);
   assert.equal(canEmployeePatchTask({ titulo: "Permitido" }, { workspace: "render_os", role: "produccion" }), true);
-  assert.equal(canEmployeePatchTask({ propiedades_extra: { horario: "10:00" } }, { workspace: "render_os", role: "produccion" }), false);
+  assert.equal(canEmployeePatchTask({ propiedades_extra: { horario: "10:00" }, expected_revision: 2 }, { workspace: "render_os", role: "produccion" }), true);
+});
+
+test('coordinación mantiene permisos por rol y admite revisión histórica sin ampliar otros campos', () => {
+  const patch = { propiedades_extra: { horario: 'El martes por la tarde', coordinada: true }, expected_revision: 3 };
+  assert.equal(canEmployeePatchTask(patch, { workspace: 'historical', role: 'produccion' }), true);
+  for (const workspace of ['render_os', 'historical']) {
+    for (const role of ['diseno', 'edicion', 'community', undefined]) {
+      assert.equal(canEmployeePatchTask(patch, { workspace, role }), false);
+    }
+    assert.equal(canEmployeePatchTask({ ...patch, propiedades_extra: { ...patch.propiedades_extra, revision_aprobada: true } }, { workspace, role: 'produccion' }), false);
+  }
+  assert.equal(canEmployeePatchTask({ ...patch, titulo: 'No permitido' }, { workspace: 'historical', role: 'produccion' }), false);
 });

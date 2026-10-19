@@ -43,7 +43,7 @@ import { createWilsonChatRouter, scheduleWilsonMessages } from "./wilson-chat.js
 import { readMigrationIdentity, readMigrationStatus } from "./migrations.js";
 import { resolveStartupPolicy, assertBackgroundJobsAllowed, assertStartupMigrationStatus } from "./startup-policy.js";
 import { assertCoreSchemaReady } from "./startup-schema.js";
-import { assertTaskBusinessInput } from "./task-integration-fields.js";
+import { assertTaskBusinessInput, assertTaskCoordinationPatch } from "./task-integration-fields.js";
 import { createPersonalHomeRouter } from "./personal-home.js";
 import { createProjectsRouter } from "./projects.js";
 import { projectDomainConflict } from "./project-errors.js";
@@ -2282,7 +2282,7 @@ async function crearTareaEdicionDesdeVisita(visita, db = pool) {
 
 router.patch("/tareas/:id", async (req, res, next) => {
   try {
-    try { assertTaskBusinessInput(req.body); }
+    try { assertTaskBusinessInput(req.body); assertTaskCoordinationPatch(req.body); }
     catch (error) { return res.status(400).json({ error: error.message }); }
     const { id } = req.params;
     const body = req.body;
