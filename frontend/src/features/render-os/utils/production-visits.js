@@ -1,3 +1,5 @@
+import { canonicalTaskState } from "../constants.js";
+
 export const PRODUCTION_MONTHLY_TARGETS = [
   { name: "Luzin", target: 8, aliases: ["luzin", "lucin"] },
   { name: "Moketa", target: 8, aliases: ["moketa", "moqueta"] },
@@ -11,7 +13,6 @@ export const PRODUCTION_MONTHLY_TARGETS = [
 export function normalizeProductionText(value = "") {
   return String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("es");
 }
-
 export function isProductionVisitTask(task = {}) {
   const text = normalizeProductionText(`${task.titulo || ""} ${task.subtipo || ""} ${task.propiedades_extra?.clickup_lista || ""}`);
   return task.tipo_tarea === "produccion" && text.includes("visita");
@@ -45,8 +46,8 @@ export function getProductionPhase(task = {}) {
     if (progress.complete) return { id: "grabacion_completa", label: "Grabación completa" };
     if (progress.recorded > 0) return { id: "grabacion", label: "Grabación" };
   }
-  if (task.estado === "programada") return { id: "programada", label: "Programada" };
-  if (task.estado === "publicada") return { id: "publicada", label: "Completada" };
+  if (canonicalTaskState(task.estado) === "finalizada") return { id: "finalizada", label: "Finalizada" };
+  if (task.estado === "aprobada") return { id: "aprobada", label: "Aprobada" };
   if (task.tipo_tarea === "edicion") return { id: "edicion", label: "Edición" };
   return null;
 }

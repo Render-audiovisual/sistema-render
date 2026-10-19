@@ -109,7 +109,7 @@ test("cada integrante puede enviar a Papelera solo sus tareas propias o colabora
 test("producción puede completar y reabrir sus tareas sin habilitar otros sectores", () => {
   const ownTask = { estado: "en_progreso", asignado_a_id: 3, colaborador_ids: [] };
   const finishedTask = { ...ownTask, estado: "publicada" };
-  const productionTask = { estado: "en_revision", asignado_a_id: 2, tipo_tarea: "produccion", colaborador_ids: [] };
+  const productionTask = { estado: "en_revision", titulo: "Visita", asignado_a_id: 2, tipo_tarea: "produccion", colaborador_ids: [], propiedades_extra: { produccion_finalizada_at: "2026-10-19", produccion_registros: [{ cantidad: 1 }] } };
   const finishedProductionTask = { ...productionTask, estado: "publicada" };
   const augusto = { id: 3, nombre: "Augusto", usuario: "Augusto", rol: "diseno" };
   const german = { id: 2, nombre: "Germán", usuario: "German", rol: "produccion" };
@@ -120,21 +120,23 @@ test("producción puede completar y reabrir sus tareas sin habilitar otros secto
   assert.equal(canUserMoveTaskToState(ownTask, augusto, "publicada"), false);
   assert.equal(canUserMoveTask(finishedTask, augusto), false);
   assert.equal(canUserMoveTaskToState(finishedTask, augusto, "en_revision"), false);
-  assert.equal(canUserMoveTaskToState(ownTask, oriana, "publicada"), true);
-  assert.equal(canUserMoveTaskToState(ownTask, ana, "publicada"), true);
+  assert.equal(canUserMoveTaskToState(ownTask, oriana, "finalizada"), false);
+  assert.equal(canUserMoveTaskToState(ownTask, ana, "finalizada"), false);
   assert.equal(canUserMoveTaskToState(finishedTask, ana, "en_revision"), true);
   assert.equal(canUserMoveTaskToState(finishedTask, oriana, "en_revision"), true);
   assert.equal(canUserMoveTaskToState(ownTask, franco, "publicada"), false);
-  assert.equal(canUserMoveTaskToState(productionTask, german, "publicada"), true);
+  assert.equal(canUserMoveTaskToState(productionTask, german, "finalizada"), true);
   assert.equal(canUserMoveTask(finishedProductionTask, german), true);
   assert.equal(canUserMoveTaskToState(finishedProductionTask, german, "en_progreso"), true);
   assert.equal(canUserMoveTaskToState({ ...productionTask, asignado_a_id: 3 }, german, "publicada"), false);
   assert.equal(isTaskFinalizer(oriana), true);
+  assert.equal(canUserMoveTaskToState({ ...ownTask, estado: "aprobada" }, oriana, "finalizada"), true);
+  assert.equal(canUserMoveTaskToState({ ...ownTask, estado: "aprobada" }, ana, "finalizada"), true);
   assert.equal(canUserMoveTaskToState(ownTask, oriana, "programada"), false);
 });
 
 test("las community managers conservan acceso operativo en todos los estados", () => {
-  const estados = ["pendiente", "en_progreso", "en_revision", "publicada"];
+  const estados = ["pendiente", "en_progreso", "en_revision", "aprobada", "finalizada", "publicada"];
   const communityManagers = [
     { id: 5, nombre: "Oriana", usuario: "Oriana", rol: "community" },
     { id: 6, nombre: "Ana Mayerro", usuario: "Ana", rol: "community" },

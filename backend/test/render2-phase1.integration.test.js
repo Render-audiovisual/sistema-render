@@ -106,30 +106,42 @@ test('principal Phase 1 HTTP sessions, DTO privacy and publication boundary', {
   await fixture.query(goalMigration);
   assert.deepEqual(await history(), before, 'Installing 055 must preserve all existing editorial/task/goal history');
   await fixture.query("INSERT INTO _migrations(nombre) VALUES ('055_decouple_goal_publication.sql')");
+  await fixture.query(await readFile(new URL('../migrations/058_task_work_states.sql', import.meta.url), 'utf8'));
+  assert.deepEqual(await history(), before, 'Installing 058 also preserves all historical rows');
+  await fixture.query("INSERT INTO _migrations(nombre) VALUES ('058_task_work_states.sql')");
+  const changeState = async (id, estado) => {
+    const detail = await api(`/tareas/${id}?workspace=render_os`, { token: fresh });
+    const changed = await api(`/tareas/${id}?workspace=render_os`, { token: fresh, method: 'PATCH',
+      body: { estado, expected_revision: detail.body.revision } });
+    assert.equal(changed.status, 200, JSON.stringify(changed.body));
+    return changed;
+  };
   await t.test('installed goal trigger: API and direct SQL completion/reopen preserve editorial state/date', async () => {
     for (const linked of [{ task, piece, slot }, { task: publishedTask, piece: published, slot: publishedSlot }]) {
       const [editorialBefore] = await fixture.query('SELECT * FROM publicaciones WHERE id=$1', [linked.piece.id]);
       for (const channel of ['API', 'SQL']) {
-        for (const estado of ['publicada', 'en_revision']) {
+        for (const estado of channel === 'API' ? ['aprobada', 'finalizada', 'en_revision'] : ['publicada', 'en_revision']) {
           if (channel === 'API') {
-            const changed = await api(`/tareas/${linked.task.id}?workspace=render_os`, { token: fresh, method: 'PATCH', body: { estado } });
-            assert.equal(changed.status, 200, JSON.stringify(changed.body));
+            await changeState(linked.task.id, estado);
           } else await fixture.query('UPDATE tareas SET estado=$1 WHERE id=$2', [estado, linked.task.id]);
           const [tracked] = await fixture.query('SELECT estado,completada_at FROM cliente_objetivo_piezas WHERE id=$1', [linked.slot.id]);
           assert.equal(tracked.estado, estado, `${channel} must track goal status`);
-          assert.equal(tracked.completada_at !== null, estado === 'publicada', `${channel} must track completion/reopening`);
+          assert.equal(tracked.completada_at !== null, ['publicada', 'finalizada'].includes(estado), `${channel} must track completion/reopening`);
           const [editorialAfter] = await fixture.query('SELECT * FROM publicaciones WHERE id=$1', [linked.piece.id]);
           assert.deepEqual(editorialAfter, editorialBefore, `${channel} ${estado} must not change editorial row/date`);
         }
       }
       const events = await fixture.query('SELECT estado_anterior,estado_nuevo,tarea_id FROM cliente_objetivo_eventos WHERE pieza_id=$1 AND id>$2 ORDER BY id', [linked.slot.id, historicalEvent.id]);
-      assert.deepEqual(events, ['publicada','en_revision','publicada','en_revision'].map((estado_nuevo, index) => ({
-        estado_anterior: index % 2 === 0 ? 'en_revision' : 'publicada', estado_nuevo, tarea_id: linked.task.id,
-      })), 'Both paths must keep goal event history');
+      const states = ['en_revision','aprobada','finalizada','en_revision','publicada','en_revision'];
+      assert.deepEqual(events, states.slice(1).map((estado_nuevo, index) => ({
+        estado_anterior: states[index], estado_nuevo, tarea_id: linked.task.id,
+      })), 'Both paths must keep distinct approval/finalization goal event history');
     }
   });
-  const completed = await api(`/tareas/${task.id}?workspace=render_os`, { token: fresh, method: 'PATCH', body: { estado: 'publicada' } });
+  await changeState(task.id, 'aprobada');
+  const completed = await changeState(task.id, 'publicada'); // Legacy input is canonicalized, not editorial publication.
   assert.equal(completed.status, 200, JSON.stringify(completed.body));
+  assert.equal(completed.body.estado, 'finalizada');
   const [unchanged] = await fixture.query('SELECT estado, fecha_publicación_real FROM publicaciones WHERE id=$1', [piece.id]);
   assert.equal(unchanged.estado, 'lista');
   assert.equal(unchanged.fecha_publicación_real, null);

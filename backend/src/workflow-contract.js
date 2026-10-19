@@ -1,5 +1,7 @@
+import { isProductionVisitTask } from './production-visits.js';
+
 /**
- * Additive phase-1 vocabulary, not a storage migration or an authorization layer.
+ * Principal task vocabulary. Historical aliases apply only to task reads/input.
  * Task approval, task finalization and actual editorial publication are distinct.
  * Existing writers may keep storing task `publicada` until their migration.
  */
@@ -32,7 +34,30 @@ export function isTaskFinalized(task = {}) {
 
 export function isTaskApproved(task = {}) {
   return task.estado === TASK_STATES.APPROVED
-    || task.propiedades_extra?.revision_aprobada === true;
+    || (task.estado === TASK_STATES.IN_REVIEW && task.propiedades_extra?.revision_aprobada === true);
+}
+
+export function taskTransitionError(task, requested, auth) {
+  const next = normalizeTaskState(requested);
+  const previous = normalizeTaskState(task.estado);
+  if (!Object.values(TASK_STATES).includes(next)) return { status: 400, error: 'Estado de trabajo inválido.' };
+  if (next === previous) return null;
+  if (next === TASK_STATES.APPROVED) {
+    if (auth.rol !== 'admin') return { status: 403, error: 'Solo un administrador puede aprobar el trabajo.' };
+    if (previous !== TASK_STATES.IN_REVIEW) return { status: 409, error: 'Enviá el trabajo a revisión antes de aprobarlo.' };
+  }
+  if (next === TASK_STATES.FINALIZED) {
+    const production = isProductionVisitTask(task);
+    if (!['admin', 'community'].includes(auth.rol) && !(production && auth.rol === 'produccion')) {
+      return { status: 403, error: 'No tenés permiso para finalizar esta tarea.' };
+    }
+    if (!production && previous !== TASK_STATES.APPROVED) return { status: 409, error: 'El trabajo necesita aprobación antes de finalizarse.' };
+  }
+  if (previous === TASK_STATES.FINALIZED && !['admin', 'community'].includes(auth.rol)
+    && !(isProductionVisitTask(task) && auth.rol === 'produccion')) {
+    return { status: 403, error: 'No tenés permiso para reabrir esta tarea.' };
+  }
+  return null;
 }
 
 export function isPieceActuallyPublished(piece = {}) {

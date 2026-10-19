@@ -13,7 +13,7 @@ export async function completeLinkedAutoTasks(pool, { estado, historiaId = null,
 
   const result = await pool.query(
     `UPDATE tareas
-     SET estado = 'publicada',
+     SET estado = 'finalizada',
          propiedades_extra = propiedades_extra || jsonb_build_object('finalizada_at', now()),
          updated_at = now()
      WHERE propiedades_extra->>'workspace' = 'render_os'

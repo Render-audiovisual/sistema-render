@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import { getProductionProgress, isProductionVisitTask } from "./production-visits.js";
 
-const DONE_STATES = new Set(["en_revision", "publicada"]);
-const OPEN_STATES = new Set(["pendiente", "en_progreso", "en_proceso", "en_revision"]);
+// Delivery progress, not editorial publication or final task completion.
+const DONE_STATES = new Set(["en_revision", "aprobada", "finalizada", "publicada"]);
+const OPEN_STATES = new Set(["pendiente", "en_progreso", "en_proceso", "en_revision", "aprobada"]);
 
 function normalized(value = "") {
   return String(value).normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -126,7 +127,7 @@ export function buildMiaGroupDigests(tasks = [], { today = new Date().toISOStrin
       || task.propiedades_extra?.papelera_render_os === true) continue;
     const area = areaForTask(task);
     const due = dateOnly(task.fecha_vencimiento);
-    if (!area || !isObjectiveTask(task, area) || (!OPEN_STATES.has(task.estado) && task.estado !== "publicada")) continue;
+    if (!area || !isObjectiveTask(task, area) || (!OPEN_STATES.has(task.estado) && !DONE_STATES.has(task.estado))) continue;
     if (due && due.slice(0, 7) !== period && !(OPEN_STATES.has(task.estado) && due < today)) continue;
     const client = task.cliente_nombre || "Sin cliente";
     const owner = task.asignado_a || "Sin responsable";

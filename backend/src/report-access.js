@@ -43,7 +43,7 @@ export function summarizeRenderOsByDay(tasks = []) {
     if (!summary[date]) summary[date] = {};
     if (!summary[date][category]) summary[date][category] = { total: 0, publicadas: 0 };
     summary[date][category].total += 1;
-    if (task.estado === "publicada") summary[date][category].publicadas += 1;
+    if (["finalizada", "publicada"].includes(task.estado)) summary[date][category].publicadas += 1;
     return summary;
   }, {});
 }

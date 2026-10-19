@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiRequest } from './services/render-os-api.js';
+import { isTaskCompleted } from './constants.js';
 import './GoalTaskLink.css';
 
 function LinkDialog({ task, onClose }) {
@@ -81,13 +82,13 @@ function LinkDialog({ task, onClose }) {
               {!data.objetivo && <p>Este cliente todavía no tiene preparado un objetivo para ese mes.</p>}
               {data.objetivo && !data.casilleros.length && <p>No hay casilleros pendientes disponibles para este formato.</p>}
               {slot && <div className="ros-goal-summary"><strong>{data.objetivo.nombre} · {period}</strong>
-                <p>Esta tarea ocupará {slot.tipo === 'video' ? 'Reel' : 'Carrusel'} {slot.numero}.{data.tarea.estado === 'publicada' ? ' Contará como completada inmediatamente.' : ' Contará cuando se finalice.'}</p>
+                <p>Esta tarea ocupará {slot.tipo === 'video' ? 'Reel' : 'Carrusel'} {slot.numero}.{isTaskCompleted(data.tarea) ? ' Contará como completada inmediatamente.' : ' Contará cuando se finalice.'}</p>
                 {slot.tarea_id && <p>Se reemplaza el enlace de la tarea #{slot.tarea_id}, no la tarea. Su información e historial no se eliminan.</p>}
                 {slot.publicacion_id && <p>La publicación planificada #{slot.publicacion_id} deja este casillero, pero se conserva sin cambios.</p>}</div>}
             </>}
           <footer><button type="button" onClick={onClose} disabled={saving}>Cancelar</button>
             <button type="submit" className="ros-goal-primary" disabled={loading || saving || !slot || Boolean(data?.vinculo_actual)}>
-              {saving ? 'Vinculando…' : data?.tarea.estado === 'publicada' ? 'Vincular y contar' : 'Vincular tarea'}</button></footer>
+              {saving ? 'Vinculando…' : isTaskCompleted(data?.tarea) ? 'Vincular y contar' : 'Vincular tarea'}</button></footer>
         </form>}
     </section>
   </div>, document.body);

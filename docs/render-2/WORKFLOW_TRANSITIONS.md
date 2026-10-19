@@ -1,5 +1,13 @@
 # Workflow transition audit and integration handoff
 
+## Rescue implementation update — 2026-10-19
+
+The body below is the original pre-integration audit, not a current completion claim. Forward migration 055 removed task-driven editorial publication; forward migration 058 now expands task states without historical DML and tracks canonical completion independently. Principal task API/UI support pending, progress, review, approved and finalized; new completion writes use `finalizada`, historical task `publicada` remains a read alias. The goal trigger recognizes both completed work states and never writes editorial state/date.
+
+Approval is server-owned, admin-only from review, and exact-revision checked. The shared BEFORE UPDATE guard returns approved work to review if material, instructions or `copy_trabajo` change, and clears approval evidence on rework. The actual production-visit completion exception remains separate and completeness checks use persisted workspace even if the caller omits its query. The original raw-metadata/privacy, publication-route consistency, capabilities and specialized-production concurrency audit items are still open unless separately proven in `STATUS.md`; this implementation does not close Phase 1 as a whole.
+
+Current evidence: `TASK_WORKFLOW_QA.md`, guarded principal HTTP/PostgreSQL regressions and a desktop/mobile browser smoke. Neither migration nor UI has been deployed. See `STATUS.md` for exact latest counts, limitations and next gates.
+
 Audit date: 2026-10-19. Scope: read-only source inspection and isolated unit QA; this document is the only file changed in this audit turn. Paths/line anchors below describe the inspected working tree, not a deployed database. Other contributors are editing shared files; re-resolve anchors before patching.
 
 ## Status and critical finding

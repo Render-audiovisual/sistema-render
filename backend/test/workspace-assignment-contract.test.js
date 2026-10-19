@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { buildTaskAssignmentInput } from "../../frontend/src/shared/task-assignment-input.js";
 import { getCanonicalTaskContentMetadata } from "../../frontend/src/features/render-os/utils/task-content.js";
+import { canonicalTaskState } from "../../frontend/src/features/render-os/constants.js";
 
 const source = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
@@ -48,8 +49,8 @@ test("saving content preserves collaborators without resending assignments or di
   const task = { id: 5, titulo: "Original", asignado_a_id: 1, colaborador_ids: [2], propiedades_extra: { colaboradores: ["Alex"], resumen: "Keep", etiquetas: ["tag"] } };
   let changes;
   const noop = () => {};
-  const save = new Function("task", "draft", "metadata", "tags", "collaborators", "canEditTask", "isProductionVisit", "productionProgress", "getCanonicalTaskContentMetadata", "setSaving", "setEditing", "onUpdate", `${body}\nreturn save;`)(
-    task, { ...task, aclaraciones: "New content" }, task.propiedades_extra, ["tag"], ["Alex"], true, false, {}, getCanonicalTaskContentMetadata, noop, noop, async (id, value) => { changes = value; },
+  const save = new Function("task", "draft", "metadata", "tags", "collaborators", "canEditTask", "isProductionVisit", "productionProgress", "getCanonicalTaskContentMetadata", "setSaving", "setEditing", "onUpdate", "canonicalTaskState", `${body}\nreturn save;`)(
+    task, { ...task, aclaraciones: "New content" }, task.propiedades_extra, ["tag"], ["Alex"], true, false, {}, getCanonicalTaskContentMetadata, noop, noop, async (id, value) => { changes = value; }, canonicalTaskState,
   );
   await save();
   assert.equal(changes.aclaraciones, "New content");
@@ -83,20 +84,23 @@ test("source contract: stable IDs, explicit history warning, admin leadership an
   assert.match(source, /buildTaskAssignmentInput\(\{ ownerId: draft.asignado_a_id, collaboratorIds: draft.colaborador_ids \|\| \[\] \}\)/);
 });
 
-test("approval sends selected publisher ID, keeps label for display, rejects missing or ineligible IDs", async () => {
+test("approval sends selected publisher ID, keeps display label; generic approval needs no publisher", async () => {
   const body = section("  const approveTask =", "  const bulkTaskAction =");
   const requests = [];
   const notices = [];
+  const updates = [];
   const users = [{ id: 1, nombre: "Alex", rol: "community" }, { id: 2, nombre: "Alex", rol: "admin" }, { id: 3, nombre: "Other", rol: "diseno" }];
   const task = { id: 5, revision: 7, cliente_nombre: "Client" };
-  const approve = new Function("users", "apiRequest", "tasksRef", "setTasks", "logActivity", "notify", `${body}\nreturn approveTask;`)(
+  const approve = new Function("users", "apiRequest", "tasksRef", "setTasks", "logActivity", "notify", "updateTask", `${body}\nreturn approveTask;`)(
     users, async (url, request) => { requests.push(JSON.parse(request.body)); return task; },
-    { current: [task] }, () => {}, async () => {}, (message) => notices.push(message),
+    { current: [task] }, () => {}, async () => {}, (message) => notices.push(message), async (id, changes) => updates.push({id,changes}),
   );
   await approve(task, 2);
   assert.deepEqual(requests, [{ responsable_publicacion_id: 2, expected_revision: 7 }]);
   assert.equal(notices.at(-1), "Tarea aprobada y enviada a Alex.");
-  for (const id of [null, undefined, "2", 0, -1, 1.5, 3, 999]) {
+  await approve(task);
+  assert.deepEqual(updates, [{id:5,changes:{estado:"aprobada"}}]);
+  for (const id of [null, "2", 0, -1, 1.5, 3, 999]) {
     await assert.rejects(approve(task, id), /responsable de publicación válido/);
   }
   assert.equal(requests.length, 1);

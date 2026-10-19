@@ -4,6 +4,7 @@ import { rankTaskPriorities } from "./task-priority.js";
 import { canRecordProduction, getProductionProgress, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 
 const TZ = "America/Argentina/Cordoba";
+const taskComplete = task => ["finalizada", "publicada"].includes(task.estado);
 
 function localParts(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -60,7 +61,7 @@ async function personalTasks(pool, auth) {
      FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id LEFT JOIN publicaciones p ON p.id=t.publicacion_id
      WHERE t.propiedades_extra->>'workspace'='render_os'
        AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
-       AND t.estado<>'publicada'${access.sql}
+       AND t.estado NOT IN ('finalizada','publicada')${access.sql}
      ORDER BY t.fecha_vencimiento NULLS LAST,t.id`, values,
   );
   const today = localParts().year + "-" + localParts().month + "-" + localParts().day;
@@ -68,7 +69,7 @@ async function personalTasks(pool, auth) {
   const isOriana = auth.rol === "community" || String(auth.nombre || auth.usuario || "").toLowerCase().includes("oriana");
   if (!isOriana) return ranked;
   const reviewTasks = ranked.recommendations
-    .filter((task) => task.estado === "en_revision")
+    .filter((task) => ["en_revision", "aprobada"].includes(task.estado))
     .map((task) => ({ ...task, waiting_review: false, priority_reasons: ["Lista para que la revises o publiques", ...(task.priority_reasons || []).filter((reason) => reason !== "Está esperando revisión")].slice(0, 3) }));
   return { ...ranked, recommendations: reviewTasks, summary: { ...ranked.summary, total: reviewTasks.length, waiting_review: 0 } };
 }
@@ -113,7 +114,7 @@ function isCarrusel(task) {
 export function buildEmployeeSnapshot(tasks = [], user = {}, period = wilsonPeriod()) {
   const currentTasks = tasks.filter((task) => {
     const date = String(task.fecha_vencimiento || task.updated_at || "").slice(0, 7);
-    return date === period || task.estado !== "publicada";
+    return date === period || !taskComplete(task);
   });
   const productionRecords = currentTasks.flatMap((task) => {
     const records = Array.isArray(task.propiedades_extra?.produccion_registros) ? task.propiedades_extra.produccion_registros : [];
@@ -124,7 +125,7 @@ export function buildEmployeeSnapshot(tasks = [], user = {}, period = wilsonPeri
   const relevant = role === "diseno" ? currentTasks.filter(isCarrusel)
     : role === "edicion" ? currentTasks.filter((task) => task.tipo_tarea === "edicion")
       : role === "produccion" ? currentTasks.filter(isProductionVisitTask)
-        : role === "community" ? currentTasks.filter((task) => task.estado === "en_revision" || task.estado === "publicada")
+        : role === "community" ? currentTasks.filter((task) => ["en_revision", "aprobada"].includes(task.estado) || taskComplete(task))
           : currentTasks;
   return {
     user,
@@ -133,13 +134,15 @@ export function buildEmployeeSnapshot(tasks = [], user = {}, period = wilsonPeri
     videosRecorded: productionRecords.reduce((total, record) => total + (Number(record.cantidad) || 0), 0),
     pending: relevant.filter((task) => ["pendiente", "en_progreso"].includes(task.estado)),
     review: relevant.filter((task) => task.estado === "en_revision"),
-    completed: relevant.filter((task) => task.estado === "publicada"),
+    approved: relevant.filter((task) => task.estado === "aprobada"),
+    completed: relevant.filter(taskComplete),
   };
 }
 
 export function buildEmployeeStatusReply(snapshot, question = "") {
   const name = snapshot.user.nombre || snapshot.user.usuario || "Esta persona";
   const firstName = name.split(/\s+/)[0];
+  const approved = snapshot.approved || [];
   const asksRecords = /registr|video|grabo|grabacion|film/.test(normalizeText(question));
   if (snapshot.user.rol === "produccion") {
     if (asksRecords) {
@@ -152,18 +155,18 @@ export function buildEmployeeStatusReply(snapshot, question = "") {
       const detail = [...byClient].map(([client, amount]) => `${client}: ${amount}`).join(" · ");
       return { text: `Sí. ${firstName} registró ${snapshot.videosRecorded} video${snapshot.videosRecorded === 1 ? "" : "s"} este mes. ${detail}.`, tasks: snapshot.tasks.filter((task) => snapshot.productionRecords.some((record) => Number(record.task_id) === Number(task.id))) };
     }
-    return { text: `${firstName} tiene ${snapshot.pending.length} visita${snapshot.pending.length === 1 ? "" : "s"} abierta${snapshot.pending.length === 1 ? "" : "s"}, ${snapshot.review.length} en revisión y ${snapshot.videosRecorded} videos registrados este mes.`, tasks: snapshot.pending };
+    return { text: `${firstName} tiene ${snapshot.pending.length} visita${snapshot.pending.length === 1 ? "" : "s"} abierta${snapshot.pending.length === 1 ? "" : "s"}, ${snapshot.review.length} en revisión, ${approved.length} aprobadas y ${snapshot.videosRecorded} videos registrados este mes.`, tasks: snapshot.pending };
   }
   if (snapshot.user.rol === "diseno") {
-    return { text: `${firstName} tiene ${snapshot.pending.length} carrusel${snapshot.pending.length === 1 ? "" : "es"} pendiente${snapshot.pending.length === 1 ? "" : "s"}, ${snapshot.review.length} en revisión y ${snapshot.completed.length} finalizado${snapshot.completed.length === 1 ? "" : "s"} este mes.`, tasks: [...snapshot.review, ...snapshot.pending] };
+    return { text: `${firstName} tiene ${snapshot.pending.length} carrusel${snapshot.pending.length === 1 ? "" : "es"} pendiente${snapshot.pending.length === 1 ? "" : "s"}, ${snapshot.review.length} en revisión, ${approved.length} aprobados y ${snapshot.completed.length} finalizado${snapshot.completed.length === 1 ? "" : "s"} este mes.`, tasks: [...snapshot.review, ...snapshot.pending] };
   }
   if (snapshot.user.rol === "edicion") {
-    return { text: `${firstName} tiene ${snapshot.pending.length} edición${snapshot.pending.length === 1 ? "" : "es"} pendiente${snapshot.pending.length === 1 ? "" : "s"}, ${snapshot.review.length + snapshot.completed.length} entregadas; de ellas, ${snapshot.review.length} siguen en revisión y ${snapshot.completed.length} están publicadas.`, tasks: [...snapshot.review, ...snapshot.pending] };
+    return { text: `${firstName} tiene ${snapshot.pending.length} edición${snapshot.pending.length === 1 ? "" : "es"} pendiente${snapshot.pending.length === 1 ? "" : "s"}, ${snapshot.review.length + approved.length + snapshot.completed.length} entregadas; de ellas, ${snapshot.review.length} siguen en revisión, ${approved.length} aprobadas y ${snapshot.completed.length} finalizadas.`, tasks: [...snapshot.review, ...approved, ...snapshot.pending] };
   }
   if (snapshot.user.rol === "community") {
-    return { text: `${firstName} tiene ${snapshot.review.length} tarea${snapshot.review.length === 1 ? "" : "s"} para revisar o publicar y ${snapshot.completed.length} finalizada${snapshot.completed.length === 1 ? "" : "s"} este mes.`, tasks: snapshot.review };
+    return { text: `${firstName} tiene ${snapshot.review.length + approved.length} tareas para revisar o finalizar y ${snapshot.completed.length} finalizada${snapshot.completed.length === 1 ? "" : "s"} este mes.`, tasks: [...snapshot.review, ...approved] };
   }
-  return { text: `${name} tiene ${snapshot.pending.length} tareas abiertas, ${snapshot.review.length} en revisión y ${snapshot.completed.length} finalizadas este mes.`, tasks: [...snapshot.review, ...snapshot.pending] };
+  return { text: `${name} tiene ${snapshot.pending.length} tareas abiertas, ${snapshot.review.length} en revisión, ${approved.length} aprobadas y ${snapshot.completed.length} finalizadas este mes.`, tasks: [...snapshot.review, ...approved, ...snapshot.pending] };
 }
 
 async function resolveTargetUser(pool, auth, text, previousTargetId = null) {

@@ -99,7 +99,7 @@ export function scoreTaskPriority(task, { today }) {
 export function rankTaskPriorities(tasks, { today, limit = 8 } = {}) {
   const validToday = dateOnly(today) || new Date().toISOString().slice(0, 10);
   const ranked = (Array.isArray(tasks) ? tasks : [])
-    .filter((task) => task.estado !== "publicada")
+    .filter((task) => !["finalizada", "publicada"].includes(task.estado))
     .filter((task) => task.propiedades_extra?.papelera_render_os !== true)
     .filter((task) => task.propiedades_extra?.archivada_render_os !== true)
     .map((task) => scoreTaskPriority(task, { today: validToday }))

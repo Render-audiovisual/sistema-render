@@ -91,7 +91,27 @@ Verification:
 
 This is **implemented and tested in development**, not production-ready as a whole. Before an authorized release, real account mappings and a coordinated server/client signing cutover are required. No mappings of real people were invented. `WILSON_IDENTITY.md` records compatibility gates and unresolved feedback ACL, durable replay, idempotency, capability and callback-transaction work. Phase 1 remains open; canonical task transitions, audiovisual per-video persistence, shared projects/dashboard, unified navigation/design and retirement of parallel operational implementations remain pending. Nothing has been deployed.
 
-## Original next-integration checklist (items 1–2 now implemented as above)
+## Fourth integration — canonical work states (2026-10-19)
+
+Implemented locally: task storage/API/workspace now support `pendiente → en_progreso → en_revision → aprobada → finalizada`. Legacy task `publicada` is readable as finalized and compatible final-state input becomes canonical, without rewriting historical rows. Forward migration 058 expands the CHECK, preserves historical snapshots and updates goal completion tracking without touching editorial publication state/date.
+
+Approval is admin-only from review with server actor/time evidence and an integer revision. Finalizing ordinary work requires actual approved state. A complete actual production visit retains its explicit authorized completion exception; other production work cannot skip approval. The server derives production validation from persisted workspace even if the query parameter is omitted. Rework clears approval evidence; the shared database trigger also invalidates approval on changed instructions, material or work copy, including non-UI writers. Client-supplied approval metadata cannot establish approval.
+
+The operational workspace shows five columns and canonical list/calendar filters. Generic approval does not require assigning a publisher; the existing optional publisher-ID handoff remains available. Goals, reports, task priorities, delivery calculations, notifications, supervisor and integration readers recognize canonical and historical completed work while keeping approved distinct. Client publication statistics no longer infer an editorial publication from a completed task. No destructive retention predicate was expanded.
+
+Coordinator owned server/contracts/migration and integration; Herschel handled operational task UI; Archimedes handled goals/linking/integration consumers and independent server review; Arendt handled cross-module readers/metrics and task controls; Wegener independently tested PostgreSQL/HTTP. Review identified and corrected the omitted-workspace production bypass and approval invalidation gap.
+
+Latest verification:
+
+- Backend: **529 passed, 11 opt-in cases skipped, zero failures**.
+- Frontend page suite: **152 passed**, zero failures; build passed.
+- Four principal disposable HTTP/PostgreSQL suites together: **39 passed, zero failures/skips** (sessions/privacy/publication, assignments, Wilson identity, canonical workflow). Workflow suite contributes 10 tests, including populated-history migration invariance, exact canonical states, approval permissions/revisions/forgery, rework, actual separate editorial publication, production exception and omitted-workspace denial.
+- Browser smoke on principal app, not preview: created a fictitious editor task, moved through progress/review, approved, finalized and reloaded; persisted `Finalizada` visible. Desktop and mobile 390×844 detail inspected, document width 390. Screenshots: `/private/tmp/render2-canonical-task-desktop.png`, `/private/tmp/render2-canonical-task-mobile.png`. No global responsive/accessibility certification is claimed.
+- Exact interactive fixture `/private/tmp/render2-local-ebiFQu` stopped/removed by its harness; automated fixture cleanup hooks completed. No real data or external service was used.
+
+Still a development integration, **not a completed Phase 1 or production rollout**. Open gates include specialized production-record correction/confirmation concurrency, finalized-content locking/reopen policy, finer review/publication capabilities, feedback ACL/durable replay/idempotency, equivalent operational response privacy and consistent editorial publication provenance across routes. Live financial payroll equivalence and real historical account mapping require an approved staging rehearsal; unit handling of canonical delivery states is not production payroll validation. The API-backed per-video audiovisual registry, projects/dashboard, consolidated navigation/design and preview retirement remain pending. No deployment occurred.
+
+## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.
 2. Route task authorization and new assignment writes through IDs; update operational UI/API DTOs together and prove rename/collaborator-removal tests with PostgreSQL.

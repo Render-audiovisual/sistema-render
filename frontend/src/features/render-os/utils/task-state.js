@@ -1,3 +1,6 @@
+import { canonicalTaskState, isTaskCompleted, STATUSES } from "../constants.js";
+import { getProductionVisitProgress, isProductionVisitTask } from "./production-visits.js";
+
 export function mergeRelatedTasks(current, incoming) {
   const merged = [...current];
   for (const item of incoming) {
@@ -7,7 +10,6 @@ export function mergeRelatedTasks(current, incoming) {
   }
   return merged;
 }
-
 function sameValue(left, right) {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
@@ -44,14 +46,22 @@ export function canUserDeleteTask(task, user) {
 
 export function canUserMoveTask(task, user) {
   if (isTaskFinalizer(user)) return true;
-  if (task?.estado === "publicada") return isOwnProductionTask(task, user);
+  if (isTaskCompleted(task)) return isOwnProductionTask(task, user);
   return canUserOwnTask(task, user);
 }
 
 export function canUserMoveTaskToState(task, user, nextState) {
   if (!canUserMoveTask(task, user)) return false;
-  if (nextState === "programada") return false;
-  if (nextState === "publicada" || task?.estado === "publicada") {
+  if (!STATUSES.some((state) => state.id === nextState)) return false;
+  const currentState = canonicalTaskState(task?.estado);
+  if (nextState === "aprobada") return user.rol === "admin" && currentState === "en_revision";
+  if (nextState === "finalizada") {
+    // Existing visit completion is the only direct-finalization exception.
+    const completedVisit = isProductionVisitTask(task) && getProductionVisitProgress(task).complete;
+    return (currentState === "aprobada" || completedVisit)
+      && (isTaskFinalizer(user) || isOwnProductionTask(task, user));
+  }
+  if (isTaskCompleted(task)) {
     return isTaskFinalizer(user) || isOwnProductionTask(task, user);
   }
   return true;

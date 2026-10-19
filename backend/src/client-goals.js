@@ -1,6 +1,7 @@
 import express from 'express';
 import { requireRole } from './auth.js';
 import { replaceTaskAssignments } from './task-assignments.js';
+import { isTaskFinalized } from './workflow-contract.js';
 
 export const GOALS_START_PERIOD = '2026-10';
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -69,8 +70,10 @@ export async function readGoals(db, period) {
   const objectives = await db.query(`SELECT id,clave,nombre,cuentas,reels,carruseles,
     to_char(periodo,'YYYY-MM') periodo FROM cliente_objetivos_mensuales WHERE periodo=$1::date`, [`${period}-01`]);
   const pieces = await db.query(`SELECT p.id,p.objetivo_id,p.tipo,p.numero,p.tarea_id,p.publicacion_id,p.titulo,p.copy,
-    p.responsables,p.estado,p.completada_at,p.updated_at
+    p.responsables,p.estado,p.completada_at,p.updated_at,
+    t.revision tarea_revision,t.updated_at tarea_updated_at
     FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id
+    LEFT JOIN tareas t ON t.id=p.tarea_id
     WHERE o.periodo=$1::date ORDER BY p.tipo DESC,p.numero`, [`${period}-01`]);
   const byKey = new Map(objectives.rows.map(row => [row.clave, row]));
   for (const stored of objectives.rows) {
@@ -161,7 +164,7 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
         AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
         AND COALESCE(t.propiedades_extra->>'objetivo_periodo',to_char(p.fecha_programada,'YYYY-MM'),to_char(t.fecha_vencimiento,'YYYY-MM'))=$2
         AND NOT EXISTS(SELECT 1 FROM cliente_objetivo_piezas link WHERE link.tarea_id=t.id OR link.publicacion_id=t.publicacion_id)
-      ORDER BY (t.estado='publicada') DESC,t.id FOR UPDATE OF t`, [ids, period]);
+      ORDER BY (t.estado IN ('finalizada','publicada')) DESC,t.id FOR UPDATE OF t`, [ids, period]);
     const publications = await db.query(`SELECT p.id,p.cliente_id,p.tipo,p.idea,p.copy,p.estado,
       to_char(p.fecha_programada,'YYYY-MM-DD') fecha_programada
       FROM publicaciones p WHERE p.cliente_id=ANY($1::int[]) AND to_char(p.fecha_programada,'YYYY-MM')=$2
@@ -189,7 +192,9 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
           const title = type === 'carrusel' && piece?.idea ? piece.idea : `${label} · ${objective.nombre}`;
           const result = await db.query(`INSERT INTO tareas(titulo,estado,asignado_a,cliente_id,publicacion_id,tipo_tarea,subtipo,
             propiedades_extra,fecha_vencimiento) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9) RETURNING *`,
-          [title, piece?.estado === 'publicada' ? 'publicada' : 'pendiente', names[0], accountId, piece?.id || null,
+          // Editorial publication alone is not approval/completion evidence for
+          // a newly generated task. Reused task states are left untouched.
+          [title, 'pendiente', names[0], accountId, piece?.id || null,
             type === 'video' ? 'edicion' : 'diseno', type === 'video' ? 'reel' : 'carrusel',
             JSON.stringify({ workspace: 'render_os', objetivo_periodo: period, colaboradores: names.slice(1),
               ...(piece ? { origen_pieza: true } : {}), copy_trabajo: piece?.copy || '' }), piece?.fecha_programada || null]);
@@ -204,7 +209,7 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
         }
         const responsible = [...new Set([task.asignado_a, ...(Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [])].filter(Boolean))];
         await db.query(`INSERT INTO cliente_objetivo_piezas(objetivo_id,tipo,numero,tarea_id,publicacion_id,titulo,copy,responsables,estado,completada_at)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,CASE WHEN $9='publicada' THEN now() ELSE NULL END)`,
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,CASE WHEN $9 IN ('finalizada','publicada') THEN now() ELSE NULL END)`,
         [objective.id, type, index, task.id, task.publicacion_id, task.titulo,
           task.propiedades_extra?.copy_trabajo || task.pieza_copy || '', JSON.stringify(responsible), task.estado]);
       }
@@ -334,7 +339,7 @@ async function goalLinkTask(db, id) {
   // Una edición hija sólo se vincula explícitamente cuando está terminada;
   // jamás se cuenta una visita, historia o etapa de producción como entrega.
   const type = goalTaskType({ ...task, tarea_padre_id: null });
-  if (!type || (task.tarea_padre_id && (task.tipo_tarea !== 'edicion' || task.estado !== 'publicada'))) {
+  if (!type || (task.tarea_padre_id && (task.tipo_tarea !== 'edicion' || !isTaskFinalized(task)))) {
     throw fail('Sólo podés vincular reels o carruseles. Una subtarea de edición debe estar completada.');
   }
   return { ...task, formato_objetivo: type };
@@ -367,7 +372,7 @@ export async function goalLinkOptions(db, taskId, period) {
       AND (p.publicacion_id IS NULL OR pub.estado='pendiente') ORDER BY p.numero`,
   [objective.id, task.formato_objetivo])).rows : [];
   return { tarea: { id: task.id, titulo: task.titulo, estado: task.estado, tipo: task.formato_objetivo,
-    updated_at: task.updated_at }, vinculo_actual: linked, objetivo: objective, casilleros: slots };
+    revision: task.revision, updated_at: task.updated_at }, vinculo_actual: linked, objetivo: objective, casilleros: slots };
 }
 
 export async function linkGoalTask(pool, pieceId, body, actor) {
@@ -415,12 +420,12 @@ export async function linkGoalTask(pool, pieceId, body, actor) {
     await db.query(`INSERT INTO cliente_objetivo_vinculos(pieza_id,tarea_anterior_id,tarea_nueva_id,registro_anterior,actualizado_por)
       VALUES($1,$2,$3,$4::jsonb,$5)`, [pieceId,piece.tarea_id,task.id,JSON.stringify(piece),actor]);
     await db.query(`UPDATE cliente_objetivo_piezas SET tarea_id=$2,publicacion_id=$3,titulo=$4,copy=$5,
-      responsables=$6::jsonb,estado=$7,completada_at=CASE WHEN $7='publicada' THEN now() ELSE NULL END,
+      responsables=$6::jsonb,estado=$7,completada_at=CASE WHEN $7 IN ('finalizada','publicada') THEN now() ELSE NULL END,
       updated_at=now() WHERE id=$1`, [pieceId,task.id,task.publicacion_id,task.titulo,
       task.propiedades_extra?.copy_trabajo || task.pieza_copy || '',JSON.stringify(people),task.estado]);
     if (piece.estado !== task.estado) await db.query(`INSERT INTO cliente_objetivo_eventos
       (pieza_id,estado_anterior,estado_nuevo,tarea_id) VALUES($1,$2,$3,$4)`, [pieceId,piece.estado,task.estado,task.id]);
-    const count = (await db.query(`SELECT count(*) FILTER(WHERE estado='publicada')::int completadas,count(*)::int total
+    const count = (await db.query(`SELECT count(*) FILTER(WHERE estado IN ('finalizada','publicada'))::int completadas,count(*)::int total
       FROM cliente_objetivo_piezas WHERE objetivo_id=$1 AND tipo=$2`, [piece.objetivo_id,piece.tipo])).rows[0];
     await db.query('COMMIT');
     return { pieza_id:pieceId, tarea_id:task.id, tarea_anterior_id:piece.tarea_id,

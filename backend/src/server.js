@@ -24,6 +24,7 @@ import { requireAuthentication, requireRole, requireCurrentIdentity, issueUserTo
 import { administerUser } from "./user-administration.js";
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { persistAssignedTask } from "./task-persistence.js";
+import { normalizeTaskState, taskTransitionError, isTaskFinalized } from "./workflow-contract.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
@@ -2058,14 +2059,14 @@ router.post("/tareas", async (req, res, next) => {
       return res.status(400).json({ error: "Prioridad inválida." });
     }
 
-    const estadoFinal = ESTADOS_TAREA_VALIDOS.includes(estado)
-      ? estado
+    const estadoFinal = ESTADOS_TAREA_VALIDOS.includes(normalizeTaskState(estado))
+      ? normalizeTaskState(estado)
       : "pendiente";
     if (workspace === "render_os" && estado === "programada") {
       return res.status(400).json({ error: "El estado Programada ya no forma parte del flujo de tareas." });
     }
-    if (workspace === "render_os" && estadoFinal === "publicada" && !isTaskFinalizer(req.auth)) {
-      return res.status(403).json({ error: "Solo una Community Manager o un líder pueden finalizar una tarea." });
+    if (["aprobada", "finalizada"].includes(estadoFinal)) {
+      return res.status(400).json({ error: "Creá la tarea pendiente; la aprobación y finalización requieren su recorrido de trabajo." });
     }
 
     if (workspace === "render_os" && tarea_padre_id) {
@@ -2149,7 +2150,8 @@ const ESTADOS_TAREA_VALIDOS = [
   "pendiente",
   "en_progreso",
   "en_revision",
-  "publicada",
+  "aprobada",
+  "finalizada",
 ];
 const TIPOS_TAREA_VALIDOS = [
   "diseno",
@@ -2236,11 +2238,12 @@ router.patch("/tareas/:id", async (req, res, next) => {
   try {
     const { id } = req.params;
     const body = req.body;
+    const stateOnlyRequest = Object.keys(body).every((key) => ["estado", "expected_updated_at", "expected_revision"].includes(key));
     let asignadoAnterior = null;
     let estadoAnterior = null;
     let colaboradoresAnteriores = [];
     let tareaAnteriorCompleta = null;
-    const esRenderOS = req.query.workspace === "render_os";
+    let esRenderOS = req.query.workspace === "render_os";
     let assignment;
     if (Object.hasOwn(body, "expected_revision") && (!Number.isSafeInteger(body.expected_revision) || body.expected_revision < 1)) {
       return res.status(400).json({ error: "La revisión de la tarea no es válida." });
@@ -2248,6 +2251,13 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
     if (req.auth.rol !== "admin" && !canEmployeePatchTask(body, { workspace: esRenderOS ? "render_os" : "historical", role: req.auth.rol })) {
       return res.status(403).json({ error: "Solo podés actualizar el estado de tus tareas." });
+    }
+    if (body.propiedades_extra && typeof body.propiedades_extra === "object") {
+      body.propiedades_extra = { ...body.propiedades_extra };
+      // Approval evidence is emitted only by verified server transitions.
+      for (const key of ["revision_aprobada", "revision_aprobada_por", "revision_aprobada_por_id", "revision_aprobada_at", "finalizada_at"]) {
+        delete body.propiedades_extra[key];
+      }
     }
 
     const changesPeople = ["asignado_a", "asignado_a_id", "colaborador_ids"].some(key => Object.hasOwn(body, key))
@@ -2288,6 +2298,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
     }
 
     if (Object.prototype.hasOwnProperty.call(body, "estado")) {
+      body.estado = normalizeTaskState(body.estado);
       if (body.estado === null || !ESTADOS_TAREA_VALIDOS.includes(body.estado)) {
         return res.status(400).json({ error: "Estado inválido." });
       }
@@ -2319,6 +2330,8 @@ router.patch("/tareas/:id", async (req, res, next) => {
         [id],
       );
       tareaAnteriorCompleta = tareaAnterior.rows[0] || null;
+      // Stored scope, not a caller-controlled query parameter, selects business guards.
+      if (tareaAnteriorCompleta?.propiedades_extra?.workspace === "render_os") esRenderOS = true;
       asignadoAnterior = tareaAnterior.rows[0]?.asignado_a || null;
       estadoAnterior = tareaAnterior.rows[0]?.estado || null;
       colaboradoresAnteriores = Array.isArray(tareaAnterior.rows[0]?.propiedades_extra?.colaboradores)
@@ -2328,11 +2341,11 @@ router.patch("/tareas/:id", async (req, res, next) => {
     if (
       esRenderOS &&
       Object.prototype.hasOwnProperty.call(body, "estado") &&
-      (body.estado === "publicada" || estadoAnterior === "publicada") &&
+      (body.estado === "finalizada" || isTaskFinalized({ estado: estadoAnterior })) &&
       !isTaskFinalizer(req.auth) &&
       !(req.auth.rol === "produccion" && tareaAnteriorCompleta?.tipo_tarea === "produccion")
     ) {
-      return res.status(403).json({ error: body.estado === "publicada"
+      return res.status(403).json({ error: body.estado === "finalizada"
         ? "No tenés permiso para completar esta tarea."
         : "No tenés permiso para reabrir esta tarea completada." });
     }
@@ -2363,7 +2376,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
     }
     const produccionPuedeCompletarPropia = req.auth.rol === "produccion"
       && tareaAnteriorCompleta?.tipo_tarea === "produccion";
-    if (esRenderOS && body.estado === "publicada") {
+    if (esRenderOS && body.estado === "finalizada") {
       const visita = await pool.query(
         `SELECT titulo, subtipo, tipo_tarea, propiedades_extra
          FROM tareas
@@ -2391,7 +2404,21 @@ router.patch("/tareas/:id", async (req, res, next) => {
       }
     }
 
-    if (esRenderOS && Object.prototype.hasOwnProperty.call(body, "estado") && tareaAnteriorCompleta) {
+    if ((esRenderOS || tareaAnteriorCompleta?.propiedades_extra?.workspace === "render_os")
+      && Object.prototype.hasOwnProperty.call(body, "estado") && tareaAnteriorCompleta) {
+      if (!Number.isSafeInteger(body.expected_revision) || body.expected_revision < 1) {
+        return res.status(400).json({ error: "Recargá la tarea: falta su revisión actual para cambiar el estado." });
+      }
+      const transition = taskTransitionError(tareaAnteriorCompleta, body.estado, req.auth);
+      if (transition) return res.status(transition.status).json({ error: transition.error });
+      if (body.estado === "aprobada" && estadoAnterior !== "aprobada") {
+        body.propiedades_extra = { ...(body.propiedades_extra || {}), revision_aprobada: true,
+          revision_aprobada_por_id: req.auth.id, revision_aprobada_por: getTaskActor(req.auth),
+          revision_aprobada_at: new Date().toISOString() };
+      } else if (["pendiente", "en_progreso", "en_revision"].includes(body.estado) && body.estado !== estadoAnterior) {
+        body.propiedades_extra = { ...(body.propiedades_extra || {}), revision_aprobada: false,
+          revision_aprobada_por_id: null, revision_aprobada_por: null, revision_aprobada_at: null };
+      }
       const nextTask = {
         ...tareaAnteriorCompleta,
         ...body,
@@ -2408,9 +2435,9 @@ router.patch("/tareas/:id", async (req, res, next) => {
           mia_notificacion_pendiente: pendingEvent,
         };
       }
-      if (body.estado === "publicada" && estadoAnterior !== "publicada") {
+      if (body.estado === "finalizada" && !isTaskFinalized({ estado: estadoAnterior })) {
         body.propiedades_extra = { ...(body.propiedades_extra || {}), finalizada_at: new Date().toISOString() };
-      } else if (estadoAnterior === "publicada" && body.estado !== "publicada") {
+      } else if (isTaskFinalized({ estado: estadoAnterior }) && body.estado !== "finalizada") {
         body.propiedades_extra = { ...(body.propiedades_extra || {}), finalizada_at: null };
       }
     }
@@ -2460,7 +2487,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
     const movimientoGlobalFinalizador = esRenderOS
       && isTaskFinalizer(req.auth)
-      && Object.keys(body).every((key) => ["estado", "expected_updated_at", "expected_revision"].includes(key));
+      && stateOnlyRequest;
     const acceso = movimientoGlobalFinalizador
       ? { sql: "", value: null }
       : buildTaskAccessClause(req.auth, "t", `$${i + 1}`);
@@ -2560,8 +2587,11 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
     );
     const tarea = actual.rows[0];
     if (!tarea) return res.status(404).json({ error: "Tarea no encontrada." });
-    if (tarea.estado !== "en_revision" || !isVideoEditingTask(tarea)) {
-      return res.status(400).json({ error: "Solo se pueden aprobar videos que estén Para revisar." });
+    if (["aprobada", "finalizada", "publicada"].includes(tarea.estado)) {
+      return res.status(409).json({ error: "El trabajo ya fue aprobado o finalizado." });
+    }
+    if (tarea.estado !== "en_revision") {
+      return res.status(400).json({ error: "Solo se puede aprobar trabajo que esté Para revisar." });
     }
     if (tarea.propiedades_extra?.revision_aprobada === true) {
       return res.status(409).json({ error: "Esta tarea ya fue aprobada y asignada para publicación." });
@@ -2586,6 +2616,7 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
     const result = await persistAssignedTask(pool,
       `UPDATE tareas
        SET asignado_a = $3,
+           estado = 'aprobada',
            propiedades_extra = propiedades_extra || $2::jsonb,
            updated_at = now()
        WHERE id = $1
@@ -3044,8 +3075,8 @@ router.get("/tareas", async (req, res, next) => {
       paramCount++;
     }
     if (estado) {
-      query += ` AND t.estado = $${paramCount}`;
-      params.push(estado);
+      query += ` AND t.estado = ANY($${paramCount}::text[])`;
+      params.push(normalizeTaskState(estado) === "finalizada" ? ["finalizada", "publicada"] : [estado]);
       paramCount++;
     }
 
@@ -3104,7 +3135,7 @@ router.get("/tareas-recomendaciones", async (req, res, next) => {
        WHERE t.propiedades_extra->>'workspace'='render_os'
          AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
          AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
-         AND t.estado <> 'publicada'${access.sql}
+         AND t.estado NOT IN ('publicada','finalizada')${access.sql}
        ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC`,
       params,
     );

@@ -3,7 +3,7 @@ import { Modal } from '../components/Modal.jsx';
 import { PageState } from '../components/PageState.jsx';
 import './ClientesObjetivos.css';
 
-const STATES = { pendiente: 'Pendiente', en_progreso: 'En proceso', en_revision: 'En revisión', programada: 'Programada', publicada: 'Completado' };
+const STATES = { pendiente: 'Pendiente', en_progreso: 'En proceso', en_revision: 'En revisión', aprobada: 'Aprobada', finalizada: 'Finalizada', programada: 'Programada', publicada: 'Finalizada' };
 const AUTO_UPDATE_ERROR = 'No se pudo actualizar el avance. Reintentaremos automáticamente.';
 const currentMonth = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Cordoba', year: 'numeric', month: '2-digit' }).format(new Date()).split('-').slice(0, 2).join('-');
 function monthLabel(period) { const [year, month] = period.split('-').map(Number); return new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, 1))); }
@@ -13,7 +13,7 @@ async function api(url, options = {}) {
   if (!response.ok || !data) throw new Error(data?.error || 'No se pudo cargar la información. Reintentá.');
   return data;
 }
-const done = piece => piece.estado === 'publicada';
+const done = piece => ['finalizada', 'publicada'].includes(piece.estado);
 const pieceLabel = piece => piece.tipo === 'video' ? `Reel ${piece.numero}` : piece.titulo || `Carrusel ${piece.numero}`;
 
 function GoalIcon({ name, className = '' }) {
@@ -186,7 +186,7 @@ function PieceDetail({ piece, client, canManage, close, saved }) {
     try {
       const task = await api(`/api/tareas/${piece.tarea_id}?workspace=render_os`);
       await api(`/api/tareas/${piece.tarea_id}?workspace=render_os`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: done(piece) ? 'pendiente' : 'publicada', expected_updated_at: task.updated_at }) });
+        body: JSON.stringify({ estado: done(piece) ? 'pendiente' : 'finalizada', expected_updated_at: task.updated_at, expected_revision: task.revision }) });
       saved();
     } catch (reason) { setError(reason.message); setBusy(false); }
   };

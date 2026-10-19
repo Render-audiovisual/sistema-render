@@ -1,5 +1,6 @@
 import { normalizarNombre } from "./email-notifications.js";
 import { getProductionProgress, isProductionVisitTask, isProductionComplete } from "./production-visits.js";
+import { isTaskFinalized, normalizeTaskState } from "./workflow-contract.js";
 
 // Notification delivery targets only; these names never grant authority.
 export const TASK_LEADERS = ["Agustín", "Franco"];
@@ -27,7 +28,7 @@ export function isVideoEditingTask(task = {}) {
 }
 
 export function getStateNotification(task, previousState) {
-  if (!task?.estado || task.estado === previousState) return null;
+  if (!task?.estado || normalizeTaskState(task.estado) === normalizeTaskState(previousState)) return null;
   if (task.estado === "en_progreso") {
     return { motivo: "en_progreso", recipients: TASK_LEADERS };
   }
@@ -37,8 +38,8 @@ export function getStateNotification(task, previousState) {
       recipients: isCarouselTask(task) ? ["Oriana", ...TASK_LEADERS] : TASK_LEADERS,
     };
   }
-  if (task.estado === "publicada") {
-    return { motivo: "publicada", recipients: TASK_LEADERS };
+  if (isTaskFinalized(task)) {
+    return { motivo: task.estado === "publicada" ? "publicada" : "finalizada", recipients: TASK_LEADERS };
   }
   return null;
 }

@@ -50,7 +50,7 @@ function taskItem(task) {
     client: task.cliente_nombre || "Sin cliente",
     date: taskDate(task),
     state: task.estado,
-    complete: isComplete(task),
+    complete: normalizePerson(task.estado) === "finalizada" || isComplete(task),
     difficulty: normalizePerson(task.propiedades_extra?.dificultad || ""),
   };
 }
@@ -65,7 +65,7 @@ function pieceItem(piece, source) {
     date: piece.fecha_programada,
     completedAt: piece.fecha_publicación_real || piece.updated_at || null,
     state: piece.estado,
-    complete: isComplete(piece),
+    complete: piece.estado === "publicada" || Boolean(piece.fecha_publicación_real),
   };
 }
 

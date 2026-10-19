@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { getHoyLocalISO, getSesion } from "../utils.jsx";
-import { ESTADO_FINAL_TAREA } from "../constants.js";
 
 export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo }) {
   const [tareas, setTareas] = useState([]);
@@ -42,10 +41,11 @@ export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo })
   }, [nombre, tipoTarea, nombres?.join("|"), sesion?.usuario?.id]);
 
   const cambiarEstado = (tareaId, nuevoEstado) => {
+    const tarea = tareas.find(item => item.id === tareaId);
     fetch(`/api/tareas/${tareaId}?workspace=render_os`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estado: nuevoEstado }),
+      body: JSON.stringify({ estado: nuevoEstado, expected_revision: tarea?.revision, expected_updated_at: tarea?.updated_at }),
     })
       .then((response) => {
         if (!response.ok) {
@@ -82,7 +82,7 @@ export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo })
                     <>
                       Vence: {tarea.fecha_vencimiento}
                       {tarea.fecha_vencimiento < getHoyLocalISO() &&
-                        tarea.estado !== ESTADO_FINAL_TAREA && (
+                        !["finalizada", "publicada"].includes(tarea.estado) && (
                           <span
                             className="tag atraso"
                             style={{ marginLeft: "6px" }}
@@ -114,16 +114,17 @@ export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo })
                 </div>
                 <div className="meta">
                   <select
-                    value={tarea.estado}
+                    value={tarea.estado === "publicada" ? "finalizada" : tarea.estado}
                     onChange={(e) => cambiarEstado(tarea.id, e.target.value)}
                   >
                     <option value="pendiente">Pendiente</option>
                     <option value="en_progreso">En proceso</option>
                     <option value="en_revision">En revisión</option>
-                    <option value="publicada" disabled={bloqueaCierre}>
+                    <option value="aprobada" disabled={bloqueaCierre}>Aprobada</option>
+                    <option value="finalizada" disabled={bloqueaCierre}>
                       {bloqueaCierre
-                        ? "Publicada (requiere aprobación de admin)"
-                        : "Publicada"}
+                        ? "Finalizada (requiere aprobación de admin)"
+                        : "Finalizada"}
                     </option>
                   </select>
                 </div>

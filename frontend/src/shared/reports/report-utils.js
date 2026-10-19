@@ -3,13 +3,13 @@ export function isFilmingTask(task = {}) {
   return task.tipo_tarea === "produccion" || text.includes("filmar") || text.includes("grabac") || text.includes("filmación");
 }
 
-export function groupFilmingTasksByClient(tasks = [], finalState = "publicada") {
+export function groupFilmingTasksByClient(tasks = [], finalState = "finalizada") {
   return Object.values(
     tasks.filter(isFilmingTask).reduce((groups, task) => {
       const name = task.cliente_nombre || "Sin cliente";
       if (!groups[name]) groups[name] = { nombre: name, total: 0, grabados: 0, pendientes: 0 };
       groups[name].total += 1;
-      if (task.estado === finalState) groups[name].grabados += 1;
+      if (["finalizada", "publicada"].includes(task.estado) || (finalState !== "aprobada" && task.estado === finalState)) groups[name].grabados += 1;
       else groups[name].pendientes += 1;
       return groups;
     }, {}),
@@ -84,8 +84,8 @@ export function summarizeTaskDeliveries(tasks = []) {
 // El reporte individual mide si la persona ya entregó su parte. Una tarea que
 // llegó a revisión cuenta como cumplida para ese reporte, aunque conserva
 // `en_revision` en el tablero hasta que el circuito operativo la haga avanzar.
-export function isCompletedForEmployeeReport(task = {}, finalState = "publicada") {
-  return task.estado === finalState || task.estado === "en_revision";
+export function isCompletedForEmployeeReport(task = {}, finalState = "finalizada") {
+  return ["en_revision", "aprobada", "finalizada", "publicada"].includes(task.estado) || task.estado === finalState;
 }
 
 export function normalizeClientName(value = "") {

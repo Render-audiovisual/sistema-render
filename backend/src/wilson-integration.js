@@ -11,6 +11,7 @@ import { getStateNotification, validateProductionHandoff } from "./task-workflow
 import { createMiaPersonalListsRouter, enqueueDuePersonalListReminders } from "./mia-personal-lists.js";
 import { createMiaSupervisorRouter, acknowledgeSupervisorDelivery, supervisorNotificationDeliverable } from "./mia-supervisor.js";
 import { annotateTaskAssignments, replaceTaskAssignments, resolveTaskAssignments } from "./task-assignments.js";
+import { isTaskFinalized } from "./workflow-contract.js";
 
 const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
 const DEFAULT_ALLOWED_WHATSAPP_ID_HASHES = [
@@ -232,19 +233,19 @@ export function wilsonPersonAliases(value) {
 }
 
 export function buildMiaFastContext(tasks = [], person = {}, { today = argentinaDate(), limit = 6 } = {}) {
-  const active = tasks.filter((task) => task.estado !== "publicada");
+  const active = tasks.filter((task) => !isTaskFinalized(task));
   const ranked = rankTaskPriorities(active, { today, limit });
   const role = person.role || "equipo";
   const roleTasks = role === "produccion" ? tasks.filter(isProductionVisitTask)
     : role === "diseno" ? tasks.filter((task) => normalizeWilsonText(`${task.titulo} ${task.subtipo}`).includes("carrusel"))
       : role === "edicion" ? tasks.filter((task) => task.tipo_tarea === "edicion")
-        : role === "community" ? tasks.filter((task) => task.estado === "en_revision" || task.estado === "publicada")
+        : role === "community" ? tasks.filter((task) => ["en_revision", "aprobada"].includes(task.estado) || isTaskFinalized(task))
           : tasks;
-  const activeRoleTasks = roleTasks.filter((task) => task.estado !== "publicada");
+  const activeRoleTasks = roleTasks.filter((task) => !isTaskFinalized(task));
   const metrics = {
     abiertas: activeRoleTasks.filter((task) => ["pendiente", "en_progreso"].includes(task.estado)).length,
     en_revision: activeRoleTasks.filter((task) => task.estado === "en_revision").length,
-    finalizadas_mes: roleTasks.filter((task) => task.estado === "publicada"
+    finalizadas_mes: roleTasks.filter((task) => isTaskFinalized(task)
       && String(task.fecha_vencimiento || task.updated_at || "").slice(0, 7) === today.slice(0, 7)).length,
   };
   if (role === "produccion") {
@@ -689,6 +690,8 @@ const MIA_STATE_EVENT_LABELS = Object.freeze({
   tarea_iniciada: "Tarea iniciada",
   tarea_en_revision: "Lista para revisar",
   tarea_publicada: "Contenido publicado",
+  tarea_finalizada: "Tarea finalizada",
+  tarea_aprobada: "Tarea aprobada",
 });
 const MIA_EVENT_GROUPS = new Set(["render_brain", "visitas", "edicion", "comunicacion"]);
 
@@ -1365,7 +1368,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
            AND ($1::boolean OR EXISTS (SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=$2))
            AND ($3::boolean OR EXISTS (SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=$4))
            AND ($5::boolean OR LOWER(COALESCE(c.nombre,'')) LIKE ANY($6::text[]))
-           AND ($7::boolean OR t.estado NOT IN ('publicada','completada','cancelada','archivada'))
+           AND ($7::boolean OR t.estado NOT IN ('finalizada','publicada','completada','cancelada','archivada'))
            AND t.id>$8 ORDER BY t.id ASC LIMIT $9`,
         [isWilsonLeader(req,env),req.wilson.userId,!person,target?.id || null,
          clients.length===0,clients.map(x=>'%'+x+'%'),req.query.pendientes==='false',after,limit+1]);
@@ -1405,7 +1408,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          WHERE t.propiedades_extra->>'workspace'='render_os'
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
            AND EXISTS (SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=$1)
-           AND (t.estado <> 'publicada'
+           AND (t.estado NOT IN ('finalizada','publicada')
              OR t.fecha_vencimiento >= date_trunc('month', CURRENT_DATE)
              OR t.updated_at >= date_trunc('month', CURRENT_DATE))
          ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC LIMIT 100`,
@@ -1450,7 +1453,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
            AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
            AND EXISTS (SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.usuario_id=$1)
-           AND t.estado <> 'publicada'
+           AND t.estado NOT IN ('finalizada','publicada')
          ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC LIMIT 150`,
         [selected.id],
       );
@@ -1585,7 +1588,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
            AND c.activo IS TRUE
            AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
            AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
-           AND t.estado IN ('pendiente','en_progreso','en_revision','publicada')
+           AND t.estado IN ('pendiente','en_progreso','en_revision','aprobada','finalizada','publicada')
          ORDER BY t.fecha_vencimiento NULLS LAST,t.id`,
       );
       const weeklyWindow = ["semanal", "semanal_mensual", "control_semanal_tarde"].includes(window.type);

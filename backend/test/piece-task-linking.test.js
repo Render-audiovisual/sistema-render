@@ -48,7 +48,7 @@ test("publicar una pieza completa únicamente sus tareas automáticas vinculadas
   assert.match(calls[0].sql, /origen_pieza' = 'true'/);
   assert.match(calls[0].sql, /estado NOT IN \('publicada', 'finalizada'\)/);
   assert.match(calls[0].sql, /AND \(estado = 'aprobada' OR propiedades_extra->'revision_aprobada' = 'true'::jsonb\)/);
-  assert.match(calls[0].sql, /SET estado = 'publicada'/); // Legacy storage until server migration.
+  assert.match(calls[0].sql, /SET estado = 'finalizada'/);
   assert.match(calls[0].sql, /jsonb_build_object\('finalizada_at', now\(\)\)/);
   assert.doesNotMatch(calls[0].sql, /UPDATE (publicaciones|historias)|fecha_publicación_real/);
 });

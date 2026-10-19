@@ -29,7 +29,6 @@ import {
   RESPONSABLES_EQUIPO,
   ESTADOS_PUBLICACION,
   TIPOS_PUBLICACION,
-  ESTADO_FINAL_TAREA,
   ESTADO_TAREA_LABELS,
   TIPO_PUBLICACION_LABELS,
   USUARIO_A_RUTA,
@@ -184,7 +183,7 @@ export function getResumenEquipo(historias, publicaciones, tareas) {
       (item) =>
         (item.fecha_vencimiento || item.fecha_programada) &&
         (item.fecha_vencimiento || item.fecha_programada) < hoy &&
-        item.estado !== "publicada" &&
+        (tareasPersona.length > 0 ? !["finalizada", "publicada"].includes(item.estado) : item.estado !== "publicada") &&
         item.estado !== "hecha",
     );
     const piezasDelMes = piezas.filter((pieza) =>
@@ -213,7 +212,9 @@ export function getResumenEquipo(historias, publicaciones, tareas) {
       bloqueadas: bloqueadas.length,
       atrasadas: atrasadas.length,
       cargaTotal,
-      cumplimiento: calcularPorcentajePublicadas(tareasDelMes.length > 0 ? tareasDelMes : piezasDelMes),
+      cumplimiento: tareasDelMes.length > 0
+        ? Math.round(tareasDelMes.filter(tarea => ["finalizada", "publicada"].includes(tarea.estado)).length * 100 / tareasDelMes.length)
+        : calcularPorcentajePublicadas(piezasDelMes),
     };
   });
 }
@@ -224,7 +225,7 @@ export function getAprobacionesLider(tareas) {
       ["Líder", "Agustín", "Franco"].includes(
         tarea.propiedades_extra?.escalada_a,
       ) &&
-      tarea.estado !== ESTADO_FINAL_TAREA,
+      !["finalizada", "publicada"].includes(tarea.estado),
   );
 }
 
@@ -395,7 +396,7 @@ export function getPiezasBloqueadas(historias, publicaciones) {
 // está limitada a tipo_tarea "edicion".
 
 export function esperandoMaterial(tarea) {
-  return Boolean(tarea.tarea_padre_id) && tarea.tarea_padre_estado !== ESTADO_FINAL_TAREA;
+  return Boolean(tarea.tarea_padre_id) && !["finalizada", "publicada"].includes(tarea.tarea_padre_estado);
 }
 
 // Ediciones de video frenadas porque la filmación (tarea padre) todavía
@@ -405,7 +406,7 @@ export function esperandoMaterial(tarea) {
 
 export function getEdicionesEsperandoMaterial(tareas) {
   return tareas.filter(
-    (t) => t.tipo_tarea === "edicion" && t.estado !== ESTADO_FINAL_TAREA && esperandoMaterial(t),
+    (t) => t.tipo_tarea === "edicion" && !["finalizada", "publicada"].includes(t.estado) && esperandoMaterial(t),
   );
 }
 

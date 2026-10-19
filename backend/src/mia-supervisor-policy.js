@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
+import { isTaskFinalized } from './workflow-contract.js';
 
 export const SUPERVISOR_TZ = 'America/Argentina/Buenos_Aires';
 export const SUPERVISOR_WORK_WINDOWS = [[480, 780], [1020, 1290]];
-const ACTIVE = new Set(['pendiente', 'en_progreso', 'en_revision', 'programada']);
+const ACTIVE = new Set(['pendiente', 'en_progreso', 'en_revision', 'aprobada', 'programada']);
 export const normalize = (value) => String(value || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 export const fingerprint = (value) => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const isSupervisorLeader = (user) => user?.rol === 'admin'; // admin es el rol Líder existente en RENDER OS.
@@ -97,7 +98,7 @@ export function proposeSupervisorDeadline(task, allTasks, users, now = new Date(
   const today = localClock(now).date;
   const urgent = task.prioridad === 'alta' || /\b(urgente|hoy|manana|evento)\b/.test(normalize(`${task.titulo} ${task.aclaraciones || ''}`));
   const backlogs = owners.map((user) => active.filter((other) => other.id !== task.id && userOwnsSupervisorTask(user, other)
-    && other.estado !== 'programada' && other.estado !== 'en_revision'
+    && other.estado !== 'programada' && other.estado !== 'en_revision' && other.estado !== 'aprobada'
     // Later commitments cannot make an earlier deadline look impossible.
     && (!task.fecha_vencimiento || !other.fecha_vencimiento || other.fecha_vencimiento <= task.fecha_vencimiento || other.prioridad === 'alta')
     && (!urgent || other.prioridad === 'alta' || (other.fecha_vencimiento && other.fecha_vencimiento <= today)))
@@ -108,7 +109,7 @@ export function proposeSupervisorDeadline(task, allTasks, users, now = new Date(
   let dependency = null;
   if (task.tarea_padre_id) {
     const parent = allTasks.find((item) => Number(item.id) === Number(task.tarea_padre_id));
-    if (parent && parent.estado !== 'publicada') {
+    if (parent && !isTaskFinalized(parent)) {
       dependency = parent;
       const planned = parent.fecha_vencimiento || proposeSupervisorDeadline(parent, allTasks, users, now, new Set([...ancestors, Number(task.id)])).fecha;
       if (!planned) return { fecha: null, razon: 'No puedo estimar la dependencia de esta tarea.', code: 'dependency_cycle' };

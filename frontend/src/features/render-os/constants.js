@@ -4,15 +4,21 @@ export const STATUSES = [
   { id: "pendiente", label: "Pendientes", color: "#8d9095" },
   { id: "en_progreso", label: "En proceso", color: "#3378d4" },
   { id: "en_revision", label: "Para revisar", color: "#df9830" },
-  { id: "publicada", label: "Completada", color: "#34a16f" },
+  { id: "aprobada", label: "Aprobada", color: "#7459e8" },
+  { id: "finalizada", label: "Finalizada", color: "#34a16f" },
 ];
 
 export const BOARD_COLUMNS = [
   { id: "pendiente", label: "Pendientes", color: "#8d9095", states: ["pendiente"] },
   { id: "en_progreso", label: "En proceso", color: "#3378d4", states: ["en_progreso"] },
   { id: "en_revision", label: "Para revisar", color: "#df9830", states: ["en_revision"] },
-  { id: "finalizadas", label: "Finalizadas", color: "#34a16f", states: ["publicada"], dropState: "publicada" },
+  { id: "aprobada", label: "Aprobadas", color: "#7459e8", states: ["aprobada"] },
+  { id: "finalizadas", label: "Finalizadas", color: "#34a16f", states: ["finalizada"], dropState: "finalizada" },
 ];
+
+// Read-only compatibility projection. Never mutate historical DTOs or write this alias.
+export const canonicalTaskState = (state) => state === "publicada" ? "finalizada" : state;
+export const isTaskCompleted = (task) => canonicalTaskState(task?.estado) === "finalizada";
 
 export const AREAS = [
   { id: "all", label: "Todo", icon: "⌘", color: "#242529" },

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { annotateTaskAssignments } from './task-assignments.js';
+import { isTaskFinalized } from './workflow-contract.js';
 import { supervisorReasoning } from './mia-supervisor-reasoning.js';
 import {followupMessage,taskLabel,batchMessage,shortText,supervisorWindow,nextSupervisorWindow} from './mia-supervisor-messages.js';
 import {
@@ -342,7 +343,7 @@ async function loadTask(db, id, { allowCompleted = false } = {}) {
     WHERE t.id=$1 AND ${ACTIVE_SQL} FOR UPDATE OF t`, [id]);
   const row = result.rows[0];
   // Only an authorized replay may read a completed task; trash/archive stay excluded.
-  const completedReplay = allowCompleted && row?.estado === 'publicada'
+  const completedReplay = allowCompleted && isTaskFinalized(row)
     && supervisorTaskActive({ ...row, estado: 'pendiente' });
   if (!row || (!supervisorTaskActive(row) && !completedReplay)) throw fail('La tarea no está activa en RENDER OS.',404);
   const [task] = await annotateTaskAssignments(db, result.rows);

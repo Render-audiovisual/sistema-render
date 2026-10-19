@@ -58,7 +58,7 @@ export function fixtureWilsonEnvironment(config = {}) {
   return result;
 }
 
-export async function startLocalHarness({ port = 55594, deferGoalMigration = false, deferAssignmentMigration = false, wilson = {} } = {}) {
+export async function startLocalHarness({ port = 55594, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, wilson = {} } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   const wilsonEnv = fixtureWilsonEnvironment(wilson);
   const root = await mkdtemp('/private/tmp/render2-local-');
@@ -109,6 +109,7 @@ export async function startLocalHarness({ port = 55594, deferGoalMigration = fal
       env: { ...env, ...wilsonEnv, DATABASE_URL: url, JWT_SECRET: secret, RENDER2_FIXTURE_ROOT: root,
         RENDER2_FIXTURE_PORT: String(port), RENDER2_DEFER_GOAL_MIGRATION: String(deferGoalMigration),
         RENDER2_DEFER_ASSIGNMENT_MIGRATION: String(deferAssignmentMigration),
+        RENDER2_DEFER_TASK_STATE_MIGRATION: String(deferTaskStateMigration),
         PGOPTIONS: '-c statement_timeout=15000' }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
     const ready = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Fixture startup timeout')), 90000);
@@ -159,6 +160,8 @@ async function fixtureChild() {
   const deferredMigrations = [
     ...(process.env.RENDER2_DEFER_GOAL_MIGRATION === 'true' ? ['055_decouple_goal_publication.sql'] : []),
     ...(process.env.RENDER2_DEFER_ASSIGNMENT_MIGRATION === 'true' ? ['056_task_assignments.sql'] : []),
+    ...(process.env.RENDER2_DEFER_TASK_STATE_MIGRATION === 'true' || process.env.RENDER2_DEFER_GOAL_MIGRATION === 'true'
+      ? ['058_task_work_states.sql'] : []),
   ];
   const migrationPool = deferredMigrations.length ? {
     connect: () => pool.connect(),

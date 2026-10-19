@@ -32,6 +32,8 @@ export function getProductionTaskState({ planned = 0, recorded = 0, finished = f
 }
 
 export function getProductionPhase(task = {}) {
+  if (["finalizada", "publicada"].includes(task.estado)) return "finalizada";
+  if (task.estado === "aprobada") return "aprobada";
   const progress = getProductionProgress(task);
   if (isProductionVisitTask(task)) {
     if (task.propiedades_extra?.produccion_confirmada_at) return "grabacion_confirmada";
@@ -39,7 +41,6 @@ export function getProductionPhase(task = {}) {
     if (progress.recorded > 0) return "grabacion";
   }
   if (task.estado === "programada") return "programada";
-  if (task.estado === "publicada") return "publicada";
   if (task.tipo_tarea === "edicion") return "edicion";
   return null;
 }
