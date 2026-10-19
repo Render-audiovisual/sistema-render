@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {isProductionVisitTask} from '../src/production-visits.js';
+import {wilsonOperationalAuth} from '../src/wilson-integration.js';
 const src=readFileSync(new URL('../src/wilson-integration.js',import.meta.url),'utf8');
 const code=src.slice(src.indexOf('  // Read-only, keyset-paginated intake.'),src.indexOf('  // Bounded, filtered task reads'));
 async function run({leader=true,after,rows=[]}={}){
  let fn,query;
- const bindings={router:{get(path,f){assert.equal(path,'/visitas-material');fn=f;}},pool:{async query(sql,args){query={sql,args};return {rows};}},isWilsonLeader:()=>leader,env:{},wilsonPersonAliases:()=>['germán','german'],isProductionVisitTask,taskWithUrl:t=>({...t,url:`task=${t.id}`})};
+ const bindings={router:{get(path,f){assert.equal(path,'/visitas-material');fn=f;}},pool:{async query(sql,args){query={sql,args};return {rows};}},isWilsonLeader:()=>leader,env:{},wilsonPersonAliases:()=>['germán','german'],isProductionVisitTask,taskWithUrl:t=>({...t,url:`task=${t.id}`}),wilsonOperationalAuth};
  new Function(...Object.keys(bindings),code)(...Object.values(bindings));
  const res={statusCode:200,status(c){this.statusCode=c;return this;},json(v){this.body=v;return this;}};
  await fn({query:{after}},res,e=>{throw e;});return {...res,query};

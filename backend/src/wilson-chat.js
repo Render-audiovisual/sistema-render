@@ -2,9 +2,20 @@ import crypto from "node:crypto";
 import { buildTaskAccessClause, getTaskActor } from "./task-access.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { canRecordProduction, getProductionProgress, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
+import { taskOperationalDto } from "./operational-dto.js";
 
 const TZ = "America/Argentina/Cordoba";
 const taskComplete = task => ["finalizada", "publicada"].includes(task.estado);
+
+// Serialization boundary for UI/model task context, never for business logic.
+// Omitting auth intentionally yields the safe operational projection.
+export function wilsonChatTaskContext(tasks = [], auth = {}) {
+  return tasks.map(task => taskOperationalDto(task, auth));
+}
+
+function operationalPriorities(priorities, auth) {
+  return { ...priorities, recommendations: wilsonChatTaskContext(priorities.recommendations, auth) };
+}
 
 function localParts(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -261,7 +272,7 @@ export function createWilsonChatRouter({ express, pool }) {
       const current = await conversation(pool, req.auth.id);
       const messages = await pool.query(`SELECT id,remitente,contenido,tipo,metadata,created_at FROM wilson_mensajes WHERE conversacion_id=$1 ORDER BY created_at,id`, [current.id]);
       const priorities = await personalTasks(pool, req.auth);
-      return res.json({ conversation: current, messages: messages.rows, priorities });
+      return res.json({ conversation: current, messages: messages.rows, priorities: operationalPriorities(priorities, req.auth) });
     } catch (error) { return next(error); }
   });
 
@@ -300,7 +311,7 @@ export function createWilsonChatRouter({ express, pool }) {
       if (!denied && req.auth.rol === "admin" && isEmployeeMessageCommand(content)) {
         if (source === "self") {
           const assistantMessage = await append(pool, current.id, "wilson", "Decime a quién querés que le escriba antes de preparar el mensaje.", "respuesta");
-          return res.status(201).json({ userMessage, assistantMessage, tasks: [], priorities });
+          return res.status(201).json({ userMessage, assistantMessage, tasks: [], priorities: operationalPriorities(priorities, req.auth) });
         }
         const token = crypto.randomUUID();
         const draft = buildEmployeeReminder(target, snapshot);
@@ -310,11 +321,11 @@ export function createWilsonChatRouter({ express, pool }) {
           [token, current.id, req.auth.id, JSON.stringify({ target_user_id: target.id, target_name: target.nombre, message: draft })],
         );
         const assistantMessage = await append(pool, current.id, "wilson", `Voy a enviarle a ${target.nombre}:\n\n“${draft}”\n\n¿Confirmás?`, "confirmacion", { token, target_user: target });
-        return res.status(201).json({ userMessage, assistantMessage, tasks: [], priorities });
+        return res.status(201).json({ userMessage, assistantMessage, tasks: [], priorities: operationalPriorities(priorities, req.auth) });
       }
       const reply = naturalReply(content, priorities, req.auth, snapshot, denied);
       const assistantMessage = await append(pool, current.id, "wilson", reply.text, "respuesta", { task_ids: reply.tasks.map((task) => task.id), intent: reply.intent || null, target_user: denied ? null : target });
-      return res.status(201).json({ userMessage, assistantMessage, tasks: reply.tasks, priorities });
+      return res.status(201).json({ userMessage, assistantMessage, tasks: wilsonChatTaskContext(reply.tasks, req.auth), priorities: operationalPriorities(priorities, req.auth) });
     } catch (error) { return next(error); }
   });
 

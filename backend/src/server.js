@@ -25,6 +25,7 @@ import { administerUser } from "./user-administration.js";
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { persistAssignedTask } from "./task-persistence.js";
 import { correctProductionRecord } from "./production-record-updates.js";
+import { taskOperationalDto, editorialOperationalDto, clientOperationalDto } from "./operational-dto.js";
 import { normalizeTaskState, taskTransitionError, isTaskFinalized } from "./workflow-contract.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
@@ -1325,8 +1326,7 @@ router.get("/clientes", async (req, res, next) => {
       LEFT JOIN grupos_feed gf ON gf.id = c.grupo_feed_id
       ORDER BY c.id
     `, [periodo]);
-    if (req.auth.rol === "admin") return res.json(result.rows);
-    res.json(result.rows.map(({ abono_mensual, abono_vigente_desde, ...cliente }) => cliente));
+    res.json(result.rows.map((row) => clientOperationalDto(row, req.auth)));
   } catch (error) {
     next(error);
   }
@@ -1738,7 +1738,7 @@ router.patch("/historias/:id", requireRole("admin"), async (req, res, next) => {
     }
 
     await completeLinkedAutoTasks(pool, { estado: result.rows[0].estado, historiaId: Number(id) });
-    res.json(result.rows[0]);
+    res.json(editorialOperationalDto(result.rows[0], req.auth));
   } catch (error) {
     next(error);
   }
@@ -1762,7 +1762,7 @@ router.delete("/historias/:id", requireRole("admin"), async (req, res, next) => 
   }
 });
 
-router.get("/historias", async (_req, res, next) => {
+router.get("/historias", async (req, res, next) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -1799,7 +1799,7 @@ router.get("/historias", async (_req, res, next) => {
       WHERE h.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
       ORDER BY h.fecha_programada DESC, h.id
     `);
-    res.json(result.rows);
+    res.json(result.rows.map((row) => editorialOperationalDto(row, req.auth)));
   } catch (error) {
     next(error);
   }
@@ -1917,7 +1917,7 @@ router.patch("/publicaciones/:id", requireRole("admin"), async (req, res, next) 
     }
 
     await completeLinkedAutoTasks(pool, { estado: result.rows[0].estado, publicacionId: Number(id) });
-    res.json(result.rows[0]);
+    res.json(editorialOperationalDto(result.rows[0], req.auth));
   } catch (error) {
     next(error);
   }
@@ -1986,7 +1986,7 @@ router.get("/publicaciones", async (req, res, next) => {
       WHERE $1::boolean OR p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
       ORDER BY p.fecha_programada DESC, p.id
     `, [incluirArchivadas]);
-    res.json(result.rows);
+    res.json(result.rows.map((row) => editorialOperationalDto(row, req.auth)));
   } catch (error) {
     next(error);
   }
@@ -2011,7 +2011,7 @@ router.get("/publicaciones/:id/tareas", async (req, res, next) => {
          t.fecha_vencimiento ASC NULLS LAST,t.id ASC`,
       params,
     );
-    res.json(await annotateTaskAssignments(pool, result.rows));
+    res.json((await annotateTaskAssignments(pool, result.rows)).map((row) => taskOperationalDto(row, req.auth)));
   } catch (error) {
     next(error);
   }
@@ -2134,7 +2134,7 @@ router.post("/tareas", async (req, res, next) => {
     );
 
     const tareaCreada = result.rows[0];
-    res.status(201).json(tareaCreada);
+    res.status(201).json(taskOperationalDto(tareaCreada, req.auth));
     notificarAsignacionSinInterrumpir({
       pool,
       tarea: tareaCreada,
@@ -2526,7 +2526,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
     const tareaActualizada = result.rows[0];
     await publishPieceLinkedToCompletedTask(pool, tareaActualizada);
-    res.json(tareaActualizada);
+    res.json(taskOperationalDto(tareaActualizada, req.auth));
 
     const actor = getTaskActor(req.auth);
 
@@ -2637,7 +2637,7 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
     );
     if (!result.rows[0]) return res.status(409).json({ error: "La tarea ya fue aprobada o cambió de estado." });
     const aprobada = result.rows[0];
-    res.json(aprobada);
+    res.json(taskOperationalDto(aprobada, req.auth));
     notificarAsignacionSinInterrumpir({
       pool,
       tarea: aprobada,
@@ -2758,7 +2758,7 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
     );
     const [saved] = await annotateTaskAssignments(client, updated.rows);
     await client.query("COMMIT");
-    return res.status(201).json(saved);
+    return res.status(201).json(taskOperationalDto(saved, req.auth));
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     return next(error);
@@ -2825,9 +2825,11 @@ router.post("/tareas/:id/produccion/confirmar", async (req, res, next) => {
   if (!isTaskLeader(req.auth)) return res.status(403).json({ error: "Solo Franco o Agustín pueden confirmar una grabación completa." });
   if (req.query.workspace !== "render_os") return res.status(400).json({ error: "Esta acción solo está disponible en RENDER OS." });
   try {
-    return res.json(await confirmProductionVisit(req.params.id, getTaskActor(req.auth), {
+    const confirmed = await confirmProductionVisit(req.params.id, getTaskActor(req.auth), {
       expectedRevision: req.body.expected_revision, actorId: req.auth.id,
-    }));
+    });
+    return res.json({ ...confirmed, task: taskOperationalDto(confirmed.task, req.auth),
+      editing_task: confirmed.editing_task ? taskOperationalDto(confirmed.editing_task, req.auth) : null });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ error: error.message });
     return next(error);
@@ -2888,7 +2890,7 @@ router.patch("/tareas/:id/produccion/registros/:recordId", async (req, res, next
     );
     const [saved] = await annotateTaskAssignments(client, updated.rows);
     await client.query("COMMIT");
-    return res.json(saved);
+    return res.json(taskOperationalDto(saved, req.auth));
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
     if (error.status) return res.status(error.status).json({ error: error.message });
@@ -3148,7 +3150,8 @@ router.get("/tareas", async (req, res, next) => {
     const result = await pool.query(query, params);
     const total = result.rows[0]?.total_count || 0;
     res.set("X-Total-Count", String(total));
-    res.json(await annotateTaskAssignments(pool, result.rows.map(({ total_count, ...tarea }) => tarea)));
+    res.json((await annotateTaskAssignments(pool, result.rows.map(({ total_count, ...tarea }) => tarea)))
+      .map((row) => taskOperationalDto(row, req.auth)));
   } catch (error) {
     next(error);
   }
@@ -3176,7 +3179,9 @@ router.get("/tareas-recomendaciones", async (req, res, next) => {
     const today = new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Argentina/Cordoba", year: "numeric", month: "2-digit", day: "2-digit",
     }).format(new Date());
-    return res.json({ ...rankTaskPriorities(result.rows, { today, limit: 50 }), generated_at: new Date().toISOString() });
+    const ranked = rankTaskPriorities(result.rows, { today, limit: 50 });
+    return res.json({ ...ranked, recommendations: ranked.recommendations.map((row) => taskOperationalDto(row, req.auth)),
+      generated_at: new Date().toISOString() });
   } catch (error) { return next(error); }
 });
 
@@ -3217,7 +3222,7 @@ router.get("/tareas/:id", async (req, res, next) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Tarea no encontrada." });
     }
-    res.json((await annotateTaskAssignments(pool, result.rows))[0]);
+    res.json(taskOperationalDto((await annotateTaskAssignments(pool, result.rows))[0], req.auth));
   } catch (error) {
     next(error);
   }
@@ -3271,7 +3276,7 @@ router.get("/tareas/:id/subtareas", async (req, res, next) => {
        ORDER BY t.id`,
       paramsSubtareas,
     );
-    res.json(await annotateTaskAssignments(pool, result.rows));
+    res.json((await annotateTaskAssignments(pool, result.rows)).map((row) => taskOperationalDto(row, req.auth)));
   } catch (error) {
     next(error);
   }
@@ -3357,7 +3362,7 @@ router.post("/tareas/:id/comentarios", async (req, res, next) => {
   }
 });
 
-router.get("/piezas", async (_req, res, next) => {
+router.get("/piezas", async (req, res, next) => {
   try {
     const result = await pool.query(`
       SELECT
@@ -3412,7 +3417,7 @@ router.get("/piezas", async (_req, res, next) => {
 
       ORDER BY created_at DESC
     `);
-    res.json(result.rows);
+    res.json(result.rows.map((row) => editorialOperationalDto(row, req.auth)));
   } catch (error) {
     next(error);
   }
@@ -3445,7 +3450,7 @@ router.get("/piezas/:id", async (req, res, next) => {
     );
 
     if (resultP.rows.length > 0) {
-      return res.json(resultP.rows[0]);
+      return res.json(editorialOperationalDto(resultP.rows[0], req.auth));
     }
 
     const resultH = await pool.query(
@@ -3475,7 +3480,7 @@ router.get("/piezas/:id", async (req, res, next) => {
       return res.status(404).json({ error: "Pieza no encontrada." });
     }
 
-    res.json(resultH.rows[0]);
+    res.json(editorialOperationalDto(resultH.rows[0], req.auth));
   } catch (error) {
     next(error);
   }
@@ -3572,7 +3577,7 @@ router.post("/piezas", requireRole("admin"), async (req, res, next) => {
       }, db);
 
       await db.query("COMMIT");
-      return res.status(201).json(historia);
+      return res.status(201).json(editorialOperationalDto(historia, req.auth));
     }
 
     if (["carrusel", "video"].includes(tipo)) {
@@ -3624,7 +3629,7 @@ router.post("/piezas", requireRole("admin"), async (req, res, next) => {
       }
 
       await db.query("COMMIT");
-      return res.status(201).json(publicacion);
+      return res.status(201).json(editorialOperationalDto(publicacion, req.auth));
     }
 
     await db.query("ROLLBACK");
@@ -3724,7 +3729,7 @@ router.patch("/piezas/:id", requireRole("admin"), async (req, res, next) => {
 
     if (resultP.rows.length > 0) {
       await completeLinkedAutoTasks(pool, { estado: resultP.rows[0].estado, publicacionId: Number(id) });
-      return res.json(resultP.rows[0]);
+      return res.json(editorialOperationalDto(resultP.rows[0], req.auth));
     }
 
     let resultH = await pool.query(
@@ -3756,7 +3761,7 @@ router.patch("/piezas/:id", requireRole("admin"), async (req, res, next) => {
 
     await completeLinkedAutoTasks(pool, { estado: resultH.rows[0].estado, historiaId: Number(id) });
 
-    res.json(resultH.rows[0]);
+    res.json(editorialOperationalDto(resultH.rows[0], req.auth));
   } catch (error) {
     next(error);
   }

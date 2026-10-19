@@ -92,7 +92,10 @@ test("token, callback task writes and audit share one client/commit; notify afte
   const f = fixture();
   const res = await f.run();
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(res.body, f.result);
+  assert.deepEqual(res.body, { ...f.result,
+    task: { ...f.result.task, responsables: [], url: 'https://sistema.rendercorrientes.com/workspace/tareas?task=100' },
+    editing_task: { ...f.result.editing_task, responsables: [], url: 'https://sistema.rendercorrientes.com/workspace/tareas?task=200' },
+  });
   assert.deepEqual(f.stored, { tokenUsed: true, confirmed: true, editing: true, audit: true });
   assert.equal(f.connects, 1);
   assert.equal(f.callbackCount, 1);

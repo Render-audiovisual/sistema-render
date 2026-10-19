@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import * as production from '../src/production-visits.js';
 import { buildTaskAccessClause, getTaskActor } from '../src/task-access.js';
 import crypto from 'node:crypto';
+import { taskOperationalDto } from '../src/operational-dto.js';
 
 const source = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
 const routeSource = source.slice(source.indexOf('router.post("/tareas/:id/produccion/registros"'), source.indexOf('\nasync function confirmProductionVisit'));
@@ -17,7 +18,7 @@ async function register(body, metadata = {}, auth = { id: 7, nombre: 'Germán', 
     return { rows: [] };
   }};
   const bindings = { router: { post(_path, fn) { handler = fn; } }, pool: { async connect() { return client; } }, ...production, buildTaskAccessClause, getTaskActor, crypto,
-    annotateTaskAssignments: async (_db, rows) => rows };
+    annotateTaskAssignments: async (_db, rows) => rows, taskOperationalDto };
   new Function(...Object.keys(bindings), routeSource)(...Object.values(bindings));
   const response = { code: 200, status(value) { this.code = value; return this; }, json(value) { this.body = value; return this; } };
   await handler({ body, auth, params: { id: '1753' } }, response, error => { throw error; });

@@ -12,6 +12,7 @@ import { createMiaPersonalListsRouter, enqueueDuePersonalListReminders } from ".
 import { createMiaSupervisorRouter, acknowledgeSupervisorDelivery, supervisorNotificationDeliverable } from "./mia-supervisor.js";
 import { annotateTaskAssignments, replaceTaskAssignments, resolveTaskAssignments } from "./task-assignments.js";
 import { isTaskFinalized } from "./workflow-contract.js";
+import { taskOperationalDto, clientOperationalDto } from "./operational-dto.js";
 
 const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
 const DEFAULT_ALLOWED_WHATSAPP_ID_HASHES = [
@@ -124,7 +125,7 @@ export function reviewHandoffError(task = {}) {
   return null;
 }
 
-export function resolveReviewTaskReferences(references = [], tasks = []) {
+export function resolveReviewTaskReferences(references = [], tasks = [], auth = {}) {
   const cleanReferences = Array.isArray(references)
     ? references.map((value) => String(value || "").trim()).filter(Boolean).slice(0, REVIEW_BATCH_MAX_TASKS)
     : [];
@@ -136,7 +137,7 @@ export function resolveReviewTaskReferences(references = [], tasks = []) {
       const client = normalizeWilsonText(task.cliente_nombre);
       const haystack = `${title} ${client} ${task.fecha_vencimiento || ""}`;
       return query && (title === query || haystack.includes(query) || (words.length > 0 && words.every((word) => haystack.includes(word))));
-    }).map(taskWithUrl);
+    }).map(task => taskWithUrl(task, auth));
     return { reference, status: matches.length === 1 ? "resolved" : matches.length > 1 ? "ambiguous" : "not_found", matches };
   });
   return {
@@ -649,8 +650,13 @@ async function validate(db, body, actor) {
   return { ...normalized, duplicates: findWilsonDuplicates(task, existing.rows) };
 }
 
-export function wilsonTaskForResponse(task, { includeUrl = true } = {}) {
+export function wilsonOperationalAuth(wilson = {}) {
+  return { rol: validUserId(wilson.userId) && wilson.actorRole === "admin" && !wilson.systemActor ? "admin" : "" };
+}
+
+export function wilsonTaskForResponse(task, { includeUrl = true, auth = {} } = {}) {
   if (!task) return task;
+  task = taskOperationalDto(task, auth);
   const { asignado_a: _legacyAssignee, colaboradores: _legacyCollaborators, ...visibleTask } = task;
   const properties = task.propiedades_extra && typeof task.propiedades_extra === "object"
     ? { ...task.propiedades_extra }
@@ -664,8 +670,15 @@ export function wilsonTaskForResponse(task, { includeUrl = true } = {}) {
   };
 }
 
-function taskWithUrl(task) {
-  return wilsonTaskForResponse(task);
+function taskWithUrl(task, auth = {}) {
+  return wilsonTaskForResponse(task, { auth });
+}
+
+function wilsonTaskValidationResponse(result, auth) {
+  return { ...result,
+    task: result.task ? wilsonTaskForResponse(result.task, { includeUrl: false, auth }) : null,
+    duplicates: (result.duplicates || []).map(task => taskWithUrl(task, auth)),
+  };
 }
 
 function hasOwn(value, key) {
@@ -912,7 +925,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
     try {
       const catalog = await loadCatalog(pool);
       res.json({
-        ...catalog,
+        ...catalog, clients: catalog.clients.map(client => clientOperationalDto(client, wilsonOperationalAuth(_req.wilson))),
         sectors: [...new Set(SECTORS.values())],
         priorities: [...PRIORITIES],
         assignment_contract: {
@@ -1060,15 +1073,11 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         return res.status(403).json({
           ...result,
           task: null,
-          duplicates: result.duplicates.map((task) => wilsonTaskForResponse(task)),
+          duplicates: result.duplicates.map((task) => taskWithUrl(task, wilsonOperationalAuth(req.wilson))),
           errors: [...result.errors, permissionError],
         });
       }
-      res.status(result.errors.length ? 422 : 200).json({
-        ...result,
-        task: result.task ? wilsonTaskForResponse(result.task, { includeUrl: false }) : null,
-        duplicates: result.duplicates.map((task) => wilsonTaskForResponse(task)),
-      });
+      res.status(result.errors.length ? 422 : 200).json(wilsonTaskValidationResponse(result, wilsonOperationalAuth(req.wilson)));
     } catch (error) { next(error); }
   });
 
@@ -1092,7 +1101,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       const allowed = isWilsonLeader(req, env)
         ? annotated
         : annotated.filter((task) => reviewTaskOwnedBy(task, req.wilson.userId));
-      return res.json(resolveReviewTaskReferences(references, allowed));
+      return res.json(resolveReviewTaskReferences(references, allowed, wilsonOperationalAuth(req.wilson)));
     } catch (error) { return next(error); }
   });
 
@@ -1162,7 +1171,8 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       await client.query("COMMIT");
       const lines = snapshots.map((task, index) => `${index + 1}. ${task.titulo}${task.cliente_nombre ? ` — ${task.cliente_nombre}` : ""}`);
       return res.status(201).json({
-        confirmacion_token: token, expires_at: expiresAt.toISOString(), task_ids: ids, tasks: snapshots,
+        confirmacion_token: token, expires_at: expiresAt.toISOString(), task_ids: ids,
+        tasks: snapshots.map(task => taskWithUrl(task, wilsonOperationalAuth(req.wilson))),
         text: `Entendí que terminaste:\n${lines.join("\n")}\n\nVoy a pasar ${ids.length === 1 ? "esta tarea" : `estas ${ids.length} tareas`} a Revisar. ¿Confirmás?`,
       });
     } catch (error) {
@@ -1340,7 +1350,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         [after],
       );
       const page = result.rows.slice(0, 100);
-      return res.json({ tasks: page.filter(isProductionVisitTask).map(taskWithUrl),
+      return res.json({ tasks: page.filter(isProductionVisitTask).map(task => taskWithUrl(task, wilsonOperationalAuth(req.wilson))),
         next_after: result.rows.length > 100 ? Number(page.at(-1).id) : null });
     } catch (error) { return next(error); }
   });
@@ -1373,7 +1383,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         [isWilsonLeader(req,env),req.wilson.userId,!person,target?.id || null,
          clients.length===0,clients.map(x=>'%'+x+'%'),req.query.pendientes==='false',after,limit+1]);
       const rows=result.rows.slice(0,limit);
-      return res.json({tasks:rows.map(taskWithUrl),next_after:result.rows.length>limit?rows.at(-1).id:null});
+      return res.json({tasks:rows.map(task => taskWithUrl(task, wilsonOperationalAuth(req.wilson))),next_after:result.rows.length>limit?rows.at(-1).id:null});
     } catch(error){return next(error);}
   });
 
@@ -1393,7 +1403,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
          ORDER BY t.fecha_vencimiento ASC NULLS LAST,t.id ASC LIMIT $1`,
         [limit, restrictToOwn, req.wilson.userId],
       );
-      return res.json({ tasks: result.rows.map(taskWithUrl), limit });
+      return res.json({ tasks: result.rows.map(task => taskWithUrl(task, wilsonOperationalAuth(req.wilson))), limit });
     } catch (error) { return next(error); }
   });
 
@@ -1420,7 +1430,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       const nextWeekValue = nextWeek.toISOString().slice(0, 10);
       const buckets = { vencidas: [], hoy: [], revision: [], proximas: [], pendientes: [] };
       for (const task of result.rows) {
-        const item = taskWithUrl(task);
+        const item = taskWithUrl(task, wilsonOperationalAuth(req.wilson));
         if (task.fecha_vencimiento && task.fecha_vencimiento < today) buckets.vencidas.push(item);
         else if (task.fecha_vencimiento === today) buckets.hoy.push(item);
         else if (normalizeWilsonText(task.estado).includes("revision")) buckets.revision.push(item);
@@ -1468,7 +1478,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       if (!isWilsonLeader(req, env) && !reviewTaskOwnedBy(task, req.wilson.userId)) {
         return res.status(403).json({ error: "Esta tarea no pertenece a tu reporte personal." });
       }
-      return res.json({ task: taskWithUrl(task) });
+      return res.json({ task: taskWithUrl(task, wilsonOperationalAuth(req.wilson)) });
     } catch (error) { return next(error); }
   });
 
@@ -1721,7 +1731,10 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         await notifyAssignment?.({ pool, tarea: result.editing_task, motivo: "creada", actor: req.wilson.actorName });
       } catch { /* Notification failure cannot undo an already committed task. */ }
     }
-    return res.json(result);
+    return res.json({ ...result,
+      task: taskWithUrl(result.task, wilsonOperationalAuth(req.wilson)),
+      editing_task: result.editing_task ? taskWithUrl(result.editing_task, wilsonOperationalAuth(req.wilson)) : result.editing_task,
+    });
   });
 
   router.patch("/tareas/:id", async (req, res, next) => {
@@ -1743,7 +1756,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       }
       if (current.propiedades_extra?.wilson_last_update_key === key) {
         await client.query("COMMIT");
-        return res.json({ updated: false, idempotent: true, changed_fields: [], task: taskWithUrl(current) });
+        return res.json({ updated: false, idempotent: true, changed_fields: [], task: taskWithUrl(current, wilsonOperationalAuth(req.wilson)) });
       }
       if (!await consumeWilsonConfirmation(client, req, res, "editar", Number(req.params.id))) {
         await client.query("ROLLBACK");
@@ -1753,7 +1766,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       const result = buildWilsonTaskUpdate(req.body, current, await loadCatalog(client));
       if (result.errors.length) {
         await client.query("ROLLBACK");
-        return res.status(422).json(result);
+        return res.status(422).json(wilsonTaskValidationResponse(result, wilsonOperationalAuth(req.wilson)));
       }
       const task = result.task;
       const assignment = await resolveWilsonTaskAssignmentWrite(client, req.body, task, current);
@@ -1796,7 +1809,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       }
       if (!changedFields.length) {
         await client.query("COMMIT");
-        return res.json({ updated: false, idempotent: false, changed_fields: [], task: taskWithUrl(current) });
+        return res.json({ updated: false, idempotent: false, changed_fields: [], task: taskWithUrl(current, wilsonOperationalAuth(req.wilson)) });
       }
 
       const properties = {
@@ -1830,7 +1843,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       await writeWilsonAudit(client, req, { action: "editar_tarea", taskId: current.id, details: { changedFields, idempotencyKey: key } });
       await client.query("COMMIT");
       const updatedTask = { ...updated.rows[0], cliente_nombre: task.cliente_nombre };
-      res.json({ updated: true, idempotent: false, changed_fields: changedFields, task: taskWithUrl(updatedTask) });
+      res.json({ updated: true, idempotent: false, changed_fields: changedFields, task: taskWithUrl(updatedTask, wilsonOperationalAuth(req.wilson)) });
       const newAssignees = destinatariosNuevosDeAsignacion({
         asignadoAnterior: current.asignado_a,
         asignadoActual: task.asignado_a,
@@ -1869,14 +1882,14 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
           return res.status(403).json({ error: "No tenés acceso a la tarea de esa operación anterior." });
         }
         await client.query("COMMIT");
-        return res.json({ created: false, idempotent: true, task: taskWithUrl(priorTask) });
+        return res.json({ created: false, idempotent: true, task: taskWithUrl(priorTask, wilsonOperationalAuth(req.wilson)) });
       }
       if (!await consumeWilsonConfirmation(client, req, res, "crear")) {
         await client.query("ROLLBACK");
         return undefined;
       }
       const result = await validate(client, req.body, req.wilson);
-      if (result.errors.length) { await client.query("ROLLBACK"); return res.status(422).json(result); }
+      if (result.errors.length) { await client.query("ROLLBACK"); return res.status(422).json(wilsonTaskValidationResponse(result, wilsonOperationalAuth(req.wilson))); }
       const permissionError = await privateAssignmentListError(req, env, result.task, client);
       if (permissionError) {
         await client.query("ROLLBACK");
@@ -1884,7 +1897,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       }
       if (result.duplicates.length && req.body.permitir_duplicado !== true) {
         await client.query("ROLLBACK");
-        return res.status(409).json({ error: "Encontré una posible tarea duplicada.", duplicates: result.duplicates });
+        return res.status(409).json({ error: "Encontré una posible tarea duplicada.", duplicates: result.duplicates.map(task => taskWithUrl(task, wilsonOperationalAuth(req.wilson))) });
       }
       const task = result.task;
       const assignment = await resolveWilsonTaskAssignmentWrite(client, req.body, task);
@@ -1909,7 +1922,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       await writeWilsonAudit(client, req, { action: "crear_tarea", taskId: inserted.rows[0].id, details: { idempotencyKey: key } });
       await client.query("COMMIT");
       const createdTask = { ...inserted.rows[0], cliente_nombre: task.cliente_nombre };
-      res.status(201).json({ created: true, idempotent: false, task: taskWithUrl(createdTask) });
+      res.status(201).json({ created: true, idempotent: false, task: taskWithUrl(createdTask, wilsonOperationalAuth(req.wilson)) });
       notifyAssignment?.({ pool, tarea: createdTask, motivo: "creada" });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
@@ -1942,7 +1955,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       );
       await writeWilsonAudit(client, req, { action: "archivar_tarea", taskId: current.id, details: { idempotencyKey: key } });
       await client.query("COMMIT");
-      return res.json({ archived: true, task: taskWithUrl(updated.rows[0]) });
+      return res.json({ archived: true, task: taskWithUrl(updated.rows[0], wilsonOperationalAuth(req.wilson)) });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       return next(error);
