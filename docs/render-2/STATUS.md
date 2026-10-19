@@ -309,6 +309,14 @@ Verification: **955 backend pass /21 opt-in skip /0 fail**, **164 frontend page/
 
 **Development implemented/verified only; not globally deployment-ready; not deployed.** Desktop collapse, query-aware routing/client administration discovery, employee calendar alias normalization, shared controls/global module styles, broad accessibility/route coverage and prior master gates remain open. Preexisting App/Vite and preview/sandbox work preserved. See NAVIGATION_QA.md. This is concrete navigation progress, not overall design or master completion.
 
+## Sixteenth integration — desktop sidebar collapse (2026-10-19)
+
+Implemented locally: principal Sidebar toggles236px/72px on desktop, with explicit action/expanded state, accessible link names/titles and a readable account flyout. State is component-only, survives SPA navigation/mobile roundtrip, resets on full reload; no operational browser persistence or permission changes. Mobile retains its labelled44px drawer. Scope stays in Sidebar/styles; existing App/Vite and previews remain untouched.
+
+Coordinator implemented and ran browser QA; Darwin reviewed page geometry; Herschel authored8 source/model contracts. First browser/review caught double-offset in Tareas (wrapper72+inner236=308); corrected selector offsets only the inner main while ordinary pages use their sibling main. Actual corrected build checked13 loaded module shells at1200px (Inicio/Tareas/Proyectos/Producciones/Clientes/Feedback/Lista/Drive/Moodboards/Historias/Publicaciones/Reportes/Finanzas),72px offsets/no document overflow, expanded236px, account flyout and mobile390px roundtrip with full labels/left0. Screenshot `/private/tmp/render2-sidebar-collapsed.png`. Fixtures7ljHU7/vrwgcA stopped/removed, exact absence verified; browser closed/viewport reset. No existing DB or production touched.
+
+Verification: **955 backend pass /21 opt-in skip /0 fail**, **172 frontend page/component pass /0 fail**, build111 modules, diff-check. New tests are source/model contracts, browser checks are coordinator-executed and use synthetic admin; not all roles/workflows or full accessibility certification. **Development implemented/verified only; not globally deployment-ready; not deployed.** Query-aware routing/admin client discovery and global visual/module/control consolidation remain next alongside original master gates. See NAVIGATION_QA.md follow-up; no master/phase completion claimed.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

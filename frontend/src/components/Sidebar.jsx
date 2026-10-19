@@ -26,6 +26,7 @@ function SidebarIcon({ name }) {
 
 export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, getRolLabel }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 980px)").matches);
   const menuToggle = useRef(null);
   const menuRoot = useRef(null);
@@ -79,6 +80,8 @@ export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, 
         key={enlace.href}
         href={enlace.href}
         target="_self"
+        aria-label={enlace.label}
+        title={enlace.label}
         onClick={(event) => navigate(event, enlace.href)}
         className={`sidebar-link ${isNavigationActive(enlace.href, path) ? "active" : ""}`}
         aria-current={isNavigationActive(enlace.href, path) ? "page" : undefined}
@@ -89,12 +92,12 @@ export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, 
             <strong>{enlace.label}</strong>
             <small>{enlace.description}</small>
           </span>
-        ) : enlace.label}
+        ) : <span className="sidebar-link-text">{enlace.label}</span>}
       </a>
     ));
 
   return (
-    <nav ref={menuRoot} className="sidebar" aria-label="Navegación principal">
+    <nav ref={menuRoot} className="sidebar" data-collapsed={collapsed && !mobile ? "true" : "false"} aria-label="Navegación principal">
       <div className="sidebar-header">
         <a className="brand-mark" href={rutaPrincipal} aria-label="Ir al Inicio" onClick={(event) => navigate(event, rutaPrincipal)}>
           <span className="brand-initial">R</span>
@@ -103,6 +106,17 @@ export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, 
             <small>¡Vamos por un gran mes!</small>
           </span>
         </a>
+        <button
+          type="button"
+          className="sidebar-collapse-toggle"
+          aria-label={collapsed ? "Expandir barra lateral" : "Contraer barra lateral"}
+          title={collapsed ? "Expandir barra lateral" : "Contraer barra lateral"}
+          aria-expanded={!collapsed}
+          aria-controls="sidebar-drawer"
+          onClick={() => setCollapsed((value) => !value)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/><path d={collapsed ? "m13 9 3 3-3 3" : "m16 9-3 3 3 3"}/></svg>
+        </button>
         <button
           type="button"
           ref={menuToggle}
@@ -129,7 +143,7 @@ export function Sidebar({ path, sesion, onNavigate, onCerrarSesion, ROL_LABELS, 
         </div>
 
         <details className={`account-menu ${cuentaActiva ? "active" : ""}`}>
-          <summary className="account-trigger">
+          <summary className="account-trigger" aria-label={`Cuenta de ${sesion?.usuario?.nombre || "usuario"}`} title={`Cuenta de ${sesion?.usuario?.nombre || "usuario"}`}>
             <div className="user-badge">
               <div className="user-avatar">
                 {sesion?.usuario?.foto_perfil ? (

@@ -66,8 +66,52 @@
 .sidebar .user-role { color: #667085; }
 .sidebar .user-avatar { background: #e1e8f2; color: #344964; }
 .sidebar .account-menu-panel { background: #fff; border-color: #e4e7ec; box-shadow: 0 8px 28px #17243b12; }
+.sidebar .sidebar-collapse-toggle {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #667085;
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 36px;
+  height: 36px;
+  justify-content: center;
+  padding: 8px;
+}
+.sidebar .sidebar-collapse-toggle:hover { background: #eceff3; color: #202735; }
+.sidebar .sidebar-collapse-toggle svg { fill: none; height: 20px; stroke: currentColor; stroke-width: 1.6; width: 20px; }
 .sidebar :is(a, button, summary):focus-visible { outline: 2px solid #2563b8; outline-offset: 2px; }
+@media (min-width: 981px) {
+  .sidebar .sidebar-header { gap: 4px; padding-inline: 0; }
+  .sidebar .brand-mark { gap: 8px; }
+  .sidebar .brand-greeting { min-width: 0; }
+  .sidebar .brand-greeting > strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar .brand-greeting > small { display: none; }
+  .sidebar[data-collapsed="true"] { padding-inline: 10px; width: 72px; }
+  .sidebar[data-collapsed="true"] .sidebar-header { flex-direction: column; gap: 6px; }
+  .sidebar[data-collapsed="true"] .brand-greeting,
+  .sidebar[data-collapsed="true"] .sidebar-link-text,
+  .sidebar[data-collapsed="true"] .user-info { display: none; }
+  .sidebar[data-collapsed="true"] .sidebar-group-label { height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; width: 1px; clip-path: inset(50%); }
+  .sidebar[data-collapsed="true"] .sidebar-group { border-bottom: 1px solid #e4e7ec; padding-bottom: 8px; }
+  .sidebar[data-collapsed="true"] .sidebar-link { justify-content: center; min-height: 44px; padding-inline: 0; }
+  .sidebar[data-collapsed="true"] .account-trigger { justify-content: center; padding-inline: 0; }
+  .sidebar[data-collapsed="true"] .account-trigger::after { display: none; }
+  .sidebar[data-collapsed="true"] .user-badge { flex: 0; }
+  .sidebar[data-collapsed="true"] .account-menu-panel { bottom: 0; left: 56px; min-width: 210px; }
+  .sidebar[data-collapsed="true"] .account-menu-panel .sidebar-link { justify-content: flex-start; padding-inline: 12px; }
+  .sidebar[data-collapsed="true"] .account-menu-panel .sidebar-link-text { display: inline; }
+  /* Direct siblings only: never nested mains, overlays, login or preview shells. */
+  .sidebar[data-collapsed="true"] ~ main,
+  .sidebar[data-collapsed="true"] ~ .render-workspace > .ros-main {
+    --render-sidebar-width: 72px;
+    margin-left: 72px;
+    width: calc(100% - 72px);
+  }
+}
 @media (max-width: 980px) {
+  .sidebar .sidebar-collapse-toggle { display: none; }
   .sidebar .sidebar-menu-toggle { background: #fff; border-color: #d5dce5; color: #344964; }
   .sidebar .sidebar-menu-toggle span { background: #344964; }
   .sidebar .sidebar-link { min-height: 44px; }
