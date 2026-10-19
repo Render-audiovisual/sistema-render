@@ -135,5 +135,5 @@ test("correction prompt retains failed input for explicit resubmission",async()=
 test("editor protection tracks revisions even if timestamps share the same millisecond",()=>{
   assert.match(source,/\[task\?\.updated_at, task\?\.revision\]/);
   assert.match(source,/editing \|\| \(previous && \(current.titulo !== previous.titulo/);
-  assert.match(source,/Hay cambios sin guardar/);
+  assert.match(source,/<DiscardChangesDialog open=\{discardDialogOpen\} busy=\{taskWriteBusy\}/);
 });

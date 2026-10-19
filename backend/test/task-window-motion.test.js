@@ -30,10 +30,13 @@ test('window motion opens gently, closes faster and respects reduced motion', ()
 test('unsaved-change confirmation still precedes animated close', () => {
   const source=fs.readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
   const close=source.slice(source.indexOf('const closeDetail ='),source.indexOf('const addComment ='));
-  assert.ok(close.indexOf('window.confirm') < close.indexOf('windowMotion.close()'));
-  assert.ok(close.includes('if (windowMotion.closing || taskWriteBusy || archivePendingRef.current) return;'));
-  assert.ok(close.includes('if (taskDraftDirty && !window.confirm'));
-  assert.ok(close.indexOf('closeApprovedRef.current = true') > close.indexOf('window.confirm'));
+  assert.ok(close.includes('if (windowMotion.closing || taskWriteBusy || archivePendingRef.current || discardDialogOpen) return;'));
+  assert.ok(close.includes('if (taskDraftDirty) { setDiscardDialogOpen(true); return; }'));
+  assert.ok(close.indexOf('setDiscardDialogOpen(true)') < close.indexOf('windowMotion.close()'));
+  assert.ok(close.indexOf('closeApprovedRef.current = true') > close.indexOf('setDiscardDialogOpen(true)'));
+  const discard = close.slice(close.indexOf('const discardDetail'));
+  assert.match(discard, /if \(!discardDialogOpen \|\| windowMotion.closing \|\| taskWriteBusy \|\| archivePendingRef.current\) return/);
+  assert.doesNotMatch(close, /window.confirm/);
 });
 
 test('un cierre animado suspendido termina por plazo y no duplica el cierre', () => {

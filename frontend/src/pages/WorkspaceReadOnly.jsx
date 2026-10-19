@@ -21,6 +21,7 @@ import { EditingDeliveries } from "../components/EditingDeliveries.jsx";
 import { EditingReviews } from "../components/EditingReviews.jsx";
 import { TaskRecordedContext } from "../components/TaskRecordedContext.jsx";
 import { TaskCoordination } from "../components/TaskCoordination.jsx";
+import { DiscardChangesDialog } from "../components/DiscardChangesDialog.jsx";
 import { refreshEditingTask } from "../components/editingTaskRefresh.js";
 import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
 import { navigateWithinApp, requestAppNavigation } from "../shared/navigation/location.js";
@@ -158,6 +159,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [publicationResponsible, setPublicationResponsible] = useState(null);
   const [confirmingProduction, setConfirmingProduction] = useState(false);
   const [coordinationDraft, setCoordinationDraft] = useState({ dirty: false, busy: false });
+  const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [registryLookup, setRegistryLookup] = useState({ status: "loading", key: null, vinculo: null });
   const [registryRetry, setRegistryRetry] = useState(0);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -166,9 +168,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const taskDraftDirty = isTaskDraftDirty(task, draft) || Boolean(comment.trim()) || deliveryDirty || coordinationDraft.dirty
     || (isProductionVisitTask(task || {}) && productionDriveLink.trim() !== String(task?.material_referencia || '').trim());
   const taskWriteBusy = saving || commenting || archiving || registeringProduction || savingProductionDrive || approving || confirmingProduction || deliveryBusy || coordinationDraft.busy;
-  useNavigationGuard(({ to }) => closeApprovedRef.current || keepsTaskOpen(to, task?.id)
+  useNavigationGuard(({ to }) => discardDialogOpen ? { dirty: taskDraftDirty, busy: true } : closeApprovedRef.current || keepsTaskOpen(to, task?.id)
     ? { dirty: false, busy: false }
-    : { dirty: taskDraftDirty, busy: taskWriteBusy || archivePendingRef.current });
+    : { dirty: taskDraftDirty, busy: taskWriteBusy || archivePendingRef.current || discardDialogOpen });
   const scriptEditorRef = useRef(null);
   const deliverySectionRef = useRef(null);
   async function refreshEditingTaskAfterSave(_result, isCurrent) {
@@ -415,8 +417,16 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const closeDetail = () => {
-    if (windowMotion.closing || taskWriteBusy || archivePendingRef.current) return;
-    if (taskDraftDirty && !window.confirm("Hay cambios sin guardar. ¿Querés descartarlos?")) return;
+    if (windowMotion.closing || taskWriteBusy || archivePendingRef.current || discardDialogOpen) return;
+    if (taskDraftDirty) { setDiscardDialogOpen(true); return; }
+    closeApprovedRef.current = true;
+    windowMotion.close();
+  };
+
+  const discardDetail = () => {
+    // Approval is explicit and current writes still take precedence over leaving.
+    if (!discardDialogOpen || windowMotion.closing || taskWriteBusy || archivePendingRef.current) return;
+    setDiscardDialogOpen(false);
     closeApprovedRef.current = true;
     windowMotion.close();
   };
@@ -624,6 +634,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         {canDeleteTask && <details className="ros-task-admin-actions ros-task-admin-actions-footer"><summary>Acciones de tarea</summary><div className="ros-danger-zone"><strong>{isTrashed ? "Tarea eliminada" : "Eliminar tarea"}</strong><p>{isTrashed ? "Podés restaurarla antes de que se elimine definitivamente." : "Permanecerá 10 días en Papelera antes de eliminarse definitivamente."}</p><div><button className={isTrashed ? "" : "danger"} type="button" disabled={archiving} onClick={changeTrashState}>{archiving ? (isTrashed ? "Restaurando…" : "Enviando…") : (isTrashed ? "Restaurar tarea" : "Enviar a Papelera")}</button></div></div></details>}
       </div>
     </aside>
+    <DiscardChangesDialog open={discardDialogOpen} busy={taskWriteBusy} onKeepEditing={() => setDiscardDialogOpen(false)} onDiscard={discardDetail}/>
   </div>;
 }
 

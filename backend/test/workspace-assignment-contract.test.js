@@ -112,7 +112,7 @@ test("approval sends selected publisher ID, keeps display label; generic approva
 
 test("source contract: existing unsaved, keyboard, focus and mobile behavior remains", () => {
   assert.match(source, /isNewTaskDraftDirty\(draft\) && !window.confirm/);
-  assert.match(source, /Hay cambios sin guardar/);
+  assert.match(source, /<DiscardChangesDialog open=\{discardDialogOpen\} busy=\{taskWriteBusy\}/);
   assert.match(source, /previousFocus\?\.isConnected/);
   assert.match(source, /event.key === "Escape"/);
   assert.match(source, /useMediaQuery\(/);

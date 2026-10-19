@@ -9,7 +9,8 @@ test('review decision drafts and in-flight requests share task close/navigation 
   assert.match(source, /const deliveryBusy = deliveryFormBusy \|\| reviewDecisionBusy/);
   assert.match(source, /onDirty=\{setReviewDecisionDirty\} onBusy=\{setReviewDecisionBusy\}/);
   assert.match(source, /isTaskDraftDirty\(task, draft\) \|\| Boolean\(comment.trim\(\)\) \|\| deliveryDirty/);
-  assert.match(source, /if \(taskDraftDirty && !window.confirm/);
+  assert.match(source, /if \(taskDraftDirty\) \{ setDiscardDialogOpen\(true\); return; \}/);
+  assert.match(source, /<DiscardChangesDialog open=\{discardDialogOpen\} busy=\{taskWriteBusy\}/);
   assert.match(source, /deliveryBusy \|\| deliveryDirty \|\| !mayApproveObservedDelivery/);
   assert.match(source, /fieldset disabled=\{reviewDecisionBusy \|\| reviewDecisionDirty \|\| approving \|\| saving\}/);
   assert.match(source, /EditingReviews task=\{task\} sesion=\{sesion\} disabled=\{deliveryFormBusy \|\| deliveryFormDirty \|\| approving \|\| saving \|\| editing\}/);
