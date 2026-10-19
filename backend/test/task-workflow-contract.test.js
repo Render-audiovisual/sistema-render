@@ -9,7 +9,8 @@ test("el backend expone la aprobación y crea la edición vinculada a Luciano", 
   assert.match(server, /\/tareas\/:id\/aprobar-publicacion/);
   assert.match(server, /asignado_a = \$3/);
   assert.match(server, /edicion_responsable: tarea.propiedades_extra\?\.edicion_responsable \|\| tarea.asignado_a/);
-  assert.match(server, /VALUES \(\$1, 'Luciano'/);
+  assert.match(server, /asignado_a: "Luciano", colaborador_ids: \[\]/);
+  assert.match(server, /replaceTaskAssignments\(db, result.rows\[0\].id, assignment\)/);
   assert.match(server, /origen_visita_id/);
 });
 

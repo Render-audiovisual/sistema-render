@@ -10,6 +10,7 @@ import { getProductionPhase, getProductionVisitProgress, isProductionVisitTask }
 import { getCanonicalTaskContentMetadata, getUnifiedTaskContent } from "../features/render-os/utils/task-content.js";
 import { getNewTaskSuggestions, getTaskDirectUrl } from "../features/render-os/utils/new-task-suggestions.js";
 import { getHoyLocalISO } from "../shared/date/date-utils.js";
+import { buildTaskAssignmentInput } from "../shared/task-assignment-input.js";
 import { markFeedbackSeen, readFeedbackSeenAt } from "../features/render-os/utils/feedback-notifications.js";
 import { DriveUploader } from "../features/drive/DriveUploader.jsx";
 import { useTaskBoardMotion } from "../features/render-os/useTaskBoardMotion.js";
@@ -121,12 +122,12 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [registeringProduction, setRegisteringProduction] = useState(false);
   const [savingProductionDrive, setSavingProductionDrive] = useState(false);
   const [approving, setApproving] = useState(false);
-  const [publicationResponsible, setPublicationResponsible] = useState("Oriana");
+  const [publicationResponsible, setPublicationResponsible] = useState(null);
   const [confirmingProduction, setConfirmingProduction] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const archivePendingRef = useRef(false);
   const scriptEditorRef = useRef(null);
-  const isAdmin = sesion?.usuario?.rol === "admin";
+  const isAdmin = Number.isSafeInteger(sesion?.usuario?.id) && sesion.usuario.id > 0 && sesion.usuario.rol === "admin";
 
   useEffect(() => {
     if (!task) return;
@@ -140,7 +141,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     setProductionAmount(1);
     setProductionDate(getHoyLocalISO());
     setProductionDriveLink(task.material_referencia || "");
-    setPublicationResponsible(task.propiedades_extra?.responsable_publicacion || "Oriana");
+    setPublicationResponsible(task.responsable_publicacion_id ?? task.propiedades_extra?.responsable_publicacion_id ?? null);
     apiJson(`/api/tareas/${task.id}/comentarios?workspace=render_os`, { signal: controller.signal })
       .then(items => { if (!controller.signal.aborted) setComments(items); })
       .catch((reason) => { if (!controller.signal.aborted) setCommentError(reason.message || "No se pudieron cargar los comentarios."); });
@@ -196,20 +197,25 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const metadata = task.propiedades_extra || {};
   const driveFiles = Array.isArray(metadata.drive_archivos) ? metadata.drive_archivos : [];
   const isProductionVisit = isProductionVisitTask(task);
-  const userIdentity = `${sesion?.usuario?.nombre || ""} ${sesion?.usuario?.usuario || ""}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const isLeader = isAdmin || userIdentity.includes("franco") || userIdentity.includes("agustin") || userIdentity.includes("lider");
+  const isLeader = isAdmin;
   const canChangeTaskState = canUserMoveTask(task, sesion?.usuario);
   const availableTaskStatuses = STATUSES.filter((item) => item.id === task.estado || canUserMoveTaskToState(task, sesion?.usuario, item.id));
   const canApproveForOriana = isLeader && task.estado === "en_revision" && areaForTask(task) === "edicion" && metadata.revision_aprobada !== true;
   const productionProgress = getProductionVisitProgress(task);
   const productionPhase = getProductionPhase(task);
-  const canRegisterProduction = isAdmin || String(sesion?.usuario?.nombre || sesion?.usuario?.usuario || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().startsWith("german");
+  const canRegisterProduction = Number.isSafeInteger(sesion?.usuario?.id) && sesion.usuario.id > 0
+    && canUserEditTask(task, sesion.usuario) && (isAdmin || sesion.usuario.rol === "produccion");
   const canConfirmProduction = isLeader && isProductionVisit && productionProgress.complete && !metadata.produccion_confirmada_at;
   const isTrashed = metadata.papelera_render_os === true;
   const tags = Array.isArray(metadata.etiquetas) ? metadata.etiquetas : [];
   const collaborators = Array.isArray(metadata.colaboradores) ? metadata.colaboradores : [];
   const canEditTask = canUserEditTask(task, sesion?.usuario);
   const canDeleteTask = canUserDeleteTask(task, sesion?.usuario);
+  const hasUnmappedAssignment = !Number.isSafeInteger(task.asignado_a_id) || task.asignado_a_id <= 0;
+  const selectedPublisher = users.find((user) => user.id === publicationResponsible && ["admin", "community"].includes(user.rol));
+  const assignedPeople = [task.asignado_a_id, ...(task.colaborador_ids || [])]
+    .filter((id, index, ids) => Number.isSafeInteger(id) && id > 0 && ids.indexOf(id) === index)
+    .map((id) => ({ id, person: users.find((user) => user.id === id) }));
   const subtasks = tasks.filter((item) => Number(item.tarea_padre_id) === Number(task.id));
   const links = [...new Set(extraerUrlsTarea(task.aclaraciones || ""))].filter((url) => url !== task.material_referencia);
   const materialInfo = task.material_referencia ? obtenerInfoLinkTarea(task.material_referencia) : null;
@@ -227,17 +233,18 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
 
   const save = async () => {
     setSaving(true);
-    const fields = ["titulo", "asignado_a", "cliente_id", "estado", "fecha_vencimiento", "prioridad", "tipo_tarea", "subtipo", "aclaraciones", "material_referencia"];
+    if (!canEditTask) { setSaving(false); return; }
+    const fields = ["titulo", "cliente_id", "estado", "fecha_vencimiento", "prioridad", "tipo_tarea", "subtipo", "aclaraciones", "material_referencia"];
     const nullable = ["cliente_id", "fecha_vencimiento", "tipo_tarea", "subtipo", "aclaraciones", "material_referencia"];
     const changes = Object.fromEntries(fields
       .filter((field) => String(draft[field] ?? "") !== String(task[field] ?? ""))
       .map((field) => [field, draft[field] === "" && nullable.includes(field) ? null : draft[field]]));
     const nextMetadata = getCanonicalTaskContentMetadata({
-      resumen: String(draft.resumen || "").trim(),
-      etiquetas: String(draft.etiquetas || "").split(",").map((item) => item.trim()).filter(Boolean),
-      colaboradores: Array.isArray(draft.colaboradores) ? draft.colaboradores : [],
+      resumen: String(draft.resumen ?? metadata.resumen ?? "").trim(),
+      etiquetas: draft.etiquetas === undefined ? tags : String(draft.etiquetas || "").split(",").map((item) => item.trim()).filter(Boolean),
+      colaboradores: Array.isArray(draft.colaboradores) ? draft.colaboradores : collaborators,
     });
-    if (isProductionVisit) nextMetadata.produccion_videos_previstos = Math.max(0, Number(draft.produccion_videos_previstos) || 0);
+    if (isProductionVisit) nextMetadata.produccion_videos_previstos = draft.produccion_videos_previstos === undefined ? productionProgress.planned : Math.max(0, Number(draft.produccion_videos_previstos) || 0);
     const previousEditableMetadata = { resumen: metadata.resumen || "", etiquetas: tags, colaboradores: collaborators, guiones: metadata.guiones || "", copy_trabajo: metadata.copy_trabajo || "" };
     if (isProductionVisit) previousEditableMetadata.produccion_videos_previstos = productionProgress.planned;
     if (JSON.stringify(nextMetadata) !== JSON.stringify(previousEditableMetadata)) {
@@ -269,20 +276,19 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     }
   };
 
-  const saveInlinePeople = async ({ primary, collaborators: nextCollaborators }) => {
-    if (!canEditTask || saving || !primary) return;
-    const normalizedCollaborators = [...new Set((nextCollaborators || []).filter((name) => name && name !== primary))];
-    const unchanged = primary === task.asignado_a && JSON.stringify(normalizedCollaborators) === JSON.stringify(collaborators);
+  const saveInlinePeople = async ({ primary, collaborators: nextCollaborators, ownerId, collaboratorIds }) => {
+    if (!canEditTask || saving || !ownerId) return;
+    const assignment = buildTaskAssignmentInput({ ownerId, collaboratorIds });
+    const unchanged = ownerId === task.asignado_a_id && JSON.stringify(collaboratorIds) === JSON.stringify(task.colaborador_ids || []);
     if (unchanged) return;
-    setDraft((current) => ({ ...current, asignado_a: primary, colaboradores: normalizedCollaborators }));
+    setDraft((current) => ({ ...current, ...assignment, asignado_a: primary, colaboradores: nextCollaborators }));
     setSaving(true);
     try {
       await onUpdate(task.id, {
-        asignado_a: primary,
-        propiedades_extra: { colaboradores: normalizedCollaborators },
+        ...assignment,
       }, "actualizó los responsables de la tarea");
     } catch {
-      setDraft((current) => ({ ...current, asignado_a: task.asignado_a, colaboradores }));
+      setDraft((current) => ({ ...current, asignado_a_id: task.asignado_a_id, colaborador_ids: task.colaborador_ids, asignado_a: task.asignado_a, colaboradores }));
     } finally {
       setSaving(false);
     }
@@ -351,7 +357,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const registerProduction = async (finish = false) => {
-    if (registeringProduction || metadata.produccion_confirmada_at) return;
+    if (!canRegisterProduction || registeringProduction || metadata.produccion_confirmada_at) return;
     setRegisteringProduction(true);
     try {
       await onRegisterProduction(task, Number(productionAmount), productionDate, finish);
@@ -362,22 +368,22 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const confirmProduction = async () => {
-    if (confirmingProduction) return;
+    if (!canConfirmProduction || confirmingProduction) return;
     setConfirmingProduction(true);
     try { await onConfirmProduction(task); }
     finally { setConfirmingProduction(false); }
   };
 
   const approveForOriana = async () => {
-    if (approving) return;
+    if (!canApproveForOriana || approving || !selectedPublisher) return;
     setApproving(true);
-    try { await onApprove(task, publicationResponsible); }
+    try { await onApprove(task, selectedPublisher.id); }
     finally { setApproving(false); }
   };
 
   const saveProductionDrive = async () => {
     const link = productionDriveLink.trim();
-    if (!link || savingProductionDrive) return;
+    if (!canRegisterProduction || !link || savingProductionDrive) return;
     setSavingProductionDrive(true);
     try { await onUpdate(task.id, { material_referencia: link }, "vinculó la carpeta de producción en Google Drive"); }
     finally { setSavingProductionDrive(false); }
@@ -429,18 +435,19 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         }}>✦ Ver moodboard de {task.cliente_nombre || "la marca"}</button>}
         <div className="ros-task-document-properties">
           <div><span>◉ <b>Estado</b></span>{isAdmin || canChangeTaskState ? <select className="ros-inline-property" aria-label="Estado" value={draft.estado ?? task.estado ?? "pendiente"} disabled={saving} onChange={(event) => saveInlineField("estado", event.target.value, "actualizó el estado de la tarea")}>{availableTaskStatuses.map((item) => <option key={item.id} value={item.id} disabled={isProductionVisit && item.id === "publicada" && !productionProgress.complete}>{item.label}</option>)}</select> : <strong className="ros-task-document-status"><i style={{ background: status.color }}/>{status.label}</strong>}</div>
-          <div className="ros-task-people-property is-inline-editing"><span>♙ <b>Responsables</b></span>{canEditTask ? <TaskPeoplePicker compact users={users} primary={draft.asignado_a ?? task.asignado_a ?? ""} collaborators={draft.colaboradores ?? collaborators} disabled={saving} onChange={saveInlinePeople}/> : <strong className="ros-task-assignees">{[task.asignado_a, ...collaborators].filter((name, index, names) => name && names.indexOf(name) === index).map((name) => <span className="ros-task-assignee" key={name}><Avatar person={users.find((user) => user.nombre === name)} name={name}/><span>{name}<small>Responsable</small></span></span>)}</strong>}</div>
+          <div className="ros-task-people-property is-inline-editing"><span>♙ <b>Responsables</b></span>{canEditTask ? <TaskPeoplePicker compact users={users} primaryId={draft.asignado_a_id ?? task.asignado_a_id ?? null} collaboratorIds={draft.colaborador_ids ?? task.colaborador_ids ?? []} disabled={saving} onChange={saveInlinePeople}/> : <strong className="ros-task-assignees">{assignedPeople.length ? assignedPeople.map(({ id, person }) => <span className="ros-task-assignee" key={id}><Avatar person={person} name={person?.nombre || `Usuario #${id}`}/><span>{person?.nombre || `Usuario #${id}`}<small>Responsable · #{id}</small></span></span>) : <span>{[task.asignado_a, ...collaborators].filter(Boolean).join(", ") || "Sin responsables"}</span>}</strong>}</div>
           <div><span>▥ <b>Cliente</b></span>{canEditTask ? <select className="ros-inline-property" aria-label="Cliente" value={draft.cliente_id ?? task.cliente_id ?? ""} disabled={saving} onChange={(event) => saveInlineField("cliente_id", event.target.value ? Number(event.target.value) : "", "actualizó el cliente de la tarea")}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select> : <strong>{task.cliente_nombre || "Sin cliente"}</strong>}</div>
           <div><span>▦ <b>Entrega</b></span>{canEditTask ? <input className="ros-inline-property" aria-label="Fecha de entrega" type="date" value={draft.fecha_vencimiento ?? task.fecha_vencimiento ?? ""} disabled={saving} onChange={(event) => saveInlineField("fecha_vencimiento", event.target.value, "actualizó la fecha de entrega")}/> : <strong>{formatDate(task.fecha_vencimiento)}</strong>}</div>
           {(canEditTask || String(task.prioridad || "").toLowerCase() !== "media") && <div><span>⚑ <b>Prioridad</b></span>{canEditTask ? <select className="ros-inline-property" aria-label="Prioridad" value={draft.prioridad ?? task.prioridad ?? "media"} disabled={saving} onChange={(event) => saveInlineField("prioridad", event.target.value, "actualizó la prioridad de la tarea")}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select> : <strong>{task.prioridad || "Sin definir"}</strong>}</div>}
         </div>
+        {hasUnmappedAssignment && <div className="ros-warning-banner" role="status">Asignación histórica sin vincular a un usuario. {isAdmin ? "Elegí responsables para asignarla explícitamente; no se vinculará por nombre." : "El nombre histórico no concede acceso de edición. Pedí a un administrador que asigne responsables."}</div>}
         <GoalTaskLink task={task} canManage={['admin', 'community'].includes(sesion?.usuario?.rol)}/>
-        <TaskContentWorkspace task={task} metadata={metadata} editing={canEditTask || editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={null} onCancelEdit={cancelEditing} onSaveEdit={save} saving={saving} canSave={Boolean(draft.titulo?.trim() && draft.asignado_a)}/>
+        <TaskContentWorkspace task={task} metadata={metadata} editing={canEditTask || editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={null} onCancelEdit={cancelEditing} onSaveEdit={save} saving={saving} canSave={Boolean(canEditTask && draft.titulo?.trim())}/>
         {hasOperationalControls && <section className="ros-task-operations" aria-labelledby={`ros-task-operations-${task.id}`}>
           <div className="ros-block-heading ros-operations-heading"><div><h3 id={`ros-task-operations-${task.id}`}>Flujo de trabajo</h3></div><small>Acciones y avance de la tarea</small></div>
         {esperandoMaterial(task) && <div className="ros-warning-banner">Esperando material: la tarea de origen todavía no está terminada.</div>}
         {areaForTask(task) === "edicion" && canChangeTaskState && ["pendiente", "en_progreso"].includes(task.estado) && <section className="ros-approval-handoff"><div><strong>¿Terminaste la edición?</strong><span>Entregala para revisión. Publicarla es un paso separado.</span></div><button type="button" disabled={saving} onClick={async () => { setSaving(true); try { await onUpdate(task.id, { estado: "en_revision" }, "terminó la edición y la entregó para revisión"); } finally { setSaving(false); } }}>Terminar edición y enviar a revisión</button></section>}
-        {canApproveForOriana && <section className="ros-approval-handoff"><div><strong>El video está esperando aprobación</strong><span>La edición queda acreditada a quien la hizo. Elegí quién se ocupa de publicar.</span></div><label>Publica<select value={publicationResponsible} onChange={(event) => setPublicationResponsible(event.target.value)}>{users.filter((user) => ["admin", "community"].includes(user.rol)).map((user) => <option key={user.id} value={user.nombre}>{user.nombre}</option>)}</select></label><button type="button" disabled={approving || !publicationResponsible} onClick={approveForOriana}>{approving ? "Enviando…" : `Aprobar y enviar a ${publicationResponsible}`}</button></section>}
+        {canApproveForOriana && <section className="ros-approval-handoff"><div><strong>El video está esperando aprobación</strong><span>La edición queda acreditada a quien la hizo. Elegí quién se ocupa de publicar.</span></div><label>Publica<select value={publicationResponsible ?? ""} onChange={(event) => setPublicationResponsible(event.target.value ? Number(event.target.value) : null)}><option value="">Elegí quién publica</option>{users.filter((user) => Number.isSafeInteger(user.id) && user.id > 0 && ["admin", "community"].includes(user.rol)).map((user) => <option key={user.id} value={user.id}>{user.nombre} · #{user.id}</option>)}</select></label><button type="button" disabled={approving || !selectedPublisher} onClick={approveForOriana}>{approving ? "Enviando…" : `Aprobar y enviar${selectedPublisher ? ` a ${selectedPublisher.nombre}` : ""}`}</button></section>}
         {metadata.revision_aprobada === true && task.estado === "en_revision" && <div className="ros-approved-banner">✓ Aprobada por {metadata.revision_aprobada_por || "Líder"}. {metadata.responsable_publicacion || task.asignado_a} se encarga de publicarla.</div>}
         {isProductionVisit && <section className="ros-production-visit">
           <header><div><span>VISITA DE PRODUCCIÓN</span><strong>{productionProgress.recorded}{productionProgress.planned ? ` de ${productionProgress.planned}` : ""} videos grabados</strong></div>{productionProgress.complete ? <b>{productionPhase?.label || "Completa"}</b> : <b className="pending">{productionProgress.planned ? `Faltan ${productionProgress.remaining}` : "Sin cantidad prevista"}</b>}</header>
@@ -479,30 +486,32 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
             <button type="button" disabled={!comment.trim() || commenting} onClick={addComment}>{commenting ? "Enviando…" : "Comentar"}</button>
           </div>
         </section>
-        {isAdmin && editing && <div className="ros-detail-actions ros-edit-footer"><button type="button" onClick={cancelEditing}>Cancelar</button><button className="primary" type="button" disabled={saving || !draft.titulo?.trim() || !draft.asignado_a} onClick={save}>{saving ? "Guardando…" : "Guardar cambios"}</button></div>}
+        {isAdmin && editing && <div className="ros-detail-actions ros-edit-footer"><button type="button" onClick={cancelEditing}>Cancelar</button><button className="primary" type="button" disabled={saving || !canEditTask || !draft.titulo?.trim()} onClick={save}>{saving ? "Guardando…" : "Guardar cambios"}</button></div>}
         {canDeleteTask && <details className="ros-task-admin-actions ros-task-admin-actions-footer"><summary>Acciones de tarea</summary><div className="ros-danger-zone"><strong>{isTrashed ? "Tarea eliminada" : "Eliminar tarea"}</strong><p>{isTrashed ? "Podés restaurarla antes de que se elimine definitivamente." : "Permanecerá 10 días en Papelera antes de eliminarse definitivamente."}</p><div><button className={isTrashed ? "" : "danger"} type="button" disabled={archiving} onClick={changeTrashState}>{archiving ? (isTrashed ? "Restaurando…" : "Enviando…") : (isTrashed ? "Restaurar tarea" : "Enviar a Papelera")}</button></div></div></details>}
       </div>
     </aside>
   </div>;
 }
 
-function TaskPeoplePicker({ users, primary, collaborators, onChange, compact = false, disabled = false }) {
+function TaskPeoplePicker({ users, primaryId, collaboratorIds, onChange, compact = false, disabled = false }) {
   const [open, setOpen] = useState(false);
-  const selected = [primary, ...(collaborators || [])].filter((name, index, items) => name && items.indexOf(name) === index);
-  const toggle = (name) => {
-    const next = selected.includes(name) ? selected.filter((item) => item !== name) : [...selected, name];
-    onChange({ primary: next[0] || "", collaborators: next.slice(1) });
+  const selected = [primaryId, ...(collaboratorIds || [])].filter((id, index, items) => Number.isSafeInteger(id) && id > 0 && items.indexOf(id) === index);
+  const labelFor = (id) => users.find((user) => user.id === id)?.nombre || `Usuario #${id}`;
+  const toggle = (id) => {
+    if (disabled) return;
+    const next = selected.includes(id) ? selected.filter((item) => item !== id) : [...selected, id];
+    onChange({ ownerId: next[0] ?? null, collaboratorIds: next.slice(1), primary: next.length ? labelFor(next[0]) : "", collaborators: next.slice(1).map(labelFor) });
   };
   return <div className={`wide ros-people-picker ${compact ? "compact" : ""}`}>
     {!compact && <div className="ros-people-picker-label"><span>Responsables *</span><small>Podés seleccionar una o varias personas.</small></div>}
-    {selected.length > 0 && <div className="ros-selected-people">{selected.map((name) => <button type="button" key={name} disabled={disabled} onClick={() => toggle(name)}><Avatar person={users.find((user) => user.nombre === name)} name={name}/><span><strong>{name}</strong><small>Responsable</small></span><b aria-hidden="true">×</b></button>)}</div>}
+    {selected.length > 0 && <div className="ros-selected-people">{selected.map((id) => <button type="button" key={id} disabled={disabled} onClick={() => toggle(id)}><Avatar person={users.find((user) => user.id === id)} name={labelFor(id)}/><span><strong>{labelFor(id)}</strong><small>Responsable · #{id}</small></span><b aria-hidden="true">×</b></button>)}</div>}
     <button className="ros-add-person" type="button" disabled={disabled} aria-expanded={open} onClick={() => setOpen((current) => !current)}><span>+</span>{selected.length ? "Añadir otra persona" : "Añadir responsable"}<b>{open ? "⌃" : "⌄"}</b></button>
-    {open && <div className="ros-people-options">{users.map((user) => { const active = selected.includes(user.nombre); return <button className={active ? "selected" : ""} type="button" key={user.id} disabled={disabled} onClick={() => toggle(user.nombre)}><Avatar person={user}/><span><strong>{user.nombre}</strong><small>{getRolLabel(user.rol) || `@${user.usuario}`}</small></span><b>{active ? "✓" : "+"}</b></button>; })}</div>}
+    {open && <div className="ros-people-options">{users.filter((user) => Number.isSafeInteger(user.id) && user.id > 0).map((user) => { const active = selected.includes(user.id); return <button className={active ? "selected" : ""} type="button" key={user.id} disabled={disabled} onClick={() => toggle(user.id)}><Avatar person={user}/><span><strong>{user.nombre}</strong><small>{getRolLabel(user.rol)} · @{user.usuario || user.id} · #{user.id}</small></span><b>{active ? "✓" : "+"}</b></button>; })}</div>}
   </div>;
 }
 
 function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, onCreate }) {
-  const [draft, setDraft] = useState({ titulo: "", asignado_a: "", cliente_id: "", estado: initialStatus, tipo_tarea: "", subtipo: "", prioridad: "media", fecha_vencimiento: "", aclaraciones: "", material_referencia: "", resumen: "", etiquetas: "", colaboradores: [], produccion_videos_previstos: "" });
+  const [draft, setDraft] = useState({ titulo: "", asignado_a: "", asignado_a_id: null, colaborador_ids: [], cliente_id: "", estado: initialStatus, tipo_tarea: "", subtipo: "", prioridad: "media", fecha_vencimiento: "", aclaraciones: "", material_referencia: "", resumen: "", etiquetas: "", colaboradores: [], produccion_videos_previstos: "" });
   const [saving, setSaving] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [suggestionMessage, setSuggestionMessage] = useState("");
@@ -514,10 +523,12 @@ function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, on
   }, []);
   const submit = async (event) => {
     event.preventDefault();
+    if (saving || !Number.isSafeInteger(draft.asignado_a_id) || draft.asignado_a_id <= 0) return;
     setSaving(true);
     try {
       await onCreate({
         ...draft,
+        ...buildTaskAssignmentInput({ ownerId: draft.asignado_a_id, collaboratorIds: draft.colaborador_ids || [] }),
         cliente_id: draft.cliente_id ? Number(draft.cliente_id) : null,
         fecha_vencimiento: draft.fecha_vencimiento || null,
         tipo_tarea: draft.tipo_tarea || null,
@@ -543,8 +554,16 @@ function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, on
     const next = { ...current, titulo: title };
     if (!manuallyEdited.current.has("client")) next.cliente_id = suggestion.client ? String(suggestion.client.id) : "";
     if (!manuallyEdited.current.has("people")) {
-      next.asignado_a = suggestion.primary;
-      next.colaboradores = suggestion.collaborators;
+      // Creation suggestions only: never resolve historical assignments by label.
+      const labels = [suggestion.primary, ...suggestion.collaborators].filter(Boolean);
+      const matches = labels.map((label) => users.filter((user) => user.nombre === label && Number.isSafeInteger(user.id) && user.id > 0));
+      const unambiguous = matches.every((items) => items.length === 1);
+      const selected = unambiguous ? [...new Map(matches.map(([user]) => [user.id, user])).values()] : [];
+      next.asignado_a_id = selected[0]?.id ?? null;
+      next.colaborador_ids = selected.slice(1).map((user) => user.id);
+      next.asignado_a = selected[0]?.nombre || "";
+      next.colaboradores = selected.slice(1).map((user) => user.nombre);
+      if (!unambiguous) suggestion.message = "La sugerencia no identifica una persona única. Elegí los responsables manualmente.";
     }
     if (!manuallyEdited.current.has("classification")) {
       next.tipo_tarea = suggestion.tipo_tarea;
@@ -556,12 +575,12 @@ function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, on
   return <div className="ros-drawer-backdrop ros-modal-backdrop" onClick={closeModal}><section className="ros-modal ros-quick-task-modal" onClick={(event) => event.stopPropagation()}><header><div><div className="ros-eyebrow">NUEVA TAREA</div><h2>¿Qué hay que hacer?</h2><p>Cargá lo esencial ahora. Los detalles se pueden completar después.</p></div><button type="button" aria-label="Cerrar" onClick={closeModal}>×</button></header><form onSubmit={submit}>
     <label className="wide ros-quick-title"><span>Tarea *</span><input autoFocus required placeholder="Ej.: iPhone Shop | Editar reel de lanzamiento" value={draft.titulo} onChange={(event) => setDraft((current) => applySuggestions(current, { title: event.target.value }))}/></label>
     {suggestionMessage && <div className="wide ros-auto-suggestion"><span>✓</span><div><strong>{suggestionMessage}</strong><small>Es una sugerencia automática: podés cambiar cualquier dato.</small></div></div>}
-    <TaskPeoplePicker users={users} primary={draft.asignado_a} collaborators={draft.colaboradores} onChange={({ primary, collaborators }) => { manuallyEdited.current.add("people"); setDraft({ ...draft, asignado_a: primary, colaboradores: collaborators }); }}/>
+    <TaskPeoplePicker users={users} primaryId={draft.asignado_a_id} collaboratorIds={draft.colaborador_ids || []} disabled={saving} onChange={({ primary, collaborators, ownerId, collaboratorIds }) => { manuallyEdited.current.add("people"); setDraft({ ...draft, asignado_a: primary, colaboradores: collaborators, ...buildTaskAssignmentInput({ ownerId, collaboratorIds }) }); }}/>
     <div className="wide ros-quick-grid"><label><span>Cliente</span><select value={draft.cliente_id} onChange={(event) => { manuallyEdited.current.add("client"); setDraft((current) => applySuggestions({ ...current, cliente_id: event.target.value }, { clientId: event.target.value, clientWasSelected: true })); }}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label><label><span>Fecha</span><input type="date" value={draft.fecha_vencimiento} onChange={(event) => setDraft({ ...draft, fecha_vencimiento: event.target.value })}/></label><label><span>Prioridad</span><select value={draft.prioridad} onChange={(event) => setDraft({ ...draft, prioridad: event.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select></label></div>
     {isProductionVisitTask(draft) && !showDetails && <label className="wide ros-visit-planned-field"><span>Videos previstos (opcional)</span><input type="number" min="1" step="1" value={draft.produccion_videos_previstos} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}
     <button className="wide ros-more-details" type="button" aria-expanded={showDetails} onClick={() => setShowDetails((current) => !current)}><span>{showDetails ? "−" : "+"}</span>{showDetails ? "Ocultar detalles" : "Agregar indicaciones, material o más detalles"}</button>
     {showDetails && <div className="wide ros-optional-fields"><label><span>Sector</span><select value={draft.tipo_tarea} onChange={(event) => { manuallyEdited.current.add("classification"); setDraft({ ...draft, tipo_tarea: event.target.value }); }}><option value="">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Tipo de pieza</span><input placeholder="Reel, carrusel, visita…" value={draft.subtipo} onChange={(event) => { manuallyEdited.current.add("classification"); setDraft({ ...draft, subtipo: event.target.value }); }}/></label>{isProductionVisitTask(draft) && <label className="wide ros-visit-planned-field"><span>Videos previstos (opcional)</span><input type="number" min="1" step="1" value={draft.produccion_videos_previstos} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}<label className="wide"><span>Resumen corto</span><input value={draft.resumen} placeholder="Resultado esperado" onChange={(event) => setDraft({ ...draft, resumen: event.target.value })}/></label><label className="wide"><span>Indicaciones</span><textarea rows={3} placeholder="Datos necesarios para poder resolverla" value={draft.aclaraciones} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/></label><label className="wide"><span>Material o enlace</span><input placeholder="https://…" value={draft.material_referencia} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/></label><label className="wide"><span>Etiquetas</span><input placeholder="Urgente, web, corrección" value={draft.etiquetas} onChange={(event) => setDraft({ ...draft, etiquetas: event.target.value })}/></label></div>}
-    <footer><button type="button" onClick={closeModal}>Cancelar</button><button className="primary" type="submit" disabled={saving || !draft.titulo.trim() || !draft.asignado_a}>{saving ? "Creando…" : "Crear tarea"}</button></footer>
+    <footer><button type="button" onClick={closeModal}>Cancelar</button><button className="primary" type="submit" disabled={saving || !draft.titulo.trim() || !draft.asignado_a_id}>{saving ? "Creando…" : "Crear tarea"}</button></footer>
   </form></section></div>;
 }
 
@@ -945,7 +964,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       if (!previous) throw new Error("La tarea ya no está disponible.");
       setTasks((current) => current.map((task) => task.id === id ? { ...task, ...changes } : task));
       try {
-        const updated = await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_updated_at: previous.updated_at || undefined }) });
+        const updated = await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: previous.revision, expected_updated_at: previous.updated_at || undefined }) });
         const selectedClient = clients.find((item) => String(item.id) === String(updated.cliente_id));
         const complete = { ...previous, ...updated, cliente_nombre: selectedClient?.nombre || null };
         tasksRef.current = tasksRef.current.map((task) => task.id === id ? complete : task);
@@ -963,7 +982,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
           try {
             currentTask = await apiTaskById(id);
             if (canRetryTaskUpdate(previous, currentTask, changes)) {
-              const retried = await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_updated_at: currentTask.updated_at || undefined }) });
+              const retried = await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: currentTask.revision, expected_updated_at: currentTask.updated_at || undefined }) });
               const selectedClient = clients.find((item) => String(item.id) === String(retried.cliente_id));
               const complete = { ...currentTask, ...retried, cliente_nombre: selectedClient?.nombre || currentTask.cliente_nombre || null };
               tasksRef.current = tasksRef.current.map((task) => task.id === id ? complete : task);
@@ -1076,9 +1095,12 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       throw reason;
     }
   };
-  const approveTask = async (task, responsable_publicacion) => {
+  const approveTask = async (task, responsable_publicacion_id) => {
     try {
-      const updated = await apiRequest(`/api/tareas/${task.id}/aprobar-publicacion?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responsable_publicacion }) });
+      const publisher = users.find((user) => user.id === responsable_publicacion_id && ["admin", "community"].includes(user.rol));
+      if (!Number.isSafeInteger(responsable_publicacion_id) || responsable_publicacion_id <= 0 || !publisher) throw new Error("Elegí un responsable de publicación válido.");
+      const responsable_publicacion = publisher.nombre;
+      const updated = await apiRequest(`/api/tareas/${task.id}/aprobar-publicacion?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responsable_publicacion_id, expected_revision: task.revision }) });
       const complete = { ...task, ...updated, cliente_nombre: task.cliente_nombre || null };
       tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? complete : item);
       setTasks((current) => current.map((item) => item.id === task.id ? complete : item));

@@ -12,18 +12,12 @@ function sameValue(left, right) {
   return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
 }
 
-function normalizeActor(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .trim()
-    .toLowerCase();
+function isValidActorId(value) {
+  return Number.isSafeInteger(value) && value > 0;
 }
 
 export function isTaskFinalizer(user) {
-  if (user?.rol === "admin" || user?.rol === "community") return true;
-  const identity = normalizeActor(`${user?.nombre || ""} ${user?.usuario || ""}`);
-  return identity.includes("franco");
+  return isValidActorId(user?.id) && (user.rol === "admin" || user.rol === "community");
 }
 
 function isOwnProductionTask(task, user) {
@@ -33,22 +27,19 @@ function isOwnProductionTask(task, user) {
 }
 
 function canUserOwnTask(task, user) {
-  const actorNames = new Set([user?.nombre, user?.usuario].map(normalizeActor).filter(Boolean));
-  if (actorNames.size === 0) return false;
-  const collaborators = Array.isArray(task?.propiedades_extra?.colaboradores)
-    ? task.propiedades_extra.colaboradores
+  if (!isValidActorId(user?.id)) return false;
+  const collaborators = Array.isArray(task?.colaborador_ids)
+    ? task.colaborador_ids
     : [];
-  return [task?.asignado_a, ...collaborators]
-    .map(normalizeActor)
-    .some((name) => actorNames.has(name));
+  return task?.asignado_a_id === user.id || collaborators.includes(user.id);
 }
 
 export function canUserEditTask(task, user) {
-  return user?.rol === "admin" || canUserOwnTask(task, user);
+  return (isValidActorId(user?.id) && user.rol === "admin") || canUserOwnTask(task, user);
 }
 
 export function canUserDeleteTask(task, user) {
-  return user?.rol === "admin" || canUserOwnTask(task, user);
+  return (isValidActorId(user?.id) && user.rol === "admin") || canUserOwnTask(task, user);
 }
 
 export function canUserMoveTask(task, user) {

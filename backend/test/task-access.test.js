@@ -8,11 +8,11 @@ test("el administrador conserva acceso global a tareas", () => {
 });
 
 test("el empleado queda limitado a tareas propias o colaboraciones", () => {
-  const access = buildTaskAccessClause({ rol: "produccion", nombre: "Germán" }, "t", "$3");
-  assert.equal(access.value, JSON.stringify(["Germán"]));
-  assert.match(access.sql, /t\.asignado_a/);
-  assert.match(access.sql, /colaboradores/);
-  assert.match(access.sql, /translate\(lower/);
+  const access = buildTaskAccessClause({ id: 7, rol: "produccion", nombre: "Germán" }, "t", "$3");
+  assert.equal(access.value, 7);
+  assert.match(access.sql, /tarea_asignaciones/);
+  assert.match(access.sql, /ta\.usuario_id = \$3::integer/);
+  assert.doesNotMatch(access.sql, /nombre|asignado_a|colaboradores|translate/);
 });
 
 test("todo usuario autenticado puede consultar el tablero compartido de RENDER OS", () => {
@@ -21,13 +21,13 @@ test("todo usuario autenticado puede consultar el tablero compartido de RENDER O
     { sql: "", value: null },
   );
   const historicalAccess = buildTaskReadAccessClause(
-    { rol: "diseno", nombre: "Leo Aragon" },
+    { id: 8, rol: "diseno", nombre: "Leo Aragon" },
     "t",
     "$3",
     "historical",
   );
-  assert.equal(historicalAccess.value, JSON.stringify(["Leo Aragon"]));
-  assert.match(historicalAccess.sql, /t\.asignado_a/);
+  assert.equal(historicalAccess.value, 8);
+  assert.match(historicalAccess.sql, /ta\.tarea_id = t\.id/);
 });
 
 test("la identidad de tareas usa el nombre firmado y admite usuario como respaldo", () => {
@@ -36,10 +36,10 @@ test("la identidad de tareas usa el nombre firmado y admite usuario como respald
   assert.deepEqual(getTaskActorAliases({ nombre: "Mariano Meza", usuario: "Mariano" }), ["Mariano Meza", "Mariano"]);
 });
 
-test("la escritura reconoce tanto el nombre visible como el usuario", () => {
-  const access = buildTaskAccessClause({ rol: "diseno", nombre: "Mariano Meza", usuario: "Mariano" }, "t", "$2");
-  assert.equal(access.value, JSON.stringify(["Mariano Meza", "Mariano"]));
-  assert.match(access.sql, /jsonb_array_elements_text\(\$2::jsonb\)/);
+test("cambiar el nombre no cambia la autoridad y carecer de ID nunca autoriza", () => {
+  const access = buildTaskAccessClause({ id: 8, rol: "diseno", nombre: "Mariano Meza", usuario: "Mariano" }, "t", "$2");
+  assert.deepEqual(access, buildTaskAccessClause({ id: 8, rol: "diseno", nombre: "Otro nombre" }, "t", "$2"));
+  assert.deepEqual(buildTaskAccessClause({ rol: "diseno", nombre: "Mariano Meza" }, "t", "$2"), { sql: " AND FALSE", value: null });
 });
 
 test("un empleado puede editar los datos laborales de sus tareas de RENDER OS", () => {

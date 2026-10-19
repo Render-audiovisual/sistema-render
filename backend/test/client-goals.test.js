@@ -57,22 +57,123 @@ test('el editor compartido sólo acepta contenido, nunca responsables o estados'
   await assert.rejects(editGoalContent(db,1,{...body,copy:42}), /Revisá/);
   await assert.rejects(editGoalContent(db,-1,body), /inválida/);
 });
-test('las asignaciones se heredan de campos explícitos sin inventar editores', async () => {
-  const responses = [[],[{cliente_id:1,tipo:'carrusel',responsable_diseño:'Mariano'}],[{cliente_id:1,disenador_responsable:'Mariano'}],[],
-    [{id:1,nombre:'Mariano',usuario:'mariano'},{id:2,nombre:'Editor no asignado',usuario:'editor'}]];
+test('las asignaciones se heredan de IDs persistidos sin resolver nombres', async () => {
+  const responses = [[],[{cliente_id:1,titulo:'Carrusel',usuario_id:1,nombre:'Mariano renombrado',periodo_asignacion:'2026-10'}]];
   const db = {query:async () => ({rows:responses.shift()})};
   const result = await inheritedGoalResponsibles(db,{clave:'cliente-1',cuentas:[{id:1}]},'2026-10');
-  assert.deepEqual(result.video,[]); assert.deepEqual(result.carrusel,[{id:1,nombre:'Mariano'}]);
+  assert.deepEqual(result.video,[]); assert.deepEqual(result.carrusel,[{id:1,nombre:'Mariano renombrado'}]);
 });
 test('la automatización no modifica períodos anteriores al inicio', async () => {
   const db = {query() { throw new Error('No consultar historial'); }};
   assert.equal((await reconcileMonthlyGoals(db,'2026-09')).creadas,0);
 });
 test('hereda la última asignación del cliente cuando el mes nuevo aún no tiene tareas', async () => {
-  const responses = [[],[],[],[
-    {cliente_id:1,titulo:'Reel 1',tipo_tarea:'edicion',tarea_padre_id:8,asignado_a:'Luciano',periodo_asignacion:'2026-09',propiedades_extra:{}},
-    {cliente_id:1,titulo:'Reel 2',tipo_tarea:'edicion',asignado_a:'Editor anterior',periodo_asignacion:'2026-08',propiedades_extra:{}},
-  ],[{id:1,nombre:'Luciano',usuario:'luciano'},{id:2,nombre:'Editor anterior',usuario:'anterior'}]];
+  const responses = [[],[
+    {cliente_id:1,titulo:'Reel 1',tipo_tarea:'edicion',tarea_padre_id:8,usuario_id:1,nombre:'Luciano',periodo_asignacion:'2026-09'},
+    {cliente_id:1,titulo:'Reel 2',tipo_tarea:'edicion',usuario_id:2,nombre:'Editor anterior',periodo_asignacion:'2026-08'},
+  ]];
   const result = await inheritedGoalResponsibles({query:async () => ({rows:responses.shift()})},{clave:'cliente-1',cuentas:[{id:1}]},'2026-10');
   assert.deepEqual(result.video,[{id:1,nombre:'Luciano'}]);
+});
+
+// In-memory query double only: no PostgreSQL connection or integration harness.
+function preparationDouble({ reused = false, inactive = false, assignmentFailure = false, shared = false } = {}) {
+  const calls = [];
+  const clientRows = shared ? [
+    {id:1,nombre:'Cuenta A',grupo_feed_id:8,grupo_feed_nombre:'Feed',cuota_feed_carruseles:1},
+    {id:2,nombre:'Cuenta B',grupo_feed_id:8,grupo_feed_nombre:'Feed',cuota_feed_carruseles:1},
+  ] : [{id:1,nombre:'Cliente',cuota_carruseles:1}];
+  const users = [{id:11,nombre:'Mismo nombre'}, {id:22,nombre:'Mismo nombre'}, {id:33,nombre:'Persona renombrada'}];
+  const objective = {id:90,nombre:'Objetivo',cuentas:clientRows.map(({id,nombre}) => ({id,nombre})),reels:0,carruseles:1};
+  const db = {
+    async query(sql, params = []) {
+      calls.push({sql,params});
+      if (sql.includes('FROM clientes c')) return {rows:clientRows};
+      if (sql.includes('FROM cliente_objetivo_responsables')) return {rows:[]};
+      if (sql.startsWith('SELECT id,nombre,usuario FROM usuarios')) {
+        assert.match(sql, /activo IS TRUE/);
+        assert.match(sql, /FOR SHARE/);
+        return {rows:users.filter(user => params[0].includes(user.id) && !(inactive && user.id === 22))};
+      }
+      if (sql.includes('SELECT * FROM cliente_objetivos_mensuales')) return {rows:[objective]};
+      if (sql.startsWith('SELECT tipo,numero')) return {rows:[]};
+      if (sql.includes('SELECT t.*,p.tipo pieza_tipo')) return {rows:reused ? [
+        {id:100,titulo:'Carrusel existente',asignado_a:'Etiqueta histórica',estado:'pendiente',propiedades_extra:{colaboradores:['Histórico']}}
+      ] : []};
+      if (sql.includes('FROM publicaciones p WHERE')) return {rows:shared ? [{id:8,cliente_id:2,tipo:'carrusel',estado:'pendiente'}] : []};
+      if (sql.startsWith('INSERT INTO tareas(')) return {rows:[{id:100,titulo:params[0],estado:params[1],asignado_a:params[2],publicacion_id:params[4],propiedades_extra:JSON.parse(params[7])}]};
+      if (sql.startsWith('INSERT INTO tarea_asignaciones') && assignmentFailure) throw new Error('assignment failure');
+      if (/^(BEGIN|COMMIT|ROLLBACK|SELECT pg_advisory|DELETE FROM tarea_asignaciones|INSERT INTO tarea_asignaciones|INSERT INTO cliente_objetivo_piezas|DELETE FROM cliente_objetivo_responsables|INSERT INTO cliente_objetivo_responsables)/.test(sql)) return {rows:[]};
+      throw new Error(`Unexpected unit query: ${sql}`);
+    },
+    release() { calls.push({sql:'RELEASE'}); },
+  };
+  return {calls,pool:{connect:async () => db}};
+}
+
+test('crear una tarea guarda IDs distintos aunque los nombres coincidan, antes del COMMIT', async () => {
+  const {pool,calls} = preparationDouble();
+  const result = await prepareGoal(pool,{period:'2026-10',key:'cliente-1',responsibleIds:[22,11,22],actor:'Etiqueta no autorizante'});
+  assert.equal(result.creadas,1);
+  const insert = calls.find(call => call.sql.startsWith('INSERT INTO tarea_asignaciones'));
+  assert.deepEqual(insert.params,[100,[11,22],['responsable','colaborador']]);
+  const taskIndex = calls.findIndex(call => call.sql.startsWith('INSERT INTO tareas('));
+  const assignmentIndex = calls.indexOf(insert);
+  const pieceIndex = calls.findIndex(call => call.sql.startsWith('INSERT INTO cliente_objetivo_piezas'));
+  assert.ok(taskIndex < assignmentIndex && assignmentIndex < pieceIndex && pieceIndex < calls.findIndex(call => call.sql === 'COMMIT'));
+  assert.equal(calls.at(-1).sql,'RELEASE');
+});
+
+test('asignaciones por cuenta usan IDs seleccionados sin modificar tareas reutilizadas', async () => {
+  const {pool,calls} = preparationDouble({shared:true});
+  await prepareGoal(pool,{period:'2026-10',key:'grupo-8',responsibleIds:[11,22,33],responsibleByAccount:{1:[11],2:[22,33]}});
+  assert.deepEqual(calls.find(call => call.sql.startsWith('INSERT INTO tarea_asignaciones')).params,
+    [100,[22,33],['responsable','colaborador']]);
+  const reused = preparationDouble({reused:true});
+  assert.equal((await prepareGoal(reused.pool,{period:'2026-10',key:'cliente-1',responsibleIds:[33],persistResponsibles:true})).vinculadas,1);
+  assert.equal(reused.calls.some(call => /(?:INSERT INTO|DELETE FROM) tarea_asignaciones|UPDATE tareas/.test(call.sql)),false);
+});
+
+test('responsables por formato determinan los IDs de las tareas nuevas', async () => {
+  const {pool,calls} = preparationDouble();
+  await prepareGoal(pool,{period:'2026-10',key:'cliente-1',responsibleIds:[11,22,33],responsibleByType:{video:[11],carrusel:[33,22]}});
+  assert.deepEqual(calls.find(call => call.sql.startsWith('INSERT INTO tarea_asignaciones')).params,
+    [100,[22,33],['responsable','colaborador']]);
+});
+
+test('usuarios inactivos o inexistentes abortan antes de crear tareas', async () => {
+  for (const responsibleIds of [[11,22],[11,999]]) {
+    const {pool,calls} = preparationDouble({inactive:true});
+    await assert.rejects(prepareGoal(pool,{period:'2026-10',key:'cliente-1',responsibleIds}),/no está disponible/);
+    assert.equal(calls.some(call => call.sql.startsWith('INSERT INTO tareas(')),false);
+    assert.equal(calls.at(-2).sql,'ROLLBACK');
+    assert.equal(calls.at(-1).sql,'RELEASE');
+  }
+});
+
+test('si falla persistir IDs se revierte toda la preparación y no se confirma el objetivo', async () => {
+  const {pool,calls} = preparationDouble({assignmentFailure:true});
+  await assert.rejects(prepareGoal(pool,{period:'2026-10',key:'cliente-1',responsibleIds:[11]}),/assignment failure/);
+  assert.equal(calls.some(call => call.sql === 'COMMIT'),false);
+  assert.equal(calls.some(call => call.sql.startsWith('INSERT INTO cliente_objetivo_piezas')),false);
+  assert.equal(calls.at(-2).sql,'ROLLBACK');
+});
+
+test('herencia consulta usuarios activos por IDs, nunca nombres de etiquetas antiguas', async () => {
+  const sql = [];
+  const responses = [[],[]];
+  const result = await inheritedGoalResponsibles({query:async query => {sql.push(query);return {rows:responses.shift()};}},
+    {clave:'cliente-1',cuentas:[{id:1}]},'2026-10');
+  assert.deepEqual(result,{video:[],carrusel:[]});
+  assert.match(sql[1],/JOIN tarea_asignaciones a ON a.tarea_id=t.id/);
+  assert.match(sql[1],/u.id=a.usuario_id AND u.activo IS TRUE/);
+  assert.doesNotMatch(sql.join('\n'),/lower\(|nombre\s*=|asignado_a/);
+});
+
+test('la herencia conserva IDs de homónimos y deduplica una persona en varias tareas', async () => {
+  const row = {cliente_id:1,titulo:'Reel',tipo_tarea:'edicion',periodo_asignacion:'2026-10',nombre:'Nombre compartido',asignado_a:'Nombre antiguo'};
+  const responses = [[],[{...row,usuario_id:11},{...row,usuario_id:22},{...row,usuario_id:11}]];
+  const result = await inheritedGoalResponsibles({query:async () => ({rows:responses.shift()})},
+    {clave:'cliente-1',cuentas:[{id:1}]},'2026-10');
+  assert.deepEqual(result.video,[{id:11,nombre:'Nombre compartido'},{id:22,nombre:'Nombre compartido'}]);
 });

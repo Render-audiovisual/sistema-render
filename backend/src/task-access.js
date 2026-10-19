@@ -10,28 +10,12 @@ export function getTaskActorAliases(auth = {}) {
 
 export function buildTaskAccessClause(auth, alias, placeholder) {
   if (auth?.rol === "admin") return { sql: "", value: null };
-  const actors = getTaskActorAliases(auth);
-  if (actors.length === 0) return { sql: " AND FALSE", value: null };
-  const normalizedActors = `(
-    SELECT translate(lower(actor.nombre), 'áéíóúüñ', 'aeiouun')
-    FROM jsonb_array_elements_text(${placeholder}::jsonb) AS actor(nombre)
-  )`;
+  const userId = auth?.id;
+  if (!Number.isSafeInteger(userId) || userId < 1) return { sql: " AND FALSE", value: null };
   return {
-    sql: ` AND (
-      translate(lower(${alias}.asignado_a), 'áéíóúüñ', 'aeiouun') IN ${normalizedActors}
-      OR EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements_text(
-          CASE
-            WHEN jsonb_typeof(${alias}.propiedades_extra->'colaboradores') = 'array'
-              THEN ${alias}.propiedades_extra->'colaboradores'
-            ELSE '[]'::jsonb
-          END
-        ) AS colaborador(nombre)
-        WHERE translate(lower(colaborador.nombre), 'áéíóúüñ', 'aeiouun') IN ${normalizedActors}
-      )
-    )`,
-    value: JSON.stringify(actors),
+    sql: ` AND EXISTS (SELECT 1 FROM tarea_asignaciones ta
+      WHERE ta.tarea_id = ${alias}.id AND ta.usuario_id = ${placeholder}::integer)`,
+    value: userId,
   };
 }
 
@@ -46,12 +30,12 @@ export function buildTaskReadAccessClause(auth, alias, placeholder, workspace) {
 export function canEmployeePatchTask(body = {}, { workspace, role } = {}) {
   const keys = Object.keys(body);
   if (workspace === "render_os") {
-    const allowedFields = ["titulo", "asignado_a", "cliente_id", "fecha_vencimiento", "tipo_tarea", "subtipo", "prioridad", "estado", "aclaraciones", "material_referencia", "propiedades_extra", "expected_updated_at"];
+    const allowedFields = ["titulo", "asignado_a", "asignado_a_id", "colaborador_ids", "cliente_id", "fecha_vencimiento", "tipo_tarea", "subtipo", "prioridad", "estado", "aclaraciones", "material_referencia", "propiedades_extra", "expected_updated_at", "expected_revision"];
     const allowedMetadata = ["resumen", "etiquetas", "colaboradores", "guiones", "copy_trabajo", "produccion_videos_previstos"];
     return keys.every((key) => allowedFields.includes(key))
       && Object.keys(body.propiedades_extra || {}).every((key) => allowedMetadata.includes(key));
   }
-  if (keys.every((key) => ["estado", "expected_updated_at"].includes(key))) return true;
+  if (keys.every((key) => ["estado", "expected_updated_at", "expected_revision"].includes(key))) return true;
   if (workspace !== "render_os" && role === "produccion") {
     const allowedTopLevel = keys.every((key) => ["propiedades_extra", "expected_updated_at"].includes(key));
     const allowedMetadata = Object.keys(body.propiedades_extra || {}).every((key) => ["horario", "coordinada"].includes(key));

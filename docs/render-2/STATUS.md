@@ -54,7 +54,26 @@ Results are recorded after integration below; unit/static checks are not equival
 - Independent principal HTTP/PostgreSQL fixture run: 2 passed (parent plus goal-boundary subtest); fresh migration chain through 054 and forward 055 upgrade of populated fixture history, real password login for distinct synthetic owner IDs, current-role downgrade, last-admin protection, nonempty financial sentinel privacy, inactive-account rejection, logout revocation and no publication/timestamp from task completion/reopening. Snapshot invariance and goal audit were checked. Fixture cluster stopped/removed. See `LOCAL_TESTING.md` for reproduction and limitations.
 - Pure startup/isolation guards verify disabled principal import does not start listeners, database queries, timers or external fetch.
 
-## Next integration (still phase 1)
+## Second integration — stable task membership (2026-10-19)
+
+Implemented locally: migration 056 adds normalized owner/collaborator IDs without inferring historical membership; migration 057 adds an integer revision incremented on every task update. Principal task ACLs use IDs, and assignment replacement is transactional with active-recipient revalidation. Stale assignment edits and stale approval handoffs return conflicts rather than restoring revoked collaborators. Main task DTOs and workspace pickers carry IDs/revisions; duplicate display names remain distinguishable.
+
+New automatic task writes from pieces, goals, legacy production visits and Wilson now persist normalized bindings. Wilson retains legacy name-based integration policy/filtering: this is a documented unresolved boundary, not a claim of full authorization unification. Production visits still create a legacy aggregate editing task; per-video creation remains Phase 2 work.
+
+Coordinator integrated server/API/transactions; Arendt supplied assignment helpers and independent review; Herschel integrated the operational workspace; Archimedes integrated goal and Wilson writers; Wegener independently exercised isolated HTTP/PostgreSQL regressions. Shared server changes remained coordinator-owned.
+
+Verified after integration:
+
+- Backend regression: **461 passed, 9 opt-in cases skipped, 0 failures**.
+- Independent disposable PostgreSQL/HTTP suites: **17 passed, 0 failed, 0 skipped**. Includes original security/publication regression, migration 056 preservation of populated history, ID ownership with homonyms, rename, next-edit collaborator revocation, explicit legacy binding, inactive-recipient rejection, injected SQL rollback, exact-revision conflicts, publisher-ID approval handoff and automatic piece-task ownership. See `ASSIGNMENTS_QA.md` for scope and reproducible commands.
+- Frontend production build passed locally. No upload or deployment.
+- Browser smoke on the principal app with disposable accounts: create a task, assign owner/collaborator, reload, log in as editor, edit and reload. Desktop and 390px mobile checked; no document-width overflow in that mobile route. This smoke preceded the final integer-revision guard; it is not a complete post-change browser E2E suite or global responsive certification.
+
+Important rollout gate: historical name-only tasks deliberately remain unbound/read-only for non-admin mutation until explicitly assigned by an administrator. No real roster was mapped and no real accounts were provisioned. Forward migrations are prepared and verified only in disposable development fixtures, not applied to a commercial database. The active-recipient locking path passed regression, but concurrent deactivation was not directly stress-tested. Wilson transaction wiring has unit/static coverage, not a dedicated real PostgreSQL integration test.
+
+The principal app and preview have not yet been consolidated visually or operationally. Phase 1 remains open: five-state storage/transitions, explicit review/publication capabilities, remaining integration authorization boundaries and broader privacy/concurrency coverage must be resolved before claiming the core contracts complete. No production change has occurred.
+
+## Original next-integration checklist (items 1–2 now implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.
 2. Route task authorization and new assignment writes through IDs; update operational UI/API DTOs together and prove rename/collaborator-removal tests with PostgreSQL.

@@ -290,7 +290,9 @@ test("las vistas de Historias permanecen completas en celular", () => {
 
 test("la revisión de videos permite al Líder entregarlos a Oriana", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
-  assert.match(workspaceSource, /Aprobar y enviar a \$\{publicationResponsible\}/);
+  assert.match(workspaceSource, /Aprobar y enviar/);
+  assert.match(workspaceSource, /selectedPublisher\.nombre/);
+  assert.match(workspaceSource, /responsable_publicacion_id/);
   assert.match(workspaceSource, /\/aprobar-publicacion\?workspace=render_os/);
   assert.match(workspaceSource, /Pegá el enlace de la carpeta de Google Drive/);
 });

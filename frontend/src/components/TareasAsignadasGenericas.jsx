@@ -11,8 +11,10 @@ export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo })
 
   const cargarTareas = () => {
     Promise.all(
-      responsables.map((responsable) => {
-        const params = new URLSearchParams({ workspace: "render_os", asignado_a: responsable });
+      (esAdmin ? responsables : [null]).map((responsable) => {
+        const params = new URLSearchParams({ workspace: "render_os" });
+        if (esAdmin && responsable) params.set("asignado_a", responsable);
+        else if (sesion?.usuario?.id) params.set("asignado_a_id", String(sesion.usuario.id));
         if (tipoTarea) params.set("tipo_tarea", tipoTarea);
         return fetch(`/api/tareas?${params.toString()}`).then(async (response) => {
           const body = await response.json().catch(() => []);
@@ -37,7 +39,7 @@ export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo })
   useEffect(() => {
     cargarTareas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nombre, tipoTarea, nombres?.join("|")]);
+  }, [nombre, tipoTarea, nombres?.join("|"), sesion?.usuario?.id]);
 
   const cambiarEstado = (tareaId, nuevoEstado) => {
     fetch(`/api/tareas/${tareaId}?workspace=render_os`, {

@@ -11,6 +11,7 @@ import { getStateNotification, validateProductionHandoff } from "./task-workflow
 import { createMiaPersonalListsRouter, enqueueDuePersonalListReminders } from "./mia-personal-lists.js";
 import { createMiaSupervisorRouter, acknowledgeSupervisorDelivery, supervisorNotificationDeliverable } from "./mia-supervisor.js";
 import { isSupervisorLeader } from "./mia-supervisor-policy.js";
+import { annotateTaskAssignments, replaceTaskAssignments, resolveTaskAssignments } from "./task-assignments.js";
 
 const DEFAULT_PUBLIC_KEY = fs.readFileSync(new URL("./wilson-public-key.pem", import.meta.url), "utf8");
 const DEFAULT_ALLOWED_TELEGRAM_IDS = ["1826333320", "1890547269"];
@@ -694,6 +695,24 @@ export function buildMiaPendingEvent(task) {
     text = `Avance de producción: ${task.titulo}\nSe registraron ${amount} video${amount === 1 ? "" : "s"}. La visita continúa En proceso.`;
   }
   return { id: eventId, task_id: Number(task.id), type, destination, created_at: pending.creado_en, text, task_url: url };
+}
+
+// Only explicit write-boundary selections may resolve labels into IDs. Never
+// reconstruct untouched membership from legacy task labels (including PATCH).
+export async function resolveWilsonTaskAssignmentWrite(db, input, normalizedTask, currentTask = null) {
+  const ownerSelected = ["responsable", "asignado_a", "responsables"].some(key => hasOwn(input, key));
+  const collaboratorsSelected = ["colaboradores", "responsables"].some(key => hasOwn(input, key));
+  if (currentTask && !ownerSelected && !collaboratorsSelected) return null;
+  if (!currentTask) return resolveTaskAssignments(db, {
+    asignado_a: normalizedTask.asignado_a, colaboradores: normalizedTask.colaboradores,
+  });
+  const [current] = await annotateTaskAssignments(db, [currentTask]);
+  const selection = collaboratorsSelected
+    ? { colaboradores: normalizedTask.colaboradores }
+    : { colaborador_ids: current.colaborador_ids };
+  if (ownerSelected) selection.asignado_a = normalizedTask.asignado_a;
+  else if (current.asignado_a_id !== null) selection.asignado_a_id = current.asignado_a_id;
+  return resolveTaskAssignments(db, selection, { requireOwner: ownerSelected });
 }
 
 export function buildWilsonTaskUpdate(input, currentTask, catalog) {
@@ -1700,6 +1719,11 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         return res.status(422).json(result);
       }
       const task = result.task;
+      const assignment = await resolveWilsonTaskAssignmentWrite(client, req.body, task, current);
+      if (!assignment) {
+        task.asignado_a = current.asignado_a;
+        task.colaboradores = current.propiedades_extra?.colaboradores || [];
+      }
       const comparisons = {
         titulo: [current.titulo, task.titulo],
         asignado_a: [current.asignado_a, task.asignado_a],
@@ -1723,7 +1747,11 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
       const changedFields = Object.entries(comparisons)
         .filter(([, [before, after]]) => before !== after)
         .map(([field]) => field);
-      const assignmentsChanged = changedFields.includes("asignado_a") || changedFields.includes("colaboradores");
+      // Explicit reselection also persists IDs when display labels are equal.
+      if (assignment && !changedFields.includes("asignado_a") && !changedFields.includes("colaboradores")) {
+        changedFields.push("colaboradores");
+      }
+      const assignmentsChanged = Boolean(assignment);
       const targetPermissionError = assignmentsChanged ? privateAssignmentListError(req, env, task) : null;
       if (targetPermissionError) {
         await client.query("ROLLBACK");
@@ -1761,6 +1789,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
           task.tipo_tarea,task.subtipo,task.prioridad,task.aclaraciones,task.material_referencia,
           JSON.stringify(properties)],
       );
+      if (assignment) await replaceTaskAssignments(client, current.id, assignment);
       await writeWilsonAudit(client, req, { action: "editar_tarea", taskId: current.id, details: { changedFields, idempotencyKey: key } });
       await client.query("COMMIT");
       const updatedTask = { ...updated.rows[0], cliente_nombre: task.cliente_nombre };
@@ -1816,6 +1845,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         return res.status(409).json({ error: "Encontré una posible tarea duplicada.", duplicates: result.duplicates });
       }
       const task = result.task;
+      const assignment = await resolveWilsonTaskAssignmentWrite(client, req.body, task);
       const properties = {
         workspace: "render_os", Origen: `Creada por Wilson desde ${req.wilson.channel === "whatsapp" ? "WhatsApp" : "Telegram"}`, origen_integracion: "wilson",
         wilson_idempotency_key: key, wilson_channel: req.wilson.channel, wilson_actor_id: req.wilson.actorId,
@@ -1833,6 +1863,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         [task.titulo,task.asignado_a,task.cliente_id,JSON.stringify(properties),task.fecha_vencimiento,
           task.tipo_tarea,task.subtipo,task.prioridad,task.aclaraciones,task.material_referencia],
       );
+      await replaceTaskAssignments(client, inserted.rows[0].id, assignment);
       await writeWilsonAudit(client, req, { action: "crear_tarea", taskId: inserted.rows[0].id, details: { idempotencyKey: key } });
       await client.query("COMMIT");
       const createdTask = { ...inserted.rows[0], cliente_nombre: task.cliente_nombre };

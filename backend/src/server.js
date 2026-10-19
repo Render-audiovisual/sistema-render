@@ -22,6 +22,8 @@ import { setupDemoClientes } from "./setup-demo-data.js";
 import { shouldSetupDemoData } from "./hosting-config.js";
 import { requireAuthentication, requireRole, requireCurrentIdentity, issueUserToken } from "./auth.js";
 import { administerUser } from "./user-administration.js";
+import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
+import { persistAssignedTask } from "./task-persistence.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
@@ -2007,7 +2009,7 @@ router.get("/publicaciones/:id/tareas", async (req, res, next) => {
          t.fecha_vencimiento ASC NULLS LAST,t.id ASC`,
       params,
     );
-    res.json(result.rows);
+    res.json(await annotateTaskAssignments(pool, result.rows));
   } catch (error) {
     next(error);
   }
@@ -2043,9 +2045,12 @@ router.post("/tareas", async (req, res, next) => {
       return res.status(403).json({ error: "Solo podés crear tareas dentro de RENDER OS." });
     }
 
-    if (!titulo || !asignado_a) {
+    if (!titulo || (!asignado_a && !req.body.asignado_a_id)) {
       return res.status(400).json({ error: "Faltan título o asignado_a." });
     }
+    const assignment = await resolveTaskAssignments(pool, {
+      ...req.body, colaboradores,
+    });
     if (tipo_tarea && !TIPOS_TAREA_VALIDOS.includes(tipo_tarea)) {
       return res.status(400).json({ error: "Sector (tipo_tarea) inválido." });
     }
@@ -2088,9 +2093,7 @@ router.post("/tareas", async (req, res, next) => {
     if (Array.isArray(etiquetas)) {
       propiedadesExtra.etiquetas = etiquetas.map(String).map((item) => item.trim()).filter(Boolean);
     }
-    if (Array.isArray(colaboradores)) {
-      propiedadesExtra.colaboradores = colaboradores.map(String).map((item) => item.trim()).filter(Boolean);
-    }
+    propiedadesExtra.colaboradores = assignment.collaboratorNames;
     if (workspace === "render_os") {
       propiedadesExtra.workspace = "render_os";
       if (estadoFinal === "publicada") propiedadesExtra.finalizada_at = new Date().toISOString();
@@ -2105,13 +2108,13 @@ router.post("/tareas", async (req, res, next) => {
       propiedadesExtra.produccion_registros = [];
     }
 
-    const result = await pool.query(
+    const result = await persistAssignedTask(pool,
       `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
+       RETURNING id, revision, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
       [
         titulo,
-        asignado_a,
+        assignment.ownerName,
         cliente_id || null,
         estadoFinal,
         Boolean(requiere_aprobacion),
@@ -2125,7 +2128,7 @@ router.post("/tareas", async (req, res, next) => {
         aclaraciones || null,
         material_referencia || null,
         tarea_padre_id || null,
-      ],
+      ], assignment,
     );
 
     const tareaCreada = result.rows[0];
@@ -2137,6 +2140,7 @@ router.post("/tareas", async (req, res, next) => {
       actor: getTaskActor(req.auth),
     });
   } catch (error) {
+    if ([400, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });
@@ -2177,9 +2181,14 @@ const TAREA_COLUMNAS_EDITABLES = [
   "tarea_padre_id",
 ];
 
-async function crearTareaEdicionDesdeVisita(visita) {
+async function crearTareaEdicionDesdeVisita(visita, db = pool) {
+  // Compatibility path until per-video production is integrated. Resolve the
+  // configured recipient once for a NEW task; never infer historical ownership.
+  const assignment = await resolveTaskAssignments(db, visita.propiedades_extra?.edicion_responsable_id
+    ? { asignado_a_id: visita.propiedades_extra.edicion_responsable_id, colaborador_ids: [] }
+    : { asignado_a: "Luciano", colaborador_ids: [] });
   const cliente = visita.cliente_id
-    ? await pool.query("SELECT nombre FROM clientes WHERE id = $1", [visita.cliente_id])
+    ? await db.query("SELECT nombre FROM clientes WHERE id = $1", [visita.cliente_id])
     : { rows: [] };
   const clienteNombre = cliente.rows[0]?.nombre || "Sin cliente";
   const cantidad = getProductionProgress(visita).recorded;
@@ -2194,11 +2203,11 @@ async function crearTareaEdicionDesdeVisita(visita) {
     `Cantidad esperada: ${cantidad} videos.`,
     "Revisar la carpeta completa, separar el material por pieza y pasar cada entrega a revisión.",
   ].join("\n");
-  const result = await pool.query(
+  const result = await db.query(
     `INSERT INTO tareas (
        titulo, asignado_a, cliente_id, estado, propiedades_extra, fecha_vencimiento,
        tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id
-     ) VALUES ($1, 'Luciano', $2, 'pendiente', $3::jsonb, $4, 'edicion', 'video', $5, $6, $7, $8)
+     ) VALUES ($1, $9, $2, 'pendiente', $3::jsonb, $4, 'edicion', 'video', $5, $6, $7, $8)
      ON CONFLICT ((propiedades_extra->>'origen_visita_id'))
        WHERE propiedades_extra->>'workspace' = 'render_os'
          AND propiedades_extra->>'origen_visita_id' IS NOT NULL
@@ -2216,8 +2225,10 @@ async function crearTareaEdicionDesdeVisita(visita) {
       indicaciones,
       visita.material_referencia,
       visita.id,
+      assignment.ownerName,
     ],
   );
+  if (result.rows[0]) await replaceTaskAssignments(db, result.rows[0].id, assignment);
   return result.rows[0] || null;
 }
 
@@ -2230,9 +2241,50 @@ router.patch("/tareas/:id", async (req, res, next) => {
     let colaboradoresAnteriores = [];
     let tareaAnteriorCompleta = null;
     const esRenderOS = req.query.workspace === "render_os";
+    let assignment;
+    if (Object.hasOwn(body, "expected_revision") && (!Number.isSafeInteger(body.expected_revision) || body.expected_revision < 1)) {
+      return res.status(400).json({ error: "La revisión de la tarea no es válida." });
+    }
 
     if (req.auth.rol !== "admin" && !canEmployeePatchTask(body, { workspace: esRenderOS ? "render_os" : "historical", role: req.auth.rol })) {
       return res.status(403).json({ error: "Solo podés actualizar el estado de tus tareas." });
+    }
+
+    const changesPeople = ["asignado_a", "asignado_a_id", "colaborador_ids"].some(key => Object.hasOwn(body, key))
+      || Object.hasOwn(body.propiedades_extra || {}, "colaboradores");
+    if (changesPeople) {
+      if (!body.expected_updated_at || !body.expected_revision) {
+        return res.status(400).json({ error: "Recargá la tarea antes de cambiar sus responsables: falta la versión de edición." });
+      }
+      // Resolve existing access before validating requested recipients. Names
+      // remain labels; they never establish the caller's authority.
+      const access = buildTaskAccessClause(req.auth, "t", "$2");
+      const current = await pool.query(`SELECT t.id,t.asignado_a,t.propiedades_extra
+        FROM tareas t WHERE t.id=$1${access.sql}`, access.value ? [id, access.value] : [id]);
+      if (!current.rows.length) return res.status(404).json({ error: "Tarea no encontrada." });
+      const [assigned] = await annotateTaskAssignments(pool, current.rows);
+      const previousLabels = assigned.propiedades_extra?.colaboradores || [];
+      const collaboratorLabelsChanged = Object.hasOwn(body.propiedades_extra || {}, "colaboradores")
+        && JSON.stringify(body.propiedades_extra.colaboradores) !== JSON.stringify(previousLabels);
+      const actualAssignmentChange = Object.hasOwn(body, "asignado_a_id") || Object.hasOwn(body, "colaborador_ids")
+        || (Object.hasOwn(body, "asignado_a") && body.asignado_a !== assigned.asignado_a) || collaboratorLabelsChanged;
+      // Old forms may echo unchanged labels alongside a text edit. They must
+      // neither backfill history nor re-resolve homonymous users by name.
+      if (actualAssignmentChange) {
+      const explicitOwner = Object.hasOwn(body, "asignado_a") || Object.hasOwn(body, "asignado_a_id");
+      if (!explicitOwner && !assigned.asignado_a_id) {
+        return res.status(409).json({ error: "Esta tarea histórica necesita un responsable verificado antes de cambiar colaboradores." });
+      }
+      const owner = Object.hasOwn(body, "asignado_a_id") ? { asignado_a_id: body.asignado_a_id }
+        : Object.hasOwn(body, "asignado_a") && body.asignado_a !== assigned.asignado_a ? { asignado_a: body.asignado_a }
+        : assigned.asignado_a_id ? { asignado_a_id: assigned.asignado_a_id } : { asignado_a: body.asignado_a };
+      const collaborators = Object.hasOwn(body, "colaborador_ids") ? { colaborador_ids: body.colaborador_ids }
+        : collaboratorLabelsChanged ? { colaboradores: body.propiedades_extra.colaboradores }
+        : { colaborador_ids: assigned.colaborador_ids };
+      assignment = await resolveTaskAssignments(pool, { ...owner, ...collaborators });
+      body.asignado_a = assignment.ownerName;
+      body.propiedades_extra = { ...(body.propiedades_extra || {}), colaboradores: assignment.collaboratorNames };
+      }
     }
 
     if (Object.prototype.hasOwnProperty.call(body, "estado")) {
@@ -2400,10 +2452,15 @@ router.patch("/tareas/:id", async (req, res, next) => {
       where += ` AND date_trunc('milliseconds', t.updated_at) = date_trunc('milliseconds', $${i}::timestamptz)`;
       valores.push(body.expected_updated_at);
     }
+    if (body.expected_revision) {
+      i++;
+      where += ` AND t.revision = $${i}::integer`;
+      valores.push(body.expected_revision);
+    }
 
     const movimientoGlobalFinalizador = esRenderOS
       && isTaskFinalizer(req.auth)
-      && Object.keys(body).every((key) => ["estado", "expected_updated_at"].includes(key));
+      && Object.keys(body).every((key) => ["estado", "expected_updated_at", "expected_revision"].includes(key));
     const acceso = movimientoGlobalFinalizador
       ? { sql: "", value: null }
       : buildTaskAccessClause(req.auth, "t", `$${i + 1}`);
@@ -2413,15 +2470,15 @@ router.patch("/tareas/:id", async (req, res, next) => {
       valores.push(acceso.value);
     }
 
-    const result = await pool.query(
+    const result = await persistAssignedTask(pool,
       `UPDATE tareas AS t SET ${sets.join(", ")}
        WHERE ${where}
-       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
-      valores,
+       RETURNING id, revision, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
+      valores, assignment,
     );
 
     if (result.rows.length === 0) {
-      if (body.expected_updated_at) {
+      if (body.expected_updated_at || body.expected_revision) {
         const accesoExistente = movimientoGlobalFinalizador
           ? { sql: "", value: null }
           : buildTaskAccessClause(req.auth, "t", "$2");
@@ -2476,6 +2533,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
       });
     }
   } catch (error) {
+    if ([400, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });
@@ -2484,6 +2542,9 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
   try {
     if (!isTaskLeader(req.auth)) {
       return res.status(403).json({ error: "Solo Franco o Agustín pueden aprobar una tarea para publicación." });
+    }
+    if (!Number.isSafeInteger(req.body?.expected_revision) || req.body.expected_revision < 1) {
+      return res.status(400).json({ error: "Recargá la tarea antes de aprobar: falta su revisión actual." });
     }
     if (req.query.workspace !== "render_os") {
       return res.status(400).json({ error: "Esta acción solo está disponible en RENDER OS." });
@@ -2506,14 +2567,23 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
       return res.status(409).json({ error: "Esta tarea ya fue aprobada y asignada para publicación." });
     }
     const actor = getTaskActor(req.auth);
-    const requestedPublisher = String(req.body?.responsable_publicacion || "Oriana").trim();
+    const requestedPublisherId = req.body?.responsable_publicacion_id;
+    const requestedPublisher = String(req.body?.responsable_publicacion || "").trim();
+    if (requestedPublisherId !== undefined && (!Number.isSafeInteger(requestedPublisherId) || requestedPublisherId < 1)) {
+      return res.status(400).json({ error: "Elegí una persona válida para publicar." });
+    }
     const publisherResult = await pool.query(
-      "SELECT nombre FROM usuarios WHERE nombre = $1 AND rol IN ('admin', 'community')",
-      [requestedPublisher],
+      "SELECT id,nombre FROM usuarios WHERE (id=$1 OR ($1 IS NULL AND nombre=$2)) AND activo=TRUE AND rol IN ('admin', 'community')",
+      [requestedPublisherId ?? null, requestedPublisher],
     );
-    if (!publisherResult.rows[0]) return res.status(400).json({ error: "Elegí una persona de Community o un Líder para publicar." });
+    if (publisherResult.rows.length !== 1) return res.status(400).json({ error: "Elegí una persona de Community o un Líder para publicar." });
     const publisher = publisherResult.rows[0].nombre;
-    const result = await pool.query(
+    const [previousAssignment] = await annotateTaskAssignments(pool, [tarea]);
+    const approvedAssignment = await resolveTaskAssignments(pool, {
+      asignado_a_id: publisherResult.rows[0].id,
+      colaborador_ids: [...new Set([...previousAssignment.colaborador_ids, ...(previousAssignment.asignado_a_id ? [previousAssignment.asignado_a_id] : [])])],
+    });
+    const result = await persistAssignedTask(pool,
       `UPDATE tareas
        SET asignado_a = $3,
            propiedades_extra = propiedades_extra || $2::jsonb,
@@ -2521,12 +2591,17 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
        WHERE id = $1
          AND propiedades_extra->>'workspace' = 'render_os'
          AND estado = 'en_revision'
+         AND revision = $4::integer
          AND propiedades_extra->>'revision_aprobada' IS DISTINCT FROM 'true'
-       RETURNING id, titulo, asignado_a, cliente_id, estado, requiere_aprobacion,
+       RETURNING id, revision, titulo, asignado_a, cliente_id, estado, requiere_aprobacion,
          propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
          historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones,
          material_referencia, tarea_padre_id, created_at, updated_at`,
-      [req.params.id, JSON.stringify({ revision_aprobada: true, revision_aprobada_por: actor, revision_aprobada_at: new Date().toISOString(), edicion_responsable: tarea.propiedades_extra?.edicion_responsable || tarea.asignado_a, responsable_publicacion: publisher, workspace: "render_os" }), publisher],
+      [req.params.id, JSON.stringify({ revision_aprobada: true, revision_aprobada_por: actor, revision_aprobada_por_id: req.auth.id,
+        revision_aprobada_at: new Date().toISOString(), edicion_responsable: tarea.propiedades_extra?.edicion_responsable || tarea.asignado_a,
+        edicion_responsable_id: tarea.propiedades_extra?.edicion_responsable_id || previousAssignment.asignado_a_id,
+        responsable_publicacion: publisher, responsable_publicacion_id: publisherResult.rows[0].id,
+        colaboradores: approvedAssignment.collaboratorNames, workspace: "render_os" }), publisher, req.body.expected_revision], approvedAssignment,
     );
     if (!result.rows[0]) return res.status(409).json({ error: "La tarea ya fue aprobada o cambió de estado." });
     const aprobada = result.rows[0];
@@ -2688,7 +2763,7 @@ async function confirmProductionVisit(taskId, actor) {
        prioridad,aclaraciones,material_referencia,tarea_padre_id,created_at,updated_at`,
       [task.id, JSON.stringify(properties)],
     );
-    const editingTask = await crearTareaEdicionDesdeVisita({ ...task, propiedades_extra: properties });
+    const editingTask = await crearTareaEdicionDesdeVisita({ ...task, propiedades_extra: properties }, client);
     await client.query("COMMIT");
     if (editingTask) notificarAsignacionSinInterrumpir({ pool, tarea: editingTask, motivo: "creada", actor });
     return { task: updated.rows[0], editing_task: editingTask, created: Boolean(editingTask) };
@@ -2826,6 +2901,7 @@ router.get("/tareas", async (req, res, next) => {
   try {
     const {
       asignado_a,
+      asignado_a_id,
       tipo_tarea,
       historia_id,
       publicacion_id,
@@ -2844,10 +2920,14 @@ router.get("/tareas", async (req, res, next) => {
 
     const limite = Math.min(Math.max(Number.parseInt(limit, 10) || 0, 0), 500);
     const desplazamiento = Math.max(Number.parseInt(offset, 10) || 0, 0);
+    if (asignado_a_id !== undefined && (!/^[1-9]\d*$/.test(String(asignado_a_id)) || !Number.isSafeInteger(Number(asignado_a_id)))) {
+      return res.status(400).json({ error: "Filtro de responsable inválido." });
+    }
 
     let query = `
       SELECT
         t.id,
+        t.revision,
         t.titulo,
         t.estado,
         t.asignado_a,
@@ -2904,7 +2984,11 @@ router.get("/tareas", async (req, res, next) => {
       paramCount++;
     }
 
-    if (asignado_a) {
+    if (asignado_a_id !== undefined) {
+      query += ` AND EXISTS (SELECT 1 FROM tarea_asignaciones filtro WHERE filtro.tarea_id=t.id AND filtro.usuario_id=$${paramCount}::integer)`;
+      params.push(Number(asignado_a_id));
+      paramCount++;
+    } else if (asignado_a) {
       query += ` AND (t.asignado_a = $${paramCount} OR COALESCE(t.propiedades_extra->'colaboradores', '[]'::jsonb) ? $${paramCount})`;
       params.push(asignado_a);
       paramCount++;
@@ -2999,7 +3083,7 @@ router.get("/tareas", async (req, res, next) => {
     const result = await pool.query(query, params);
     const total = result.rows[0]?.total_count || 0;
     res.set("X-Total-Count", String(total));
-    res.json(result.rows.map(({ total_count, ...tarea }) => tarea));
+    res.json(await annotateTaskAssignments(pool, result.rows.map(({ total_count, ...tarea }) => tarea)));
   } catch (error) {
     next(error);
   }
@@ -3042,7 +3126,7 @@ router.get("/tareas/:id", async (req, res, next) => {
     if (acceso.value) params.push(acceso.value);
     const result = await pool.query(
       `SELECT
-         t.id, t.titulo, t.estado, t.asignado_a, t.requiere_aprobacion,
+         t.id, t.revision, t.titulo, t.estado, t.asignado_a, t.requiere_aprobacion,
          t.tarea_padre_id, padre.estado AS tarea_padre_estado,
          t.propiedades_extra, t.cliente_id, c.nombre AS cliente_nombre,
          to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
@@ -3068,7 +3152,7 @@ router.get("/tareas/:id", async (req, res, next) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Tarea no encontrada." });
     }
-    res.json(result.rows[0]);
+    res.json((await annotateTaskAssignments(pool, result.rows))[0]);
   } catch (error) {
     next(error);
   }
@@ -3098,7 +3182,7 @@ router.get("/tareas/:id/subtareas", async (req, res, next) => {
     if (accesoSubtarea.value) paramsSubtareas.push(accesoSubtarea.value);
     const result = await pool.query(
       `SELECT
-         t.id, t.titulo, t.estado, t.asignado_a, t.requiere_aprobacion,
+         t.id, t.revision, t.titulo, t.estado, t.asignado_a, t.requiere_aprobacion,
          t.tarea_padre_id, padre.estado AS tarea_padre_estado,
          t.propiedades_extra, t.cliente_id, c.nombre AS cliente_nombre,
          to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
@@ -3122,7 +3206,7 @@ router.get("/tareas/:id/subtareas", async (req, res, next) => {
        ORDER BY t.id`,
       paramsSubtareas,
     );
-    res.json(result.rows);
+    res.json(await annotateTaskAssignments(pool, result.rows));
   } catch (error) {
     next(error);
   }
@@ -3339,14 +3423,15 @@ function fechaVencimientoTarea(fechaProgramada, diasAntes = 1) {
   return f.toISOString().slice(0, 10);
 }
 
-async function crearTareaAuto({ titulo, asignado_a, cliente_id, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, tarea_padre_id }) {
-  const { rows } = await pool.query(
+async function crearTareaAuto({ titulo, asignado_a, asignado_a_id, cliente_id, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, tarea_padre_id }, db = pool) {
+  const assignment = await resolveTaskAssignments(db, { asignado_a, asignado_a_id, colaborador_ids: [] });
+  const { rows } = await db.query(
     `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, tarea_padre_id)
      VALUES ($1, $2, $3, 'pendiente', false, $4, $5, $6, $7, $8, $9, 'media', $10)
      RETURNING id`,
     [
       titulo,
-      asignado_a,
+      assignment.ownerName,
       cliente_id,
       JSON.stringify(buildAutoTaskProperties()),
       fecha_vencimiento,
@@ -3357,15 +3442,17 @@ async function crearTareaAuto({ titulo, asignado_a, cliente_id, fecha_vencimient
       tarea_padre_id || null,
     ],
   );
+  await replaceTaskAssignments(db, rows[0].id, assignment);
   return rows[0].id;
 }
 
 router.post("/piezas", requireRole("admin"), async (req, res, next) => {
+  let db;
   try {
     const {
       tipo,
       cliente_id,
-      responsable,
+      responsable: requestedResponsible,
       fecha_programada,
       estado,
       idea,
@@ -3375,16 +3462,22 @@ router.post("/piezas", requireRole("admin"), async (req, res, next) => {
       prioridad,
     } = req.body;
 
-    if (!tipo || !cliente_id || !responsable || !fecha_programada) {
+    if (!tipo || !cliente_id || (!requestedResponsible && !req.body.responsable_id) || !fecha_programada) {
       return res
         .status(400)
         .json({
           error: "Faltan tipo, cliente_id, responsable o fecha_programada.",
         });
     }
+    db = await pool.connect();
+    await db.query("BEGIN");
+    const assignment = await resolveTaskAssignments(db, {
+      asignado_a: requestedResponsible, asignado_a_id: req.body.responsable_id, colaborador_ids: [],
+    });
+    const responsable = assignment.ownerName;
 
     if (tipo === "historia") {
-      const result = await pool.query(
+      const result = await db.query(
         `INSERT INTO historias (cliente_id, estado, fecha_programada, responsable, responsable_diseño, idea, copy, material_referencia, aclaraciones, prioridad)
          VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9)
          RETURNING 'historia' AS origen, id, 'historia' AS tipo, cliente_id, estado, fecha_programada, responsable, idea, copy, material_referencia, aclaraciones, prioridad, created_at, updated_at`,
@@ -3405,18 +3498,20 @@ router.post("/piezas", requireRole("admin"), async (req, res, next) => {
       await crearTareaAuto({
         titulo: `Diseñar historia - ${idea || "sin idea"}`,
         asignado_a: responsable,
+        asignado_a_id: assignment.ownerId,
         cliente_id,
         fecha_vencimiento: fechaVencimientoTarea(fecha_programada, 1),
         historia_id: historia.id,
         tipo_tarea: "diseno",
         subtipo: "diseñar",
-      });
+      }, db);
 
+      await db.query("COMMIT");
       return res.status(201).json(historia);
     }
 
     if (["carrusel", "video"].includes(tipo)) {
-      const result = await pool.query(
+      const result = await db.query(
         `INSERT INTO publicaciones (cliente_id, tipo, estado, fecha_programada, responsable, responsable_diseño, idea, copy, material_referencia, aclaraciones, prioridad)
          VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10)
          RETURNING 'publicacion' AS origen, id, tipo, cliente_id, estado, fecha_programada, responsable, idea, copy, material_referencia, aclaraciones, prioridad, created_at, updated_at`,
@@ -3441,35 +3536,41 @@ router.post("/piezas", requireRole("admin"), async (req, res, next) => {
         await crearTareaAuto({
           titulo: `Diseñar assets - ${idea || "sin idea"}`,
           asignado_a: responsable,
+          asignado_a_id: assignment.ownerId,
           cliente_id,
           fecha_vencimiento: fechaVencimientoTarea(fecha_programada, 1),
           publicacion_id: publicacion.id,
           tipo_tarea: "diseno",
           subtipo: "diseñar",
-        });
+        }, db);
       } else {
         // Un video nace como una sola tarea simple del Líder. Filmación y
         // edición se asignan después, cuando ya existen idea, guion y material.
         await crearTareaAuto({
           titulo: `Video - ${idea || "por definir"}`,
           asignado_a: responsable,
+          asignado_a_id: assignment.ownerId,
           cliente_id,
           fecha_vencimiento: fecha_programada,
           publicacion_id: publicacion.id,
           tipo_tarea: "administracion",
           subtipo: "video",
-        });
+        }, db);
       }
 
+      await db.query("COMMIT");
       return res.status(201).json(publicacion);
     }
 
+    await db.query("ROLLBACK");
     res.status(400).json({
       error: "Tipo de pieza inválido. Usa: historia, carrusel, video",
     });
   } catch (error) {
+    if (db) await db.query("ROLLBACK");
+    if ([400, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
-  }
+  } finally { db?.release(); }
 });
 
 router.post("/historias/convertir-flyer/:publicacionId", requireRole("admin"), async (req, res, next) => {
