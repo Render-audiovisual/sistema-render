@@ -45,6 +45,8 @@ import { createPersonalHomeRouter } from "./personal-home.js";
 import { createProjectsRouter } from "./projects.js";
 import { projectDomainConflict } from "./project-errors.js";
 import { createEditorialPublicationRouter } from "./editorial-publication.js";
+import { createEditingDeliveriesRouter } from "./editing-deliveries.js";
+import { editingDeliveryDomainConflict } from "./editing-deliveries-errors.js";
 import { editorialPublicationDomainConflict } from "./editorial-publication-errors.js";
 import { annotateEditorialEvidence } from "./editorial-evidence-read.js";
 import { resolveUserRole } from "./user-roles.js";
@@ -287,6 +289,7 @@ router.use(requireCurrentIdentity(pool));
 router.use('/inicio', createPersonalHomeRouter({ express, pool }));
 router.use('/proyectos', createProjectsRouter({ express, pool }));
 router.use('/editorial-publicacion', createEditorialPublicationRouter({ express, pool }));
+router.use('/tareas-edicion', createEditingDeliveriesRouter({ express, pool }));
 
 router.get("/sesion", (req, res) => res.json({ usuario: req.auth }));
 router.post("/logout", async (req, res, next) => {
@@ -3868,6 +3871,9 @@ if (fs.existsSync(distDir)) {
 // Error handler centralizado: sin esto, Express devuelve HTML/stack
 // traces por defecto en vez de JSON — riesgo de filtrar detalles internos.
 app.use((err, _req, res, _next) => {
+  if (editingDeliveryDomainConflict(err)) {
+    return res.status(409).json({ error: "La tarea conserva entregas registradas. Revisá su historial; no se puede eliminar ni sobrescribir." });
+  }
   if (editorialPublicationDomainConflict(err)) {
     return res.status(409).json({ error: "El registro conserva evidencia de publicación. Revisá su estado y no elimines su historial." });
   }

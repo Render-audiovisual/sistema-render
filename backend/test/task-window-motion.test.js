@@ -31,7 +31,8 @@ test('unsaved-change confirmation still precedes animated close', () => {
   const source=fs.readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
   const close=source.slice(source.indexOf('const closeDetail ='),source.indexOf('const addComment ='));
   assert.ok(close.indexOf('window.confirm') < close.indexOf('windowMotion.close()'));
-  assert.ok(close.includes('if (windowMotion.closing) return;'));
+  assert.ok(close.includes('if (windowMotion.closing || deliveryBusy) return;'));
+  assert.ok(close.includes('editing || contentDirty || deliveryDirty'));
 });
 
 test('un cierre animado suspendido termina por plazo y no duplica el cierre', () => {

@@ -58,7 +58,7 @@ export function fixtureWilsonEnvironment(config = {}) {
   return result;
 }
 
-export async function startLocalHarness({ port = 55594, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, clusterOnly = false, supervisorEnabled = false, wilson = {} } = {}) {
+export async function startLocalHarness({ port = 55594, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, clusterOnly = false, supervisorEnabled = false, wilson = {} } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   if (typeof supervisorEnabled !== 'boolean') throw new Error('Invalid supervisor fixture option');
   if (typeof clusterOnly !== 'boolean') throw new Error('Invalid cluster-only fixture option');
@@ -120,6 +120,7 @@ export async function startLocalHarness({ port = 55594, deferGoalMigration = fal
         RENDER2_DEFER_TASK_RECEIPTS_MIGRATION: String(deferTaskReceiptsMigration),
         RENDER2_DEFER_PROJECTS_MIGRATION: String(deferProjectsMigration),
         RENDER2_DEFER_EDITORIAL_CONFIRMATION_MIGRATION: String(deferEditorialConfirmationMigration),
+        RENDER2_DEFER_EDITING_DELIVERIES_MIGRATION: String(deferEditingDeliveriesMigration),
         RENDER2_FIXTURE_CLUSTER_ONLY: String(clusterOnly),
         PGOPTIONS: '-c statement_timeout=15000' }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
     const ready = await new Promise((resolve, reject) => {
@@ -225,6 +226,7 @@ async function fixtureChild() {
   // the test snapshots populated rows and applies the actual forward SQL.
   // No migration ledger entry is forged; all other baseline files run normally.
   const deferredMigrations = [
+    ...(process.env.RENDER2_DEFER_EDITING_DELIVERIES_MIGRATION === 'true' ? ['065_task_editing_deliveries.sql'] : []),
     ...(process.env.RENDER2_DEFER_EDITORIAL_CONFIRMATION_MIGRATION === 'true' ? ['064_editorial_publication_confirmation.sql'] : []),
     ...(process.env.RENDER2_DEFER_FEEDBACK_RECEIPTS_MIGRATION === 'true' ? ['061_feedback_operation_receipts.sql'] : []),
     ...(process.env.RENDER2_DEFER_TASK_RECEIPTS_MIGRATION === 'true' ? ['062_task_operation_receipts.sql'] : []),
