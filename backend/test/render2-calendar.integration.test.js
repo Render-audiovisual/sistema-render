@@ -210,7 +210,10 @@ test('principal calendar: stable identities, separate dates and read-only bounde
     checked(await api(`/tareas/${editingId}?workspace=render_os`, owner.token, 'PATCH', { fecha_vencimiento: '2026-07-26', expected_revision: task.revision }));
     const actualVisit = await readVisit(); checked(await api(`/producciones/${visit.id}`, admin, 'PATCH', { expected_revision: actualVisit.revision, fecha: '2026-07-27' }));
     for (const piece of [story, publication]) checked(await api(`/${tables[piece.domain]}/${piece.id}`, admin, 'PATCH', { fecha_programada: '2026-08-05' }));
-    const before = await snapshot(); const dto = await calendar(await login('qa_calendar_110001')); validate(dto);
+    // Login now reserves durable abuse counters. Snapshot after authentication
+    // so the calendar read itself must still preserve every table, including it.
+    const freshToken = await login('qa_calendar_110001');
+    const before = await snapshot(); const dto = await calendar(freshToken); validate(dto);
     assert.equal(one(dto, 'tarea', 'tarea', editingId).date, '2026-07-26'); assert.equal(one(dto, 'visita', 'visita', visit.id).date, '2026-07-27');
     assert.equal((await fixture.query("SELECT to_char(fecha_vencimiento,'YYYY-MM-DD') AS day FROM tareas WHERE id=$1", [source.id]))[0].day, '2026-07-27');
     assert.equal(matching(dto, 'programacion', 'historia', story.id).length, 0);

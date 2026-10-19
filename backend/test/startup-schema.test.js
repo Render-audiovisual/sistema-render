@@ -31,6 +31,15 @@ test('inspection failures never return driver details or treat failures as ready
   await assert.rejects(assertCoreSchemaReady({ query: async sql => response(sql, undefined) }), /Invalid principal/);
 });
 
+test('login abuse storage is required before startup and never repaired implicitly', async () => {
+  for (const rows of [complete().filter(row => row.table_name !== 'auth_login_buckets'),
+    complete().map(row => row.table_name === 'auth_login_buckets' && row.column_name === 'attempts' ? { ...row, data_type: 'text' } : row)]) {
+    const calls = [];
+    await assert.rejects(assertCoreSchemaReady({ async query(sql) { calls.push(sql); return response(sql, rows); } }), /not compatible/);
+    assert.ok(calls.every(sql => sql.trim().startsWith('SELECT ')));
+  }
+});
+
 test('an ambiguous effective schema path rejects before inspecting columns', async () => {
   for (const schemas of [[], ['other', 'public'], ['private'], null]) {
     let calls = 0;

@@ -19,6 +19,8 @@ import {
 import { destinatariosNuevosDeAsignacion, encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
 import { encolarNotificacionPrivadaFeedback } from "./private-feedback-notifications.js";
 import { requireAuthentication, requireRole, requireCurrentIdentity, issueUserToken } from "./auth.js";
+import { reserveLoginAttempt } from "./login-abuse.js";
+import { passwordLoginInput, googleLoginInput } from "./login-input.js";
 import { administerUser } from "./user-administration.js";
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { persistAssignedTask } from "./task-persistence.js";
@@ -110,7 +112,6 @@ const googleClient = process.env.GOOGLE_CLIENT_ID
   : null;
 
 app.use(compression());
-app.use(express.json({ limit: "15mb" }));
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -138,6 +139,28 @@ router.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
+// Authentication bodies are small and untrusted. Parse them before the general
+// operational parser; parser errors can include body text, so never log them.
+router.use('/login', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); },
+  express.json({ limit: '32kb' }), (error, _req, res, _next) => {
+    res.status(error.status === 413 ? 413 : 400).json({ error: 'Datos de acceso inválidos.' });
+  });
+router.use(express.json({ limit: '15mb' }));
+
+async function allowLoginAttempt(req, res, identifier) {
+  try {
+    const result = await reserveLoginAttempt(pool, { peer: req.socket?.remoteAddress, ...(identifier === undefined ? {} : { identifier }) }, process.env.JWT_SECRET);
+    if (result.allowed) return true;
+    res.set('Retry-After', String(result.retryAfter));
+    res.status(429).json({ error: 'Demasiados intentos de acceso. Esperá unos minutos y volvé a intentar.' });
+  } catch {
+    // Rate storage/configuration failure must not silently permit unlimited
+    // verification or expose driver details through the global error logger.
+    res.status(503).json({ error: 'No se pudo verificar el acceso. Volvé a intentar más tarde.' });
+  }
+  return false;
+}
+
 router.use("/integraciones/wilson", createWilsonRouter({
   pool,
   notifyAssignment: notificarAsignacionSinInterrumpir,
@@ -152,12 +175,8 @@ router.use("/integraciones/wilson", createWilsonRouter({
 
 router.post("/login", async (req, res, next) => {
   try {
-    const identificador = typeof req.body.usuario === "string" ? req.body.usuario.trim() : "";
-    const { password } = req.body;
-
-    if (!identificador || !password) {
-      return res.status(400).json({ error: "Faltan usuario o contraseña." });
-    }
+    const { usuario: identificador, password } = passwordLoginInput(req.body);
+    if (!await allowLoginAttempt(req, res, identificador)) return;
 
     const result = await pool.query(
       `SELECT id, usuario, nombre, rol, foto_perfil, password_hash, activo, session_version
@@ -196,17 +215,15 @@ router.post("/login", async (req, res, next) => {
       },
     });
   } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: 'Datos de acceso inválidos.' });
     next(error);
   }
 });
 
 router.post("/login/google", async (req, res, next) => {
   try {
-    const { credential } = req.body;
-
-    if (!credential) {
-      return res.status(400).json({ error: "Falta el token de Google." });
-    }
+    const { credential } = googleLoginInput(req.body);
+    if (!await allowLoginAttempt(req, res)) return;
     if (!googleClient) {
       return res
         .status(500)
@@ -278,6 +295,7 @@ router.post("/login/google", async (req, res, next) => {
       },
     });
   } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: 'Datos de acceso inválidos.' });
     next(error);
   }
 });

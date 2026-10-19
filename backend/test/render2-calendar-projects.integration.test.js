@@ -148,8 +148,10 @@ test('calendar project milestones: principal CRUD, parent identity and independe
   });
   await t.test('real milestone date/title changes retain UUID/key/context and refetch through fresh login', async () => {
     await mutate(project.id, `/hitos/${pending.id}`, { fecha: '2026-11-04', titulo: 'QA deliberately postponed milestone' }, responsible.token);
+    // Preserve the all-table read-only assertion after login's security write.
+    const freshToken = await login('qa_cal_project_111001');
     const before = await snapshot();
-    const october = await calendar(await login('qa_cal_project_111001'), { kind: 'hito' }); await validate(october, 'mine', responsible.id);
+    const october = await calendar(freshToken, { kind: 'hito' }); await validate(october, 'mine', responsible.id);
     assert.equal(october.events.some(event => event.source_id === pending.id), false);
     const filters = { desde: '2026-11-01', hasta: '2026-12-01', kind: 'hito' };
     const november = await calendar(responsible.token, filters); await validate(november, 'mine', responsible.id, filters);
