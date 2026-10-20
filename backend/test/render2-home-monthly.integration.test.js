@@ -61,6 +61,7 @@ test('personal home monthly work progress: current-ID membership, Córdoba month
     }
     // Expectations are declared at seed time, not derived by copying server SQL.
     const model = { id: row.id, sector: sector ?? 'sin_sector', state, included,
+      client: clientId === null ? null : { id: clientId, nombre: clientId === client.id ? 'QA Monthly active' : 'QA Monthly inactive' },
       members: new Set([owner, ...collaborators].filter(id => id !== null)) };
     rows.push(model);
     return model;
@@ -110,8 +111,20 @@ test('personal home monthly work progress: current-ID membership, Córdoba month
       groups.set(row.sector, group);
     }
     const by_sector = [...groups.values()].sort((a, b) => a.sector.localeCompare(b.sector));
+    const productionRows = selected.filter(row => row.sector === 'produccion');
+    const clientGroups = new Map();
+    for (const row of productionRows) {
+      const key = row.client?.id ?? null;
+      const group = clientGroups.get(key) || { client: row.client, total: 0, completed: 0 };
+      group.total++; if (['finalizada', 'publicada'].includes(row.state)) group.completed++;
+      clientGroups.set(key, group);
+    }
+    const production = { total: productionRows.length,
+      completed: productionRows.filter(row => ['finalizada', 'publicada'].includes(row.state)).length,
+      client_count: clientGroups.size,
+      clients: [...clientGroups.values()].sort((a,b) => b.total-a.total || (a.client?.id ?? Infinity)-(b.client?.id ?? Infinity)).slice(0,8) };
     return { period: clock.period, total: selected.length,
-      completed: by_sector.reduce((sum, group) => sum + group.completed, 0), by_sector };
+      completed: by_sector.reduce((sum, group) => sum + group.completed, 0), by_sector, production };
   };
   const check = async (id, token = tokens.get(id)) => {
     const home = ok(await api('/inicio', { token }));
@@ -120,7 +133,7 @@ test('personal home monthly work progress: current-ID membership, Córdoba month
     assert.equal(home.version, 1); assert.equal(home.user.id, id);
     const monthly = home.monthly_progress;
     assert.ok(monthly, 'Actual endpoint must expose monthly_progress');
-    keys(monthly, ['period', 'total', 'completed', 'by_sector']);
+    keys(monthly, ['period', 'total', 'completed', 'by_sector', 'production']);
     assert.deepEqual(monthly, expected(id));
     assert.match(monthly.period, /^\d{4}-\d{2}$/);
     assert.equal(monthly.period, home.today.slice(0, 7));
@@ -150,7 +163,8 @@ test('personal home monthly work progress: current-ID membership, Córdoba month
     assert.deepEqual(main.monthly_progress.by_sector.map(g => g.sector),
       ['administracion', 'community', 'desarrollo', 'diseno', 'edicion', 'produccion', 'sin_sector']);
     assert.notDeepEqual(main.monthly_progress, (await check(98604)).monthly_progress, 'Homonyms are distinct IDs');
-    assert.deepEqual((await check(98605)).monthly_progress, { period: clock.period, total: 0, completed: 0, by_sector: [] });
+    assert.deepEqual((await check(98605)).monthly_progress, { period: clock.period, total: 0, completed: 0, by_sector: [],
+      production: { total: 0, completed: 0, client_count: 0, clients: [] } });
     assert.equal((await check(91001)).monthly_progress.total, 1, 'Admin does not receive global monthly totals');
     const duplicates = await fixture.query(`SELECT count(*)::int AS n FROM tarea_asignaciones
       WHERE tarea_id=$1 AND usuario_id=91004`, [rows[1].id]);

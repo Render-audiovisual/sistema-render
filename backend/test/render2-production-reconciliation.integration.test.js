@@ -230,6 +230,26 @@ test('manual production reconciliation HTTP: atomic explicit videos, durable rep
     const childBefore = await snapshot(); expect(await handoff(childResult, childResult.video_ids[0]), 409);
     assert.deepEqual(await snapshot(), childBefore);
   });
+  await t.test('persisted historical provenance still guards reviewed and unreviewed videos after legacy metadata disappears', async () => {
+    const row = await source(), result = expect(await reconcile(intent(row)), 201);
+    const visit = await readVisit(result.visita_id);
+    const added = expect(await api(`/producciones/${result.visita_id}/videos`, {
+      token: admin, method: 'POST', body: { expected_revision: visit.revision,
+        titulo: 'QA never-reviewed later video', estado: 'grabado', guion: 'Explicit later script',
+        material_url: 'https://example.invalid/later-video', observaciones: '' },
+    }), 201);
+    const extra = added.visita.videos.find(video => !result.video_ids.includes(video.id));
+    assert.ok(extra?.id);
+    // Simulate a damaged/imported source using only this synthetic fixture.
+    // The immutable receipt must not disappear with mutable task metadata.
+    await fixture.query("UPDATE tareas SET propiedades_extra=propiedades_extra-ARRAY['produccion_registros','produccion_videos_previstos','produccion_confirmada_at'] WHERE id=$1", [row.id]);
+    const before = await snapshot();
+    for (const videoId of [result.video_ids[0], extra.id]) {
+      expect(await handoff(result, videoId), 409);
+      assert.deepEqual(await snapshot(), before, 'Changed/missing history cannot authorize new editing work');
+    }
+  });
+
   await t.test('real existing normalized source cannot reconcile, and replay rechecks DB role/activity/session', async () => {
     const fresh = expect(await api('/tareas', { token: admin, method: 'POST', body: {
       titulo: 'QA visita fresh normalized', tipo_tarea: 'produccion', subtipo: 'visita', workspace: 'render_os',

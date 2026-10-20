@@ -30,7 +30,15 @@ export async function hasLegacyProductionSource(db, sourceId, source) {
 }
 
 export async function rejectLegacyProductionSource(db, visit, source, videoId = null) {
-  if (await hasLegacyProductionSource(db, visit.tarea_origen_id, source)) {
+  // A persisted review keeps this exact source/visit historical even when its
+  // mutable production metadata/children disappear. Operational detection above
+  // intentionally remains unchanged for source synchronization callers.
+  const requiresReview = await hasLegacyProductionSource(db, visit.tarea_origen_id, source)
+    || (visit.tarea_origen_id != null && (await db.query(
+      'SELECT id FROM produccion_reconciliaciones WHERE visita_id=$1 AND tarea_origen_id=$2 LIMIT 1',
+      [visit.id, visit.tarea_origen_id],
+    )).rows.length > 0);
+  if (requiresReview) {
     if (await isReconciledProductionVideo(db,visit,source,videoId)) return;
     throw fail('La visita tiene producción agregada histórica. Requiere revisión manual antes de vincular o enviar edición por video.');
   }

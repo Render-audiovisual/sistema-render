@@ -118,7 +118,19 @@ test('principal personal home: stable personal IDs, bounded operational DTO and 
   };
   const checkDTO = data => {
     sortedKeys(data, ['version', 'generated_at', 'today', 'user', 'summary', 'tasks', 'review', 'clients', 'visits', 'activity', 'projects', 'capabilities', 'list_totals', 'monthly_progress']);
-    sortedKeys(data.monthly_progress, ['period', 'total', 'completed', 'by_sector']);
+    sortedKeys(data.monthly_progress, ['period', 'total', 'completed', 'by_sector', 'production']);
+    const production = data.monthly_progress.production;
+    sortedKeys(production, ['total', 'completed', 'client_count', 'clients']);
+    assert.ok(Number.isSafeInteger(production.total) && production.total >= 0);
+    assert.ok(Number.isSafeInteger(production.completed) && production.completed >= 0 && production.completed <= production.total);
+    assert.ok(Number.isSafeInteger(production.client_count) && production.client_count >= 0);
+    assert.equal(production.clients.length, Math.min(8, production.client_count));
+    for (const item of production.clients) {
+      sortedKeys(item, ['client', 'total', 'completed']);
+      if (item.client !== null) sortedKeys(item.client, ['id', 'nombre']);
+      assert.ok(Number.isSafeInteger(item.total) && item.total > 0);
+      assert.ok(Number.isSafeInteger(item.completed) && item.completed >= 0 && item.completed <= item.total);
+    }
     assert.equal(data.monthly_progress.period, data.today.slice(0, 7));
     assert.ok(data.monthly_progress.completed <= data.monthly_progress.total);
     assert.equal(data.version, 1); sortedKeys(data.user, ['id', 'nombre']);
@@ -172,6 +184,20 @@ test('principal personal home: stable personal IDs, bounded operational DTO and 
   };
   const checkModel = async (token, userId, isAdmin = false) => {
     const data = await home(token); checkDTO(data); const expected = await model(userId, isAdmin);
+    const dateInCordoba = value => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Cordoba', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value));
+    const productionRows = expected.mine.filter(row => row.tipo_tarea === 'produccion'
+      && (row.day ?? dateInCordoba(row.updated_at)).slice(0,7) === clock.today.slice(0,7));
+    const productionClients = new Map();
+    for (const row of productionRows) {
+      const key = row.cliente_id ?? null;
+      const group = productionClients.get(key) || { client: key === null ? null : { id: key, nombre: row.client_name }, total: 0, completed: 0 };
+      group.total++; if (['finalizada', 'publicada'].includes(row.effective)) group.completed++;
+      productionClients.set(key, group);
+    }
+    assert.deepEqual(data.monthly_progress.production, { total: productionRows.length,
+      completed: productionRows.filter(row => ['finalizada', 'publicada'].includes(row.effective)).length,
+      client_count: productionClients.size,
+      clients: [...productionClients.values()].sort((a,b) => b.total-a.total || (a.client?.id ?? Infinity)-(b.client?.id ?? Infinity)).slice(0,8) });
     assert.equal(data.user.id, userId); assert.deepEqual(data.summary, expected.summary);
     assert.deepEqual(data.tasks.map(row => row.id), expected.open.slice(0, 12).map(row => row.id));
     assert.equal(data.review.scope, isAdmin ? 'team' : 'personal'); assert.equal(data.review.total, expected.reviews.length);

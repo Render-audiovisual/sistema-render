@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { associateProductionEditorial, validateProductionEditorialSelection, productionEditorialCandidates } from '../src/production-editorial.js';
+import { associateProductionEditorial, validateProductionEditorialSelection, productionEditorialCandidates,
+  rejectLegacyProductionSource, hasLegacyProductionSource } from '../src/production-editorial.js';
+import { productionHistoryHash } from '../src/production-history.js';
 import { createProductionRegistryRouter } from '../src/production-registry.js';
 
 const visitId='11111111-1111-4111-8111-111111111111',videoId='22222222-2222-4222-8222-222222222222';
@@ -31,6 +33,7 @@ function fixture(options={}) {
     if(sql.startsWith('SELECT id FROM produccion_videos WHERE id<>'))return{rows:options.conflict?[{id:'other'}]:[]};
     if(sql.startsWith('SELECT id FROM tareas WHERE publicacion_id'))return{rows:options.ambiguous?[{id:20},{id:21}]:[{id:20}]};
     if(sql.includes("propiedades_extra->>'origen_visita_id'"))return{rows:options.legacyAggregate?[{id:50}]:[]};
+    if(sql.startsWith('SELECT id FROM produccion_reconciliaciones WHERE'))return{rows:[]};
     if(sql.startsWith('INSERT INTO publicaciones')){insertPublications++;publication={id:30,cliente_id:1,tipo:'video',estado:'pendiente',fecha_programada:params[1],copy:params[3]};return{rows:[publication]};}
     if(sql.startsWith('UPDATE tareas SET publicacion_id')){task.publicacion_id=params[1];task.revision++;return{rows:[]};}
     if(sql.startsWith('UPDATE cliente_objetivo_piezas SET publicacion_id')){slot.publicacion_id=params[1];return{rows:[]};}
@@ -194,4 +197,98 @@ test('unknown SQL faults reach global error handler after rollback, not a mislea
     assert.equal(f.task.publicacion_id,null);assert.equal(f.slot.publicacion_id,null);assert.equal(f.video.publicacion_id,null);
     assert.equal(f.insertPublications,0);assert.equal(f.visit.revision,2);
   }
+});
+
+// Calls the actual guard and production-history reader. Only storage is mocked;
+// no replacement policy callback, network, database or server startup is used.
+function historyGuardFixture({ receipt = true, reviewed = true, original, children = [], adopted = null,
+  adoptionValid = true, receiptVisit = visitId, receiptSource = 10 } = {}) {
+  const source = { id: 10, propiedades_extra: { workspace: 'render_os' } };
+  const visit = { id: visitId, tarea_origen_id: 10 };
+  const calls = [];
+  const db = { async query(sql, params) {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT id FROM produccion_reconciliaciones WHERE')) {
+      assert.equal(sql, 'SELECT id FROM produccion_reconciliaciones WHERE visita_id=$1 AND tarea_origen_id=$2 LIMIT 1');
+      return { rows: receipt && params[0] === receiptVisit && params[1] === receiptSource ? [{ id: 'receipt' }] : [] };
+    }
+    if (sql.startsWith("SELECT id FROM tareas WHERE propiedades_extra->>'origen_visita_id'")) {
+      assert.deepEqual(params, ['10']); return { rows: children };
+    }
+    if (sql.includes('FROM produccion_reconciliacion_videos rv')) {
+      assert.deepEqual(params, [videoId, visitId, 10]);
+      return { rows: reviewed ? [{ source_history_hash: productionHistoryHash(original ?? source), adopted_task_id: adopted }] : [] };
+    }
+    if (sql.startsWith('SELECT a.tarea_edicion_id FROM produccion_edicion_adopciones')) {
+      assert.deepEqual(params, [videoId, visitId, 10, children[0].id]);
+      return { rows: adoptionValid ? [{ tarea_edicion_id: adopted }] : [] };
+    }
+    assert.fail('Unexpected history guard query: ' + sql);
+  } };
+  return { db, calls, source, visit, run: () => rejectLegacyProductionSource(db, visit, source, videoId) };
+}
+
+test('persisted exact visit/source receipt activates guard for a never-reviewed video after metadata removal', async () => {
+  const f = historyGuardFixture({ reviewed: false });
+  await assert.rejects(f.run(), { status: 409 });
+  assert.ok(f.calls.some(call => call.sql.includes('FROM produccion_reconciliacion_videos rv')));
+  assert.deepEqual(f.calls.find(call => call.sql.startsWith('SELECT id FROM produccion_reconciliaciones')).params, [visitId, 10]);
+  assert.ok(f.calls.every(call => call.sql.startsWith('SELECT')));
+});
+
+test('reviewed video still denies when removed source production metadata no longer matches receipt hash', async () => {
+  const f = historyGuardFixture({ original: { id: 10, propiedades_extra: { workspace: 'render_os',
+    produccion_registros: [{ cantidad: 3 }], produccion_confirmada_at: updated } } });
+  await assert.rejects(f.run(), { status: 409 });
+  assert.ok(f.calls.some(call => call.sql.includes('FROM produccion_reconciliacion_videos rv')));
+});
+
+test('persisted receipt allows only exact reviewed video with unchanged current history hash', async () => {
+  const f = historyGuardFixture();
+  await f.run();
+  assert.equal(f.calls.filter(call => call.sql.includes('FROM produccion_reconciliacion_videos rv')).length, 1);
+  await assert.rejects(rejectLegacyProductionSource(f.db, f.visit, f.source), { status: 409 });
+  await assert.rejects(rejectLegacyProductionSource(f.db, f.visit, null, videoId), { status: 409 });
+});
+
+test('ordinary nonlegacy source remains allowed; unrelated receipt cannot activate exact visit/source guard', async () => {
+  for (const options of [{ receipt: false }, { receiptVisit: videoId }, { receiptSource: 99 }]) {
+    const f = historyGuardFixture({ ...options, reviewed: false });
+    await f.run();
+    assert.equal(f.calls.length, 2);
+    assert.ok(!f.calls.some(call => call.sql.includes('FROM produccion_reconciliacion_videos rv')));
+  }
+  const db = { query() { assert.fail('A source-free visit has no historical source to check'); } };
+  await rejectLegacyProductionSource(db, { id: visitId, tarea_origen_id: null }, null, videoId);
+});
+
+test('persisted receipt does not broaden hasLegacyProductionSource operational detection', async () => {
+  const f = historyGuardFixture();
+  assert.equal(await hasLegacyProductionSource(f.db, 10, f.source), false);
+  assert.equal(f.calls.length, 1);
+  assert.ok(!f.calls.some(call => call.sql.includes('FROM produccion_reconciliaciones')));
+});
+
+test('existing exact adoption proof remains mandatory and multiple children still deny', async () => {
+  const valid = historyGuardFixture({ children: [{ id: 50 }], adopted: 50 });
+  await valid.run();
+  const proof = valid.calls.find(call => call.sql.startsWith('SELECT a.tarea_edicion_id FROM produccion_edicion_adopciones'));
+  assert.match(proof.sql, /adopted.tarea_edicion_id=a.tarea_edicion_id/);
+  assert.match(proof.sql, /original.cliente_id=v.cliente_id/);
+  assert.match(proof.sql, /NOT EXISTS\(SELECT 1 FROM proyecto_tareas/);
+  for (const options of [{ children: [{ id: 50 }], adopted: 50, adoptionValid: false },
+    { children: [{ id: 50 }, { id: 51 }], adopted: 50 }]) {
+    await assert.rejects(historyGuardFixture(options).run(), { status: 409 });
+  }
+});
+
+test('receipt lookup storage faults propagate, never turn into nonlegacy success or manual-review conflict', async () => {
+  const error = Object.assign(new Error('receipt lookup fault'), { code: '08006' });
+  const f = historyGuardFixture();
+  const query = f.db.query;
+  f.db.query = (sql, params) => {
+    if (sql.startsWith('SELECT id FROM produccion_reconciliaciones')) throw error;
+    return query(sql, params);
+  };
+  await assert.rejects(f.run(), actual => actual === error);
 });

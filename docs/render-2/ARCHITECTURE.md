@@ -60,6 +60,32 @@ Integration58 adds a pure per-record personal-list save queue, synchronous dirty
 
 Integration60 replaces Feedback's truncated text-search task candidates with `feedback-task-inventory.js` and `FeedbackTaskInventory.jsx`/`feedbackTaskInventory.js`, mounted by the canonical authenticated Express server. The paginated closed reader separates real editing artifacts/decisions from general shared notes, with no additional operational data source. History of corrections is not inferred pending or resolved; effective approval requires the latest exact artifact binding and compatible revision, not an orphan boolean. Real HTTP tests cover >100 records, all current roles, privacy and one complete editing lifecycle; browser checks cover URL filters, actual task context and mobile width. General notes still have their separate500-note cap. Next perform requirement-by-requirement master acceptance and prioritize remaining functional gaps; no new parallel dashboard/API/browser business store is justified by these fixes. No whole-system or production readiness is implied.
 
+## Master acceptance checkpoint — integration61
+
+This is an evidence map, not a declaration that the master objective is complete. Current source and executable assertions take precedence over older chronological statements in STATUS. The audit agents did not execute services; physical results are recorded by Main separately in STATUS. All implementation and verification remain local.
+
+| Required operational area | Current canonical implementation / evidence family | Acceptance still missing or limited |
+| --- | --- | --- |
+| Personal home | `personal-home.js`, `QuickHome.jsx`/`personalHome.js`; personal/monthly/team/escalation HTTP suites | Complete role/device/keyboard matrix; providers and real roster not validated. |
+| Tasks | One task table, ID assignments, task workflow and editing artifact/review modules; assignments/workflow/deliveries/reviews/cross-sector suites | Fine-grained capability policy approval, wider UI/network acceptance; no implication that final work is published. |
+| Calendar | `calendar.js`, canonical calendar UI; calendar and calendar-projects HTTP suites | General personal reminders not unified into calendar; every responsive route not certified. |
+| Productions | `production-registry.js`, `Productions.jsx`; registry/editorial/adoption/concurrency/full-workflow suites | Existing mixed visits, incremental historical reviews and true aggregate multi-video child disposition remain incomplete. Preservation/rejection is not resolution. |
+| Clients and monthly objectives | `client-goals.js`, `ClientesObjetivos.jsx`; objective-link and editorial suites | Unsaved client/objective piece drafts need shared navigation protection; no real historical quota/financial reconciliation. |
+| Development/web/chatbot projects | `projects.js`, `Projects.jsx`; projects and calendar-projects suites | Module exists with stages/milestones/deliverables/tasks. Full notifications and all-device acceptance not certified. Do not replace with monthly content quotas. |
+| Stories, publications and approvals | Canonical editorial control/detail/publication APIs and UI; editorial-confirmation/piece-detail/control suites | Actual provider publishing/access not verified; only reliable integration or explicit authorized recording can establish publication. |
+| My list | `personal-lists.js`, queue and canonical UI; CAS/persistence/MIA interoperability suites | Native navigation dialog runtime matrix; browser restart is not a durable draft promise. |
+| Feedback | Shared notes plus `feedback-task-inventory.js` and dedicated component; receipts/inventory suites | General note cap500 remains; complete dirty-note native traversal not certified. Correction history is not a pending/resolved inference. |
+| Reports | Principal operational reporting and closed DTOs; operational-privacy/production-reporting/cross-sector suites | Historical total reconciliation and provider evidence remain release gates. |
+| Files and Drive | Existing Google Drive API/OAuth integration and canonical UI | No real account/token/provider connection/upload acceptance; do not claim live external storage verified. |
+| Moodboards | API-backed `MoodboardPreview.jsx` despite its legacy filename | Editor dirty guards and isolation of late responses need completion; no reason to invent another mock/data source. |
+| Finance | Existing PostgreSQL-backed admin routes and safe non-admin projections; privacy/session principal suites | Attribution aliases and actual financial history need explicit reconciliation, not automatic identity remapping. |
+| Users and team | Server ID/current role/activity/session version; administration and identity suites | Real Franco/Agustin independent account roster/linkage/recovery not provisioned or externally verified by tests. |
+| Profile/configuration | Canonical profile and session transport; profile-session HTTP/browser evidence | Global settings/real provider and complete account recovery acceptance remain unknown. |
+
+Cross-cutting gates: browser bearer still lives in XSS-readable localStorage; remote DB TLS currently disables certificate verification and needs a secure-default/configured-CA rollout contract; no remote connection was inspected. DEV DesignPreview still has isolated local operations and sandbox entry points: preserve it as reference until explicit quarantine/retirement and release-artifact exclusion are verified, never merge business records automatically. Existing App/Vite/preview dirt remains user-owned. Deployment, populated staging upgrade/restore, approved account/capability mapping and production authorization are separate gates.
+
+Next historical contract is additive reviewed batches over an existing visit, not removal of409 guards: explicit UUID selection/new manual video descriptions, per-video disposition, observed source/visit revisions, immutable request receipts and latest-review-per-video proof. Hash changes revalidate only selected UUIDs, never the entire visit. Contextual aggregate evidence cannot become cloned individual deliveries/approvals. The integration61 persisted069 guard is only a prerequisite, not implementation of that batch contract. TLS/session hardening and draft-loss findings are independently actionable before release.
+
 Read-only/pure regression candidates, from repository root with dependencies already installed:
 
 ```sh
