@@ -2,6 +2,8 @@
 
 Status: READY / FROZEN inventory, **NOT a cutover approval**.
 
+Integration49 current gate update: all named legacy App imports/mounts are now retired, including Germán after integrations46–48 preserved complete monthly client access, coordination/material context and ID-based task workflows, and49 verified final aliases/history/mobile. Original dashboard sources remain. All older holds below are historical findings, not current operational mounts. This is bounded home consolidation, not approval of overall Render2.0 readiness or automatic deletion of preview/sandbox code.
+
 Integration38 update: the connected administrator HomeTeamWorkload card and `/api/inicio/equipo` now provide paginated global task workload by stable assignment IDs, including unassigned and inactive-user work. Its PostgreSQL/browser evidence and deliberate differences from the four-name task-or-editorial fallback are recorded in HOME_TEAM_WORKLOAD_CONTRACT and STATUS. Combined editorial attention remains open; this does not approve Líder retirement. Original inspection findings below remain historical evidence.
 
 Integration39 update: `/api/editorial-control` now supplies shared, paginated combined editorial queues and authoritative publication classifications; principal rendered controls/navigation are still pending. The actual schema prohibits undated pieces and rechazada, so broader historical assumptions are not runtime coverage. See EDITORIAL_CONTROL_CONTRACT/STATUS. This backend integration alone does not retire Líder/Oriana.

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { canonicalLegacyRoute, replaceLegacyRoute } from './legacy-routes.js';
 
-const dashboards = ['/agustin', '/franco', '/augusto', '/luciano', '/oriana', '/lider'];
+const dashboards = ['/agustin', '/franco', '/augusto', '/luciano', '/oriana', '/lider', '/german'];
 const tasks = ['/piezas', '/wilson-conversaciones'];
 
 test('closed dashboard aliases always use current-identity home, never named scope', () => {
@@ -24,8 +24,8 @@ test('one explicit safe task context survives dashboard/task aliases, with nothi
   assert.equal(canonicalLegacyRoute('/agustin?%74ask=2'), '/workspace/tareas?task=2');
 });
 
-test('only German production dashboard remains held live for its coordination workflow', () => {
-  for (const path of ['/german']) {
+test('production retirement does not broaden the closed alias path policy', () => {
+  for (const path of ['/German', '/german/', '/german/other']) {
     assert.equal(canonicalLegacyRoute(path), null);
     assert.equal(canonicalLegacyRoute(`${path}?task=1`), null);
     assert.equal(canonicalLegacyRoute(`${path}?usuario=other&rol=admin&task=42#other`), null);
@@ -33,7 +33,7 @@ test('only German production dashboard remains held live for its coordination wo
 });
 
 test('retired design/editing/editorial/leader aliases replace only safe context and preserve existing history state', () => {
-  for (const alias of ['/augusto', '/luciano', '/oriana', '/lider']) {
+  for (const alias of ['/augusto', '/luciano', '/oriana', '/lider', '/german']) {
     for (const [suffix, destination] of [
       ['?usuario=other&asignado_a=Franco&rol=admin&cliente_id=9#unknown', '/inicio'],
       ['?task=42&usuario=other&role=admin&assignee=9#task=99', '/workspace/tareas?task=42'],

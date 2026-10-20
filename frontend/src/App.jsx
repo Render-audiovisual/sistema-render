@@ -14,7 +14,6 @@ const ProjectsPage = lazyNamed(() => import("./pages/Projects.jsx"), "ProjectsPa
 const ClientesAdminPage = lazyNamed(() => import("./pages/Clientes.jsx"), "ClientesAdminPage");
 const ClientesObjetivosPage = lazyNamed(() => import("./pages/ClientesObjetivos.jsx"), "ClientesObjetivosPage");
 const EmpleadosPage = lazyNamed(() => import("./pages/Empleados.jsx"), "EmpleadosPage");
-const GermanDashboard = lazyNamed(() => import("./pages/dashboards/German.jsx"), "GermanDashboard");
 const HistoriasPage = lazyNamed(() => import("./pages/Historias.jsx"), "HistoriasPage");
 const PerfilPage = lazyNamed(() => import("./pages/Perfil.jsx"), "PerfilPage");
 const PublicacionesPage = lazyNamed(() => import("./pages/Publicaciones.jsx"), "PublicacionesPage");
@@ -111,9 +110,6 @@ export function App() {
     }
     if (path === "/drive") {
       return <DrivePage sesion={sesion} />;
-    }
-    if (path === "/german") {
-      return <GermanDashboard />;
     }
     if (path === "/clientes") {
       return esAdmin && new URLSearchParams(window.location.search).get("gestion") === "1"

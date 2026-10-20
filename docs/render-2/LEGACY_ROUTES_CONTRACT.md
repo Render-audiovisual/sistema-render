@@ -8,7 +8,7 @@ Integration43 additionally retires **only Oriana** after exact blocked-piece con
 
 Integration44 additionally retires only Líder after global workload/escalation/editorial and authorized same-period financial replacements were verified. Deliberate corrections to legacy name fallbacks, impossible blocked-task counts and overlapping attention sums are documented in DIRECTION_CONSOLIDATION_CONTRACT. Alias uses current identity/safe task context, never URL role/name.
 
-Only Germán remains live and unmapped pending its separate production replacement gate. Older inventory/ownership notes below are historical, not authority to retire that remaining home or claim all implementations unified.
+Integration49 retires the remaining Germán import/mount after ID-specific production access, recorded material/coordination, actual workflow permissions, complete monthly client pagination and final alias/task/history/mobile gates. Original source stays preserved. All five named legacy homes now use current-identity home or safe explicit task context; none remains mounted by App. This does not retire DEV preview/sandbox references or claim the complete system is unified. Older inventory/ownership holds below remain historical evidence only.
 
 Goal: one live principal operational task/home implementation. Source files are retained for reference, not mounted through the production router after verified replacement. No historical data migration, identity inference, role grants, new preview/application or backend API change. Preserve preexisting DEV DesignPreview/CommentsProposal/LocalDesignShell edits in App.jsx and Vite; coordinator alone edits App.
 
