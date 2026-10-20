@@ -166,6 +166,19 @@ export const PERSONAL_HOME_SQL = `WITH
       count(*) FILTER (WHERE estado IN ('finalizada','publicada'))::int AS completed
     FROM monthly_work GROUP BY COALESCE(tipo_tarea,'sin_sector')
   ),
+  monthly_production AS MATERIALIZED (
+    SELECT m.id,m.estado,m.cliente_id,m.cliente_nombre
+    FROM monthly_work m WHERE m.tipo_tarea='produccion'
+  ),
+  monthly_production_clients AS MATERIALIZED (
+    SELECT cliente_id,cliente_nombre,count(*)::int AS total,
+      count(*) FILTER (WHERE estado IN ('finalizada','publicada'))::int AS completed
+    FROM monthly_production GROUP BY cliente_id,cliente_nombre
+  ),
+  monthly_production_client_page AS (
+    SELECT cliente_id,cliente_nombre,total,completed FROM monthly_production_clients
+    ORDER BY total DESC,cliente_id ASC NULLS LAST LIMIT 20
+  ),
   reviews AS MATERIALIZED (SELECT * FROM visible v WHERE estado='en_revision' AND
     ($2::boolean OR EXISTS(SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=v.id AND a.usuario_id=$1))),
   client_work AS (SELECT cliente_id AS id,cliente_nombre AS nombre,count(*)::int AS open FROM open
@@ -199,7 +212,14 @@ SELECT jsonb_build_object(
     'total',(SELECT count(*)::int FROM monthly_work),
     'completed',(SELECT count(*)::int FROM monthly_work WHERE estado IN ('finalizada','publicada')),
     'by_sector',COALESCE((SELECT jsonb_agg(jsonb_build_object('sector',s.sector,'total',s.total,'completed',s.completed)
-      ORDER BY s.sector) FROM monthly_sectors s),'[]'::jsonb)),
+      ORDER BY s.sector) FROM monthly_sectors s),'[]'::jsonb),
+    'production',jsonb_build_object('total',(SELECT count(*)::int FROM monthly_production),
+      'completed',(SELECT count(*)::int FROM monthly_production WHERE estado IN ('finalizada','publicada')),
+      'client_count',(SELECT count(*)::int FROM monthly_production_clients),
+      'clients',COALESCE((SELECT jsonb_agg(jsonb_build_object(
+        'client',CASE WHEN p.cliente_id IS NULL THEN NULL ELSE jsonb_build_object('id',p.cliente_id,'nombre',p.cliente_nombre) END,
+        'total',p.total,'completed',p.completed) ORDER BY p.total DESC,p.cliente_id ASC NULLS LAST)
+        FROM monthly_production_client_page p),'[]'::jsonb))),
   'tasks',COALESCE((SELECT jsonb_agg(${taskJson('q')} ORDER BY q.rank) FROM (
     SELECT o.*,row_number() OVER (ORDER BY fecha_vencimiento ASC NULLS LAST,
       CASE prioridad WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END,id) AS rank FROM open o

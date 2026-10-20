@@ -20,3 +20,13 @@ Named route aliases, if approved after tests, resolve only to the authenticated 
 No route retirement is approved by this document alone. Require HTTP current-ID/homonym/collaboration/date/visibility/state tests, actual UI and unchanged task/detail flows, independent review and explicit recorded gate decision. Preserve old source until replacement is verified. Germán, Oriana and Líder remain separate, unresolved replacement gates.
 
 Integration 34 records the bounded gate decision: those tests/runtime checks and independent review passed for Augusto/Luciano only; their App imports/mounts are removed and references remain. Broader consolidation, all-browser matrices and production release remain unapproved.
+
+## Additive production client breakdown (integration46)
+
+`monthly_progress.production` is `{total,completed,client_count,clients:[{client:null|{id,nombre},total,completed}]}`. It filters the same current-ID `monthly_work` to literal sector `produccion`; being an administrator does not make this a global summary. Shared assignments count a task once. Dates, visibility and historical completion aliases retain the rules above. No normalized visit/video or editorial publication is inferred from a task.
+
+Groups use client ID, not display name; null is its own group. The actual physical schema enforces unique client names, so hypothetical identical display-name handling is parser coverage, not a physical-database homonymous-client claim. Homonymous user accounts remain an actual ID isolation test.
+
+Full totals and actual `client_count` include all groups. `clients` contains the first20 ordered total descending, client ID ascending NULLS LAST. The frontend validates positive row counts, unique IDs, deterministic ordering, sector reconciliation and full/partial sum consistency, and drops undocumented nested fields. Old responses without this additive field remain accepted; malformed supplied fields fail closed. Native disclosure keeps the current light shared design compact, labels this as tasks, and states the visible/full group count if truncated. No additional browser persistence or business writes.
+
+**Not a Germán retirement approval:** the old per-client table had no20-group limit. A complete paginated client breakdown/navigation is still needed before replacing that capability. Source preservation and route retention continue until that gap, production subset/workflow equivalence and independent full cutover gates pass. This is a verified shared-data building block, not a narrower definition of the final requested system.

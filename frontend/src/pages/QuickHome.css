@@ -1,5 +1,8 @@
 .quick-home{--qh-bg:#fff;--qh-soft:#f5f5f7;--qh-line:#e5e7eb;--qh-text:#1d1d1f;--qh-muted:#667085;--qh-blue:#0071e3;box-sizing:border-box;background:var(--qh-bg);color:var(--qh-text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;margin-left:var(--render-sidebar-width,236px);min-height:100dvh;padding:32px;width:calc(100% - var(--render-sidebar-width,236px))}
 .quick-home *{box-sizing:border-box}
+.qh-monthly-production{border-top:1px solid var(--qh-line);min-width:0}
+.qh-monthly-production summary{cursor:pointer;min-height:44px;align-content:center;padding:12px 16px;font-size:13px;font-weight:550;overflow-wrap:anywhere}
+.qh-monthly-production summary:focus-visible{outline:3px solid var(--qh-blue);outline-offset:-3px}
 .quick-home-shell{margin:0 auto;max-width:1440px;min-width:0}
 .quick-home h1,.quick-home h2,.quick-home p{margin:0}
 .quick-home h1{font-size:24px;font-weight:650;letter-spacing:-.03em;line-height:1.25;margin:4px 0 8px}

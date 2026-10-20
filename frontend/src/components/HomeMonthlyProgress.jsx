@@ -29,6 +29,19 @@ export function HomeMonthlyProgress({ data }) {
         <dd className="qh-list-count">{row.completed} / {row.total} · Tareas terminadas</dd>
       </div>)}
     </dl>}
+    {data.production && <details className="qh-monthly-production">
+      <summary>Producción por cliente · {data.production.completed} / {data.production.total} tareas terminadas</summary>
+      <p className="qh-section-description">Tu trabajo de producción del mes. No cuenta videos grabados ni cuotas de contenido.</p>
+      {data.production.clients.length ? <ul className="qh-client-list">
+        {data.production.clients.map(row => <li key={row.client?.id ?? 'none'}>
+          <span>{row.client ? `${row.client.nombre} · #${row.client.id}` : 'Sin cliente'}</span>
+          <span>{row.completed} / {row.total} terminadas</span>
+        </li>)}
+      </ul> : <p className="qh-empty">Sin tareas de producción en este período.</p>}
+      {data.production.client_count > data.production.clients.length && <p className="qh-section-description">
+        Mostrando {data.production.clients.length} de {data.production.client_count} grupos de cliente. Los totales incluyen todos los grupos.
+      </p>}
+    </details>}
   </section>;
 }
 
