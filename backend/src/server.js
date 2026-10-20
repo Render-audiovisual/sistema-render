@@ -54,6 +54,7 @@ import { editingDeliveryDomainConflict } from "./editing-deliveries-errors.js";
 import { normalizeExpectedEditingDelivery, assertCurrentEditingApprover, assertEditingApprovalDelivery } from "./editing-approval.js";
 import { createEditingReviewsRouter, recordEditingApproval, editingReviewDomainConflict } from "./editing-reviews.js";
 import { createCalendarRouter } from "./calendar.js";
+import { createEditorialControlRouter } from "./editorial-control.js";
 import { editorialPublicationDomainConflict } from "./editorial-publication-errors.js";
 import { annotateEditorialEvidence } from "./editorial-evidence-read.js";
 import { resolveUserRole } from "./user-roles.js";
@@ -278,6 +279,7 @@ router.use('/editorial-publicacion', createEditorialPublicationRouter({ express,
 router.use('/tareas-edicion', createEditingDeliveriesRouter({ express, pool }));
 router.use('/tareas-edicion', createEditingReviewsRouter({ express, pool }));
 router.use('/calendario', createCalendarRouter({ express, pool }));
+router.use('/editorial-control', createEditorialControlRouter({ express, pool }));
 
 router.get("/sesion", (req, res) => res.json({ usuario: req.auth }));
 router.post("/logout", async (req, res, next) => {
