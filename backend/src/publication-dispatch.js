@@ -162,6 +162,16 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
         await client.query("ROLLBACK");
         return res.status(404).json({ error: "Cliente no encontrado." });
       }
+      if (payload.publicationId) {
+        const publicationExists = await client.query(
+          "SELECT id FROM publicaciones WHERE id=$1 AND cliente_id=$2",
+          [payload.publicationId, payload.clientId],
+        );
+        if (!publicationExists.rowCount) {
+          await client.query("ROLLBACK");
+          return res.status(400).json({ error: "La publicación elegida no pertenece al cliente." });
+        }
+      }
       await client.query(
         `UPDATE publicacion_envios SET
            publicacion_id=$2,cliente_id=$3,tipo=$4,copy=$5,primer_comentario=$6,

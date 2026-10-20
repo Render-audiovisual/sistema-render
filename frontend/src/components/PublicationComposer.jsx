@@ -1,6 +1,24 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { publicationUploadPlan, uploadFileToDrive } from "../features/drive/drive-api.js";
+import { getSesion } from '../utils.jsx';
+import { useSessionView } from '../shared/session/use-session-view.js';
+import { createCapturedRequest } from '../shared/session/captured-request.js';
+
+function usePublicationCapture(session, view, currentView) {
+  const mounted = useRef(false), generation = useRef(0), controllers = useRef(new Set());
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; ++generation.current;
+      for (const controller of controllers.current) controller.abort(); controllers.current.clear(); };
+  }, []);
+  return useCallback((request = apiRequest) => {
+    const epoch = generation.current, controller = new AbortController(); controllers.current.add(controller);
+    const guard = createCapturedRequest({ session, readSession: getSesion, request,
+      isActive: () => mounted.current && generation.current === epoch && currentView.current === view && !controller.signal.aborted });
+    return { ...guard, signal: controller.signal, cancel: () => controller.abort(), release: () => controllers.current.delete(controller) };
+  }, [session, view, currentView]);
+}
 
 function dateTimeLabel(date, time) {
   if (!date) return "Sin fecha";
@@ -40,10 +58,18 @@ function dispatchDateTimeLabel(item) {
   }).format(parsed);
 }
 
-async function loadDispatchQueue() {
-  const result = await apiRequest("/api/publicacion-envios");
+async function loadDispatchQueue(guard) {
+  const result = await guard.request("/api/publicacion-envios", { signal: guard.signal });
   if (!Array.isArray(result)) throw new Error("La bandeja recibida no es válida. Volvé a intentar.");
   return result;
+}
+
+function validDispatchAck(value, mode, draftId) {
+  const id = value?.id;
+  const validId = Number.isSafeInteger(id) && id > 0 || typeof id === 'string' && /^[1-9]\d{0,18}$/.test(id)
+    && (id.length < 19 || id <= '9223372036854775807');
+  const status = mode === 'draft' ? 'borrador' : mode === 'now' ? 'lista_para_publicar' : 'programada';
+  return validId && value.status === status && value.previewOnly === true && (!draftId || String(id) === String(draftId));
 }
 
 function emptyDraft(publication, clients) {
@@ -135,6 +161,14 @@ function PublicationPreview({ draft, clients, uploads }) {
 }
 
 export function PublicationComposer({ publications, clients, canPublish }) {
+  const view = useSessionView(getSesion()), currentView = useRef(view); currentView.current = view;
+  return <ComposerSession key={view.key} session={view.session} view={view} currentView={currentView}
+    publications={publications} clients={clients} canPublish={canPublish}/>;
+}
+
+function ComposerSession({ publications, clients, canPublish, session, view, currentView }) {
+  const captureRequest = usePublicationCapture(session, view, currentView);
+  const pending = useRef(false), draftsGeneration = useRef(0), dispatchOperation = useRef(null);
   const candidates = useMemo(
     () => publications
       .filter((item) => item.estado !== "publicada" && ["video", "reel", "carrusel"].includes(item.tipo))
@@ -156,28 +190,41 @@ export function PublicationComposer({ publications, clients, canPublish }) {
   const [sourceSelection, setSourceSelection] = useState("");
   const fileInputRef = useRef(null);
   const uploadsRef = useRef([]);
+  const operationBusy = saving || uploadingMaterial;
+  useEffect(() => {
+    pending.current = false; setSaving(false); setUploadingMaterial(false);
+    return () => { pending.current = false; ++draftsGeneration.current; };
+  }, []);
 
   useEffect(() => () => uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl)), []);
 
   useEffect(() => {
-    if (!draft.clientId && clients.length) setDraft((current) => ({ ...current, clientId: clients[0].id }));
-  }, [clients, draft.clientId]);
+    if (!pending.current && !draft.clientId && clients.length) setDraft((current) => ({ ...current, clientId: clients[0].id }));
+  }, [clients, draft.clientId, operationBusy]);
 
-  const refreshDrafts = async () => {
+  const refreshDrafts = async (captured) => {
+    const guard = captured || captureRequest(), generation = ++draftsGeneration.current;
     try {
-      const result = await apiRequest("/api/publicacion-envios?estado=borrador");
-      setSavedDrafts(Array.isArray(result) ? result : []);
+      const result = await guard.request("/api/publicacion-envios?estado=borrador", { signal: guard.signal });
+      if (!Array.isArray(result)) throw new Error('La lista de borradores recibida no es válida.');
+      if (guard.current() && generation === draftsGeneration.current) { setSavedDrafts(result); return { ok: true }; }
+      return { ok: false, obsolete: true };
     } catch (error) {
-      setNotice(error.message || "No se pudieron cargar los borradores.");
-    }
+      if (guard.current() && generation === draftsGeneration.current) {
+        if (!captured) setNotice(error.message || "No se pudieron cargar los borradores.");
+        return { ok: false, error: error.message || 'No se pudo actualizar la lista.' };
+      }
+      return { ok: false, obsolete: true };
+    } finally { if (!captured) guard.release(); }
   };
 
   useEffect(() => { refreshDrafts(); }, []);
 
   const selectPublication = (id) => {
+    if (pending.current) return;
     setSourceSelection(id);
     if (String(id).startsWith("draft:")) {
-      const selected = savedDrafts.find((item) => Number(item.id) === Number(String(id).slice(6)));
+      const selected = savedDrafts.find((item) => String(item.id) === String(id).slice(6));
       if (!selected) return;
       clearUploads();
       setDraftId(selected.id);
@@ -197,6 +244,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
   };
 
   const clearUploads = () => {
+    if (pending.current) return;
     uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     uploadsRef.current = [];
     setUploads([]);
@@ -207,11 +255,13 @@ export function PublicationComposer({ publications, clients, canPublish }) {
   };
 
   const changeType = (type) => {
+    if (pending.current) return;
     clearUploads();
     setField("type", type);
   };
 
   const chooseFiles = (fileList) => {
+    if (pending.current) return;
     const incoming = Array.from(fileList || []);
     const allowed = draft.type === "reel"
       ? incoming.filter((file) => file.type === "video/mp4" || file.name.toLowerCase().endsWith(".mp4"))
@@ -251,23 +301,32 @@ export function PublicationComposer({ publications, clients, canPublish }) {
   };
 
   const uploadMaterial = async () => {
-    if (!uploads.length || uploadingMaterial) return;
+    if (!uploads.length || uploadingMaterial || pending.current) return;
+    const guard = captureRequest(fetch);
+    if (!guard.current()) { guard.release(); return; }
+    pending.current = true; ++draftsGeneration.current;
+    const selectedUploads = uploads.slice();
     setUploadingMaterial(true);
     setFileError("");
     setDriveReconnectRequired(false);
     setNotice("");
     setUploadProgress(0);
     try {
-      const destination = await publicationUploadPlan();
+      const destination = await publicationUploadPlan(guard.options({ signal: guard.signal }));
+      guard.assertCurrent();
       if (destination.status !== "resolved" || !destination.folder?.id) throw new Error(destination.reason || "No encontramos la carpeta privada de publicaciones.");
       const completed = [];
-      for (let index = 0; index < uploads.length; index += 1) {
-        const item = uploads[index];
+      for (let index = 0; index < selectedUploads.length; index += 1) {
+        guard.assertCurrent();
+        const item = selectedUploads[index];
         const uploaded = await uploadFileToDrive(item.file, {
           parentId: destination.folder.id,
           duplicateAction: "keep",
-          onProgress: (progress) => setUploadProgress(Math.round(((index + progress / 100) / uploads.length) * 100)),
+          session, readSession: getSesion, signal: guard.signal, isActive: guard.current,
+          request: (url, options) => guard.request(url, { ...options, sessionIntent: guard.options().sessionIntent }),
+          onProgress: (progress) => { if (guard.current()) setUploadProgress(Math.round(((index + progress / 100) / selectedUploads.length) * 100)); },
         });
+        guard.assertCurrent();
         if (!uploaded?.webViewLink) throw new Error(`No pudimos confirmar la carga de ${item.name}.`);
         completed.push(uploaded);
       }
@@ -276,18 +335,21 @@ export function PublicationComposer({ publications, clients, canPublish }) {
       setUploadProgress(100);
       setNotice(`${completed.length === 1 ? "Archivo guardado" : "Archivos guardados"} en el Drive privado de Render.`);
     } catch (error) {
-      setFileError(error.message || "No se pudo guardar el material en Drive.");
-      setDriveReconnectRequired(error.body?.code === "GOOGLE_DRIVE_RECONNECT_REQUIRED");
+      if (guard.current()) {
+        setFileError(error.message || "No se pudo guardar el material en Drive.");
+        setDriveReconnectRequired(error.body?.code === "GOOGLE_DRIVE_RECONNECT_REQUIRED");
+      }
     } finally {
-      setUploadingMaterial(false);
+      if (guard.current()) { pending.current = false; setUploadingMaterial(false); }
+      guard.release();
     }
   };
 
-  const setField = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
-  const setPlatform = (platform, value) => setDraft((current) => ({
+  const setField = (field, value) => { if (!pending.current) setDraft((current) => ({ ...current, [field]: value })); };
+  const setPlatform = (platform, value) => { if (!pending.current) setDraft((current) => ({
     ...current,
     platforms: { ...current.platforms, [platform]: value },
-  }));
+  })); };
 
   const validation = useMemo(() => {
     if (!draft.clientId) return "Elegí un cliente.";
@@ -300,6 +362,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
   }, [draft, uploads]);
 
   const simulate = async (mode) => {
+    if (pending.current) return;
     if (!canPublish) {
       setNotice("Solo una community manager o un Líder puede preparar envíos.");
       return;
@@ -312,16 +375,17 @@ export function PublicationComposer({ publications, clients, canPublish }) {
       setNotice("Primero guardá el material en el Drive privado de Render.");
       return;
     }
+    const guard = captureRequest();
+    if (!guard.current()) { guard.release(); return; }
+    pending.current = true; ++draftsGeneration.current;
     setSaving(true);
     setNotice("");
     try {
       const materials = draft.material.split(/\n+/).map((item) => item.trim()).filter(Boolean);
       const scheduledAt = new Date(`${draft.date}T${draft.time}:00-03:00`).toISOString();
-      const requestKey = window.crypto?.randomUUID?.() || `render-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const saved = await apiRequest(draftId ? `/api/publicacion-envios/${draftId}` : "/api/publicacion-envios", {
-          method: draftId ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+      const url = draftId ? `/api/publicacion-envios/${draftId}` : '/api/publicacion-envios';
+      const method = draftId ? 'PATCH' : 'POST';
+      const payload = {
             clientId: draft.clientId,
             publicationId: draft.publicationId || null,
             type: draft.type,
@@ -334,26 +398,39 @@ export function PublicationComposer({ publications, clients, canPublish }) {
             location: draft.location,
             tags: draft.tags,
             mode,
-            requestKey,
-          }),
-        });
+      };
+      // Retain the exact serialized operation after uncertain transport/ACK.
+      // Only an explicit changed intent gets a new key; never auto-retry.
+      const fingerprint = JSON.stringify({ method, url, payload });
+      if (dispatchOperation.current?.fingerprint !== fingerprint) {
+        const requestKey = window.crypto?.randomUUID?.() || `render-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        dispatchOperation.current = Object.freeze({ fingerprint, requestKey, body: JSON.stringify({ ...payload, requestKey }) });
+      }
+      const saved = await guard.request(url, { method, headers: { 'Content-Type': 'application/json' }, signal: guard.signal,
+        body: dispatchOperation.current.body });
+        guard.assertCurrent();
+        if (!validDispatchAck(saved, mode, draftId)) throw new Error('La respuesta no confirmó el guardado. Conservá los datos y verificá antes de reintentar.');
+        dispatchOperation.current = null;
         if (mode === "draft") {
           setDraftId(saved.id);
-          await refreshDrafts();
         } else {
           setDraftId(null);
-          await refreshDrafts();
         }
+      const refreshed = await refreshDrafts(guard);
+      guard.assertCurrent();
       window.dispatchEvent(new CustomEvent("render:publication-preview-updated"));
-      setNotice(mode === "draft"
+      setNotice(!refreshed.ok
+        ? `${mode === 'draft' ? 'Borrador guardado en el sistema.' : 'Simulación guardada; no se envió nada a Meta.'} No se pudo actualizar la lista de borradores. ${refreshed.error || ''}`
+        : mode === "draft"
         ? "Borrador guardado en el sistema. Podés retomarlo más tarde."
         : mode === "now"
           ? "Simulación lista. No se envió nada a Meta."
           : "Programación simulada. El calendario editorial no fue modificado.");
     } catch (error) {
-      setNotice(error.message || "No se confirmó el guardado en el sistema. Conservá los datos y volvé a intentar.");
+      if (guard.current()) setNotice(error.message || "No se confirmó el guardado en el sistema. Conservá los datos y volvé a intentar.");
     } finally {
-      setSaving(false);
+      if (guard.current()) { pending.current = false; setSaving(false); }
+      guard.release();
     }
   };
 
@@ -368,12 +445,12 @@ export function PublicationComposer({ publications, clients, canPublish }) {
         <div className="publisher-form">
           <div className="publisher-section-head">
             <div><span>Paso 1</span><h3>Elegí qué vas a publicar</h3></div>
-            <span className="publisher-access">{canPublish ? "Podés preparar y publicar" : "Vista de consulta"}</span>
+            <span className="publisher-access">{canPublish ? "Podés preparar envíos" : "Vista de consulta"}</span>
           </div>
 
           <label className="publisher-field publisher-field-wide">
             <span>Publicación planificada</span>
-            <select value={sourceSelection} onChange={(event) => selectPublication(event.target.value)}>
+            <select disabled={operationBusy} value={sourceSelection} onChange={(event) => selectPublication(event.target.value)}>
               <option value="">Nueva publicación sin planificación</option>
               {savedDrafts.length > 0 && <optgroup label="Borradores guardados">{savedDrafts.map((item) => <option key={`draft-${item.id}`} value={`draft:${item.id}`}>{item.clientName} · {item.type === "carrusel" ? "Carrusel" : "Reel"} · Borrador #{item.id}</option>)}</optgroup>}
               <optgroup label="Calendario editorial">
@@ -386,56 +463,56 @@ export function PublicationComposer({ publications, clients, canPublish }) {
           </label>
 
           <div className="publisher-fields-grid">
-            <label className="publisher-field"><span>Cliente</span><select value={draft.clientId} onChange={(event) => setField("clientId", Number(event.target.value))}>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label>
-            <label className="publisher-field"><span>Formato</span><select value={draft.type} onChange={(event) => changeType(event.target.value)}><option value="reel">Reel</option><option value="carrusel">Carrusel</option></select></label>
+            <label className="publisher-field"><span>Cliente</span><select disabled={operationBusy} value={draft.clientId} onChange={(event) => setField("clientId", Number(event.target.value))}>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label>
+            <label className="publisher-field"><span>Formato</span><select disabled={operationBusy} value={draft.type} onChange={(event) => changeType(event.target.value)}><option value="reel">Reel</option><option value="carrusel">Carrusel</option></select></label>
           </div>
 
           <div className="publisher-upload-block">
             <div className="publisher-upload-heading"><div><span>Material</span><strong>{draft.type === "reel" ? "Subí el video terminado" : "Subí las piezas del carrusel"}</strong></div><small>{draft.type === "reel" ? "MP4 · hasta 500 MB" : "JPG, PNG, WebP o MP4 · de 2 a 10 piezas"}</small></div>
-            <input ref={fileInputRef} className="publisher-file-input" type="file" accept={draft.type === "reel" ? ".mp4,video/mp4" : ".jpg,.jpeg,.png,.webp,.mp4,image/jpeg,image/png,image/webp,video/mp4"} multiple={draft.type === "carrusel"} onChange={(event) => chooseFiles(event.target.files)}/>
+            <input disabled={operationBusy} ref={fileInputRef} className="publisher-file-input" type="file" accept={draft.type === "reel" ? ".mp4,video/mp4" : ".jpg,.jpeg,.png,.webp,.mp4,image/jpeg,image/png,image/webp,video/mp4"} multiple={draft.type === "carrusel"} onChange={(event) => chooseFiles(event.target.files)}/>
             {uploads.length === 0 ? (
               <div className="publisher-dropzone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); chooseFiles(event.dataTransfer.files); }}>
                 <span className="publisher-upload-icon" aria-hidden="true">↑</span>
                 <div><strong>{draft.type === "reel" ? "Arrastrá el MP4 acá" : "Arrastrá las fotos acá"}</strong><small>o elegí los archivos desde tu computadora</small></div>
-                <button type="button" className="publisher-upload-button" onClick={() => fileInputRef.current?.click()}>{draft.type === "reel" ? "Seleccionar MP4" : "Seleccionar fotos"}</button>
+                <button disabled={operationBusy} type="button" className="publisher-upload-button" onClick={() => fileInputRef.current?.click()}>{draft.type === "reel" ? "Seleccionar MP4" : "Seleccionar fotos"}</button>
               </div>
             ) : (
               <div className="publisher-uploaded-files">
-                <div className="publisher-files-toolbar"><strong>{uploads.length} {uploads.length === 1 ? "archivo listo" : "archivos listos"}</strong><div><button type="button" onClick={() => fileInputRef.current?.click()}>Cambiar</button><button type="button" className="is-danger" onClick={clearUploads}>Quitar</button></div></div>
+                <div className="publisher-files-toolbar"><strong>{uploads.length} {uploads.length === 1 ? "archivo listo" : "archivos listos"}</strong><div><button disabled={operationBusy} type="button" onClick={() => fileInputRef.current?.click()}>Cambiar</button><button disabled={operationBusy} type="button" className="is-danger" onClick={clearUploads}>Quitar</button></div></div>
                 <div className="publisher-file-grid">{uploads.map((file, index) => <article key={file.id}>{file.type.startsWith("image/") ? <img src={file.previewUrl} alt=""/> : <video src={file.previewUrl} muted/>}<div><b>{draft.type === "carrusel" ? `${index + 1}. ` : ""}{file.name}</b><span>{formatFileSize(file.size)}</span></div></article>)}</div>
-                <div className="publisher-drive-upload-action"><div><strong>{uploadedAssets.length === uploads.length ? "Material privado listo" : "Guardalo antes de continuar"}</strong><small>{uploadedAssets.length === uploads.length ? "Los enlaces quedaron vinculados al borrador." : "Se subirá a RENDER_UPLOADS, sin publicar en redes."}</small></div><button type="button" disabled={uploadingMaterial || uploadedAssets.length === uploads.length} onClick={uploadMaterial}>{uploadingMaterial ? `${uploadProgress}%` : uploadedAssets.length === uploads.length ? "Guardado en Drive" : "Subir a Drive"}</button></div>
+                <div className="publisher-drive-upload-action"><div><strong>{uploadedAssets.length === uploads.length ? "Material privado listo" : "Guardalo antes de continuar"}</strong><small>{uploadedAssets.length === uploads.length ? "Los enlaces quedaron vinculados al borrador." : "Se subirá a RENDER_UPLOADS, sin publicar en redes."}</small></div><button type="button" disabled={operationBusy || uploadedAssets.length === uploads.length} onClick={uploadMaterial}>{uploadingMaterial ? `${uploadProgress}%` : uploadedAssets.length === uploads.length ? "Guardado en Drive" : "Subir a Drive"}</button></div>
                 {uploadingMaterial && <div className="publisher-upload-progress"><i style={{ width: `${uploadProgress}%` }}/></div>}
               </div>
             )}
             {fileError && <div className="publisher-file-error" role="alert"><span>{fileError}</span>{driveReconnectRequired && <a href="/drive">Volver a conectar Drive</a>}</div>}
-            <div className="publisher-upload-alternative"><span>También podés usar un archivo que ya está online</span><button type="button" onClick={() => setShowDriveField((visible) => !visible)}>{showDriveField ? "Ocultar enlace" : "Elegir desde Drive"}</button></div>
-            {showDriveField && <label className="publisher-field publisher-field-wide publisher-drive-field"><span>{draft.type === "carrusel" ? "Enlaces de Drive" : "Enlace de Drive"}</span><textarea rows={draft.type === "carrusel" ? 4 : 2} value={draft.material} onChange={(event) => { setField("material", event.target.value); if (event.target.value) clearUploads(); }} placeholder={draft.type === "carrusel" ? "Pegá un enlace por línea, en el orden del carrusel" : "Pegá el enlace del video final"}/><small>{draft.type === "carrusel" ? `${materialCount(draft)} piezas enlazadas` : "Render validará el acceso antes de publicar."}</small></label>}
+            <div className="publisher-upload-alternative"><span>También podés usar un archivo que ya está online</span><button disabled={operationBusy} type="button" onClick={() => { if (!pending.current) setShowDriveField((visible) => !visible); }}>{showDriveField ? "Ocultar enlace" : "Elegir desde Drive"}</button></div>
+            {showDriveField && <label className="publisher-field publisher-field-wide publisher-drive-field"><span>{draft.type === "carrusel" ? "Enlaces de Drive" : "Enlace de Drive"}</span><textarea disabled={operationBusy} rows={draft.type === "carrusel" ? 4 : 2} value={draft.material} onChange={(event) => { setField("material", event.target.value); if (event.target.value) clearUploads(); }} placeholder={draft.type === "carrusel" ? "Pegá un enlace por línea, en el orden del carrusel" : "Pegá el enlace del video final"}/><small>{draft.type === "carrusel" ? `${materialCount(draft)} piezas enlazadas` : "Render validará el acceso antes de publicar."}</small></label>}
           </div>
 
           <div className="publisher-divider" />
-          <div className="publisher-section-head"><div><span>Paso 2</span><h3>Prepará el mensaje</h3></div><button type="button" className="publisher-secondary" onClick={() => setField("caption", suggestionFor(draft, clients, publications))}>✦ Proponer con Mía</button></div>
-          <label className="publisher-field publisher-field-wide"><span>Copy</span><textarea rows="5" value={draft.caption} onChange={(event) => setField("caption", event.target.value)} placeholder="Escribí el copy o pedile una propuesta a Mía"/><small>{draft.caption.length} caracteres</small></label>
-          <label className="publisher-field publisher-field-wide"><span>Primer comentario <em>Opcional</em></span><textarea rows="2" value={draft.firstComment} onChange={(event) => setField("firstComment", event.target.value)} placeholder="Hashtags, información adicional o enlaces"/></label>
+          <div className="publisher-section-head"><div><span>Paso 2</span><h3>Prepará el mensaje</h3></div><button disabled={operationBusy} type="button" className="publisher-secondary" onClick={() => setField("caption", suggestionFor(draft, clients, publications))}>✦ Proponer con Mía</button></div>
+          <label className="publisher-field publisher-field-wide"><span>Copy</span><textarea disabled={operationBusy} rows="5" value={draft.caption} onChange={(event) => setField("caption", event.target.value)} placeholder="Escribí el copy o pedile una propuesta a Mía"/><small>{draft.caption.length} caracteres</small></label>
+          <label className="publisher-field publisher-field-wide"><span>Primer comentario <em>Opcional</em></span><textarea disabled={operationBusy} rows="2" value={draft.firstComment} onChange={(event) => setField("firstComment", event.target.value)} placeholder="Hashtags, información adicional o enlaces"/></label>
 
           <div className="publisher-divider" />
           <div className="publisher-section-head"><div><span>Paso 3</span><h3>Elegí destino y momento</h3></div></div>
           <div className="publisher-platforms">
-            <label className={draft.platforms.instagram ? "active" : ""}><input type="checkbox" checked={draft.platforms.instagram} onChange={(event) => setPlatform("instagram", event.target.checked)}/><span className="platform-icon">◎</span><strong>Instagram</strong><small>Feed profesional</small></label>
-            <label className={draft.platforms.facebook ? "active" : ""}><input type="checkbox" checked={draft.platforms.facebook} onChange={(event) => setPlatform("facebook", event.target.checked)}/><span className="platform-icon">f</span><strong>Facebook</strong><small>Página del cliente</small></label>
+            <label className={draft.platforms.instagram ? "active" : ""}><input disabled={operationBusy} type="checkbox" checked={draft.platforms.instagram} onChange={(event) => setPlatform("instagram", event.target.checked)}/><span className="platform-icon">◎</span><strong>Instagram</strong><small>Feed profesional</small></label>
+            <label className={draft.platforms.facebook ? "active" : ""}><input disabled={operationBusy} type="checkbox" checked={draft.platforms.facebook} onChange={(event) => setPlatform("facebook", event.target.checked)}/><span className="platform-icon">f</span><strong>Facebook</strong><small>Página del cliente</small></label>
           </div>
           <div className="publisher-fields-grid">
-            <label className="publisher-field"><span>Fecha</span><input type="date" value={draft.date} onChange={(event) => setField("date", event.target.value)}/></label>
-            <label className="publisher-field"><span>Hora</span><input type="time" value={draft.time} onChange={(event) => setField("time", event.target.value)}/></label>
-            <label className="publisher-field"><span>Colaboradores <em>Opcional</em></span><input value={draft.collaborators} onChange={(event) => setField("collaborators", event.target.value)} placeholder="@usuario, @usuario"/></label>
-            <label className="publisher-field"><span>Ubicación <em>Opcional</em></span><input value={draft.location} onChange={(event) => setField("location", event.target.value)} placeholder="Local o ciudad"/></label>
-            <label className="publisher-field publisher-field-wide"><span>Etiquetas <em>Opcional</em></span><input value={draft.tags} onChange={(event) => setField("tags", event.target.value)} placeholder="Personas o cuentas para etiquetar"/></label>
+            <label className="publisher-field"><span>Fecha</span><input disabled={operationBusy} type="date" value={draft.date} onChange={(event) => setField("date", event.target.value)}/></label>
+            <label className="publisher-field"><span>Hora</span><input disabled={operationBusy} type="time" value={draft.time} onChange={(event) => setField("time", event.target.value)}/></label>
+            <label className="publisher-field"><span>Colaboradores <em>Opcional</em></span><input disabled={operationBusy} value={draft.collaborators} onChange={(event) => setField("collaborators", event.target.value)} placeholder="@usuario, @usuario"/></label>
+            <label className="publisher-field"><span>Ubicación <em>Opcional</em></span><input disabled={operationBusy} value={draft.location} onChange={(event) => setField("location", event.target.value)} placeholder="Local o ciudad"/></label>
+            <label className="publisher-field publisher-field-wide"><span>Etiquetas <em>Opcional</em></span><input disabled={operationBusy} value={draft.tags} onChange={(event) => setField("tags", event.target.value)} placeholder="Personas o cuentas para etiquetar"/></label>
           </div>
 
           {notice && <div className="publisher-notice" role="status">{notice}</div>}
           <div className="publisher-actions">
             <button type="button" className="publisher-draft-button" disabled={!canPublish || saving || uploadingMaterial} onClick={() => simulate("draft")}>{saving ? "Guardando…" : draftId ? "Actualizar borrador" : "Guardar borrador"}</button>
-            <button type="button" className="publisher-secondary" disabled={!canPublish || saving} onClick={() => simulate("schedule")}>{saving ? "Guardando…" : "Probar programación"}</button>
-            <button type="button" className="publisher-primary" disabled={!canPublish || saving} onClick={() => simulate("now")}>{saving ? "Guardando…" : "Probar “Publicar ahora”"}</button>
+            <button type="button" className="publisher-secondary" disabled={!canPublish || operationBusy} onClick={() => simulate("schedule")}>{saving ? "Guardando…" : "Probar programación"}</button>
+            <button type="button" className="publisher-primary" disabled={!canPublish || operationBusy} onClick={() => simulate("now")}>{saving ? "Guardando…" : "Probar “Publicar ahora”"}</button>
           </div>
         </div>
 
@@ -456,28 +533,40 @@ export function PublicationComposer({ publications, clients, canPublish }) {
 }
 
 export function PublicationPreviewQueue({ mode }) {
+  const view = useSessionView(getSesion()), currentView = useRef(view); currentView.current = view;
+  return <PreviewQueueSession key={view.key} session={view.session} view={view} currentView={currentView} mode={mode}/>;
+}
+
+function PreviewQueueSession({ mode, session, view, currentView }) {
+  const captureRequest = usePublicationCapture(session, view, currentView);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => {
     let active = true;
+    let generation = 0, previous;
     const refresh = async () => {
+      const observed = ++generation;
+      previous?.cancel(); previous?.release();
+      const guard = captureRequest(); previous = guard;
       try {
-        const result = await loadDispatchQueue();
-        if (active) { setItems(result); setError(""); }
+        const result = await loadDispatchQueue(guard);
+        if (active && observed === generation && guard.current()) { setItems(result); setError(""); }
       } catch (requestError) {
-        if (active) setError(requestError.message || "No se pudieron cargar los envíos.");
+        if (active && observed === generation && guard.current()) setError(requestError.message || "No se pudieron cargar los envíos.");
       } finally {
-        if (active) setLoading(false);
+        if (active && observed === generation && guard.current()) setLoading(false);
+        guard.release();
       }
     };
     refresh();
     window.addEventListener("render:publication-preview-updated", refresh);
     return () => {
       active = false;
+      ++generation; previous?.cancel(); previous?.release();
       window.removeEventListener("render:publication-preview-updated", refresh);
     };
-  }, []);
+  }, [captureRequest]);
 
   const filtered = items.filter((item) => mode === "history" ? item.status === "lista_para_publicar" : item.status === "programada");
   return (

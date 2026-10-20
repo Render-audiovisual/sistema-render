@@ -17,7 +17,7 @@ const appSource = readFileSync(
 
 test("el preparador no publica en Meta ni suplanta un guardado fallido con datos del navegador", () => {
   assert.match(composerSource, /Ningún botón publica contenido real/);
-  assert.match(composerSource, /apiRequest\("\/api\/publicacion-envios"/);
+  assert.match(composerSource, /guard\.request\("\/api\/publicacion-envios"/);
   assert.doesNotMatch(composerSource, /localStorage|readPreviewQueue|savePreviewQueue/);
   assert.match(composerSource, /Borrador guardado en el sistema/);
   assert.doesNotMatch(composerSource, /fetch\(/);

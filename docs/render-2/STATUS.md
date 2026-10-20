@@ -905,6 +905,14 @@ Implemented and bounded-verified locally, not deployed or globally ready. All-mo
 - No configured DB/provider/real accounts/commercial records/schema/dependency/environment/push/deploy; user App20+/1-, Vite5+ and references untouched. No CSS change: independent review did not confirm screenshot74 narrow-panel suspicion. Responsive acceptance still incomplete.
 - Composer full binding/uploads and editorial raw-fetch screens remain next gates, plus all-app inventory/draft/locks/cross-tab/HTTPS/proxy/provider/design acceptance. Global cookie activation off; local progress, not phase/master completion or deployment readiness.
 
+## Seventy-sixth integration — scoped publications and composer (2026-10-20)
+
+- Hypatia Composer/queue, Carson Publicaciones, coordinator backend membership/compatibility/physical QA/integration, Beauvoir independent review. See `PUBLICATIONS_SESSION_QA.md`.
+- Composer pinning spans save/refresh/upload files/chunks/progress; validated ACK separate from failed list refresh. Manual unchanged retry retains body/key. Calendar/general/planilla/page now0rawfetch; month/client/selection ABA fences, ordered per-piece writes. Reviewer selection closure/busy-stuck races corrected. Binding remains original through cleanup, no cookie activation.
+- Server PATCH now verifies publication belongs to client before DML; isolated foreign-client400 leaves full dispatch/material/target snapshots unchanged. Shared draft CAS still open, as are editorial legacy responsible-name data contracts and cross-tab write coordination; no claim those solved.
+- Final frontend760 pass, backend1336 pass/57 opt-in skips, isolated HTTP/PG38 pass, build/diff clean. Actual browser native date20→21 persists after reload; draft copy recovered. Mobile390 no horizontal overflow. `/private/tmp/render2-publications76-mobile.jpg` and QA doc record scope/limitations, including no provider or mounted cookie replacement test.
+- Owned fixtures/tabs cleaned/viewport reset; user App20+/1-, Vite5+ and untracked work preserved. No configured DB/provider/real commercial changes/schema/dependency/environment/push/deploy. Remaining writer inventory (including Historias), shared-draft CAS, draft recovery/native session acceptance/provider/design unification remain. Local progress, not production-ready/deployed or master complete.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.
