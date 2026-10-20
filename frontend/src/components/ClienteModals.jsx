@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import { useScopedRequest } from '../shared/session/use-scoped-request.js';
+import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import {
   calcularPorcentajeCuota,
   getClaveFeed,
@@ -89,6 +90,11 @@ function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuard
   const [error, setError] = useState(null);
   const snapshot = JSON.stringify({ nombre, activo, cuotaReels, cuotaCarruseles, cuotaFeedReels, cuotaFeedCarruseles, abonoMensual, diasReels, diasCarruseles });
   const baseline = useRef(snapshot);
+  const agreementNavigationStatus = () => {
+    if (!capture().current()) return { dirty: false, busy: false };
+    return { dirty: snapshot !== baseline.current, busy: pending.current };
+  };
+  useNavigationGuard(agreementNavigationStatus);
   const reloadAgreement = async () => {
     if (pending.current) return;
     const guard = capture();

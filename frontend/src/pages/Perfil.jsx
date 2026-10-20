@@ -4,6 +4,7 @@ import { getRolLabel } from "../constants.js";
 import { createProfileSessionGuard, profileFailureMessage } from '../shared/session/profile-session.js';
 import { getApplicationSession } from '../shared/session/application-session-access.js';
 import { newPasswordError } from '../../../shared/password-policy.mjs';
+import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 
 export function PerfilPage() {
   const sesion = getSesion();
@@ -32,6 +33,14 @@ export function PerfilPage() {
     runtime: getApplicationSession(),
     isMounted: () => mounted.current, save: guardarSesion,
     clear: key => localStorage.removeItem(key), navigate: href => window.location.replace(href) });
+  const profileNavigationStatus = () => {
+    if (!capture().current()) return { dirty: false, busy: false };
+    return {
+      dirty: Boolean(usuarioNuevo !== (perfilUsuario?.usuario || '') || passwordUsuario || actual || nueva || confirmar),
+      busy: Boolean(operationPending.current || busy),
+    };
+  };
+  useNavigationGuard(profileNavigationStatus);
 
   useEffect(() => {
     setPerfilUsuario(usuario);

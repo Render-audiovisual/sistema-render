@@ -1123,6 +1123,14 @@ Commands: frontend `node --test`, `npm run build`; backend `node --test --test-c
 
 No configured database/real account, migration/schema/dependency/environment/provider credential/push/deploy changes. Broad feature/design/other-writer/native-cookie-device-provider/rollout gates remain. This is local implemented and verified navigation progress, not a completed master phase or production update. Full goal active.
 
+## Integration 94 — administrative draft navigation (2026-10-20)
+
+Local implementation, not deployed. Superpowers guided disjoint ownership: coordinator Clientes, Carson Usuarios, Hypatia Perfil, Descartes client agreement modal, Beauvoir independent read-only review. Four forms now use the existing shared unsaved-navigation contract; no shared kernel or backend business code changed. Closed forms remain clean, pending operations block departure, obsolete session captures release their guards. Client-create baseline is captured at opening, avoiding clock/month-boundary false warnings. Existing requests, permissions, CAS/recovery and close confirmations remain intact. No draft/password browser persistence introduced.
+
+Frontend1199 pass/1 explicit opt-in skip/0 failures; Vite production build and diff check pass. New tests exercise actual extracted callbacks/getters and real shared controller mechanics, not mounted browser native-dialog acceptance. Existing client-admin test fixture received only the newly required baseline ref. Backend regression recorded below after completion. Details and remaining browser limits: [UNSAVED_NAVIGATION_QA.md](UNSAVED_NAVIGATION_QA.md). No new browser/server fixture, configured database, real account, schema, dependency, environment, push or production deployment changes. Full master goal remains active; this does not close a master phase.
+
+Final sequential backend regression:1459 passed,71 explicit opt-in skips,0 failed (`node --test --test-concurrency=1 test/*.test.js`). Log `/private/tmp/render2-drafts94-backend-final.log`. This is not a rerun of the opt-in physical end-to-end scenarios. Independent reviewer found no confirmed P1/P2 in the frozen delta; review does not replace mounted browser acceptance. No owned fixture/listener was started in this integration.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

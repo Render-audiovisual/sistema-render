@@ -19,6 +19,7 @@ import { Modal } from "../components/Modal.jsx";
 import { PageState } from "../components/PageState.jsx";
 import { readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 import { createClientOverviewLoader } from "./clientOverview.js";
+import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 
 const CLIENT_COLORS = ["#547aa5", "#6f72a8", "#4f8a7a", "#a36d5d", "#8a6fa5", "#647c99"];
 const RUBROS = ["Gastronomía", "Tecnología", "Turismo", "Educación", "Automotor", "Comercio", "Salud", "Servicios"];
@@ -115,6 +116,12 @@ function ClientesAdminContent({ sesion }) {
   const [clienteCuotaEnEdicion, setClienteCuotaEnEdicion] = useState(null);
   const [errorAltaCliente, setErrorAltaCliente] = useState(null);
   const modalOpen = useRef(false), deferredLoad = useRef(false), pendingPeriod = useRef(null), loadGeneration = useRef(0), loaded = useRef(false), creating = useRef(false), denied = useRef(false);
+  const createBaseline = useRef(JSON.stringify(nuevoCliente));
+  const clientCreateNavigationStatus = () => {
+    if (!capture().current()) return { dirty: false, busy: false };
+    return { dirty: altaClienteAbierta && JSON.stringify(nuevoCliente) !== createBaseline.current, busy: creating.current };
+  };
+  useNavigationGuard(clientCreateNavigationStatus);
   modalOpen.current = Boolean(altaClienteAbierta || clienteSeleccionado || clienteCuotaEnEdicion);
   const closeModal = () => {
     modalOpen.current = false;
@@ -236,7 +243,9 @@ function ClientesAdminContent({ sesion }) {
   const abrirAltaCliente = () => {
     if (!capture().current() || modalOpen.current) return;
     modalOpen.current = true;
-    setNuevoCliente(emptyClientForm());
+    const blank = emptyClientForm();
+    createBaseline.current = JSON.stringify(blank);
+    setNuevoCliente(blank);
     setPasoAltaCliente(1);
     setErrorAltaCliente(null);
     setAltaClienteAbierta(true);
@@ -244,7 +253,7 @@ function ClientesAdminContent({ sesion }) {
 
   const cerrarAltaCliente = () => {
     if (creating.current || !capture().current()) return;
-    if (JSON.stringify(nuevoCliente) !== JSON.stringify(emptyClientForm()) && !window.confirm('¿Descartar los datos del nuevo cliente sin guardar?')) return;
+    if (JSON.stringify(nuevoCliente) !== createBaseline.current && !window.confirm('¿Descartar los datos del nuevo cliente sin guardar?')) return;
     setAltaClienteAbierta(false);
     setErrorAltaCliente(null);
     closeModal();

@@ -23,7 +23,7 @@ function fixture(request = async () => ({})) {
   const effects = [], calls = [], scope = createCapturedRequest({ session:original,readSession:()=>store.getSession(),isActive:()=>active,
     request:(url,options)=>{calls.push({url,options});return request(url,options);} });
   const deps = { capture:()=>scope,captureLifetime:()=>scope,view:{role:'admin'},createdClient,isSessionFailure,
-    modalOpen:{current:false},deferredLoad:{current:false},pendingPeriod:{current:null},loadGeneration:{current:0},loaded:{current:false},denied:{current:false},creating:{current:false},
+    modalOpen:{current:false},deferredLoad:{current:false},pendingPeriod:{current:null},loadGeneration:{current:0},loaded:{current:false},denied:{current:false},creating:{current:false},createBaseline:{current:'{}'},
     periodError:null,mesSeleccionado:'2026-10',nuevoCliente:{nombre:'  QA Cliente  ',rubro:'Servicios',cuota_reels:'2',cuota_carruseles:'0',dias_historias:[1],vigente_desde:'2026-10'},
     validarCuota:value=>Number.isInteger(Number(value))&&Number(value)>=0,altaClienteValida:true,emptyClientForm:()=>({}),closeModal:()=>effects.push(['close']),
     ...Object.fromEntries(['Cargando','Error','Clientes','Historias','Publicaciones','LoadedPeriod','GuardandoCliente','ErrorAltaCliente','NuevoCliente','AltaClienteAbierta'].map(name=>[`set${name}`,value=>effects.push([name,value])])) };

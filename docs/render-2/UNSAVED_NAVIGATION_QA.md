@@ -1,5 +1,17 @@
 # Shared unsaved navigation — independent pure QA
 
+## Integration 94 — administrative forms (2026-10-20)
+
+Clientes creation, client agreement editing, Usuarios administration and Perfil now register their actual draft/pending state with the existing shared navigation guard. Coordinator owned Clientes; Carson owned Usuarios; Hypatia owned Perfil; Descartes owned agreements; Beauvoir independently reviewed the delta. Shared navigation kernel, server authorization, requests, successful-response handling and storage were not changed.
+
+Only visible/open administrative drafts warn. Pending synchronous refs deny navigation without asking to discard an in-flight operation. Invalidated session captures return clean/inactive, so old drafts do not obstruct security-driven departure. Client creation captures its blank baseline when opened rather than recalculating a date-dependent baseline when closed. No drafts or passwords are persisted in browser storage.
+
+Final frontend `node --test`: 1199 passed, one explicit opt-in skip, zero failures. Production build passed. Four new test files exercise actual source getters/callbacks, existing shared controller events, cancel/accept/busy behavior, inactive identities and cleanup. An older extracted-callback fixture now injects the new baseline ref; its original cancellation assertions remain. Logs: `/private/tmp/render2-drafts94-frontend-final.log`, `/private/tmp/render2-drafts94-build-final.log`.
+
+Final sequential backend regression:1459 passed,71 explicit opt-in skips,0 failed; log `/private/tmp/render2-drafts94-backend-final.log`. The opt-in physical scenarios were not rerun. Independent read-only review found no confirmed P1/P2 in this delta.
+
+These are source/callback and controller tests, not mounted browser acceptance of native dialogs. No new desktop/mobile native-dialog acceptance was executed in this integration. Existing unsupported/noncancelable navigation and forced-exit limits remain. No automatic draft recovery, configured database access, schema changes or deployment. Broader all-form migration remains open.
+
 ## Coordinator integration verification — 2026-10-19
 
 Implemented and locally verified within the limits below; not deployed and not a global data-loss guarantee. Four agents: Archimedes migrated Projects/8 tests, Herschel Productions+Feedback/12 tests, Wegener independent controller/17 tests, Darwin read-only final review/30 focused tests. Coordinator owned shared controller/hook/bootstrap/location helper, TaskDetail/new-task integration/6 tests, existing regression adaptations, isolated browser execution and integration documentation. Shared files had one integrator. No backend business implementation, schema, migration, configured database, authentication rules or financial permissions changed in this integration. Superpowers guided contract-first disjoint ownership and independent review.

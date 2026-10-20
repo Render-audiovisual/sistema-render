@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { getSesion, normalizarPrimerNombre } from "../utils.jsx";
 import { useScopedRequest } from '../shared/session/use-scoped-request.js';
 import { isSessionFailure } from '../shared/session/captured-request.js';
+import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { Modal } from "../components/Modal.jsx";
 import { getRolLabel, ROL_LABELS } from "../constants.js";
 
@@ -130,6 +131,11 @@ function EmpleadosContent({ sesion }) {
     || editandoDatos && (nombreEdicion !== usuarioAdministrado?.nombre || usuarioEdicion !== usuarioAdministrado?.usuario
       || (rolEdicion === '__otra__' ? rolPersonalizadoEdicion !== getRolLabel(usuarioAdministrado?.rol) : rolEdicion !== usuarioAdministrado?.rol))
   );
+  const employeeNavigationStatus = () => {
+    if (!capture().current()) return { dirty: false, busy: false };
+    return { dirty: Boolean(modalAltaAbierto && altaDirty || usuarioAdministrado && adminDirty), busy: Boolean(pending.current) };
+  };
+  useNavigationGuard(employeeNavigationStatus);
   const allowDiscard = dirty => !pending.current && capture().current()
     && (!dirty || window.confirm('¿Descartar los cambios sin guardar?'));
 
