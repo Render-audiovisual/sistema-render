@@ -116,7 +116,9 @@ test('loader exact GET URL, remembered bucket/page and reset on bucket change; e
   await loader.refresh({ bucket: 'upcoming_ready', offset: 40 });
   assert.deepEqual(urls, ['/api/editorial-control?bucket=today&offset=0&limit=20',
     '/api/editorial-control?bucket=blocked&offset=0&limit=20', '/api/editorial-control?bucket=blocked&offset=20&limit=20',
-    '/api/editorial-control?bucket=blocked&offset=20&limit=20', '/api/editorial-control?bucket=upcoming_ready&offset=0&limit=20']);
+    '/api/editorial-control?bucket=blocked&offset=20&limit=20', '/api/editorial-control?bucket=upcoming_ready&offset=40&limit=20']);
+  await loader.refresh({ bucket: 'today' });
+  assert.equal(urls.at(-1), '/api/editorial-control?bucket=today&offset=0&limit=20');
   for (const state of states) { assert.ok(typeof state.bucket === 'string'); assert.equal(typeof state.offset, 'number'); }
   assert.equal(await loader.refresh({ background: true }), false);
   now = 30000; assert.equal(await loader.refresh({ background: true }), true);

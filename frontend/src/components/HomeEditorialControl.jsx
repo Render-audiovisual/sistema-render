@@ -5,6 +5,8 @@ import { personalHomeNavigate, subscribePersonalHomeRefresh } from '../pages/per
 import { EditorialPublicationControl } from './EditorialPublicationControl.jsx';
 import { canReadEditorialControl, createHomeEditorialLoader, EDITORIAL_BUCKETS, EDITORIAL_LIMIT,
   homeEditorialContextHref, homeEditorialRecordPiece } from './homeEditorialControl.js';
+import { readEditorialLocation, loadEditorialView, saveEditorialView, normalizeEditorialView,
+  editorialViewUrl } from './homeEditorialViewContext.js';
 
 const evidenceLabel = value => ({ confirmada_manualmente: 'Publicación confirmada manualmente',
   historica_sin_confirmacion: 'Registro histórico sin confirmación', no_publicada: 'Sin publicación confirmada' })[value];
@@ -20,11 +22,18 @@ export function HomeEditorialControl({ sesion, onNavigate, onRecordOpenChange, r
   const [result, setResult] = useState(null);
   const [recordOpen, setRecordOpen] = useState(false);
   const recordOpenRef = useRef(false);
+  const deferredLocationRef = useRef(null);
+  const selectionRef = useRef(null);
   recordOpenRef.current = recordOpen;
   const changeRecordOpen = useCallback(open => {
     recordOpenRef.current = open;
     setRecordOpen(open);
     onRecordOpenChange?.(open);
+    if (!open && deferredLocationRef.current) {
+      const apply = deferredLocationRef.current;
+      deferredLocationRef.current = null;
+      apply();
+    }
   }, [onRecordOpenChange]);
   const loaderRef = useRef(null);
   const allowed = canReadEditorialControl(sesion);
@@ -34,30 +43,73 @@ export function HomeEditorialControl({ sesion, onNavigate, onRecordOpenChange, r
   const bucket = current?.bucket ?? 'today';
   useEffect(() => {
     if (!allowed) return undefined;
+    let storage;
+    try { storage = window.localStorage; } catch { /* Preferences are optional. */ }
+    selectionRef.current = null;
     const loader = createHomeEditorialLoader({ sesion: { token, usuario: { id, rol: role, activo: active } },
       readSession: getSesion, request,
-      onChange: state => { if (identityRef.current === identity) setResult({ ...state, identity }); } });
+      onChange: state => {
+        const selected = selectionRef.current;
+        if (identityRef.current === identity && selected && state.bucket === selected.bucket && state.offset === selected.offset)
+          setResult({ ...state, identity });
+      } });
     loaderRef.current = loader;
-    void loader.refresh();
-    const unsubscribe = subscribePersonalHomeRefresh({ refresh: options => recordOpenRef.current ? false : loader.refresh(options) });
-    return () => { unsubscribe(); loader.dispose(); if (loaderRef.current === loader) loaderRef.current = null; };
+    const applyLocation = () => {
+      if (window.location.pathname !== '/inicio' || identityRef.current !== identity) return;
+      try {
+        const fromUrl = readEditorialLocation(window.location.search);
+        const selected = fromUrl ?? loadEditorialView(storage, id);
+        const canonicalUrl = editorialViewUrl(window.location.href, selected);
+        window.history.replaceState(window.history.state, '', canonicalUrl);
+        selectionRef.current = selected;
+        saveEditorialView(storage, id, selected);
+        void loader.refresh(selected);
+      } catch {
+        selectionRef.current = null;
+        setResult({ status: 'error', data: null, bucket: 'today', offset: 0, identity,
+          error: 'La vista editorial del enlace no es válida. Elegí una vista para continuar.' });
+      }
+    };
+    const onLocation = () => {
+      if (recordOpenRef.current) { deferredLocationRef.current = applyLocation; return; }
+      applyLocation();
+    };
+    applyLocation();
+    window.addEventListener('popstate', onLocation);
+    const unsubscribe = subscribePersonalHomeRefresh({ refresh: options => recordOpenRef.current || !selectionRef.current ? false : loader.refresh(options) });
+    return () => {
+      window.removeEventListener('popstate', onLocation);
+      deferredLocationRef.current = null;
+      unsubscribe(); loader.dispose(); if (loaderRef.current === loader) loaderRef.current = null;
+    };
   }, [identity, allowed, request, id, role, active, token]);
   if (!allowed) return null;
   const refresh = () => { if (!recordOpenRef.current) void loaderRef.current?.refresh(); };
   const recordSaved = () => { void loaderRef.current?.refresh(); };
+  const selectPage = changes => {
+    if (recordOpenRef.current || !loaderRef.current) return;
+    const selected = normalizeEditorialView({ bucket: changes.bucket ?? bucket, offset: changes.offset ?? 0 });
+    const targetUrl = editorialViewUrl(window.location.href, selected);
+    window.history.pushState(window.history.state, '', targetUrl);
+    const actual = readEditorialLocation(window.location.search);
+    if (actual?.bucket !== selected.bucket || actual?.offset !== selected.offset) return;
+    selectionRef.current = selected;
+    try { saveEditorialView(window.localStorage, id, selected); } catch { /* Optional preferences. */ }
+    void loaderRef.current.refresh(selected);
+  };
   return <section className="qh-section" aria-labelledby="qh-editorial-title">
     <header className="qh-section-heading"><div><h2 id="qh-editorial-title">Control editorial</h2>
       <p>Historias y publicaciones de todos los clientes.</p></div>
-      <button type="button" className="qh-refresh" disabled={loading || recordOpen} onClick={refresh}>Actualizar contenido</button>
+      <button type="button" className="qh-refresh" disabled={loading || recordOpen || !selectionRef.current} onClick={refresh}>Actualizar contenido</button>
     </header>
     <div className="qh-section-heading" role="group" aria-label="Vistas del control editorial">
       {EDITORIAL_BUCKETS.map(option => <button type="button" key={option.value} disabled={recordOpen} aria-pressed={bucket === option.value}
-        onClick={() => { void loaderRef.current?.refresh({ bucket: option.value, offset: 0 }); }}>
+        onClick={() => selectPage({ bucket: option.value, offset: 0 })}>
         {option.label}{data ? ` (${data.summary[option.value]})` : ''}
       </button>)}
     </div>
     {loading && <p className="qh-status" role="status">Cargando contenido…</p>}
-    {current?.error && <div className="qh-error" role="alert"><p>{current.error}</p><button type="button" onClick={refresh}>Reintentar</button></div>}
+    {current?.error && <div className="qh-error" role="alert"><p>{current.error}</p>{selectionRef.current && <button type="button" onClick={refresh}>Reintentar</button>}</div>}
     {data && <>
       <p className="qh-section-description">{data.total} piezas en esta vista · {data.today}. Una pieza puede aparecer en más de una vista.</p>
       {data.items.length === 0 && <p className="qh-empty">No hay piezas en esta página.</p>}
@@ -75,10 +127,10 @@ export function HomeEditorialControl({ sesion, onNavigate, onRecordOpenChange, r
         </div></li>;
       })}</ul>
       <nav className="qh-section-heading" aria-label="Páginas del control editorial">
-        <button type="button" disabled={recordOpen || data.offset === 0} onClick={() => { void loaderRef.current?.refresh({ offset: Math.max(0, data.offset - EDITORIAL_LIMIT) }); }}>Anterior</button>
+        <button type="button" disabled={recordOpen || data.offset === 0} onClick={() => selectPage({ offset: Math.max(0, data.offset - EDITORIAL_LIMIT) })}>Anterior</button>
         <span className="qh-list-count">Página {data.offset / EDITORIAL_LIMIT + 1} · {data.total} piezas</span>
         <button type="button" disabled={recordOpen || !data.has_more || data.offset + EDITORIAL_LIMIT > 1000000}
-          onClick={() => { void loaderRef.current?.refresh({ offset: data.offset + EDITORIAL_LIMIT }); }}>Siguiente</button>
+          onClick={() => selectPage({ offset: data.offset + EDITORIAL_LIMIT })}>Siguiente</button>
       </nav>
     </>}
   </section>;

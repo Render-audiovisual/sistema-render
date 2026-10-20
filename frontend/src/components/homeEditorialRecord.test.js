@@ -120,10 +120,17 @@ test('both actual refresh subscriptions and manual refreshes refuse while public
     assert.ok(property && ts.isArrowFunction(property.initializer));
     const callback = property.initializer;
     const state = { current: true }, events = [];
-    const invoke = new Function(ref, 'loader', `return (${text(callback)});`)(state, { refresh: options => { events.push(options); return 'refreshed'; } });
+    const selectionRef = { current: { bucket: 'today', offset: 0 } };
+    const invoke = new Function(ref, 'loader', 'selectionRef', `return (${text(callback)});`)(state,
+      { refresh: options => { events.push(options); return 'refreshed'; } }, selectionRef);
     const refreshOptions = { background: true };
     assert.equal(invoke(refreshOptions), false); assert.deepEqual(events, []);
     state.current = false; assert.equal(invoke(refreshOptions), 'refreshed'); assert.deepEqual(events, [refreshOptions]);
+    if (ref === 'recordOpenRef') {
+      selectionRef.current = null;
+      assert.equal(invoke(refreshOptions), false);
+      assert.deepEqual(events, [refreshOptions], 'Invalid URL selection must not trigger background fallback requests');
+    }
     const manual = decl(root, 'refresh')?.initializer; assert.ok(manual && ts.isArrowFunction(manual));
     const manualCalls = [];
     const click = new Function(ref, 'loaderRef', `return (${text(manual)});`)(state, { current: { refresh: () => manualCalls.push('refresh') } });

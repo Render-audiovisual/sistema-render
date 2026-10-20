@@ -104,7 +104,7 @@ export function createHomeEditorialLoader({ sesion, readSession, request, onChan
     if (disposed) return false;
     if (!authorized()) { controller?.abort(); ++generation; inFlight = false; sessionError(); return false; }
     if (!buckets.includes(bucket) || (offset !== undefined && !validOffset(offset))) throw new Error('Cola o página editorial no válida.');
-    const nextPage = bucket !== selected ? 0 : offset ?? page;
+    const nextPage = offset ?? (bucket !== selected ? 0 : page);
     if (background && (inFlight || now() - lastRequest < 30000)) return false;
     controller?.abort(); controller = new AbortController();
     const signal = controller.signal, version = ++generation;
