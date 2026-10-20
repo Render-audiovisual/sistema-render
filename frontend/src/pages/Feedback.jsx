@@ -6,6 +6,7 @@ import { CATEGORIAS_NOTA } from "./BlocNotas.jsx";
 import { markFeedbackSeen } from "../features/render-os/utils/feedback-notifications.js";
 import { isClientFeedback, normalizeFeedbackText, resolveFeedbackClient } from "../features/render-os/utils/feedback-client.js";
 import "./Feedback.css";
+import { FeedbackTaskInventory } from './FeedbackTaskInventory.jsx';
 
 const EDITABLE_CATEGORIES = CATEGORIAS_NOTA.filter((category) => category.id !== "todas");
 const CATEGORY_LABELS = Object.fromEntries(EDITABLE_CATEGORIES.map((category) => [category.id, category.label]));
@@ -43,7 +44,6 @@ function Reference({ text }) {
 export function FeedbackPage({ request = apiRequest, sesion = null }) {
   const initialParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const [notes, setNotes] = useState([]);
-  const [taskFeedbacks, setTaskFeedbacks] = useState([]);
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
   const [section, setSection] = useState(initialParams.get("section") === "team" ? "team" : "clients");
@@ -98,13 +98,9 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     setLoading(true);
     setError("");
     const notesRequest = request(`/api/notas?${trash ? "papelera=true" : ""}`);
-    const taskRequest = trash
-      ? Promise.resolve([])
-      : request("/api/tareas?workspace=render_os&limit=100&offset=0&q=feedback");
-    Promise.all([notesRequest, taskRequest]).then(([rows, taskRows]) => {
+    notesRequest.then((rows) => {
       if (!active) return;
       setNotes(rows);
-      setTaskFeedbacks(taskRows);
       if (!trash) markFeedbackSeen(sesion?.usuario);
       const noteId = linkedNoteId.current;
       const linkedNote = rows.find((note) => note.id === noteId);
@@ -161,11 +157,6 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
     setError("");
     setMessage("");
     setConflict(false);
-  }
-
-  function openTask(taskId) {
-    const destination = `/workspace/tareas?task=${taskId}`;
-    return navigateWithinApp(window, destination);
   }
 
   function changeSection(nextSection) {
@@ -316,29 +307,9 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
   const clientOptions = useMemo(() => [...new Set([
     ...clients.map((item) => item.nombre),
     ...notes.map((note) => note.feedback?.cliente),
-    ...taskFeedbacks.map((task) => task.cliente_nombre),
-  ].filter(Boolean))].sort((left, right) => left.localeCompare(right, "es")), [clients, notes, taskFeedbacks]);
+  ].filter(Boolean))].sort((left, right) => left.localeCompare(right, "es")), [clients, notes]);
 
-  const feedbackEntries = useMemo(() => [
-    ...notes,
-    ...taskFeedbacks.map((task) => ({
-      id: `task-${task.id}`,
-      task_id: task.id,
-      source: "task",
-      titulo: task.titulo,
-      contenido: task.aclaraciones || "Sin detalle.",
-      categoria: "general",
-      feedback: {
-        cliente: task.cliente_nombre || "",
-        responsable: task.asignado_a || "",
-        referencia: task.material_referencia || "",
-      },
-      creado_por: task.propiedades_extra?.wilson_confirmado_por || "Wilson",
-      modificado_por: task.propiedades_extra?.wilson_confirmado_por || task.asignado_a || "Equipo RENDER",
-      created_at: task.created_at,
-      updated_at: task.updated_at,
-    })),
-  ], [notes, taskFeedbacks]);
+  const feedbackEntries = notes;
 
   useEffect(() => {
     if (selected && !draft) {
@@ -376,6 +347,8 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
       <div><span className="rf-eyebrow">NOTAS Y SEGUIMIENTO</span><h1>Feedback</h1><p>Todo lo importante, ordenado y fácil de consultar.</p></div>
       <div className="rf-header-actions"><button className="rf-back-tasks" type="button" onClick={backToTasks}>← Volver a tareas</button><button className="rf-primary" disabled={busy || trash} onClick={createNote}>+ Nuevo feedback</button></div>
     </header>
+
+    {!trash && <FeedbackTaskInventory request={request} sesion={sesion} clients={clients}/>}
 
     <nav className="rf-section-switch" aria-label="Tipo de feedback">
       <button type="button" aria-pressed={section === "team"} className={section === "team" ? "active" : ""} onClick={() => changeSection("team")}><span>♙</span><b>Equipo</b></button>
@@ -426,7 +399,7 @@ export function FeedbackPage({ request = apiRequest, sesion = null }) {
           <div className="rf-detail-content">{selected.contenido || "Sin contenido."}</div>
           {selected.feedback?.referencia && <section className="rf-reference"><span>REFERENCIA</span><Reference text={selected.feedback.referencia}/></section>}
           <dl className="rf-detail-meta"><div><dt>Responsables</dt><dd>{feedbackResponsibles(selected).join(", ") || "Sin asignar"}</dd></div><div><dt>Estado</dt><dd>{selected.feedback?.estado === "resuelto" ? "Resuelto" : "Pendiente"}</dd></div><div><dt>Vigencia</dt><dd>{selected.feedback?.vigencia === "permanente" ? "Permanente" : "Puntual"}</dd></div><div><dt>Categoría</dt><dd>{CATEGORY_LABELS[selected.categoria] || "General"}</dd></div><div><dt>Creado por</dt><dd>{selected.creado_por}</dd></div></dl>
-          <footer className="rf-detail-actions">{selected.source === "task" ? <button className="rf-primary" onClick={() => openTask(selected.task_id)}>Abrir tarea relacionada</button> : trash ? <button className="rf-primary" disabled={busy} onClick={() => trashAction(selected)}>Restaurar feedback</button> : <><button className="rf-danger" disabled={busy} onClick={() => trashAction(selected)}>Mover a Papelera</button><button disabled={busy} onClick={() => toggleStatus(selected)}>{selected.feedback?.estado === "resuelto" ? "Marcar pendiente" : "Marcar resuelto"}</button><button className="rf-primary" disabled={busy} onClick={() => editNote(selected)}>Editar feedback</button></>}</footer>
+          <footer className="rf-detail-actions">{trash ? <button className="rf-primary" disabled={busy} onClick={() => trashAction(selected)}>Restaurar feedback</button> : <><button className="rf-danger" disabled={busy} onClick={() => trashAction(selected)}>Mover a Papelera</button><button disabled={busy} onClick={() => toggleStatus(selected)}>{selected.feedback?.estado === "resuelto" ? "Marcar pendiente" : "Marcar resuelto"}</button><button className="rf-primary" disabled={busy} onClick={() => editNote(selected)}>Editar feedback</button></>}</footer>
         </div>}
       </section>
     </div>}

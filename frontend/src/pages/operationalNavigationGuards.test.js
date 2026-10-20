@@ -7,6 +7,7 @@ import { navigateWithinApp } from '../shared/navigation/location.js';
 // React or native browser traversal verification.
 const production = readFileSync(new URL('./Productions.jsx', import.meta.url), 'utf8');
 const feedback = readFileSync(new URL('./Feedback.jsx', import.meta.url), 'utf8');
+const feedbackInventory = readFileSync(new URL('./FeedbackTaskInventory.jsx', import.meta.url), 'utf8');
 function feedbackHandler(name, bindings) {
   const start = feedback.indexOf(`  function ${name}(`);
   const end = feedback.indexOf('\n  function ', start + 1);
@@ -88,13 +89,22 @@ test('same section exact URL no-op never discards the active draft', () => {
 });
 
 test('related task and back-to-task links honor cancellation without local double confirmation', () => {
-  for (const name of ['openTask', 'backToTasks']) {
+  for (const name of ['backToTasks']) {
     const win = new FakeWindow('https://render.test/feedback?section=team', { fromTasks: '/workspace/tareas?task=21&sector=edicion' });
     win.addEventListener('render:before-navigation', event => event.preventDefault());
     const handler = feedbackHandler(name, { window: win, navigateWithinApp });
     assert.equal(handler(17), false); assert.equal(win.location.pathname, '/feedback');
     assert.deepEqual(win.trace, ['render:before-navigation']);
   }
+  const win = new FakeWindow('https://render.test/feedback?section=team');
+  win.addEventListener('render:before-navigation', event => event.preventDefault());
+  const openTaskLine = feedbackInventory.split('\n').find(line => line.startsWith('  const openTask = '));
+  assert.ok(openTaskLine, 'Exercise the actual inventory link handler, not the retired synthetic-note handler');
+  const open = Function('window', 'navigateWithinApp', `${openTaskLine};return openTask;`)(win, navigateWithinApp);
+  let prevented = false;
+  open({ button: 0, preventDefault() { prevented = true; } }, '/workspace/tareas?task=17');
+  assert.equal(prevented, true); assert.equal(win.location.pathname, '/feedback');
+  assert.deepEqual(win.trace, ['render:before-navigation']);
 });
 
 test('back-to-task context is retained only for a valid same-origin task route', () => {

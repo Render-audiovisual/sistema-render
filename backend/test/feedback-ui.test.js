@@ -26,12 +26,10 @@ test("Feedback recupera el cliente de notas antiguas sin metadata", () => {
   assert.equal(resolveFeedbackClient({ titulo: "Nota general", feedback: { cliente: "Moketa" } }, clients), "Moketa");
 });
 
-test("Feedback incorpora pedidos cargados por Wilson como tareas", () => {
-  assert.match(feedbackSource, /q=feedback/);
-  assert.match(feedbackSource, /task\.propiedades_extra\?\.wilson_confirmado_por/);
-  assert.match(feedbackSource, /source: "task"/);
-  assert.match(feedbackSource, /Abrir tarea relacionada/);
-  assert.match(feedbackSource, /return navigateWithinApp\(window, destination\)/);
+test("Feedback distingue notas compartidas del inventario real de revisión de edición", () => {
+  assert.match(feedbackSource, /<FeedbackTaskInventory request=\{request\} sesion=\{sesion\} clients=\{clients\}/);
+  assert.doesNotMatch(feedbackSource, /q=feedback|source: "task"|setTaskFeedbacks/);
+  assert.match(feedbackSource, /const feedbackEntries = notes/);
 });
 
 test("Feedback presenta resúmenes compactos y abre el contenido en un panel", () => {

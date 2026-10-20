@@ -53,6 +53,7 @@ import { createEditingDeliveriesRouter } from "./editing-deliveries.js";
 import { editingDeliveryDomainConflict } from "./editing-deliveries-errors.js";
 import { normalizeExpectedEditingDelivery, assertCurrentEditingApprover, assertEditingApprovalDelivery } from "./editing-approval.js";
 import { createEditingReviewsRouter, recordEditingApproval, editingReviewDomainConflict } from "./editing-reviews.js";
+import { readFeedbackTaskInventory } from './feedback-task-inventory.js';
 import { createCalendarRouter } from "./calendar.js";
 import { createEditorialControlRouter } from "./editorial-control.js";
 import { editorialPublicationDomainConflict } from "./editorial-publication-errors.js";
@@ -276,6 +277,11 @@ router.use(requireCurrentIdentity(pool));
 router.use('/inicio', createPersonalHomeRouter({ express, pool }));
 router.use('/proyectos', createProjectsRouter({ express, pool }));
 router.use('/editorial-publicacion', createEditorialPublicationRouter({ express, pool }));
+router.get('/tareas-edicion/inventario-feedback', async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  try { res.json(await readFeedbackTaskInventory(pool, req.auth, req.query)); }
+  catch (error) { if (error.status) return res.status(error.status).json({ error: error.message }); next(error); }
+});
 router.use('/tareas-edicion', createEditingDeliveriesRouter({ express, pool }));
 router.use('/tareas-edicion', createEditingReviewsRouter({ express, pool }));
 router.use('/calendario', createCalendarRouter({ express, pool }));
