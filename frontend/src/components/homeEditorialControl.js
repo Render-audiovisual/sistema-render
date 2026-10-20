@@ -79,6 +79,15 @@ export function homeEditorialContextHref(item) {
   return null;
 }
 
+// Identity/context only. A compact list classification is not the full proof
+// required by publication writes; the shared record control must fetch it.
+export function homeEditorialRecordPiece(item) {
+  if (!item || !['historia', 'publicacion'].includes(item.domain) || !id(item.id)
+    || !id(item.cliente?.id) || !states.includes(item.estado)
+    || !(item.fecha_programada === null || validDay(item.fecha_programada))) return null;
+  return { id: item.id, cliente_id: item.cliente.id, estado: item.estado, fecha_programada: item.fecha_programada };
+}
+
 export function createHomeEditorialLoader({ sesion, readSession, request, onChange, now = Date.now }) {
   const captured = { id: sesion?.usuario?.id, role: sesion?.usuario?.rol,
     active: sesion?.usuario?.activo, token: sesion?.token };

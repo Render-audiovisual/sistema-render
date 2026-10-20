@@ -11,13 +11,17 @@ export function EditorialPublicationControl(props) {
   return <PublicationControl key={`${props.dominio}:${props.pieza.id}:${props.pieza.cliente_id}:${sesion?.usuario?.id}:${sesion?.usuario?.rol}:${sesion?.token || ''}`} {...props} sesion={sesion} />;
 }
 
-function PublicationControl({ dominio, pieza, sesion, onSaved }) {
+function PublicationControl({ dominio, pieza, sesion, onSaved, hideSummary = false, openLabel = 'Ver publicación', onOpenChange }) {
   const [open, setOpen] = useState(false), [status, setStatus] = useState(null), [date, setDate] = useState('');
   const [ack, setAck] = useState(false), [busy, setBusy] = useState(false), [loading, setLoading] = useState(false);
   const [error, setError] = useState(''), [conflict, setConflict] = useState(false), [uncertain, setUncertain] = useState(null);
   const dialog = useRef(null), alive = useRef(true), read = useRef(null), readGeneration = useRef(0);
   const writer = useRef(null);
   const sessionGuard = useRef(null);
+  useEffect(() => {
+    onOpenChange?.(open);
+    return () => { if (open) onOpenChange?.(false); };
+  }, [open, onOpenChange]);
   if (!sessionGuard.current) sessionGuard.current = createEditorialSessionGuard(sesion, getSesion, () => {
     read.current?.abort(); readGeneration.current++; writer.current?.cancel();
     if (alive.current) { setStatus(null); setUncertain(null); setAck(false); setBusy(false); setLoading(false); setError('La sesión cambió. Cerrá este registro y volvé a abrirlo desde la sesión actual.'); }
@@ -79,9 +83,9 @@ function PublicationControl({ dominio, pieza, sesion, onSaved }) {
   }
   const label = isConfirmedPublication(pieza) ? 'Confirmada manualmente' : isHistoricalPublication(pieza) ? 'Histórica · sin confirmación' : 'Sin confirmación';
   return <span className="ep-control" onClick={event => event.stopPropagation()}>
-    <span>{label}</span><button type="button" onClick={() => { setOpen(true); if (!uncertain) load(); }}>Ver publicación</button>
+    {!hideSummary && <span>{label}</span>}<button type="button" onClick={() => { setOpen(true); if (!uncertain) load(); }}>{openLabel}</button>
     {open && createPortal(<div className="ep-overlay"><section className="ep-dialog" role="dialog" aria-modal="true" aria-label="Registro de publicación" tabIndex={-1} ref={dialog}>
-      <h2>Registro de publicación</h2><p>Registro manual; no es una verificación externa. Pieza #{pieza.id}.</p>
+      <h2>Registro de publicación</h2><p>Registro manual; no es una verificación externa. {dominio === 'historia' ? 'Historia' : 'Publicación'} #{pieza.id} · Cliente #{pieza.cliente_id}.</p>
       {loading && <p role="status">Consultando registro…</p>}{error && <p role="alert">{error}</p>}
       {status && <><p>{status.classification === 'confirmada_manualmente' ? 'Confirmada manualmente' : status.classification === 'historica_sin_confirmacion' ? 'Histórica sin confirmación' : 'Sin publicación confirmada'} · Versión {status.piece.revision}</p>
         {status.current_confirmation && <p>Actor #{status.current_confirmation.actor_id} · {new Date(status.current_confirmation.occurred_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Cordoba' })} (Córdoba)</p>}

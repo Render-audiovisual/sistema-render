@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { HomeEscalations } from "../components/HomeEscalations.jsx";
 import { HomeMonthlyProgress } from "../components/HomeMonthlyProgress.jsx";
@@ -43,6 +43,12 @@ function TaskRows({ items, today, onNavigate }) {
 }
 
 export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
+  const [editorialRecordOpen, setEditorialRecordOpen] = useState(false);
+  const editorialRecordOpenRef = useRef(false);
+  const recordOpenChanged = useCallback(open => {
+    editorialRecordOpenRef.current = open;
+    setEditorialRecordOpen(open);
+  }, []);
   const userId = sesion?.usuario?.id;
   const role = sesion?.usuario?.rol;
   const active = sesion?.usuario?.activo;
@@ -66,7 +72,7 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
     });
     loaderRef.current = loader;
     void loader.refresh();
-    const unsubscribe = subscribePersonalHomeRefresh(loader);
+    const unsubscribe = subscribePersonalHomeRefresh({ refresh: options => editorialRecordOpenRef.current ? false : loader.refresh(options) });
     return () => {
       unsubscribe();
       loader.dispose();
@@ -74,14 +80,14 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
     };
   }, [identity, request, validIdentity, userId, role]);
 
-  const refresh = () => { void loaderRef.current?.refresh(); };
+  const refresh = () => { if (!editorialRecordOpenRef.current) void loaderRef.current?.refresh(); };
   const firstName = data?.user.nombre.trim().split(/\s+/)[0];
   return <main className="quick-home" aria-label="Inicio personal de Render">
     <div className="quick-home-shell">
       <header className="quick-home-header">
         <div><span className="qh-eyebrow">Mi trabajo</span><h1>{firstName ? `Hola, ${firstName}.` : "Tu inicio"}</h1>
           <p>{data ? homeDate(data.today, true) : "Tu trabajo asignado y los próximos pasos."}</p></div>
-        <button type="button" className="qh-refresh" onClick={refresh} disabled={loading || !validIdentity}>
+        <button type="button" className="qh-refresh" onClick={refresh} disabled={loading || !validIdentity || editorialRecordOpen}>
           <span aria-hidden="true">↻</span> Actualizar
         </button>
       </header>
@@ -116,7 +122,7 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
                 <p className="qh-empty">No hay tareas en revisión.</p>}
             </section>
             <HomeTeamWorkload sesion={sesion} onNavigate={onNavigate} request={request}/>
-            <HomeEditorialControl sesion={sesion} onNavigate={onNavigate} request={request}/>
+            <HomeEditorialControl sesion={sesion} onNavigate={onNavigate} request={request} onRecordOpenChange={recordOpenChanged}/>
           </div>
 
           <aside className="qh-secondary-column" aria-label="Contexto de tu trabajo">
