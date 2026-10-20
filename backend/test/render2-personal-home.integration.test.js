@@ -302,9 +302,13 @@ test('principal personal home: stable personal IDs, bounded operational DTO and 
     try { assert.equal((await api('/inicio', { token: restricted })).status, 403); }
     finally { await fixture.query("UPDATE usuarios SET rol='diseno' WHERE id=104004"); }
     const inactiveToken = await login('qa_home_104004');
-    ok(await api('/usuarios/104004/acceso', { token: admin, method: 'PATCH', body: { activo: false } }));
+    const beforeDeactivate = ok(await api('/usuarios', { token: admin })).find(row => row.id === 104004)?.admin_revision;
+    assert.match(beforeDeactivate, /^ua1:104004:[0-9]+$/);
+    ok(await api('/usuarios/104004/acceso', { token: admin, method: 'PATCH', body: { expected_revision: beforeDeactivate, activo: false } }));
     assert.equal((await api('/inicio', { token: inactiveToken })).status, 401);
-    ok(await api('/usuarios/104004/acceso', { token: admin, method: 'PATCH', body: { activo: true } }));
+    const beforeReactivate = ok(await api('/usuarios', { token: admin })).find(row => row.id === 104004)?.admin_revision;
+    assert.match(beforeReactivate, /^ua1:104004:[0-9]+$/);
+    ok(await api('/usuarios/104004/acceso', { token: admin, method: 'PATCH', body: { expected_revision: beforeReactivate, activo: true } }));
     const revoked = await login(`qa_home_${ownerId}`); ok(await api('/logout', { token: revoked, method: 'POST' }));
     assert.equal((await api('/inicio', { token: revoked })).status, 401);
     await checkModel(await login(`qa_home_${ownerId}`), ownerId);

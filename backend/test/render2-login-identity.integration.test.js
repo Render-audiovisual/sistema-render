@@ -31,6 +31,11 @@ test('principal login identity HTTP and real PostgreSQL first-binding CAS', {
   const ok = result => { assert.equal(result.status, 200); return result.body; };
   const admin = ok(await login('qa_franco')).token;
   const patch = (id, suffix, body, token = admin) => api(`/usuarios/${id}/${suffix}`, { method: 'PATCH', token, body });
+  const accountRevision = async id => {
+    const revision = ok(await api('/usuarios', { token: admin })).find(row => row.id === id)?.admin_revision;
+    assert.match(revision, new RegExp(`^ua1:${id}:[0-9]+$`));
+    return revision;
+  };
   let sequence = 119000;
   const account = async (overrides = {}) => {
     const id = ++sequence;
@@ -78,12 +83,12 @@ test('principal login identity HTTP and real PostgreSQL first-binding CAS', {
     const a = await account();
     const b = await account({ usuario: 'qa-canonical-shadow@example.invalid' });
     const session = ok(await login(a.usuario)).token;
-    ok(await patch(a.id, 'email-notificaciones', { email_notificaciones: 'qa-notify-only@example.invalid' }));
+    ok(await patch(a.id, 'email-notificaciones', { expected_revision: await accountRevision(a.id), email_notificaciones: 'qa-notify-only@example.invalid' }));
     assert.equal((await login('qa-notify-only@example.invalid')).status, 401);
     assert.equal(ok(await login(`  ${a.usuario.toUpperCase()}  `)).usuario.id, a.id);
     assert.equal(ok(await login(a.email.toUpperCase())).usuario.id, a.id);
     assert.equal((await login(a.usuario, 'wrong synthetic password')).status, 401);
-    ok(await patch(a.id, 'email-notificaciones', { email_notificaciones: b.usuario }));
+    ok(await patch(a.id, 'email-notificaciones', { expected_revision: await accountRevision(a.id), email_notificaciones: b.usuario }));
     assert.equal(ok(await login(b.usuario)).usuario.id, b.id);
     assert.equal(ok(await api('/sesion', { token: session })).usuario.id, a.id);
     assert.equal((await patch(b.id, 'google-email', { google_email: 'qa-denied@example.invalid' }, session)).status, 403);
@@ -96,7 +101,7 @@ test('principal login identity HTTP and real PostgreSQL first-binding CAS', {
     const token = ok(await login(a.usuario)).token;
     await pool.query('UPDATE usuarios SET google_id=$1 WHERE id=$2', ['qa-old-subject', a.id]);
     const nextEmail = 'qa-admin-reconfigured@example.invalid';
-    ok(await patch(a.id, 'google-email', { google_email: nextEmail }));
+    ok(await patch(a.id, 'google-email', { expected_revision: await accountRevision(a.id), google_email: nextEmail }));
     assert.equal((await stored(a.id)).google_id, null);
     assert.equal((await stored(a.id)).session_version, 2);
     assert.equal((await api('/sesion', { token })).status, 401);
@@ -105,7 +110,7 @@ test('principal login identity HTTP and real PostgreSQL first-binding CAS', {
     const fresh = ok(await login(a.usuario)).token;
     await pool.query("UPDATE usuarios SET rol='edicion' WHERE id=$1", [a.id]);
     assert.equal(ok(await api('/sesion', { token: fresh })).usuario.rol, 'edicion');
-    ok(await patch(a.id, 'acceso', { activo: false }));
+    ok(await patch(a.id, 'acceso', { expected_revision: await accountRevision(a.id), activo: false }));
     assert.equal((await api('/sesion', { token: fresh })).status, 401);
     assert.equal((await login(a.usuario)).status, 401);
   });
@@ -146,9 +151,9 @@ test('principal login identity HTTP and real PostgreSQL first-binding CAS', {
       const a = await account();
       let afterAdmin;
       const wrapped = beforeBinding(async () => {
-        if (kind === 'email reset') ok(await patch(a.id, 'google-email', { google_email: `qa-reset-${a.id}@example.invalid` }));
+        if (kind === 'email reset') ok(await patch(a.id, 'google-email', { expected_revision: await accountRevision(a.id), google_email: `qa-reset-${a.id}@example.invalid` }));
         if (kind === 'session revoke') await pool.query('UPDATE usuarios SET session_version=session_version+1 WHERE id=$1', [a.id]);
-        if (kind === 'deactivate') ok(await patch(a.id, 'acceso', { activo: false }));
+        if (kind === 'deactivate') ok(await patch(a.id, 'acceso', { expected_revision: await accountRevision(a.id), activo: false }));
         if (kind === 'conflicting subject') await pool.query('UPDATE usuarios SET google_id=$1 WHERE id=$2', ['qa-competing-subject', a.id]);
         afterAdmin = await stored(a.id);
       });

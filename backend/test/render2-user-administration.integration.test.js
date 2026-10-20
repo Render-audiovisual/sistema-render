@@ -53,6 +53,11 @@ test('user administration preserves identities/history and current-session autho
     whatsapp_id_hash=$4,whatsapp_habilitado=true WHERE id=91003`,
   ['private-notices-84@example.invalid', 'private-google-84@example.invalid', 'synthetic-private-google-subject-84', 'synthetic-private-whatsapp-hash-84']);
   const admin = await login('qa_franco'), secondAdmin = await login('qa_agustin');
+  const readRevision = async id => {
+    const rows = checked(await api('/usuarios', { token: admin }));
+    const revision = rows.find(row => row.id === id)?.admin_revision;
+    assert.match(revision || '', new RegExp(`^ua1:${id}:[1-9]\\d*$`)); return revision;
+  };
   let employee = await login('qa_luciano');
   const employeeSecond = await login('qa_luciano');
   const task = checked(await api('/tareas', { token: admin, method: 'POST', body: {
@@ -79,6 +84,7 @@ test('user administration preserves identities/history and current-session autho
   const validCreate = { usuario: 'qa_user84_new', nombre: 'QA84 new account', rol: 'edicion',
     password: 'Synthetic-only-new-account84!', email_notificaciones: 'new-account84@example.invalid' };
   await t.test('every administrative mutation rejects employee and anonymous callers without account/history writes', async () => {
+    const revision = await readRevision(91003);
     const actions = [
       ['/usuarios', 'POST', validCreate],
       ['/usuarios/91003', 'PATCH', { usuario: 'qa_luciano', nombre: 'Changed', rol: 'admin' }],
@@ -91,7 +97,8 @@ test('user administration preserves identities/history and current-session autho
     ];
     for (const [route, method, body] of actions) {
       for (const [token, status] of [[employee, 403], [undefined, 401]]) {
-        await unchanged(() => api(route, { token, method, body }), status);
+        const payload = method === 'PATCH' ? { ...body, expected_revision: revision } : body;
+        await unchanged(() => api(route, { token, method, body: payload }), status);
       }
     }
   });
@@ -125,6 +132,7 @@ test('user administration preserves identities/history and current-session autho
       noSecrets(body); assert.ok(Number.isSafeInteger(body.id)); createdIds.push(body.id);
       assert.equal(body.usuario, usuario); assert.equal(body.nombre, 'QA84 valid account');
       assert.equal(body.activo, true); assert.equal(body.google_email, null); assert.equal(body.whatsapp_vinculado, false);
+      assert.match(body.admin_revision || '', new RegExp(`^ua1:${body.id}:[1-9]\\d*$`));
       const session = checked(await api('/login', { method: 'POST', body: { usuario, password: passwords[i] } }));
       assert.equal(session.usuario.id, body.id);
       const [persisted] = await fixture.query(`SELECT id,activo,length(password_hash)>0 AS has_hash,
@@ -135,13 +143,15 @@ test('user administration preserves identities/history and current-session autho
 
   await t.test('admin contact changes are explicit and Google identity change revokes old sessions', async () => {
     const target = createdIds[0], token = await login('qa_user84_valid_0', 'x'.repeat(12));
+    let revision = await readRevision(target);
     for (const [suffix, body, expectedField] of [
       ['email-notificaciones', { email_notificaciones: 'updated-notices84@example.invalid' }, 'email_notificaciones'],
       ['whatsapp', { whatsapp: '5493794000084' }, 'whatsapp_vinculado'],
       ['google-email', { google_email: 'configured-google84@example.invalid' }, 'google_email'],
     ]) {
-      const result = checked(await api(`/usuarios/${target}/${suffix}`, { token: admin, method: 'PATCH', body }));
+      const result = checked(await api(`/usuarios/${target}/${suffix}`, { token: admin, method: 'PATCH', body: { ...body, expected_revision: revision } }));
       noSecrets(result); assert.equal(result.id, target); assert.ok(Object.hasOwn(result, expectedField));
+      assert.notEqual(result.admin_revision, revision); revision = result.admin_revision;
     }
     checked(await api('/inicio', { token }), 401);
     const current = await login('qa_user84_valid_0', 'x'.repeat(12)); checked(await api('/inicio', { token: current }));
@@ -190,11 +200,12 @@ test('user administration preserves identities/history and current-session autho
   });
 
   await t.test('self-disable is rejected and deactivation keeps the user, task, assignments and comments intact', async () => {
-    await unchanged(() => api('/usuarios/91001/acceso', { token: admin, method: 'PATCH', body: { activo: false } }), 409);
+    const selfRevision = await readRevision(91001), targetRevision = await readRevision(91003);
+    await unchanged(() => api('/usuarios/91001/acceso', { token: admin, method: 'PATCH', body: { activo: false, expected_revision: selfRevision } }), 409);
     const beforeHistory = await history();
     const beforeUsers = (await snapshot()).users;
     const [before] = await fixture.query('SELECT id,session_version FROM usuarios WHERE id=91003');
-    const body = checked(await api('/usuarios/91003/acceso', { token: admin, method: 'PATCH', body: { activo: false } }));
+    const body = checked(await api('/usuarios/91003/acceso', { token: admin, method: 'PATCH', body: { activo: false, expected_revision: targetRevision } }));
     noSecrets(body); assert.equal(body.id, 91003); assert.equal(body.activo, false);
     assert.deepEqual(await history(), beforeHistory);
     assert.deepEqual((await snapshot()).users.filter(row => row.id !== 91003), beforeUsers.filter(row => row.id !== 91003));
@@ -211,7 +222,8 @@ test('user administration preserves identities/history and current-session autho
   await t.test('reactivation preserves history and cannot revive either pre-deactivation token', async () => {
     const beforeHistory = await history();
     const [before] = await fixture.query('SELECT session_version FROM usuarios WHERE id=91003');
-    const result = checked(await api('/usuarios/91003/acceso', { token: admin, method: 'PATCH', body: { activo: true } }));
+    const revision = await readRevision(91003);
+    const result = checked(await api('/usuarios/91003/acceso', { token: admin, method: 'PATCH', body: { activo: true, expected_revision: revision } }));
     noSecrets(result); assert.equal(result.id, 91003); assert.equal(result.activo, true);
     assert.equal((await fixture.query('SELECT session_version FROM usuarios WHERE id=91003'))[0].session_version, before.session_version + 1);
     assert.deepEqual(await history(), beforeHistory);
@@ -224,20 +236,22 @@ test('user administration preserves identities/history and current-session autho
 
   await t.test('current DB role and revoked epoch reject administrative writes despite earlier admin login', async () => {
     const target = createdIds[1];
+    const revision = await readRevision(target);
     // Role-only downgrade simulates a current-DB authority change without relying
     // on the route's separate session_version bump to prove role revalidation.
     await fixture.query("UPDATE usuarios SET rol='edicion' WHERE id=91002");
-    await unchanged(() => api(`/usuarios/${target}/acceso`, { token: secondAdmin, method: 'PATCH', body: { activo: false } }), 403);
+    await unchanged(() => api(`/usuarios/${target}/acceso`, { token: secondAdmin, method: 'PATCH', body: { activo: false, expected_revision: revision } }), 403);
     await fixture.query("UPDATE usuarios SET rol='admin',session_version=session_version+1 WHERE id=91002");
-    await unchanged(() => api(`/usuarios/${target}/acceso`, { token: secondAdmin, method: 'PATCH', body: { activo: false } }), 401);
+    await unchanged(() => api(`/usuarios/${target}/acceso`, { token: secondAdmin, method: 'PATCH', body: { activo: false, expected_revision: revision } }), 401);
   });
 
   await t.test('last active owner cannot be demoted or deleted even by its own valid admin session', async () => {
-    checked(await api('/usuarios/91002/acceso', { token: admin, method: 'PATCH', body: { activo: false } }));
+    const targetRevision = await readRevision(91002), selfRevision = await readRevision(91001);
+    checked(await api('/usuarios/91002/acceso', { token: admin, method: 'PATCH', body: { activo: false, expected_revision: targetRevision } }));
     const [owners] = await fixture.query("SELECT count(*)::int AS count FROM usuarios WHERE rol='admin' AND activo IS TRUE");
     assert.equal(owners.count, 1);
     await unchanged(() => api('/usuarios/91001', { token: admin, method: 'PATCH', body: {
-      usuario: 'qa_franco', nombre: 'Franco QA', rol: 'edicion',
+      usuario: 'qa_franco', nombre: 'Franco QA', rol: 'edicion', expected_revision: selfRevision,
     } }), 409);
     await unchanged(() => api('/usuarios/91001', { token: admin, method: 'DELETE' }), 409);
     checked(await api('/inicio', { token: admin }));

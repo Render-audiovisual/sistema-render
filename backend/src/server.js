@@ -28,6 +28,8 @@ import { createLoginHandlers, loginUserDto } from './login-handlers.js';
 import { reserveLoginAttempt } from "./login-abuse.js";
 import { administerUser, withUserAdministration, UserAdministrationAuthorityError } from "./user-administration.js";
 import { normalizeUserCreateInput } from './user-create-input.js';
+import { bodyParserErrorResponse } from './body-parser-errors.js';
+import { USER_ADMIN_REVISION_SQL, UserAdministrationInputError, userAdministrationId, normalizeUserAdministrationPatch } from './user-admin-patch.js';
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { persistAssignedTask } from "./task-persistence.js";
 import { correctProductionRecord } from "./production-record-updates.js";
@@ -63,7 +65,6 @@ import { createCalendarRouter } from "./calendar.js";
 import { createEditorialControlRouter } from "./editorial-control.js";
 import { editorialPublicationDomainConflict } from "./editorial-publication-errors.js";
 import { annotateEditorialEvidence } from "./editorial-evidence-read.js";
-import { resolveUserRole } from "./user-roles.js";
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
@@ -263,19 +264,15 @@ router.post("/logout", async (req, res, next) => {
 });
 
 router.patch("/usuarios/:id/acceso", requireRole("admin"), async (req, res, next) => {
-  const id = Number(req.params.id);
-  if (!Number.isSafeInteger(id) || id < 1 || typeof req.body.activo !== "boolean") {
-    return res.status(400).json({ error: "Indicá un usuario válido y su estado activo." });
-  }
-  if (id === Number(req.auth.id) && !req.body.activo) {
-    return res.status(409).json({ error: "No podés desactivar tu propia cuenta." });
-  }
   try {
-    const { rows } = await administerUser(pool, id, { activo: req.body.activo }, db => db.query(`UPDATE usuarios SET activo=$2,session_version=session_version+1
-      WHERE id=$1 RETURNING id,usuario,nombre,rol,activo`, [id, req.body.activo]), req.auth);
+    const id = userAdministrationId(req.params.id), input = normalizeUserAdministrationPatch(req.body,'access',id);
+    if (id === req.auth.id && !input.activo) return res.status(409).json({ error: "No podés desactivar tu propia cuenta." });
+    const { rows } = await administerUser(pool, id, input, db => db.query(`UPDATE usuarios SET activo=$2,session_version=session_version+1
+      WHERE id=$1 RETURNING id,usuario,nombre,rol,activo,${USER_ADMIN_REVISION_SQL} AS admin_revision`, [id, input.activo]), req.auth);
     if (!rows.length) return res.status(404).json({ error: "Usuario no encontrado." });
     res.json(rows[0]);
   } catch (error) {
+    if (error instanceof UserAdministrationInputError) return next(error);
     if ([404, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
   }
@@ -483,7 +480,7 @@ router.post("/notas/:id/restaurar", async (req, res, next) => {
 router.get("/usuarios", async (req, res, next) => {
   try {
     const fields = req.auth.rol === "admin"
-      ? "id, usuario, nombre, rol, activo, email_notificaciones, google_email, foto_perfil, (whatsapp_id_hash IS NOT NULL AND whatsapp_habilitado IS TRUE) AS whatsapp_vinculado, created_at"
+      ? `id, usuario, nombre, rol, activo, email_notificaciones, google_email, foto_perfil, (whatsapp_id_hash IS NOT NULL AND whatsapp_habilitado IS TRUE) AS whatsapp_vinculado, created_at, ${USER_ADMIN_REVISION_SQL} AS admin_revision`
       : "id, usuario, nombre, rol, activo, foto_perfil, created_at";
     const result = await pool.query(`SELECT ${fields} FROM usuarios ${req.auth.rol === "admin" ? "" : "WHERE activo IS TRUE"} ORDER BY id`);
     res.json(result.rows);
@@ -770,7 +767,7 @@ router.post("/usuarios", requireRole("admin"), async (req, res, next) => {
       `INSERT INTO usuarios (usuario, nombre, rol, password_hash, email_notificaciones)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, usuario, nombre, rol, activo, email_notificaciones, google_email,
-         foto_perfil, false AS whatsapp_vinculado, created_at`,
+         foto_perfil, false AS whatsapp_vinculado, created_at, ${USER_ADMIN_REVISION_SQL} AS admin_revision`,
       [usuario, nombre, rol, passwordHash, email_notificaciones],
     ));
 
@@ -786,30 +783,18 @@ router.post("/usuarios", requireRole("admin"), async (req, res, next) => {
   }
 });
 
-function normalizarEmailNotificaciones(value) {
-  const email = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (!email) return null;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
-}
-
-function normalizarWhatsapp(value) {
-  const digits = String(value || "").replace(/\D/g, "");
-  return digits.length >= 10 && digits.length <= 15 ? digits : null;
-}
-
 router.patch("/usuarios/:id/whatsapp", requireRole("admin"), async (req, res, next) => {
   try {
-    const raw = typeof req.body.whatsapp === "string" ? req.body.whatsapp.trim() : "";
-    const number = raw ? normalizarWhatsapp(raw) : null;
-    if (raw && !number) return res.status(400).json({ error: "El número de WhatsApp no es válido." });
+    const id = userAdministrationId(req.params.id), input = normalizeUserAdministrationPatch(req.body,'whatsapp',id), number = input.whatsapp;
     const hash = number ? crypto.createHash("sha256").update(number).digest("hex") : null;
-    const updated = await withUserAdministration(pool, req.auth, db => db.query(`UPDATE usuarios SET whatsapp_id_hash=$1,whatsapp_habilitado=$2
+    const updated = await administerUser(pool, id, input, db => db.query(`UPDATE usuarios SET whatsapp_id_hash=$1,whatsapp_habilitado=$2
       WHERE id=$3 RETURNING id,usuario,nombre,rol,email_notificaciones,google_email,foto_perfil,
-      (whatsapp_id_hash IS NOT NULL AND whatsapp_habilitado IS TRUE) AS whatsapp_vinculado,created_at`,
-    [hash, Boolean(number), req.params.id]));
+      (whatsapp_id_hash IS NOT NULL AND whatsapp_habilitado IS TRUE) AS whatsapp_vinculado,created_at,${USER_ADMIN_REVISION_SQL} AS admin_revision`,
+    [hash, Boolean(number), id]),req.auth);
     if (!updated.rows[0]) return res.status(404).json({ error: "Usuario no encontrado." });
     return res.json(updated.rows[0]);
   } catch (error) {
+    if (error instanceof UserAdministrationInputError) return next(error);
     if (error.code === "23505") return res.status(409).json({ error: "Ese WhatsApp ya está vinculado a otra persona." });
     return next(error);
   }
@@ -817,23 +802,15 @@ router.patch("/usuarios/:id/whatsapp", requireRole("admin"), async (req, res, ne
 
 router.patch("/usuarios/:id/email-notificaciones", requireRole("admin"), async (req, res, next) => {
   try {
-    const emailIngresado =
-      typeof req.body.email_notificaciones === "string"
-        ? req.body.email_notificaciones.trim()
-        : "";
-    const email = normalizarEmailNotificaciones(emailIngresado);
+    const id = userAdministrationId(req.params.id), input = normalizeUserAdministrationPatch(req.body,'notices',id);
 
-    if (emailIngresado && !email) {
-      return res.status(400).json({ error: "El correo para notificaciones no es válido." });
-    }
-
-    const updated = await withUserAdministration(pool, req.auth, db => db.query(
+    const updated = await administerUser(pool, id, input, db => db.query(
       `UPDATE usuarios
        SET email_notificaciones = $1
        WHERE id = $2
-       RETURNING id, usuario, nombre, rol, email_notificaciones, foto_perfil, created_at`,
-      [email, req.params.id],
-    ));
+       RETURNING id, usuario, nombre, rol, email_notificaciones, foto_perfil, created_at, ${USER_ADMIN_REVISION_SQL} AS admin_revision`,
+      [input.email_notificaciones, id],
+    ),req.auth);
 
     if (updated.rows.length === 0) {
       return res.status(404).json({ error: "Usuario no encontrado." });
@@ -841,6 +818,7 @@ router.patch("/usuarios/:id/email-notificaciones", requireRole("admin"), async (
 
     res.json(updated.rows[0]);
   } catch (error) {
+    if (error instanceof UserAdministrationInputError) return next(error);
     if (error.code === "23505") {
       return res.status(409).json({ error: "Ese correo ya está asignado a otra persona." });
     }
@@ -850,24 +828,18 @@ router.patch("/usuarios/:id/email-notificaciones", requireRole("admin"), async (
 
 router.patch("/usuarios/:id/google-email", requireRole("admin"), async (req, res, next) => {
   try {
-    const emailIngresado =
-      typeof req.body.google_email === "string" ? req.body.google_email.trim() : "";
-    const email = normalizarEmailNotificaciones(emailIngresado);
-
-    if (emailIngresado && !email) {
-      return res.status(400).json({ error: "El email de Google no es válido." });
-    }
+    const id = userAdministrationId(req.params.id), input = normalizeUserAdministrationPatch(req.body,'google',id);
 
     // Cambiar el email vinculado fuerza a re-vincular el google_id en el
     // próximo login — evita que quede un google_id viejo apuntando a una
     // cuenta de Google que ya no corresponde.
-    const updated = await withUserAdministration(pool, req.auth, db => db.query(
+    const updated = await administerUser(pool, id, input, db => db.query(
       `UPDATE usuarios
        SET google_email = $1, google_id = NULL, session_version=session_version+1
        WHERE id = $2
-       RETURNING id, usuario, nombre, rol, google_email, foto_perfil, created_at`,
-      [email, req.params.id],
-    ));
+       RETURNING id, usuario, nombre, rol, google_email, foto_perfil, created_at, ${USER_ADMIN_REVISION_SQL} AS admin_revision`,
+      [input.google_email, id],
+    ),req.auth);
 
     if (updated.rows.length === 0) {
       return res.status(404).json({ error: "Usuario no encontrado." });
@@ -875,6 +847,7 @@ router.patch("/usuarios/:id/google-email", requireRole("admin"), async (req, res
 
     res.json(updated.rows[0]);
   } catch (error) {
+    if (error instanceof UserAdministrationInputError) return next(error);
     if (error.code === "23505") {
       return res.status(409).json({ error: "Ese email de Google ya está asignado a otra persona." });
     }
@@ -1052,21 +1025,14 @@ router.patch("/usuarios/password", async (req, res, next) => {
 
 router.patch("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
   try {
-    const nombre = typeof req.body.nombre === "string" ? req.body.nombre.trim() : "";
-    const usuario = typeof req.body.usuario === "string" ? req.body.usuario.trim() : "";
-    const { rol } = req.body;
-    const rolNormalizado = resolveUserRole(rol);
+    const id = userAdministrationId(req.params.id), input = normalizeUserAdministrationPatch(req.body,'identity',id);
 
-    if (!nombre || !usuario || !rolNormalizado) {
-      return res.status(400).json({ error: "Los datos del empleado no son válidos." });
-    }
-
-    const updated = await administerUser(pool, req.params.id, { rol: rolNormalizado }, db => db.query(
+    const updated = await administerUser(pool, id, input, db => db.query(
       `UPDATE usuarios
        SET nombre = $1, usuario = $2, rol = $3, session_version=session_version+1
        WHERE id = $4
-       RETURNING id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at`,
-      [nombre, usuario, rolNormalizado, req.params.id],
+       RETURNING id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at, ${USER_ADMIN_REVISION_SQL} AS admin_revision`,
+      [input.nombre, input.usuario, input.rol, id],
     ), req.auth);
 
     if (updated.rows.length === 0) {
@@ -1074,6 +1040,7 @@ router.patch("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
     }
     return res.json(updated.rows[0]);
   } catch (error) {
+    if (error instanceof UserAdministrationInputError) return next(error);
     if ([404, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     if (error.code === "23505") {
       return res.status(409).json({ error: "Ya existe ese usuario." });
@@ -3737,7 +3704,9 @@ if (indexHtml !== null) {
 // Error handler centralizado: sin esto, Express devuelve HTML/stack
 // traces por defecto en vez de JSON — riesgo de filtrar detalles internos.
 app.use((err, _req, res, _next) => {
-  if (err instanceof UserAdministrationAuthorityError) {
+  const parsing = bodyParserErrorResponse(err);
+  if (parsing) return res.status(parsing.status).json(parsing.body);
+  if (err instanceof UserAdministrationAuthorityError || err instanceof UserAdministrationInputError) {
     return res.status(err.status).json({ error: err.message, code: err.code });
   }
   if (editingReviewDomainConflict(err)) {

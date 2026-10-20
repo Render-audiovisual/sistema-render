@@ -20,6 +20,13 @@ test('principal Phase 1 HTTP sessions, DTO privacy and publication boundary', {
     return result.body.token;
   };
   const [franco, agustin, luciano, designer] = await Promise.all(fixtureAccounts.map(a => login(a.usuario)));
+  const accountRevision = async id => {
+    const result = await api('/usuarios', { token: franco });
+    assert.equal(result.status, 200);
+    const revision = result.body.find(row => row.id === id)?.admin_revision;
+    assert.match(revision, new RegExp(`^ua1:${id}:[0-9]+$`));
+    return revision;
+  };
   const claims = jwt.verify(franco, fixture.secret, { issuer: 'render', audience: 'render-api' });
   assert.equal(claims.exp - claims.iat, 8 * 3600);
   assert.equal(claims.rol, undefined);
@@ -38,9 +45,9 @@ test('principal Phase 1 HTTP sessions, DTO privacy and publication boundary', {
   const [owners] = await fixture.query("SELECT count(*)::int AS count FROM usuarios WHERE rol='admin' AND activo=TRUE");
   assert.equal(owners.count, 1, 'Franco must be the only active fixture administrator after downgrade');
   assert.equal((await api('/usuarios/91001', { token: franco, method: 'PATCH',
-    body: { nombre: 'Franco QA', usuario: 'qa_franco', rol: 'diseno' } })).status, 409);
+    body: { expected_revision: await accountRevision(91001), nombre: 'Franco QA', usuario: 'qa_franco', rol: 'diseno' } })).status, 409);
   assert.equal((await api('/usuarios/91001', { token: franco, method: 'DELETE' })).status, 409);
-  assert.equal((await api('/usuarios/91001/acceso', { token: franco, method: 'PATCH', body: { activo: false } })).status, 409);
+  assert.equal((await api('/usuarios/91001/acceso', { token: franco, method: 'PATCH', body: { expected_revision: await accountRevision(91001), activo: false } })).status, 409);
   assert.equal((await api('/sesion', { token: franco })).body.usuario.rol, 'admin');
   await fixture.query(`INSERT INTO entregas_edicion
     (editor_clave,fecha_entrega,cliente_etiqueta,categoria,importe,fuente,fuente_item,confirmado_por)
@@ -69,7 +76,7 @@ test('principal Phase 1 HTTP sessions, DTO privacy and publication boundary', {
   assertNoMoney(designerReport.body);
   assert.equal((await api('/sueldos', { token: luciano })).status, 403);
 
-  assert.equal((await api('/usuarios/91003/acceso', { token: franco, method: 'PATCH', body: { activo: false } })).status, 200);
+  assert.equal((await api('/usuarios/91003/acceso', { token: franco, method: 'PATCH', body: { expected_revision: await accountRevision(91003), activo: false } })).status, 200);
   assert.equal((await api('/sesion', { token: luciano })).status, 401);
   assert.equal((await api('/login', { method: 'POST', body: { usuario: 'qa_luciano', password: fixturePassword } })).status, 401);
   const second = await login('qa_franco');

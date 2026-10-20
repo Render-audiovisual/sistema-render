@@ -6,11 +6,17 @@ import { Modal } from "../components/Modal.jsx";
 import { getRolLabel, ROL_LABELS } from "../constants.js";
 
 const employeeId = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
+function employeeRevision(value, id) {
+  const match = typeof value === 'string' && /^ua1:([1-9]\d*):([1-9]\d*)$/.exec(value);
+  if (!employeeId(id) || !match || match[0] !== value || Number(match[1]) !== id || !employeeId(Number(match[2]))) return null;
+  return Number(match[2]);
+}
 function mergeEmployeeAck(before, value, id, required = []) {
   if (!employeeId(id) || value?.id !== id || !['nombre','usuario','rol'].every(key => typeof value[key] === 'string' && value[key].trim())
-    || required.some(key => !Object.hasOwn(value,key))) throw new Error('No se pudo verificar la respuesta del usuario. Revisá el registro antes de repetir la operación.');
+    || !employeeRevision(value.admin_revision,id) || required.some(key => !Object.hasOwn(value,key))) throw new Error('No se pudo verificar la respuesta del usuario. Revisá el registro antes de repetir la operación.');
+  if (Object.hasOwn(before,'admin_revision') && (!employeeRevision(before.admin_revision,id) || employeeRevision(value.admin_revision,id) !== employeeRevision(before.admin_revision,id) + 1)) throw new Error('La respuesta no confirmó la siguiente revisión del usuario.');
   const result = { ...before, id };
-  for (const key of ['nombre','usuario','rol','email_notificaciones','google_email','foto_perfil','created_at','activo','whatsapp_vinculado']) {
+  for (const key of ['nombre','usuario','rol','email_notificaciones','google_email','foto_perfil','created_at','activo','whatsapp_vinculado','admin_revision']) {
     if (!Object.hasOwn(value,key)) continue;
     if (['activo','whatsapp_vinculado'].includes(key) ? typeof value[key] !== 'boolean' : value[key] !== null && typeof value[key] !== 'string') throw new Error('La respuesta del usuario no es válida.');
     result[key] = value[key];
@@ -74,6 +80,16 @@ function EmpleadosContent({ sesion }) {
   const { capture: captureRoster } = useScopedRequest(sesion,'employee-roster');
   const pending = useRef(false), listGeneration = useRef(0);
   const [mutationBusy,setMutationBusy] = useState(false);
+  const editObservations = useRef({}), blockedTargetsRef = useRef(new Set());
+  const [blockedTargets,setBlockedTargets] = useState({});
+  const recoveryIntent = useRef(null);
+  const [recoveryRequested,setRecoveryRequested] = useState(false);
+  const clearRecovery = () => { recoveryIntent.current = null; setRecoveryRequested(false); };
+  const heldUser = (kind, user) => editObservations.current[kind]?.id === user.id ? editObservations.current[kind] : user;
+  const blockTarget = id => {
+    blockedTargetsRef.current.add(id);
+    setBlockedTargets(previous => ({...previous,[id]:true}));
+  };
 
   const handleNombreChange = event => {
     if (pending.current) return;
@@ -88,7 +104,7 @@ function EmpleadosContent({ sesion }) {
     if (!scope.current()) return;
     setCargandoUsuarios(true);
     try {
-      const rows = employeeRoster(await scope.request('/api/usuarios', { method:'GET', ...(signal ? {signal} : {}) }));
+      const rows = employeeRoster(await scope.request('/api/usuarios', { method:'GET', cache:'no-store', ...(signal ? {signal} : {}) }));
       if (!scope.current() || signal?.aborted || generation !== listGeneration.current) return;
       setError(null); setUsuarios(rows);
       // Never replace a held editor or its draft with a roster refresh.
@@ -123,6 +139,7 @@ function EmpleadosContent({ sesion }) {
   };
   const cerrarAdministracion = () => {
     if (!allowDiscard(adminDirty)) return;
+    clearRecovery();
     setUsuarioAdministrado(null); setEditandoCorreo(false); setEditandoGoogleEmail(false);
     setEditandoWhatsapp(false); setEditandoDatos(false); setFormError(null);
   };
@@ -132,12 +149,14 @@ function EmpleadosContent({ sesion }) {
   };
   const abrirAlta = () => {
     if (!allowDiscard(modalAltaAbierto ? altaDirty : adminDirty)) return;
-    setUsuarioAdministrado(null); setNombre(''); setUsuario(''); setRol('diseno'); setRolPersonalizado('');
+    clearRecovery();
+    editObservations.current = {}; setUsuarioAdministrado(null); setNombre(''); setUsuario(''); setRol('diseno'); setRolPersonalizado('');
     setPassword(''); setEmailNotificaciones(''); setFormError(null); setMensaje(null); setModalAltaAbierto(true);
   };
   const abrirAdministracion = u => {
     if (!employeeId(u?.id) || !allowDiscard(modalAltaAbierto ? altaDirty : adminDirty)) return;
-    setModalAltaAbierto(false); setPassword(''); setUsuarioAdministrado(u);
+    clearRecovery();
+    editObservations.current = {}; setModalAltaAbierto(false); setPassword(''); setUsuarioAdministrado(u);
     setCorreoEdicion(u.email_notificaciones || ''); setGoogleEmailEdicion(u.google_email || '');
     setWhatsappEdicion(''); setEditandoWhatsapp(false); setEditandoCorreo(false); setEditandoGoogleEmail(false); setEditandoDatos(false);
     setFormError(null); setMensaje(null);
@@ -154,13 +173,50 @@ function EmpleadosContent({ sesion }) {
     setUsuarios(previous => previous.some(user => user.id === row.id) ? previous.map(user => user.id === row.id ? {...user,...row} : user) : [...previous,row]);
     setUsuarioAdministrado(previous => previous?.id === row.id ? {...previous,...row} : previous);
   };
+  const requestReloadManagedUser = () => {
+    if (pending.current || !employeeId(usuarioAdministrado?.id)) return;
+    const guard = capture(), lifetime = captureLifetime(), id = usuarioAdministrado.id;
+    if (!guard.current() || !blockedTargetsRef.current.has(id)) return;
+    recoveryIntent.current = Object.freeze({guard,lifetime,id});
+    setRecoveryRequested(true);
+  };
+  const cancelReloadManagedUser = () => {
+    if (pending.current || !recoveryIntent.current?.guard.current()) return;
+    clearRecovery();
+  };
+  const reloadManagedUser = async () => {
+    const intent = recoveryIntent.current;
+    if (pending.current || !intent || !intent.guard.current() || intent.id !== usuarioAdministrado?.id) return;
+    const {guard,lifetime,id} = intent;
+    pending.current = true; listGeneration.current += 1; setMutationBusy(true);
+    try {
+      const rows = employeeRoster(await guard.request('/api/usuarios',{method:'GET',cache:'no-store'}));
+      const latest = rows.find(user => user.id === id);
+      if (!latest) throw new Error('El usuario ya no está disponible. Conservamos el borrador sin cambiar de persona.');
+      guard.assertCurrent();
+      if (recoveryIntent.current !== intent) return;
+      setUsuarios(rows); setUsuarioAdministrado(latest);
+      setCorreoEdicion(latest.email_notificaciones || ''); setGoogleEmailEdicion(latest.google_email || ''); setWhatsappEdicion('');
+      setNombreEdicion(latest.nombre); setUsuarioEdicion(latest.usuario); setRolEdicion(ROL_LABELS[latest.rol] ? latest.rol : '__otra__'); setRolPersonalizadoEdicion(ROL_LABELS[latest.rol] ? '' : getRolLabel(latest.rol));
+      setEditandoCorreo(false); setEditandoGoogleEmail(false); setEditandoWhatsapp(false); setEditandoDatos(false);
+      editObservations.current = {}; blockedTargetsRef.current.delete(id);
+      setBlockedTargets(previous => { const next = {...previous}; delete next[id]; return next; });
+      clearRecovery();
+      setFormError(null); setError(null); setMensaje('Usuario recargado. Revisá los datos guardados antes de volver a modificarlos.');
+    } catch (reason) {
+      if (guard.current() && !isSessionFailure(reason)) setFormError('No se pudo recargar este usuario. Conservamos el borrador y el bloqueo; no se repitió ninguna escritura.');
+    } finally { pending.current = false; if (lifetime.current()) setMutationBusy(false); }
+  };
   const runMutation = async ({ target, requestTargetId, path, body, method = 'PATCH', required = [], validate, onConfirmed, onComplete, busySetter, refresh = true, guard: originalGuard }) => {
     if (pending.current) return;
     const guard = originalGuard || capture(), lifetime = captureLifetime();
     if (!guard.current() || view.role !== 'admin' || target && (!employeeId(target.id) || target.id !== usuarioAdministrado?.id)
       || requestTargetId !== undefined && (!employeeId(requestTargetId) || requestTargetId !== usuarioAdministrado?.id)) return;
+    if (target && blockedTargetsRef.current.has(target.id)) { setFormError('Revisá y recargá este usuario antes de volver a guardar. Conservamos el borrador.'); return; }
+    if (target && !employeeRevision(target.admin_revision,target.id)) { blockTarget(target.id); setFormError('Falta una revisión válida del usuario. Recargá el registro guardado antes de modificarlo.'); return; }
     // Serialize before any await; follow-up reads retain this exact action.
-    const options = { method, ...(body === undefined ? {} : {headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}) };
+    const payload = target ? {...body,expected_revision:target.admin_revision} : body;
+    const options = { method, ...(payload === undefined ? {} : {headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}) };
     pending.current = true; listGeneration.current += 1; setMutationBusy(true); busySetter?.(true);
     setFormError(null); setMensaje(null);
     try {
@@ -175,15 +231,25 @@ function EmpleadosContent({ sesion }) {
         catch (reason) { if (guard.current()) setError('El cambio se confirmó, pero no se pudo actualizar la lista. No repitas la operación; reintentá sólo la lectura.'); }
       }
       guard.assertCurrent(); onComplete?.(row);
-    } catch (reason) { if (guard.current() && !isSessionFailure(reason)) setFormError(reason.message || 'No se pudo confirmar la operación. Revisá el registro antes de repetirla.'); }
+    } catch (reason) {
+      if (guard.current() && !isSessionFailure(reason)) {
+        if (target && (reason.status === 409 || !Number.isInteger(reason.status) || reason.status >= 500)) {
+          blockTarget(target.id); setFormError('El registro cambió o no se pudo confirmar el resultado. Conservamos el borrador. Revisá y recargá este mismo usuario antes de guardar otra vez.');
+        } else setFormError(reason.message || 'No se pudo confirmar la operación. Revisá el registro antes de repetirla.');
+      }
+    }
     finally { pending.current = false; if (lifetime.current()) { setMutationBusy(false); busySetter?.(false); setCargandoUsuarios(false); } }
   };
 
   const guardarWhatsapp = (u, valor = whatsappEdicion) => runMutation({
-    target:u,path:`/api/usuarios/${u.id}/whatsapp`,body:{whatsapp:valor},required:['whatsapp_vinculado'],busySetter:setGuardandoWhatsapp,
-    validate:row => { if (row.whatsapp_vinculado !== Boolean(valor.trim())) throw new Error('No se confirmó el vínculo de WhatsApp.'); },
+    target:heldUser('whatsapp',u),path:`/api/usuarios/${u.id}/whatsapp`,body:{whatsapp:valor},required:['whatsapp_vinculado'],busySetter:setGuardandoWhatsapp,
+    validate:row => { if (row.whatsapp_vinculado !== (valor === null ? false : Boolean(valor.trim()))) throw new Error('No se confirmó el vínculo de WhatsApp.'); },
     onConfirmed:row => { setMensaje(row.whatsapp_vinculado ? `WhatsApp vinculado para ${row.nombre}.` : `WhatsApp desvinculado para ${row.nombre}.`); setWhatsappEdicion(''); setEditandoWhatsapp(false); },
   });
+  const iniciarEdicionWhatsapp = () => {
+    if (pending.current || !capture().current()) return;
+    editObservations.current.whatsapp = {...usuarioAdministrado}; setWhatsappEdicion(''); setEditandoWhatsapp(true);
+  };
   const handleCrear = event => {
     event.preventDefault();
     if (pending.current || !modalAltaAbierto) return;
@@ -191,7 +257,7 @@ function EmpleadosContent({ sesion }) {
     return runMutation({path:'/api/usuarios',method:'POST',body,busySetter:setEnviando,
       validate:data => {
         mergeEmployeeAck({},data,data?.id,['activo','google_email','whatsapp_vinculado','email_notificaciones']);
-        if (data.nombre !== body.nombre.trim() || data.usuario !== body.usuario.trim() || data.activo !== true || data.google_email !== null || data.whatsapp_vinculado !== false
+        if (employeeRevision(data.admin_revision,data.id) !== 1 || data.nombre !== body.nombre.trim() || data.usuario !== body.usuario.trim() || data.activo !== true || data.google_email !== null || data.whatsapp_vinculado !== false
           || (data.email_notificaciones || '') !== body.email_notificaciones.trim().toLowerCase()) throw new Error('No se pudo verificar el alta. Revisá la lista antes de repetirla.');
       },
       onConfirmed:(data,guard) => { const row = mergeEmployeeAck({},data,data.id); mergeLocal(row,guard); setMensaje(`Empleado creado: ${row.nombre} (${row.usuario}).`); setPassword(''); },
@@ -210,15 +276,17 @@ function EmpleadosContent({ sesion }) {
   };
   const iniciarEdicionCorreo = () => {
     if (pending.current || !capture().current()) return;
+    editObservations.current.correo = {...usuarioAdministrado};
     setCorreoEdicion(usuarioAdministrado?.email_notificaciones || ''); setEditandoCorreo(true); setFormError(null); setMensaje(null);
   };
   const guardarCorreo = u => runMutation({
-    target:u,path:`/api/usuarios/${u.id}/email-notificaciones`,body:{email_notificaciones:correoEdicion},required:['email_notificaciones'],busySetter:setGuardandoCorreo,
+    target:heldUser('correo',u),path:`/api/usuarios/${u.id}/email-notificaciones`,body:{email_notificaciones:correoEdicion},required:['email_notificaciones'],busySetter:setGuardandoCorreo,
     validate:row => { if ((row.email_notificaciones || '') !== correoEdicion.trim().toLowerCase()) throw new Error('No se confirmó el correo de notificaciones.'); },
     onConfirmed:row => { setMensaje(row.email_notificaciones ? `Correo guardado para ${row.nombre}.` : `Correo eliminado para ${row.nombre}.`); setEditandoCorreo(false); },
   });
   const iniciarEdicionGoogleEmail = () => {
     if (pending.current || !capture().current()) return;
+    editObservations.current.google = {...usuarioAdministrado};
     setGoogleEmailEdicion(usuarioAdministrado?.google_email || ""); setEditandoGoogleEmail(true); setFormError(null); setMensaje(null);
   };
   const enviarInvitacion = u => runMutation({
@@ -227,12 +295,13 @@ function EmpleadosContent({ sesion }) {
     onConfirmed:data => setMensaje(`Instrucciones enviadas a ${data.destinatario}.`),
   });
   const guardarGoogleEmail = u => runMutation({
-    target:u,path:`/api/usuarios/${u.id}/google-email`,body:{google_email:googleEmailEdicion},required:['google_email'],busySetter:setGuardandoGoogleEmail,
+    target:heldUser('google',u),path:`/api/usuarios/${u.id}/google-email`,body:{google_email:googleEmailEdicion},required:['google_email'],busySetter:setGuardandoGoogleEmail,
     validate:row => { if ((row.google_email || '') !== googleEmailEdicion.trim().toLowerCase()) throw new Error('No se confirmó el email de Google.'); },
     onConfirmed:row => { setMensaje(row.google_email ? `Email de Google guardado para ${row.nombre}.` : `Email de Google eliminado para ${row.nombre}.`); setEditandoGoogleEmail(false); },
   });
   const iniciarEdicionDatos = () => {
     if (pending.current || !capture().current()) return;
+    editObservations.current.datos = {...usuarioAdministrado};
     setNombreEdicion(usuarioAdministrado?.nombre || ''); setUsuarioEdicion(usuarioAdministrado?.usuario || '');
     const actual = usuarioAdministrado?.rol || 'diseno';
     setRolEdicion(ROL_LABELS[actual] ? actual : '__otra__'); setRolPersonalizadoEdicion(ROL_LABELS[actual] ? '' : getRolLabel(actual));
@@ -241,7 +310,7 @@ function EmpleadosContent({ sesion }) {
   const guardarDatos = u => {
     if (!nombreEdicion.trim() || !usuarioEdicion.trim()) { if (!pending.current) setFormError('El nombre y el usuario no pueden estar vacíos.'); return; }
     const body = {nombre:nombreEdicion,usuario:usuarioEdicion,rol:rolEdicion === '__otra__' ? rolPersonalizadoEdicion : rolEdicion};
-    return runMutation({target:u,path:`/api/usuarios/${u.id}`,body,busySetter:setGuardandoDatos,
+    return runMutation({target:heldUser('datos',u),path:`/api/usuarios/${u.id}`,body,busySetter:setGuardandoDatos,
       validate:row => { if (row.nombre !== body.nombre.trim() || row.usuario !== body.usuario.trim()) throw new Error('No se confirmaron los datos del usuario.'); },
       onConfirmed:() => { setMensaje('Datos actualizados correctamente.'); setEditandoDatos(false); },
     });
@@ -538,7 +607,19 @@ function EmpleadosContent({ sesion }) {
               </div>
             </div>
 
-            <fieldset className="usuarios-panel-body" disabled={mutationBusy} style={{border:0,margin:0,minWidth:0}}>
+            {blockedTargets[usuarioAdministrado.id] && <div className="usuarios-alert" role="status">
+              {recoveryRequested ? <>
+                <span>¿Descartar el borrador y cargar los datos guardados de {usuarioAdministrado.nombre}?</span>
+                <div className="usuarios-inline-actions">
+                  <button className="btn" type="button" autoFocus disabled={mutationBusy} onClick={cancelReloadManagedUser}>Conservar borrador</button>
+                  <button className="btn primary" type="button" disabled={mutationBusy} onClick={reloadManagedUser}>{mutationBusy ? 'Recargando…' : 'Descartar y recargar'}</button>
+                </div>
+              </> : <>
+                <span>Guardado bloqueado. Tu borrador se conserva.</span>
+                <button className="btn" type="button" disabled={mutationBusy} onClick={requestReloadManagedUser}>Revisar y recargar usuario</button>
+              </>}
+            </div>}
+            <fieldset className="usuarios-panel-body" disabled={mutationBusy || Boolean(blockedTargets[usuarioAdministrado.id])} style={{border:0,margin:0,minWidth:0}}>
               {formError && <div className="usuarios-alert is-error">{formError}</div>}
 
               <section className="usuarios-panel-section">
@@ -548,7 +629,7 @@ function EmpleadosContent({ sesion }) {
                     <span>Permite administrar la Lista privada y recibir recordatorios</span>
                   </div>
                   {!editandoWhatsapp && (
-                    <button className="btn" type="button" onClick={() => { if (pending.current || !capture().current()) return; setWhatsappEdicion(""); setEditandoWhatsapp(true); }}>
+                    <button className="btn" type="button" onClick={iniciarEdicionWhatsapp}>
                       {usuarioAdministrado.whatsapp_vinculado ? "Cambiar" : "Vincular"}
                     </button>
                   )}

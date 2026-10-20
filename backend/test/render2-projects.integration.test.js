@@ -517,8 +517,13 @@ test('principal projects: additive history, ID authority, atomic CRUD and recipr
     finally { await fixture.query("UPDATE usuarios SET rol='edicion' WHERE id=$1", [ids.extra]); }
     const revoked = await login('qa_project_responsible'); ok(await api('/logout', {}, revoked));
     assert.equal((await api(`/proyectos/${main.project.id}`, undefined, revoked, 'GET')).status, 401);
-    const active = await login('qa_project_extra'); ok(await api(`/usuarios/${ids.extra}/acceso`, { activo: false }, admin, 'PATCH'));
+    const active = await login('qa_project_extra');
+    const beforeDeactivate = ok(await api('/usuarios', undefined, admin, 'GET')).find(row => row.id === ids.extra)?.admin_revision;
+    assert.match(beforeDeactivate, new RegExp(`^ua1:${ids.extra}:[0-9]+$`));
+    ok(await api(`/usuarios/${ids.extra}/acceso`, { expected_revision: beforeDeactivate, activo: false }, admin, 'PATCH'));
     assert.equal((await api(`/proyectos/${main.project.id}`, undefined, active, 'GET')).status, 401);
-    ok(await api(`/usuarios/${ids.extra}/acceso`, { activo: true }, admin, 'PATCH'));
+    const beforeReactivate = ok(await api('/usuarios', undefined, admin, 'GET')).find(row => row.id === ids.extra)?.admin_revision;
+    assert.match(beforeReactivate, new RegExp(`^ua1:${ids.extra}:[0-9]+$`));
+    ok(await api(`/usuarios/${ids.extra}/acceso`, { expected_revision: beforeReactivate, activo: true }, admin, 'PATCH'));
   });
 });

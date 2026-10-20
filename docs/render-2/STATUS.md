@@ -999,6 +999,16 @@ Invitation copy now uses the actual access login or explicit Google identity, ne
 
 No configured DB/real accounts/provider/dependency/environment/push/deploy changes. Invitation external-effect authority/durable delivery, contact input contracts, account-edit CAS, profile credential policy, other-module transactional authority, cookie/native/device/provider/global design gates remain. App/Vite/reference user changes preserved. Master active; this is verified local progress, not a completed phase or production readiness.
 
+## Integration86 — observed account edits and explicit recovery
+
+Coordinator owns074, typed closed patch contract, row-lock CAS, safe JSON-parser handling, startup compatibility and final integration; Carson owns version-aware Empleados and in-panel recovery; Hypatia actual populated-upgrade/CAS/authority tests; Descartes legacy integration adaptations; Beauvoir independent review. Admin catalog/create/five PATCH ACKs expose resource-bound ua1 revisions, omitted for employee catalog. Every account update advances a persistent counter; stale or missing observations cannot silently overwrite current account data. Actor authority still revalidates first inside the transaction; last-owner guards remain. Malformed contact bodies no longer become implicit unlink operations.
+
+Final physical HTTP/PostgreSQL107 pass across eight suites; populated actual074 preserves all prior user fields and operational history, queued competing owners get one success/one conflict, SQL ABA/no-op and profile/epoch changes invalidate old observations. Parser canary absent from final log and safe400 responses. Backend1418 pass/66 opt-in skips; frontend1082 pass; focused22 pass; build/diff pass. Old negative/race semantics retained, no automatic test rebase. Browser proves conflict retains draft, inline cancel preserves it, explicit mobile recovery then save/reload persists final display name;390 no horizontal overflow. Native-confirm attempt was not counted and was replaced/retested. Owned fixtures/tabs cleaned and viewport reset; App/Vite/references preserved.
+
+Apple clarity/progressive disclosure guided the compact recovery confirmation inside the existing panel; PostgreSQL guidance retained short transactions and consistent actor/target lock order. No global style layer or new app. [USER_ADMINISTRATION_QA.md](USER_ADMINISTRATION_QA.md) records contracts, commands, evidence and limits.
+
+No configured DB/account/provider/dependency/environment/push/deploy changes.074 applied only to disposable fixtures; coordinated authorized migration/backend/frontend rollout required because legacy PATCH without revision now gets428. External invitation authority/durable delivery, uncertain-result receipts, profile credential policy, other-module transactional authority, cookie/native/device/provider and global design gates remain. Master active, not a completed phase or production release.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

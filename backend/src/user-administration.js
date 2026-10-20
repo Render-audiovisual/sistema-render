@@ -1,3 +1,5 @@
+import { expectedUserAdministrationVersion, userAdministrationConflict, UserAdministrationInputError } from './user-admin-patch.js';
+
 export class UserAdministrationAuthorityError extends Error {
   constructor(status, message, code) {
     super(message);
@@ -44,9 +46,11 @@ export async function withUserAdministration(pool, actor, mutate) {
 // the final active administrator. No inferred identity or name-based grants.
 export async function administerUser(pool, id, next, mutate, actor) {
   return withUserAdministration(pool, actor, async client => {
-    const { rows } = await client.query("SELECT id,rol,activo FROM usuarios WHERE id=$1 FOR UPDATE", [id]);
+    const { rows } = await client.query("SELECT id,rol,activo,user_admin_version FROM usuarios WHERE id=$1 FOR UPDATE", [id]);
     const target = rows[0];
-    if (!target) { const error = new Error("Usuario no encontrado."); error.status = 404; throw error; }
+    if (!target) throw new UserAdministrationInputError('Usuario no encontrado.',404,'USER_ADMIN_NOT_FOUND');
+    const expected = expectedUserAdministrationVersion(next.expected_revision,Number(id));
+    if (target.user_admin_version !== expected) throw userAdministrationConflict();
     const removesOwner = next.delete === true || next.activo === false
       || (next.rol !== undefined && next.rol !== "admin");
     if (target.rol === "admin" && target.activo && removesOwner) {

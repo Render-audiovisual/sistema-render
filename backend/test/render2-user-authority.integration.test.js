@@ -33,6 +33,11 @@ test('user admin writers revalidate actor after advisory wait and hold authority
     const body = checked(await request(fixture.base, '/api/login', { method: 'POST', body: { usuario, password: fixturePassword } }));
     assert.equal(typeof body.token, 'string'); return body.token;
   };
+  const readRevision = async (id, token) => {
+    const rows = checked(await request(fixture.base, '/api/usuarios', { token }));
+    const revision = rows.find(row => row.id === id)?.admin_revision;
+    assert.match(revision || '', new RegExp(`^ua1:${id}:[1-9]\\d*$`)); return revision;
+  };
   // Longer bounded HTTP timeout than the general helper permits two independently
   // observed DB barriers without turning timeout/sleep into evidence of locking.
   const mutation = async (route, token, method, body) => {
@@ -69,7 +74,8 @@ test('user admin writers revalidate actor after advisory wait and hold authority
     const rows = await fixture.query(`INSERT INTO usuarios(id,usuario,nombre,rol,password_hash,activo,session_version)
       SELECT $1,$2,'QA85 isolated admin','admin',password_hash,true,1 FROM usuarios WHERE id=91001 RETURNING id`, [id, usuario]);
     assert.deepEqual(rows, [{ id }]);
-    return { id, usuario, token: await login(usuario) };
+    const token = await login(usuario);
+    return { id, usuario, token, revision: await readRevision(id, token) };
   };
   // Target and history are unrelated to each newly seeded actor. Copying the
   // password hash above is fixture-only; no environment account is consulted.
@@ -99,6 +105,8 @@ test('user admin writers revalidate actor after advisory wait and hold authority
   for (const writer of writers) for (const loss of losses) {
     await t.test(`${writer.name}: ${loss.name} after authentication/advisory wait denies without target/history writes`, async () => {
       const actor = await newActor();
+      const payload = writer.body();
+      if (writer.method === 'PATCH') payload.expected_revision = await readRevision(91003, actor.token);
       const holder = await connect(), changer = await connect(); let pending;
       try {
         await holder.query('BEGIN');
@@ -106,7 +114,7 @@ test('user admin writers revalidate actor after advisory wait and hold authority
         const holderPid = (await holder.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
         // Attach rejection handling immediately so even an unexpected timeout is
         // settled in finally, never an unhandled asynchronous test side effect.
-        pending = mutation(writer.route, actor.token, writer.method, writer.body());
+        pending = mutation(writer.route, actor.token, writer.method, payload);
         void pending.catch(() => {});
         await waitFor(changer, `SELECT l.pid FROM pg_locks l WHERE l.locktype='advisory'
           AND l.classid=20261019::oid AND l.objid=1::oid AND l.objsubid=2 AND NOT l.granted
@@ -128,7 +136,7 @@ test('user admin writers revalidate actor after advisory wait and hold authority
   }
 
   await t.test('normal self-target contact, access and identity writes complete without lock upgrade deadlocks', async () => {
-    const actor = await newActor(); let token = actor.token;
+    const actor = await newActor(); let token = actor.token, revision = actor.revision;
     const before = await snapshot();
     for (const [suffix, body, field, expected, revokes] of [
       ['email-notificaciones', { email_notificaciones: 'self-notices85@example.invalid' }, 'email_notificaciones', 'self-notices85@example.invalid', false],
@@ -137,19 +145,20 @@ test('user admin writers revalidate actor after advisory wait and hold authority
       ['acceso', { activo: true }, 'activo', true, true],
     ]) {
       const old = token;
-      const result = checked(await mutation(`/usuarios/${actor.id}/${suffix}`, token, 'PATCH', body));
+      const result = checked(await mutation(`/usuarios/${actor.id}/${suffix}`, token, 'PATCH', { ...body, expected_revision: revision }));
       noSecrets(result); assert.equal(result.id, actor.id); assert.equal(result[field], expected);
+      assert.notEqual(result.admin_revision, revision); revision = result.admin_revision;
       if (revokes) {
         checked(await request(fixture.base, '/api/inicio', { token: old }), 401);
         token = await login(actor.usuario);
       } else checked(await request(fixture.base, '/api/inicio', { token }));
     }
     const beforeDenied = await snapshot();
-    checked(await mutation(`/usuarios/${actor.id}/acceso`, token, 'PATCH', { activo: false }), 409);
+    checked(await mutation(`/usuarios/${actor.id}/acceso`, token, 'PATCH', { activo: false, expected_revision: revision }), 409);
     assert.deepEqual(await snapshot(), beforeDenied);
     const renamed = `${actor.usuario}_renamed`, old = token;
     const result = checked(await mutation(`/usuarios/${actor.id}`, token, 'PATCH', {
-      usuario: renamed, nombre: 'QA85 self renamed', rol: 'admin',
+      usuario: renamed, nombre: 'QA85 self renamed', rol: 'admin', expected_revision: revision,
     }));
     noSecrets(result); assert.equal(result.id, actor.id); assert.equal(result.usuario, renamed);
     checked(await request(fixture.base, '/api/inicio', { token: old }), 401);
@@ -163,14 +172,15 @@ test('user admin writers revalidate actor after advisory wait and hold authority
 
   await t.test('inverse order: actor revocation waits for valid writer holding actor SHARE until its target update commits', async () => {
     const actor = await newActor();
+    const targetRevision = await readRevision(91003, actor.token);
     const holder = await connect(), revoker = await connect(), observer = await connect();
     let pending, revocation;
     try {
       const before = await snapshot();
-      const targetRest = await fixture.query("SELECT md5((to_jsonb(u)-'email_notificaciones')::text) AS fingerprint FROM usuarios u WHERE id=91003");
+      const targetRest = await fixture.query("SELECT md5((to_jsonb(u)-'email_notificaciones'-'user_admin_version')::text) AS fingerprint FROM usuarios u WHERE id=91003");
       await holder.query('BEGIN'); await holder.query('SELECT id FROM usuarios WHERE id=91003 FOR UPDATE');
       const holderPid = (await holder.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
-      pending = mutation('/usuarios/91003/email-notificaciones', actor.token, 'PATCH', { email_notificaciones: 'committed-before-revoke85@example.invalid' });
+      pending = mutation('/usuarios/91003/email-notificaciones', actor.token, 'PATCH', { email_notificaciones: 'committed-before-revoke85@example.invalid', expected_revision: targetRevision });
       void pending.catch(() => {});
       const writer = await waitFor(observer, `SELECT l.pid FROM pg_locks l WHERE l.locktype='advisory'
         AND l.classid=20261019::oid AND l.objid=1::oid AND l.objsubid=2 AND l.granted
@@ -187,7 +197,7 @@ test('user admin writers revalidate actor after advisory wait and hold authority
       assert.equal(body.email_notificaciones, 'committed-before-revoke85@example.invalid');
       assert.equal((await revocation).rowCount, 1);
       assert.deepEqual(await fixture.query('SELECT id,session_version FROM usuarios WHERE id=$1', [actor.id]), [{ id: actor.id, session_version: 2 }]);
-      assert.deepEqual(await fixture.query("SELECT md5((to_jsonb(u)-'email_notificaciones')::text) AS fingerprint FROM usuarios u WHERE id=91003"), targetRest);
+      assert.deepEqual(await fixture.query("SELECT md5((to_jsonb(u)-'email_notificaciones'-'user_admin_version')::text) AS fingerprint FROM usuarios u WHERE id=91003"), targetRest);
       const after = await snapshot();
       assert.deepEqual(after.users.filter(row => row.id !== actor.id && row.id !== 91003), before.users.filter(row => row.id !== actor.id && row.id !== 91003));
       for (const key of ['tasks', 'assignments', 'comments', 'lists', 'blocks']) assert.deepEqual(after[key], before[key]);
@@ -213,7 +223,7 @@ test('user admin writers revalidate actor after advisory wait and hold authority
       const holderPid = (await holder.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
       for (const actor of actors) {
         const operation = mutation(`/usuarios/${actor.id}`, actor.token, 'PATCH', {
-          usuario: actor.usuario, nombre: 'QA85 isolated admin', rol: 'edicion',
+          usuario: actor.usuario, nombre: 'QA85 isolated admin', rol: 'edicion', expected_revision: actor.revision,
         });
         void operation.catch(() => {}); pending.push(operation);
       }

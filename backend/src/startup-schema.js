@@ -1,7 +1,7 @@
 // Minimum principal API shape. This is a read-only compatibility check, not a
 // repair tool or a certification of every constraint/business invariant.
 export const CORE_SCHEMA_COLUMNS = Object.freeze({
-  usuarios: { id: 'integer', usuario: 'text', rol: 'text', activo: 'boolean', session_version: 'integer' },
+  usuarios: { id: 'integer', usuario: 'text', rol: 'text', activo: 'boolean', session_version: 'integer', user_admin_version:'integer' },
   auth_login_buckets: { bucket_key: 'text', attempts: 'integer', window_started_at: 'timestamp with time zone', expires_at: 'timestamp with time zone' },
   clientes: { id: 'integer', activo: 'boolean', cuota_reels: 'integer', cuota_carruseles: 'integer' },
   tareas: { id: 'integer', revision: 'integer', estado: 'text', propiedades_extra: 'jsonb', publicacion_id: 'integer' },

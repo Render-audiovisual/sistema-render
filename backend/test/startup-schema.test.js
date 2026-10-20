@@ -47,3 +47,10 @@ test('an ambiguous effective schema path rejects before inspecting columns', asy
     assert.equal(calls, 1);
   }
 });
+
+test('account observation column must exist before startup without implicit migration', async () => {
+  for (const rows of [complete().filter(row=>!(row.table_name==='usuarios'&&row.column_name==='user_admin_version')),
+    complete().map(row=>row.table_name==='usuarios'&&row.column_name==='user_admin_version'?{...row,data_type:'text'}:row)]) {
+    await assert.rejects(assertCoreSchemaReady({query:async sql=>response(sql,rows)}),/not compatible/);
+  }
+});

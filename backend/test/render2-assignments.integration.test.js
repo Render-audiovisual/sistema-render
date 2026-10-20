@@ -164,8 +164,12 @@ test('stable task assignments: real HTTP identity, annotations and atomicity', {
   });
 
   await t.test('rename retains ID binding and owner edit authority after real relogin', async () => {
+    const catalog = await api('/usuarios', { token: admin });
+    assert.equal(catalog.status, 200);
+    const expected_revision = catalog.body.find(row => row.id === ids.owner)?.admin_revision;
+    assert.match(expected_revision, new RegExp(`^ua1:${ids.owner}:[0-9]+$`));
     const renamed = await api(`/usuarios/${ids.owner}`, { token: admin, method: 'PATCH', body: {
-      usuario: 'qa_assignment_owner', nombre: 'QA Renamed Owner', rol: 'diseno',
+      expected_revision, usuario: 'qa_assignment_owner', nombre: 'QA Renamed Owner', rol: 'diseno',
     } });
     assert.equal(renamed.status, 200, JSON.stringify(renamed.body));
     owner = await login('qa_assignment_owner');

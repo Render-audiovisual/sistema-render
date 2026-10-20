@@ -40,9 +40,29 @@ La baja habitual utiliza `/acceso`, no DELETE. Las respuestas de guardado se val
 
 El alta no sugiere contraseñas basadas en nombres. El botón de generación utiliza `crypto.getRandomValues` y falla explícitamente si no está disponible; no utiliza `Math.random`. Las contraseñas nuevas permanecen ocultas en el campo y no se guardan en preferencias del navegador.
 
+## Ediciones concurrentes y contactos
+
+La migración local `074_user_administration_versions.sql` incorpora `usuarios.user_admin_version`, entero positivo inicialmente igual a 1. Un trigger BEFORE UPDATE lo incrementa incluso ante actualizaciones SQL sin cambios o secuencias que restauran valores anteriores. La versión no sustituye la identidad, el rol ni `session_version`: es una observación del registro, no una autorización.
+
+El catálogo administrativo, el alta y las respuestas de las cinco PATCH incluyen `admin_revision`, con formato `ua1:ID:versión`. El catálogo operativo de empleados no la expone. Cada PATCH exige `expected_revision` de la cuenta abierta; la comparación ocurre bajo el bloqueo del objetivo, después de revalidar al actor. Devuelve 428 si falta, 400 si es inválida y 409 `USER_ADMIN_REVISION_CONFLICT` si pertenece a otra cuenta o quedó atrasada. La respuesta confirmada contiene la versión posterior al trigger.
+
+| Operación | Campos de negocio exigidos además de la revisión |
+| --- | --- |
+| Acceso | `activo`, booleano |
+| Identidad | `nombre`, `usuario`, `rol`, textos validados |
+| Avisos | `email_notificaciones`, texto válido o desvinculación explícita |
+| Google | `google_email`, texto válido o desvinculación explícita |
+| WhatsApp | `whatsapp`, texto telefónico válido o desvinculación explícita |
+
+Los cuerpos son cerrados: omitir un contacto, enviar un objeto, un arreglo, un booleano, un número o campos adicionales no lo desvincula. La eliminación de un contacto exige un texto vacío tras recortar espacios o `null` explícito. WhatsApp admite el formato internacional y separadores telefónicos, no letras ni un número fuera de 10 a 15 dígitos.
+
+Cada editor retiene su observación original. Un conflicto o resultado ambiguo conserva el borrador y bloquea nuevas escrituras del mismo usuario. La recuperación tiene dos pasos dentro del panel: “Conservar borrador” no lee ni escribe; “Descartar y recargar” carga la versión guardada de ese mismo usuario con la sesión y el contexto originales. No hay recarga ni reintento automáticos. La confirmación aparece sólo durante la recuperación, sin un aviso permanente en cada cuenta. Una respuesta de guardado debe avanzar exactamente una versión para aceptarse.
+
+Los errores conocidos del parser JSON y del límite de tamaño devuelven mensajes constantes antes del log genérico, sin registrar el cuerpo presentado. Esta corrección no certifica la redacción de todos los demás logs del sistema.
+
 ## Verificación
 
-Las corridas finales, con los cambios congelados, aprobaron:
+Las corridas iniciales de la pantalla conectada, con los cambios congelados, aprobaron:
 
 - Frontend: `node --test` desde `frontend`, 1073 pruebas. Incluye pruebas de referencia que no equivalen a módulos conectados.
 - Backend: `npm test` desde `backend`, 1400 pruebas aprobadas y 64 omitidas por su activación explícita.
@@ -80,11 +100,31 @@ La corrida final general aprobó 1408 pruebas backend, con 65 pruebas de activac
 
 Registros: `/private/tmp/render2-users85-http-final.log`, `/private/tmp/render2-users85-backend-final.log`, `/private/tmp/render2-users85-frontend-final.log`, `/private/tmp/render2-users85-build-final.log` y `/private/tmp/render2-users85-targeted-final.log`.
 
+### Verificación de versiones y recuperación
+
+La integración de versiones aprobó 107 pruebas físicas de ocho suites: `render2-user-revisions`, `render2-user-administration`, `render2-user-authority`, `render2-phase1`, `render2-login-identity`, `render2-personal-home`, `render2-assignments` y `render2-projects`, todas con sufijo `.integration.test.js`. Se ejecutaron secuencialmente desde `backend` con `RENDER2_RUN_LOCAL_INTEGRATION=true node --test --test-concurrency=1` y esos ocho archivos.
+
+La suite nueva difiere únicamente la migración real 074 dentro del arnés generado. Carga usuarios, asignaciones, comentarios y listas anteriores; aplica el SQL real y registra su ejecución. Compara cada fila de usuario sin la nueva columna y el historial operativo: permanecen idénticos. No altera columnas o constraints para simular un resultado. Prueba también dos escritores encolados con una sola observación —un ganador y un conflicto—, ABA y no-op SQL, fotos y épocas de sesión que invalidan una observación, entradas mal formadas sin efectos y desvinculaciones explícitas válidas. Las suites anteriores conservan sus barreras y negativas de autorización; ahora envían observaciones explícitas donde corresponde.
+
+El canario sintético `QA86_PRIVATE_BODY_CANARY` en JSON escalar o malformado obtiene 400 sin eco y no aparece en el log final de la corrida física. La corrida general backend aprobó 1418 pruebas y omitió 66 de activación explícita; frontend aprobó 1082. Los 22 casos focalizados de contratos, parser y esquema también aprobaron. Compilación y revisión de espacios correctas. Las pruebas de callbacks de React no equivalen a un montaje completo.
+
+El navegador real confirmó el conflicto entre Franco QA y una escritura HTTP autenticada como Agustín QA: el borrador anterior siguió visible y no sobrescribió la versión nueva. A 390 por 844 se comprobó cancelar la recuperación, confirmar la carga de la versión guardada, volver a editar sólo el nombre visible y recargar manteniendo el guardado final. El usuario de acceso y el rol no cambiaron. El ancho del documento fue de 390 px. La primera variante de recuperación mediante confirmación nativa no pudo completarse con el control del navegador; fue reemplazada por la confirmación integrada y el recorrido completo se repitió sobre una compilación y un arnés nuevos.
+
+Los arneses visuales `/private/tmp/render2-local-94cw2I` y `/private/tmp/render2-local-aDJm0B` fueron detenidos y eliminados. Las pestañas temporales se cerraron y el viewport volvió a su configuración original. No se usaron cuentas, correos ni bases reales. Registros finales:
+
+- `/private/tmp/render2-users86-http-final.log`
+- `/private/tmp/render2-users86-backend-final.log`
+- `/private/tmp/render2-users86-frontend-final.log`
+- `/private/tmp/render2-users86-targeted-final.log`
+- `/private/tmp/render2-users86-build-final.log`
+- `/private/tmp/render2-users86-conflict-desktop.png`
+- `/private/tmp/render2-users86-reloaded-mobile.png`
+
 ## Riesgos y siguientes pasos
 
 - La revalidación transaccional está implementada y probada para las seis escrituras de cuentas, no para todos los módulos. El envío externo de invitaciones permanece fuera de la garantía transaccional y requiere un contrato de aceptación, autorización y entrega adecuado a ese efecto externo.
-- Las ediciones concurrentes del mismo usuario todavía no tienen una revisión persistente comparable al control de versiones de contratos financieros. El aislamiento de la interfaz no sustituye ese control del servidor.
-- Los PATCH de contactos todavía convierten algunos valores ausentes o mal tipados en desvinculaciones. Necesitan contratos de entrada cerrados y pruebas negativas para evitar borrados accidentales de contactos por solicitudes mal formadas.
+- El cambio de contrato requiere aplicar 074 mediante el procedimiento autorizado y actualizar backend e interfaz de forma coordinada. Un cliente antiguo sin revisión no puede escribir: recibe 428. La comprobación de arranque exige la columna; no intenta repararla ni migrarla implícitamente. 074 sólo fue aplicada a arneses temporales, no a una base configurada.
+- Las observaciones son enteros acotados; agotar el contador falla sin reiniciarlo. No deben restablecerse versiones ni reutilizarse IDs mediante SQL externo. Los resultados inciertos por pérdida de respuesta aún necesitan comprobantes durables en los módulos que carecen de ellos; la interfaz conserva el borrador, no prueba por sí sola si el commit ocurrió.
 - El cambio de contraseña del perfil necesita adoptar una política coherente, sin rotaciones automáticas de credenciales existentes.
 - La activación general de sesiones por cookie, la aceptación en dispositivos reales, el proxy y los proveedores externos conservan sus propias condiciones de despliegue. No se habilitan en esta integración.
 

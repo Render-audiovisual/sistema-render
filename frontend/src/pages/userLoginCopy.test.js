@@ -44,6 +44,7 @@ test('Google access remains explicitly configured and saved by the existing acti
   assert.equal(body.properties.length, 1);
   assert.equal(body.properties[0].name.getText(file), 'google_email');
   assert.equal(body.properties[0].initializer.getText(file), 'googleEmailEdicion');
-  assert.match(source, /body:JSON\.stringify\(body\)/);
+  assert.match(source, /const payload = target \? \{\.\.\.body,expected_revision:target.admin_revision\} : body/);
+  assert.match(source, /body:JSON\.stringify\(payload\)/);
   assert.match(source, /disabled=\{guardandoGoogleEmail\}/);
 });
