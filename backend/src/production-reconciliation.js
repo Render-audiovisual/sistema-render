@@ -91,7 +91,76 @@ export async function reconcileProductionHistory(pool,auth,body) {
     await db.query('COMMIT');return response;
   }catch(error) {await db.query('ROLLBACK').catch(()=>{});throw error;}finally{db.release();}
 }
+
+function contextText(value,max=20000) {
+  if(value==null||typeof value!=='string')return '';
+  if(value.length>max)throw fail('El contexto histórico supera el tamaño permitido.',413);
+  return value;
+}
+function historyInteger(value) {
+  if(typeof value==='string'&&/^[1-9][0-9]*$/.test(value)&&String(Number(value))===value)value=Number(value);
+  return Number.isSafeInteger(value)&&value>0?value:null;
+}
+function contextHistory(metadata) {
+  const records=metadata.produccion_registros;
+  let recorded=0;
+  if(records!=null&&!Array.isArray(records))recorded=null;
+  else for(const record of records||[]) {
+    const amount=historyInteger(record?.cantidad);
+    if(amount===null||!Number.isSafeInteger(recorded+amount)){recorded=null;break;}
+    recorded+=amount;
+  }
+  return {records_count:records==null?0:Array.isArray(records)?records.length:null,
+    recorded_count:recorded,declared_count:historyInteger(metadata.produccion_videos_previstos),
+    confirmed:Boolean(metadata.produccion_confirmada_at)};
+}
+
+export async function readProductionReconciliationContext(pool,auth,rawSourceId,query={}) {
+  if(typeof rawSourceId!=='string'||!/^[1-9][0-9]*$/.test(rawSourceId)
+    ||!positive(Number(rawSourceId))||String(Number(rawSourceId))!==rawSourceId)throw fail('Origen inválido.');
+  if(!query||typeof query!=='object'||Array.isArray(query)||Object.keys(query).length)throw fail('El contexto no admite filtros.');
+  const db=await pool.connect();
+  try {
+    // currentAdmin takes FOR SHARE; this snapshot issues SELECTs only, but must
+    // not use READ ONLY, which PostgreSQL forbids with that row lock.
+    await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
+    await currentAdmin(db,auth);
+    const source=(await db.query(`SELECT t.id,t.revision,t.titulo,t.tipo_tarea,t.subtipo,t.cliente_id,
+      t.aclaraciones,t.material_referencia,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS source_date,
+      c.id AS context_client_id,c.nombre AS cliente_nombre,c.activo AS cliente_activo,
+      jsonb_build_object('workspace',t.propiedades_extra->'workspace','clickup_lista',t.propiedades_extra->'clickup_lista',
+        'archivada_render_os',t.propiedades_extra->'archivada_render_os','papelera_render_os',t.propiedades_extra->'papelera_render_os',
+        'produccion_registros',t.propiedades_extra->'produccion_registros',
+        'produccion_videos_previstos',t.propiedades_extra->'produccion_videos_previstos',
+        'produccion_confirmada_at',t.propiedades_extra->'produccion_confirmada_at',
+        'guiones',t.propiedades_extra->'guiones','material',t.propiedades_extra->'material','Material',t.propiedades_extra->'Material',
+        'feedback',t.propiedades_extra->'feedback','horario',t.propiedades_extra->'horario') AS propiedades_extra
+      FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id WHERE t.id=$1`,[Number(rawSourceId)])).rows[0];
+    if(!source||!isProductionVisitTask(source)||source.propiedades_extra?.workspace!=='render_os')throw fail('Visita histórica no encontrada.',404);
+    const metadata=source.propiedades_extra;
+    const registry=(await db.query('SELECT id FROM produccion_visitas WHERE tarea_origen_id=$1',[source.id])).rows[0];
+    const child=(await db.query("SELECT id FROM tareas WHERE propiedades_extra->>'origen_visita_id'=$1 LIMIT 1",[String(source.id)])).rows[0];
+    const historical=await hasLegacyProductionSource(db,source.id,source);
+    const unavailable=['archivada_render_os','papelera_render_os'].some(key=>[true,'true'].includes(metadata[key]))
+      ||!positive(source.context_client_id)||source.cliente_activo!==true||!isValidProductionDate(source.source_date);
+    const status=unavailable?'unavailable':registry?'already_linked':child?'legacy_editing':!historical?'not_historical':'ready';
+    const recordedMaterial=typeof metadata.material==='string'&&metadata.material?metadata.material:metadata.Material;
+    const response={version:1,source:{id:source.id,revision:source.revision,titulo:contextText(source.titulo),
+      cliente:positive(source.context_client_id)?{id:source.context_client_id,nombre:contextText(source.cliente_nombre)}:null,
+      fecha:isValidProductionDate(source.source_date)?source.source_date:null,
+      content:{instructions:contextText(source.aclaraciones),script:contextText(metadata.guiones),
+        material:contextText(source.material_referencia,4000),recorded_material:contextText(recordedMaterial,4000),
+        feedback:contextText(metadata.feedback),schedule:contextText(metadata.horario)}},
+      history:contextHistory(metadata),eligibility:{status,visita_id:registry&&uuid(registry.id)?registry.id:null}};
+    await db.query('COMMIT');return response;
+  }catch(error){await db.query('ROLLBACK').catch(()=>{});throw error;}finally{db.release();}
+}
+
 export function registerProductionReconciliationRoutes(router,{pool,handle}) {
+  router.get('/reconciliaciones/origen/:sourceId',handle(async(req,res)=>{
+    res.set('Cache-Control','no-store');
+    return res.json(await readProductionReconciliationContext(pool,req.auth,req.params.sourceId,req.query??{}));
+  }));
   router.post('/reconciliaciones',handle(async(req,res)=>{
     res.set('Cache-Control','no-store');
     if(Object.keys(req.query??{}).length)throw fail('La conciliación no acepta filtros de identidad.');

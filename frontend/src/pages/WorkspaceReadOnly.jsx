@@ -22,6 +22,7 @@ import { EditingDeliveries } from "../components/EditingDeliveries.jsx";
 import { EditingReviews } from "../components/EditingReviews.jsx";
 import { TaskRecordedContext } from "../components/TaskRecordedContext.jsx";
 import { TaskCoordination } from "../components/TaskCoordination.jsx";
+import { ProductionReconciliation } from "../components/ProductionReconciliation.jsx";
 import { DiscardChangesDialog } from "../components/DiscardChangesDialog.jsx";
 import { refreshEditingTask } from "../components/editingTaskRefresh.js";
 import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
@@ -156,15 +157,16 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [publicationResponsible, setPublicationResponsible] = useState(null);
   const [confirmingProduction, setConfirmingProduction] = useState(false);
   const [coordinationDraft, setCoordinationDraft] = useState({ dirty: false, busy: false });
+  const [reconciliationDraft, setReconciliationDraft] = useState({ dirty: false, busy: false });
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [registryLookup, setRegistryLookup] = useState({ status: "loading", key: null, vinculo: null });
   const [registryRetry, setRegistryRetry] = useState(0);
   const [linkCopied, setLinkCopied] = useState(false);
   const archivePendingRef = useRef(false);
   const closeApprovedRef = useRef(false);
-  const taskDraftDirty = isTaskDraftDirty(task, draft) || Boolean(comment.trim()) || deliveryDirty || coordinationDraft.dirty
+  const taskDraftDirty = isTaskDraftDirty(task, draft) || Boolean(comment.trim()) || deliveryDirty || coordinationDraft.dirty || reconciliationDraft.dirty
     || (isProductionVisitTask(task || {}) && productionDriveLink.trim() !== String(task?.material_referencia || '').trim());
-  const taskWriteBusy = saving || commenting || archiving || registeringProduction || savingProductionDrive || approving || confirmingProduction || deliveryBusy || coordinationDraft.busy;
+  const taskWriteBusy = saving || commenting || archiving || registeringProduction || savingProductionDrive || approving || confirmingProduction || deliveryBusy || coordinationDraft.busy || reconciliationDraft.busy;
   useNavigationGuard(({ to }) => discardDialogOpen ? { dirty: taskDraftDirty, busy: true } : closeApprovedRef.current || keepsTaskOpen(to, task?.id)
     ? { dirty: false, busy: false }
     : { dirty: taskDraftDirty, busy: taskWriteBusy || archivePendingRef.current || discardDialogOpen });
@@ -581,6 +583,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         {registry.vinculo && <section className="ros-work-block"><h3>Visita vinculada</h3><p>{registry.vinculo.videos_grabados} de {registry.vinculo.videos_total} videos grabados · {registry.vinculo.fotos_total} registros de fotos</p><a href={`/producciones?visita=${encodeURIComponent(registry.vinculo.id)}`}>Abrir visita en Producciones ↗</a>{registry.vinculo.tipo === "origen" && <p>La fecha y el cliente de esta tarea se editan desde la visita.</p>}{registry.vinculo.tipo === "edicion" && <p>El cliente de esta tarea viene de la visita. La fecha de entrega de edición se puede editar en esta tarea.</p>}{registry.usesIndividual && <p>El registro individual de videos y fotos se administra en Producciones. El flujo agregado histórico queda solo como historial.</p>}</section>}
           <TaskRecordedContext task={task}/>
           <TaskCoordination task={task} sesion={sesion} onUpdate={onUpdate} onDraftStateChange={setCoordinationDraft}/>
+          {isAdmin && <ProductionReconciliation taskId={task.id} sesion={sesion} users={users} available={isProductionVisit && registry.ready && !registry.vinculo}
+            disabled={saving || commenting || archiving || registeringProduction || confirmingProduction || deliveryBusy || deliveryDirty || coordinationDraft.busy || coordinationDraft.dirty}
+            onDraftStateChange={setReconciliationDraft} onSaved={() => setRegistryRetry(value => value + 1)}/>}
         <TaskContentWorkspace task={task} metadata={metadata} editing={canEditTask || editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={null} onCancelEdit={cancelEditing} onSaveEdit={save} saving={saving} canSave={Boolean(canEditTask && draft.titulo?.trim())}/>
         {hasOperationalControls && <section className="ros-task-operations" aria-labelledby={`ros-task-operations-${task.id}`}>
           <div className="ros-block-heading ros-operations-heading"><div><h3 id={`ros-task-operations-${task.id}`}>Flujo de trabajo</h3></div><small>Acciones y avance de la tarea</small></div>
