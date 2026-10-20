@@ -50,11 +50,15 @@ test('el seguimiento es aditivo, durable y sincroniza los cambios de tarea dentr
 });
 test('el editor compartido sólo acepta contenido, nunca responsables o estados', async () => {
   const db = { connect() { throw new Error('No debe abrir una conexión'); } };
-  const body = {titulo:'Reel',copy:'Copy',expected_updated_at:'2026-10-03T12:00:00Z'};
+  const body = {titulo:'Reel',copy:'Copy',expected_updated_at:'2026-10-03T12:00:00Z',expected_revision:1};
   for (const extra of [{estado:'publicada'},{asignado_a:'Otro'},{propiedades_extra:{workspace:'privado'}}]) {
     await assert.rejects(editGoalContent(db, 1, {...body,...extra}), /Revisá/);
   }
   await assert.rejects(editGoalContent(db,1,{...body,copy:42}), /Revisá/);
+  for (const expected_revision of [undefined,null,0,-1,1.5,'1',{},Number.MAX_SAFE_INTEGER+1]) {
+    await assert.rejects(editGoalContent(db,1,{...body,expected_revision}), /Revisá/);
+  }
+  for (const invalid of [null,[],42,'copy']) await assert.rejects(editGoalContent(db,1,invalid), /Revisá/);
   await assert.rejects(editGoalContent(db,-1,body), /inválida/);
 });
 test('las asignaciones se heredan de IDs persistidos sin resolver nombres', async () => {

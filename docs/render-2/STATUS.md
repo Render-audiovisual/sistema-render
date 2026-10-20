@@ -939,6 +939,16 @@ Backend-only batch; no frontend/build/browser acceptance claim. Parent-row trigg
 
 Verified18 actual HTTP/PostgreSQL cases, zero failures/skips; backend1385 pass/59 explicit opt-in skips/0fail; four source/DDL contracts pass; generated roots cleaned/asserted. Beauvoir independent bounded source review without confirmed P1/P2. No claim that the full rescue or any production release is complete.
 
+## Integration80 — canonical objective UI and ID-scoped content edits
+
+Carson owns ClientesObjetivos/session tests; coordinator backend/content contract, actual principal QA and integration; Hypatia contract audit; Beauvoir independent review. Closed concrete content-write bypass: shared goal reads no longer grant writes to another user's task. Actor ID scope under task lock plus required integer revision/date CAS;404 nonmember,409 stale, no name authorization or state/financial expansion. Responsible/collaborator rename/removal and competing editors verified.
+
+UI now uses captured canonical session/context requests, held revision for finish, captured displayed-task revision for content, deferred polling while modals open, context keys, truthful approval-invalidating copy text, disabled premature finalization and explicit discard guards. Main loading vs polling generation race corrected. Existing monthly quota/dedupe/publication separation preserved.
+
+Verified frontend804 pass; backend1385 pass/60 opt-in skips; actual sequential HTTP/PostgreSQL15 pass; build/diff pass. Actual browser conflict retains draft, explicit refresh/edit/save persists after reload; stale approval cannot finalize. Mobile390 no document overflow; direct month URLs and Back/Forward match screen. Native reject-discard and month-picker interactions remain unverified due browser-control limitations, not counted as passes. All owned fixture/tab cleaned; user App20+/1-,Vite5+/references preserved. Details [CLIENT_OBJECTIVES_SESSION_QA.md](CLIENT_OBJECTIVES_SESSION_QA.md).
+
+No configured DB/provider/real commercial changes/schema/dependency/environment/push/deploy. Cookie activation, cross-device/native/proxy/provider acceptance, global drafts and remaining client administration writers/design remain gates. Local implemented/tested batch, not full phase/master completion or production readiness.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

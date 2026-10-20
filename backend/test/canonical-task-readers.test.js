@@ -85,7 +85,8 @@ test('client publication totals rely on pieces, never linked or unlinked complet
 test('task UI writes canonical final state and passes revision concurrency token', () => {
   const goal = readFileSync(new URL('../../frontend/src/pages/ClientesObjetivos.jsx', import.meta.url), 'utf8');
   assert.match(goal, /estado: done\(piece\) \? 'pendiente' : 'finalizada'/);
-  assert.match(goal, /expected_revision: task.revision/);
+  assert.match(goal, /expected_updated_at: piece.tarea_updated_at, expected_revision: piece.tarea_revision/);
+  assert.match(goal, /expected_updated_at:taskVersion,expected_revision:taskRevision/);
   const generic = readFileSync(new URL('../../frontend/src/components/TareasAsignadasGenericas.jsx', import.meta.url), 'utf8');
   assert.match(generic, /option value="finalizada"/);
   assert.doesNotMatch(generic, /option value="publicada"/);

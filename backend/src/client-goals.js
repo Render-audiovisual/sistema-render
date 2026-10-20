@@ -2,6 +2,7 @@ import express from 'express';
 import { requireRole } from './auth.js';
 import { replaceTaskAssignments } from './task-assignments.js';
 import { isTaskFinalized } from './workflow-contract.js';
+import { buildTaskAccessClause } from './task-access.js';
 
 export const GOALS_START_PERIOD = '2026-10';
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -299,12 +300,14 @@ export async function reconcileMonthlyGoals(pool, period) {
   return result;
 }
 
-export async function editGoalContent(pool, id, body = {}) {
+export async function editGoalContent(pool, id, body = {}, actor = {}) {
   if (!Number.isSafeInteger(id) || id <= 0) throw fail('Pieza inválida.');
-  if (Object.keys(body).some(key => !['titulo','copy','expected_updated_at'].includes(key)) ||
+  if (!body || typeof body !== 'object' || Array.isArray(body) ||
+    Object.keys(body).some(key => !['titulo','copy','expected_updated_at','expected_revision'].includes(key)) ||
     typeof body.titulo !== 'string' || !body.titulo.trim() || body.titulo.length > 500 ||
     typeof body.copy !== 'string' || body.copy.length > 20000 ||
-    typeof body.expected_updated_at !== 'string' || !Number.isFinite(Date.parse(body.expected_updated_at))) {
+    typeof body.expected_updated_at !== 'string' || !Number.isFinite(Date.parse(body.expected_updated_at)) ||
+    !Number.isSafeInteger(body.expected_revision) || body.expected_revision < 1) {
     throw fail('Revisá el título y el copy antes de guardar.');
   }
   const db = await pool.connect();
@@ -312,15 +315,18 @@ export async function editGoalContent(pool, id, body = {}) {
     await db.query('BEGIN');
     // La pertenencia se verifica en la base: una etiqueta enviada por el cliente
     // no permite editar tareas privadas, reasignar ni cambiar estados.
+    const access = buildTaskAccessClause(actor, 't', '$2');
     const piece = (await db.query(`SELECT t.id,t.updated_at FROM cliente_objetivo_piezas p
       JOIN tareas t ON t.id=p.tarea_id WHERE p.id=$1 AND t.propiedades_extra->>'workspace'='render_os'
       AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
-      AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true' FOR UPDATE OF t`, [id])).rows[0];
+      AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'${access.sql} FOR UPDATE OF t`,
+    access.value === null ? [id] : [id, access.value])).rows[0];
     if (!piece) throw fail('La tarea vinculada ya no está disponible.', 404);
     const updated = await db.query(`UPDATE tareas SET titulo=$1,
       propiedades_extra=COALESCE(propiedades_extra,'{}'::jsonb) || jsonb_build_object('copy_trabajo',$2::text), updated_at=now()
-      WHERE id=$3 AND date_trunc('milliseconds',updated_at)=date_trunc('milliseconds',$4::timestamptz) RETURNING updated_at`,
-    [body.titulo.trim(),body.copy,piece.id,body.expected_updated_at]);
+      WHERE id=$3 AND date_trunc('milliseconds',updated_at)=date_trunc('milliseconds',$4::timestamptz)
+        AND revision=$5 RETURNING updated_at,revision`,
+    [body.titulo.trim(),body.copy,piece.id,body.expected_updated_at,body.expected_revision]);
     if (!updated.rows.length) throw fail('La tarea cambió mientras editabas. Recargá para no sobrescribir el trabajo de otra persona.', 409);
     await db.query('COMMIT'); return updated.rows[0];
   } catch (error) { await db.query('ROLLBACK'); throw error; }
@@ -466,7 +472,7 @@ export function createClientGoalsRouter({ pool }) {
     catch (error) { next(error); }
   });
   router.patch('/piezas/:id/contenido', async (req, res, next) => {
-    try { res.json(await editGoalContent(pool, Number(req.params.id), req.body)); }
+    try { res.json(await editGoalContent(pool, Number(req.params.id), req.body, req.auth)); }
     catch (error) { if (error.status) return res.status(error.status).json({ error:error.message }); next(error); }
   });
   router.post('/preparar', requireRole('admin', 'community'), async (req, res, next) => {
