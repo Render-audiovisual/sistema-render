@@ -1,5 +1,14 @@
 # Principal backend: isolated local HTTP QA
 
+## Frontend memory/intent boundary against principal (integration67)
+
+```sh
+node --test frontend/src/shared/session/browser-session-state.test.js frontend/src/shared/session/browser-api-fetch.test.js
+RENDER2_RUN_LOCAL_INTEGRATION=true node --test --test-concurrency=1 backend/test/render2-browser-client.integration.test.js backend/test/render2-browser-sessions.integration.test.js
+```
+
+The new browser-client suite uses a fresh guarded55682 PostgreSQL cluster, actual principal password verification and a **simulated Node Cookie jar** adapter limited to its own API. It imports the exact frontend modules, verifies persisted private-list rows and all-table digest invariance on denied operations, and controls deferred header/body barriers. It tests cookieB/memoryA reads without exposing B JSON, unchanged captured mutation intent, stale clones/body consumers and late401 isolation. Bootstrap proof and cancellation are also unit tested. This does not install the modules in main/App, test a browser cookie policy or demonstrate successful cross-tab login/HTTPS/proxy deployment. Full UI migration remains necessary. Owned native response branches, gates, HTTP/PG fixtures and generated directories are cleaned; no existing database/provider is accessed.
+
 ## Principal browser-session integration (integration66)
 
 ```sh

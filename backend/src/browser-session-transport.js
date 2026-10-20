@@ -110,6 +110,9 @@ export function createBrowserSessionTransport({ origin, secret, development = fa
     return currentIdentity(req, res, error => {
       if (error) return next(error);
       req.browserSession = context;
+      // A different tab may replace the cookie before a GET is dispatched.
+      // The caller must verify which context actually produced this response.
+      res.set('X-Render-Session-Context', context.session_context);
       return next();
     });
   }

@@ -72,6 +72,7 @@ test('valid browser sessions use existing current account authority and never re
     assert.ok(result.continued); assert.equal(result.req.auth.rol, 'diseno');
     assert.equal(result.req.auth.nombre, 'Updated account');
     assert.deepEqual(result.req.browserSession, current.context);
+    assert.equal(result.res.headers['x-render-session-context'], current.context.session_context);
     assert.equal(result.res.headers['set-cookie'], undefined);
     assert.equal(result.res.headers['cache-control'], 'no-store');
   }
@@ -132,6 +133,7 @@ test('malformed/duplicate cookies and expired or purpose tokens cannot authentic
     const result = await run(f.transport, current, { headers: { cookie } });
     assert.equal(result.res.statusCode, 401); assert.equal(result.continued, false);
     assert.equal(result.res.headers['set-cookie'], undefined);
+    assert.equal(result.res.headers['x-render-session-context'], undefined);
   }
   assert.equal(f.reads, 0);
 });
