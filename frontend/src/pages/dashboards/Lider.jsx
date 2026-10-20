@@ -5,6 +5,7 @@ import { ESTADO_FINAL_TAREA } from "../../constants.js";
 import { EditarCuotaClienteModal, DetalleClienteModal } from "../../components/ClienteModals.jsx";
 import { TareasAsignadasGenericas } from "../../components/TareasAsignadasGenericas.jsx";
 import { Modal } from "../../components/Modal.jsx";
+import { fetchAllTaskPages } from "../../shared/tasks/fetch-all-task-pages.js";
 
 export function LiderDashboard() {
   const [clientes, setClientes] = useState([]);
@@ -31,7 +32,7 @@ export function LiderDashboard() {
       fetch("/api/clientes").then((response) => response.json()),
       fetch("/api/historias").then((response) => response.json()),
       fetch("/api/publicaciones").then((response) => response.json()),
-      fetch("/api/tareas?workspace=render_os").then((response) => response.json()),
+      fetchAllTaskPages("/api/tareas?workspace=render_os"),
       fetch(`/api/sueldos?periodo=${periodo}`, { cache: "no-store" })
         .then((response) => response.ok ? response.json() : null)
         .catch(() => null),
@@ -647,8 +648,7 @@ export function GestionLiderPanel() {
   useEffect(() => {
     cargarCola();
 
-    fetch("/api/tareas")
-      .then((response) => response.json())
+    fetchAllTaskPages("/api/tareas")
       .then((tareas) => {
         setTareasGestion(tareas);
       })

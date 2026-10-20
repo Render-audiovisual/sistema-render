@@ -3,6 +3,7 @@ import { getEstadoTareaLabel, getHoyLocalISO } from "../../utils.jsx";
 import { ESTADO_FINAL_TAREA } from "../../constants.js";
 import { TareasAsignadasGenericas } from "../../components/TareasAsignadasGenericas.jsx";
 import { Modal } from "../../components/Modal.jsx";
+import { fetchAllTaskPages } from "../../shared/tasks/fetch-all-task-pages.js";
 
 export function GermanDashboard() {
   const [produccionSeleccionada, setProduccionSeleccionada] = useState(null);
@@ -10,8 +11,7 @@ export function GermanDashboard() {
   const [tareasGermanError, setTareasGermanError] = useState(null);
 
   const cargarTareasGerman = () => {
-    fetch("/api/tareas?workspace=render_os&asignado_a=Germ%C3%A1n&tipo_tarea=produccion")
-      .then((response) => response.json())
+    fetchAllTaskPages("/api/tareas?workspace=render_os&asignado_a=Germ%C3%A1n&tipo_tarea=produccion")
       .then((tareas) => {
         setTareasGerman(tareas);
       })

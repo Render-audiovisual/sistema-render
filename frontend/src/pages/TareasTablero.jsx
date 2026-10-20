@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { esperandoMaterial, extraerUrlsTarea, fechaISODesde, formatearFechaTarea, getEstadoTarea, getGrillaMes, getHoyLocalISO, getPrioridadTarea, getSectorTarea, getSesion, getTipoPublicacionLabel, getUsuarioKey, obtenerInfoLinkTarea, ordenarTareasPorPrioridad, renderizarTextoTarea } from "../utils.jsx";
 import { DIAS_SEMANA, ESTADO_FINAL_TAREA, ESTADOS_TAREA, MESES, PRIORIDADES_TAREA, RESPONSABLES_EQUIPO, SECTORES_TAREA, SUBTIPOS_SUGERIDOS } from "../constants.js";
 import { Modal } from "../components/Modal.jsx";
+import { fetchAllTaskPages } from "../shared/tasks/fetch-all-task-pages.js";
 
 export function stripTaskIntegrationMetadata(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -26,8 +27,7 @@ export function TareasTableroPage() {
 
   const cargarTareas = () => {
     setCargando(true);
-    fetch("/api/tareas")
-      .then((r) => r.json())
+    fetchAllTaskPages("/api/tareas")
       .then((data) => {
         setTareas(Array.isArray(data) ? data : []);
         setError(null);

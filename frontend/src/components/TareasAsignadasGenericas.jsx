@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getHoyLocalISO, getSesion } from "../utils.jsx";
+import { fetchAllTaskPages } from "../shared/tasks/fetch-all-task-pages.js";
 
 export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo }) {
   const [tareas, setTareas] = useState([]);
@@ -15,11 +16,7 @@ export function TareasAsignadasGenericas({ nombre, nombres, tipoTarea, titulo })
         if (esAdmin && responsable) params.set("asignado_a", responsable);
         else if (sesion?.usuario?.id) params.set("asignado_a_id", String(sesion.usuario.id));
         if (tipoTarea) params.set("tipo_tarea", tipoTarea);
-        return fetch(`/api/tareas?${params.toString()}`).then(async (response) => {
-          const body = await response.json().catch(() => []);
-          if (!response.ok) throw new Error(body.error || "No se pudieron cargar las tareas asignadas.");
-          return Array.isArray(body) ? body : [];
-        });
+        return fetchAllTaskPages(`/api/tareas?${params.toString()}`);
       }),
     )
       .then((listas) => {

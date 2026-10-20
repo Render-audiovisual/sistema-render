@@ -34,6 +34,13 @@ histórica consulta sin ese parámetro y excluye las tareas de RENDER OS. De est
 modo, un tablero sin filas marcadas como `render_os` aparece vacío aunque la base
 contenga tareas históricas.
 
+Actualización local Render2 (integración36): esa colección siempre está paginada,
+por defecto100 filas; `limit` acepta1–500 y `offset`0–1000000, con valores enteros
+canónicos. `X-Total-Count` informa el total filtrado incluso fuera de la última
+página. Los lectores que requieren un array completo usan `fetchAllTaskPages`
+y fallan ante cargas parciales; no debe interpretarse la primera página como
+todo el inventario. Ver `docs/render-2/TASK_PAGINATION_CONTRACT.md`.
+
 Las operaciones por ID realizadas por la interfaz nueva incluyen
 `?workspace=render_os`. En ese modo, consulta individual, edición, cambio de
 estado, archivo, restauración, eliminación y comentarios exigen el mismo

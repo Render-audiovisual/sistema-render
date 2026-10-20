@@ -33,6 +33,7 @@ import { loadProductionReport, loadProductionTaskContext, productionReportRange 
 import { productionEditorialConflict } from "./production-link-errors.js";
 import { normalizeTaskState, taskTransitionError, isTaskFinalized } from "./workflow-contract.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
+import { parseTaskPagination } from "./task-pagination.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
 import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
 import { applyCompensations, nextPeriod } from "./finance-calculation.js";
@@ -3050,8 +3051,9 @@ router.get("/tareas", async (req, res, next) => {
       area,
     } = req.query;
 
-    const limite = Math.min(Math.max(Number.parseInt(limit, 10) || 0, 0), 500);
-    const desplazamiento = Math.max(Number.parseInt(offset, 10) || 0, 0);
+    let limite, desplazamiento;
+    try { ({ limit: limite, offset: desplazamiento } = parseTaskPagination(req.query)); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
     if (asignado_a_id !== undefined && (typeof asignado_a_id !== "string" || !/^[1-9]\d*$/.test(asignado_a_id)
       || !Number.isSafeInteger(Number(asignado_a_id)) || Number(asignado_a_id) > 2147483647)) {
       return res.status(400).json({ error: "Filtro de responsable inválido." });
@@ -3207,15 +3209,21 @@ router.get("/tareas", async (req, res, next) => {
       }
     }
 
+    const countQuery = `SELECT COUNT(*)::int AS total_count FROM (${query}) AS filtered_tasks`;
+    const countParams = [...params];
     query += ` ORDER BY t.fecha_vencimiento ASC NULLS LAST, t.id DESC`;
-
-    if (limite > 0) {
-      query += ` LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
-      params.push(limite, desplazamiento);
-    }
+    query += ` LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+    params.push(limite, desplazamiento);
 
     const result = await pool.query(query, params);
-    const total = result.rows[0]?.total_count || 0;
+    let total = result.rows[0]?.total_count || 0;
+    if (result.rows.length === 0 && desplazamiento > 0) {
+      // Window counts have no row beyond the last page. Reuse exactly the same
+      // filtered/authorized query, without pagination, rather than inventing 0.
+      const countResult = await pool.query(countQuery, countParams);
+      total = countResult.rows[0]?.total_count;
+      if (!Number.isSafeInteger(total) || total < 0) throw new Error('No se pudo contar el listado de tareas.');
+    }
     res.set("X-Total-Count", String(total));
     res.json((await annotateTaskAssignments(pool, result.rows.map(({ total_count, ...tarea }) => tarea)))
       .map((row) => taskOperationalDto(row, req.auth)));

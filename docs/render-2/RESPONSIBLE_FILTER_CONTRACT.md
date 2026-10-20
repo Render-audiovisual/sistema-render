@@ -21,4 +21,4 @@ List generations invalidate stale load-more rows/totals/errors/loading cleanup a
 
 Pure/model/source tests plus opted physical PostgreSQL HTTP fixture cover homonyms, collaborators, exact pagination/totals, rename stability, missing IDs, privacy and unchanged write ACL. Browser role/reload/history/ambiguous-detail evidence is recorded in STATUS; source guards are not a latency-injected live React test.
 
-Backend legacy name filters remain supported for preserved reference callers. Broader unknown-query rejection and the existing permissive unbounded legacy limit/offset contract remain separate work; principal requests use bounded pages. No production deployment, auth changes, schema migrations or real records are authorized here.
+Backend legacy name filters remain supported for preserved reference callers. Unknown-query rejection remains separate work. Integration36 replaces the permissive unbounded limit/offset behavior with strict bounded pages and adapts full-array readers; see TASK_PAGINATION_CONTRACT.md. No production deployment, auth changes, schema migrations or real records are authorized here.

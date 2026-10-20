@@ -18,7 +18,13 @@ export function apiJson(url, options) {
 
 export function buildTaskPageUrl(options = {}) {
   const settings = typeof options === "number" ? { offset: options } : options;
-  const params = new URLSearchParams({ workspace: "render_os", limit: String(settings.limit || 50), offset: String(settings.offset || 0) });
+  const limit = settings.limit === undefined ? 50 : settings.limit;
+  const offset = settings.offset === undefined ? 0 : settings.offset;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500
+    || !Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) {
+    throw new Error("Paginación de tareas no válida.");
+  }
+  const params = new URLSearchParams({ workspace: "render_os", limit: String(limit), offset: String(offset) });
   if (settings.archiveMode === "trash") params.set("papelera", "true");
   if (settings.responsible !== undefined && settings.responsible !== "all") {
     const id = responsibleFilterId(settings.responsible);

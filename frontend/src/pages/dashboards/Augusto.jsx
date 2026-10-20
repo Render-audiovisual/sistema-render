@@ -2,14 +2,14 @@ import React, { useEffect, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO } from "../../utils.jsx";
 import { ESTADO_FINAL_TAREA } from "../../constants.js";
 import { TareasAsignadasGenericas } from "../../components/TareasAsignadasGenericas.jsx";
+import { fetchAllTaskPages } from "../../shared/tasks/fetch-all-task-pages.js";
 
 export function AugustoDashboard() {
   const [disenosAugusto, setDisenosAugusto] = useState([]);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch("/api/tareas?workspace=render_os&asignado_a=Augusto&tipo_tarea=diseno")
-      .then((response) => response.json())
+    fetchAllTaskPages("/api/tareas?workspace=render_os&asignado_a=Augusto&tipo_tarea=diseno")
       .then((tareas) => {
         setDisenosAugusto(
           tareas

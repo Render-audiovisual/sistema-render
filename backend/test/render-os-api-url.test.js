@@ -39,3 +39,11 @@ test("los filtros vacíos no contaminan la consulta activa", () => {
   assert.equal(url.searchParams.has("solo_archivadas"), false);
   assert.equal(url.searchParams.has("q"), false);
 });
+
+test('principal page requests reject invalid numeric pagination before making a request', () => {
+  for (const limit of [0, -1, 501, '50', null, 1.5]) assert.throws(() => buildTaskPageUrl({ limit }));
+  for (const offset of [-1, 1000001, '0', null, 0.5]) assert.throws(() => buildTaskPageUrl({ offset }));
+  const url = new URL(buildTaskPageUrl({ limit: 500, offset: 1000000 }), 'https://render.local');
+  assert.equal(url.searchParams.get('limit'), '500');
+  assert.equal(url.searchParams.get('offset'), '1000000');
+});
