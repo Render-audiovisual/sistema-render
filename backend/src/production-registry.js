@@ -3,7 +3,7 @@ import { isProductionVisitTask, isValidProductionDate } from './production-visit
 import { annotateTaskAssignments, replaceTaskAssignments } from './task-assignments.js';
 import { taskOperationalDto } from './operational-dto.js';
 import { productionEditorialConflict } from './production-link-errors.js';
-import { registerProductionEditorialRoutes, lockProductionEditorialContext, lockProductionObjectiveLinks, rejectLegacyProductionSource, assertProductionLineageAvailable } from './production-editorial.js';
+import { registerProductionEditorialRoutes, lockProductionEditorialContext, lockProductionObjectiveLinks, rejectLegacyProductionSource, hasLegacyProductionSource, assertProductionLineageAvailable } from './production-editorial.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const positive = value => Number.isSafeInteger(value) && value > 0;
@@ -154,6 +154,9 @@ export async function syncProductionVisitFromTask(db, task, actorId) {
   }
   if (!isProductionVisitTask(task) || task.propiedades_extra?.workspace!=='render_os' || !positive(task.cliente_id) || !date(taskDate(task.fecha_vencimiento))
     || ['true',true].includes(task.propiedades_extra?.archivada_render_os) || ['true',true].includes(task.propiedades_extra?.papelera_render_os)) return null;
+  // A normal task edit must not silently reinterpret aggregate historical work
+  // as a new per-video registry. Explicit reviewed reconciliation is separate.
+  if (await hasLegacyProductionSource(db, task.id, task)) return null;
   await activeClient(db, task.cliente_id);
   const [assigned] = await annotateTaskAssignments(db, [task]);
   const ids = [...new Set([assigned.asignado_a_id, ...assigned.colaborador_ids].filter(positive))];
@@ -204,6 +207,9 @@ export function createProductionRegistryRouter({ express, pool }) {
     const visita = await transaction(pool, async db => {
       if (input.tarea_origen_id) {
         const source = await sourceTask(db, input.tarea_origen_id);
+        // Do not create a mixed registry that neither legacy nor per-video
+        // handoff can safely operate. Historical reconciliation is explicit.
+        await rejectLegacyProductionSource(db, { tarea_origen_id: source.id }, source);
         if (source.cliente_id !== input.cliente_id) throw fail('El cliente debe coincidir con la tarea origen.');
         if (taskDate(source.fecha_vencimiento) !== input.fecha) await db.query('UPDATE tareas SET fecha_vencimiento=$2,updated_at=now() WHERE id=$1',[source.id,input.fecha]);
       }

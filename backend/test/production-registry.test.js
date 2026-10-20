@@ -178,6 +178,43 @@ test('archiving a linked source does not overwrite, reject or immobilize its reg
   assert.equal((await f.run('post','/:id/videos/:videoId/enviar-edicion',{expected_revision:2,editor_id:7,fecha_entrega:'2026-10-22'})).statusCode,201);
 });
 
+test('normal synchronization preserves unlinked aggregate historical production without creating a new registry',async()=>{
+  for(const metadata of [
+    {produccion_registros:[{cantidad:3,nota:'Keep historical aggregate'}]},
+    {produccion_registros:'malformed historical record'},
+    {produccion_registros:{}},
+    {produccion_confirmada_at:'2026-10-01T12:00:00Z'},
+  ]) {
+    const f=fixture({linked:false});
+    const task={...sourceTask,propiedades_extra:{workspace:'render_os',...metadata}};
+    const before=structuredClone(task);
+    assert.equal(await syncProductionVisitFromTask(f.db,task,11),null);
+    assert.deepEqual(task,before);
+    assert.equal(f.calls.some(call=>/^(INSERT|UPDATE|DELETE) /.test(call.sql)),false);
+  }
+  const f=fixture({linked:false,legacy:true});
+  assert.equal(await syncProductionVisitFromTask(f.db,sourceTask,11),null);
+  assert.equal(f.calls.some(call=>call.sql.includes("propiedades_extra->>'origen_visita_id'")),true);
+  assert.equal(f.calls.some(call=>/^(INSERT|UPDATE|DELETE) /.test(call.sql)),false);
+  const explicit=fixture({linked:false,legacy:true});
+  const response=await explicit.run('post','/',{...visitBody,tarea_origen_id:10});
+  assert.equal(response.statusCode,409);
+  assert.match(response.body.error,/histórica/);
+  assert.equal(explicit.calls.some(call=>/^(INSERT|UPDATE|DELETE) /.test(call.sql)),false);
+});
+
+test('historical guard preserves an existing registry and does not classify empty record collections as history',async()=>{
+  const linked=fixture({linked:true,legacy:true});
+  assert.equal(await syncProductionVisitFromTask(linked.db,{...sourceTask,propiedades_extra:{workspace:'render_os',produccion_registros:[{cantidad:2}]}},11),null);
+  assert.equal(linked.calls.some(call=>/^(INSERT|UPDATE|DELETE) /.test(call.sql)),false);
+  for(const records of [[],null]) {
+    const fresh=fixture({linked:false});
+    assert.ok(await syncProductionVisitFromTask(fresh.db,{...sourceTask,propiedades_extra:{workspace:'render_os',produccion_registros:records}},11));
+    assert.equal(fresh.calls.filter(call=>call.sql.startsWith('INSERT INTO produccion_visitas')).length,1);
+    assert.equal(fresh.calls.some(call=>call.sql.startsWith('INSERT INTO produccion_videos')),false);
+  }
+});
+
 test('archived unlinked tasks are not auto-registered or explicitly attached as available origins',async()=>{
   for(const flag of ['archivada_render_os','papelera_render_os']) {
     const f=fixture({linked:false});

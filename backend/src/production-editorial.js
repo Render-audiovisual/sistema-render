@@ -18,10 +18,17 @@ export async function lockProductionObjectiveLinks(db) {
   await db.query("SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
 }
 
+export async function hasLegacyProductionSource(db, sourceId, source) {
+  if (!sourceId) return false;
+  const records = source?.propiedades_extra?.produccion_registros;
+  // Malformed historical data is not proof that the source is empty/convertible.
+  if ((records != null && (!Array.isArray(records) || records.length > 0))
+    || source?.propiedades_extra?.produccion_confirmada_at) return true;
+  return (await db.query("SELECT id FROM tareas WHERE propiedades_extra->>'origen_visita_id'=$1 LIMIT 1", [String(sourceId)])).rows.length > 0;
+}
+
 export async function rejectLegacyProductionSource(db, visit, source) {
-  if (!visit.tarea_origen_id) return;
-  if ((source?.propiedades_extra?.produccion_registros || []).length || source?.propiedades_extra?.produccion_confirmada_at
-    || (await db.query("SELECT id FROM tareas WHERE propiedades_extra->>'origen_visita_id'=$1 LIMIT 1", [String(visit.tarea_origen_id)])).rows.length) {
+  if (await hasLegacyProductionSource(db, visit.tarea_origen_id, source)) {
     throw fail('La visita tiene producción agregada histórica. Requiere revisión manual antes de vincular o enviar edición por video.');
   }
 }
