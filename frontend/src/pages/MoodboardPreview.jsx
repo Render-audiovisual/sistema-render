@@ -1,6 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getSesion } from '../utils.jsx';
 import { createMoodboardInitialization } from '../shared/session/moodboard-initialization.js';
+import { createCapturedRequest } from '../shared/session/captured-request.js';
+import { useSessionView } from '../shared/session/use-session-view.js';
+import { createMoodboardBoardLoader } from '../shared/session/moodboard-board-loader.js';
+import { readMoodboardLocation, resolveMoodboardBoard, moodboardBoardUrl, moodboardTaskIntent } from './moodboardLocation.js';
 import "./MoodboardPreview.css";
 
 const STATUS={aprobada:{label:"Aprobada",icon:"✓"},libre:{label:"Libre",icon:"○"},descartada:{label:"Descartada",icon:"×"}};
@@ -13,31 +17,76 @@ function AuthImage({item,className="",alt=""}){
   return src?<img className={className} src={src} alt={alt}/>:<div className={`moodboard-image-loading ${className}`}><span>✦</span></div>
 }
 
+function boardCatalog(value){if(!Array.isArray(value)||value.some(board=>!Number.isSafeInteger(board?.id)||board.id<=0||typeof board.nombre!=="string"||!Array.isArray(board.clientes)||board.clientes.some(client=>!Number.isSafeInteger(client?.id)||client.id<=0||typeof client.nombre!=="string"))||new Set(value.map(board=>board.id)).size!==value.length)throw new Error("No se pudo verificar la lista de moodboards.");return value}
+function currentMoodboardLocation(){try{return{selection:readMoodboardLocation(window.location.search),error:""}}catch(reason){return{selection:null,error:reason.message}}}
 export function MoodboardPreviewPage(){
-  const mounted=useRef(true),initialization=useRef(null),initializingRef=useRef(false);
+  const view=useSessionView(getSesion()),identity=useRef({view,epoch:0});
+  if(identity.current.view!==view)identity.current={view,epoch:identity.current.epoch+1};
+  return <MoodboardContent key={identity.current.epoch}/>;
+}
+function MoodboardContent(){
+  const mounted=useRef(false),initialization=useRef(null),initializingRef=useRef(false);
+  const boardObservation=useRef({id:null,generation:0}),boardLoader=useRef(null),loadGeneration=useRef(0),listController=useRef(null),listGeneration=useRef(0),catalog=useRef(null);
+  const [location,setLocation]=useState(currentMoodboardLocation),locationRef=useRef(location);locationRef.current=location;
+  const [boardEpoch,setBoardEpoch]=useState(0);
   const [initializing,setInitializing]=useState(false);
-  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;initialization.current?.abort()}},[]);
+  useLayoutEffect(()=>{mounted.current=true;return()=>{mounted.current=false;initialization.current?.abort();listController.current?.abort();boardLoader.current?.cancel();loadGeneration.current++}},[]);
+  const activateBoard=id=>{
+    boardLoader.current?.cancel();loadGeneration.current++;
+    boardObservation.current={id,generation:boardObservation.current.generation+1};
+    setRefs([]);setCategories([]);setTasks([]);setSelected(null);setComposer(false);setCategoryEditor(false);setStatus("all");setCategory("all");setQuery("");
+    setBoardId(id);setBoardEpoch(boardObservation.current.generation);setLoading(Boolean(id));
+  };
+  const applyLocation=(next,items=catalog.current)=>{
+    locationRef.current=next;setLocation(next);
+    if(next.error||!next.selection){activateBoard(null);setError(next.error);return}
+    if(!items){activateBoard(null);setLoading(true);return}
+    try{const id=resolveMoodboardBoard(items,next.selection);activateBoard(id);setError("");
+      if(id){window.history.replaceState(window.history.state,"",moodboardBoardUrl(window.location.href,id));const canonical={selection:{...next.selection,boardId:id},error:""};locationRef.current=canonical;setLocation(canonical)}
+    }catch(reason){activateBoard(null);setError(reason.message)}
+  };
+  const chooseBoard=id=>{window.history.pushState(window.history.state,"",moodboardBoardUrl(window.location.href,id));applyLocation(currentMoodboardLocation())};
+  const readBoards=async()=>{
+    listController.current?.abort();const controller=new AbortController();listController.current=controller;const generation=++listGeneration.current;
+    const scope=createCapturedRequest({session:getSesion(),readSession:getSesion,request:api,isActive:()=>mounted.current&&generation===listGeneration.current&&!controller.signal.aborted});
+    if(!scope.current())return;
+    try{const items=boardCatalog(await scope.request("/api/moodboards/boards",{signal:controller.signal,cache:"no-store"}));if(!scope.current())return;catalog.current=items;setBoards(items);applyLocation(locationRef.current,items)}
+    catch(reason){if(scope.current()){setError(reason.message);setLoading(false)}}
+  };
   const prepareBoards=async()=>{
     if(initializingRef.current)return;
+    const origin=boardObservation.current;
     const controller=new AbortController();initialization.current=controller;
     const operation=createMoodboardInitialization({session:getSesion(),readSession:getSesion,isMounted:()=>mounted.current,fetchImpl:window.fetch.bind(window),signal:controller.signal});
     if(!operation.current())return;
     initializingRef.current=true;setInitializing(true);setError('');
-    try{const items=await operation.run();if(!operation.current()||!items)return;setBoards(items);setBoardId(current=>items.some(b=>b.id===current)?current:items.find(b=>b.clientes.some(c=>c.id===requestedClient))?.id||items[0]?.id||null)}
-    catch(reason){if(operation.current())setError(reason.message)}
+    try{const result=await operation.run();if(!operation.current()||!result||origin!==boardObservation.current)return;const items=boardCatalog(result);listController.current?.abort();listGeneration.current++;catalog.current=items;setBoards(items);applyLocation(locationRef.current,items)}
+    catch(reason){if(operation.current()&&origin===boardObservation.current)setError(reason.message)}
     finally{initializingRef.current=false;if(operation.current())setInitializing(false)}
   };
-  const params=new URLSearchParams(window.location.search),requestedClient=Number(params.get("cliente"))||null,requestedTask=Number(params.get("task"))||null;
   const [boards,setBoards]=useState([]),[boardId,setBoardId]=useState(null),[refs,setRefs]=useState([]),[categories,setCategories]=useState([]),[tasks,setTasks]=useState([]),[status,setStatus]=useState("all"),[category,setCategory]=useState("all"),[query,setQuery]=useState(""),[selected,setSelected]=useState(null),[composer,setComposer]=useState(false),[categoryEditor,setCategoryEditor]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState("");
-  useEffect(()=>{api("/api/moodboards/boards").then(items=>{setBoards(items);setBoardId(items.find(b=>b.clientes.some(c=>c.id===requestedClient))?.id||items[0]?.id||null)}).catch(e=>setError(e.message)).finally(()=>setLoading(false))},[requestedClient]);
-  const load=async id=>{if(!id)return;setLoading(true);try{const [references,cats,boardTasks]=await Promise.all([api(`/api/moodboards/boards/${id}/references`),api(`/api/moodboards/boards/${id}/categories`),api(`/api/moodboards/boards/${id}/tasks`)]);setRefs(references);setCategories(cats);setTasks(boardTasks);setError("");if(requestedTask&&boardTasks.some(t=>t.id===requestedTask))setComposer(true)}catch(e){setError(e.message)}finally{setLoading(false)}};
-  useEffect(()=>{void load(boardId)},[boardId]);
+  useEffect(()=>{void readBoards();const pop=()=>applyLocation(currentMoodboardLocation());window.addEventListener('popstate',pop);return()=>{window.removeEventListener('popstate',pop);listController.current?.abort()}},[]);
+  const load=async(id,observation=boardObservation.current,openTask=false)=>{
+    if(!id||observation.id!==id||observation!==boardObservation.current||!mounted.current)return;
+    boardLoader.current?.cancel();const generation=++loadGeneration.current;
+    const scope=createCapturedRequest({session:getSesion(),readSession:getSesion,request:api,isActive:()=>mounted.current&&boardObservation.current===observation});
+    const own=createMoodboardBoardLoader({request:scope.request,isCurrent:scope.current});boardLoader.current=own;
+    if(!scope.current())return;setLoading(true);
+    try{const result=await own.load(id);if(!result||!scope.current()||generation!==loadGeneration.current)return;
+      setRefs(result.references);setCategories(result.categories);setTasks(result.tasks);setError("");
+      setSelected(current=>scope.current()&&generation===loadGeneration.current?(result.references.find(item=>item.id===current?.id)||null):current);
+      if(openTask&&moodboardTaskIntent(locationRef.current.selection,catalog.current?.find(item=>item.id===id),result.tasks))setComposer(true);
+    }catch(reason){if(scope.current()&&generation===loadGeneration.current)setError(reason.message)}
+    finally{if(scope.current()&&generation===loadGeneration.current)setLoading(false)}
+  };
+  useEffect(()=>{void load(boardId,boardObservation.current,true);const own=boardLoader.current;return()=>own?.cancel()},[boardId,boardEpoch]);
+  const origin=boardObservation.current,originCurrent=()=>mounted.current&&boardObservation.current===origin;
   const board=boards.find(b=>b.id===boardId),counts=refs.reduce((a,r)=>({...a,[r.estado]:(a[r.estado]||0)+1}),{}),visible=useMemo(()=>refs.filter(r=>status==="all"?r.estado!=="descartada":r.estado===status).filter(r=>category==="all"||String(r.category_id)===String(category)).filter(r=>`${r.titulo} ${r.nota} ${(r.etiquetas||[]).join(" ")}`.toLowerCase().includes(query.toLowerCase())),[refs,status,category,query]);
-  const update=async(id,change)=>{try{const saved=await api(`/api/moodboards/references/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(change)}),current=refs.find(r=>r.id===id),merged={...current,...saved};if(change.category_id)merged.categoria=categories.find(c=>c.id===Number(change.category_id))?.nombre;setRefs(all=>all.map(r=>r.id===id?merged:r));setSelected(s=>s?.id===id?merged:s)}catch(e){alert(e.message)}};
-  const remove=async item=>{if(!confirm(`Eliminar definitivamente “${item.titulo}”? Esta acción no se puede deshacer.`))return;try{await api(`/api/moodboards/references/${item.id}`,{method:"DELETE"});setRefs(all=>all.filter(r=>r.id!==item.id));setSelected(null)}catch(e){alert(e.message)}};
+  const update=async(id,change)=>{if(!originCurrent())return;try{const saved=await api(`/api/moodboards/references/${id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(change)});if(!originCurrent())return;const current=refs.find(r=>r.id===id),merged={...current,...saved};if(change.category_id)merged.categoria=categories.find(c=>c.id===Number(change.category_id))?.nombre;setRefs(all=>originCurrent()?all.map(r=>r.id===id?merged:r):all);setSelected(s=>originCurrent()&&s?.id===id?merged:s)}catch(e){if(originCurrent())alert(e.message)}};
+  const remove=async item=>{if(!originCurrent()||!confirm(`Eliminar definitivamente “${item.titulo}”? Esta acción no se puede deshacer.`))return;try{await api(`/api/moodboards/references/${item.id}`,{method:"DELETE"});if(!originCurrent())return;setRefs(all=>originCurrent()?all.filter(r=>r.id!==item.id):all);setSelected(null)}catch(e){if(originCurrent())alert(e.message)}};
   if(loading&&!boards.length)return <main className="moodboard-loading-page"><span>✦</span><strong>Preparando los moodboards…</strong></main>;
   return <main className="moodboard-preview-shell">
-    <aside className="moodboard-brand-rail"><div className="moodboard-rail-heading"><span>Moodboards</span><small>Todos los clientes activos</small></div><nav aria-label="Marcas">{boards.map(b=><button key={b.id} className={b.id===boardId?"active":""} onClick={()=>{setBoardId(b.id);setSelected(null);setStatus("all")}}><span className="moodboard-brand-avatar">{b.nombre.charAt(0)}</span><span><strong>{b.nombre}</strong><small>{b.clientes.length>1?`${b.clientes.length} cuentas compartidas`:`${b.total_referencias} referencias`}</small></span></button>)}</nav></aside>
+    <aside className="moodboard-brand-rail"><div className="moodboard-rail-heading"><span>Moodboards</span><small>Todos los clientes activos</small></div><nav aria-label="Marcas">{boards.map(b=><button key={b.id} className={b.id===boardId?"active":""} onClick={()=>chooseBoard(b.id)}><span className="moodboard-brand-avatar">{b.nombre.charAt(0)}</span><span><strong>{b.nombre}</strong><small>{b.clientes.length>1?`${b.clientes.length} cuentas compartidas`:`${b.total_referencias} referencias`}</small></span></button>)}</nav></aside>
     <section className="moodboard-workspace"><header className="moodboard-header">
       <div className="moodboard-title-row"><div><span className="moodboard-eyebrow">Criterio visual de marca</span><h1>{board?.nombre||"Moodboard"}</h1><p>{board?.clientes?.length>1?`Compartido entre ${board.clientes.map(c=>c.nombre).join(" y ")}.`:"Referencias para mantener una dirección visual coherente."}</p></div><button className="moodboard-add-primary" disabled={!board} onClick={()=>setComposer(true)}><span>＋</span>Nueva referencia</button></div>
       <div className="moodboard-tools"><label className="moodboard-search"><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por idea o etiqueta…"/></label><div className="moodboard-status-tabs"><Filter value="all" current={status} set={setStatus} label="Todo" count={(counts.aprobada||0)+(counts.libre||0)}/><Filter value="aprobada" current={status} set={setStatus} label="Aprobadas" count={counts.aprobada||0}/><Filter value="libre" current={status} set={setStatus} label="Libres" count={counts.libre||0}/><Filter value="descartada" current={status} set={setStatus} label="Descartadas" count={counts.descartada||0}/></div><label className="moodboard-category-filter">Categoría<select value={category} onChange={e=>setCategory(e.target.value)}><option value="all">Todas</option>{categories.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label><button className="moodboard-category-edit" disabled={!board} onClick={()=>setCategoryEditor(true)}>Editar categorías</button></div>
@@ -45,7 +94,7 @@ export function MoodboardPreviewPage(){
       <div className="moodboard-initialize"><button type="button" onClick={prepareBoards} disabled={initializing}>{initializing?'Preparando…':'Preparar clientes nuevos'}</button>{!board&&<span>Prepará los clientes para agregar referencias reales.</span>}</div>
       {error&&<div className="moodboard-error">{error}</div>}<div className="moodboard-gallery-label"><span>{visible.length} referencias</span><small>Las aprobadas aparecen primero</small></div>{loading?<Empty loading/>:visible.length?<div className="moodboard-masonry">{visible.map(item=><Card key={item.id} item={item} open={()=>setSelected(item)}/>)}</div>:<Empty/>}
     </section>
-    {selected&&<ReferencePanel item={selected} tasks={tasks} close={()=>setSelected(null)} update={update} remove={remove} reload={()=>load(boardId)}/>} {composer&&board&&<Composer board={board} categories={categories} initialTask={requestedTask} close={()=>setComposer(false)} saved={()=>{setComposer(false);void load(boardId)}}/>} {categoryEditor&&board&&<CategoryEditor boardId={boardId} categories={categories} close={()=>setCategoryEditor(false)} saved={()=>{setCategoryEditor(false);void load(boardId)}}/>}
+    {selected&&<ReferencePanel key={`${boardEpoch}:${selected.id}`} item={selected} tasks={tasks} close={()=>{if(originCurrent())setSelected(null)}} update={update} remove={remove} reload={()=>{if(originCurrent())void load(origin.id,origin)}}/>} {composer&&board&&<Composer key={`${boardEpoch}:composer`} board={board} categories={categories} initialTask={moodboardTaskIntent(location.selection,board,tasks)} close={()=>{if(originCurrent())setComposer(false)}} saved={()=>{if(!originCurrent())return;setComposer(false);void load(origin.id,origin)}}/>} {categoryEditor&&board&&<CategoryEditor key={`${boardEpoch}:categories`} boardId={boardId} categories={categories} close={()=>{if(originCurrent())setCategoryEditor(false)}} saved={()=>{if(!originCurrent())return;setCategoryEditor(false);void load(origin.id,origin)}}/>}
   </main>
 }
 function Filter({value,current,set,label,count}){return <button className={current===value?"active":""} onClick={()=>set(value)}>{label} <b>{count}</b></button>}

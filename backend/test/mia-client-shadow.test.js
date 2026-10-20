@@ -36,7 +36,7 @@ test("el cliente sombra firma identidad, grupo, confirmación e idempotencia sin
         timestamp: req.headers["x-wilson-timestamp"], nonce: req.headers["x-wilson-nonce"],
         channel: req.headers["x-wilson-channel"], actorId: req.headers["x-wilson-actor-id"],
         groupId: req.headers["x-wilson-group-id"], actorName: req.headers["x-wilson-actor-name"],
-        method: req.method, path: url.pathname, body,
+        method: req.method, path: req.url, body,
       });
       const valid = crypto.verify("sha256", Buffer.from(message), publicKey, Buffer.from(req.headers["x-wilson-signature"], "base64"));
       received.push({ req, body, valid });
@@ -69,10 +69,10 @@ test("el cliente sombra firma identidad, grupo, confirmación e idempotencia sin
   };
   try {
     const createPayload = JSON.stringify({ titulo: "Tarea QA" });
-    const createProposal = await runClient(["propose", "--operation", "crear", "--payload", createPayload], env);
+    const createProposal = await runClient(["propose", "--operation", "crear", "--payload", createPayload, "--idempotency-key", " mensaje-qa-1 "], env);
     await runClient(["create", "--payload", createPayload, "--confirmation-token", createProposal.confirmacion_token, "--idempotency-key", "mensaje-qa-1"], env);
-    const archiveProposal = await runClient(["propose", "--operation", "archivar", "--task-id", "42"], env);
-    await runClient(["archive", "--task-id", "42", "--confirmation-token", archiveProposal.confirmacion_token, "--idempotency-key", "mensaje-qa-2"], env);
+    const archiveProposal = await runClient(["propose", "--operation", "archivar", "--task-id", "42", "--payload", JSON.stringify({ expected_revision: 7 }), "--idempotency-key", "mensaje-qa-2"], env);
+    await runClient(["archive", "--task-id", "42", "--expected-revision", "7", "--confirmation-token", archiveProposal.confirmacion_token, "--idempotency-key", "mensaje-qa-2"], env);
     await runClient(["resolve-review", "--references", JSON.stringify(["Luzin Carrusel 1"])], env);
     const reviewProposal = await runClient(["preview-review", "--task-ids", JSON.stringify([71, 72])], env);
     await runClient(["confirm-review", "--confirmation-token", reviewProposal.confirmacion_token], env);
@@ -84,10 +84,37 @@ test("el cliente sombra firma identidad, grupo, confirmación e idempotencia sin
   assert.equal(received.length, 8);
   assert.ok(received.every((entry) => entry.valid));
   assert.ok(received.every((entry) => entry.req.headers["x-wilson-signature-version"] === "2"));
+  for (const { req } of received) {
+    assert.equal(req.headers["x-wilson-channel"], "whatsapp");
+    assert.equal(req.headers["x-wilson-actor-id"], "actor-qa");
+    assert.equal(req.headers["x-wilson-actor-name"], "Usuario QA");
+    assert.equal(req.headers["x-wilson-group-id"], "grupo-render-qa");
+  }
+  assert.equal(new Set(received.map(({ req }) => req.headers["x-wilson-nonce"])).size, 8);
   assert.deepEqual(received.filter((entry) => entry.req.url.endsWith("/confirmaciones")).map((entry) => entry.body.operacion), ["crear", "archivar"]);
-  assert.deepEqual(received.filter((entry) => entry.req.headers["idempotency-key"])
+  assert.deepEqual(received.filter((entry) => entry.req.headers["idempotency-key"] && !entry.req.url.endsWith("/confirmaciones"))
     .map((entry) => entry.body.confirmacion_token), ["token-1", "token-3"]);
-  assert.deepEqual(received.filter((entry) => entry.req.headers["idempotency-key"]).map((entry) => entry.req.headers["idempotency-key"]), ["mensaje-qa-1", "mensaje-qa-2"]);
+  assert.deepEqual(received.filter((entry) => entry.req.headers["idempotency-key"]).map((entry) => entry.req.headers["idempotency-key"]), ["mensaje-qa-1", "mensaje-qa-1", "mensaje-qa-2", "mensaje-qa-2"]);
+  assert.deepEqual(received.slice(0, 4).map(({ req }) => [req.method, req.url]), [
+    ["POST", "/api/integraciones/wilson/confirmaciones"],
+    ["POST", "/api/integraciones/wilson/tareas"],
+    ["POST", "/api/integraciones/wilson/confirmaciones"],
+    ["POST", "/api/integraciones/wilson/tareas/42/archivar"],
+  ]);
+  assert.deepEqual(received[0].body, { operacion: "crear", tarea_id: null,
+    payload: { titulo: "Tarea QA", idempotency_key: "mensaje-qa-1" } });
+  assert.deepEqual(received[2].body, { operacion: "archivar", tarea_id: 42,
+    payload: { expected_revision: 7, idempotency_key: "mensaje-qa-2" } });
+  for (const [proposal, mutation, token] of [[received[0], received[1], "token-1"], [received[2], received[3], "token-3"]]) {
+    const { confirmacion_token, ...intention } = mutation.body;
+    assert.equal(confirmacion_token, token);
+    assert.deepEqual(intention, proposal.body.payload, "La intención firmada debe ser idéntica entre propuesta y confirmación");
+    assert.equal(intention.idempotency_key, proposal.req.headers["idempotency-key"]);
+    assert.equal(intention.idempotency_key, mutation.req.headers["idempotency-key"]);
+    assert.equal(Object.hasOwn(mutation.body, "confirmado"), false);
+  }
+  assert.equal(Object.hasOwn(received[1].body, "expected_revision"), false);
+  assert.equal(received[3].body.expected_revision, 7);
   assert.deepEqual(received.slice(4).map((entry) => entry.req.url), [
     "/api/integraciones/wilson/tareas/resolver-revision",
     "/api/integraciones/wilson/lotes/revision/previsualizar",

@@ -1,5 +1,7 @@
 # Render 2.0 — local rescue log
 
+Reading guide: numbered integrations below are historical snapshots, not a cumulative checklist of current missing features. Later entries supersede earlier implementation/gate statements. In particular the first-integration section is not a description of the present architecture. Every test result applies to its stated scope; no entry certifies full master completion or production rollout.
+
 ## Scope and safety
 
 - Branch: `codex/render-2-rescue-local`, created from detached `dcc676c`.
@@ -1030,6 +1032,24 @@ Final physical HTTP/PostgreSQL109 pass across eight suites, including actual log
 No native browser credential-change acceptance claimed; coverage is actual HTTP plus frontend controller/callback/transport tests. Disposable fixtures and dedicated clients cleaned. No configured database, real account, provider, dependency, environment, push or deploy change. App20+/1-, Vite5+ and references preserved. See [USER_ADMINISTRATION_QA.md](USER_ADMINISTRATION_QA.md) for contract and limits.
 
 Remaining: current-password verification throttling, invitation external-effect authority/durable delivery, uncertain-response receipts, other-module writer authority and broader UI/navigation consolidation; native/device/cookie/proxy/provider acceptance and coordinated rollout remain separate gates. This is verified local scope, not a completed master phase, full Render2 readiness or production update. Master active.
+
+## Integration89 — coherent Moodboards selection and remaining canonical-entry debt
+
+Coordinator owns the cancellable coherent-board loader, actual HTTP/PostgreSQL test and integration; Carson owns the existing Moodboards JSX and typed URL selection; Hypatia owns deferred loader tests and repair of a stale loopback CLI test contract; Descartes reviews canonical-entry/navigation debt; Beauvoir independently reviews loader and physical-test scope. Existing App/Vite/reference changes are preserved. Superpowers ownership/acceptance discipline guided this bounded correction; no replacement frontend or new business store is introduced.
+
+The board loader reads references, categories and tasks as one snapshot. A new observation invalidates the previous one even for A→B→A and transports ignoring abort. Cancel/unmount/session replacement suppress old success/error and never dispatch with a replacement identity. Malformed collections fail rather than becoming an empty successful board. The physical fixture creates two synthetic boards/references, reloads them through the real frontend API/captured-session stack and principal HTTP, delays an actual response across board selection, and verifies PostgreSQL fingerprints unchanged after reads. Four physical cases and21 loader tests passed. Final frontend1126 pass, including actual extracted JSX callbacks and typed URL tests; production build passed. No mounted browser acceptance is claimed.
+
+Board selection is serialized in `?board=<id>` with preserved client/task context. Invalid, duplicate or out-of-range IDs and unavailable board/client selections produce explicit errors, not silent fallback. History/popstate reselects the corresponding board. Activation clears old collections, filters and epoch-keyed overlays before reading the new board. Task intent only applies to a task present in that board and the requested client; same-board reload replaces the selected reference DTO or closes it if absent. Late writer callbacks cannot refresh a subsequently selected board. Writers themselves are not comprehensively refactored by this read/navigation patch.
+
+Reproducible commands: frontend `node --test` and `npm run build`; backend physical `RENDER2_RUN_LOCAL_INTEGRATION=true node --test test/render2-moodboard-board.integration.test.js`. Logs `/private/tmp/render2-moodboard89-frontend-final.log`, `/private/tmp/render2-moodboard89-build-final.log`, `/private/tmp/render2-moodboard89-http.log`. The physical harness asserts its generated directory was removed and never uses configured DBs or external providers.
+
+QA uncovered a test previously skipped when sandbox loopback is denied: `mia-client-shadow.test.js` proposed operations without the now-required idempotency key/archive revision and verified a pathname-only signature despite an actual signed query. The test now supplies the current contract and checks eight real loopback requests, exact query signatures, current identity/group, distinct nonces, exact proposal/mutation body/key/revision parity and confirmation tokens. Production CLI/signing rules were not loosened. Worker targeted elevated shadow1/CLI16 pass without skips. Initial restricted full run had one Python subprocess timeout; elevated rerun exposed the stale test rather than hiding it behind EPERM. Final complete elevated regression is recorded below.
+
+Final backend `node --test --test-concurrency=1 test/*.test.js` with local loopback allowed:1435 pass/68 explicit opt-in skips/0 fail. Final rebuilt principal physical Moodboards4 pass/0 skips; fixtures/listeners cleaned. Logs `/private/tmp/render2-moodboard89-backend-verified.log` and `/private/tmp/render2-moodboard89-http-final.log`. Frontend1126/build/diff checks passed after worker freeze. These counts include historical reference tests and are not a claim that every master requirement was exercised. No whole-phase completion or deployment readiness is asserted.
+
+Canonical-entry audit found that inherited development-only App/Vite modifications still mount the independent preview and an untracked LocalDesignShell. Production bundles gate those imports, but default development is not yet a single operational entry. Resolving this requires explicit preservation and retirement of those inherited mounts, not pretending the original user edits are our own or deleting reference files. This is an open master requirement, not production exposure established by the audit. Moodboards itself already uses the real backend despite its legacy Preview component name.
+
+Known limits: this increment does not certify all Moodboards writers, durable receipts, uploads, unsaved-draft/destructive-action recovery or native browser/mobile acceptance. No schema migration, configured database/provider, real account, dependency, environment, push or deployment. Full master remains active.
 
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
