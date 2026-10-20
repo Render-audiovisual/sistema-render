@@ -1,5 +1,6 @@
 import { SYSTEM_USER_ROLES } from './user-roles.js';
 import { annotateEditorialEvidence } from './editorial-evidence-read.js';
+import { editorialPieceIdentity } from './editorial-publication.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const BUCKETS = ['today', 'overdue', 'blocked', 'upcoming_ready'];
@@ -26,14 +27,14 @@ export function normalizeEditorialControlQuery(query = {}) {
 
 // Internal observed evidence fields are projected narrowly and discarded after
 // server annotation. No metadata-based publication claim is trusted or exported.
-const domainSql = (domain, table) => `SELECT '${domain}'::text AS domain,p.id,p.estado,
+const domainSql = (domain, table, detail = false) => `SELECT '${domain}'::text AS domain,p.id,p.estado,
   ${domain === 'historia' ? "'historia'::text" : 'p.tipo'} AS tipo,p.cliente_id,c.nombre AS cliente_nombre,
-  c.activo AS cliente_activo,p.fecha_programada,p.fecha_publicación_real,
+  c.activo AS cliente_activo,${detail ? "to_char(p.fecha_programada,'YYYY-MM-DD') AS fecha_programada" : 'p.fecha_programada'},p.fecha_publicación_real,
   jsonb_build_object('archivado_tablero',p.metadata->'archivado_tablero') AS metadata,
   left(COALESCE(NULLIF(btrim(p.idea),''),
     NULLIF(btrim(CASE WHEN jsonb_typeof(p.metadata->'idea')='string' THEN p.metadata->>'idea' END),''),
     NULLIF(btrim(CASE WHEN jsonb_typeof(p.metadata->'Idea')='string' THEN p.metadata->>'Idea' END),''),
-    left(p.copy,160),''),160) AS titulo
+    left(p.copy,160),''),160) AS titulo${detail ? ',p.idea AS content_idea,p.copy AS content_copy,p.material_referencia AS content_material_referencia,p.aclaraciones AS content_aclaraciones' : ''}
   FROM ${table} p JOIN clientes c ON c.id=p.cliente_id
   WHERE c.activo IS DISTINCT FROM FALSE AND p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'`;
 
@@ -122,6 +123,48 @@ export async function readEditorialControl(pool, auth, query = {}) {
   } finally { db?.release(); }
 }
 
+export async function readEditorialPieceDetail(pool, auth, domain, rawId, query = {}) {
+  const identity = editorialPieceIdentity(domain, rawId);
+  // The shared identity parser chooses the only allowed tables; enforce exact
+  // canonical decimal spelling as well, without URL/number normalization.
+  if (String(identity.id) !== rawId) throw fail('Pieza inválida.');
+  if (!query || typeof query !== 'object' || Array.isArray(query) || Object.keys(query).length) {
+    throw fail('El detalle editorial no admite filtros.');
+  }
+  let db;
+  try {
+    db = await pool.connect();
+    await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    if (!id(auth?.id) || !Number.isSafeInteger(auth.session_version)) throw fail('Sesión requerida.', 401);
+    const user = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1', [auth.id])).rows[0];
+    if (!user || user.id !== auth.id || user.activo !== true || user.session_version !== auth.session_version
+      || user.rol !== auth.rol) throw fail('La sesión ya no está activa.', 401);
+    if (!SYSTEM_USER_ROLES.includes(user.rol)) throw fail('Este perfil no tiene acceso al control editorial.', 403);
+    const rows = (await db.query(`${domainSql(identity.domain, identity.table, true)} AND p.id=$1`, [identity.id])).rows;
+    if (!rows.length) throw fail('La pieza editorial no está disponible.', 404);
+    if (rows.length !== 1 || rows[0].domain !== identity.domain || rows[0].id !== identity.id) {
+      throw new Error('No se pudo identificar la pieza editorial.');
+    }
+    const observed = rows[0];
+    const content = {};
+    let bytes = 0;
+    for (const field of ['idea', 'copy', 'material_referencia', 'aclaraciones']) {
+      const value = observed[`content_${field}`];
+      if (value !== null && typeof value !== 'string') throw new Error('Contenido editorial no válido.');
+      if (value !== null) bytes += Buffer.byteLength(value, 'utf8');
+      if (bytes > 1024 * 1024) throw fail('El contenido editorial supera el límite de 1 MiB.', 413);
+      content[field] = value;
+    }
+    const [annotated] = await annotateEditorialEvidence(db, identity.domain, [observed]);
+    const result = { version: 1, piece: closeItem(annotated), content };
+    await db.query('COMMIT');
+    return result;
+  } catch (error) {
+    if (db) await db.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally { db?.release(); }
+}
+
 export function createEditorialControlRouter({ express, pool }) {
   const router = express.Router();
   router.get('/', async (req, res, next) => {
@@ -129,6 +172,14 @@ export function createEditorialControlRouter({ express, pool }) {
     try { return res.json(await readEditorialControl(pool, req.auth, req.query ?? {})); }
     catch (error) {
       if ([400, 401, 403].includes(error.status)) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
+  });
+  router.get('/:domain/:id', async (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    try { return res.json(await readEditorialPieceDetail(pool, req.auth, req.params.domain, req.params.id, req.query ?? {})); }
+    catch (error) {
+      if ([400, 401, 403, 404, 413].includes(error.status)) return res.status(error.status).json({ error: error.message });
       return next(error);
     }
   });

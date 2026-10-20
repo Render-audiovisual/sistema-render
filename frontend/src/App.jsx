@@ -17,7 +17,6 @@ const EmpleadosPage = lazyNamed(() => import("./pages/Empleados.jsx"), "Empleado
 const GermanDashboard = lazyNamed(() => import("./pages/dashboards/German.jsx"), "GermanDashboard");
 const HistoriasPage = lazyNamed(() => import("./pages/Historias.jsx"), "HistoriasPage");
 const LiderDashboard = lazyNamed(() => import("./pages/dashboards/Lider.jsx"), "LiderDashboard");
-const OrianaDashboard = lazyNamed(() => import("./pages/dashboards/Oriana.jsx"), "OrianaDashboard");
 const PerfilPage = lazyNamed(() => import("./pages/Perfil.jsx"), "PerfilPage");
 const PublicacionesPage = lazyNamed(() => import("./pages/Publicaciones.jsx"), "PublicacionesPage");
 const ReportesEquipoPage = lazyNamed(() => import("./pages/Reportes.jsx"), "ReportesEquipoPage");
@@ -116,9 +115,6 @@ export function App() {
     }
     if (path === "/lider") {
       return <LiderDashboard />;
-    }
-    if (path === "/oriana") {
-      return <OrianaDashboard />;
     }
     if (path === "/german") {
       return <GermanDashboard />;

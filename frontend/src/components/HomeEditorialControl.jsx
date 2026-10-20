@@ -3,6 +3,7 @@ import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
 import { personalHomeNavigate, subscribePersonalHomeRefresh } from '../pages/personalHome.js';
 import { EditorialPublicationControl } from './EditorialPublicationControl.jsx';
+import { EditorialPieceDetails } from './EditorialPieceDetails.jsx';
 import { canReadEditorialControl, createHomeEditorialLoader, EDITORIAL_BUCKETS, EDITORIAL_LIMIT,
   homeEditorialContextHref, homeEditorialRecordPiece } from './homeEditorialControl.js';
 import { readEditorialLocation, loadEditorialView, saveEditorialView, normalizeEditorialView,
@@ -116,14 +117,15 @@ export function HomeEditorialControl({ sesion, onNavigate, onRecordOpenChange, r
       <ul className="qh-compact-list">{data.items.map(item => {
         const href = homeEditorialContextHref(item);
         return <li key={`${item.domain}:${item.id}`}><div className="qh-compact-row">
-          <span><strong>{item.titulo || 'Sin título'}</strong>
+          <div className="qh-row-main"><strong>{item.titulo || 'Sin título'}</strong>
             <small>{item.cliente.nombre} · {item.domain === 'historia' ? 'Historia' : 'Publicación'} #{item.id} · {stateLabel(item.estado)}</small>
             <small>{item.fecha_programada || 'Sin fecha'} · {evidenceLabel(item.publication_classification)}</small>
             {href ? <a href={href} onClick={event => personalHomeNavigate(event, href, onNavigate)}>Ver planificación del cliente</a>
               : <small>Sin fecha de planificación. Consultá la pieza en su sección.</small>}
             <EditorialPublicationControl dominio={item.domain} pieza={homeEditorialRecordPiece(item)} sesion={sesion}
               hideSummary openLabel="Ver registro de publicación" onOpenChange={changeRecordOpen} onSaved={recordSaved}/>
-          </span>
+            <EditorialPieceDetails piece={item} sesion={sesion} request={request}/>
+          </div>
         </div></li>;
       })}</ul>
       <nav className="qh-section-heading" aria-label="Páginas del control editorial">

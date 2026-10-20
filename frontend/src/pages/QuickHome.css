@@ -11,6 +11,8 @@
 .quick-home button:hover:not(:disabled){background:var(--qh-soft)}
 .quick-home [aria-label="Vistas del control editorial"] button[aria-pressed="true"]{background:var(--render-accent-soft,#edf4ff);border-color:var(--qh-blue);color:var(--render-accent,#0068d4)}
 .quick-home [aria-labelledby="qh-editorial-title"] .qh-compact-row a{align-items:center;display:inline-flex;font-size:13px;min-height:44px}
+.qh-piece-detail{border-top:1px solid var(--qh-line);margin-top:8px;min-width:0}.qh-piece-detail summary{cursor:pointer;min-height:44px;align-content:center;color:var(--render-accent,#0068d4);font-size:13px}.qh-piece-detail dl{margin:12px 0}.qh-piece-detail dt{font-size:12px;font-weight:600;margin-top:12px}.qh-piece-detail dd{font-size:13px;line-height:1.6;margin:4px 0 0;overflow-wrap:anywhere;white-space:pre-wrap}
+.qh-piece-detail summary:focus-visible{outline:3px solid var(--qh-blue);outline-offset:2px}
 .quick-home button:disabled{opacity:.55;cursor:default}
 .quick-home :is(a,button):focus-visible{outline:3px solid var(--qh-blue);outline-offset:3px}
 .quick-home a{color:var(--qh-blue);text-decoration:none}

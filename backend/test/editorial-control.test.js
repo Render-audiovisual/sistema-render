@@ -40,7 +40,11 @@ function fake({ user = currentUser, control = payload(), evidence = {}, fail, ro
 }
 function router(pool) {
   let handler;
-  const instance = { get(path, callback) { assert.equal(path, '/'); assert.equal(handler, undefined); handler = callback; } };
+  const seen = new Set();
+  const instance = { get(path, callback) {
+    assert.ok(['/', '/:domain/:id'].includes(path)); assert.equal(seen.has(path), false); seen.add(path);
+    if (path === '/') { assert.equal(handler, undefined); handler = callback; }
+  } };
   assert.equal(createEditorialControlRouter({ express: { Router: () => instance }, pool }), instance);
   return async (request = {}) => {
     const res = { code: 200, headers: {}, set(key, value) { this.headers[key] = value; return this; },
