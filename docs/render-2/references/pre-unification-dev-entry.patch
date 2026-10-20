@@ -1,0 +1,65 @@
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index 547d9de..ed4c122 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -11,6 +11,15 @@ import { canonicalLegacyRoute, replaceLegacyRoute } from "./shared/navigation/le
+ import { canUseSharedCalendarRole } from "./components/navigation.js";
+ 
+ const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
++const DesignPreview = import.meta.env.DEV
++  ? lazyNamed(() => import("./pages/DesignPreview.jsx"), "DesignPreview")
++  : null;
++const CommentsProposal = import.meta.env.DEV
++  ? lazyNamed(() => import('./pages/PreviewCommentsProposal.jsx'), 'PreviewCommentsProposal')
++  : null;
++const LocalDesignShell = import.meta.env.DEV
++  ? lazyNamed(() => import('./components/LocalDesignShell.jsx'), 'LocalDesignShell')
++  : null;
+ const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPage");
+ const ProjectsPage = lazyNamed(() => import("./pages/Projects.jsx"), "ProjectsPage");
+ const ClientesAdminPage = lazyNamed(() => import("./pages/Clientes.jsx"), "ClientesAdminPage");
+@@ -55,6 +64,13 @@ export function App() {
+     navigateWithinApp(window, href);
+   }, []);
+ 
++  if (import.meta.env.DEV && path === '/design-preview/comments-proposal') {
++    return <React.Suspense fallback={<RouteLoading />}><CommentsProposal /></React.Suspense>;
++  }
++  if (import.meta.env.DEV && path === "/design-preview") {
++    return <React.Suspense fallback={<RouteLoading />}><DesignPreview /></React.Suspense>;
++  }
++
+   // Login owns its attempt lifetime. Keep the same form mounted while its
+   // controller publishes loading/error, otherwise cleanup would cancel login.
+   if (sessionSnapshot.status === 'unknown' || (sessionSnapshot.status === 'loading' && path !== '/login')) return <RouteLoading />;
+@@ -160,10 +176,13 @@ export function App() {
+ 
+   const loadedDashboard = <React.Suspense key={sessionKey} fallback={<RouteLoading />}>{dashboard}</React.Suspense>;
+ 
+-  return (
++  const application = (
+     <>
+       <Sidebar key={sessionKey} path={path} search={window.location.search} sesion={sesion} onNavigate={navigate} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
+       {loadedDashboard}
+     </>
+   );
++  return LocalDesignShell
++    ? <React.Suspense fallback={<RouteLoading/>}><LocalDesignShell path={path}>{application}</LocalDesignShell></React.Suspense>
++    : application;
+ }
+diff --git a/frontend/vite.config.js b/frontend/vite.config.js
+index 62772cc..deeae94 100644
+--- a/frontend/vite.config.js
++++ b/frontend/vite.config.js
+@@ -5,6 +5,11 @@ export default defineConfig({
+   plugins: [react()],
+   server: {
+     proxy: {
++      "/sandbox-api": {
++        target: "http://127.0.0.1:5190",
++        changeOrigin: true,
++        rewrite: path => path.replace(/^\/sandbox-api/, "/api"),
++      },
+       "/api": {
+         target: process.env.VITE_BACKEND_URL || "http://localhost:3001",
+         changeOrigin: true,
