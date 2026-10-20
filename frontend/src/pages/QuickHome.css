@@ -9,6 +9,8 @@
 .qh-eyebrow{color:var(--qh-muted);font-size:12px;font-weight:500}
 .quick-home button{align-items:center;background:var(--qh-bg);border:1px solid var(--qh-line);border-radius:10px;color:var(--qh-text);cursor:pointer;display:inline-flex;gap:8px;justify-content:center;min-height:44px;padding:8px 16px;font:inherit;white-space:nowrap}
 .quick-home button:hover:not(:disabled){background:var(--qh-soft)}
+.quick-home [aria-label="Vistas del control editorial"] button[aria-pressed="true"]{background:var(--render-accent-soft,#edf4ff);border-color:var(--qh-blue);color:var(--render-accent,#0068d4)}
+.quick-home [aria-labelledby="qh-editorial-title"] .qh-compact-row a{align-items:center;display:inline-flex;font-size:13px;min-height:44px}
 .quick-home button:disabled{opacity:.55;cursor:default}
 .quick-home :is(a,button):focus-visible{outline:3px solid var(--qh-blue);outline-offset:3px}
 .quick-home a{color:var(--qh-blue);text-decoration:none}

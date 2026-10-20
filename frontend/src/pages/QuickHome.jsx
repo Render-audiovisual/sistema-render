@@ -3,6 +3,7 @@ import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { HomeEscalations } from "../components/HomeEscalations.jsx";
 import { HomeMonthlyProgress } from "../components/HomeMonthlyProgress.jsx";
 import { HomeTeamWorkload } from "../components/HomeTeamWorkload.jsx";
+import { HomeEditorialControl } from "../components/HomeEditorialControl.jsx";
 import { createPersonalHomeLoader, homeDate, homeDeadline, homeStateLabel, personalHomeNavigate, subscribePersonalHomeRefresh } from "./personalHome.js";
 import "./QuickHome.css";
 
@@ -99,7 +100,6 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
         <div className="qh-columns">
           <div className="qh-primary-column">
             <HomeEscalations sesion={sesion} onNavigate={onNavigate} request={request}/>
-            <HomeTeamWorkload sesion={sesion} onNavigate={onNavigate} request={request}/>
             <section className="qh-section" aria-labelledby="qh-work-title">
               <header className="qh-section-heading"><div><h2 id="qh-work-title">Tu próximo trabajo</h2><p>Primero lo vencido, después lo que sigue.</p></div>
                 <ListCount shown={data.tasks.length} total={data.summary.open}/></header>
@@ -115,6 +115,8 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
               {data.review.items.length ? <TaskRows items={data.review.items} today={data.today} onNavigate={onNavigate}/> :
                 <p className="qh-empty">No hay tareas en revisión.</p>}
             </section>
+            <HomeTeamWorkload sesion={sesion} onNavigate={onNavigate} request={request}/>
+            <HomeEditorialControl sesion={sesion} onNavigate={onNavigate} request={request}/>
           </div>
 
           <aside className="qh-secondary-column" aria-label="Contexto de tu trabajo">
