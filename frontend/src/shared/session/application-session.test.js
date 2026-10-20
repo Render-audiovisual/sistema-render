@@ -170,7 +170,7 @@ test('legacy current 401 still removes only the old key and redirects; malformed
   const runtime = createApplicationSession({ storage: { getItem: () => raw, removeItem(key) { removed.push(key); raw = null; } },
     location: { pathname: '/inicio', replace: path => redirects.push(path) }, fetchImpl: async () => reply({}, 401) });
   runtime.getSnapshot(); await runtime.fetch('/api/inicio');
-  assert.equal(runtime.getSession(), null); assert.deepEqual(removed, ['render_sesion']); assert.deepEqual(redirects, ['/login']); runtime.dispose();
+  assert.equal(runtime.getSession(), null); assert.deepEqual(removed, ['render_sesion']); assert.deepEqual(redirects, ['/login?next=%2Finicio']); runtime.dispose();
   for (const storage of [{ getItem: () => 'bad json' }, { getItem() { throw new Error('denied'); } }]) {
     const anonymous = createApplicationSession({ storage, fetchImpl: async () => { throw new Error('must not request'); } });
     assert.equal((await anonymous.start()).ok, false); assert.equal(anonymous.getSnapshot().status, 'anonymous'); anonymous.dispose();

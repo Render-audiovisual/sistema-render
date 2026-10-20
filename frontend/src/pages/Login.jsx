@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { getRutaUsuario, getSesion, guardarSesion } from "../utils.jsx";
+import { getSesion, guardarSesion } from "../utils.jsx";
 import { getApplicationSession } from "../shared/session/application-session-access.js";
 import { createLoginAttempts } from "../shared/session/login-attempt.js";
+import { readLoginDestination, resolveLoginDestination } from "../shared/navigation/login-destination.js";
 
 // Fallback hardcodeado: el hosting de Hostinger no inyecta las
 // "Variables de entorno" del panel durante `npm run build` (solo en
@@ -22,12 +23,13 @@ export function LoginPage({ sessionPending = false }) {
   const sessionPendingRef = useRef(sessionPending);
   sessionPendingRef.current = sessionPending;
   const attemptsRef = useRef(null);
+  const capturedDestination = useRef(readLoginDestination(window.location.search));
   if (!attemptsRef.current) attemptsRef.current = createLoginAttempts({
     getRuntime: getApplicationSession,
     request: (...args) => fetch(...args),
     readSession: getSesion,
     save: guardarSesion,
-    navigate: (user) => { window.location.href = getRutaUsuario(user.usuario, user.rol); },
+    navigate: (user) => { window.location.replace(resolveLoginDestination(capturedDestination.current, user)); },
     onState: ({ busy, error: nextError }) => {
       setCargando(busy);
       if (nextError !== undefined) setError(nextError);

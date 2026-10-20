@@ -8,6 +8,7 @@ import { Sidebar } from "./components/Sidebar.jsx";
 import { QuickHomePage } from "./pages/QuickHome.jsx";
 import { navigateWithinApp, readRouteKey } from "./shared/navigation/location.js";
 import { canonicalLegacyRoute, replaceLegacyRoute } from "./shared/navigation/legacy-routes.js";
+import { loginHrefForDestination, readLoginDestination, resolveLoginDestination } from "./shared/navigation/login-destination.js";
 import { canUseSharedCalendarRole } from "./components/navigation.js";
 
 const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
@@ -65,14 +66,14 @@ export function App() {
 
   if (path === "/login") {
     if (sesion) {
-      window.location.href = getRutaUsuario(sesion.usuario.usuario, sesion.usuario.rol);
+      window.location.replace(resolveLoginDestination(readLoginDestination(window.location.search), sesion.usuario));
       return null;
     }
-    return <LoginPage sessionPending={sessionSnapshot.status === 'loading'} />;
+    return <LoginPage key={route} sessionPending={sessionSnapshot.status === 'loading'} />;
   }
 
   if (!sesion) {
-    window.location.href = "/login";
+    window.location.replace(loginHrefForDestination(route));
     return null;
   }
 

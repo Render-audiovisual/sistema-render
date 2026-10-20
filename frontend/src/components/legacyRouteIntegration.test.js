@@ -88,7 +88,7 @@ test('anonymous login gate and root handling precede loading guard; permissions 
   assert.ok(gate >= 0 && root > gate && loading > root, 'Anonymous/root handling before alias loading guard');
   assert.ok(permissions > loading, 'Aliases canonicalize before route permission fallback');
   assert.ok(dashboard && dashboard.pos > statements[loading].pos, 'No operational page mounts while canonicalizing');
-  assert.match(source, /return\s+<LoginPage sessionPending=\{sessionSnapshot.status === 'loading'\}\s*\//);
+  assert.match(source, /return\s+<LoginPage key=\{route\} sessionPending=\{sessionSnapshot.status === 'loading'\}\s*\//);
 });
 
 test('all named dashboard imports and mounts retire while original source files remain preserved', () => {

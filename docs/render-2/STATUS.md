@@ -1105,6 +1105,24 @@ Commands: backend `node --test --test-concurrency=1 test/*.test.js`; frontend `n
 
 Remaining master gates include other writer authority/concurrency, full canonical design/feature acceptance, native/device/cookie/proxy/provider checks and authorized rollout preparation. This is locally implemented and physically verified production-operation authorization, not a completed master phase or a production release. Full goal active.
 
+## Integration93 — captured internal destinations survive login and current-session401
+
+Coordinator owns closed destination policy, legacy401 companion, current-root expectation adaptation, native/physical integration and docs; Carson owns App/Login wiring, route-keyed lifetime/source tests and API-fetch regression expectations; Hypatia owns15 policy cases/sidebar parity; Descartes owns actual HTTP/controller tests; Beauvoir independently reviews redirect/lifetime/import-cycle boundaries. Superpowers kept destination contract and ownership explicit before integration. No frontend design/theme or backend auth/storage change.
+
+Known literal internal destinations, task/view/calendar/production query/hash and reviewed legacy aliases survive anonymous authentication. External, nested-login, API/static/preview, ambiguous duplicate and malformed destinations cannot become navigation targets. Successful navigation uses the verified server identity and role-filtered destination; default remains Inicio, without names granting finance/users access. Replace navigation avoids inserting a redundant login into history. Login page captures initial destination and is keyed by full route: a changed target cancels prior attempts while ordinary loading/error preserves the same form/controller. No destination localStorage/sessionStorage is introduced.
+
+The current-bound legacy API401 also preserves pathname/query/hash before App can render its anonymous gate; old-response token/ID/role fencing remains. Explicit logout and credential-change reauthentication remain plain login. Cookie-mode ownership/CSRF/activation policy unchanged; frontend routing is not server authorization. All previously mounted preview/reference files remain outside the canonical runtime graph.
+
+Verified native initial deep link → synthetic employee login → actual requested task detail, plus employee finance-next fallback to own Inicio; desktop/mobile390px, exact task/view URL and document width390. No business edits or credential changes, no Google/provider authentication. Existing Google button assets loaded; no external provider acceptance claim. Tab64/temporary viewport/browser fixture cleaned. Native screenshots `/private/tmp/render2-destination93-task.png` and `/private/tmp/render2-destination93-mobile.png`. Native proof precedes only the companion interceptor redirect change; actual revoked-session401/fresh-login flow is verified separately by real HTTP, not claimed as native.
+
+Final actual HTTP/PostgreSQL7 pass/0 skips, including held genuine server response after cleanup and logout-revoked401 followed by fresh real login to the same task query/hash. Frontend1171 pass/1 explicit opt-in skip; policy15 and focused29 pass; final build/diff pass. Initial full runs caught exact Login prop/401 URL expectations in older source/lifecycle tests; narrow updates retain ordering, unchanged-form mount and stale-response assertions. Full backend results follow below.
+
+Final full backend1459 pass/71 explicit opt-in skips/0 fail after all workers froze, physical/native fixtures stopped and frontend verification completed. Existing-session routing consumes the observed DTO for presentation only: it does not revalidate an account or grant API access. Runtime middleware remains responsible for current server authority. No owned listeners remain.
+
+Commands: frontend `node --test`, `npm run build`; backend `node --test --test-concurrency=1 test/*.test.js`; physical `RENDER2_RUN_LOCAL_INTEGRATION=true node --test test/render2-login-destination.integration.test.js`. Logs `/private/tmp/render2-destination93-frontend-complete.log`, `/private/tmp/render2-destination93-build-verified.log`, `/private/tmp/render2-destination93-http-verified.log`, `/private/tmp/render2-destination93-policy.log`, `/private/tmp/render2-destination93-backend-verified.log`. Contract/evidence detail: [NAVIGATION_QA.md](NAVIGATION_QA.md).
+
+No configured database/real account, migration/schema/dependency/environment/provider credential/push/deploy changes. Broad feature/design/other-writer/native-cookie-device-provider/rollout gates remain. This is local implemented and verified navigation progress, not a completed master phase or production update. Full goal active.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

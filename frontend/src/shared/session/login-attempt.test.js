@@ -110,6 +110,8 @@ test('actual Login wires accessor and attempt lifecycle; Google callbacks and sc
   assert.equal(file.parseDiagnostics.length, 0);
   assert.match(source, /from "..\/shared\/session\/application-session-access.js"/);
   assert.match(source, /getRuntime: getApplicationSession/); assert.match(source, /save: guardarSesion/);
+  assert.match(source, /capturedDestination = useRef\(readLoginDestination\(window.location.search\)\)/);
+  assert.match(source, /window.location.replace\(resolveLoginDestination\(capturedDestination.current, user\)\)/);
   assert.match(source, /attempts\.mount\(\)/); assert.match(source, /return \(\) => attempts.cleanup\(\)/);
   assert.match(source, /attemptsRef.current.login\(kind, body\)/);
   assert.match(source, /if \(active\) handleGoogleCredential\(response\)/);

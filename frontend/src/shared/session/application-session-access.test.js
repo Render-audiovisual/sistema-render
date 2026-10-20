@@ -48,7 +48,7 @@ test('actual App handles pending/error before auth redirects and remounts operat
   assert.ok(source.indexOf("sessionSnapshot.status === 'error'") < source.indexOf('if (!sesion)'));
   assert.match(source, /sessionSnapshot.status === 'loading' && path !== '\/login'/);
   assert.match(source, /sessionSnapshot.status === 'error' && path !== '\/login'/);
-  assert.match(source, /<LoginPage sessionPending=\{sessionSnapshot.status === 'loading'\}/);
+  assert.match(source, /<LoginPage key=\{route\} sessionPending=\{sessionSnapshot.status === 'loading'\}/);
   assert.match(source, /role="alert"/);
   assert.match(source, /<React.Suspense key=\{sessionKey\} fallback=\{<RouteLoading \/>\}>\{dashboard\}/);
   assert.match(source, /<Sidebar key=\{sessionKey\}/);

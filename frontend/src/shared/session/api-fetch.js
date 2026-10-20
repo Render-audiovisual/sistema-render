@@ -1,4 +1,5 @@
 import { parseCurrentSession } from './current-session.js';
+import { loginHrefForDestination } from '../navigation/login-destination.js';
 
 // Capture the actual sent identity. A late response must not invalidate a newer
 // account/session, and explicit captured credentials must not be overwritten.
@@ -18,7 +19,7 @@ export function createAuthenticatedApiFetch({fetchImpl,storage,location,apiBase=
     const current=read();
     if(bound&&current?.token===bound.token&&current.usuario.id===bound.usuario.id&&current.usuario.rol===bound.usuario.rol){
       storage.removeItem('render_sesion');
-      if(location.pathname!=='/login')location.replace('/login');
+      if(location.pathname!=='/login')location.replace(loginHrefForDestination(`${location.pathname}${location.search || ''}${location.hash || ''}`));
     }
     return response;
   };
