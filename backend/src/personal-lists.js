@@ -12,6 +12,13 @@ function httpError(status, message) {
   return error;
 }
 
+function expectedVersion(value) {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 2147483647) {
+    throw httpError(400, "expected_version debe ser un entero positivo válido.");
+  }
+  return value;
+}
+
 export function normalizePersonalListText(value, { field = "texto", max = 500, fallback = "" } = {}) {
   const clean = String(value ?? fallback).replace(/\s+/g, " ").trim();
   if (!clean) throw httpError(400, `${field} no puede quedar vacío.`);
@@ -25,12 +32,18 @@ export function normalizePersonalListEmoji(value) {
   return clean;
 }
 
+export function personalRecordId(value) {
+  if(typeof value==='number'&&Number.isSafeInteger(value)&&value>0)return String(value);
+  if(typeof value==='string'&&/^[1-9][0-9]{0,18}$/.test(value)&&BigInt(value)<=9223372036854775807n)return value;
+  throw httpError(400,'El identificador personal no es válido.');
+}
+
 function normalizeIds(value) {
   if (!Array.isArray(value) || !value.length || value.length > 500) {
     throw httpError(400, "El orden enviado no es válido.");
   }
-  const ids = value.map(Number);
-  if (ids.some((id) => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length) {
+  const ids = value.map(personalRecordId);
+  if (new Set(ids).size !== ids.length) {
     throw httpError(400, "El orden contiene elementos inválidos o repetidos.");
   }
   return ids;
@@ -43,29 +56,29 @@ function handler(fn) {
   });
 }
 
-function nestPersonalLists(lists, sections, items, blocks) {
+export function nestPersonalLists(lists, sections, items, blocks) {
   const itemGroups = new Map();
   items.forEach((item) => {
-    const key = Number(item.seccion_id);
+    const key = String(item.seccion_id);
     itemGroups.set(key, [...(itemGroups.get(key) || []), item]);
   });
   const sectionGroups = new Map();
   sections.forEach((section) => {
-    const key = Number(section.lista_id);
+    const key = String(section.lista_id);
     sectionGroups.set(key, [...(sectionGroups.get(key) || []), {
       ...section,
-      items: itemGroups.get(Number(section.id)) || [],
+      items: itemGroups.get(String(section.id)) || [],
     }]);
   });
   const blockGroups = new Map();
   blocks.forEach((block) => {
-    const key = Number(block.lista_id);
+    const key = String(block.lista_id);
     blockGroups.set(key, [...(blockGroups.get(key) || []), block]);
   });
   return lists.map((list) => ({
     ...list,
-    secciones: sectionGroups.get(Number(list.id)) || [],
-    bloques: blockGroups.get(Number(list.id)) || [],
+    secciones: sectionGroups.get(String(list.id)) || [],
+    bloques: blockGroups.get(String(list.id)) || [],
   }));
 }
 
@@ -171,14 +184,18 @@ export function createPersonalListsRouter({ express, pool }) {
   }));
 
   router.patch("/:id", handler(async (req, res) => {
+    const version = expectedVersion(req.body?.expected_version);
     const userId = Number(req.auth.id);
     const title = req.body?.titulo === undefined ? null : normalizePersonalListText(req.body.titulo, { field: "El título", max: 120 });
     const emoji = req.body?.emoji === undefined ? null : normalizePersonalListEmoji(req.body.emoji);
     if (title === null && emoji === null) throw httpError(400, "No hay cambios para guardar.");
     const result = await pool.query(`UPDATE listas_personales SET titulo=COALESCE($1,titulo),emoji=COALESCE($2,emoji),
-      version=version+1,updated_at=NOW() WHERE id=$3 AND usuario_id=$4
-      RETURNING id,titulo,emoji,posicion,version,created_at,updated_at`, [title, emoji, req.params.id, userId]);
-    if (!result.rowCount) throw httpError(404, "Lista no encontrada.");
+      version=version+1,updated_at=NOW() WHERE id=$3 AND usuario_id=$4 AND version=$5
+      RETURNING id,titulo,emoji,posicion,version,created_at,updated_at`, [title, emoji, req.params.id, userId, version]);
+    if (!result.rowCount) {
+      await requireOwnedList(pool, req.params.id, userId);
+      throw httpError(409, "La lista cambió. Volvé a cargarla antes de guardar.");
+    }
     res.json(result.rows[0]);
   }));
 
@@ -265,14 +282,21 @@ export function createPersonalListsRouter({ express, pool }) {
   }));
 
   router.patch("/bloques/:id", handler(async (req, res) => {
+    const version = expectedVersion(req.body?.expected_version);
     const type = normalizeBlockType(req.body?.tipo);
     const content = normalizeBlockContent(type, req.body?.contenido);
     const result = await pool.query(`UPDATE lista_bloques b SET tipo=$1,contenido=$2::jsonb,
       version=b.version+1,updated_at=NOW() FROM listas_personales l
-      WHERE b.id=$3 AND l.id=b.lista_id AND l.usuario_id=$4
+      WHERE b.id=$3 AND l.id=b.lista_id AND l.usuario_id=$4 AND b.version=$5
       RETURNING b.id,b.lista_id,b.tipo,b.contenido,b.posicion,b.version,b.created_at,b.updated_at`,
-    [type, JSON.stringify(content), req.params.id, Number(req.auth.id)]);
-    if (!result.rowCount) throw httpError(404, "Bloque no encontrado.");
+    [type, JSON.stringify(content), req.params.id, Number(req.auth.id), version]);
+    if (!result.rowCount) {
+      const owned = await pool.query(`SELECT b.id FROM lista_bloques b
+        JOIN listas_personales l ON l.id=b.lista_id WHERE b.id=$1 AND l.usuario_id=$2`,
+      [req.params.id, Number(req.auth.id)]);
+      if (!owned.rowCount) throw httpError(404, "Bloque no encontrado.");
+      throw httpError(409, "El bloque cambió. Volvé a cargarlo antes de guardar.");
+    }
     res.json(result.rows[0]);
   }));
 
@@ -288,7 +312,7 @@ export function createPersonalListsRouter({ express, pool }) {
     const userId = Number(req.auth.id);
     const kind = String(req.body?.tipo || "");
     const ids = normalizeIds(req.body?.ids);
-    const parentId = Number(req.body?.parent_id || 0);
+    const parentId = kind==='listas'?null:personalRecordId(req.body?.parent_id);
     const client = await pool.connect();
     try {
       await client.query("BEGIN");

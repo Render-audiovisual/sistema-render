@@ -58,6 +58,9 @@
 .personal-save-status i { width: 6px; height: 6px; border-radius: 50%; background: #92988e; }
 .personal-save-status.saving i { background: #d39b2d; animation: personal-status-pulse .9s ease-in-out infinite; }
 .personal-save-status.error { color: #a9473d; }.personal-save-status.error i { background: #c95045; }
+.personal-save-status.pending { color: #8a641f; }
+.personal-editor-lock { border: 0; margin: 0; padding: 0; min-width: 0; }
+.personal-list-toolbar > div:last-child { flex-wrap: wrap; justify-content: flex-end; }
 .personal-list-cover { height: 108px; background: linear-gradient(135deg,#f1f4ec 0%,#e8eee0 44%,#f6f7f2 100%); }
 .personal-list-content { width: min(940px, calc(100% - 72px)); margin: -36px auto 100px; }
 .personal-emoji-wrap { position: relative; z-index: 4; width: max-content; }

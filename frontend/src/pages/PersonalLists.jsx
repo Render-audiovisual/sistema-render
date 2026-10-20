@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
+import { getSesion } from '../utils.jsx';
+import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
+import { createPersonalListSaveQueue } from './personalListSaveQueue.js';
 import "./PersonalLists.css";
 
 const EMOJI_OPTIONS = [
@@ -46,7 +49,7 @@ function cloneTemplateBlocks(blocks) {
 }
 
 function SavingStatus({ status }) {
-  return <span className={`personal-save-status ${status}`} aria-live="polite"><i aria-hidden="true"/>{status === "saving" ? "Guardando…" : status === "error" ? "No se guardó" : "Guardado"}</span>;
+  return <span className={`personal-save-status ${status}`} aria-live="polite"><i aria-hidden="true"/>{status === "saving" ? "Guardando…" : status === 'pending' ? 'Sin guardar' : status === "error" ? "No se guardó" : "Guardado"}</span>;
 }
 
 function EmojiPicker({ value, onSelect, onClose }) {
@@ -172,81 +175,140 @@ export function PersonalListsPage() {
   const [templateOpen, setTemplateOpen] = useState(false);
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
   const [railOpen, setRailOpen] = useState(() => globalThis.matchMedia?.("(min-width: 981px)").matches ?? true);
-  const timers = useRef(new Map());
+  const [saveState,setSaveState] = useState({status:'saved',dirty:false,busy:false,error:'',conflict:false,pending:0});
+  const [structuralBusy,setStructuralBusy] = useState(false);
+  const queue = useRef(null);
+  const mounted = useRef(false);
+  const listsRef = useRef([]);
+  const controllers = useRef(new Set());
+  const captured = useRef(getSesion());
   const pendingSaves = useRef(0);
-  const activeList = useMemo(() => lists.find((list) => Number(list.id) === Number(activeId)) || lists[0] || null, [lists, activeId]);
+  const statusRef = useRef(status);statusRef.current=status;
+  const activeList = useMemo(() => lists.find((list) => String(list.id) === String(activeId)) || lists[0] || null, [lists, activeId]);
+
+  const currentSession = useCallback(() => {
+    try {const live=getSesion(),initial=captured.current;return mounted.current&&Boolean(initial?.token)
+      &&live?.token===initial.token&&live.usuario.id===initial.usuario.id&&live.usuario.rol===initial.usuario.rol&&live.usuario.activo!==false;}catch{return false;}
+  },[]);
+  const updateLists = useCallback(transform=>{const next=transform(listsRef.current);listsRef.current=next;setLists(next);},[]);
+  const replaceList = useCallback((listId, transform) => updateLists(current=>current.map(list=>String(list.id)===String(listId)?transform(list):list)),[updateLists]);
+  const replaceBlock = useCallback((listId, blockId, transform) => replaceList(listId,list=>({...list,bloques:(list.bloques||[]).map(block=>String(block.id)===String(blockId)?transform(block):block)})),[replaceList]);
+  const scopedRequest = useCallback(async(url,options={})=>{
+    if(!currentSession())throw Object.assign(new Error('La sesión cambió.'),{status:401});
+    const controller=new AbortController(),previous=options.signal;
+    const abort=()=>controller.abort();previous?.addEventListener('abort',abort,{once:true});if(previous?.aborted)abort();
+    controllers.current.add(controller);const timer=window.setTimeout(abort,15000);
+    const headers=new Headers(options.headers||{});headers.set('Authorization',`Bearer ${captured.current.token}`);
+    try {const result=await apiRequest(url,{...options,headers,signal:controller.signal});
+      if(!currentSession())throw Object.assign(new Error('La sesión cambió.'),{status:401});return result;
+    }finally{window.clearTimeout(timer);previous?.removeEventListener('abort',abort);controllers.current.delete(controller);}
+  },[currentSession]);
+  useEffect(()=>{
+    mounted.current=true;
+    queue.current=createPersonalListSaveQueue({session:captured.current,readSession:getSesion,request:scopedRequest,
+      onState:value=>{if(mounted.current)setSaveState(value);},
+      onDenied:()=>{if(mounted.current){updateLists(()=>[]);setTemplates([]);setActiveId(null);setError('La sesión cambió. Volvé a iniciar sesión.');}},
+      onSaved:({meta,row,hasNewer})=>{
+        if(!currentSession())return;
+        const apply=value=>hasNewer?{...value,version:row.version,updated_at:row.updated_at}:{...value,...row};
+        if(meta.blockId)replaceBlock(meta.listId,meta.blockId,apply);else replaceList(meta.listId,apply);
+      }});
+    return()=>{mounted.current=false;queue.current?.dispose();for(const controller of controllers.current)controller.abort();controllers.current.clear();};
+  },[currentSession,replaceBlock,replaceList,scopedRequest,updateLists]);
+  useNavigationGuard(()=>({dirty:Boolean(queue.current?.snapshot().dirty||statusRef.current==='error'),busy:Boolean(queue.current?.snapshot().busy||pendingSaves.current)}));
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [listData, templateData] = await Promise.all([apiRequest("/api/listas-personales"), apiRequest("/api/listas-personales/plantillas")]);
+      const [listData, templateData] = await Promise.all([scopedRequest("/api/listas-personales"), scopedRequest("/api/listas-personales/plantillas")]);
+      if(!Array.isArray(listData)||!Array.isArray(templateData))throw new Error('No se pudo verificar la respuesta de tu espacio.');
       const nextLists = Array.isArray(listData) ? listData : [];
-      setLists(nextLists); setTemplates(Array.isArray(templateData) ? templateData : []);
-      setActiveId((current) => nextLists.some((list) => Number(list.id) === Number(current)) ? current : nextLists[0]?.id || null); setError("");
-    } catch (reason) { setError(reason.message || "No se pudo abrir tu espacio."); } finally { setLoading(false); }
-  }, []);
+      if(!currentSession())return;
+      updateLists(()=>nextLists); setTemplates(Array.isArray(templateData) ? templateData : []);
+      setActiveId((current) => nextLists.some((list) => String(list.id) === String(current)) ? current : nextLists[0]?.id || null); setError("");
+      setStatus('saved');
+    } catch (reason) { if(currentSession())setError(reason.message || "No se pudo abrir tu espacio."); } finally { if(mounted.current)setLoading(false); }
+  }, [currentSession,scopedRequest,updateLists]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
 
   const runSaving = useCallback(async (operation) => {
-    pendingSaves.current += 1; setStatus("saving");
-    try { const result = await operation(); setError(""); return result; }
-    catch (reason) { setStatus("error"); setError(reason.message || "No se pudieron guardar los cambios."); throw reason; }
-    finally { pendingSaves.current -= 1; if (!pendingSaves.current) setStatus((current) => current === "error" ? current : "saved"); }
-  }, []);
-  const replaceList = useCallback((listId, transform) => setLists((current) => current.map((list) => Number(list.id) === Number(listId) ? transform(list) : list)), []);
-  const replaceBlock = useCallback((listId, blockId, transform) => replaceList(listId, (list) => ({ ...list, bloques: (list.bloques || []).map((block) => Number(block.id) === Number(blockId) ? transform(block) : block) })), [replaceList]);
+    if(pendingSaves.current)throw new Error('Hay otra operación en curso.');
+    pendingSaves.current += 1;setStructuralBusy(true);setStatus('saving');
+    try {if(!await queue.current?.flush())throw Object.assign(new Error('Hay cambios pendientes. Guardalos o revisá el conflicto antes de continuar.'),{pendingDraft:true});
+      if(!currentSession())throw new Error('La sesión cambió.');
+      const result=await operation();if(!currentSession())throw new Error('La sesión cambió.');setError('');setStatus('saved');return result;
+    }catch(reason){if(currentSession()){setStatus(reason.pendingDraft?'saved':'error');if(!reason.pendingDraft)setError(reason.message||'No se pudieron guardar los cambios.');}throw reason;}
+    finally{pendingSaves.current-=1;if(mounted.current)setStructuralBusy(false);}
+  },[currentSession]);
+  const reload = async()=>{
+    if(pendingSaves.current||queue.current?.snapshot().busy)return;
+    if((queue.current?.snapshot().dirty||status==='error')&&!window.confirm('Hay cambios locales sin guardar. ¿Descartarlos y recargar desde el servidor?'))return;
+    queue.current?.discard();await load();
+  };
 
   const createList = async (template) => {
     if (creating) return; setCreating(true);
-    try { const created = await runSaving(() => apiRequest("/api/listas-personales", jsonOptions("POST", { titulo: template.titulo === "Página vacía" ? "Sin título" : template.titulo, emoji: template.emoji, bloques: cloneTemplateBlocks(template.bloques || []) }))); setLists((current) => [...current, created]); setActiveId(created.id); setTemplateOpen(false); }
+    try { const created = await runSaving(() => scopedRequest("/api/listas-personales", jsonOptions("POST", { titulo: template.titulo === "Página vacía" ? "Sin título" : template.titulo, emoji: template.emoji, bloques: cloneTemplateBlocks(template.bloques || []) }))); updateLists(current=>[...current,created]); setActiveId(created.id); setTemplateOpen(false); }
     catch { /* El error queda visible. */ } finally { setCreating(false); }
   };
-  const saveListMeta = async (changes) => {
-    if (!activeList) return; const listId = activeList.id; const clean = { ...changes }; if (Object.hasOwn(clean, "titulo")) clean.titulo = clean.titulo.trim() || "Sin título"; replaceList(listId, (list) => ({ ...list, ...clean }));
-    try { const updated = await runSaving(() => apiRequest(`/api/listas-personales/${listId}`, jsonOptions("PATCH", clean))); replaceList(listId, (list) => ({ ...list, ...updated })); } catch { load(); }
+  const saveListMeta = (changes) => {
+    if (!activeList||pendingSaves.current||!currentSession()) return;
+    const listId=activeList.id,current=listsRef.current.find(list=>list.id===listId),clean={...changes};
+    if(Object.hasOwn(clean,'titulo'))clean.titulo=clean.titulo.trim()||'Sin título';
+    replaceList(listId,list=>({...list,...changes}));
+    queue.current?.schedule({key:`list-${listId}`,url:`/api/listas-personales/${listId}`,version:current.version,payload:clean,merge:true,meta:{listId,recordId:listId}});
   };
   const deleteList = async () => {
     if (!activeList || !window.confirm(`¿Eliminar “${activeList.titulo}” y todo su contenido? Esta acción no se puede deshacer.`)) return; const listId = activeList.id;
-    try { await runSaving(() => apiRequest(`/api/listas-personales/${listId}`, { method: "DELETE" })); setLists((current) => current.filter((list) => Number(list.id) !== Number(listId))); setActiveId(null); } catch { /* El error queda visible. */ }
+    try { await runSaving(() => scopedRequest(`/api/listas-personales/${listId}`, { method: "DELETE" })); updateLists(current=>current.filter(list=>String(list.id)!==String(listId))); setActiveId(null); } catch { /* El error queda visible. */ }
   };
   const addBlock = async (type) => {
     if (!activeList) return; const listId = activeList.id;
-    try { const block = await runSaving(() => apiRequest(`/api/listas-personales/${listId}/bloques`, jsonOptions("POST", newBlock(type)))); replaceList(listId, (list) => ({ ...list, bloques: [...(list.bloques || []), block] })); } catch { /* El error queda visible. */ }
+    try { const block = await runSaving(() => scopedRequest(`/api/listas-personales/${listId}/bloques`, jsonOptions("POST", newBlock(type)))); replaceList(listId, (list) => ({ ...list, bloques: [...(list.bloques || []), block] })); } catch { /* El error queda visible. */ }
   };
   const changeBlock = (block, content) => {
-    const listId = activeList.id; replaceBlock(listId, block.id, (current) => ({ ...current, contenido: content })); const key = `block-${block.id}`; window.clearTimeout(timers.current.get(key));
-    timers.current.set(key, window.setTimeout(async () => { try { const updated = await runSaving(() => apiRequest(`/api/listas-personales/bloques/${block.id}`, jsonOptions("PATCH", { tipo: block.tipo, contenido: content }))); replaceBlock(listId, block.id, (current) => ({ ...current, version: updated.version, updated_at: updated.updated_at })); } catch { load(); } }, 650));
+    if(!activeList||pendingSaves.current||!currentSession())return;
+    const listId=activeList.id,current=listsRef.current.find(list=>list.id===listId)?.bloques?.find(row=>row.id===block.id);
+    if(!current)return;
+    replaceBlock(listId,block.id,value=>({...value,contenido:content}));
+    queue.current?.schedule({key:`block-${block.id}`,url:`/api/listas-personales/bloques/${block.id}`,version:current.version,
+      payload:{tipo:block.tipo,contenido:content},meta:{listId,blockId:block.id,recordId:block.id}});
   };
   const deleteBlock = async (block) => {
-    if (!window.confirm(`¿Eliminar este bloque de ${BLOCK_LABELS[block.tipo].toLowerCase()}?`)) return; const listId = activeList.id; window.clearTimeout(timers.current.get(`block-${block.id}`));
-    try { await runSaving(() => apiRequest(`/api/listas-personales/bloques/${block.id}`, { method: "DELETE" })); replaceList(listId, (list) => ({ ...list, bloques: list.bloques.filter((current) => current.id !== block.id) })); } catch { /* El error queda visible. */ }
+    if (!window.confirm(`¿Eliminar este bloque de ${BLOCK_LABELS[block.tipo].toLowerCase()}?`)) return; const listId = activeList.id;
+    try { await runSaving(() => scopedRequest(`/api/listas-personales/bloques/${block.id}`, { method: "DELETE" })); replaceList(listId, (list) => ({ ...list, bloques: list.bloques.filter((current) => current.id !== block.id) })); } catch { /* El error queda visible. */ }
   };
   const moveBlock = (index, direction) => {
-    const listId = activeList.id; const blocks = [...activeList.bloques]; const target = index + direction; if (target < 0 || target >= blocks.length) return; [blocks[index], blocks[target]] = [blocks[target], blocks[index]]; replaceList(listId, (list) => ({ ...list, bloques: blocks })); runSaving(() => apiRequest("/api/listas-personales/orden/reordenar", jsonOptions("PATCH", { tipo: "bloques", parent_id: listId, ids: blocks.map((block) => block.id) }))).catch(load);
+    if(pendingSaves.current)return;
+    const listId = activeList.id; const blocks = [...activeList.bloques]; const target = index + direction; if (target < 0 || target >= blocks.length) return; [blocks[index], blocks[target]] = [blocks[target], blocks[index]];
+    void runSaving(async()=>{await scopedRequest('/api/listas-personales/orden/reordenar',jsonOptions('PATCH',{tipo:'bloques',parent_id:listId,ids:blocks.map(block=>block.id)}));
+      const fresh=await scopedRequest('/api/listas-personales');if(!Array.isArray(fresh))throw new Error('No se pudo actualizar el orden.');return fresh;}).then(fresh=>{queue.current?.discard();updateLists(()=>fresh);}).catch(()=>{});
   };
   const saveAsTemplate = async (name) => {
     if (!activeList) return;
-    try { const template = await runSaving(() => apiRequest("/api/listas-personales/plantillas", jsonOptions("POST", { titulo: name, emoji: activeList.emoji, bloques: activeList.bloques.map(({ tipo, contenido }) => ({ tipo, contenido })) }))); setTemplates((current) => [template, ...current]); setSaveTemplateOpen(false); } catch { /* El error queda visible. */ }
+    const listId=activeList.id;
+    try { const template = await runSaving(() => {const current=listsRef.current.find(list=>list.id===listId);return scopedRequest("/api/listas-personales/plantillas", jsonOptions("POST", { titulo: name, emoji: current.emoji, bloques: current.bloques.map(({ tipo, contenido }) => ({ tipo, contenido })) }));}); setTemplates((current) => [template, ...current]); setSaveTemplateOpen(false); } catch { /* El error queda visible. */ }
   };
   const deleteTemplate = async (template) => {
     if (!window.confirm(`¿Eliminar la plantilla “${template.titulo}”?`)) return;
-    try { await runSaving(() => apiRequest(`/api/listas-personales/plantillas/${template.id}`, { method: "DELETE" })); setTemplates((current) => current.filter((item) => item.id !== template.id)); } catch { /* El error queda visible. */ }
+    try { await runSaving(() => scopedRequest(`/api/listas-personales/plantillas/${template.id}`, { method: "DELETE" })); setTemplates((current) => current.filter((item) => item.id !== template.id)); } catch { /* El error queda visible. */ }
   };
+  const effectiveStatus=saveState.status==='error'||status==='error'?'error':structuralBusy||saveState.busy?'saving':saveState.dirty?'pending':'saved';
+  const visibleError=saveState.error||error;
 
   if (loading) return <main className="personal-lists-page is-empty"><div className="personal-list-loading"><i/><span>Cargando tu espacio…</span></div></main>;
-  if (!lists.length) return <main className="personal-lists-page is-empty"><section className="personal-list-empty"><span>📝</span><h1>Tu espacio, a tu manera</h1><p>Creá páginas privadas con tablas, listas y checklists.</p><button type="button" onClick={() => setTemplateOpen(true)}>+ Crear mi primera página</button></section>{templateOpen && <TemplateDialog templates={templates} creating={creating} onChoose={createList} onClose={() => setTemplateOpen(false)} onDelete={deleteTemplate}/>} {error && <div className="personal-list-toast error">{error}</div>}</main>;
+  if (!lists.length) return <main className="personal-lists-page is-empty"><section className="personal-list-empty"><span>📝</span><h1>Tu espacio, a tu manera</h1><p>Creá páginas privadas con tablas, listas y checklists.</p><button type="button" disabled={structuralBusy} onClick={() => setTemplateOpen(true)}>+ Crear mi primera página</button></section>{templateOpen && <TemplateDialog templates={templates} creating={creating} onChoose={createList} onClose={() => setTemplateOpen(false)} onDelete={deleteTemplate}/>} {visibleError && <div className="personal-list-toast error" role="alert">{visibleError}<button type="button" onClick={reload}>Actualizar desde servidor</button></div>}</main>;
 
   return <main className={`personal-lists-page ${railOpen ? "rail-open" : "rail-closed"}`}>
     <button className="personal-list-rail-scrim" type="button" onClick={() => setRailOpen(false)} aria-label="Cerrar páginas" tabIndex={railOpen ? 0 : -1}/>
-    <aside id="personal-list-pages" className="personal-list-rail" aria-label="Mis páginas" aria-hidden={!railOpen} inert={!railOpen ? true : undefined}><div className="personal-list-rail-heading"><span>Mis páginas</span><div><button type="button" onClick={() => setTemplateOpen(true)} aria-label="Crear página">+</button><button className="personal-list-rail-close" type="button" onClick={() => setRailOpen(false)} aria-label="Cerrar panel de páginas">‹</button></div></div><div className="personal-list-tabs">{lists.map((list) => <button key={list.id} className={Number(list.id) === Number(activeList.id) ? "active" : ""} type="button" onClick={() => { setActiveId(list.id); if (globalThis.matchMedia?.("(max-width: 980px)").matches) setRailOpen(false); }}><span>{list.emoji}</span><strong>{list.titulo}</strong></button>)}</div><p>Privado · solo vos podés verlo</p></aside>
+    <aside id="personal-list-pages" className="personal-list-rail" aria-label="Mis páginas" aria-hidden={!railOpen} inert={!railOpen ? true : undefined}><div className="personal-list-rail-heading"><span>Mis páginas</span><div><button type="button" disabled={structuralBusy} onClick={() => setTemplateOpen(true)} aria-label="Crear página">+</button><button className="personal-list-rail-close" type="button" onClick={() => setRailOpen(false)} aria-label="Cerrar panel de páginas">‹</button></div></div><div className="personal-list-tabs">{lists.map((list) => <button key={list.id} disabled={structuralBusy} className={String(list.id) === String(activeList.id) ? "active" : ""} type="button" onClick={() => { if(pendingSaves.current)return;setActiveId(list.id); if (globalThis.matchMedia?.("(max-width: 980px)").matches) setRailOpen(false); }}><span>{list.emoji}</span><strong>{list.titulo}</strong></button>)}</div><p>Privado · solo vos podés verlo</p></aside>
     <article className="personal-list-document">
-      <div className="personal-list-toolbar"><div className="personal-list-toolbar-start"><button className="personal-list-rail-toggle" type="button" onClick={() => setRailOpen((current) => !current)} aria-expanded={railOpen} aria-controls="personal-list-pages"><span aria-hidden="true">{railOpen ? "‹" : "☰"}</span><strong>{railOpen ? "Ocultar" : "Páginas"}</strong></button><span>Página personal</span></div><div><SavingStatus status={status}/><button type="button" onClick={() => setSaveTemplateOpen(true)}>Guardar plantilla</button><button className="danger personal-list-delete" type="button" onClick={deleteList} aria-label="Eliminar página"><span aria-hidden="true">×</span><strong>Eliminar página</strong></button></div></div>
-      {error && <div className="personal-list-error" role="alert"><span>{error}</span><button type="button" onClick={load}>Reintentar</button></div>}
-      <div className="personal-list-cover"/><div className="personal-list-content"><div className="personal-emoji-wrap"><button className="personal-list-emoji" type="button" onClick={() => setEmojiOpen((current) => !current)} aria-label="Cambiar emoji">{activeList.emoji}</button>{emojiOpen && <EmojiPicker value={activeList.emoji} onClose={() => setEmojiOpen(false)} onSelect={(emoji) => { setEmojiOpen(false); saveListMeta({ emoji }); }}/>}</div>
-        <input className="personal-list-title" value={activeList.titulo} aria-label="Título de la página" onChange={(event) => replaceList(activeList.id, (list) => ({ ...list, titulo: event.target.value }))} onBlur={(event) => saveListMeta({ titulo: event.target.value })}/><p className="personal-list-hint">Combiná bloques y ordenalos como te resulte más cómodo. Todo se guarda automáticamente.</p>
+      <div className="personal-list-toolbar"><div className="personal-list-toolbar-start"><button className="personal-list-rail-toggle" type="button" onClick={() => setRailOpen((current) => !current)} aria-expanded={railOpen} aria-controls="personal-list-pages"><span aria-hidden="true">{railOpen ? "‹" : "☰"}</span><strong>{railOpen ? "Ocultar" : "Páginas"}</strong></button><span>Página personal</span></div><div><SavingStatus status={effectiveStatus}/><button type="button" disabled={structuralBusy||saveState.busy||!saveState.dirty||Boolean(saveState.error)} onClick={()=>{void queue.current?.flush();}}>Guardar ahora</button><button type="button" disabled={structuralBusy} onClick={() => setSaveTemplateOpen(true)}>Guardar plantilla</button><button className="danger personal-list-delete" type="button" disabled={structuralBusy} onClick={deleteList} aria-label="Eliminar página"><span aria-hidden="true">×</span><strong>Eliminar página</strong></button></div></div>
+      {visibleError && <div className="personal-list-error" role="alert"><span>{visibleError} Tus cambios locales se conservan hasta que elijas descartarlos.</span>{saveState.error&&!saveState.conflict&&<button type="button" disabled={saveState.busy||structuralBusy} onClick={()=>{void queue.current?.retry();}}>Reintentar guardado</button>}<button type="button" disabled={saveState.busy||structuralBusy} onClick={reload}>Actualizar desde servidor</button></div>}
+      <div className="personal-list-cover"/><fieldset className="personal-editor-lock" disabled={structuralBusy}><div className="personal-list-content"><div className="personal-emoji-wrap"><button className="personal-list-emoji" type="button" onClick={() => setEmojiOpen((current) => !current)} aria-label="Cambiar emoji">{activeList.emoji}</button>{emojiOpen && <EmojiPicker value={activeList.emoji} onClose={() => setEmojiOpen(false)} onSelect={(emoji) => { setEmojiOpen(false); saveListMeta({ emoji }); }}/>}</div>
+        <input className="personal-list-title" maxLength={120} value={activeList.titulo} aria-label="Título de la página" onChange={(event) => saveListMeta({ titulo: event.target.value })}/><p className="personal-list-hint">Combiná bloques y ordenalos como te resulte más cómodo. Los cambios se guardan automáticamente; revisá el estado antes de salir.</p>
         <div className="personal-editor-blocks">{(activeList.bloques || []).map((block, index) => <BlockEditor key={block.id} block={block} index={index} count={activeList.bloques.length} onChange={(content) => changeBlock(block, content)} onMove={moveBlock} onDelete={deleteBlock}/>)}{!activeList.bloques?.length && <div className="personal-page-empty"><span>Una página en blanco.</span><small>Agregá el primer bloque para empezar.</small></div>}</div><AddBlockMenu onAdd={addBlock}/>
-      </div>
+      </div></fieldset>
     </article>
     {templateOpen && <TemplateDialog templates={templates} creating={creating} onChoose={createList} onClose={() => setTemplateOpen(false)} onDelete={deleteTemplate}/>}
     {saveTemplateOpen && <NameTemplateDialog defaultName={activeList.titulo} onSave={saveAsTemplate} onClose={() => setSaveTemplateOpen(false)} saving={status === "saving"}/>}</main>;

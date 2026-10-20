@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { normalizePersonalListEmoji, normalizePersonalListText } from "../src/personal-lists.js";
+import { normalizePersonalListEmoji, normalizePersonalListText, personalRecordId, nestPersonalLists } from "../src/personal-lists.js";
 import { normalizeBlockContent, normalizeBlocks } from "../src/personal-list-blocks.js";
 import { getNavigationGroups } from "../../frontend/src/components/navigation.js";
 
@@ -12,6 +12,15 @@ const routerSource = readFileSync(new URL("../src/personal-lists.js", import.met
 const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
 const sidebarSource = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx", import.meta.url), "utf8");
 const pageSource = readFileSync(new URL("../../frontend/src/pages/PersonalLists.jsx", import.meta.url), "utf8");
+
+test('personal BIGINT record identities remain exact and nested records never bleed between adjacent IDs',()=>{
+  for(const id of ['1','9007199254740992','9007199254740993','9223372036854775807'])assert.equal(personalRecordId(id),id);
+  assert.equal(personalRecordId(1),'1');
+  for(const id of [0,-1,1.5,9007199254740992,'01','-1','9223372036854775808',null])assert.throws(()=>personalRecordId(id));
+  const a='9007199254740992',b='9007199254740993';
+  const rows=nestPersonalLists([{id:a},{id:b}],[],[],[{id:'1',lista_id:a},{id:'2',lista_id:b}]);
+  assert.deepEqual(rows.map(row=>row.bloques.map(block=>block.id)),[['1'],['2']]);
+});
 
 test("las listas personales tienen estructura privada y borrado en cascada", () => {
   assert.match(migration, /CREATE TABLE IF NOT EXISTS listas_personales/);
@@ -76,7 +85,9 @@ test("Lista está disponible para todos y ofrece editor por bloques y plantillas
   assert.match(pageSource, /Agregar bloque/);
   assert.match(pageSource, /Guardar como plantilla/);
   assert.match(pageSource, /Lunes.*Martes.*Miércoles/);
-  assert.match(pageSource, /Todo se guarda automáticamente/);
+  assert.match(pageSource, /Los cambios se guardan automáticamente; revisá el estado antes de salir/);
+  assert.match(pageSource, /useNavigationGuard/);
+  assert.match(pageSource, /queue.current\?\.snapshot\(\).dirty/);
   assert.match(pageSource, /solo vos podés verlo/);
   assert.match(pageSource, /personal-list-rail-toggle/);
   assert.match(pageSource, /personal-table-navigator/);
