@@ -6,6 +6,7 @@ import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../f
 import { areaForTask, emojiForTaskCard, formatDate, formatDateTime, initials, personForTask } from "../features/render-os/utils/task-formatters.js";
 import { canRetryTaskUpdate, canUserDeleteTask, canUserEditTask, canUserMoveTask, canUserMoveTaskToState, mergeRelatedTasks } from "../workspace-task-state.js";
 import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
+import { buildResponsibleOptions, resolveResponsibleFilter, taskMatchesResponsible } from "../features/render-os/utils/task-responsible-filter.js";
 import { getProductionPhase, getProductionVisitProgress, isProductionVisitTask } from "../features/render-os/utils/production-visits.js";
 import { getCanonicalTaskContentMetadata, getUnifiedTaskContent, isLinkedProductionEditorialTask } from "../features/render-os/utils/task-content.js";
 import { getNewTaskSuggestions, getTaskDirectUrl } from "../features/render-os/utils/new-task-suggestions.js";
@@ -854,19 +855,18 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   useEffect(() => () => openRequestRef.current?.abort(), []);
   const today = getHoyLocalISO();
   const selected = tasks.find((task) => task.id === selectedId) || null;
-  const responsibleOptions = useMemo(() => [...new Set([
-    ...users.map((user) => user.nombre),
-    ...tasks.flatMap((task) => [task.asignado_a, ...(Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [])]),
-  ].filter(Boolean))].sort(), [users, tasks]);
+  const responsibleOptions = useMemo(() => buildResponsibleOptions(users, tasks, responsible), [users, tasks, responsible]);
+  const responsibleNotice = resolveResponsibleFilter(responsible, users, true, sesion?.usuario?.rol === 'admin').message;
   const visible = useMemo(() => tasks.filter((task) => {
     const collaborators = Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [];
     const text = `${task.titulo} ${task.cliente_nombre || ""} ${task.asignado_a || ""} ${collaborators.join(" ")} ${task.propiedades_extra?.resumen || ""}`.toLowerCase();
     const isArchived = task.propiedades_extra?.archivada_render_os === true;
     const isTrashed = task.propiedades_extra?.papelera_render_os === true;
-    return (archiveMode === "trash" ? isTrashed : !isArchived && !isTrashed)
+    return !task.__renderOsDirectOnly
+      && (archiveMode === "trash" ? isTrashed : !isArchived && !isTrashed)
       && (taskStatus === "all" || canonicalTaskState(task.estado) === taskStatus)
       && (area === "all" || areaForTask(task) === area)
-      && (responsible === "all" || task.asignado_a === responsible || collaborators.includes(responsible))
+      && taskMatchesResponsible(task, responsible)
       && (client === "all" || String(task.cliente_id || "none") === client)
       && (sector === "all" || String(task.tipo_tarea || "none") === sector)
       && (priority === "all" || task.prioridad === priority)
@@ -960,7 +960,12 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     window.history.replaceState({}, "", url);
   }, []);
   useEffect(() => {
-    const onPop = () => { openRequestRef.current?.abort(); setSelectedId(Number(new URLSearchParams(window.location.search).get("task")) || null); };
+    const onPop = () => {
+      openRequestRef.current?.abort();
+      setSelectedId(Number(new URLSearchParams(window.location.search).get("task")) || null);
+      const next = getTaskViewState(window.location.search);
+      setView(next.view); setCalendarMonth(next.calendarMonth);
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
@@ -1004,8 +1009,9 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   return <><section className="ros-page">
     <div className="ros-title-row"><div className="ros-title-copy"><span className="ros-page-emoji" aria-hidden="true">📋</span><div><h1>Tareas</h1><p>Organizá y priorizá el trabajo del equipo.</p></div></div><div className="ros-title-actions"><input className="ros-top-search" aria-label="Buscar tareas" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar tarea, cliente o responsable…"/><button className="ros-primary-button" type="button" onClick={() => setCreatingStatus("pendiente")}><TaskViewIcon name="plus"/>Nueva tarea</button></div></div>
     <div className="ros-controls"><div className="ros-primary-navigation" aria-label="Vistas de tareas"><div className="ros-view-tabs"><button aria-pressed={view === "board"} className={view === "board" ? "active" : ""} onClick={() => setView("board")}><TaskViewIcon name="board"/>Tablero</button><button aria-pressed={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")}><TaskViewIcon name="list"/>Lista</button><button aria-pressed={view === "calendar"} className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}><TaskViewIcon name="calendar"/>Calendario</button><button aria-pressed={view === "clients"} className={view === "clients" ? "active" : ""} onClick={() => setView("clients")}><TaskViewIcon name="clients"/>Por cliente</button></div><button className={`ros-feedback-link ${newFeedbackCount ? "has-new" : ""}`} type="button" onClick={openFeedback}><TaskViewIcon name="feedback"/>Feedback{newFeedbackCount > 0 && <b aria-label={`${newFeedbackCount} feedbacks nuevos`}>{newFeedbackCount > 99 ? "99+" : newFeedbackCount}</b>}</button></div><div className="ros-controls-meta"><span>Mostrando {visible.length} de {totalTasks}</span>{archiveMode !== "active" && <button className="ros-archive-link" type="button" onClick={() => setArchiveMode("active")}>← Volver a tareas activas</button>}{archiveMode !== "trash" && <button className="ros-archive-link" type="button" onClick={() => setArchiveMode("trash")}>Papelera</button>}</div></div>
+    {responsibleNotice && <p className="ros-warning-banner" role="status">{responsibleNotice}</p>}
     <button className="ros-filter-toggle" type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((current) => !current)}>Filtros{activeFilterCount ? <b>{activeFilterCount}</b> : null}<span>{filtersOpen ? "Ocultar" : "Mostrar"}</span></button>
-    <div className={`ros-filter-bar ${filtersOpen ? "open" : ""}`}><label><span>Estado</span><select aria-label="Filtrar por estado" value={taskStatus} onChange={(event) => setTaskStatus(event.target.value)}><option value="all">Todos</option>{STATUSES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Área</span><select aria-label="Área" value={area} onChange={(event) => setArea(event.target.value)}><option value="all">Todas</option>{AREAS.slice(1).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Responsable</span><select aria-label="Responsable" value={responsible} onChange={(event) => setResponsible(event.target.value)}><option value="all">Todos</option>{responsibleOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label><label><span>Cliente</span><select aria-label="Cliente" value={client} onChange={(event) => setClient(event.target.value)}><option value="all">Todos</option><option value="none">Sin cliente</option>{clients.map((item) => <option key={item.id} value={String(item.id)}>{item.nombre}</option>)}</select></label><label><span>Sector</span><select aria-label="Sector" value={sector} onChange={(event) => setSector(event.target.value)}><option value="all">Todos</option><option value="none">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Prioridad</span><select aria-label="Prioridad" value={priority} onChange={(event) => setPriority(event.target.value)}><option value="all">Todas</option><option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option></select></label>{hasFilters && <button type="button" onClick={clearFilters}>Limpiar filtros</button>}</div>
+    <div className={`ros-filter-bar ${filtersOpen ? "open" : ""}`}><label><span>Estado</span><select aria-label="Filtrar por estado" value={taskStatus} onChange={(event) => setTaskStatus(event.target.value)}><option value="all">Todos</option>{STATUSES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Área</span><select aria-label="Área" value={area} onChange={(event) => setArea(event.target.value)}><option value="all">Todas</option>{AREAS.slice(1).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Responsable</span><select aria-label="Responsable" value={responsible} onChange={(event) => setResponsible(event.target.value)}><option value="all">Todos</option>{responsibleNotice && <option value={responsible} disabled>Elegí un integrante</option>}{responsibleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label><span>Cliente</span><select aria-label="Cliente" value={client} onChange={(event) => setClient(event.target.value)}><option value="all">Todos</option><option value="none">Sin cliente</option>{clients.map((item) => <option key={item.id} value={String(item.id)}>{item.nombre}</option>)}</select></label><label><span>Sector</span><select aria-label="Sector" value={sector} onChange={(event) => setSector(event.target.value)}><option value="all">Todos</option><option value="none">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Prioridad</span><select aria-label="Prioridad" value={priority} onChange={(event) => setPriority(event.target.value)}><option value="all">Todas</option><option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option></select></label>{hasFilters && <button type="button" onClick={clearFilters}>Limpiar filtros</button>}</div>
     {view === "board" && <><nav ref={mobileBoardNavRef} className="ros-mobile-board-nav" aria-label="Estados del tablero">{BOARD_COLUMNS.map((column) => <button aria-pressed={mobileBoardColumn === column.id} className={`${mobileBoardColumn === column.id ? 'active' : ''} ${dragOver === column.id ? 'drag-over' : ''}`} key={column.id} type="button" onClick={() => selectMobileBoardColumn(column.id)}
       onDragOver={(event) => { if (!event.dataTransfer.types.includes('text/task-id')) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOver(column.id); }}
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(''); }}
@@ -1024,6 +1030,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   const [tasks, setTasks] = useState([]);
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
+  const [catalogReady, setCatalogReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [totalTasks, setTotalTasks] = useState(0);
@@ -1039,15 +1046,33 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   const [archiveMode, setArchiveMode] = useState(initialViewState.archiveMode);
   const tasksRef = useRef(tasks);
   const updateQueuesRef = useRef(new Map());
+  const taskQueryGenerationRef = useRef(0);
+  const responsibleSelection = useMemo(() => resolveResponsibleFilter(responsible, users, catalogReady, sesion?.usuario?.rol === 'admin'), [responsible, users, catalogReady, sesion?.usuario?.rol]);
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
 
   useEffect(() => {
+    const syncFilters = () => {
+      const next = getTaskViewState(window.location.search);
+      setQuery(next.query); setArea(next.area); setResponsible(next.responsible);
+      setClient(next.client); setSector(next.sector); setPriority(next.priority); setArchiveMode(next.archiveMode);
+    };
+    window.addEventListener('popstate', syncFilters);
+    return () => window.removeEventListener('popstate', syncFilters);
+  }, []);
+
+  useEffect(() => {
+    if (responsibleSelection.status === 'resolved') setResponsible(responsibleSelection.value);
+  }, [responsibleSelection.status, responsibleSelection.value]);
+
+  useEffect(() => {
     let active = true;
+    setCatalogReady(false);
     Promise.all([apiJson("/api/clientes"), apiJson("/api/usuarios")])
       .then(([clientData, userData]) => {
         if (!active) return;
         setClients(clientData);
         setUsers(userData);
+        setCatalogReady(true);
       })
       .catch((reason) => { if (active) setError(reason.message || "No se pudieron cargar los datos reales."); })
     return () => { active = false; };
@@ -1055,8 +1080,31 @@ export function WorkspaceReadOnlyPage({ sesion }) {
 
   useEffect(() => {
     let active = true;
+    const generation = ++taskQueryGenerationRef.current;
+    setLoadingMore(false);
+    if (!responsibleSelection.ready) {
+      if (responsibleSelection.status !== 'pending' && responsibleSelection.status !== 'resolved') {
+        const contextId = Number(new URLSearchParams(window.location.search).get('task')) || null;
+        // A blocked list filter is not permission to discard an open editor.
+        setTasks(current => current.filter(task => task.id === contextId).map(task => ({ ...task, __renderOsDirectOnly: true })));
+        setTotalTasks(0); setLoading(false);
+        if (Number.isSafeInteger(contextId) && contextId > 0 && contextId <= 2147483647
+          && !tasksRef.current.some(task => task.id === contextId)) {
+          void apiTaskById(contextId).then(task => {
+            if (!active || generation !== taskQueryGenerationRef.current
+              || Number(new URLSearchParams(window.location.search).get('task')) !== contextId) return;
+            setTasks([{ ...task, __renderOsDirectOnly: true }]);
+          }).catch(reason => {
+            if (!active || generation !== taskQueryGenerationRef.current
+              || Number(new URLSearchParams(window.location.search).get('task')) !== contextId) return;
+            notify(reason.message || 'La tarea enlazada no está disponible.', 'error');
+          });
+        }
+      }
+      return () => { active = false; };
+    }
     const timer = window.setTimeout(() => {
-      apiTaskPage({ offset: 0, query, area, responsible, client, sector, priority, archiveMode })
+      apiTaskPage({ offset: 0, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode })
         .then(async (taskPage) => {
           if (!active) return;
           let items = taskPage.items;
@@ -1064,8 +1112,12 @@ export function WorkspaceReadOnlyPage({ sesion }) {
           if (directTaskId && !items.some((task) => task.id === directTaskId)) {
             try {
               const directTask = await apiTaskById(directTaskId);
+              if (!active || generation !== taskQueryGenerationRef.current
+                || Number(new URLSearchParams(window.location.search).get('task')) !== directTaskId) return;
               items = mergeRelatedTasks(items, [{ ...directTask, __renderOsDirectOnly: true }]);
             } catch (reason) {
+              if (!active || generation !== taskQueryGenerationRef.current
+                || Number(new URLSearchParams(window.location.search).get('task')) !== directTaskId) return;
               notify(reason.message || "La tarea enlazada no está disponible.", "error");
               const url = new URL(window.location.href);
               url.searchParams.delete("task");
@@ -1082,7 +1134,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
         .finally(() => { if (active) setLoading(false); });
     }, query ? 250 : 0);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [query, area, responsible, client, sector, priority, archiveMode, reloadKey]);
+  }, [query, area, responsibleSelection.ready, responsibleSelection.status, responsibleSelection.value, client, sector, priority, archiveMode, reloadKey]);
 
   useEffect(() => {
     const incorporate = (event) => {
@@ -1094,11 +1146,13 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   }, []);
 
   const loadMoreTasks = async () => {
+    const generation = taskQueryGenerationRef.current;
     const paginatedTaskCount = tasks.filter((task) => !task.__renderOsDirectOnly).length;
-    if (loadingMore || paginatedTaskCount >= totalTasks) return;
+    if (!responsibleSelection.ready || loadingMore || paginatedTaskCount >= totalTasks) return;
     setLoadingMore(true);
     try {
-      const page = await apiTaskPage({ offset: paginatedTaskCount, query, area, responsible, client, sector, priority, archiveMode });
+      const page = await apiTaskPage({ offset: paginatedTaskCount, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode });
+      if (generation !== taskQueryGenerationRef.current) return;
       setTasks((current) => {
         const pageIds = new Set(page.items.map((item) => item.id));
         const retained = current.filter((task) => !task.__renderOsDirectOnly || !pageIds.has(task.id));
@@ -1106,9 +1160,9 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       });
       setTotalTasks(page.total);
     } catch (reason) {
-      notify(reason.message || "No se pudieron cargar más tareas.", "error");
+      if (generation === taskQueryGenerationRef.current) notify(reason.message || "No se pudieron cargar más tareas.", "error");
     } finally {
-      setLoadingMore(false);
+      if (generation === taskQueryGenerationRef.current) setLoadingMore(false);
     }
   };
 

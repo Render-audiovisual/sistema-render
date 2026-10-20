@@ -3052,7 +3052,8 @@ router.get("/tareas", async (req, res, next) => {
 
     const limite = Math.min(Math.max(Number.parseInt(limit, 10) || 0, 0), 500);
     const desplazamiento = Math.max(Number.parseInt(offset, 10) || 0, 0);
-    if (asignado_a_id !== undefined && (!/^[1-9]\d*$/.test(String(asignado_a_id)) || !Number.isSafeInteger(Number(asignado_a_id)))) {
+    if (asignado_a_id !== undefined && (typeof asignado_a_id !== "string" || !/^[1-9]\d*$/.test(asignado_a_id)
+      || !Number.isSafeInteger(Number(asignado_a_id)) || Number(asignado_a_id) > 2147483647)) {
       return res.status(400).json({ error: "Filtro de responsable inválido." });
     }
 

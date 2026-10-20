@@ -1,3 +1,4 @@
+import { responsibleFilterId } from '../utils/task-responsible-filter.js';
 const WORKSPACE_QUERY = "workspace=render_os";
 
 export async function apiRequest(url, options) {
@@ -19,7 +20,11 @@ export function buildTaskPageUrl(options = {}) {
   const settings = typeof options === "number" ? { offset: options } : options;
   const params = new URLSearchParams({ workspace: "render_os", limit: String(settings.limit || 50), offset: String(settings.offset || 0) });
   if (settings.archiveMode === "trash") params.set("papelera", "true");
-  if (settings.responsible && settings.responsible !== "all") params.set("asignado_a", settings.responsible);
+  if (settings.responsible !== undefined && settings.responsible !== "all") {
+    const id = responsibleFilterId(settings.responsible);
+    if (id === null) throw new Error("Elegí un responsable identificado antes de cargar las tareas.");
+    params.set("asignado_a_id", String(id));
+  }
   if (settings.client && settings.client !== "all") params.set("cliente_id", settings.client === "none" ? "none" : settings.client);
   if (settings.sector && settings.sector !== "all") params.set("tipo_tarea", settings.sector === "none" ? "none" : settings.sector);
   if (settings.priority && settings.priority !== "all") params.set("prioridad", settings.priority);

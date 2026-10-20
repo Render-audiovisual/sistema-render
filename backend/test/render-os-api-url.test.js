@@ -7,7 +7,7 @@ test("la consulta paginada de RENDER OS envía filtros al backend sin modo Archi
     offset: 100,
     query: "reel lanzamiento",
     area: "edicion",
-    responsible: "Augusto",
+    responsible: "id:123",
     client: "12",
     sector: "edicion",
     priority: "alta",
@@ -19,7 +19,8 @@ test("la consulta paginada de RENDER OS envía filtros al backend sin modo Archi
   assert.equal(url.searchParams.has("solo_archivadas"), false);
   assert.equal(url.searchParams.get("q"), "reel lanzamiento");
   assert.equal(url.searchParams.get("area"), "edicion");
-  assert.equal(url.searchParams.get("asignado_a"), "Augusto");
+  assert.equal(url.searchParams.get("asignado_a_id"), "123");
+  assert.equal(url.searchParams.has("asignado_a"), false);
   assert.equal(url.searchParams.get("cliente_id"), "12");
   assert.equal(url.searchParams.get("tipo_tarea"), "edicion");
   assert.equal(url.searchParams.get("prioridad"), "alta");

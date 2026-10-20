@@ -16,7 +16,7 @@ export function getTaskViewState(search = "") {
   return {
     view: VALID_VIEWS.has(view) ? view : "board",
     archiveMode: VALID_ARCHIVE_MODES.has(archiveMode) ? archiveMode : "active",
-    responsible: params.get("responsible") || "all",
+    responsible: params.getAll("responsible").length > 1 ? "invalid:duplicate" : params.get("responsible") || "all",
     client: params.get("client") || "all",
     sector: params.get("sector") || "all",
     priority: params.get("priority") || "all",
