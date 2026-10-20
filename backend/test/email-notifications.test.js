@@ -222,3 +222,62 @@ test("las instrucciones de acceso usan Hostinger y nunca incluyen contraseñas",
   assert.doesNotMatch(correo.text, /onrender\.com/);
   assert.doesNotMatch(correo.text, /contraseña temporal/i);
 });
+
+const invitationEnv = {
+  SMTP_HOST: 'smtp.example.test', SMTP_USER: 'sender@example.test', SMTP_PASS: 'smtp-secret-not-for-body',
+  EMAIL_FROM: 'Render <sender@example.test>', EMAIL_REPLY_TO: 'support@example.test', APP_URL: 'https://render.example.test/',
+};
+async function captureInvitation(usuario) {
+  const messages = [];
+  const result = await enviarInstruccionesAcceso({ usuario, env: invitationEnv,
+    transporter: { async sendMail(message) { messages.push(message); return { messageId: 'fake-invitation' }; } },
+  });
+  return { result, messages };
+}
+
+test('invitación sin Google distingue destinatario de avisos y usuario real de acceso, sin incluir secretos', async () => {
+  const usuario = { id: 87, nombre: 'Persona QA', usuario: 'cuenta_operativa_87', email_notificaciones: 'avisos-distintos@example.test', google_email: null,
+    password: 'password-fixture-never-send', password_hash: '$2b$10$hash-fixture-never-send', google_id: 'google-id-never-send', session_version: 81234 };
+  const before = structuredClone(usuario);
+  const { result, messages } = await captureInvitation(usuario);
+  assert.deepEqual(result, { enviado: true, destinatario: usuario.email_notificaciones, messageId: 'fake-invitation' });
+  assert.equal(messages.length, 1);
+  const message = messages[0];
+  assert.equal(message.to, usuario.email_notificaciones);
+  assert.equal(message.from, invitationEnv.EMAIL_FROM); assert.equal(message.replyTo, invitationEnv.EMAIL_REPLY_TO);
+  assert.match(message.text, /usuario de acceso cuenta_operativa_87 y tu contraseña actual/);
+  assert.match(message.html, /usuario de acceso <strong>cuenta_operativa_87<\/strong>/);
+  assert.match(message.text, /https:\/\/render\.example\.test\/login/);
+  for (const body of [message.text,message.html]) {
+    assert.ok(!body.includes(usuario.email_notificaciones));
+    for (const secret of [usuario.password,usuario.password_hash,usuario.google_id,invitationEnv.SMTP_PASS]) assert.ok(!body.includes(secret));
+  }
+  assert.deepEqual(usuario,before);
+});
+
+test('invitación conserva únicamente la cuenta Google explícita cuando difiere del login y del correo de avisos', async () => {
+  const usuario = { nombre: 'Persona QA', usuario: 'login_distinto', email_notificaciones: 'solo-avisos@example.test', google_email: 'google-configurado@example.test', password_hash: 'never-send-hash' };
+  const { result,messages } = await captureInvitation(usuario);
+  assert.equal(result.enviado,true); assert.equal(messages.length,1); assert.equal(messages[0].to,usuario.email_notificaciones);
+  for (const body of [messages[0].text,messages[0].html]) {
+    assert.ok(body.includes('Podés continuar con la cuenta de Google'));
+    assert.ok(body.includes(usuario.google_email));
+    assert.ok(!body.includes(usuario.email_notificaciones)); assert.ok(!body.includes(usuario.usuario)); assert.ok(!body.includes(usuario.password_hash));
+  }
+});
+
+test('usuario de acceso se conserva literal en texto y escapado en HTML, sin inventar identidad desde avisos', async () => {
+  const login = 'cuenta<&"\'>'; const { messages } = await captureInvitation({nombre:'Persona',usuario:login,email_notificaciones:'avisos@example.test',google_email:null});
+  assert.equal(messages.length,1); assert.ok(messages[0].text.includes(login));
+  assert.ok(messages[0].html.includes('cuenta&lt;&amp;&quot;&#039;&gt;')); assert.ok(!messages[0].html.includes(login));
+});
+
+test('sin login ni Google explícito no envía instrucciones falsas ni usa el correo de avisos como identidad', async () => {
+  for (const usuario of [undefined,null,'', '  ', 87, {}]) {
+    const { result,messages } = await captureInvitation({nombre:'Persona',usuario,email_notificaciones:'avisos@example.test',google_email:null});
+    assert.deepEqual(result,{enviado:false,razon:'usuario_sin_login'}); assert.deepEqual(messages,[]);
+  }
+  // The unchanged Google branch remains independently actionable.
+  const { result,messages } = await captureInvitation({nombre:'Persona',email_notificaciones:'avisos@example.test',google_email:'google@example.test'});
+  assert.equal(result.enviado,true); assert.equal(messages.length,1);
+});

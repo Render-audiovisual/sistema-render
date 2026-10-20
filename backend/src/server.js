@@ -26,7 +26,7 @@ import { requireRole, issueUserToken } from "./auth.js";
 import { configuredBrowserSessions, createPrincipalAuthentication } from './browser-session-config.js';
 import { createLoginHandlers, loginUserDto } from './login-handlers.js';
 import { reserveLoginAttempt } from "./login-abuse.js";
-import { administerUser } from "./user-administration.js";
+import { administerUser, withUserAdministration, UserAdministrationAuthorityError } from "./user-administration.js";
 import { normalizeUserCreateInput } from './user-create-input.js';
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { persistAssignedTask } from "./task-persistence.js";
@@ -272,7 +272,7 @@ router.patch("/usuarios/:id/acceso", requireRole("admin"), async (req, res, next
   }
   try {
     const { rows } = await administerUser(pool, id, { activo: req.body.activo }, db => db.query(`UPDATE usuarios SET activo=$2,session_version=session_version+1
-      WHERE id=$1 RETURNING id,usuario,nombre,rol,activo`, [id, req.body.activo]));
+      WHERE id=$1 RETURNING id,usuario,nombre,rol,activo`, [id, req.body.activo]), req.auth);
     if (!rows.length) return res.status(404).json({ error: "Usuario no encontrado." });
     res.json(rows[0]);
   } catch (error) {
@@ -766,13 +766,13 @@ router.post("/usuarios", requireRole("admin"), async (req, res, next) => {
     const { usuario, nombre, rol, password, email_notificaciones } = normalizeUserCreateInput(req.body);
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const result = await pool.query(
+    const result = await withUserAdministration(pool, req.auth, db => db.query(
       `INSERT INTO usuarios (usuario, nombre, rol, password_hash, email_notificaciones)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, usuario, nombre, rol, activo, email_notificaciones, google_email,
          foto_perfil, false AS whatsapp_vinculado, created_at`,
       [usuario, nombre, rol, passwordHash, email_notificaciones],
-    );
+    ));
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -803,10 +803,10 @@ router.patch("/usuarios/:id/whatsapp", requireRole("admin"), async (req, res, ne
     const number = raw ? normalizarWhatsapp(raw) : null;
     if (raw && !number) return res.status(400).json({ error: "El número de WhatsApp no es válido." });
     const hash = number ? crypto.createHash("sha256").update(number).digest("hex") : null;
-    const updated = await pool.query(`UPDATE usuarios SET whatsapp_id_hash=$1,whatsapp_habilitado=$2
+    const updated = await withUserAdministration(pool, req.auth, db => db.query(`UPDATE usuarios SET whatsapp_id_hash=$1,whatsapp_habilitado=$2
       WHERE id=$3 RETURNING id,usuario,nombre,rol,email_notificaciones,google_email,foto_perfil,
       (whatsapp_id_hash IS NOT NULL AND whatsapp_habilitado IS TRUE) AS whatsapp_vinculado,created_at`,
-    [hash, Boolean(number), req.params.id]);
+    [hash, Boolean(number), req.params.id]));
     if (!updated.rows[0]) return res.status(404).json({ error: "Usuario no encontrado." });
     return res.json(updated.rows[0]);
   } catch (error) {
@@ -827,13 +827,13 @@ router.patch("/usuarios/:id/email-notificaciones", requireRole("admin"), async (
       return res.status(400).json({ error: "El correo para notificaciones no es válido." });
     }
 
-    const updated = await pool.query(
+    const updated = await withUserAdministration(pool, req.auth, db => db.query(
       `UPDATE usuarios
        SET email_notificaciones = $1
        WHERE id = $2
        RETURNING id, usuario, nombre, rol, email_notificaciones, foto_perfil, created_at`,
       [email, req.params.id],
-    );
+    ));
 
     if (updated.rows.length === 0) {
       return res.status(404).json({ error: "Usuario no encontrado." });
@@ -861,13 +861,13 @@ router.patch("/usuarios/:id/google-email", requireRole("admin"), async (req, res
     // Cambiar el email vinculado fuerza a re-vincular el google_id en el
     // próximo login — evita que quede un google_id viejo apuntando a una
     // cuenta de Google que ya no corresponde.
-    const updated = await pool.query(
+    const updated = await withUserAdministration(pool, req.auth, db => db.query(
       `UPDATE usuarios
        SET google_email = $1, google_id = NULL, session_version=session_version+1
        WHERE id = $2
        RETURNING id, usuario, nombre, rol, google_email, foto_perfil, created_at`,
       [email, req.params.id],
-    );
+    ));
 
     if (updated.rows.length === 0) {
       return res.status(404).json({ error: "Usuario no encontrado." });
@@ -1067,7 +1067,7 @@ router.patch("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
        WHERE id = $4
        RETURNING id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at`,
       [nombre, usuario, rolNormalizado, req.params.id],
-    ));
+    ), req.auth);
 
     if (updated.rows.length === 0) {
       return res.status(404).json({ error: "Usuario no encontrado." });
@@ -3737,6 +3737,9 @@ if (indexHtml !== null) {
 // Error handler centralizado: sin esto, Express devuelve HTML/stack
 // traces por defecto en vez de JSON — riesgo de filtrar detalles internos.
 app.use((err, _req, res, _next) => {
+  if (err instanceof UserAdministrationAuthorityError) {
+    return res.status(err.status).json({ error: err.message, code: err.code });
+  }
   if (editingReviewDomainConflict(err)) {
     return res.status(409).json({ error: 'La tarea conserva decisiones de revisión. Consultá su historial; no se puede eliminar ni sobrescribir.' });
   }

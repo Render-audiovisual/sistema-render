@@ -989,6 +989,16 @@ Final frontend1073 pass (node --test includes reference suites), backend1400 pas
 
 No configured DB/provider/real account/credential/dependency/environment/push/deploy changes. Actor authority revalidation inside administrative transactions, concurrent account-edit CAS, invitation wording, profile password policy, cookie/native/device/provider and global design gates remain. Local implementation and verification, not a phase completion or production release; master remains active.
 
+## Integration85 — transactional authority for account administration
+
+Coordinator owns required-actor transaction helper, six account writer integrations and unit tests; Hypatia deterministic actual PostgreSQL races; Carson invitation identity copy/fake-transport tests; Beauvoir independent review. All six DB account writers now acquire the administration mutex, reread current actor ID/activity/session epoch/role under FOR SHARE at READ COMMITTED, and retain that lock through commit. Missing authority fails closed;401/403 typed JSON never falls back to cached middleware roles. Last-owner/target locks remain inside the same transaction. No schema or authentication transport change.
+
+Actual HTTP/PostgreSQL42 pass across new authority suite, account administration and phase1 regressions. New suite proves24 post-auth wait/revocation denials, safe self-target writes, inverse ordering where revocation waits through valid commit, and two queued self-demotions retaining one active admin. Barriers use pg_locks/pg_blocking_pids, snapshots preserve unrelated/history rows, fixture directories and clients cleaned. Final backend1408 pass/65 opt-in skips; frontend1073 pass; focused authorization/mail22 pass; build/diff pass. No new browser acceptance claimed because no UI changed.
+
+Invitation copy now uses the actual access login or explicit Google identity, never the notice recipient as an inferred credential; escaped HTML, no credential disclosure, missing identity fails without dispatch. SMTP unchanged and all send tests mocked. See [USER_ADMINISTRATION_QA.md](USER_ADMINISTRATION_QA.md) for current scope, commands and logs.
+
+No configured DB/real accounts/provider/dependency/environment/push/deploy changes. Invitation external-effect authority/durable delivery, contact input contracts, account-edit CAS, profile credential policy, other-module transactional authority, cookie/native/device/provider/global design gates remain. App/Vite/reference user changes preserved. Master active; this is verified local progress, not a completed phase or production readiness.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

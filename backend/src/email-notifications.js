@@ -251,6 +251,10 @@ export async function enviarInstruccionesAcceso({ usuario, env = process.env, tr
 
   const appUrl = (env.APP_URL || APP_URL_POR_DEFECTO).replace(/\/$/, "");
   const googleDisponible = Boolean(usuario.google_email);
+  const login = typeof usuario.usuario === "string" && usuario.usuario.trim() ? usuario.usuario : null;
+  if (!googleDisponible && !login) {
+    return { enviado: false, razon: "usuario_sin_login" };
+  }
   const contenido = {
     subject: "Tu acceso a RENDER Platform",
     text: [
@@ -260,7 +264,7 @@ export async function enviarInstruccionesAcceso({ usuario, env = process.env, tr
       `Ingresá desde: ${appUrl}/login`,
       googleDisponible
         ? `Podés continuar con la cuenta de Google ${usuario.google_email}.`
-        : `Podés ingresar con ${usuario.email_notificaciones} y tu contraseña actual.`,
+        : `Podés ingresar con tu usuario de acceso ${login} y tu contraseña actual.`,
       "Si no conocés tu contraseña, pedile al Líder que coordine una recuperación segura.",
     ].join("\n"),
     html: `
@@ -270,7 +274,7 @@ export async function enviarInstruccionesAcceso({ usuario, env = process.env, tr
         <p>Tu cuenta está preparada.</p>
         <p>${googleDisponible
           ? `Podés continuar con la cuenta de Google <strong>${escaparHtml(usuario.google_email)}</strong>.`
-          : `Podés ingresar con <strong>${escaparHtml(usuario.email_notificaciones)}</strong> y tu contraseña actual.`}</p>
+          : `Podés ingresar con tu usuario de acceso <strong>${escaparHtml(login)}</strong> y tu contraseña actual.`}</p>
         <p><a href="${escaparHtml(`${appUrl}/login`)}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px">Ingresar a RENDER</a></p>
         <p style="color:#667085;font-size:13px">Si no conocés tu contraseña, pedile al Líder que coordine una recuperación segura.</p>
       </div>

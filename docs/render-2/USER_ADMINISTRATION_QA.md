@@ -18,6 +18,20 @@ Las contraseñas de cuentas nuevas requieren al menos 12 puntos de código Unico
 
 El catálogo de usuarios activos continúa disponible para las asignaciones operativas. Los empleados reciben únicamente ID, nombre, usuario, rol, actividad, foto y fecha de creación, no los contactos administrativos. La pantalla de administración sigue reservada a administradores; el perfil propio es una sección separada.
 
+## Autoridad dentro de la transacción
+
+Las seis escrituras administrativas de cuentas revalidan la identidad dentro de la misma transacción que modifica PostgreSQL: alta, actividad, identidad y rol, correo de avisos, acceso Google y vínculo WhatsApp. `withUserAdministration` exige el ID y la versión de sesión observados por el middleware verificado; no admite llamadas sin actor ni deduce permisos por nombre.
+
+La transacción utiliza READ COMMITTED. Primero adquiere el mutex administrativo, después lee al actor con `FOR SHARE` y comprueba su actividad, versión y rol actual. Finalmente modifica el objetivo y confirma. El bloqueo del actor dura hasta el commit. `administerUser` conserva, dentro de esa transacción, el bloqueo del objetivo y la protección del último administrador.
+
+Si la revocación se confirma antes de leer al actor, la operación responde 401 `USER_ADMIN_SESSION_REVOKED` sin modificar cuentas ni historial. Un cambio de rol vigente responde 403 `USER_ADMIN_ROLE_CHANGED`. Si una escritura válida ya retiene la fila del actor, la revocación espera hasta su commit: la escritura queda ordenada antes de la revocación. Esto evita que una autorización leída antes de una espera siga habilitando una escritura posterior a la revocación confirmada.
+
+Esta garantía corresponde a las seis escrituras DB indicadas. No abarca todos los escritores de la aplicación ni hace transaccional el envío SMTP. No requiere migraciones ni cambios de esquema.
+
+## Instrucciones de acceso
+
+La invitación distingue el destino de notificaciones de las credenciales de acceso. Sin Google explícito, indica el `usuario` real; con Google, conserva únicamente la cuenta vinculada explícitamente. El HTML escapa el nombre de acceso y no incorpora contraseñas, hashes ni secretos SMTP. Si faltan tanto el usuario como Google, no genera instrucciones falsas a partir del correo de avisos. El transporte, los remitentes y la configuración SMTP permanecen iguales.
+
 ## Pantalla conectada
 
 Las lecturas y escrituras mantienen la sesión auténtica y el contexto observado mediante `useScopedRequest`. Las respuestas tardías de otra sesión o de un editor anterior no deben actualizar el editor actual. Un bloqueo compartido evita acciones dobles mientras se espera; las respuestas parciales se combinan con la fila conocida sin perder su estado de actividad.
@@ -50,11 +64,27 @@ Registros de comprobación:
 - `/private/tmp/render2-users84-name-desktop.png`
 - `/private/tmp/render2-users84-reloaded-mobile.png`
 
+### Verificación de autoridad y concurrencia
+
+La integración de autoridad aprobó 42 pruebas físicas con el comando siguiente desde `backend`:
+
+```sh
+RENDER2_RUN_LOCAL_INTEGRATION=true node --test --test-concurrency=1 test/render2-user-authority.integration.test.js test/render2-user-administration.integration.test.js test/render2-phase1.integration.test.js
+```
+
+La suite nueva comprueba 24 combinaciones: seis escritores frente a versión revocada, actor inactivo, rol rebajado o actor inexistente mientras la solicitud ya autenticada espera el mutex. La espera se demuestra con `pg_locks` y `pg_blocking_pids`; las pausas sólo regulan el sondeo y no constituyen la evidencia. Tras cada rechazo, snapshots de cuentas, tareas, asignaciones, comentarios, listas y bloques permanecen intactos respecto del momento posterior a la revocación.
+
+Otros casos verifican la autoedición sin interbloqueos, el orden inverso donde la revocación espera al escritor válido y dos autodegradaciones encoladas: una responde 200, otra 409 y queda exactamente un administrador activo. Los cambios directos de rol, actividad o borrado utilizados para forzar las carreras pertenecen exclusivamente a cuentas sintéticas de la base temporal.
+
+La corrida final general aprobó 1408 pruebas backend, con 65 pruebas de activación explícita omitidas; frontend aprobó 1073. Compilación y `git diff --check` correctos. Las pruebas focalizadas de autorización e invitación sumaron 22 aprobadas, con transporte de correo falso. Los arneses y las conexiones dedicadas se cerraron; la suite nueva comprueba la eliminación de su directorio generado. No se efectuó un nuevo recorrido de navegador: no hubo cambios de interfaz en esta integración.
+
+Registros: `/private/tmp/render2-users85-http-final.log`, `/private/tmp/render2-users85-backend-final.log`, `/private/tmp/render2-users85-frontend-final.log`, `/private/tmp/render2-users85-build-final.log` y `/private/tmp/render2-users85-targeted-final.log`.
+
 ## Riesgos y siguientes pasos
 
-- La autorización inicial del actor todavía necesita revalidación transaccional en los escritores administrativos que esperan bloqueos. No se declara resuelta la ventana entre autenticación y escritura.
+- La revalidación transaccional está implementada y probada para las seis escrituras de cuentas, no para todos los módulos. El envío externo de invitaciones permanece fuera de la garantía transaccional y requiere un contrato de aceptación, autorización y entrega adecuado a ese efecto externo.
 - Las ediciones concurrentes del mismo usuario todavía no tienen una revisión persistente comparable al control de versiones de contratos financieros. El aislamiento de la interfaz no sustituye ese control del servidor.
-- Las instrucciones de invitación sin Google todavía mencionan el correo de notificaciones como acceso. Debe corregirse el contenido y probarse con un transporte simulado, sin enviar correo real.
+- Los PATCH de contactos todavía convierten algunos valores ausentes o mal tipados en desvinculaciones. Necesitan contratos de entrada cerrados y pruebas negativas para evitar borrados accidentales de contactos por solicitudes mal formadas.
 - El cambio de contraseña del perfil necesita adoptar una política coherente, sin rotaciones automáticas de credenciales existentes.
 - La activación general de sesiones por cookie, la aceptación en dispositivos reales, el proxy y los proveedores externos conservan sus propias condiciones de despliegue. No se habilitan en esta integración.
 
