@@ -519,7 +519,8 @@ export function inicialesUsuario(nombre) {
 
 export async function cerrarSesion() {
   return logoutCurrentSession({
-    token: getSesion()?.token,
+    session: getSesion(),
+    readSession: getSesion,
     fetchImpl: window.fetch.bind(window),
     clear: () => localStorage.removeItem("render_sesion"),
     reportFailure: (message) => window.alert(message),

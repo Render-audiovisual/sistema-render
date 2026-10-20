@@ -56,13 +56,30 @@ export async function transportLogout({ token, fetchImpl, timeoutMs = 5000 }) {
 
 // Never reject on expected transport failure: existing event callers need not await.
 // Server logout revokes the whole account, not separate real-person accounts.
-export async function logoutCurrentSession({ clear, reportFailure, navigate, ...transport }) {
-  const result = await transportLogout(transport);
+export async function logoutCurrentSession({ session, readSession, clear, reportFailure, navigate, ...transport }) {
+  const identity = parseServerIdentity(session?.usuario);
+  if (!identity || typeof session?.token !== 'string' || !session.token.trim()
+    || typeof readSession !== 'function') return { revoked: false, reason: 'missing_session' };
+  const captured = { id: identity.id, role: identity.rol, token: session.token };
+  const isCurrent = () => {
+    try {
+      const live = readSession();
+      return live?.token === captured.token && live.usuario?.id === captured.id
+        && live.usuario?.rol === captured.role;
+    } catch { return false; }
+  };
+  if (!isCurrent()) return { revoked: false, reason: 'obsolete_session' };
+  const result = await transportLogout({ ...transport, token: captured.token });
+  // A late logout (success, failure or timeout) belongs only to its captured
+  // session. It must never clear or redirect a newer login in this or another tab.
+  if (!isCurrent()) return result;
   try {
     if (!result.revoked) reportFailure(LOGOUT_FAILURE_MESSAGE);
   } finally {
-    clear();
-    navigate();
+    if (isCurrent()) {
+      clear();
+      navigate();
+    }
   }
   return result;
 }

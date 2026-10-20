@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { randomUUID } from "node:crypto";
 
 export function requireAuthentication(req, res, next) {
   const authorization = req.get?.("authorization") || req.headers?.authorization || "";
@@ -54,7 +55,7 @@ export function issueUserToken(user, secret = process.env.JWT_SECRET) {
     throw new Error("No se puede iniciar sesión con esta cuenta.");
   }
   return jwt.sign({ id: Number(user.id), session_version: Number(user.session_version) }, secret,
-    { algorithm: "HS256", expiresIn: "8h", issuer: "render", audience: "render-api" });
+    { algorithm: "HS256", expiresIn: "8h", issuer: "render", audience: "render-api", jwtid: randomUUID() });
 }
 
 export function requireRole(...roles) {

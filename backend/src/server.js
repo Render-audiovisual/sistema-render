@@ -291,7 +291,11 @@ router.get("/sesion", (req, res) => res.json({ usuario: req.auth }));
 router.post("/logout", async (req, res, next) => {
   try {
     // This first rollout revokes all sessions of the account, not other users.
-    await pool.query("UPDATE usuarios SET session_version=session_version+1 WHERE id=$1", [req.auth.id]);
+    // Recheck the observed epoch atomically: a delayed request cannot revoke a
+    // newer epoch after a password change, administrative revoke or other logout.
+    const revoked = await pool.query(`UPDATE usuarios SET session_version=session_version+1
+      WHERE id=$1 AND session_version=$2 AND activo=true RETURNING id`, [req.auth.id, req.auth.session_version]);
+    if (revoked.rowCount !== 1) return res.status(401).json({ error: "La sesión ya no está vigente." });
     res.json({ ok: true });
   } catch (error) { next(error); }
 });

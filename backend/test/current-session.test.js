@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { issueUserToken } from '../src/auth.js';
+import { createAuthenticatedApiFetch } from '../../frontend/src/shared/session/api-fetch.js';
 import { parseServerIdentity, parseCurrentSession, transportLogout, logoutCurrentSession } from "../../frontend/src/shared/session/current-session.js";
 
 const usuario = { id: 17, usuario: "Agustin", nombre: "Agustín", rol: "admin", foto_perfil: null };
+const session = { token: 'fictional', usuario };
 
 test("preserves exact server identity, role and stable ID without leader rewrite", () => {
   assert.deepEqual(parseServerIdentity(usuario), usuario);
@@ -59,7 +62,7 @@ test("finite timeout covers ignored abort and stalled response bodies", async ()
 test("waits for server attempt, reports failure before clearing and navigates without rejection", async () => {
   const events = [];
   let finish;
-  const promise = logoutCurrentSession({ token: "fictional", fetchImpl: () => new Promise((resolve) => { finish = resolve; }),
+  const promise = logoutCurrentSession({ session, readSession: () => session, fetchImpl: () => new Promise((resolve) => { finish = resolve; }),
     clear: () => events.push("clear"), navigate: () => events.push("navigate"),
     reportFailure: (message) => { assert.match(message, /no se pudo confirmar/); events.push("report"); },
   });
@@ -71,10 +74,86 @@ test("waits for server attempt, reports failure before clearing and navigates wi
 
 test("confirmed logout clears after transport, without false failure notice", async () => {
   const events = [];
-  await logoutCurrentSession({ token: "fictional", fetchImpl: async () => { events.push("post"); return { ok: true, json: async () => ({ ok: true }) }; },
+  await logoutCurrentSession({ session, readSession: () => session, fetchImpl: async () => { events.push("post"); return { ok: true, json: async () => ({ ok: true }) }; },
     clear: () => events.push("clear"), navigate: () => events.push("navigate"), reportFailure: () => assert.fail("confirmed"),
   });
   assert.deepEqual(events, ["post", "clear", "navigate"]);
+});
+
+test('obsolete logout results cannot erase or redirect a newer account, login or changed role', async () => {
+  for (const replacement of [null, { ...session, token: 'new-login' },
+    { ...session, usuario: { ...usuario, id: 18 } },
+    { ...session, usuario: { ...usuario, rol: 'edicion' } }]) {
+    for (const status of [200, 401, 503]) {
+      let live = session, finish;
+      const events = [];
+      const pending = logoutCurrentSession({ session, readSession: () => live,
+        fetchImpl: () => new Promise(resolve => { finish = resolve; }),
+        clear: () => events.push('clear'), navigate: () => events.push('navigate'), reportFailure: () => events.push('report') });
+      live = replacement;
+      finish({ ok: status === 200, status, json: async () => ({ ok: true }) });
+      assert.equal((await pending).revoked, status === 200);
+      assert.deepEqual(events, []);
+      assert.equal(live, replacement);
+    }
+  }
+});
+
+test('obsolete logout timeout and unreadable current storage have no local side effects', async () => {
+  for (const unreadable of [false, true]) {
+    let changed = false;
+    const pending = logoutCurrentSession({ session, timeoutMs: 10,
+      readSession: () => { if (changed && unreadable) throw Error('storage'); return changed ? null : session; },
+      fetchImpl: () => new Promise(() => {}), clear: () => assert.fail('clear'),
+      navigate: () => assert.fail('navigate'), reportFailure: () => assert.fail('report') });
+    changed = true;
+    assert.equal((await pending).reason, 'timeout');
+  }
+});
+
+test('session change during failure notification is rechecked before cleanup', async () => {
+  let live = session;
+  await logoutCurrentSession({ session, readSession: () => live,
+    fetchImpl: async () => ({ ok: false, status: 503 }),
+    reportFailure: () => { live = { ...session, token: 'new-login' }; },
+    clear: () => assert.fail('must keep new login'), navigate: () => assert.fail('must not redirect') });
+  assert.equal(live.token, 'new-login');
+});
+
+test('missing or already obsolete logout context cannot send a request', async () => {
+  const callbacks = { fetchImpl: () => assert.fail('no transport'), clear: () => assert.fail('clear'),
+    navigate: () => assert.fail('navigate'), reportFailure: () => assert.fail('report') };
+  assert.equal((await logoutCurrentSession({ ...callbacks })).reason, 'missing_session');
+  assert.equal((await logoutCurrentSession({ ...callbacks, session, readSession: () => null })).reason, 'obsolete_session');
+});
+
+test('actual same-second issued credentials fence both late logout and late unauthorized transport', async () => {
+  const originalNow = Date.now;
+  let first, second;
+  try {
+    Date.now = () => 1800000000000;
+    const account = { ...usuario, activo: true, session_version: 1 };
+    first = issueUserToken(account, 'synthetic-race-test-secret');
+    second = issueUserToken(account, 'synthetic-race-test-secret');
+  } finally { Date.now = originalNow; }
+  assert.ok(first !== second, 'Fresh credentials must differ without logging either');
+  let raw = JSON.stringify({ token: first, usuario }), finishLogout, finishRead;
+  const readSession = () => parseCurrentSession(raw);
+  const storage = { getItem: () => raw, removeItem: () => assert.fail('must preserve newer session') };
+  const fetch = createAuthenticatedApiFetch({ storage,
+    location: { pathname: '/inicio', replace: () => assert.fail('must not redirect') },
+    fetchImpl: () => new Promise(resolve => { finishRead = resolve; }) });
+  const logout = logoutCurrentSession({ session: readSession(), readSession,
+    fetchImpl: () => new Promise(resolve => { finishLogout = resolve; }),
+    clear: () => assert.fail('must not clear'), navigate: () => assert.fail('must not navigate'),
+    reportFailure: () => assert.fail('obsolete failure must remain silent') });
+  const read = fetch('/api/inicio');
+  raw = JSON.stringify({ token: second, usuario });
+  finishLogout({ ok: false, status: 401 });
+  finishRead(new Response('{}', { status: 401 }));
+  assert.equal((await logout).revoked, false);
+  assert.equal((await read).status, 401);
+  assert.ok(readSession().token === second, 'Current login must survive both obsolete results');
 });
 
 test("utils delegates identity/logout and no longer rewrites Agustin to Lider", () => {

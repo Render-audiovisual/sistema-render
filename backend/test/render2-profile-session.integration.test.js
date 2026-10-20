@@ -34,6 +34,7 @@ test('self-profile HTTP preserves ID and enforces current session CAS without cr
       assert.equal(Object.hasOwn(body, key), false, `No ${key} in self-profile response`);
   };
   let name = 'qa_luciano', token = await login(name), second = await login(name);
+  assert.ok(token !== second, 'Independent logins must have distinct credentials');
   const photo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB';
 
   await t.test('photo returns stable ID, persists only own photo and keeps both sessions valid', async () => {
@@ -80,6 +81,37 @@ test('self-profile HTTP preserves ID and enforces current session CAS without cr
     checked(await api('/login', { method: 'POST', body: { usuario: name, password: fixturePassword } }), 401);
     token = await login(name, nextPassword); checked(await api('/inicio', { token }));
   });
+  await t.test('late logout cannot revoke a newer epoch after waiting on an actual row lock', async () => {
+    const barrier = new pg.Client({ connectionString: url }); await barrier.connect();
+    let pending;
+    try {
+      await barrier.query('BEGIN');
+      await barrier.query('SELECT id FROM usuarios WHERE id=91003 FOR UPDATE');
+      const pid = (await barrier.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      pending = api('/logout', { token, method: 'POST' });
+      let blocked = false;
+      const deadline = Date.now() + 2500;
+      while (Date.now() < deadline) {
+        if ((await barrier.query('SELECT 1 FROM pg_stat_activity WHERE $1::int=ANY(pg_blocking_pids(pid))', [pid])).rowCount) {
+          blocked = true; break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 15));
+      }
+      assert.ok(blocked, 'Logout must reach the held account row lock');
+      await barrier.query('UPDATE usuarios SET session_version=session_version+1 WHERE id=91003');
+      await barrier.query('COMMIT');
+      const newerEpoch = await fingerprint();
+      // A new login is issued while the earlier logout is already in flight.
+      token = await login(name, 'QA-local-profile-new-password-55670!');
+      checked(await pending, 401);
+      assert.deepEqual(await fingerprint(), newerEpoch);
+      checked(await api('/inicio', { token }));
+    } finally {
+      await barrier.query('ROLLBACK');
+      await Promise.allSettled([pending].filter(Boolean));
+      await barrier.end();
+    }
+  });
   await t.test('photo CAS rechecks actor version after waiting on an actual row lock', async () => {
     const barrier = new pg.Client({ connectionString: url }); await barrier.connect();
     let pending;
@@ -108,5 +140,20 @@ test('self-profile HTTP preserves ID and enforces current session CAS without cr
       await Promise.allSettled([pending].filter(Boolean));
       await barrier.end();
     }
+  });
+  await t.test('current logout revokes all same-account sessions but preserves other accounts', async () => {
+    const password = 'QA-local-profile-new-password-55670!';
+    const current = await login(name, password), otherSession = await login(name, password);
+    const owner = checked(await api('/login', { method: 'POST', body: { usuario: 'qa_franco', password: fixturePassword } })).token;
+    const before = await fingerprint();
+    const version = (await fixture.query('SELECT session_version FROM usuarios WHERE id=91003'))[0].session_version;
+    assert.equal(checked(await api('/logout', { token: current, method: 'POST' })).ok, true);
+    assert.equal((await fixture.query('SELECT session_version FROM usuarios WHERE id=91003'))[0].session_version, version + 1);
+    assert.deepEqual((await fingerprint()).filter(row => row.id !== 91003), before.filter(row => row.id !== 91003));
+    for (const old of [current, otherSession]) checked(await api('/inicio', { token: old }), 401);
+    checked(await api('/inicio', { token: owner }));
+    const after = await fingerprint();
+    checked(await api('/logout', { token: current, method: 'POST' }), 401);
+    assert.deepEqual(await fingerprint(), after);
   });
 });
