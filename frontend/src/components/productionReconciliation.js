@@ -1,3 +1,5 @@
+import { createCapturedRequest } from '../shared/session/captured-request.js';
+
 const positive=n=>Number.isSafeInteger(n)&&n>0&&n<=2147483647;
 const count=n=>Number.isSafeInteger(n)&&n>=0;
 const uuid=s=>typeof s==='string'&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(s);
@@ -65,12 +67,12 @@ export function parseReconciliationResult(value,length) {
 }
 export const emptyReconciliationVideo=()=>({local_id:crypto.randomUUID(),titulo:'',guion:'',estado:'planificado',material_url:'',observaciones:''});
 export function createProductionReconciliationModel({taskId,sesion,readSession,request,onChange,createId=()=>crypto.randomUUID(),canAct=()=>true}) {
-  const captured={id:sesion?.usuario?.id,role:sesion?.usuario?.rol,active:sesion?.usuario?.activo,token:sesion?.token};
+  const captured={id:sesion?.usuario?.id,role:sesion?.usuario?.rol,active:sesion?.usuario?.activo};
   let disposed=false,version=0,controller,body=null,baseline='';
+  const actor=createCapturedRequest({session:sesion,readSession,request,isActive:()=>!disposed});
   let state={phase:'closed',context:null,draft:null,busy:false,frozen:false,dirty:false,error:'',canReviewAgain:false,result:null};
   const emit=patch=>{state={...state,...patch};if(!disposed)onChange(state);};
-  const current=()=>{try{const s=readSession();return positive(captured.id)&&captured.role==='admin'&&captured.active!==false&&typeof captured.token==='string'&&captured.token.length>0
-    &&s?.usuario?.id===captured.id&&s.usuario.rol===captured.role&&s.usuario.activo===captured.active&&s.token===captured.token;}catch{return false;}};
+  const current=()=>positive(captured.id)&&captured.role==='admin'&&captured.active!==false&&actor.current();
   const deny=()=>{body=null;emit({phase:'denied',context:null,draft:null,busy:false,frozen:false,dirty:false,error:'La sesión cambió. Volvé a iniciar sesión.',result:null,canReviewAgain:false});};
   async function open({preserveDraft=false}={}) {
     if(disposed||state.busy||!canAct()||(state.frozen&&!state.canReviewAgain))return false;
@@ -79,7 +81,7 @@ export function createProductionReconciliationModel({taskId,sesion,readSession,r
     const observed=++version;controller?.abort();controller=new AbortController();const signal=controller.signal;
     emit({phase:'loading',busy:true,error:'',context:null,result:null});
     try {
-      const value=await request(`/api/producciones/reconciliaciones/origen/${taskId}`,{signal});
+      const value=await actor.request(`/api/producciones/reconciliaciones/origen/${taskId}`,{signal});
       if(disposed||signal.aborted||observed!==version)return false;
       if(!current()){deny();return false;}
       const context=parseReconciliationContext(value,taskId);
@@ -102,7 +104,7 @@ export function createProductionReconciliationModel({taskId,sesion,readSession,r
     if(!body) {try{body=JSON.stringify(reconciliationInput(state.context,state.draft,createId()));}catch(error){emit({error:error.message});return false;}}
     const observed=++version;emit({busy:true,frozen:true,dirty:true,error:'',canReviewAgain:false});
     try {
-      const result=await request('/api/producciones/reconciliaciones',{method:'POST',headers:{'Content-Type':'application/json'},body});
+      const result=await actor.request('/api/producciones/reconciliaciones',{method:'POST',headers:{'Content-Type':'application/json'},body});
       if(disposed||observed!==version)return false;
       if(!current()){deny();return false;}
       const saved=parseReconciliationResult(result,JSON.parse(body).videos.length);

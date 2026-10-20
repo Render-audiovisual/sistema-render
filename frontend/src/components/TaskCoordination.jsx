@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getSesion } from '../utils.jsx';
+import { captureSessionBinding, sessionBindingMatches } from '../shared/session/session-binding.js';
 import { buildCoordinationPatch, canEditTaskCoordination, coordinateSnapshot } from './taskCoordination.js';
 import './TaskCoordination.css';
 
@@ -26,16 +27,16 @@ export function TaskCoordination({ task, sesion, onUpdate, onDraftStateChange })
 
   function open() {
     if (!allowed || !current.valid || pending.current) return;
+    const binding = captureSessionBinding(sesion);
+    if (!sessionBindingMatches(binding, getSesion())) return;
     setEditor({ snapshot: current, draft: { horario: current.horario, coordinada: current.coordinada },
-      token: sesion?.token, userId: sesion.usuario.id, role: sesion.usuario.rol });
+      binding });
     setConflict(false); setError('');
   }
 
   function sessionMatches() {
     const actual = getSesion();
-    return Boolean(editor?.token && actual?.token === editor.token && sesion?.token === editor.token
-      && actual?.usuario?.id === editor.userId && actual?.usuario?.rol === editor.role
-      && sesion?.usuario?.id === editor.userId && sesion?.usuario?.rol === editor.role);
+    return sessionBindingMatches(editor?.binding, actual) && sessionBindingMatches(editor?.binding, sesion);
   }
 
   async function save(event) {

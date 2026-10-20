@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync}from 'node:fs';
 import ts from 'typescript';
 import {parseReconciliationContext,reconciliationInput,createProductionReconciliationModel,reconciliationAdoptionTask}from './productionReconciliation.js';
+import {createBrowserSessionState}from '../shared/session/browser-session-state.js';
 const session=()=>({token:'local-test',usuario:{id:7,rol:'admin',activo:true}});
 const context=()=>({version:1,source:{id:1,revision:3,titulo:'Visita histórica',cliente:{id:2,nombre:'Cliente'},fecha:'2026-10-20',
   content:{instructions:'Guion original',script:'Texto literal\n',material:'',recorded_material:'Material original',feedback:'Corrección',schedule:'Horario'}},
@@ -10,6 +11,18 @@ const context=()=>({version:1,source:{id:1,revision:3,titulo:'Visita histórica'
 const uuid=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const result=()=>({reconciliation_id:uuid(1),visita_id:uuid(2),video_ids:[uuid(3)],created:true});
 const fill=model=>{const draft=model.snapshot.draft;model.update({acknowledged:true,videos:[{...draft.videos[0],titulo:'Video identificado',guion:'Guion manual',estado:'grabado'}]});};
+test('existing reconciliation uses original cookie intent and immutable retry body, then denies a new observation',async()=>{
+  const store=createBrowserSessionState();
+  const accept=()=>{const ticket=store.beginBootstrap();store.acceptBootstrap(ticket,{
+    usuario:{id:7,usuario:'synthetic',nombre:'Synthetic',rol:'admin'},session_context:'a'.repeat(43),csrf_token:'b'.repeat(43)});return store.getSession();};
+  const original=accept(),calls=[];let uncertain=true;
+  const model=createProductionReconciliationModel({taskId:1,sesion:original,readSession:store.getSession,createId:()=>uuid(9),onChange:()=>{},
+    request:async(url,options)=>{assert.equal(store.isCurrent(options.sessionIntent),true);assert.equal(new Headers(options.headers).has('Authorization'),false);
+      calls.push({url,options});if(options.method){if(uncertain)throw new Error('synthetic transport');return result();}return context();}});
+  await model.open();fill(model);await model.submit();const body=calls.at(-1).options.body;
+  uncertain=false;await model.submit({retry:true});assert.equal(calls.at(-1).options.body,body);assert.equal(model.snapshot.phase,'saved');
+  const count=calls.length;accept();await model.open();assert.equal(calls.length,count);assert.equal(model.snapshot.phase,'denied');model.dispose();
+});
 test('closed context projection preserves original strings but never carries arbitrary metadata or finances',()=>{
   const value=context();value.salary=100;value.source.private_finance=100;value.source.content.salary=200;
   assert.deepEqual(parseReconciliationContext(value,1),{...context(),legacy_editing_tasks:[]});

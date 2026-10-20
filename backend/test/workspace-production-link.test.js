@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {canonicalTaskState} from '../../frontend/src/features/render-os/constants.js';
 import {getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask} from '../../frontend/src/features/render-os/utils/task-content.js';
+import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
+const session={token:'synthetic-production-link',usuario:{id:1,rol:'admin',activo:true}};
+const captureFor=request=>()=>createCapturedRequest({session,readSession:()=>session,request});
 const workspace=readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
 const productions=readFileSync(new URL('../../frontend/src/pages/Productions.jsx',import.meta.url),'utf8');
 const extract=(source,start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
@@ -48,14 +51,15 @@ test('server flag alone selects individual registry, not guessed video counts or
 });
 
 test('actual lookup effect uses separate endpoint and failures stay errors rather than null success',async()=>{
-  const start=workspace.lastIndexOf('  useEffect(() => {',workspace.indexOf('apiRequest(`/api/producciones/tareas/'));
-  const end=workspace.indexOf('  }, [task?.id, task?.revision, task?.updated_at, registryRetry]);',start);
+  const start=workspace.lastIndexOf('  useEffect(() => {',workspace.indexOf('guard.request(`/api/producciones/tareas/'));
+  const end=workspace.indexOf('  }, [task?.id, task?.revision, task?.updated_at, registryRetry, captureRequest]);',start);
+  assert.ok(start>=0 && end>start,'Extract the actual guarded registry effect');
   const effect=workspace.slice(start,end)+'  }, []);';
   for(const response of [{vinculo:null},{vinculo:link},null,{oops:true},Error('offline')]) {
     const states=[];let url;
     const events={addEventListener(){},removeEventListener(){}};
-    new Function('task','registryRetry','useEffect','apiRequest','setRegistryLookup','window','document',effect)(task,0,fn=>fn(),
-      async path=>{url=path;if(response instanceof Error)throw response;return response;},value=>states.push(value),events,{...events,visibilityState:'visible'});
+    new Function('task','registryRetry','useEffect','captureRequest','setRegistryLookup','window','document',effect)(task,0,fn=>fn(),
+      captureFor(async(path,options)=>{url=path;assert.equal(new Headers(options.headers).get('Authorization'),'Bearer synthetic-production-link');if(response instanceof Error)throw response;return response;}),value=>states.push(value),events,{...events,visibilityState:'visible'});
     await new Promise(resolve=>setImmediate(resolve));
     assert.equal(url,'/api/producciones/tareas/10');
     assert.equal(states[0].status,'loading');
@@ -64,15 +68,16 @@ test('actual lookup effect uses separate endpoint and failures stay errors rathe
 });
 
 test('drawer focus/visible rechecks independent registry, blocks legacy immediately and cleans up listeners',async()=>{
-  const start=workspace.lastIndexOf('  useEffect(() => {',workspace.indexOf('apiRequest(`/api/producciones/tareas/'));
-  const end=workspace.indexOf('  }, [task?.id, task?.revision, task?.updated_at, registryRetry]);',start);
+  const start=workspace.lastIndexOf('  useEffect(() => {',workspace.indexOf('guard.request(`/api/producciones/tareas/'));
+  const end=workspace.indexOf('  }, [task?.id, task?.revision, task?.updated_at, registryRetry, captureRequest]);',start);
+  assert.ok(start>=0 && end>start,'Extract the actual guarded registry effect');
   const effect=workspace.slice(start,end)+'  }, []);';
   const windowListeners=new Map(),documentListeners=new Map();
   const events=listeners=>({addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:(name,fn)=>{assert.equal(listeners.get(name),fn);listeners.delete(name);}});
   const window=events(windowListeners),document={...events(documentListeners),visibilityState:'visible'};
   let cleanup,lookup,retries=0,signal;
-  const run=new Function('task','registryRetry','useEffect','apiRequest','setRegistryLookup','setRegistryRetry','window','document',effect);
-  run(task,0,fn=>{cleanup=fn();},async(_url,options)=>{signal=options.signal;return {vinculo:link};},value=>{lookup=value;},fn=>{retries=fn(retries);},window,document);
+  const run=new Function('task','registryRetry','useEffect','captureRequest','setRegistryLookup','setRegistryRetry','window','document',effect);
+  run(task,0,fn=>{cleanup=fn();},captureFor(async(_url,options)=>{signal=options.signal;return {vinculo:link};}),value=>{lookup=value;},fn=>{retries=fn(retries);},window,document);
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(registryState(task,lookup).legacyEnabled,true);
   document.visibilityState='hidden';documentListeners.get('visibilitychange')();windowListeners.get('focus')();
@@ -83,7 +88,7 @@ test('drawer focus/visible rechecks independent registry, blocks legacy immediat
   windowListeners.get('focus')();assert.equal(retries,1,'paired focus/visible events coalesce before effect restart');
   cleanup();assert.equal(windowListeners.size,0);assert.equal(documentListeners.size,0);
   // The new effect request sees media added independently, even with unchanged task revision.
-  run(task,retries,fn=>{cleanup=fn();},async()=>({vinculo:{...link,usa_registro_individual:true,videos_total:1}}),value=>{lookup=value;},fn=>{retries=fn(retries);},window,document);
+  run(task,retries,fn=>{cleanup=fn();},captureFor(async()=>({vinculo:{...link,usa_registro_individual:true,videos_total:1}})),value=>{lookup=value;},fn=>{retries=fn(retries);},window,document);
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(registryState(task,lookup).usesIndividual,true);
   windowListeners.get('focus')();assert.equal(retries,2);
@@ -111,6 +116,7 @@ test('saving linked source text cannot rewrite registry date/client or legacy pr
   const original={...task,titulo:'Visit',cliente_id:1,fecha_vencimiento:'2026-09-12',estado:'pendiente',propiedades_extra:{produccion_videos_previstos:3}};
   const writes=[];
   const context={task:original,draft:{...original,aclaraciones:'New text',cliente_id:9,fecha_vencimiento:'2026-10-30',produccion_videos_previstos:0},
+    captureRequest:captureFor(),isSessionFailure,
     canEditTask:true,canEditVisitClient:false,canEditVisitDate:false,legacyProductionEnabled:false,isProductionVisit:true,productionProgress:{planned:3},
     metadata:original.propiedades_extra,tags:[],collaborators:[],canonicalTaskState,getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask,
     setSaving:()=>{},setEditing:()=>{},onUpdate:async(id,data)=>writes.push(data)};
@@ -124,6 +130,7 @@ test('linked editing task can save delivery date but never client changes',async
   const writes=[];
   const permissions=registryState(task,{status:'ready',key:'10:7',vinculo:{...link,tipo:'edicion'}});
   const context={task:original,draft:{...original,cliente_id:9,fecha_vencimiento:'2026-10-30'},
+    captureRequest:captureFor(),isSessionFailure,
     canEditTask:true,canEditVisitClient:permissions.clientEditable,canEditVisitDate:permissions.dateEditable,
     legacyProductionEnabled:false,isProductionVisit:false,productionProgress:{},metadata:{},tags:[],collaborators:[],canonicalTaskState,getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask,
     setSaving:()=>{},setEditing:()=>{},onUpdate:async(id,data)=>writes.push(data)};

@@ -17,9 +17,11 @@ test('review decision drafts and in-flight requests share task close/navigation 
 });
 
 test('saved review refreshes canonical task through current-session guarded parent callback', () => {
-  const section = source.slice(source.indexOf('async function refreshEditingTaskAfterSave'), source.indexOf('}, isCurrent);') + '}, isCurrent);'.length);
-  assert.match(section, /refreshEditingTask\(\{ taskId: task.id, request: apiTaskById/);
-  assert.match(section, /\}, isCurrent\)/);
+  const start = source.indexOf('async function refreshEditingTaskAfterSave');
+  const section = source.slice(start, source.indexOf('async function refreshUploadedTask', start));
+  assert.match(section, /refreshEditingTask\(\{ taskId: task.id, request: \(id, options\) => guard.request/);
+  assert.match(section, /\(\) => guard.current\(\) && isCurrent\(\)/);
+  assert.match(section, /onRefreshed: refreshed => \{ guard.assertCurrent\(\)/);
   assert.match(section, /render-os:related-tasks/);
   assert.equal(source.match(/onSaved=\{refreshEditingTaskAfterSave\}/g).length, 2);
   assert.doesNotMatch(section, /localStorage|sessionStorage/);

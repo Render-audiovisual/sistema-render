@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getRolLabel } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea, getSesion } from "../utils.jsx";
 import { AREAS, BOARD_COLUMNS, STATUSES, TASK_TYPES, canonicalTaskState, isTaskCompleted } from "../features/render-os/constants.js";
-import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
+import { apiJson, apiRequest, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
 import { areaForTask, emojiForTaskCard, formatDate, formatDateTime, initials, personForTask, taskResponsibleLabels } from "../features/render-os/utils/task-formatters.js";
 import { canRetryTaskUpdate, canUserDeleteTask, canUserEditTask, canUserMoveTask, canUserMoveTaskToState, mergeRelatedTasks } from "../workspace-task-state.js";
 import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
@@ -28,12 +28,27 @@ import { refreshEditingTask } from "../components/editingTaskRefresh.js";
 import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
 import { navigateWithinApp, requestAppNavigation } from "../shared/navigation/location.js";
 import { isTaskDraftDirty, keepsTaskOpen } from "./taskNavigationGuard.js";
+import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
+import { useSessionView } from '../shared/session/use-session-view.js';
 import "./WorkspaceReadOnly.css";
 import "./TaskDetailCompact.css";
 import "./RenderApplePolish.css";
 import "./TaskHeader.css";
 import "./TaskBoardMotion.css";
 import "./TaskDetailNotion.css";
+
+function useWorkspaceCapture(sesion) {
+  const view = useSessionView(sesion);
+  const live = useRef(view);
+  live.current = view;
+  const mounted = useRef(false);
+  // Parent scopes must be live before child passive effects request subtasks.
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  return useCallback((request = apiRequest) => createCapturedRequest({
+    session: view.session, readSession: getSesion, request,
+    isActive: () => mounted.current && live.current === view,
+  }), [view]);
+}
 
 function Avatar({ person, name }) {
   const label = person?.nombre || name || "Sin asignar";
@@ -126,6 +141,7 @@ function taskProductionRegistryState(task, lookup) {
 }
 
 function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onTrashAction }) {
+  const captureRequest = useWorkspaceCapture(sesion);
   const windowMotion = useTaskWindowMotion(task?.id, onClose);
   const [editing, setEditing] = useState(false);
   const [deliveryFormDirty, setDeliveryDirty] = useState(false);
@@ -138,7 +154,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [reviewAcknowledged, setReviewAcknowledged] = useState(false);
   const [reviewRefreshing, setReviewRefreshing] = useState(false);
   const [reviewError, setReviewError] = useState('');
-  useEffect(() => { setReviewAcknowledged(false); }, [task?.id, task?.revision, sesion?.token, editingReview?.latestDelivery?.id, editingReview?.task?.revision]);
+  useEffect(() => { setReviewAcknowledged(false); }, [task?.id, task?.revision, captureRequest, editingReview?.latestDelivery?.id, editingReview?.task?.revision]);
   const [draft, setDraft] = useState(() => task ? { ...task, aclaraciones: getUnifiedTaskContent(task) } : {});
   const draftSourceRef = useRef(task);
   const [comments, setComments] = useState([]);
@@ -173,18 +189,26 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const scriptEditorRef = useRef(null);
   const deliverySectionRef = useRef(null);
   async function refreshEditingTaskAfterSave(_result, isCurrent) {
-    await refreshEditingTask({ taskId: task.id, request: apiTaskById,
-      onRefreshed: refreshed => window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: [refreshed] })) }, isCurrent);
+    const guard = captureRequest();
+    await refreshEditingTask({ taskId: task.id, request: (id, options) => guard.request(`/api/tareas/${id}?workspace=render_os`, options),
+      onRefreshed: refreshed => { guard.assertCurrent(); window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: [refreshed] })); } }, () => guard.current() && isCurrent());
+  }
+  async function refreshUploadedTask(_uploaded, uploadScope) {
+    uploadScope.assertCurrent();
+    const refreshed = await apiTaskById(task.id, uploadScope.options());
+    uploadScope.assertCurrent();
+    window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: [refreshed] }));
   }
   const isAdmin = Number.isSafeInteger(sesion?.usuario?.id) && sesion.usuario.id > 0 && sesion.usuario.rol === "admin";
 
   useEffect(() => {
     if (!task) return;
     const controller = new AbortController();
+    const guard = captureRequest();
     const key = `${task.id}:${task.revision ?? task.updated_at ?? ""}`;
     let refreshQueued = false;
     const refreshRegistry = () => {
-      if (document.visibilityState !== "visible" || refreshQueued) return;
+      if (!guard.current() || document.visibilityState !== "visible" || refreshQueued) return;
       refreshQueued = true;
       controller.abort();
       setRegistryLookup({status:"loading", key, vinculo:null});
@@ -193,26 +217,27 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     window.addEventListener("focus", refreshRegistry);
     document.addEventListener("visibilitychange", refreshRegistry);
     setRegistryLookup({status:"loading", key, vinculo:null});
-    apiRequest(`/api/producciones/tareas/${task.id}`, {signal:controller.signal})
+    guard.request(`/api/producciones/tareas/${task.id}`, {signal:controller.signal})
       .then(data => {
         if (!Object.hasOwn(data, "vinculo") || (data.vinculo !== null &&
           (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(data.vinculo.id) ||
            !["origen", "edicion"].includes(data.vinculo.tipo) || typeof data.vinculo.usa_registro_individual !== "boolean"))) {
           throw new Error("La respuesta del vínculo de producción no es válida.");
         }
-        if (!controller.signal.aborted) setRegistryLookup({status:"ready", key, vinculo:data.vinculo});
+        if (guard.current() && !controller.signal.aborted) setRegistryLookup({status:"ready", key, vinculo:data.vinculo});
       })
-      .catch(reason => { if (!controller.signal.aborted) setRegistryLookup({status:"error", key, vinculo:null, error:reason.message}); });
+      .catch(reason => { if (guard.current() && !controller.signal.aborted) setRegistryLookup({status:"error", key, vinculo:null, error:reason.message}); });
     return () => {
       controller.abort();
       window.removeEventListener("focus", refreshRegistry);
       document.removeEventListener("visibilitychange", refreshRegistry);
     };
-  }, [task?.id, task?.revision, task?.updated_at, registryRetry]);
+  }, [task?.id, task?.revision, task?.updated_at, registryRetry, captureRequest]);
 
   useEffect(() => {
     if (!task) return;
     const controller = new AbortController();
+    const guard = captureRequest(apiJson);
     setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task) });
     setEditing(false);
     setComment("");
@@ -224,14 +249,14 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     setProductionCorrections({});
     setProductionDriveLink(task.material_referencia || "");
     setPublicationResponsible(task.responsable_publicacion_id ?? task.propiedades_extra?.responsable_publicacion_id ?? null);
-    apiJson(`/api/tareas/${task.id}/comentarios?workspace=render_os`, { signal: controller.signal })
-      .then(items => { if (!controller.signal.aborted) setComments(items); })
-      .catch((reason) => { if (!controller.signal.aborted) setCommentError(reason.message || "No se pudieron cargar los comentarios."); });
+    guard.request(`/api/tareas/${task.id}/comentarios?workspace=render_os`, { signal: controller.signal })
+      .then(items => { if (guard.current() && !controller.signal.aborted) setComments(items); })
+      .catch((reason) => { if (guard.current() && !controller.signal.aborted) setCommentError(reason.message || "No se pudieron cargar los comentarios."); });
     onLoadSubtasks(task.id, { signal: controller.signal }).catch((reason) => {
-      if (!controller.signal.aborted) setCommentError(reason.message || "No se pudieron cargar las subtareas.");
+      if (guard.current() && !controller.signal.aborted) setCommentError(reason.message || "No se pudieron cargar las subtareas.");
     });
     return () => controller.abort();
-  }, [task?.id, onLoadSubtasks]);
+  }, [task?.id, onLoadSubtasks, captureRequest]);
 
   useEffect(() => {
     if (!task) return;
@@ -321,6 +346,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     || isProductionVisit;
 
   const save = async () => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     setSaving(true);
     if (!canEditTask) { setSaving(false); return; }
     const preserveEditorialCopy = isLinkedProductionEditorialTask(task);
@@ -347,16 +374,20 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     try {
       if (changes.estado && !canUserMoveTaskToState(task, sesion?.usuario, changes.estado)) throw new Error("Transición no permitida.");
       if (changes.estado === "aprobada") { await onApprove(task); delete changes.estado; }
+      guard.assertCurrent();
       if (Object.keys(changes).length) await onUpdate(task.id, changes, "editó los datos de la tarea");
+      guard.assertCurrent();
       setEditing(false);
     } catch {
       // El contenedor restaura los datos y muestra el error.
     } finally {
-      setSaving(false);
+      if (guard.current()) setSaving(false);
     }
   };
 
   const saveInlineField = async (field, value, activity = "editó los datos de la tarea") => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     if (saving || (field === "estado" ? !canChangeTaskState : !canEditTask)) return;
     if ((field === "cliente_id" && !canEditVisitClient) || (field === "fecha_vencimiento" && !canEditVisitDate)) return;
     if (field === "estado" && (value === canonicalTaskState(task.estado) || !canUserMoveTaskToState(task, sesion?.usuario, value))) return;
@@ -369,13 +400,15 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
       if (field === "estado" && value === "aprobada") await onApprove(task);
       else await onUpdate(task.id, { [field]: nextValue }, activity);
     } catch {
-      setDraft((current) => ({ ...current, [field]: task[field] ?? "" }));
+      if (guard.current()) setDraft((current) => ({ ...current, [field]: task[field] ?? "" }));
     } finally {
-      setSaving(false);
+      if (guard.current()) setSaving(false);
     }
   };
 
   const saveInlinePeople = async ({ primary, collaborators: nextCollaborators, ownerId, collaboratorIds }) => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     if (!canEditTask || saving || !ownerId) return;
     const assignment = buildTaskAssignmentInput({ ownerId, collaboratorIds });
     const unchanged = ownerId === task.asignado_a_id && JSON.stringify(collaboratorIds) === JSON.stringify(task.colaborador_ids || []);
@@ -387,9 +420,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         ...assignment,
       }, "actualizó los responsables de la tarea");
     } catch {
-      setDraft((current) => ({ ...current, asignado_a_id: task.asignado_a_id, colaborador_ids: task.colaborador_ids, asignado_a: task.asignado_a, colaboradores }));
+      if (guard.current()) setDraft((current) => ({ ...current, asignado_a_id: task.asignado_a_id, colaborador_ids: task.colaborador_ids, asignado_a: task.asignado_a, colaboradores }));
     } finally {
-      setSaving(false);
+      if (guard.current()) setSaving(false);
     }
   };
 
@@ -431,26 +464,31 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const addComment = async () => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     const content = comment.trim();
     if (!content || commenting) return;
     setCommenting(true);
     setCommentError("");
     try {
-      const created = await apiRequest(`/api/tareas/${task.id}/comentarios?workspace=render_os`, {
+      const created = await guard.request(`/api/tareas/${task.id}/comentarios?workspace=render_os`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER", contenido: content }),
       });
+      guard.assertCurrent();
       setComments((current) => [...current, created]);
       setComment("");
     } catch (reason) {
-      setCommentError(reason.message || "No se pudo guardar el comentario.");
+      if (guard.current()) setCommentError(reason.message || "No se pudo guardar el comentario.");
     } finally {
-      setCommenting(false);
+      if (guard.current()) setCommenting(false);
     }
   };
 
   const changeTrashState = async () => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     if (archivePendingRef.current) return;
     if (!isTrashed && !window.confirm("¿Enviar esta tarea a Papelera? Podrás restaurarla durante 10 días.")) return;
     archivePendingRef.current = true;
@@ -458,39 +496,47 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     try {
       await onTrashAction(task, isTrashed ? "restaurar" : "papelera");
     } finally {
-      archivePendingRef.current = false;
-      setArchiving(false);
+      if (guard.current()) { archivePendingRef.current = false; setArchiving(false); }
     }
   };
 
   const registerProduction = async (finish = false) => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     if (!canRegisterProduction || registeringProduction || metadata.produccion_confirmada_at) return;
     setRegisteringProduction(true);
     try {
       await onRegisterProduction(task, Number(productionAmount), productionDate, finish);
+      guard.assertCurrent();
       setProductionAmount(1);
     } catch {
       // The parent refreshes conflicts. Keep amount/date for an explicit resubmission.
     } finally {
-      setRegisteringProduction(false);
+      if (guard.current()) setRegisteringProduction(false);
     }
   };
 
   const confirmProduction = async () => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     if (!canConfirmProduction || confirmingProduction) return;
     setConfirmingProduction(true);
     try { await onConfirmProduction(task); }
     catch { /* The parent reports the conflict; no automatic confirmation retry. */ }
-    finally { setConfirmingProduction(false); }
+    finally { if (guard.current()) setConfirmingProduction(false); }
   };
 
   const correctProduction = async (record) => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     if (!canRegisterProduction) return;
     const value = window.prompt("Cantidad correcta de videos:", productionCorrections[record.id] ?? String(record.cantidad));
     if (value === null) return;
+    if (!guard.current()) return;
     setProductionCorrections((current) => ({ ...current, [record.id]: value }));
     try {
       const updated = await onCorrectProduction(task, record, Number(value));
+      guard.assertCurrent();
       if (updated) setProductionCorrections((current) => { const next = { ...current }; delete next[record.id]; return next; });
     } catch {
       // Keep the entered correction as the next prompt's default after refresh.
@@ -498,35 +544,49 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const approveForOriana = async (withPublisher = false) => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     if (!canApproveForOriana || approving || deliveryBusy || deliveryDirty || !mayApproveObservedDelivery || (withPublisher && !selectedPublisher)) return;
     setApproving(true);
     try { await onApprove(task, withPublisher ? selectedPublisher.id : undefined, usesEditingReview ? { revision: editingReview.task.revision, deliveryId: editingReview.latestDelivery?.id || null } : null); }
-    catch (error) { if (getSesion()?.token === sesion?.token) { setReviewAcknowledged(false); setReviewError(error.message || 'No se pudo aprobar. Actualizá la tarea y el historial antes de volver a revisar.'); } }
-    finally { setApproving(false); }
+    catch (error) { if (guard.current()) { setReviewAcknowledged(false); setReviewError(error.message || 'No se pudo aprobar. Actualizá la tarea y el historial antes de volver a revisar.'); } }
+    finally { if (guard.current()) setApproving(false); }
   };
 
   const refreshReviewTask = async () => {
     if (reviewRefreshing || deliveryBusy || approving) return;
-    const token = sesion?.token;
-    if (!token || getSesion()?.token !== token) return;
+    const guard = captureRequest();
+    if (!guard.current()) return;
     setReviewRefreshing(true); setReviewAcknowledged(false); setReviewError('');
     try {
-      const refreshed = await apiTaskById(task.id);
-      if (getSesion()?.token !== token) return;
+      const refreshed = await guard.request(`/api/tareas/${task.id}?workspace=render_os`);
+      guard.assertCurrent();
       window.dispatchEvent(new CustomEvent('render-os:related-tasks', { detail: [refreshed] }));
-    } catch { if (getSesion()?.token === token) setReviewError('No se pudo actualizar la tarea. Reintentá antes de aprobar.'); }
-    finally { setReviewRefreshing(false); }
+    } catch { if (guard.current()) setReviewError('No se pudo actualizar la tarea. Reintentá antes de aprobar.'); }
+    finally { if (guard.current()) setReviewRefreshing(false); }
   };
 
   const saveProductionDrive = async () => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     const link = productionDriveLink.trim();
     if (!canRegisterProduction || !link || savingProductionDrive) return;
     setSavingProductionDrive(true);
     try { await onUpdate(task.id, { material_referencia: link }, "vinculó la carpeta de producción en Google Drive"); }
-    finally { setSavingProductionDrive(false); }
+    finally { if (guard.current()) setSavingProductionDrive(false); }
+  };
+
+  const sendTaskToReview = async () => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
+    setSaving(true);
+    try { await onUpdate(task.id, { estado: "en_revision" }, "envió la tarea a revisión sin registrar una entrega"); }
+    finally { if (guard.current()) setSaving(false); }
   };
 
   const copyTaskLink = async () => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     const link = getTaskDirectUrl(window.location.origin, task.id);
     try {
       if (navigator.clipboard?.writeText) {
@@ -541,10 +601,11 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         document.execCommand("copy");
         input.remove();
       }
+      guard.assertCurrent();
       setLinkCopied(true);
-      window.setTimeout(() => setLinkCopied(false), 2200);
+      window.setTimeout(() => { if (guard.current()) setLinkCopied(false); }, 2200);
     } catch {
-      window.prompt("Copiá el enlace de la tarea:", link);
+      if (guard.current()) window.prompt("Copiá el enlace de la tarea:", link);
     }
   };
 
@@ -590,7 +651,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         {hasOperationalControls && <section className="ros-task-operations" aria-labelledby={`ros-task-operations-${task.id}`}>
           <div className="ros-block-heading ros-operations-heading"><div><h3 id={`ros-task-operations-${task.id}`}>Flujo de trabajo</h3></div><small>Acciones y avance de la tarea</small></div>
         {esperandoMaterial(task) && <div className="ros-warning-banner">Esperando material: la tarea de origen todavía no está terminada.</div>}
-        {areaForTask(task) === "edicion" && canChangeTaskState && ["pendiente", "en_progreso"].includes(task.estado) && <section className="ros-approval-handoff"><div><strong>¿Terminaste la edición?</strong><span>{task.tipo_tarea === "edicion" && metadata.workspace === "render_os" ? "Registrá el enlace de la versión editada para enviarla a revisión. Publicar es otro paso." : "Cambiar el estado no registra una entrega ni publica el contenido."}</span></div>{task.tipo_tarea === "edicion" && metadata.workspace === "render_os" ? <button type="button" disabled={saving || deliveryBusy} onClick={() => { deliverySectionRef.current?.scrollIntoView({ block: "center" }); deliverySectionRef.current?.querySelector("input")?.focus(); }}>Registrar entrega</button> : <button type="button" disabled={saving} onClick={async () => { setSaving(true); try { await onUpdate(task.id, { estado: "en_revision" }, "envió la tarea a revisión sin registrar una entrega"); } finally { setSaving(false); } }}>Enviar tarea a revisión</button>}</section>}
+        {areaForTask(task) === "edicion" && canChangeTaskState && ["pendiente", "en_progreso"].includes(task.estado) && <section className="ros-approval-handoff"><div><strong>¿Terminaste la edición?</strong><span>{task.tipo_tarea === "edicion" && metadata.workspace === "render_os" ? "Registrá el enlace de la versión editada para enviarla a revisión. Publicar es otro paso." : "Cambiar el estado no registra una entrega ni publica el contenido."}</span></div>{task.tipo_tarea === "edicion" && metadata.workspace === "render_os" ? <button type="button" disabled={saving || deliveryBusy} onClick={() => { deliverySectionRef.current?.scrollIntoView({ block: "center" }); deliverySectionRef.current?.querySelector("input")?.focus(); }}>Registrar entrega</button> : <button type="button" disabled={saving} onClick={sendTaskToReview}>Enviar tarea a revisión</button>}</section>}
         {canApproveForOriana && <section className="ros-approval-handoff"><div><strong>La tarea está esperando aprobación</strong><span>Aprobá la revisión. Si corresponde, también podés elegir quién publica.</span>{usesEditingReview && (!editingReviewReady ? <span>Actualizá el historial de entregas antes de aprobar.</span> : editingReview.latestDelivery ? <label><a href={editingReview.latestDelivery.url} target="_blank" rel="noopener noreferrer">Ver entrega · versión de tarea {editingReview.latestDelivery.task_revision} ↗</a><span><input type="checkbox" checked={reviewAcknowledged} disabled={approving || deliveryBusy} onChange={event => setReviewAcknowledged(event.target.checked)}/> Revisé esta versión y la apruebo.</span></label> : <span>Sin entrega registrada: esta aprobación de tarea no certifica un archivo.</span>)}</div><button type="button" disabled={approving || saving || deliveryBusy || deliveryDirty || !mayApproveObservedDelivery} onClick={() => approveForOriana()}>{approving ? "Aprobando…" : "Aprobar revisión"}</button><label>Publica (opcional)<select value={publicationResponsible ?? ""} onChange={(event) => setPublicationResponsible(event.target.value ? Number(event.target.value) : null)}><option value="">Elegí quién publica</option>{users.filter((user) => Number.isSafeInteger(user.id) && user.id > 0 && ["admin", "community"].includes(user.rol)).map((user) => <option key={user.id} value={user.id}>{user.nombre} · #{user.id}</option>)}</select></label><button type="button" disabled={approving || deliveryBusy || deliveryDirty || !mayApproveObservedDelivery || !selectedPublisher} onClick={() => approveForOriana(true)}>{approving ? "Enviando…" : `Aprobar y enviar${selectedPublisher ? ` a ${selectedPublisher.nombre}` : ""}`}</button></section>}
         {canApproveForOriana && usesEditingReview && <div className="ros-work-block"><button type="button" disabled={reviewRefreshing || approving || deliveryBusy} onClick={refreshReviewTask}>{reviewRefreshing ? 'Actualizando…' : 'Actualizar tarea para revisar'}</button><small>Si cambió la versión, actualizá también el historial de entregas y volvé a revisar.</small>{reviewError && <p role="alert">{reviewError}</p>}</div>}
         {task.estado === "aprobada" && <div className="ros-approved-banner">✓ Aprobada por {metadata.revision_aprobada_por || "Líder"}. {metadata.responsable_publicacion ? `${metadata.responsable_publicacion} se encarga de publicarla.` : "Lista para finalizar."}<small style={{display:'block',overflowWrap:'anywhere'}}>{metadata.revision_aprobada === true && typeof metadata.revision_aprobada_entrega_id === 'string' ? `Entrega vinculada: ${metadata.revision_aprobada_entrega_id}` : 'Sin versión de entrega vinculada; no certifica un archivo.'}</small></div>}
@@ -614,7 +675,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {Array.isArray(metadata.produccion_registros) && metadata.produccion_registros.length > 0 && <details><summary>Ver registros</summary>{metadata.produccion_registros.slice().reverse().map((record) => <div key={record.id || `${record.fecha}-${record.created_at}`}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario || "Equipo"}{record.corregido_at ? ` · Corregido por ${record.corregido_por}` : ""}</span>{canRegisterProduction && !metadata.produccion_confirmada_at && <button type="button" onClick={() => correctProduction(record)}>Corregir</button>}</div>)}</details>}
         </section>}
         </section>}
-        <section className="ros-work-block"><div className="ros-block-heading"><div><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3></div><small>Archivos y enlaces</small></div>{registry.vinculo?.tipo === "origen" && <p>Consultá el material de esta visita en Producciones. <a href={`/producciones?visita=${encodeURIComponent(registry.vinculo.id)}`}>Abrir visita en Producciones ↗</a></p>}{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && registry.vinculo?.tipo !== "origen" && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <><div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{driveFiles.filter((file) => file.url !== task.material_referencia).map((file) => <a className="ros-file" href={file.url} target="_blank" rel="noreferrer" key={file.id}><span>▤</span><div><strong>{file.name}</strong><small>Google Drive · {file.uploaded_by || "Equipo"}</small></div><b>↗</b></a>)}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{registry.vinculo?.tipo !== "origen" && !task.material_referencia && driveFiles.length === 0 && links.length === 0 && <p className="ros-compact-empty">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "Sin material vinculado."}</p>}</div><DriveUploader task={task} onUploaded={async () => { const refreshed = await apiTaskById(task.id); window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: [refreshed] })); }}/></>}</section>
+        <section className="ros-work-block"><div className="ros-block-heading"><div><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3></div><small>Archivos y enlaces</small></div>{registry.vinculo?.tipo === "origen" && <p>Consultá el material de esta visita en Producciones. <a href={`/producciones?visita=${encodeURIComponent(registry.vinculo.id)}`}>Abrir visita en Producciones ↗</a></p>}{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && registry.vinculo?.tipo !== "origen" && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <><div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{driveFiles.filter((file) => file.url !== task.material_referencia).map((file) => <a className="ros-file" href={file.url} target="_blank" rel="noreferrer" key={file.id}><span>▤</span><div><strong>{file.name}</strong><small>Google Drive · {file.uploaded_by || "Equipo"}</small></div><b>↗</b></a>)}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{registry.vinculo?.tipo !== "origen" && !task.material_referencia && driveFiles.length === 0 && links.length === 0 && <p className="ros-compact-empty">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "Sin material vinculado."}</p>}</div><DriveUploader task={task} onUploaded={refreshUploadedTask}/></>}</section>
         {(origin || task.tarea_padre_id || subtasks.length > 0) && <section className="ros-work-block ros-work-organization"><h3>Organización del trabajo</h3>{(origin || task.tarea_padre_id) && <div className="ros-context-list">{origin && <a className="ros-calendar-origin" href={origin.href}><div><span>{origin.calendarLabel}</span><strong>{origin.label}</strong><small>Fecha de publicación</small></div><time>{formatDate(origin.date)}</time><b>Ver calendario</b></a>}{task.tarea_padre_id && <button type="button" onClick={() => onOpen(Number(task.tarea_padre_id))}><strong>Depende de la tarea #{task.tarea_padre_id}</strong><span>Estado: {STATUSES.find((item) => item.id === canonicalTaskState(task.tarea_padre_estado))?.label || "Sin datos"}</span></button>}</div>}<div className="ros-subtasks">{subtasks.map((subtask) => <button type="button" key={subtask.id} onClick={() => onOpen(subtask.id)}><span>{subtask.titulo}</span><b>{STATUSES.find((item) => item.id === canonicalTaskState(subtask.estado))?.label || subtask.estado}</b></button>)}</div></section>}
         {task.tipo_tarea === "edicion" && metadata.workspace === "render_os" && <div ref={deliverySectionRef}><fieldset disabled={reviewDecisionBusy || reviewDecisionDirty || approving || saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}><EditingDeliveries task={task} sesion={sesion} onReviewContext={setEditingReview} onDirty={setDeliveryDirty} onBusy={setDeliveryBusy} onSaved={refreshEditingTaskAfterSave}/></fieldset><EditingReviews task={task} sesion={sesion} disabled={deliveryFormBusy || deliveryFormDirty || approving || saving || editing} onDirty={setReviewDecisionDirty} onBusy={setReviewDecisionBusy} onSaved={refreshEditingTaskAfterSave}/></div>}
           </main>
@@ -657,7 +718,8 @@ function TaskPeoplePicker({ users, primaryId, collaboratorIds, onChange, compact
   </div>;
 }
 
-function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, onCreate, onCreated }) {
+function NewTaskModal({ users, clients, sesion, initialStatus = "pendiente", onClose, onCreate, onCreated }) {
+  const captureRequest = useWorkspaceCapture(sesion);
   const [draft, setDraft] = useState({ titulo: "", asignado_a: "", asignado_a_id: null, colaborador_ids: [], cliente_id: "", estado: ["pendiente", "en_progreso", "en_revision"].includes(initialStatus) ? initialStatus : "pendiente", tipo_tarea: "", subtipo: "", prioridad: "media", fecha_vencimiento: "", aclaraciones: "", material_referencia: "", resumen: "", etiquetas: "", colaboradores: [], produccion_videos_previstos: "" });
   const [saving, setSaving] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -672,6 +734,8 @@ function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, on
   }, []);
   const submit = async (event) => {
     event.preventDefault();
+    const guard = captureRequest();
+    if (!guard.current()) return;
     if (saving || !Number.isSafeInteger(draft.asignado_a_id) || draft.asignado_a_id <= 0) return;
     setSaving(true);
     try {
@@ -688,12 +752,13 @@ function NewTaskModal({ users, clients, initialStatus = "pendiente", onClose, on
         etiquetas: draft.etiquetas.split(",").map((item) => item.trim()).filter(Boolean),
         produccion_videos_previstos: isProductionVisitTask(draft) && draft.produccion_videos_previstos !== "" ? Number(draft.produccion_videos_previstos) : undefined,
       });
+      guard.assertCurrent();
       completedRef.current = true;
       onCreated(created);
     } catch {
       // El modal permanece abierto y el contenedor muestra el error.
     } finally {
-      setSaving(false);
+      if (guard.current()) setSaving(false);
     }
   };
   const closeModal = () => {
@@ -837,6 +902,7 @@ const TasksByClient = React.memo(function TasksByClient({ tasks, users = [], onO
 });
 
 function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, responsible, setResponsible, client, setClient, sector, setSector, priority, setPriority, archiveMode, setArchiveMode, sesion, onCreate, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onBulkAction, onError }) {
+  const captureRequest = useWorkspaceCapture(sesion);
   const initialViewState = useMemo(() => getTaskViewState(window.location.search), []);
   const initialTask = Number(new URLSearchParams(window.location.search).get("task")) || null;
   const [view, setView] = useState(initialViewState.view);
@@ -887,6 +953,8 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const activeFilterCount = [responsible, client, sector, priority, area, taskStatus].filter((value) => value !== "all").length;
   const emptyMessage = getTasksEmptyMessage({ hasFilters, query, totalTasks, archiveMode });
   const refreshFeedbackCount = useCallback(async () => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     const seenAt = readFeedbackSeenAt(sesion?.usuario);
     if (!seenAt) {
       markFeedbackSeen(sesion?.usuario);
@@ -894,13 +962,14 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
       return;
     }
     try {
-      const result = await apiRequest(`/api/notas/nuevas?desde=${encodeURIComponent(seenAt)}`);
+      const result = await guard.request(`/api/notas/nuevas?desde=${encodeURIComponent(seenAt)}`);
+      guard.assertCurrent();
       const nextCount = Math.max(0, Number(result?.cantidad) || 0);
       setNewFeedbackCount((current) => current === nextCount ? current : nextCount);
     } catch {
       // El aviso es complementario: una falla nunca debe bloquear el tablero.
     }
-  }, [sesion?.usuario]);
+  }, [captureRequest]);
 
   useEffect(() => {
     void refreshFeedbackCount();
@@ -916,16 +985,22 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   }, [refreshFeedbackCount]);
 
   const incorporateRelatedTasks = useCallback((items) => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     if (!items.length) return;
     window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: items }));
-  }, []);
+  }, [captureRequest]);
   const loadSubtasks = useCallback(async (id, options) => {
-    const items = await apiSubtasks(id, options);
+    const guard = captureRequest(apiJson);
+    const items = await guard.request(`/api/tareas/${id}/subtareas?workspace=render_os`, options);
+    guard.assertCurrent();
     if (!options?.signal?.aborted) incorporateRelatedTasks(items);
     return items;
-  }, [incorporateRelatedTasks]);
+  }, [incorporateRelatedTasks, captureRequest]);
 
   const openTask = useCallback(async (id) => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     openRequestRef.current?.abort();
     const controller = new AbortController();
     openRequestRef.current = controller;
@@ -941,15 +1016,16 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     };
     if (cached && !show()) return;
     try {
-      const task = await apiTaskById(id, { signal: controller.signal });
+      const task = await guard.request(`/api/tareas/${id}?workspace=render_os`, { signal: controller.signal });
+      guard.assertCurrent();
       if (controller.signal.aborted || openRequestRef.current !== controller) return;
       // No sobrescribir una edición optimista realizada mientras llegaba la consulta.
       if (!cached || tasksLatestRef.current.find(item => item.id === id) === cached) incorporateRelatedTasks([task]);
       if (!cached) show();
     } catch (reason) {
-      if (!controller.signal.aborted) onError(reason.message || "No se pudo actualizar la tarea.");
+      if (guard.current() && !isSessionFailure(reason) && !controller.signal.aborted) onError(reason.message || "No se pudo actualizar la tarea.");
     }
-  }, [incorporateRelatedTasks]);
+  }, [incorporateRelatedTasks, captureRequest]);
   const closeTask = useCallback(() => {
     openRequestRef.current?.abort();
     setSelectedId(null);
@@ -1023,11 +1099,12 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     {view === "calendar" && <TaskCalendar tasks={visible} users={users} onOpen={openTask} monthValue={calendarMonth} onMonthChange={setCalendarMonth}/>} {view === "clients" && <TasksByClient tasks={visible} users={users} onOpen={openTask}/>} {view !== "board" && visible.length === 0 && <div className="ros-no-results">{emptyMessage}</div>}
     {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
-  {selected && <TaskDetail key={selected.id} task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onCorrectProduction={onCorrectProduction} onConfirmProduction={onConfirmProduction} onApprove={onApprove} onTrashAction={async (task, action) => { await onBulkAction([task.id], action); closeTask(); }}/>}
-  {creatingStatus && <NewTaskModal users={users} clients={clients} initialStatus={creatingStatus} onClose={() => setCreatingStatus(null)} onCreate={onCreate} onCreated={created => { setCreatingStatus(null); void openTask(created.id); }}/>}</>;
+  {selected && <TaskDetail key={selected.id} task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onCorrectProduction={onCorrectProduction} onConfirmProduction={onConfirmProduction} onApprove={onApprove} onTrashAction={async (task, action) => { const guard = captureRequest(); guard.assertCurrent(); await onBulkAction([task.id], action); guard.assertCurrent(); closeTask(); }}/>}
+  {creatingStatus && <NewTaskModal users={users} clients={clients} sesion={sesion} initialStatus={creatingStatus} onClose={() => setCreatingStatus(null)} onCreate={onCreate} onCreated={created => { setCreatingStatus(null); void openTask(created.id); }}/>}</>;
 }
 
 export function WorkspaceReadOnlyPage({ sesion }) {
+  const captureRequest = useWorkspaceCapture(sesion);
   const initialViewState = useMemo(() => getTaskViewState(window.location.search), []);
   const [tasks, setTasks] = useState([]);
   const [clients, setClients] = useState([]);
@@ -1068,20 +1145,22 @@ export function WorkspaceReadOnlyPage({ sesion }) {
 
   useEffect(() => {
     let active = true;
+    const guard = captureRequest(apiJson);
     setCatalogReady(false);
-    Promise.all([apiJson("/api/clientes"), apiJson("/api/usuarios")])
+    Promise.all([guard.request("/api/clientes"), guard.request("/api/usuarios")])
       .then(([clientData, userData]) => {
-        if (!active) return;
+        if (!active || !guard.current()) return;
         setClients(clientData);
         setUsers(userData);
         setCatalogReady(true);
       })
-      .catch((reason) => { if (active) setError(reason.message || "No se pudieron cargar los datos reales."); })
+      .catch((reason) => { if (active && guard.current() && !isSessionFailure(reason)) setError(reason.message || "No se pudieron cargar los datos reales."); })
     return () => { active = false; };
-  }, [reloadKey]);
+  }, [reloadKey, captureRequest]);
 
   useEffect(() => {
     let active = true;
+    const guard = captureRequest();
     const generation = ++taskQueryGenerationRef.current;
     setLoadingMore(false);
     if (!responsibleSelection.ready) {
@@ -1092,12 +1171,12 @@ export function WorkspaceReadOnlyPage({ sesion }) {
         setTotalTasks(0); setLoading(false);
         if (Number.isSafeInteger(contextId) && contextId > 0 && contextId <= 2147483647
           && !tasksRef.current.some(task => task.id === contextId)) {
-          void apiTaskById(contextId).then(task => {
-            if (!active || generation !== taskQueryGenerationRef.current
+          void guard.request(`/api/tareas/${contextId}?workspace=render_os`).then(task => {
+            if (!active || !guard.current() || generation !== taskQueryGenerationRef.current
               || Number(new URLSearchParams(window.location.search).get('task')) !== contextId) return;
             setTasks([{ ...task, __renderOsDirectOnly: true }]);
           }).catch(reason => {
-            if (!active || generation !== taskQueryGenerationRef.current
+            if (!active || !guard.current() || isSessionFailure(reason) || generation !== taskQueryGenerationRef.current
               || Number(new URLSearchParams(window.location.search).get('task')) !== contextId) return;
             notify(reason.message || 'La tarea enlazada no está disponible.', 'error');
           });
@@ -1106,19 +1185,20 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       return () => { active = false; };
     }
     const timer = window.setTimeout(() => {
-      apiTaskPage({ offset: 0, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode })
+      if (!guard.current()) return;
+      apiTaskPage({ offset: 0, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode }, guard.options())
         .then(async (taskPage) => {
-          if (!active) return;
+          if (!active || !guard.current()) return;
           let items = taskPage.items;
           const directTaskId = Number(new URLSearchParams(window.location.search).get("task")) || null;
           if (directTaskId && !items.some((task) => task.id === directTaskId)) {
             try {
-              const directTask = await apiTaskById(directTaskId);
-              if (!active || generation !== taskQueryGenerationRef.current
+              const directTask = await guard.request(`/api/tareas/${directTaskId}?workspace=render_os`);
+              if (!active || !guard.current() || generation !== taskQueryGenerationRef.current
                 || Number(new URLSearchParams(window.location.search).get('task')) !== directTaskId) return;
               items = mergeRelatedTasks(items, [{ ...directTask, __renderOsDirectOnly: true }]);
             } catch (reason) {
-              if (!active || generation !== taskQueryGenerationRef.current
+              if (!active || !guard.current() || isSessionFailure(reason) || generation !== taskQueryGenerationRef.current
                 || Number(new URLSearchParams(window.location.search).get('task')) !== directTaskId) return;
               notify(reason.message || "La tarea enlazada no está disponible.", "error");
               const url = new URL(window.location.href);
@@ -1127,33 +1207,38 @@ export function WorkspaceReadOnlyPage({ sesion }) {
               window.dispatchEvent(new PopStateEvent("popstate"));
             }
           }
-          if (!active) return;
+          if (!active || !guard.current()) return;
           setTasks(items);
           setTotalTasks(taskPage.total);
           setError("");
         })
-        .catch((reason) => { if (active) setError(reason.message || "No se pudieron cargar las tareas."); })
-        .finally(() => { if (active) setLoading(false); });
+        .catch((reason) => { if (active && guard.current() && !isSessionFailure(reason)) setError(reason.message || "No se pudieron cargar las tareas."); })
+        .finally(() => { if (active && guard.current()) setLoading(false); });
     }, query ? 250 : 0);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [query, area, responsibleSelection.ready, responsibleSelection.status, responsibleSelection.value, client, sector, priority, archiveMode, reloadKey]);
+  }, [query, area, responsibleSelection.ready, responsibleSelection.status, responsibleSelection.value, client, sector, priority, archiveMode, reloadKey, captureRequest]);
 
   useEffect(() => {
+    const guard = captureRequest();
     const incorporate = (event) => {
+      if (!guard.current()) return;
       const items = Array.isArray(event.detail) ? event.detail : [];
       setTasks((current) => mergeRelatedTasks(current, items));
     };
     window.addEventListener("render-os:related-tasks", incorporate);
     return () => window.removeEventListener("render-os:related-tasks", incorporate);
-  }, []);
+  }, [captureRequest]);
 
   const loadMoreTasks = async () => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
     const generation = taskQueryGenerationRef.current;
     const paginatedTaskCount = tasks.filter((task) => !task.__renderOsDirectOnly).length;
     if (!responsibleSelection.ready || loadingMore || paginatedTaskCount >= totalTasks) return;
     setLoadingMore(true);
     try {
-      const page = await apiTaskPage({ offset: paginatedTaskCount, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode });
+      const page = await apiTaskPage({ offset: paginatedTaskCount, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode }, guard.options());
+      guard.assertCurrent();
       if (generation !== taskQueryGenerationRef.current) return;
       setTasks((current) => {
         const pageIds = new Set(page.items.map((item) => item.id));
@@ -1162,62 +1247,70 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       });
       setTotalTasks(page.total);
     } catch (reason) {
-      if (generation === taskQueryGenerationRef.current) notify(reason.message || "No se pudieron cargar más tareas.", "error");
+      if (guard.current() && !isSessionFailure(reason) && generation === taskQueryGenerationRef.current) notify(reason.message || "No se pudieron cargar más tareas.", "error");
     } finally {
-      if (generation === taskQueryGenerationRef.current) setLoadingMore(false);
+      if (guard.current() && generation === taskQueryGenerationRef.current) setLoadingMore(false);
     }
   };
 
-  const notify = (message, type = "success") => { setToast({ message, type }); window.clearTimeout(window.__rosToastTimer); window.__rosToastTimer = window.setTimeout(() => setToast(null), 3500); };
-  const logActivity = (taskId, message) => apiRequest(`/api/tareas/${taskId}/comentarios?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER", contenido: `[Actividad] ${message}` }) });
+  const notify = (message, type = "success") => {
+    const guard = captureRequest();
+    if (!guard.current()) return;
+    setToast({ message, type }); window.clearTimeout(window.__rosToastTimer);
+    window.__rosToastTimer = window.setTimeout(() => { if (guard.current()) setToast(null); }, 3500);
+  };
+  const logActivity = (taskId, message, guard) => guard.request(`/api/tareas/${taskId}/comentarios?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER", contenido: `[Actividad] ${message}` }) });
   const updateTask = (id, changes, activity, observedRevision = null) => {
-    const observedToken = sesion?.token;
+    const guard = captureRequest();
+    changes = JSON.parse(JSON.stringify(changes));
     const run = async () => {
-      if (observedRevision !== null && (!observedToken || getSesion()?.token !== observedToken)) throw new Error('La sesión cambió. Volvé a abrir la tarea antes de aprobar.');
+      guard.assertCurrent();
       const previous = tasksRef.current.find((task) => task.id === id);
       if (!previous) throw new Error("La tarea ya no está disponible.");
       if (observedRevision !== null && previous.revision !== observedRevision) throw Object.assign(new Error("La tarea cambió desde la revisión. Actualizá y revisá la entrega antes de aprobar."), { status: 409 });
       setTasks((current) => current.map((task) => task.id === id ? { ...task, ...changes } : task));
       try {
-        const updated = await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: previous.revision, expected_updated_at: previous.updated_at || undefined }) });
-        if (observedRevision !== null && getSesion()?.token !== observedToken) return updated;
+        const updated = await guard.request(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: previous.revision, expected_updated_at: previous.updated_at || undefined }) });
+        guard.assertCurrent();
         const selectedClient = clients.find((item) => String(item.id) === String(updated.cliente_id));
         const complete = { ...previous, ...updated, cliente_nombre: selectedClient?.nombre || null };
         tasksRef.current = tasksRef.current.map((task) => task.id === id ? complete : task);
         setTasks((current) => current.map((task) => task.id === id ? complete : task));
         let historyFailed = false;
         if (activity) {
-          try { await logActivity(id, activity); }
-          catch { historyFailed = true; }
+          try { await logActivity(id, activity, guard); }
+          catch (historyError) { if (isSessionFailure(historyError)) throw historyError; historyFailed = true; }
         }
-        if (observedRevision !== null && getSesion()?.token !== observedToken) return complete;
+        guard.assertCurrent();
         notify(historyFailed ? "Cambio guardado, pero no se pudo registrar la actividad." : "Cambio guardado en la tarea real.", historyFailed ? "error" : "success");
         return complete;
       } catch (reason) {
-        if (observedRevision !== null && getSesion()?.token !== observedToken) throw reason;
+        if (!guard.current() || isSessionFailure(reason)) throw reason;
         if (reason.status === 409) {
           let currentTask = null;
           try {
-            currentTask = await apiTaskById(id);
-            if (observedRevision !== null && getSesion()?.token !== observedToken) throw reason;
+            currentTask = await guard.request(`/api/tareas/${id}?workspace=render_os`);
+            guard.assertCurrent();
             if (observedRevision === null && canRetryTaskUpdate(previous, currentTask, changes)) {
-              const retried = await apiRequest(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: currentTask.revision, expected_updated_at: currentTask.updated_at || undefined }) });
+              const retried = await guard.request(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: currentTask.revision, expected_updated_at: currentTask.updated_at || undefined }) });
+              guard.assertCurrent();
               const selectedClient = clients.find((item) => String(item.id) === String(retried.cliente_id));
               const complete = { ...currentTask, ...retried, cliente_nombre: selectedClient?.nombre || currentTask.cliente_nombre || null };
               tasksRef.current = tasksRef.current.map((task) => task.id === id ? complete : task);
               setTasks((current) => current.map((task) => task.id === id ? complete : task));
               let historyFailed = false;
               if (activity) {
-                try { await logActivity(id, activity); }
-                catch { historyFailed = true; }
+                try { await logActivity(id, activity, guard); }
+                catch (historyError) { if (isSessionFailure(historyError)) throw historyError; historyFailed = true; }
               }
+              guard.assertCurrent();
               notify(historyFailed ? "Cambio guardado, pero no se pudo registrar la actividad." : "Cambio guardado en la tarea real.", historyFailed ? "error" : "success");
               return complete;
             }
             tasksRef.current = tasksRef.current.map((task) => task.id === id ? currentTask : task);
             setTasks((current) => current.map((task) => task.id === id ? currentTask : task));
-          } catch {
-            if (observedRevision !== null && getSesion()?.token !== observedToken) throw reason;
+          } catch (refreshError) {
+            if (!guard.current() || isSessionFailure(refreshError)) throw refreshError;
             if (currentTask) {
               tasksRef.current = tasksRef.current.map((task) => task.id === id ? currentTask : task);
               setTasks((current) => current.map((task) => task.id === id ? currentTask : task));
@@ -1240,20 +1333,25 @@ export function WorkspaceReadOnlyPage({ sesion }) {
     return queued;
   };
   const createTask = async (draft) => {
+    const guard = captureRequest();
     try {
-      const created = await apiRequest("/api/tareas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...draft, workspace: "render_os" }) });
+      const created = await guard.request("/api/tareas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...draft, workspace: "render_os" }) });
+      guard.assertCurrent();
       const client = clients.find((item) => String(item.id) === String(created.cliente_id));
       const complete = { ...created, cliente_nombre: client?.nombre || null };
       setTasks((current) => [complete, ...current]);
       setTotalTasks((current) => current + 1);
       try {
-        await logActivity(created.id, draft.tarea_padre_id ? `creó esta subtarea dentro de la tarea #${draft.tarea_padre_id}` : "creó y asignó la tarea desde RENDER OS");
+        await logActivity(created.id, draft.tarea_padre_id ? `creó esta subtarea dentro de la tarea #${draft.tarea_padre_id}` : "creó y asignó la tarea desde RENDER OS", guard);
+        guard.assertCurrent();
         notify(draft.tarea_padre_id ? "Subtarea creada." : "Tarea creada y asignada.");
-      } catch {
+      } catch (historyError) {
+        if (!guard.current() || isSessionFailure(historyError)) throw historyError;
         notify("Tarea creada, pero no se pudo registrar la actividad.", "error");
       }
       return complete;
     } catch (reason) {
+      if (!guard.current() || isSessionFailure(reason)) throw reason;
       notify(reason.message || "No se pudo crear la tarea.", "error");
       throw reason;
     }
@@ -1264,40 +1362,49 @@ export function WorkspaceReadOnlyPage({ sesion }) {
     if (!Number.isSafeInteger(snapshot.revision) || snapshot.revision < 1) throw new Error("Recargá la tarea antes de modificar la producción: falta su revisión actual.");
     return snapshot;
   };
-  const refreshProductionConflict = async (task) => {
+  const refreshProductionConflict = async (task, guard) => {
     try {
-      const currentTask = await apiTaskById(task.id);
+      const currentTask = await guard.request(`/api/tareas/${task.id}?workspace=render_os`);
+      guard.assertCurrent();
       const refreshed = { ...task, ...currentTask };
       tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? refreshed : item);
       setTasks((current) => current.map((item) => item.id === task.id ? refreshed : item));
       notify("La producción cambió. Recargamos la tarea; conservamos tus datos ingresados. Revisá el avance antes de volver a enviar.", "error");
-    } catch {
+    } catch (reason) {
+      if (!guard.current() || isSessionFailure(reason)) throw reason;
       notify("La producción cambió y no se pudo recargar. Conservamos tus datos ingresados; recargá la tarea antes de volver a enviar.", "error");
     }
   };
   const registerProduction = async (task, cantidad, fecha, finalizar = false) => {
+    const guard = captureRequest();
     try {
+      guard.assertCurrent();
       const snapshot = productionTaskSnapshot(task);
-      const updated = await apiRequest(`/api/tareas/${task.id}/produccion/registros?workspace=render_os`, {
+      const updated = await guard.request(`/api/tareas/${task.id}/produccion/registros?workspace=render_os`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cantidad, fecha, finalizar, expected_revision: snapshot.revision, expected_updated_at: snapshot.updated_at || undefined }),
       });
+      guard.assertCurrent();
       const complete = { ...snapshot, ...updated, cliente_nombre: snapshot.cliente_nombre || null };
       tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? complete : item);
       setTasks((current) => current.map((item) => item.id === task.id ? complete : item));
       notify(`${cantidad} video${cantidad === 1 ? "" : "s"} registrado${cantidad === 1 ? "" : "s"} en la visita.`);
       return complete;
     } catch (reason) {
-      if (reason.status === 409) await refreshProductionConflict(task);
+      if (!guard.current() || isSessionFailure(reason)) throw reason;
+      if (reason.status === 409) await refreshProductionConflict(task, guard);
       else notify(reason.message || "No se pudo registrar la grabación.", "error");
       throw reason;
     }
   };
   const confirmProduction = async (task) => {
+    const guard = captureRequest();
     try {
+      guard.assertCurrent();
       const snapshot = productionTaskSnapshot(task);
-      const result = await apiRequest(`/api/tareas/${task.id}/produccion/confirmar?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected_revision: snapshot.revision }) });
+      const result = await guard.request(`/api/tareas/${task.id}/produccion/confirmar?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected_revision: snapshot.revision }) });
+      guard.assertCurrent();
       const updated = { ...snapshot, ...result.task, cliente_nombre: snapshot.cliente_nombre || null };
       const additions = result.editing_task ? [{ ...result.editing_task, cliente_nombre: task.cliente_nombre || null }] : [];
       tasksRef.current = mergeRelatedTasks(tasksRef.current.map((item) => item.id === task.id ? updated : item), additions);
@@ -1305,36 +1412,41 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       notify("Grabación confirmada. La edición se asigna por video desde Producciones.");
       return updated;
     } catch (reason) {
-      if (reason.status === 409) await refreshProductionConflict(task);
+      if (!guard.current() || isSessionFailure(reason)) throw reason;
+      if (reason.status === 409) await refreshProductionConflict(task, guard);
       else notify(reason.message || "No se pudo confirmar la grabación.", "error");
       throw reason;
     }
   };
   const correctProduction = async (task, record, cantidad) => {
+    const guard = captureRequest();
+    guard.assertCurrent();
     if (!Number.isInteger(cantidad) || cantidad <= 0) {
       notify("Ingresá una cantidad válida mayor que cero.", "error");
       return null;
     }
     try {
       const snapshot = productionTaskSnapshot(task);
-      const updated = await apiRequest(`/api/tareas/${task.id}/produccion/registros/${record.id}?workspace=render_os`, {
+      const updated = await guard.request(`/api/tareas/${task.id}/produccion/registros/${record.id}?workspace=render_os`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cantidad, expected_revision: snapshot.revision }),
       });
+      guard.assertCurrent();
       const complete = { ...snapshot, ...updated, cliente_nombre: snapshot.cliente_nombre || null };
       tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? complete : item);
       setTasks((current) => current.map((item) => item.id === task.id ? complete : item));
       notify(`Registro corregido de ${record.cantidad} a ${cantidad} videos.`);
       return complete;
     } catch (reason) {
-      if (reason.status === 409) await refreshProductionConflict(task);
+      if (!guard.current() || isSessionFailure(reason)) throw reason;
+      if (reason.status === 409) await refreshProductionConflict(task, guard);
       else notify(reason.message || "No se pudo corregir el registro.", "error");
       throw reason;
     }
   };
   const approveTask = async (task, responsable_publicacion_id, review = null) => {
-    const observedToken = sesion?.token;
+    const guard = captureRequest();
     try {
-      if (!observedToken || getSesion()?.token !== observedToken) throw new Error('La sesión cambió. Volvé a abrir la tarea antes de aprobar.');
+      guard.assertCurrent();
       const usesDelivery = task.tipo_tarea === 'edicion' && task.propiedades_extra?.workspace === 'render_os';
       if (usesDelivery && (!review || review.revision !== task.revision)) throw new Error("Actualizá el historial y revisá la versión antes de aprobar.");
       const deliveryPrecondition = review?.deliveryId ? { expected_entrega_id: review.deliveryId } : {};
@@ -1342,29 +1454,31 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       const publisher = users.find((user) => user.id === responsable_publicacion_id && ["admin", "community"].includes(user.rol));
       if (responsable_publicacion_id !== undefined && (!Number.isSafeInteger(responsable_publicacion_id) || responsable_publicacion_id <= 0 || !publisher)) throw new Error("Elegí un responsable de publicación válido.");
       const responsable_publicacion = publisher?.nombre;
-      const updated = await apiRequest(`/api/tareas/${task.id}/aprobar-publicacion?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responsable_publicacion_id, expected_revision: review?.revision ?? task.revision, ...deliveryPrecondition }) });
-      if (getSesion()?.token !== observedToken) return updated;
+      const updated = await guard.request(`/api/tareas/${task.id}/aprobar-publicacion?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responsable_publicacion_id, expected_revision: review?.revision ?? task.revision, ...deliveryPrecondition }) });
+      guard.assertCurrent();
       const complete = { ...task, ...updated, cliente_nombre: task.cliente_nombre || null };
       tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? complete : item);
       setTasks((current) => current.map((item) => item.id === task.id ? complete : item));
-      try { await logActivity(task.id, publisher ? `aprobó el material y lo envió a ${responsable_publicacion}` : "aprobó la revisión de la tarea"); }
-      catch { /* La aprobación ya quedó guardada. */ }
-      if (getSesion()?.token !== observedToken) return complete;
+      try { await logActivity(task.id, publisher ? `aprobó el material y lo envió a ${responsable_publicacion}` : "aprobó la revisión de la tarea", guard); }
+      catch (historyError) { if (isSessionFailure(historyError)) throw historyError; /* La aprobación ya quedó guardada. */ }
+      guard.assertCurrent();
       notify(publisher ? `Tarea aprobada y enviada a ${responsable_publicacion}.` : "Revisión aprobada.");
       return complete;
     } catch (reason) {
-      if (getSesion()?.token !== observedToken) throw reason;
+      if (!guard.current() || isSessionFailure(reason)) throw reason;
       notify(reason.message || "No se pudo aprobar la tarea.", "error");
       throw reason;
     }
   };
   const bulkTaskAction = async (ids, action) => {
+    const guard = captureRequest();
     try {
-      const result = await apiRequest("/api/tareas/acciones-masivas?workspace=render_os", {
+      const result = await guard.request("/api/tareas/acciones-masivas?workspace=render_os", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids, accion: action }),
       });
+      guard.assertCurrent();
       const affected = new Set(result.ids || []);
       setTasks((current) => current.filter((task) => !affected.has(task.id)));
       setTotalTasks((current) => Math.max(0, current - affected.size));
@@ -1374,6 +1488,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       notify(message);
       return result;
     } catch (reason) {
+      if (!guard.current() || isSessionFailure(reason)) throw reason;
       notify(reason.message || "No se pudo completar la acción masiva.", "error");
       throw reason;
     }

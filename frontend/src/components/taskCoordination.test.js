@@ -2,10 +2,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildCoordinationPatch, canEditTaskCoordination, coordinateSnapshot } from './taskCoordination.js';
+import { captureSessionBinding, sessionBindingMatches } from '../shared/session/session-binding.js';
+import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 
 const task = (metadata = {}) => ({ id: 7, revision: 4, updated_at: 'legacy timestamp',
   asignado_a_id: 8, colaborador_ids: [9], propiedades_extra: metadata });
 const session = (id, rol) => ({ token: 'test-token', usuario: { id, rol } });
+
+test('actual coordination callback accepts genuine cookie observation and rejects a new same-ID observation', () => {
+  const store = createBrowserSessionState();
+  const accept = () => { const ticket = store.beginBootstrap(); store.acceptBootstrap(ticket, {
+    usuario: { id: 7, usuario: 'synthetic', nombre: 'Synthetic', rol: 'produccion' },
+    session_context: 'a'.repeat(43), csrf_token: 'b'.repeat(43) }); return store.getSession(); };
+  const original = accept(), editor = { binding: captureSessionBinding(original) };
+  const source = readFileSync(new URL('./TaskCoordination.jsx', import.meta.url), 'utf8');
+  const start = source.indexOf('  function sessionMatches()'), end = source.indexOf('  async function save', start);
+  assert.ok(start >= 0 && end > start);
+  const matches = new Function('editor', 'getSesion', 'sesion', 'sessionBindingMatches', `${source.slice(start, end)}\nreturn sessionMatches;`)(
+    editor, store.getSession, original, sessionBindingMatches);
+  assert.equal(matches(), true); accept(); assert.equal(matches(), false);
+});
 
 test('ACL allows positive-ID admin or assigned production owner/collaborator only', () => {
   assert.equal(canEditTaskCoordination(task(), session(1, 'admin')), true);
@@ -94,9 +110,11 @@ test('component source pins captured revision/session, explicit reset and parent
   assert.match(source, /onUpdate\(editor.snapshot.id, \{ propiedades_extra: changes \}, 'actualizó la coordinación', editor.snapshot.revision\)/);
   assert.equal((source.match(/await onUpdate\(/g) || []).length, 1);
   assert.match(source, /const actual = getSesion\(\)/);
-  assert.match(source, /actual\?\.token === editor.token/);
-  assert.match(source, /actual\?\.usuario\?\.id === editor.userId/);
-  assert.match(source, /actual\?\.usuario\?\.rol === editor.role/);
+  assert.match(source, /const binding = captureSessionBinding\(sesion\)/);
+  assert.match(source, /sessionBindingMatches\(binding, getSesion\(\)\)/);
+  assert.match(source, /sessionBindingMatches\(editor\?\.binding, actual\)/);
+  assert.match(source, /sessionBindingMatches\(editor\?\.binding, sesion\)/);
+  assert.doesNotMatch(source, /editor\.token|editor\.userId|editor\.role/);
   assert.match(source, /pending.current\) return/);
   assert.match(source, /if \(!mounted.current\) return/);
   assert.match(source, /setConflict\(true\)/);

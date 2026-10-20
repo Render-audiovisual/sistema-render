@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { access } from 'node:fs/promises';
 import { startLocalHarness, fixturePassword, assertFixtureIdentity } from '../scripts/render2-local-test.js';
-import { createBrowserSessionState, bootstrapBrowserSession } from '../../frontend/src/shared/session/browser-session-state.js';
+import { createBrowserSessionState, bootstrapBrowserSession, captureBrowserSessionIntent } from '../../frontend/src/shared/session/browser-session-state.js';
 import { createBrowserApiFetch } from '../../frontend/src/shared/session/browser-api-fetch.js';
 import { createEditorialSessionGuard } from '../../frontend/src/components/EditorialPublicationControl.model.js';
 import { createPersonalListSaveQueue } from '../../frontend/src/pages/personalListSaveQueue.js';
@@ -16,6 +17,8 @@ import { createPersonalHomeLoader } from '../../frontend/src/pages/personalHome.
 import { createApplicationSession } from '../../frontend/src/shared/session/application-session.js';
 import { createLoginAttempts } from '../../frontend/src/shared/session/login-attempt.js';
 import { createProfileSessionGuard } from '../../frontend/src/shared/session/profile-session.js';
+import { createCapturedRequest, isSessionFailure } from '../../frontend/src/shared/session/captured-request.js';
+import { canRetryTaskUpdate } from '../../frontend/src/workspace-task-state.js';
 
 const origin = 'http://127.0.0.1:5195';
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -383,6 +386,65 @@ test('browser client against principal HTTP: memory observations, exact mutation
       assert.equal(runtime.getSession().usuario.id, 91001);
       assert.deepEqual(navigations, ['/login', '/login']);
       assert.deepEqual(await runtime.logout(), { revoked: true });
+    } finally { runtime.dispose(); }
+  });
+
+  await t.test('actual Workspace update callback preserves cookie actor through CAS retry and blocks late or queued A work under B', async () => {
+    const runtime = createApplicationSession({ mode: 'browser', location: { origin }, fetchImpl: rawFetch,
+      locks: { request: (_name, _options, work) => Promise.resolve().then(work) } });
+    const source = readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx', import.meta.url), 'utf8');
+    const begin = source.indexOf('  const logActivity ='), end = source.indexOf('  const createTask =', begin);
+    assert.ok(begin >= 0 && end > begin);
+    const actualCallbacks = source.slice(begin, end);
+    const dto = async (url, options) => {
+      const response = await runtime.fetch(url, options), value = await response.json();
+      if (!response.ok) throw Object.assign(new Error('Synthetic principal request failed'), { status: response.status });
+      return value;
+    };
+    const create = (task, requestDto = dto, queue = Promise.resolve()) => {
+      let rendered = [task]; const effects = [];
+      const tasksRef = { current: [task] }, sesion = runtime.getSession();
+      const deps = { sesion, tasksRef, updateQueuesRef: { current: new Map([[task.id, queue]]) }, clients: [],
+        setTasks: update => { effects.push('render'); rendered = update(rendered); },
+        notify: () => effects.push('notify'), canRetryTaskUpdate, isSessionFailure,
+        captureRequest: () => createCapturedRequest({ session: sesion, readSession: runtime.getSession, request: requestDto }) };
+      const update = new Function('deps', `const {sesion,tasksRef,updateQueuesRef,clients,setTasks,notify,canRetryTaskUpdate,isSessionFailure,captureRequest}=deps;\n${actualCallbacks}\nreturn updateTask;`)(deps);
+      return { update, tasksRef, effects, get rendered() { return rendered; },
+        replaceView: () => { rendered = [{ id: task.id, revision: 999, titulo: 'B view' }]; tasksRef.current = rendered; } };
+    };
+    const login = usuario => runtime.login({ kind: 'password', body: { usuario, password: fixturePassword } });
+    try {
+      await login('qa_agustin');
+      const task = await dto('/api/tareas', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        sessionIntent: captureBrowserSessionIntent(runtime.getSession()),
+        body: JSON.stringify({ titulo: 'QA74 captured task', asignado_a_id: 91002, tipo_tarea: 'diseno', workspace: 'render_os' }) });
+      const f = create(task);
+      await dto(`/api/tareas/${task.id}?workspace=render_os`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        sessionIntent: captureBrowserSessionIntent(runtime.getSession()), body: JSON.stringify({ prioridad: 'alta', expected_revision: task.revision }) });
+      const before = requests.length;
+      const updated = await f.update(task.id, { titulo: 'QA74 CAS kept actor' }, 'QA74 recorded activity');
+      assert.equal(updated.titulo, 'QA74 CAS kept actor'); assert.equal(updated.prioridad, 'alta');
+      const taskCalls = requests.slice(before).filter(entry => entry.path === `/api/tareas/${task.id}`);
+      assert.deepEqual(taskCalls.map(entry => [entry.method, entry.status]), [['PATCH', 409], ['GET', 200], ['PATCH', 200]]);
+      assert.equal(f.effects.filter(value => value === 'notify').length, 1);
+      const held = gate(), late = create(updated, async (url, options) => {
+        const value = await dto(url, options);
+        if (options?.method === 'PATCH') { held.entered.resolve(); await held.release.promise; }
+        return value;
+      });
+      const commentCount = (await fixture.query('SELECT count(*)::int AS n FROM tarea_comentarios WHERE tarea_id=$1', [task.id]))[0].n;
+      const pending = observed(late.update(task.id, { titulo: 'QA74 A persisted before B' }, 'Must not record under B'));
+      await waitEntered(held); await login('qa_luciano'); late.replaceView(); const effectCount = late.effects.length;
+      held.release.resolve(); assert.ok(isSessionFailure((await pending).error));
+      assert.equal(late.effects.length, effectCount); assert.equal(late.rendered[0].titulo, 'B view');
+      assert.equal((await fixture.query('SELECT count(*)::int AS n FROM tarea_comentarios WHERE tarea_id=$1', [task.id]))[0].n, commentCount);
+      await login('qa_agustin');
+      const current = await dto(`/api/tareas/${task.id}?workspace=render_os`), waiting = gate();
+      const queued = create(current, dto, waiting.release.promise);
+      const result = observed(queued.update(task.id, { titulo: 'Must never dispatch under B' }, null));
+      await login('qa_luciano'); const count = requests.length; waiting.release.resolve();
+      assert.ok(isSessionFailure((await result).error)); assert.equal(requests.length, count);
+      assert.equal((await fixture.query('SELECT titulo FROM tareas WHERE id=$1', [task.id]))[0].titulo, 'QA74 A persisted before B');
     } finally { runtime.dispose(); }
   });
 });

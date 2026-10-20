@@ -5,6 +5,7 @@ import { STATUSES, BOARD_COLUMNS, canonicalTaskState, isTaskCompleted } from "..
 import { canUserMoveTaskToState, canRetryTaskUpdate } from "../../frontend/src/features/render-os/utils/task-state.js";
 import { getProductionPhase } from "../../frontend/src/features/render-os/utils/production-visits.js";
 import { getCanonicalTaskContentMetadata, isLinkedProductionEditorialTask } from "../../frontend/src/features/render-os/utils/task-content.js";
+import { createCapturedRequest, isSessionFailure } from '../../frontend/src/shared/session/captured-request.js';
 
 const source = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
 const admin = {id:1,rol:"admin"};
@@ -82,7 +83,9 @@ test("saving content on historical task does not emit a state change or mutate a
   for (const draftState of ["publicada","finalizada"]) {
     const original = {...task,titulo:"Historical",estado:"publicada",propiedades_extra:{}};
     let changes;
+    const session={token:'synthetic-canonical',usuario:admin};
     const context = {task:original,draft:{...original,estado:draftState,aclaraciones:"Updated text"},
+      captureRequest:request=>createCapturedRequest({session,readSession:()=>session,request}),isSessionFailure,
       metadata:{},tags:[],collaborators:[],canEditTask:true,canEditVisitClient:true,canEditVisitDate:true,isProductionVisit:false,productionProgress:{},
       getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask,canonicalTaskState,canUserMoveTaskToState,sesion:{usuario:admin},
       setSaving:()=>{},setEditing:()=>{},onUpdate:async(id,value)=>{changes=value;},onApprove:()=>assert.fail("no approval during content edit")};

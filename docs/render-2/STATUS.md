@@ -889,6 +889,14 @@ Implemented and bounded-verified locally, not deployed or globally ready. All-mo
 - Browser: Designer login/Perfil ready; file chooser took~1674s and temporary backend expired before uploadconfirmation, so **browser upload/persistence unverified**, not a pass. Exit/root cleanup checked. Separate final build ready desktop+expanded-form/mobile390 Perfil, no horizontaloverflow, no credentials changed in UI. Evidence `/private/tmp/render2-profile73-final-mobile.jpg`. Owned tabs closed/viewport reset/final fixture root absent; physical roots cleanup asserted.
 - No configured DB/provider/real accounts/commercial writes, migration/dependency/environment, push/deploy; user App20+/1-, Vite5+ and untracked work intact/excluded. Native cookie Profile/remount/upload happy path, other writers/drafts/navigation/refresh and locks/hints/HTTPS/proxy plus remaining master phases stay open. Main cookie mode still off; implemented/verified local batch, not deployment-ready/deployed or goal complete.
 
+## Seventy-fourth integration — captured task writers and Drive lifetimes (2026-10-20)
+
+- Coordinator shared capture/coordination/reconciliation/Drive browser/integration; Carson Workspace; Hypatia Drive transport/uploader/test harnesses; Beauvoir independent review. See `CAPTURED_TASK_WRITERS_QA.md` for exact evidence and boundaries.
+- Original session pinned before queue/write/retry/effects; comments, activity, production, coordination and upload/task refresh cannot silently adopt another account. Existing CAS, retries, manual approval and publication distinction preserved. Two reviewed Drive loading races fixed. Browser exposed parent passive mount vs child subtask load race; layout lifecycle fixes false obsolete-session warning on direct reload.
+- Frontend690 pass, backend1336 pass/56 opt-in skips, actual HTTP/PostgreSQL35 pass, build/diff clean. Final browser: synthetic task/comment/coordination persisted after reload without false warning. Screenshots `/private/tmp/render2-writers74-final-{desktop,mobile}.jpg`; mobile390 has no horizontal overflow but pane still too narrow/dense, not visual acceptance.
+- Fixtures cleaned/asserted, owned tab closed/viewport reset. No configured DB/provider/real accounts/commercial data/schema/dependency/environment/push/deploy. App20+/1-, Vite5+ and untracked reference work excluded.
+- Global cookie activation remains off. Auxiliary writers, native cookie/cross-tab/crash/HTTPS/proxy, draft/navigation and remaining master phases stay open. Provider upload not exercised. Implemented/verified local slice, not prepared or deployed to production; full goal active.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

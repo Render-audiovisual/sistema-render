@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
 
 const source = readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
 function harness(tasks, allowNavigation = true) {
@@ -10,12 +11,14 @@ function harness(tasks, allowNavigation = true) {
     state:null, pushState(state,_title,url) {this.state=state;window.location.href=String(url);},
     replaceState(state,_title,url) {this.state=state;window.location.href=String(url);},back() {},
   }};
-  const apiTaskById = (id,options) => new Promise((resolve,reject) => requests.push({id,options,resolve,reject}));
+  let session={token:'synthetic-opening',usuario:{id:1,rol:'admin',activo:true}};
+  const request = (url,options) => new Promise((resolve,reject) => requests.push({id:Number(url.match(/\/tareas\/(\d+)/)[1]),url,options,resolve,reject}));
+  const captureRequest=()=>createCapturedRequest({session,readSession:()=>session,request});
   const callbacks = source.slice(source.indexOf('  const openTask = useCallback'),source.indexOf('  useEffect(() => {\n    const onPop'));
   const {openTask,closeTask} = new Function('useCallback','tasksLatestRef','openRequestRef','setSelectedId',
-    'apiTaskById','incorporateRelatedTasks','onError','window','requestAppNavigation',`${callbacks};return {openTask,closeTask};`)
-  (fn=>fn,tasksLatestRef,openRequestRef,id=>selected.push(id),apiTaskById,items=>incorporated.push(items),message=>errors.push(message),window,()=>allowNavigation);
-  return {openTask,closeTask,tasksLatestRef,requests,selected,incorporated,errors,window};
+    'captureRequest','isSessionFailure','incorporateRelatedTasks','onError','window','requestAppNavigation',`${callbacks};return {openTask,closeTask};`)
+  (fn=>fn,tasksLatestRef,openRequestRef,id=>selected.push(id),captureRequest,isSessionFailure,items=>incorporated.push(items),message=>errors.push(message),window,()=>allowNavigation);
+  return {openTask,closeTask,tasksLatestRef,requests,selected,incorporated,errors,window,changeSession:()=>{session={...session,token:'synthetic-B',usuario:{...session.usuario,id:2}};}};
 }
 
 test('una tarea cargada abre antes de la red y conserva filtros en el enlace', async () => {
@@ -79,4 +82,16 @@ test('el detalle conserva borradores, cancela consultas y no reenfoca con cada a
   assert.match(source,/setDraft\(current => editing \|\|/);
   assert.match(source,/if \(previousFocus\?\.isConnected\) previousFocus.focus\(\{ preventScroll: true \}\)/);
   assert.match(source,/TaskDetail key=\{selected.id\}/);
+});
+
+for(const outcome of ['success','failure']) test(`cambio A→B ignora ${outcome} tardío sin incorporar datos ni mostrar error de A`,async()=>{
+  const h=harness([{id:1,titulo:'Original'}]);
+  const pending=h.openTask(1), href=h.window.location.href;
+  assert.equal(h.requests[0].url,'/api/tareas/1?workspace=render_os');
+  assert.equal(new Headers(h.requests[0].options.headers).get('Authorization'),'Bearer synthetic-opening');
+  h.changeSession();
+  if(outcome==='success') h.requests[0].resolve({id:1,titulo:'Late A'});
+  else h.requests[0].reject(Object.assign(new Error('Late A error'),{status:401}));
+  await pending; assert.deepEqual(h.incorporated,[]); assert.deepEqual(h.errors,[]);
+  assert.equal(h.window.location.href,href); assert.deepEqual(h.selected,[1]);
 });

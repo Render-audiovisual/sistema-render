@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {getUnifiedTaskContent,getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask} from '../../frontend/src/features/render-os/utils/task-content.js';
 import {canonicalTaskState} from '../../frontend/src/features/render-os/constants.js';
+import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
+const session={token:'synthetic-editorial',usuario:{id:1,rol:'admin',activo:true}};
 
 const source=readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
 const task={id:10,publicacion_id:101,titulo:'Linked editing',estado:'pendiente',aclaraciones:'Brief',
@@ -33,6 +35,7 @@ const saveBody=source.slice(source.indexOf('  const save = async'),source.indexO
 async function save(original,changes) {
   const writes=[];const draft={...original,aclaraciones:getUnifiedTaskContent(original),...changes};
   const context={task:original,draft,metadata:original.propiedades_extra || {},tags:[],collaborators:[],
+    captureRequest:request=>createCapturedRequest({session,readSession:()=>session,request}),isSessionFailure,
     canEditTask:true,canEditVisitClient:false,canEditVisitDate:true,isProductionVisit:false,productionProgress:{},
     isLinkedProductionEditorialTask,getCanonicalTaskContentMetadata,canonicalTaskState,
     setSaving:()=>{},setEditing:()=>{},onUpdate:async(id,payload)=>writes.push(payload)};

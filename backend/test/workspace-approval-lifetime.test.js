@@ -1,16 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import { createCapturedRequest, isSessionFailure } from '../../frontend/src/shared/session/captured-request.js';
 const source=readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
 const body=source.slice(source.indexOf('  const updateTask ='),source.indexOf('  const createTask ='));
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};};
 function fixture({request,read,queue}={}) {
-  const session={token:'qa-session-a'};let current=session;
+  const session={token:'qa-session-a',usuario:{id:7,rol:'admin',activo:true}};let current=session;
   const effects=[];const tasksRef={current:[{id:1,revision:2,estado:'en_revision'}]};
   const deps={sesion:session,getSesion:()=>current,tasksRef,updateQueuesRef:{current:new Map(queue?[[1,queue]]:[])},
     setTasks:()=>effects.push('set'),apiRequest:request,apiTaskById:read,clients:[],canRetryTaskUpdate:()=>{throw new Error('Approval must not rebase');},
-    logActivity:async()=>effects.push('log'),notify:()=>effects.push('notify')};
-  const update=new Function('deps',`const {sesion,getSesion,tasksRef,updateQueuesRef,setTasks,apiRequest,apiTaskById,clients,canRetryTaskUpdate,logActivity,notify}=deps;${body};return updateTask;`)(deps);
+    logActivity:async()=>effects.push('log'),notify:()=>effects.push('notify'),isSessionFailure,
+    captureRequest:()=>createCapturedRequest({session,readSession:()=>current,
+      request:(url,options)=>options?.method?request(url,options):read(url,options)})};
+  const update=new Function('deps',`const {sesion,getSesion,tasksRef,updateQueuesRef,setTasks,apiRequest,apiTaskById,clients,canRetryTaskUpdate,logActivity,notify,captureRequest,isSessionFailure}=deps;${body};return updateTask;`)(deps);
   return{update,effects,tasksRef,switchSession(){current={token:'qa-session-b'};tasksRef.current=[{id:1,revision:99,owner:'new session'}];}};
 }
 test('late409/500 after identity switch performs no conflict GET, rollback UI or notice',async()=>{

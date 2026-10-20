@@ -133,7 +133,8 @@ test("todo el equipo puede abrir el formulario y crear únicamente tareas RENDER
 
   assert.doesNotMatch(serverSource, /router\.post\("\/tareas", requireRole\("admin"\)/);
   assert.match(serverSource, /req\.auth\?\.rol !== "admin" && workspace !== "render_os"/);
-  assert.match(workspaceSource, /Promise\.all\(\[apiJson\("\/api\/clientes"\), apiJson\("\/api\/usuarios"\)\]\)/);
+  assert.match(workspaceSource, /const guard = captureRequest\(apiJson\)/);
+  assert.match(workspaceSource, /Promise\.all\(\[guard.request\("\/api\/clientes"\), guard.request\("\/api\/usuarios"\)\]\)/);
   assert.doesNotMatch(workspaceSource, /\{isAdmin && <button className="ros-primary-button"/);
   assert.match(workspaceSource, /body: JSON\.stringify\(\{ \.\.\.draft, workspace: "render_os" \}\)/);
 });

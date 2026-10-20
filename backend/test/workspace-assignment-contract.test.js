@@ -4,6 +4,9 @@ import test from "node:test";
 import { buildTaskAssignmentInput } from "../../frontend/src/shared/task-assignment-input.js";
 import { getCanonicalTaskContentMetadata, isLinkedProductionEditorialTask } from "../../frontend/src/features/render-os/utils/task-content.js";
 import { canonicalTaskState } from "../../frontend/src/features/render-os/constants.js";
+import { createCapturedRequest, isSessionFailure } from '../../frontend/src/shared/session/captured-request.js';
+const displaySession = {token:'synthetic-session',usuario:{id:7,rol:'admin',activo:true}};
+const currentGuard = () => createCapturedRequest({session:displaySession,readSession:()=>displaySession,request:()=>assert.fail('No request expected')});
 
 const source = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
 const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
@@ -49,8 +52,8 @@ test("saving content preserves collaborators without resending assignments or di
   const task = { id: 5, titulo: "Original", asignado_a_id: 1, colaborador_ids: [2], propiedades_extra: { colaboradores: ["Alex"], resumen: "Keep", etiquetas: ["tag"] } };
   let changes;
   const noop = () => {};
-  const save = new Function("task", "draft", "metadata", "tags", "collaborators", "canEditTask", "isProductionVisit", "productionProgress", "getCanonicalTaskContentMetadata", "setSaving", "setEditing", "onUpdate", "canonicalTaskState", "canEditVisitClient", "canEditVisitDate", "isLinkedProductionEditorialTask", `${body}\nreturn save;`)(
-    task, { ...task, aclaraciones: "New content" }, task.propiedades_extra, ["tag"], ["Alex"], true, false, {}, getCanonicalTaskContentMetadata, noop, noop, async (id, value) => { changes = value; }, canonicalTaskState, true, true, isLinkedProductionEditorialTask,
+  const save = new Function("task", "draft", "metadata", "tags", "collaborators", "canEditTask", "isProductionVisit", "productionProgress", "getCanonicalTaskContentMetadata", "setSaving", "setEditing", "onUpdate", "canonicalTaskState", "canEditVisitClient", "canEditVisitDate", "isLinkedProductionEditorialTask", "captureRequest", `${body}\nreturn save;`)(
+    task, { ...task, aclaraciones: "New content" }, task.propiedades_extra, ["tag"], ["Alex"], true, false, {}, getCanonicalTaskContentMetadata, noop, noop, async (id, value) => { changes = value; }, canonicalTaskState, true, true, isLinkedProductionEditorialTask, currentGuard,
   );
   await save();
   assert.equal(changes.aclaraciones, "New content");
@@ -64,8 +67,8 @@ test("saving content preserves collaborators without resending assignments or di
 test("inline people save uses the validated ID DTO and not legacy metadata names", async () => {
   const body = section("  const saveInlinePeople =", "  const cancelEditing =");
   let changes;
-  const save = new Function("task", "canEditTask", "saving", "buildTaskAssignmentInput", "setDraft", "setSaving", "onUpdate", "collaborators", `${body}\nreturn saveInlinePeople;`)(
-    { id: 5, asignado_a_id: null, colaborador_ids: [] }, true, false, buildTaskAssignmentInput, () => {}, () => {}, async (id, value) => { changes = value; }, [],
+  const save = new Function("task", "canEditTask", "saving", "buildTaskAssignmentInput", "setDraft", "setSaving", "onUpdate", "collaborators", "captureRequest", `${body}\nreturn saveInlinePeople;`)(
+    { id: 5, asignado_a_id: null, colaborador_ids: [] }, true, false, buildTaskAssignmentInput, () => {}, () => {}, async (id, value) => { changes = value; }, [], currentGuard,
   );
   await save({ primary: "Same", collaborators: ["Same"], ownerId: 1, collaboratorIds: [2] });
   assert.deepEqual(changes, { asignado_a_id: 1, colaborador_ids: [2] });
@@ -91,10 +94,12 @@ test("approval sends selected publisher ID, keeps display label; generic approva
   const updates = [];
   const users = [{ id: 1, nombre: "Alex", rol: "community" }, { id: 2, nombre: "Alex", rol: "admin" }, { id: 3, nombre: "Other", rol: "diseno" }];
   const task = { id: 5, revision: 7, cliente_nombre: "Client" };
-  const sesion = {token:'synthetic-session'}; let currentSession = sesion;
-  const approve = new Function("users", "apiRequest", "tasksRef", "setTasks", "logActivity", "notify", "updateTask", "sesion", "getSesion", `${body}\nreturn approveTask;`)(
+  const sesion = displaySession; let currentSession = sesion;
+  const request = async (url, request) => { requests.push(JSON.parse(request.body)); return task; };
+  const captureRequest = () => createCapturedRequest({session:sesion,readSession:()=>currentSession,request});
+  const approve = new Function("users", "apiRequest", "tasksRef", "setTasks", "logActivity", "notify", "updateTask", "sesion", "getSesion", "captureRequest", "isSessionFailure", `${body}\nreturn approveTask;`)(
     users, async (url, request) => { requests.push(JSON.parse(request.body)); return task; },
-    { current: [task] }, () => {}, async () => {}, (message) => notices.push(message), async (id, changes) => updates.push({id,changes}), sesion, () => currentSession,
+    { current: [task] }, () => {}, async () => {}, (message) => notices.push(message), async (id, changes) => updates.push({id,changes}), sesion, () => currentSession, captureRequest, isSessionFailure,
   );
   await approve(task, 2);
   assert.deepEqual(requests, [{ responsable_publicacion_id: 2, expected_revision: 7 }]);

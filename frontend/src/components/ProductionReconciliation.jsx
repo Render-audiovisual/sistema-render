@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState}from 'react';
 import {apiRequest}from '../features/render-os/services/render-os-api.js';
 import {getSesion}from '../utils.jsx';
+import {useSessionView}from '../shared/session/use-session-view.js';
 import {DiscardChangesDialog}from './DiscardChangesDialog.jsx';
 import {createProductionReconciliationModel,emptyReconciliationVideo,reconciliationAdoptionTask}from './productionReconciliation.js';
 import './ProductionReconciliation.css';
@@ -10,9 +11,10 @@ const contentLabels={instructions:'Indicaciones originales',script:'Guion origin
 const legacyTaskStateLabel=estado=>({pendiente:'Pendiente',en_progreso:'En progreso',en_revision:'En revisión',
   aprobada:'Trabajo aprobado',finalizada:'Trabajo finalizado',publicada:'Trabajo finalizado (estado histórico)',programada:'Trabajo programado'})[estado]||`Estado histórico: ${estado}`;
 export function ProductionReconciliation(props){
-  const u=props.sesion?.usuario;
+  const view=useSessionView(props.sesion);
+  const u=view.session?.usuario;
   if(u?.rol!=='admin'||u.activo===false)return null;
-  return <ReconciliationForm key={`${props.taskId}:${u.id}:${u.rol}:${props.sesion?.token}`} {...props}/>;
+  return <ReconciliationForm key={`${props.taskId}:${view.key}`} {...props} sesion={view.session}/>;
 }
 function ReconciliationForm({taskId,sesion,users=[],onDraftStateChange,onSaved,disabled=false,available=true,request=apiRequest}){
   const [state,setState]=useState({phase:'closed',busy:false,dirty:false});
@@ -20,7 +22,7 @@ function ReconciliationForm({taskId,sesion,users=[],onDraftStateChange,onSaved,d
   const model=useRef(null),callback=useRef(onDraftStateChange),saved=useRef(onSaved),disabledRef=useRef(disabled),notified=useRef(null);
   callback.current=onDraftStateChange;saved.current=onSaved;disabledRef.current=disabled;
   useEffect(()=>{const instance=createProductionReconciliationModel({taskId,sesion,request,readSession:getSesion,onChange:setState,canAct:()=>!disabledRef.current});
-    model.current=instance;return()=>{instance.dispose();callback.current?.({dirty:false,busy:false});if(model.current===instance)model.current=null;};},[taskId,request]);
+    model.current=instance;return()=>{instance.dispose();callback.current?.({dirty:false,busy:false});if(model.current===instance)model.current=null;};},[taskId,request,sesion]);
   useEffect(()=>{callback.current?.({dirty:state.dirty,busy:state.busy});},[state.dirty,state.busy]);
   useEffect(()=>{if(state.phase==='saved'&&notified.current!==state.result.reconciliation_id){notified.current=state.result.reconciliation_id;saved.current?.(state.result);}},[state.phase,state.result]);
   const context=state.context,draft=state.draft;

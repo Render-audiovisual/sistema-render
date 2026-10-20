@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { DriveUploader } from "../features/drive/DriveUploader.jsx";
 import { driveFiles, driveRequest, driveStatus } from "../features/drive/drive-api.js";
+import { getSesion } from '../utils.jsx';
+import { useSessionView } from '../shared/session/use-session-view.js';
+import { createCapturedRequest } from '../shared/session/captured-request.js';
 import "./Drive.css";
 
 const ROOT_LABELS = { general: "Render", augusto: "Diseño · Augusto", mariano: "Diseño · Mariano Meza" };
@@ -12,44 +15,83 @@ function fileSize(value) {
 }
 
 export function DrivePage({ sesion }) {
+  const view = useSessionView(sesion);
+  const mounted = useRef(false), generation = useRef(0), live = useRef('');
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; generation.current++; }; }, []);
   const [status, setStatus] = useState(null);
   const [rootKey, setRootKey] = useState("general");
   const [stack, setStack] = useState([]);
-  const [files, setFiles] = useState([]);
+  const [loadedFiles, setFiles] = useState([]);
+  const [loadedContext, setLoadedContext] = useState(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const isAdmin = sesion?.usuario?.rol === "admin";
+  const isAdmin = view.role === "admin";
   const current = stack[stack.length - 1];
+  const context = JSON.stringify([view.key, current?.id, query]); live.current = context;
+  const files = loadedContext === context ? loadedFiles : [];
 
-  const load = (parent = current?.id, search = query) => {
-    if (!parent) return;
+  const load = useCallback(async (parent = current?.id, search = query, uploadScope = null) => {
+    if (!parent) return false;
+    uploadScope?.assertCurrent();
+    const key = JSON.stringify([view.key, parent, search]);
+    let observed = generation.current;
+    const guard = createCapturedRequest({ session: view.session, readSession: getSesion,
+      request: (_url, options) => driveFiles(parent, search, options),
+      isActive: () => mounted.current && live.current === key && generation.current === observed && (!uploadScope || uploadScope.current()) });
+    if (!guard.current()) return false;
+    observed = ++generation.current;
     setLoading(true); setError("");
-    driveFiles(parent, search).then(setFiles).catch((reason) => setError(reason.message)).finally(() => setLoading(false));
-  };
+    try {
+      const items = await guard.request('/api/drive/files', uploadScope?.options());
+      guard.assertCurrent(); setFiles(items); setLoadedContext(key); return true;
+    } catch { if (guard.current()) setError('No pudimos consultar esta carpeta. Volvé a intentarlo.'); return false; }
+    finally { if (guard.current()) setLoading(false); }
+  }, [current?.id, query, view]);
 
   useEffect(() => {
-    driveStatus().then((data) => {
+    let active = true; const controller = new AbortController();
+    const guard = createCapturedRequest({ session: view.session, readSession: getSesion,
+      request: (_url, options) => driveStatus(options), isActive: () => active && mounted.current });
+    guard.request('/api/drive/status', { signal: controller.signal }).then((data) => {
+      guard.assertCurrent();
       setStatus(data);
       const first = { id: data.roots.general, name: ROOT_LABELS.general };
       setStack([first]);
-    }).catch((reason) => setError(reason.message));
-  }, []);
-  useEffect(() => { if (current?.id && status?.connected) load(current.id, query); }, [current?.id, status?.connected]);
-  useEffect(() => { if (!current?.id || !status?.connected) return; const timer = setTimeout(() => load(current.id, query), 250); return () => clearTimeout(timer); }, [query]);
+    }).catch(() => { if (guard.current()) setError('No pudimos consultar la conexión con Drive.'); });
+    return () => { active = false; controller.abort(); };
+  }, [view]);
+  useEffect(() => {
+    if (!current?.id || !status?.connected) return;
+    const timer = setTimeout(() => { void load(); }, query ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [current?.id, status?.connected, query, load]);
 
   const selectRoot = (key) => { setRootKey(key); setQuery(""); setStack([{ id: status.roots[key], name: ROOT_LABELS[key] }]); };
-  const connect = async () => { const result = await driveRequest("/api/drive/connect", { method: "POST" }); window.location.href = result.url; };
+  const connect = async () => {
+    const guard = createCapturedRequest({ session: view.session, readSession: getSesion, request: driveRequest, isActive: () => mounted.current });
+    try {
+      const result = await guard.request('/api/drive/connect', { method: 'POST' });
+      const url = new URL(result.url);
+      if (url.origin !== 'https://accounts.google.com' || !url.pathname.startsWith('/o/oauth2/')) throw new Error('Invalid provider URL');
+      guard.assertCurrent(); window.location.href = url.href;
+    } catch { if (guard.current()) setError('No pudimos iniciar la conexión con Google Drive.'); }
+  };
   const trash = async (file) => {
+    const guard = createCapturedRequest({ session: view.session, readSession: getSesion, request: driveRequest, isActive: () => mounted.current });
     if (!window.confirm(`¿Enviar “${file.name}” a la papelera de Google Drive?`)) return;
-    await driveRequest(`/api/drive/files/${file.id}`, { method: "DELETE" }); load();
+    try {
+      await guard.request(`/api/drive/files/${encodeURIComponent(file.id)}`, { method: 'DELETE' });
+      guard.assertCurrent(); await load(current?.id, query, guard);
+    } catch { if (guard.current()) setError('No pudimos confirmar el cambio. Verificá la carpeta antes de reintentar.'); }
   };
 
   return <main className="drive-page">
+    {error && !status?.connected && <p className="drive-error-banner" role="alert">{error}</p>}
     <header className="drive-page-header"><div><span className="drive-kicker">ARCHIVOS DEL EQUIPO</span><h1>Drive</h1><p>Encontrá y cargá material sin salir de Render OS.</p></div>{status?.connected && <a href={`https://drive.google.com/drive/folders/${current?.id || status.roots.general}`} target="_blank" rel="noreferrer">Abrir en Google Drive ↗</a>}</header>
     {!status?.connected ? <section className="drive-connect"><span className="drive-logo">▰</span><h2>{status?.reconnectRequired ? "Volvé a conectar el Drive de Render" : "Conectá el Drive de Render"}</h2><p>{status?.reconnectRequired ? "La autorización anterior venció. Los archivos siguen intactos en Google Drive; solo hay que renovar el acceso." : "Los archivos seguirán guardados en Google Drive. Render OS solo simplifica la carga y el acceso."}</p>{isAdmin ? <button type="button" disabled={!status?.configured} onClick={connect}>{status?.reconnectRequired ? "Volver a conectar Google Drive" : "Conectar Google Drive"}</button> : <strong>Un líder debe realizar la conexión.</strong>}{status && !status.configured && <small>Falta configurar el acceso de Google en Hostinger.</small>}</section> : <>
       <section className="drive-toolbar"><div className="drive-roots">{Object.keys(ROOT_LABELS).map((key) => <button className={rootKey === key ? "active" : ""} type="button" key={key} onClick={() => selectRoot(key)}>{ROOT_LABELS[key]}</button>)}</div><label><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar en esta carpeta…"/></label></section>
-      <section className="drive-browser"><div className="drive-breadcrumbs">{stack.map((folder, index) => <button type="button" key={folder.id} onClick={() => setStack((items) => items.slice(0, index + 1))}>{folder.name}{index < stack.length - 1 ? " /" : ""}</button>)}</div><DriveUploader currentFolder={current} onUploaded={() => load()}/>{error && <div className="drive-error-banner">{error}</div>}{loading ? <div className="drive-loading">Cargando archivos…</div> : files.length ? <div className="drive-grid">{files.map((file) => <article key={file.id} className={file.isFolder ? "folder" : "file"} onDoubleClick={() => file.isFolder && setStack((items) => [...items, { id: file.id, name: file.name }])}><button className="drive-file-main" type="button" onClick={() => file.isFolder ? setStack((items) => [...items, { id: file.id, name: file.name }]) : window.open(file.webViewLink, "_blank", "noopener,noreferrer")}><span>{file.isFolder ? "▰" : "▤"}</span><div><strong>{file.name}</strong><small>{file.isFolder ? "Carpeta" : fileSize(file.size)}</small></div></button>{isAdmin && !file.isFolder && <button className="drive-trash" type="button" aria-label={`Enviar ${file.name} a la papelera`} onClick={() => trash(file)}>⌫</button>}</article>)}</div> : <div className="drive-empty"><strong>No hay archivos para mostrar.</strong><span>{query ? "Probá otra búsqueda." : "Subí el primer archivo a esta carpeta."}</span></div>}</section>
+      <section className="drive-browser"><div className="drive-breadcrumbs">{stack.map((folder, index) => <button type="button" key={folder.id} onClick={() => setStack((items) => items.slice(0, index + 1))}>{folder.name}{index < stack.length - 1 ? " /" : ""}</button>)}</div><DriveUploader currentFolder={current} onUploaded={(_uploaded, scope) => load(current?.id, query, scope)}/>{error && <div className="drive-error-banner">{error}</div>}{loading ? <div className="drive-loading">Cargando archivos…</div> : files.length ? <div className="drive-grid">{files.map((file) => <article key={file.id} className={file.isFolder ? "folder" : "file"} onDoubleClick={() => file.isFolder && setStack((items) => [...items, { id: file.id, name: file.name }])}><button className="drive-file-main" type="button" onClick={() => file.isFolder ? setStack((items) => [...items, { id: file.id, name: file.name }]) : window.open(file.webViewLink, "_blank", "noopener,noreferrer")}><span>{file.isFolder ? "▰" : "▤"}</span><div><strong>{file.name}</strong><small>{file.isFolder ? "Carpeta" : fileSize(file.size)}</small></div></button>{isAdmin && !file.isFolder && <button className="drive-trash" type="button" aria-label={`Enviar ${file.name} a la papelera`} onClick={() => trash(file)}>⌫</button>}</article>)}</div> : <div className="drive-empty"><strong>No hay archivos para mostrar.</strong><span>{query ? "Probá otra búsqueda." : "Subí el primer archivo a esta carpeta."}</span></div>}</section>
     </>}
   </main>;
 }

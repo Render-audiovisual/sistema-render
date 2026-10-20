@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { mergeRelatedTasks } from "../../frontend/src/features/render-os/utils/task-state.js";
+import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
 
 const source = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx",import.meta.url),"utf8");
 const section = (start,end) => source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
@@ -15,11 +16,19 @@ function setup({request = async()=>updated,refresh = async()=>updated,snapshot =
   const tasksRef = {current:[snapshot]};
   let tasks = [snapshot];
   const notices = [], requests = [], refreshes = [];
+  let session={token:'synthetic-production',usuario:{id:1,rol:'admin',activo:true}};
+  const transport=async(url,options={})=>{
+    assert.equal(new Headers(options.headers).get('Authorization'),'Bearer synthetic-production');
+    if(!options.method || options.method==='GET') {
+      const id=Number(url.match(/\/tareas\/(\d+)/)[1]); refreshes.push(id); return refresh(id);
+    }
+    requests.push({url,...options,body:JSON.parse(options.body)}); return request(url,options);
+  };
   const context = {tasksRef,setTasks:fn=>{tasks=fn(tasks);},mergeRelatedTasks,
-    apiRequest:async(url,options)=>{requests.push({url,...options,body:JSON.parse(options.body)});return request(url,options);},
-    apiTaskById:async(id)=>{refreshes.push(id);return refresh(id);},notify:(...args)=>notices.push(args)};
+    captureRequest:()=>createCapturedRequest({session,readSession:()=>session,request:transport}),isSessionFailure,
+    notify:(...args)=>notices.push(args)};
   const result = new Function(...Object.keys(context),`${handlers}\nreturn {registerProduction,correctProduction,confirmProduction};`)(...Object.values(context));
-  return {...result,tasksRef,notices,requests,refreshes,get tasks(){return tasks;}};
+  return {...result,tasksRef,notices,requests,refreshes,get tasks(){return tasks;},changeSession:()=>{session={...session,token:'synthetic-B',usuario:{...session.usuario,id:2}};}};
 }
 const operations = [
   {name:"add",call:(h,visible=task)=>h.registerProduction(visible,2,"2026-10-19",false),method:"POST",suffix:"/registros?workspace=render_os"},
@@ -106,6 +115,7 @@ test("detail add conflict retains amount/date, clears busy state, and does not l
   let amount=4;
   const busy=[];
   const context={canRegisterProduction:true,registeringProduction:false,metadata:{},task,productionAmount:amount,
+    captureRequest:()=>createCapturedRequest({session:{token:'synthetic-detail',usuario:{id:1,rol:'admin'}},readSession:()=>({token:'synthetic-detail',usuario:{id:1,rol:'admin'}})}),isSessionFailure,
     productionDate:"2026-10-19",setRegisteringProduction:v=>busy.push(v),setProductionAmount:v=>{amount=v;},
     onRegisterProduction:async()=>{throw conflict;}};
   const run=new Function(...Object.keys(context),`${body}\nreturn registerProduction;`)(...Object.values(context));
@@ -121,6 +131,7 @@ test("correction prompt retains failed input for explicit resubmission",async()=
   let calls=0;
   const run=()=>{
     const context={task,canRegisterProduction:true,productionCorrections:corrections,setProductionCorrections:fn=>{corrections=fn(corrections);},
+      captureRequest:()=>createCapturedRequest({session:{token:'synthetic-detail',usuario:{id:1,rol:'admin'}},readSession:()=>({token:'synthetic-detail',usuario:{id:1,rol:'admin'}})}),isSessionFailure,
       window:{prompt:(_label,value)=>{defaults.push(value);return "7";}},
       onCorrectProduction:async()=>{calls++;throw conflict;}};
     return new Function(...Object.keys(context),`${body}\nreturn correctProduction;`)(...Object.values(context))({id:99,cantidad:1});
@@ -136,4 +147,30 @@ test("editor protection tracks revisions even if timestamps share the same milli
   assert.match(source,/\[task\?\.updated_at, task\?\.revision\]/);
   assert.match(source,/editing \|\| \(previous && \(current.titulo !== previous.titulo/);
   assert.match(source,/<DiscardChangesDialog open=\{discardDialogOpen\} busy=\{taskWriteBusy\}/);
+});
+
+for(const operation of operations) test(`${operation.name} late A result after B cannot publish task IDs, notify or refresh as B`,async()=>{
+  let resolve;
+  const h=setup({request:()=>new Promise(done=>{resolve=done;})});
+  const pending=operation.call(h);
+  const rejected=assert.rejects(pending,error=>error.code==='session_binding_obsolete');
+  assert.equal(h.requests.length,1); h.changeSession();
+  resolve(operation.name==='confirm' ? {task:updated,editing_task:{id:11,revision:1}} : updated);
+  await rejected;
+  assert.deepEqual(h.tasks,[latest]); assert.deepEqual(h.tasksRef.current,[latest]);
+  assert.deepEqual(h.refreshes,[]); assert.deepEqual(h.notices,[]);
+});
+
+test('typed session failure does not enter ordinary production conflict refresh or notification path',async()=>{
+  const error=Object.assign(new Error('Synthetic session failure'),{name:'BrowserSessionError',code:'browser_response_unverified',status:409});
+  const h=setup({request:async()=>{throw error;}});
+  await assert.rejects(h.confirmProduction(task),caught=>caught===error);
+  assert.deepEqual(h.refreshes,[]); assert.deepEqual(h.notices,[]); assert.deepEqual(h.tasks,[latest]);
+});
+
+test('actual production mutation and conflict read use captured guard, not raw API helpers',()=>{
+  assert.match(handlers,/await guard\.request\(`\/api\/tareas\/\$\{task.id\}\?workspace=render_os`\)/);
+  assert.match(handlers,/await guard\.request\(`\/api\/tareas\/\$\{task.id\}\/produccion\/registros\?workspace=render_os`/);
+  assert.match(handlers,/!guard\.current\(\) \|\| isSessionFailure\(reason\)/);
+  assert.doesNotMatch(handlers,/await apiRequest\(|await apiTaskById\(/);
 });

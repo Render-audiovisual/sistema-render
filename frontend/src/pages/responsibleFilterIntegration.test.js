@@ -18,6 +18,8 @@ function nodes(root, predicate) {
   visit(root); return found;
 }
 const calls = (root, name) => nodes(root, node => ts.isCallExpression(node) && text(node.expression) === name);
+const directCalls = (root, id) => calls(root, 'guard.request').filter(call =>
+  text(call.arguments[0]) === '`/api/tareas/${' + id + '}?workspace=render_os`');
 const functionNamed = name => nodes(file, node => ts.isFunctionDeclaration(node) && node.name?.text === name)[0];
 const users = [{ id: 7, nombre: 'Alex', usuario: 'alex-a' }, { id: 8, nombre: 'Alex', usuario: 'alex-b' },
   { id: 9, nombre: 'Única', usuario: 'unique' }];
@@ -223,7 +225,7 @@ test('load-more guards tasks, totals, error notification and finally against sta
   }
   function guardedByCurrent(call, boundary) {
     for (let parent = call.parent; parent && parent !== boundary; parent = parent.parent) {
-      if (ts.isIfStatement(parent) && text(parent.expression).replace(/\s/g, '') === `${generation}===taskQueryGenerationRef.current`
+      if (ts.isIfStatement(parent) && text(parent.expression).replace(/\s/g, '').split('&&').includes(`${generation}===taskQueryGenerationRef.current`)
         && call.pos >= parent.thenStatement.pos && call.end <= parent.thenStatement.end) return true;
     }
     return false;
@@ -246,8 +248,8 @@ test('blocked responsible filters retain selected task identity and mark it dire
   assert.ok(calls(blocked.thenStatement, 'setTotalTasks').some(call => text(call.arguments[0]) === '0'));
   for (const call of writes) assert.notEqual(text(call.arguments[0]), '[]', 'Blocked filter must not clear selected editor task');
   assert.doesNotMatch(text(blocked.thenStatement), /setSelectedId\(null\)|setEditing\(false\)|setDraft\(/);
-  const lookup = calls(blocked.thenStatement, 'apiTaskById')[0];
-  assert.ok(lookup && text(lookup.arguments[0]) === 'contextId');
+  const lookup = directCalls(blocked.thenStatement, 'contextId')[0];
+  assert.ok(lookup);
   const lookupGuard = nodes(blocked.thenStatement, ts.isIfStatement).reverse().find(node =>
     lookup.pos >= node.thenStatement.pos && lookup.end <= node.thenStatement.end);
   assert.ok(lookupGuard);
@@ -261,7 +263,7 @@ test('blocked direct-context lookup success and failure check active generation 
   assert.ok(blocked);
   const handlers = nodes(blocked.thenStatement, node => ts.isCallExpression(node)
     && ts.isPropertyAccessExpression(node.expression) && ['then', 'catch'].includes(node.expression.name.text)
-    && calls(node.expression.expression, 'apiTaskById').length > 0);
+    && directCalls(node.expression.expression, 'contextId').length > 0);
   assert.equal(handlers.length, 2, 'Inspect actual direct-context success and error callbacks');
   for (const handler of handlers) {
     const callback = handler.arguments[0];
@@ -278,12 +280,11 @@ test('blocked direct-context lookup success and failure check active generation 
 });
 
 test('normal direct-task success guards immediately after await before merge; failure guards URL mutations', () => {
-  const directTry = nodes(file, ts.isTryStatement).find(node => calls(node.tryBlock, 'apiTaskById')
-    .some(call => text(call.arguments[0]) === 'directTaskId'));
+  const directTry = nodes(file, ts.isTryStatement).find(node => directCalls(node.tryBlock, 'directTaskId').length > 0);
   assert.ok(directTry?.catchClause, 'Inspect actual first-page direct-task recovery');
   const successStatements = directTry.tryBlock.statements;
   const awaitIndex = successStatements.findIndex(statement => nodes(statement, ts.isAwaitExpression)
-    .some(awaited => calls(awaited, 'apiTaskById').some(call => text(call.arguments[0]) === 'directTaskId')));
+    .some(awaited => directCalls(awaited, 'directTaskId').length > 0));
   assert.ok(awaitIndex >= 0, 'Find actual awaited direct-task fetch');
   const successGuard = successStatements[awaitIndex + 1];
   assert.ok(successGuard && ts.isIfStatement(successGuard), 'Guard must immediately follow the awaited fetch');

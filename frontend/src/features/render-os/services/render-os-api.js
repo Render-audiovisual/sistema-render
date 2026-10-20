@@ -1,11 +1,10 @@
 import { responsibleFilterId } from '../utils/task-responsible-filter.js';
+import { isSessionFailure } from '../../../shared/session/captured-request.js';
 const WORKSPACE_QUERY = "workspace=render_os";
-const sessionFailure = error => ['BrowserSessionError', 'BrowserSessionControllerError'].includes(error?.name)
-  || error?.code === 'session_binding_obsolete';
 
 export async function apiRequest(url, options) {
   const response = await fetch(url, options);
-  const body = await response.json().catch(error => { if (sessionFailure(error)) throw error; return {}; });
+  const body = await response.json().catch(error => { if (isSessionFailure(error)) throw error; return {}; });
   if (!response.ok) {
     const error = new Error(body.error || "No se pudo completar la operación.");
     error.status = response.status;
@@ -41,10 +40,10 @@ export function buildTaskPageUrl(options = {}) {
   return `/api/tareas?${params.toString()}`;
 }
 
-export async function apiTaskPage(options = {}) {
+export async function apiTaskPage(options = {}, requestOptions) {
   const settings = typeof options === "number" ? { offset: options } : options;
-  const response = await fetch(buildTaskPageUrl(settings));
-  const body = await response.json().catch(error => { if (sessionFailure(error)) throw error; return []; });
+  const response = await fetch(buildTaskPageUrl(settings), requestOptions);
+  const body = await response.json().catch(error => { if (isSessionFailure(error)) throw error; return []; });
   if (!response.ok) throw new Error(body.error || "No se pudieron cargar las tareas.");
   const items = Array.isArray(body) ? body : [];
   const totalHeader = Number.parseInt(response.headers.get("X-Total-Count"), 10);
