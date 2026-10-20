@@ -30,7 +30,7 @@ function routerHarness(pool) {
   let handler;
   const routes = new Set();
   const router = { get(path, callback) {
-    assert.ok(['/', '/escalaciones'].includes(path));
+    assert.ok(['/', '/escalaciones', '/equipo'].includes(path));
     assert.ok(!routes.has(path)); routes.add(path);
     if (path === '/') { assert.equal(handler, undefined); handler = callback; }
   } };

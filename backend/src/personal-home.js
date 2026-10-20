@@ -71,6 +71,74 @@ export async function readHomeEscalations(pool, auth, query = {}) {
   } finally { db.release(); }
 }
 
+// Team workload is a closed operational projection. Assignment membership is
+// ID-only and may overlap: a shared task counts once globally, once per person.
+export const HOME_TEAM_WORKLOAD_SQL = `WITH
+  day AS (SELECT (statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date AS today),
+  open_tasks AS MATERIALIZED (
+    SELECT t.id,t.fecha_vencimiento,
+      CASE WHEN t.estado='en_revision' AND t.propiedades_extra->'revision_aprobada'='true'::jsonb
+        THEN 'aprobada' ELSE t.estado END AS estado
+    FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
+    WHERE t.propiedades_extra->>'workspace'='render_os'
+      AND t.estado NOT IN ('finalizada','publicada')
+      AND COALESCE(t.propiedades_extra->>'archivada_render_os','false')<>'true'
+      AND COALESCE(t.propiedades_extra->>'papelera_render_os','false')<>'true'
+      AND (t.cliente_id IS NULL OR c.activo IS DISTINCT FROM FALSE)
+  ),
+  membership AS MATERIALIZED (
+    SELECT DISTINCT a.tarea_id,a.usuario_id FROM tarea_asignaciones a
+    JOIN open_tasks t ON t.id=a.tarea_id
+  ),
+  people AS MATERIALIZED (
+    SELECT u.id,u.nombre,u.activo,count(DISTINCT t.id)::int AS open,
+      count(DISTINCT t.id) FILTER (WHERE t.fecha_vencimiento<day.today)::int AS overdue,
+      count(DISTINCT t.id) FILTER (WHERE t.estado='en_revision')::int AS review,
+      count(DISTINCT t.id) FILTER (WHERE t.estado='aprobada')::int AS approved
+    FROM membership a JOIN open_tasks t ON t.id=a.tarea_id
+    JOIN usuarios u ON u.id=a.usuario_id CROSS JOIN day
+    GROUP BY u.id,u.nombre,u.activo
+  ),
+  unassigned_tasks AS MATERIALIZED (
+    SELECT t.id,t.fecha_vencimiento FROM open_tasks t
+    WHERE NOT EXISTS (SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=t.id)
+  ),
+  page AS (
+    SELECT p.id,p.nombre,p.activo,p.open,p.overdue,p.review,p.approved
+    FROM people p ORDER BY p.overdue DESC,p.open DESC,p.id ASC OFFSET $1 LIMIT $2
+  )
+SELECT jsonb_build_object('version',1,'today',to_char(day.today,'YYYY-MM-DD'),
+  'offset',$1::integer,'limit',$2::integer,
+  'total_tasks',(SELECT count(DISTINCT id)::int FROM open_tasks),
+  'total_overdue',(SELECT count(DISTINCT id) FILTER (WHERE fecha_vencimiento<day.today)::int FROM open_tasks),
+  'total_people',(SELECT count(*)::int FROM people),
+  'has_more',(SELECT count(*) FROM people)>$1::integer+$2::integer,
+  'unassigned',jsonb_build_object('open',(SELECT count(DISTINCT id)::int FROM unassigned_tasks),
+    'overdue',(SELECT count(DISTINCT id) FILTER (WHERE fecha_vencimiento<day.today)::int FROM unassigned_tasks)),
+  'items',COALESCE((SELECT jsonb_agg(jsonb_build_object(
+    'user',jsonb_build_object('id',p.id,'nombre',p.nombre,'activo',p.activo),
+    'open',p.open,'overdue',p.overdue,'review',p.review,'approved',p.approved)
+    ORDER BY p.overdue DESC,p.open DESC,p.id ASC) FROM page p),'[]'::jsonb)
+) AS workload FROM day`;
+
+export async function readHomeTeamWorkload(pool, auth, query = {}) {
+  if (!Number.isSafeInteger(auth?.id) || auth.id < 1) throw fail('Necesitás una identidad verificada.', 403);
+  const { offset, limit } = parseEscalationPage(query);
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const user = await verifiedHomeUser(db, auth);
+    if (user.rol !== 'admin') throw fail('Solo dirección puede consultar la carga del equipo.', 403);
+    const result = await db.query(HOME_TEAM_WORKLOAD_SQL, [offset, limit]);
+    if (!result.rows[0]?.workload) throw new Error('No se pudo leer la carga del equipo.');
+    await db.query('COMMIT');
+    return result.rows[0].workload;
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally { db.release(); }
+}
+
 export const PERSONAL_HOME_SQL = `WITH
   day AS (SELECT (statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date AS today),
   visible AS MATERIALIZED (
@@ -179,6 +247,14 @@ export async function readPersonalHome(pool, auth) {
 
 export function createPersonalHomeRouter({ express, pool }) {
   const router = express.Router();
+  router.get('/equipo', async (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    try { return res.json(await readHomeTeamWorkload(pool, req.auth, req.query)); }
+    catch (error) {
+      if ([400, 401, 403].includes(error.status)) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
+  });
   router.get('/escalaciones', async (req, res, next) => {
     res.set('Cache-Control', 'no-store');
     try { return res.json(await readHomeEscalations(pool, req.auth, req.query)); }
