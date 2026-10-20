@@ -36,13 +36,27 @@ export function parseReconciliationContext(value,taskId) {
 }
 function inputText(value,max,required=false) {if(typeof value!=='string'||value.length>max||(required&&!value.trim()))throw new Error('Revisá los textos y títulos de cada video.');return value;}
 function material(value) {inputText(value,4000);if(!value.trim())return '';try{const u=new URL(value);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw Error();}catch{throw new Error('Usá enlaces HTTP(S) válidos, sin contraseñas.');}return value.trim();}
+export function reconciliationAdoptionTask(context) {
+  const tasks=context?.legacy_editing_tasks;
+  return context?.eligibility?.status==='legacy_editing'&&context.eligibility.visita_id===null
+    &&context.source?.cliente&&context.source?.fecha&&Array.isArray(tasks)&&tasks.length===1
+    &&tasks[0].en_workspace===true&&positive(tasks[0].id)&&positive(tasks[0].revision)?tasks[0]:null;
+}
 export function reconciliationInput(context,draft,requestId) {
-  if(context?.eligibility?.status!=='ready'||!uuid(requestId)||draft?.acknowledged!==true)throw new Error('Confirmá que identificaste manualmente cada video.');
+  const adoption=reconciliationAdoptionTask(context);
+  if((context?.eligibility?.status!=='ready'&&!adoption)||!uuid(requestId)||draft?.acknowledged!==true)throw new Error('Confirmá que identificaste manualmente cada video.');
+  if(draft.adoption_enabled===true&&!adoption)throw new Error('Esta tarea no permite vincular edición existente.');
   if(!Array.isArray(draft.participante_ids)||new Set(draft.participante_ids).size!==draft.participante_ids.length||draft.participante_ids.some(id=>!positive(id)))throw new Error('Revisá los participantes.');
   if(!Array.isArray(draft.videos)||draft.videos.length<1||draft.videos.length>50)throw new Error('Identificá entre uno y cincuenta videos.');
   const videos=draft.videos.map(v=>{if(!states.includes(v.estado))throw new Error('Elegí el estado de cada video.');return{titulo:inputText(v.titulo,250,true),guion:inputText(v.guion,20000),estado:v.estado,material_url:material(v.material_url),observaciones:inputText(v.observaciones,20000)};});
+  let existing_editing;
+  if(adoption){
+    const matches=draft.videos.map((v,index)=>({v,index})).filter(({v})=>typeof v.local_id==='string'&&v.local_id!==''&&v.local_id===draft.adoption_video_id);
+    if(draft.adoption_enabled!==true||draft.adoption_acknowledged!==true||matches.length!==1||matches[0].v.estado!=='grabado')throw new Error('Elegí un video grabado y confirmá que la tarea edita únicamente ese video.');
+    existing_editing={task_id:adoption.id,expected_revision:adoption.revision,video_ordinal:matches[0].index+1,acknowledgement:'esta_tarea_edita_un_solo_video'};
+  }
   return {request_id:requestId,source_task_id:context.source.id,expected_source_revision:context.source.revision,acknowledgement:'videos_identificados_manualmente',
-    titulo:inputText(draft.titulo,250,true),participante_ids:[...draft.participante_ids],drive_url:material(draft.drive_url),observaciones:inputText(draft.observaciones,20000),videos};
+    titulo:inputText(draft.titulo,250,true),participante_ids:[...draft.participante_ids],drive_url:material(draft.drive_url),observaciones:inputText(draft.observaciones,20000),videos,...(existing_editing?{existing_editing}:{})};
 }
 export function parseReconciliationResult(value,length) {
   if(!uuid(value?.reconciliation_id)||!uuid(value?.visita_id)||typeof value.created!=='boolean'||!Array.isArray(value.video_ids)
@@ -69,7 +83,7 @@ export function createProductionReconciliationModel({taskId,sesion,readSession,r
       if(disposed||signal.aborted||observed!==version)return false;
       if(!current()){deny();return false;}
       const context=parseReconciliationContext(value,taskId);
-      const draft=previous?{...previous,acknowledged:false}:{titulo:context.source.titulo,participante_ids:[],drive_url:'',observaciones:'',videos:[emptyReconciliationVideo()],acknowledged:false};
+      const draft=previous?{...previous,acknowledged:false,adoption_acknowledged:false}:{titulo:context.source.titulo,participante_ids:[],drive_url:'',observaciones:'',videos:[emptyReconciliationVideo()],acknowledged:false,adoption_enabled:false,adoption_video_id:'',adoption_acknowledged:false};
       body=null;if(!previous)baseline=JSON.stringify(draft);
       emit({phase:'ready',context,draft,busy:false,frozen:false,dirty:Boolean(previous),canReviewAgain:false});
     }catch(error){if(disposed||signal.aborted||observed!==version)return false;if(!current()||[401,403].includes(error.status)){deny();return false;}

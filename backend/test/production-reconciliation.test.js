@@ -24,6 +24,33 @@ test('history fingerprints are canonical and ignore ordinary title/priority/priv
   assert.equal(productionHistoryHash(a),productionHistoryHash(b));
   b.propiedades_extra.produccion_registros[0].cantidad=3;assert.notEqual(productionHistoryHash(a),productionHistoryHash(b));
 });
+test('existing editing requires an explicit one-video acknowledgement and exact observed task revision',()=>{
+  const body=input(),existing_editing={task_id:8,expected_revision:2,video_ordinal:1,acknowledgement:'esta_tarea_edita_un_solo_video'};
+  assert.deepEqual(validateProductionReconciliation({...body,existing_editing}).existing_editing,existing_editing);
+  assert.equal(Object.hasOwn(validateProductionReconciliation(body),'existing_editing'),false,'Existing normal intent hashes keep the same shape');
+  for(const patch of [{task_id:7},{task_id:'8'},{expected_revision:0},{video_ordinal:0},{video_ordinal:2},{acknowledgement:'automatico'},{editor_id:3}])
+    assert.throws(()=>validateProductionReconciliation({...body,existing_editing:{...existing_editing,...patch}}));
+  for(const value of [null,{},[],1])assert.throws(()=>validateProductionReconciliation({...body,existing_editing:value}));
+  assert.throws(()=>validateProductionReconciliation({...body,videos:[{...body.videos[0],estado:'pendiente'}],existing_editing}));
+});
+test('a mapped existing child permits only matching reviewed lineage and an intact original task link',async()=>{
+  const source={propiedades_extra:{produccion_registros:[{cantidad:2}]}};
+  const visit={id:'visit',tarea_origen_id:7};let childRows=[{id:99}],mapped=true,reviewed=true;
+  const db={async query(sql,values){
+    if(sql.startsWith('SELECT id FROM tareas'))return{rows:childRows};
+    if(sql.includes('FROM produccion_edicion_adopciones')){
+      assert.deepEqual(values,['video','visit',7,99]);
+      assert.match(sql,/adopted.tarea_edicion_id=a.tarea_edicion_id/);
+      return{rows:mapped?[{tarea_edicion_id:99}]:[]};
+    }
+    return{rows:reviewed?[{source_history_hash:productionHistoryHash(source),adopted_task_id:99}]:[]};
+  }};
+  assert.equal(await isReconciledProductionVideo(db,visit,source,'video'),true);
+  mapped=false;assert.equal(await isReconciledProductionVideo(db,visit,source,'video'),false);
+  mapped=true;childRows=[{id:99},{id:100}];assert.equal(await isReconciledProductionVideo(db,visit,source,'video'),false);
+  childRows=[];assert.equal(await isReconciledProductionVideo(db,visit,source,'video'),false,'Removing the original child marker cannot convert an adoption into a child-free review');
+  childRows=[{id:99}];reviewed=false;assert.equal(await isReconciledProductionVideo(db,visit,source,'video'),false);
+});
 test('provenance requires exact reviewed video/source/visit and no aggregate child; unknown IDs do not grant access',async()=>{
   const source={propiedades_extra:{produccion_registros:[{cantidad:2}]}};
   const visit={id:'visit',tarea_origen_id:7};let child=false,hash=productionHistoryHash(source);const calls=[];

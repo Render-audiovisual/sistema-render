@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { isProductionVisitTask, isValidProductionDate } from './production-visits.js';
 import { hasLegacyProductionSource } from './production-editorial.js';
 import { productionHistoryHash } from './production-history.js';
+import { prepareProductionEditingAdoption, persistProductionEditingAdoption } from './production-editing-adoption.js';
 
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const positive=n=>Number.isSafeInteger(n)&&n>0&&n<=2147483647;
@@ -20,7 +21,7 @@ function url(value='') {
   return result;
 }
 export function validateProductionReconciliation(body) {
-  closed(body,['request_id','source_task_id','expected_source_revision','acknowledgement','titulo','participante_ids','drive_url','observaciones','videos']);
+  closed(body,['request_id','source_task_id','expected_source_revision','acknowledgement','titulo','participante_ids','drive_url','observaciones','videos','existing_editing']);
   if(!uuid(body.request_id)||!positive(body.source_task_id)||!positive(body.expected_source_revision)
     ||body.acknowledgement!=='videos_identificados_manualmente')throw fail('Confirmá la identificación manual y la revisión de origen.');
   const people=body.participante_ids===undefined?[]:body.participante_ids;
@@ -35,6 +36,16 @@ export function validateProductionReconciliation(body) {
   const input={request_id:body.request_id.toLowerCase(),source_task_id:body.source_task_id,expected_source_revision:body.expected_source_revision,
     acknowledgement:body.acknowledgement,titulo:text(body.titulo,250,true),participante_ids:[...people].sort((a,b)=>a-b),
     drive_url:url(body.drive_url),observaciones:text(body.observaciones===undefined?'':body.observaciones,20000),videos};
+  if(body.existing_editing!==undefined) {
+    const editing=body.existing_editing;
+    closed(editing,['task_id','expected_revision','video_ordinal','acknowledgement']);
+    if(!positive(editing.task_id)||editing.task_id===body.source_task_id||!positive(editing.expected_revision)
+      ||!positive(editing.video_ordinal)||editing.video_ordinal>videos.length
+      ||editing.acknowledgement!=='esta_tarea_edita_un_solo_video'||videos[editing.video_ordinal-1].estado!=='grabado')
+      throw fail('Confirmá la correspondencia de una tarea original con un único video grabado.');
+    input.existing_editing={task_id:editing.task_id,expected_revision:editing.expected_revision,
+      video_ordinal:editing.video_ordinal,acknowledgement:editing.acknowledgement};
+  }
   if(Buffer.byteLength(JSON.stringify(input),'utf8')>900000)throw fail('La conciliación es demasiado grande.',413);
   return input;
 }
@@ -61,6 +72,13 @@ export async function reconcileProductionHistory(pool,auth,body) {
       if(replay.payload_hash!==hash)throw fail('La solicitud ya se usó con otros datos.',409);
       const response=await result(db,replay,false);await db.query('COMMIT');return response;
     }
+    if(input.existing_editing) {
+      // Match editing deliveries/reviews: global advisory before ordered task
+      // locks, before any visit/video lock or creation. No task is rewritten.
+      await db.query("SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
+      await db.query('SELECT id FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',
+        [[input.source_task_id,input.existing_editing.task_id].sort((a,b)=>a-b)]);
+    }
     const source=(await db.query("SELECT *,to_char(fecha_vencimiento,'YYYY-MM-DD') AS source_date FROM tareas WHERE id=$1 FOR UPDATE",[input.source_task_id])).rows[0];
     if(!source||!isProductionVisitTask(source)||source.propiedades_extra?.workspace!=='render_os'
       ||['archivada_render_os','papelera_render_os'].some(key=>[true,'true'].includes(source.propiedades_extra?.[key])))throw fail('Visita histórica disponible no encontrada.',404);
@@ -68,7 +86,8 @@ export async function reconcileProductionHistory(pool,auth,body) {
     if(!positive(source.cliente_id)||!isValidProductionDate(source.source_date))throw fail('La tarea necesita cliente y fecha válidos.',409);
     if((await db.query('SELECT id FROM produccion_reconciliaciones WHERE tarea_origen_id=$1',[source.id])).rows.length)throw fail('El origen ya tiene una conciliación. Revisá su registro.',409);
     if((await db.query('SELECT id FROM produccion_visitas WHERE tarea_origen_id=$1',[source.id])).rows.length)throw fail('El origen ya tiene una visita. Requiere revisión específica.',409);
-    if((await db.query("SELECT id FROM tareas WHERE propiedades_extra->>'origen_visita_id'=$1 LIMIT 1",[String(source.id)])).rows.length)throw fail('manual_mapping_required: la edición agregada existente no se puede repartir automáticamente.',409);
+    const adoption=input.existing_editing?await prepareProductionEditingAdoption(db,source,input.existing_editing):null;
+    if(!adoption&&(await db.query("SELECT id FROM tareas WHERE propiedades_extra->>'origen_visita_id'=$1 LIMIT 1",[String(source.id)])).rows.length)throw fail('manual_mapping_required: la edición agregada existente no se puede repartir automáticamente.',409);
     if(!await hasLegacyProductionSource(db,source.id,source))throw fail('El origen no contiene producción histórica agregada.',409);
     if(!(await db.query('SELECT id FROM clientes WHERE id=$1 AND activo IS TRUE FOR SHARE',[source.cliente_id])).rows.length)throw fail('Cliente activo no encontrado.',409);
     if(input.participante_ids.length) {
@@ -86,6 +105,7 @@ export async function reconcileProductionHistory(pool,auth,body) {
       await db.query(`INSERT INTO produccion_videos(id,visita_id,titulo,guion,estado,material_url,observaciones,creado_por_id,actualizado_por_id)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8)`,[id,visitId,video.titulo,video.guion,video.estado,video.material_url,video.observaciones,actor.id]);
       await db.query('INSERT INTO produccion_reconciliacion_videos(reconciliacion_id,video_id,ordinal) VALUES($1,$2,$3)',[reviewId,id,index+1]);
+      if(adoption?.ordinal===index+1)await persistProductionEditingAdoption(db,adoption,reviewId,id);
     }
     const response=await result(db,{id:reviewId,visita_id:visitId},true);
     await db.query('COMMIT');return response;

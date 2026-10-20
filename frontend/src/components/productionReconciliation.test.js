@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync}from 'node:fs';
 import ts from 'typescript';
-import {parseReconciliationContext,reconciliationInput,createProductionReconciliationModel}from './productionReconciliation.js';
+import {parseReconciliationContext,reconciliationInput,createProductionReconciliationModel,reconciliationAdoptionTask}from './productionReconciliation.js';
 const session=()=>({token:'local-test',usuario:{id:7,rol:'admin',activo:true}});
 const context=()=>({version:1,source:{id:1,revision:3,titulo:'Visita histórica',cliente:{id:2,nombre:'Cliente'},fecha:'2026-10-20',
   content:{instructions:'Guion original',script:'Texto literal\n',material:'',recorded_material:'Material original',feedback:'Corrección',schedule:'Horario'}},
@@ -42,7 +42,7 @@ test('workspace marker is strictly boolean and absent marker defaults false, nev
     assert.throws(()=>parseReconciliationContext({...blocked,legacy_editing_tasks:[{...task,en_workspace}]},1));
   }
 });
-test('existing editing history is never eligible; empty legacy status is compatible only when field was absent',()=>{
+test('existing editing history cannot be ready; empty legacy status is compatible only when field was absent',()=>{
   const task={id:9,revision:2,titulo:'Edición original',estado:'en_revision'};
   assert.throws(()=>parseReconciliationContext({...context(),legacy_editing_tasks:[task]},1));
   assert.deepEqual(parseReconciliationContext({...context(),legacy_editing_tasks:[]},1).legacy_editing_tasks,[]);
@@ -81,8 +81,8 @@ test('actual blocked UI renders canonical ID-derived links and escaped title/sta
   assert.equal(file.parseDiagnostics.length,0);
   const nodes=(root,predicate)=>{const found=[];const visit=node=>{if(predicate(node))found.push(node);ts.forEachChild(node,visit);};visit(root);return found;};
   const branch=nodes(file,node=>ts.isConditionalExpression(node)&&node.condition.getText(file)==="context.eligibility.status!=='ready'")[0];
-  assert.ok(branch,'Existing eligibility condition remains the only form gate');
-  const blocked=branch.whenTrue.getText(file),ready=branch.whenFalse.getText(file);
+  assert.ok(branch,'Blocked dossier remains visible independently of explicit adoption');
+  const blocked=branch.whenTrue.getText(file);
   assert.match(blocked,/context.legacy_editing_tasks.length>0/);
   assert.match(blocked,/context.legacy_editing_tasks.map\(task=>/);
   assert.match(blocked,/key=\{task.id\}/);
@@ -101,7 +101,8 @@ test('actual blocked UI renders canonical ID-derived links and escaped title/sta
   assert.doesNotMatch(outside,/<a\b|href=|onClick=/);
   assert.match(blocked,/Las entregas y correcciones existentes permanecen en su tarea original. No se dividen automáticamente./);
   assert.doesNotMatch(blocked,/<form|<input|<textarea|type="submit"|\.submit\(|task.href|task.url|dangerouslySetInnerHTML/);
-  assert.match(ready,/<form/);
+  assert.match(source,/context.eligibility.status==='ready'\|\|adoptionTask/);
+  assert.match(source,/context.eligibility.status==='ready'\|\|draft.adoption_enabled===true/);
 });
 test('opening never splits aggregate count into videos and explicit submission strips UI keys',async()=>{
   const model=createProductionReconciliationModel({taskId:1,sesion:session(),readSession:session,request:async()=>context(),onChange:()=>{}});
@@ -166,4 +167,62 @@ test('parent keeps open reconciliation mounted through registry refreshes and sh
   assert.match(parent,/taskDraftDirty =[\s\S]*?reconciliationDraft.dirty/);assert.match(parent,/taskWriteBusy =[^;]*reconciliationDraft.busy/);
   assert.match(component,/state.phase==='closed'&&!available/);assert.match(component,/key=\{video.local_id\}/);
   assert.match(component,/<DiscardChangesDialog/);assert.doesNotMatch(component,/dangerouslySetInnerHTML|localStorage|sessionStorage/);
+});
+const adoptionContext=()=>parseReconciliationContext({...context(),eligibility:{status:'legacy_editing',visita_id:null},
+  legacy_editing_tasks:[{id:9,revision:4,titulo:'Edición original',estado:'en_revision',en_workspace:true}]},1);
+const adoptionDraft=()=>({titulo:'Visita',participante_ids:[],drive_url:'',observaciones:'',acknowledged:true,
+  adoption_enabled:true,adoption_video_id:'chosen',adoption_acknowledged:true,
+  videos:[{local_id:'chosen',titulo:'Video',guion:'',estado:'grabado',material_url:'',observaciones:''}]});
+test('adoption is explicit, closed, observed-ID only and ordinal follows current stable local ID',()=>{
+  const ctx=adoptionContext(),draft=adoptionDraft(),before=JSON.stringify({ctx,draft});
+  draft.task_id=123;draft.expected_revision=999;
+  const expected={task_id:9,expected_revision:4,video_ordinal:1,acknowledgement:'esta_tarea_edita_un_solo_video'};
+  assert.deepEqual(reconciliationInput(ctx,draft,uuid(8)).existing_editing,expected);
+  delete draft.task_id;delete draft.expected_revision;assert.equal(JSON.stringify({ctx,draft}),before);
+  draft.videos.unshift({...draft.videos[0],local_id:'other',estado:'planificado'});
+  assert.equal(reconciliationInput(ctx,draft,uuid(8)).existing_editing.video_ordinal,2);
+  draft.videos.reverse();assert.equal(reconciliationInput(ctx,draft,uuid(8)).existing_editing.video_ordinal,1);
+  draft.videos.shift();assert.throws(()=>reconciliationInput(ctx,draft,uuid(8)));
+  for(const patch of [{adoption_enabled:false},{adoption_enabled:undefined},{adoption_acknowledged:false},{acknowledged:false},{adoption_video_id:''},{adoption_video_id:'missing'},
+    {videos:[{...adoptionDraft().videos[0],estado:'planificado'}]}, {videos:[...adoptionDraft().videos,...adoptionDraft().videos]}])
+    assert.throws(()=>reconciliationInput(ctx,{...adoptionDraft(),...patch},uuid(8)));
+});
+test('multiple, unmarked and other blocked contexts cannot adopt; normal ready payload unchanged',()=>{
+  for(const status of ['unavailable','already_linked','not_historical']){
+    const ctx={...adoptionContext(),eligibility:{status,visita_id:null}};
+    assert.equal(reconciliationAdoptionTask(ctx),null);assert.throws(()=>reconciliationInput(ctx,adoptionDraft(),uuid(8)));
+  }
+  for(const tasks of [[],[{...adoptionContext().legacy_editing_tasks[0],en_workspace:false}],
+    [...adoptionContext().legacy_editing_tasks,{...adoptionContext().legacy_editing_tasks[0],id:10}]]){
+    const ctx={...adoptionContext(),legacy_editing_tasks:tasks};assert.equal(reconciliationAdoptionTask(ctx),null);
+    assert.throws(()=>reconciliationInput(ctx,adoptionDraft(),uuid(8)));
+  }
+  const normal={...adoptionDraft(),adoption_enabled:false};
+  assert.equal(Object.hasOwn(reconciliationInput(context(),normal,uuid(8)),'existing_editing'),false);
+  assert.throws(()=>reconciliationInput(context(),adoptionDraft(),uuid(8)));
+});
+test('adoption retry freezes identical body, reread resets both acknowledgements preserving choices',async()=>{
+  let conflict=false,revision=4;const calls=[];
+  const model=createProductionReconciliationModel({taskId:1,sesion:session(),readSession:session,onChange:()=>{},request:async(_url,options)=>{
+    if(!options?.method){const ctx=adoptionContext();ctx.legacy_editing_tasks[0].revision=revision;return ctx;}
+    calls.push(options.body);throw Object.assign(new Error('failed'),conflict?{status:409}:{});
+  }});
+  await model.open();assert.equal(model.snapshot.draft.adoption_enabled,false);assert.equal(model.snapshot.draft.adoption_video_id,'');assert.equal(model.snapshot.draft.adoption_acknowledged,false);
+  model.update(adoptionDraft());await model.submit();assert.equal(model.update({adoption_video_id:'other'}),false);
+  conflict=true;await model.submit({retry:true});assert.equal(calls[0],calls[1]);revision=5;
+  await model.open({preserveDraft:true});assert.equal(model.snapshot.draft.acknowledged,false);assert.equal(model.snapshot.draft.adoption_acknowledged,false);
+  assert.equal(model.snapshot.draft.adoption_video_id,'chosen');assert.equal(model.snapshot.draft.adoption_enabled,true);
+  assert.equal(model.snapshot.context.legacy_editing_tasks[0].revision,5);
+  model.update({acknowledged:true,adoption_acknowledged:true});await model.submit();assert.equal(JSON.parse(calls[2]).existing_editing.expected_revision,5);
+  model.cancel();assert.equal(model.snapshot.draft,null);model.dispose();
+});
+test('actual adoption UI has explicit opt-in, no default video and independent acknowledgements',()=>{
+  const source=readFileSync(new URL('./ProductionReconciliation.jsx',import.meta.url),'utf8');
+  const parsed=ts.createSourceFile('ProductionReconciliation.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
+  assert.equal(parsed.parseDiagnostics.length,0);
+  assert.match(source,/Vincular edición existente a un solo video/);
+  assert.match(source,/Solo si esta tarea corresponde a un único video; si agrupa varios no usar/);
+  assert.match(source,/value=\{draft.adoption_video_id\}/);assert.match(source,/<option value="">Elegir un video grabado/);
+  assert.match(source,/value=\{video.local_id\}/);assert.match(source,/checked=\{draft.adoption_acknowledged\}/);
+  assert.match(source,/checked=\{draft.acknowledged\}/);assert.doesNotMatch(source,/editor_id|fecha_entrega|deadline/);
 });

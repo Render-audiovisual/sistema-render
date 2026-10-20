@@ -42,6 +42,7 @@ function fixture(options={}) {
     // Registry router/handoff queries. No real network, server or DB.
     if(sql.includes('FROM produccion_videos pv LEFT JOIN tareas'))return{rows:[video]};
     if(sql.startsWith('SELECT tarea_origen_id FROM produccion_visitas'))return{rows:[{tarea_origen_id:10}]};
+    if(sql.startsWith('SELECT a.tarea_edicion_id FROM produccion_edicion_adopciones'))return{rows:[]};
     if(sql.startsWith('SELECT * FROM tareas WHERE'))return{rows:[source]};
     if(sql.includes('FROM produccion_visitas v JOIN clientes'))return{rows:[visit]};
     if(sql.includes('FROM produccion_fotos'))return{rows:[]};

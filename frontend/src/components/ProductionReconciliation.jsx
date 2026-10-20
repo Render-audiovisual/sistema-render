@@ -2,7 +2,7 @@ import React,{useEffect,useRef,useState}from 'react';
 import {apiRequest}from '../features/render-os/services/render-os-api.js';
 import {getSesion}from '../utils.jsx';
 import {DiscardChangesDialog}from './DiscardChangesDialog.jsx';
-import {createProductionReconciliationModel,emptyReconciliationVideo}from './productionReconciliation.js';
+import {createProductionReconciliationModel,emptyReconciliationVideo,reconciliationAdoptionTask}from './productionReconciliation.js';
 import './ProductionReconciliation.css';
 
 const blocked={legacy_editing:'Esta tarea ya tiene edición agregada. Hay que revisar su correspondencia antes de dividirla.',already_linked:'La tarea ya tiene una visita vinculada.',not_historical:'Esta tarea no tiene producción agregada histórica para revisar.',unavailable:'Revisá el cliente, la fecha y la disponibilidad de la tarea antes de continuar.'};
@@ -24,6 +24,7 @@ function ReconciliationForm({taskId,sesion,users=[],onDraftStateChange,onSaved,d
   useEffect(()=>{callback.current?.({dirty:state.dirty,busy:state.busy});},[state.dirty,state.busy]);
   useEffect(()=>{if(state.phase==='saved'&&notified.current!==state.result.reconciliation_id){notified.current=state.result.reconciliation_id;saved.current?.(state.result);}},[state.phase,state.result]);
   const context=state.context,draft=state.draft;
+  const adoptionTask=reconciliationAdoptionTask(context);
   const update=changes=>model.current?.update(changes);
   const videoChange=(index,field,value)=>update({videos:draft.videos.map((v,n)=>n===index?{...v,[field]:value}:v)});
   const close=()=>{if(state.dirty)setDiscard(true);else model.current?.cancel();};
@@ -52,7 +53,13 @@ function ReconciliationForm({taskId,sesion,users=[],onDraftStateChange,onSaved,d
               {' · '}{legacyTaskStateLabel(task.estado)}
             </li>)}</ul>
           </div>}
-        </>:draft&&state.phase!=='saved'&&<form onSubmit={event=>{event.preventDefault();void model.current?.submit();}}>
+        </>:null}
+        {draft&&state.phase!=='saved'&&(context.eligibility.status==='ready'||adoptionTask)&&<>
+          {adoptionTask&&<fieldset disabled={state.busy||state.frozen||disabled}>
+            <label><input type="checkbox" checked={draft.adoption_enabled} onChange={e=>update({adoption_enabled:e.target.checked,adoption_acknowledged:false})}/>Vincular edición existente a un solo video</label>
+            <p>Solo si esta tarea corresponde a un único video; si agrupa varios no usar.</p>
+          </fieldset>}
+          {(context.eligibility.status==='ready'||draft.adoption_enabled===true)&&<form onSubmit={event=>{event.preventDefault();void model.current?.submit();}}>
           <fieldset disabled={state.busy||state.frozen||disabled}>
             <label>Nombre de la visita<input maxLength={250} value={draft.titulo} onChange={e=>update({titulo:e.target.value})}/></label>
             <label>Carpeta de material<input inputMode="url" placeholder="https://drive.google.com/…" maxLength={4000} value={draft.drive_url} onChange={e=>update({drive_url:e.target.value})}/></label>
@@ -69,10 +76,18 @@ function ReconciliationForm({taskId,sesion,users=[],onDraftStateChange,onSaved,d
               <label>Observaciones del video {index+1}<textarea rows={2} maxLength={20000} value={video.observaciones} onChange={e=>videoChange(index,'observaciones',e.target.value)}/></label>
             </div>)}
             <button type="button" disabled={draft.videos.length>=50} onClick={()=>update({videos:[...draft.videos,emptyReconciliationVideo()]})}>Agregar otro video</button>
+            {adoptionTask&&<>
+              <label>Video grabado que edita la tarea #{adoptionTask.id}<select value={draft.adoption_video_id} onChange={e=>update({adoption_video_id:e.target.value,adoption_acknowledged:false})}>
+                <option value="">Elegir un video grabado</option>
+                {draft.videos.filter(video=>video.estado==='grabado').map(video=><option key={video.local_id} value={video.local_id}>{video.titulo||'Sin título'} · Video {draft.videos.indexOf(video)+1}</option>)}
+              </select></label>
+              <label><input type="checkbox" checked={draft.adoption_acknowledged} onChange={e=>update({adoption_acknowledged:e.target.checked})}/>Confirmo que esta tarea y todas sus entregas y correcciones anteriores corresponden únicamente al video seleccionado. Su estado e historial se conservan; no se aprueba ni publica contenido nuevo.</label>
+            </>}
             <label className="ros-reconciliation-ack"><input type="checkbox" checked={draft.acknowledged} onChange={e=>update({acknowledged:e.target.checked})}/>Identifiqué manualmente cada video. Esta revisión no confirma publicaciones ni genera tareas de edición.</label>
-            <button type="submit" className="ros-reconciliation-primary" disabled={!draft.acknowledged}>Guardar revisión de videos</button>
+            <button type="submit" className="ros-reconciliation-primary" disabled={!draft.acknowledged||(Boolean(adoptionTask)&&(!draft.adoption_acknowledged||!draft.videos.some(video=>video.local_id===draft.adoption_video_id&&video.estado==='grabado')))}>Guardar revisión de videos</button>
           </fieldset>
         </form>}
+        </>}
       </>}
       {state.phase==='saved'&&<p role="status">Revisión guardada. <a href={`/producciones?visita=${state.result.visita_id}`}>Abrir visita en Producciones ↗</a></p>}
       <button type="button" disabled={state.busy||disabled} onClick={close}>Cerrar revisión</button>

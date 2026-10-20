@@ -119,6 +119,14 @@ test('production registry: historical invariance and real per-video HTTP workflo
     // after original history assertions and before current mutation routes.
     await fixture.query(await readFile(new URL('../migrations/069_production_reconciliation.sql',import.meta.url),'utf8'));
     await fixture.query("INSERT INTO _migrations(nombre) VALUES ('069_production_reconciliation.sql')");
+    // 070 depends on 069 and is likewise deferred. Apply its real forward SQL
+    // to the populated fixture; adoption must never backfill or rewrite history.
+    const beforeAdoptions = await history();
+    assert.deepEqual(await fixture.query("SELECT to_regclass('public.produccion_edicion_adopciones') AS relation"), [{ relation: null }]);
+    await fixture.query(await readFile(new URL('../migrations/070_production_editing_adoptions.sql',import.meta.url),'utf8'));
+    await fixture.query("INSERT INTO _migrations(nombre) VALUES ('070_production_editing_adoptions.sql')");
+    assert.deepEqual(await history(), beforeAdoptions, '070 must preserve all populated historical rows and assignments');
+    assert.deepEqual(await fixture.query('SELECT count(*)::int AS count FROM produccion_edicion_adopciones'), [{ count: 0 }]);
   });
   await t.test('task POST registers one visit with no inferred videos; task-only date/client writes and deletion reject', async () => {
     const [client] = await fixture.query("INSERT INTO clientes(nombre) VALUES ('QA source task client') RETURNING id");

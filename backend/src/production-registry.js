@@ -4,6 +4,7 @@ import { annotateTaskAssignments, replaceTaskAssignments } from './task-assignme
 import { taskOperationalDto } from './operational-dto.js';
 import { productionEditorialConflict } from './production-link-errors.js';
 import { registerProductionReconciliationRoutes } from './production-reconciliation.js';
+import { findProductionAdoptedEditingTask } from './production-editing-adoption.js';
 import { registerProductionEditorialRoutes, lockProductionEditorialContext, lockProductionObjectiveLinks, rejectLegacyProductionSource, hasLegacyProductionSource, assertProductionLineageAvailable } from './production-editorial.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -128,6 +129,13 @@ async function sourceTask(db, id, { available = true } = {}) {
 async function lockVisit(db, id) {
   const link = (await db.query('SELECT tarea_origen_id FROM produccion_visitas WHERE id=$1', [id])).rows[0];
   if (!link) throw fail('Visita no encontrada.', 404);
+  const adoptedTaskId=await findProductionAdoptedEditingTask(db,id);
+  if(adoptedTaskId) {
+    await lockProductionObjectiveLinks(db);
+    const ids=[...new Set([link.tarea_origen_id,adoptedTaskId].filter(positive))].sort((a,b)=>a-b);
+    await db.query('SELECT id FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',[ids]);
+    if(await findProductionAdoptedEditingTask(db,id)!==adoptedTaskId)throw fail('La correspondencia histórica cambió. Recargá la visita.',409);
+  }
   if (link.tarea_origen_id) await sourceTask(db, link.tarea_origen_id, { available: false });
   const row = (await db.query(`${VISITS} WHERE v.id=$1 FOR UPDATE OF v`, [id])).rows[0];
   if (!row) throw fail('Visita no encontrada.', 404);

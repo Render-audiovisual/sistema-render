@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { readProductionReconciliationContext, registerProductionReconciliationRoutes } from '../src/production-reconciliation.js';
 
 // Injected DB protocol and actual legacy helper only; no physical DB/HTTP claim.
@@ -160,8 +159,6 @@ test('GET route is closed no-store and retains POST registration; context source
   const reader=code.slice(code.indexOf('export async function readProductionReconciliationContext'),code.indexOf('export function registerProductionReconciliationRoutes'));
   assert.match(reader,/await currentAdmin\(db,auth\)/);assert.match(reader,/await hasLegacyProductionSource\(db,source.id,source\)/);
   assert.doesNotMatch(reader,/\b(?:UPDATE|INSERT|DELETE)\b|\.slice\(|\.substring\(|SELECT \*/);
-  const post=code.slice(code.indexOf('export async function reconcileProductionHistory'),code.indexOf('\nfunction contextText')).trim();
-  // Snapshot only of the pre-existing POST function; context addition cannot
-  // silently alter reconciliation writes, revision/receipt gates or replay.
-  assert.equal(createHash('sha256').update(post).digest('hex'),'b2e00c2128f4ff2d039f9c1a2f51d10ec7c5e59079da2d0d2e490b7640432d1e');
+  // POST now has a separately tested explicit adoption contract. GET remains
+  // independently SELECT-only rather than freezing unrelated POST source bytes.
 });

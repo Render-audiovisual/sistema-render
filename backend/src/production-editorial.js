@@ -1,5 +1,6 @@
 import { isValidProductionDate } from './production-visits.js';
 import { isReconciledProductionVideo } from './production-history.js';
+import { findProductionAdoptedEditingTask } from './production-editing-adoption.js';
 
 const fail = (message, status = 409) => Object.assign(new Error(message), { status });
 const positive = value => Number.isSafeInteger(value) && value > 0;
@@ -60,7 +61,8 @@ export async function lockProductionEditorialContext(db, visitId, videoId, selec
   if (slots.length > 1) throw fail('La tarea y la pieza pertenecen a casilleros diferentes.');
   const discovered = slots[0];
   if (discovered) await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`objetivo:${discovered.periodo}:${discovered.clave}`]);
-  const ids = [...new Set([before.tarea_origen_id, before.tarea_edicion_id, before.tarea_entrega_id, taskId, discovered?.tarea_id].filter(positive))].sort((a,b) => a-b);
+  const adoptedTaskId=await findProductionAdoptedEditingTask(db,visitId);
+  const ids = [...new Set([before.tarea_origen_id, before.tarea_edicion_id, before.tarea_entrega_id, taskId, discovered?.tarea_id, adoptedTaskId].filter(positive))].sort((a,b) => a-b);
   const tasks = (await db.query('SELECT t.* FROM tareas t WHERE t.id=ANY($1::int[]) ORDER BY t.id FOR UPDATE', [ids])).rows;
   const publication = publicationId ? (await db.query(`${PUBLICATION} WHERE p.id=$1 FOR UPDATE OF p`, [publicationId])).rows[0] : null;
   const slot = discovered ? (await db.query(`${SLOT} WHERE s.id=$1 FOR UPDATE OF s`, [discovered.id])).rows[0] : null;
