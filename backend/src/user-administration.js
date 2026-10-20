@@ -20,20 +20,20 @@ function observedActor(actor) {
 // All database-backed account administration shares this ordering: mutex,
 // current actor (held against revocation), then target. Middleware authority
 // may have become stale while waiting; never fall back to its cached role.
-export async function withUserAdministration(pool, actor, mutate) {
+async function withAccountAuthority(pool, actor, mutate, requireAdmin) {
   const observed = observedActor(actor);
   const client = await pool.connect();
   try {
     await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
     await client.query("SELECT pg_advisory_xact_lock(20261019, 1)");
-    const current = (await client.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [observed.id])).rows[0];
+    const current = (await client.query(`SELECT id,rol,activo,session_version,usuario,google_email FROM usuarios WHERE id=$1 ${requireAdmin ? 'FOR SHARE' : 'FOR UPDATE'}`, [observed.id])).rows[0];
     if (!current || current.activo !== true || current.session_version !== observed.version) {
       throw new UserAdministrationAuthorityError(401, 'La sesión fue revocada o el usuario está inactivo.', 'USER_ADMIN_SESSION_REVOKED');
     }
-    if (current.rol !== 'admin') {
+    if (requireAdmin && current.rol !== 'admin') {
       throw new UserAdministrationAuthorityError(403, 'No tenés permiso para administrar usuarios.', 'USER_ADMIN_ROLE_CHANGED');
     }
-    const result = await mutate(client);
+    const result = await mutate(client,current);
     await client.query("COMMIT");
     return result;
   } catch (error) {
@@ -42,11 +42,21 @@ export async function withUserAdministration(pool, actor, mutate) {
   } finally { client.release(); }
 }
 
+export function withUserAdministration(pool, actor, mutate) {
+  return withAccountAuthority(pool,actor,mutate,true);
+}
+
+// Self-service rename shares the global alias ordering but never requires or
+// grants an administrator role. The actor's active epoch is rechecked on-row.
+export function withSelfIdentityChange(pool, actor, mutate) {
+  return withAccountAuthority(pool,actor,mutate,false);
+}
+
 // Serializes owner-changing operations so concurrent requests cannot remove
 // the final active administrator. No inferred identity or name-based grants.
 export async function administerUser(pool, id, next, mutate, actor) {
   return withUserAdministration(pool, actor, async client => {
-    const { rows } = await client.query("SELECT id,rol,activo,user_admin_version FROM usuarios WHERE id=$1 FOR UPDATE", [id]);
+    const { rows } = await client.query("SELECT id,rol,activo,user_admin_version,usuario,google_email FROM usuarios WHERE id=$1 FOR UPDATE", [id]);
     const target = rows[0];
     if (!target) throw new UserAdministrationInputError('Usuario no encontrado.',404,'USER_ADMIN_NOT_FOUND');
     const expected = expectedUserAdministrationVersion(next.expected_revision,Number(id));
@@ -59,6 +69,6 @@ export async function administerUser(pool, id, next, mutate, actor) {
         const error = new Error("Debe quedar al menos un administrador activo."); error.status = 409; throw error;
       }
     }
-    return mutate(client);
+    return mutate(client,target);
   });
 }

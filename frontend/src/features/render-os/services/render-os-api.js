@@ -6,8 +6,10 @@ export async function apiRequest(url, options) {
   const response = await fetch(url, options);
   const body = await response.json().catch(error => { if (isSessionFailure(error)) throw error; return {}; });
   if (!response.ok) {
-    const error = new Error(body.error || "No se pudo completar la operación.");
+    const error = new Error(typeof body?.error === 'string' && body.error ? body.error : "No se pudo completar la operación.");
     error.status = response.status;
+    const code = typeof body?.code === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,79}$/.exec(body.code);
+    if (code && code[0] === body.code && body.code !== 'session_binding_obsolete') error.code = body.code;
     throw error;
   }
   return body;

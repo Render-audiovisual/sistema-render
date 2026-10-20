@@ -237,3 +237,59 @@ test('recovery confirmation retains the original genuine actor and context, refu
   }
   const f=fixture(async()=>[]);f.deps.blockedTargetsRef.current.add(9);f.run('requestReloadManagedUser');f.run('cerrarAdministracion');assert.equal(f.deps.recoveryIntent.current,null);
 });
+
+test('typed namespace rejection preserves draft and held revision without success, refresh or recovery block; corrected value can retry same observation',async()=>{
+  let rejected=true;
+  const f=fixture(async(url,options)=>{
+    if(options.method==='GET')return[{...baseUser,nombre:'Renombrada QA',usuario:'disponible_qa',admin_revision:'ua1:9:2'}];
+    const body=JSON.parse(options.body);assert.equal(body.expected_revision,'ua1:9:1');
+    if(rejected)throw Object.assign(new Error('private conflicting account@example.test'),{status:409,code:'LOGIN_IDENTIFIER_UNAVAILABLE'});
+    return{id:9,nombre:body.nombre,usuario:body.usuario,rol:baseUser.rol,admin_revision:'ua1:9:2'};
+  });
+  f.run('iniciarEdicionDatos');f.effects.length=0;
+  await f.run('guardarDatos',baseUser);
+  assert.equal(f.calls.length,1);assert.equal(f.deps.blockedTargetsRef.current.has(9),false);assert.equal(f.selected.admin_revision,'ua1:9:1');
+  assert.equal(f.deps.editObservations.current.datos.admin_revision,'ua1:9:1');
+  assert.ok(f.effects.some(([name,value])=>name==='FormError'&&value==='Ese usuario o email de acceso no está disponible. Elegí otro.'));
+  assert.ok(!JSON.stringify(f.effects).includes('private conflicting'));
+  for(const name of ['Usuarios','UsuarioAdministrado','NombreEdicion','UsuarioEdicion','EditandoDatos','BlockedTargets'])assert.equal(f.effects.some(([effect])=>effect===name),false,name);
+  assert.equal(f.effects.some(([name,value])=>name==='Mensaje'&&value!==null),false);assert.equal(f.deps.pending.current,false);
+  rejected=false;f.deps.usuarioEdicion='disponible_qa';await f.run('guardarDatos',baseUser);
+  assert.equal(f.calls.length,3);assert.equal(f.selected.admin_revision,'ua1:9:2');assert.equal(JSON.parse(f.calls[1].options.body).expected_revision,'ua1:9:1');
+});
+
+test('namespace rejection on Google preserves exact observed revision; real CAS and unknown409 still block without rebasing',async()=>{
+  for(const code of ['LOGIN_IDENTIFIER_UNAVAILABLE','USER_ADMIN_REVISION_CONFLICT',undefined,'unknown']){
+    const f=fixture(async()=>{throw Object.assign(new Error('private diagnostic'),{status:409,...(code?{code}:{})});});
+    f.run('iniciarEdicionGoogleEmail');f.effects.length=0;await f.run('guardarGoogleEmail',baseUser);
+    assert.equal(f.calls.length,1);assert.equal(f.selected.admin_revision,'ua1:9:1');assert.equal(f.deps.editObservations.current.google.admin_revision,'ua1:9:1');
+    assert.equal(f.deps.blockedTargetsRef.current.has(9),code!=='LOGIN_IDENTIFIER_UNAVAILABLE');
+    assert.equal(f.effects.some(([name,value])=>name==='EditandoGoogleEmail'&&value===false),false);
+    assert.equal(f.effects.some(([name,value])=>name==='Mensaje'&&value!==null),false);
+    if(code!=='LOGIN_IDENTIFIER_UNAVAILABLE'){await f.run('guardarGoogleEmail',baseUser);assert.equal(f.calls.length,1);}
+  }
+  const uncertain=fixture(async()=>{throw Object.assign(new Error('unconfirmed'),{status:500,code:'LOGIN_IDENTIFIER_UNAVAILABLE'});});await uncertain.run('guardarDatos',baseUser);assert.equal(uncertain.deps.blockedTargetsRef.current.has(9),true);
+});
+
+test('typed namespace rejection arriving after actor change, target ABA or unmount cannot paint or change recovery state',async()=>{
+  for(const change of ['switch','aba','unmount']){
+    const wait=deferred(),f=fixture(()=>wait.promise);const promise=f.run('guardarDatos',baseUser);f[change]();const mark=f.effects.length;
+    wait.reject(Object.assign(new Error('private identity'),{status:409,code:'LOGIN_IDENTIFIER_UNAVAILABLE'}));await promise;
+    assert.equal(f.calls.length,1);assert.equal(f.deps.blockedTargetsRef.current.has(9),false);
+    assert.equal(f.effects.slice(mark).some(([name])=>!['MutationBusy','GuardandoDatos','CargandoUsuarios'].includes(name)),false);
+  }
+});
+
+test('typed create namespace rejection keeps entered fields and permits a corrected explicit POST without fabricated success',async()=>{
+  let first=true,created;
+  const f=fixture(async(url,options)=>{
+    if(options.method==='GET')return[baseUser,created];
+    if(first)throw Object.assign(new Error('private conflicting login'),{status:409,code:'LOGIN_IDENTIFIER_UNAVAILABLE'});
+    const body=JSON.parse(options.body);assert.equal(Object.hasOwn(body,'expected_revision'),false);
+    created={id:12,nombre:body.nombre,usuario:body.usuario,rol:'diseno',activo:true,email_notificaciones:body.email_notificaciones,google_email:null,whatsapp_vinculado:false,admin_revision:'ua1:12:1'};return created;
+  });
+  f.deps.modalAltaAbierto=true;await f.run('handleCrear',{preventDefault(){}});assert.equal(f.calls.length,1);
+  for(const name of ['Password','Nombre','Usuario','ModalAltaAbierto','Usuarios'])assert.equal(f.effects.some(([effect])=>effect===name),false,name);
+  assert.ok(f.effects.some(([name,value])=>name==='FormError'&&value==='Ese usuario o email de acceso no está disponible. Elegí otro.'));
+  first=false;f.deps.usuario='disponible_new';await f.run('handleCrear',{preventDefault(){}});assert.equal(f.calls.length,3);assert.equal(f.users.find(user=>user.id===12).usuario,'disponible_new');
+});

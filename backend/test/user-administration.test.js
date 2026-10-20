@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { administerUser, withUserAdministration } from "../src/user-administration.js";
+import { administerUser, withUserAdministration, withSelfIdentityChange } from "../src/user-administration.js";
 
 const actor = { id: 2, session_version: 7 };
 
@@ -8,7 +8,7 @@ function fixture({ count = 1, target = { id: 1, rol: "admin", activo: true, user
   const calls = [];
   const db = { async query(sql) {
     calls.push(sql);
-    if (sql.includes('FOR SHARE')) return { rows: current ? [current] : [] };
+    if (sql.includes('session_version')) return { rows: current ? [current] : [] };
     if (sql.startsWith("SELECT id")) return { rows: target ? [target] : [] };
     if (sql.startsWith("SELECT count")) return { rows: [{ count }] };
     return { rows: [] };
@@ -67,8 +67,21 @@ test('authorization reads after the mutex under READ COMMITTED and holds the act
   assert.equal(await withUserAdministration(pool,actor,async client=>{ await client.query('SYNTHETIC MUTATION'); return 'ack'; }),'ack');
   assert.deepEqual(calls,[
     'BEGIN ISOLATION LEVEL READ COMMITTED', 'SELECT pg_advisory_xact_lock(20261019, 1)',
-    'SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', 'SYNTHETIC MUTATION','COMMIT','release',
+    'SELECT id,rol,activo,session_version,usuario,google_email FROM usuarios WHERE id=$1 FOR SHARE', 'SYNTHETIC MUTATION','COMMIT','release',
   ]);
+});
+
+test('self identity changes require the active actor epoch but do not grant or require an admin role',async()=>{
+  const current={id:2,rol:'edicion',activo:true,session_version:7,usuario:'self',google_email:null};
+  const {pool,calls}=fixture({current});
+  assert.equal(await withSelfIdentityChange(pool,actor,async(db,user)=>{assert.equal(user,current);await db.query('SYNTHETIC SELF WRITE');return 'saved';}),'saved');
+  assert.deepEqual(calls.slice(0,3),['BEGIN ISOLATION LEVEL READ COMMITTED','SELECT pg_advisory_xact_lock(20261019, 1)',
+    'SELECT id,rol,activo,session_version,usuario,google_email FROM usuarios WHERE id=$1 FOR UPDATE']);
+  for(const changed of [null,{...current,session_version:8},{...current,activo:false}]) {
+    const f=fixture({current:changed});
+    await assert.rejects(withSelfIdentityChange(f.pool,actor,()=>assert.fail('must not write')),{status:401});
+    assert.deepEqual(f.calls.slice(-2),['ROLLBACK','release']);
+  }
 });
 
 test('held target revision must match before owner checks or mutation; no automatic rebase', async () => {

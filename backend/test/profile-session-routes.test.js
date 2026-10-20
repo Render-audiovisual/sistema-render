@@ -2,13 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { normalizeSelfProfileInput } from '../src/self-profile-input.js';
+import { assertUserLoginIdentifierAvailable } from '../src/user-login-namespace.js';
+import { withSelfIdentityChange } from '../src/user-administration.js';
 
 const source=readFileSync(new URL('../src/server.js',import.meta.url),'utf8');
 function fixture({route='foto',lostRead=false,lostWrite=false,duplicate=false,uniqueConflict=false,validPassword=true}={}){
   const start=source.indexOf(`router.patch("/usuarios/${route}"`),end=source.indexOf('\nrouter.',start+1);
   const code=source.slice(start,end),calls=[];let handler;
-  const user={id:7,usuario:'current',nombre:'Actual',rol:'edicion',foto_perfil:null,password_hash:'injected-hash'};
+  const user={id:7,usuario:'current',nombre:'Actual',rol:'edicion',activo:true,session_version:3,google_email:null,foto_perfil:null,password_hash:'injected-hash'};
   const pool={async query(sql,args){calls.push({sql,args});
+    if(sql.startsWith('BEGIN')||sql==='COMMIT'||sql==='ROLLBACK'||sql.includes('pg_advisory_xact_lock'))return{rows:[]};
     if(sql.startsWith('SELECT id FROM usuarios'))return{rows:duplicate?[{id:8}]:[]};
     if(sql.startsWith('SELECT'))return{rows:lostRead?[]:[user]};
     if(sql.includes('UPDATE usuarios')){
@@ -17,7 +20,8 @@ function fixture({route='foto',lostRead=false,lostWrite=false,duplicate=false,un
     }
     throw Error('Unexpected SQL');
   }};
-  new Function('router','pool','bcrypt','normalizeSelfProfileInput',code)({patch(_path,fn){handler=fn;}},pool,{compare:async()=>validPassword,hash:async()=>'injected-new-hash'},normalizeSelfProfileInput);
+  pool.connect=async()=>({query:pool.query,release(){calls.push({sql:'release',args:[]});}});
+  new Function('router','pool','bcrypt','normalizeSelfProfileInput','assertUserLoginIdentifierAvailable','withSelfIdentityChange',code)({patch(_path,fn){handler=fn;}},pool,{compare:async()=>validPassword,hash:async()=>'injected-new-hash'},normalizeSelfProfileInput,assertUserLoginIdentifierAvailable,withSelfIdentityChange);
   return{calls,async run(body){const res={statusCode:200,status(n){this.statusCode=n;return this;},json(body){this.body=body;return this;}};
     await handler({auth:{id:7,usuario:'current',session_version:3},body},res,e=>{throw e;});return res;}};
 }
@@ -46,7 +50,9 @@ test('wrong password, duplicate name and uniqueness race are explicit failures w
     const result=await fixture({route,validPassword:false}).run(inputs[route]);
     assert.equal(result.statusCode,401);assert.equal(result.body.code,'current_password_invalid');
   }
-  assert.equal((await fixture({route:'perfil',duplicate:true}).run(inputs.perfil)).statusCode,409);
+  const collision=fixture({route:'perfil',duplicate:true});
+  await assert.rejects(collision.run(inputs.perfil),error=>error.status===409&&error.code==='LOGIN_IDENTIFIER_UNAVAILABLE');
+  assert.equal(collision.calls.some(({sql})=>sql.includes('UPDATE usuarios')),false);
   assert.equal((await fixture({route:'perfil',uniqueConflict:true}).run(inputs.perfil)).statusCode,409);
 });
 
@@ -73,4 +79,16 @@ test('photo explicit null/empty clears map to SQL null, missing photo never beco
     assert.equal(result.statusCode,200);
     assert.equal(f.calls.find(({sql})=>sql.includes('UPDATE usuarios')).args[0],null);
   }
+});
+
+test('self rename uses actual authority/namespace helpers before unchanged ID+epoch CAS update and commit',async()=>{
+  const f=fixture({route:'perfil'});assert.equal((await f.run(inputs.perfil)).statusCode,200);
+  const at=pattern=>f.calls.findIndex(({sql})=>pattern.test(sql));
+  const begin=at(/^BEGIN ISOLATION LEVEL READ COMMITTED/),mutex=at(/pg_advisory_xact_lock/);
+  const actor=at(/SELECT id,rol,activo,session_version,usuario,google_email.*FOR UPDATE/);
+  const namespace=at(/lower\(google_email\)=lower\(\$2::text\)/),write=at(/UPDATE usuarios/),commit=at(/^COMMIT$/);
+  assert.ok(begin>=0&&begin<mutex&&mutex<actor&&actor<namespace&&namespace<write&&write<commit);
+  assert.deepEqual(f.calls[actor].args,[7]);
+  assert.deepEqual(f.calls[namespace].args,[7,'updated','current']);
+  assert.equal(f.calls.at(-1).sql,'release');
 });

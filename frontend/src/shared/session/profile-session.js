@@ -3,6 +3,7 @@ import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } f
 import { PASSWORD_POLICY_MESSAGE } from '../../../../shared/password-policy.mjs';
 
 export function profileFailureMessage(error) {
+  if (error?.code === 'LOGIN_IDENTIFIER_UNAVAILABLE') return 'Ese usuario o email de acceso no está disponible. Elegí otro.';
   if (error?.code === 'current_password_invalid') return 'La contraseña actual es incorrecta.';
   if (error?.code === 'NEW_PASSWORD_INVALID') return PASSWORD_POLICY_MESSAGE;
   if (error?.code === 'PROFILE_INPUT_INVALID') return 'Revisá los datos del perfil. No se realizó ningún cambio.';

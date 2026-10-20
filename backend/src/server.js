@@ -26,7 +26,8 @@ import { requireRole, issueUserToken } from "./auth.js";
 import { configuredBrowserSessions, createPrincipalAuthentication } from './browser-session-config.js';
 import { createLoginHandlers, loginUserDto } from './login-handlers.js';
 import { reserveLoginAttempt } from "./login-abuse.js";
-import { administerUser, withUserAdministration, UserAdministrationAuthorityError } from "./user-administration.js";
+import { administerUser, withUserAdministration, withSelfIdentityChange, UserAdministrationAuthorityError } from "./user-administration.js";
+import { assertUserLoginIdentifierAvailable } from './user-login-namespace.js';
 import { normalizeUserCreateInput } from './user-create-input.js';
 import { bodyParserErrorResponse } from './body-parser-errors.js';
 import { normalizeSelfProfileInput, SelfProfileInputError } from './self-profile-input.js';
@@ -764,13 +765,16 @@ router.post("/usuarios", requireRole("admin"), async (req, res, next) => {
     const { usuario, nombre, rol, password, email_notificaciones } = normalizeUserCreateInput(req.body);
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const result = await withUserAdministration(pool, req.auth, db => db.query(
+    const result = await withUserAdministration(pool, req.auth, async db => {
+      await assertUserLoginIdentifierAvailable(db,{next:usuario});
+      return db.query(
       `INSERT INTO usuarios (usuario, nombre, rol, password_hash, email_notificaciones)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, usuario, nombre, rol, activo, email_notificaciones, google_email,
          foto_perfil, false AS whatsapp_vinculado, created_at, ${USER_ADMIN_REVISION_SQL} AS admin_revision`,
       [usuario, nombre, rol, passwordHash, email_notificaciones],
-    ));
+      );
+    });
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -834,13 +838,16 @@ router.patch("/usuarios/:id/google-email", requireRole("admin"), async (req, res
     // Cambiar el email vinculado fuerza a re-vincular el google_id en el
     // próximo login — evita que quede un google_id viejo apuntando a una
     // cuenta de Google que ya no corresponde.
-    const updated = await administerUser(pool, id, input, db => db.query(
+    const updated = await administerUser(pool, id, input, async (db,current) => {
+      await assertUserLoginIdentifierAvailable(db,{id,next:input.google_email,previous:current.google_email});
+      return db.query(
       `UPDATE usuarios
        SET google_email = $1, google_id = NULL, session_version=session_version+1
        WHERE id = $2
        RETURNING id, usuario, nombre, rol, google_email, foto_perfil, created_at, ${USER_ADMIN_REVISION_SQL} AS admin_revision`,
       [input.google_email, id],
-    ),req.auth);
+      );
+    },req.auth);
 
     if (updated.rows.length === 0) {
       return res.status(404).json({ error: "Usuario no encontrado." });
@@ -923,21 +930,16 @@ router.patch("/usuarios/perfil", async (req, res, next) => {
       return res.status(401).json({ error: "La contraseña actual es incorrecta.", code: "current_password_invalid" });
     }
 
-    const duplicado = await pool.query(
-      "SELECT id FROM usuarios WHERE lower(usuario) = lower($1) AND id <> $2",
-      [usuarioNuevo, usuarioDB.id],
-    );
-    if (duplicado.rows.length > 0) {
-      return res.status(409).json({ error: "Ya existe un usuario con ese nombre de acceso." });
-    }
-
-    const updated = await pool.query(
+    const updated = await withSelfIdentityChange(pool, req.auth, async (db,current) => {
+      await assertUserLoginIdentifierAvailable(db,{id:req.auth.id,next:usuarioNuevo,previous:current.usuario});
+      return db.query(
       `UPDATE usuarios
        SET usuario = $1, session_version=session_version+1
        WHERE id = $2 AND session_version=$3 AND activo IS TRUE
        RETURNING id, usuario, nombre, rol, foto_perfil, created_at`,
       [usuarioNuevo, req.auth.id, req.auth.session_version],
-    );
+      );
+    });
     if(!updated.rows.length)return res.status(401).json({error:"La sesión cambió. Volvé a iniciar sesión."});
     res.json(updated.rows[0]);
   } catch (error) {
@@ -1028,13 +1030,16 @@ router.patch("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
   try {
     const id = userAdministrationId(req.params.id), input = normalizeUserAdministrationPatch(req.body,'identity',id);
 
-    const updated = await administerUser(pool, id, input, db => db.query(
+    const updated = await administerUser(pool, id, input, async (db,current) => {
+      await assertUserLoginIdentifierAvailable(db,{id,next:input.usuario,previous:current.usuario});
+      return db.query(
       `UPDATE usuarios
        SET nombre = $1, usuario = $2, rol = $3, session_version=session_version+1
        WHERE id = $4
        RETURNING id, usuario, nombre, rol, email_notificaciones, google_email, foto_perfil, created_at, ${USER_ADMIN_REVISION_SQL} AS admin_revision`,
       [input.nombre, input.usuario, input.rol, id],
-    ), req.auth);
+      );
+    }, req.auth);
 
     if (updated.rows.length === 0) {
       return res.status(404).json({ error: "Usuario no encontrado." });

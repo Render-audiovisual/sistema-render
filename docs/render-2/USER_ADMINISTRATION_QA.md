@@ -128,4 +128,23 @@ Los arneses visuales `/private/tmp/render2-local-94cw2I` y `/private/tmp/render2
 - El alta y el cambio de contraseña del perfil ya comparten la política pública y no rotan credenciales existentes automáticamente. La verificación detallada, el empaquetado obligatorio de `shared` y las limitaciones de aceptación nativa están en [PROFILE_COOKIE_QA.md](PROFILE_COOKIE_QA.md).
 - La activación general de sesiones por cookie, la aceptación en dispositivos reales, el proxy y los proveedores externos conservan sus propias condiciones de despliegue. No se habilitan en esta integración.
 
+## Integration88 — espacio de identidades de acceso
+
+Las cuatro escrituras operativas de alias comparten el mutex transaccional de cuentas `(20261019,1)` a READ COMMITTED. Antes de escribir revalidan actor activo y época de sesión; las administrativas también revalidan su rol. El perfil propio bloquea su fila FOR UPDATE. Se conserva el orden de bloqueo y la revisión del recurso administrativo.
+
+| Escritura | Alias nuevo | Observación previa |
+| --- | --- | --- |
+| POST usuarios | usuario | ninguna |
+| PATCH usuario administrativo | usuario | fila bloqueada |
+| PATCH google-email | google_email | fila bloqueada |
+| PATCH perfil propio | usuario | actor bloqueado |
+
+`user-login-namespace.js` comprueba ambos campos mediante SQL LOWER, igual que el resolvedor de login. Incluye cuentas inactivas y excluye al propio ID; el correo de notificaciones no es identidad. Un alias canónicamente sin cambios conserva la compatibilidad histórica. Desvincular explícitamente Google no requiere comprobar disponibilidad. No se reasignan identidades antiguas ni se escoge un propietario cuando hay ambigüedad: el login sigue rechazándola.
+
+Los conflictos nuevos responden409 `LOGIN_IDENTIFIER_UNAVAILABLE`, sin identificar otra cuenta. Empleados conserva borrador y revisión, permite corregir el alias y no exige recuperar datos como ante un conflicto real de revisión. Los409 desconocidos conservan el bloqueo de recuperación. Perfil muestra texto local fijo. El transporte compartido conserva únicamente códigos públicos escalares ASCII acotados; descarta saltos finales y el código reservado al cliente `session_binding_obsolete`. No incorpora el cuerpo privado de error.
+
+Esta garantía es cooperativa entre las cuatro rutas API, no una restricción UNIQUE de PostgreSQL. Seeds manuales, migraciones históricas y SQL externo no quedan certificados y requieren serialización operativa. No hay migración ni backfill en88. Las pruebas físicas usan cuentas y PostgreSQL desechables; no constituyen aceptación nativa del cambio de credenciales en navegador.
+
+Verificación final y comandos: integración88 en [STATUS.md](STATUS.md). Logs `/private/tmp/render2-namespace88-http-final.log`, `/private/tmp/render2-namespace88-backend-final.log`, `/private/tmp/render2-namespace88-frontend-final.log`, `/private/tmp/render2-namespace88-build-final.log`.
+
 El bloqueo de borrado físico y las pruebas locales no constituyen un despliegue ni certifican la finalización de Render 2.0.

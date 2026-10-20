@@ -233,7 +233,9 @@ function EmpleadosContent({ sesion }) {
       guard.assertCurrent(); onComplete?.(row);
     } catch (reason) {
       if (guard.current() && !isSessionFailure(reason)) {
-        if (target && (reason.status === 409 || !Number.isInteger(reason.status) || reason.status >= 500)) {
+        if (reason.status === 409 && reason.code === 'LOGIN_IDENTIFIER_UNAVAILABLE') {
+          setFormError('Ese usuario o email de acceso no está disponible. Elegí otro.');
+        } else if (target && (reason.status === 409 || !Number.isInteger(reason.status) || reason.status >= 500)) {
           blockTarget(target.id); setFormError('El registro cambió o no se pudo confirmar el resultado. Conservamos el borrador. Revisá y recargá este mismo usuario antes de guardar otra vez.');
         } else setFormError(reason.message || 'No se pudo confirmar la operación. Revisá el registro antes de repetirla.');
       }
