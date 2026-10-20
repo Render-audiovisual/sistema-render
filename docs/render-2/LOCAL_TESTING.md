@@ -1,5 +1,16 @@
 # Principal backend: isolated local HTTP QA
 
+## Browser-session transport module QA (integration64)
+
+From the repository root, using installed dependencies:
+
+```sh
+node --test backend/test/browser-session-transport.test.js
+RENDER2_RUN_LOCAL_BROWSER_TRANSPORT=true node --test backend/test/browser-session-transport-http.test.js
+```
+
+The10 unit tests open no sockets. The9 opt-in HTTP cases create only their own ephemeral numeric127.0.0.1 Express listener, synthetic in-memory account query fixture and write counters; cleanup closes/asserts only owned sockets/listener. Ordinary discovery skips this HTTP fixture without creating a listener. Sandbox may require explicit permission for loopback listen. This does not start the principal server, connect PostgreSQL, read dotenv/configured credentials, authenticate Google/passwords or change data. It explicitly is not a browser cookie-jar/TLS deployment test. Controlled delayed logout verifies no response Set-Cookie can overwrite a newer session. The module is not mounted in principal server yet; principal/frontend cutover and GET side-effect removal remain required.
+
 ## Current startup/runner update (2026-10-19)
 
 Ordinary server startup no longer authorizes migrations, seeds or default schedulers. See `STARTUP_SAFETY_CONTRACT.md` / `STARTUP_SAFETY_QA.md`. It requires explicit DATABASE_URL and RENDER_DB_ENVIRONMENT, ready ledger/core public schema, and rejects demo startup. Default CLI is help without a connection; migration apply requires reviewed local target identity and current plan. No production apply override is provided. Do not infer permission to connect an existing DB from these command capabilities.
