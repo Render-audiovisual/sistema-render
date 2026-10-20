@@ -13,6 +13,7 @@ import { createHomeTeamLoader } from '../../frontend/src/components/homeTeamWork
 import { createHomeProductionPageLoader } from '../../frontend/src/components/homeProductionPage.js';
 import { createFeedbackInventoryLoader } from '../../frontend/src/pages/feedbackTaskInventory.js';
 import { createPersonalHomeLoader } from '../../frontend/src/pages/personalHome.js';
+import { createApplicationSession } from '../../frontend/src/shared/session/application-session.js';
 
 const origin = 'http://127.0.0.1:5195';
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -275,5 +276,34 @@ test('browser client against principal HTTP: memory observations, exact mutation
       assert.deepEqual(await snapshot(), before);
       assert.equal((await (await apiFetch('/api/inicio')).json()).user.id, 91003);
     } finally { held.release.resolve(); await pending; }
+  });
+
+  await t.test('document runtime composes actual principal login, reads, identity fencing and logout without Storage', async () => {
+    const locks = { request(name, options, work) {
+      assert.equal(name, 'render:browser-session:v1'); assert.equal(options.mode, 'exclusive');
+      return Promise.resolve().then(work); // Sequential test adapter, not native Web Locks proof.
+    } };
+    const runtime = createApplicationSession({ mode: 'browser', fetchImpl: rawFetch, location: { origin }, locks,
+      storage: new Proxy({}, { get() { throw new Error('Cookie runtime must not access Web Storage'); } }) });
+    try {
+      const initial = runtime.start(); assert.equal(runtime.start(), initial);
+      assert.equal((await initial).session.usuario.id, 91003);
+      await runtime.login({ kind: 'password', body: { usuario: 'qa_franco', password: fixturePassword } });
+      assert.equal(runtime.getSession().usuario.id, 91001);
+      const original = runtime.getSession(), stale = createEditorialSessionGuard(original, runtime.getSession);
+      const before = await snapshot();
+      assert.equal((await (await runtime.fetch('/api/inicio')).json()).user.id, 91001);
+      assert.deepEqual(await snapshot(), before);
+      await runtime.login({ kind: 'password', body: { usuario: 'qa_agustin', password: fixturePassword } });
+      const live = runtime.getSession(), count = requests.length;
+      assert.equal(live.usuario.id, 91002); assert.notEqual(live, original);
+      assert.equal(await stale.request(runtime.fetch, '/api/inicio'), undefined);
+      assert.equal(stale.isCurrent(), false);
+      assert.equal(requests.length, count, 'Stale view may not dispatch under the current cookie');
+      assert.equal(runtime.start(), initial, 'Start is initial-only, never an identity authority after login');
+      assert.equal(runtime.getSession(), live);
+      assert.deepEqual(await runtime.logout(), { revoked: true });
+      assert.equal(runtime.getSession(), null);
+    } finally { runtime.dispose(); }
   });
 });

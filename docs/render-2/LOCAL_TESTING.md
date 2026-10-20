@@ -143,3 +143,7 @@ RENDER2_RUN_LOCAL_INTEGRATION=true RENDER2_RUN_LOCAL_TLS=true node --test --test
 ```
 
 Rollout gate: use an explicit PostgreSQL TCP URL without query/fragment; do not depend on PGHOST/PGPASSWORD fallback or pg SSL URL parameters. For a private issuer, configure the reviewed **public CA certificate bundle** in RENDER_DB_CA_PEM; never put a private key there. Empty/malformed/non-CA PEM fails closed. Remove conflicting PGSSL* and verification-disabling Node options. Remote verification never downgrades or retries in plaintext. No operator environment, existing database, provider connection or production setup is changed by this test workflow.
+
+## Build/fixture ordering
+
+When the principal QA harness serves `frontend/dist`, finish `npm run build` before starting that harness or its HTTP suites. Vite replaces `dist` during build; concurrent startup can fail reading `dist/index.html` and does not establish an application regression. Do not rebuild underneath a running browser fixture. Stop only the fixture created for the current test and verify its exact generated directory was removed.

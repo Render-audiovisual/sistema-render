@@ -4,7 +4,7 @@ import "./styles.css";
 import "./design-system.css";
 import { App } from "./App.jsx";
 import { installUnsavedNavigation } from "./shared/navigation/unsaved.js";
-import { createAuthenticatedApiFetch } from './shared/session/api-fetch.js';
+import { createApplicationSession } from './shared/session/application-session.js';
 
 installUnsavedNavigation(window);
 
@@ -15,7 +15,11 @@ installUnsavedNavigation(window);
 // redirigir esas llamadas. Sin la variable, el comportamiento no cambia.
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 const fetchOriginal = window.fetch.bind(window);
-window.fetch = createAuthenticatedApiFetch({fetchImpl:fetchOriginal,storage:localStorage,location:window.location,apiBase:API_BASE});
+// Document-owned lifetime, outside StrictMode mount/cleanup. Cookie mode stays
+// disabled until the existing Login/Profile/editors consume the same runtime.
+const applicationSession = createApplicationSession({ mode: 'bearer', fetchImpl: fetchOriginal,
+  storage: localStorage, location: window.location, apiBase: API_BASE });
+window.fetch = applicationSession.fetch;
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

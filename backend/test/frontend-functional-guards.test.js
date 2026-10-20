@@ -375,7 +375,8 @@ test("el frontend no fabrica sesiones y adjunta el JWT a la API", () => {
   const transportSource = readFileSync(new URL("../../frontend/src/shared/session/api-fetch.js", import.meta.url), "utf8");
 
   assert.doesNotMatch(appSource, /getSesionDelPath/);
-  assert.match(mainSource, /window.fetch = createAuthenticatedApiFetch\(/);
+  assert.match(mainSource, /const applicationSession = createApplicationSession\(\{ mode: 'bearer', fetchImpl: fetchOriginal/);
+  assert.match(mainSource, /window.fetch = applicationSession.fetch/);
   assert.match(transportSource, /!headers.has\('Authorization'\)&&captured/);
   assert.match(transportSource, /headers.set\('Authorization',`Bearer \$\{captured.token\}`\)/);
   assert.match(transportSource, /response.status!==401/);
