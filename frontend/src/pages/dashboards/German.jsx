@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getEstadoTareaLabel, getHoyLocalISO } from "../../utils.jsx";
-import { ESTADO_FINAL_TAREA } from "../../constants.js";
+import { isTaskCompleted } from "../../features/render-os/constants.js";
 import { TareasAsignadasGenericas } from "../../components/TareasAsignadasGenericas.jsx";
 import { Modal } from "../../components/Modal.jsx";
 import { fetchAllTaskPages } from "../../shared/tasks/fetch-all-task-pages.js";
@@ -23,12 +23,10 @@ export function GermanDashboard() {
 
   useEffect(cargarTareasGerman, []);
 
-  const pendientes = tareasGerman.filter((tarea) => tarea.estado !== ESTADO_FINAL_TAREA);
+  const pendientes = tareasGerman.filter((tarea) => !isTaskCompleted(tarea));
 
-  // Compromiso mensual pactado por cliente (confirmado al definir
-  // responsabilidades del equipo). El mes de cada tarea se aproxima por
-  // fecha_vencimiento (no hay fecha_programada directa en tareas) — el
-  // desvío es de a lo sumo unos días, aceptable para el MVP.
+  // Resumen histórico de tareas, no cuota de videos ni evidencia de publicación.
+  // La atribución por última actualización puede mover tareas sin vencimiento.
   const mesActual = getHoyLocalISO().slice(0, 7);
   const tareasDelMes = tareasGerman.filter((tarea) =>
     String(tarea.fecha_vencimiento || tarea.updated_at || "").startsWith(mesActual),
@@ -37,7 +35,7 @@ export function GermanDashboard() {
     const cliente = tarea.cliente_nombre || "Sin cliente";
     if (!resumen[cliente]) resumen[cliente] = { cliente, cuota: 0, hechas: 0 };
     resumen[cliente].cuota += 1;
-    if (tarea.estado === ESTADO_FINAL_TAREA) resumen[cliente].hechas += 1;
+    if (isTaskCompleted(tarea)) resumen[cliente].hechas += 1;
     return resumen;
   }, {})).map((item) => ({
     ...item,
@@ -56,7 +54,7 @@ export function GermanDashboard() {
           <div style={{ backgroundColor: "#fff3cd", border: "2px solid #ff9800", borderRadius: "4px", padding: "16px", marginBottom: "20px" }}>
             {(() => {
               const proximaTarea = pendientes
-                .sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento))[0];
+                .sort((a, b) => String(a.fecha_vencimiento || "9999-12-31").localeCompare(String(b.fecha_vencimiento || "9999-12-31")))[0];
 
               if (!proximaTarea) {
                 return <div className="caption">✅ No hay tareas pendientes.</div>;
@@ -125,14 +123,14 @@ export function GermanDashboard() {
             </div>
           </div>
 
-          <div className="section-label">Cumplimiento mensual por cliente</div>
+          <div className="section-label">Trabajo mensual por cliente</div>
           <div className="box">
             <table>
               <thead>
                 <tr>
                   <th>Cliente</th>
-                  <th>Videos entregados</th>
-                  <th>Cumplimiento</th>
+                  <th>Tareas finalizadas</th>
+                  <th>Avance</th>
                 </tr>
               </thead>
               <tbody>
@@ -152,8 +150,8 @@ export function GermanDashboard() {
               </div>
             </div>
             <div className="caption">
-              → Un video cuenta como cumplido recién cuando queda marcado
-              "Publicada" — no alcanza con haber ido a filmar.
+              Tareas del mes según su vencimiento o última actualización.
+              Finalizar una tarea no confirma que un video esté publicado ni mide la cuota del cliente.
             </div>
           </div>
 
@@ -232,17 +230,23 @@ export function DetalleProduccionGermanModal({ produccion, onClose, onActualizad
   };
 
   const handleMarcarEntregado = () => {
+    if (!Number.isSafeInteger(produccion.revision) || produccion.revision < 1) {
+      setError("Recargá la tarea antes de finalizarla.");
+      return;
+    }
     setEnviando("entregar");
     setError(null);
 
     fetch(`/api/tareas/${produccion.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ estado: ESTADO_FINAL_TAREA }),
+      body: JSON.stringify({ estado: "finalizada", expected_revision: produccion.revision }),
     })
       .then((response) => {
         if (!response.ok) {
-          throw new Error("No se pudo marcar el material como entregado.");
+          throw new Error(response.status === 409
+            ? "La tarea cambió. Cerrá y recargá antes de finalizarla de nuevo."
+            : "No se pudo finalizar la tarea. Revisá sus permisos y su estado.");
         }
         return response.json();
       })
@@ -250,8 +254,8 @@ export function DetalleProduccionGermanModal({ produccion, onClose, onActualizad
         onActualizado();
         onClose();
       })
-      .catch(() => {
-        setError("No se pudo marcar como entregado. Intentá de nuevo.");
+      .catch((reason) => {
+        setError(reason.message || "No se pudo finalizar la tarea. Intentá de nuevo.");
         setEnviando(null);
       });
   };
@@ -299,12 +303,12 @@ export function DetalleProduccionGermanModal({ produccion, onClose, onActualizad
             <button
               className="btn"
               type="button"
-              disabled={enviando !== null || produccion.estado === ESTADO_FINAL_TAREA}
+              disabled={enviando !== null || isTaskCompleted(produccion)}
               onClick={handleMarcarEntregado}
             >
               {enviando === "entregar"
                 ? "Guardando..."
-                : "Marcar material entregado"}
+                : "Finalizar tarea de producción"}
             </button>
           </div>
         </div>

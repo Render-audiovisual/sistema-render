@@ -25,3 +25,16 @@ test('retained German coordination control carries the observed revision and exp
   assert.match(control, /expected_revision: produccion\.revision/);
   assert.match(control, /response\.status === 409/);
 });
+
+test('retained production completion uses a canonical work state with observed revision, never publication', () => {
+  const legacy = readFileSync(new URL('./dashboards/German.jsx', import.meta.url), 'utf8');
+  const control = legacy.slice(legacy.indexOf('const handleMarcarEntregado'), legacy.indexOf('  return (', legacy.indexOf('const handleMarcarEntregado')));
+  assert.match(control, /Number\.isSafeInteger\(produccion\.revision\)/);
+  assert.match(control, /estado: "finalizada", expected_revision: produccion\.revision/);
+  assert.match(control, /response\.status === 409/);
+  assert.doesNotMatch(control, /ESTADO_FINAL_TAREA|estado: "publicada"/);
+  assert.match(legacy, /!isTaskCompleted\(tarea\)/);
+  assert.match(legacy, /isTaskCompleted\(produccion\)/);
+  assert.match(legacy, /Finalizar una tarea no confirma que un video esté publicado/);
+  assert.doesNotMatch(legacy, /Videos entregados|Cumplimiento mensual por cliente/);
+});
