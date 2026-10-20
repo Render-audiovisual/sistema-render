@@ -1,4 +1,11 @@
 import crypto from "node:crypto";
+import { personalRecordId } from './personal-lists.js';
+
+function recordedVersion(value) {
+  const version = typeof value === 'string' && /^[1-9][0-9]*$/.test(value) ? Number(value) : value;
+  if (!Number.isInteger(version) || version < 1 || version > 2147483647) throw Object.assign(new Error('La versión del bloque no es válida.'), { status: 409 });
+  return version;
+}
 
 const OPERATIONS = new Set(["crear", "editar", "completar", "reabrir", "eliminar", "recordar", "reprogramar_recordatorio", "cancelar_recordatorio"]);
 const REPEATS = new Set(["una_vez", "diario", "dias_habiles", "semanal", "cada_n_dias"]);
@@ -24,8 +31,8 @@ function validReminderDate(value) {
 
 function checklistItems(rows) {
   return rows.flatMap((row) => (Array.isArray(row.contenido?.items) ? row.contenido.items : []).map((item) => ({
-    ...item, bloque_id: Number(row.id), lista_id: Number(row.lista_id), lista_titulo: row.lista_titulo,
-    bloque_titulo: row.contenido?.titulo || "Pendientes", bloque_version: Number(row.version),
+    ...item, bloque_id: personalRecordId(row.id), lista_id: personalRecordId(row.lista_id), lista_titulo: row.lista_titulo,
+    bloque_titulo: row.contenido?.titulo || "Pendientes", bloque_version: recordedVersion(row.version),
   })));
 }
 
@@ -74,15 +81,18 @@ function numbered(matches) {
 }
 
 async function chooseDestination(rows, payload) {
-  const listId = Number(payload.lista_id || 0);
-  const blockId = Number(payload.bloque_id || 0);
-  let row = blockId ? rows.find((item) => Number(item.id) === blockId) : null;
-  if (!row && listId) row = rows.find((item) => Number(item.lista_id) === listId);
-  if (!row && payload.lista) {
+  const listId = Object.hasOwn(payload, 'lista_id') ? personalRecordId(payload.lista_id) : null;
+  const blockId = Object.hasOwn(payload, 'bloque_id') ? personalRecordId(payload.bloque_id) : null;
+  let row = blockId ? rows.find(item => personalRecordId(item.id) === blockId && (!listId || personalRecordId(item.lista_id) === listId))
+    : listId ? rows.find(item => personalRecordId(item.lista_id) === listId) : null;
+  if ((blockId || listId) && !row) throw Object.assign(new Error('El destino indicado no existe en tu lista privada.'), { status: 404 });
+  if (!row && Object.hasOwn(payload, 'lista')) {
     const name = normalized(payload.lista);
+    if (!name) throw Object.assign(new Error('Indicá una lista válida.'), { status: 400 });
     const choices = rows.filter((item) => normalized(item.lista_titulo).includes(name));
     if (choices.length > 1) throw Object.assign(new Error(`Encontré varias listas. Elegí una:\n${choices.map((item, i) => `${i + 1}. ${item.lista_titulo}`).join("\n")}`), { status: 409, code: "ambiguous_list" });
     row = choices[0] || null;
+    if (!row) throw Object.assign(new Error('No encontré la lista indicada.'), { status: 404 });
   }
   return row || rows[0] || null;
 }
@@ -101,8 +111,14 @@ function reminderFields(payload) {
   return { proximo_envio_at: date.toISOString(), repeticion: repeat, intervalo_dias: interval };
 }
 
-export function createMiaPersonalListsRouter({ express, pool }) {
+export function createMiaPersonalListsRouter({ express, pool, lockActor }) {
   const router = express.Router();
+  const requireActor = async (db, req) => {
+    if (typeof lockActor !== 'function') throw Object.assign(new Error('La verificación de identidad no está disponible.'), { status: 503 });
+    const actor = await lockActor(db, req);
+    if (!actor || actor.id !== req.wilson.userId || actor.activo !== true) throw Object.assign(new Error('La identidad actual cambió.'), { status: 403 });
+    return actor;
+  };
   const handler = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch((error) => {
     if (error.status) return res.status(error.status).json({ error: error.message, code: error.code });
     return next(error);
@@ -128,7 +144,8 @@ export function createMiaPersonalListsRouter({ express, pool }) {
   router.post("/propuestas", handler(async (req, res) => {
     const operation = String(req.body?.operacion || "").trim().toLowerCase();
     if (!OPERATIONS.has(operation)) throw Object.assign(new Error("La acción de Lista no es válida."), { status: 422 });
-    const target = await resolveTargetUser(pool, req, req.body?.usuario_id);
+    const actor = await requireActor(pool, req);
+    const target = await resolveTargetUser(pool, { ...req, wilson: { ...req.wilson, isLeader: actor.rol === 'admin' } }, req.body?.usuario_id);
     const rows = await loadChecklistRows(pool, target.id);
     const payload = { ...(req.body?.payload || {}) };
     let summary;
@@ -136,9 +153,9 @@ export function createMiaPersonalListsRouter({ express, pool }) {
       payload.texto = clean(payload.texto);
       if (!payload.texto) throw Object.assign(new Error("¿Qué querés que agregue a tu lista?"), { status: 422 });
       const destination = await chooseDestination(rows, payload);
-      payload.lista_id = destination?.lista_id || null;
-      payload.bloque_id = destination?.id || null;
-      payload.bloque_version = destination?.version || null;
+      payload.lista_id = destination ? personalRecordId(destination.lista_id) : null;
+      payload.bloque_id = destination ? personalRecordId(destination.id) : null;
+      payload.bloque_version = destination ? recordedVersion(destination.version) : null;
       if (payload.recordar === true || payload.recordar_en) Object.assign(payload, reminderFields(payload));
       summary = `Voy a agregar “${payload.texto}” a ${destination?.lista_titulo || "una nueva lista privada"}${payload.proximo_envio_at ? ` y recordártelo el ${new Date(payload.proximo_envio_at).toLocaleString("es-AR", { timeZone: "America/Argentina/Cordoba" })}` : ""}.`;
     } else {
@@ -173,19 +190,33 @@ export function createMiaPersonalListsRouter({ express, pool }) {
         WHERE token=$1 AND actor_id_hash=$2 AND used_at IS NULL AND cancelled_at IS NULL FOR UPDATE`, [token, actorHash(req.wilson.actorId)]);
       const proposal = found.rows[0];
       if (!proposal) throw Object.assign(new Error("La propuesta no existe, ya fue usada o fue reemplazada por una más nueva."), { status: 409 });
+      const actor = await requireActor(client, req);
+      if (proposal.solicitante_usuario_id !== actor.id) throw Object.assign(new Error('La propuesta pertenece a otra identidad.'), { status: 403 });
+      const target = (await client.query('SELECT id,activo FROM usuarios WHERE id=$1 FOR SHARE', [proposal.objetivo_usuario_id])).rows[0];
+      if (!target || target.activo !== true || target.id !== proposal.objetivo_usuario_id
+        || (target.id !== actor.id && actor.rol !== 'admin')) throw Object.assign(new Error('No tenés acceso actual a esta lista privada.'), { status: 403 });
       const payload = proposal.payload;
-      let rows = await loadChecklistRows(client, proposal.objetivo_usuario_id, { lock: true });
-      let row = rows.find((item) => Number(item.id) === Number(payload.bloque_id));
-      if (proposal.operacion === "crear" && !row) {
+      const emptyDestination = proposal.operacion === 'crear' && payload.bloque_id === null && payload.lista_id === null && payload.bloque_version === null && !Object.hasOwn(payload, 'lista');
+      if (emptyDestination) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [JSON.stringify(['personal-default', proposal.objetivo_usuario_id])]);
+      const rows = await loadChecklistRows(client, proposal.objetivo_usuario_id, { lock: !emptyDestination });
+      const staleDefault = () => Object.assign(new Error('Tu lista cambió desde el resumen. No modifiqué nada; pedime nuevamente el cambio.'), { status: 409 });
+      if (emptyDestination && rows.length > 0) throw staleDefault();
+      const blockId = emptyDestination ? null : personalRecordId(payload.bloque_id);
+      const listId = emptyDestination ? null : personalRecordId(payload.lista_id);
+      const version = emptyDestination ? null : recordedVersion(payload.bloque_version);
+      let row = rows.find(item => personalRecordId(item.id) === blockId && personalRecordId(item.lista_id) === listId);
+      if (emptyDestination) {
         let list = await client.query(`SELECT id FROM listas_personales WHERE usuario_id=$1 ORDER BY posicion,id LIMIT 1 FOR UPDATE`, [proposal.objetivo_usuario_id]);
+        if ((await loadChecklistRows(client, proposal.objetivo_usuario_id)).length > 0) throw staleDefault();
         if (!list.rows[0]) list = await client.query(`INSERT INTO listas_personales(usuario_id,titulo,emoji,posicion) VALUES($1,'Mi lista','📝',0) RETURNING id`, [proposal.objetivo_usuario_id]);
         const inserted = await client.query(`INSERT INTO lista_bloques(lista_id,tipo,contenido,posicion) VALUES($1,'checklist',$2::jsonb,0)
-          RETURNING id,lista_id,contenido,version`, [list.rows[0].id, JSON.stringify({ titulo: "Pendientes", items: [] })]);
+          RETURNING id,lista_id,contenido,version`, [personalRecordId(list.rows[0].id), JSON.stringify({ titulo: "Pendientes", items: [] })]);
         row = { ...inserted.rows[0], lista_titulo: "Mi lista" };
       }
-      if (!row || (payload.bloque_version !== null && Number(row.version) !== Number(payload.bloque_version))) {
+      if (!row || (!emptyDestination && recordedVersion(row.version) !== version)) {
         throw Object.assign(new Error("Tu lista cambió desde el resumen. No modifiqué nada; pedime nuevamente el cambio."), { status: 409 });
       }
+      row = { ...row, id: personalRecordId(row.id), lista_id: personalRecordId(row.lista_id) };
       const content = { ...row.contenido, items: Array.isArray(row.contenido?.items) ? [...row.contenido.items] : [] };
       let item;
       if (proposal.operacion === "crear") {

@@ -1069,7 +1069,11 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
   }
   router.use(requireWilsonService(env, () => Date.now(), { allowSignedUnknownWhatsappPrivate: true }));
   router.use(resolveWilsonUser(pool, env));
-  router.use("/lista-personal", createMiaPersonalListsRouter({ express, pool }));
+  router.use("/lista-personal", createMiaPersonalListsRouter({ express, pool,
+    lockActor: (db, req) => lockFeedbackActor(db, req.wilson, {
+      telegramUserId: telegramWilsonUserId(env, req.wilson.actorId),
+    }),
+  }));
   // Supervisor routes revalidate the linked actor and normalized membership;
   // employee follow-ups must remain available after the ID migration.
   router.use("/supervisor", createMiaSupervisorRouter({ express, pool, env, isSystemActor: (req) => isWilsonSystemActor(req, env) }));
