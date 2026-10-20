@@ -59,6 +59,7 @@ function fixture(options={}) {
     if(sql.startsWith('SELECT id FROM produccion_videos WHERE video_origen_id'))return{rows:[]};
     if(sql.startsWith('INSERT INTO produccion_videos('))return{rows:[]};
     if(sql.startsWith('INSERT INTO tareas')){insertTasks++;throw Error('Unexpected second delivery task');}
+    if(sql.includes('FROM produccion_reconciliacion_videos rv'))return{rows:[]};
     throw Error('Unhandled mock SQL: '+sql);
   }};
   const deps={lockVisit:async()=>{calls.push({sql:'LOCK VISIT'});return visit;},readVisits:async()=>[{...visit,videos:[video]}],activeClient:async()=>{},bump:async()=>{visit.revision++;}};

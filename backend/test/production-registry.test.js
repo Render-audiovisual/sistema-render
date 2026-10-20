@@ -23,6 +23,7 @@ function fixture({linked=true,legacy=false,wrongScope=false,failAssignments=fals
     if(sql.startsWith('SELECT tarea_origen_id FROM produccion_visitas'))return{rows:[{tarea_origen_id:visit.tarea_origen_id}]};
     if(sql.startsWith('SELECT id,cliente_id,to_char'))return{rows:linked?[{id:visitId,cliente_id:visit.cliente_id,fecha:visit.fecha}]:[]};
     if(sql.startsWith('SELECT v.cliente_id FROM produccion_videos'))return{rows:[]};
+    if(sql.startsWith('SELECT id FROM produccion_reconciliaciones WHERE visita_id='))return{rows:[]};
     if(sql==='SELECT cliente_id FROM produccion_visitas WHERE id=$1')return{rows:sourceClientAfterLock===null?[]:[{cliente_id:sourceClientAfterLock}]};
     if(sql==='SELECT id FROM produccion_videos WHERE visita_id=$1 ORDER BY id FOR UPDATE')return{rows:[{id:videoId}]};
     if(sql.startsWith('SELECT id FROM tareas WHERE id='))return{rows:[{id:10}]};

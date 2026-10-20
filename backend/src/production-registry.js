@@ -3,6 +3,7 @@ import { isProductionVisitTask, isValidProductionDate } from './production-visit
 import { annotateTaskAssignments, replaceTaskAssignments } from './task-assignments.js';
 import { taskOperationalDto } from './operational-dto.js';
 import { productionEditorialConflict } from './production-link-errors.js';
+import { registerProductionReconciliationRoutes } from './production-reconciliation.js';
 import { registerProductionEditorialRoutes, lockProductionEditorialContext, lockProductionObjectiveLinks, rejectLegacyProductionSource, hasLegacyProductionSource, assertProductionLineageAvailable } from './production-editorial.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -180,6 +181,7 @@ export function createProductionRegistryRouter({ express, pool }) {
       return next(error); }
   };
   const routeId = req => { if (!uuid(req.params.id)) throw fail('Visita inválida.'); return req.params.id; };
+  registerProductionReconciliationRoutes(router,{pool,handle});
   registerProductionEditorialRoutes(router,{pool,handle,transaction,readVisits,bump,lockVisit,activeClient});
   router.get('/', handle(async (req, res) => {
     if (typeof req.query.mes !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.mes)) throw fail('Elegí un mes YYYY-MM válido.');
@@ -226,6 +228,11 @@ export function createProductionRegistryRouter({ express, pool }) {
     const id=routeId(req), input=validateProductionVisit(req.body,{partial:true});
     const visita=await transaction(pool,async db=>{
       const current=await lockVisit(db,id);checkRevision(current,req.body.expected_revision);
+      const changedReviewedDimensions=(own(input,'cliente_id')&&input.cliente_id!==current.cliente_id)
+        ||(own(input,'fecha')&&input.fecha!==current.fecha);
+      if(changedReviewedDimensions&&(await db.query('SELECT id FROM produccion_reconciliaciones WHERE visita_id=$1',[id])).rows.length) {
+        throw fail('La fecha y el cliente de una conciliación histórica requieren una nueva revisión explícita.',409);
+      }
       if (own(input,'cliente_id')) {
         await activeClient(db,input.cliente_id);
         if (input.cliente_id!==current.cliente_id) {
@@ -304,7 +311,7 @@ export function createProductionRegistryRouter({ express, pool }) {
       const [editor]=await activePeople(db,[req.body.editor_id],true);
       if(visit.tarea_origen_id) {
         const source=context?.source ?? await sourceTask(db,visit.tarea_origen_id,{available:false});
-        await rejectLegacyProductionSource(db,visit,source);
+        await rejectLegacyProductionSource(db,visit,source,video.id);
       }
       const metadata={workspace:'render_os',origen_produccion_video_id:video.id,produccion_visita_id:id,guiones:video.guion};
       let task;

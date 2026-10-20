@@ -229,6 +229,7 @@ async function fixtureChild() {
   // the test snapshots populated rows and applies the actual forward SQL.
   // No migration ledger entry is forged; all other baseline files run normally.
   const deferredMigrations = [
+    ...(process.env.RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION === 'true' ? ['069_production_reconciliation.sql'] : []),
     ...(['RENDER2_DEFER_EDITING_REVIEWS_MIGRATION', 'RENDER2_DEFER_EDITING_DELIVERIES_MIGRATION']
       .some(key => process.env[key] === 'true') ? ['068_task_editing_reviews.sql'] : []),
     ...(process.env.RENDER2_DEFER_LOGIN_ABUSE_MIGRATION === 'true' ? ['067_auth_login_buckets.sql'] : []),
