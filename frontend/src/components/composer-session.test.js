@@ -15,7 +15,8 @@ const evaluate = (node, deps) => new Function(...Object.keys(deps), `return (${n
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const settle = async () => { for (let i = 0; i < 36; i++) await Promise.resolve(); };
 const response = (body, status = 200) => new Response(JSON.stringify(body), { status });
-const ack = (mode = 'draft', id = '31') => ({ id, status: mode === 'draft' ? 'borrador' : mode === 'now' ? 'lista_para_publicar' : 'programada', previewOnly: true });
+const revisionA = '2026-10-20T12:00:00.123456Z', revisionB = '2026-10-20T12:00:00.123457Z';
+const ack = (mode = 'draft', id = '31', revision = revisionA) => ({ id, revision, status: mode === 'draft' ? 'borrador' : mode === 'now' ? 'lista_para_publicar' : 'programada', previewOnly: true });
 function fixture(mode = 'cookie') {
   const store = createBrowserSessionState(), calls = [], effects = [], events = [], state = {}, cleanups = [];
   let session, key = 0;
@@ -31,19 +32,23 @@ function fixture(mode = 'cookie') {
   const captureRequest = evaluate(fn('usePublicationCapture'), { useRef: value => ({ current: value }), useEffect, useCallback: callback => callback,
     apiRequest, createCapturedRequest, getSesion: () => session })(original, view, currentView);
   const context = { captureRequest, session: original, getSesion: () => session, fetch: rawFetch, pending: { current: false },
-    draftsGeneration: { current: 0 }, dispatchOperation: { current: null }, canPublish: true, validation: '', uploads: [], uploadedAssets: [], draftId: null,
+    draftsGeneration: { current: 0 }, dispatchOperation: { current: null }, draftEdited: { current: false }, draftRevision: revisionA,
+    dispatchConflict: false, canPublish: true, validation: '', uploads: [], uploadedAssets: [], draftId: null,
     uploadingMaterial: false, clients: [], savedDrafts: [], candidates: [], sourceSelection: '', uploadsRef: { current: [] }, fileInputRef: { current: null },
     draft: { clientId: 1, publicationId: 9, type: 'reel', material: 'https://drive.google.com/synthetic', caption: 'Exact caption', firstComment: '',
       collaborators: '', location: '', tags: '', date: '2026-10-20', time: '09:00', platforms: { instagram: true, facebook: false } },
-    window: { crypto: { randomUUID: () => `synthetic-request-${++key}` }, dispatchEvent: event => events.push(event.type) },
+    window: { crypto: { randomUUID: () => `synthetic-request-${++key}` }, dispatchEvent: event => events.push(event.type), confirm: () => true },
     CustomEvent: class { constructor(type) { this.type = type; } },
     publicationUploadPlan: options => driveRequest('/api/drive/publication-upload-plan', options, rawFetch), uploadFileToDrive,
   };
-  for (const name of ['Saving', 'Notice', 'SavedDrafts', 'DraftId', 'UploadingMaterial', 'FileError', 'DriveReconnectRequired', 'UploadProgress', 'UploadedAssets', 'Draft', 'ShowDriveField', 'Uploads', 'SourceSelection']) {
+  for (const name of ['Saving', 'Notice', 'SavedDrafts', 'DraftId', 'DraftRevision', 'DispatchConflict', 'UploadingMaterial', 'FileError', 'DriveReconnectRequired', 'UploadProgress', 'UploadedAssets', 'Draft', 'ShowDriveField', 'Uploads', 'SourceSelection']) {
     state[name] = name === 'Draft' ? structuredClone(context.draft) : null;
     context[`set${name}`] = value => { state[name] = typeof value === 'function' ? value(state[name]) : value; effects.push(name); };
   }
-  context.validDispatchAck = evaluate(fn('validDispatchAck'), {});
+  context.validDispatchRevision = evaluate(fn('validDispatchRevision'), {});
+  context.validDispatchAck = evaluate(fn('validDispatchAck'), context);
+  context.savedDraft = evaluate(fn('savedDraft'), { emptyDraft: evaluate(fn('emptyDraft'), {}) });
+  context.openSavedDraft = evaluate(declaration('openSavedDraft').initializer, context);
   context.refreshDrafts = evaluate(declaration('refreshDrafts').initializer, context);
   const run = name => evaluate(declaration(name).initializer, context);
   return { context, calls, effects, state, events, store, accept, run, captureRequest,
@@ -57,12 +62,14 @@ test('actual save and refresh retain one original cookie intent, full payload an
   const body = JSON.parse(sent.options.body);
   assert.equal(body.caption, 'Exact caption'); assert.equal(body.publicationId, 9); assert.equal(body.clientId, 1);
   assert.equal(body.mode, 'draft'); assert.equal(body.scheduledAt, '2026-10-20T12:00:00.000Z');
+  assert.equal(Object.hasOwn(body, 'expectedRevision'), false);
   assert.deepEqual(body.materials, ['https://drive.google.com/synthetic']);
   assert.equal(h.store.isCurrent(sent.options.sessionIntent), true); assert.equal(new Headers(sent.options.headers).has('Authorization'), false);
   sent.resolve(response(ack())); await settle();
   assert.equal(h.calls[1].url, '/api/publicacion-envios?estado=borrador'); assert.equal(h.calls[1].options.sessionIntent, sent.options.sessionIntent);
   h.calls[1].resolve(response([{ ...ack(), caption: 'Exact caption' }])); await pending;
   assert.equal(h.state.DraftId, '31'); assert.equal(h.state.Saving, false); assert.equal(h.context.dispatchOperation.current, null);
+  assert.equal(h.state.DraftRevision, revisionA);
   assert.deepEqual(h.events, ['render:publication-preview-updated']); assert.match(h.state.Notice, /Borrador guardado/);
 });
 
@@ -207,4 +214,113 @@ test('all editable controls disable while pending, scoped state is keyed by sess
   assert.match(source, /key=\{view.key\}/); assert.doesNotMatch(source, /localStorage|sessionStorage|\.token\s*\|\|/);
   assert.match(source, /Simulación lista\. No se envió nada a Meta/);
   assert.match(source, /Programación simulada\. El calendario editorial no fue modificado/);
+});
+
+const storedDraft = (id = '31', revision = revisionA, caption = 'Server copy') => ({ ...ack('draft', id, revision),
+  clientId: 1, type: 'reel', caption, assets: [{ url: 'https://drive.google.com/stored' }],
+  scheduledAt: '2026-10-20T12:00:00Z', targets: [{ platform: 'instagram' }] });
+function renderState(h) {
+  for (const [key, state] of [['draft', 'Draft'], ['draftId', 'DraftId'], ['draftRevision', 'DraftRevision'],
+    ['dispatchConflict', 'DispatchConflict'], ['sourceSelection', 'SourceSelection'], ['savedDrafts', 'SavedDrafts']]) {
+    if (h.state[state] !== null) h.context[key] = h.state[state];
+  }
+}
+function open(h, row = storedDraft()) { h.context.openSavedDraft(row); renderState(h); }
+
+test('two editor callbacks send exact observed microseconds: stale conflict retains text/token, explicit recovery permits fresh save', async () => {
+  const first = fixture(), second = fixture(); open(first); open(second);
+  first.context.draft.caption = 'Editor A change'; second.context.draft.caption = 'Editor B unsaved change';
+  const savingFirst = first.run('simulate')('draft');
+  assert.equal(JSON.parse(first.calls[0].options.body).expectedRevision, revisionA);
+  first.calls[0].resolve(response(ack('draft', '31', revisionB))); await settle(); first.calls[1].resolve(response([storedDraft('31', revisionB)])); await savingFirst;
+  assert.equal(first.state.DraftRevision, revisionB);
+  const savingSecond = second.run('simulate')('draft');
+  assert.equal(JSON.parse(second.calls[0].options.body).expectedRevision, revisionA);
+  second.calls[0].resolve(response({ code: 'DISPATCH_REVISION_CONFLICT', error: 'Actual revision conflict' }, 409)); await savingSecond;
+  renderState(second);
+  assert.equal(second.context.draft.caption, 'Editor B unsaved change'); assert.equal(second.state.DraftRevision, revisionA);
+  assert.equal(second.state.DispatchConflict, true); assert.equal(second.calls.length, 1); assert.equal(second.events.length, 0);
+  await second.run('simulate')('draft'); assert.equal(second.calls.length, 1, 'Conflict cannot silently retry/rebase');
+  const recovering = second.run('discardAndReloadDraft')(); assert.equal(second.calls[1].options.method, undefined);
+  second.calls[1].resolve(response([storedDraft('31', revisionB, 'Editor A change')])); await recovering; renderState(second);
+  assert.equal(second.context.draft.caption, 'Editor A change'); assert.equal(second.context.draftRevision, revisionB);
+  assert.equal(second.context.dispatchConflict, false); assert.equal(second.context.dispatchOperation.current, null);
+  second.run('setField')('caption', 'Editor B intentional edit after reload'); renderState(second);
+  const fresh = second.run('simulate')('draft');
+  assert.equal(JSON.parse(second.calls[2].options.body).expectedRevision, revisionB);
+  assert.equal(JSON.parse(second.calls[2].options.body).caption, 'Editor B intentional edit after reload');
+  second.calls[2].resolve(response(ack('draft', '31', '2026-10-20T12:00:00.123458Z'))); await settle(); second.calls[3].resolve(response([])); await fresh;
+});
+
+for (const failure of ['network', 'missing', 'invalidRevision', 'notEditable']) test(`explicit discard/reload ${failure} preserves entire local draft, opaque token and pending request key`, async () => {
+  const h = fixture(); open(h);
+  h.context.draft.caption = 'Precious unsaved text'; h.context.dispatchConflict = true; h.context.draftEdited.current = true;
+  h.context.dispatchOperation.current = Object.freeze({ fingerprint: 'old', requestKey: 'do-not-lose', body: 'old serialized body' });
+  const draft = structuredClone(h.context.draft), operation = h.context.dispatchOperation.current;
+  const pending = h.run('discardAndReloadDraft')();
+  if (failure === 'network') h.calls[0].reject(new TypeError('Synthetic GET unavailable'));
+  else h.calls[0].resolve(response(failure === 'missing' ? [] : [{ ...storedDraft(),
+    ...(failure === 'invalidRevision' ? { revision: '2026-10-20T12:00:00.123Z' } : { status: 'programada' }) }]));
+  await pending;
+  assert.deepEqual(h.context.draft, draft); assert.deepEqual(h.state.Draft, draft);
+  assert.equal(h.state.DraftRevision, revisionA); assert.equal(h.context.dispatchOperation.current, operation);
+  assert.equal(h.context.draftEdited.current, true); assert.equal(h.state.SavedDrafts, null);
+  assert.match(h.state.Notice, /unavailable|Conservamos tus cambios/); assert.equal(h.calls.length, 1);
+});
+
+for (const replacement of ['B', 'unmount']) test(`explicit recovery after ${replacement} cannot clear draft/uploads or adopt fresh server revision`, async () => {
+  const h = fixture(); open(h); const before = h.effects.length;
+  const pending = h.run('discardAndReloadDraft')(), count = h.effects.length;
+  if (replacement === 'B') h.accept(8); else h.unmount();
+  h.calls[0].resolve(response([storedDraft('31', revisionB, 'Must not adopt')])); await pending;
+  assert.equal(h.effects.length, count); assert.equal(h.state.DraftRevision, revisionA);
+  assert.ok(count > before); assert.notEqual(h.state.Draft.caption, 'Must not adopt');
+});
+
+test('explicit recovery distinguishes adjacent BIGSERIAL IDs and opens only the requested row with original token text', async () => {
+  const h = fixture(), id = '9223372036854775807'; open(h, storedDraft(id));
+  const pending = h.run('discardAndReloadDraft')();
+  h.calls[0].resolve(response([storedDraft('9223372036854775806', revisionB, 'Wrong adjacent row'),
+    storedDraft(id, revisionB, 'Exact requested row')])); await pending;
+  assert.equal(h.state.DraftId, id); assert.equal(h.state.DraftRevision, revisionB); assert.equal(h.state.Draft.caption, 'Exact requested row');
+});
+
+for (const code of ['DISPATCH_REPLAY_CHANGED', 'DISPATCH_NOT_EDITABLE']) test(`${code} retains local data and never refreshes or retries automatically`, async () => {
+  const h = fixture(); if (code === 'DISPATCH_NOT_EDITABLE') open(h);
+  const before = structuredClone(h.context.draft), pending = h.run('simulate')('draft');
+  h.calls[0].resolve(response({ code, error: 'Conflict' }, 409)); await pending;
+  assert.deepEqual(h.context.draft, before); assert.equal(h.state.DispatchConflict, true); assert.equal(h.calls.length, 1);
+  assert.equal(h.events.length, 0); assert.ok(h.context.dispatchOperation.current);
+});
+
+test('POST replay conflict with unknown ID loads list without discarding local text, then explicit selection validates revision', async () => {
+  const h = fixture(); const pending = h.run('simulate')('draft');
+  h.calls[0].resolve(response({ code: 'DISPATCH_REPLAY_CHANGED' }, 409)); await pending; renderState(h);
+  const draft = structuredClone(h.context.draft), recovery = h.run('discardAndReloadDraft')();
+  h.calls[1].resolve(response([storedDraft()])); await recovery; renderState(h);
+  assert.deepEqual(h.context.draft, draft); assert.equal(h.context.draftId, null); assert.equal(h.context.dispatchConflict, true);
+  assert.match(h.state.Notice, /siguen intactos/);
+  let confirms = 0; h.context.window.confirm = () => { confirms++; return true; };
+  h.run('selectPublication')('draft:31');
+  assert.equal(confirms, 1); assert.equal(h.state.DraftId, '31'); assert.equal(h.state.DraftRevision, revisionA);
+});
+
+test('changing origin while dirty requires explicit confirmation and invalid saved revision cannot replace local data', () => {
+  const h = fixture(); open(h); h.context.draftEdited.current = true;
+  h.context.savedDrafts = [storedDraft('32', revisionB)]; const before = h.effects.length;
+  h.context.window.confirm = () => false; h.run('selectPublication')('draft:32'); assert.equal(h.effects.length, before);
+  h.context.window.confirm = () => true; h.context.savedDrafts = [storedDraft('32', 'rounded-token')];
+  h.run('selectPublication')('draft:32'); assert.equal(h.state.DraftId, '31'); assert.equal(h.state.DraftRevision, revisionA);
+});
+
+test('missing revision blocks PATCH locally and revision shape must retain all six fractional digits in ACK', async () => {
+  for (const revision of [null, undefined, '', revisionA.replace('123456', '123'), revisionA.replace('123456', '1234567'), revisionA.replace('Z', '+00:00')]) {
+    const h = fixture(); h.context.draftId = '31'; h.context.draftRevision = revision;
+    await h.run('simulate')('draft'); assert.equal(h.calls.length, 0); assert.equal(h.state.DispatchConflict, true);
+    const post = fixture(), pending = post.run('simulate')('draft'); post.calls[0].resolve(response({ ...ack(), revision })); await pending;
+    assert.equal(post.calls.length, 1); assert.equal(post.state.DraftId, null); assert.equal(post.events.length, 0);
+  }
+  assert.match(source, /Descartar mis cambios y cargar versión guardada/);
+  assert.equal(nodes(fn('validDispatchRevision'), n => ts.isCallExpression(n) || ts.isNewExpression(n))
+    .some(n => /Date|parse/.test(n.expression.getText(file))), false);
 });

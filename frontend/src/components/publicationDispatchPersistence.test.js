@@ -27,7 +27,7 @@ for (const status of [404, 503]) test(`save HTTP ${status} cannot fabricate an A
   const notices = [], busy = [], events = [], ids = [];
   let refreshes = 0;
   const callback = run(save, {
-    canPublish: true, validation: '', uploads: [], uploadedAssets: [], draftId: null,
+    canPublish: true, validation: '', uploads: [], uploadedAssets: [], draftId: null, draftRevision: null, dispatchConflict: false,
     pending: { current: false }, draftsGeneration: { current: 0 }, dispatchOperation: { current: null },
     captureRequest: () => scope(async () => { throw Object.assign(new Error('No se confirmó el guardado.'), { status }); }),
     draft: { material: 'https://drive.google.com/file/test', date: '2026-10-20', time: '09:00', clientId: 1, type: 'reel', caption: 'QA', platforms: { instagram: true } },

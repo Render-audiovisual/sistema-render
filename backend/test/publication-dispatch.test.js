@@ -73,7 +73,9 @@ test("la API exige community o Líder y mantiene el modo preview", () => {
   const migration = readFileSync(new URL("../migrations/037_publicacion_envios.sql", import.meta.url), "utf8");
   assert.match(source, /requireRole\("admin", "community"\)/);
   assert.match(source, /router\.patch\("\/:id"/);
-  assert.match(source, /estado='borrador' FOR UPDATE/);
+  assert.match(source, /WHERE e.id=\$1 FOR UPDATE/);
+  assert.match(source, /DISPATCH_REVISION_CONFLICT/);
+  assert.match(source, /existing.rows\[0\].estado !== 'borrador'/);
   assert.match(source, /error\.code === "23505"/);
   assert.match(source, /preview_only\)\s*VALUES[\s\S]*TRUE/);
   assert.doesNotMatch(source, /graph\.facebook\.com|graph\.instagram\.com/);

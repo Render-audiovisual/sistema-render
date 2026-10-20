@@ -16,7 +16,13 @@ function cleanText(value, maxLength) {
 
 function positiveInteger(value) {
   const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function positiveDispatchId(value) {
+  const text = typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : value;
+  return typeof text === 'string' && /^[1-9]\d{0,18}$/.test(text)
+    && (text.length < 19 || text <= '9223372036854775807') ? text : null;
 }
 
 function normalizePlatforms(value) {
@@ -92,6 +98,20 @@ export function normalizePublicationDispatch(body = {}) {
   };
 }
 
+const DISPATCH_REVISION = `to_char(e.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+const validRevision = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(value);
+
+function sameDispatchPayload(row, payload) {
+  const sameId = (a, b) => (a == null && b == null) || (a != null && b != null && String(a) === String(b));
+  const scheduledAt = row.scheduledAt == null ? null : new Date(row.scheduledAt).toISOString();
+  return sameId(row.clientId, payload.clientId) && sameId(row.publicationId, payload.publicationId)
+    && row.type === payload.type && row.caption === payload.caption && row.firstComment === payload.firstComment
+    && scheduledAt === payload.scheduledAt && row.status === payload.status && row.previewOnly === true
+    && Object.keys(payload.options).every(key => row.options?.[key] === payload.options[key])
+    && JSON.stringify((row.assets || []).map(asset => asset.url)) === JSON.stringify(payload.materials)
+    && JSON.stringify((row.targets || []).map(target => target.platform).sort()) === JSON.stringify([...payload.platforms].sort());
+}
+
 const DISPATCH_SELECT = `
   SELECT e.id,
     e.publicacion_id AS "publicationId",
@@ -107,6 +127,7 @@ const DISPATCH_SELECT = `
     e.preview_only AS "previewOnly",
     e.created_at AS "createdAt",
     e.updated_at AS "updatedAt",
+    ${DISPATCH_REVISION} AS revision,
     COALESCE((
       SELECT json_agg(json_build_object('url', m.drive_url, 'position', m.posicion) ORDER BY m.posicion)
       FROM publicacion_envio_materiales m WHERE m.envio_id=e.id
@@ -141,8 +162,11 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
   });
 
   router.patch("/:id", requireRole("admin", "community"), async (req, res, next) => {
-    const id = positiveInteger(req.params.id);
+    const id = positiveDispatchId(req.params.id);
     if (!id) return res.status(400).json({ error: "Borrador inválido." });
+    const expectedRevision = req.body?.expectedRevision;
+    if (expectedRevision === undefined) return res.status(428).json({ error: "Abrí la versión guardada antes de editar el borrador.", code: "DISPATCH_REVISION_REQUIRED" });
+    if (!validRevision(expectedRevision)) return res.status(400).json({ error: "La versión del borrador no es válida.", code: "DISPATCH_REVISION_INVALID" });
     let payload;
     try {
       payload = normalizePublicationDispatch(req.body);
@@ -152,10 +176,18 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      const existing = await client.query("SELECT id FROM publicacion_envios WHERE id=$1 AND estado='borrador' FOR UPDATE", [id]);
+      const existing = await client.query(`SELECT e.id,e.estado,${DISPATCH_REVISION} AS revision FROM publicacion_envios e WHERE e.id=$1 FOR UPDATE`, [id]);
       if (!existing.rowCount) {
         await client.query("ROLLBACK");
-        return res.status(404).json({ error: "El borrador no existe o ya fue programado." });
+        return res.status(404).json({ error: "El borrador no existe." });
+      }
+      if (existing.rows[0].revision !== expectedRevision) {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "Otro integrante modificó el borrador. Conservá tus cambios y revisá la versión guardada.", code: "DISPATCH_REVISION_CONFLICT" });
+      }
+      if (existing.rows[0].estado !== 'borrador') {
+        await client.query("ROLLBACK");
+        return res.status(409).json({ error: "El envío ya no es un borrador editable.", code: "DISPATCH_NOT_EDITABLE" });
       }
       const clientExists = await client.query("SELECT id FROM clientes WHERE id=$1", [payload.clientId]);
       if (!clientExists.rowCount) {
@@ -175,7 +207,8 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
       await client.query(
         `UPDATE publicacion_envios SET
            publicacion_id=$2,cliente_id=$3,tipo=$4,copy=$5,primer_comentario=$6,
-           programada_para=$7,opciones=$8::jsonb,estado=$9,updated_at=now()
+           programada_para=$7,opciones=$8::jsonb,estado=$9,
+           updated_at=GREATEST(clock_timestamp(),updated_at + interval '1 microsecond')
          WHERE id=$1`,
         [id, payload.publicationId, payload.clientId, payload.type, payload.caption, payload.firstComment, payload.scheduledAt, JSON.stringify(payload.options), payload.status],
       );
@@ -193,8 +226,8 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
           [id, platform],
         );
       }
+      const result = await client.query(`${DISPATCH_SELECT} WHERE e.id=$1`, [id]);
       await client.query("COMMIT");
-      const result = await pool.query(`${DISPATCH_SELECT} WHERE e.id=$1`, [id]);
       return res.json(result.rows[0]);
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
@@ -264,15 +297,33 @@ export function createPublicationDispatchRouter({ express, pool, requireRole }) 
           [dispatchId, platform],
         );
       }
+      const result = await client.query(`${DISPATCH_SELECT} WHERE e.id=$1`, [dispatchId]);
       await client.query("COMMIT");
-
-      const result = await pool.query(`${DISPATCH_SELECT} WHERE e.id=$1`, [dispatchId]);
       return res.status(201).json(result.rows[0]);
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       if (error.code === "23505") {
-        const existing = await pool.query(`${DISPATCH_SELECT} WHERE e.idempotency_key=$1`, [payload.requestKey]);
-        if (existing.rowCount) return res.status(200).json(existing.rows[0]);
+        try {
+          await client.query("BEGIN");
+          const replay = await client.query("SELECT id,creado_por_id,updated_at=created_at AS unchanged FROM publicacion_envios WHERE idempotency_key=$1 FOR UPDATE", [payload.requestKey]);
+          if (replay.rowCount && !replay.rows[0].unchanged) {
+            await client.query("ROLLBACK");
+            return res.status(409).json({ error: "El envío ya existe y fue modificado. Revisá la versión guardada antes de continuar.", code: "DISPATCH_REPLAY_CHANGED" });
+          }
+          if (replay.rowCount) {
+            const existing = await client.query(`${DISPATCH_SELECT} WHERE e.id=$1`, [replay.rows[0].id]);
+            if (String(replay.rows[0].creado_por_id) !== String(req.auth.id) || !sameDispatchPayload(existing.rows[0], payload)) {
+              await client.query("ROLLBACK");
+              return res.status(409).json({ error: "La clave de operación ya corresponde a otro envío. Revisá el registro guardado.", code: "DISPATCH_REPLAY_MISMATCH" });
+            }
+            await client.query("COMMIT");
+            return res.status(200).json(existing.rows[0]);
+          }
+          await client.query("ROLLBACK");
+        } catch (replayError) {
+          await client.query("ROLLBACK").catch(() => {});
+          return next(replayError);
+        }
       }
       return next(error);
     } finally {

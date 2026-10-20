@@ -913,6 +913,14 @@ Implemented and bounded-verified locally, not deployed or globally ready. All-mo
 - Final frontend760 pass, backend1336 pass/57 opt-in skips, isolated HTTP/PG38 pass, build/diff clean. Actual browser native date20→21 persists after reload; draft copy recovered. Mobile390 no horizontal overflow. `/private/tmp/render2-publications76-mobile.jpg` and QA doc record scope/limitations, including no provider or mounted cookie replacement test.
 - Owned fixtures/tabs cleaned/viewport reset; user App20+/1-, Vite5+ and untracked work preserved. No configured DB/provider/real commercial changes/schema/dependency/environment/push/deploy. Remaining writer inventory (including Historias), shared-draft CAS, draft recovery/native session acceptance/provider/design unification remain. Local progress, not production-ready/deployed or master complete.
 
+## Seventy-seventh integration — shared dispatch CAS and explicit recovery (2026-10-20)
+
+- Coordinator backend/physical/compatibility/QA, Hypatia Composer, Carson registered-router tests, Beauvoir independent frozen review. See `DISPATCH_CONCURRENCY_QA.md`.
+- PATCH requires exact observed revision under row lock; stale409 before DML, timestamps advance at microsecond precision without schema/history rewrite. BIGSERIAL route IDs never rounded. ACKs read before COMMIT; replay requires original actor/normalized intent/intact row, never another editor's latest ACK. Frontend retains draft/token on conflict and only discards via explicit load action; no automatic rebase/retry.
+- Frontend773 pass, backend1353 pass/57 opt-in skips, isolated HTTP/PG41 pass, build/diff clean. Real parallel owners yield one200/one409; precise1microsecond and adjacent BIGSERIAL IDs proved, rejected updates leave snapshots unchanged, editorial publication remains untouched.
+- Actual UI Franco local draft→Agustín HTTP update→Franco409 preserves text→explicit mobile load→new save→reload recovers final copy. Evidence `/private/tmp/render2-dispatch77-conflict-desktop.jpg` and `-resolved-mobile.jpg`,390 no horizontal overflow. Interruption recovered from terminal existing handle; fixture root absent, tab closed/viewport reset, no broad kill/restart.
+- No production/configured DB/provider/real commercial/schema/dependency/environment/push/deploy. App20+/1-, Vite5+ and references excluded. External writers/version discipline, publication/client reassignment race, all-app writers/Historias, native cookie/crash/HTTPS/proxy/provider/draft/design acceptance remain. Global cookie off; local progress, not master completion/deployment-ready.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

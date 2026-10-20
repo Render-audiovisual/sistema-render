@@ -64,12 +64,18 @@ async function loadDispatchQueue(guard) {
   return result;
 }
 
+function validDispatchRevision(value) {
+  // Opaque server CAS token: never parse as Date or round its microseconds.
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(value);
+}
+
 function validDispatchAck(value, mode, draftId) {
   const id = value?.id;
   const validId = Number.isSafeInteger(id) && id > 0 || typeof id === 'string' && /^[1-9]\d{0,18}$/.test(id)
     && (id.length < 19 || id <= '9223372036854775807');
   const status = mode === 'draft' ? 'borrador' : mode === 'now' ? 'lista_para_publicar' : 'programada';
-  return validId && value.status === status && value.previewOnly === true && (!draftId || String(id) === String(draftId));
+  return validId && value.status === status && value.previewOnly === true && validDispatchRevision(value.revision)
+    && (!draftId || String(id) === String(draftId));
 }
 
 function emptyDraft(publication, clients) {
@@ -183,6 +189,9 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
   const [showDriveField, setShowDriveField] = useState(false);
   const [savedDrafts, setSavedDrafts] = useState([]);
   const [draftId, setDraftId] = useState(null);
+  const [draftRevision, setDraftRevision] = useState(null);
+  const [dispatchConflict, setDispatchConflict] = useState(false);
+  const draftEdited = useRef(false);
   const [uploadingMaterial, setUploadingMaterial] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedAssets, setUploadedAssets] = useState([]);
@@ -220,31 +229,43 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
 
   useEffect(() => { refreshDrafts(); }, []);
 
+  const openSavedDraft = (selected) => {
+    if (!validDispatchAck(selected, 'draft', selected?.id)) throw new Error('El borrador guardado no tiene una revisión válida. Conservamos tus cambios.');
+    const restored = savedDraft(selected, clients);
+    uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+    uploadsRef.current = []; if (fileInputRef.current) fileInputRef.current.value = '';
+    setUploads([]); setUploadedAssets([]); setUploadProgress(0); setFileError('');
+    setDraftId(selected.id); setDraftRevision(selected.revision); setDraft(restored);
+    setSourceSelection(`draft:${selected.id}`); setShowDriveField(Boolean(selected.assets?.length));
+    setDispatchConflict(false); dispatchOperation.current = null; draftEdited.current = false;
+  };
+
   const selectPublication = (id) => {
     if (pending.current) return;
-    setSourceSelection(id);
+    if (String(id) === String(sourceSelection)) return;
+    if ((draftEdited.current || dispatchConflict) && !window.confirm('Cambiar de origen descartará tus cambios locales. ¿Querés continuar?')) return;
     if (String(id).startsWith("draft:")) {
       const selected = savedDrafts.find((item) => String(item.id) === String(id).slice(6));
       if (!selected) return;
-      clearUploads();
-      setDraftId(selected.id);
-      setDraft(savedDraft(selected, clients));
-      setShowDriveField(Boolean(selected.assets?.length));
-      setNotice("Borrador recuperado. Podés seguir editándolo.");
+      try { openSavedDraft(selected); setNotice("Borrador recuperado. Podés seguir editándolo."); }
+      catch (error) { setNotice(error.message); }
       return;
     }
+    setSourceSelection(id);
     const publication = candidates.find((item) => Number(item.id) === Number(id));
     uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     uploadsRef.current = [];
     setUploads([]);
     setUploadedAssets([]);
     setDraftId(null);
+    setDraftRevision(null); setDispatchConflict(false); dispatchOperation.current = null; draftEdited.current = false;
     setDraft(emptyDraft(publication, clients));
     setNotice("");
   };
 
   const clearUploads = () => {
     if (pending.current) return;
+    if (uploadsRef.current.length || uploadedAssets.length) draftEdited.current = true;
     uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     uploadsRef.current = [];
     setUploads([]);
@@ -293,6 +314,7 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
       previewUrl: URL.createObjectURL(file),
     }));
     uploadsRef.current = selected;
+    draftEdited.current = true;
     setUploads(selected);
     setUploadedAssets([]);
     setUploadProgress(0);
@@ -331,6 +353,7 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
         completed.push(uploaded);
       }
       setUploadedAssets(completed);
+      draftEdited.current = true;
       setDraft((current) => ({ ...current, material: completed.map((item) => item.webViewLink).join("\n") }));
       setUploadProgress(100);
       setNotice(`${completed.length === 1 ? "Archivo guardado" : "Archivos guardados"} en el Drive privado de Render.`);
@@ -345,11 +368,37 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
     }
   };
 
-  const setField = (field, value) => { if (!pending.current) setDraft((current) => ({ ...current, [field]: value })); };
-  const setPlatform = (platform, value) => { if (!pending.current) setDraft((current) => ({
+  const setField = (field, value) => { if (!pending.current) { draftEdited.current = true; setDraft((current) => ({ ...current, [field]: value })); } };
+  const setPlatform = (platform, value) => { if (!pending.current) { draftEdited.current = true; setDraft((current) => ({
     ...current,
     platforms: { ...current.platforms, [platform]: value },
-  })); };
+  })); } };
+
+  const discardAndReloadDraft = async () => {
+    if (pending.current) return;
+    const guard = captureRequest();
+    if (!guard.current()) { guard.release(); return; }
+    pending.current = true; ++draftsGeneration.current; setSaving(true);
+    try {
+      const rows = await guard.request('/api/publicacion-envios?estado=borrador', { signal: guard.signal });
+      guard.assertCurrent();
+      if (!Array.isArray(rows)) throw new Error('No se pudo validar la lista guardada. Conservamos tus cambios.');
+      if (draftId) {
+        const selected = rows.find(item => String(item.id) === String(draftId));
+        if (!selected) throw new Error('El registro ya no está disponible como borrador editable. Conservamos tus cambios.');
+        openSavedDraft(selected);
+        setSavedDrafts(rows); setNotice('Versión guardada cargada. Se descartaron tus cambios locales por tu pedido.');
+      } else {
+        setSavedDrafts(rows);
+        setNotice('Lista guardada actualizada. Tus cambios locales siguen intactos: elegí el borrador que querés cargar.');
+      }
+    } catch (error) {
+      if (guard.current()) setNotice(error.message || 'No se pudo cargar la versión guardada. Conservamos tus cambios.');
+    } finally {
+      if (guard.current()) { pending.current = false; setSaving(false); }
+      guard.release();
+    }
+  };
 
   const validation = useMemo(() => {
     if (!draft.clientId) return "Elegí un cliente.";
@@ -363,6 +412,8 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
 
   const simulate = async (mode) => {
     if (pending.current) return;
+    if (dispatchConflict) { setNotice('Hay un conflicto. Conservamos tus cambios; cargá explícitamente la versión guardada antes de volver a enviar.'); return; }
+    if (draftId && !validDispatchRevision(draftRevision)) { setNotice('Falta la revisión del borrador. Conservamos tus cambios; cargá explícitamente la versión guardada.'); setDispatchConflict(true); return; }
     if (!canPublish) {
       setNotice("Solo una community manager o un Líder puede preparar envíos.");
       return;
@@ -398,6 +449,7 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
             location: draft.location,
             tags: draft.tags,
             mode,
+            ...(draftId ? { expectedRevision: draftRevision } : {}),
       };
       // Retain the exact serialized operation after uncertain transport/ACK.
       // Only an explicit changed intent gets a new key; never auto-retry.
@@ -411,10 +463,13 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
         guard.assertCurrent();
         if (!validDispatchAck(saved, mode, draftId)) throw new Error('La respuesta no confirmó el guardado. Conservá los datos y verificá antes de reintentar.');
         dispatchOperation.current = null;
+        draftEdited.current = false;
         if (mode === "draft") {
           setDraftId(saved.id);
+          setDraftRevision(saved.revision); setSourceSelection(`draft:${saved.id}`);
         } else {
           setDraftId(null);
+          setDraftRevision(null);
         }
       const refreshed = await refreshDrafts(guard);
       guard.assertCurrent();
@@ -427,7 +482,12 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
           ? "Simulación lista. No se envió nada a Meta."
           : "Programación simulada. El calendario editorial no fue modificado.");
     } catch (error) {
-      if (guard.current()) setNotice(error.message || "No se confirmó el guardado en el sistema. Conservá los datos y volvé a intentar.");
+      if (guard.current()) {
+        if (error.status === 409) {
+          setDispatchConflict(true);
+          setNotice('El registro cambió o ya no es editable. Conservamos tus cambios y la revisión observada. Cargá explícitamente la versión guardada para continuar.');
+        } else setNotice(error.message || "No se confirmó el guardado en el sistema. Conservá los datos y volvé a intentar.");
+      }
     } finally {
       if (guard.current()) { pending.current = false; setSaving(false); }
       guard.release();
@@ -509,10 +569,16 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
           </div>
 
           {notice && <div className="publisher-notice" role="status">{notice}</div>}
+          {dispatchConflict && <div className="publisher-notice" role="alert">
+            <p>Conservamos tus cambios locales. No se reemplazaron con la versión del servidor.</p>
+            <button type="button" className="publisher-secondary" disabled={operationBusy} onClick={discardAndReloadDraft}>
+              {draftId ? 'Descartar mis cambios y cargar versión guardada' : 'Cargar lista guardada para elegir un borrador'}
+            </button>
+          </div>}
           <div className="publisher-actions">
-            <button type="button" className="publisher-draft-button" disabled={!canPublish || saving || uploadingMaterial} onClick={() => simulate("draft")}>{saving ? "Guardando…" : draftId ? "Actualizar borrador" : "Guardar borrador"}</button>
-            <button type="button" className="publisher-secondary" disabled={!canPublish || operationBusy} onClick={() => simulate("schedule")}>{saving ? "Guardando…" : "Probar programación"}</button>
-            <button type="button" className="publisher-primary" disabled={!canPublish || operationBusy} onClick={() => simulate("now")}>{saving ? "Guardando…" : "Probar “Publicar ahora”"}</button>
+            <button type="button" className="publisher-draft-button" disabled={!canPublish || saving || uploadingMaterial || dispatchConflict} onClick={() => simulate("draft")}>{saving ? "Guardando…" : draftId ? "Actualizar borrador" : "Guardar borrador"}</button>
+            <button type="button" className="publisher-secondary" disabled={!canPublish || operationBusy || dispatchConflict} onClick={() => simulate("schedule")}>{saving ? "Guardando…" : "Probar programación"}</button>
+            <button type="button" className="publisher-primary" disabled={!canPublish || operationBusy || dispatchConflict} onClick={() => simulate("now")}>{saving ? "Guardando…" : "Probar “Publicar ahora”"}</button>
           </div>
         </div>
 
