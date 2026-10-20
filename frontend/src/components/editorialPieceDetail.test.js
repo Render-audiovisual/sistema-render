@@ -122,9 +122,13 @@ test('detail failures clear data and redact diagnostics', async () => {
 });
 test('actual component lazy-loads details, renders text only and cleans up loader; principal mounts it', () => {
   const source = readFileSync(new URL('./EditorialPieceDetails.jsx', import.meta.url), 'utf8');
+  assert.match(source, /const view = useSessionView\(sesion\)/);
+  assert.match(source, /canReadEditorialControl\(view.session\)/);
+  assert.match(source, /sesion: view.session/);
+  assert.match(source, /\[id, domain, clientId, view\]/);
   assert.match(source, /if \(!open \|\| !allowed\) return undefined/);
   assert.match(source, /identityRef.current === identity/); assert.match(source, /loader.dispose\(\)/);
   assert.match(source, /current.data.content\[key\]/); assert.match(source, /<summary>Ver contenido y aclaraciones/);
   assert.doesNotMatch(source, /dangerouslySetInnerHTML|localStorage|href=|window.open/);
-  assert.match(readFileSync(new URL('./HomeEditorialControl.jsx', import.meta.url), 'utf8'), /<EditorialPieceDetails piece=\{item\} sesion=\{sesion\} request=\{request\}/);
+  assert.match(readFileSync(new URL('./HomeEditorialControl.jsx', import.meta.url), 'utf8'), /<EditorialPieceDetails piece=\{item\} sesion=\{view.session\} request=\{request\}/);
 });

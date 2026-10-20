@@ -12,6 +12,7 @@ import { createHomeEscalationsLoader } from '../../frontend/src/components/homeE
 import { createHomeTeamLoader } from '../../frontend/src/components/homeTeamWorkload.js';
 import { createHomeProductionPageLoader } from '../../frontend/src/components/homeProductionPage.js';
 import { createFeedbackInventoryLoader } from '../../frontend/src/pages/feedbackTaskInventory.js';
+import { createPersonalHomeLoader } from '../../frontend/src/pages/personalHome.js';
 
 const origin = 'http://127.0.0.1:5195';
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -153,10 +154,10 @@ test('browser client against principal HTTP: memory observations, exact mutation
     const before = await snapshot();
     const request = async (url, options) => { const result = await apiFetch(url, options); checked(result); return result.json(); };
     for (const create of [createHomeEditorialLoader, createHomeEscalationsLoader, createHomeTeamLoader,
-      createHomeProductionPageLoader, createFeedbackInventoryLoader]) {
+      createHomeProductionPageLoader, createFeedbackInventoryLoader, createPersonalHomeLoader]) {
       const changes = [];
       const loader = create({ sesion: store.getSession(), period: clock.period, readSession: store.getSession,
-        request, onChange: value => changes.push(value) });
+        request, allowTeamReview: true, onChange: value => changes.push(value) });
       try {
         if (loader.refresh) await loader.refresh(); else await loader.load({ view: 'all' });
         assert.equal(changes.at(-1)?.status, 'ready', 'Actual migrated loader must parse its principal DTO');

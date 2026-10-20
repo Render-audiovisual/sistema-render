@@ -52,7 +52,7 @@ test('QuickHome mounts once with real session/navigation/request and shared CSS,
 test('component delegates role/session policy and gates loading/rendering without conditional hooks', () => {
   const policyImport = file.statements.find(n => ts.isImportDeclaration(n) && n.moduleSpecifier.text === './homeEditorialControl.js');
   assert.ok(policyImport, 'Reuse real editorial loader/policy module');
-  assert.equal(compact(declaration('allowed').initializer), 'canReadEditorialControl(sesion)');
+  assert.equal(compact(declaration('allowed').initializer), 'canReadEditorialControl(view.session)');
   const effects = calls(component.body, 'useEffect');
   assert.equal(effects.length, 1);
   const effect = effects[0].arguments[0];
@@ -67,22 +67,22 @@ test('component delegates role/session policy and gates loading/rendering withou
   assert.equal(calls(component.body, 'apiRequest').length, 0, 'No inline endpoint bypass of the loader');
 });
 
-test('primitive identity memo, stale-result fence and loader cleanup preserve current bucket state', () => {
-  const expected = { id: 'sesion?.usuario?.id', role: 'sesion?.usuario?.rol', active: 'sesion?.usuario?.activo', token: 'sesion?.token' };
-  for (const [name, expression] of Object.entries(expected)) assert.equal(compact(declaration(name).initializer), expression);
-  const memo = declaration('identity').initializer;
-  assert.equal(text(memo.expression), 'useMemo');
-  assert.deepEqual(memo.arguments[1].elements.map(text), ['id', 'role', 'active', 'token']);
+test('stable session view, stale-result fence and loader cleanup preserve current bucket state', () => {
+  assert.ok(file.statements.some(n => ts.isImportDeclaration(n) && n.moduleSpecifier.text === '../shared/session/use-session-view.js'));
+  assert.equal(compact(declaration('view').initializer), 'useSessionView(sesion)');
+  assert.equal(compact(declaration('identity').initializer), 'view');
+  assert.equal(compact(declaration('id').initializer), 'view.id');
   assert.match(source, /identityRef\.current\s*=\s*identity/);
   assert.equal(compact(declaration('current').initializer), 'result?.identity===identity?result:null');
   assert.equal(compact(declaration('bucket').initializer), "current?.bucket??'today'");
   const effect = calls(component.body, 'useEffect')[0];
   const dependencies = effect.arguments[1].elements.map(text);
-  for (const name of ['identity', 'allowed', 'request', 'id', 'role', 'active', 'token']) assert.ok(dependencies.includes(name));
+  assert.deepEqual(dependencies, ['view', 'allowed', 'request', 'id']);
   assert.ok(!dependencies.includes('sesion'), 'Object identity alone must not reset selected bucket');
   const create = calls(effect.arguments[0], 'createHomeEditorialLoader');
   assert.equal(create.length, 1);
   const options = create[0].arguments[0];
+  assert.equal(text(objectProperty(options, 'sesion').initializer), 'view.session', 'Pass the exact session DTO, not a reconstructed cookie identity');
   assert.equal(text(objectProperty(options, 'readSession').initializer), 'getSesion');
   const onChange = objectProperty(options, 'onChange').initializer;
   const fence = nodes(onChange, ts.isIfStatement).find(n => compact(n.expression).includes('identityRef.current===identity'));

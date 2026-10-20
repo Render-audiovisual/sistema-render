@@ -145,8 +145,9 @@ test('canonical home uses current session; workspace task context and shared nav
   assert.match(source, /<WorkspaceReadOnlyPage\s+path=\{path\}\s+sesion=\{sesion\}/);
   assert.match(source, /navigateWithinApp\(window,\s*href\)/);
   const home = read('../pages/QuickHome.jsx');
-  assert.match(home, /userId\s*=\s*sesion\?\.usuario\?\.id/);
-  assert.match(home, /createPersonalHomeLoader\(\{\s*request,\s*userId/);
+  assert.match(home, /const identity = useSessionView\(sesion\)/);
+  assert.match(home, /id: userId, role, active.*= identity/);
+  assert.match(home, /createPersonalHomeLoader\(\{\s*request: scopedRequest,\s*userId,\s*sesion: captured\.session,\s*binding: captured\.binding/);
   const workspace = read('../pages/WorkspaceReadOnly.jsx');
   assert.match(workspace, /URLSearchParams\(window.location.search\)\.get\(["']task["']\)/);
   assert.match(workspace, /useNavigationGuard\(/);

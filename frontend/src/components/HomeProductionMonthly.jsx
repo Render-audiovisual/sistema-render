@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSessionView } from '../shared/session/use-session-view.js';
 import { getSesion } from '../utils.jsx';
 import { createHomeProductionPageLoader, PRODUCTION_PAGE_LIMIT } from './homeProductionPage.js';
 
 export function HomeProductionMonthly({ data, period, sesion, request }) {
-  const id = sesion?.usuario?.id, role = sesion?.usuario?.rol, active = sesion?.usuario?.activo, token = sesion?.token;
-  const scope = useMemo(() => ({ data, period, id, role, active, token }), [data, period, id, role, active, token]);
+  const view = useSessionView(sesion);
+  const scope = useMemo(() => ({ data, period, view }), [data, period, view]);
   const scopeRef = useRef(scope); scopeRef.current = scope;
   const [result, setResult] = useState(null);
   const loaderRef = useRef(null);
@@ -12,13 +13,13 @@ export function HomeProductionMonthly({ data, period, sesion, request }) {
   const page = current ? current.data : { ...data, offset: 0, has_more: data.client_count > PRODUCTION_PAGE_LIMIT };
   const loading = current?.status === 'loading';
   useEffect(() => {
-    const loader = createHomeProductionPageLoader({ sesion: { token, usuario: { id, rol: role, activo: active } }, period,
+    const loader = createHomeProductionPageLoader({ sesion: view.session, period,
       readSession: getSesion, request, onChange: state => {
         if (scopeRef.current === scope) setResult({ ...state, scope });
       } });
     loaderRef.current = loader;
     return () => { loader.dispose(); if (loaderRef.current === loader) loaderRef.current = null; };
-  }, [scope, id, role, active, token, period, request]);
+  }, [scope, view, period, request]);
   const refresh = offset => { void loaderRef.current?.refresh(offset === undefined ? {} : { offset }); };
   return <details className="qh-monthly-production">
     <summary>Producción por cliente · {page?.completed ?? data.completed} / {page?.total ?? data.total} tareas terminadas</summary>

@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useSessionView } from '../shared/session/use-session-view.js';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
 import { getHoyLocalISO } from '../shared/date/date-utils.js';
@@ -6,27 +7,26 @@ import { homeDeadline, homeStateLabel, personalHomeNavigate, subscribePersonalHo
 import { canReadHomeEscalations, createHomeEscalationsLoader, ESCALATIONS_LIMIT } from './homeEscalations.js';
 
 export function HomeEscalations({ sesion, onNavigate, request = apiRequest }) {
-  const id = sesion?.usuario?.id, role = sesion?.usuario?.rol, active = sesion?.usuario?.activo, token = sesion?.token;
-  const identity = useMemo(() => ({ id, role, active, token }), [id, role, active, token]);
+  const view = useSessionView(sesion);
+  const identity = view;
   const identityRef = useRef(identity);
   identityRef.current = identity;
   const [result, setResult] = useState(null);
   const loaderRef = useRef(null);
-  const allowed = canReadHomeEscalations(sesion);
+  const allowed = canReadHomeEscalations(view.session);
   const current = result?.identity === identity ? result : null;
   const data = allowed ? current?.data : null;
   const loading = !current || current.status === 'loading';
 
   useEffect(() => {
     if (!allowed) return undefined;
-    const captured = { token, usuario: { id, rol: role, activo: active } };
-    const loader = createHomeEscalationsLoader({ sesion: captured, readSession: getSesion, request,
+    const loader = createHomeEscalationsLoader({ sesion: view.session, readSession: getSesion, request,
       onChange: state => { if (identityRef.current === identity) setResult({ ...state, identity }); } });
     loaderRef.current = loader;
     void loader.refresh();
     const unsubscribe = subscribePersonalHomeRefresh(loader);
     return () => { unsubscribe(); loader.dispose(); if (loaderRef.current === loader) loaderRef.current = null; };
-  }, [identity, allowed, request, id, role, active, token]);
+  }, [view, allowed, request]);
 
   if (!allowed) return null;
   const refresh = () => { void loaderRef.current?.refresh(); };

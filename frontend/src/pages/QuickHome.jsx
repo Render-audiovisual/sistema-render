@@ -1,4 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useSessionView } from '../shared/session/use-session-view.js';
+import { sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
+import { getSesion } from '../utils.jsx';
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { HomeEscalations } from "../components/HomeEscalations.jsx";
 import { HomeMonthlyProgress } from "../components/HomeMonthlyProgress.jsx";
@@ -49,16 +52,13 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
     editorialRecordOpenRef.current = open;
     setEditorialRecordOpen(open);
   }, []);
-  const userId = sesion?.usuario?.id;
-  const role = sesion?.usuario?.rol;
-  const active = sesion?.usuario?.activo;
-  const sessionToken = sesion?.token;
-  const identity = useMemo(() => ({ id: userId, role, active, token: sessionToken }), [userId, role, active, sessionToken]);
+  const identity = useSessionView(sesion);
+  const { id: userId, role, active } = identity;
   const identityRef = useRef(identity);
   identityRef.current = identity;
   const [result, setResult] = useState(null);
   const loaderRef = useRef(null);
-  const validIdentity = Number.isSafeInteger(userId) && userId > 0 && active !== false;
+  const validIdentity = Number.isSafeInteger(userId) && userId > 0 && active !== false && Boolean(identity.binding);
   const current = result?.identity === identity ? result : null;
   const data = validIdentity ? current?.data : null;
   const loading = validIdentity && (!current || current.status === "loading");
@@ -66,8 +66,16 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
 
   useEffect(() => {
     if (!validIdentity) return undefined;
+    const captured = identity;
+    const scopedRequest = async (url, options) => {
+      const current = () => identityRef.current === captured && sessionBindingMatches(captured.binding, getSesion());
+      if (!current()) throw new Error('La sesión cambió.');
+      const value = await request(url, sessionRequestOptions(captured.binding, options));
+      if (!current()) throw new Error('La sesión cambió.');
+      return value;
+    };
     const loader = createPersonalHomeLoader({
-      request, userId, allowTeamReview: role === "admin",
+      request: scopedRequest, userId, sesion: captured.session, binding: captured.binding, readSession: getSesion, allowTeamReview: role === "admin",
       onChange: (state) => { if (identityRef.current === identity) setResult({ ...state, identity }); },
     });
     loaderRef.current = loader;

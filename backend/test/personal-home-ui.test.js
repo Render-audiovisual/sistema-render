@@ -205,7 +205,10 @@ test('background refresh is bounded, does not overlap or retry automatically, an
 test('principal UI binds state to session identity, keeps honest totals and operational secondary links only', () => {
   assert.match(source, /result\?\.identity === identity/);
   assert.match(source, /identityRef\.current === identity/);
-  assert.match(source, /\[userId, role, active, sessionToken\]/);
+  assert.match(source, /const identity = useSessionView\(sesion\)/);
+  assert.match(source, /sessionBindingMatches\(captured\.binding, getSesion\(\)\)/);
+  assert.match(source, /sessionRequestOptions\(captured\.binding, options\)/);
+  assert.match(source, /\[identity, request, validIdentity, userId, role\]/);
   assert.match(source, /loader\.dispose\(\)/);
   assert.match(source, /unsubscribe\(\)/);
   assert.match(source, /Mostrando \$\{shown\} de \$\{total\}/);

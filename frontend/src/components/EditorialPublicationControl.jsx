@@ -5,10 +5,11 @@ import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { evidenceFromStatus, isConfirmedPublication, isHistoricalPublication } from '../shared/editorial/publication-evidence.js';
 import { cordobaOccurrence, createEditorialAttempt, createEditorialSessionGuard, validateEditorialStatus } from './EditorialPublicationControl.model.js';
 import './EditorialPublicationControl.css';
+import { sessionViewKey } from '../shared/session/session-view.js';
 
 export function EditorialPublicationControl(props) {
   const sesion = props.sesion || getSesion();
-  return <PublicationControl key={`${props.dominio}:${props.pieza.id}:${props.pieza.cliente_id}:${sesion?.usuario?.id}:${sesion?.usuario?.rol}:${sesion?.token || ''}`} {...props} sesion={sesion} />;
+  return <PublicationControl key={`${props.dominio}:${props.pieza.id}:${props.pieza.cliente_id}:${sessionViewKey(sesion)}`} {...props} sesion={sesion} />;
 }
 
 function PublicationControl({ dominio, pieza, sesion, onSaved, hideSummary = false, openLabel = 'Ver publicación', onOpenChange }) {

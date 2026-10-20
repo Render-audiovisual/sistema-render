@@ -1,4 +1,5 @@
 import { parseHomeMonthlyProgress } from '../components/homeMonthlyProgress.js';
+import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
 
 const positive = (value) => Number.isSafeInteger(value) && value > 0;
 const count = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -96,10 +97,19 @@ export function personalHomeNavigate(event, href, onNavigate) {
   onNavigate(href);
 }
 
-export function createPersonalHomeLoader({ request, userId, allowTeamReview = false, onChange, now = Date.now }) {
+export function createPersonalHomeLoader({ request, userId, sesion, readSession = () => sesion,
+  binding = sesion === undefined ? null : captureSessionBinding(sesion), allowTeamReview = false, onChange, now = Date.now }) {
+  const scoped = sesion !== undefined || binding !== null;
+  const observedUserId = scoped ? binding?.id : userId;
+  const currentSession = () => {
+    if (!scoped) return true; // Retain the legacy pure userId-only loader API.
+    try { return positive(observedUserId) && (userId === undefined || userId === observedUserId)
+      && sessionBindingMatches(binding, readSession()); } catch { return false; }
+  };
   let controller, version = 0, disposed = false, lastRequest = -Infinity, inFlight = false;
   async function refresh({ background = false } = {}) {
     if (disposed || (background && (inFlight || now() - lastRequest < 30000))) return false;
+    if (!currentSession()) return false;
     controller?.abort();
     const current = ++version;
     controller = new AbortController();
@@ -108,12 +118,12 @@ export function createPersonalHomeLoader({ request, userId, allowTeamReview = fa
     inFlight = true;
     onChange({ status: "loading", data: null, error: "" });
     try {
-      const result = await request("/api/inicio", { signal });
-      if (disposed || signal.aborted || current !== version) return false;
-      const data = parsePersonalHome(result, userId, allowTeamReview);
+      const result = await request("/api/inicio", scoped ? sessionRequestOptions(binding, { signal }) : { signal });
+      if (disposed || signal.aborted || current !== version || !currentSession()) return false;
+      const data = parsePersonalHome(result, observedUserId, allowTeamReview);
       onChange({ status: "ready", data, error: "" });
     } catch (error) {
-      if (disposed || signal.aborted || current !== version) return false;
+      if (disposed || signal.aborted || current !== version || !currentSession()) return false;
       const denied = [401, 403].includes(error.status);
       onChange({ status: "error", data: null, error: denied ? "No pudimos validar tu acceso. Volvé a iniciar sesión para consultar tu inicio." : "No pudimos cargar tu inicio. Reintentá para consultar los datos actuales." });
     } finally {

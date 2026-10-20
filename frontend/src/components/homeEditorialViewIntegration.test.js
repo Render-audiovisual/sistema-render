@@ -116,7 +116,13 @@ test('effect cleanup removes exact popstate listener, clears deferred context an
   assert.equal(deferredLocationRef.current, null); assert.equal(loaderRef.current, null);
   assert.deepEqual(events, ['remove', 'unsubscribe', 'dispose']);
   const deps = effect.arguments[1].elements.map(text);
-  for (const name of ['identity', 'allowed', 'id', 'role', 'active', 'token']) assert.ok(deps.includes(name));
+  assert.deepEqual(deps, ['view', 'allowed', 'request', 'id']);
+  assert.equal(compact(declaration('view').initializer), 'useSessionView(sesion)');
+  assert.equal(compact(declaration('identity').initializer), 'view');
+  assert.equal(compact(declaration('id').initializer), 'view.id');
+  const loaderOptions = calls(effect.arguments[0], 'createHomeEditorialLoader')[0].arguments[0];
+  const sessionOption = loaderOptions.properties.find(n => ts.isPropertyAssignment(n) && text(n.name) === 'sesion');
+  assert.equal(text(sessionOption.initializer), 'view.session', 'Do not reconstruct the registered cookie DTO');
 });
 
 test('selectPage refuses modal/loading absence and verifies committed URL before user-scoped persistence and fetch', () => {

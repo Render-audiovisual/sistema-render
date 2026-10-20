@@ -140,7 +140,10 @@ test('actual JSX exports named section and uses guarded SPA navigation, separate
   assert.match(source, /no significa que haya correcciones pendientes/);
   assert.match(source, /navigateWithinApp\(window, href\)/); assert.match(source, /inventoryLocationUrl\(window.location.href/);
   assert.match(source, /removeEventListener\('popstate', sync\)/); assert.match(source, /loader.dispose\(\)/);
-  assert.match(source, /result\?\.location === location/); assert.match(source, /sesion\?\.token/);
+  assert.match(source, /result\?\.location === location/);
+  assert.match(source, /useSessionView\(sesion\)/);
+  assert.match(source, /key=\{view\.key\} view=\{view\}/);
+  assert.match(source, /sesion: view\.session, readSession: getSesion/);
   assert.match(source, /clients=\{clients\}/);
   assert.match(source, /<option value="">Todos los clientes<\/option>/);
   assert.match(source, /key=\{item.id\} value=\{String\(item.id\)\}>\{item.nombre\}/);

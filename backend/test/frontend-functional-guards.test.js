@@ -119,7 +119,9 @@ test("Inicio personal consulta datos aislados por sesión y conserva navegación
   assert.match(quickHomeSource, /result\?\.identity === identity/);
   assert.match(quickHomeSource, /loader\.dispose\(\)/);
   assert.match(quickHomeSource, /unsubscribe\(\)/);
-  assert.match(homeHelper, /request\("\/api\/inicio", \{ signal \}\)/);
+  assert.match(homeHelper, /request\("\/api\/inicio", scoped \? sessionRequestOptions\(binding, \{ signal \}\) : \{ signal \}\)/);
+  assert.match(homeHelper, /sessionBindingMatches\(binding, readSession\(\)\)/);
+  assert.match(homeHelper, /parsePersonalHome\(result, observedUserId, allowTeamReview\)/);
   assert.match(homeHelper, /controller\?\.abort\(\)/);
   assert.match(homeHelper, /event\.metaKey \|\| event\.ctrlKey/);
   assert.match(homeHelper, /onNavigate\(href\)/);

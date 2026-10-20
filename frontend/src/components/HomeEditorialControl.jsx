@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useSessionView } from '../shared/session/use-session-view.js';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
 import { personalHomeNavigate, subscribePersonalHomeRefresh } from '../pages/personalHome.js';
@@ -16,8 +17,8 @@ const stateLabel = value => ({ lista: 'Lista', publicada: 'Publicada', bloqueada
   'en_diseño': 'En diseño', 'en_edición': 'En edición' })[value] || value;
 
 export function HomeEditorialControl({ sesion, onNavigate, onRecordOpenChange, request = apiRequest }) {
-  const id = sesion?.usuario?.id, role = sesion?.usuario?.rol, active = sesion?.usuario?.activo, token = sesion?.token;
-  const identity = useMemo(() => ({ id, role, active, token }), [id, role, active, token]);
+  const view = useSessionView(sesion);
+  const identity = view, id = view.id;
   const identityRef = useRef(identity);
   identityRef.current = identity;
   const [result, setResult] = useState(null);
@@ -37,7 +38,7 @@ export function HomeEditorialControl({ sesion, onNavigate, onRecordOpenChange, r
     }
   }, [onRecordOpenChange]);
   const loaderRef = useRef(null);
-  const allowed = canReadEditorialControl(sesion);
+  const allowed = canReadEditorialControl(view.session);
   const current = result?.identity === identity ? result : null;
   const data = allowed ? current?.data : null;
   const loading = !current || current.status === 'loading';
@@ -47,7 +48,7 @@ export function HomeEditorialControl({ sesion, onNavigate, onRecordOpenChange, r
     let storage;
     try { storage = window.localStorage; } catch { /* Preferences are optional. */ }
     selectionRef.current = null;
-    const loader = createHomeEditorialLoader({ sesion: { token, usuario: { id, rol: role, activo: active } },
+    const loader = createHomeEditorialLoader({ sesion: view.session,
       readSession: getSesion, request,
       onChange: state => {
         const selected = selectionRef.current;
@@ -83,7 +84,7 @@ export function HomeEditorialControl({ sesion, onNavigate, onRecordOpenChange, r
       deferredLocationRef.current = null;
       unsubscribe(); loader.dispose(); if (loaderRef.current === loader) loaderRef.current = null;
     };
-  }, [identity, allowed, request, id, role, active, token]);
+  }, [view, allowed, request, id]);
   if (!allowed) return null;
   const refresh = () => { if (!recordOpenRef.current) void loaderRef.current?.refresh(); };
   const recordSaved = () => { void loaderRef.current?.refresh(); };
@@ -122,9 +123,9 @@ export function HomeEditorialControl({ sesion, onNavigate, onRecordOpenChange, r
             <small>{item.fecha_programada || 'Sin fecha'} · {evidenceLabel(item.publication_classification)}</small>
             {href ? <a href={href} onClick={event => personalHomeNavigate(event, href, onNavigate)}>Ver planificación del cliente</a>
               : <small>Sin fecha de planificación. Consultá la pieza en su sección.</small>}
-            <EditorialPublicationControl dominio={item.domain} pieza={homeEditorialRecordPiece(item)} sesion={sesion}
+            <EditorialPublicationControl dominio={item.domain} pieza={homeEditorialRecordPiece(item)} sesion={view.session}
               hideSummary openLabel="Ver registro de publicación" onOpenChange={changeRecordOpen} onSaved={recordSaved}/>
-            <EditorialPieceDetails piece={item} sesion={sesion} request={request}/>
+            <EditorialPieceDetails piece={item} sesion={view.session} request={request}/>
           </div>
         </div></li>;
       })}</ul>

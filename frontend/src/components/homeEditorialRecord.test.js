@@ -72,7 +72,7 @@ test('card mounts existing guarded publication control with minimal context, no 
   assert.ok(ts.isCallExpression(piece));
   assert.equal(text(piece.expression), 'homeEditorialRecordPiece');
   assert.deepEqual(piece.arguments.map(text), ['item']);
-  assert.equal(text(expr(tag, 'sesion')), 'sesion');
+  assert.equal(text(expr(tag, 'sesion')), 'view.session', 'Publication control receives the exact stable-view session DTO');
   assert.ok(!tag.attributes.properties.some(ts.isJsxSpreadAttribute), 'No spread can smuggle a request/proof override');
   assert.equal(attr(tag, 'request'), undefined, 'Existing control keeps its API/session guard');
   assert.ok(attr(tag, 'hideSummary') && !attr(tag, 'hideSummary').initializer);

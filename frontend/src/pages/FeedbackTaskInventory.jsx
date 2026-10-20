@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSessionView } from '../shared/session/use-session-view.js';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
 import { navigateWithinApp } from '../shared/navigation/location.js';
@@ -8,18 +9,19 @@ import './FeedbackTaskInventory.css';
 const states = { pendiente: 'Pendiente', en_progreso: 'En progreso', en_revision: 'En revisión', aprobada: 'Trabajo aprobado', finalizada: 'Trabajo finalizado', publicada: 'Trabajo finalizado (estado histórico)', programada: 'Programada' };
 function locationState() { try { return { selection: readInventoryLocation(window.location.search), error: '' }; } catch { return { selection: null, error: 'Los filtros de revisión no son válidos.' }; } }
 export function FeedbackTaskInventory({ sesion, clients = [], request = apiRequest }) {
-  return <Inventory key={`${sesion?.usuario?.id}:${sesion?.usuario?.rol}:${sesion?.usuario?.activo}:${sesion?.token}`} sesion={sesion} clients={clients} request={request}/>;
+  const view = useSessionView(sesion);
+  return <Inventory key={view.key} view={view} clients={clients} request={request}/>;
 }
-function Inventory({ sesion, clients, request }) {
+function Inventory({ view, clients, request }) {
   const [location, setLocation] = useState(locationState), [result, setResult] = useState(null), [reload, setReload] = useState(0);
   const [query, setQuery] = useState(location.selection?.q ?? ''), [client, setClient] = useState(location.selection?.cliente_id?.toString() ?? '');
   useEffect(() => { const sync = () => setLocation(locationState()); window.addEventListener('popstate', sync); return () => window.removeEventListener('popstate', sync); }, []);
   useEffect(() => { setQuery(location.selection?.q ?? ''); setClient(location.selection?.cliente_id?.toString() ?? ''); }, [location]);
   useEffect(() => {
     if (!location.selection) return undefined;
-    const loader = createFeedbackInventoryLoader({ sesion, readSession: getSesion, request, onChange: state => setResult({ ...state, location }) });
+    const loader = createFeedbackInventoryLoader({ sesion: view.session, readSession: getSesion, request, onChange: state => setResult({ ...state, location }) });
     void loader.load(location.selection); return () => loader.dispose();
-  }, [location, reload, request]);
+  }, [location, reload, request, view]);
   const current = result?.location === location ? result : null, data = current?.data;
   const clientOptions = Array.isArray(clients) ? clients.filter(item => Number.isSafeInteger(item?.id) && item.id > 0 && item.id <= 2147483647 && typeof item.nombre === 'string') : [];
   const move = changes => { try { navigateWithinApp(window, inventoryLocationUrl(window.location.href, { ...(location.selection ?? {}), ...changes })); } catch { /* Keep URL and existing filters untouched. */ } };

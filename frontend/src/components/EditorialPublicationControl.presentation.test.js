@@ -25,8 +25,9 @@ test('optional presentation props retain existing defaults and wrapper forwards 
   assert.equal(text(bindings.find(binding => text(binding.name) === 'openLabel').initializer), "'Ver publicación'");
   assert.ok(bindings.some(binding => text(binding.name) === 'onOpenChange' && !binding.initializer));
   assert.match(text(wrapper), /\{\.\.\.props\} sesion=\{sesion\}/);
-  assert.equal(hash(text(wrapper)), '60ca7586f4970d9a46562157e29490dc01e551cdcbf708aee47abb7be162140a',
-    'Wrapper identity key, session resolution and prop spreading are unchanged');
+  assert.match(text(wrapper), /const sesion = props\.sesion \|\| getSesion\(\)/);
+  assert.match(text(wrapper), /props\.dominio.*props\.pieza\.id.*props\.pieza\.cliente_id.*sessionViewKey\(sesion\)/);
+  assert.doesNotMatch(text(wrapper), /sesion\?\.token|sesion\.token/);
 });
 
 test('hideSummary only controls existing summary span; openLabel is escaped React button text', () => {
