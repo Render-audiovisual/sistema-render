@@ -1009,6 +1009,14 @@ Apple clarity/progressive disclosure guided the compact recovery confirmation in
 
 No configured DB/account/provider/dependency/environment/push/deploy changes.074 applied only to disposable fixtures; coordinated authorized migration/backend/frontend rollout required because legacy PATCH without revision now gets428. External invitation authority/durable delivery, uncertain-result receipts, profile credential policy, other-module transactional authority, cookie/native/device/provider and global design gates remain. Master active, not a completed phase or production release.
 
+## Integration87 — shared credential policy and closed self profile inputs
+
+Coordinator owns pure root shared policy, backend self DTOs/server/create/admin label bounds, profile error mapping and packaging list; Carson profile client/ACK tests; Hypatia actual credential/input races and handler-unit tests; Descartes isolated packaging tests/inventory; Beauvoir independent review. New-password policy12 Unicode points/72 UTF8 bytes is identical in create, self rotation and Perfil; exact values retained, historical login/current verification unchanged. Three self bodies are closed/typed, malformed photo input no longer clears data. Genuine ID+active epoch CAS and reauthentication remain authoritative. Credential ACKs validate before clearing or success.
+
+Final actual HTTP/PostgreSQL59 pass across five suites, backend1429 pass/67 opt-in skips, frontend1091 pass, packaging4 pass, build/diff pass. Historical short credentials can authenticate and deliberately rotate; valid byte/Unicode/space boundaries persist, old sessions revoke, row-lock race has one winner. No unrelated/history writes. Browser read-only Luciano own-profile/empty form verified desktop/mobile390 without overflow; no credential-entry/change or upload browser acceptance claimed. Owned fixture/tab cleaned, viewport reset and App/Vite/references preserved.
+
+Hostinger output includes new root shared module; isolated copy/import verified without executing destructive build packaging or installers. Full backend-only uploads are incompatible without shared. [PROFILE_COOKIE_QA.md](PROFILE_COOKIE_QA.md) records current contract and exact limits. No migration/schema/dependency/environment/configured DB/account/provider/push/deploy changes. Namespace/throttle review, external invitation authority/durable delivery, uncertain-result receipts, other-module transaction authority, native/cookie/device/provider/global design gates remain. Master active; local implementation and evidence, not phase completion or production readiness.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

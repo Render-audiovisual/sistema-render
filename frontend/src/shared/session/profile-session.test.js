@@ -2,9 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { captureProfileSession, createProfileSessionGuard } from './profile-session.js';
+import { captureProfileSession, createProfileSessionGuard, profileFailureMessage } from './profile-session.js';
+import { PASSWORD_POLICY_MESSAGE } from '../../../../shared/password-policy.mjs';
 
 const session = () => ({ token: 'captured-token', usuario: { id: 7, usuario: 'designer', nombre: 'Diseñador', rol: 'diseno', activo: true, foto_perfil: '' } });
+test('profile validation codes expose fixed actionable text rather than arbitrary response details',()=>{
+  assert.equal(profileFailureMessage({code:'NEW_PASSWORD_INVALID',message:'private-diagnostic'}),PASSWORD_POLICY_MESSAGE);
+  assert.equal(profileFailureMessage({code:'PROFILE_INPUT_INVALID',message:'private-diagnostic'}),'Revisá los datos del perfil. No se realizó ningún cambio.');
+  assert.ok(!profileFailureMessage({code:'unknown',message:'private-diagnostic'}).includes('private-diagnostic'));
+});
 function fixture() {
   let live = session(), mounted = true;
   const writes = [], clears = [], navigations = [];

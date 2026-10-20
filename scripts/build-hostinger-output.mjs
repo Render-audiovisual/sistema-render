@@ -16,6 +16,7 @@ for (const relativePath of [
   "backend/src",
   "backend/scripts",
   "backend/migrations",
+  "shared",
   "frontend/dist",
 ]) {
   cpSync(path.join(projectRoot, relativePath), path.join(outputRoot, relativePath), {

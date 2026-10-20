@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { profileFailureMessage } from '../shared/session/profile-session.js';
+import { newPasswordError, PASSWORD_POLICY_MESSAGE } from '../../../shared/password-policy.mjs';
 
 // Actual JSX AST and extracted callbacks only: no React mount/browser claim.
 const source = readFileSync(new URL('./Perfil.jsx', import.meta.url), 'utf8');
@@ -12,7 +13,7 @@ function visit(node) { all.push(node); ts.forEachChild(node, visit); } visit(fil
 const text = node => node.getText(file);
 const declaration = name => all.find(node => ts.isVariableDeclaration(node) && text(node.name) === name);
 const callback = (name, bindings) => {
-  const actual = { profileFailureMessage, ...bindings };
+  const actual = { profileFailureMessage, newPasswordError, PASSWORD_POLICY_MESSAGE, ...bindings };
   return new Function(...Object.keys(actual), `return (${text(declaration(name).initializer)});`)(...Object.values(actual));
 };
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
@@ -95,4 +96,93 @@ test('photo awaits commit and never paints old browser page; legacy commit still
     assert.equal(await result, mode === 'browser' ? null : user);
     assert.deepEqual(paints, mode === 'browser' ? [] : [user, 'image']);
   }
+});
+
+const settle = async () => { for (let count = 0; count < 15; count += 1) await Promise.resolve(); };
+function passwordForm(nueva, { confirmar = nueva, request = async () => ({ ok:true,json:async()=>({ok:true}) }) } = {}) {
+  const events = [], calls = [], operationPending = {current:false}; let current = true;
+  const guard = { current:()=>current, request:(transport,url,options)=>{calls.push({url,options});return request(url,options);}, requireReauthentication:()=>events.push(['reauth']) };
+  const bindings = { operationPending, capture:()=>guard, nueva, confirmar, actual:'old', perfilUsuario:{usuario:'qa_synthetic'},fetch:()=>{throw Error('Never direct fetch');},
+    ...Object.fromEntries(['Mensaje','Error','Enviando','Actual','Nueva','Confirmar'].map(name=>[`set${name}`,value=>events.push([name,value])])) };
+  const submit=callback('handleSubmit',bindings);
+  return {events,calls,operationPending,submit:()=>submit({preventDefault(){}}),stale:()=>{current=false;}};
+}
+
+test('shared new-password policy blocks invalid values before dispatch or pending state, without changing legacy current password rules',async()=>{
+  for(const value of ['', 'short', 'a'.repeat(11), '😀'.repeat(11), 'é'.repeat(37), 'a'.repeat(73), ' '.repeat(12), 'a'.repeat(12)+'\u0000', '\ud800'+'a'.repeat(12), 'a'.repeat(12)+'\udfff']){
+    const form=passwordForm(value);form.submit();await settle();assert.equal(form.calls.length,0);assert.equal(form.operationPending.current,false);
+    assert.ok(form.events.some(([name,message])=>name==='Error'&&message===newPasswordError(value)));assert.equal(form.events.some(([name])=>name==='Nueva'||name==='Actual'||name==='reauth'),false);
+  }
+});
+
+test('actual password callback preserves valid Unicode, leading/trailing whitespace and exact 72-byte boundaries',async()=>{
+  for(const value of ['  Clave-QA-😀-2026  ', 'é'.repeat(36), '😀'.repeat(18), 'a'.repeat(72), 'a'.repeat(11)+'\n']){
+    assert.equal(newPasswordError(value),null);const form=passwordForm(value);form.submit();await settle();assert.equal(form.calls.length,1);
+    assert.equal(form.calls[0].url,'/api/usuarios/password');assert.equal(form.calls[0].options.method,'PATCH');
+    assert.deepEqual(JSON.parse(form.calls[0].options.body),{usuario:'qa_synthetic',password_actual:'old',password_nueva:value});
+    assert.equal(form.operationPending.current,false);assert.ok(form.events.some(([name])=>name==='reauth'));
+  }
+});
+
+test('confirmation compares exact password including spaces and policy wiring is real with accessible 12/72 hint',async()=>{
+  const form=passwordForm('  Clave-QA-2026  ',{confirmar:'Clave-QA-2026'});form.submit();await settle();assert.equal(form.calls.length,0);
+  assert.match(text(declaration('handleSubmit')),/newPasswordError\(nueva\)/);assert.doesNotMatch(text(declaration('handleSubmit')),/nueva\.trim\(|nueva\.length < 4/);
+  assert.match(source,/from ['"]\.\.\/\.\.\/\.\.\/shared\/password-policy\.mjs['"]/);
+  const inputs=all.filter(node=>ts.isJsxSelfClosingElement(node)&&text(node.tagName)==='input'&&node.attributes.properties.some(attr=>ts.isJsxAttribute(attr)&&text(attr.name)==='value'&&['nueva','confirmar'].includes(text(attr.initializer.expression))));
+  assert.equal(inputs.length,2);
+  for(const input of inputs){const minimum=input.attributes.properties.find(attr=>ts.isJsxAttribute(attr)&&text(attr.name)==='minLength');assert.equal(text(minimum.initializer.expression),'12');assert.equal(input.attributes.properties.some(attr=>ts.isJsxAttribute(attr)&&text(attr.name)==='maxLength'),false);}
+  assert.match(source,/aria-describedby="profile-password-policy"/);assert.match(source,/id="profile-password-policy">Al menos 12 caracteres y hasta 72 bytes UTF-8/);
+});
+
+test('pending password operation rejects duplicate dispatch; late response or body after session change cannot repaint/reauthenticate',async()=>{
+  const pending=deferred(),form=passwordForm('Valid-synthetic-2026',{request:()=>pending.promise});form.submit();form.submit();assert.equal(form.calls.length,1);assert.equal(form.operationPending.current,true);
+  form.stale();const mark=form.events.length;pending.resolve({ok:true,json:async()=>({ok:true})});await settle();assert.equal(form.events.length,mark);
+  const body=deferred(),second=passwordForm('Valid-synthetic-2026',{request:async()=>({ok:true,json:()=>body.promise})});second.submit();await settle();second.stale();const before=second.events.length;body.resolve({ok:true});await settle();assert.equal(second.events.length,before);
+});
+
+test('server NEW_PASSWORD_INVALID uses trusted shared copy, does not echo response baggage and retains draft/session',async()=>{
+  const privateText='private-api-baggage-not-for-ui';
+  const form=passwordForm('Valid-synthetic-2026',{request:async()=>({ok:false,json:async()=>({code:'NEW_PASSWORD_INVALID',error:privateText,password_hash:'never-display'})})});
+  form.submit();await settle();assert.ok(form.events.some(([name,value])=>name==='Error'&&value===PASSWORD_POLICY_MESSAGE));
+  assert.ok(!JSON.stringify(form.events).includes(privateText));assert.ok(!JSON.stringify(form.events).includes('never-display'));
+  assert.equal(form.events.some(([name])=>['Actual','Nueva','Confirmar','reauth'].includes(name)),false);assert.equal(form.operationPending.current,false);
+});
+
+test('password requires literal successful ACK before clearing secrets or requesting reauthentication',async()=>{
+  for(const value of [null,{},[],{ok:false},{ok:'true'},{ok:1},{error:'private detail'}]){
+    const form=passwordForm('Valid-synthetic-2026',{request:async()=>({ok:true,json:async()=>value})});form.submit();await settle();
+    assert.equal(form.calls.length,1);assert.equal(form.operationPending.current,false);
+    assert.equal(form.events.some(([name])=>['Actual','Nueva','Confirmar','reauth'].includes(name)),false);
+    assert.equal(form.events.some(([name,message])=>name==='Mensaje'&&message!==null),false);
+    assert.ok(form.events.some(([name,message])=>name==='Error'&&message===profileFailureMessage(new Error('unconfirmed'))));
+  }
+});
+
+function usernameForm(responseBody, { request, profile = {id:7,usuario:'qa_synthetic',rol:'diseno'} } = {}) {
+  const events=[],calls=[],operationPending={current:false};let current=true;
+  const guard={current:()=>current,request:(transport,url,options)=>{calls.push({url,options});return request?request(url,options):Promise.resolve({ok:true,json:async()=>responseBody});},requireReauthentication:()=>events.push(['reauth'])};
+  const run=callback('handleCambiarUsuario',{operationPending,capture:()=>guard,usuarioNuevo:'  nuevo_qa  ',perfilUsuario:profile,passwordUsuario:'old',fetch:()=>{throw Error('Never direct fetch');},
+    ...Object.fromEntries(['MensajeUsuario','ErrorUsuario','EnviandoUsuario'].map(name=>[`set${name}`,value=>events.push([name,value])]))});
+  return{events,calls,operationPending,submit:()=>run({preventDefault(){}}),stale:()=>{current=false;}};
+}
+
+test('username requires held ID, exact requested login and unchanged role; malformed ACK never navigates or reports success',async()=>{
+  for(const body of [null,{},[],{id:8,usuario:'nuevo_qa',rol:'diseno'},{id:'7',usuario:'nuevo_qa',rol:'diseno'},
+    {id:7,usuario:'otro_qa',rol:'diseno'},{id:7,usuario:' nuevo_qa ',rol:'diseno'},{id:7,usuario:'nuevo_qa',rol:'admin'},{id:7,usuario:'nuevo_qa'}]){
+    const form=usernameForm(body);form.submit();await settle();assert.equal(form.calls.length,1);assert.equal(form.operationPending.current,false);
+    assert.equal(form.events.some(([name])=>name==='reauth'),false);assert.equal(form.events.some(([name,value])=>name==='MensajeUsuario'&&value!==null),false);
+    assert.ok(form.events.some(([name,value])=>name==='ErrorUsuario'&&value===profileFailureMessage(new Error('unconfirmed'))));
+  }
+  const valid=usernameForm({id:7,usuario:'nuevo_qa',rol:'diseno'});valid.submit();await settle();assert.ok(valid.events.some(([name])=>name==='reauth'));
+  assert.deepEqual(JSON.parse(valid.calls[0].options.body),{usuario_actual:'qa_synthetic',password_actual:'old',usuario_nuevo:'nuevo_qa'});
+});
+
+test('username validates captured identity primitives, never mutable later profile data; late success/body retains session fences',async()=>{
+  const pending=deferred(),profile={id:7,usuario:'qa_synthetic',rol:'diseno'};
+  const form=usernameForm(null,{profile,request:()=>pending.promise});form.submit();profile.id=8;profile.rol='admin';
+  pending.resolve({ok:true,json:async()=>({id:8,usuario:'nuevo_qa',rol:'admin'})});await settle();assert.equal(form.events.some(([name])=>name==='reauth'),false);
+  const late=deferred(),stale=usernameForm(null,{request:()=>late.promise});stale.submit();stale.stale();const mark=stale.events.length;
+  late.resolve({ok:true,json:async()=>({id:7,usuario:'nuevo_qa',rol:'diseno'})});await settle();assert.equal(stale.events.length,mark);
+  const body=deferred(),lateBody=usernameForm(null,{request:async()=>({ok:true,json:()=>body.promise})});lateBody.submit();await settle();lateBody.stale();const before=lateBody.events.length;
+  body.resolve({id:7,usuario:'nuevo_qa',rol:'diseno'});await settle();assert.equal(lateBody.events.length,before);
 });

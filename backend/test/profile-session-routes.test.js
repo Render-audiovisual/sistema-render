@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { normalizeSelfProfileInput } from '../src/self-profile-input.js';
 
 const source=readFileSync(new URL('../src/server.js',import.meta.url),'utf8');
 function fixture({route='foto',lostRead=false,lostWrite=false,duplicate=false,uniqueConflict=false,validPassword=true}={}){
@@ -16,11 +17,11 @@ function fixture({route='foto',lostRead=false,lostWrite=false,duplicate=false,un
     }
     throw Error('Unexpected SQL');
   }};
-  new Function('router','pool','bcrypt',code)({patch(_path,fn){handler=fn;}},pool,{compare:async()=>validPassword,hash:async()=>'injected-new-hash'});
+  new Function('router','pool','bcrypt','normalizeSelfProfileInput',code)({patch(_path,fn){handler=fn;}},pool,{compare:async()=>validPassword,hash:async()=>'injected-new-hash'},normalizeSelfProfileInput);
   return{calls,async run(body){const res={statusCode:200,status(n){this.statusCode=n;return this;},json(body){this.body=body;return this;}};
     await handler({auth:{id:7,usuario:'current',session_version:3},body},res,e=>{throw e;});return res;}};
 }
-const inputs={foto:{usuario:'current',foto_perfil:'data:image/png;base64,QA'},perfil:{usuario_actual:'current',password_actual:'qa',usuario_nuevo:'updated'},password:{usuario:'current',password_actual:'qa',password_nueva:'qa-new'}};
+const inputs={foto:{usuario:'current',foto_perfil:'data:image/png;base64,QA'},perfil:{usuario_actual:'current',password_actual:'qa',usuario_nuevo:'updated'},password:{usuario:'current',password_actual:'qa',password_nueva:'Synthetic-new-password87!'}};
 for(const route of ['foto','perfil','password']){
   test(`${route}: actual handler selects actor by immutable ID and CAS, never chooses a write target from name`,async()=>{
     const f=fixture({route}),result=await f.run(inputs[route]);assert.equal(result.statusCode,200);
@@ -47,4 +48,29 @@ test('wrong password, duplicate name and uniqueness race are explicit failures w
   }
   assert.equal((await fixture({route:'perfil',duplicate:true}).run(inputs.perfil)).statusCode,409);
   assert.equal((await fixture({route:'perfil',uniqueConflict:true}).run(inputs.perfil)).statusCode,409);
+});
+
+test('actual handlers invoke real normalizer before database access on unknown or missing fields',async()=>{
+  for(const route of ['foto','perfil','password']){
+    const extra=fixture({route});
+    await assert.rejects(extra.run({...inputs[route],unexpected:true}),error=>error.status===400&&error.code==='PROFILE_INPUT_INVALID');
+    assert.equal(extra.calls.length,0);
+    const missing=fixture({route}),body={...inputs[route]};delete body[route==='foto'?'foto_perfil':route==='perfil'?'usuario_nuevo':'password_nueva'];
+    await assert.rejects(missing.run(body),error=>error.status===400&&error.code==='PROFILE_INPUT_INVALID');
+    assert.equal(missing.calls.length,0);
+  }
+});
+
+test('policy-invalid new password is rejected before current-password lookup or hash/write',async()=>{
+  const f=fixture({route:'password'});
+  await assert.rejects(f.run({...inputs.password,password_nueva:'short'}),error=>error.status===400&&error.code==='NEW_PASSWORD_INVALID');
+  assert.equal(f.calls.length,0);
+});
+
+test('photo explicit null/empty clears map to SQL null, missing photo never becomes implicit clear',async()=>{
+  for(const foto_perfil of [null,'']){
+    const f=fixture({route:'foto'}),result=await f.run({...inputs.foto,foto_perfil});
+    assert.equal(result.statusCode,200);
+    assert.equal(f.calls.find(({sql})=>sql.includes('UPDATE usuarios')).args[0],null);
+  }
 });

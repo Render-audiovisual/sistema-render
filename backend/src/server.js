@@ -29,6 +29,7 @@ import { reserveLoginAttempt } from "./login-abuse.js";
 import { administerUser, withUserAdministration, UserAdministrationAuthorityError } from "./user-administration.js";
 import { normalizeUserCreateInput } from './user-create-input.js';
 import { bodyParserErrorResponse } from './body-parser-errors.js';
+import { normalizeSelfProfileInput, SelfProfileInputError } from './self-profile-input.js';
 import { USER_ADMIN_REVISION_SQL, UserAdministrationInputError, userAdministrationId, normalizeUserAdministrationPatch } from './user-admin-patch.js';
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { persistAssignedTask } from "./task-persistence.js";
@@ -893,8 +894,8 @@ router.delete("/usuarios/:id", requireRole("admin"), (req, res) => {
 
 router.patch("/usuarios/perfil", async (req, res, next) => {
   try {
-    const { usuario_actual, password_actual, usuario_nuevo } = req.body;
-    const usuarioNuevo = (usuario_nuevo || "").trim();
+    const { usuario_actual, password_actual, usuario_nuevo } = normalizeSelfProfileInput(req.body,'login');
+    const usuarioNuevo = usuario_nuevo;
 
     if (!usuario_actual || !password_actual || !usuarioNuevo) {
       return res
@@ -947,8 +948,8 @@ router.patch("/usuarios/perfil", async (req, res, next) => {
 
 router.patch("/usuarios/foto", async (req, res, next) => {
   try {
-    const { usuario, foto_perfil } = req.body;
-    const foto = typeof foto_perfil === "string" ? foto_perfil.trim() : "";
+    const { usuario, foto_perfil } = normalizeSelfProfileInput(req.body,'photo');
+    const foto = foto_perfil || "";
 
     if (!usuario) {
       return res.status(400).json({ error: "Falta el usuario." });
@@ -983,7 +984,7 @@ router.patch("/usuarios/foto", async (req, res, next) => {
 
 router.patch("/usuarios/password", async (req, res, next) => {
   try {
-    const { usuario, password_actual, password_nueva } = req.body;
+    const { usuario, password_actual, password_nueva } = normalizeSelfProfileInput(req.body,'password');
 
     if (!usuario || !password_actual || !password_nueva) {
       return res
@@ -3706,7 +3707,7 @@ if (indexHtml !== null) {
 app.use((err, _req, res, _next) => {
   const parsing = bodyParserErrorResponse(err);
   if (parsing) return res.status(parsing.status).json(parsing.body);
-  if (err instanceof UserAdministrationAuthorityError || err instanceof UserAdministrationInputError) {
+  if (err instanceof UserAdministrationAuthorityError || err instanceof UserAdministrationInputError || err instanceof SelfProfileInputError) {
     return res.status(err.status).json({ error: err.message, code: err.code });
   }
   if (editingReviewDomainConflict(err)) {

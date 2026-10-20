@@ -1,4 +1,5 @@
 import { resolveUserRole } from './user-roles.js';
+import { newPasswordError } from '../../shared/password-policy.mjs';
 
 function invalid(message) {
   return Object.assign(new Error(message), { status: 400 });
@@ -16,13 +17,13 @@ export function normalizeUserCreateInput(body) {
     return value.trim();
   };
   const usuario = text(body.usuario, 128, 'El usuario de acceso');
+  if (Buffer.byteLength(usuario,'utf8') > 320) throw invalid('El usuario de acceso no es válido.');
   const nombre = text(body.nombre, 200, 'El nombre');
   const roleInput = text(body.rol, 100, 'El rol');
   const rol = resolveUserRole(roleInput);
   if (!rol) throw invalid('La categoría laboral no es válida.');
-  if (typeof body.password !== 'string' || [...body.password].length < 12
-    || Buffer.byteLength(body.password, 'utf8') > 72 || !body.password.trim()
-    || body.password.includes('\0')) throw invalid('La contraseña debe tener al menos 12 caracteres y no superar 72 bytes UTF-8.');
+  const passwordIssue = newPasswordError(body.password);
+  if (passwordIssue) throw invalid(passwordIssue);
   let email = null;
   if (body.email_notificaciones !== undefined && body.email_notificaciones !== null) {
     if (typeof body.email_notificaciones !== 'string') throw invalid('El correo para notificaciones no es válido.');

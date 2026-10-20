@@ -48,6 +48,7 @@ export function normalizeUserAdministrationPatch(body, operation, id) {
     result.activo = body.activo;
   } else if (operation === 'identity') {
     result.nombre = label(body.nombre,200,'El nombre'); result.usuario = label(body.usuario,128,'El usuario de acceso');
+    if (Buffer.byteLength(result.usuario,'utf8') > 320) throw invalid('El usuario de acceso no es válido.');
     result.rol = resolveUserRole(label(body.rol,100,'El rol'));
     if (!result.rol) throw invalid('La categoría laboral no es válida.');
   } else if (operation === 'whatsapp') {

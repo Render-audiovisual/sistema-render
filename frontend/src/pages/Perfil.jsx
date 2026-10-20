@@ -3,6 +3,7 @@ import { getSesion, guardarSesion, inicialesUsuario } from "../utils.jsx";
 import { getRolLabel } from "../constants.js";
 import { createProfileSessionGuard, profileFailureMessage } from '../shared/session/profile-session.js';
 import { getApplicationSession } from '../shared/session/application-session-access.js';
+import { newPasswordError } from '../../../shared/password-policy.mjs';
 
 export function PerfilPage() {
   const sesion = getSesion();
@@ -159,6 +160,7 @@ export function PerfilPage() {
     setErrorUsuario(null);
 
     const usuarioLimpio = usuarioNuevo.trim();
+    const heldIdentity = { id: perfilUsuario?.id, rol: perfilUsuario?.rol };
     if (!usuarioLimpio) {
       setErrorUsuario("El usuario nuevo no puede estar vacío.");
       return;
@@ -184,8 +186,11 @@ export function PerfilPage() {
         }
         return data;
       })
-      .then(() => {
+      .then((data) => {
         if (!guard.current()) return;
+        if (!Number.isSafeInteger(heldIdentity.id) || heldIdentity.id < 1 || heldIdentity.id > 2147483647
+          || typeof heldIdentity.rol !== 'string' || !heldIdentity.rol || data?.id !== heldIdentity.id
+          || data.usuario !== usuarioLimpio || data.rol !== heldIdentity.rol) throw new Error('No se pudo confirmar el usuario.');
         setMensajeUsuario("Usuario actualizado. Por seguridad, volvé a iniciar sesión.");
         guard.requireReauthentication();
       })
@@ -201,8 +206,9 @@ export function PerfilPage() {
     setMensaje(null);
     setError(null);
 
-    if (nueva.length < 4) {
-      setError("La nueva contraseña debe tener al menos 4 caracteres.");
+    const passwordError = newPasswordError(nueva);
+    if (passwordError) {
+      setError(passwordError);
       return;
     }
     if (nueva !== confirmar) {
@@ -230,8 +236,9 @@ export function PerfilPage() {
         }
         return data;
       })
-      .then(() => {
+      .then((data) => {
         if (!guard.current()) return;
+        if (data?.ok !== true) throw new Error('No se pudo confirmar la contraseña.');
         setMensaje("Contraseña actualizada. Por seguridad, volvé a iniciar sesión.");
         setActual("");
         setNueva("");
@@ -312,8 +319,8 @@ export function PerfilPage() {
                 <summary><span><strong>Contraseña</strong><small>Después de actualizarla tendrás que iniciar sesión nuevamente.</small></span><b>Cambiar</b></summary>
                 <form onSubmit={handleSubmit} className="profile-setting-form">
                   <label className="login-field"><span className="detail-label">Contraseña actual</span><input disabled={busy} type="password" value={actual} onChange={(e) => setActual(e.target.value)} autoComplete="current-password" required /></label>
-                  <label className="login-field"><span className="detail-label">Nueva contraseña</span><input disabled={busy} type="password" value={nueva} onChange={(e) => setNueva(e.target.value)} autoComplete="new-password" required /></label>
-                  <label className="login-field"><span className="detail-label">Repetir nueva contraseña</span><input disabled={busy} type="password" value={confirmar} onChange={(e) => setConfirmar(e.target.value)} autoComplete="new-password" required /></label>
+                  <label className="login-field"><span className="detail-label">Nueva contraseña</span><input disabled={busy} type="password" value={nueva} onChange={(e) => setNueva(e.target.value)} autoComplete="new-password" minLength={12} aria-describedby="profile-password-policy" required /><small id="profile-password-policy">Al menos 12 caracteres y hasta 72 bytes UTF-8. Los espacios no se recortan. El servidor valida la contraseña.</small></label>
+                  <label className="login-field"><span className="detail-label">Repetir nueva contraseña</span><input disabled={busy} type="password" value={confirmar} onChange={(e) => setConfirmar(e.target.value)} autoComplete="new-password" minLength={12} required /></label>
                   {error && <div className="profile-feedback is-error">{error}</div>}
                   {mensaje && <div className="profile-feedback is-success">{mensaje}</div>}
                   <button className="btn primary" type="submit" disabled={busy}>{enviando ? "Guardando..." : "Guardar contraseña"}</button>

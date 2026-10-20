@@ -39,8 +39,30 @@ Bounded Spanish UI errors no longer expose raw network/SQL detail or claim an un
 - Fresh final build/fixture `/private/tmp/render2-local-T6DyIw`: Designer login, loaded Perfil on desktop, expansion of the username form without entering/changing credentials, and ready mobile layout at390×844. Measured clientWidth=scrollWidth=390. Screenshots `/private/tmp/render2-profile73-final-desktop.jpg`, `/private/tmp/render2-profile73-final-mobile.jpg`. No file chooser repeated.
 - Owned browser tabs closed, viewport reset, final process stopped and exact root absence asserted. Physical suites assert cleanup of every owned fixture. No shared/foreign process or user record removed.
 
+## Shared credential policy and typed profile inputs
+
+The canonical account-creation and self-password-change paths now import the same pure public contract, `shared/password-policy.mjs`. Perfil imports it too: the old four-character client rule is gone. New passwords require at least12 Unicode code points and at most72 UTF-8 bytes; NUL, unpaired surrogates and whitespace-only values reject. Inputs are neither normalized nor trimmed. Existing login and current-password verification retain the prior nonempty/1024-byte acceptance, including short historical passwords. No existing password is rewritten or automatically rotated.
+
+All three self-profile bodies are closed and typed. Photo removal needs an explicit empty string or null, not a malformed or omitted value. Current login labels remain exact consistency echoes, never database target selectors; writes still select authenticated ID and current active session epoch. New login labels are trimmed, bounded to128 code points and320 UTF-8 bytes and reject controls, matching the login byte limit; account creation and admin identity edits use the same bounds. Photo validation remains the existing data-image prefix and size bound, not verification of decoded image content.
+
+The profile client accepts credential success only after validating the ACK: username requires the held ID, requested login and held role; password requires `ok === true`. Unexpected or late replies do not clear fields or announce success. Known validation codes map to fixed local text; arbitrary server diagnostics are not reflected. Existing session fencing, current-password error handling and exact-intent reauthentication are preserved.
+
+### Verification of the credential contract
+
+Final frontend1091 pass; backend1429 pass/67 opt-in skips; actual sequential HTTP/PostgreSQL59 pass across `render2-profile-input`, `render2-profile-session`, `render2-browser-client`, `render2-user-administration` and `render2-user-revisions` (all `.integration.test.js`). Physical command from backend: `RENDER2_RUN_LOCAL_INTEGRATION=true node --test --test-concurrency=1` followed by those five files. Frontend uses `node --test`, backend `npm test`, and build `npm run build` from frontend. Build and diff checks passed.
+
+Physical cases cover malformed/missing/extra fields without writes; exact Unicode, byte and space boundaries; historical short-password login and deliberate rotation; ID/history preservation; revocation of older sessions; new-credential login; and two credential changes from the same epoch with one success/one401 after observed row-lock barriers. Cookie/browser-controller regressions are actual HTTP with the existing simulated cookie jar/lock manager, not native cookie acceptance.
+
+Four packaging tests verify policy acceptance parity, browser/backend direct imports and an isolated copy/import of the public `.mjs` file. The Hostinger copy list now includes root `shared` alongside backend source. The real packaging script was not executed: it removes `hostinger-dist` and runs an installer. No build script touched user output or installed dependencies. A backend-only upload without `shared` is not a valid deployment of this code.
+
+Read-only browser QA used synthetic Luciano QA, opened Perfil through its account menu, expanded the empty password form and checked desktop/mobile390×844. The employee menu contained Perfil and logout, not administrative management or Finance. Document width remained390. No new credentials were entered or submitted through browser UI; credential changes were executed only by terminal tests against disposable synthetic accounts. This is not a claim of native credential-change UX acceptance. Fixture `/private/tmp/render2-local-z89UtZ` was stopped/removed, tab closed and viewport reset.
+
+Logs: `/private/tmp/render2-profile87-http-final.log`, `/private/tmp/render2-profile87-backend-final.log`, `/private/tmp/render2-profile87-frontend-final.log`, `/private/tmp/render2-profile87-build-final.log`. Screenshots: `/private/tmp/render2-profile87-desktop.png`, `/private/tmp/render2-profile87-mobile.png`.
+
 ## Remaining gates
 
 Cookie mode remains disabled in main. Profile is implemented and headless/HTTP verified for both transports; native browser cookie Profile remount, upload happy path, credential UX and unsaved-navigation behavior still need acceptance. Other editors/uploads, explicit refresh/draft recovery, native locks/hints/crash/hung-cookie-writer/HTTPS/proxy and the remaining full master phases remain open.
+
+Root `shared` must accompany the backend during coordinated rollout. Cross-column login-namespace uniqueness and throttling of authenticated current-password verification remain separate review items; this policy/input work does not certify either. No secure-recovery provider or real account provisioning was enabled.
 
 No configured database/provider, real account, migration/schema/dependency/environment change, push or deployment. Preexisting App20+/1-, Vite5+ and untracked references are untouched and excluded. Security guidance shaped exact-intent refresh/invalidation, closed DTOs and honest uncertain-write errors; structured ownership prevented simultaneous shared-file edits. Not deployment-ready or full-goal completion.

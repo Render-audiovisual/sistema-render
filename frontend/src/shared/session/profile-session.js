@@ -1,8 +1,11 @@
 import { parseServerIdentity } from './current-session.js';
 import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from './session-binding.js';
+import { PASSWORD_POLICY_MESSAGE } from '../../../../shared/password-policy.mjs';
 
 export function profileFailureMessage(error) {
   if (error?.code === 'current_password_invalid') return 'La contraseña actual es incorrecta.';
+  if (error?.code === 'NEW_PASSWORD_INVALID') return PASSWORD_POLICY_MESSAGE;
+  if (error?.code === 'PROFILE_INPUT_INVALID') return 'Revisá los datos del perfil. No se realizó ningún cambio.';
   if (['No se pudo leer la imagen.', 'No se pudo leer el archivo.'].includes(error?.message)) return error.message;
   // A lost response is not evidence that a write failed or was rolled back.
   return 'No pudimos confirmar el cambio. Volvé a verificar tu perfil antes de reintentar.';
