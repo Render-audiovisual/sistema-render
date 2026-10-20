@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { withProductionAuthority as transaction } from './production-authority.js';
 import { isProductionVisitTask, isValidProductionDate } from './production-visits.js';
 import { annotateTaskAssignments, replaceTaskAssignments } from './task-assignments.js';
 import { taskOperationalDto } from './operational-dto.js';
@@ -145,13 +146,6 @@ function checkRevision(visit, expected) { if (visit.revision !== expected) throw
 async function bump(db, id, actorId) {
   await db.query('UPDATE produccion_visitas SET revision=revision+1,actualizado_por_id=$2,updated_at=now() WHERE id=$1', [id, actorId]);
 }
-async function transaction(pool, fn) {
-  const db = await pool.connect();
-  try { await db.query('BEGIN'); const result = await fn(db); await db.query('COMMIT'); return result; }
-  catch (error) { await db.query('ROLLBACK').catch(() => {}); throw error; }
-  finally { db.release(); }
-}
-
 /** Caller owns the task transaction. Never commit, update task metadata, or backfill history. */
 export async function syncProductionVisitFromTask(db, task, actorId) {
   if (!positive(actorId) || !positive(task.id)) throw fail('Identidad de origen inválida.');
@@ -216,7 +210,7 @@ export function createProductionRegistryRouter({ express, pool }) {
   }));
   router.post('/', handle(async (req, res) => {
     const input = validateProductionVisit(req.body);
-    const visita = await transaction(pool, async db => {
+    const visita = await transaction(pool, req.auth, false, async db => {
       if (input.tarea_origen_id) {
         const source = await sourceTask(db, input.tarea_origen_id);
         // Do not create a mixed registry that neither legacy nor per-video
@@ -236,7 +230,7 @@ export function createProductionRegistryRouter({ express, pool }) {
   }));
   router.patch('/:id', handle(async (req, res) => {
     const id=routeId(req), input=validateProductionVisit(req.body,{partial:true});
-    const visita=await transaction(pool,async db=>{
+    const visita=await transaction(pool,req.auth,false,async db=>{
       const current=await lockVisit(db,id);checkRevision(current,req.body.expected_revision);
       const changedReviewedDimensions=(own(input,'cliente_id')&&input.cliente_id!==current.cliente_id)
         ||(own(input,'fecha')&&input.fecha!==current.fecha);
@@ -266,7 +260,7 @@ export function createProductionRegistryRouter({ express, pool }) {
       const id=routeId(req);
       if(partial&&!uuid(req.params.itemId)) throw fail('Registro inválido.');
       const input=validateProductionItem(req.body,kind,{partial,reuse:!!req.body?.video_origen_id});
-      const visita=await transaction(pool,async db=>{
+      const visita=await transaction(pool,req.auth,false,async db=>{
         if(input.video_origen_id) await lockProductionObjectiveLinks(db);
         const current=await lockVisit(db,id);checkRevision(current,req.body.expected_revision);
         const table=kind==='videos'?'produccion_videos':'produccion_fotos';
@@ -300,7 +294,7 @@ export function createProductionRegistryRouter({ express, pool }) {
     const id=routeId(req);if(!uuid(req.params.videoId)) throw fail('Video inválido.');
     keys(req.body,['expected_revision','editor_id','fecha_entrega']);revision(req.body);
     if(!positive(req.body.editor_id)||!date(req.body.fecha_entrega)) throw fail('Elegí editor y fecha de entrega válidos.');
-    const result=await transaction(pool,async db=>{
+    const result=await transaction(pool,req.auth,true,async db=>{
       // Never discover an existing delivery task after taking a visit/video lock.
       const discovered=(await db.query(`${VIDEOS} WHERE pv.id=$1 AND pv.visita_id=$2`,[req.params.videoId,id])).rows[0];
       if(!discovered) throw fail('Video no encontrado en esta visita.',404);

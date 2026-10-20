@@ -246,7 +246,13 @@ test('editing approval: explicitly observed latest artifact, atomic task CAS and
         if (response) await response;
         await fixture.query("UPDATE usuarios SET rol='admin' WHERE id=109003");
       }
-      assert.deepEqual(await snapshot(),before,'Revoked in-flight approval cannot commit task, goal or assignment changes');
+      const expected = structuredClone(before);
+      // The barrier itself performs two explicit role UPDATEs. Migration074
+      // records both, including restoration; do not reset/ignore that history.
+      const actorRow = expected.usuarios.find(entry => entry.row.id === 109003)?.row;
+      assert.ok(Number.isSafeInteger(actorRow?.user_admin_version));
+      actorRow.user_admin_version += 2;
+      assert.deepEqual(await snapshot(),expected,'Only the two explicit fixture role updates may advance user history; approval cannot commit task, goal or assignment changes');
     }
   });
 });

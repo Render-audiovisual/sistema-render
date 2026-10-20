@@ -97,3 +97,20 @@ Integration54 retires implicit aggregate editing creation from the shared legacy
 Actual browser follow-up verified integration53's date protection and ordinary rescheduling: reviewed date disabled, notes saved/reloaded unchanged; mobile390px width matched document width. Native keyboard date change on a normal visit saved to22October and survived reload. Automated generic date fill changed DOM value without triggering React's native date-change path and was not counted as successful rescheduling; native ArrowUp interaction supplied the valid verification. Browser evidence predates only the last confirmation-copy edits, not a changed form layout. No production data or configured database was used.
 
 The connected `/producciones` route appears in normal navigation and survives reload/direct links. Desktop presents calendar + selected-day agenda; mobile provides a compact readable agenda. Choosing a day shows recorded video names/results and photo types, with detail/editing available separately. Pending scripts can be deliberately resumed into another visit. Changes use backend revisions; entered drafts survive conflicts. No fictional metrics, duplicate aggregate editing task, or automatic publication may be substituted for this flow.
+
+## Transactional request authority — integration92
+
+`production-authority.js` replaces the registry's unguarded transaction wrapper. It captures the authenticated numeric ID/session epoch before awaiting a connection, begins READ COMMITTED, rereads that account FOR SHARE and requires the same active epoch before invoking any business callback. The row lock stays through commit. Revocation committed first denies401; a valid writer that acquired its share first commits before a conflicting account revocation can commit. Current database role, not the middleware's cached role, decides leader-only actions (403). No identity is inferred from a name.
+
+| Routed writes | Required current authority |
+| --- | --- |
+| Create visit; edit visit | Active verified ID and matching epoch |
+| Add/edit video; add/edit photo | Active verified ID and matching epoch |
+| Send one video to editing | Same checks plus current admin role |
+| Link editorial piece; link objective slot | Same checks plus current admin role |
+
+These are nine generated concrete routes. Actor lock precedes existing objective/task/visit/video locks; existing domain lock ordering, revision checks, per-video idempotence, material/date checks and DTOs remain. No global production mutex or network call is introduced inside the transaction. Failed rollback causes the pooled connection to be discarded while preserving the original error. Early validation/role denials remain; authenticated input with no epoch cannot fall back to cached authority.
+
+This guarantee applies to the listed HTTP registry/editorial writes. Reviewed historical reconciliation already uses its own current-admin transaction. `syncProductionVisitFromTask` remains caller-owned: no nested transaction or extra authority claim is added to task-origin writes by this patch. GETs retain their authenticated read behavior. It does not certify every writer in the system, change roles/permissions, enable cookie mode or apply a migration.
+
+Verified disposable PostgreSQL: all nine routes reject inactive/epoch changes committed after ordinary middleware; three leader-only routes also reject an epoch-preserving downgrade. Business snapshots remain unchanged. A genuine employee still registers and cannot hand off; the inverse actor/visit lock test proves a valid handoff commits before revocation and a revoked retry cannot create a second editing task. Eleven physical production/editing suites pass152 cases, including history/reconciliation/adoption, deliveries, approvals and corrections. See integration92 in `STATUS.md` for commands, final regression counts and remaining limits. No production/configured database or real account was changed.

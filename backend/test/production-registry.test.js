@@ -16,7 +16,7 @@ function fixture({linked=true,legacy=false,wrongScope=false,failAssignments=fals
   let task={id:500,revision:1,cliente_id:1,estado:'pendiente',fecha_vencimiento:'2026-10-22',propiedades_extra:{private_finance:'PRIVATE'}};
   const db={release(){calls.push({sql:'RELEASE'});},async query(sql,params=[]){
     calls.push({sql,params});
-    if(sql==='BEGIN'){prior=structuredClone({visit,video,source,task,tasksCreated});return{rows:[]};}
+    if(sql==='BEGIN'||sql==='BEGIN ISOLATION LEVEL READ COMMITTED'){prior=structuredClone({visit,video,source,task,tasksCreated});return{rows:[]};}
     if(sql==='ROLLBACK'){({visit,video,source,task,tasksCreated}=prior);return{rows:[]};}
     if(sql==='COMMIT')return{rows:[]};
     if(sql==="SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))")return{rows:[]};
@@ -34,6 +34,7 @@ function fixture({linked=true,legacy=false,wrongScope=false,failAssignments=fals
     if(sql.startsWith('SELECT t.*,to_char(t.fecha_vencimiento'))return{rows:[task]};
     if(sql.includes("propiedades_extra->>'origen_visita_id'"))return{rows:legacy?[{id:99}]:[]};
     if(sql.includes('FROM clientes WHERE'))return{rows:[{id:params[0],nombre:'Cliente'}]};
+    if(sql==='SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE')return{rows:[{id:11,rol:'admin',activo:true,session_version:1}]};
     if(sql.includes('FROM usuarios WHERE'))return{rows:missingEditor?[]:params[0].map(id=>({id,nombre:'Editor',rol:editorRole}))};
     if(sql.startsWith('SELECT tarea_id, usuario_id'))return{rows:[{tarea_id:500,usuario_id:7,tipo:'responsable'},{tarea_id:10,usuario_id:11,tipo:'responsable'}]};
     if(sql.includes('FROM produccion_visitas v JOIN clientes'))return{rows:[{...visit,private_finance:'PRIVATE'}]};
@@ -59,7 +60,7 @@ function fixture({linked=true,legacy=false,wrongScope=false,failAssignments=fals
   const pool={query:db.query.bind(db),connect:async()=>db};
   const router=createProductionRegistryRouter({express,pool});
   return {calls,db,get visit(){return visit;},get source(){return source;},get tasksCreated(){return tasksCreated;},get video(){return video;},
-    async run(method,path,body={},auth={id:11,rol:'admin'},params={},query={}){
+    async run(method,path,body={},auth={id:11,rol:'admin',session_version:1},params={},query={}){
       const req={auth,body,query,params:{id:visitId,videoId,...params}};
       const res={statusCode:200,status(c){this.statusCode=c;return this;},json(value){this.body=value;return this;}};
       let allowed=false;router.stack[0].handle(req,res,()=>{allowed=true;});if(!allowed)return res;

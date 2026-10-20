@@ -227,7 +227,7 @@ export function registerProductionEditorialRoutes(router, {pool,handle,transacti
   }));
   for (const emptySlot of [false,true]) router.post(`/:id/videos/:videoId/${emptySlot ? 'vincular-objetivo' : 'vincular-pieza'}`,handle(async(req,res) => {
     ids(req); validateProductionEditorialSelection(req.body,emptySlot);
-    const result = await transaction(pool,db => associateProductionEditorial(db,req.params.id,req.params.videoId,req.body,req.auth.id,deps,emptySlot));
+    const result = await transaction(pool,req.auth,true,db => associateProductionEditorial(db,req.params.id,req.params.videoId,req.body,req.auth.id,deps,emptySlot));
     return res.status(result.created ? 201 : 200).json(result);
   }));
 }

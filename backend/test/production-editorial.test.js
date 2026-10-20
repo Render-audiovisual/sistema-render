@@ -21,9 +21,10 @@ function fixture(options={}) {
   const calls=[];let snapshot,insertTasks=0,insertPublications=0;
   const db={release(){},async query(sql,params=[]) {
     calls.push({sql,params});
-    if(sql==='BEGIN'){snapshot=structuredClone({visit,task,slot,publication,video,insertTasks,insertPublications});return{rows:[]};}
+    if(sql==='BEGIN'||sql==='BEGIN ISOLATION LEVEL READ COMMITTED'){snapshot=structuredClone({visit,task,slot,publication,video,insertTasks,insertPublications});return{rows:[]};}
     if(sql==='ROLLBACK'){({visit,task,slot,publication,video,insertTasks,insertPublications}=snapshot);return{rows:[]};}
     if(sql==='COMMIT'||sql.includes('pg_advisory_xact_lock'))return{rows:[]};
+    if(sql==='SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE')return{rows:[{id:11,rol:'admin',activo:true,session_version:1}]};
     if(sql.startsWith('WITH RECURSIVE familia'))return{rows:options.family?[{id:'ancestor'}]:[]};
     if(sql.startsWith('SELECT pv.*,v.tarea_origen_id')||sql.startsWith('SELECT pv.*,v.cliente_id'))return{rows:options.wrongScope?[]:[{...video,tarea_origen_id:10,cliente_id:1}]};
     if(sql.startsWith('SELECT t.* FROM tareas t WHERE'))return{rows:[source,task]};
@@ -69,7 +70,7 @@ function fixture(options={}) {
   const deps={lockVisit:async()=>{calls.push({sql:'LOCK VISIT'});return visit;},readVisits:async()=>[{...visit,videos:[video]}],activeClient:async()=>{},bump:async()=>{visit.revision++;}};
   return {db,deps,calls,get task(){return task;},get video(){return video;},get visit(){return visit;},get slot(){return slot;},get publication(){return publication;},get insertTasks(){return insertTasks;},get insertPublications(){return insertPublications;},
     async associate(input=body,empty=false){await db.query('BEGIN');try{const result=await associateProductionEditorial(db,visitId,videoId,input,11,deps,empty);await db.query('COMMIT');return result;}catch(e){await db.query('ROLLBACK');throw e;}},
-    async route(method,path,input=body,auth={id:11,rol:'admin'},query={periodo:'2026-10'}) {
+    async route(method,path,input=body,auth={id:11,rol:'admin',session_version:1},query={periodo:'2026-10'}) {
       const pool={query:db.query.bind(db),connect:async()=>db};const router=createProductionRegistryRouter({express,pool});
       const req={auth,body:input,query,params:{id:visitId,videoId}};
       const res={statusCode:200,status(code){this.statusCode=code;return this;},json(value){this.body=value;return this;}};
@@ -173,10 +174,12 @@ test('registry reads share safe linkage IDs without exposing internal task metad
   assert.equal(res.body.visita.videos[0].publicacion_id,30);assert.equal(res.body.visita.videos[0].tarea_entrega_id,20);
   assert.equal(res.body.visita.videos[0].cliente_editorial_id,1);assert.doesNotMatch(JSON.stringify(res.body),/SECRET|copy_trabajo|private_finance/);
 });
-test('lineage continuation takes same global advisory immediately after BEGIN, before task/visit/video locks',async()=>{
+test('lineage continuation verifies actor then takes global advisory before task/visit/video locks',async()=>{
   const f=fixture();const res=await f.route('post','/:id/videos',{expected_revision:2,video_origen_id:'44444444-4444-4444-8444-444444444444'});
   assert.equal(res.statusCode,201);const sql=f.calls.map(c=>c.sql);
-  assert.equal(sql[0],'BEGIN');assert.match(sql[1],/hashtext\('vinculo-objetivo-mensual'\)/);
+  assert.equal(sql[0],'BEGIN ISOLATION LEVEL READ COMMITTED');
+  assert.equal(sql[1],'SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE');
+  assert.match(sql[2],/hashtext\('vinculo-objetivo-mensual'\)/);
   assert.ok(sql.findIndex(s=>s.includes('pg_advisory_xact_lock'))<sql.findIndex(s=>s.includes('FOR UPDATE')));
   const family=f.calls.find(c=>c.sql.startsWith('WITH RECURSIVE familia'));
   assert.deepEqual(family.params,['44444444-4444-4444-8444-444444444444',true]);
