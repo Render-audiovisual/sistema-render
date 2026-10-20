@@ -921,6 +921,16 @@ Implemented and bounded-verified locally, not deployed or globally ready. All-mo
 - Actual UI Franco local draft→Agustín HTTP update→Franco409 preserves text→explicit mobile load→new save→reload recovers final copy. Evidence `/private/tmp/render2-dispatch77-conflict-desktop.jpg` and `-resolved-mobile.jpg`,390 no horizontal overflow. Interruption recovered from terminal existing handle; fixture root absent, tab closed/viewport reset, no broad kill/restart.
 - No production/configured DB/provider/real commercial/schema/dependency/environment/push/deploy. App20+/1-, Vite5+ and references excluded. External writers/version discipline, publication/client reassignment race, all-app writers/Historias, native cookie/crash/HTTPS/proxy/provider/draft/design acceptance remain. Global cookie off; local progress, not master completion/deployment-ready.
 
+## Integration 78 — stories session binding and protected flyer conversion
+
+Local only. Carson owns Historias/session tests; Hypatia conversion tests/contracts; Beauvoir independent review; coordinator owns server/helper, physical QA and integration. Historias now uses canonical captured session/context API requests, explicit new responsible IDs, ordered cell writes and truthful partial-creation feedback. Existing planilla restored as a reachable URL-backed editing view. Browser-discovered wrong responsible display and repeated autofocus fixed and reverified after build.
+
+Legacy flyer conversion is transactional and source-locked. Linked or historically published flyers return409 unchanged; unlinked conversion preserves work state and a private source snapshot without exposing it in the conversion ACK. Story PATCH supports actually clearing text and rejects malformed text. No migration or historical reinterpretation.
+
+Verification: frontend791 pass; backend1381 pass/58 opt-in skips; actual HTTP/PostgreSQL five suites47 pass; build pass. Final browser creation/copy edit/reload retains responsible/date/theme/time/text and unconfirmed publication. Mobile390×844 document has no horizontal overflow. All temporary owned services/tabs cleaned. Details and reproducible boundaries: [STORIES_SESSION_QA.md](STORIES_SESSION_QA.md).
+
+Not a completed master phase or production release: cookie activation, provider/proxy/device acceptance, cross-device cell concurrency, uncertain-transport piece-create idempotency, linked historical flyer reconciliation and remaining global design/unification gates still apply. User App/Vite/reference dirt preserved.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { cordobaOccurrence, createEditorialAttempt, createEditorialSessionGuard, editorialFields, mergeEditorialStatus, validateEditorialStatus } from '../components/EditorialPublicationControl.model.js';
 import { isConfirmedPublication } from '../shared/editorial/publication-evidence.js';
 
@@ -174,7 +175,14 @@ test('POST response from a relocated client is rejected, not merged', async () =
 const source = name => readFileSync(new URL(name, import.meta.url), 'utf8');
 test('daily planning writer cannot PATCH or optimistically mutate story state', () => {
   const text = source('./Historias.jsx');
-  const handler = text.slice(text.indexOf('const marcarPlanificacion ='), text.indexOf('  return (', text.indexOf('const marcarPlanificacion =')));
+  const file = ts.createSourceFile('Historias.jsx', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+  let node;
+  function visit(current) {
+    if (ts.isVariableDeclaration(current) && current.name.getText(file) === 'marcarPlanificacion') node = current.initializer;
+    ts.forEachChild(current, visit);
+  }
+  visit(file); assert.ok(node, 'inspect the actual planning callback, not adjacent publication-confirmation callbacks');
+  const handler = node.getText(file);
   assert.match(handler, /check-publicacion/); assert.doesNotMatch(handler, /PATCH|onHistoriasActualizadas|nuevoEstado|historiasDelDia/);
   assert.doesNotMatch(text, /check\?\.publicado \|\| publicadaPorHistorias/);
   assert.match(text, /no prueba de publicación/);

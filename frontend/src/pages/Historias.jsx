@@ -1,12 +1,50 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallback } from "react";
 import { EditorialPublicationControl } from '../components/EditorialPublicationControl.jsx';
 import { editorialFields, mergeEditorialStatus } from '../components/EditorialPublicationControl.model.js';
 import { isConfirmedPublication, isHistoricalPublication } from '../shared/editorial/publication-evidence.js';
 import { getHoyLocalISO, getInicialesCliente, getSesion, payloadColumnaPlanilla } from "../utils.jsx";
 import { COLUMNAS_MULTILINEA, COLUMNAS_PLANILLA, DIAS_SEMANA, DIAS_SEMANA_CLIENTE, ESTADOS_HISTORIA, MESES, MESES_CLIENTE, RESPONSABLES_EQUIPO } from "../constants.js";
-import { parseJsonArrayResponse } from "../shared/http/response-utils.js";
+import { apiRequest } from '../features/render-os/services/render-os-api.js';
+import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
+import { useSessionView } from '../shared/session/use-session-view.js';
 import { PageState } from "../components/PageState.jsx";
 import { formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+
+function useStorySession(context = null) {
+  const view = useSessionView(getSesion());
+  const live = useRef({ view, context });
+  if (live.current.view !== view || live.current.context !== context) live.current = { view, context };
+  const observation = live.current;
+  const mounted = useRef(false);
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const capture = useCallback(() => createCapturedRequest({ session: view.session, readSession: getSesion, request: apiRequest,
+    isActive: () => mounted.current && live.current === observation }), [view, observation]);
+  const captureLifetime = useCallback(() => createCapturedRequest({ session: view.session, readSession: getSesion, request: apiRequest,
+    isActive: () => mounted.current && live.current.view === view }), [view]);
+  return { view, capture, captureLifetime };
+}
+
+function storyArray(value) {
+  if (!Array.isArray(value)) throw new Error('La respuesta de la lista no es válida.');
+  return value;
+}
+
+function createdStory(value) {
+  if (!Number.isSafeInteger(value?.id) || value.id <= 0) throw new Error('No se pudo confirmar el registro creado. Revisá la lista antes de volver a crear.');
+  return value;
+}
+
+function enqueueStoryWrite(queues, key, run) {
+  const previous = queues.current.get(key) || Promise.resolve();
+  const queued = previous.catch(() => {}).then(run);
+  queues.current.set(key, queued);
+  void queued.finally(() => { if (queues.current.get(key) === queued) queues.current.delete(key); }).catch(() => {});
+  return queued;
+}
+
+function storyDuplicationMetadata(value) {
+  return Object.fromEntries(['tipo', 'hora'].filter(key => typeof value?.[key] === 'string').map(key => [key, value[key]]));
+}
 
 export function HistoriasPlanillaTab({
   clientes,
@@ -21,9 +59,14 @@ export function HistoriasPlanillaTab({
   onDuplicar,
   onEliminar,
   clienteFiltradoNombre,
+  contextKey = '',
 }) {
+  const { view, capture } = useStorySession(`${contextKey}:${year}:${month}`);
+  const observedStories = useRef(historias);
+  observedStories.current = historias;
   const [error, setError] = useState(null);
   const gridRef = useRef(null);
+  const lastFocusedStory = useRef(null);
 
   const hoyISO = getHoyLocalISO();
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
@@ -60,16 +103,34 @@ export function HistoriasPlanillaTab({
   // id nuevo apenas responde el servidor.
   useEffect(() => {
     if (!ultimoIdCreado) return;
+    if (lastFocusedStory.current?.id === ultimoIdCreado && lastFocusedStory.current.capture === capture) return;
     const idx = filasVisibles.findIndex((h) => h.id === ultimoIdCreado);
     if (idx === -1) return;
-    requestAnimationFrame(() => enfocarCelda(idx, "fecha"));
-  }, [ultimoIdCreado, filasVisibles, enfocarCelda]);
+    const scope = capture();
+    let active = true;
+    const frame = requestAnimationFrame(() => {
+      if (!active || !scope.current()) return;
+      if (lastFocusedStory.current?.id === ultimoIdCreado && lastFocusedStory.current.capture === capture) return;
+      lastFocusedStory.current = { id: ultimoIdCreado, capture };
+      enfocarCelda(idx, "fecha");
+    });
+    return () => { active = false; cancelAnimationFrame(frame); };
+  }, [ultimoIdCreado, filasVisibles, enfocarCelda, capture]);
 
-  const actualizarLocal = useCallback((historiaId, campos) => onActualizarLocal(historiaId, editorialFields(historias.find(h => h.id === historiaId), campos, getSesion()?.usuario?.rol === 'admin')), [onActualizarLocal, historias]);
+  const actualizarLocal = useCallback((historiaId, campos) => {
+    if (!capture().current()) return;
+    onActualizarLocal(historiaId, editorialFields(historias.find(h => h.id === historiaId), campos, view.role === 'admin'));
+  }, [onActualizarLocal, historias, capture, view.role]);
   const guardarEnServidor = useCallback((historiaId, campos) => {
-    const safe = editorialFields(historias.find(h => h.id === historiaId), campos, getSesion()?.usuario?.rol === 'admin');
+    if (!capture().current()) return;
+    const safe = editorialFields(historias.find(h => h.id === historiaId), campos, view.role === 'admin');
     if (Object.keys(safe).length) onGuardarServidor(historiaId, safe);
-  }, [onGuardarServidor, historias]);
+  }, [onGuardarServidor, historias, capture, view.role]);
+
+  const publicationSaved = useCallback((historia, dto) => {
+    if (!capture().current() || observedStories.current.find(row => row.id === historia.id) !== historia) return;
+    onActualizarLocal(historia.id, mergeEditorialStatus(historia, dto));
+  }, [capture, onActualizarLocal]);
 
   // onBlur de las celdas de texto: recorta espacios y sincroniza el
   // estado local con lo mismo que se manda al servidor (evita que quede
@@ -81,6 +142,7 @@ export function HistoriasPlanillaTab({
   }, [actualizarLocal, guardarEnServidor]);
 
   const copiarFila = useCallback(async (h) => {
+    if (!capture().current()) return;
     const est = estadoPorId[h.estado];
     const linea = [
       clientesPorId[h.cliente_id] || "",
@@ -95,10 +157,8 @@ export function HistoriasPlanillaTab({
     ].join("\t");
     try {
       await navigator.clipboard.writeText(linea);
-    } catch (err) {
-      console.error("No se pudo copiar la fila", err);
-    }
-  }, [clientesPorId, estadoPorId]);
+    } catch { /* Clipboard failure has no server/session side effects. */ }
+  }, [clientesPorId, estadoPorId, capture]);
 
   // Crece el textarea con el contenido en vez de esconder texto o abrir
   // scroll interno — la fila entera se estira, igual que en el Sheet.
@@ -359,7 +419,7 @@ export function HistoriasPlanillaTab({
                       <select
                         className="sheet-cell"
                         data-cell={`${rowIndex}:responsable`}
-                        value={h.responsable_diseño || h.responsable || "Augusto"}
+                        value={h.responsable_diseño || h.responsable || ""}
                         onChange={(e) => {
                           const campos = { responsable: e.target.value, responsable_diseño: e.target.value };
                           actualizarLocal(h.id, campos);
@@ -367,6 +427,9 @@ export function HistoriasPlanillaTab({
                         }}
                         onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "responsable")}
                       >
+                        <option value="">Sin responsable</option>
+                        {(h.responsable_diseño || h.responsable) && !RESPONSABLES_EQUIPO.includes(h.responsable_diseño || h.responsable) &&
+                          <option value={h.responsable_diseño || h.responsable}>{h.responsable_diseño || h.responsable}</option>}
                         {RESPONSABLES_EQUIPO.map((r) => (
                           <option key={r} value={r}>{r}</option>
                         ))}
@@ -377,7 +440,7 @@ export function HistoriasPlanillaTab({
                         className="sheet-cell"
                         data-cell={`${rowIndex}:estado`}
                         value={h.estado}
-                        disabled={getSesion()?.usuario?.rol !== 'admin' || isConfirmedPublication(h)}
+                        disabled={view.role !== 'admin' || isConfirmedPublication(h)}
                         onChange={(e) => {
                           actualizarLocal(h.id, { estado: e.target.value });
                           guardarEnServidor(h.id, { estado: e.target.value });
@@ -389,7 +452,7 @@ export function HistoriasPlanillaTab({
                           <option key={e.id} value={e.id} disabled={e.id === 'publicada'}>{e.label}</option>
                         ))}
                       </select>
-                      <EditorialPublicationControl dominio="historia" pieza={h} onSaved={dto => onActualizarLocal(h.id, mergeEditorialStatus(h, dto))} />
+                      <EditorialPublicationControl dominio="historia" pieza={h} sesion={view.session} onSaved={dto => publicationSaved(h, dto)} />
                     </td>
                     <td data-label="Acciones">
                       <div className="sheet-row-actions">
@@ -600,7 +663,11 @@ export function HistoriasClienteTab({ clientes, estructura, historias, year, mon
   );
 }
 
-export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, month, onHistoriasActualizadas }) {
+export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando, year, month, onHistoriasActualizadas, contextKey = '' }) {
+  const { view, capture, captureLifetime } = useStorySession(`${contextKey}:${year}:${month}`);
+  const pendingChecks = useRef(new Set());
+  const observedStories = useRef(historias);
+  observedStories.current = historias;
   const [error, setError] = useState(null);
   const [guardandoId, setGuardandoId] = useState(null);
   const [checks, setChecks] = useState([]);
@@ -669,23 +736,24 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
     const desde = `${year}-${String(month + 1).padStart(2, "0")}-01`;
     const hasta = `${year}-${String(month + 1).padStart(2, "0")}-${String(new Date(year, month + 1, 0).getDate()).padStart(2, "0")}`;
 
-    fetch(`/api/check-publicacion?desde=${desde}&hasta=${hasta}`)
-      .then((r) => {
-        if (!r.ok) throw new Error("No se pudo cargar el checklist");
-        return r.json();
-      })
-      .then((data) => setChecks(data))
-      .catch((err) => {
-        console.error("No se pudo cargar checklist de historias", err);
-        setError("No se pudo cargar el estado del checklist.");
+    const scope = capture(), controller = new AbortController();
+    const current = () => scope.current() && !controller.signal.aborted;
+    scope.request(`/api/check-publicacion?desde=${desde}&hasta=${hasta}`, { signal: controller.signal })
+      .then((data) => { if (current()) setChecks(storyArray(data)); })
+      .catch(() => {
+        if (current()) setError("No se pudo cargar el estado del checklist.");
       });
-  }, [year, month]);
+    return () => controller.abort();
+  }, [year, month, capture]);
 
   const marcarPlanificacion = useCallback(async (clienteId, fecha, publicada) => {
+    const scope = capture(), lifetime = captureLifetime();
     const key = `${clienteId}:${fecha}`;
+    if (!scope.current() || pendingChecks.current.has(key)) return;
+    pendingChecks.current.add(key);
     setGuardandoId(key);
     try {
-      const checkRes = await fetch("/api/check-publicacion", {
+      const saved = await scope.request("/api/check-publicacion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -694,17 +762,21 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
           publicado: publicada,
         }),
       });
-      if (!checkRes.ok) throw new Error("No se pudo guardar la planificación");
-      const saved = await checkRes.json();
+      scope.assertCurrent();
       setChecks(prev => [...prev.filter(check => !(check.cliente_id === clienteId && check.fecha === fecha)), saved]);
       setError(null);
-    } catch (err) {
-      console.error("Error actualizando checklist", err);
-      setError("No se pudo actualizar el checklist. Reintentá.");
+    } catch {
+      if (scope.current()) setError("No se pudo actualizar el checklist. Reintentá.");
     } finally {
-      setGuardandoId(null);
+      pendingChecks.current.delete(key);
+      if (lifetime.current()) setGuardandoId(current => current === key ? null : current);
     }
-  }, []);
+  }, [capture, captureLifetime]);
+
+  const publicationSaved = useCallback((historia, dto) => {
+    if (!capture().current() || observedStories.current.find(row => row.id === historia.id) !== historia) return;
+    onHistoriasActualizadas(prev => prev.map(row => row === historia ? mergeEditorialStatus(row, dto) : row));
+  }, [capture, onHistoriasActualizadas]);
 
   return (
     <>
@@ -824,13 +896,13 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
                               <button
                                 type="button"
                                 className="check-sheet-toggle"
-                                disabled={guardandoId === key || getSesion()?.usuario?.rol !== 'admin'}
+                                disabled={guardandoId === key || view.role !== 'admin'}
                                 aria-label={check?.publicado ? "Quitar marca de planificación" : "Marcar planificación"}
                                 onClick={() => marcarPlanificacion(c.id, d.iso, !check?.publicado)}
                               >
                                 {guardandoId === key ? "..." : (check?.publicado ? "Plan" : "—")}
                               </button>
-                              {items.length > 0 && <details className="ep-day-pieces"><summary>{items.length} historias · {publicadasDia} confirmadas</summary>{items.map(h => <div key={h.id}><span>{h.copy || `Historia #${h.id}`}</span><EditorialPublicationControl dominio="historia" pieza={h} onSaved={dto => onHistoriasActualizadas(prev => prev.map(row => row.id === h.id ? mergeEditorialStatus(row, dto) : row))} /></div>)}</details>}
+                              {items.length > 0 && <details className="ep-day-pieces"><summary>{items.length} historias · {publicadasDia} confirmadas</summary>{items.map(h => <div key={h.id}><span>{h.copy || `Historia #${h.id}`}</span><EditorialPublicationControl dominio="historia" pieza={h} sesion={view.session} onSaved={dto => publicationSaved(h, dto)} /></div>)}</details>}
                             </td>
                           );
                         })}
@@ -859,6 +931,9 @@ export function HistoriasChecklistPublicadasTab({ clientes, historias, cargando,
 }
 
 export function HistoriasEstructuraTab({ clientes }) {
+  const { capture, captureLifetime } = useStorySession();
+  const cellQueues = useRef(new Map());
+  const busyOwner = useRef(null);
   const [estructura, setEstructura] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -875,19 +950,21 @@ export function HistoriasEstructuraTab({ clientes }) {
   ];
 
   useEffect(() => {
+    const scope = capture(), controller = new AbortController();
+    const current = () => scope.current() && !controller.signal.aborted;
     setCargando(true);
-    fetch("/api/estructura")
-      .then((response) => parseJsonArrayResponse(response, "No se pudo cargar la estructura."))
+    scope.request("/api/estructura", { signal: controller.signal })
       .then((data) => {
-        setEstructura(data);
+        if (!current()) return;
+        setEstructura(storyArray(data));
         setError(null);
       })
-      .catch((err) => {
-        console.error("No se pudo cargar estructura", err);
-        setError("No se pudo cargar la estructura.");
+      .catch(() => {
+        if (current()) setError("No se pudo cargar la estructura.");
       })
-      .finally(() => setCargando(false));
-  }, []);
+      .finally(() => { if (current()) setCargando(false); });
+    return () => controller.abort();
+  }, [capture]);
 
   const estructuraPorClienteDia = useMemo(() => {
     const index = {};
@@ -899,31 +976,36 @@ export function HistoriasEstructuraTab({ clientes }) {
   }, [estructura]);
 
   const guardarTema = async (clienteId, diaSemana, temaActual, temaAnterior = "") => {
+    const scope = capture(), lifetime = captureLifetime();
+    if (!scope.current()) return;
     const tema = temaActual.trim();
     if (tema === String(temaAnterior || "").trim()) return;
     const celda = `${clienteId}-${diaSemana}`;
+    const operation = {};
+    busyOwner.current = operation;
+    const body = JSON.stringify({ cliente_id: clienteId, dia_semana: diaSemana, tema });
     setGuardandoCelda(celda);
     setError(null);
+    return enqueueStoryWrite(cellQueues, celda, async () => {
     try {
-      const response = await fetch("/api/estructura", {
+      const guardada = await scope.request("/api/estructura", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cliente_id: clienteId, dia_semana: diaSemana, tema }),
+        body,
       });
-      const guardada = await response.json();
-      if (!response.ok) throw new Error(guardada.error || "No se pudo guardar el tema.");
+      scope.assertCurrent();
       setEstructura((prev) => {
         const existe = prev.some((item) => item.cliente_id === clienteId && item.dia_semana === diaSemana);
         return existe
           ? prev.map((item) => item.cliente_id === clienteId && item.dia_semana === diaSemana ? { ...item, ...guardada } : item)
           : [...prev, guardada];
       });
-    } catch (err) {
-      console.error("No se pudo guardar el tema semanal", err);
-      setError("No se pudo guardar el tema. Revisá la conexión y volvé a intentarlo.");
+    } catch {
+      if (scope.current()) setError("No se pudo guardar el tema. Revisá la conexión y volvé a intentarlo.");
     } finally {
-      setGuardandoCelda(null);
+      if (lifetime.current() && busyOwner.current === operation) { busyOwner.current = null; setGuardandoCelda(null); }
     }
+    });
   };
 
   if (cargando) {
@@ -985,6 +1067,7 @@ export function HistoriasEstructuraTab({ clientes }) {
 }
 
 export function HistoriasFechasEspecialesTab({ clientes }) {
+  const { capture } = useStorySession();
   const [fechasEspeciales, setFechasEspeciales] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
@@ -992,21 +1075,23 @@ export function HistoriasFechasEspecialesTab({ clientes }) {
   const [busqueda, setBusqueda] = useState("");
 
   useEffect(() => {
+    const scope = capture(), controller = new AbortController();
+    const current = () => scope.current() && !controller.signal.aborted;
     setCargando(true);
-    fetch("/api/fechas-especiales")
-      .then((r) => r.json())
+    scope.request("/api/fechas-especiales", { signal: controller.signal })
       .then((data) => {
+        if (!current()) return;
         setFechasEspeciales(
           data.slice().sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "")),
         );
         setError(null);
       })
-      .catch((err) => {
-        console.error("No se pudieron cargar fechas especiales", err);
-        setError("No se pudieron cargar las fechas especiales.");
+      .catch(() => {
+        if (current()) setError("No se pudieron cargar las fechas especiales.");
       })
-      .finally(() => setCargando(false));
-  }, []);
+      .finally(() => { if (current()) setCargando(false); });
+    return () => controller.abort();
+  }, [capture]);
 
   const hoyISO = getHoyLocalISO();
   const estadoLabel = { pendiente: "Pendiente", en_curso: "En curso", hecho: "Hecho" };
@@ -1094,35 +1179,54 @@ export function HistoriasFechasEspecialesTab({ clientes }) {
   );
 }
 
-export function FlyersMigrarBanner({ onMigrado }) {
+export function FlyersMigrarBanner({ onMigrado, contextKey = '' }) {
+  const { capture, captureLifetime } = useStorySession(contextKey);
+  const conversionLock = useRef(false);
   const [flyers, setFlyers] = useState([]);
   const [migrando, setMigrando] = useState(false);
   const [error, setError] = useState(null);
+  const [converted, setConverted] = useState([]);
 
   useEffect(() => {
-    fetch("/api/publicaciones")
-      .then((r) => r.json())
-      .then((data) => setFlyers(data.filter((p) => p.tipo === "flyer")))
-      .catch((err) => console.error("No se pudieron revisar flyers legacy", err));
-  }, []);
+    const scope = capture(), controller = new AbortController();
+    scope.request("/api/publicaciones", { signal: controller.signal })
+      .then((data) => { if (scope.current() && !controller.signal.aborted) setFlyers(storyArray(data).filter((p) => p.tipo === "flyer")); })
+      .catch(() => { /* A failed inventory is not permission to convert anything. */ });
+    return () => controller.abort();
+  }, [capture]);
 
-  if (flyers.length === 0) return null;
+  if (flyers.length === 0 && !converted.length) return null;
 
   const migrarTodos = async () => {
+    const scope = capture(), lifetime = captureLifetime();
+    if (!scope.current() || conversionLock.current) return;
+    conversionLock.current = true;
+    const inventory = flyers.map(row => ({ id: row.id }));
+    const successes = [], failures = [];
     setMigrando(true);
     setError(null);
     try {
-      for (const f of flyers) {
-        const res = await fetch(`/api/historias/convertir-flyer/${f.id}`, { method: "POST" });
-        if (!res.ok) throw new Error("Falló la conversión de un flyer");
+      for (const f of inventory) {
+        scope.assertCurrent();
+        try {
+          createdStory(await scope.request(`/api/historias/convertir-flyer/${f.id}`, { method: "POST" }));
+          scope.assertCurrent();
+          successes.push(f.id);
+          setConverted(prev => [...prev, f.id]);
+          setFlyers(prev => prev.filter(row => row.id !== f.id));
+        } catch (reason) {
+          if (!scope.current() || isSessionFailure(reason)) throw reason;
+          failures.push(f.id);
+        }
       }
-      setFlyers([]);
-      onMigrado && onMigrado();
-    } catch (err) {
-      console.error("Error migrando flyers", err);
-      setError("No se pudieron convertir todos los flyers. Reintentá.");
+      scope.assertCurrent();
+      if (failures.length) setError(`No se confirmó la conversión de: ${failures.map(id => `#${id}`).join(', ')}. Se conservan en la lista; revisá cada registro antes de volver a convertir.`);
+      if (successes.length) onMigrado?.();
+    } catch {
+      if (scope.current()) setError('Se detuvo la conversión. Revisá los registros antes de volver a convertir; no se reintentó automáticamente.');
     } finally {
-      setMigrando(false);
+      conversionLock.current = false;
+      if (lifetime.current()) setMigrando(false);
     }
   };
 
@@ -1131,8 +1235,9 @@ export function FlyersMigrarBanner({ onMigrado }) {
       <div style={{ fontSize: "13px", color: "#e65100" }}>
         ⚠️ Hay <strong>{flyers.length}</strong> flyer{flyers.length > 1 ? "s" : ""} viejo{flyers.length > 1 ? "s" : ""} en Publicaciones. Los flyers ahora viven dentro de Historias.
         {error && <div style={{ marginTop: "4px" }}>{error}</div>}
+        {converted.length > 0 && <div role="status">Conversión confirmada de: {converted.map(id => `#${id}`).join(', ')}.</div>}
       </div>
-      <button className="btn" type="button" disabled={migrando} onClick={migrarTodos}>
+      <button className="btn" type="button" disabled={migrando || !flyers.length} onClick={migrarTodos}>
         {migrando ? "Convirtiendo…" : `Convertir ${flyers.length} a Historias`}
       </button>
     </div>
@@ -1205,7 +1310,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   const initialContext = readUrlContext(window.location.search, { vista: initialTab, cliente: "", filtro: "", mes: "" });
   const initialDate = readMonthContext(initialContext.mes, new Date().getFullYear(), new Date().getMonth());
   const [vista, setVista] = useState(
-    ["estructura", "checklist", "fechas"].includes(initialContext.vista) ? initialContext.vista : "estructura",
+    ["estructura", "checklist", "fechas", "planilla"].includes(initialContext.vista) ? initialContext.vista : "estructura",
   );
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(Number(initialContext.cliente) || null);
@@ -1224,10 +1329,27 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   const [errorHistorias, setErrorHistorias] = useState(null);
   const [estructura, setEstructura] = useState([]);
   const [ultimoIdCreado, setUltimoIdCreado] = useState(null);
+  const [responsables, setResponsables] = useState([]);
+  const [responsablesReady, setResponsablesReady] = useState(false);
+  const [responsableNuevoId, setResponsableNuevoId] = useState('');
+  const writeQueues = useRef(new Map());
+  const latestWrites = useRef(new Map());
+  const creationLocks = useRef(new Set());
+  const deleting = useRef(new Set());
+  const listGeneration = useRef(0);
 
   const hoyDate = new Date();
   const [year, setYear] = useState(initialDate.year);
   const [month, setMonth] = useState(initialDate.month);
+  const contextKey = `${vista}:${clienteSeleccionado}:${filtroClientePlanilla}:${year}:${month}`;
+  const { view, capture, captureLifetime } = useStorySession(contextKey);
+
+  const newStoryResponsibleId = () => {
+    const id = Number(responsableNuevoId);
+    if (!responsablesReady || !Number.isSafeInteger(id) || id < 1 || id > 2147483647
+      || !responsables.some(row => row.id === id && row.activo !== false)) throw new Error('Elegí un responsable válido del catálogo antes de agregar o duplicar una historia.');
+    return id;
+  };
 
   useEffect(() => {
     replaceUrlContext({ vista, cliente: clienteSeleccionado, filtro: filtroClientePlanilla, mes: formatMonthContext(year, month) });
@@ -1237,7 +1359,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     const restoreContext = () => {
       const context = readUrlContext(window.location.search, { vista: "estructura", cliente: "", filtro: "", mes: "" });
       const date = readMonthContext(context.mes, hoyDate.getFullYear(), hoyDate.getMonth());
-      setVista(["estructura", "checklist", "fechas"].includes(context.vista) ? context.vista : "estructura");
+      setVista(["estructura", "checklist", "fechas", "planilla"].includes(context.vista) ? context.vista : "estructura");
       setClienteSeleccionado(Number(context.cliente) || null);
       setFiltroClientePlanilla(context.filtro || "");
       setYear(date.year);
@@ -1248,43 +1370,64 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   }, []);
 
   useEffect(() => {
-    fetch("/api/clientes")
-      .then((r) => r.json())
+    const scope = capture(), controller = new AbortController();
+    const current = () => scope.current() && !controller.signal.aborted;
+    scope.request("/api/clientes", { signal: controller.signal })
       .then((data) => {
-        setClientes(data);
+        if (!current()) return;
+        setClientes(storyArray(data));
         if (data.length > 0) setClienteSeleccionado((current) => current ?? data[0].id);
       })
-      .catch((err) => {
-        console.error("No se pudieron cargar clientes", err);
-        setErrorClientes("No se pudieron cargar los clientes.");
+      .catch(() => {
+        if (current()) setErrorClientes("No se pudieron cargar los clientes.");
       });
-  }, []);
-
-  const cargarHistorias = () => {
-    setCargandoHistorias(true);
-    fetch("/api/historias")
-      .then((r) => r.json())
-      .then((data) => {
-        setHistorias(data);
-        setErrorHistorias(null);
-      })
-      .catch((err) => {
-        console.error("Error cargando historias", err);
-        setErrorHistorias("No se pudieron cargar las historias.");
-      })
-      .finally(() => setCargandoHistorias(false));
-  };
-  useEffect(cargarHistorias, [refrescarKey]);
+    return () => controller.abort();
+  }, [capture]);
 
   useEffect(() => {
-    fetch("/api/estructura")
-      .then((response) => parseJsonArrayResponse(response, "No se pudo cargar la estructura semanal."))
-      .then((data) => setEstructura(data))
-      .catch((err) => {
-        setEstructura([]);
-        console.error("No se pudo cargar la estructura semanal", err);
+    const scope = captureLifetime(), controller = new AbortController();
+    const current = () => scope.current() && !controller.signal.aborted;
+    setResponsablesReady(false);
+    scope.request('/api/usuarios', { signal: controller.signal }).then(data => {
+      if (!current()) return;
+      setResponsables(storyArray(data).filter(row => Number.isSafeInteger(row.id) && row.id > 0 && row.id <= 2147483647 && row.activo !== false));
+      setResponsablesReady(true);
+    }).catch(() => { if (current()) setErrorHistorias('No se pudo cargar el catálogo de responsables. No se crearán historias sin una asignación verificada.'); });
+    return () => controller.abort();
+  }, [captureLifetime]);
+
+  const cargarHistorias = useCallback((scope = capture(), options = {}) => {
+    if (!scope.current()) return Promise.resolve();
+    const generation = ++listGeneration.current;
+    const current = () => scope.current() && !options.signal?.aborted && generation === listGeneration.current;
+    setCargandoHistorias(true);
+    return scope.request("/api/historias", options)
+      .then((data) => {
+        if (!current()) return;
+        setHistorias(storyArray(data));
+        setErrorHistorias(null);
+      })
+      .catch(() => {
+        if (current()) setErrorHistorias("No se pudieron cargar las historias.");
+      })
+      .finally(() => { if (current()) setCargandoHistorias(false); });
+  }, [capture]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void cargarHistorias(undefined, { signal: controller.signal });
+    return () => controller.abort();
+  }, [refrescarKey, cargarHistorias]);
+
+  useEffect(() => {
+    const scope = capture(), controller = new AbortController();
+    const current = () => scope.current() && !controller.signal.aborted;
+    scope.request("/api/estructura", { signal: controller.signal })
+      .then((data) => { if (current()) setEstructura(storyArray(data)); })
+      .catch(() => {
+        if (current()) setEstructura([]);
       });
-  }, []);
+    return () => controller.abort();
+  }, [capture]);
 
   const hoyISO = getHoyLocalISO();
 
@@ -1303,6 +1446,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   };
 
   const actualizarHistoriaLocal = (historiaId, campos) => {
+    if (!capture().current()) return;
     setHistorias((prev) =>
       prev.map((h) => {
         if (h.id !== historiaId) return h;
@@ -1314,50 +1458,67 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   };
 
   const guardarHistoriaEnServidor = async (historiaId, campos) => {
+    const scope = capture();
+    if (!scope.current() || deleting.current.has(historiaId)) return;
+    const body = JSON.stringify(campos);
+    const previous = writeQueues.current.get(historiaId);
+    const latest = latestWrites.current.get(historiaId);
+    if (previous && latest?.body === body && latest.scope.current()) return previous;
+    latestWrites.current.set(historiaId, { body, scope });
+    const queued = enqueueStoryWrite(writeQueues, historiaId, async () => {
     try {
-      const res = await fetch(`/api/historias/${historiaId}`, {
+      await scope.request(`/api/historias/${historiaId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(campos),
+        body,
       });
-      if (!res.ok) throw new Error("No se pudo guardar");
-    } catch (err) {
-      console.error("Error guardando", err);
-      setErrorHistorias("No se pudo guardar un cambio — reintentá.");
+    } catch {
+      if (scope.current()) setErrorHistorias("No se pudo guardar un cambio — reintentá.");
     }
+    });
+    void queued.finally(() => { if (!writeQueues.current.has(historiaId)) latestWrites.current.delete(historiaId); }).catch(() => {});
+    return queued;
   };
 
-  const crearHistoria = async (clienteIdDestino, fechaISO) => {
-    const res = await fetch("/api/piezas", {
+  const crearHistoria = async (clienteIdDestino, fechaISO, scope = capture()) => {
+    scope.assertCurrent();
+    const responsableId = newStoryResponsibleId();
+    const diaSemana = new Date(`${fechaISO}T00:00:00`).getDay();
+    const patron = estructura.find((e) => e.cliente_id === clienteIdDestino && e.dia_semana === diaSemana);
+    const metadataSugerida = patron?.tema || patron?.horario
+      ? { tipo: patron.tema || '', hora: patron.horario?.match(/\d{1,2}:\d{2}/)?.[0] || '' } : {};
+    const creada = createdStory(await scope.request("/api/piezas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         tipo: "historia",
         cliente_id: clienteIdDestino,
-        responsable: "Augusto",
+        responsable_id: responsableId,
         fecha_programada: fechaISO,
         estado: "pendiente",
         idea: "",
       }),
-    });
-    if (!res.ok) throw new Error("No se pudo crear");
-    const creada = await res.json();
-
-    // Sugerencia de tipo/hora según el patrón semanal de ese día.
-    const diaSemana = new Date(`${fechaISO}T00:00:00`).getDay();
-    const patron = estructura.find((e) => e.cliente_id === clienteIdDestino && e.dia_semana === diaSemana);
-    let metadataSugerida = {};
-    if (patron?.tema || patron?.horario) {
-      const horaSugerida = patron.horario?.match(/\d{1,2}:\d{2}/)?.[0] || "";
-      metadataSugerida = { tipo: patron.tema || "", hora: horaSugerida };
-      await fetch(`/api/historias/${creada.id}`, {
+    }));
+    scope.assertCurrent();
+    let persisted = creada;
+    if (Object.keys(metadataSugerida).length) {
+      try {
+      const updated = createdStory(await scope.request(`/api/historias/${creada.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ metadata: metadataSugerida }),
-      }).catch((err) => console.error("No se pudo sugerir tipo/hora", err));
+      }));
+      scope.assertCurrent();
+      if (updated.id !== creada.id) throw new Error('La respuesta no corresponde a la historia creada.');
+      persisted = { ...creada, ...updated };
+      } catch (reason) {
+        if (!scope.current() || isSessionFailure(reason)) throw reason;
+        setErrorHistorias(`Historia #${creada.id} creada; no se pudo confirmar el tipo y horario. Se muestran los datos recibidos al crearla. Revisá esa historia; no vuelvas a crearla.`);
+      }
     }
 
-    setHistorias((prev) => [...prev, { ...creada, metadata: metadataSugerida }]);
+    scope.assertCurrent();
+    setHistorias((prev) => [...prev, persisted]);
     return creada.id;
   };
 
@@ -1367,6 +1528,8 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   // mismo lugar (hoy, o el día 1 si se está viendo otro mes) y enfocan la
   // fila nueva apenas aparece.
   const agregarHistoriaEnMesActual = async () => {
+    const scope = capture();
+    if (!scope.current() || creationLocks.current.has('new')) return;
     // Si la Planilla está filtrada a un cliente, la historia nueva se crea
     // para ESE cliente (no tendría sentido crearla para otro mientras se
     // está mirando la hoja de uno en particular).
@@ -1375,27 +1538,34 @@ export function HistoriasPage({ initialTab = "estructura" }) {
         ? (filtroClientePlanilla ? Number(filtroClientePlanilla) : clientes[0]?.id) || clienteSeleccionado
         : clienteSeleccionado;
     if (!clienteDestino) return;
+    creationLocks.current.add('new');
     const hoyISOActual = getHoyLocalISO();
     const mesActualPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
     const iso = mesActualPrefix === hoyISOActual.slice(0, 7) ? hoyISOActual : `${mesActualPrefix}-01`;
     try {
-      const id = await crearHistoria(clienteDestino, iso);
+      const id = await crearHistoria(clienteDestino, iso, scope);
+      scope.assertCurrent();
       setUltimoIdCreado(id);
-    } catch (err) {
-      console.error("Error creando historia", err);
-      setErrorHistorias("No se pudo crear la historia.");
-    }
+    } catch (reason) {
+      if (scope.current()) setErrorHistorias(reason.message || 'No se pudo confirmar la creación. Revisá la lista antes de volver a crear.');
+    } finally { creationLocks.current.delete('new'); }
   };
 
   const duplicarHistoria = async (historia) => {
+    const scope = capture();
+    const key = `duplicate:${historia.id}`;
+    if (!scope.current() || creationLocks.current.has(key)) return;
+    creationLocks.current.add(key);
     try {
-      const res = await fetch("/api/piezas", {
+      const responsableId = newStoryResponsibleId();
+      const metadata = storyDuplicationMetadata(historia.metadata);
+      const creada = createdStory(await scope.request("/api/piezas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tipo: "historia",
           cliente_id: historia.cliente_id,
-          responsable: historia.responsable_diseño || historia.responsable || "Augusto",
+          responsable_id: responsableId,
           fecha_programada: historia.fecha_programada,
           estado: "pendiente",
           idea: historia.idea || "",
@@ -1404,36 +1574,49 @@ export function HistoriasPage({ initialTab = "estructura" }) {
           aclaraciones: historia.aclaraciones || "",
           prioridad: historia.prioridad || "media",
         }),
-      });
-      if (!res.ok) throw new Error("No se pudo duplicar");
-      const creada = await res.json();
-      if (historia.metadata && Object.keys(historia.metadata).length > 0) {
-        await fetch(`/api/historias/${creada.id}`, {
+      }));
+      scope.assertCurrent();
+      let nueva = creada;
+      if (Object.keys(metadata).length) {
+        try {
+        const updated = createdStory(await scope.request(`/api/historias/${creada.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ metadata: historia.metadata }),
-        }).catch((err) => console.error("No se pudo copiar metadata al duplicar", err));
+          body: JSON.stringify({ metadata }),
+        }));
+        scope.assertCurrent();
+        if (updated.id !== creada.id) throw new Error('La respuesta no corresponde a la historia creada.');
+        nueva = { ...creada, ...updated };
+        } catch (reason) {
+          if (!scope.current() || isSessionFailure(reason)) throw reason;
+          setErrorHistorias(`Historia #${creada.id} duplicada; no se pudo confirmar el tipo y horario. No vuelvas a duplicarla: revisá ese registro.`);
+        }
       }
-      const nueva = { ...creada, metadata: historia.metadata || {} };
+      scope.assertCurrent();
       setHistorias((prev) => [...prev, nueva]);
       setUltimoIdCreado(nueva.id);
-    } catch (err) {
-      console.error("Error duplicando historia", err);
-      setErrorHistorias("No se pudo duplicar la historia.");
-    }
+    } catch (reason) {
+      if (scope.current()) setErrorHistorias(reason.message || 'No se pudo confirmar la copia. Revisá la lista antes de volver a duplicar.');
+    } finally { creationLocks.current.delete(key); }
   };
 
   const eliminarHistoria = async (historiaId) => {
+    const scope = capture();
+    if (!scope.current() || deleting.current.has(historiaId) || writeQueues.current.has(historiaId)) return;
     if (!window.confirm("¿Eliminar esta historia de la planilla?")) return;
+    if (!scope.current()) return;
+    deleting.current.add(historiaId);
     try {
-      const res = await fetch(`/api/historias/${historiaId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("No se pudo eliminar");
+      await scope.request(`/api/historias/${historiaId}`, { method: "DELETE" });
+      scope.assertCurrent();
       setHistorias((prev) => prev.filter((h) => h.id !== historiaId));
-    } catch (err) {
-      console.error("Error eliminando historia", err);
-      setErrorHistorias("No se pudo eliminar la historia.");
-    }
+    } catch {
+      if (scope.current()) setErrorHistorias("No se pudo eliminar la historia.");
+    } finally { deleting.current.delete(historiaId); }
   };
+
+  const actualizarHistoriasObservadas = useCallback(update => { if (capture().current()) setHistorias(update); }, [capture]);
+  const flyersMigrados = useCallback(() => { if (capture().current()) setRefrescarKey(key => key + 1); }, [capture]);
 
   const mesPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
   // Cuando hay un cliente elegido en el selector de la Planilla, todo lo
@@ -1448,6 +1631,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   const atrasadasMes = historiasMes.filter((h) => h.fecha_programada < hoyISO && !isConfirmedPublication(h)).length;
 
   const cambiarVista = (siguienteVista) => {
+    if (!capture().current()) return;
     pushUrlContext({ vista: siguienteVista });
     setVista(siguienteVista);
   };
@@ -1458,7 +1642,18 @@ export function HistoriasPage({ initialTab = "estructura" }) {
         <div className="content">
           <header className="module-intro">
             <div><h2>¿Qué tema trabajamos cada día?</h2><p>Organizá la estructura semanal de todos los clientes y controlá qué historias se publicaron.</p></div>
+            {view.role === 'admin' && <button type="button" className="btn" onClick={() => cambiarVista(vista === 'planilla' ? 'checklist' : 'planilla')}>
+              {vista === 'planilla' ? 'Volver al checklist' : 'Editar historias'}
+            </button>}
           </header>
+          {vista === 'planilla' && <label className="stories-context-field">
+            <span>Responsable de nuevas historias</span>
+            <select aria-label="Responsable de nuevas historias" value={responsableNuevoId} disabled={!responsablesReady} onChange={event => setResponsableNuevoId(event.target.value)}>
+              <option value="">Elegí una persona</option>
+              {responsables.map(person => <option key={person.id} value={person.id}>{person.nombre} · #{person.id}</option>)}
+            </select>
+            <small>Se usará al agregar o duplicar. No modifica las historias existentes.</small>
+          </label>}
           {(errorClientes || errorHistorias) && <PageState compact type="error" title={errorClientes || errorHistorias} description="La vista y el período siguen guardados." onRetry={() => window.location.reload()} />}
 
           <div className="h-workspace">
@@ -1518,11 +1713,12 @@ export function HistoriasPage({ initialTab = "estructura" }) {
               )}
 
               <div className="h-body">
-                {vista === "planilla" && <FlyersMigrarBanner onMigrado={() => setRefrescarKey((k) => k + 1)} />}
+                {vista === "planilla" && <FlyersMigrarBanner contextKey={contextKey} onMigrado={flyersMigrados} />}
 
                 {vista === "planilla" && (
                   <HistoriasPlanillaTab
                     key="p-general"
+                    contextKey={contextKey}
                     clientes={clientes}
                     year={year}
                     month={month}
@@ -1570,12 +1766,13 @@ export function HistoriasPage({ initialTab = "estructura" }) {
                 {vista === "checklist" && (
                   <HistoriasChecklistPublicadasTab
                     key={`c-${refrescarKey}`}
+                    contextKey={contextKey}
                     clientes={clientes}
                     historias={historias}
                     cargando={cargandoHistorias}
                     year={year}
                     month={month}
-                    onHistoriasActualizadas={setHistorias}
+                    onHistoriasActualizadas={actualizarHistoriasObservadas}
                   />
                 )}
               </div>

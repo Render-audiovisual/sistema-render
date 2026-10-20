@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { normalizeFeedback, assertFeedbackBusinessInput } from "./feedback-fields.js";
+import { convertUnlinkedFlyer } from './story-flyer-conversion.js';
 import { findSimilarFeedback } from "./feedback-workflow.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -1655,6 +1656,13 @@ router.delete("/clientes/:id", requireRole("admin"), async (req, res, next) => {
 
 router.patch("/historias/:id", requireRole("admin"), async (req, res, next) => {
   try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ error: 'La edición de la historia no es válida.' });
+    }
+    const textFields = ['idea','copy','material_referencia','aclaraciones','notas_planificacion','notas_diseño','notas_revisión','notas_bloqueador'];
+    if (textFields.some(field => req.body[field] != null && typeof req.body[field] !== 'string')) {
+      return res.status(400).json({ error: 'Los campos de texto de la historia no son válidos.' });
+    }
     const { id } = req.params;
     const {
       estado,
@@ -1724,10 +1732,10 @@ router.patch("/historias/:id", requireRole("admin"), async (req, res, next) => {
                  fecha_publicación_real, notas_diseño, notas_revisión, notas_bloqueador, metadata, created_at, updated_at`,
       [
         estado || null,
-        idea || null,
-        copy || null,
-        material_referencia || null,
-        aclaraciones || null,
+        idea ?? null,
+        copy ?? null,
+        material_referencia ?? null,
+        aclaraciones ?? null,
         prioridad || null,
         cliente_id || null,
         fecha_programada || null,
@@ -1738,10 +1746,10 @@ router.patch("/historias/:id", requireRole("admin"), async (req, res, next) => {
         responsable_publicacion || null,
         fecha_diseño_entrega || null,
         fecha_revisión_aprobación || null,
-        notas_planificacion || null,
-        notas_diseño || null,
-        notas_revisión || null,
-        notas_bloqueador || null,
+        notas_planificacion ?? null,
+        notas_diseño ?? null,
+        notas_revisión ?? null,
+        notas_bloqueador ?? null,
         metadata ? JSON.stringify(metadata) : null,
         id
       ],
@@ -3640,41 +3648,9 @@ router.post("/piezas", requireRole("admin"), async (req, res, next) => {
 
 router.post("/historias/convertir-flyer/:publicacionId", requireRole("admin"), async (req, res, next) => {
   try {
-    const { publicacionId } = req.params;
-
-    const origen = await pool.query(
-      `SELECT * FROM publicaciones WHERE id = $1 AND tipo = 'flyer'`,
-      [publicacionId],
-    );
-
-    if (origen.rows.length === 0) {
-      return res.status(404).json({ error: "Flyer no encontrado en publicaciones." });
-    }
-
-    const p = origen.rows[0];
-
-    const result = await pool.query(
-      `INSERT INTO historias (cliente_id, estado, fecha_programada, responsable, responsable_diseño, idea, copy, material_referencia, aclaraciones, prioridad, metadata)
-       VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10)
-       RETURNING id, cliente_id, estado, to_char(fecha_programada, 'YYYY-MM-DD') AS fecha_programada, idea, copy, material_referencia, aclaraciones, prioridad, created_at`,
-      [
-        p.cliente_id,
-        p.estado === "publicada" ? "publicada" : "en_diseño",
-        p.fecha_programada,
-        p.responsable,
-        p.idea,
-        p.copy,
-        p.material_referencia,
-        p.aclaraciones,
-        p.prioridad,
-        JSON.stringify({ ...(p.metadata || {}), migrada_desde_flyer_id: p.id }),
-      ],
-    );
-
-    await pool.query("DELETE FROM publicaciones WHERE id = $1", [publicacionId]);
-
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(await convertUnlinkedFlyer(pool, req.params.publicacionId));
   } catch (error) {
+    if ([400,404,409].includes(error.status)) return res.status(error.status).json({ error: error.message, code: error.code });
     next(error);
   }
 });
