@@ -126,7 +126,7 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
           </div>
 
           <aside className="qh-secondary-column" aria-label="Contexto de tu trabajo">
-            <HomeMonthlyProgress data={data.monthly_progress}/>
+            <HomeMonthlyProgress data={data.monthly_progress} sesion={sesion} request={request}/>
             {data.capabilities.projects && <section className="qh-section" aria-labelledby="qh-projects-title">
               <header className="qh-section-heading"><h2 id="qh-projects-title">Mis proyectos</h2><ListCount shown={data.projects.length} total={data.list_totals.projects}/></header>
               {data.projects.length ? <ul className="qh-compact-list">{data.projects.map(project => <li key={project.id}>

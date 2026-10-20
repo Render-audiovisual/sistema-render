@@ -59,7 +59,7 @@ test('production projection strips arbitrary private metadata from each level', 
 });
 
 test('shared monthly component renders a compact disclosed list with explicit truncation and honest labels', () => {
-  const source = readFileSync(new URL('./HomeMonthlyProgress.jsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('./HomeProductionMonthly.jsx', import.meta.url), 'utf8');
   for (const text of ['<details className="qh-monthly-production">', 'Producción por cliente',
     'No cuenta videos grabados ni cuotas', 'row.client?.id', 'Sin cliente',
     'Los totales incluyen todos los grupos.']) assert.ok(source.includes(text), text);

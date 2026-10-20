@@ -18,6 +18,7 @@ test('monthly production HTTP: current-ID work, distinct clients and bounded pri
   assertFixtureIdentity({ root: fixture.root, cwd: fixture.root, port: 55658,
     url: 'postgresql://render2_fixture@127.0.0.1:55658/render2_local_test', identity });
   const [dates] = await fixture.query(`SELECT
+    to_char(statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba','YYYY-MM-DD') AS today,
     to_char(statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba','YYYY-MM') AS period,
     to_char(date_trunc('month',statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba'),'YYYY-MM-DD') AS first,
     to_char(date_trunc('month',statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')-interval '1 month','YYYY-MM-DD') AS previous,
@@ -53,7 +54,14 @@ test('monthly production HTTP: current-ID work, distinct clients and bounded pri
     if (user !== null) await fixture.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES ($1,$2,'responsable')", [row.id, user]);
     for (const id of collaborators.filter(id => id !== user)) await fixture.query(`INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo)
       VALUES ($1,$2,'colaborador') ON CONFLICT(tarea_id,usuario_id) DO NOTHING`, [row.id, id]);
-    const model = { id: row.id, client, state, sector, included, members: new Set([user, ...collaborators].filter(id => id !== null)) };
+    const workMonth = due === null
+      ? new Date(Date.parse(updated) - 3 * 60 * 60 * 1000).toISOString().slice(0, 7)
+      : due.slice(0, 7);
+    const visible = (props.workspace === undefined || props.workspace === 'render_os')
+      && ![true, 'true'].includes(props.archivada_render_os) && ![true, 'true'].includes(props.papelera_render_os)
+      && client?.id !== inactive.id;
+    const model = { id: row.id, client, state, sector, included, visible, workMonth,
+      members: new Set([user, ...collaborators].filter(id => id !== null)) };
     rows.push(model); return model;
   };
   for (const [index, client] of clients.entries()) {
@@ -93,8 +101,8 @@ test('monthly production HTTP: current-ID work, distinct clients and bounded pri
     assert.ok(body.token); return body.token;
   };
   const tokens = new Map(); for (const account of accounts) tokens.set(account.id, await login(account.usuario));
-  const expected = id => {
-    const mine = rows.filter(row => row.included && row.sector === 'produccion' && row.members.has(id));
+  const expected = (id, { period = dates.period, offset = 0, limit = 20 } = {}) => {
+    const mine = rows.filter(row => row.visible && row.workMonth === period && row.sector === 'produccion' && row.members.has(id));
     const groups = new Map();
     for (const row of mine) {
       const key = row.client?.id ?? null;
@@ -105,7 +113,7 @@ test('monthly production HTTP: current-ID work, distinct clients and bounded pri
     const sorted = [...groups.values()].sort((a, b) => b.total - a.total
       || Number(a.client === null) - Number(b.client === null) || (a.client?.id ?? 0) - (b.client?.id ?? 0));
     return { total: mine.length, completed: mine.filter(row => ['finalizada', 'publicada'].includes(row.state)).length,
-      client_count: sorted.length, clients: sorted.slice(0, 20) };
+      client_count: sorted.length, clients: sorted.slice(offset, offset + limit) };
   };
   const keys = (value, names) => assert.deepEqual(Object.keys(value).sort(), [...names].sort());
   const check = async (id, token = tokens.get(id)) => {
@@ -179,5 +187,97 @@ test('monthly production HTTP: current-ID work, distinct clients and bounded pri
     await check(owner, await login('qa_production_monthly_0'));
     assert.equal((await api('/inicio')).status, 401);
     assert.deepEqual(await snapshot(), before);
+  });
+
+  const monthly = (query, token = tokens.get(owner)) => api(`/inicio/produccion-mensual${query ? `?${query}` : ''}`, { token });
+  const checkMonthly = async (id, { period = dates.period, offset = 0, limit = 20,
+    token = tokens.get(id), query = `period=${period}&offset=${offset}&limit=${limit}` } = {}) => {
+    const body = expect(await monthly(query, token));
+    keys(body, ['version', 'user', 'period', 'today', 'offset', 'limit', 'total', 'completed', 'client_count', 'has_more', 'clients']);
+    keys(body.user, ['id']); assert.deepEqual(body.user, { id });
+    assert.equal(body.version, 1); assert.equal(body.period, period); assert.equal(body.today, dates.today);
+    assert.equal(body.offset, offset); assert.equal(body.limit, limit);
+    const model = expected(id, { period, offset, limit });
+    for (const field of ['total', 'completed', 'client_count', 'clients']) assert.deepEqual(body[field], model[field], field);
+    assert.equal(body.has_more, offset + limit < model.client_count);
+    for (const group of body.clients) {
+      keys(group, ['client', 'total', 'completed']);
+      if (group.client !== null) keys(group.client, ['id', 'nombre']);
+    }
+    const encoded = JSON.stringify(body);
+    assert.ok(!encoded.includes(secret) && !encoded.includes(String(amount)));
+    for (const field of ['importe', 'metadata', 'future_finance', 'publicacion_evidencia', 'publication_classification', 'token'])
+      assert.ok(!encoded.includes(`"${field}"`));
+    return body;
+  };
+  await t.test('period endpoint walks all 25 distinct client groups including null with exact unpaginated totals', async () => {
+    const before = await snapshot();
+    const first = await checkMonthly(owner, { query: `period=${dates.period}` });
+    const second = await checkMonthly(owner, { offset: 20 });
+    const combined = [...first.clients, ...second.clients];
+    const full = expected(owner, { limit: 50 });
+    assert.equal(first.client_count, 25); assert.equal(first.clients.length, 20); assert.equal(second.clients.length, 5);
+    assert.deepEqual(combined, full.clients);
+    assert.equal(new Set(combined.map(group => group.client?.id ?? null)).size, 25);
+    assert.equal(combined.filter(group => group.client === null).length, 1);
+    assert.equal(combined.reduce((sum, group) => sum + group.total, 0), first.total);
+    assert.equal(combined.reduce((sum, group) => sum + group.completed, 0), first.completed);
+    const singlePages = [];
+    for (let offset = 0; offset < 25; offset++) singlePages.push(...(await checkMonthly(owner, { offset, limit: 1 })).clients);
+    assert.deepEqual(singlePages, combined);
+    await checkMonthly(owner, { limit: 50 });
+    await checkMonthly(owner, { offset: 25, limit: 1 });
+    await checkMonthly(owner, { offset: 1000000, limit: 50 });
+    assert.deepEqual(await snapshot(), before);
+  });
+  await t.test('explicit periods use due precedence and Córdoba fallback rather than current-month-only or global data', async () => {
+    const before = await snapshot();
+    for (const period of [dates.previous.slice(0, 7), dates.next.slice(0, 7)]) {
+      assert.ok(expected(owner, { period }).total > 0, 'Fixture exercises a non-current work month');
+      await checkMonthly(owner, { period });
+      await checkMonthly(homonym, { period });
+    }
+    for (const account of accounts) await checkMonthly(account.id);
+    const empty = await checkMonthly(91004);
+    assert.deepEqual([empty.total, empty.completed, empty.client_count, empty.has_more, empty.clients], [0, 0, 0, false, []]);
+    assert.equal((await checkMonthly(91001)).total, 1, 'Admin still receives current-ID work only');
+    assert.deepEqual(await snapshot(), before);
+  });
+  await t.test('period/pagination query is required, canonical and closed with no name/identity overrides or writes', async () => {
+    const before = await snapshot();
+    const invalid = ['', 'offset=0&limit=20',
+      ...['', '0000-01', '2026-00', '2026-13', '2026-1', '2026-01-01', '2026-01T00:00:00Z',
+        ' 2026-01', '2026-01 ', 'NaN', '10000-01'].map(value => `period=${encodeURIComponent(value)}`),
+      `period=${dates.period}&period=${dates.period}`, `period[]=${dates.period}`,
+      ...['offset=-1', 'offset=1000001', 'offset=01', 'offset=1.0', 'offset=1e2', 'offset=', 'offset=%2B1',
+        'offset=%201', 'offset=9007199254740992', 'offset=0&offset=0', 'offset[]=0',
+        'limit=0', 'limit=51', 'limit=-1', 'limit=01', 'limit=1.0', 'limit=1e1', 'limit=', 'limit=%2B1',
+        'limit=9007199254740992', 'limit=20&limit=20', 'limit[x]=20',
+        `id=${homonym}`, `usuario_id=${homonym}`, `user_id=${homonym}`, `asignado_a_id=${homonym}`,
+        'usuario=QA', 'asignado_a=QA', 'rol=admin', 'cliente_id=1', 'workspace=render_os', 'bucket=today', 'unknown=1']
+        .map(query => `period=${dates.period}&${query}`)];
+    for (const query of invalid) expect(await monthly(query), 400);
+    assert.deepEqual(await snapshot(), before);
+  });
+  await t.test('period endpoint verifies current role, activity and session version on every HTTP request', async () => {
+    expect(await api(`/inicio/produccion-mensual?period=${dates.period}`), 401);
+    // Reuse one synthetic account only after all stable-fixture comparisons.
+    const id = 99104, usuario = 'qa_production_monthly_3', old = tokens.get(id);
+    await fixture.query("UPDATE usuarios SET rol='qa_unknown' WHERE id=$1", [id]);
+    try {
+      const before = await snapshot(); expect(await monthly(`period=${dates.period}`, old), 403);
+      assert.deepEqual(await snapshot(), before);
+    } finally { await fixture.query("UPDATE usuarios SET rol='programacion' WHERE id=$1", [id]); }
+    const revoked = await login(usuario);
+    await fixture.query('UPDATE usuarios SET session_version=session_version+1 WHERE id=$1', [id]);
+    let before = await snapshot(); expect(await monthly(`period=${dates.period}`, revoked), 401);
+    assert.deepEqual(await snapshot(), before);
+    const inactiveToken = await login(usuario);
+    await fixture.query('UPDATE usuarios SET activo=false WHERE id=$1', [id]);
+    try {
+      before = await snapshot(); expect(await monthly(`period=${dates.period}`, inactiveToken), 401);
+      assert.deepEqual(await snapshot(), before);
+    } finally { await fixture.query('UPDATE usuarios SET activo=true WHERE id=$1', [id]); }
+    await checkMonthly(id, { token: await login(usuario) });
   });
 });

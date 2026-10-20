@@ -139,9 +139,9 @@ export async function readHomeTeamWorkload(pool, auth, query = {}) {
   } finally { db.release(); }
 }
 
-export const PERSONAL_HOME_SQL = `WITH
-  day AS (SELECT (statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date AS today),
-  visible AS MATERIALIZED (
+// Shared task membership/visibility, monthly date fallback and production groups
+// keep the home preview and full client pagination on the same business scope.
+const personalTaskScopeSql = `visible AS MATERIALIZED (
     SELECT t.id,t.titulo,CASE WHEN t.estado='en_revision' AND t.propiedades_extra->'revision_aprobada'='true'::jsonb
       THEN 'aprobada' ELSE t.estado END AS estado,t.prioridad,t.revision,t.fecha_vencimiento,t.updated_at,
       t.cliente_id,c.nombre AS cliente_nombre,t.tipo_tarea
@@ -152,21 +152,15 @@ export const PERSONAL_HOME_SQL = `WITH
       AND (t.cliente_id IS NULL OR c.activo IS DISTINCT FROM FALSE)
   ),
   mine AS MATERIALIZED (SELECT v.* FROM visible v WHERE EXISTS (
-    SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=v.id AND a.usuario_id=$1)),
-  open AS MATERIALIZED (SELECT * FROM mine WHERE estado NOT IN ('finalizada','publicada')),
-  monthly_work AS MATERIALIZED (
+    SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=v.id AND a.usuario_id=$1))`;
+const monthlyWorkSql = (start, end) => `monthly_work AS MATERIALIZED (
     SELECT m.* FROM mine m CROSS JOIN day
     WHERE COALESCE(m.fecha_vencimiento,(m.updated_at AT TIME ZONE 'America/Argentina/Cordoba')::date)
-      >= date_trunc('month',day.today)::date
+      >= ${start}
       AND COALESCE(m.fecha_vencimiento,(m.updated_at AT TIME ZONE 'America/Argentina/Cordoba')::date)
-      < (date_trunc('month',day.today)+interval '1 month')::date
-  ),
-  monthly_sectors AS (
-    SELECT COALESCE(tipo_tarea,'sin_sector') AS sector,count(*)::int AS total,
-      count(*) FILTER (WHERE estado IN ('finalizada','publicada'))::int AS completed
-    FROM monthly_work GROUP BY COALESCE(tipo_tarea,'sin_sector')
-  ),
-  monthly_production AS MATERIALIZED (
+      < ${end}
+  )`;
+const monthlyProductionSql = `monthly_production AS MATERIALIZED (
     SELECT m.id,m.estado,m.cliente_id,m.cliente_nombre
     FROM monthly_work m WHERE m.tipo_tarea='produccion'
   ),
@@ -174,7 +168,19 @@ export const PERSONAL_HOME_SQL = `WITH
     SELECT cliente_id,cliente_nombre,count(*)::int AS total,
       count(*) FILTER (WHERE estado IN ('finalizada','publicada'))::int AS completed
     FROM monthly_production GROUP BY cliente_id,cliente_nombre
+  )`;
+
+export const PERSONAL_HOME_SQL = `WITH
+  day AS (SELECT (statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date AS today),
+  ${personalTaskScopeSql},
+  open AS MATERIALIZED (SELECT * FROM mine WHERE estado NOT IN ('finalizada','publicada')),
+  ${monthlyWorkSql("date_trunc('month',day.today)::date", "(date_trunc('month',day.today)+interval '1 month')::date")},
+  monthly_sectors AS (
+    SELECT COALESCE(tipo_tarea,'sin_sector') AS sector,count(*)::int AS total,
+      count(*) FILTER (WHERE estado IN ('finalizada','publicada'))::int AS completed
+    FROM monthly_work GROUP BY COALESCE(tipo_tarea,'sin_sector')
   ),
+  ${monthlyProductionSql},
   monthly_production_client_page AS (
     SELECT cliente_id,cliente_nombre,total,completed FROM monthly_production_clients
     ORDER BY total DESC,cliente_id ASC NULLS LAST LIMIT 20
@@ -248,6 +254,59 @@ SELECT jsonb_build_object(
   'capabilities',jsonb_build_object('projects',true)
 ) AS home FROM day`;
 
+export function parseHomeProductionPage(query = {}) {
+  if (!query || typeof query !== 'object' || Array.isArray(query)
+    || Object.keys(query).some(key => !['period', 'offset', 'limit'].includes(key))
+    || Object.values(query).some(value => typeof value !== 'string')
+    || typeof query.period !== 'string' || query.period.length !== 7
+    || !/^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$/.test(query.period)) {
+    throw fail('Elegí un período válido y filtros de producción mensual válidos.', 400);
+  }
+  const { offset, limit } = parseEscalationPage(Object.fromEntries(
+    Object.entries(query).filter(([key]) => key !== 'period')));
+  return { period: query.period, offset, limit };
+}
+
+export const HOME_PRODUCTION_PAGE_SQL = `WITH
+  day AS (SELECT (statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date AS today),
+  ${personalTaskScopeSql},
+  ${monthlyWorkSql('$2::date', "($2::date+interval '1 month')::date")},
+  ${monthlyProductionSql},
+  page AS (
+    SELECT cliente_id,cliente_nombre,total,completed FROM monthly_production_clients
+    ORDER BY total DESC,cliente_id ASC NULLS LAST OFFSET $3 LIMIT $4
+  )
+SELECT jsonb_build_object('version',1,'user',jsonb_build_object('id',$1::integer),
+  'period',to_char($2::date,'YYYY-MM'),'today',to_char(day.today,'YYYY-MM-DD'),
+  'offset',$3::integer,'limit',$4::integer,
+  'total',(SELECT count(*)::int FROM monthly_production),
+  'completed',(SELECT count(*)::int FROM monthly_production WHERE estado IN ('finalizada','publicada')),
+  'client_count',(SELECT count(*)::int FROM monthly_production_clients),
+  'has_more',(SELECT count(*) FROM monthly_production_clients)>$3::integer+$4::integer,
+  'clients',COALESCE((SELECT jsonb_agg(jsonb_build_object(
+    'client',CASE WHEN p.cliente_id IS NULL THEN NULL ELSE jsonb_build_object('id',p.cliente_id,'nombre',p.cliente_nombre) END,
+    'total',p.total,'completed',p.completed) ORDER BY p.total DESC,p.cliente_id ASC NULLS LAST)
+    FROM page p),'[]'::jsonb)
+) AS production_page FROM day`;
+
+export async function readHomeProductionPage(pool, auth, query = {}) {
+  const { period, offset, limit } = parseHomeProductionPage(query);
+  if (!Number.isSafeInteger(auth?.id) || auth.id < 1 || auth.id > 2147483647
+    || !Number.isSafeInteger(auth.session_version)) throw fail('Necesitás una sesión verificada.', 401);
+  const db = await pool.connect();
+  try {
+    await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    const user = await verifiedHomeUser(db, auth);
+    const result = await db.query(HOME_PRODUCTION_PAGE_SQL, [user.id, `${period}-01`, offset, limit]);
+    if (!result.rows[0]?.production_page) throw new Error('No se pudo leer la producción mensual.');
+    await db.query('COMMIT');
+    return result.rows[0].production_page;
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally { db.release(); }
+}
+
 export async function readPersonalHome(pool, auth) {
   if (!Number.isSafeInteger(auth?.id) || auth.id < 1) throw fail('Necesitás una identidad verificada.', 403);
   const db = await pool.connect();
@@ -267,6 +326,14 @@ export async function readPersonalHome(pool, auth) {
 
 export function createPersonalHomeRouter({ express, pool }) {
   const router = express.Router();
+  router.get('/produccion-mensual', async (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    try { return res.json(await readHomeProductionPage(pool, req.auth, req.query)); }
+    catch (error) {
+      if ([400, 401, 403].includes(error.status)) return res.status(error.status).json({ error: error.message });
+      return next(error);
+    }
+  });
   router.get('/equipo', async (req, res, next) => {
     res.set('Cache-Control', 'no-store');
     try { return res.json(await readHomeTeamWorkload(pool, req.auth, req.query)); }
