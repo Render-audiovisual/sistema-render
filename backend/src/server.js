@@ -2,6 +2,7 @@ import "dotenv/config";
 import { normalizeFeedback, assertFeedbackBusinessInput } from "./feedback-fields.js";
 import { convertUnlinkedFlyer } from './story-flyer-conversion.js';
 import { deleteEmptyClient } from './delete-empty-client.js';
+import { clientAgreementRevisionSql, lockClientAdministration, lockClientAgreement, readClientAgreementRevision } from './client-agreement.js';
 import { findSimilarFeedback } from "./feedback-workflow.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -742,17 +743,26 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
 });
 
 router.post("/clientes/:id/abono-proximo-mes", requireRole("admin"), async (req, res, next) => {
+  const client = await pool.connect();
   try {
     const amount = Number(req.body.importe);
     if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "El abono debe ser positivo o cero." });
     const now = new Date();
     const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const vigenteDesde = `${nextPeriod(current)}-01`;
-    const result = await pool.query(`INSERT INTO cliente_abonos (cliente_id,vigente_desde,importe,creado_por) VALUES ($1,$2,$3,$4)
+    await client.query('BEGIN');
+    await lockClientAgreement(client, req.params.id, req.body?.expected_revision);
+    const result = await client.query(`INSERT INTO cliente_abonos (cliente_id,vigente_desde,importe,creado_por) VALUES ($1,$2,$3,$4)
       ON CONFLICT (cliente_id,vigente_desde) DO UPDATE SET importe=EXCLUDED.importe,creado_por=EXCLUDED.creado_por
       RETURNING cliente_id,importe,to_char(vigente_desde,'YYYY-MM-DD') AS vigente_desde`, [req.params.id, vigenteDesde, amount, req.auth.nombre || req.auth.usuario]);
-    res.json(result.rows[0]);
-  } catch (error) { if (error.code === "23503") return res.status(404).json({ error: "Cliente no encontrado." }); next(error); }
+    const agreement_revision = await readClientAgreementRevision(client, req.params.id);
+    await client.query('COMMIT');
+    res.json({ ...result.rows[0], agreement_revision });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (error.status) return res.status(error.status).json({error:error.message,code:error.code});
+    if (error.code === "23503") return res.status(404).json({ error: "Cliente no encontrado." }); next(error);
+  } finally { client.release(); }
 });
 
 router.post("/usuarios", requireRole("admin"), async (req, res, next) => {
@@ -1306,6 +1316,7 @@ router.get("/clientes", async (req, res, next) => {
       SELECT
         c.id,
         c.nombre,
+        ${clientAgreementRevisionSql('c','gf')} AS agreement_revision,
         COALESCE(cfg.cuota_reels, c.cuota_reels) AS cuota_reels,
         COALESCE(cfg.cuota_carruseles, c.cuota_carruseles) AS cuota_carruseles,
         c.rubro,
@@ -1380,6 +1391,7 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
     }
 
     await client.query("BEGIN");
+    await lockClientAdministration(client);
     const result = await client.query(
       `INSERT INTO clientes (nombre, cuota_reels, cuota_carruseles, rubro, activo, fecha_inicio)
        VALUES ($1, $2, $3, $4, TRUE, $5)
@@ -1401,6 +1413,7 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
         [result.rows[0].id, vigenteDesde, config.abono_mensual, req.auth.nombre || req.auth.usuario],
       );
     }
+    const agreement_revision = await readClientAgreementRevision(client, result.rows[0].id);
     await client.query("COMMIT");
 
     res.status(201).json({
@@ -1413,6 +1426,7 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
       ...(config || {}),
       configuracion_vigente_desde: config ? vigenteDesde : null,
       configuracion_completa: Boolean(config),
+      agreement_revision,
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
@@ -1434,11 +1448,7 @@ router.post("/clientes/:id/configuraciones", requireRole("admin"), async (req, r
     const config = normalizeClientConfiguration(req.body);
     const vigenteDesde = normalizePeriod(req.body.vigente_desde);
     await client.query("BEGIN");
-    const exists = await client.query("SELECT id FROM clientes WHERE id = $1 FOR UPDATE", [req.params.id]);
-    if (!exists.rowCount) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Cliente no encontrado." });
-    }
+    await lockClientAgreement(client, req.params.id, req.body?.expected_revision);
     await client.query(
       `INSERT INTO cliente_configuraciones
         (cliente_id, vigente_desde, cuota_reels, cuota_carruseles, dias_historias, dias_reels, dias_carruseles, disenador_responsable, abono_mensual)
@@ -1471,6 +1481,7 @@ router.post("/clientes/:id/configuraciones", requireRole("admin"), async (req, r
        WHERE id = $5`,
       [config.cuota_reels, config.cuota_carruseles, nombre, rubro, req.params.id],
     );
+    const agreement_revision = await readClientAgreementRevision(client, req.params.id);
     await client.query("COMMIT");
     res.json({
       id: Number(req.params.id), ...config,
@@ -1478,9 +1489,11 @@ router.post("/clientes/:id/configuraciones", requireRole("admin"), async (req, r
       abono_vigente_desde: vigenteDesde,
       configuracion_vigente_desde: vigenteDesde,
       configuracion_completa: true,
+      agreement_revision,
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error.status) return res.status(error.status).json({error:error.message,code:error.code});
     if (/cuotas|abono mensual|día válido|diseñador responsable/i.test(error.message || "")) {
       return res.status(400).json({ error: error.message });
     }
@@ -1535,16 +1548,8 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
     }
 
     await client.query("BEGIN");
-    const existente = await client.query(
-      "SELECT grupo_feed_id FROM clientes WHERE id = $1 FOR UPDATE",
-      [id],
-    );
-    if (existente.rows.length === 0) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ error: "Cliente no encontrado." });
-    }
-
-    const grupoFeedId = existente.rows[0].grupo_feed_id;
+    const existente = await lockClientAgreement(client, id, req.body?.expected_revision);
+    const grupoFeedId = existente.grupo_feed_id;
     const actualizaCuotaFeed =
       cuota_feed_reels !== undefined || cuota_feed_carruseles !== undefined;
     if (actualizaCuotaFeed && !grupoFeedId) {
@@ -1590,6 +1595,7 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
          c.id,
          c.nombre,
          c.activo,
+         ${clientAgreementRevisionSql('c','gf')} AS agreement_revision,
          to_char(c.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
          c.cuota_reels,
          c.cuota_carruseles,
@@ -1607,6 +1613,7 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
     res.json(result.rows[0]);
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if (error.status) return res.status(error.status).json({error:error.message,code:error.code});
     if (error.code === "23505") {
       return res.status(409).json({ error: "Ya existe un cliente con ese nombre." });
     }
@@ -1618,9 +1625,9 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
 
 router.delete("/clientes/:id", requireRole("admin"), async (req, res, next) => {
   try {
-    res.json(await deleteEmptyClient(pool, req.params.id));
+    res.json(await deleteEmptyClient(pool, req.params.id, req.body?.expected_revision));
   } catch (error) {
-    if ([400,404,409].includes(error.status)) return res.status(error.status).json({ error:error.message,code:error.code });
+    if ([400,404,409,428].includes(error.status)) return res.status(error.status).json({ error:error.message,code:error.code });
     next(error);
   }
 });

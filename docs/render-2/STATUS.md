@@ -959,6 +959,16 @@ Final frontend853 pass; backend1385 pass/61 opt-in skips; isolated HTTP/PostgreS
 
 No configured DB/provider/real commercial changes/dependency/environment/push/deploy. Cookie activation/native/device/proxy/provider/global draft/design and remaining writers remain gates; this batch is not full master completion or a production release.
 
+## Integration82 — persistent agreement versions and explicit conflict recovery
+
+Coordinator migration072/helper/API/DELETE/unit/integration, Hypatia modal chain/recovery, Carson physical cases, Beauvoir independent review. Client/group persistent counters and config/fee triggers prevent ABA revival; resource-bound five-part version projected with the admin snapshot in one SQL statement, omitted for employees. All app agreement writers use one advisory transaction lock before rows; required observed revision428/400/409. ACK version read after triggers before COMMIT. No private amount encoded or auth inferred.
+
+Modal uses initial observation, chains only verified ACK revisions, preserves draft and stops on conflict/ambiguity/partial commit, then allows explicit same-client/month load. DELETE also carries the held revision. No automatic rebase/retry; historical effective month and server next-month fee semantics remain separate.
+
+Verified frontend868 pass; backend1391 pass/62 opt-in skips; actual principal HTTP/PostgreSQL36 pass; build/diff pass. Browser two-owner conflict preserves draft, explicit mobile recovery/save/reload retains correct final agreement;390 no document overflow, screenshot inspected. Owned fixture/tab cleaned; user App/Vite/reference dirt preserved. [CLIENT_AGREEMENT_CAS_QA.md](CLIENT_AGREEMENT_CAS_QA.md) records exact contracts, tests, screenshots and deployment gates.
+
+Local only;072 is not deployed to any configured database. No provider/real commercial/push/deploy. Independent contracts_financieros, other financial writers, durable uncertain-response receipts, external SQL lock-order acceptance, upgrade/native/cookie/proxy/device/provider/global draft/design gates remain. Master goal active, not production-ready or phase-complete.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

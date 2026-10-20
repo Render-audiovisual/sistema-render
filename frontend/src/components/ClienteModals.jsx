@@ -28,6 +28,20 @@ const sameClient = (actual, expected) => (Number.isSafeInteger(actual) && actual
   && String(actual) === String(expected);
 const monthStart = value => typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])-01$/.test(value);
 const validPeriod = value => typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+function agreementParts(value, id) {
+  if (typeof value !== 'string') return null;
+  const match = /^a1:([1-9]\d*):([1-9]\d*):(0|[1-9]\d*):(0|[1-9]\d*)$/.exec(value);
+  if (!match || match[0] !== value) return null;
+  const parts = value.slice(3).split(':').map(Number);
+  return parts.every(n => Number.isSafeInteger(n) && n <= 2147483647)
+    && (id === undefined || sameClient(parts[0], id)) && ((parts[2] === 0) === (parts[3] === 0)) ? parts : null;
+}
+function advanceAgreement(before, after) {
+  const a = agreementParts(before), b = agreementParts(after);
+  if (!a || !b || b[0] !== a[0] || b[1] < a[1] || b[2] !== a[2] || b[3] < a[3]
+    || b[1] === a[1] && b[3] === a[3]) throw new Error('La respuesta no confirmó una nueva revisión del acuerdo.');
+  return after;
+}
 function assertClientAck(data, id, expected, configuration = false) {
   if (!object(data) || !sameClient(data.id, id) || Object.entries(expected).some(([key, value]) => Array.isArray(value)
     ? !Array.isArray(data[key]) || JSON.stringify(data[key]) !== JSON.stringify(value) : data[key] !== value)
@@ -50,7 +64,10 @@ export function EditarCuotaClienteModal({ sesion, periodo = getMesActualISO(), .
   return <EditarCuotaSession key={`${view.key}:${epoch}`} {...props} periodo={periodo} capture={capture}/>;
 }
 
-function EditarCuotaSession({ cliente, periodo, onClose, onGuardado, capture }) {
+function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuardado, capture }) {
+  const [cliente, setCliente] = useState(initialCliente);
+  const revision = useRef(initialCliente.agreement_revision), blocked = useRef(false);
+  const [needsReload, setNeedsReload] = useState(false);
   const pending = useRef(false);
   const esFeedCompartido = Boolean(cliente.grupo_feed_id);
   const [nombre, setNombre] = useState(cliente.nombre || "");
@@ -72,6 +89,30 @@ function EditarCuotaSession({ cliente, periodo, onClose, onGuardado, capture }) 
   const [error, setError] = useState(null);
   const snapshot = JSON.stringify({ nombre, activo, cuotaReels, cuotaCarruseles, cuotaFeedReels, cuotaFeedCarruseles, abonoMensual, diasReels, diasCarruseles });
   const baseline = useRef(snapshot);
+  const reloadAgreement = async () => {
+    if (pending.current) return;
+    const guard = capture();
+    if (!guard.current() || !validPeriod(periodo)) return;
+    pending.current = true; setGuardando(true);
+    try {
+      const rows = await guard.request(`/api/clientes?periodo=${encodeURIComponent(periodo)}`);
+      guard.assertCurrent();
+      const row = Array.isArray(rows) && rows.find(item => sameClient(item?.id, cliente.id));
+      if (!object(row) || !agreementParts(row.agreement_revision, cliente.id) || typeof row.nombre !== 'string'
+        || !['cuota_reels', 'cuota_carruseles'].every(key => Number.isInteger(row[key]) && row[key] >= 0)
+        || !['dias_reels', 'dias_carruseles'].every(key => row[key] == null || Array.isArray(row[key]))) throw new Error('No se pudo verificar la versión guardada. Se conservan tus cambios.');
+      const values = { nombre: row.nombre, activo: row.activo !== false, cuotaReels: String(row.cuota_reels),
+        cuotaCarruseles: String(row.cuota_carruseles), cuotaFeedReels: String(row.cuota_feed_reels ?? 0),
+        cuotaFeedCarruseles: String(row.cuota_feed_carruseles ?? 0), abonoMensual: String(row.abono_mensual ?? ''),
+        diasReels: row.dias_reels || [], diasCarruseles: row.dias_carruseles || [] };
+      setCliente(row); setNombre(values.nombre); setActivo(values.activo); setCuotaReels(values.cuotaReels);
+      setCuotaCarruseles(values.cuotaCarruseles); setCuotaFeedReels(values.cuotaFeedReels); setCuotaFeedCarruseles(values.cuotaFeedCarruseles);
+      setAbonoMensual(values.abonoMensual); setDiasReels(values.diasReels); setDiasCarruseles(values.diasCarruseles);
+      baseline.current = JSON.stringify(values); revision.current = row.agreement_revision;
+      blocked.current = false; setNeedsReload(false); setError(null);
+    } catch (reason) { if (guard.current()) setError(reason.message); }
+    finally { if (guard.current()) { pending.current = false; setGuardando(false); } }
+  };
   const closeEditor = () => {
     const guard = capture();
     if (pending.current || !guard.current()) return;
@@ -94,9 +135,11 @@ function EditarCuotaSession({ cliente, periodo, onClose, onGuardado, capture }) 
   const guardar = async (event) => {
     event.preventDefault();
     if (pending.current) return;
+    if (blocked.current) return;
     const guard = capture();
     if (!guard.current()) return;
     if (!validPeriod(periodo)) { setError('Elegí un período válido antes de guardar el cliente.'); return; }
+    if (!agreementParts(revision.current, cliente.id)) { blocked.current = true; setNeedsReload(true); setError('Cargá la versión guardada del cliente antes de guardar: falta una revisión válida.'); return; }
     if (!formularioValido) {
       setError("Completá ambas cuotas con números enteros iguales o mayores a 0.");
       return;
@@ -122,7 +165,7 @@ function EditarCuotaSession({ cliente, periodo, onClose, onGuardado, capture }) 
       : { nombre: nombre.trim(), activo, cuota_reels: Number(cuotaReels), cuota_carruseles: Number(cuotaCarruseles) };
     try {
       let data = await guard.request(usaConfiguracionMensual ? `/api/clientes/${cliente.id}/configuraciones` : `/api/clientes/${cliente.id}`, {
-        method: usaConfiguracionMensual ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        method: usaConfiguracionMensual ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, expected_revision: revision.current }),
       });
       guard.assertCurrent();
       const expected = usaConfiguracionMensual
@@ -132,25 +175,28 @@ function EditarCuotaSession({ cliente, periodo, onClose, onGuardado, capture }) 
           configuracion_vigente_desde: `${periodo}-01`, abono_vigente_desde: `${periodo}-01` }
         : payload;
       assertClientAck(data, cliente.id, expected, usaConfiguracionMensual);
+      revision.current = advanceAgreement(revision.current, data.agreement_revision);
       committed = usaConfiguracionMensual ? 'La configuración mensual se guardó.' : 'Los datos del cliente se guardaron.';
       if (usaConfiguracionMensual && activo !== cliente.activo) {
         stage = 'el estado del cliente';
-        const estado = await guard.request(`/api/clientes/${cliente.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activo }) });
+        const estado = await guard.request(`/api/clientes/${cliente.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activo, expected_revision: revision.current }) });
         guard.assertCurrent(); assertClientAck(estado, cliente.id, { activo }); data = { ...data, ...estado };
+        revision.current = advanceAgreement(revision.current, estado.agreement_revision);
         committed = 'La configuración mensual y el estado del cliente se guardaron.';
       }
       if (!usaConfiguracionMensual && abonoMensual !== '') {
         stage = 'el abono del próximo mes';
-        const fee = await guard.request(`/api/clientes/${cliente.id}/abono-proximo-mes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ importe: Number(abonoMensual) }) });
+        const fee = await guard.request(`/api/clientes/${cliente.id}/abono-proximo-mes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ importe: Number(abonoMensual), expected_revision: revision.current }) });
         guard.assertCurrent(); assertFeeAck(fee, cliente.id, Number(abonoMensual));
-        data = { ...data, abono_proximo_mes: fee.importe, abono_proximo_vigente_desde: fee.vigente_desde };
+        revision.current = advanceAgreement(revision.current, fee.agreement_revision);
+        data = { ...data, agreement_revision: fee.agreement_revision, abono_proximo_mes: fee.importe, abono_proximo_vigente_desde: fee.vigente_desde };
         committed = 'Los datos del cliente y el abono del próximo mes se guardaron.';
       }
       guard.assertCurrent(); baseline.current = snapshot; stage = 'la actualización de la vista';
       await onGuardado({ ...cliente, ...data }, guard);
       guard.assertCurrent();
     } catch (reason) {
-      if (guard.current()) setError(`${committed ? `${committed} ` : ''}No se confirmó ${stage}. ${reason.message || 'Verificá los datos guardados antes de reintentar.'}`);
+      if (guard.current()) { blocked.current = true; setNeedsReload(true); setError(`${committed ? `${committed} ` : ''}No se confirmó ${stage}. ${reason.message || 'Verificá los datos guardados antes de reintentar.'}`); }
     } finally { if (guard.current()) { pending.current = false; setGuardando(false); } }
   };
 
@@ -245,11 +291,12 @@ function EditarCuotaSession({ cliente, periodo, onClose, onGuardado, capture }) 
             </label>
           </section>
           {error && <div className="caption login-error">{error}</div>}
+          {needsReload && <button className="btn ghost" type="button" disabled={guardando} onClick={reloadAgreement}>Descartar mis cambios y cargar versión guardada</button>}
           <div className="modal-actions cliente-edit-actions">
             <button className="btn ghost" type="button" disabled={guardando} onClick={closeEditor}>
               Cancelar
             </button>
-            <button className="btn primary" type="submit" disabled={guardando || !formularioValido}>
+            <button className="btn primary" type="submit" disabled={guardando || needsReload || !formularioValido}>
               {guardando ? "Guardando..." : "Guardar cambios"}
             </button>
           </div>
@@ -290,6 +337,7 @@ function DetalleClienteSession({
     const guard = capture();
     if (!guard.current()) return;
     if (!validPeriod(periodo)) { setError('Elegí un período válido antes de eliminar el cliente.'); return; }
+    if (!agreementParts(cliente.agreement_revision, cliente.id)) { setError('Cargá una versión del cliente con revisión válida antes de eliminar.'); return; }
     const confirmado = window.confirm(
       `Eliminar ${cliente.nombre}? Solo se permite si no tiene piezas, tareas ni planificación asociada.`,
     );
@@ -302,7 +350,7 @@ function DetalleClienteSession({
 
     let deleted = false;
     try {
-      const data = await guard.request(`/api/clientes/${cliente.id}`, { method: 'DELETE' });
+      const data = await guard.request(`/api/clientes/${cliente.id}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expected_revision: cliente.agreement_revision }) });
       guard.assertCurrent();
       if (!object(data) || data.ok !== true || !sameClient(data.cliente?.id, cliente.id)) throw new Error('La respuesta no confirmó la eliminación. Verificá el cliente antes de reintentar.');
       deleted = true;

@@ -19,8 +19,9 @@ const evaluate = (node, context) => new Function(...Object.keys(context), `retur
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const settle = async () => { for (let i = 0; i < 32; i++) await Promise.resolve(); };
 const response = (body, status = 200) => new Response(JSON.stringify(body), { status });
+const initialRevision = 'a1:12:1:0:0', firstRevision = 'a1:12:2:0:0', finalRevision = 'a1:12:3:0:0';
 const event = () => ({ preventDefault() {} });
-const client = complete => ({ id: 12, nombre: 'Synthetic client', activo: true, cuota_reels: 2, cuota_carruseles: 1,
+const client = complete => ({ id: 12, agreement_revision: initialRevision, nombre: 'Synthetic client', activo: true, cuota_reels: 2, cuota_carruseles: 1,
   abono_mensual: 100, configuracion_completa: complete, rubro: 'Synthetic', dias_historias: [1, 3],
   dias_reels: [1], dias_carruseles: [3], disenador_responsable: 'Augusto' });
 function fixture({ complete = false, sharedFeed = false, mode = 'cookie' } = {}) {
@@ -43,6 +44,7 @@ function fixture({ complete = false, sharedFeed = false, mode = 'cookie' } = {})
   const scope = renderScope('client:12');
   const cliente = { ...client(complete), ...(sharedFeed ? { grupo_feed_id: 3, cuota_feed_reels: 4, cuota_feed_carruseles: 2 } : {}) };
   const context = { cliente, capture: scope.capture, pending: { current: false }, nestedEditing: { current: false },
+    revision: { current: initialRevision }, blocked: { current: false },
     periodo: '2026-10', nombre: 'Synthetic renamed', activo: complete ? false : true, cuotaReels: '3', cuotaCarruseles: '2',
     cuotaFeedReels: '5', cuotaFeedCarruseles: '3', abonoMensual: '120', diasReels: [4, 1], diasCarruseles: [5],
     esFeedCompartido: sharedFeed, formularioValido: true, getMesActualISO: () => '2026-10', snapshot: 'edited', baseline: { current: 'initial' },
@@ -50,11 +52,13 @@ function fixture({ complete = false, sharedFeed = false, mode = 'cookie' } = {})
     onGuardado: async (value, guard) => { assert.equal(guard.current(), true); saved.push({ value, guard }); },
     onClienteEliminado: async (id, guard) => { assert.equal(guard.current(), true); deleted.push(id); },
   };
-  for (const name of ['Guardando', 'Error', 'Enviando', 'EditandoCuota']) context[`set${name}`] = value => { state[name] = value; effects.push(name); };
+  for (const name of ['Guardando', 'Error', 'Enviando', 'EditandoCuota', 'NeedsReload', 'Cliente', 'Nombre', 'Activo', 'CuotaReels', 'CuotaCarruseles', 'CuotaFeedReels', 'CuotaFeedCarruseles', 'AbonoMensual', 'DiasReels', 'DiasCarruseles']) context[`set${name}`] = value => { state[name] = value; effects.push(name); };
   context.object = evaluate(variable('object').initializer, {});
   context.sameClient = evaluate(variable('sameClient').initializer, {});
   context.monthStart = evaluate(variable('monthStart').initializer, {});
   context.validPeriod = evaluate(variable('validPeriod').initializer, {});
+  context.agreementParts = evaluate(namedFunction(file, 'agreementParts'), context);
+  context.advanceAgreement = evaluate(namedFunction(file, 'advanceAgreement'), context);
   context.assertClientAck = evaluate(namedFunction(file, 'assertClientAck'), context);
   context.assertFeeAck = evaluate(namedFunction(file, 'assertFeeAck'), context);
   return { context, calls, effects, saved, deleted, closed, state, store, accept, renderScope,
@@ -64,8 +68,8 @@ function firstAck(h) {
   const payload = JSON.parse(h.calls[0].options.body);
   return h.context.cliente.configuracion_completa && !h.context.esFeedCompartido
     ? { ...payload, id: 12, dias_reels: [...payload.dias_reels].sort(), dias_carruseles: [...payload.dias_carruseles].sort(),
-      configuracion_completa: true, configuracion_vigente_desde: `${payload.vigente_desde}-01`, abono_vigente_desde: `${payload.vigente_desde}-01` }
-    : { ...payload, id: 12 };
+      agreement_revision: firstRevision, configuracion_completa: true, configuracion_vigente_desde: `${payload.vigente_desde}-01`, abono_vigente_desde: `${payload.vigente_desde}-01` }
+    : { ...payload, id: 12, agreement_revision: firstRevision };
 }
 
 test('config and active save share one genuine cookie intent and validate each ACK before notifying', async () => {
@@ -74,9 +78,9 @@ test('config and active save share one genuine cookie intent and validate each A
   const intent = h.calls[0].options.sessionIntent; assert.equal(h.store.isCurrent(intent), true);
   assert.equal(new Headers(h.calls[0].options.headers).has('Authorization'), false);
   h.calls[0].resolve(response(firstAck(h))); await settle();
-  assert.equal(h.calls[1].url, '/api/clientes/12'); assert.deepEqual(JSON.parse(h.calls[1].options.body), { activo: false });
+  assert.equal(h.calls[1].url, '/api/clientes/12'); assert.deepEqual(JSON.parse(h.calls[1].options.body), { activo: false, expected_revision: firstRevision });
   assert.equal(h.calls[1].options.sessionIntent, intent);
-  h.calls[1].resolve(response({ id: 12, activo: false })); await pending;
+  h.calls[1].resolve(response({ id: 12, activo: false, agreement_revision: finalRevision })); await pending;
   assert.equal(h.calls.length, 2); assert.equal(h.saved.length, 1); assert.equal(h.saved[0].value.activo, false);
   assert.equal(h.saved[0].value.abono_mensual, 120); assert.equal(h.context.baseline.current, 'edited'); assert.equal(h.state.Guardando, false);
 });
@@ -85,18 +89,18 @@ test('legacy client quota update and separate next-month fee preserve endpoint/p
   const h = fixture({ mode: 'bearer' }), pending = h.run('guardar')(event());
   assert.equal(h.calls[0].options.method, 'PATCH'); assert.equal(Object.hasOwn(JSON.parse(h.calls[0].options.body), 'abono_mensual'), false);
   h.calls[0].resolve(response(firstAck(h))); await settle();
-  assert.equal(h.calls[1].url, '/api/clientes/12/abono-proximo-mes'); assert.deepEqual(JSON.parse(h.calls[1].options.body), { importe: 120 });
+  assert.equal(h.calls[1].url, '/api/clientes/12/abono-proximo-mes'); assert.deepEqual(JSON.parse(h.calls[1].options.body), { importe: 120, expected_revision: firstRevision });
   assert.ok(h.calls.every(call => new Headers(call.options.headers).get('Authorization') === 'Bearer synthetic-7'));
-  h.calls[1].resolve(response({ cliente_id: 12, importe: '120.00', vigente_desde: '2026-11-01' })); await pending;
+  h.calls[1].resolve(response({ cliente_id: 12, importe: '120.00', vigente_desde: '2026-11-01', agreement_revision: finalRevision })); await pending;
   assert.equal(h.saved[0].value.abono_proximo_mes, '120.00'); assert.equal(h.saved[0].value.abono_proximo_vigente_desde, '2026-11-01');
 });
 
 test('shared-feed edit preserves shared quota semantics rather than creating per-account monthly config', async () => {
   const h = fixture({ complete: true, sharedFeed: true }), pending = h.run('guardar')(event());
   assert.equal(h.calls[0].url, '/api/clientes/12');
-  assert.deepEqual(JSON.parse(h.calls[0].options.body), { nombre: 'Synthetic renamed', activo: false, cuota_feed_reels: 5, cuota_feed_carruseles: 3 });
+  assert.deepEqual(JSON.parse(h.calls[0].options.body), { nombre: 'Synthetic renamed', activo: false, cuota_feed_reels: 5, cuota_feed_carruseles: 3, expected_revision: initialRevision });
   h.calls[0].resolve(response(firstAck(h))); await settle();
-  h.calls[1].resolve(response({ cliente_id: 12, importe: '120', vigente_desde: '2026-11-01' })); await pending;
+  h.calls[1].resolve(response({ cliente_id: 12, importe: '120', vigente_desde: '2026-11-01', agreement_revision: finalRevision })); await pending;
   assert.equal(h.saved.length, 1);
 });
 
@@ -239,8 +243,8 @@ test('historical shared feed edit still schedules fee for server next month, not
   const pending = h.run('guardar')(event());
   h.calls[0].resolve(response(firstAck(h))); await settle();
   assert.match(h.calls[1].url, /\/abono-proximo-mes$/);
-  assert.deepEqual(JSON.parse(h.calls[1].options.body), { importe: 120 });
-  h.calls[1].resolve(response({ cliente_id: 12, importe: '120', vigente_desde: '2026-11-01' })); await pending;
+  assert.deepEqual(JSON.parse(h.calls[1].options.body), { importe: 120, expected_revision: firstRevision });
+  h.calls[1].resolve(response({ cliente_id: 12, importe: '120', vigente_desde: '2026-11-01', agreement_revision: finalRevision })); await pending;
   assert.equal(h.saved.length, 1);
   assert.equal(h.saved[0].value.abono_proximo_vigente_desde, '2026-11-01');
 });
@@ -257,4 +261,116 @@ test('period is explicit in both scoped lifetimes, nested editor and truthful ti
   assert.equal(nested.attributes.properties.find(p => p.name?.getText() === 'periodo').initializer.expression.getText(), 'periodo');
   assert.match(file.getText(), /Período seleccionado: \{periodo\}/);
   assert.match(file.getText(), /El abono se programa para el próximo mes del servidor, no para el período seleccionado/);
+});
+
+test('missing, malformed or foreign initial agreement refuses save and delete before dispatch', async () => {
+  for (const value of [undefined, 'a1:1:0:0', 'a1:13:1:0:0', 'a1:12:01:0:0', 'a1:12:2147483648:0:0', 'a1:12:1:0:1']) {
+    const h = fixture(); h.context.revision.current = value; h.context.cliente.agreement_revision = value;
+    await h.run('guardar')(event()); await h.run('handleEliminarCliente')();
+    assert.equal(h.calls.length, 0); assert.equal(h.state.NeedsReload, true);
+    assert.match(h.state.Error, /revisión válida/);
+  }
+});
+
+test('agreement ACK must advance counters without changing client or group identity', async () => {
+  for (const value of [undefined, initialRevision, 'a1:13:2:0:0', 'a1:12:0:0:0', 'a1:12:2:3:1']) {
+    const h = fixture({ complete: true }), pending = h.run('guardar')(event());
+    h.calls[0].resolve(response({ ...firstAck(h), agreement_revision: value })); await pending;
+    await h.run('guardar')(event());
+    assert.equal(h.calls.length, 1); assert.equal(h.saved.length, 0);
+    assert.equal(h.context.blocked.current, true); assert.equal(h.context.baseline.current, 'initial');
+  }
+  const h = fixture();
+  assert.equal(h.context.advanceAgreement('a1:12:1:3:4', 'a1:12:1:3:5'), 'a1:12:1:3:5');
+  assert.throws(() => h.context.advanceAgreement('a1:12:2:3:4', 'a1:12:3:3:3'));
+});
+
+for (const failure of ['conflict', 'network', 'partial']) test(`${failure} blocks repeating full chain and preserves draft`, async () => {
+  const h = fixture({ complete: true }), pending = h.run('guardar')(event());
+  assert.equal(JSON.parse(h.calls[0].options.body).expected_revision, initialRevision);
+  if (failure === 'partial') {
+    h.calls[0].resolve(response(firstAck(h))); await settle();
+    h.calls[1].resolve(response({ error: 'Conflict', code: 'CLIENT_AGREEMENT_CONFLICT' }, 409));
+  } else if (failure === 'network') h.calls[0].reject(new TypeError('Synthetic uncertain response'));
+  else h.calls[0].resolve(response({ error: 'Conflict', code: 'CLIENT_AGREEMENT_CONFLICT' }, 409));
+  await pending; const count = h.calls.length; await h.run('guardar')(event());
+  assert.equal(h.calls.length, count); assert.equal(h.context.nombre, 'Synthetic renamed');
+  assert.equal(h.context.baseline.current, 'initial'); assert.equal(h.state.NeedsReload, true);
+  assert.equal(h.saved.length, 0);
+  if (failure === 'partial') assert.match(h.state.Error, /La configuración mensual se guardó/);
+});
+
+test('explicit recovery loads same client/period then replaces fields and revision without a write or success callback', async () => {
+  const h = fixture(); h.context.periodo = '2025-08'; h.context.blocked.current = true;
+  const pending = h.run('reloadAgreement')();
+  assert.equal(h.calls[0].url, '/api/clientes?periodo=2025-08');
+  const row = { ...client(true), nombre: 'Server version', agreement_revision: 'a1:12:7:0:0' };
+  h.calls[0].resolve(response([{ ...row, id: 99 }, row])); await pending;
+  assert.equal(h.state.Nombre, 'Server version'); assert.deepEqual(h.state.Cliente, row);
+  assert.equal(h.context.revision.current, row.agreement_revision); assert.equal(h.context.blocked.current, false);
+  assert.equal(h.state.NeedsReload, false); assert.equal(h.saved.length, 0);
+  assert.equal(h.calls.length, 1);
+});
+
+for (const result of ['network', 'missing', 'foreignRevision', 'B', 'unmount']) test(`recovery ${result} never discards draft or silently rebases`, async () => {
+  const h = fixture(); h.context.blocked.current = true;
+  const pending = h.run('reloadAgreement')(), effects = h.effects.length;
+  if (result === 'B') h.accept(8); if (result === 'unmount') h.unmount();
+  if (result === 'network') h.calls[0].reject(new TypeError('Synthetic failure'));
+  else h.calls[0].resolve(response(result === 'missing' ? [] : [{ ...client(true), agreement_revision: result === 'foreignRevision' ? 'a1:99:7:0:0' : 'a1:12:7:0:0' }]));
+  await pending;
+  assert.equal(h.state.Cliente, undefined); assert.equal(h.state.Nombre, undefined);
+  assert.equal(h.context.revision.current, initialRevision); assert.equal(h.context.baseline.current, 'initial');
+  assert.equal(h.context.blocked.current, true); assert.equal(h.saved.length, 0);
+  if (result === 'B' || result === 'unmount') assert.equal(h.effects.length, effects);
+});
+
+test('DELETE carries original agreement revision and final save publishes last fee ACK revision', async () => {
+  const h = fixture(), pending = h.run('handleEliminarCliente')();
+  assert.deepEqual(JSON.parse(h.calls[0].options.body), { expected_revision: initialRevision });
+  h.calls[0].resolve(response({ ok: true, cliente: { id: 12 } })); await pending;
+  const save = fixture(), writing = save.run('guardar')(event());
+  save.calls[0].resolve(response(firstAck(save))); await settle();
+  save.calls[1].resolve(response({ cliente_id: 12, importe: '120', vigente_desde: '2026-11-01', agreement_revision: finalRevision })); await writing;
+  assert.equal(save.saved[0].value.agreement_revision, finalRevision);
+});
+
+test('fee ACK with unchanged revision preserves confirmed client step but blocks whole-chain retry', async () => {
+  const h = fixture(), pending = h.run('guardar')(event());
+  h.calls[0].resolve(response(firstAck(h))); await settle();
+  h.calls[1].resolve(response({ cliente_id: 12, importe: '120', vigente_desde: '2026-11-01', agreement_revision: firstRevision })); await pending;
+  await h.run('guardar')(event());
+  assert.equal(h.calls.length, 2); assert.equal(h.saved.length, 0);
+  assert.match(h.state.Error, /Los datos del cliente se guardaron/);
+  assert.equal(h.context.blocked.current, true);
+});
+
+test('recovery period replacement suppresses late results and explicit recovery is wired separately from save', async () => {
+  const h = fixture(); h.context.blocked.current = true;
+  const pending = h.run('reloadAgreement')(), effects = h.effects.length;
+  h.renderScope('client:12:2025-08');
+  h.calls[0].resolve(response([{ ...client(true), agreement_revision: finalRevision }])); await pending;
+  assert.equal(h.effects.length, effects); assert.equal(h.context.blocked.current, true);
+  const editor = namedFunction(file, 'EditarCuotaSession');
+  const buttons = nodes(editor, ts.isJsxElement).filter(n => n.openingElement.tagName.getText() === 'button');
+  const recovery = buttons.find(n => n.getText().includes('Descartar mis cambios y cargar versión guardada'));
+  assert.ok(recovery);
+  assert.equal(recovery.openingElement.attributes.properties.find(p => p.name?.getText() === 'onClick').initializer.expression.getText(), 'reloadAgreement');
+  assert.match(file.getText(), /disabled=\{guardando \|\| needsReload \|\| !formularioValido\}/);
+});
+
+test('canonical agreement tokens reject zero client versions, half-present groups and trailing newlines before dispatch and in ACKs', async () => {
+  for (const token of ['a1:12:0:0:0', 'a1:0:1:0:0', 'a1:12:1:3:0', 'a1:12:1:0:3',
+    'a1:12:2:0:0\n', 'a1:12:2:0:0\r\n', 'a1:12:2:2147483648:1', 'a1:12:2:3:2147483648']) {
+    const initial = fixture(); initial.context.revision.current = token;
+    await initial.run('guardar')(event());
+    assert.equal(initial.calls.length, 0, token); assert.equal(initial.state.NeedsReload, true);
+    const h = fixture({ complete: true }), pending = h.run('guardar')(event());
+    h.calls[0].resolve(response({ ...firstAck(h), agreement_revision: token })); await pending;
+    assert.equal(h.calls.length, 1, token); assert.equal(h.saved.length, 0);
+    assert.equal(h.context.blocked.current, true); assert.equal(h.context.revision.current, initialRevision);
+  }
+  const h = fixture();
+  assert.deepEqual(h.context.agreementParts('a1:2147483647:2147483647:2147483647:2147483647'),
+    [2147483647, 2147483647, 2147483647, 2147483647]);
 });

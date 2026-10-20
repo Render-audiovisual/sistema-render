@@ -8,7 +8,18 @@ test('canonical client administration persists privately and deletes only empty 
 },async t=>{
   const f=await startLocalHarness({port:55695});
   t.after(async()=>{await f.cleanup();await assert.rejects(access(f.root),e=>e.code==='ENOENT');});
-  const api=(path,token,method='GET',body)=>request(f.base,`/api${path}`,{token,method,body});
+  // These legacy administration scenarios issue deliberate fresh commands.
+  // The separate agreement suite holds observations to test actual stale edits;
+  // this adapter is fixture preparation, never a production retry/rebase policy.
+  const api=async(path,token,method='GET',body)=>{
+    const match=/^\/clientes\/([1-9]\d*)(?:\/|$)/.exec(path);
+    if(match&&method!=='GET'){
+      const read=await request(f.base,'/api/clientes',{token});
+      const observed=Array.isArray(read.body)&&read.body.find(row=>String(row.id)===match[1]);
+      body={...body,expected_revision:observed?.agreement_revision||`a1:${match[1]}:1:0:0`};
+    }
+    return request(f.base,`/api${path}`,{token,method,body});
+  };
   const ok=(r,status=200)=>{assert.equal(r.status,status,JSON.stringify(r.body));return r.body;};
   const login=async usuario=>ok(await api('/login',null,'POST',{usuario,password:fixturePassword})).token;
   const owner=await login('qa_franco'),other=await login('qa_agustin'),employee=await login('qa_luciano');

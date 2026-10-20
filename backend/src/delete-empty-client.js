@@ -1,15 +1,17 @@
+import { lockClientAgreement } from './client-agreement.js';
 const fail = (message, status, code) => Object.assign(new Error(message), { status, code });
 const quote = value => `"${String(value).replaceAll('"', '""')}"`;
 
 // Only genuinely empty clients can be removed. Archive/deactivate preserves
 // business and financial history. Never infer emptiness from five UI sections.
-export async function deleteEmptyClient(pool, rawId) {
+export async function deleteEmptyClient(pool, rawId, expectedRevision) {
   if (typeof rawId !== 'string' || !/^[1-9]\d*$/.test(rawId) || Number(rawId) > 2147483647) {
     throw fail('Cliente inválido.', 400, 'CLIENT_INVALID');
   }
   const db = await pool.connect();
   try {
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await lockClientAgreement(db, rawId, expectedRevision);
     // FK writers acquire KEY SHARE on the parent. UPDATE lock waits for
     // earlier inserts and prevents later inserts from racing this inspection.
     const current = await db.query('SELECT id,nombre FROM public.clientes WHERE id=$1 FOR UPDATE', [rawId]);
