@@ -1,5 +1,11 @@
 # Principal legacy-dashboard cutover contract
 
+## Current bounded gate — design/editing replacement
+
+Integration 34 supersedes the earlier five-dashboard hold only for Augusto/Luciano, conditional on its recorded tests/browser evidence. Those two named homes resolve to current authenticated personal home (or one valid task context), never name-derived identity. Their source files remain preserved; App imports/mounts are removed. Monthly current-ID task progress and recorded material complete the replacement; admin person inspection uses explicit ID rows in Reportes. See PERSONAL_MONTHLY_PROGRESS_CONTRACT.md for deliberate corrections to old counting/visibility semantics.
+
+Líder, Germán and Oriana remain live and unmapped until their separate global/editorial/production replacement gates pass. Older inventory/ownership notes below are historical, not authority to retire the remaining three or claim all implementations unified.
+
 Goal: one live principal operational task/home implementation. Source files are retained for reference, not mounted through the production router after verified replacement. No historical data migration, identity inference, role grants, new preview/application or backend API change. Preserve preexisting DEV DesignPreview/CommentsProposal/LocalDesignShell edits in App.jsx and Vite; coordinator alone edits App.
 
 ## Canonical policy

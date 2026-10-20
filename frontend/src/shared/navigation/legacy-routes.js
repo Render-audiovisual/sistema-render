@@ -1,7 +1,7 @@
 const dashboardAliases = new Set([
-  // These two paths already redirected before the rescue. Other named
-  // dashboards stay live until coordination/escalation replacement gates pass.
-  '/agustin', '/franco',
+  // Design/editing homes are replaced by current-ID personal work and monthly
+  // progress. Production, editorial and leader homes still have separate gates.
+  '/agustin', '/franco', '/augusto', '/luciano',
 ]);
 const taskAliases = new Set(['/piezas', '/wilson-conversaciones']);
 

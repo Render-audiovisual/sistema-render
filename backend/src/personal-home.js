@@ -76,7 +76,7 @@ export const PERSONAL_HOME_SQL = `WITH
   visible AS MATERIALIZED (
     SELECT t.id,t.titulo,CASE WHEN t.estado='en_revision' AND t.propiedades_extra->'revision_aprobada'='true'::jsonb
       THEN 'aprobada' ELSE t.estado END AS estado,t.prioridad,t.revision,t.fecha_vencimiento,t.updated_at,
-      t.cliente_id,c.nombre AS cliente_nombre
+      t.cliente_id,c.nombre AS cliente_nombre,t.tipo_tarea
     FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
     WHERE t.propiedades_extra->>'workspace'='render_os'
       AND COALESCE(t.propiedades_extra->>'archivada_render_os','false')<>'true'
@@ -86,6 +86,18 @@ export const PERSONAL_HOME_SQL = `WITH
   mine AS MATERIALIZED (SELECT v.* FROM visible v WHERE EXISTS (
     SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=v.id AND a.usuario_id=$1)),
   open AS MATERIALIZED (SELECT * FROM mine WHERE estado NOT IN ('finalizada','publicada')),
+  monthly_work AS MATERIALIZED (
+    SELECT m.* FROM mine m CROSS JOIN day
+    WHERE COALESCE(m.fecha_vencimiento,(m.updated_at AT TIME ZONE 'America/Argentina/Cordoba')::date)
+      >= date_trunc('month',day.today)::date
+      AND COALESCE(m.fecha_vencimiento,(m.updated_at AT TIME ZONE 'America/Argentina/Cordoba')::date)
+      < (date_trunc('month',day.today)+interval '1 month')::date
+  ),
+  monthly_sectors AS (
+    SELECT COALESCE(tipo_tarea,'sin_sector') AS sector,count(*)::int AS total,
+      count(*) FILTER (WHERE estado IN ('finalizada','publicada'))::int AS completed
+    FROM monthly_work GROUP BY COALESCE(tipo_tarea,'sin_sector')
+  ),
   reviews AS MATERIALIZED (SELECT * FROM visible v WHERE estado='en_revision' AND
     ($2::boolean OR EXISTS(SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=v.id AND a.usuario_id=$1))),
   client_work AS (SELECT cliente_id AS id,cliente_nombre AS nombre,count(*)::int AS open FROM open
@@ -115,6 +127,11 @@ SELECT jsonb_build_object(
     'upcoming',(SELECT count(*)::int FROM open WHERE fecha_vencimiento>day.today AND fecha_vencimiento<=day.today+7),
     'undated',(SELECT count(*)::int FROM open WHERE fecha_vencimiento IS NULL),
     'awaiting_review',(SELECT count(*)::int FROM open WHERE estado='en_revision')),
+  'monthly_progress',jsonb_build_object('period',to_char(day.today,'YYYY-MM'),
+    'total',(SELECT count(*)::int FROM monthly_work),
+    'completed',(SELECT count(*)::int FROM monthly_work WHERE estado IN ('finalizada','publicada')),
+    'by_sector',COALESCE((SELECT jsonb_agg(jsonb_build_object('sector',s.sector,'total',s.total,'completed',s.completed)
+      ORDER BY s.sector) FROM monthly_sectors s),'[]'::jsonb)),
   'tasks',COALESCE((SELECT jsonb_agg(${taskJson('q')} ORDER BY q.rank) FROM (
     SELECT o.*,row_number() OVER (ORDER BY fecha_vencimiento ASC NULLS LAST,
       CASE prioridad WHEN 'alta' THEN 0 WHEN 'media' THEN 1 ELSE 2 END,id) AS rank FROM open o

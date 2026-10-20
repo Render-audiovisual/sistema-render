@@ -9,7 +9,6 @@ import { canonicalLegacyRoute, replaceLegacyRoute } from "./shared/navigation/le
 import { canUseSharedCalendarRole } from "./components/navigation.js";
 
 const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
-const AugustoDashboard = lazyNamed(() => import("./pages/dashboards/Augusto.jsx"), "AugustoDashboard");
 const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPage");
 const ProjectsPage = lazyNamed(() => import("./pages/Projects.jsx"), "ProjectsPage");
 const ClientesAdminPage = lazyNamed(() => import("./pages/Clientes.jsx"), "ClientesAdminPage");
@@ -18,7 +17,6 @@ const EmpleadosPage = lazyNamed(() => import("./pages/Empleados.jsx"), "Empleado
 const GermanDashboard = lazyNamed(() => import("./pages/dashboards/German.jsx"), "GermanDashboard");
 const HistoriasPage = lazyNamed(() => import("./pages/Historias.jsx"), "HistoriasPage");
 const LiderDashboard = lazyNamed(() => import("./pages/dashboards/Lider.jsx"), "LiderDashboard");
-const LucianoDashboard = lazyNamed(() => import("./pages/dashboards/Luciano.jsx"), "LucianoDashboard");
 const OrianaDashboard = lazyNamed(() => import("./pages/dashboards/Oriana.jsx"), "OrianaDashboard");
 const PerfilPage = lazyNamed(() => import("./pages/Perfil.jsx"), "PerfilPage");
 const PublicacionesPage = lazyNamed(() => import("./pages/Publicaciones.jsx"), "PublicacionesPage");
@@ -124,12 +122,6 @@ export function App() {
     }
     if (path === "/german") {
       return <GermanDashboard />;
-    }
-    if (path === "/luciano") {
-      return <LucianoDashboard />;
-    }
-    if (path === "/augusto") {
-      return <AugustoDashboard />;
     }
     if (path === "/clientes") {
       return esAdmin && new URLSearchParams(window.location.search).get("gestion") === "1"

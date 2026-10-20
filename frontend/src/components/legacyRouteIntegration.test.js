@@ -91,8 +91,8 @@ test('anonymous login gate and root handling precede loading guard; permissions 
   assert.match(source, /return\s+<LoginPage\s*\//);
 });
 
-test('B1/B3-held dashboards retain live lazy imports and route mounts', () => {
-  for (const name of ['Lider', 'Augusto', 'Luciano', 'German', 'Oriana']) {
+test('three held dashboards retain live lazy imports and route mounts', () => {
+  for (const name of ['Lider', 'German', 'Oriana']) {
     const component = `${name}Dashboard`;
     const declaration = file.statements.find((n) => ts.isVariableStatement(n)
       && n.declarationList.declarations.some((d) => text(d.name) === component));
@@ -107,15 +107,29 @@ test('B1/B3-held dashboards retain live lazy imports and route mounts', () => {
   }
 });
 
+test('only Augusto/Luciano imports and mounts retire while original source files remain preserved', () => {
+  for (const name of ['Augusto', 'Luciano']) {
+    const modulePath = `./pages/dashboards/${name}.jsx`;
+    const imports = nodes(file, n => ts.isStringLiteral(n) && n.text === modulePath);
+    assert.equal(imports.length, 0, `${name} has no static/lazy App module import`);
+    const mounts = nodes(app.body, n => (ts.isJsxOpeningElement(n) || ts.isJsxSelfClosingElement(n))
+      && text(n.tagName) === `${name}Dashboard`);
+    assert.equal(mounts.length, 0, `${name} has no live App mount`);
+    const reference = read(`../pages/dashboards/${name}.jsx`);
+    assert.ok(reference.length > 0, `${name} reference file is retained, not deleted`);
+    assert.match(reference, new RegExp(`export\\s+(?:function|const)\\s+${name}Dashboard\\b`));
+  }
+});
+
 test('approved deprecated aliases no longer have App hard-reload/render branches', () => {
-  const aliases = new Set(['/agustin', '/franco', '/equipo', '/piezas', '/wilson-conversaciones']);
+  const aliases = new Set(['/agustin', '/franco', '/augusto', '/luciano', '/equipo', '/piezas', '/wilson-conversaciones']);
   const aliasBranches = nodes(app.body, ts.isIfStatement).filter((n) => nodes(n.expression, (x) => ts.isStringLiteral(x) && aliases.has(x.text)).length);
   assert.equal(aliasBranches.length, 0, 'Closed policy replaces only approved alias-specific branches');
 });
 
 test('real shared policy retains only canonical task context from the full App route', async () => {
   const { canonicalLegacyRoute } = await import('../shared/navigation/legacy-routes.js');
-  for (const alias of ['/agustin', '/franco']) {
+  for (const alias of ['/agustin', '/franco', '/augusto', '/luciano']) {
     assert.equal(canonicalLegacyRoute(`${alias}?usuario=other&rol=admin&cliente=99#unknown`), '/inicio');
     assert.equal(canonicalLegacyRoute(`${alias}?task=42&asignado_a=other#unknown`), '/workspace/tareas?task=42');
     assert.equal(canonicalLegacyRoute(`${alias}?task=42&task=43`), '/inicio');
@@ -131,9 +145,9 @@ test('real shared policy retains only canonical task context from the full App r
   assert.equal(canonicalLegacyRoute('/unknown?task=42'), null);
 });
 
-test('real helper leaves all five B1/B3-held dashboard routes unmapped, including task context', async () => {
+test('real helper leaves all three held dashboard routes unmapped, including task context', async () => {
   const { canonicalLegacyRoute } = await import('../shared/navigation/legacy-routes.js');
-  for (const alias of ['/lider', '/augusto', '/luciano', '/german', '/oriana']) {
+  for (const alias of ['/lider', '/german', '/oriana']) {
     for (const suffix of ['', '?task=42', '?task=42&task=43', '?usuario=other&rol=admin#unknown']) {
       assert.equal(canonicalLegacyRoute(`${alias}${suffix}`), null, `${alias}${suffix} must remain live, not canonicalized`);
     }
@@ -153,6 +167,10 @@ test('canonical home uses current session; workspace task context and shared nav
   assert.match(workspace, /URLSearchParams\(window.location.search\)\.get\(["']task["']\)/);
   assert.match(workspace, /useNavigationGuard\(/);
   for (const component of ['DesignPreview', 'CommentsProposal', 'LocalDesignShell']) {
-    assert.match(source, new RegExp(`const ${component} = import\\.meta\\.env\\.DEV`));
+    // These wrappers are preexisting local-only work, not required artifacts in
+    // a clean checkout. If present, they must remain gated to development.
+    if (source.includes(`const ${component} =`)) {
+      assert.match(source, new RegExp(`const ${component} = import\\.meta\\.env\\.DEV`));
+    }
   }
 });

@@ -1,5 +1,7 @@
 # Legacy routes — independent bounded source QA
 
+Current gate override (integration 34): only Augusto/Luciano have since received verified replacements and App retirement; Líder/Germán/Oriana remain mounted/unmapped. The source tests now enforce that exact split. Earlier five-dashboard hold statements below are historical. Main's STATUS records monthly/current-identity/material/browser/build evidence and remaining release gates.
+
 Scope: Worker C authored only `frontend/src/components/legacyRouteIntegration.test.js` and this document. No App/helper edits, services, database, browser, or commits. Read the complete updated `LEGACY_ROUTES_CONTRACT.md` before revising.
 
 ## Inventory hold overrides blanket cutover

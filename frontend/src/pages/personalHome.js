@@ -1,3 +1,5 @@
+import { parseHomeMonthlyProgress } from '../components/homeMonthlyProgress.js';
+
 const positive = (value) => Number.isSafeInteger(value) && value > 0;
 const count = (value) => Number.isSafeInteger(value) && value >= 0;
 const date = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -68,7 +70,8 @@ export function parsePersonalHome(value, userId, allowTeamReview = false) {
   list_totals.projects = hasProjects ? value.list_totals.projects : 0;
   if (summary.open < tasks.length || review.total < review.items.length) invalid();
   return { version: 1, generated_at: value.generated_at, today: value.today, user: { id: userId, nombre: value.user.nombre },
-    summary, tasks, review, clients, visits, activity, projects, list_totals, capabilities: { projects: hasProjects } };
+    summary, tasks, review, clients, visits, activity, projects, list_totals, capabilities: { projects: hasProjects },
+    ...(value.monthly_progress === undefined ? {} : { monthly_progress: parseHomeMonthlyProgress(value.monthly_progress, value.today) }) };
 }
 
 export function homeDate(value, full = false) {

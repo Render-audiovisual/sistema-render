@@ -117,7 +117,10 @@ test('principal personal home: stable personal IDs, bounded operational DTO and 
     if (task.fecha_vencimiento !== null) assert.match(task.fecha_vencimiento, /^\d{4}-\d{2}-\d{2}$/);
   };
   const checkDTO = data => {
-    sortedKeys(data, ['version', 'generated_at', 'today', 'user', 'summary', 'tasks', 'review', 'clients', 'visits', 'activity', 'projects', 'capabilities', 'list_totals']);
+    sortedKeys(data, ['version', 'generated_at', 'today', 'user', 'summary', 'tasks', 'review', 'clients', 'visits', 'activity', 'projects', 'capabilities', 'list_totals', 'monthly_progress']);
+    sortedKeys(data.monthly_progress, ['period', 'total', 'completed', 'by_sector']);
+    assert.equal(data.monthly_progress.period, data.today.slice(0, 7));
+    assert.ok(data.monthly_progress.completed <= data.monthly_progress.total);
     assert.equal(data.version, 1); sortedKeys(data.user, ['id', 'nombre']);
     sortedKeys(data.summary, ['open', 'overdue', 'today', 'upcoming', 'undated', 'awaiting_review']);
     sortedKeys(data.review, ['scope', 'total', 'items']); sortedKeys(data.list_totals, ['clients', 'visits', 'activity', 'projects']);

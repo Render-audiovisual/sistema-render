@@ -2,6 +2,8 @@
 
 Status: READY / FROZEN inventory, **NOT a cutover approval**.
 
+Historical inventory note: integrations 30–34 implemented recorded context, coordination, escalation triage and personal monthly work. Integration 34 separately verified/approved removal of only Augusto/Luciano App imports/mounts; their source is preserved. Líder/Germán/Oriana remain live. The original findings below are preserved as the audit trail, not a statement that all original gaps still lack any implementation. Current gate/evidence lives in STATUS and PERSONAL_MONTHLY_PROGRESS_CONTRACT.
+
 The full `LEGACY_ROUTES_CONTRACT.md` was read. Exploration stopped at the coordinator's request. This is source inspection only: no services, database queries, browser, build, application edits, or commits. Only this new document is written for this inventory task. Existing code changes in the worktree belong to other work.
 
 ## Immediate cutover blockers

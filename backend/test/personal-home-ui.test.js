@@ -52,6 +52,20 @@ test('same display name cannot substitute for current stable user ID; team queue
   assert.equal(parsePersonalHome(data, 11, true).review.scope, 'team');
 });
 
+test('home parser projects optional monthly task progress without treating it as publication or retaining extra metadata', () => {
+  const value = fixture();
+  value.monthly_progress = { period: value.today.slice(0, 7), total: 3, completed: 1,
+    by_sector: [{ sector: 'desarrollo', total: 1, completed: 0 }, { sector: 'diseno', total: 2, completed: 1 }],
+    finanzas: secret, publicaciones: 500 };
+  const result = parsePersonalHome(value, 11);
+  assert.deepEqual(result.monthly_progress, { period: '2026-10', total: 3, completed: 1,
+    by_sector: [{ sector: 'desarrollo', total: 1, completed: 0 }, { sector: 'diseno', total: 2, completed: 1 }] });
+  assert.equal(JSON.stringify(result).includes(secret), false);
+  assert.equal(Object.hasOwn(parsePersonalHome(fixture(), 11), 'monthly_progress'), false);
+  value.monthly_progress.completed = 4;
+  assert.throws(() => parsePersonalHome(value, 11));
+});
+
 test('connected assigned projects retain bounded totals and safe real links, without metadata or financial bags', () => {
   const data = fixture();
   const id = '00000000-0000-4000-8000-000000000063';

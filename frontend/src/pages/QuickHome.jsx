@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { HomeEscalations } from "../components/HomeEscalations.jsx";
+import { HomeMonthlyProgress } from "../components/HomeMonthlyProgress.jsx";
 import { createPersonalHomeLoader, homeDate, homeDeadline, homeStateLabel, personalHomeNavigate, subscribePersonalHomeRefresh } from "./personalHome.js";
 import "./QuickHome.css";
 
@@ -115,6 +116,7 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
           </div>
 
           <aside className="qh-secondary-column" aria-label="Contexto de tu trabajo">
+            <HomeMonthlyProgress data={data.monthly_progress}/>
             {data.capabilities.projects && <section className="qh-section" aria-labelledby="qh-projects-title">
               <header className="qh-section-heading"><h2 id="qh-projects-title">Mis proyectos</h2><ListCount shown={data.projects.length} total={data.list_totals.projects}/></header>
               {data.projects.length ? <ul className="qh-compact-list">{data.projects.map(project => <li key={project.id}>
