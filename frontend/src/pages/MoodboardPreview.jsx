@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { getSesion } from '../utils.jsx';
+import { createMoodboardInitialization } from '../shared/session/moodboard-initialization.js';
 import "./MoodboardPreview.css";
 
 const STATUS={aprobada:{label:"Aprobada",icon:"✓"},libre:{label:"Libre",icon:"○"},descartada:{label:"Descartada",icon:"×"}};
@@ -12,6 +14,19 @@ function AuthImage({item,className="",alt=""}){
 }
 
 export function MoodboardPreviewPage(){
+  const mounted=useRef(true),initialization=useRef(null),initializingRef=useRef(false);
+  const [initializing,setInitializing]=useState(false);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;initialization.current?.abort()}},[]);
+  const prepareBoards=async()=>{
+    if(initializingRef.current)return;
+    const controller=new AbortController();initialization.current=controller;
+    const operation=createMoodboardInitialization({session:getSesion(),readSession:getSesion,isMounted:()=>mounted.current,fetchImpl:window.fetch.bind(window),signal:controller.signal});
+    if(!operation.current())return;
+    initializingRef.current=true;setInitializing(true);setError('');
+    try{const items=await operation.run();if(!operation.current()||!items)return;setBoards(items);setBoardId(current=>items.some(b=>b.id===current)?current:items.find(b=>b.clientes.some(c=>c.id===requestedClient))?.id||items[0]?.id||null)}
+    catch(reason){if(operation.current())setError(reason.message)}
+    finally{initializingRef.current=false;if(operation.current())setInitializing(false)}
+  };
   const params=new URLSearchParams(window.location.search),requestedClient=Number(params.get("cliente"))||null,requestedTask=Number(params.get("task"))||null;
   const [boards,setBoards]=useState([]),[boardId,setBoardId]=useState(null),[refs,setRefs]=useState([]),[categories,setCategories]=useState([]),[tasks,setTasks]=useState([]),[status,setStatus]=useState("all"),[category,setCategory]=useState("all"),[query,setQuery]=useState(""),[selected,setSelected]=useState(null),[composer,setComposer]=useState(false),[categoryEditor,setCategoryEditor]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState("");
   useEffect(()=>{api("/api/moodboards/boards").then(items=>{setBoards(items);setBoardId(items.find(b=>b.clientes.some(c=>c.id===requestedClient))?.id||items[0]?.id||null)}).catch(e=>setError(e.message)).finally(()=>setLoading(false))},[requestedClient]);
@@ -23,10 +38,14 @@ export function MoodboardPreviewPage(){
   if(loading&&!boards.length)return <main className="moodboard-loading-page"><span>✦</span><strong>Preparando los moodboards…</strong></main>;
   return <main className="moodboard-preview-shell">
     <aside className="moodboard-brand-rail"><div className="moodboard-rail-heading"><span>Moodboards</span><small>Todos los clientes activos</small></div><nav aria-label="Marcas">{boards.map(b=><button key={b.id} className={b.id===boardId?"active":""} onClick={()=>{setBoardId(b.id);setSelected(null);setStatus("all")}}><span className="moodboard-brand-avatar">{b.nombre.charAt(0)}</span><span><strong>{b.nombre}</strong><small>{b.clientes.length>1?`${b.clientes.length} cuentas compartidas`:`${b.total_referencias} referencias`}</small></span></button>)}</nav></aside>
-    <section className="moodboard-workspace"><header className="moodboard-header"><div className="moodboard-title-row"><div><span className="moodboard-eyebrow">Criterio visual de marca</span><h1>{board?.nombre||"Moodboard"}</h1><p>{board?.clientes?.length>1?`Compartido entre ${board.clientes.map(c=>c.nombre).join(" y ")}.`:"Referencias para mantener una dirección visual coherente."}</p></div><button className="moodboard-add-primary" onClick={()=>setComposer(true)}><span>＋</span>Nueva referencia</button></div><div className="moodboard-tools"><label className="moodboard-search"><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por idea o etiqueta…"/></label><div className="moodboard-status-tabs"><Filter value="all" current={status} set={setStatus} label="Todo" count={(counts.aprobada||0)+(counts.libre||0)}/><Filter value="aprobada" current={status} set={setStatus} label="Aprobadas" count={counts.aprobada||0}/><Filter value="libre" current={status} set={setStatus} label="Libres" count={counts.libre||0}/><Filter value="descartada" current={status} set={setStatus} label="Descartadas" count={counts.descartada||0}/></div><label className="moodboard-category-filter">Categoría<select value={category} onChange={e=>setCategory(e.target.value)}><option value="all">Todas</option>{categories.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label><button className="moodboard-category-edit" onClick={()=>setCategoryEditor(true)}>Editar categorías</button></div></header>
+    <section className="moodboard-workspace"><header className="moodboard-header">
+      <div className="moodboard-title-row"><div><span className="moodboard-eyebrow">Criterio visual de marca</span><h1>{board?.nombre||"Moodboard"}</h1><p>{board?.clientes?.length>1?`Compartido entre ${board.clientes.map(c=>c.nombre).join(" y ")}.`:"Referencias para mantener una dirección visual coherente."}</p></div><button className="moodboard-add-primary" disabled={!board} onClick={()=>setComposer(true)}><span>＋</span>Nueva referencia</button></div>
+      <div className="moodboard-tools"><label className="moodboard-search"><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por idea o etiqueta…"/></label><div className="moodboard-status-tabs"><Filter value="all" current={status} set={setStatus} label="Todo" count={(counts.aprobada||0)+(counts.libre||0)}/><Filter value="aprobada" current={status} set={setStatus} label="Aprobadas" count={counts.aprobada||0}/><Filter value="libre" current={status} set={setStatus} label="Libres" count={counts.libre||0}/><Filter value="descartada" current={status} set={setStatus} label="Descartadas" count={counts.descartada||0}/></div><label className="moodboard-category-filter">Categoría<select value={category} onChange={e=>setCategory(e.target.value)}><option value="all">Todas</option>{categories.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label><button className="moodboard-category-edit" disabled={!board} onClick={()=>setCategoryEditor(true)}>Editar categorías</button></div>
+    </header>
+      <div className="moodboard-initialize"><button type="button" onClick={prepareBoards} disabled={initializing}>{initializing?'Preparando…':'Preparar clientes nuevos'}</button>{!board&&<span>Prepará los clientes para agregar referencias reales.</span>}</div>
       {error&&<div className="moodboard-error">{error}</div>}<div className="moodboard-gallery-label"><span>{visible.length} referencias</span><small>Las aprobadas aparecen primero</small></div>{loading?<Empty loading/>:visible.length?<div className="moodboard-masonry">{visible.map(item=><Card key={item.id} item={item} open={()=>setSelected(item)}/>)}</div>:<Empty/>}
     </section>
-    {selected&&<ReferencePanel item={selected} tasks={tasks} close={()=>setSelected(null)} update={update} remove={remove} reload={()=>load(boardId)}/>} {composer&&<Composer board={board} categories={categories} initialTask={requestedTask} close={()=>setComposer(false)} saved={()=>{setComposer(false);void load(boardId)}}/>} {categoryEditor&&<CategoryEditor boardId={boardId} categories={categories} close={()=>setCategoryEditor(false)} saved={()=>{setCategoryEditor(false);void load(boardId)}}/>}
+    {selected&&<ReferencePanel item={selected} tasks={tasks} close={()=>setSelected(null)} update={update} remove={remove} reload={()=>load(boardId)}/>} {composer&&board&&<Composer board={board} categories={categories} initialTask={requestedTask} close={()=>setComposer(false)} saved={()=>{setComposer(false);void load(boardId)}}/>} {categoryEditor&&board&&<CategoryEditor boardId={boardId} categories={categories} close={()=>setCategoryEditor(false)} saved={()=>{setCategoryEditor(false);void load(boardId)}}/>}
   </main>
 }
 function Filter({value,current,set,label,count}){return <button className={current===value?"active":""} onClick={()=>set(value)}>{label} <b>{count}</b></button>}

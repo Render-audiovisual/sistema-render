@@ -14,7 +14,7 @@ function sharedBoardName(name) {
 }
 
 async function ensureBoards(pool) {
-  const { rows: clients } = await pool.query("SELECT id, nombre FROM clientes WHERE COALESCE(activo, true) = true ORDER BY nombre");
+  const { rows: clients } = await pool.query("SELECT id, nombre FROM clientes WHERE COALESCE(activo, true) = true ORDER BY nombre FOR SHARE");
   for (const client of clients) {
     const linked = await pool.query("SELECT board_id FROM moodboard_board_clients WHERE cliente_id = $1", [client.id]);
     if (linked.rowCount) continue;
@@ -26,15 +26,30 @@ async function ensureBoards(pool) {
     for (const [index, category] of DEFAULT_CATEGORIES.entries()) {
       await pool.query("INSERT INTO moodboard_categories(board_id, nombre, orden) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", [boardId, category, index + 1]);
     }
-    const existing = await pool.query("SELECT 1 FROM moodboard_references WHERE board_id = $1 LIMIT 1", [boardId]);
-    if (!existing.rowCount) {
-      const category = await pool.query("SELECT id FROM moodboard_categories WHERE board_id = $1 ORDER BY orden LIMIT 1", [boardId]);
-      await pool.query(`INSERT INTO moodboard_references
-        (board_id, category_id, titulo, nota, etiquetas, estado, tipo_fuente, enlace_externo, autor_nombre)
-        VALUES ($1, $2, 'Referencia visual de ejemplo', $3, ARRAY['ejemplo','inspiración'], 'libre', 'enlace', $4, 'Equipo RENDER')`,
-      [boardId, category.rows[0]?.id || null, "Esta imagen es un ejemplo para empezar el moodboard. Podés editarla o eliminarla cuando la marca tenga referencias propias.", "https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=82"]);
-    }
   }
+}
+
+export async function initializeMoodboards(pool, auth) {
+  if (!Number.isSafeInteger(auth?.id) || auth.id < 1 || !Number.isSafeInteger(auth.session_version)) {
+    throw Object.assign(new Error('Volvé a iniciar sesión.'), { status: 401 });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // One explicit initializer at a time; no duplicate board creation when two
+    // team members initialize simultaneously. Never seed fictional references.
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['render:moodboards:initialize']);
+    const actor = (await client.query('SELECT id,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [auth.id])).rows[0];
+    if (!actor || actor.activo !== true || Number(actor.session_version) !== auth.session_version) {
+      throw Object.assign(new Error('La sesión ya no está vigente.'), { status: 401 });
+    }
+    await ensureBoards(client);
+    await client.query('COMMIT');
+    return { ok: true };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally { client.release(); }
 }
 
 function parseImage(dataUrl) {
@@ -56,7 +71,6 @@ export function createMoodboardsRouter({ pool }) {
 
   router.get("/boards", async (_req, res, next) => {
     try {
-      await ensureBoards(pool);
       const { rows } = await pool.query(`SELECT b.id, b.nombre,
         COALESCE(json_agg(json_build_object('id', c.id, 'nombre', c.nombre) ORDER BY c.nombre) FILTER (WHERE c.id IS NOT NULL), '[]') AS clientes,
         count(DISTINCT r.id)::int AS total_referencias
@@ -67,6 +81,17 @@ export function createMoodboardsRouter({ pool }) {
         GROUP BY b.id ORDER BY b.nombre`);
       res.json(rows);
     } catch (error) { next(error); }
+  });
+
+  router.post('/boards/initialize', async (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    if (req.body !== undefined && (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)
+      || Object.keys(req.body).length)) return res.status(400).json({ error: 'No se necesitan datos adicionales.' });
+    try { res.json(await initializeMoodboards(pool, req.auth)); }
+    catch (error) {
+      if (error.status) return res.status(error.status).json({ error: error.message });
+      next(error);
+    }
   });
 
   router.get("/boards/:id/references", async (req, res, next) => {

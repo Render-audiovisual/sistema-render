@@ -52,6 +52,14 @@ async function conversation(pool, userId, period = wilsonPeriod()) {
   return result.rows[0];
 }
 
+async function readConversation(pool, userId, period = wilsonPeriod()) {
+  const result = await pool.query(
+    'SELECT id,usuario_id,periodo FROM wilson_conversaciones WHERE usuario_id=$1 AND periodo=$2',
+    [userId, period],
+  );
+  return result.rows[0] || null;
+}
+
 async function append(pool, conversationId, sender, content, type = "mensaje", metadata = {}) {
   const result = await pool.query(
     `INSERT INTO wilson_mensajes(conversacion_id,remitente,contenido,tipo,metadata)
@@ -270,8 +278,8 @@ export function createWilsonChatRouter({ express, pool }) {
 
   router.get("/conversacion", async (req, res, next) => {
     try {
-      const current = await conversation(pool, req.auth.id);
-      const messages = await pool.query(`SELECT id,remitente,contenido,tipo,metadata,created_at FROM wilson_mensajes WHERE conversacion_id=$1 ORDER BY created_at,id`, [current.id]);
+      const current = await readConversation(pool, req.auth.id);
+      const messages = current ? await pool.query(`SELECT id,remitente,contenido,tipo,metadata,created_at FROM wilson_mensajes WHERE conversacion_id=$1 ORDER BY created_at,id`, [current.id]) : { rows: [] };
       const priorities = await personalTasks(pool, req.auth);
       return res.json({ conversation: current, messages: messages.rows, priorities: operationalPriorities(priorities, req.auth) });
     } catch (error) { return next(error); }
@@ -415,8 +423,8 @@ export function createWilsonChatRouter({ express, pool }) {
   router.get("/conversaciones/:userId", async (req, res, next) => {
     if (!canResetWilsonConversations(req.auth)) return res.status(403).json({ error: "Solo un Líder puede consultar las conversaciones." });
     try {
-      const current = await conversation(pool, req.params.userId);
-      const messages = await pool.query(`SELECT id,remitente,contenido,tipo,metadata,created_at FROM wilson_mensajes WHERE conversacion_id=$1 ORDER BY created_at,id`, [current.id]);
+      const current = await readConversation(pool, req.params.userId);
+      const messages = current ? await pool.query(`SELECT id,remitente,contenido,tipo,metadata,created_at FROM wilson_mensajes WHERE conversacion_id=$1 ORDER BY created_at,id`, [current.id]) : { rows: [] };
       return res.json({ conversation: current, messages: messages.rows });
     } catch (error) { return next(error); }
   });

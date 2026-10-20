@@ -1,5 +1,14 @@
 # Principal backend: isolated local HTTP QA
 
+## Read-only resources regression (integration65)
+
+```sh
+node --test backend/test/moodboard-initialization.test.js backend/test/wilson-chat.test.js frontend/src/shared/session/moodboard-initialization.test.js
+RENDER2_RUN_LOCAL_INTEGRATION=true node --test backend/test/render2-readonly-resources.integration.test.js
+```
+
+Physical opt-in uses only a fresh guarded PostgreSQL cluster on numeric loopback55679. It snapshots full public-table rows/timestamps via digests around actual principal GETs, tests explicit initialization, concurrent actors and held-lock revocation, preserves existing references and asserts exact own-root cleanup. It never connects a configured database or provider. The explicit initializer does not create example references; migration045 legacy seed content is intentionally unchanged. Separate recorded browser QA used its own disposable fixture and synthetic client, desktop and390x844 viewport; no claim of exhaustive accessibility/device acceptance or all-app GET invariance.
+
 ## Browser-session transport module QA (integration64)
 
 From the repository root, using installed dependencies:
