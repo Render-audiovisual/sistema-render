@@ -54,6 +54,8 @@ Cleanup stops the HTTP child (SIGKILL fallback), then stops the exact generated 
 
 ## Verified 2026-10-19
 
+Historical results below are chronological. Current complete-suite results and limits are in STATUS.md.
+
 Startup guard: 2 passed. Opt-in principal HTTP integration: 1 passed, covering all assertions above; every principal migration through 054 applied successfully without prerequisite manual seeds. Financial privacy uses a dedicated 987654.32 delivery visible in the admin response and an actual nonempty employee DTO without `importe`. Completion uses schema-supported `en_revision` plus `revision_aprobada=true`, not the not-yet-migrated `aprobada` state. No listener on 55594 or generated fixture directory remained afterward.
 
 The restricted execution sandbox denied PostgreSQL shared memory (`shmget`); the authorized local fixture run required execution outside that sandbox. No existing database was connected or modified. Earlier fixture-only failures (missing publication date, unsupported task state, identity label mismatch) were corrected without changing the principal application or schema.
@@ -61,3 +63,25 @@ The restricted execution sandbox denied PostgreSQL shared memory (`shmget`); the
 Follow-up 055 regression: the earlier unlinked-task check alone did not exercise the goal trigger from 048. The expanded opt-in suite verifies the real forward upgrade on populated history and both linked-task mutation paths; the original result must not be interpreted as having covered goal-linked tasks.
 
 Latest verification (2026-10-19): expanded integration **2 passed, 0 failed** (parent Phase 1 plus linked-goal trigger subtest); no-DB startup guard **2 passed**. Upgrade snapshots include an existing historical goal event and a non-null real publication date. API and direct SQL each complete/reopen two goal-linked cases, checking full editorial-row invariance, goal status/completion timestamp and four new audit transitions per slot. HTTP also rejects last-active-admin role downgrade/delete and self-deactivation with 409, preserving the real login session. Final cleanup check found no fixture listener on 55594 and no `/private/tmp/render2-local-*` directory. No production or other existing DB was used.
+
+## Database transport verification — integration62
+
+Ordinary unit discovery does not open TLS sockets or generate keys. Pure configuration tests inspect the installed pg client parameters without connecting. A child-process inert-import test forbids every net.Socket connection and confirms that missing DATABASE_URL rejects query/connect even with an inherited PGHOST. New code does not use that inherited target.
+
+Opt-in TLS test, from repository root:
+
+```sh
+RENDER2_RUN_LOCAL_TLS=true node --test backend/test/render2-database-tls.integration.test.js
+```
+
+Requires the installed `/opt/homebrew/bin/openssl` (verified OpenSSL3.6.3) and permission to listen on temporary127.0.0.1 ports. Generates its own public CA/leaf certificates and disposable private keys under an exclusively created, mode0700 `/private/tmp/render2-tls-*` directory; keys are mode0600 and never printed/committed. Only case-owned sockets/listeners are destroyed; the exact validated directory is removed and absence asserted. No DNS lookup or remote connection occurs: a test-only socket routes the original remote destination to the numeric loopback listener while preserving pg's destination/SNI/verification. The production builder exposes no routing override.
+
+This uses installed pg's actual SSLRequest/TLS and synthetic AuthenticationOk/ReadyForQuery, not a PostgreSQL database or real password/SCRAM/SQL test. It proves certificate trust, expiry and destination identity checks before Startup, including IPv6 IP SAN. It does not validate provider certificates, account credentials, network/firewall configuration or cloud deployment. Existing principal PostgreSQL suites independently exercise the real schema/business persistence on plaintext exact loopback; neither proof substitutes for the other.
+
+Combined isolated regression, only after reviewing the current harness/tests:
+
+```sh
+RENDER2_RUN_LOCAL_INTEGRATION=true RENDER2_RUN_LOCAL_TLS=true node --test --test-concurrency=1 backend/test/render2-*.integration.test.js
+```
+
+Rollout gate: use an explicit PostgreSQL TCP URL without query/fragment; do not depend on PGHOST/PGPASSWORD fallback or pg SSL URL parameters. For a private issuer, configure the reviewed **public CA certificate bundle** in RENDER_DB_CA_PEM; never put a private key there. Empty/malformed/non-CA PEM fails closed. Remove conflicting PGSSL* and verification-disabling Node options. Remote verification never downgrades or retries in plaintext. No operator environment, existing database, provider connection or production setup is changed by this test workflow.
