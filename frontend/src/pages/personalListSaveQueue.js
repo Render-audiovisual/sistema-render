@@ -1,3 +1,5 @@
+import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
+
 const positive = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
 // BIGSERIAL travels as text from pg. Compare canonical decimal strings without
 // Number conversion so adjacent IDs above MAX_SAFE_INTEGER stay distinct.
@@ -6,16 +8,16 @@ const recordId = value => typeof value === 'number' ? Number.isSafeInteger(value
     && (value.length < 19 || value <= '9223372036854775807');
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const clone = value => JSON.parse(JSON.stringify(value));
-const identity = session => ({ id: session?.usuario?.id, token: session?.token,
+const identity = session => ({ id: session?.usuario?.id,
   role: session?.usuario?.rol, active: session?.usuario?.activo });
-const validIdentity = value => positive(value.id) && typeof value.token === 'string' && Boolean(value.token.trim())
+const validIdentity = value => positive(value.id)
   && typeof value.role === 'string' && Boolean(value.role.trim()) && value.active !== false;
 
 // Pure transport coordinator: never reads browser storage or fetches replacement data.
 export function createPersonalListSaveQueue({ session, readSession = () => session, request,
   onState = () => {}, onSaved = () => {}, onDenied = () => {}, delayMs = 650, timeoutMs = 15000,
   setTimer = setTimeout, clearTimer = clearTimeout }) {
-  const captured = identity(session), entries = new Map(), acknowledged = new Map();
+  const captured = identity(session), binding = captureSessionBinding(session), entries = new Map(), acknowledged = new Map();
   const debounce = Number.isFinite(delayMs) && delayMs >= 0 ? delayMs : 650;
   const timeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15000;
   let generation = 0, disposed = false, denied = false;
@@ -43,10 +45,11 @@ export function createPersonalListSaveQueue({ session, readSession = () => sessi
   }
   function current() {
     if (disposed || denied) return false;
-    let live;
-    try { live = identity(readSession()); } catch { return deny(); }
+    let live, liveSession;
+    try { liveSession = readSession(); live = identity(liveSession); } catch { return deny(); }
     return validIdentity(captured) && validIdentity(live)
-      && ['id', 'token', 'role', 'active'].every(key => live[key] === captured[key]) ? true : deny();
+      && ['id', 'role', 'active'].every(key => live[key] === captured[key])
+      && sessionBindingMatches(binding, liveSession) ? true : deny();
   }
   function clearDebounce(row) {
     if (row.timer !== null) clearTimer(row.timer);
@@ -106,9 +109,9 @@ export function createPersonalListSaveQueue({ session, readSession = () => sessi
       // Defer transport until the flight object is installed, including synchronous mocks/throws.
       const transport = Promise.resolve().then(() => {
         if (stamp !== generation || disposed || denied || !current()) return { cancelled: true };
-        return Promise.resolve(request(row.url, { method: 'PATCH', headers: {
-          'Content-Type': 'application/json', Authorization: `Bearer ${captured.token}`,
-        }, body: sent.body, signal: controller.signal })).then(value => ({ value }));
+        return Promise.resolve(request(row.url, sessionRequestOptions(binding, { method: 'PATCH', headers: {
+          'Content-Type': 'application/json',
+        }, body: sent.body, signal: controller.signal }))).then(value => ({ value }));
       }).catch(error => ({ error }));
       const result = await Promise.race([transport, timed, cancelled]);
       clearTimer(timer);

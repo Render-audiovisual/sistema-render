@@ -1,4 +1,5 @@
 import { canReadEditorialControl, homeEditorialRecordPiece } from './homeEditorialControl.js';
+import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
 
 const fields = ['idea', 'copy', 'material_referencia', 'aclaraciones'];
 export function parseEditorialPieceDetail(value, expected) {
@@ -20,14 +21,13 @@ export function parseEditorialPieceDetail(value, expected) {
 }
 
 export function createEditorialPieceDetailLoader({ sesion, piece, readSession, request, onChange }) {
-  const captured = { id: sesion?.usuario?.id, role: sesion?.usuario?.rol, active: sesion?.usuario?.activo, token: sesion?.token };
+  const captured = captureSessionBinding(sesion);
   const expected = { domain: piece?.domain, id: piece?.id, cliente: { id: piece?.cliente?.id } };
   const validPiece = homeEditorialRecordPiece(piece);
   let controller, generation = 0, disposed = false;
   const authorized = () => {
     const current = readSession();
-    return canReadEditorialControl(current) && current.usuario.id === captured.id && current.usuario.rol === captured.role
-      && current.usuario.activo === captured.active && current.token === captured.token;
+    return canReadEditorialControl(current) && sessionBindingMatches(captured, current);
   };
   async function refresh() {
     if (disposed) return false;
@@ -40,7 +40,7 @@ export function createEditorialPieceDetailLoader({ sesion, piece, readSession, r
     const stale = () => disposed || signal.aborted || generation !== version;
     onChange({ status: 'loading', data: null, error: '' });
     try {
-      const value = await request(`/api/editorial-control/${expected.domain}/${expected.id}`, { method: 'GET', signal });
+      const value = await request(`/api/editorial-control/${expected.domain}/${expected.id}`, sessionRequestOptions(captured, { method: 'GET', signal }));
       if (stale()) return false;
       if (!authorized()) throw new Error('Session changed');
       onChange({ status: 'ready', data: parseEditorialPieceDetail(value, expected), error: '' });

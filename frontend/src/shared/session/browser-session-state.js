@@ -1,4 +1,15 @@
 const BINDING = /^[A-Za-z0-9_-]{43}$/;
+// Weak ownership metadata stays outside serialized DTOs. A copied context is
+// not a captured request intent and cannot silently adopt a newer observation.
+const sessionOwners = new WeakMap();
+export function captureBrowserSessionIntent(session) {
+  const owner = session && typeof session === 'object' ? sessionOwners.get(session) : null;
+  return owner && owner.getSession() === session ? owner.captureIntent() : null;
+}
+export function isBrowserSessionIntentCurrent(intent) {
+  const owner = intent?.session && sessionOwners.get(intent.session);
+  return Boolean(owner?.isCurrent(intent));
+}
 export function parseBrowserSession(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || Object.keys(value).some(key => !['usuario', 'session_context', 'csrf_token'].includes(key))
@@ -26,7 +37,7 @@ export function createBrowserSessionState() {
   };
   const isCurrent = intent => Boolean(intent && typeof intent === 'object' && intents.has(intent)
     && snapshot.status === 'authenticated' && intent.revision === revision && intent.session === snapshot.session);
-  return Object.freeze({
+  const api = Object.freeze({
     getSnapshot: () => snapshot,
     getSession: () => snapshot.status === 'authenticated' ? snapshot.session : null,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
@@ -37,6 +48,7 @@ export function createBrowserSessionState() {
     acceptBootstrap(ticket, value) {
       if (!activeBootstrap || ticket !== activeBootstrap) return false;
       const session = value === null ? null : parseBrowserSession(value);
+      if (session) sessionOwners.set(session, api);
       activeBootstrap = null; publish(session ? 'authenticated' : 'anonymous', session); return true;
     },
     failBootstrap(ticket) {
@@ -57,6 +69,7 @@ export function createBrowserSessionState() {
       activeBootstrap = null; publish('anonymous'); return true;
     },
   });
+  return api;
 }
 
 export async function bootstrapBrowserSession({ store, fetchImpl, signal }) {

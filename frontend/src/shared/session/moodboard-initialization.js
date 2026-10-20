@@ -1,19 +1,18 @@
-import { captureProfileSession } from './profile-session.js';
+import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from './session-binding.js';
 
 // Explicit click only. No automatic initialization on mount or retry after an
 // identity change. The same captured credential accompanies both requests.
 export function createMoodboardInitialization({ session, readSession, isMounted, fetchImpl, signal }) {
-  const captured = captureProfileSession(session);
+  const captured = captureSessionBinding(session);
   const current = () => {
     try {
       const live = readSession();
-      return Boolean(captured && isMounted() && live?.token === captured.token
-        && live.usuario?.id === captured.id && live.usuario?.rol === captured.role && live.usuario.activo !== false);
+      return Boolean(isMounted() && sessionBindingMatches(captured, live));
     } catch { return false; }
   };
   async function request(url, options = {}) {
-    const result = await fetchImpl(url, { ...options, signal, cache: 'no-store', redirect: 'error',
-      headers: { Authorization: `Bearer ${captured.token}`, 'Content-Type': 'application/json' } });
+    const result = await fetchImpl(url, sessionRequestOptions(captured, { ...options, signal, cache: 'no-store', redirect: 'error',
+      headers: { 'Content-Type': 'application/json' } }));
     if (!current()) return null;
     const body = await result.json();
     if (!current()) return null;

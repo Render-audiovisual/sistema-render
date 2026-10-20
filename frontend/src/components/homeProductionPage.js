@@ -1,3 +1,4 @@
+import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
 export const PRODUCTION_PAGE_LIMIT = 20;
 const count = n => Number.isSafeInteger(n) && n >= 0;
 const positive = n => Number.isSafeInteger(n) && n > 0;
@@ -35,14 +36,13 @@ export function parseHomeProductionPage(value, { userId, period, offset }) {
 }
 
 export function createHomeProductionPageLoader({ sesion, period, readSession, request, onChange }) {
-  const captured = { id: sesion?.usuario?.id, role: sesion?.usuario?.rol, active: sesion?.usuario?.activo, token: sesion?.token };
+  const captured = captureSessionBinding(sesion);
   let controller, generation = 0, disposed = false, page = 0;
   const authorized = () => {
     const current = readSession();
-    return positive(captured.id) && typeof captured.token === 'string' && captured.token.length > 0
+    return Boolean(captured) && positive(captured.id)
       && captured.active !== false && ['admin','diseno','produccion','edicion','community','programacion'].includes(captured.role)
-      && current?.usuario?.id === captured.id && current.usuario.rol === captured.role
-      && current.usuario.activo === captured.active && current.token === captured.token;
+      && sessionBindingMatches(captured, current);
   };
   async function refresh({ offset = page } = {}) {
     if (disposed) return false;
@@ -53,7 +53,7 @@ export function createHomeProductionPageLoader({ sesion, period, readSession, re
     onChange({ status: 'loading', data: null, error: '' });
     const stale = () => disposed || signal.aborted || generation !== version;
     try {
-      const value = await request(`/api/inicio/produccion-mensual?period=${encodeURIComponent(period)}&offset=${offset}&limit=${PRODUCTION_PAGE_LIMIT}`, { method: 'GET', signal });
+      const value = await request(`/api/inicio/produccion-mensual?period=${encodeURIComponent(period)}&offset=${offset}&limit=${PRODUCTION_PAGE_LIMIT}`, sessionRequestOptions(captured, { method: 'GET', signal }));
       if (stale()) return false;
       if (!authorized()) throw new Error('Session changed');
       onChange({ status: 'ready', data: parseHomeProductionPage(value, { userId: captured.id, period, offset }), error: '' });

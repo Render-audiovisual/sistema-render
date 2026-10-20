@@ -1,5 +1,71 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
+test('legacy GET carries the initial exact bearer without cookie aliases or dispatch recapture', async () => {
+  let live = session(); const captured = live, events = []; let calls = 0;
+  const request = async (_url, options) => {
+    calls++; assert.equal(options.headers.Authorization, `Bearer ${captured.token}`);
+    assert.equal(options.sessionIntent, undefined);
+    assert.equal(new Headers(options.headers).has('X-Render-Session-Context'), false);
+    assert.equal(options.method, 'GET'); return dto();
+  };
+  const loader = createHomeTeamLoader({ sesion: captured, readSession: () => live, request, onChange: value => events.push(value) });
+  await loader.refresh(); assert.equal(events.at(-1).status, 'ready');
+  live = { ...session(), token: 'replacement-bearer' };
+  await loader.refresh(); assert.equal(calls, 1); assert.equal(events.at(-1).data, null); loader.dispose();
+});
+
+
+test('genuine cookie binding pins GET intent without bearer and blocks stale same-context generations', async () => {
+  const store = createBrowserSessionState();
+  const value = { usuario: { id: 7, usuario: 'synthetic', nombre: 'QA', rol: 'admin' }, session_context: 'A'.repeat(43), csrf_token: 'C'.repeat(43) };
+  store.acceptBootstrap(store.beginBootstrap(), value);
+  const captured = store.getSession(), events = [], calls = [];
+
+  const request = async (url, options) => {
+    calls.push({ url, options });
+    assert.equal(options.method, 'GET'); assert.ok(options.signal instanceof AbortSignal);
+    assert.equal(new Headers(options.headers).has('Authorization'), false);
+    assert.equal(new Headers(options.headers).get('X-Render-Session-Context'), captured.session_context);
+    assert.equal(new Headers(options.headers).get('X-Render-CSRF'), captured.csrf_token);
+    assert.equal(options.sessionIntent.session, captured);
+    assert.equal(store.isCurrent(options.sessionIntent), true);
+    assert.equal('body' in options, false);
+    return dto();
+  };
+  const loader = createHomeTeamLoader({ sesion: captured, readSession: () => store.getSession(), request, onChange: value => events.push(value) });
+  await loader.refresh(); assert.equal(events.at(-1).status, 'ready'); assert.equal(calls.length, 1);
+  store.acceptBootstrap(store.beginBootstrap(), value);
+  await loader.refresh(); assert.equal(calls.length, 1); assert.equal(events.at(-1).status, 'error'); assert.equal(events.at(-1).data, null);
+  loader.dispose();
+});
+
+test('cookie late success/error and replacement account never publish or recapture a new intent', async () => {
+  for (const failure of [false, true]) {
+    const store = createBrowserSessionState();
+    const value = { usuario: { id: 7, usuario: 'synthetic', nombre: 'QA', rol: 'admin' }, session_context: 'A'.repeat(43), csrf_token: 'C'.repeat(43) };
+    store.acceptBootstrap(store.beginBootstrap(), value);
+    const captured = store.getSession(), events = []; let resolve, reject, calls = 0;
+    const request = () => { calls++; return new Promise((yes, no) => { resolve = yes; reject = no; }); };
+    const loader = createHomeTeamLoader({ sesion: captured, readSession: () => store.getSession(), request, onChange: value => events.push(value) });
+    const pending = loader.refresh();
+    store.acceptBootstrap(store.beginBootstrap(), { ...value, usuario: { ...value.usuario, id: 17 }, session_context: 'B'.repeat(43) });
+    if (failure) reject(new Error('old request failed')); else resolve(dto());
+    await pending;
+    assert.equal(events.at(-1).status, 'error'); assert.equal(events.at(-1).data, null);
+    await loader.refresh(); assert.equal(calls, 1); loader.dispose();
+  }
+});
+
+test('forged cookie DTO is never an accepted loader identity', async () => {
+  const store = createBrowserSessionState();
+  store.acceptBootstrap(store.beginBootstrap(), { usuario: { id: 7, usuario: 'synthetic', nombre: 'QA', rol: 'admin' }, session_context: 'A'.repeat(43), csrf_token: 'C'.repeat(43) });
+  const captured = { ...store.getSession() }, events = []; let calls = 0;
+  const request = async () => { calls++; return dto(); };
+  const loader = createHomeTeamLoader({ sesion: captured, readSession: () => store.getSession(), request, onChange: value => events.push(value) });
+  await loader.refresh(); assert.equal(calls, 0); assert.equal(events.at(-1).status, 'error'); loader.dispose();
+});
+
 import { readFileSync } from 'node:fs';
 import { parseHomeTeamWorkload, homeTeamTaskHref, createHomeTeamLoader } from './homeTeamWorkload.js';
 const session = () => ({ token: 'qa-token', usuario: { id: 7, rol: 'admin', activo: true } });

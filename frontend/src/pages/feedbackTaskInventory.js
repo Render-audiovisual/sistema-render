@@ -1,3 +1,4 @@
+import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
 export const INVENTORY_LIMIT = 20;
 export const INVENTORY_VIEWS = ['all', 'awaiting_review', 'with_corrections'];
 const positive = n => Number.isSafeInteger(n) && n > 0 && n <= 2147483647;
@@ -64,12 +65,11 @@ export function parseFeedbackTaskInventory(value, selection = {}) {
   return { version: 1, limit: 20, offset: s.offset, total: value.total, has_more: value.has_more, items };
 }
 export function createFeedbackInventoryLoader({ sesion, readSession, request, onChange }) {
-  const captured = { id: sesion?.usuario?.id, role: sesion?.usuario?.rol, token: sesion?.token, active: sesion?.usuario?.activo };
+  const captured = captureSessionBinding(sesion);
   let disposed = false, generation = 0, controller;
   const current = () => {
-    try { const live = readSession(); return positive(captured.id) && ['admin', 'diseno', 'edicion', 'produccion', 'community', 'programacion'].includes(captured.role)
-      && captured.active !== false && typeof captured.token === 'string' && captured.token.trim() && live?.usuario?.id === captured.id
-      && live.usuario.rol === captured.role && live.usuario.activo === captured.active && live.token === captured.token; } catch { return false; }
+    try { const live = readSession(); return Boolean(captured) && positive(captured.id) && ['admin', 'diseno', 'edicion', 'produccion', 'community', 'programacion'].includes(captured.role)
+      && captured.active !== false && sessionBindingMatches(captured, live); } catch { return false; }
   };
   return { async load(selection) {
     const observed = ++generation; controller?.abort(); controller = new AbortController(); const signal = controller.signal;
@@ -79,7 +79,7 @@ export function createFeedbackInventoryLoader({ sesion, readSession, request, on
     try {
       const normalized = normalizeInventorySelection(selection);
       emit({ status: 'loading', data: null, error: '' });
-      const value = await request(inventoryRequestUrl(normalized), { signal, headers: { Authorization: `Bearer ${captured.token}` }, cache: 'no-store' });
+      const value = await request(inventoryRequestUrl(normalized), sessionRequestOptions(captured, { method: 'GET', signal, cache: 'no-store' }));
       if (disposed || signal.aborted || observed !== generation) return;
       if (!current()) { emit({ status: 'error', data: null, error: 'La sesión cambió. Volvé a iniciar sesión.' }); return; }
       emit({ status: 'ready', data: parseFeedbackTaskInventory(value, normalized), error: '' });

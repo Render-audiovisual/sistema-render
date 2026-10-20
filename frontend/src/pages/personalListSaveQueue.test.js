@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createPersonalListSaveQueue } from './personalListSaveQueue.js';
+import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 
 const session = () => ({ token: 'synthetic-token', usuario: { id: 17, rol: 'edicion', activo: true } });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -33,6 +34,68 @@ const record = (extra = {}) => ({ key: 'block:31', url: '/api/listas-personales/
   payload: { tipo: 'texto', contenido: { texto: 'first' } }, meta: { listId: 9, blockId: 31, recordId: 31 }, ...extra });
 const success = async (call, version = 5, extra = {}) => { call.resolve({ id: 31, version, ...extra }); await settle(); };
 const failure = async (call, status, message = 'Synthetic save failure') => { call.reject(Object.assign(new Error(message), { status })); await settle(); };
+
+function cookieSetup() {
+  const store = createBrowserSessionState(), clock = timers(), calls = [], saved = [], denied = [];
+  const accept = (id = 17, context = 'a', csrf = 'b') => {
+    const ticket = store.beginBootstrap();
+    store.acceptBootstrap(ticket, { usuario: { id, usuario: `synthetic-${id}`, nombre: 'Synthetic user', rol: 'edicion', activo: true },
+      session_context: context.repeat(43), csrf_token: csrf.repeat(43) });
+    return store.getSession();
+  };
+  const initial = accept();
+  const queue = createPersonalListSaveQueue({ session: initial, readSession: () => store.getSession(), ...clock,
+    request(url, settings) { const d = deferred(); calls.push({ url, ...settings, ...d }); return d.promise; },
+    onSaved: value => saved.push(value), onDenied: () => denied.push(true) });
+  return { store, clock, calls, saved, denied, queue, accept };
+}
+
+test('registered cookie identity saves BIGSERIAL IDs and retries with the same genuine intent, headers and CAS body', async () => {
+  const h = cookieSetup(), item = record({ meta: { listId: '9', blockId: '31', recordId: '31' } });
+  assert.equal(h.queue.schedule(item), true); await h.clock.tick(650);
+  assert.equal(h.calls.length, 1);
+  const first = h.calls[0], headers = new Headers(first.headers);
+  assert.equal(headers.has('Authorization'), false);
+  assert.equal(headers.get('X-Render-Session-Context'), 'a'.repeat(43));
+  assert.equal(headers.get('X-Render-CSRF'), 'b'.repeat(43));
+  assert.equal(h.store.isCurrent(first.sessionIntent), true);
+  await failure(first, undefined);
+  h.queue.schedule({ ...item, payload: { contenido: { texto: 'later cookie draft' } } });
+  const retry = h.queue.retry(); await settle();
+  assert.equal(h.calls[1].sessionIntent, first.sessionIntent);
+  assert.deepEqual([...new Headers(h.calls[1].headers)], [...headers]);
+  assert.equal(h.calls[1].body, first.body);
+  h.calls[1].resolve({ id: '31', version: 5 }); await settle();
+  assert.equal(h.saved[0].hasNewer, true);
+  assert.deepEqual(JSON.parse(h.calls[2].body), { contenido: { texto: 'later cookie draft' }, expected_version: 5 });
+  assert.equal(h.calls[2].sessionIntent, first.sessionIntent);
+  h.calls[2].resolve({ id: '31', version: 6 }); assert.equal(await retry, true);
+  assert.equal(h.queue.snapshot().dirty, false); h.queue.dispose();
+});
+
+test('cookie B replaces A during a flight: no old ACK publication, retry or B draft transmission', async () => {
+  const h = cookieSetup(); h.queue.schedule(record()); const pending = h.queue.flush(); await settle();
+  h.accept(18, 'c', 'd');
+  await success(h.calls[0]);
+  assert.equal(await pending, false); assert.equal(h.saved.length, 0);
+  assert.equal(h.denied.length, 1); assert.equal(h.queue.snapshot().pending, 0);
+  assert.equal(h.queue.schedule(record({ payload: { contenido: { texto: 'must not send as B' } } })), false);
+  assert.equal(await h.queue.retry(), false); await h.clock.tick(20000);
+  assert.equal(h.calls.length, 1); assert.equal(h.denied.length, 1); h.queue.dispose();
+});
+
+test('same cookie user with a new registered observation cannot rebase a pending A debounce', async () => {
+  const h = cookieSetup(); h.queue.schedule(record()); h.accept(17, 'c', 'd');
+  await h.clock.tick(650);
+  assert.equal(h.calls.length, 0); assert.equal(h.denied.length, 1);
+  assert.equal(h.queue.snapshot().pending, 0); h.queue.dispose();
+});
+
+test('unregistered cookie-shaped data is not session authority', () => {
+  const fake = { usuario: { id: 17, rol: 'edicion', activo: true }, session_context: 'a'.repeat(43), csrf_token: 'b'.repeat(43) };
+  const h = setup({ session: fake, readSession: () => fake });
+  assert.equal(h.queue.schedule(record()), false); assert.equal(h.calls.length, 0); h.queue.dispose();
+});
 
 test('schedule marks dirty immediately; debounce coalesces and sends immutable payload with explicit captured auth/CAS', async () => {
   const h = setup(), desired = record();

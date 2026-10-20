@@ -1,4 +1,5 @@
 import { canReadHomeEscalations } from './homeEscalations.js';
+import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
 
 export const TEAM_LIMIT = 20;
 const count = n => Number.isSafeInteger(n) && n >= 0;
@@ -44,13 +45,11 @@ export const homeTeamTaskHref = id => Number.isSafeInteger(id) && id > 0 && id <
 // Capture the whole session, not a name or local role selector. Late responses
 // must never repaint data after logout, a token change or a superseding page.
 export function createHomeTeamLoader({ sesion, readSession, request, onChange, now = Date.now }) {
-  const captured = { id: sesion?.usuario?.id, role: sesion?.usuario?.rol,
-    active: sesion?.usuario?.activo, token: sesion?.token };
+  const captured = captureSessionBinding(sesion);
   let controller, generation = 0, disposed = false, inFlight = false, lastRequest = -Infinity, page = 0;
   const authorized = () => {
     const current = readSession();
-    return canReadHomeEscalations(current) && current.usuario.id === captured.id
-      && current.usuario.rol === captured.role && current.usuario.activo === captured.active && current.token === captured.token;
+    return canReadHomeEscalations(current) && sessionBindingMatches(captured, current);
   };
   const sessionError = () => onChange({ status: 'error', data: null, error: 'La sesión cambió. Volvé a iniciar sesión.' });
   async function refresh({ offset = page, background = false } = {}) {
@@ -64,7 +63,7 @@ export function createHomeTeamLoader({ sesion, readSession, request, onChange, n
     onChange({ status: 'loading', data: null, error: '' });
     const stale = () => disposed || signal.aborted || version !== generation;
     try {
-      const value = await request(`/api/inicio/equipo?offset=${offset}&limit=${TEAM_LIMIT}`, { method: 'GET', signal });
+      const value = await request(`/api/inicio/equipo?offset=${offset}&limit=${TEAM_LIMIT}`, sessionRequestOptions(captured, { method: 'GET', signal }));
       if (stale()) return false;
       if (!authorized()) { sessionError(); return false; }
       onChange({ status: 'ready', data: parseHomeTeamWorkload(value, offset), error: '' });

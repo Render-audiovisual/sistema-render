@@ -1,3 +1,4 @@
+import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
 export const EDITORIAL_BUCKETS = [
   { value: 'today', label: 'Hoy' }, { value: 'overdue', label: 'Atrasadas' },
   { value: 'blocked', label: 'Bloqueadas' }, { value: 'upcoming_ready', label: 'Próximas listas' },
@@ -18,7 +19,7 @@ function validDay(value) {
 }
 export function canReadEditorialControl(sesion) {
   return id(sesion?.usuario?.id) && roles.includes(sesion.usuario.rol) && sesion.usuario.activo !== false
-    && typeof sesion.token === 'string' && sesion.token.length > 0;
+    && Boolean(captureSessionBinding(sesion));
 }
 function belongs(item, bucket, today) {
   const date = item.fecha_programada;
@@ -89,14 +90,12 @@ export function homeEditorialRecordPiece(item) {
 }
 
 export function createHomeEditorialLoader({ sesion, readSession, request, onChange, now = Date.now }) {
-  const captured = { id: sesion?.usuario?.id, role: sesion?.usuario?.rol,
-    active: sesion?.usuario?.activo, token: sesion?.token };
+  const captured = captureSessionBinding(sesion);
   let controller, generation = 0, disposed = false, inFlight = false, lastRequest = -Infinity;
   let selected = 'today', page = 0;
   const authorized = () => {
     const current = readSession();
-    return canReadEditorialControl(current) && current.usuario.id === captured.id && current.usuario.rol === captured.role
-      && current.usuario.activo === captured.active && current.token === captured.token;
+    return canReadEditorialControl(current) && sessionBindingMatches(captured, current);
   };
   const publish = (status, data = null, error = '') => onChange({ status, data, error, bucket: selected, offset: page });
   const sessionError = () => publish('error', null, 'La sesión cambió. Volvé a iniciar sesión.');
@@ -112,7 +111,7 @@ export function createHomeEditorialLoader({ sesion, readSession, request, onChan
     publish('loading');
     const stale = () => disposed || signal.aborted || version !== generation;
     try {
-      const value = await request(`/api/editorial-control?bucket=${bucket}&offset=${nextPage}&limit=${EDITORIAL_LIMIT}`, { method: 'GET', signal });
+      const value = await request(`/api/editorial-control?bucket=${bucket}&offset=${nextPage}&limit=${EDITORIAL_LIMIT}`, sessionRequestOptions(captured, { method: 'GET', signal }));
       if (stale()) return false;
       if (!authorized()) { sessionError(); return false; }
       publish('ready', parseHomeEditorialControl(value, { bucket, offset: nextPage }));

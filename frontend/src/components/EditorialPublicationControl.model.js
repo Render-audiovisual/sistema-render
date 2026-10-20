@@ -1,4 +1,5 @@
 import { evidenceFromStatus, isConfirmedPublication } from '../shared/editorial/publication-evidence.js';
+import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
 
 export function validateEditorialStatus(dto, item, domain = item?.dominio) {
   const evidence = evidenceFromStatus(dto);
@@ -32,7 +33,7 @@ export function cordobaOccurrence(value, now = Date.now()) {
 // One immutable attempt survives uncertain transport outcomes. Never rebase it.
 export function createEditorialSessionGuard(session, readSession, onInvalidated = () => {}) {
   // Capture primitives, never retain a mutable session object as authority.
-  const identity = { id: session?.usuario?.id, role: session?.usuario?.rol, token: session?.token };
+  const identity = captureSessionBinding(session);
   let invalid = false, generation = 0;
   const controllers = new Set();
   const cancel = () => { generation++; for (const controller of controllers) controller.abort(); controllers.clear(); };
@@ -40,8 +41,7 @@ export function createEditorialSessionGuard(session, readSession, onInvalidated 
     if (invalid) return false;
     let current;
     try { current = readSession(); } catch { current = null; }
-    if (!Number.isSafeInteger(identity.id) || identity.id <= 0 || !identity.role || !identity.token ||
-        current?.usuario?.id !== identity.id || current?.usuario?.rol !== identity.role || current?.token !== identity.token) {
+    if (!Number.isSafeInteger(identity?.id) || identity.id <= 0 || !sessionBindingMatches(identity, current)) {
       invalid = true; cancel(); onInvalidated(); return false;
     }
     return true;
@@ -55,7 +55,7 @@ export function createEditorialSessionGuard(session, readSession, onInvalidated 
       if (options.signal?.aborted) controller.abort();
       controllers.add(controller);
       try {
-        const dto = await request(url, { ...options, signal: controller.signal });
+        const dto = await request(url, sessionRequestOptions(identity, { ...options, signal: controller.signal }));
         return isCurrent() && current === generation && !controller.signal.aborted ? dto : undefined;
       } catch (error) {
         if (!isCurrent() || current !== generation || controller.signal.aborted) return undefined;

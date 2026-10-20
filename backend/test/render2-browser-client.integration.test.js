@@ -5,6 +5,13 @@ import { access } from 'node:fs/promises';
 import { startLocalHarness, fixturePassword, assertFixtureIdentity } from '../scripts/render2-local-test.js';
 import { createBrowserSessionState, bootstrapBrowserSession } from '../../frontend/src/shared/session/browser-session-state.js';
 import { createBrowserApiFetch } from '../../frontend/src/shared/session/browser-api-fetch.js';
+import { createEditorialSessionGuard } from '../../frontend/src/components/EditorialPublicationControl.model.js';
+import { createPersonalListSaveQueue } from '../../frontend/src/pages/personalListSaveQueue.js';
+import { createHomeEditorialLoader } from '../../frontend/src/components/homeEditorialControl.js';
+import { createHomeEscalationsLoader } from '../../frontend/src/components/homeEscalations.js';
+import { createHomeTeamLoader } from '../../frontend/src/components/homeTeamWorkload.js';
+import { createHomeProductionPageLoader } from '../../frontend/src/components/homeProductionPage.js';
+import { createFeedbackInventoryLoader } from '../../frontend/src/pages/feedbackTaskInventory.js';
 
 const origin = 'http://127.0.0.1:5195';
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -139,6 +146,60 @@ test('browser client against principal HTTP: memory observations, exact mutation
     const raw = await apiFetch('/api/inicio');
     assert.throws(() => raw.body, error => error?.code === 'browser_stream_not_supported');
     assert.equal((await raw.json()).user.id, 91001);
+  });
+
+  await t.test('existing home and feedback loaders consume actual cookie-bound principal DTOs without changing business rows', async () => {
+    const [clock] = await fixture.query("SELECT to_char(clock_timestamp() AT TIME ZONE 'America/Argentina/Cordoba','YYYY-MM') AS period");
+    const before = await snapshot();
+    const request = async (url, options) => { const result = await apiFetch(url, options); checked(result); return result.json(); };
+    for (const create of [createHomeEditorialLoader, createHomeEscalationsLoader, createHomeTeamLoader,
+      createHomeProductionPageLoader, createFeedbackInventoryLoader]) {
+      const changes = [];
+      const loader = create({ sesion: store.getSession(), period: clock.period, readSession: store.getSession,
+        request, onChange: value => changes.push(value) });
+      try {
+        if (loader.refresh) await loader.refresh(); else await loader.load({ view: 'all' });
+        assert.equal(changes.at(-1)?.status, 'ready', 'Actual migrated loader must parse its principal DTO');
+      } finally { loader.dispose(); }
+    }
+    assert.deepEqual(await snapshot(), before);
+  });
+
+  await t.test('existing personal-list queue composes the existing editorial guard with genuine cookie intent and persists CAS', async () => {
+    const guard = createEditorialSessionGuard(store.getSession(), store.getSession);
+    const saved = [];
+    const requestDto = async (url, options) => {
+      const response = await apiFetch(url, options), body = await response.json();
+      if (!response.ok) throw Object.assign(new Error('Fixture write rejected'), { status: response.status });
+      return body;
+    };
+    const queue = createPersonalListSaveQueue({ session: store.getSession(), readSession: store.getSession,
+      request: (url, options) => guard.request(requestDto, url, options), delayMs: 60000,
+      onSaved: value => saved.push(value.row) });
+    try {
+      assert.equal(queue.schedule({ key: `list:${listId}`, url: `/api/listas-personales/${listId}`, version: listVersion,
+        payload: { titulo: 'QA existing queue through cookie binding' }, meta: { listId, recordId: listId } }), true);
+      assert.equal(await queue.flush(), true); assert.equal(saved.length, 1); listVersion = saved[0].version;
+      const [row] = await fixture.query('SELECT titulo,version,usuario_id FROM listas_personales WHERE id=$1', [listId]);
+      assert.equal(row.titulo, 'QA existing queue through cookie binding'); assert.equal(row.version, listVersion); assert.equal(row.usuario_id, 91001);
+    } finally { queue.dispose(); guard.cancel(); }
+  });
+
+  await t.test('existing queued A draft cannot write through a later B cookie or resume under B', async () => {
+    let denied = 0, acknowledged = 0;
+    const queue = createPersonalListSaveQueue({ session: store.getSession(), readSession: store.getSession,
+      delayMs: 60000, onDenied: () => { denied++; }, onSaved: () => { acknowledged++; },
+      request: async (url, options) => { const result = await apiFetch(url, options); return result.json(); } });
+    try {
+      assert.equal(queue.schedule({ key: `list:${listId}`, url: `/api/listas-personales/${listId}`, version: listVersion,
+        payload: { titulo: 'Must not transfer private A draft' }, meta: { listId, recordId: listId } }), true);
+      await loginJarOnly('qa_luciano');
+      const before = await snapshot(); assert.equal(await queue.flush(), false);
+      assert.equal(denied, 1); assert.equal(acknowledged, 0); assert.deepEqual(await snapshot(), before);
+      await bootstrap(91003); const count = requests.length;
+      assert.equal(await queue.retry(), false); assert.equal(requests.length, count);
+    } finally { queue.dispose(); }
+    await resetA();
   });
 
   await t.test('unsafe requests without genuine captured intent or with bearer/conflicting binding stop locally before HTTP/SQL', async () => {

@@ -1,9 +1,10 @@
+import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
 const positive = value => Number.isSafeInteger(value) && value > 0;
 const count = value => Number.isSafeInteger(value) && value >= 0;
 export const ESCALATIONS_LIMIT = 20;
 export function canReadHomeEscalations(sesion) {
   return positive(sesion?.usuario?.id) && sesion.usuario.rol === 'admin'
-    && sesion.usuario.activo !== false && typeof sesion.token === 'string' && sesion.token.length > 0;
+    && sesion.usuario.activo !== false && Boolean(captureSessionBinding(sesion));
 }
 function validDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -36,13 +37,11 @@ export function parseHomeEscalations(value, offset = 0) {
 // Each instance belongs to one captured session; neither late success nor failure
 // may publish after identity changes, even when transport ignores AbortSignal.
 export function createHomeEscalationsLoader({ sesion, readSession, request, onChange, now = Date.now }) {
-  const identity = { id: sesion?.usuario?.id, role: sesion?.usuario?.rol,
-    active: sesion?.usuario?.activo, token: sesion?.token };
+  const identity = captureSessionBinding(sesion);
   let controller, generation = 0, disposed = false, inFlight = false, lastRequest = -Infinity, page = 0;
   const authorized = () => {
     const current = readSession();
-    return canReadHomeEscalations(current) && current.usuario.id === identity.id
-      && current.usuario.rol === identity.role && current.usuario.activo === identity.active && current.token === identity.token;
+    return canReadHomeEscalations(current) && sessionBindingMatches(identity, current);
   };
   async function refresh({ offset = page, background = false } = {}) {
     if (disposed) return false;
@@ -60,7 +59,7 @@ export function createHomeEscalationsLoader({ sesion, readSession, request, onCh
     onChange({ status: 'loading', data: null, error: '' });
     const stale = () => disposed || signal.aborted || version !== generation;
     try {
-      const value = await request(`/api/inicio/escalaciones?offset=${offset}&limit=20`, { method: 'GET', signal });
+      const value = await request(`/api/inicio/escalaciones?offset=${offset}&limit=20`, sessionRequestOptions(identity, { method: 'GET', signal }));
       if (stale()) return false;
       if (!authorized()) { onChange({ status: 'error', data: null, error: 'La sesión cambió. Volvé a iniciar sesión.' }); return false; }
       onChange({ status: 'ready', data: parseHomeEscalations(value, offset), error: '' });

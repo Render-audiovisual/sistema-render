@@ -1,5 +1,14 @@
 # Principal backend: isolated local HTTP QA
 
+## Existing model binding adoption QA (integration69)
+
+```sh
+node --test frontend/src/shared/session/session-binding.test.js frontend/src/pages/personalListSaveQueue.test.js frontend/src/components/homeEditorialControl.test.js frontend/src/components/homeEscalations.test.js frontend/src/components/homeProductionPage.test.js frontend/src/components/homeTeamWorkload.test.js frontend/src/components/editorialPieceDetail.test.js frontend/src/pages/feedbackTaskInventory.test.js
+RENDER2_RUN_LOCAL_INTEGRATION=true node --test --test-concurrency=1 backend/test/render2-browser-client.integration.test.js backend/test/render2-personal-list-persistence.integration.test.js
+```
+
+Both integration filenames above are real files; Node test selection can silently ignore an unmatched path when another path exists, so check selected subtest names/counts rather than assuming all requested paths ran. Final69 combined run has17 cases. The fresh guarded55682 browser-client fixture now imports actual existing loaders, editorial guard and personal-list queue: five loaders parse real principal cookie responses without writes; nested guard/queue transport persists exact private-list CAS; queued A/cookie B cannot write or retry as B. Separate55672 personal-list persistence fixture retains concurrent/BIGSERIAL/reorder proof. All fixtures are disposable and cleanup is asserted. Node Cookie jar is simulated; JSX wrappers are not switched or browser-certified. Legacy-mode compilation and frontend unit runs do not authorize enabling cookie mode before remaining caller migration.
+
 ## Serialized browser session controller QA (integration68)
 
 ```sh
