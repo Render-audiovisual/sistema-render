@@ -91,8 +91,8 @@ test('anonymous login gate and root handling precede loading guard; permissions 
   assert.match(source, /return\s+<LoginPage\s*\//);
 });
 
-test('direction and production dashboards retain live lazy imports and route mounts', () => {
-  for (const name of ['Lider', 'German']) {
+test('production dashboard retains live lazy import and route mount', () => {
+  for (const name of ['German']) {
     const component = `${name}Dashboard`;
     const declaration = file.statements.find((n) => ts.isVariableStatement(n)
       && n.declarationList.declarations.some((d) => text(d.name) === component));
@@ -107,8 +107,8 @@ test('direction and production dashboards retain live lazy imports and route mou
   }
 });
 
-test('Augusto/Luciano/Oriana imports and mounts retire while original source files remain preserved', () => {
-  for (const name of ['Augusto', 'Luciano', 'Oriana']) {
+test('Augusto/Luciano/Oriana/Lider imports and mounts retire while original source files remain preserved', () => {
+  for (const name of ['Augusto', 'Luciano', 'Oriana', 'Lider']) {
     const modulePath = `./pages/dashboards/${name}.jsx`;
     const imports = nodes(file, n => ts.isStringLiteral(n) && n.text === modulePath);
     assert.equal(imports.length, 0, `${name} has no static/lazy App module import`);
@@ -122,14 +122,14 @@ test('Augusto/Luciano/Oriana imports and mounts retire while original source fil
 });
 
 test('approved deprecated aliases no longer have App hard-reload/render branches', () => {
-  const aliases = new Set(['/agustin', '/franco', '/augusto', '/luciano', '/oriana', '/equipo', '/piezas', '/wilson-conversaciones']);
+  const aliases = new Set(['/agustin', '/franco', '/augusto', '/luciano', '/oriana', '/lider', '/equipo', '/piezas', '/wilson-conversaciones']);
   const aliasBranches = nodes(app.body, ts.isIfStatement).filter((n) => nodes(n.expression, (x) => ts.isStringLiteral(x) && aliases.has(x.text)).length);
   assert.equal(aliasBranches.length, 0, 'Closed policy replaces only approved alias-specific branches');
 });
 
 test('real shared policy retains only canonical task context from the full App route', async () => {
   const { canonicalLegacyRoute } = await import('../shared/navigation/legacy-routes.js');
-  for (const alias of ['/agustin', '/franco', '/augusto', '/luciano', '/oriana']) {
+  for (const alias of ['/agustin', '/franco', '/augusto', '/luciano', '/oriana', '/lider']) {
     assert.equal(canonicalLegacyRoute(`${alias}?usuario=other&rol=admin&cliente=99#unknown`), '/inicio');
     assert.equal(canonicalLegacyRoute(`${alias}?task=42&asignado_a=other#unknown`), '/workspace/tareas?task=42');
     assert.equal(canonicalLegacyRoute(`${alias}?task=42&task=43`), '/inicio');
@@ -145,9 +145,9 @@ test('real shared policy retains only canonical task context from the full App r
   assert.equal(canonicalLegacyRoute('/unknown?task=42'), null);
 });
 
-test('real helper leaves both held production/direction routes unmapped, including task context', async () => {
+test('real helper leaves held production route unmapped, including task context', async () => {
   const { canonicalLegacyRoute } = await import('../shared/navigation/legacy-routes.js');
-  for (const alias of ['/lider', '/german']) {
+  for (const alias of ['/german']) {
     for (const suffix of ['', '?task=42', '?task=42&task=43', '?usuario=other&rol=admin#unknown']) {
       assert.equal(canonicalLegacyRoute(`${alias}${suffix}`), null, `${alias}${suffix} must remain live, not canonicalized`);
     }

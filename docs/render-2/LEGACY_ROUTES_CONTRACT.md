@@ -6,7 +6,9 @@ Integration 34 supersedes the earlier five-dashboard hold only for Augusto/Lucia
 
 Integration43 additionally retires **only Oriana** after exact blocked-piece content, authoritative editorial/publication controls, task access and alias/history/mobile gates were verified. Source remains preserved; import/mount removed. Its alias resolves to the current authenticated home or one valid explicit task context, never a person/role named in the URL. See EDITORIAL_PIECE_DETAIL_CONTRACT.md and STATUS for deliberate daily-counter semantics and evidence.
 
-Líder and Germán remain live and unmapped until their separate global/production replacement gates pass. Older inventory/ownership notes below are historical, not authority to retire those remaining homes or claim all implementations unified.
+Integration44 additionally retires only Líder after global workload/escalation/editorial and authorized same-period financial replacements were verified. Deliberate corrections to legacy name fallbacks, impossible blocked-task counts and overlapping attention sums are documented in DIRECTION_CONSOLIDATION_CONTRACT. Alias uses current identity/safe task context, never URL role/name.
+
+Only Germán remains live and unmapped pending its separate production replacement gate. Older inventory/ownership notes below are historical, not authority to retire that remaining home or claim all implementations unified.
 
 Goal: one live principal operational task/home implementation. Source files are retained for reference, not mounted through the production router after verified replacement. No historical data migration, identity inference, role grants, new preview/application or backend API change. Preserve preexisting DEV DesignPreview/CommentsProposal/LocalDesignShell edits in App.jsx and Vite; coordinator alone edits App.
 

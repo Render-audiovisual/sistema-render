@@ -1,8 +1,9 @@
 const dashboardAliases = new Set([
   // Design/editing homes are replaced by current-ID personal work and monthly
-  // progress. Editorial gate closure adds Oriana's alias to current-identity
-  // home; production and leader homes remain gated. Reference files stay intact.
-  '/agustin', '/franco', '/augusto', '/luciano', '/oriana',
+  // progress. Editorial and finance gate closure adds Oriana/Líder aliases to
+  // current-identity home; only German's production home remains gated.
+  // Reference files stay intact.
+  '/agustin', '/franco', '/augusto', '/luciano', '/oriana', '/lider',
 ]);
 const taskAliases = new Set(['/piezas', '/wilson-conversaciones']);
 
