@@ -8,8 +8,7 @@ test('principal editorial control mounts once after current-session authenticati
   // by the opted-in principal HTTP/PostgreSQL suite.
   const mounts = [...source.matchAll(/^router\.use\('\/editorial-control', createEditorialControlRouter\(\{ express, pool \}\)\);$/gm)];
   assert.equal(mounts.length, 1);
-  const auth = source.indexOf('router.use(requireAuthentication);');
-  const current = source.indexOf('router.use(requireCurrentIdentity(pool));');
-  assert.ok(auth >= 0 && current > auth && mounts[0].index > current);
+  const auth = source.indexOf('router.use(createPrincipalAuthentication({ browserTransport: browserSessions, pool }));');
+  assert.ok(auth >= 0 && mounts[0].index > auth);
   assert.match(source, /import \{ createEditorialControlRouter \} from "\.\/editorial-control.js";/);
 });

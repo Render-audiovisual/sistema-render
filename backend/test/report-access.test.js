@@ -66,7 +66,7 @@ test("edición recibe únicamente su registro confirmado", () => {
 });
 
 test("el endpoint del reporte está disponible tras la autenticación compartida", () => {
-  assert.match(serverSource, /router\.use\(requireAuthentication\);[\s\S]*router\.get\("\/reportes\/datos", async/);
+  assert.match(serverSource, /router\.use\(createPrincipalAuthentication\(\{ browserTransport: browserSessions, pool \}\)\);[\s\S]*router\.get\("\/reportes\/datos", async/);
   assert.doesNotMatch(
     serverSource,
     /router\.get\("\/reportes\/datos", requireRole\("admin"\)/,

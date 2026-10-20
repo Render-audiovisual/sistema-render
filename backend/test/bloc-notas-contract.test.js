@@ -10,7 +10,8 @@ const migration = readFileSync(new URL("../migrations/013_bloc_notas.sql", impor
 const categoryMigration = readFileSync(new URL("../migrations/025_notas_categorias.sql", import.meta.url), "utf8");
 
 test("el Bloc de notas exige sesión y expone el contrato CRUD con Papelera", () => {
-  const authPosition = server.indexOf("router.use(requireAuthentication)");
+  const authPosition = server.indexOf('router.use(createPrincipalAuthentication({ browserTransport: browserSessions, pool }))');
+  assert.ok(authPosition >= 0);
   for (const route of [
     'router.get("/notas"',
     'router.get("/notas/nuevas"',

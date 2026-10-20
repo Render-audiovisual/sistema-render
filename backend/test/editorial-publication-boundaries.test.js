@@ -18,10 +18,9 @@ test('only named editorial domain SQL errors become bounded conflicts', () => {
 
 test('principal editorial confirmation routes are behind current identity and startup requires the new schema', () => {
   const source = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
-  const auth = source.indexOf('router.use(requireAuthentication)');
-  const identity = source.indexOf('router.use(requireCurrentIdentity(pool))');
+  const auth = source.indexOf('router.use(createPrincipalAuthentication({ browserTransport: browserSessions, pool }))');
   const mount = source.indexOf("router.use('/editorial-publicacion', createEditorialPublicationRouter({ express, pool }))");
-  assert.ok(auth >= 0 && identity > auth && mount > identity);
+  assert.ok(auth >= 0 && mount > auth);
   assert.equal(CORE_SCHEMA_COLUMNS.editorial_publicacion_versiones.current_event_id, 'uuid');
   assert.equal(CORE_SCHEMA_COLUMNS.editorial_publicacion_eventos.occurred_at, 'timestamp with time zone');
   assert.equal(CORE_SCHEMA_COLUMNS.historias['fecha_publicación_real'], 'timestamp with time zone');

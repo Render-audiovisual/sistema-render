@@ -1,5 +1,16 @@
 # Principal backend: isolated local HTTP QA
 
+## Principal browser-session integration (integration66)
+
+```sh
+node --test backend/test/browser-session-config.test.js backend/test/login-handlers.test.js backend/test/login-identity-wiring.test.js
+RENDER2_RUN_LOCAL_INTEGRATION=true node --test backend/test/render2-browser-sessions.integration.test.js
+```
+
+The new harness option `browserSessions:true` is boolean-only and sets a fixed public test Origin `http://127.0.0.1:5195` in the sanitized child environment. The API still listens on an ephemeral numeric-loopback HTTP port; PostgreSQL is a fresh guarded55680 cluster. No arbitrary env or existing DB is accepted. The test explicitly provides Cookie/Origin/context/CSRF headers rather than a browser cookie jar. It verifies actual principal password/bcrypt/roster/rate checks and business persistence, but not real Google, TLS/proxy configuration, successful uploads or frontend cutover. Full-table digests distinguish operational invariance from documented rate reservations. Cleanup asserts exact own-root removal.
+
+Runtime opt-in is off by default. Do not set RENDER_BROWSER_SESSIONS=true on an operator environment until the frontend no longer relies on bearer guards/localStorage and login concurrency/proxy/HTTPS acceptance is complete. Unit fixtures may inject a synthetic Google verifier; this is not a provider identity verification result. No token:'cookie' compatibility shim is permitted.
+
 ## Read-only resources regression (integration65)
 
 ```sh

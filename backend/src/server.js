@@ -18,10 +18,10 @@ import {
 } from "./email-notifications.js";
 import { destinatariosNuevosDeAsignacion, encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
 import { encolarNotificacionPrivadaFeedback } from "./private-feedback-notifications.js";
-import { requireAuthentication, requireRole, requireCurrentIdentity, issueUserToken } from "./auth.js";
+import { requireRole, issueUserToken } from "./auth.js";
+import { configuredBrowserSessions, createPrincipalAuthentication } from './browser-session-config.js';
+import { createLoginHandlers, loginUserDto } from './login-handlers.js';
 import { reserveLoginAttempt } from "./login-abuse.js";
-import { passwordLoginInput, googleLoginInput } from "./login-input.js";
-import { findPasswordLoginIdentity, resolveGoogleLoginIdentity } from "./login-identity.js";
 import { administerUser } from "./user-administration.js";
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { persistAssignedTask } from "./task-persistence.js";
@@ -122,14 +122,25 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-// Permite llamar a esta API desde un frontend alojado en otro dominio
-// (por ejemplo una copia estática en Hostinger). No hay cookies ni
-// credenciales de sesión involucradas (el JWT viaja en el body/localStorage,
-// no en una cookie), así que un origen abierto no expone nada nuevo.
-router.use((_req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+// Explicit opt-in only while frontend guards/queues are migrated together.
+const browserSessions = configuredBrowserSessions(process.env, pool);
+router.use((req, res, next) => {
+  if (browserSessions) {
+    res.vary('Origin');
+    const origin = req.get('origin');
+    if (origin !== undefined && origin !== process.env.RENDER_BROWSER_ORIGIN)
+      return res.status(403).json({ error: 'Origen no autorizado.' });
+    if (origin) {
+      res.header('Access-Control-Allow-Origin', process.env.RENDER_BROWSER_ORIGIN);
+      res.header('Access-Control-Allow-Credentials', 'true');
+    }
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Render-Session-Context, X-Render-CSRF');
+  } else {
+    // Legacy bearer compatibility has no ambient cookie credential authority.
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  }
+  res.header("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
   next();
 });
 // Express 5 / path-to-regexp ya no acepta "*" como patrón de ruta.
@@ -178,102 +189,31 @@ router.use("/integraciones/wilson", createWilsonRouter({
   confirmProduction: ({ taskId, actor, db, expectedRevision, actorId }) => confirmProductionVisit(taskId, actor, { db, expectedRevision, actorId }),
 }));
 
-router.post("/login", async (req, res, next) => {
-  try {
-    const { usuario: identificador, password } = passwordLoginInput(req.body);
-    if (!await allowLoginAttempt(req, res, identificador)) return;
-
-    const usuarioDB = await findPasswordLoginIdentity(pool, identificador);
-    if (!usuarioDB) {
-      return res.status(401).json({ error: "Usuario o contraseña incorrectos." });
-    }
-    const passwordValida = await bcrypt.compare(
-      password,
-      usuarioDB.password_hash,
-    );
-
-    if (!passwordValida || usuarioDB.activo !== true) {
-      return res.status(401).json({ error: "Usuario o contraseña incorrectos." });
-    }
-
-    const token = issueUserToken(usuarioDB);
-
-    res.json({
-      token,
-      usuario: {
-        id: usuarioDB.id,
-        usuario: usuarioDB.usuario,
-        nombre: usuarioDB.nombre,
-        rol: usuarioDB.rol,
-        foto_perfil: usuarioDB.foto_perfil,
-      },
-    });
-  } catch (error) {
-    if (error.status === 400) return res.status(400).json({ error: 'Datos de acceso inválidos.' });
-    next(error);
-  }
+const loginHandlers = createLoginHandlers({
+  pool, allowLoginAttempt, googleClient, googleAudience: process.env.GOOGLE_CLIENT_ID,
+  sendSuccess(user, res, browser) {
+    const usuario = loginUserDto(user);
+    if (browser) return res.json({ usuario, ...browserSessions.establishSession(user, res) });
+    return res.json({ token: issueUserToken(user), usuario });
+  },
 });
-
-router.post("/login/google", async (req, res, next) => {
-  try {
-    const { credential } = googleLoginInput(req.body);
-    if (!await allowLoginAttempt(req, res)) return;
-    if (!googleClient) {
-      return res
-        .status(500)
-        .json({ error: "El login con Google no está configurado en el servidor." });
-    }
-
-    let payload;
-    try {
-      const ticket = await googleClient.verifyIdToken({
-        idToken: credential,
-        audience: process.env.GOOGLE_CLIENT_ID,
-      });
-      payload = ticket.getPayload();
-    } catch {
-      return res.status(401).json({ error: "Token de Google inválido o vencido." });
-    }
-
-    if (payload?.email_verified !== true || typeof payload.sub !== "string" || !payload.sub
-      || typeof payload.email !== "string" || !payload.email) {
-      return res
-        .status(401)
-        .json({ error: "Tu cuenta de Google no tiene el email verificado." });
-    }
-
-    const usuarioDB = await resolveGoogleLoginIdentity(pool, payload);
-
-    const token = issueUserToken(usuarioDB);
-
-    res.json({
-      token,
-      usuario: {
-        id: usuarioDB.id,
-        usuario: usuarioDB.usuario,
-        nombre: usuarioDB.nombre,
-        rol: usuarioDB.rol,
-        foto_perfil: usuarioDB.foto_perfil,
-      },
-    });
-  } catch (error) {
-    if (error.status === 400) return res.status(400).json({ error: 'Datos de acceso inválidos.' });
-    const identityErrors = {
-      401: "La identidad de Google no es válida o no está verificada.",
-      403: "Tu cuenta de Google no tiene una vinculación activa y única. Consultá con un líder.",
-      409: "La vinculación cambió. Volvé a iniciar sesión.",
-    };
-    if (Object.hasOwn(identityErrors, error.status)) return res.status(error.status).json({ error: identityErrors[error.status] });
-    next(error);
-  }
-});
+router.post('/login', loginHandlers.password());
+router.post('/login/google', loginHandlers.google());
+if (browserSessions) {
+  router.get('/sesion/desafio', browserSessions.issueLoginChallenge);
+  router.post('/login/browser', browserSessions.requireLoginChallenge, loginHandlers.password(true));
+  router.post('/login/browser/google', browserSessions.requireLoginChallenge, loginHandlers.google(true));
+} else {
+  const unavailable = (_req, res) => res.status(404).json({ error: 'Sesiones de navegador no habilitadas.' });
+  router.get('/sesion/desafio', unavailable);
+  router.use('/login/browser', unavailable);
+}
 
 // El callback de Google vuelve sin el JWT del navegador. El parámetro state
 // está firmado, vence en diez minutos y limita la conexión a un Líder.
 router.use("/drive", createGoogleDrivePublicRouter({ express, pool }));
 
-router.use(requireAuthentication);
-router.use(requireCurrentIdentity(pool));
+router.use(createPrincipalAuthentication({ browserTransport: browserSessions, pool }));
 router.use('/inicio', createPersonalHomeRouter({ express, pool }));
 router.use('/proyectos', createProjectsRouter({ express, pool }));
 router.use('/editorial-publicacion', createEditorialPublicationRouter({ express, pool }));
@@ -287,7 +227,10 @@ router.use('/tareas-edicion', createEditingReviewsRouter({ express, pool }));
 router.use('/calendario', createCalendarRouter({ express, pool }));
 router.use('/editorial-control', createEditorialControlRouter({ express, pool }));
 
-router.get("/sesion", (req, res) => res.json({ usuario: req.auth }));
+router.get("/sesion", (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ usuario: req.auth, ...(req.browserSession || {}) });
+});
 router.post("/logout", async (req, res, next) => {
   try {
     // This first rollout revokes all sessions of the account, not other users.

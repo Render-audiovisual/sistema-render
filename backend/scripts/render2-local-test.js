@@ -58,10 +58,11 @@ export function fixtureWilsonEnvironment(config = {}) {
   return result;
 }
 
-export async function startLocalHarness({ port = 55594, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, wilson = {} } = {}) {
+export async function startLocalHarness({ port = 55594, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, wilson = {} } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   if (typeof supervisorEnabled !== 'boolean') throw new Error('Invalid supervisor fixture option');
   if (typeof clusterOnly !== 'boolean') throw new Error('Invalid cluster-only fixture option');
+  if (typeof browserSessions !== 'boolean') throw new Error('Invalid browser-session fixture option');
   const wilsonEnv = fixtureWilsonEnvironment(wilson);
   const root = await mkdtemp('/private/tmp/render2-local-');
   const data = `${root}/data`;
@@ -111,6 +112,7 @@ export async function startLocalHarness({ port = 55594, deferGoalMigration = fal
     const secret = randomBytes(32).toString('hex');
     child = fork(self, ['--fixture-child'], { cwd: root, execArgv: [],
       env: { ...env, ...wilsonEnv, MIA_SUPERVISOR_ENABLED: String(supervisorEnabled), DATABASE_URL: url, JWT_SECRET: secret, RENDER2_FIXTURE_ROOT: root,
+        ...(browserSessions ? { RENDER_BROWSER_SESSIONS: 'true', RENDER_BROWSER_ORIGIN: 'http://127.0.0.1:5195', RENDER_BROWSER_ALLOW_LOCAL_HTTP: 'true' } : {}),
         RENDER2_FIXTURE_PORT: String(port), RENDER2_DEFER_GOAL_MIGRATION: String(deferGoalMigration),
         RENDER2_DEFER_ASSIGNMENT_MIGRATION: String(deferAssignmentMigration),
         RENDER2_DEFER_TASK_STATE_MIGRATION: String(deferTaskStateMigration),
