@@ -370,8 +370,12 @@ test("el detalle de todas las tareas conserva guion, copy e indicaciones en un Ã
 test("el frontend no fabrica sesiones y adjunta el JWT a la API", () => {
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const mainSource = readFileSync(new URL("../../frontend/src/main.jsx", import.meta.url), "utf8");
+  const transportSource = readFileSync(new URL("../../frontend/src/shared/session/api-fetch.js", import.meta.url), "utf8");
 
   assert.doesNotMatch(appSource, /getSesionDelPath/);
-  assert.match(mainSource, /headers\.set\("Authorization", `Bearer \$\{session\.token\}`\)/);
-  assert.match(mainSource, /response\.status === 401/);
+  assert.match(mainSource, /window.fetch = createAuthenticatedApiFetch\(/);
+  assert.match(transportSource, /!headers.has\('Authorization'\)&&captured/);
+  assert.match(transportSource, /headers.set\('Authorization',`Bearer \$\{captured.token\}`\)/);
+  assert.match(transportSource, /response.status!==401/);
+  assert.match(transportSource, /current\?\.token===bound.token&&current.usuario.id===bound.usuario.id/);
 });

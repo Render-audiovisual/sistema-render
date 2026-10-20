@@ -979,11 +979,11 @@ router.patch("/usuarios/perfil", async (req, res, next) => {
     }
 
     const found = await pool.query(
-      "SELECT id, usuario, nombre, rol, foto_perfil, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
-      [usuario_actual],
+      "SELECT id, usuario, nombre, rol, foto_perfil, password_hash FROM usuarios WHERE id=$1 AND session_version=$2 AND activo IS TRUE",
+      [req.auth.id, req.auth.session_version],
     );
     if (found.rows.length === 0) {
-      return res.status(404).json({ error: "Usuario no encontrado." });
+      return res.status(401).json({ error: "La sesión cambió. Volvé a iniciar sesión." });
     }
 
     const usuarioDB = found.rows[0];
@@ -992,7 +992,7 @@ router.patch("/usuarios/perfil", async (req, res, next) => {
       usuarioDB.password_hash,
     );
     if (!passwordValida) {
-      return res.status(401).json({ error: "La contraseña actual es incorrecta." });
+      return res.status(401).json({ error: "La contraseña actual es incorrecta.", code: "current_password_invalid" });
     }
 
     const duplicado = await pool.query(
@@ -1006,13 +1006,14 @@ router.patch("/usuarios/perfil", async (req, res, next) => {
     const updated = await pool.query(
       `UPDATE usuarios
        SET usuario = $1, session_version=session_version+1
-       WHERE id = $2
+       WHERE id = $2 AND session_version=$3 AND activo IS TRUE
        RETURNING id, usuario, nombre, rol, foto_perfil, created_at`,
-      [usuarioNuevo, usuarioDB.id],
+      [usuarioNuevo, req.auth.id, req.auth.session_version],
     );
-
+    if(!updated.rows.length)return res.status(401).json({error:"La sesión cambió. Volvé a iniciar sesión."});
     res.json(updated.rows[0]);
   } catch (error) {
+    if(error.code==='23505')return res.status(409).json({error:"Ya existe un usuario con ese nombre de acceso."});
     next(error);
   }
 });
@@ -1038,13 +1039,13 @@ router.patch("/usuarios/foto", async (req, res, next) => {
     const updated = await pool.query(
       `UPDATE usuarios
        SET foto_perfil = $1
-       WHERE lower(usuario) = lower($2)
+       WHERE id = $2 AND session_version=$3 AND activo IS TRUE
        RETURNING id, usuario, nombre, rol, foto_perfil, created_at`,
-      [foto || null, usuario],
+      [foto || null, req.auth.id, req.auth.session_version],
     );
 
     if (updated.rows.length === 0) {
-      return res.status(404).json({ error: "Usuario no encontrado." });
+      return res.status(401).json({ error: "La sesión cambió. Volvé a iniciar sesión." });
     }
 
     res.json(updated.rows[0]);
@@ -1067,11 +1068,11 @@ router.patch("/usuarios/password", async (req, res, next) => {
     }
 
     const found = await pool.query(
-      "SELECT id, password_hash FROM usuarios WHERE lower(usuario) = lower($1)",
-      [usuario],
+      "SELECT id, password_hash FROM usuarios WHERE id=$1 AND session_version=$2 AND activo IS TRUE",
+      [req.auth.id, req.auth.session_version],
     );
     if (found.rows.length === 0) {
-      return res.status(404).json({ error: "Usuario no encontrado." });
+      return res.status(401).json({ error: "La sesión cambió. Volvé a iniciar sesión." });
     }
 
     const passwordValida = await bcrypt.compare(
@@ -1079,15 +1080,16 @@ router.patch("/usuarios/password", async (req, res, next) => {
       found.rows[0].password_hash,
     );
     if (!passwordValida) {
-      return res.status(401).json({ error: "La contraseña actual es incorrecta." });
+      return res.status(401).json({ error: "La contraseña actual es incorrecta.", code: "current_password_invalid" });
     }
 
     const passwordHash = await bcrypt.hash(password_nueva, 10);
-    await pool.query("UPDATE usuarios SET password_hash = $1, session_version=session_version+1 WHERE id = $2", [
+    const updated=await pool.query("UPDATE usuarios SET password_hash = $1, session_version=session_version+1 WHERE id = $2 AND session_version=$3 AND activo IS TRUE RETURNING id", [
       passwordHash,
-      found.rows[0].id,
+      req.auth.id,
+      req.auth.session_version,
     ]);
-
+    if(!updated.rows.length)return res.status(401).json({error:"La sesión cambió. Volvé a iniciar sesión."});
     res.json({ ok: true });
   } catch (error) {
     next(error);

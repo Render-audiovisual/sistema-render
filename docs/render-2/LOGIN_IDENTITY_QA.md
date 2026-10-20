@@ -44,6 +44,16 @@ Unique Google email/subject indexes remain installed and authoritative; this sui
 
 ## Limits and pending evidence
 
+### Separate self-profile/session acceptance — integration57
+
+`render2-profile-session.integration.test.js` is a new actual principal HTTP suite, not execution of the Google resolver suite discussed above. Fresh disposable PG55670 proves: photo update/removal keeps the same ID/session version; wrong-current-password/duplicate/another-user bodies cause no account writes; username and password changes revoke both existing sessions, issue no replacement token, and require correct new credentials for the same ID. A real row-lock barrier revokes the actor after photo request authorization but before its UPDATE; ID/session-version/active CAS returns401 with no write. Backend self-profile routes no longer resolve a mutation target by a mutable username.
+
+Both credential routes return machine code `current_password_invalid` for an incorrect current password. This is a form error, not evidence that the bearer session is revoked. The global frontend transport preserves explicitly supplied Authorization, captures the actual sent token/ID/role and clears only a still-matching current session on401. It inspects a clone only for the two credential-error paths, preserving the response for the caller; login failures do not clear another current account. Pure tests exercise late401 A→B, changed identity, anonymous/custom credentials, offline errors, API base/options and current-session invalidation. Bootstrap uses that tested helper. No claim all other asynchronous logout/account-switch interactions are certified.
+
+Profile applies only a validated same-ID server photo DTO, normalizes server null photo to empty presentation while preserving ID/token/known activity, and ignores late/unmounted/different actor/token/role responses. Successful credential changes clear only the captured current local session and redirect to login rather than resaving a revoked token. Failure leaves form/session intact. Actual browser removed a synthetic photo, navigated Home, reloaded and reopened Profile with the same authenticated fictional identity; mobile width390 equals document width390. No username/password was changed through browser UI; those checks used only synthetic HTTP fixture accounts.
+
+Final57 logs `/private/tmp/render2-profile-cross-sector-http-final.log` (12 tests including separate cross-sector suite), `/private/tmp/render2-profile-session-{backend,front,build,unit}.log`; screenshot `/private/tmp/render2-profile-session-mobile.png`. No real account, provider or production validation is implied.
+
 The authored suite includes both committed read-to-update races and an observed PostgreSQL row-lock wait; neither has been executed by this author. Direct resolver payloads are synthetic claims, not external Google verification. No Google/Drive/provider requests, real accounts, roster/backfill, browser validation, production access or deployment. A passing run must not be described as provider/browser validation.
 
 Main still needs to request the isolated run, record results and physical cleanup, and run the complete backend/frontend regressions and existing principal HTTP suites. READY freeze means no additional execution or edits without Main's direction.

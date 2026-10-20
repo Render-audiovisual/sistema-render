@@ -4,6 +4,7 @@ import "./styles.css";
 import "./design-system.css";
 import { App } from "./App.jsx";
 import { installUnsavedNavigation } from "./shared/navigation/unsaved.js";
+import { createAuthenticatedApiFetch } from './shared/session/api-fetch.js';
 
 installUnsavedNavigation(window);
 
@@ -14,26 +15,7 @@ installUnsavedNavigation(window);
 // redirigir esas llamadas. Sin la variable, el comportamiento no cambia.
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 const fetchOriginal = window.fetch.bind(window);
-window.fetch = async (input, init = {}) => {
-  const relativeApiUrl = typeof input === "string" && input.startsWith("/api");
-  if (!relativeApiUrl) return fetchOriginal(input, init);
-
-  const headers = new Headers(init.headers || {});
-  try {
-    const session = JSON.parse(localStorage.getItem("render_sesion") || "null");
-    if (session?.token) headers.set("Authorization", `Bearer ${session.token}`);
-  } catch {
-    localStorage.removeItem("render_sesion");
-  }
-
-  const response = await fetchOriginal(`${API_BASE}${input}`, { ...init, headers });
-  const isLoginRequest = input === "/api/login" || input === "/api/login/google";
-  if (response.status === 401 && !isLoginRequest) {
-    localStorage.removeItem("render_sesion");
-    if (window.location.pathname !== "/login") window.location.replace("/login");
-  }
-  return response;
-};
+window.fetch = createAuthenticatedApiFetch({fetchImpl:fetchOriginal,storage:localStorage,location:window.location,apiBase:API_BASE});
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

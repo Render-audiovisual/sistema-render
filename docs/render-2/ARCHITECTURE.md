@@ -42,6 +42,22 @@ Prefer an injected Express app factory. Existing `RENDER_DISABLE_SERVER_START=tr
 
 ## QA gates and safe commands
 
+### Current local acceptance checkpoint — integration57 (2026-10-20)
+
+This is a current-state checkpoint, not a completion declaration or replacement of the phased master objective. Earlier sections describe the original audit; STATUS.md records subsequent implementation chronologically.
+
+| Master area | Current evidence | Remaining gate |
+| --- | --- | --- |
+| Canonical application/data | React root → relative `/api` → Express → `pg`; canonical navigation and personal home are connected. Source inspection found API usage in every canonical module inspected, not an identified browser-only business module. | Full per-module/role/runtime audit still required. DEV preview wrappers and sandbox proxy/source remain separate references; final disposition is not yet closed. Preserve user App/Vite dirt. |
+| Identity/privacy | Current server IDs/roles/session versions; financial DTO boundaries;57 self-profile CAS and token-bound401 transport. Physical cross-user editing workflow and profile revocation tests passed in fresh PG. | Approved real roster/Google/provider onboarding and historical identity mapping not established; localStorage bearer remains XSS-readable; no claim HttpOnly/CSRF migration is finished. |
+| Work/editorial/quotas |57 actual API task create/assignment → employee delivery → another owner correction → second delivery → exact approval → completion agrees with personal home, report task/count and objective DTO at every step. Piece remains `lista`, real publication date null, no publication event. | Piece/objective setup in this test is synthetic SQL, not API creation/publication E2E. Publication-provider execution and the whole A–F acceptance matrix are not certified by this one editing path. |
+| Production | Canonical per-video registry, manual editor/deadline handoff, explicit historical identification and56 one-task/one-video adoption with retained delivery/review IDs. | True multi-video aggregate disposition, multiple/non-workspace children, mixed visits and reviewed rescope/partial extensions remain. |
+| Other operational modules | Drive, moodboards, lists, clients, feedback, financial/user routes have backend calls in inspected source. | Read-only audit found candidate P2s: PersonalLists650ms autosave timers can be cancelled on unmount without flush/guard; Feedback fetches first100 text-search `q=feedback` tasks, not a complete structured correction inventory. Neither is fixed or browser-proven by57. |
+| Navigation/design | Shared canonical sidebar, nominal dashboard aliases retired, common light UI; repeated scoped mobile checks, including57 Profile390px with no document overflow. | No claim every screen/control/mobile breakpoint is verified or visually uniform. |
+| Rollout/integrations | Local source commits and disposable PG tests only; no configured database/provider/production writes or deployment. | Actual deployment identity, backup/migration plan, provider access, release checklist and explicit approval still required. Local passing tests are not a published system. |
+
+Next integration should first resolve and verify pending personal-list edits on navigation, then replace Feedback's incomplete text-search candidate inventory with an explicit scoped/paginated operational contract. Do not create another dashboard, generic parallel API or browser business store to address these gaps.
+
 Read-only/pure regression candidates, from repository root with dependencies already installed:
 
 ```sh
