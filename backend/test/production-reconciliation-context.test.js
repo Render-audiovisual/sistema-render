@@ -14,7 +14,7 @@ const source=(patch={})=>({id:9,revision:4,titulo:'Visita histórica',tipo_tarea
   aclaraciones:'  Instrucciones\nexactas ',material_referencia:'javascript:literal',
   propiedades_extra:{workspace:'render_os',produccion_registros:[{cantidad:2},{cantidad:'3'}],
     produccion_videos_previstos:6,guiones:'Guion\n',material:'Material legado',feedback:'Feedback',horario:'Después de almorzar'},...patch});
-function fake({user=admin,task=source(),registry=null,child=null,fail,rollbackFail=false}={}) {
+function fake({user=admin,task=source(),registry=null,child=null,childRows,fail,rollbackFail=false}={}) {
   const calls=[];let connects=0,releases=0;
   const db={release(){releases++;},async query(sql,values){
     calls.push({sql,values});
@@ -24,7 +24,7 @@ function fake({user=admin,task=source(),registry=null,child=null,fail,rollbackFa
     if(kind==='user')return {rows:user?[user]:[]};
     if(kind==='source')return {rows:task?[task]:[]};
     if(kind==='registry')return {rows:registry?[{id:registry}]:[]};
-    if(kind==='child')return {rows:child?[{id:child}]:[]};
+    if(kind==='child')return {rows:sql.startsWith('SELECT id,revision,titulo,estado')?(childRows??(child?[{id:child,revision:2,titulo:'Edición original',estado:'finalizada'}]:[])):child?[{id:child}]:[]};
     assert.ok([begin,'COMMIT','ROLLBACK'].includes(sql));return {rows:[]};
   }};
   return {calls,get connects(){return connects;},get releases(){return releases;},pool:{async connect(){connects++;return db;}}};
@@ -86,7 +86,7 @@ test('eligibility prioritizes linked registry then editing child then actual leg
 test('closed content permits only strings, preserves exact text and never returns raw records/private bags',async()=>{
   const original=source();original.propiedades_extra.finance={secret:999};original.private='hidden';
   const before=JSON.stringify(original),result=await read(fake({task:original}));
-  assert.deepEqual(Object.keys(result),['version','source','history','eligibility']);
+  assert.deepEqual(Object.keys(result),['version','source','history','eligibility','legacy_editing_tasks']);
   assert.deepEqual(Object.keys(result.source),['id','revision','titulo','cliente','fecha','content']);
   assert.deepEqual(result.source.content,{instructions:'  Instrucciones\nexactas ',script:'Guion\n',material:'javascript:literal',
     recorded_material:'Material legado',feedback:'Feedback',schedule:'Después de almorzar'});
@@ -97,6 +97,26 @@ test('closed content permits only strings, preserves exact text and never return
   assert.deepEqual((await read(fake({task:scalar}))).source.content,{instructions:'',script:'',material:'',recorded_material:'Uppercase',feedback:'',schedule:''});
 });
 
+test('legacy editing dossier projects only stable task references and never copies evidence or private bags',async()=>{
+  const childRows=[{id:33,revision:2,titulo:'Edición original',estado:'finalizada',en_workspace:true,propiedades_extra:{finance:'PRIVATE'},salary:999},
+    {id:34,revision:1,titulo:'Corrección histórica',estado:'en_revision',en_workspace:false,approval:'not-a-video-approval'}];
+  const m=fake({childRows}),value=await read(m);
+  assert.equal(value.eligibility.status,'legacy_editing');
+  assert.deepEqual(value.legacy_editing_tasks,childRows.map(({id,revision,titulo,estado,en_workspace})=>({id,revision,titulo,estado,en_workspace})));
+  assert.doesNotMatch(JSON.stringify(value),/PRIVATE|salary|approval|propiedades_extra/);
+  assert.match(m.calls.find(({sql})=>sql.startsWith('SELECT id,revision,titulo,estado')).sql,/ORDER BY id LIMIT 51$/);
+  assert.equal((await read(fake())).legacy_editing_tasks.length,0);
+  for(const {sql}of m.calls)assert.doesNotMatch(sql,/\b(?:UPDATE|INSERT|DELETE|ALTER)\b/i);
+});
+test('invalid or oversized dossier fails explicitly without truncating or returning partial task references',async()=>{
+  const base={id:33,revision:1,titulo:'Original',estado:'finalizada'};
+  for(const row of [{...base,id:'33'},{...base,revision:0},{...base,titulo:null},{...base,estado:{} }])
+    await assert.rejects(read(fake({childRows:[row]})),{status:409});
+  for(const childRows of [Array.from({length:51},(_,i)=>({...base,id:i+1})),[{...base,titulo:'a'.repeat(20001)}],[{...base,estado:'a'.repeat(101)}]]) {
+    const m=fake({childRows});await assert.rejects(read(m),{status:413});
+    assert.equal(m.calls.at(-1).sql,'ROLLBACK');assert.equal(m.releases,1);
+  }
+});
 test('malformed/overflow historical quantities are null, not inferred counts; unknown history is not split',async()=>{
   const cases=[
     [{produccion_registros:null},{records_count:0,recorded_count:0,declared_count:null,confirmed:false}],

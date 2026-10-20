@@ -16,10 +16,23 @@ export function parseReconciliationContext(value,taskId) {
   for(const key of ['instructions','script','material','recorded_material','feedback','schedule']) {
     const text=source.content?.[key];if(typeof text!=='string'||text.length>(key==='material'?4000:20000))invalid();content[key]=text;
   }
+  const hasLegacyTasks=Object.hasOwn(value,'legacy_editing_tasks');
+  const legacy=hasLegacyTasks?value.legacy_editing_tasks:[];
+  if(!Array.isArray(legacy)||legacy.length>50)invalid();
+  const ids=new Set();
+  const legacy_editing_tasks=legacy.map(task=>{
+    if(!task||!positive(task.id)||!positive(task.revision)||ids.has(task.id)
+      ||typeof task.titulo!=='string'||task.titulo.length>20000||typeof task.estado!=='string'||task.estado.length>100
+      ||(Object.hasOwn(task,'en_workspace')&&typeof task.en_workspace!=='boolean'))invalid();
+    ids.add(task.id);
+    return {id:task.id,revision:task.revision,titulo:task.titulo,estado:task.estado,en_workspace:task.en_workspace===true};
+  });
+  if((e.status==='ready'&&legacy_editing_tasks.length>0)
+    ||(e.status==='legacy_editing'&&hasLegacyTasks&&legacy_editing_tasks.length===0))invalid();
   return {version:1,source:{id:taskId,revision:source.revision,titulo:source.titulo,
     cliente:source.cliente===null?null:{id:source.cliente.id,nombre:source.cliente.nombre},fecha:source.fecha,content},
     history:{records_count:h.records_count,recorded_count:h.recorded_count,declared_count:h.declared_count,confirmed:h.confirmed},
-    eligibility:{status:e.status,visita_id:e.visita_id}};
+    eligibility:{status:e.status,visita_id:e.visita_id},legacy_editing_tasks};
 }
 function inputText(value,max,required=false) {if(typeof value!=='string'||value.length>max||(required&&!value.trim()))throw new Error('Revisá los textos y títulos de cada video.');return value;}
 function material(value) {inputText(value,4000);if(!value.trim())return '';try{const u=new URL(value);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw Error();}catch{throw new Error('Usá enlaces HTTP(S) válidos, sin contraseñas.');}return value.trim();}

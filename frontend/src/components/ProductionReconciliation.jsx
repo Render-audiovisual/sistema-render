@@ -7,6 +7,8 @@ import './ProductionReconciliation.css';
 
 const blocked={legacy_editing:'Esta tarea ya tiene edición agregada. Hay que revisar su correspondencia antes de dividirla.',already_linked:'La tarea ya tiene una visita vinculada.',not_historical:'Esta tarea no tiene producción agregada histórica para revisar.',unavailable:'Revisá el cliente, la fecha y la disponibilidad de la tarea antes de continuar.'};
 const contentLabels={instructions:'Indicaciones originales',script:'Guion original',material:'Material de la tarea',recorded_material:'Material registrado',feedback:'Feedback registrado',schedule:'Horario registrado'};
+const legacyTaskStateLabel=estado=>({pendiente:'Pendiente',en_progreso:'En progreso',en_revision:'En revisión',
+  aprobada:'Trabajo aprobado',finalizada:'Trabajo finalizado',publicada:'Trabajo finalizado (estado histórico)',programada:'Trabajo programado'})[estado]||`Estado histórico: ${estado}`;
 export function ProductionReconciliation(props){
   const u=props.sesion?.usuario;
   if(u?.rol!=='admin'||u.activo===false)return null;
@@ -39,7 +41,18 @@ function ReconciliationForm({taskId,sesion,users=[],onDraftStateChange,onSaved,d
         <p className="ros-reconciliation-source">Tarea #{context.source.id} · Versión {context.source.revision} · {context.source.cliente?.nombre||'Sin cliente'} · {context.source.fecha||'Sin fecha'}</p>
         <p>Registro agregado: {context.history.recorded_count??'cantidad no verificable'} · Previstos: {context.history.declared_count??'sin registrar'}. Estas cantidades no identifican videos individuales.</p>
         <details><summary>Ver contenido original</summary><dl>{Object.entries(contentLabels).map(([key,label])=>context.source.content[key]?<React.Fragment key={key}><dt>{label}</dt><dd>{context.source.content[key]}</dd></React.Fragment>:null)}</dl></details>
-        {context.eligibility.status!=='ready'?<p role="status">{blocked[context.eligibility.status]} {context.eligibility.visita_id&&<a href={`/producciones?visita=${context.eligibility.visita_id}`}>Abrir visita en Producciones ↗</a>}</p>:draft&&state.phase!=='saved'&&<form onSubmit={event=>{event.preventDefault();void model.current?.submit();}}>
+        {context.eligibility.status!=='ready'?<>
+          <p role="status">{blocked[context.eligibility.status]} {context.eligibility.visita_id&&<a href={`/producciones?visita=${context.eligibility.visita_id}`}>Abrir visita en Producciones ↗</a>}</p>
+          {context.legacy_editing_tasks.length>0&&<div>
+            <p>Las entregas y correcciones existentes permanecen en su tarea original. No se dividen automáticamente.</p>
+            <ul>{context.legacy_editing_tasks.map(task=><li key={task.id}>
+              {task.en_workspace===true
+                ? <a href={`/workspace/tareas?task=${task.id}`}>{task.titulo||'Sin título'} · #{task.id}</a>
+                : <span>{task.titulo||'Sin título'} · #{task.id}. Registro histórico fuera de Tareas; conservado para revisión manual.</span>}
+              {' · '}{legacyTaskStateLabel(task.estado)}
+            </li>)}</ul>
+          </div>}
+        </>:draft&&state.phase!=='saved'&&<form onSubmit={event=>{event.preventDefault();void model.current?.submit();}}>
           <fieldset disabled={state.busy||state.frozen||disabled}>
             <label>Nombre de la visita<input maxLength={250} value={draft.titulo} onChange={e=>update({titulo:e.target.value})}/></label>
             <label>Carpeta de material<input inputMode="url" placeholder="https://drive.google.com/…" maxLength={4000} value={draft.drive_url} onChange={e=>update({drive_url:e.target.value})}/></label>

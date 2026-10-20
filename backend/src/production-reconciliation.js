@@ -139,11 +139,18 @@ export async function readProductionReconciliationContext(pool,auth,rawSourceId,
     if(!source||!isProductionVisitTask(source)||source.propiedades_extra?.workspace!=='render_os')throw fail('Visita histórica no encontrada.',404);
     const metadata=source.propiedades_extra;
     const registry=(await db.query('SELECT id FROM produccion_visitas WHERE tarea_origen_id=$1',[source.id])).rows[0];
-    const child=(await db.query("SELECT id FROM tareas WHERE propiedades_extra->>'origen_visita_id'=$1 LIMIT 1",[String(source.id)])).rows[0];
+    // Original editing evidence stays on these task IDs. Return links/labels
+    // only, never raw properties, financial bags or a fabricated video mapping.
+    const children=(await db.query("SELECT id,revision,titulo,estado,COALESCE(propiedades_extra->>'workspace'='render_os',false) AS en_workspace FROM tareas WHERE propiedades_extra->>'origen_visita_id'=$1 ORDER BY id LIMIT 51",[String(source.id)])).rows;
+    if(children.length>50)throw fail('El expediente tiene demasiadas tareas vinculadas para esta revisión.',413);
+    const editingTasks=children.map(row=>{
+      if(!positive(row.id)||!positive(row.revision)||typeof row.titulo!=='string'||typeof row.estado!=='string')throw fail('No se pudo verificar una tarea del expediente histórico.',409);
+      return {id:row.id,revision:row.revision,titulo:contextText(row.titulo),estado:contextText(row.estado,100),en_workspace:row.en_workspace===true};
+    });
     const historical=await hasLegacyProductionSource(db,source.id,source);
     const unavailable=['archivada_render_os','papelera_render_os'].some(key=>[true,'true'].includes(metadata[key]))
       ||!positive(source.context_client_id)||source.cliente_activo!==true||!isValidProductionDate(source.source_date);
-    const status=unavailable?'unavailable':registry?'already_linked':child?'legacy_editing':!historical?'not_historical':'ready';
+    const status=unavailable?'unavailable':registry?'already_linked':children.length?'legacy_editing':!historical?'not_historical':'ready';
     const recordedMaterial=typeof metadata.material==='string'&&metadata.material?metadata.material:metadata.Material;
     const response={version:1,source:{id:source.id,revision:source.revision,titulo:contextText(source.titulo),
       cliente:positive(source.context_client_id)?{id:source.context_client_id,nombre:contextText(source.cliente_nombre)}:null,
@@ -151,7 +158,7 @@ export async function readProductionReconciliationContext(pool,auth,rawSourceId,
       content:{instructions:contextText(source.aclaraciones),script:contextText(metadata.guiones),
         material:contextText(source.material_referencia,4000),recorded_material:contextText(recordedMaterial,4000),
         feedback:contextText(metadata.feedback),schedule:contextText(metadata.horario)}},
-      history:contextHistory(metadata),eligibility:{status,visita_id:registry&&uuid(registry.id)?registry.id:null}};
+      history:contextHistory(metadata),eligibility:{status,visita_id:registry&&uuid(registry.id)?registry.id:null},legacy_editing_tasks:editingTasks};
     await db.query('COMMIT');return response;
   }catch(error){await db.query('ROLLBACK').catch(()=>{});throw error;}finally{db.release();}
 }

@@ -256,9 +256,19 @@ test('manual production reconciliation HTTP: atomic explicit videos, durable rep
 
   const contextPath = id => `/producciones/reconciliaciones/origen/${id}`;
   const readContext = (id, token = admin) => api(contextPath(id), { token });
-  const assertContext = (body, row, status, { nullableClient = false, nullableDate = false, visitId = null } = {}) => {
+  const assertContext = (body, row, status, { nullableClient = false, nullableDate = false, visitId = null, legacyTasks = [] } = {}) => {
     const keys = (object, expected) => assert.deepEqual(Object.keys(object).sort(), [...expected].sort());
-    keys(body, ['version', 'source', 'history', 'eligibility']); assert.equal(body.version, 1);
+    keys(body, ['version', 'source', 'history', 'eligibility', 'legacy_editing_tasks']); assert.equal(body.version, 1);
+    assert.ok(Array.isArray(body.legacy_editing_tasks));
+    assert.ok(body.legacy_editing_tasks.length <= 50);
+    assert.deepEqual(body.legacy_editing_tasks, legacyTasks, 'Only the exact historical child projection is exposed; normal contexts use []');
+    for (const task of body.legacy_editing_tasks) {
+      keys(task, ['id', 'revision', 'titulo', 'estado', 'en_workspace']);
+      assert.ok(Number.isSafeInteger(task.id) && task.id > 0);
+      assert.ok(Number.isSafeInteger(task.revision) && task.revision > 0);
+      assert.equal(typeof task.titulo, 'string'); assert.equal(typeof task.estado, 'string');
+      assert.equal(typeof task.en_workspace, 'boolean');
+    }
     keys(body.source, ['id', 'revision', 'titulo', 'cliente', 'fecha', 'content']);
     assert.equal(body.source.id, row.id);
     assert.ok(Number.isSafeInteger(body.source.revision) && body.source.revision > 0);
@@ -308,6 +318,14 @@ test('manual production reconciliation HTTP: atomic explicit videos, durable rep
   });
   await t.test('context distinguishes child-only, not-historical, unavailable and existing normalized sources without writes', async () => {
     const child = await source({ child: true, props: { produccion_registros: [], produccion_videos_previstos: null } });
+    await fixture.query(`UPDATE tareas SET propiedades_extra=propiedades_extra || $2::jsonb,
+      aclaraciones='Private historical child notes' WHERE propiedades_extra->>'origen_visita_id'=$1`,
+    [String(child.id), JSON.stringify({ future_finance: { importe: 872193.41, nested: [{ secret }] }, notes_bag: { secret } })]);
+    const childProjection = await fixture.query(`SELECT id,revision,titulo,estado,
+      COALESCE(propiedades_extra->>'workspace'='render_os',false) AS en_workspace FROM tareas
+      WHERE propiedades_extra->>'origen_visita_id'=$1 ORDER BY id`, [String(child.id)]);
+    assert.equal(childProjection.length, 1);
+    assert.equal(childProjection[0].en_workspace, false);
     const plain = await source({ props: { produccion_registros: [], produccion_videos_previstos: null } });
     const inactiveSource = await source({ clientId: inactive.id });
     const nullClient = await source({ clientId: null });
@@ -320,12 +338,50 @@ test('manual production reconciliation HTTP: atomic explicit videos, durable rep
     assert.equal((await readVisit(linked.id)).contexto_historico_revisado,false,'Ordinary visits retain rescheduling controls');
     assert.ok(linked);
     const before = await snapshot();
-    assertContext(expect(await readContext(child.id)), child, 'legacy_editing');
+    assertContext(expect(await readContext(child.id)), child, 'legacy_editing', { legacyTasks: childProjection });
+    expect(await api(`/tareas/${childProjection[0].id}?workspace=render_os`, { token: admin }), 404);
     assertContext(expect(await readContext(plain.id)), plain, 'not_historical');
     assertContext(expect(await readContext(inactiveSource.id)), inactiveSource, 'unavailable');
     assertContext(expect(await readContext(nullClient.id)), nullClient, 'unavailable', { nullableClient: true });
     assertContext(expect(await readContext(nullDate.id)), nullDate, 'unavailable', { nullableDate: true });
     assertContext(expect(await readContext(normalized.id)), normalized, 'already_linked', { visitId: linked.id });
+    assert.deepEqual(await snapshot(), before);
+    const denied = await reconcile(intent(child)); expect(denied, 409);
+    assert.ok(JSON.stringify(denied.body).includes('manual_mapping_required'));
+    assert.deepEqual(await snapshot(), before, 'Showing the child never authorizes automatic reconciliation/mapping');
+  });
+  await t.test('context exposes exact Render OS child marker and only marked children have a workspace detail route', async () => {
+    const row = await source({ child: true, props: { produccion_registros: [], produccion_videos_previstos: null } });
+    await fixture.query(`UPDATE tareas SET propiedades_extra=propiedades_extra || '{"workspace":"render_os"}'::jsonb
+      WHERE propiedades_extra->>'origen_visita_id'=$1`, [String(row.id)]);
+    const projection = await fixture.query(`SELECT id,revision,titulo,estado,
+      COALESCE(propiedades_extra->>'workspace'='render_os',false) AS en_workspace FROM tareas
+      WHERE propiedades_extra->>'origen_visita_id'=$1 ORDER BY id`, [String(row.id)]);
+    assert.equal(projection.length, 1); assert.equal(projection[0].en_workspace, true);
+    const before = await snapshot();
+    assertContext(expect(await readContext(row.id)), row, 'legacy_editing', { legacyTasks: projection });
+    const detail = expect(await api(`/tareas/${projection[0].id}?workspace=render_os`, { token: admin }));
+    assert.equal(detail.id, projection[0].id); assert.equal(detail.revision, projection[0].revision);
+    assert.equal(detail.propiedades_extra.workspace, 'render_os');
+    assert.deepEqual(await snapshot(), before, 'Context/detail reads do not change source or child markers/history');
+    expect(await reconcile(intent(row)), 409);
+    assert.deepEqual(await snapshot(), before, 'Workspace visibility never authorizes automatic legacy-child mapping');
+  });
+  await t.test('context refuses more than 50 legacy children without truncating or rewriting history', async () => {
+    const row = await source({ props: { produccion_registros: [], produccion_videos_previstos: null } });
+    // Migration 015 uniqueness is partial: only workspace=render_os. Historical
+    // children without that marker are legal and still block reconciliation.
+    // Keep the real index intact; do not manufacture duplicates in its scope.
+    await fixture.query(`INSERT INTO tareas(titulo,asignado_a,estado,tipo_tarea,propiedades_extra)
+      SELECT 'QA bounded legacy child '||n,'Luciano QA','pendiente','edicion',
+        jsonb_build_object('origen_visita_id',$1::text,'future_finance',jsonb_build_object('secret',$2::text))
+      FROM generate_series(1,51) AS fixture_children(n)`, [String(row.id), secret]);
+    const [count] = await fixture.query("SELECT count(*)::int AS n FROM tareas WHERE propiedades_extra->>'origen_visita_id'=$1", [String(row.id)]);
+    assert.equal(count.n, 51);
+    const before = await snapshot();
+    const result = await readContext(row.id); expect(result, 413);
+    assert.ok(!Object.hasOwn(result.body, 'legacy_editing_tasks') && !Object.hasOwn(result.body, 'source'));
+    assert.ok(!JSON.stringify(result.body).includes(secret));
     assert.deepEqual(await snapshot(), before);
   });
   await t.test('context IDs/query are strict; oversized source text returns 413 rather than truncation or partial context', async () => {
