@@ -81,6 +81,11 @@ export function homeDate(value, full = false) {
 export function homeStateLabel(value) {
   return ({ pendiente: "Pendiente", en_progreso: "En progreso", en_revision: "En revisión", aprobada: "Aprobada", finalizada: "Finalizada", publicada: "Finalizada" })[value] || `Estado: ${value}`;
 }
+// A view filter, never an authorization grant or a name-to-identity mapping.
+export function personalProductionTaskHref(userId) {
+  return Number.isSafeInteger(userId) && userId > 0 && userId <= 2147483647
+    ? `/workspace/tareas?view=list&responsible=id%3A${userId}&sector=produccion` : null;
+}
 export function homeDeadline(value, today) {
   if (!value) return "Sin fecha";
   return value === today ? "Hoy" : `${value < today ? "Venció el " : ""}${homeDate(value)}`;

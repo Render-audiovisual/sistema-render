@@ -25,6 +25,7 @@ export function isTaskFinalizer(user) {
 function isOwnProductionTask(task, user) {
   return user?.rol === "produccion"
     && task?.tipo_tarea === "produccion"
+    && isProductionVisitTask(task)
     && canUserOwnTask(task, user);
 }
 
@@ -58,7 +59,7 @@ export function canUserMoveTaskToState(task, user, nextState) {
   if (nextState === "finalizada") {
     // Existing visit completion is the only direct-finalization exception.
     const completedVisit = isProductionVisitTask(task) && getProductionVisitProgress(task).complete;
-    return (currentState === "aprobada" || completedVisit)
+    return (isProductionVisitTask(task) ? completedVisit : currentState === "aprobada")
       && (isTaskFinalizer(user) || isOwnProductionTask(task, user));
   }
   if (isTaskCompleted(task)) {

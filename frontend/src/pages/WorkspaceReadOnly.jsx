@@ -3,7 +3,7 @@ import { getRolLabel } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea, getSesion } from "../utils.jsx";
 import { AREAS, BOARD_COLUMNS, STATUSES, TASK_TYPES, canonicalTaskState, isTaskCompleted } from "../features/render-os/constants.js";
 import { apiJson, apiRequest, apiSubtasks, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
-import { areaForTask, emojiForTaskCard, formatDate, formatDateTime, initials, personForTask } from "../features/render-os/utils/task-formatters.js";
+import { areaForTask, emojiForTaskCard, formatDate, formatDateTime, initials, personForTask, taskResponsibleLabels } from "../features/render-os/utils/task-formatters.js";
 import { canRetryTaskUpdate, canUserDeleteTask, canUserEditTask, canUserMoveTask, canUserMoveTaskToState, mergeRelatedTasks } from "../workspace-task-state.js";
 import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
 import { buildResponsibleOptions, resolveResponsibleFilter, taskMatchesResponsible } from "../features/render-os/utils/task-responsible-filter.js";
@@ -39,16 +39,12 @@ function Avatar({ person, name }) {
   return <span className="ros-avatar" title={person ? `${person.nombre} · @${person.usuario}` : label}>{initials(label)}</span>;
 }
 
-function taskResponsibles(task = {}) {
-  const collaborators = Array.isArray(task.propiedades_extra?.colaboradores)
-    ? task.propiedades_extra.colaboradores
-    : [];
-  return [task.asignado_a, ...collaborators]
-    .filter((name, index, names) => name && names.indexOf(name) === index);
+function taskResponsibles(task = {}, users = []) {
+  return taskResponsibleLabels(task, users);
 }
 
-function taskResponsiblesLabel(task = {}) {
-  const names = taskResponsibles(task);
+function taskResponsiblesLabel(task = {}, users = []) {
+  const names = taskResponsibles(task, users);
   return names.length ? names.join(", ") : "Sin responsables";
 }
 
@@ -573,7 +569,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         }}>✦ Ver moodboard de {task.cliente_nombre || "la marca"}</button>}
         <div className="ros-task-document-properties">
           <div><span>◉ <b>Estado</b></span>{isAdmin || canChangeTaskState ? <select className="ros-inline-property" aria-label="Estado" value={canonicalTaskState(draft.estado ?? task.estado ?? "pendiente")} disabled={saving} onChange={(event) => saveInlineField("estado", event.target.value, "actualizó el estado de la tarea")}>{availableTaskStatuses.map((item) => <option key={item.id} value={item.id} disabled={isProductionVisit && item.id === "finalizada" && !productionProgress.complete}>{item.label}</option>)}</select> : <strong className="ros-task-document-status"><i style={{ background: status.color }}/>{status.label}</strong>}</div>
-          <div className="ros-task-people-property is-inline-editing"><span>♙ <b>Responsables</b></span>{canEditTask ? <TaskPeoplePicker compact users={users} primaryId={draft.asignado_a_id ?? task.asignado_a_id ?? null} collaboratorIds={draft.colaborador_ids ?? task.colaborador_ids ?? []} disabled={saving} onChange={saveInlinePeople}/> : <strong className="ros-task-assignees">{assignedPeople.length ? assignedPeople.map(({ id, person }) => <span className="ros-task-assignee" key={id}><Avatar person={person} name={person?.nombre || `Usuario #${id}`}/><span>{person?.nombre || `Usuario #${id}`}<small>Responsable · #{id}</small></span></span>) : <span>{[task.asignado_a, ...collaborators].filter(Boolean).join(", ") || "Sin responsables"}</span>}</strong>}</div>
+          <div className="ros-task-people-property is-inline-editing"><span>♙ <b>Responsables</b></span>{canEditTask ? <TaskPeoplePicker compact users={users} primaryId={draft.asignado_a_id ?? task.asignado_a_id ?? null} collaboratorIds={draft.colaborador_ids ?? task.colaborador_ids ?? []} disabled={saving} onChange={saveInlinePeople}/> : <strong className="ros-task-assignees">{assignedPeople.length ? assignedPeople.map(({ id, person }) => <span className="ros-task-assignee" key={id}><Avatar person={person} name={person?.nombre || `Usuario #${id}`}/><span>{person?.nombre || `Usuario #${id}`}<small>Responsable · #{id}</small></span></span>) : <span>{taskResponsiblesLabel(task, users)}</span>}</strong>}</div>
           <div><span>▥ <b>Cliente</b></span>{canEditTask && canEditVisitClient ? <select className="ros-inline-property" aria-label="Cliente" value={draft.cliente_id ?? task.cliente_id ?? ""} disabled={saving} onChange={(event) => saveInlineField("cliente_id", event.target.value ? Number(event.target.value) : "", "actualizó el cliente de la tarea")}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select> : <strong>{task.cliente_nombre || "Sin cliente"}</strong>}</div>
           <div><span>▦ <b>{registry.vinculo?.tipo === "origen" ? "Fecha de visita" : "Entrega"}</b></span>{canEditTask && canEditVisitDate ? <input className="ros-inline-property" aria-label="Fecha de entrega" type="date" value={draft.fecha_vencimiento ?? task.fecha_vencimiento ?? ""} disabled={saving} onChange={(event) => saveInlineField("fecha_vencimiento", event.target.value, "actualizó la fecha de entrega")}/> : <strong>{formatDate(task.fecha_vencimiento)}</strong>}</div>
           {(canEditTask || String(task.prioridad || "").toLowerCase() !== "media") && <div><span>⚑ <b>Prioridad</b></span>{canEditTask ? <select className="ros-inline-property" aria-label="Prioridad" value={draft.prioridad ?? task.prioridad ?? "media"} disabled={saving} onChange={(event) => saveInlineField("prioridad", event.target.value, "actualizó la prioridad de la tarea")}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select> : <strong>{task.prioridad || "Sin definir"}</strong>}</div>}
@@ -739,7 +735,8 @@ const TaskCard = React.memo(function TaskCard({ task, users, user, today, onOpen
   const dragRef = useRef({ blocked: false, suppressClick: false });
   const person = personForTask(task, users);
   const tags = Array.isArray(task.propiedades_extra?.etiquetas) ? task.propiedades_extra.etiquetas : [];
-  const collaborators = Array.isArray(task.propiedades_extra?.colaboradores) ? task.propiedades_extra.colaboradores : [];
+  const responsibleLabels = taskResponsibles(task, users);
+  const primaryLabel = responsibleLabels[0] || "Sin responsables";
   const phase = getProductionPhase(task);
   const availableStatuses = STATUSES.filter((item) => item.id === canonicalTaskState(task.estado) || canUserMoveTaskToState(task, user, item.id));
   const startDrag = (event) => {
@@ -761,12 +758,12 @@ const TaskCard = React.memo(function TaskCard({ task, users, user, today, onOpen
     {task.propiedades_extra?.resumen && <div className="ros-card-summary">{task.propiedades_extra.resumen}</div>}
     {tags.length > 0 && <div className="ros-card-tags">{tags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}
     {esperandoMaterial(task) && <div className="ros-card-warning">Esperando material</div>}
-    <footer><Avatar person={person} name={task.asignado_a}/><span title={`Responsables: ${taskResponsiblesLabel(task)}`}>{task.asignado_a || "Sin responsables"}{collaborators.length ? ` +${collaborators.length}` : ""}</span><b className={task.fecha_vencimiento && task.fecha_vencimiento < today && !isTaskCompleted(task) ? "urgent" : ""}>□ {formatDate(task.fecha_vencimiento)}</b></footer>
+    <footer><Avatar person={person} name={primaryLabel}/><span title={`Responsables: ${taskResponsiblesLabel(task, users)}`}>{primaryLabel}{responsibleLabels.length > 1 ? ` +${responsibleLabels.length - 1}` : ""}</span><b className={task.fecha_vencimiento && task.fecha_vencimiento < today && !isTaskCompleted(task) ? "urgent" : ""}>□ {formatDate(task.fecha_vencimiento)}</b></footer>
     {canMove && <select className="ros-mobile-state" aria-label={`Cambiar estado de ${task.titulo}`} value={canonicalTaskState(task.estado)} onClick={(event) => event.stopPropagation()} onChange={(event) => { event.stopPropagation(); onMove(task, event.target.value); }}>{availableStatuses.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select>}
   </article>;
 });
 
-function TaskCalendar({ tasks, onOpen, monthValue, onMonthChange }) {
+function TaskCalendar({ tasks, users = [], onOpen, monthValue, onMonthChange }) {
   const [cursor, setCursor] = useState(() => {
     if (monthValue) { const [year, month] = monthValue.split("-").map(Number); return new Date(year, month - 1, 1); }
     const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -813,13 +810,13 @@ function TaskCalendar({ tasks, onOpen, monthValue, onMonthChange }) {
     {selectedDate && <div className="ros-day-preview-backdrop" role="presentation" onMouseDown={() => setSelectedDate("")}>
       <section className="ros-day-preview" role="dialog" aria-modal="true" aria-labelledby="ros-day-preview-title" onMouseDown={(event) => event.stopPropagation()}>
         <header><div><small>Resumen del día</small><h2 id="ros-day-preview-title">{selectedDateLabel}</h2><span>{selectedTasks.length} {selectedTasks.length === 1 ? "tarea" : "tareas"}</span></div><button type="button" aria-label="Cerrar resumen" onClick={() => setSelectedDate("")}>×</button></header>
-        <div className="ros-day-preview-list">{selectedTasks.map((task) => { const state = STATUSES.find((item) => item.id === canonicalTaskState(task.estado)); return <button type="button" key={task.id} onClick={() => openFromSummary(task.id)}><i style={{ background: state?.color || "#8d9095" }}/><div><strong>{task.titulo}</strong><span>{task.cliente_nombre || "Sin cliente"} · {taskResponsiblesLabel(task)}</span></div><b>{state?.label || task.estado}</b><em>›</em></button>; })}{selectedTasks.length === 0 && <div className="ros-day-preview-empty"><span>○</span><strong>No hay tareas para este día</strong><small>Podés elegir otra fecha o cerrar el resumen.</small></div>}</div>
+        <div className="ros-day-preview-list">{selectedTasks.map((task) => { const state = STATUSES.find((item) => item.id === canonicalTaskState(task.estado)); return <button type="button" key={task.id} onClick={() => openFromSummary(task.id)}><i style={{ background: state?.color || "#8d9095" }}/><div><strong>{task.titulo}</strong><span>{task.cliente_nombre || "Sin cliente"} · {taskResponsiblesLabel(task, users)}</span></div><b>{state?.label || task.estado}</b><em>›</em></button>; })}{selectedTasks.length === 0 && <div className="ros-day-preview-empty"><span>○</span><strong>No hay tareas para este día</strong><small>Podés elegir otra fecha o cerrar el resumen.</small></div>}</div>
       </section>
     </div>}
   </>;
 }
 
-const TasksByClient = React.memo(function TasksByClient({ tasks, onOpen }) {
+const TasksByClient = React.memo(function TasksByClient({ tasks, users = [], onOpen }) {
   const groups = useMemo(() => {
     const grouped = new Map();
     for (const task of tasks) {
@@ -831,7 +828,7 @@ const TasksByClient = React.memo(function TasksByClient({ tasks, onOpen }) {
       .sort(([left], [right]) => left.localeCompare(right, "es"))
       .map(([name, groupedTasks]) => ({ name, tasks: groupedTasks }));
   }, [tasks]);
-  return <div className="ros-project-grid">{groups.map((group) => <section className="ros-project-card" key={group.name}><header><div><span>{initials(group.name)}</span><strong>{group.name}</strong></div><small>{group.tasks.length} tareas</small></header><div>{group.tasks.map((task) => <button type="button" key={task.id} onClick={() => onOpen(task.id)}><span>{task.titulo}</span><b>{STATUSES.find((item) => item.id === canonicalTaskState(task.estado))?.label || task.estado}</b><small>{taskResponsiblesLabel(task)} · {formatDate(task.fecha_vencimiento)}</small></button>)}</div></section>)}</div>;
+  return <div className="ros-project-grid">{groups.map((group) => <section className="ros-project-card" key={group.name}><header><div><span>{initials(group.name)}</span><strong>{group.name}</strong></div><small>{group.tasks.length} tareas</small></header><div>{group.tasks.map((task) => <button type="button" key={task.id} onClick={() => onOpen(task.id)}><span>{task.titulo}</span><b>{STATUSES.find((item) => item.id === canonicalTaskState(task.estado))?.label || task.estado}</b><small>{taskResponsiblesLabel(task, users)} · {formatDate(task.fecha_vencimiento)}</small></button>)}</div></section>)}</div>;
 });
 
 function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, responsible, setResponsible, client, setClient, sector, setSector, priority, setPriority, archiveMode, setArchiveMode, sesion, onCreate, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onBulkAction, onError }) {
@@ -1017,8 +1014,8 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(''); }}
       onDrop={(event) => dropOnProcessButton(event,column)}><i style={{ background: column.color }}/><span>{column.label}</span><b>{boardColumnCounts[column.id] || 0}</b></button>)}</nav>
       <div ref={boardRef} className="ros-board ros-board-four" style={{ gridTemplateColumns: compactBoard ? undefined : "repeat(5, minmax(220px, 1fr))" }}>{renderedBoardColumns.map((column) => { const items = visible.filter((task) => column.states.includes(canonicalTaskState(task.estado))); return <section className={`ros-column ${mobileBoardColumn === column.id ? "is-mobile-active" : ""} ${dragOver === column.id ? "drag-over" : ""}`} key={column.id} onDragOver={(event) => { if (!event.dataTransfer.types.includes("text/task-id")) return; event.preventDefault(); setDragOver(column.id); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(""); }} onDrop={(event) => { event.preventDefault(); setDragOver(""); const task = tasks.find((item) => String(item.id) === event.dataTransfer.getData("text/task-id")); if (task && canUserMoveTask(task, sesion?.usuario)) move(task, column.dropState || column.id); }}><header><span style={{ color: column.color }}>●</span><strong>{column.label}</strong><small>{items.length}</small></header><div>{items.slice(0, 250).map((task) => <TaskCard key={task.id} task={task} users={users} user={sesion?.usuario} today={today} onOpen={openTask} onMove={move} canMove={canUserMoveTask(task, sesion?.usuario)}/>)}{items.length > 250 && <div className="ros-column-limit">Mostrando 250 de {items.length}. Usá los filtros para acotar.</div>}{items.length === 0 && <button className="ros-empty-column" type="button" onClick={() => setCreatingStatus(column.dropState || column.id)}><span>+</span>Nueva tarea</button>}</div></section>; })}</div></>}
-    {view === "list" && <div className="ros-task-list"><div className="ros-task-list-head"><span>TAREA</span><span>ÁREA</span><span>CLIENTE</span><span>RESPONSABLES</span><span>ESTADO</span><span>FECHA</span></div>{visible.slice(0, 500).map((task) => <button key={task.id} onClick={() => openTask(task.id)}><strong>{task.titulo}</strong><AreaBadge task={task}/><span>{task.cliente_nombre || "Sin cliente"}</span><span>{taskResponsiblesLabel(task)}</span><span>{STATUSES.find((item) => item.id === canonicalTaskState(task.estado))?.label || task.estado}</span><span>{formatDate(task.fecha_vencimiento)}</span></button>)}{visible.length > 500 && <div className="ros-list-limit">Mostrando 500 de {visible.length}. Usá los filtros para acotar.</div>}</div>}
-    {view === "calendar" && <TaskCalendar tasks={visible} onOpen={openTask} monthValue={calendarMonth} onMonthChange={setCalendarMonth}/>} {view === "clients" && <TasksByClient tasks={visible} onOpen={openTask}/>} {view !== "board" && visible.length === 0 && <div className="ros-no-results">{emptyMessage}</div>}
+    {view === "list" && <div className="ros-task-list"><div className="ros-task-list-head"><span>TAREA</span><span>ÁREA</span><span>CLIENTE</span><span>RESPONSABLES</span><span>ESTADO</span><span>FECHA</span></div>{visible.slice(0, 500).map((task) => <button key={task.id} onClick={() => openTask(task.id)}><strong>{task.titulo}</strong><AreaBadge task={task}/><span>{task.cliente_nombre || "Sin cliente"}</span><span>{taskResponsiblesLabel(task, users)}</span><span>{STATUSES.find((item) => item.id === canonicalTaskState(task.estado))?.label || task.estado}</span><span>{formatDate(task.fecha_vencimiento)}</span></button>)}{visible.length > 500 && <div className="ros-list-limit">Mostrando 500 de {visible.length}. Usá los filtros para acotar.</div>}</div>}
+    {view === "calendar" && <TaskCalendar tasks={visible} users={users} onOpen={openTask} monthValue={calendarMonth} onMonthChange={setCalendarMonth}/>} {view === "clients" && <TasksByClient tasks={visible} users={users} onOpen={openTask}/>} {view !== "board" && visible.length === 0 && <div className="ros-no-results">{emptyMessage}</div>}
     {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
   {selected && <TaskDetail key={selected.id} task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onCorrectProduction={onCorrectProduction} onConfirmProduction={onConfirmProduction} onApprove={onApprove} onTrashAction={async (task, action) => { await onBulkAction([task.id], action); closeTask(); }}/>}

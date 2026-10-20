@@ -10,7 +10,7 @@ test("los formateadores puros de RENDER OS conservan sus resultados", () => {
   assert.equal(formatDate(null), "Sin fecha");
   assert.equal(initials("Render Audiovisual"), "RA");
   assert.deepEqual(
-    personForTask({ asignado_a: "AGUSTÍN" }, [{ id: 7, nombre: "Agustín", usuario: "agus" }]),
+    personForTask({ asignado_a_id: 7, asignado_a: "Nombre histórico" }, [{ id: 7, nombre: "Agustín", usuario: "agus" }]),
     { id: 7, nombre: "Agustín", usuario: "agus" },
   );
 });

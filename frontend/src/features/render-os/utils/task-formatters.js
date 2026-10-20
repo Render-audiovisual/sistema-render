@@ -41,7 +41,30 @@ export function initials(value = "") {
   return value.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?";
 }
 
-export function personForTask(task, users) {
-  const assigned = String(task?.asignado_a || "").toLowerCase();
-  return users.find((user) => user.nombre?.toLowerCase() === assigned || user.usuario?.toLowerCase() === assigned);
+const validPersonId = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
+
+function personById(id, users) {
+  if (!validPersonId(id) || !Array.isArray(users)) return undefined;
+  const matches = users.filter(user => user?.id === id);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/** Display lookup only. A legacy name must never select a catalog identity. */
+export function personForTask(task, users = []) {
+  return personById(task?.asignado_a_id, users);
+}
+
+/** Names label IDs, never replace them. Distinct homonymous IDs stay visible. */
+export function taskResponsibleLabels(task = {}, users = []) {
+  const ids = [task?.asignado_a_id, ...(Array.isArray(task?.colaborador_ids) ? task.colaborador_ids : [])]
+    .filter((id, index, all) => validPersonId(id) && all.indexOf(id) === index);
+  if (ids.length) return ids.map(id => {
+    const person = personById(id, users);
+    const name = [person?.nombre, person?.usuario].find(value => typeof value === 'string' && value.trim());
+    return name ? `${name.trim()} · #${id}` : `Usuario #${id}`;
+  });
+  const historical = [task?.asignado_a, ...(Array.isArray(task?.propiedades_extra?.colaboradores)
+    ? task.propiedades_extra.colaboradores : [])];
+  return historical.filter(value => typeof value === 'string' && value.trim())
+    .map(value => `Histórico sin verificar: ${value.trim()}`);
 }
