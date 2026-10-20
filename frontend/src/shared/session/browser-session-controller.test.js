@@ -32,6 +32,94 @@ function fixture({ store = createBrowserSessionState(), locks = serializedLocks(
 const login = controller => controller.login({ kind: 'password', body: { usuario: 'qa', password: 'synthetic password' } });
 const hasCode = code => error => error instanceof BrowserSessionControllerError && error.code === code;
 
+test('profile refresh uses one locked proof bootstrap with strict captured identity and new server photo DTO', async () => {
+  const photo = 'data:image/png;base64,c3ludGhldGlj';
+  const f = fixture({ fetchImpl: async () => response({ ...dto(), usuario: { ...dto().usuario, foto_perfil: photo } }) });
+  install(f.store); const previous = f.store.getSession(), intent = f.store.captureIntent();
+  const pending = f.controller.refreshProfile({ sessionIntent: intent });
+  // The original observation survives queueing; loading begins under the lock.
+  assert.equal(f.store.getSession(), previous);
+  await Promise.resolve();
+  assert.equal(f.store.getSnapshot().status, 'loading'); assert.equal(f.store.getSession(), null);
+  const result = await pending;
+  assert.equal(result.ok, true); assert.notEqual(result.session, previous);
+  assert.equal(result.session.usuario.foto_perfil, photo); assert.equal(f.store.getSession(), result.session);
+  assert.deepEqual(f.calls.map(c => c.url), ['/api/sesion']); assert.equal(f.locks.calls.length, 1);
+  assert.equal(f.store.isCurrent(intent), false); f.controller.dispose();
+});
+
+test('profile refresh refuses copied/stale intent before dispatch, without withdrawing a current replacement', () => {
+  const f = fixture(); install(f.store); const intent = f.store.captureIntent();
+  assert.throws(() => f.controller.refreshProfile({ sessionIntent: { ...intent } }), hasCode('browser_profile_intent_obsolete'));
+  install(f.store, dto(8, 'B')); const b = f.store.getSession();
+  assert.throws(() => f.controller.refreshProfile({ sessionIntent: intent }), hasCode('browser_profile_intent_obsolete'));
+  assert.equal(f.store.getSession(), b); assert.equal(f.calls.length, 0); assert.equal(f.locks.calls.length, 0);
+});
+
+test('profile refresh rejects cookie identity/context/CSRF/role changes and missing proof, never publishing them', async () => {
+  for (const kind of ['id', 'context', 'csrf', 'role', 'proof', '401']) {
+    const value = dto();
+    if (kind === 'id') value.usuario.id = 8;
+    if (kind === 'context') value.session_context = 'B'.repeat(43);
+    if (kind === 'csrf') value.csrf_token = 'E'.repeat(43);
+    if (kind === 'role') value.usuario.rol = 'admin';
+    const f = fixture({ fetchImpl: async () => kind === '401' ? response({}, 401) : response(value, 200, kind === 'proof' ? null : value.session_context) });
+    install(f.store); const intent = f.store.captureIntent(), published = [];
+    f.store.subscribe(() => { if (f.store.getSession()) published.push(f.store.getSession()); });
+    await assert.rejects(f.controller.refreshProfile({ sessionIntent: intent }), error => error instanceof BrowserSessionControllerError);
+    assert.equal(f.store.getSession(), null); assert.deepEqual(published, []); assert.equal(f.calls.length, 1);
+    f.controller.dispose();
+  }
+});
+
+test('profile refresh queues behind cooperative lock and rejects concurrent controller work', async () => {
+  const locks = serializedLocks(), hold = deferred(), entered = deferred();
+  const blocker = locks.request(BROWSER_SESSION_LOCK, { mode: 'exclusive' }, async () => { entered.resolve(); await hold.promise; });
+  await entered.promise;
+  const f = fixture({ locks }); install(f.store);
+  const pending = f.controller.refreshProfile({ sessionIntent: f.store.captureIntent() });
+  assert.equal(f.calls.length, 0);
+  assert.throws(() => f.controller.bootstrap(), hasCode('browser_session_busy'));
+  hold.resolve(); await blocker; assert.equal((await pending).ok, true); f.controller.dispose();
+});
+
+test('queued profile refresh revalidates original intent under lock before loading or HTTP, preserving external B', async () => {
+  const locks = serializedLocks(), hold = deferred(), entered = deferred();
+  const blocker = locks.request(BROWSER_SESSION_LOCK, { mode: 'exclusive' }, async () => { entered.resolve(); await hold.promise; });
+  await entered.promise;
+  const f = fixture({ locks }); install(f.store);
+  const a = f.store.getSession(), intent = f.store.captureIntent(), pending = f.controller.refreshProfile({ sessionIntent: intent });
+  assert.equal(f.store.getSession(), a); assert.equal(f.store.getSnapshot().status, 'authenticated');
+  install(f.store, dto(8, 'B')); const b = f.store.getSession(), snapshot = f.store.getSnapshot();
+  const changes = []; f.store.subscribe(() => changes.push(f.store.getSnapshot()));
+  hold.resolve(); await blocker;
+  assert.deepEqual(await pending, { ok: false, reason: 'obsolete' });
+  assert.equal(f.calls.length, 0); assert.equal(f.store.getSession(), b); assert.equal(f.store.getSnapshot(), snapshot);
+  assert.deepEqual(changes, []); f.controller.dispose(); assert.equal(f.store.getSession(), b);
+});
+
+test('profile refresh reentrant disposal during lock-owned loading cancels before HTTP', async () => {
+  const f = fixture(); install(f.store); const intent = f.store.captureIntent();
+  f.store.subscribe(() => { if (f.store.getSnapshot().status === 'loading') f.controller.dispose(); });
+  assert.deepEqual(await f.controller.refreshProfile({ sessionIntent: intent }), { ok: false, reason: 'cancelled' });
+  assert.equal(f.calls.length, 0); assert.equal(f.store.getSession(), null);
+  assert.equal(f.store.getSnapshot().status, 'unknown');
+});
+
+for (const kind of ['success', 'failure', 'cancel']) test(`late profile ${kind} never overwrites a newer B observation`, async () => {
+  const held = deferred(), entered = deferred();
+  const f = fixture({ fetchImpl: async () => { entered.resolve(); return held.promise; } });
+  install(f.store); const abort = new AbortController();
+  const pending = f.controller.refreshProfile({ sessionIntent: f.store.captureIntent(), signal: abort.signal });
+  await entered.promise; install(f.store, dto(8, 'B')); const b = f.store.getSession();
+  if (kind === 'cancel') abort.abort();
+  if (kind === 'failure') held.reject(new Error('private transport details')); else held.resolve(response(dto()));
+  if (kind === 'failure') await assert.rejects(pending, hasCode('browser_session_transport_failed'));
+  else assert.equal((await pending).ok, false);
+  assert.equal(f.store.getSession(), b); f.controller.dispose();
+  assert.equal(f.store.getSession(), b);
+});
+
 test('requires origin-wide exclusive lock with exact shared name; no local fallback', async () => {
   assert.equal(BROWSER_SESSION_LOCK, 'render:browser-session:v1');
   for (const locks of [undefined, null, {}, { request: false }]) assert.throws(() => createBrowserSessionController({ origin, store: createBrowserSessionState(), fetchImpl() { throw Error('no fetch'); }, locks }), hasCode('browser_locks_required'));

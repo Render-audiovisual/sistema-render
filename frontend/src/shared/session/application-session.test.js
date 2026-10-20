@@ -277,3 +277,36 @@ test('first subscription establishes a quiet baseline without start, then reads 
   h.replace(8); h.runtime.getSession(); h.runtime.sync(); assert.equal(count, 1);
   h.runtime.sync(); assert.equal(count, 1); h.runtime.dispose();
 });
+
+test('runtime refreshProfile composes strict controller observation and invalidation accepts only genuine current intents', async () => {
+  let value = dto(), calls = 0;
+  const runtime = browser(async () => { calls++; return reply(value); });
+  await runtime.start(); const a = runtime.getSession(), old = captureSessionBinding(a).intent;
+  value = { ...dto(), usuario: { ...dto().usuario, foto_perfil: 'data:image/png;base64,c3ludGhldGlj' } };
+  const refreshed = await runtime.refreshProfile(old);
+  assert.equal(refreshed.ok, true); assert.equal(refreshed.session, runtime.getSession());
+  assert.notEqual(refreshed.session, a); assert.equal(refreshed.session.usuario.foto_perfil, value.usuario.foto_perfil);
+  const current = captureSessionBinding(runtime.getSession()).intent, count = calls;
+  assert.equal(runtime.invalidateSession(old), false);
+  assert.equal(runtime.invalidateSession({ ...current }), false);
+  assert.equal(runtime.invalidateSession(current), true); assert.equal(runtime.getSession(), null);
+  assert.equal(runtime.invalidateSession(current), false); assert.equal(calls, count, 'Invalidation is not server logout');
+  runtime.dispose();
+});
+
+test('old runtime profile intent cannot refresh or clear login B; bearer APIs reject without fetching', async () => {
+  let value = dto(); const paths = [];
+  const runtime = browser(async url => {
+    paths.push(url); return url === '/api/sesion/desafio' ? reply({ csrf_token: 'c'.repeat(43) }) : reply(value);
+  });
+  await runtime.start(); const intent = captureSessionBinding(runtime.getSession()).intent;
+  value = dto(8); await runtime.login({ kind: 'password', body: { usuario: 'synthetic-B', password: 'synthetic' } });
+  const b = runtime.getSession(), count = paths.length;
+  assert.throws(() => runtime.refreshProfile(intent), error => error.code === 'browser_profile_intent_obsolete');
+  assert.equal(runtime.invalidateSession(intent), false); assert.equal(runtime.getSession(), b); assert.equal(paths.length, count);
+  runtime.dispose();
+  const bearer = createApplicationSession({ fetchImpl() { throw new Error('No legacy profile bootstrap'); } });
+  for (const method of ['refreshProfile', 'invalidateSession'])
+    assert.throws(() => bearer[method](intent), error => error.code === 'application_session_mode_unsupported');
+  bearer.dispose();
+});

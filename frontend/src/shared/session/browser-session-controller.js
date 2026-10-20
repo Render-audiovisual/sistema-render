@@ -35,7 +35,7 @@ export function createBrowserSessionController({ origin, store, fetchImpl, locks
     // Publish only after ownership is installed: synchronous subscribers may
     // dispose/cancel while loading or authenticated snapshots are emitted.
     active = op;
-    if (kind !== 'logout') {
+    if (kind !== 'logout' && kind !== 'profile_refresh') {
       op.ticket = store.beginBootstrap();
       if (op.cancelled) store.cancelBootstrap(op.ticket);
     }
@@ -66,7 +66,7 @@ export function createBrowserSessionController({ origin, store, fetchImpl, locks
   const raw = (path, options = {}) => fetchImpl(path, {
     ...options, credentials: 'same-origin', cache: 'no-store', redirect: 'error',
   });
-  async function observe(op, expected = null) {
+  async function observe(op, expected = null, strictRole = false) {
     const response = await raw('/api/sesion', { signal: op.abort.signal });
     if (op.cancelled) return cancelled(op);
     if (response.status === 401) {
@@ -80,6 +80,8 @@ export function createBrowserSessionController({ origin, store, fetchImpl, locks
       throw new BrowserSessionControllerError('browser_bootstrap_unverified');
     if (expected && (value.session_context !== expected.session_context || value.csrf_token !== expected.csrf_token
       || value.usuario.id !== expected.usuario.id)) throw new BrowserSessionControllerError('browser_login_context_changed');
+    if (strictRole && value.usuario.rol !== expected.usuario.rol)
+      throw new BrowserSessionControllerError('browser_profile_context_changed');
     const previousRevision = store.getSnapshot().revision;
     op.commitStarted = true;
     if (!store.acceptBootstrap(op.ticket, value)) return { ok: false, reason: 'obsolete' };
@@ -99,6 +101,22 @@ export function createBrowserSessionController({ origin, store, fetchImpl, locks
     isBusy: () => active !== null,
     bootstrap({ signal } = {}) {
       const op = start('bootstrap', signal); return run(op, () => observe(op));
+    },
+    refreshProfile({ sessionIntent, signal } = {}) {
+      // Validate ownership before queueing, then again under the shared lock.
+      // Never turn a copied DTO or a stale photo action into a
+      // bootstrap of whichever account happens to own the cookie now.
+      if (!store.isCurrent(sessionIntent)) throw new BrowserSessionControllerError('browser_profile_intent_obsolete');
+      const expected = sessionIntent.session;
+      const op = start('profile_refresh', signal);
+      return run(op, () => {
+        if (!store.isCurrent(sessionIntent)) return { ok: false, reason: 'obsolete' };
+        // Only lock ownership permits withdrawing this exact observation.
+        // Publication can synchronously cancel/dispose via subscribers.
+        op.ticket = store.beginBootstrap();
+        if (op.cancelled) { store.cancelBootstrap(op.ticket); return cancelled(op); }
+        return observe(op, expected, true);
+      });
     },
     login({ kind, body, signal }) {
       const fields = kind === 'password' ? ['usuario', 'password'] : kind === 'google' ? ['credential'] : null;

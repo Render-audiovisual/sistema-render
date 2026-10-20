@@ -15,6 +15,7 @@ import { createFeedbackInventoryLoader } from '../../frontend/src/pages/feedback
 import { createPersonalHomeLoader } from '../../frontend/src/pages/personalHome.js';
 import { createApplicationSession } from '../../frontend/src/shared/session/application-session.js';
 import { createLoginAttempts } from '../../frontend/src/shared/session/login-attempt.js';
+import { createProfileSessionGuard } from '../../frontend/src/shared/session/profile-session.js';
 
 const origin = 'http://127.0.0.1:5195';
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -330,5 +331,58 @@ test('browser client against principal HTTP: memory observations, exact mutation
       assert.equal((await (await runtime.fetch('/api/inicio')).json()).user.id, 91001);
       assert.deepEqual(await runtime.logout(), { revoked: true });
     } finally { remove(); attempts.cleanup(); runtime.dispose(); }
+  });
+
+  await t.test('actual profile photo, failed verification and credential revocation use captured runtime identity', async () => {
+    let failVerification = false;
+    const runtime = createApplicationSession({ mode: 'browser', location: { origin },
+      fetchImpl: (url, options) => failVerification && url === '/api/sesion'
+        ? Promise.resolve(new Response(null, { status: 503 })) : rawFetch(url, options),
+      locks: { request: (_name, _options, work) => Promise.resolve().then(work) } });
+    const navigations = [];
+    const guard = () => createProfileSessionGuard({ session: runtime.getSession(), readSession: runtime.getSession,
+      isMounted: () => true, runtime, save: () => assert.fail('No bearer save'), clear: () => assert.fail('No Storage clear'),
+      navigate: href => navigations.push(href) });
+    const patch = (current, path, body) => current.request(runtime.fetch, path, { method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const password = 'Synthetic-profile73-only!';
+    try {
+      await runtime.login({ kind: 'password', body: { usuario: 'qa_franco', password: fixturePassword } });
+      const first = guard(), original = runtime.getSession();
+      const photo = 'data:image/png;base64,c3ludGhldGljLXByb2ZpbGU=';
+      const response = checked(await patch(first, '/api/usuarios/foto', { usuario: 'qa_franco', foto_perfil: photo }));
+      const user = await first.applyPhoto(await response.json());
+      assert.equal(user, runtime.getSession().usuario); assert.notEqual(runtime.getSession(), original);
+      assert.equal(user.foto_perfil, photo);
+      assert.equal((await fixture.query('SELECT foto_perfil FROM usuarios WHERE id=91001'))[0].foto_perfil, photo);
+      const saved = guard();
+      const removal = checked(await patch(saved, '/api/usuarios/foto', { usuario: 'qa_franco', foto_perfil: '' }));
+      failVerification = true;
+      await assert.rejects(saved.applyPhoto(await removal.json()), error => error.code === 'browser_bootstrap_failed');
+      assert.equal(runtime.getSession(), null); assert.equal(runtime.getSnapshot().status, 'error');
+      assert.equal((await fixture.query('SELECT foto_perfil FROM usuarios WHERE id=91001'))[0].foto_perfil, null,
+        'Successful photo PATCH remains committed even if its subsequent verification fails');
+      failVerification = false;
+      await runtime.login({ kind: 'password', body: { usuario: 'qa_franco', password: fixturePassword } });
+      const credentials = guard(), live = runtime.getSession();
+      const denied = await patch(credentials, '/api/usuarios/password', { usuario: 'qa_franco',
+        password_actual: 'incorrect-synthetic', password_nueva: password });
+      assert.equal(denied.status, 401); assert.equal((await denied.json()).code, 'current_password_invalid');
+      assert.equal(credentials.current(), true); assert.equal(runtime.getSession(), live);
+      const renamed = checked(await patch(credentials, '/api/usuarios/perfil', { usuario_actual: 'qa_franco',
+        password_actual: fixturePassword, usuario_nuevo: 'qa_franco_profile73' }));
+      assert.equal((await renamed.json()).id, 91001);
+      assert.equal(credentials.requireReauthentication(), true); assert.equal(runtime.getSession(), null);
+      await runtime.login({ kind: 'password', body: { usuario: 'qa_franco_profile73', password: fixturePassword } });
+      const updated = guard();
+      const changed = checked(await patch(updated, '/api/usuarios/password', { usuario: 'qa_franco_profile73',
+        password_actual: fixturePassword, password_nueva: password }));
+      assert.deepEqual(await changed.json(), { ok: true });
+      assert.equal(updated.requireReauthentication(), true); assert.equal(runtime.getSession(), null);
+      await runtime.login({ kind: 'password', body: { usuario: 'qa_franco_profile73', password } });
+      assert.equal(runtime.getSession().usuario.id, 91001);
+      assert.deepEqual(navigations, ['/login', '/login']);
+      assert.deepEqual(await runtime.logout(), { revoked: true });
+    } finally { runtime.dispose(); }
   });
 });

@@ -227,9 +227,23 @@ router.use('/tareas-edicion', createEditingReviewsRouter({ express, pool }));
 router.use('/calendario', createCalendarRouter({ express, pool }));
 router.use('/editorial-control', createEditorialControlRouter({ express, pool }));
 
-router.get("/sesion", (req, res) => {
+router.get("/sesion", async (req, res, next) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ usuario: req.auth, ...(req.browserSession || {}) });
+  if (!req.browserSession) return res.json({ usuario: req.auth });
+  try {
+    // Bootstrap must read the saved profile, not just the authorization DTO.
+    // Keep this projection closed and bind it to the verified account epoch.
+    const result = await pool.query(`SELECT id, usuario, nombre, rol, foto_perfil
+      FROM usuarios WHERE id=$1 AND session_version=$2 AND activo IS TRUE`,
+      [req.auth.id, req.auth.session_version]);
+    if (!result.rows.length) {
+      res.removeHeader('X-Render-Session-Context');
+      return res.status(401).json({ error: 'La sesión cambió. Volvé a iniciar sesión.' });
+    }
+    const user = result.rows[0];
+    return res.json({ usuario: { id: user.id, usuario: user.usuario, nombre: user.nombre, rol: user.rol,
+      foto_perfil: user.foto_perfil }, ...req.browserSession });
+  } catch (error) { next(error); }
 });
 router.post("/logout", async (req, res, next) => {
   try {

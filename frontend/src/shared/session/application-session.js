@@ -53,6 +53,8 @@ export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, 
       start: () => startOnce(() => controller.bootstrap()),
       login(options) { assertLive(); return controller.login(options); },
       logout(options) { assertLive(); return controller.logout(options); },
+      refreshProfile(intent) { assertLive(); return controller.refreshProfile({ sessionIntent: intent }); },
+      invalidateSession(intent) { assertLive(); return store.invalidate(intent); },
       sync() { assertLive(); throw new ApplicationSessionError('application_session_mode_unsupported'); },
       dispose() { if (!disposed) {
         disposed = true; for (const unsubscribe of subscriptions) unsubscribe(); controller.dispose();
@@ -113,7 +115,7 @@ export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, 
       listen(); return { ok: Boolean(getSnapshot().session), session: getSnapshot().session };
     }),
     sync,
-    login: unsupported, logout: unsupported,
+    login: unsupported, logout: unsupported, refreshProfile: unsupported, invalidateSession: unsupported,
     dispose() { if (!disposed) { disposed = true; removeStorageListener?.(); listeners.clear(); } },
   });
 }

@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { getSesion, guardarSesion, inicialesUsuario } from "../utils.jsx";
 import { getRolLabel } from "../constants.js";
-import { createProfileSessionGuard } from '../shared/session/profile-session.js';
+import { createProfileSessionGuard, profileFailureMessage } from '../shared/session/profile-session.js';
+import { getApplicationSession } from '../shared/session/application-session-access.js';
 
 export function PerfilPage() {
   const sesion = getSesion();
@@ -23,8 +24,11 @@ export function PerfilPage() {
   const [enviandoUsuario, setEnviandoUsuario] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const mounted = useRef(false);
+  const operationPending = useRef(false);
+  const busy = enviandoFoto || enviandoUsuario || enviando;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const capture = () => createProfileSessionGuard({ session: sesion, readSession: getSesion,
+    runtime: getApplicationSession(),
     isMounted: () => mounted.current, save: guardarSesion,
     clear: key => localStorage.removeItem(key), navigate: href => window.location.replace(href) });
 
@@ -34,8 +38,11 @@ export function PerfilPage() {
     setUsuarioNuevo(usuario?.usuario || "");
   }, [usuario?.id, usuario?.usuario, usuario?.nombre, usuario?.rol, usuario?.foto_perfil]);
 
-  const actualizarSesionPerfil = (data, guard) => {
-    const usuarioActualizado = guard.applyPhoto(data);
+  const actualizarSesionPerfil = async (data, guard) => {
+    const usuarioActualizado = await guard.applyPhoto(data);
+    // Browser refreshProfile publishes a new observation and intentionally
+    // remounts this page. Never paint success into the previous profile view.
+    if (getApplicationSession()?.mode === 'browser') return null;
     if (!usuarioActualizado || !guard.current()) return null;
     setPerfilUsuario(usuarioActualizado);
     setFotoPerfil(usuarioActualizado.foto_perfil);
@@ -71,35 +78,47 @@ export function PerfilPage() {
     });
 
   const guardarFotoPerfil = (foto, guard) => {
-    const headers = guard.headers();
-    if (!headers) return Promise.resolve();
-    setEnviandoFoto(true);
-    return fetch("/api/usuarios/foto", {
+    if (!guard.current()) return Promise.resolve();
+    return guard.request(fetch, "/api/usuarios/foto", {
       method: "PATCH",
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         usuario: perfilUsuario.usuario,
         foto_perfil: foto,
       }),
     })
       .then(async (response) => {
+        if (!guard.current()) return null;
         const data = await response.json();
+        if (!guard.current()) return null;
         if (!response.ok) {
-          throw new Error(data.error || "No se pudo guardar la foto.");
+          throw Object.assign(new Error('No se pudo confirmar la foto.'), { code: data?.code });
         }
         return data;
       })
-      .then((data) => {
-        if (!guard.current() || !actualizarSesionPerfil(data, guard)) return;
+      .then(async (data) => {
+        if (!guard.current() || !await actualizarSesionPerfil(data, guard)) return;
         setMensajeFoto(foto ? "Foto de perfil actualizada." : "Foto de perfil quitada.");
       })
-      .finally(() => { if (guard.current()) setEnviandoFoto(false); });
+      .finally(() => { if (guard.current()) { operationPending.current = false; setEnviandoFoto(false); } });
+  };
+
+  const canChangePhoto = () => {
+    if (operationPending.current) return false;
+    if (getApplicationSession()?.mode === 'browser' &&
+      (usuarioNuevo !== (perfilUsuario?.usuario || '') || passwordUsuario || actual || nueva || confirmar)) {
+      setErrorFoto('Guardá o descartá los cambios de usuario y contraseña antes de cambiar la foto.');
+      return false;
+    }
+    return true;
   };
 
   const handleFotoPerfil = async (event) => {
-    const guard = capture();
     const file = event.target.files?.[0];
     event.target.value = "";
+    if (!canChangePhoto()) return;
+    const guard = capture();
+    if (!guard.current()) return;
     setMensajeFoto(null);
     setErrorFoto(null);
     if (!file) return;
@@ -107,26 +126,35 @@ export function PerfilPage() {
       setErrorFoto("Elegí una imagen válida.");
       return;
     }
+    operationPending.current = true;
+    setEnviandoFoto(true);
     try {
       const fotoReducida = await reducirFotoPerfil(file);
+      if (!guard.current()) return;
       await guardarFotoPerfil(fotoReducida, guard);
     } catch (err) {
-      if (guard.current()) setErrorFoto(err.message);
+      if (guard.current()) setErrorFoto(profileFailureMessage(err));
+    } finally {
+      if (guard.current()) { operationPending.current = false; setEnviandoFoto(false); }
     }
   };
 
   const handleQuitarFotoPerfil = () => {
+    if (!canChangePhoto()) return;
     const guard = capture();
+    if (!guard.current()) return;
     setMensajeFoto(null);
     setErrorFoto(null);
-    guardarFotoPerfil("", guard).catch((err) => { if (guard.current()) setErrorFoto(err.message); });
+    operationPending.current = true;
+    setEnviandoFoto(true);
+    guardarFotoPerfil("", guard).catch((err) => { if (guard.current()) setErrorFoto(profileFailureMessage(err)); });
   };
 
   const handleCambiarUsuario = (event) => {
     event.preventDefault();
+    if (operationPending.current) return;
     const guard = capture();
-    const headers = guard.headers();
-    if (!headers) return;
+    if (!guard.current()) return;
     setMensajeUsuario(null);
     setErrorUsuario(null);
 
@@ -136,10 +164,11 @@ export function PerfilPage() {
       return;
     }
 
+    operationPending.current = true;
     setEnviandoUsuario(true);
-    fetch("/api/usuarios/perfil", {
+    guard.request(fetch, "/api/usuarios/perfil", {
       method: "PATCH",
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         usuario_actual: perfilUsuario.usuario,
         password_actual: passwordUsuario,
@@ -147,9 +176,11 @@ export function PerfilPage() {
       }),
     })
       .then(async (response) => {
+        if (!guard.current()) return null;
         const data = await response.json();
+        if (!guard.current()) return null;
         if (!response.ok) {
-          throw new Error(data.error || "No se pudo cambiar el usuario.");
+          throw Object.assign(new Error('No se pudo confirmar el usuario.'), { code: data?.code });
         }
         return data;
       })
@@ -158,15 +189,15 @@ export function PerfilPage() {
         setMensajeUsuario("Usuario actualizado. Por seguridad, volvé a iniciar sesión.");
         guard.requireReauthentication();
       })
-      .catch((err) => { if (guard.current()) setErrorUsuario(err.message); })
-      .finally(() => { if (guard.current()) setEnviandoUsuario(false); });
+      .catch((err) => { if (guard.current()) setErrorUsuario(profileFailureMessage(err)); })
+      .finally(() => { if (guard.current()) { operationPending.current = false; setEnviandoUsuario(false); } });
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    if (operationPending.current) return;
     const guard = capture();
-    const headers = guard.headers();
-    if (!headers) return;
+    if (!guard.current()) return;
     setMensaje(null);
     setError(null);
 
@@ -179,10 +210,11 @@ export function PerfilPage() {
       return;
     }
 
+    operationPending.current = true;
     setEnviando(true);
-    fetch("/api/usuarios/password", {
+    guard.request(fetch, "/api/usuarios/password", {
       method: "PATCH",
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         usuario: perfilUsuario.usuario,
         password_actual: actual,
@@ -190,9 +222,11 @@ export function PerfilPage() {
       }),
     })
       .then(async (response) => {
+        if (!guard.current()) return null;
         const data = await response.json();
+        if (!guard.current()) return null;
         if (!response.ok) {
-          throw new Error(data.error || "No se pudo cambiar la contraseña.");
+          throw Object.assign(new Error('No se pudo confirmar la contraseña.'), { code: data?.code });
         }
         return data;
       })
@@ -204,8 +238,8 @@ export function PerfilPage() {
         setConfirmar("");
         guard.requireReauthentication();
       })
-      .catch((err) => { if (guard.current()) setError(err.message); })
-      .finally(() => { if (guard.current()) setEnviando(false); });
+      .catch((err) => { if (guard.current()) setError(profileFailureMessage(err)); })
+      .finally(() => { if (guard.current()) { operationPending.current = false; setEnviando(false); } });
   };
 
   return (
@@ -231,13 +265,13 @@ export function PerfilPage() {
                 <span>{getRolLabel(perfilUsuario?.rol)}</span>
               </div>
               <div className="profile-photo-actions">
-                <label className={`btn primary ${enviandoFoto ? "disabled" : ""}`}>
+                <label className={`btn primary ${busy ? "disabled" : ""}`}>
                   {enviandoFoto ? "Guardando..." : fotoPerfil ? "Cambiar foto" : "Subir foto"}
                   <input
                     type="file"
                     accept="image/*"
                     onChange={handleFotoPerfil}
-                    disabled={enviandoFoto}
+                    disabled={busy}
                     hidden
                   />
                 </label>
@@ -246,7 +280,7 @@ export function PerfilPage() {
                     className="btn ghost"
                     type="button"
                     onClick={handleQuitarFotoPerfil}
-                    disabled={enviandoFoto}
+                    disabled={busy}
                   >
                     Quitar foto
                   </button>
@@ -267,22 +301,22 @@ export function PerfilPage() {
               <details className="profile-setting-panel">
                 <summary><span><strong>Usuario de acceso</strong><small>Cambiá el nombre que usás para iniciar sesión.</small></span><b>Editar</b></summary>
                 <form onSubmit={handleCambiarUsuario} className="profile-setting-form">
-                  <label className="login-field"><span className="detail-label">Nuevo usuario</span><input type="text" value={usuarioNuevo} onChange={(e) => setUsuarioNuevo(e.target.value)} autoComplete="username" required /></label>
-                  <label className="login-field"><span className="detail-label">Contraseña actual</span><input type="password" value={passwordUsuario} onChange={(e) => setPasswordUsuario(e.target.value)} autoComplete="current-password" required /></label>
+                  <label className="login-field"><span className="detail-label">Nuevo usuario</span><input disabled={busy} type="text" value={usuarioNuevo} onChange={(e) => setUsuarioNuevo(e.target.value)} autoComplete="username" required /></label>
+                  <label className="login-field"><span className="detail-label">Contraseña actual</span><input disabled={busy} type="password" value={passwordUsuario} onChange={(e) => setPasswordUsuario(e.target.value)} autoComplete="current-password" required /></label>
                   {errorUsuario && <div className="profile-feedback is-error">{errorUsuario}</div>}
                   {mensajeUsuario && <div className="profile-feedback is-success">{mensajeUsuario}</div>}
-                  <button className="btn primary" type="submit" disabled={enviandoUsuario}>{enviandoUsuario ? "Guardando..." : "Guardar usuario"}</button>
+                  <button className="btn primary" type="submit" disabled={busy}>{enviandoUsuario ? "Guardando..." : "Guardar usuario"}</button>
                 </form>
               </details>
               <details className="profile-setting-panel">
                 <summary><span><strong>Contraseña</strong><small>Después de actualizarla tendrás que iniciar sesión nuevamente.</small></span><b>Cambiar</b></summary>
                 <form onSubmit={handleSubmit} className="profile-setting-form">
-                  <label className="login-field"><span className="detail-label">Contraseña actual</span><input type="password" value={actual} onChange={(e) => setActual(e.target.value)} autoComplete="current-password" required /></label>
-                  <label className="login-field"><span className="detail-label">Nueva contraseña</span><input type="password" value={nueva} onChange={(e) => setNueva(e.target.value)} autoComplete="new-password" required /></label>
-                  <label className="login-field"><span className="detail-label">Repetir nueva contraseña</span><input type="password" value={confirmar} onChange={(e) => setConfirmar(e.target.value)} autoComplete="new-password" required /></label>
+                  <label className="login-field"><span className="detail-label">Contraseña actual</span><input disabled={busy} type="password" value={actual} onChange={(e) => setActual(e.target.value)} autoComplete="current-password" required /></label>
+                  <label className="login-field"><span className="detail-label">Nueva contraseña</span><input disabled={busy} type="password" value={nueva} onChange={(e) => setNueva(e.target.value)} autoComplete="new-password" required /></label>
+                  <label className="login-field"><span className="detail-label">Repetir nueva contraseña</span><input disabled={busy} type="password" value={confirmar} onChange={(e) => setConfirmar(e.target.value)} autoComplete="new-password" required /></label>
                   {error && <div className="profile-feedback is-error">{error}</div>}
                   {mensaje && <div className="profile-feedback is-success">{mensaje}</div>}
-                  <button className="btn primary" type="submit" disabled={enviando}>{enviando ? "Guardando..." : "Guardar contraseña"}</button>
+                  <button className="btn primary" type="submit" disabled={busy}>{enviando ? "Guardando..." : "Guardar contraseña"}</button>
                 </form>
               </details>
               <div className="profile-security-note"><strong>Protegé tu acceso</strong><span>Cambiar el usuario o la contraseña revoca las sesiones anteriores y requiere iniciar sesión nuevamente. No modifica tu rol ni tus permisos.</span></div>
