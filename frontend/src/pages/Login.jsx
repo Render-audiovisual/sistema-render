@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { getRutaUsuario, guardarSesion } from "../utils.jsx";
+import { getRutaUsuario, getSesion, guardarSesion } from "../utils.jsx";
+import { getApplicationSession } from "../shared/session/application-session-access.js";
+import { createLoginAttempts } from "../shared/session/login-attempt.js";
 
 // Fallback hardcodeado: el hosting de Hostinger no inyecta las
 // "Variables de entorno" del panel durante `npm run build` (solo en
@@ -10,71 +12,59 @@ const GOOGLE_CLIENT_ID =
   import.meta.env.VITE_GOOGLE_CLIENT_ID ||
   "468370687841-do43hb7rje2t6agcliof3asq5gmbqssv.apps.googleusercontent.com";
 
-export function LoginPage() {
+export function LoginPage({ sessionPending = false }) {
   const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
   const [mostrarPassword, setMostrarPassword] = useState(false);
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(false);
   const googleBtnRef = useRef(null);
-
-  const iniciarConToken = useCallback((fetchPromise) => {
-    setError(null);
-    setCargando(true);
-    fetchPromise
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || "No se pudo iniciar sesión.");
-        }
-        return data;
-      })
-      .then((data) => {
-        guardarSesion(data.token, data.usuario);
-        const destino = getRutaUsuario(data.usuario.usuario, data.usuario.rol);
-        window.location.href = destino;
-      })
-      .catch((err) => {
-        setError(err.message);
-      })
-      .finally(() => {
-        setCargando(false);
-      });
+  const sessionPendingRef = useRef(sessionPending);
+  sessionPendingRef.current = sessionPending;
+  const attemptsRef = useRef(null);
+  if (!attemptsRef.current) attemptsRef.current = createLoginAttempts({
+    getRuntime: getApplicationSession,
+    request: (...args) => fetch(...args),
+    readSession: getSesion,
+    save: guardarSesion,
+    navigate: (user) => { window.location.href = getRutaUsuario(user.usuario, user.rol); },
+    onState: ({ busy, error: nextError }) => {
+      setCargando(busy);
+      if (nextError !== undefined) setError(nextError);
+    },
+  });
+  useEffect(() => {
+    const attempts = attemptsRef.current;
+    attempts.mount();
+    return () => attempts.cleanup();
   }, []);
+
+  const iniciarSesion = useCallback((kind, body) => attemptsRef.current.login(kind, body), []);
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    iniciarConToken(
-      fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario, password }),
-      }),
-    );
+    if (sessionPendingRef.current) return;
+    void iniciarSesion('password', { usuario, password });
   };
 
   const handleGoogleCredential = useCallback(
     (response) => {
-      iniciarConToken(
-        fetch("/api/login/google", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ credential: response.credential }),
-        }),
-      );
+      if (sessionPendingRef.current) return;
+      void iniciarSesion('google', { credential: response?.credential });
     },
-    [iniciarConToken],
+    [iniciarSesion],
   );
 
   useEffect(() => {
+    let active = true;
     const clientId = GOOGLE_CLIENT_ID;
     if (!clientId) return; // sin configurar: no mostramos el botón
 
     const renderBoton = () => {
-      if (!window.google?.accounts?.id || !googleBtnRef.current) return;
+      if (!active || !window.google?.accounts?.id || !googleBtnRef.current) return;
       window.google.accounts.id.initialize({
         client_id: clientId,
-        callback: handleGoogleCredential,
+        callback: (response) => { if (active) handleGoogleCredential(response); },
       });
       window.google.accounts.id.renderButton(googleBtnRef.current, {
         type: "standard",
@@ -87,17 +77,20 @@ export function LoginPage() {
       });
     };
 
-    if (document.getElementById("google-identity-script")) {
-      renderBoton();
-      return;
-    }
-    const script = document.createElement("script");
+    let script = document.getElementById("google-identity-script");
+    const existing = Boolean(script);
+    if (!script) script = document.createElement("script");
     script.id = "google-identity-script";
     script.src = "https://accounts.google.com/gsi/client";
     script.async = true;
     script.defer = true;
-    script.onload = renderBoton;
-    document.head.appendChild(script);
+    script.addEventListener('load', renderBoton);
+    if (!existing) document.head.appendChild(script);
+    renderBoton();
+    return () => {
+      active = false;
+      script.removeEventListener('load', renderBoton);
+    };
   }, [handleGoogleCredential]);
 
 
@@ -157,7 +150,7 @@ export function LoginPage() {
 
           {error && <div className="caption login-error">{error}</div>}
 
-          <button className="btn primary login-submit" type="submit" disabled={cargando}>
+          <button className="btn primary login-submit" type="submit" disabled={cargando || sessionPending}>
             {cargando ? "Ingresando..." : "Ingresar al sistema"}
           </button>
         </form>

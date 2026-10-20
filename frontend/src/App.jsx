@@ -1,5 +1,7 @@
 import React from "react";
-import { cerrarSesion, getRutaUsuario, getSesion } from "./utils.jsx";
+import { cerrarSesion, getRutaUsuario } from "./utils.jsx";
+import { useApplicationSession } from './shared/session/use-application-session.js';
+import { sessionViewKey } from './shared/session/session-view.js';
 import { getRolLabel, ROL_LABELS } from "./constants.js";
 import { LoginPage } from "./pages/Login.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
@@ -33,9 +35,10 @@ function RouteLoading() {
 export function App() {
   const [route, setRoute] = React.useState(() => readRouteKey(window));
   const path = route.split(/[?#]/, 1)[0];
-  let sesion = getSesion();
+  const sessionSnapshot = useApplicationSession();
+  const sesion = sessionSnapshot.session;
   const legacyDestination = canonicalLegacyRoute(route);
-  const sessionToken = sesion?.token;
+  const sessionKey = sessionViewKey(sesion);
 
   React.useEffect(() => {
     const syncPath = () => setRoute(readRouteKey(window));
@@ -45,19 +48,27 @@ export function App() {
 
   // Subscribe first: direct authenticated alias loads emit popstate immediately.
   React.useEffect(() => {
-    if (sessionToken && legacyDestination) replaceLegacyRoute(window, legacyDestination);
-  }, [sessionToken, legacyDestination]);
+    if (sessionKey && legacyDestination) replaceLegacyRoute(window, legacyDestination);
+  }, [sessionKey, legacyDestination]);
 
   const navigate = React.useCallback((href) => {
     navigateWithinApp(window, href);
   }, []);
+
+  // Login owns its attempt lifetime. Keep the same form mounted while its
+  // controller publishes loading/error, otherwise cleanup would cancel login.
+  if (sessionSnapshot.status === 'unknown' || (sessionSnapshot.status === 'loading' && path !== '/login')) return <RouteLoading />;
+  if (sessionSnapshot.status === 'error' && path !== '/login') return <main className="route-loading" role="alert">
+    <strong>No pudimos verificar tu sesión.</strong><p>Volvé a cargar para verificar el acceso con el servidor.</p>
+    <button type="button" onClick={() => window.location.reload()}>Volver a verificar</button>
+  </main>;
 
   if (path === "/login") {
     if (sesion) {
       window.location.href = getRutaUsuario(sesion.usuario.usuario, sesion.usuario.rol);
       return null;
     }
-    return <LoginPage />;
+    return <LoginPage sessionPending={sessionSnapshot.status === 'loading'} />;
   }
 
   if (!sesion) {
@@ -147,11 +158,11 @@ export function App() {
     return null;
   }
 
-  const loadedDashboard = <React.Suspense fallback={<RouteLoading />}>{dashboard}</React.Suspense>;
+  const loadedDashboard = <React.Suspense key={sessionKey} fallback={<RouteLoading />}>{dashboard}</React.Suspense>;
 
   return (
     <>
-      <Sidebar path={path} search={window.location.search} sesion={sesion} onNavigate={navigate} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
+      <Sidebar key={sessionKey} path={path} search={window.location.search} sesion={sesion} onNavigate={navigate} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
       {loadedDashboard}
     </>
   );

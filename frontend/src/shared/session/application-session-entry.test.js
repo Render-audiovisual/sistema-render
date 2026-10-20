@@ -24,6 +24,9 @@ test('one document-owned runtime is constructed before the real StrictMode root'
   assert.equal(values.get('storage'), 'localStorage');
   assert.equal(values.get('location'), 'window.location');
   assert.equal(values.get('apiBase'), 'API_BASE');
+  assert.equal(values.get('eventTarget'), 'window');
+  assert.match(source, /installApplicationSession\(applicationSession\)/);
+  assert.match(source, /void applicationSession.start\(\).catch\(\(\) => \{\}\)/);
   const assignments = file.statements.filter(ts.isExpressionStatement)
     .filter(statement => ts.isBinaryExpression(statement.expression) && text(statement.expression.left) === 'window.fetch');
   assert.equal(assignments.length, 1);

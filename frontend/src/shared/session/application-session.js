@@ -13,7 +13,7 @@ export class ApplicationSessionError extends Error {
 
 // One instance belongs to one document, not to a React mount. No globals,
 // event listeners or storage access at module import time.
-export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, location, apiBase = '', locks, notifyChange } = {}) {
+export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, location, apiBase = '', locks, notifyChange, eventTarget } = {}) {
   if (!['bearer', 'browser'].includes(mode) || typeof fetchImpl !== 'function')
     throw new ApplicationSessionError('application_session_config_invalid');
   let disposed = false, started;
@@ -53,13 +53,15 @@ export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, 
       start: () => startOnce(() => controller.bootstrap()),
       login(options) { assertLive(); return controller.login(options); },
       logout(options) { assertLive(); return controller.logout(options); },
+      sync() { assertLive(); throw new ApplicationSessionError('application_session_mode_unsupported'); },
       dispose() { if (!disposed) {
         disposed = true; for (const unsubscribe of subscriptions) unsubscribe(); controller.dispose();
       } },
     });
   }
   const listeners = new Set();
-  let rawPrevious = Symbol('unread'), snapshot, revision = 0;
+  let removeStorageListener;
+  let rawPrevious = Symbol('unread'), snapshot, lastNotified, revision = 0;
   const getSnapshot = () => {
     let raw;
     try { raw = storage.getItem('render_sesion'); } catch { raw = null; }
@@ -72,21 +74,46 @@ export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, 
     return snapshot;
   };
   const emit = () => {
-    const previous = snapshot, next = getSnapshot();
-    if (next !== previous && !disposed) for (const listener of listeners) {
-      try { listener(); } catch { /* Observers cannot change transport outcomes. */ }
+    const next = getSnapshot();
+    if (next !== lastNotified && !disposed) {
+      // Reads may already have advanced snapshot. Only notification advances
+      // this marker; install it before callbacks so reentrant sync is a no-op.
+      lastNotified = next;
+      for (const listener of listeners) {
+        try { listener(); } catch { /* Observers cannot change transport outcomes. */ }
+      }
     }
   };
   const legacyFetch = createAuthenticatedApiFetch({ fetchImpl, storage, location, apiBase });
   const unsupported = () => { assertLive(); throw new ApplicationSessionError('application_session_mode_unsupported'); };
+  const sync = () => { assertLive(); emit(); return getSnapshot(); };
+  const listen = () => {
+    if (disposed || removeStorageListener || !eventTarget) return;
+    const onStorage = event => {
+      if (disposed || (event.key !== 'render_sesion' && event.key !== null)
+        || (event.storageArea != null && event.storageArea !== storage)) return;
+      // Never accept event.newValue (or a caller DTO) as authentication state.
+      emit();
+    };
+    eventTarget.addEventListener('storage', onStorage);
+    removeStorageListener = () => eventTarget.removeEventListener('storage', onStorage);
+  };
   return Object.freeze({ mode,
     async fetch(input, options) { assertLive(); try { return await legacyFetch(input, options); } finally { emit(); } },
     getSession: () => getSnapshot().session, getSnapshot,
-    // Legacy notification is post-fetch only. No storage event listener, polling
-    // or cross-tab subscription is installed; App's existing behavior is unchanged.
-    subscribe(listener) { if (disposed) return () => {}; listeners.add(listener); return () => listeners.delete(listener); },
-    start: () => startOnce(() => ({ ok: Boolean(getSnapshot().session), session: getSnapshot().session })),
+    // Same-document writes call sync(); external storage events are subscribed
+    // only by start(). Both reread the existing key, never event payloads.
+    subscribe(listener) {
+      if (disposed) return () => {};
+      if (lastNotified === undefined) lastNotified = getSnapshot();
+      listeners.add(listener); return () => listeners.delete(listener);
+    },
+    start: () => startOnce(() => {
+      if (lastNotified === undefined) lastNotified = getSnapshot();
+      listen(); return { ok: Boolean(getSnapshot().session), session: getSnapshot().session };
+    }),
+    sync,
     login: unsupported, logout: unsupported,
-    dispose() { disposed = true; listeners.clear(); },
+    dispose() { if (!disposed) { disposed = true; removeStorageListener?.(); listeners.clear(); } },
   });
 }

@@ -14,6 +14,7 @@ import { createHomeProductionPageLoader } from '../../frontend/src/components/ho
 import { createFeedbackInventoryLoader } from '../../frontend/src/pages/feedbackTaskInventory.js';
 import { createPersonalHomeLoader } from '../../frontend/src/pages/personalHome.js';
 import { createApplicationSession } from '../../frontend/src/shared/session/application-session.js';
+import { createLoginAttempts } from '../../frontend/src/shared/session/login-attempt.js';
 
 const origin = 'http://127.0.0.1:5195';
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -305,5 +306,29 @@ test('browser client against principal HTTP: memory observations, exact mutation
       assert.deepEqual(await runtime.logout(), { revoked: true });
       assert.equal(runtime.getSession(), null);
     } finally { runtime.dispose(); }
+  });
+
+  await t.test('existing Login attempt uses the real runtime and principal; verified publication survives page cleanup', async () => {
+    const runtime = createApplicationSession({ mode: 'browser', fetchImpl: rawFetch, location: { origin },
+      locks: { request: (_name, _options, work) => Promise.resolve().then(work) } });
+    const states = [], navigations = [];
+    const attempts = createLoginAttempts({ getRuntime: () => runtime, readSession: runtime.getSession,
+      request: () => assert.fail('Browser Login must not use a bearer endpoint'),
+      save: () => assert.fail('Browser Login must not persist bearer credentials'),
+      navigate: user => navigations.push(user.id), onState: state => states.push(state) });
+    attempts.mount();
+    let remove = () => {};
+    try {
+      assert.equal((await runtime.start()).reason, 'anonymous');
+      assert.equal(await attempts.login('password', { usuario: 'qa_luciano', password: fixturePassword }), true);
+      assert.deepEqual(navigations, [91003]);
+      assert.equal((await (await runtime.fetch('/api/inicio')).json()).user.id, 91003);
+      remove = runtime.subscribe(() => { if (runtime.getSession()) attempts.cleanup(); });
+      assert.equal(await attempts.login('password', { usuario: 'qa_franco', password: fixturePassword }), false);
+      assert.equal(runtime.getSession().usuario.id, 91001, 'Page cleanup after verified commit is not global logout');
+      assert.deepEqual(navigations, [91003], 'Unmounted page does not navigate or save late');
+      assert.equal((await (await runtime.fetch('/api/inicio')).json()).user.id, 91001);
+      assert.deepEqual(await runtime.logout(), { revoked: true });
+    } finally { remove(); attempts.cleanup(); runtime.dispose(); }
   });
 });

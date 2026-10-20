@@ -19,7 +19,7 @@ const nodes = (root, predicate) => {
 const calls = (root, name) => nodes(root, (n) => ts.isCallExpression(n) && text(n.expression) === name);
 const declarationFor = (expression) => nodes(app.body, (n) => ts.isVariableDeclaration(n) && n.initializer && expression(n.initializer))[0];
 const destination = () => declarationFor((n) => ts.isCallExpression(n) && text(n.expression) === 'canonicalLegacyRoute');
-const token = () => declarationFor((n) => ts.isPropertyAccessExpression(n) && n.name.text === 'token' && text(n.expression) === 'sesion');
+const observation = () => declarationFor((n) => ts.isCallExpression(n) && text(n.expression) === 'sessionViewKey' && text(n.arguments[0]) === 'sesion');
 const hasReturn = (node) => nodes(node, ts.isReturnStatement).length > 0;
 const compact = (node) => text(node).replace(/\s+/g, '');
 
@@ -54,15 +54,15 @@ test('all App hooks, including canonical replacement effect, precede conditional
   }
   const effect = calls(app.body, 'React.useEffect').find((n) => calls(n.arguments[0], 'replaceLegacyRoute').length);
   assert.ok(effect, 'Canonical replacement runs in an unconditional React effect');
-  const dest = destination(), session = token();
-  assert.ok(dest && session, 'Destination and parsed-session token are reactive values');
+  const dest = destination(), session = observation();
+  assert.ok(dest && session, 'Destination and captured-session observation are reactive values');
   const replace = calls(effect.arguments[0], 'replaceLegacyRoute');
   assert.equal(replace.length, 1);
   assert.deepEqual(replace[0].arguments.map(text), ['window', text(dest.name)]);
   const guard = nodes(effect.arguments[0], ts.isIfStatement).find((n) => calls(n.thenStatement, 'replaceLegacyRoute').length);
   assert.ok(guard, 'Replacement is gated inside effect');
   const operands = compact(guard.expression).replace(/^\(|\)$/g, '').split('&&');
-  assert.ok(operands.includes(text(session.name)) && operands.includes(text(dest.name)), 'Both session token and recognized destination required');
+  assert.ok(operands.includes(text(session.name)) && operands.includes(text(dest.name)), 'Both session observation and recognized destination required');
   assert.ok(ts.isArrayLiteralExpression(effect.arguments[1]));
   assert.deepEqual(new Set(effect.arguments[1].elements.map(text)), new Set([text(session.name), text(dest.name)]));
   assert.equal(calls(app.body, 'replaceLegacyRoute').length, 1, 'No render-time duplicate replacement');
@@ -88,7 +88,7 @@ test('anonymous login gate and root handling precede loading guard; permissions 
   assert.ok(gate >= 0 && root > gate && loading > root, 'Anonymous/root handling before alias loading guard');
   assert.ok(permissions > loading, 'Aliases canonicalize before route permission fallback');
   assert.ok(dashboard && dashboard.pos > statements[loading].pos, 'No operational page mounts while canonicalizing');
-  assert.match(source, /return\s+<LoginPage\s*\//);
+  assert.match(source, /return\s+<LoginPage sessionPending=\{sessionSnapshot.status === 'loading'\}\s*\//);
 });
 
 test('all named dashboard imports and mounts retire while original source files remain preserved', () => {

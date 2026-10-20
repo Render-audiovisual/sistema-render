@@ -35,6 +35,7 @@ import {
 } from "./constants.js";
 import { getDefaultUserRoute, normalizeUserKey } from "./shared/session/route-utils.js";
 import { parseCurrentSession, logoutCurrentSession } from "./shared/session/current-session.js";
+import { getApplicationSession } from './shared/session/application-session-access.js';
 
 export function calcularPorcentajePublicadas(items) {
   if (items.length === 0) return 0;
@@ -492,6 +493,8 @@ export function getRutaUsuario(usuario, rol) {
 }
 
 export function getSesion() {
+  const runtime = getApplicationSession();
+  if (runtime) return runtime.getSession();
   try {
     const sesion = parseCurrentSession(localStorage.getItem("render_sesion"));
     if (!sesion) localStorage.removeItem("render_sesion");
@@ -502,9 +505,12 @@ export function getSesion() {
 }
 
 export function guardarSesion(token, usuario) {
+  const runtime = getApplicationSession();
+  if (runtime?.mode === 'browser') throw new Error('La sesión se verifica desde el servidor.');
   // Migration debt: existing bearer persistence remains XSS-readable. No new
   // token stores are introduced; server authorization must never trust this DTO.
   localStorage.setItem("render_sesion", JSON.stringify({ token, usuario }));
+  runtime?.sync();
 }
 
 export function inicialesUsuario(nombre) {
@@ -518,11 +524,13 @@ export function inicialesUsuario(nombre) {
 }
 
 export async function cerrarSesion() {
+  const runtime = getApplicationSession();
+  if (runtime?.mode === 'browser') return runtime.logout();
   return logoutCurrentSession({
     session: getSesion(),
     readSession: getSesion,
     fetchImpl: window.fetch.bind(window),
-    clear: () => localStorage.removeItem("render_sesion"),
+    clear: () => { localStorage.removeItem("render_sesion"); runtime?.sync(); },
     reportFailure: (message) => window.alert(message),
     navigate: () => { window.location.href = "/login"; },
   });

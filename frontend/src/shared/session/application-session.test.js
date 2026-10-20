@@ -176,3 +176,104 @@ test('legacy current 401 still removes only the old key and redirects; malformed
     assert.equal((await anonymous.start()).ok, false); assert.equal(anonymous.getSnapshot().status, 'anonymous'); anonymous.dispose();
   }
 });
+
+function legacyEvents() {
+  let raw = JSON.stringify({ token: 'synthetic-A', usuario: dto(7).usuario });
+  const handlers = new Set(), keys = [];
+  let adds = 0, removes = 0;
+  const eventTarget = {
+    addEventListener(type, callback) { assert.equal(type, 'storage'); adds++; handlers.add(callback); },
+    removeEventListener(type, callback) { assert.equal(type, 'storage'); removes++; handlers.delete(callback); },
+    dispatch(event) { for (const callback of [...handlers]) callback(event); },
+  };
+  const storage = { getItem(key) { keys.push(key); return raw; } };
+  const runtime = createApplicationSession({ eventTarget, storage, fetchImpl: async () => reply({ ok: true }) });
+  return { runtime, eventTarget, storage, keys, counts: () => ({ adds, removes, active: handlers.size }),
+    replace(id) { raw = id === null ? null : JSON.stringify({ token: `synthetic-${id}`, usuario: dto(id).usuario }); } };
+}
+
+test('legacy start lazily attaches exactly one storage listener; explicit sync notifies independent subscribers from actual storage', async () => {
+  const h = legacyEvents(); assert.deepEqual(h.counts(), { adds: 0, removes: 0, active: 0 });
+  const initial = h.runtime.getSnapshot(); let a = 0, b = 0;
+  const unsubscribeA = h.runtime.subscribe(() => a++), unsubscribeB = h.runtime.subscribe(() => b++);
+  assert.equal(h.counts().adds, 0);
+  const first = h.runtime.start(); assert.equal(h.runtime.start(), first); await first;
+  assert.deepEqual(h.counts(), { adds: 1, removes: 0, active: 1 });
+  assert.equal(h.runtime.sync(), initial); assert.equal(a, 0); assert.equal(b, 0);
+  h.replace(8);
+  // Even a supplied argument is not trusted: only current storage is read.
+  const current = h.runtime.sync({ token: 'forged', usuario: dto(99).usuario });
+  assert.equal(current.session.usuario.id, 8); assert.equal(a, 1); assert.equal(b, 1);
+  assert.equal(h.runtime.getSnapshot(), current); h.runtime.sync(); assert.equal(b, 1);
+  unsubscribeA(); h.replace(null); h.runtime.sync(); assert.equal(a, 1); assert.equal(b, 2);
+  unsubscribeB(); assert.equal(h.counts().active, 1, 'React unsubscription does not dispose document runtime');
+  h.runtime.dispose(); h.runtime.dispose();
+  assert.deepEqual(h.counts(), { adds: 1, removes: 1, active: 0 });
+  assert.ok(h.keys.every(key => key === 'render_sesion'));
+});
+
+test('external storage events filter key and storageArea and ignore all event DTOs', async () => {
+  const h = legacyEvents(); await h.runtime.start(); let count = 0;
+  h.runtime.subscribe(() => count++);
+  const initial = h.runtime.getSnapshot(), readCount = h.keys.length; h.replace(8);
+  h.eventTarget.dispatch({ key: 'other', storageArea: h.storage });
+  h.eventTarget.dispatch({ key: 'render_sesion', storageArea: {} });
+  assert.equal(count, 0); assert.equal(h.keys.length, readCount, 'Ignored events do not read storage');
+  h.eventTarget.dispatch({ key: 'render_sesion', storageArea: h.storage, newValue: JSON.stringify({ usuario: dto(99).usuario }) });
+  assert.equal(count, 1); assert.equal(h.runtime.getSession().usuario.id, 8); assert.notEqual(h.runtime.getSnapshot(), initial);
+  const stable = h.runtime.getSnapshot(); h.eventTarget.dispatch({ key: 'render_sesion' });
+  assert.equal(count, 1); assert.equal(h.runtime.getSnapshot(), stable);
+  h.replace(null); h.eventTarget.dispatch({ key: null, storageArea: h.storage });
+  assert.equal(count, 2); assert.equal(h.runtime.getSession(), null);
+  h.replace(9); h.eventTarget.dispatch({ key: 'render_sesion', storageArea: null });
+  assert.equal(count, 3); assert.equal(h.runtime.getSession().usuario.id, 9);
+  h.runtime.dispose(); const reads = h.keys.length;
+  h.eventTarget.dispatch({ key: null, storageArea: h.storage }); assert.equal(h.keys.length, reads);
+});
+
+test('legacy subscriber start reentry cannot install a second listener; disposal prevents restart/sync', async () => {
+  const h = legacyEvents(); const first = h.runtime.start(); await first;
+  let nested;
+  h.runtime.subscribe(() => { nested = h.runtime.start(); });
+  h.replace(8); h.runtime.sync(); assert.equal(nested, first); assert.equal(h.counts().adds, 1);
+  h.runtime.dispose();
+  assert.throws(() => h.runtime.start(), error => error.code === 'application_session_disposed');
+  assert.throws(() => h.runtime.sync(), error => error.code === 'application_session_disposed');
+  assert.equal(h.counts().active, 0);
+  const unstarted = legacyEvents(); unstarted.runtime.dispose();
+  assert.throws(() => unstarted.runtime.start(), error => error.code === 'application_session_disposed');
+  assert.deepEqual(unstarted.counts(), { adds: 0, removes: 0, active: 0 });
+});
+
+test('browser runtime never attaches storage listeners and rejects legacy sync without storage reads', async () => {
+  const eventTarget = { addEventListener() { throw new Error('No browser storage listener'); }, removeEventListener() { throw new Error('No browser storage cleanup'); } };
+  const runtime = browser(async () => reply(dto()), { eventTarget });
+  assert.throws(() => runtime.sync(), error => error.code === 'application_session_mode_unsupported');
+  assert.equal((await runtime.start()).ok, true); runtime.dispose();
+});
+
+for (const trigger of ['sync', 'storage']) test(`legacy reads before ${trigger} cannot swallow the pending change notification`, async () => {
+  const h = legacyEvents(); await h.runtime.start();
+  let first = 0, second = 0;
+  h.runtime.subscribe(() => { first++; h.runtime.sync(); });
+  h.runtime.subscribe(() => second++);
+  const a = h.runtime.getSnapshot();
+  h.replace(8);
+  assert.equal(h.runtime.getSession().usuario.id, 8);
+  const b = h.runtime.getSnapshot(); assert.notEqual(b, a);
+  assert.equal(first, 0); assert.equal(second, 0);
+  const notify = () => trigger === 'sync' ? h.runtime.sync()
+    : h.eventTarget.dispatch({ key: 'render_sesion', storageArea: h.storage });
+  notify(); assert.equal(first, 1); assert.equal(second, 1);
+  assert.equal(h.runtime.getSnapshot(), b); notify(); h.runtime.sync();
+  assert.equal(first, 1); assert.equal(second, 1);
+  h.replace(9); h.runtime.getSession(); h.runtime.getSnapshot(); notify();
+  assert.equal(first, 2); assert.equal(second, 2); h.runtime.dispose();
+});
+
+test('first subscription establishes a quiet baseline without start, then reads cannot swallow sync', () => {
+  const h = legacyEvents(); let count = 0;
+  h.runtime.subscribe(() => count++); h.runtime.sync(); assert.equal(count, 0);
+  h.replace(8); h.runtime.getSession(); h.runtime.sync(); assert.equal(count, 1);
+  h.runtime.sync(); assert.equal(count, 1); h.runtime.dispose();
+});
