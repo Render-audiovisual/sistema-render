@@ -1,9 +1,43 @@
-import React, { useEffect, useState } from "react";
-import { normalizarPrimerNombre } from "../utils.jsx";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { getSesion, normalizarPrimerNombre } from "../utils.jsx";
+import { useScopedRequest } from '../shared/session/use-scoped-request.js';
+import { isSessionFailure } from '../shared/session/captured-request.js';
 import { Modal } from "../components/Modal.jsx";
 import { getRolLabel, ROL_LABELS } from "../constants.js";
 
-export function EmpleadosPage() {
+const employeeId = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
+function mergeEmployeeAck(before, value, id, required = []) {
+  if (!employeeId(id) || value?.id !== id || !['nombre','usuario','rol'].every(key => typeof value[key] === 'string' && value[key].trim())
+    || required.some(key => !Object.hasOwn(value,key))) throw new Error('No se pudo verificar la respuesta del usuario. Revisá el registro antes de repetir la operación.');
+  const result = { ...before, id };
+  for (const key of ['nombre','usuario','rol','email_notificaciones','google_email','foto_perfil','created_at','activo','whatsapp_vinculado']) {
+    if (!Object.hasOwn(value,key)) continue;
+    if (['activo','whatsapp_vinculado'].includes(key) ? typeof value[key] !== 'boolean' : value[key] !== null && typeof value[key] !== 'string') throw new Error('La respuesta del usuario no es válida.');
+    result[key] = value[key];
+  }
+  return result;
+}
+function employeeRoster(value) {
+  if (!Array.isArray(value)) throw new Error('La lista de usuarios no es válida.');
+  const rows = value.map(row => mergeEmployeeAck({},row,row?.id,['activo']));
+  if (new Set(rows.map(row => row.id)).size !== rows.length) throw new Error('La lista de usuarios contiene duplicados.');
+  return rows;
+}
+function generateEmployeePassword(random = globalThis.crypto) {
+  if (typeof random?.getRandomValues !== 'function') throw new Error('La generación segura no está disponible. Ingresá una contraseña propia.');
+  const bytes = new Uint8Array(12); random.getRandomValues(bytes);
+  return Array.from(bytes,byte => byte.toString(16).padStart(2,'0')).join('');
+}
+
+export function EmpleadosPage({ sesion }) {
+  const { view } = useScopedRequest(sesion || getSesion(),'employees');
+  const identity = useRef({ view, epoch:0 });
+  if (identity.current.view !== view) identity.current = { view, epoch:identity.current.epoch + 1 };
+  if (view.role !== 'admin') return <main><p role="alert">La administración de usuarios está reservada a administradores.</p></main>;
+  return <EmpleadosContent key={identity.current.epoch} sesion={view.session} />;
+}
+
+function EmpleadosContent({ sesion }) {
   const [usuarios, setUsuarios] = useState([]);
   const [cargandoUsuarios, setCargandoUsuarios] = useState(true);
   const [error, setError] = useState(null);
@@ -36,305 +70,181 @@ export function EmpleadosPage() {
   const [enviando, setEnviando] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [filtroAcceso, setFiltroAcceso] = useState("todos");
+  const { view, capture, captureLifetime, epoch } = useScopedRequest(sesion,modalAltaAbierto ? 'create' : `user:${usuarioAdministrado?.id || 'list'}`);
+  const { capture: captureRoster } = useScopedRequest(sesion,'employee-roster');
+  const pending = useRef(false), listGeneration = useRef(0);
+  const [mutationBusy,setMutationBusy] = useState(false);
 
-  const handleNombreChange = (event) => {
-    const nuevoNombre = event.target.value;
-    const usuarioActualSugerido = normalizarPrimerNombre(nombre);
-    const passwordActualSugerida = usuarioActualSugerido ? `${usuarioActualSugerido}1` : "";
-    const nuevoUsuarioSugerido = normalizarPrimerNombre(nuevoNombre);
-
-    setNombre(nuevoNombre);
-    if (!usuario || usuario === usuarioActualSugerido) {
-      setUsuario(nuevoUsuarioSugerido);
-    }
-    if (!password || password === passwordActualSugerida) {
-      setPassword(nuevoUsuarioSugerido ? `${nuevoUsuarioSugerido}1` : "");
-    }
+  const handleNombreChange = event => {
+    if (pending.current) return;
+    const next = event.target.value, suggested = normalizarPrimerNombre(nombre);
+    setNombre(next);
+    if (!usuario || usuario === suggested) setUsuario(normalizarPrimerNombre(next));
   };
 
-  const cargarUsuarios = () => {
+  const cargarUsuarios = useCallback(async ({ guard, signal, afterWrite = false } = {}) => {
+    if (pending.current && !afterWrite) return;
+    const scope = guard || captureRoster(), generation = ++listGeneration.current;
+    if (!scope.current()) return;
     setCargandoUsuarios(true);
-    fetch("/api/usuarios")
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "No se pudieron cargar los empleados.");
-        return data;
-      })
-      .then((data) => {
-        setError(null);
-        setUsuarios(data);
-        setUsuarioAdministrado((actual) => {
-          if (!actual) return null;
-          return data.find((item) => item.id === actual.id) || null;
-        });
-      })
-      .catch(() => setError("No se pudieron cargar los empleados."))
-      .finally(() => setCargandoUsuarios(false));
-  };
+    try {
+      const rows = employeeRoster(await scope.request('/api/usuarios', { method:'GET', ...(signal ? {signal} : {}) }));
+      if (!scope.current() || signal?.aborted || generation !== listGeneration.current) return;
+      setError(null); setUsuarios(rows);
+      // Never replace a held editor or its draft with a roster refresh.
+    } catch (reason) {
+      if (scope.current() && !signal?.aborted && generation === listGeneration.current) {
+        if (afterWrite) throw reason;
+        if (!isSessionFailure(reason)) setError('No se pudieron cargar los empleados.');
+      }
+    } finally { if (scope.current() && !signal?.aborted && generation === listGeneration.current) setCargandoUsuarios(false); }
+  }, [captureRoster]);
 
-  useEffect(cargarUsuarios, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    cargarUsuarios({ signal:controller.signal });
+    return () => { controller.abort(); listGeneration.current += 1; };
+  }, [cargarUsuarios]);
 
-  const abrirAlta = () => {
-    setNombre("");
-    setUsuario("");
-    setRol("diseno");
-    setRolPersonalizado("");
-    setPassword("");
-    setEmailNotificaciones("");
-    setFormError(null);
-    setMensaje(null);
-    setModalAltaAbierto(true);
-  };
+  const altaDirty = Boolean(nombre || usuario || password || emailNotificaciones || rol !== 'diseno' || rolPersonalizado);
+  const adminDirty = Boolean(
+    editandoCorreo && correoEdicion !== (usuarioAdministrado?.email_notificaciones || '')
+    || editandoGoogleEmail && googleEmailEdicion !== (usuarioAdministrado?.google_email || '')
+    || editandoWhatsapp && whatsappEdicion
+    || editandoDatos && (nombreEdicion !== usuarioAdministrado?.nombre || usuarioEdicion !== usuarioAdministrado?.usuario
+      || (rolEdicion === '__otra__' ? rolPersonalizadoEdicion !== getRolLabel(usuarioAdministrado?.rol) : rolEdicion !== usuarioAdministrado?.rol))
+  );
+  const allowDiscard = dirty => !pending.current && capture().current()
+    && (!dirty || window.confirm('¿Descartar los cambios sin guardar?'));
 
   const cerrarAlta = () => {
-    if (enviando) return;
-    setModalAltaAbierto(false);
-    setFormError(null);
+    if (!allowDiscard(altaDirty)) return;
+    setModalAltaAbierto(false); setFormError(null); setPassword('');
   };
-
-  const abrirAdministracion = (u) => {
-    setUsuarioAdministrado(u);
-    setCorreoEdicion(u.email_notificaciones || "");
-    setEditandoCorreo(false);
-    setWhatsappEdicion("");
-    setEditandoWhatsapp(false);
-    setFormError(null);
-    setMensaje(null);
-  };
-
-  const guardarWhatsapp = (u, valor = whatsappEdicion) => {
-    setGuardandoWhatsapp(true);
-    setFormError(null);
-    fetch(`/api/usuarios/${u.id}/whatsapp`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ whatsapp: valor }),
-    })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "No se pudo vincular WhatsApp.");
-        return data;
-      })
-      .then((data) => {
-        setMensaje(data.whatsapp_vinculado ? `WhatsApp vinculado para ${data.nombre}.` : `WhatsApp desvinculado para ${data.nombre}.`);
-        setUsuarioAdministrado(data);
-        setWhatsappEdicion("");
-        setEditandoWhatsapp(false);
-        cargarUsuarios();
-      })
-      .catch((err) => setFormError(err.message))
-      .finally(() => setGuardandoWhatsapp(false));
-  };
-
   const cerrarAdministracion = () => {
-    if (guardandoCorreo) return;
-    setUsuarioAdministrado(null);
-    setEditandoCorreo(false);
-    setFormError(null);
+    if (!allowDiscard(adminDirty)) return;
+    setUsuarioAdministrado(null); setEditandoCorreo(false); setEditandoGoogleEmail(false);
+    setEditandoWhatsapp(false); setEditandoDatos(false); setFormError(null);
+  };
+  const cancelEdit = setter => {
+    if (!allowDiscard(adminDirty)) return;
+    setter(false); setFormError(null);
+  };
+  const abrirAlta = () => {
+    if (!allowDiscard(modalAltaAbierto ? altaDirty : adminDirty)) return;
+    setUsuarioAdministrado(null); setNombre(''); setUsuario(''); setRol('diseno'); setRolPersonalizado('');
+    setPassword(''); setEmailNotificaciones(''); setFormError(null); setMensaje(null); setModalAltaAbierto(true);
+  };
+  const abrirAdministracion = u => {
+    if (!employeeId(u?.id) || !allowDiscard(modalAltaAbierto ? altaDirty : adminDirty)) return;
+    setModalAltaAbierto(false); setPassword(''); setUsuarioAdministrado(u);
+    setCorreoEdicion(u.email_notificaciones || ''); setGoogleEmailEdicion(u.google_email || '');
+    setWhatsappEdicion(''); setEditandoWhatsapp(false); setEditandoCorreo(false); setEditandoGoogleEmail(false); setEditandoDatos(false);
+    setFormError(null); setMensaje(null);
+  };
+  const closeRef = useRef(cerrarAdministracion); closeRef.current = cerrarAdministracion;
+  useEffect(() => {
+    if (!usuarioAdministrado) return;
+    const escape = event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeRef.current(); } };
+    window.addEventListener('keydown',escape); return () => window.removeEventListener('keydown',escape);
+  }, [Boolean(usuarioAdministrado)]);
+
+  const mergeLocal = (row, guard) => {
+    guard.assertCurrent();
+    setUsuarios(previous => previous.some(user => user.id === row.id) ? previous.map(user => user.id === row.id ? {...user,...row} : user) : [...previous,row]);
+    setUsuarioAdministrado(previous => previous?.id === row.id ? {...previous,...row} : previous);
+  };
+  const runMutation = async ({ target, requestTargetId, path, body, method = 'PATCH', required = [], validate, onConfirmed, onComplete, busySetter, refresh = true, guard: originalGuard }) => {
+    if (pending.current) return;
+    const guard = originalGuard || capture(), lifetime = captureLifetime();
+    if (!guard.current() || view.role !== 'admin' || target && (!employeeId(target.id) || target.id !== usuarioAdministrado?.id)
+      || requestTargetId !== undefined && (!employeeId(requestTargetId) || requestTargetId !== usuarioAdministrado?.id)) return;
+    // Serialize before any await; follow-up reads retain this exact action.
+    const options = { method, ...(body === undefined ? {} : {headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}) };
+    pending.current = true; listGeneration.current += 1; setMutationBusy(true); busySetter?.(true);
+    setFormError(null); setMensaje(null);
+    try {
+      const data = await guard.request(path,options);
+      guard.assertCurrent();
+      const row = target ? mergeEmployeeAck(target,data,target.id,required) : data;
+      validate?.(row); guard.assertCurrent();
+      if (target) mergeLocal(row,guard);
+      onConfirmed?.(row,guard); guard.assertCurrent();
+      if (refresh) {
+        try { await cargarUsuarios({guard,afterWrite:true}); }
+        catch (reason) { if (guard.current()) setError('El cambio se confirmó, pero no se pudo actualizar la lista. No repitas la operación; reintentá sólo la lectura.'); }
+      }
+      guard.assertCurrent(); onComplete?.(row);
+    } catch (reason) { if (guard.current() && !isSessionFailure(reason)) setFormError(reason.message || 'No se pudo confirmar la operación. Revisá el registro antes de repetirla.'); }
+    finally { pending.current = false; if (lifetime.current()) { setMutationBusy(false); busySetter?.(false); setCargandoUsuarios(false); } }
   };
 
-  const handleCrear = (event) => {
+  const guardarWhatsapp = (u, valor = whatsappEdicion) => runMutation({
+    target:u,path:`/api/usuarios/${u.id}/whatsapp`,body:{whatsapp:valor},required:['whatsapp_vinculado'],busySetter:setGuardandoWhatsapp,
+    validate:row => { if (row.whatsapp_vinculado !== Boolean(valor.trim())) throw new Error('No se confirmó el vínculo de WhatsApp.'); },
+    onConfirmed:row => { setMensaje(row.whatsapp_vinculado ? `WhatsApp vinculado para ${row.nombre}.` : `WhatsApp desvinculado para ${row.nombre}.`); setWhatsappEdicion(''); setEditandoWhatsapp(false); },
+  });
+  const handleCrear = event => {
     event.preventDefault();
-    setFormError(null);
-    setMensaje(null);
-    setEnviando(true);
-
-    fetch("/api/usuarios", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        nombre,
-        usuario,
-        rol: rol === "__otra__" ? rolPersonalizado : rol,
-        password,
-        email_notificaciones: emailNotificaciones,
-      }),
-    })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || "No se pudo crear el empleado.");
-        }
-        return data;
-      })
-      .then((data) => {
-        setMensaje(`Empleado creado: ${data.nombre} (${data.usuario}).`);
-        setNombre("");
-        setUsuario("");
-        setRol("diseno");
-        setRolPersonalizado("");
-        setPassword("");
-        setEmailNotificaciones("");
-        setModalAltaAbierto(false);
-        cargarUsuarios();
-      })
-      .catch((err) => setFormError(err.message))
-      .finally(() => setEnviando(false));
+    if (pending.current || !modalAltaAbierto) return;
+    const body = {nombre,usuario,rol:rol === '__otra__' ? rolPersonalizado : rol,password,email_notificaciones:emailNotificaciones};
+    return runMutation({path:'/api/usuarios',method:'POST',body,busySetter:setEnviando,
+      validate:data => {
+        mergeEmployeeAck({},data,data?.id,['activo','google_email','whatsapp_vinculado','email_notificaciones']);
+        if (data.nombre !== body.nombre.trim() || data.usuario !== body.usuario.trim() || data.activo !== true || data.google_email !== null || data.whatsapp_vinculado !== false
+          || (data.email_notificaciones || '') !== body.email_notificaciones.trim().toLowerCase()) throw new Error('No se pudo verificar el alta. Revisá la lista antes de repetirla.');
+      },
+      onConfirmed:(data,guard) => { const row = mergeEmployeeAck({},data,data.id); mergeLocal(row,guard); setMensaje(`Empleado creado: ${row.nombre} (${row.usuario}).`); setPassword(''); },
+      onComplete:() => { setNombre(''); setUsuario(''); setRol('diseno'); setRolPersonalizado(''); setEmailNotificaciones(''); setModalAltaAbierto(false); },
+    });
   };
-
-  const handleEliminar = (u) => {
-    if (
-      !window.confirm(
-        `¿Dar de baja a ${u.nombre} (${u.usuario})? Perderá el acceso a la plataforma.`,
-      )
-    ) {
-      return;
-    }
-    fetch(`/api/usuarios/${u.id}`, { method: "DELETE" })
-      .then((response) => {
-        if (!response.ok) throw new Error("No se pudo dar de baja.");
-        setUsuarioAdministrado(null);
-        setMensaje(`${u.nombre} fue dado de baja.`);
-        cargarUsuarios();
-      })
-      .catch(() => setError("No se pudo dar de baja al empleado."));
+  const handleEliminar = u => {
+    if (pending.current || !employeeId(u?.id)) return;
+    const guard = capture(); if (!guard.current()) return;
+    const activo = u.activo === false;
+    if (!window.confirm(activo ? `¿Reactivar el acceso de ${u.nombre}?` : `¿Dar de baja a ${u.nombre} (${u.usuario})? Perderá el acceso, pero se conservará su historial.`)) return;
+    return runMutation({target:u,guard,path:`/api/usuarios/${u.id}/acceso`,body:{activo},required:['activo'],
+      validate:row => { if (row.activo !== activo) throw new Error('No se confirmó el estado del acceso.'); },
+      onConfirmed:row => setMensaje(row.activo ? `Acceso reactivado para ${row.nombre}.` : `${row.nombre} fue dado de baja. Su historial se conserva.`),
+    });
   };
-
   const iniciarEdicionCorreo = () => {
-    setCorreoEdicion(usuarioAdministrado?.email_notificaciones || "");
-    setEditandoCorreo(true);
-    setFormError(null);
-    setMensaje(null);
+    if (pending.current || !capture().current()) return;
+    setCorreoEdicion(usuarioAdministrado?.email_notificaciones || ''); setEditandoCorreo(true); setFormError(null); setMensaje(null);
   };
-
-  const guardarCorreo = (u) => {
-    setGuardandoCorreo(true);
-    setFormError(null);
-    setMensaje(null);
-
-    fetch(`/api/usuarios/${u.id}/email-notificaciones`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email_notificaciones: correoEdicion }),
-    })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || "No se pudo guardar el correo.");
-        }
-        return data;
-      })
-      .then((data) => {
-        setMensaje(
-          data.email_notificaciones
-            ? `Correo guardado para ${data.nombre}.`
-            : `Correo eliminado para ${data.nombre}.`,
-        );
-        setUsuarioAdministrado(data);
-        setEditandoCorreo(false);
-        cargarUsuarios();
-      })
-      .catch((err) => setFormError(err.message))
-      .finally(() => setGuardandoCorreo(false));
-  };
-
+  const guardarCorreo = u => runMutation({
+    target:u,path:`/api/usuarios/${u.id}/email-notificaciones`,body:{email_notificaciones:correoEdicion},required:['email_notificaciones'],busySetter:setGuardandoCorreo,
+    validate:row => { if ((row.email_notificaciones || '') !== correoEdicion.trim().toLowerCase()) throw new Error('No se confirmó el correo de notificaciones.'); },
+    onConfirmed:row => { setMensaje(row.email_notificaciones ? `Correo guardado para ${row.nombre}.` : `Correo eliminado para ${row.nombre}.`); setEditandoCorreo(false); },
+  });
   const iniciarEdicionGoogleEmail = () => {
-    setGoogleEmailEdicion(usuarioAdministrado?.google_email || "");
-    setEditandoGoogleEmail(true);
-    setFormError(null);
-    setMensaje(null);
+    if (pending.current || !capture().current()) return;
+    setGoogleEmailEdicion(usuarioAdministrado?.google_email || ""); setEditandoGoogleEmail(true); setFormError(null); setMensaje(null);
   };
-
-  const enviarInvitacion = (u) => {
-    setEnviandoInvitacion(true);
-    setFormError(null);
-    setMensaje(null);
-    fetch(`/api/usuarios/${u.id}/invitacion`, { method: "POST" })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "No se pudo enviar la invitación.");
-        return data;
-      })
-      .then((data) => setMensaje(`Instrucciones enviadas a ${data.destinatario}.`))
-      .catch((error) => setFormError(error.message))
-      .finally(() => setEnviandoInvitacion(false));
-  };
-
-  const guardarGoogleEmail = (u) => {
-    setGuardandoGoogleEmail(true);
-    setFormError(null);
-    setMensaje(null);
-
-    fetch(`/api/usuarios/${u.id}/google-email`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ google_email: googleEmailEdicion }),
-    })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || "No se pudo guardar el email de Google.");
-        }
-        return data;
-      })
-      .then((data) => {
-        setMensaje(
-          data.google_email
-            ? `Email de Google guardado para ${data.nombre}.`
-            : `Email de Google eliminado para ${data.nombre}.`,
-        );
-        setUsuarioAdministrado(data);
-        setEditandoGoogleEmail(false);
-        cargarUsuarios();
-      })
-      .catch((err) => setFormError(err.message))
-      .finally(() => setGuardandoGoogleEmail(false));
-  };
-
+  const enviarInvitacion = u => runMutation({
+    target:null,requestTargetId:u.id,path:`/api/usuarios/${u.id}/invitacion`,method:'POST',busySetter:setEnviandoInvitacion,refresh:false,
+    validate:data => { if (u.id !== usuarioAdministrado?.id || data?.ok !== true || typeof data.destinatario !== 'string' || !data.destinatario.trim()) throw new Error('No se pudo confirmar el envío de instrucciones. Verificá antes de repetirlo.'); },
+    onConfirmed:data => setMensaje(`Instrucciones enviadas a ${data.destinatario}.`),
+  });
+  const guardarGoogleEmail = u => runMutation({
+    target:u,path:`/api/usuarios/${u.id}/google-email`,body:{google_email:googleEmailEdicion},required:['google_email'],busySetter:setGuardandoGoogleEmail,
+    validate:row => { if ((row.google_email || '') !== googleEmailEdicion.trim().toLowerCase()) throw new Error('No se confirmó el email de Google.'); },
+    onConfirmed:row => { setMensaje(row.google_email ? `Email de Google guardado para ${row.nombre}.` : `Email de Google eliminado para ${row.nombre}.`); setEditandoGoogleEmail(false); },
+  });
   const iniciarEdicionDatos = () => {
-    setNombreEdicion(usuarioAdministrado?.nombre || "");
-    setUsuarioEdicion(usuarioAdministrado?.usuario || "");
-    const rolActual = usuarioAdministrado?.rol || "diseno";
-    if (ROL_LABELS[rolActual]) {
-      setRolEdicion(rolActual);
-      setRolPersonalizadoEdicion("");
-    } else {
-      setRolEdicion("__otra__");
-      setRolPersonalizadoEdicion(getRolLabel(rolActual));
-    }
-    setEditandoDatos(true);
-    setFormError(null);
-    setMensaje(null);
+    if (pending.current || !capture().current()) return;
+    setNombreEdicion(usuarioAdministrado?.nombre || ''); setUsuarioEdicion(usuarioAdministrado?.usuario || '');
+    const actual = usuarioAdministrado?.rol || 'diseno';
+    setRolEdicion(ROL_LABELS[actual] ? actual : '__otra__'); setRolPersonalizadoEdicion(ROL_LABELS[actual] ? '' : getRolLabel(actual));
+    setEditandoDatos(true); setFormError(null); setMensaje(null);
   };
-
-  const guardarDatos = (u) => {
-    if (!nombreEdicion.trim()) {
-      setFormError("El nombre no puede estar vacío.");
-      return;
-    }
-    if (!usuarioEdicion.trim()) {
-      setFormError("El usuario no puede estar vacío.");
-      return;
-    }
-
-    setGuardandoDatos(true);
-    setFormError(null);
-    setMensaje(null);
-
-    fetch(`/api/usuarios/${u.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        nombre: nombreEdicion,
-        usuario: usuarioEdicion,
-        rol: rolEdicion === "__otra__" ? rolPersonalizadoEdicion : rolEdicion
-      }),
-    })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || "No se pudieron guardar los datos.");
-        }
-        return data;
-      })
-      .then((data) => {
-        setMensaje("Datos actualizados correctamente.");
-        setUsuarioAdministrado(data);
-        setEditandoDatos(false);
-        cargarUsuarios();
-      })
-      .catch((err) => setFormError(err.message))
-      .finally(() => setGuardandoDatos(false));
+  const guardarDatos = u => {
+    if (!nombreEdicion.trim() || !usuarioEdicion.trim()) { if (!pending.current) setFormError('El nombre y el usuario no pueden estar vacíos.'); return; }
+    const body = {nombre:nombreEdicion,usuario:usuarioEdicion,rol:rolEdicion === '__otra__' ? rolPersonalizadoEdicion : rolEdicion};
+    return runMutation({target:u,path:`/api/usuarios/${u.id}`,body,busySetter:setGuardandoDatos,
+      validate:row => { if (row.nombre !== body.nombre.trim() || row.usuario !== body.usuario.trim()) throw new Error('No se confirmaron los datos del usuario.'); },
+      onConfirmed:() => { setMensaje('Datos actualizados correctamente.'); setEditandoDatos(false); },
+    });
   };
 
   const iniciales = (texto = "") =>
@@ -369,7 +279,7 @@ export function EmpleadosPage() {
               <h2>Usuarios y accesos</h2>
               <p>Revisá quién puede ingresar, su rol y cómo recibe el acceso.</p>
             </div>
-            <button className="btn primary usuarios-add" type="button" onClick={abrirAlta}>
+            <button className="btn primary usuarios-add" type="button" disabled={mutationBusy} onClick={abrirAlta}>
               + Agregar usuario
             </button>
           </div>
@@ -377,7 +287,7 @@ export function EmpleadosPage() {
           <div className="usuarios-stats" aria-label="Resumen de usuarios">
             <div className="usuarios-stat">
               <span>Personas con acceso</span>
-              <strong>{usuarios.length}</strong>
+              <strong>{usuarios.filter(user => user.activo === true).length}</strong>
               <small>Cuentas activas</small>
             </div>
             <div className="usuarios-stat is-ready">
@@ -392,7 +302,7 @@ export function EmpleadosPage() {
             </div>
           </div>
 
-          {error && <div className="usuarios-alert is-error"><span>{error}</span><button type="button" onClick={cargarUsuarios}>Reintentar</button></div>}
+          {error && <div className="usuarios-alert is-error"><span>{error}</span><button type="button" disabled={mutationBusy} onClick={() => cargarUsuarios()}>Reintentar</button></div>}
           {mensaje && <div className="usuarios-alert is-success">{mensaje}</div>}
 
           <section className="usuarios-listado" aria-label="Listado de usuarios">
@@ -461,6 +371,7 @@ export function EmpleadosPage() {
                   <button
                     className="btn usuarios-manage"
                     type="button"
+                    disabled={mutationBusy}
                     onClick={() => abrirAdministracion(u)}
                   >
                     Administrar <span aria-hidden="true">→</span>
@@ -484,6 +395,7 @@ export function EmpleadosPage() {
 
       {modalAltaAbierto && (
         <Modal
+          key={`${epoch}:create`}
           onClose={cerrarAlta}
           overlayAriaLabel="Agregar usuario"
           closeOnBackdropClick
@@ -499,10 +411,11 @@ export function EmpleadosPage() {
           }
         >
             <form className="modal-body" onSubmit={handleCrear}>
+              <fieldset disabled={mutationBusy} style={{border:0,margin:0,padding:0,minWidth:0}}>
               <div className="form-grid cols-2 usuarios-form-grid">
                 <label className="form-field">
                   <span>Nombre y apellido *</span>
-                  <input type="text" value={nombre} onChange={handleNombreChange} required autoFocus />
+                  <input type="text" value={nombre} onChange={handleNombreChange} maxLength={200} required autoFocus />
                 </label>
                 <label className="form-field">
                   <span>Categoría laboral *</span>
@@ -531,34 +444,36 @@ export function EmpleadosPage() {
                     type="text"
                     value={usuario}
                     placeholder="ej: Luciano"
+                    maxLength={128}
                     onChange={(e) => setUsuario(e.target.value)}
                     required
                   />
                 </label>
                 <label className="form-field">
-                  <span>Contraseña inicial * <small style={{fontWeight: 400, color: 'var(--muted)'}}>(mín. 8 caracteres)</small></span>
+                  <span>Contraseña inicial * <small style={{fontWeight: 400, color: 'var(--muted)'}}>(mín. 12 caracteres)</small></span>
                   <div className="usuarios-password-field">
                     <input
-                      type="text"
+                      type="password"
+                      autoComplete="new-password"
                       value={password}
                       placeholder="Contraseña segura"
                       onChange={(e) => setPassword(e.target.value)}
                       required
-                      minLength="8"
+                      minLength={12}
                     />
                     <button
                       type="button"
                       className="btn"
                       onClick={() => {
-                        const random = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 4).toUpperCase();
-                        setPassword(random);
+                        if (pending.current || !capture().current()) return;
+                        try { setPassword(generateEmployeePassword()); } catch (reason) { setFormError(reason.message); }
                       }}
                       title="Generar contraseña segura"
                     >
                       Generar
                     </button>
                   </div>
-                  <small>La persona puede cambiarla en su primer login.</small>
+                  <small>Al menos 12 caracteres y hasta 72 bytes UTF-8; el servidor valida la contraseña. La persona puede cambiarla desde Mi perfil; no se exige un cambio automático.</small>
                 </label>
                 <label className="form-field usuarios-form-email">
                   <span>Correo para notificaciones</span>
@@ -582,12 +497,13 @@ export function EmpleadosPage() {
                   {enviando ? "Creando..." : "Crear usuario"}
                 </button>
               </div>
+              </fieldset>
             </form>
         </Modal>
       )}
 
       {usuarioAdministrado && (
-        <div className="usuarios-modal-backdrop" role="presentation" onMouseDown={cerrarAdministracion}>
+        <div key={`${epoch}:${usuarioAdministrado.id}`} className="usuarios-modal-backdrop" role="presentation" onMouseDown={cerrarAdministracion}>
           <aside
             className="usuarios-panel"
             role="dialog"
@@ -622,7 +538,7 @@ export function EmpleadosPage() {
               </div>
             </div>
 
-            <div className="usuarios-panel-body">
+            <fieldset className="usuarios-panel-body" disabled={mutationBusy} style={{border:0,margin:0,minWidth:0}}>
               {formError && <div className="usuarios-alert is-error">{formError}</div>}
 
               <section className="usuarios-panel-section">
@@ -632,7 +548,7 @@ export function EmpleadosPage() {
                     <span>Permite administrar la Lista privada y recibir recordatorios</span>
                   </div>
                   {!editandoWhatsapp && (
-                    <button className="btn" type="button" onClick={() => { setWhatsappEdicion(""); setEditandoWhatsapp(true); }}>
+                    <button className="btn" type="button" onClick={() => { if (pending.current || !capture().current()) return; setWhatsappEdicion(""); setEditandoWhatsapp(true); }}>
                       {usuarioAdministrado.whatsapp_vinculado ? "Cambiar" : "Vincular"}
                     </button>
                   )}
@@ -648,7 +564,7 @@ export function EmpleadosPage() {
                       {usuarioAdministrado.whatsapp_vinculado && (
                         <button className="btn" type="button" disabled={guardandoWhatsapp} onClick={() => guardarWhatsapp(usuarioAdministrado, "")}>Desvincular</button>
                       )}
-                      <button className="btn" type="button" disabled={guardandoWhatsapp} onClick={() => setEditandoWhatsapp(false)}>Cancelar</button>
+                      <button className="btn" type="button" disabled={guardandoWhatsapp} onClick={() => cancelEdit(setEditandoWhatsapp)}>Cancelar</button>
                       <button className="btn primary" type="button" disabled={guardandoWhatsapp || !whatsappEdicion.trim()} onClick={() => guardarWhatsapp(usuarioAdministrado)}>
                         {guardandoWhatsapp ? "Guardando..." : "Vincular WhatsApp"}
                       </button>
@@ -726,10 +642,7 @@ export function EmpleadosPage() {
                         className="btn"
                         type="button"
                         disabled={guardandoDatos}
-                        onClick={() => {
-                          setEditandoDatos(false);
-                          setFormError(null);
-                        }}
+                        onClick={() => cancelEdit(setEditandoDatos)}
                       >
                         Cancelar
                       </button>
@@ -759,7 +672,7 @@ export function EmpleadosPage() {
                     </div>
                     <div>
                       <span>Estado</span>
-                      <strong className="status-ready">Activo</strong>
+                      <strong className="status-ready">{usuarioAdministrado.activo === false ? "Inactivo" : "Activo"}</strong>
                     </div>
                   </div>
                 )}
@@ -795,10 +708,7 @@ export function EmpleadosPage() {
                         className="btn"
                         type="button"
                         disabled={guardandoCorreo}
-                        onClick={() => {
-                          setEditandoCorreo(false);
-                          setFormError(null);
-                        }}
+                        onClick={() => cancelEdit(setEditandoCorreo)}
                       >
                         Cancelar
                       </button>
@@ -859,10 +769,7 @@ export function EmpleadosPage() {
                         className="btn"
                         type="button"
                         disabled={guardandoGoogleEmail}
-                        onClick={() => {
-                          setEditandoGoogleEmail(false);
-                          setFormError(null);
-                        }}
+                        onClick={() => cancelEdit(setEditandoGoogleEmail)}
                       >
                         Cancelar
                       </button>
@@ -916,18 +823,18 @@ export function EmpleadosPage() {
 
               <section className="usuarios-panel-section usuarios-danger-zone">
                 <div>
-                  <strong>Dar de baja el acceso</strong>
-                  <span>La persona dejará de ingresar a la plataforma.</span>
+                  <strong>{usuarioAdministrado.activo === false ? "Reactivar el acceso" : "Dar de baja el acceso"}</strong>
+                  <span>{usuarioAdministrado.activo === false ? "La persona podrá volver a ingresar a la plataforma." : "La persona dejará de ingresar; sus asignaciones e historial se conservarán."}</span>
                 </div>
                 <button
                   className="btn usuarios-danger-btn"
                   type="button"
                   onClick={() => handleEliminar(usuarioAdministrado)}
                 >
-                  Dar de baja
+                  {usuarioAdministrado.activo === false ? "Reactivar acceso" : "Dar de baja"}
                 </button>
               </section>
-            </div>
+            </fieldset>
           </aside>
         </div>
       )}

@@ -979,6 +979,16 @@ Verified frontend910 pass; backend1397 pass/63 opt-in skips; actual principal HT
 
 No configured DB/provider/real commercial/schema rollout/push/deploy.073 exists locally and was applied only to disposable fixtures. Contract-client linkage, durable receipts, immutable financial audit/pricing/termination policy, other financial writers, global drafts/native/cookie/provider/design gates remain. Master active; no full phase or production readiness claim.
 
+## Integration84 — canonical user administration and history preservation
+
+Carson owns Empleados/session tests, coordinator typed account creation/API/deletion safety and browser integration, Hypatia actual PostgreSQL tests, Beauvoir independent review. Eight raw requests now use captured genuine session/context, immutable intent, one pending ref, target-checked partial ACKs and explicit discard. Confirmed writes remain distinct from failed roster refreshes. No name-based password autofill or Math.random generator; new accounts have typed closed inputs and 12-codepoint/72-byte bcrypt bounds, without rotating existing credentials.
+
+UI retirement uses reversible access deactivation, preserving user ID/history and revoking old sessions. Legacy admin DELETE now returns409 USER_DELETION_DISABLED rather than physically cascading personal data. Actual cascade-only list/block preservation, employee catalog privacy, admin-only writers, revocation/reactivation and last-owner guards verified. Existing operational active-user catalog and personal-profile route remain separate.
+
+Final frontend1073 pass (node --test includes reference suites), backend1400 pass/64 opt-in skips, actual HTTP/PostgreSQL12 pass, build/diff pass. Browser synthetic display-name edit persists after reload, unchanged login/role;390 editor/new-account form have no document overflow. Callback tests are not React-mounted acceptance; access lifecycle was tested physically via HTTP, not browser. Owned fixture/tab cleaned and viewport reset; App20+/1-,Vite5+/references preserved. [USER_ADMINISTRATION_QA.md](USER_ADMINISTRATION_QA.md) records exact commands, evidence and limits.
+
+No configured DB/provider/real account/credential/dependency/environment/push/deploy changes. Actor authority revalidation inside administrative transactions, concurrent account-edit CAS, invitation wording, profile password policy, cookie/native/device/provider and global design gates remain. Local implementation and verification, not a phase completion or production release; master remains active.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

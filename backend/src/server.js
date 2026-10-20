@@ -27,6 +27,7 @@ import { configuredBrowserSessions, createPrincipalAuthentication } from './brow
 import { createLoginHandlers, loginUserDto } from './login-handlers.js';
 import { reserveLoginAttempt } from "./login-abuse.js";
 import { administerUser } from "./user-administration.js";
+import { normalizeUserCreateInput } from './user-create-input.js';
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { persistAssignedTask } from "./task-persistence.js";
 import { correctProductionRecord } from "./production-record-updates.js";
@@ -762,30 +763,20 @@ router.post("/clientes/:id/abono-proximo-mes", requireRole("admin"), async (req,
 
 router.post("/usuarios", requireRole("admin"), async (req, res, next) => {
   try {
-    const { usuario, nombre, rol, password, email_notificaciones } = req.body;
-    const rolNormalizado = resolveUserRole(rol);
-    const email = normalizarEmailNotificaciones(email_notificaciones);
-
-    if (!usuario || !nombre || !rol || !password) {
-      return res.status(400).json({ error: "Faltan datos del empleado." });
-    }
-    if (!rolNormalizado) {
-      return res.status(400).json({ error: "La categoría laboral no es válida." });
-    }
-    if (email_notificaciones && !email) {
-      return res.status(400).json({ error: "El correo para notificaciones no es válido." });
-    }
+    const { usuario, nombre, rol, password, email_notificaciones } = normalizeUserCreateInput(req.body);
 
     const passwordHash = await bcrypt.hash(password, 10);
     const result = await pool.query(
       `INSERT INTO usuarios (usuario, nombre, rol, password_hash, email_notificaciones)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, usuario, nombre, rol, email_notificaciones, foto_perfil, created_at`,
-      [usuario, nombre, rolNormalizado, passwordHash, email],
+       RETURNING id, usuario, nombre, rol, activo, email_notificaciones, google_email,
+         foto_perfil, false AS whatsapp_vinculado, created_at`,
+      [usuario, nombre, rol, passwordHash, email_notificaciones],
     );
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
     if (error.code === "23505") {
       return res
         .status(409)
@@ -916,26 +907,15 @@ router.post("/usuarios/:id/invitacion", requireRole("admin"), async (req, res, n
   }
 });
 
-router.delete("/usuarios/:id", requireRole("admin"), async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const result = await administerUser(pool, id, { delete: true }, db => db.query(
-      "DELETE FROM usuarios WHERE id = $1 RETURNING id",
-      [id],
-    ));
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Usuario no encontrado." });
-    }
-
-    res.json({ ok: true });
-  } catch (error) {
-    if (error.code === "23503" && ["feedback_operation_receipts_actor_user_id_fkey", "task_operation_receipts_actor_user_id_fkey", "tarea_asignaciones_usuario_id_fkey"].includes(error.constraint)) {
-      return res.status(409).json({ error: "Este usuario conserva asignaciones o un historial de confirmaciones. Desactivá su cuenta en lugar de eliminarla." });
-    }
-    if ([404, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
-    next(error);
+router.delete("/usuarios/:id", requireRole("admin"), (req, res) => {
+  // Legacy callers must not cascade through personal lists/conversations or
+  // erase an identity used by historical work. Account removal is reversible
+  // deactivation through /acceso, never an implicit physical purge.
+  if (!/^[1-9]\d*$/.test(req.params.id) || !Number.isSafeInteger(Number(req.params.id))) {
+    return res.status(400).json({ error: "Usuario inválido." });
   }
+  return res.status(409).json({ code: 'USER_DELETION_DISABLED',
+    error: "El historial de usuarios se conserva. Desactivá su cuenta en lugar de eliminarla." });
 });
 
 router.patch("/usuarios/perfil", async (req, res, next) => {
