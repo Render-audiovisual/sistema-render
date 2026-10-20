@@ -1,5 +1,14 @@
 # Principal backend: isolated local HTTP QA
 
+## Serialized browser session controller QA (integration68)
+
+```sh
+node --test frontend/src/shared/session/browser-session-controller.test.js
+RENDER2_RUN_LOCAL_INTEGRATION=true node --test --test-concurrency=1 backend/test/render2-browser-controller.integration.test.js backend/test/render2-browser-client.integration.test.js backend/test/render2-browser-sessions.integration.test.js
+```
+
+Controller tests inject a cooperative FIFO Web Locks-compatible manager and a simulated Cookie jar; they do not prove native browser lock/cookie policy. The new principal suite uses only fresh guarded55683 PostgreSQL with actual passwords/server responses, withholding login fetch resolution **after** real Set-Cookie is observed to prove logical cancellation cannot prematurely release the lock or restore local authentication. It verifies stale logout does not revoke B and normal current logout is confirmed. All pending gates, responses, controllers and own fixture cleanup are bounded by the test lifecycle. Unit tests separately cover reentrant disposal/logout and the verified-publication commit point. Real cross-tab notifications/page close/crash/network-hang recovery, mounted UI and HTTPS/proxy remain unverified; do not activate based solely on these tests.
+
 ## Frontend memory/intent boundary against principal (integration67)
 
 ```sh
