@@ -75,6 +75,10 @@ test('document surfaces, quiet accents and keyboard focus use shared tokens', ()
 // Only paint/font values are omitted; selector/at-rule order, !important flags,
 // declaration counts, sizing, layout, visibility and motion remain pinned.
 const paint = /^(?:--ros-(?:ink|muted|line|soft|lime(?:-hover|-muted)?|graphite(?:-soft|-deep)?|warm|neutral|accent-strong)|background(?:-color)?|color|border(?:-(?:top|bottom|left|right|block))?(?:-color)?|outline(?:-color)?|box-shadow|text-decoration-color|scrollbar-color|font-family|font-weight)$/;
+const groupLabelSelector = '.render-workspace .ros-project-card>header small,.render-workspace .ros-project-card button>b,.render-workspace .ros-project-card button small';
+test('group counts and task states use the existing readable label token, not legacy 6px text', () => {
+  assert.deepEqual(values('WorkspaceReadOnly', groupLabelSelector, 'font-size'), ['var(--ros-type-label)']);
+});
 function structure(node) {
   if (node.type === 'comment') return null;
   // New recorded-context component styles have their own integration guards;
@@ -85,7 +89,11 @@ function structure(node) {
     '.render-workspace .ros-recorded-context p', '.render-workspace .ros-recorded-context a',
   ].includes(node.selector)) return null;
   if (node.type === 'decl') return [node.prop, !!node.important, paint.test(node.prop) ? null : node.value];
-  return [node.type, node.selector || node.name, node.params, ...(node.nodes || []).map(structure).filter(Boolean)];
+  // Integration91 extends this one existing font rule to two legacy 6px labels.
+  // Pin that exact expansion above; keep every other migration invariant intact.
+  const selector = node.type === 'rule' && node.selector === groupLabelSelector
+    ? '.render-workspace .ros-project-card button small' : node.selector || node.name;
+  return [node.type, selector, node.params, ...(node.nodes || []).map(structure).filter(Boolean)];
 }
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const layoutBaseline = {

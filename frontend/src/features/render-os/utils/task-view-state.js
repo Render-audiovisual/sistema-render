@@ -5,7 +5,7 @@ export function getTasksEmptyMessage({ hasFilters, query, totalTasks, archiveMod
   return "No hay tareas activas.";
 }
 
-const VALID_VIEWS = new Set(["board", "list", "calendar", "clients"]);
+const VALID_VIEWS = new Set(["board", "list", "calendar", "clients", "responsibles"]);
 const VALID_ARCHIVE_MODES = new Set(["active", "trash"]);
 
 export function getTaskViewState(search = "") {
