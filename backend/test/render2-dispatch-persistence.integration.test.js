@@ -89,7 +89,15 @@ test('shared dispatch preparation persists without inventing real publication', 
     assert.equal(refreshed.status, 200); assert.equal(refreshed.body.caption, 'Explicit refreshed edit');
     // Seed only this disposable row ahead of the clock: one-microsecond changes
     // must remain distinguishable, not be collapsed by JavaScript Date parsing.
-    await fixture.query("UPDATE publicacion_envios SET updated_at='2099-10-20T12:00:00.123456Z' WHERE id=$1", [draft.body.id]);
+    //071 deliberately rejects caller-supplied timestamps. Disable only this
+    // fixture's trigger while installing a preexisting future observation;
+    // re-enable before exercising any API or CAS assertion below.
+    await fixture.query('ALTER TABLE publicacion_envios DISABLE TRIGGER publicacion_envios_monotonic_revision');
+    try {
+      await fixture.query("UPDATE publicacion_envios SET updated_at='2099-10-20T12:00:00.123456Z' WHERE id=$1", [draft.body.id]);
+    } finally {
+      await fixture.query('ALTER TABLE publicacion_envios ENABLE TRIGGER publicacion_envios_monotonic_revision');
+    }
     const exact = (await api('/publicacion-envios?estado=borrador', { token: owner })).body.find(row => String(row.id) === String(draft.body.id));
     assert.equal(exact.revision, '2099-10-20T12:00:00.123456Z');
     const rounded = await api(url, { token: owner, method: 'PATCH', body: { ...input, expectedRevision: '2099-10-20T12:00:00.123000Z' } });

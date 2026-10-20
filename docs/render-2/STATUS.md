@@ -931,6 +931,14 @@ Verification: frontend791 pass; backend1381 pass/58 opt-in skips; actual HTTP/Po
 
 Not a completed master phase or production release: cookie activation, provider/proxy/device acceptance, cross-device cell concurrency, uncertain-transport piece-create idempotency, linked historical flyer reconciliation and remaining global design/unification gates still apply. User App/Vite/reference dirt preserved.
 
+## Integration79 — dispatch parent-row revision discipline
+
+Coordinator SQL/physical QA/integration, Hypatia source tests, Beauvoir independent review, Carson readonly next-module inventory. Confirmed DELETE/calendar FK SET NULL changed dispatch linkage without invalidating CAS. Migration071 versions every future publicacion_envios UPDATE at microsecond precision, including FK/no-op/external parent-row writes, without backfill or FK/deletion/evidence changes. No active publication-client reassignment route was found; that prior caveat is external/future, not a demonstrated current API bypass.
+
+Backend-only batch; no frontend/build/browser acceptance claim. Parent-row trigger does not cover independent child-table SQL writers. Local tests/rollout boundaries: [DISPATCH_ROW_VERSION_QA.md](DISPATCH_ROW_VERSION_QA.md). User App20+/1-, Vite5+ and references preserved. No configured DB/provider/real commercial changes/push/deploy; migration remains undeployed. Master objective active; next identified canonical writer batch is ClientesObjetivos followed by Clientes+ClienteModals/clientOverview, not a new parallel application.
+
+Verified18 actual HTTP/PostgreSQL cases, zero failures/skips; backend1385 pass/59 explicit opt-in skips/0fail; four source/DDL contracts pass; generated roots cleaned/asserted. Beauvoir independent bounded source review without confirmed P1/P2. No claim that the full rescue or any production release is complete.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.
