@@ -15,10 +15,11 @@ const appSource = readFileSync(
   "utf8",
 );
 
-test("el prototipo de publicación nunca llama a Meta ni modifica datos reales", () => {
+test("el preparador no publica en Meta ni suplanta un guardado fallido con datos del navegador", () => {
   assert.match(composerSource, /Ningún botón publica contenido real/);
   assert.match(composerSource, /apiRequest\("\/api\/publicacion-envios"/);
-  assert.match(composerSource, /window\.localStorage\.setItem/);
+  assert.doesNotMatch(composerSource, /localStorage|readPreviewQueue|savePreviewQueue/);
+  assert.match(composerSource, /Borrador guardado en el sistema/);
   assert.doesNotMatch(composerSource, /fetch\(/);
   assert.doesNotMatch(composerSource, /graph\.facebook\.com|graph\.instagram\.com/);
 });

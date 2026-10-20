@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "./services/render-os-api.js";
+import { getSesion } from '../../utils.jsx';
+import { useSessionView } from '../../shared/session/use-session-view.js';
+import { createCapturedRequest } from '../../shared/session/captured-request.js';
 
 const POSITION_KEY = "render_wilson_position";
 const PANEL_WIDTH = 380;
@@ -49,6 +52,29 @@ function TaskSuggestion({ task, onOpen, onChoose, chooseLabel }) {
 }
 
 export function WilsonAssistant({ onOpenTask }) {
+  const view = useSessionView(getSesion());
+  const currentView = useRef(view); currentView.current = view;
+  return <WilsonSession key={view.key} session={view.session} view={view} currentView={currentView} onOpenTask={onOpenTask}/>;
+}
+
+function WilsonSession({ session, view, currentView, onOpenTask }) {
+  const mounted = useRef(false), controllers = useRef(new Set()), busy = useRef(false), unreadGeneration = useRef(0);
+  const captureRequest = useCallback(() => {
+    const controller = new AbortController();
+    return createCapturedRequest({ session, readSession: getSesion,
+      isActive: () => mounted.current && currentView.current === view && !controller.signal.aborted,
+      request: async (url, options) => {
+        controllers.current.add(controller);
+        try { return await apiRequest(url, { ...options, signal: controller.signal }); }
+        finally { controllers.current.delete(controller); }
+      } });
+  }, [session, view, currentView]);
+  useEffect(() => {
+    mounted.current = true;
+    setLoading(false);
+    return () => { mounted.current = false; busy.current = false; attemptedRef.current = false;
+      for (const controller of controllers.current) controller.abort(); controllers.current.clear(); };
+  }, []);
   const [open, setOpen] = useState(shouldOpenFromUrl);
   const [minimized, setMinimized] = useState(false);
   const [position, setPosition] = useState(initialPosition);
@@ -64,24 +90,33 @@ export function WilsonAssistant({ onOpenTask }) {
   const attemptedRef = useRef(false);
   const launcherRef = useRef(null);
 
-  const markAsRead = useCallback(async () => {
+  const markAsRead = useCallback(async (guard = captureRequest()) => {
+    if (!guard.current()) return;
+    ++unreadGeneration.current;
     setUnread(0);
-    try { await apiRequest("/api/wilson/conversacion/leida", { method: "POST" }); }
+    try { await guard.request("/api/wilson/conversacion/leida", { method: "POST" }); }
     catch { /* La lectura se vuelve a intentar al abrir el chat. */ }
-  }, []);
+  }, [captureRequest]);
 
   const loadUnread = useCallback(async () => {
+    const guard = captureRequest(), generation = ++unreadGeneration.current;
+    if (!guard.current()) return;
     try {
-      const result = await apiRequest("/api/wilson/notificaciones");
+      const result = await guard.request("/api/wilson/notificaciones");
+      if (!guard.current() || generation !== unreadGeneration.current) return;
       setUnread(Math.max(0, Number(result.no_leidos) || 0));
     } catch { /* El chat sigue disponible aunque falle el indicador. */ }
-  }, []);
+  }, [captureRequest]);
 
   const loadRecommendations = useCallback(async () => {
+    const guard = captureRequest();
+    if (!guard.current() || busy.current) return;
+    busy.current = true;
     attemptedRef.current = true;
     setLoading(true); setError("");
     try {
-      const result = await apiRequest("/api/wilson/conversacion");
+      const result = await guard.request("/api/wilson/conversacion");
+      guard.assertCurrent();
       setData(result.priorities);
       const tasksById = new Map((result.priorities?.recommendations || []).map((task) => [Number(task.id), task]));
       const persisted = (result.messages || []).map((message) => ({
@@ -94,11 +129,11 @@ export function WilsonAssistant({ onOpenTask }) {
         createdAt: message.created_at,
       }));
       setMessages(persisted.length ? persisted : [{ role: "assistant", text: "Hola. Estoy mirando solamente tus tareas. Preguntame qué conviene hacer primero.", tasks: [] }]);
-      await markAsRead();
+      await markAsRead(guard);
     } catch (reason) {
-      setError(reason.message || "No pude analizar tus tareas.");
-    } finally { setLoading(false); }
-  }, [markAsRead]);
+      if (guard.current()) setError(reason.message || "No pude analizar tus tareas.");
+    } finally { if (guard.current()) { busy.current = false; setLoading(false); } }
+  }, [markAsRead, captureRequest]);
 
   useEffect(() => { if (open && !data && !loading && !attemptedRef.current) void loadRecommendations(); }, [open, data, loading, loadRecommendations]);
   useEffect(() => { positionRef.current = position; }, [position]);
@@ -120,13 +155,16 @@ export function WilsonAssistant({ onOpenTask }) {
   }, []);
 
   const submit = async (question) => {
+    const guard = captureRequest();
     const clean = String(question || input).trim();
-    if (!clean || !data) return;
+    if (!guard.current() || busy.current || !clean || !data) return;
+    busy.current = true;
     setInput("");
     setMessages((current) => [...current, { role: "user", text: clean, createdAt: new Date().toISOString() }]);
     setLoading(true); setError("");
     try {
-      const result = await apiRequest("/api/wilson/mensajes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contenido: clean }) });
+      const result = await guard.request("/api/wilson/mensajes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contenido: clean }) });
+      guard.assertCurrent();
       setData(result.priorities);
       setMessages((current) => [...current, {
         id: result.assistantMessage.id,
@@ -139,31 +177,39 @@ export function WilsonAssistant({ onOpenTask }) {
           : null,
         createdAt: result.assistantMessage.created_at,
       }]);
-      await markAsRead();
-    } catch (reason) { setError(reason.message || "No pude responderte."); }
-    finally { setLoading(false); }
+      await markAsRead(guard);
+    } catch (reason) { if (guard.current()) setError(reason.message || "No pude responderte."); }
+    finally { if (guard.current()) { busy.current = false; setLoading(false); } }
   };
   const prepareProduction = async (task, intent) => {
+    const guard = captureRequest();
+    if (!guard.current() || busy.current) return;
+    busy.current = true;
     setLoading(true); setError("");
     try {
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Cordoba", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-      const result = await apiRequest("/api/wilson/produccion/preparar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tarea_id: task.id, cantidad: intent.amount, fecha: today }) });
+      const result = await guard.request("/api/wilson/produccion/preparar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tarea_id: task.id, cantidad: intent.amount, fecha: today }) });
+      guard.assertCurrent();
       setMessages((current) => [...current, { id: result.message.id, role: "assistant", text: result.message.contenido, confirmation: result.confirmation, createdAt: result.message.created_at }]);
-      await markAsRead();
-    } catch (reason) { setError(reason.message || "No pude preparar el registro."); }
-    finally { setLoading(false); }
+      await markAsRead(guard);
+    } catch (reason) { if (guard.current()) setError(reason.message || "No pude preparar el registro."); }
+    finally { if (guard.current()) { busy.current = false; setLoading(false); } }
   };
   const confirmAction = async (confirmation) => {
+    const guard = captureRequest();
+    if (!guard.current() || busy.current) return;
+    busy.current = true;
     setLoading(true); setError("");
     try {
-      const result = await apiRequest(`/api/wilson/confirmaciones/${confirmation.token}`, { method: "POST" });
+      const result = await guard.request(`/api/wilson/confirmaciones/${encodeURIComponent(confirmation.token)}`, { method: "POST" });
+      guard.assertCurrent();
       setMessages((current) => [
         ...current.map((message) => message.confirmation?.token === confirmation.token ? { ...message, confirmation: null } : message),
         { id: result.message.id, role: "assistant", text: result.message.contenido, createdAt: result.message.created_at },
       ]);
-      await markAsRead();
-    } catch (reason) { setError(reason.message || "No pude confirmar la acción."); }
-    finally { setLoading(false); }
+      await markAsRead(guard);
+    } catch (reason) { if (guard.current()) setError(reason.message || "No pude confirmar la acción."); }
+    finally { if (guard.current()) { busy.current = false; setLoading(false); } }
   };
   const beginDrag = (event) => {
     if (event.button !== 0 || event.target.closest("button")) return;
@@ -193,7 +239,8 @@ export function WilsonAssistant({ onOpenTask }) {
   };
   const hide = () => {
     setOpen(false);
-    window.setTimeout(() => launcherRef.current?.focus(), 0);
+    const guard = captureRequest();
+    window.setTimeout(() => { if (guard.current()) launcherRef.current?.focus(); }, 0);
   };
   const summary = useMemo(() => data?.summary || {}, [data]);
 

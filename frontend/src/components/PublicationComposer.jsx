@@ -2,21 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { publicationUploadPlan, uploadFileToDrive } from "../features/drive/drive-api.js";
 
-const STORAGE_KEY = "render-publicaciones-preview-v1";
-
-function readPreviewQueue() {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function savePreviewQueue(items) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-}
-
 function dateTimeLabel(date, time) {
   if (!date) return "Sin fecha";
   const parsed = new Date(`${date}T${time || "09:00"}:00`);
@@ -56,13 +41,9 @@ function dispatchDateTimeLabel(item) {
 }
 
 async function loadDispatchQueue() {
-  try {
-    const result = await apiRequest("/api/publicacion-envios");
-    return Array.isArray(result) ? result : [];
-  } catch (error) {
-    if ([404, 503].includes(error.status)) return readPreviewQueue();
-    throw error;
-  }
+  const result = await apiRequest("/api/publicacion-envios");
+  if (!Array.isArray(result)) throw new Error("La bandeja recibida no es válida. Volvé a intentar.");
+  return result;
 }
 
 function emptyDraft(publication, clients) {
@@ -187,7 +168,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
       const result = await apiRequest("/api/publicacion-envios?estado=borrador");
       setSavedDrafts(Array.isArray(result) ? result : []);
     } catch (error) {
-      if (![404, 503].includes(error.status)) setNotice(error.message || "No se pudieron cargar los borradores.");
+      setNotice(error.message || "No se pudieron cargar los borradores.");
     }
   };
 
@@ -337,8 +318,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
       const materials = draft.material.split(/\n+/).map((item) => item.trim()).filter(Boolean);
       const scheduledAt = new Date(`${draft.date}T${draft.time}:00-03:00`).toISOString();
       const requestKey = window.crypto?.randomUUID?.() || `render-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      try {
-        const saved = await apiRequest(draftId ? `/api/publicacion-envios/${draftId}` : "/api/publicacion-envios", {
+      const saved = await apiRequest(draftId ? `/api/publicacion-envios/${draftId}` : "/api/publicacion-envios", {
           method: draftId ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -364,28 +344,14 @@ export function PublicationComposer({ publications, clients, canPublish }) {
           setDraftId(null);
           await refreshDrafts();
         }
-      } catch (error) {
-        if (![404, 503].includes(error.status)) throw error;
-        const client = clients.find((item) => Number(item.id) === Number(draft.clientId));
-        const next = {
-          ...draft,
-          id: `preview-${Date.now()}`,
-          clientName: client?.nombre || "Cliente",
-          status: mode === "draft" ? "borrador" : (mode === "now" ? "lista_para_publicar" : "programada"),
-          createdAt: new Date().toISOString(),
-          previewOnly: true,
-          uploadedFiles: uploads.map((file) => ({ name: file.name, type: file.type, size: file.size })),
-        };
-        savePreviewQueue([next, ...readPreviewQueue()].slice(0, 40));
-      }
       window.dispatchEvent(new CustomEvent("render:publication-preview-updated"));
       setNotice(mode === "draft"
-        ? "Borrador guardado. Podés retomarlo más tarde."
+        ? "Borrador guardado en el sistema. Podés retomarlo más tarde."
         : mode === "now"
           ? "Simulación lista. No se envió nada a Meta."
           : "Programación simulada. El calendario editorial no fue modificado.");
     } catch (error) {
-      setNotice(error.message || "No se pudo guardar la simulación.");
+      setNotice(error.message || "No se confirmó el guardado en el sistema. Conservá los datos y volvé a intentar.");
     } finally {
       setSaving(false);
     }
@@ -394,8 +360,8 @@ export function PublicationComposer({ publications, clients, canPublish }) {
   return (
     <section className="publisher-composer" aria-label="Preparar publicación">
       <div className="publisher-mode-banner">
-        <span>Prototipo local</span>
-        <p>Podés probar todo el recorrido. Ningún botón publica contenido real.</p>
+        <span>Preparación de publicaciones</span>
+        <p>Los borradores se guardan en el sistema. Ningún botón publica contenido real.</p>
       </div>
 
       <div className="publisher-layout">
@@ -490,7 +456,7 @@ export function PublicationComposer({ publications, clients, canPublish }) {
 }
 
 export function PublicationPreviewQueue({ mode }) {
-  const [items, setItems] = useState(readPreviewQueue);
+  const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -507,18 +473,16 @@ export function PublicationPreviewQueue({ mode }) {
     };
     refresh();
     window.addEventListener("render:publication-preview-updated", refresh);
-    window.addEventListener("storage", refresh);
     return () => {
       active = false;
       window.removeEventListener("render:publication-preview-updated", refresh);
-      window.removeEventListener("storage", refresh);
     };
   }, []);
 
   const filtered = items.filter((item) => mode === "history" ? item.status === "lista_para_publicar" : item.status === "programada");
   return (
     <section className="publisher-queue">
-      <div className="publisher-mode-banner"><span>Prototipo local</span><p>Estos registros son simulaciones guardadas solamente en este navegador.</p></div>
+      <div className="publisher-mode-banner"><span>Envíos preparados</span><p>Registros compartidos del sistema. Preparar un envío no confirma su publicación en Meta.</p></div>
       {loading ? (
         <div className="publisher-empty"><span>◌</span><h3>Cargando envíos</h3><p>Estamos ordenando la bandeja de publicaciones.</p></div>
       ) : error ? (

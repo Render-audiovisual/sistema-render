@@ -2,9 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiRequest } from './services/render-os-api.js';
 import { isTaskCompleted } from './constants.js';
+import { getSesion } from '../../utils.jsx';
+import { createCapturedRequest, isSessionFailure } from '../../shared/session/captured-request.js';
 import './GoalTaskLink.css';
 
-function LinkDialog({ task, onClose }) {
+function LinkDialog({ task, scope, onClose }) {
   const initialPeriod = task.propiedades_extra?.objetivo_periodo || String(task.fecha_vencimiento || '').slice(0, 7) ||
     new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires', year:'numeric', month:'2-digit' }).format(new Date());
   const [period, setPeriod] = useState(initialPeriod);
@@ -16,6 +18,8 @@ function LinkDialog({ task, onClose }) {
   const [result, setResult] = useState(null);
   const dialog = useRef(null);
   const submitLock = useRef(false);
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   useEffect(() => {
     const previousFocus = document.activeElement;
@@ -28,13 +32,15 @@ function LinkDialog({ task, onClose }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    const current = () => mounted.current && scope.current() && !controller.signal.aborted;
+    if (!current()) return () => controller.abort();
     setLoading(true); setError(''); setData(null); setSelected('');
-    apiRequest(`/api/cliente-objetivos/tareas/${task.id}/vinculo?periodo=${encodeURIComponent(period)}`, {signal:controller.signal})
-      .then(value => { if (!controller.signal.aborted) setData(value); })
-      .catch(reason => { if (!controller.signal.aborted) setError(reason.message); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    scope.request(`/api/cliente-objetivos/tareas/${task.id}/vinculo?periodo=${encodeURIComponent(period)}`, {signal:controller.signal})
+      .then(value => { if (current()) setData(value); })
+      .catch(reason => { if (current()) setError(isSessionFailure(reason) ? 'La sesión no pudo verificarse. Volvé a abrir la vinculación.' : reason.message); })
+      .finally(() => { if (current()) setLoading(false); });
     return () => controller.abort();
-  }, [task.id, period]);
+  }, [task.id, period, scope]);
 
   const slot = data?.casilleros.find(item => item.id === Number(selected));
   const handleKeys = event => {
@@ -49,15 +55,16 @@ function LinkDialog({ task, onClose }) {
   };
   const submit = async event => {
     event.preventDefault();
-    if (!slot || submitLock.current) return;
+    const current = () => mounted.current && scope.current();
+    if (!current() || !slot || submitLock.current) return;
     submitLock.current = true; setSaving(true); setError('');
     try {
-      const value = await apiRequest(`/api/cliente-objetivos/piezas/${slot.id}/vincular`, {
+      const value = await scope.request(`/api/cliente-objetivos/piezas/${slot.id}/vincular`, {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ tarea_id:task.id,
           expected_tarea_updated_at:data.tarea.updated_at, expected_pieza_updated_at:slot.updated_at }) });
-      setResult(value);
-    } catch (reason) { setError(reason.message); }
-    finally { submitLock.current = false; setSaving(false); }
+      if (current()) setResult(value);
+    } catch (reason) { if (current()) setError(isSessionFailure(reason) ? 'La sesión no pudo verificarse. Volvé a abrir la vinculación.' : reason.message); }
+    finally { if (current()) { submitLock.current = false; setSaving(false); } }
   };
 
   return createPortal(<div className="ros-goal-overlay" onClick={event => event.stopPropagation()} onKeyDown={handleKeys}>
@@ -95,9 +102,20 @@ function LinkDialog({ task, onClose }) {
 }
 
 export function GoalTaskLink({ task, canManage }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(null);
+  const mounted = useRef(false);
+  const currentTask = useRef(task.id);
+  currentTask.current = task.id;
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const openDialog = () => {
+    const taskId = task.id;
+    const scope = createCapturedRequest({ session: getSesion(), readSession: getSesion, request: apiRequest,
+      isActive: () => mounted.current && currentTask.current === taskId });
+    if (!scope.current()) return;
+    setOpen({ taskId, scope });
+  };
   if (!canManage || !task.cliente_id || task.historia_id || task.tipo_tarea === 'produccion') return null;
   return <section className="ros-goal-link"><div><strong>Objetivo del mes</strong><span>Hacé que esta pieza cuente en el avance del cliente.</span></div>
-    <button type="button" onClick={() => setOpen(true)}>Vincular al objetivo mensual</button>
-    {open && <LinkDialog task={task} onClose={() => setOpen(false)}/>}</section>;
+    <button type="button" onClick={openDialog}>Vincular al objetivo mensual</button>
+    {open?.taskId === task.id && <LinkDialog task={task} scope={open.scope} onClose={() => setOpen(null)}/>}</section>;
 }

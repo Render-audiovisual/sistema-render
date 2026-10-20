@@ -897,6 +897,14 @@ Implemented and bounded-verified locally, not deployed or globally ready. All-mo
 - Fixtures cleaned/asserted, owned tab closed/viewport reset. No configured DB/provider/real accounts/commercial data/schema/dependency/environment/push/deploy. App20+/1-, Vite5+ and untracked reference work excluded.
 - Global cookie activation remains off. Auxiliary writers, native cookie/cross-tab/crash/HTTPS/proxy, draft/navigation and remaining master phases stay open. Provider upload not exercised. Implemented/verified local slice, not prepared or deployed to production; full goal active.
 
+## Seventy-fifth integration — auxiliary writers and shared dispatch preparation (2026-10-20)
+
+- Carson GoalTaskLink, Hypatia Wilson, coordinator composer fallback/physical QA/integration, Beauvoir independent review no confirmed P1/P2. `AUXILIARY_WRITERS_QA.md` records exact scope/evidence.
+- Goal link IDs/CAS and Wilson requests/confirmations/read ACKs retain original account/lifetime; stale response/selection and double mutation fences. Publication API404/503 can no longer become browser-only successful saves. Old local copies preserved but not used/imported. Shared dispatch records still explicitly simulated outbound; no invented Meta publication.
+- Frontend725 pass; backend1336 pass/57 opt-in skips after sequential rerun (initial parallel build/dist race documented); isolated dispatch HTTP/PG1 pass, build/diff clean. OwnerA draft visible/schedulable by ownerB, idempotency and employee403 proved, editorial piece unchanged. Browser draft saved/reloaded/recovered; screenshot `/private/tmp/render2-aux75-draft-reloaded.jpg`. Owned browser fixture/tab cleaned.
+- No configured DB/provider/real accounts/commercial records/schema/dependency/environment/push/deploy; user App20+/1-, Vite5+ and references untouched. No CSS change: independent review did not confirm screenshot74 narrow-panel suspicion. Responsive acceptance still incomplete.
+- Composer full binding/uploads and editorial raw-fetch screens remain next gates, plus all-app inventory/draft/locks/cross-tab/HTTPS/proxy/provider/design acceptance. Global cookie activation off; local progress, not phase/master completion or deployment readiness.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.
