@@ -129,8 +129,11 @@ test("la cotización se redondea hacia arriba al próximo múltiplo de cien", ()
 test("la administración de contratos usa la API autenticada y conserva el historial", () => {
   const backend = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
   const frontend = readFileSync(new URL("../../frontend/src/pages/Sueldos.jsx", import.meta.url), "utf8");
-  assert.match(frontend, /requestJson\("\/api\/contratos"/);
-  assert.match(frontend, /requestJson\(`\/api\/contratos\/\$\{id\}`/);
+  const panel = readFileSync(new URL("../../frontend/src/components/FinanceContractsPanel.jsx", import.meta.url), "utf8");
+  assert.match(frontend, /guard.request\('\/api\/contratos'/);
+  assert.match(panel, /'\/api\/contratos' : `\/api\/contratos\/\$\{intent.id\}`/);
+  assert.match(panel, /expected_revision: intent.revision/);
+  assert.doesNotMatch(panel, /document.getElementById|\bfetch\(/);
   assert.doesNotMatch(frontend, /fetch\("\/contratos"|fetch\(`\/contratos/);
   assert.match(backend, /router\.patch\("\/contratos\/:id", requireRole\("admin"\)/);
   assert.match(backend, /activo = \?/);
@@ -140,9 +143,9 @@ test("la administración de contratos usa la API autenticada y conserva el histo
 });
 
 test("los contratos financieros se adaptan a celular sin una tabla horizontal", () => {
-  const frontend = readFileSync(new URL("../../frontend/src/pages/Sueldos.jsx", import.meta.url), "utf8");
+  const frontend = readFileSync(new URL("../../frontend/src/components/FinanceContractsPanel.jsx", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../../frontend/src/styles.css", import.meta.url), "utf8");
-  const clientsPanel = frontend.slice(frontend.indexOf("function ClientsPanel"), frontend.indexOf("export function SueldosPage"));
+  const clientsPanel = frontend;
   assert.doesNotMatch(clientsPanel, /<table|<tr|<td/);
   assert.match(clientsPanel, /finance-contract-card/);
   assert.match(clientsPanel, /finance-contract-status/);

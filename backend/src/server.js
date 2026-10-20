@@ -3,6 +3,7 @@ import { normalizeFeedback, assertFeedbackBusinessInput } from "./feedback-field
 import { convertUnlinkedFlyer } from './story-flyer-conversion.js';
 import { deleteEmptyClient } from './delete-empty-client.js';
 import { clientAgreementRevisionSql, lockClientAdministration, lockClientAgreement, readClientAgreementRevision } from './client-agreement.js';
+import { CONTRACT_REVISION_SQL, contractId, expectedContractVersion, normalizeContractInput, contractNotUpdated } from './financial-contract.js';
 import { findSimilarFeedback } from "./feedback-workflow.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -591,8 +592,9 @@ async function loadPayrollForCollectionPeriod(collectionPeriod) {
 }
 
 function contractApiError(error, res, next) {
+  if (error.status) return res.status(error.status).json({error:error.message,code:error.code});
   if (error.code === "23505") return res.status(409).json({ error: "Ya existe un contrato con ese nombre y fecha de inicio." });
-  if (["22007", "23502", "23514"].includes(error.code)) {
+  if (["22007", "22008", "23502", "23514"].includes(error.code)) {
     return res.status(400).json({ error: "Revisá el monto y las fechas del contrato." });
   }
   return next(error);
@@ -601,7 +603,8 @@ function contractApiError(error, res, next) {
 router.get("/contratos", requireRole("admin"), async (_req, res, next) => {
   try {
     const result = await pool.query(`SELECT id,nombre,importe_mensual,
-      to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,activo
+      to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,activo,
+      ${CONTRACT_REVISION_SQL} AS contract_revision
       FROM contratos_financieros ORDER BY activo DESC,nombre,inicia_el DESC`);
     return res.json(result.rows);
   } catch (error) {
@@ -611,20 +614,12 @@ router.get("/contratos", requireRole("admin"), async (_req, res, next) => {
 
 router.post("/contratos", requireRole("admin"), async (req, res, next) => {
   try {
-    const nombre = String(req.body.nombre || "").trim();
-    const importe = Number(req.body.importe_mensual);
-    const iniciaEl = String(req.body.inicia_el || "");
-    const finalizaEl = req.body.finaliza_el ? String(req.body.finaliza_el) : null;
-    if (!nombre || !Number.isFinite(importe) || importe < 0 || !/^\d{4}-\d{2}-\d{2}$/.test(iniciaEl)) {
-      return res.status(400).json({ error: "Completá nombre, monto válido y fecha de inicio." });
-    }
-    if (finalizaEl && !/^\d{4}-\d{2}-\d{2}$/.test(finalizaEl)) {
-      return res.status(400).json({ error: "La fecha de finalización no es válida." });
-    }
+    const input = normalizeContractInput(req.body, {operation:'create'});
     const result = await pool.query(`INSERT INTO contratos_financieros
       (nombre,importe_mensual,inicia_el,finaliza_el,activo) VALUES ($1,$2,$3::date,$4::date,true)
       RETURNING id,nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
-        to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,activo`, [nombre, importe, iniciaEl, finalizaEl]);
+        to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,activo,${CONTRACT_REVISION_SQL} AS contract_revision`,
+      [input.nombre,input.importe_mensual,input.inicia_el,input.finaliza_el ?? null]);
     return res.status(201).json(result.rows[0]);
   } catch (error) {
     return contractApiError(error, res, next);
@@ -633,43 +628,39 @@ router.post("/contratos", requireRole("admin"), async (req, res, next) => {
 
 router.patch("/contratos/:id", requireRole("admin"), async (req, res, next) => {
   try {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Contrato inválido." });
+    const id = contractId(req.params.id);
+    const input = normalizeContractInput(req.body);
+    const expected = expectedContractVersion(req.body?.expected_revision,id);
     const updates = [];
     const values = [];
     const addValue = (sql, value) => {
       values.push(value);
       updates.push(sql.replace("?", `$${values.length}`));
     };
-    if (Object.hasOwn(req.body, "nombre")) {
-      const nombre = String(req.body.nombre || "").trim();
-      if (!nombre) return res.status(400).json({ error: "El nombre no puede quedar vacío." });
-      addValue("nombre = ?", nombre);
+    if (Object.hasOwn(input, "nombre")) {
+      addValue("nombre = ?", input.nombre);
     }
-    if (Object.hasOwn(req.body, "importe_mensual")) {
-      const importe = Number(req.body.importe_mensual);
-      if (!Number.isFinite(importe) || importe < 0) return res.status(400).json({ error: "El monto no es válido." });
-      addValue("importe_mensual = ?", importe);
+    if (Object.hasOwn(input, "importe_mensual")) {
+      addValue("importe_mensual = ?", input.importe_mensual);
     }
     for (const field of ["inicia_el", "finaliza_el"]) {
-      if (!Object.hasOwn(req.body, field)) continue;
-      const value = req.body[field] ? String(req.body[field]) : null;
-      if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return res.status(400).json({ error: "La fecha no es válida." });
-      addValue(`${field} = ?::date`, value);
+      if (!Object.hasOwn(input, field)) continue;
+      addValue(`${field} = ?::date`, input[field]);
     }
-    if (Object.hasOwn(req.body, "activo")) {
-      if (typeof req.body.activo !== "boolean") return res.status(400).json({ error: "El estado del contrato no es válido." });
-      addValue("activo = ?", req.body.activo);
-      if (!Object.hasOwn(req.body, "finaliza_el")) {
-        updates.push(req.body.activo ? "finaliza_el = NULL" : "finaliza_el = COALESCE(finaliza_el, CURRENT_DATE)");
+    if (Object.hasOwn(input, "activo")) {
+      addValue("activo = ?", input.activo);
+      if (!Object.hasOwn(input, "finaliza_el")) {
+        updates.push(input.activo ? "finaliza_el = NULL" : "finaliza_el = COALESCE(finaliza_el, CURRENT_DATE)");
       }
     }
     if (!updates.length) return res.status(400).json({ error: "No hay campos para actualizar." });
-    values.push(id);
+    const idIndex = values.push(id);
+    const versionIndex = values.push(expected);
     const result = await pool.query(`UPDATE contratos_financieros SET ${updates.join(", ")}
-      WHERE id = $${values.length} RETURNING id,nombre,importe_mensual,
-      to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,activo`, values);
-    if (!result.rows[0]) return res.status(404).json({ error: "Contrato no encontrado." });
+      WHERE id = $${idIndex} AND contract_version = $${versionIndex} RETURNING id,nombre,importe_mensual,
+      to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,activo,
+      ${CONTRACT_REVISION_SQL} AS contract_revision`, values);
+    if (!result.rows[0]) return await contractNotUpdated(pool,id);
     return res.json(result.rows[0]);
   } catch (error) {
     return contractApiError(error, res, next);
@@ -678,13 +669,17 @@ router.patch("/contratos/:id", requireRole("admin"), async (req, res, next) => {
 
 router.delete("/contratos/:id", requireRole("admin"), async (req, res, next) => {
   try {
+    const id = contractId(req.params.id);
+    normalizeContractInput(req.body ?? {}, {operation:'archive'});
+    const expected = expectedContractVersion(req.body?.expected_revision,id);
     const result = await pool.query(`UPDATE contratos_financieros
-      SET activo=false,finaliza_el=COALESCE(finaliza_el,CURRENT_DATE) WHERE id=$1
-      RETURNING id,nombre,activo,to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el`, [req.params.id]);
-    if (!result.rows[0]) return res.status(404).json({ error: "Contrato no encontrado." });
+      SET activo=false,finaliza_el=COALESCE(finaliza_el,CURRENT_DATE) WHERE id=$1 AND contract_version=$2
+      RETURNING id,nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,activo,
+      to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,${CONTRACT_REVISION_SQL} AS contract_revision`, [id,expected]);
+    if (!result.rows[0]) return await contractNotUpdated(pool,id);
     return res.json(result.rows[0]);
   } catch (error) {
-    return next(error);
+    return contractApiError(error, res, next);
   }
 });
 
@@ -3727,7 +3722,15 @@ app.use("/api", router);
 // `vite dev` con su propio proxy hacia /api), así que esto no cambia
 // nada del flujo de trabajo habitual.
 const distDir = path.join(__dirname, "..", "..", "frontend", "dist");
-if (fs.existsSync(distDir)) {
+let indexHtml = null;
+try {
+  indexHtml = fs.readFileSync(path.join(distDir, "index.html"), "utf-8");
+} catch (error) {
+  // A checkout/build can have dist but no completed entrypoint. Keep the API
+  // importable; permission/I/O failures must not be hidden as missing assets.
+  if (error.code !== 'ENOENT') throw error;
+}
+if (indexHtml !== null) {
   // Los archivos dentro de /assets llevan un hash en el nombre (los genera
   // Vite en el build) — si cambia el contenido, cambia el nombre. Por eso
   // son seguros para cachear "para siempre" en el navegador, evitando
@@ -3745,7 +3748,6 @@ if (fs.existsSync(distDir)) {
   // hosting de Hostinger, sendFile devolvía NotFoundError pese a que el
   // archivo existía (probablemente por cómo resuelve symlinks/permisos
   // en esa infraestructura). readFileSync no tiene ese problema.
-  const indexHtml = fs.readFileSync(path.join(distDir, "index.html"), "utf-8");
   app.get(/^\/(?!api\/|health(?:\/|$)).*/, (_req, res) => {
     res.type("html").send(indexHtml);
   });

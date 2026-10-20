@@ -74,6 +74,31 @@ test('legacy goal QA opt-ins fail before touching an existing database', () => {
   }
 });
 
+test('missing frontend entrypoint during a local build cannot trigger startup effects or break API import', () => {
+  const server = new URL('../src/server.js', import.meta.url).href;
+  for (const code of ['ENOENT','EACCES']) {
+    const script = `
+      import fs from 'node:fs'; import net from 'node:net'; import pg from 'pg';
+      const read=fs.readFileSync;
+      fs.readFileSync=function(path,...args){
+        if(String(path).endsWith('/frontend/dist/index.html'))throw Object.assign(new Error('Synthetic missing or inaccessible build'),{code:${JSON.stringify(code)}});
+        return read.call(this,path,...args);
+      };
+      const fail=()=>{throw new Error('Forbidden startup side effect');};
+      net.Server.prototype.listen=fail;net.Socket.prototype.connect=fail;
+      pg.Pool.prototype.query=fail;pg.Pool.prototype.connect=fail;
+      globalThis.setInterval=fail;globalThis.setTimeout=fail;globalThis.fetch=fail;
+      const {app}=await import(${JSON.stringify(server)});
+      if(typeof app!=='function')throw new Error('Missing principal app');
+    `;
+    const result=spawnSync(process.execPath,['--input-type=module','-e',script],{
+      cwd:new URL('..',import.meta.url),env:cleanEnvironment(),timeout:15000,encoding:'utf8',
+    });
+    if(code==='ENOENT')assert.equal(result.status,0,result.stderr||result.error?.message);
+    else {assert.notEqual(result.status,0);assert.match(result.stderr,/Synthetic missing or inaccessible build/);}
+  }
+});
+
 test('actual startup wiring invokes only the independently selected services', () => {
   const source = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
   const start = source.indexOf('      for (const job of startup.jobs)');

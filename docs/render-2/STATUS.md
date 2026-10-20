@@ -969,6 +969,16 @@ Verified frontend868 pass; backend1391 pass/62 opt-in skips; actual principal HT
 
 Local only;072 is not deployed to any configured database. No provider/real commercial/push/deploy. Independent contracts_financieros, other financial writers, durable uncertain-response receipts, external SQL lock-order acceptance, upgrade/native/cookie/proxy/device/provider/global draft/design gates remain. Master goal active, not production-ready or phase-complete.
 
+## Integration83 — scoped finance and independent financial contracts
+
+Coordinator073/helper/API/unit/physical/startup guard, Carson Sueldos, Hypatia extracted controlled panel, Beauvoir independent review. Financial contracts now have resource-bound monotonic CAS, atomic observed-version PATCH/soft-DELETE, closed validated input and same-statement ACK. Admin-only access preserved; no name-based client linkage or hard deletion. Existing billing/effective-date rules retained.
+
+Finance page/panel use genuine scoped parsed requests, controlled drafts, period/activity fences and explicit conflict recovery. Confirmed writes are distinct from summary refresh failures; administration remains mounted during summary loading/error. Browser found hidden/unnamed fields from desktop CSS; labels fixed without a new style layer. Final two-owner conflict/recovery/save/reload persisted2500syntheticamount and summary; mobile390 no document overflow. Owned fixtures/tabs cleaned; user App/Vite/references preserved.
+
+Verified frontend910 pass; backend1397 pass/63 opt-in skips; actual principal HTTP/PostgreSQL30 pass; build/diff pass. Integration also exposed missing-dist-entry import race during parallel build: ENOENT now skips static only, other I/O errors remain fatal; disabled-import side-effect regression and sequential reruns passed. [FINANCIAL_CONTRACTS_QA.md](FINANCIAL_CONTRACTS_QA.md) contains logs, test semantics and limits.
+
+No configured DB/provider/real commercial/schema rollout/push/deploy.073 exists locally and was applied only to disposable fixtures. Contract-client linkage, durable receipts, immutable financial audit/pricing/termination policy, other financial writers, global drafts/native/cookie/provider/design gates remain. Master active; no full phase or production readiness claim.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.
