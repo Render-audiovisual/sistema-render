@@ -6,9 +6,10 @@ import {createProductionRegistryRouter, syncProductionVisitFromTask, validatePro
 const visitId='11111111-1111-4111-8111-111111111111',videoId='22222222-2222-4222-8222-222222222222';
 const sourceTask={id:10,cliente_id:1,fecha_vencimiento:'2026-10-19',titulo:'Visita producción',tipo_tarea:'produccion',propiedades_extra:{workspace:'render_os'}};
 const visitBody={cliente_id:1,fecha:'2026-10-19',titulo:'Visita',participante_ids:[11]};
-function fixture({linked=true,legacy=false,wrongScope=false,failAssignments=false,lineage=false,existingTask=false,editorRole='edicion',missingEditor=false,archived=false,sourceClientAfterLock=1}={}) {
+function fixture({linked=true,legacy=false,wrongScope=false,failAssignments=false,lineage=false,existingTask=false,editorRole='edicion',missingEditor=false,archived=false,sourceClientAfterLock=1,reviewed=false}={}) {
   const calls=[];let prior;let tasksCreated=0;
   let visit={id:visitId,tarea_origen_id:linked?10:null,cliente_id:1,cliente_nombre:'Cliente',fecha:'2026-10-19',titulo:'Visita',participante_ids:[11],observaciones:'Notas',drive_url:'https://drive.example.test/material',revision:1};
+  visit.contexto_historico_revisado=reviewed;
   let video={id:videoId,visita_id:visitId,video_origen_id:null,titulo:'Video 1',guion:'Guion completo',estado:'grabado',material_url:'',observaciones:'Material',tarea_edicion_id:existingTask?500:null,editor_id:existingTask?7:null,fecha_entrega:existingTask?'2026-10-22':null};
   let source=structuredClone(sourceTask);
   if(archived) source.propiedades_extra.archivada_render_os=true;
@@ -78,10 +79,20 @@ test('all verified members can read, unbound and inactive identities fail closed
 });
 test('read DTO exposes only scalar operational fields, complete guion and current editing state',async()=>{
   const res=await fixture().run('get','/:id');
+  assert.equal(res.body.visita.contexto_historico_revisado,false);
   assert.equal(JSON.stringify(res.body).includes('PRIVATE'),false);
   assert.equal(res.body.visita.videos[0].guion,'Guion completo');
   assert.equal(res.body.visita.videos[0].tarea_estado,'en_revision');
   assert.equal(res.body.visita.videos[0].fecha_entrega_actual,'2026-10-23');
+});
+test('reviewed context is a closed boolean, never a receipt or arbitrary metadata object',async()=>{
+  for(const value of [true,false,'true',1,null,{actor_id:11,secret:'PRIVATE'}]) {
+    const f=fixture({reviewed:value});
+    const res=await f.run('get','/:id');
+    assert.equal(res.body.visita.contexto_historico_revisado,value===true);
+    assert.equal(JSON.stringify(res.body).includes('PRIVATE'),false);
+    assert.ok(f.calls.some(({sql})=>sql.includes('EXISTS(SELECT 1 FROM produccion_reconciliaciones r WHERE r.visita_id=v.id)')));
+  }
 });
 test('month/UUID validation and pending route do not invent filters or lineage',async()=>{
   assert.equal((await fixture().run('get','/',{},undefined,{}, {mes:'2026-13'})).statusCode,400);

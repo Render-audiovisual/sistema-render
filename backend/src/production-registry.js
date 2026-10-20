@@ -74,6 +74,7 @@ export function validateProductionItem(body, kind, { partial = false, reuse = fa
 
 const VISITS = `SELECT v.id,v.tarea_origen_id,v.cliente_id,c.nombre cliente_nombre,
   to_char(v.fecha,'YYYY-MM-DD') fecha,v.titulo,v.observaciones,v.drive_url,v.revision,
+  EXISTS(SELECT 1 FROM produccion_reconciliaciones r WHERE r.visita_id=v.id) contexto_historico_revisado,
   ARRAY(SELECT p.usuario_id FROM produccion_visita_participantes p WHERE p.visita_id=v.id ORDER BY p.usuario_id) participante_ids
   FROM produccion_visitas v JOIN clientes c ON c.id=v.cliente_id`;
 const VIDEOS = `SELECT pv.id,pv.visita_id,pv.video_origen_id,pv.titulo,pv.guion,pv.estado,pv.material_url,pv.observaciones,
@@ -90,6 +91,7 @@ const videoDto = row => ({...scalarFields(row, ['id', 'visita_id', 'video_origen
   fecha_entrega_handoff: date(row.fecha_entrega) ? row.fecha_entrega : null });
 function visitDto(row, videos, photos) {
   return { ...scalarFields(row, ['id', 'tarea_origen_id', 'cliente_id', 'cliente_nombre', 'fecha', 'titulo', 'observaciones', 'drive_url', 'revision']),
+    contexto_historico_revisado: row.contexto_historico_revisado === true,
     participante_ids: (row.participante_ids || []).filter(positive),
     videos: videos.filter(video => video.visita_id === row.id).map(videoDto),
     fotos: photos.filter(photo => photo.visita_id === row.id).map(photo => scalarFields(photo, ['id', 'visita_id', 'tipo', 'estado', 'drive_url', 'observaciones'])) };

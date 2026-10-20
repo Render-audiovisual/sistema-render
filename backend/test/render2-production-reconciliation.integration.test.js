@@ -76,6 +76,9 @@ test('manual production reconciliation HTTP: atomic explicit videos, durable rep
   const readVisit = async id => expect(await api(`/producciones/${id}`, { token: admin })).visita;
   const handoff = async (result, videoId, extra = {}) => {
     const visit = await readVisit(result.visita_id);
+    assert.equal(visit.contexto_historico_revisado,true);
+    const listed=expect(await api('/producciones?mes=2026-10',{token:admin}));
+    assert.equal(listed.visitas.find(v=>v.id===result.visita_id).contexto_historico_revisado,true);
     return api(`/producciones/${result.visita_id}/videos/${videoId}/enviar-edicion`, {
       token: admin, method: 'POST', body: { expected_revision: visit.revision, editor_id: 91003, fecha_entrega: '2026-10-28', ...extra },
     });
@@ -121,6 +124,15 @@ test('manual production reconciliation HTTP: atomic explicit videos, durable rep
       expect(await api(`/producciones/${created.visita_id}`,{token:admin,method:'PATCH',body:{expected_revision:visit.revision,...change}}),409);
       assert.deepEqual(await snapshot(),before,'Rejected dimension transfer preserves source/visit/history/provenance');
     }
+    const sourceBefore=await fixture.query('SELECT * FROM tareas WHERE id=$1',[row.id]);
+    expect(await api(`/producciones/${created.visita_id}`,{token:admin,method:'PATCH',body:{expected_revision:visit.revision,titulo:'QA título revisado',observaciones:'QA notas editables',drive_url:'https://example.invalid/reviewed'}}));
+    const changed=await readVisit(created.visita_id);
+    assert.equal(changed.contexto_historico_revisado,true);
+    assert.equal(changed.titulo,'QA título revisado');
+    assert.equal(changed.observaciones,'QA notas editables');
+    assert.equal(changed.fecha,visit.fecha);
+    assert.equal(changed.cliente_id,visit.cliente_id);
+    assert.deepEqual(await fixture.query('SELECT * FROM tareas WHERE id=$1',[row.id]),sourceBefore,'Editing mutable visit fields never rewrites the source task');
   });
   await t.test('defaults are explicit empty values and concurrent identical request commits only once', async () => {
     const row = await source();
@@ -305,6 +317,7 @@ test('manual production reconciliation HTTP: atomic explicit videos, durable rep
       tipo_tarea: 'produccion', subtipo: 'visita', cliente_id: client.id, fecha_vencimiento: '2026-10-25',
     } }), 201);
     const [linked] = await fixture.query('SELECT id FROM produccion_visitas WHERE tarea_origen_id=$1', [normalized.id]);
+    assert.equal((await readVisit(linked.id)).contexto_historico_revisado,false,'Ordinary visits retain rescheduling controls');
     assert.ok(linked);
     const before = await snapshot();
     assertContext(expect(await readContext(child.id)), child, 'legacy_editing');
