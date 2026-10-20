@@ -949,6 +949,16 @@ Verified frontend804 pass; backend1385 pass/60 opt-in skips; actual sequential H
 
 No configured DB/provider/real commercial changes/schema/dependency/environment/push/deploy. Cookie activation, cross-device/native/proxy/provider acceptance, global drafts and remaining client administration writers/design remain gates. Local implemented/tested batch, not full phase/master completion or production readiness.
 
+## Integration81 — canonical client administration and history-safe deletion
+
+Carson page, Hypatia modals, coordinator shared scoped request hook/parsed overview/backend helper/physical QA, Beauvoir independent review. Creation/config/activation/next-fee/delete now retain original real session/context and immutable intent with duplicate guards, validated ACKs, dirty discard and truthful partial commit. Polling defers during modals. Corrected mounted deep-link raw-client restoration and reviewed wrong-month configuration writes; selected effective period is passed/shown/validated throughout nested editors. Legacy next-fee remains next server month.
+
+DELETE retains admin gate, locks explicit public.clientes under READ COMMITTED and inspects incoming FK references before removing only an unreferenced row. Config/fee history no longer cascades through the old five-table precheck; both directions of child-insert race and unknown composite/cross-schema fail-closed behavior physically verified. No migration/backfill; non-FK/external links and concurrent DDL remain outside that guarantee. Configuration/fee CAS still pending.
+
+Final frontend853 pass; backend1385 pass/61 opt-in skips; isolated HTTP/PostgreSQL19 pass; build/diff pass. Final browser historical edit7→8reels/reload keeps correct enriched detail; separate owner confirms current quota/fee unchanged. Mobile390 no document overflow, detail visually checked. All owned fixtures/tabs cleaned; user App20+/1-,Vite5+ and references preserved. [CLIENT_ADMIN_SESSION_QA.md](CLIENT_ADMIN_SESSION_QA.md) records logs, diagnostic failures, screenshots and exact limits.
+
+No configured DB/provider/real commercial changes/dependency/environment/push/deploy. Cookie activation/native/device/proxy/provider/global draft/design and remaining writers remain gates; this batch is not full master completion or a production release.
+
 ## Original next-integration checklist (items 1–3 now partly implemented as above)
 
 1. Add nullable task-owner/collaborator ID relations and explicit, reviewed legacy-mapping support; do not reinterpret shared historical assignments.

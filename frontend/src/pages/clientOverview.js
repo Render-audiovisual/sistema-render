@@ -1,5 +1,6 @@
 // Shared editorial inputs only: task completion is never publication evidence.
-export function createClientOverviewLoader(request) {
+import { isSessionFailure } from '../shared/session/captured-request.js';
+export function createClientOverviewLoader(capture) {
   let generation = 0;
   let controller = null;
   function cancel() {
@@ -15,21 +16,21 @@ export function createClientOverviewLoader(request) {
     const current = generation;
     const active = new AbortController();
     controller = active;
+    const scope = capture();
     try {
       const results = await Promise.all([
         `/api/clientes?periodo=${period}`, "/api/historias", "/api/publicaciones",
       ].map(async url => {
-        const response = await request(url, { signal: active.signal });
-        if (!response.ok) throw new Error("No se pudo cargar el tablero de clientes.");
-        const data = await response.json();
+        const data = await scope.request(url, { signal: active.signal });
         if (!Array.isArray(data)) throw new Error("El servidor devolvió información inválida.");
         return data;
       }));
-      if (current !== generation || active.signal.aborted) return undefined;
+      if (current !== generation || active.signal.aborted || !scope.current()) return undefined;
       return { clientes: results[0], historias: results[1], publicaciones: results[2] };
-    } catch {
-      if (current !== generation || active.signal.aborted) return undefined;
+    } catch (error) {
+      if (current !== generation || active.signal.aborted || !scope.current()) return undefined;
       active.abort();
+      if (error?.status === 401 || error?.status === 403 || isSessionFailure(error)) throw error;
       throw new Error("No se pudo cargar el tablero de clientes. Intentá nuevamente.");
     } finally {
       if (controller === active) controller = null;

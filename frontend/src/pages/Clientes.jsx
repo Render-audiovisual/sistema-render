@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { getMesActualISO } from "../utils.jsx";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getMesActualISO, getSesion } from "../utils.jsx";
+import { useScopedRequest } from "../shared/session/use-scoped-request.js";
+import { isSessionFailure } from "../shared/session/captured-request.js";
 import {
   calcularCuotaHistoriasPorDias,
   calcularPorcentajeCuota,
@@ -68,7 +70,28 @@ export function ClienteCuotaResumen({ etiqueta, publicados, cuota }) {
   );
 }
 
-export function ClientesAdminPage() {
+function clientPeriod(search) {
+  const values = new URLSearchParams(search).getAll('periodo');
+  if (!values.length) return getMesISO();
+  if (values.length !== 1 || !/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(values[0])) throw new Error('Elegí un mes válido para consultar clientes.');
+  return values[0];
+}
+function createdClient(value, nombre) {
+  if (!Number.isSafeInteger(value?.id) || value.id < 1 || value.id > 2147483647 || value.nombre !== nombre) throw new Error('No se pudo verificar el alta. Revisá la cartera antes de volver a crear el cliente.');
+  return value;
+}
+
+export function ClientesAdminPage({ sesion }) {
+  const { view } = useScopedRequest(sesion || getSesion(), 'client-admin');
+  const identity = useRef({ view, epoch: 0 });
+  if (identity.current.view !== view) identity.current = { view, epoch: identity.current.epoch + 1 };
+  if (view.role !== 'admin') return <PageState type="error" title="Acceso reservado a administración" />;
+  return <ClientesAdminContent key={identity.current.epoch} sesion={view.session} />;
+}
+
+function ClientesAdminContent({ sesion }) {
+  const initialPeriod = useRef(null);
+  if (!initialPeriod.current) { try { initialPeriod.current = { period: clientPeriod(window.location.search), error: null }; } catch (reason) { initialPeriod.current = { period: getMesISO(), error: reason.message }; } }
   const [initialClientId] = useState(
     () => Number(readUrlContext(window.location.search, { cliente: "" }).cliente) || null,
   );
@@ -76,50 +99,84 @@ export function ClientesAdminPage() {
   const [clientes, setClientes] = useState([]);
   const [historias, setHistorias] = useState([]);
   const [publicaciones, setPublicaciones] = useState([]);
-  const overviewLoader = useRef(null);
-  if (!overviewLoader.current) overviewLoader.current = createClientOverviewLoader((...args) => fetch(...args));
+  const [loadedPeriod, setLoadedPeriod] = useState(null);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
   const [error, setError] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [nuevoCliente, setNuevoCliente] = useState(emptyClientForm);
-  const [mesSeleccionado, setMesSeleccionado] = useState(() => new URLSearchParams(window.location.search).get('periodo') || getMesISO());
+  const [mesSeleccionado, setMesSeleccionado] = useState(initialPeriod.current.period);
+  const [periodError, setPeriodError] = useState(initialPeriod.current.error);
+  const { view, capture, captureLifetime, epoch } = useScopedRequest(sesion, mesSeleccionado);
+  const overviewLoader = useMemo(() => createClientOverviewLoader(capture), [capture]);
   const [filtroEstado, setFiltroEstado] = useState("activos");
   const [guardandoCliente, setGuardandoCliente] = useState(false);
   const [altaClienteAbierta, setAltaClienteAbierta] = useState(false);
   const [pasoAltaCliente, setPasoAltaCliente] = useState(1);
   const [clienteCuotaEnEdicion, setClienteCuotaEnEdicion] = useState(null);
   const [errorAltaCliente, setErrorAltaCliente] = useState(null);
+  const modalOpen = useRef(false), deferredLoad = useRef(false), pendingPeriod = useRef(null), loadGeneration = useRef(0), loaded = useRef(false), creating = useRef(false), denied = useRef(false);
+  modalOpen.current = Boolean(altaClienteAbierta || clienteSeleccionado || clienteCuotaEnEdicion);
+  const closeModal = () => {
+    modalOpen.current = false;
+    if (pendingPeriod.current) {
+      const next = pendingPeriod.current; pendingPeriod.current = null;
+      if (next.period !== mesSeleccionado || next.error !== periodError) deferredLoad.current = false;
+      setMesSeleccionado(next.period); setPeriodError(next.error);
+    }
+  };
+  const selectClient = client => { if (!capture().current() || modalOpen.current || loadedPeriod !== mesSeleccionado) return; modalOpen.current = true; setClienteSeleccionado(client); };
 
   // silencioso=true (polling / vuelta a la pestaña) no muestra el spinner de
   // carga para no interrumpir a quien está mirando la tabla — solo actualiza
   // los números por detrás. La primera carga y el guardado explícito de una
   // cuota sí lo muestran.
-  const cargarClientes = ({ silencioso = false } = {}) => {
+  const cargarClientes = useCallback(async ({ silencioso = false } = {}) => {
+    if (modalOpen.current) { deferredLoad.current = true; return; }
+    const scope = capture(); if (!scope.current() || denied.current) return;
+    if (periodError) { setError(periodError); setCargando(false); return; }
+    const generation = ++loadGeneration.current;
     if (!silencioso) setCargando(true);
     setError(null);
-    overviewLoader.current.load(mesSeleccionado)
-      .then((data) => {
-        if (!data) return;
+    try {
+        const data = await overviewLoader.load(mesSeleccionado);
+        if (!data || !scope.current() || generation !== loadGeneration.current) return;
+        if (modalOpen.current) { deferredLoad.current = true; return; }
+        loaded.current = true;
+        setLoadedPeriod(mesSeleccionado);
         setClientes(data.clientes);
         setHistorias(data.historias);
         setPublicaciones(data.publicaciones);
-        setCargando(false);
-      })
-      .catch((err) => {
-        console.error("No se pudo cargar el tablero de clientes", err);
-        setError("No se pudo cargar el tablero de clientes.");
-        setCargando(false);
-      });
-  };
+    } catch (err) {
+        if (!scope.current() || generation !== loadGeneration.current) return;
+        if (isSessionFailure(err) || [401,403].includes(err?.status)) denied.current = true;
+        if (scope.current() && generation === loadGeneration.current && !modalOpen.current && !isSessionFailure(err)) setError("No se pudo cargar el tablero de clientes.");
+    } finally { if (scope.current() && generation === loadGeneration.current) setCargando(false); }
+  }, [capture, overviewLoader, mesSeleccionado, periodError]);
 
   useEffect(() => {
-    if (contextRestored || clientes.length === 0) return;
-    if (initialClientId) {
-      const requestedClient = clientes.find((client) => client.id === initialClientId);
-      if (requestedClient) setClienteSeleccionado(requestedClient);
-    }
-    setContextRestored(true);
-  }, [clientes, contextRestored, initialClientId]);
+    const pop = () => {
+      let next; try { next = { period: clientPeriod(window.location.search), error: null }; } catch (reason) { next = { period: mesSeleccionado, error: reason.message }; }
+      if (modalOpen.current) {
+        pendingPeriod.current = next;
+        const params = new URLSearchParams(window.location.search); params.set('periodo', mesSeleccionado);
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params}${window.location.hash}`);
+        return;
+      }
+      setMesSeleccionado(next.period); setPeriodError(next.error);
+    };
+    window.addEventListener('popstate', pop); return () => window.removeEventListener('popstate', pop);
+  }, [mesSeleccionado]);
+
+  useEffect(() => {
+    if (periodError) return;
+    const params = new URLSearchParams(window.location.search); params.set('periodo', mesSeleccionado);
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params}${window.location.hash}`);
+  }, [mesSeleccionado, periodError]);
+
+  useEffect(() => {
+    if (modalOpen.current || !deferredLoad.current) return;
+    deferredLoad.current = false; cargarClientes();
+  }, [altaClienteAbierta, clienteSeleccionado, clienteCuotaEnEdicion, cargarClientes]);
 
   useEffect(() => {
     if (!contextRestored) return;
@@ -132,20 +189,22 @@ export function ClientesAdminPage() {
   // también apenas la pestaña vuelve a estar visible (por si el intervalo
   // quedó pausado por el navegador mientras estaba en segundo plano).
   useEffect(() => {
+    loaded.current = false;
     cargarClientes();
-    const intervalo = setInterval(() => cargarClientes({ silencioso: true }), 30000);
+    const update = () => { if (loaded.current) cargarClientes({ silencioso: true }); };
+    const intervalo = setInterval(update, 30000);
     const alVolverVisible = () => {
       if (document.visibilityState === "visible") {
-        cargarClientes({ silencioso: true });
+        update();
       }
     };
     document.addEventListener("visibilitychange", alVolverVisible);
     return () => {
       clearInterval(intervalo);
       document.removeEventListener("visibilitychange", alVolverVisible);
-      overviewLoader.current.cancel();
+      loadGeneration.current += 1; overviewLoader.cancel();
     };
-  }, [mesSeleccionado]);
+  }, [cargarClientes, overviewLoader]);
 
   const validarCuota = (valor) => {
     const numero = Number(valor);
@@ -175,6 +234,8 @@ export function ClientesAdminPage() {
     nuevoCliente.abono_mensual !== "" && Number(nuevoCliente.abono_mensual) >= 0;
 
   const abrirAltaCliente = () => {
+    if (!capture().current() || modalOpen.current) return;
+    modalOpen.current = true;
     setNuevoCliente(emptyClientForm());
     setPasoAltaCliente(1);
     setErrorAltaCliente(null);
@@ -182,13 +243,18 @@ export function ClientesAdminPage() {
   };
 
   const cerrarAltaCliente = () => {
-    if (guardandoCliente) return;
+    if (creating.current || !capture().current()) return;
+    if (JSON.stringify(nuevoCliente) !== JSON.stringify(emptyClientForm()) && !window.confirm('¿Descartar los datos del nuevo cliente sin guardar?')) return;
     setAltaClienteAbierta(false);
     setErrorAltaCliente(null);
+    closeModal();
   };
 
-  const crearCliente = (event) => {
+  const crearCliente = async (event) => {
     event.preventDefault();
+    if (creating.current) return;
+    const scope = capture(), lifetime = captureLifetime();
+    if (!scope.current() || view.role !== 'admin') return;
     const nombre = nuevoCliente.nombre.trim();
 
     if (!nombre) {
@@ -204,28 +270,24 @@ export function ClientesAdminPage() {
     }
     const cuota_reels = Number(nuevoCliente.cuota_reels);
     const cuota_carruseles = Number(nuevoCliente.cuota_carruseles);
-
+    if (!altaClienteValida) { setErrorAltaCliente('Revisá todos los datos del acuerdo antes de crear el cliente.'); return; }
+    const body = JSON.stringify({ ...nuevoCliente, nombre, cuota_reels, cuota_carruseles });
+    creating.current = true;
     setGuardandoCliente(true);
     setErrorAltaCliente(null);
-    fetch("/api/clientes", {
+    try {
+      const cliente = createdClient(await scope.request("/api/clientes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...nuevoCliente, nombre, cuota_reels, cuota_carruseles }),
-    })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || "No se pudo crear el cliente.");
-        }
-        return data;
-      })
-      .then((cliente) => {
-        setClientes((prev) => [...prev, cliente]);
+      body,
+    }), nombre);
+        scope.assertCurrent();
+        setClientes((prev) => [...prev.filter(item => item.id !== cliente.id), cliente]);
         setNuevoCliente(emptyClientForm());
         setAltaClienteAbierta(false);
-      })
-      .catch((err) => setErrorAltaCliente(err.message))
-      .finally(() => setGuardandoCliente(false));
+        closeModal(); deferredLoad.current = true;
+    } catch (err) { if (scope.current() && !isSessionFailure(err)) setErrorAltaCliente('No se pudo confirmar el alta. Conservamos los datos; revisá la cartera antes de volver a crear el cliente.'); }
+    finally { creating.current = false; if (lifetime.current()) setGuardandoCliente(false); }
   };
 
   const actualizarClienteLocal = (id, campos) => {
@@ -238,12 +300,21 @@ export function ClientesAdminPage() {
   };
 
   const filasTodas = useMemo(
-    () => getResumenClientes(clientes, historias, publicaciones, {
+    () => loadedPeriod !== mesSeleccionado ? [] : getResumenClientes(clientes, historias, publicaciones, {
       mes: mesSeleccionado,
       avanceDelMes: getAvanceMes(mesSeleccionado),
     }),
-    [clientes, historias, publicaciones, mesSeleccionado],
+    [clientes, historias, publicaciones, mesSeleccionado, loadedPeriod],
   );
+  useEffect(() => {
+    if (contextRestored || loadedPeriod !== mesSeleccionado || filasTodas.length === 0 || modalOpen.current) return;
+    if (initialClientId) {
+      const requestedClient = filasTodas.find((client) => client.id === initialClientId);
+      if (requestedClient) selectClient(requestedClient);
+    }
+    setContextRestored(true);
+  }, [filasTodas, contextRestored, initialClientId, loadedPeriod, mesSeleccionado]);
+
   const filas = useMemo(
     () => filasTodas.filter((cliente) =>
       filtroEstado === "todos" || (filtroEstado === "activos" ? cliente.activo : !cliente.activo)),
@@ -269,7 +340,7 @@ export function ClientesAdminPage() {
               </div>
               <label className="clientes-compact-field">
                 <span>Mes</span>
-                <input type="month" value={mesSeleccionado} onChange={(event) => setMesSeleccionado(event.target.value)} />
+                <input type="month" value={mesSeleccionado} disabled={Boolean(altaClienteAbierta || clienteSeleccionado || clienteCuotaEnEdicion)} onChange={(event) => { if (/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) { setMesSeleccionado(event.target.value); setPeriodError(null); } }} />
               </label>
               <label className="clientes-compact-field">
                 <span>Estado</span>
@@ -322,7 +393,7 @@ export function ClientesAdminPage() {
                   return (
                     <article className="clientes-portfolio-row" key={cliente.id}
                       style={{ "--cliente-accent": getClienteColor(cliente.nombre) }}
-                      onClick={() => setClienteSeleccionado(cliente)}>
+                      onClick={() => selectClient(cliente)}>
                       <div className="clientes-portfolio-identity">
                         <span className="cliente-initial">{getClienteInicial(cliente.nombre)}</span>
                         <div><strong>{cliente.nombre}</strong><small>{cliente.rubro || "Sin rubro cargado"} · {cliente.activo ? "Activo" : "Inactivo"}</small></div>
@@ -346,7 +417,7 @@ export function ClientesAdminPage() {
                         <small>{pendientes ? `${pendientes} sin confirmación` : "Acuerdo con confirmación completa"}</small>
                       </div>
                       <button className="btn clientes-portfolio-action" type="button"
-                        onClick={(event) => { event.stopPropagation(); setClienteSeleccionado(cliente); }}>
+                        onClick={(event) => { event.stopPropagation(); selectClient(cliente); }}>
                         Ver detalle
                       </button>
                     </article>
@@ -431,7 +502,7 @@ export function ClientesAdminPage() {
                       <button
                         className="btn primary"
                         type="button"
-                        onClick={() => setClienteSeleccionado(cliente)}
+                        onClick={() => selectClient(cliente)}
                       >
                         Ver detalle
                       </button>
@@ -457,11 +528,13 @@ export function ClientesAdminPage() {
 
       {altaClienteAbierta && (
         <Modal
+          key={`${epoch}:${mesSeleccionado}:create`}
           onClose={cerrarAltaCliente}
           title={<span>Nuevo cliente</span>}
           className="cliente-create-modal"
         >
             <form className="modal-body cliente-create-modal-body" onSubmit={crearCliente}>
+              <fieldset disabled={guardandoCliente} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
               <div className="cliente-create-progress" aria-label={`Paso ${pasoAltaCliente} de 3`}>
                 {["Datos", "Acuerdo", "Responsable"].map((etiqueta, index) => {
                   const numero = index + 1;
@@ -632,23 +705,30 @@ export function ClientesAdminPage() {
                   {guardandoCliente ? "Creando..." : "Crear cliente"}
                 </button>}
               </div>
+              </fieldset>
             </form>
         </Modal>
       )}
 
       {clienteCuotaEnEdicion && (
         <EditarCuotaClienteModal
+          key={`${epoch}:${mesSeleccionado}:${clienteCuotaEnEdicion.id}`}
+          sesion={view.session}
+          periodo={mesSeleccionado}
           cliente={clienteCuotaEnEdicion}
-          onClose={() => setClienteCuotaEnEdicion(null)}
+          onClose={() => { setClienteCuotaEnEdicion(null); closeModal(); }}
           onGuardado={(clienteActualizado) => {
             actualizarClienteLocal(clienteActualizado.id, clienteActualizado);
-            setClienteCuotaEnEdicion(null);
+            setClienteCuotaEnEdicion(null); closeModal();
           }}
         />
       )}
 
       {clienteSeleccionado && (
         <DetalleClienteModal
+          key={`${epoch}:${mesSeleccionado}:${clienteSeleccionado.id}`}
+          sesion={view.session}
+          periodo={mesSeleccionado}
           cliente={clienteSeleccionado}
           historias={historias.filter(
             (historia) => historia.cliente_id === clienteSeleccionado.id && esDelMes(historia.fecha_programada, mesSeleccionado),
@@ -658,12 +738,12 @@ export function ClientesAdminPage() {
             clientes,
             publicaciones,
           ).filter((publicacion) => esDelMes(publicacion.fecha_programada, mesSeleccionado))}
-          onClose={() => setClienteSeleccionado(null)}
+          onClose={() => { setClienteSeleccionado(null); closeModal(); }}
           onCuotaActualizada={cargarClientes}
           onClienteActualizado={(clienteActualizado) => actualizarClienteLocal(clienteActualizado.id, clienteActualizado)}
           onClienteEliminado={(id) => {
             setClientes((prev) => prev.filter((cliente) => cliente.id !== id));
-            setClienteSeleccionado(null);
+            setClienteSeleccionado(null); closeModal();
           }}
         />
       )}

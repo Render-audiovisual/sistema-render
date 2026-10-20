@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createClientOverviewLoader } from "./clientOverview.js";
+import { createCapturedRequest } from '../shared/session/captured-request.js';
 
-// Only injected fetch/body promises; no window, mounted page, server or DB.
+// Canonical parsed requests and real captured-session binding, no mounted UI/DB.
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -11,15 +12,18 @@ function deferred() {
 }
 function transport() {
   const calls = [];
+  let live = { token: 'qa-client-overview', usuario: { id: 7, nombre: 'QA owner', rol: 'admin' } };
   const request = (url, options) => {
     const pending = deferred();
-    calls.push({ ...pending, url, options, jsonCalls: 0 });
+    calls.push({ ...pending, url, options });
     return pending.promise; // Deliberately ignores AbortSignal.
   };
-  return { calls, loader: createClientOverviewLoader(request) };
+  const capture = () => createCapturedRequest({ session: live, readSession: () => live, request });
+  return { calls, loader: createClientOverviewLoader(capture), switchSession() { live = { ...live, token: 'qa-other', usuario: { ...live.usuario, id: 8 } }; } };
 }
 function respond(call, data = [], { ok = true, body } = {}) {
-  call.resolve({ ok, json() { call.jsonCalls++; return body ? body.promise : Promise.resolve(data); } });
+  if (!ok) call.reject(Object.assign(new Error('Canonical HTTP failure'), { status: 500 }));
+  else call.resolve(body ? body.promise : data);
 }
 function finish(calls, offset, prefix) {
   const values = [[{ id: `${prefix}-cliente` }], [{ id: `${prefix}-historia` }], [{ id: `${prefix}-publicacion` }]];
@@ -97,16 +101,15 @@ test("bundle remains all-or-nothing until all three successful response bodies a
   await microtasks(); assert.equal(settled, false);
   bodies[2].resolve([{ id: "publication" }]);
   assert.deepEqual(await pending, { clientes: [{ id: "client" }], historias: [], publicaciones: [{ id: "publication" }] });
-  assert.deepEqual(calls.map(call => call.jsonCalls), [1, 1, 1]);
+  assert.ok(calls.every(call => call.options.headers.Authorization === 'Bearer qa-client-overview'));
 });
 
-test("each HTTP failure rejects the current bundle without parsing its body or fabricating partial success", async () => {
+test("each canonical HTTP failure rejects the current bundle without fabricating partial success", async () => {
   for (let failed = 0; failed < 3; failed++) {
     const { calls, loader } = transport();
     const pending = loader.load("2026-10"), checked = boundedRejection(pending);
     calls.forEach((call, index) => respond(call, [], { ok: index !== failed }));
     await checked;
-    assert.equal(calls[failed].jsonCalls, 0);
     assert.equal(calls.length, 3);
   }
 });
@@ -175,13 +178,38 @@ test("cancel is reusable across pending fetch/body reads; later load and explici
   assert.equal(calls.length, 12);
 });
 
+test('session replacement drops the entire old bundle and a new load carries only the new actor', async () => {
+  for (const fail of [false,true]) {
+    const f = transport(), old = f.loader.load('2026-10');
+    f.switchSession();
+    if (fail) { f.calls[0].reject(new Error('old failure')); respond(f.calls[1]); respond(f.calls[2]); }
+    else finish(f.calls, 0, 'old');
+    assert.equal(await old, undefined);
+    const next = f.loader.load('2026-10'), expected = finish(f.calls, 3, 'new');
+    assert.deepEqual(await next, expected);
+    assert.ok(f.calls.slice(0,3).every(call => call.options.headers.Authorization === 'Bearer qa-client-overview'));
+    assert.ok(f.calls.slice(3).every(call => call.options.headers.Authorization === 'Bearer qa-other'));
+  }
+});
+
+test('permission and session errors preserve their typed identity with no automatic retry', async () => {
+  for (const error of [Object.assign(new Error('denied'),{status:401}), Object.assign(new Error('forbidden'),{status:403}),
+    Object.assign(new Error('context denied'),{name:'BrowserSessionError'})]) {
+    const f = transport(), pending = f.loader.load('2026-10');
+    f.calls[0].reject(error); respond(f.calls[1]); respond(f.calls[2]);
+    await assert.rejects(pending, actual => actual === error);
+    assert.equal(f.calls.length,3);
+  }
+});
+
 test("Clientes integrates loader cleanup/current-bundle commit and never equates task completion with publication", () => {
   const page = readFileSync(new URL("./Clientes.jsx", import.meta.url), "utf8");
   assert.match(page, /import \{ createClientOverviewLoader \} from "\.\/clientOverview\.js"/);
   assert.match(page, /createClientOverviewLoader\(/);
-  assert.match(page, /overviewLoader\.current\.load\(mesSeleccionado\)/);
-  assert.match(page, /if \(!data\) return;[\s\S]*?setClientes\(data\.clientes\);[\s\S]*?setHistorias\(data\.historias\);[\s\S]*?setPublicaciones\(data\.publicaciones\)/);
-  assert.match(page, /return \(\) => \{[\s\S]*?clearInterval\(intervalo\);[\s\S]*?removeEventListener\("visibilitychange", alVolverVisible\);[\s\S]*?overviewLoader\.current\.cancel\(\)/);
+  assert.match(page, /createClientOverviewLoader\(capture\)/);
+  assert.match(page, /overviewLoader\.load\(mesSeleccionado\)/);
+  assert.match(page, /if \(!data \|\| !scope.current\(\) \|\| generation !== loadGeneration.current\) return;[\s\S]*?setClientes\(data\.clientes\);[\s\S]*?setHistorias\(data\.historias\);[\s\S]*?setPublicaciones\(data\.publicaciones\)/);
+  assert.match(page, /return \(\) => \{[\s\S]*?clearInterval\(intervalo\);[\s\S]*?removeEventListener\("visibilitychange", alVolverVisible\);[\s\S]*?overviewLoader\.cancel\(\)/);
   assert.doesNotMatch(page, /tareasFinalizadas|\/api\/tareas|checklist\s*OK/i);
   assert.match(page, /getResumenClientes/);
 });
