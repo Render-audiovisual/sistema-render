@@ -332,7 +332,8 @@ test("Germán puede completar una visita desde el celular sin saltear la confirm
   assert.doesNotMatch(workspaceSource, /Completá primero la cantidad prevista de videos de la visita/);
   assert.match(workspaceSource, /onRegisterProduction\(task, Number\(productionAmount\), productionDate, finish\)/);
   assert.doesNotMatch(workspaceSource, /amount = productionProgress\.remaining/);
-  assert.match(workspaceSource, /Franco o Agustín deben confirmarla antes de enviarla a Edición/);
+  assert.match(workspaceSource, /Un líder debe confirmar el registro\. Después asignará la edición de cada video desde Producciones/);
+  assert.doesNotMatch(workspaceSource, /Confirmar y enviar a edición|Se creó la edición para Luciano|La edición quedó vinculada/);
   assert.match(workspaceSource, /Guardar avance/);
   assert.match(workspaceStyles, /\.ros-production-complete-action button\{[^}]*min-height:50px;[^}]*width:100%/);
 });

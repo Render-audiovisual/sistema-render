@@ -132,7 +132,7 @@ export function reviewHandoffError(task = {}) {
   const handoffError = validateProductionHandoff(task);
   if (handoffError) return handoffError;
   if (isProductionVisitTask(task) && !task.propiedades_extra?.produccion_confirmada_at) {
-    return "La grabación completa debe ser confirmada por Franco o Agustín antes de enviarla a edición.";
+    return "La grabación debe estar confirmada por un líder. Confirmar no crea edición: se asigna por video desde Producciones, con editor y fecha explícitos.";
   }
   return null;
 }
@@ -732,7 +732,7 @@ export function buildMiaPendingEvent(task) {
   if (MIA_STATE_EVENT_LABELS[type]) {
     text = `${MIA_STATE_EVENT_LABELS[type]}: ${task.titulo}`;
   } else if (type === "confirmar_grabacion") {
-    text = `Visita completa: ${task.titulo}\nFranco o Agustín deben confirmar el traspaso a Edición.`;
+    text = `Visita completa: ${task.titulo}\nUn líder debe confirmar el registro. La edición se asigna después por video desde Producciones.`;
   } else if (type === "correccion_grabacion") {
     text = `Se corrigió la producción de ${task.titulo}: ${pending.anterior} → ${pending.nuevo}.`;
   } else {

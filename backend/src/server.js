@@ -2232,57 +2232,6 @@ const TAREA_COLUMNAS_EDITABLES = [
   "tarea_padre_id",
 ];
 
-async function crearTareaEdicionDesdeVisita(visita, db = pool) {
-  // Compatibility path until per-video production is integrated. Resolve the
-  // configured recipient once for a NEW task; never infer historical ownership.
-  const assignment = await resolveTaskAssignments(db, visita.propiedades_extra?.edicion_responsable_id
-    ? { asignado_a_id: visita.propiedades_extra.edicion_responsable_id, colaborador_ids: [] }
-    : { asignado_a: "Luciano", colaborador_ids: [] });
-  const cliente = visita.cliente_id
-    ? await db.query("SELECT nombre FROM clientes WHERE id = $1", [visita.cliente_id])
-    : { rows: [] };
-  const clienteNombre = cliente.rows[0]?.nombre || "Sin cliente";
-  const cantidad = getProductionProgress(visita).recorded;
-  const propiedades = {
-    workspace: "render_os",
-    origen_visita_id: String(visita.id),
-    automatica_render_os: true,
-    resumen: `Editar los ${cantidad} videos grabados en la visita de ${clienteNombre}.`,
-  };
-  const indicaciones = [
-    `Tarea creada automáticamente desde la visita #${visita.id}.`,
-    `Cantidad esperada: ${cantidad} videos.`,
-    "Revisar la carpeta completa, separar el material por pieza y pasar cada entrega a revisión.",
-  ].join("\n");
-  const result = await db.query(
-    `INSERT INTO tareas (
-       titulo, asignado_a, cliente_id, estado, propiedades_extra, fecha_vencimiento,
-       tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id
-     ) VALUES ($1, $9, $2, 'pendiente', $3::jsonb, $4, 'edicion', 'video', $5, $6, $7, $8)
-     ON CONFLICT ((propiedades_extra->>'origen_visita_id'))
-       WHERE propiedades_extra->>'workspace' = 'render_os'
-         AND propiedades_extra->>'origen_visita_id' IS NOT NULL
-     DO NOTHING
-     RETURNING id, revision, titulo, asignado_a, cliente_id, estado, requiere_aprobacion,
-       propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
-       historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones,
-       material_referencia, tarea_padre_id, created_at, updated_at`,
-    [
-      `${clienteNombre} | Edición de ${cantidad} video${cantidad === 1 ? "" : "s"}`,
-      visita.cliente_id || null,
-      JSON.stringify(propiedades),
-      visita.fecha_vencimiento || null,
-      visita.prioridad || "media",
-      indicaciones,
-      visita.material_referencia,
-      visita.id,
-      assignment.ownerName,
-    ],
-  );
-  if (result.rows[0]) await replaceTaskAssignments(db, result.rows[0].id, assignment);
-  return result.rows[0] || null;
-}
-
 router.patch("/tareas/:id", async (req, res, next) => {
   try {
     try { assertTaskBusinessInput(req.body); assertTaskCoordinationPatch(req.body); }
@@ -2875,12 +2824,12 @@ async function confirmProductionVisit(taskId, actor, { db = null, expectedRevisi
        prioridad,aclaraciones,material_referencia,tarea_padre_id,created_at,updated_at`,
       [task.id, JSON.stringify(properties)],
     );
-    const editingTask = await crearTareaEdicionDesdeVisita({ ...task, propiedades_extra: properties }, client);
     const [saved] = await annotateTaskAssignments(client, updated.rows);
-    const [editing] = editingTask ? await annotateTaskAssignments(client, [editingTask]) : [];
     if (ownsTransaction) await client.query("COMMIT");
-    if (ownsTransaction && editing) notificarAsignacionSinInterrumpir({ pool, tarea: editing, motivo: "creada", actor });
-    return { task: saved, editing_task: editing || null, created: Boolean(editing) };
+    // Confirmation records filming evidence only. Editors and deadlines are
+    // selected explicitly for each identified video in the shared registry.
+    // Keep the compatibility response shape, never create an aggregate task.
+    return { task: saved, editing_task: null, created: false };
   } catch (error) {
     if (ownsTransaction) await client.query("ROLLBACK").catch(() => {});
     throw error;

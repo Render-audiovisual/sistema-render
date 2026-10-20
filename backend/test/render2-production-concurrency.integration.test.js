@@ -6,7 +6,7 @@ import { startLocalHarness, request, fixturePassword } from '../scripts/render2-
 
 const ids = { owner: 96001, impostor: 96002, collaborator: 96003 };
 
-test('production HTTP CAS, stable membership and atomic aggregate editing handoff', {
+test('production HTTP CAS, stable membership and confirmation without implicit aggregate editing', {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 150000,
 }, async t => {
   const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -84,6 +84,31 @@ test('production HTTP CAS, stable membership and atomic aggregate editing handof
   const editing = id => fixture.query("SELECT * FROM tareas WHERE propiedades_extra->>'origen_visita_id'=$1 ORDER BY id", [String(id)]);
   const snapshot = async () => ({ tasks: await fixture.query('SELECT * FROM tareas ORDER BY id'),
     bindings: await fixture.query('SELECT * FROM tarea_asignaciones ORDER BY tarea_id,usuario_id') });
+  const confirmationOnly = async (id, before, result) => {
+    assert.equal(result.editing_task, null);
+    assert.equal(result.created, false);
+    assert.deepEqual(Object.keys(result).sort(), ['task', 'editing_task', 'created'].sort());
+    const after = await snapshot();
+    assert.deepEqual(after.bindings, before.bindings, 'Confirmation never creates or changes assignment bindings');
+    assert.equal(after.tasks.length, before.tasks.length, 'Confirmation never creates any task');
+    const previous = before.tasks.find(task => task.id === id), current = after.tasks.find(task => task.id === id);
+    assert.ok(previous && current);
+    assert.equal(current.revision, previous.revision + 1);
+    assert.equal(current.estado, 'en_revision');
+    const props = current.propiedades_extra;
+    assert.equal(props.produccion_esperando_confirmacion, false);
+    assert.ok(typeof props.produccion_confirmada_por === 'string' && props.produccion_confirmada_por.length > 0);
+    assert.equal(props.produccion_confirmada_por_id, 91001);
+    assert.ok(Number.isFinite(Date.parse(props.produccion_confirmada_at)));
+    assert.deepEqual(current, { ...previous, revision: previous.revision + 1, updated_at: current.updated_at,
+      estado: 'en_revision', propiedades_extra: { ...previous.propiedades_extra,
+        produccion_esperando_confirmacion: false, produccion_confirmada_por: props.produccion_confirmada_por,
+        produccion_confirmada_por_id: 91001, produccion_confirmada_at: props.produccion_confirmada_at,
+        mia_notificacion_pendiente: null, workspace: 'render_os' } }, 'Only source confirmation fields may change');
+    assert.deepEqual(after.tasks.map(task => task.id === id ? previous : task), before.tasks,
+      'Every other task, including existing aggregate children, remains byte-for-byte unchanged');
+    return after;
+  };
   const responseTask = (result, ownerId = ids.owner) => {
     assert.ok(Number.isSafeInteger(result.revision) && result.revision > 0, 'Response needs integer revision');
     assert.equal(result.asignado_a_id, ownerId);
@@ -163,7 +188,7 @@ test('production HTTP CAS, stable membership and atomic aggregate editing handof
       assert.deepEqual(await snapshot(), before);
     }
   });
-  await t.test('stale confirmation creates nothing; success makes one ID-bound aggregate task; retries do not duplicate', async () => {
+  await t.test('stale confirmation creates nothing; success updates only source without aggregate editing; retries do not duplicate', async () => {
     const id = await complete();
     const current = await detail(id);
     const before = await snapshot();
@@ -175,16 +200,23 @@ test('production HTTP CAS, stable membership and atomic aggregate editing handof
     responseTask(result.body.task);
     assert.equal(result.body.task.revision, current.revision + 1);
     assert.ok(result.body.task.propiedades_extra.produccion_confirmada_at);
-    assert.equal(result.body.created, true);
-    responseTask(result.body.editing_task, 91003);
-    const tasks = await editing(id);
-    assert.equal(tasks.length, 1);
-    assert.deepEqual(await fixture.query("SELECT usuario_id,tipo FROM tarea_asignaciones WHERE tarea_id=$1 ORDER BY usuario_id", [tasks[0].id]),
-      [{ usuario_id: 91003, tipo: 'responsable' }]);
-    const confirmed = await snapshot();
+    const confirmed = await confirmationOnly(id, before, result.body);
+    assert.deepEqual(await editing(id), []);
     assert.equal((await confirm(id, current.revision)).status, 409);
     assert.equal((await confirm(id, (await detail(id)).revision)).status, 409);
     assert.deepEqual(await snapshot(), confirmed);
+  });
+  await t.test('confirmation preserves an existing historical aggregate child and its assignments untouched', async () => {
+    const id = await complete();
+    const [child] = await fixture.query(`INSERT INTO tareas(titulo,asignado_a,cliente_id,estado,tipo_tarea,subtipo,propiedades_extra)
+      VALUES ('QA preserved historical aggregate child','Luciano QA',$1,'en_progreso','edicion','video',$2::jsonb) RETURNING id`,
+    [client.id, JSON.stringify({ workspace: 'render_os', origen_visita_id: String(id), historical_marker: { preserve: true } })]);
+    await fixture.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES ($1,91003,'responsable')", [child.id]);
+    const current = await detail(id), before = await snapshot();
+    const result = await confirm(id, current.revision);
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    await confirmationOnly(id, before, result.body);
+    assert.deepEqual(await editing(id), before.tasks.filter(task => task.id === child.id));
   });
   await t.test('correction of completed visit resets completion/confirmation and requires fresh completion before reconfirmation', async () => {
     const id = await complete();
@@ -202,9 +234,11 @@ test('production HTTP CAS, stable membership and atomic aggregate editing handof
     assert.deepEqual(await snapshot(), before);
     const finished = await add(id, owner, (await detail(id)).revision, 2);
     assert.equal(finished.status, 201, JSON.stringify(finished.body));
+    const beforeConfirmation = await snapshot();
     const confirmed = await confirm(id, finished.body.revision);
     assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
-    assert.equal((await editing(id)).length, 1, 'Reconfirmation keeps one aggregate editing task');
+    await confirmationOnly(id, beforeConfirmation, confirmed.body);
+    assert.deepEqual(await editing(id), [], 'Reconfirmation must not generate aggregate editing');
   });
   await t.test('finalized visit correction requires finalizer authority and clears approval including legacy review flags', async () => {
     const id = await complete();
@@ -243,7 +277,7 @@ test('production HTTP CAS, stable membership and atomic aggregate editing handof
     assert.equal(fixed.status, 200, JSON.stringify(fixed.body));
     cleared(fixed.body);
   });
-  await t.test('SQL failure during aggregate editing INSERT rolls back confirmation, revision and all bindings', async () => {
+  await t.test('confirmation succeeds with aggregate task INSERT forbidden, proving the retired creation path is not used', async () => {
     const id = await complete();
     const current = await detail(id);
     const before = await snapshot();
@@ -255,14 +289,14 @@ test('production HTTP CAS, stable membership and atomic aggregate editing handof
         FOR EACH ROW EXECUTE FUNCTION qa_production_edit_failure('${id}')`);
       try {
         const result = await confirm(id, current.revision);
-        assert.equal(result.status, 500, JSON.stringify(result.body));
-        assert.deepEqual(await snapshot(), before, 'Confirmation metadata and revision must roll back with failed editing creation');
+        assert.equal(result.status, 200, JSON.stringify(result.body));
+        await confirmationOnly(id, before, result.body);
         assert.deepEqual(await editing(id), []);
       } finally { await fixture.query('DROP TRIGGER qa_production_edit_failure ON tareas'); }
     } finally { await fixture.query('DROP FUNCTION qa_production_edit_failure()'); }
-    const retried = await confirm(id, current.revision);
-    assert.equal(retried.status, 200, JSON.stringify(retried.body));
-    assert.equal((await editing(id)).length, 1);
+    const committed = await snapshot();
+    assert.equal((await confirm(id, current.revision)).status, 409);
+    assert.deepEqual(await snapshot(), committed);
   });
   await t.test('signed Wilson audit failure rolls back token and callback writes; same token/revision retries exactly once', async () => {
     const id = await complete();
@@ -291,7 +325,7 @@ test('production HTTP CAS, stable membership and atomic aggregate editing handof
         const failed = await invoke();
         assert.equal(failed.status, 500, JSON.stringify(failed.body));
         assert.deepEqual(await tokenRows(), beforeToken, 'Consumed token must roll back after callback/audit failure');
-        assert.deepEqual(await snapshot(), before, 'Visit revision, confirmation, aggregate task and bindings must share the token transaction');
+        assert.deepEqual(await snapshot(), before, 'Source revision/confirmation must share the token transaction; no tasks or assignments may be added');
         assert.deepEqual(await editing(id), []);
         assert.deepEqual(await auditRows(), beforeAudit);
       } finally { await fixture.query('DROP TRIGGER qa_production_audit_failure ON integracion_auditoria'); }
@@ -301,9 +335,8 @@ test('production HTTP CAS, stable membership and atomic aggregate editing handof
     responseTask(retried.body.task);
     assert.equal(retried.body.task.revision, current.revision + 1);
     assert.ok(retried.body.task.propiedades_extra.produccion_confirmada_at);
-    assert.equal(retried.body.created, true);
-    responseTask(retried.body.editing_task, 91003);
-    assert.equal((await editing(id)).length, 1);
+    await confirmationOnly(id, before, retried.body);
+    assert.deepEqual(await editing(id), []);
     assert.ok((await tokenRows())[0].used_at);
     assert.equal((await auditRows()).length, beforeAudit.length + 1);
     const committed = await snapshot();

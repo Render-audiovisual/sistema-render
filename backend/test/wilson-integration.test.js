@@ -64,7 +64,8 @@ test("Mia convierte una grabación completa en un evento breve para líderes", (
     propiedades_extra: { mia_notificacion_pendiente: { tipo: "confirmar_grabacion", creado_en: "2026-08-13T10:00:00.000Z" } },
   });
   assert.equal(event.destination, "render_brain");
-  assert.match(event.text, /confirmar el traspaso a Edición/);
+  assert.match(event.text, /confirmar el registro/);
+  assert.match(event.text, /edición se asigna después por video desde Producciones/);
   assert.match(event.task_url, /task=42/);
 });
 
