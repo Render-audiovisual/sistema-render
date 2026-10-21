@@ -114,7 +114,7 @@ test('goals DTO exposes task concurrency tokens separately from goal piece versi
     if(sql.includes('FROM cliente_objetivo_piezas p JOIN')) {
       assert.match(sql,/LEFT JOIN tareas t ON t.id=p.tarea_id/);
       assert.match(sql,/t.revision tarea_revision,t.updated_at tarea_updated_at/);
-      return {rows:[{id:8,objetivo_id:90,tarea_id:100,estado:'aprobada',updated_at:pieceVersion,tarea_revision:7,tarea_updated_at:taskVersion}]};
+      return {rows:[{id:8,objetivo_id:90,tipo:'carrusel',numero:1,tarea_id:100,estado:'aprobada',updated_at:pieceVersion,tarea_revision:7,tarea_updated_at:taskVersion}]};
     }
     return {rows:[]};
   }};

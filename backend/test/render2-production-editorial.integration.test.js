@@ -28,15 +28,16 @@ test('production editorial: canonical delivery identity and atomic association',
     [id, `qa_editorial_${id}`, role]);
   const staff = await login('qa_editorial_101001');
   const impostor = await login('qa_editorial_101002');
-  const [client] = await fixture.query("INSERT INTO clientes(nombre) VALUES ('QA editorial client') RETURNING id");
+  const [client] = await fixture.query("INSERT INTO clientes(nombre,cuota_reels) VALUES ('QA editorial client',100) RETURNING id");
   const [other] = await fixture.query("INSERT INTO clientes(nombre) VALUES ('QA editorial other') RETURNING id");
   const [goal] = await fixture.query(`INSERT INTO cliente_objetivos_mensuales
     (clave,periodo,cliente_id,cuentas,nombre,reels,carruseles,preparado_por)
     VALUES ('qa-editorial','2026-10-01',$1,jsonb_build_array(jsonb_build_object('id',$1::int)),
-      'QA editorial goal',20,0,'fixture') RETURNING id`, [client.id]);
+      'QA editorial goal',100,0,'fixture') RETURNING id`, [client.id]);
   let number = 0;
   const seed = async ({ piece = true, clientId = client.id, type = 'video' } = {}) => {
     number++;
+    assert.ok(number<=100,'Association fixture slots must remain within its explicitly prepared quota');
     const publication = piece ? (await fixture.query(`INSERT INTO publicaciones
       (cliente_id,tipo,estado,fecha_programada,copy,metadata)
       VALUES ($1,$2,'pendiente','2026-10-29','QA slot copy','{"qa_history":"preserve"}') RETURNING *`, [clientId, type]))[0] : null;

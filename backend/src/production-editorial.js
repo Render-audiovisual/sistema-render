@@ -12,7 +12,8 @@ const period = value => typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.t
 const hidden = task => ['archivada_render_os', 'papelera_render_os'].some(key => [true, 'true'].includes(task?.propiedades_extra?.[key]));
 const usable = task => task && task.estado === 'pendiente' && task.propiedades_extra?.workspace === 'render_os'
   && !hidden(task) && !task.historia_id && task.tipo_tarea !== 'produccion';
-const SLOT = `SELECT s.*,o.clave,o.cuentas,to_char(o.periodo,'YYYY-MM') periodo
+const SLOT = `SELECT s.*,o.clave,o.cuentas,to_char(o.periodo,'YYYY-MM') periodo,
+  (s.numero <= CASE s.tipo WHEN 'video' THEN o.reels ELSE o.carruseles END) en_cuota
   FROM cliente_objetivo_piezas s JOIN cliente_objetivos_mensuales o ON o.id=s.objetivo_id`;
 const PUBLICATION = `SELECT p.*,to_char(p.fecha_programada,'YYYY-MM-DD') fecha_programada FROM publicaciones p`;
 
@@ -89,7 +90,7 @@ export async function lockProductionEditorialContext(db, visitId, videoId, selec
 }
 
 function compatibleSlot(slot, task, visit, month) {
-  if (!slot || slot.tipo !== 'video' || slot.estado !== 'pendiente' || slot.completada_at
+  if (!slot || slot.en_cuota !== true || slot.tipo !== 'video' || slot.estado !== 'pendiente' || slot.completada_at
     || slot.tarea_id !== task.id || slot.periodo !== month || slot.periodo < '2026-10'
     || !Array.isArray(slot.cuentas) || !slot.cuentas.some(account => account.id === visit.cliente_id)) throw fail('Cliente, mes, formato y tarea del casillero deben coincidir.');
 }
@@ -196,7 +197,7 @@ export async function productionEditorialCandidates(db, visitId, videoId, month)
         AND other.propiedades_extra->>'workspace'='render_os'
         AND other.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
         AND other.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true')=1
-      AND (s.id IS NULL OR (s.publicacion_id=p.id AND s.tarea_id=t.id AND s.tipo='video' AND s.estado='pendiente'
+      AND (s.id IS NULL OR (s.publicacion_id=p.id AND s.tarea_id=t.id AND s.tipo='video' AND s.numero<=o.reels AND s.estado='pendiente'
         AND s.completada_at IS NULL AND to_char(o.periodo,'YYYY-MM')=$2 AND o.cuentas @> $5::jsonb))
       AND NOT EXISTS(SELECT 1 FROM produccion_videos v WHERE v.id<>$6 AND
         (v.publicacion_id=p.id OR COALESCE(v.tarea_entrega_id,v.tarea_edicion_id)=t.id)) ORDER BY p.fecha_programada,p.id`,
@@ -204,7 +205,7 @@ export async function productionEditorialCandidates(db, visitId, videoId, month)
   const slots = (await db.query(`SELECT s.id objetivo_pieza_id,s.titulo,s.numero,to_char(o.periodo,'YYYY-MM') periodo,
     s.updated_at objetivo_updated_at,t.id tarea_id,t.revision tarea_revision FROM cliente_objetivo_piezas s
     JOIN cliente_objetivos_mensuales o ON o.id=s.objetivo_id JOIN tareas t ON t.id=s.tarea_id
-    WHERE s.tipo='video' AND s.estado='pendiente' AND s.completada_at IS NULL AND s.publicacion_id IS NULL
+    WHERE s.tipo='video' AND s.numero<=o.reels AND s.estado='pendiente' AND s.completada_at IS NULL AND s.publicacion_id IS NULL
       AND to_char(o.periodo,'YYYY-MM')=$1 AND o.cuentas @> $2::jsonb AND t.cliente_id=$3
       AND t.publicacion_id IS NULL AND t.historia_id IS NULL AND t.estado='pendiente'
       AND t.tipo_tarea IS DISTINCT FROM 'produccion' AND t.propiedades_extra->>'workspace'='render_os'

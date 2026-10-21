@@ -14,7 +14,7 @@ function fixture(options={}) {
   let visit={id:visitId,tarea_origen_id:10,cliente_id:1,cliente_nombre:'Cliente',fecha:'2026-10-20',revision:2,drive_url:'https://drive.test/material'};
   let task={id:20,cliente_id:1,publicacion_id:options.empty?null:30,historia_id:null,estado:'pendiente',revision:4,titulo:'Entrega canónica',fecha_vencimiento:'2026-12-01',tipo_tarea:'administracion',propiedades_extra:{workspace:'render_os',copy_trabajo:'COPY',origen_pieza:true,private_finance:'SECRET'}};
   let source={id:10,cliente_id:1,tipo_tarea:'produccion',titulo:'Visita',propiedades_extra:{workspace:'render_os',...(options.legacy?{produccion_registros:[{cantidad:3}]}:{})}};
-  let slot=options.noSlot?null:{id:40,tarea_id:20,publicacion_id:options.empty?null:30,estado:'pendiente',tipo:'video',periodo:'2026-10',clave:'cliente-1',cuentas:[{id:1}],updated_at:updated,copy:'COPY FROM SLOT',numero:1};
+  let slot=options.noSlot?null:{id:40,tarea_id:20,publicacion_id:options.empty?null:30,estado:'pendiente',tipo:'video',periodo:'2026-10',clave:'cliente-1',cuentas:[{id:1}],updated_at:updated,copy:'COPY FROM SLOT',numero:1,en_cuota:true};
   let publication=options.empty?null:{id:30,cliente_id:1,tipo:'video',estado:'pendiente',fecha_programada:'2026-10-30',updated_at:updated};
   let video={id:videoId,visita_id:visitId,video_origen_id:null,titulo:'Video filmado',guion:'NOT EDITORIAL COPY',estado:'grabado',material_url:'',observaciones:'',publicacion_id:options.linked?30:null,tarea_entrega_id:options.linked?20:null,cliente_editorial_id:options.linked?1:null,tarea_edicion_id:options.handed?20:null,editor_id:options.handed?7:null,fecha_entrega:options.handed?'2026-10-25':null};
   Object.assign(task,options.task);Object.assign(video,options.video);if(slot)Object.assign(slot,options.slot);if(publication)Object.assign(publication,options.publication);
@@ -107,6 +107,18 @@ test('exact existing and empty-slot retries ignore stale revisions without mutat
   const g=fixture({linked:true});assert.equal((await g.associate({...emptyBody,expected_revision:1},true)).created,false);
   await assert.rejects(g.associate({...emptyBody,fecha_programada:'2026-10-29'},true),e=>e.status===409);
 });
+test('quota reductions reject new editorial associations to extras without erasing existing links',async()=>{
+  for(const en_cuota of [false,undefined])for(const empty of [false,true]){
+    const f=fixture({empty,slot:{en_cuota}});
+    await assert.rejects(f.associate(empty?emptyBody:body,empty),e=>e.status===409);
+    assert.equal(f.video.publicacion_id,null);assert.equal(f.insertPublications,0);
+    assert.ok(!f.calls.some(c=>c.sql.startsWith('UPDATE')));
+  }
+  const existing=fixture({linked:true,slot:{en_cuota:false},task:{estado:'finalizada'},publication:{estado:'publicada'}});
+  assert.equal((await existing.associate()).created,false);
+  assert.equal(existing.video.publicacion_id,30);
+  assert.ok(!existing.calls.some(c=>c.sql.startsWith('UPDATE')));
+});
 test('conflicts fail closed for identity/client/state/format/period, duplicate tasks and ancestor chain',async()=>{
   for(const options of [{task:{cliente_id:2}},{task:{estado:'en_progreso'}},{task:{propiedades_extra:{workspace:'render_os',papelera_render_os:true}}},
     {publication:{tipo:'carrusel'}},{publication:{estado:'publicada'}},{publication:{fecha_programada:'2026-11-01'}},{slot:{cuentas:[{id:2}]}},
@@ -139,6 +151,8 @@ test('candidate reads expose current linkage after progress and conservative SQL
   const f=fixture();const result=await productionEditorialCandidates(f.db,visitId,videoId,'2026-10');assert.equal(result.publicaciones[0].publicacion_id,30);
   const sql=f.calls.find(c=>c.sql.startsWith('SELECT p.id publicacion_id')).sql;assert.match(sql,/count\(\*\)/);assert.match(sql,/to_char\(p.fecha_programada/);
   assert.doesNotMatch(sql,/to_char\(t.fecha_vencimiento/);
+  assert.match(sql,/s\.numero<=o\.reels/);
+  assert.match(f.calls.find(c=>c.sql.startsWith('SELECT s.id objetivo_pieza_id')).sql,/s\.numero<=o\.reels/);
   const g=fixture({linked:true,task:{estado:'finalizada'}});const current=await productionEditorialCandidates(g.db,visitId,videoId,'2026-10');
   assert.deepEqual(current,{actual:{publicacion_id:30,tarea_entrega_id:20,objetivo_pieza_id:40},publicaciones:[],casilleros:[]});
 });

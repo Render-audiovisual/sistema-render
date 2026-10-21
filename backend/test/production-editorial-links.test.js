@@ -154,7 +154,7 @@ function mockLink({ oldPublication = 10, incomingPublication = null } = {}) {
     publicacion_id: incomingPublication, updated_at: stamp, periodo_trabajo: '2026-10',
     propiedades_extra: { workspace: 'render_os' } };
   const piece = { id: 1, objetivo_id: 1, tarea_id: 1, publicacion_id: oldPublication, tipo: 'video', numero: 1,
-    periodo: '2026-10', cuentas: [{ id: 1 }], estado: 'pendiente', updated_at: stamp };
+    periodo: '2026-10', cuentas: [{ id: 1 }], reels: 1, carruseles: 0, estado: 'pendiente', updated_at: stamp };
   const db = { async connect() { return db; }, release() { calls.push({ sql: 'RELEASE' }); },
     async query(statement, params = []) {
       calls.push({ sql: statement, params });

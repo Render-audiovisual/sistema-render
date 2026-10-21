@@ -3,13 +3,16 @@ import { requireRole } from './auth.js';
 import { replaceTaskAssignments } from './task-assignments.js';
 import { isTaskFinalized } from './workflow-contract.js';
 import { buildTaskAccessClause } from './task-access.js';
+import { lockClientAdministration } from './client-agreement.js';
+import { GOAL_QUOTA_SOURCE, assertQuotaRevision, goalPieceInQuota, goalQuotaObservation, lockGoalQuotaReviewer, reviewGoalQuota } from './goal-quota-review.js';
 
 export const GOALS_START_PERIOD = '2026-10';
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 
 export function goalPeriod(value) {
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(value || ''))) throw fail('Elegí un mes válido.');
-  return String(value);
+  if (typeof value !== 'string' || value.length !== 7 || value.startsWith('0000-')
+    || !/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) throw fail('Elegí un mes válido.');
+  return value;
 }
 
 export function goalClients(rows) {
@@ -22,8 +25,12 @@ export function goalClients(rows) {
         reels: Number(row.grupo_feed_id ? row.cuota_feed_reels : row.cuota_reels) || 0,
         carruseles: Number(row.grupo_feed_id ? row.cuota_feed_carruseles : row.cuota_carruseles) || 0, cuentas: [] };
       groups.set(key, group);
+      Object.defineProperty(group, GOAL_QUOTA_SOURCE, { value: [] });
     }
     group.cuentas.push({ id: row.id, nombre: row.nombre });
+    group[GOAL_QUOTA_SOURCE].push([row.id,row.agreement_version ?? null,row.grupo_feed_id ?? null,
+      row.feed_agreement_version ?? null,row.cuota_reels ?? null,row.cuota_carruseles ?? null,
+      row.cuota_feed_reels ?? null,row.cuota_feed_carruseles ?? null]);
   }
   return [...groups.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 }
@@ -54,6 +61,7 @@ export async function loadGoalClients(db, period) {
   const result = await db.query(`SELECT c.id,c.nombre,c.grupo_feed_id,gf.nombre grupo_feed_nombre,
     COALESCE(cfg.cuota_reels,c.cuota_reels,0) cuota_reels,
     COALESCE(cfg.cuota_carruseles,c.cuota_carruseles,0) cuota_carruseles,
+    c.agreement_version,gf.agreement_version feed_agreement_version,
     gf.cuota_reels cuota_feed_reels,gf.cuota_carruseles cuota_feed_carruseles
     FROM clientes c LEFT JOIN grupos_feed gf ON gf.id=c.grupo_feed_id
     LEFT JOIN LATERAL (SELECT cuota_reels,cuota_carruseles FROM cliente_configuraciones cc
@@ -67,11 +75,25 @@ export async function loadGoalClients(db, period) {
 }
 
 export async function readGoals(db, period) {
+  if (typeof db.connect === 'function' && typeof db.release !== 'function') {
+    const client = await db.connect();
+    let discard;
+    try {
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const value = await readGoals(client, period);
+      await client.query('COMMIT');
+      return value;
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch (rollbackError) { discard = rollbackError; }
+      throw error;
+    } finally { client.release(discard); }
+  }
   const clients = await loadGoalClients(db, period);
+  const currentClients = new Map(clients.map(client => [client.clave,client]));
   const objectives = await db.query(`SELECT id,clave,nombre,cuentas,reels,carruseles,
     to_char(periodo,'YYYY-MM') periodo FROM cliente_objetivos_mensuales WHERE periodo=$1::date`, [`${period}-01`]);
   const pieces = await db.query(`SELECT p.id,p.objetivo_id,p.tipo,p.numero,p.tarea_id,p.publicacion_id,p.titulo,p.copy,
-    p.responsables,p.estado,p.completada_at,p.updated_at,
+    p.responsables,p.estado,p.completada_at,p.updated_at,p.updated_at::text quota_piece_version,
     t.revision tarea_revision,t.updated_at tarea_updated_at
     FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id
     LEFT JOIN tareas t ON t.id=p.tarea_id
@@ -84,14 +106,24 @@ export async function readGoals(db, period) {
   const accountAssignments = await loadGoalAccountAssignments(db, clients);
   return { periodo: period, inicio_seguimiento: GOALS_START_PERIOD, clientes: clients.map(client => {
     const stored = byKey.get(client.clave);
+    const observedPieces = stored ? pieces.rows.filter(piece => piece.objetivo_id === stored.id) : [];
+    const quota = goalQuotaObservation(currentClients.get(client.clave), stored, observedPieces, period);
     return { ...client, ...(stored || {}), preparado: Boolean(stored), responsables_por_formato: assignments.get(client.clave),
       responsables_por_cuenta: accountAssignments.get(client.clave) || {},
-      piezas: stored ? pieces.rows.filter(piece => piece.objetivo_id === stored.id) : [] };
+      cuota_actual: quota.current, cuota_desactualizada: quota.drift, cuota_revision: stored && quota.current ? quota.revision : null,
+      piezas: observedPieces.map(piece => {
+        const { quota_piece_version, ...publicPiece } = piece;
+        return { ...publicPiece, en_cuota: goalPieceInQuota(piece, stored) };
+      }) };
   }) };
 }
 
-export async function prepareGoal(pool, { period, key, responsibleIds, responsibleByType, responsibleByAccount, actor, persistResponsibles = false }) {
+export async function prepareGoal(pool, { period, key, responsibleIds, responsibleByType, responsibleByAccount, actor, persistResponsibles = false, quotaReview }) {
   goalPeriod(period);
+  if (quotaReview !== undefined && (typeof key !== 'string'
+    || !/^(?:cliente|grupo)-[1-9]\d*$/.test(key) || /\s/.test(key)
+    || !Number.isSafeInteger(Number(key.slice(key.indexOf('-') + 1)))
+    || Number(key.slice(key.indexOf('-') + 1)) > 2147483647)) throw fail('Clave de objetivo no válida.');
   if (period < GOALS_START_PERIOD) throw fail('El nuevo seguimiento comienza en octubre de 2026. El historial anterior no se modifica.');
   if (!Array.isArray(responsibleIds) || !responsibleIds.length || responsibleIds.length > 20 ||
     responsibleIds.some(id => !Number.isSafeInteger(id) || id <= 0)) throw fail('Elegí al menos un responsable para las tareas nuevas.');
@@ -104,8 +136,16 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
     throw fail('Revisá los responsables de carruseles de cada cuenta.');
   }
   const db = await pool.connect();
+  let discard;
   try {
     await db.query('BEGIN');
+    let reviewer;
+    if (quotaReview !== undefined) {
+      assertQuotaRevision(quotaReview?.expected);
+      reviewer = await lockGoalQuotaReviewer(db, quotaReview?.auth);
+    }
+    await lockClientAdministration(db);
+    await db.query("SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
     // Serializa preparaciones simultáneas del mismo feed/mes sin duplicar tareas.
     await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`objetivo:${period}:${key}`]);
     const client = (await loadGoalClients(db, period)).find(item => item.clave === key);
@@ -148,6 +188,19 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
     }
     const existing = await db.query(`SELECT * FROM cliente_objetivos_mensuales WHERE clave=$1 AND periodo=$2::date FOR UPDATE`, [key, `${period}-01`]);
     let objective = existing.rows[0];
+    if (objective) {
+      if (quotaReview !== undefined) {
+        const discovered = (await db.query('SELECT id,tarea_id FROM cliente_objetivo_piezas WHERE objetivo_id=$1 ORDER BY id', [objective.id])).rows;
+        const taskIds = [...new Set(discovered.map(piece => piece.tarea_id).filter(id => Number.isSafeInteger(id) && id > 0))].sort((a,b) => a-b);
+        if (taskIds.length) await db.query('SELECT id FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE', [taskIds]);
+        if (discovered.length) await db.query('SELECT id FROM cliente_objetivo_piezas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE', [discovered.map(piece => piece.id)]);
+        const pieces = (await db.query(`SELECT p.id,p.tipo,p.numero,p.tarea_id,p.publicacion_id,p.updated_at,p.updated_at::text quota_piece_version,p.estado,p.completada_at,t.revision tarea_revision
+          FROM cliente_objetivo_piezas p LEFT JOIN tareas t ON t.id=p.tarea_id WHERE p.objetivo_id=$1 ORDER BY p.id`, [objective.id])).rows;
+        objective = await reviewGoalQuota(db, { client, objective, pieces, period, expected: quotaReview.expected, actorId: reviewer.id });
+      } else if (goalQuotaObservation(client, objective, [], period).drift) {
+        throw fail('Las cuotas del objetivo cambiaron. Administración debe reconciliarlas explícitamente.', 409);
+      }
+    } else if (quotaReview !== undefined) throw fail('Prepará el objetivo antes de reconciliar sus cuotas.', 409);
     if (!objective) {
       const inserted = await db.query(`INSERT INTO cliente_objetivos_mensuales
         (clave,periodo,cliente_id,nombre,cuentas,reels,carruseles,preparado_por)
@@ -221,8 +274,10 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
     }
     await db.query('COMMIT');
     return { creadas: created, vinculadas: reused, objetivo_id: objective.id };
-  } catch (error) { await db.query('ROLLBACK'); throw error; }
-  finally { db.release(); }
+  } catch (error) {
+    try { await db.query('ROLLBACK'); } catch (rollbackError) { discard = rollbackError; }
+    throw error;
+  } finally { db.release(discard); }
 }
 
 export async function inheritedGoalResponsibles(db, client, period) {
@@ -283,7 +338,14 @@ export async function reconcileMonthlyGoals(pool, period) {
   const clients = await loadGoalClients(pool, period);
   const assignments = await loadGoalAssignments(pool, clients, period);
   for (const client of clients) {
-    if (!client.reels && !client.carruseles) continue;
+    if (!client.reels && !client.carruseles) {
+      const stored = (await pool.query(`SELECT reels,carruseles,cuentas FROM cliente_objetivos_mensuales
+        WHERE clave=$1 AND periodo=$2::date`, [client.clave,`${period}-01`])).rows[0];
+      if (stored && goalQuotaObservation(client,stored,[],period).drift) {
+        result.pendientes.push({ clave:client.clave, motivo:'Las cuotas del objetivo cambiaron. Administración debe reconciliarlas explícitamente.' });
+      }
+      continue;
+    }
     try {
       const byType = assignments.get(client.clave);
       const missing = [['video',client.reels],['carrusel',client.carruseles]].filter(([type, quota]) => quota > 0 && !byType[type].length);
@@ -379,8 +441,8 @@ export async function goalLinkOptions(db, taskId, period) {
   const slots = objective ? (await db.query(`SELECT p.id,p.tipo,p.numero,p.tarea_id,p.publicacion_id,p.titulo,p.estado,p.updated_at
     FROM cliente_objetivo_piezas p LEFT JOIN publicaciones pub ON pub.id=p.publicacion_id
     WHERE p.objetivo_id=$1 AND p.tipo=$2 AND p.estado='pendiente' AND p.completada_at IS NULL
-      AND (p.publicacion_id IS NULL OR pub.estado='pendiente') ORDER BY p.numero`,
-  [objective.id, task.formato_objetivo])).rows : [];
+      AND p.numero <= $3 AND (p.publicacion_id IS NULL OR pub.estado='pendiente') ORDER BY p.numero`,
+  [objective.id, task.formato_objetivo,task.formato_objetivo === 'video' ? objective.reels : objective.carruseles])).rows : [];
   return { tarea: { id: task.id, titulo: task.titulo, estado: task.estado, tipo: task.formato_objetivo,
     revision: task.revision, updated_at: task.updated_at }, vinculo_actual: linked, objetivo: objective, casilleros: slots };
 }
@@ -404,9 +466,10 @@ export async function linkGoalTask(pool, pieceId, body, actor) {
     await db.query(`SELECT p.id FROM publicaciones p WHERE p.id=$2 OR p.id IN
       (SELECT publicacion_id FROM tareas WHERE id=$1) ORDER BY p.id FOR UPDATE`, [body.tarea_id,before.publicacion_id]);
     const task = await goalLinkTask(db, body.tarea_id);
-    const piece = (await db.query(`SELECT p.*,to_char(o.periodo,'YYYY-MM') periodo,o.cuentas
+    const piece = (await db.query(`SELECT p.*,to_char(o.periodo,'YYYY-MM') periodo,o.cuentas,o.reels,o.carruseles
       FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id
       WHERE p.id=$1 FOR UPDATE OF p`, [pieceId])).rows[0];
+    if (!piece || !goalPieceInQuota(piece, piece)) throw fail('El casillero está fuera de la cuota actual.',409);
     if (!sameVersion(task.updated_at, body.expected_tarea_updated_at) ||
       !sameVersion(piece.updated_at, body.expected_pieza_updated_at) || before.tarea_id !== piece.tarea_id ||
       before.publicacion_id !== piece.publicacion_id) {
@@ -441,7 +504,8 @@ export async function linkGoalTask(pool, pieceId, body, actor) {
     if (piece.estado !== task.estado) await db.query(`INSERT INTO cliente_objetivo_eventos
       (pieza_id,estado_anterior,estado_nuevo,tarea_id) VALUES($1,$2,$3,$4)`, [pieceId,piece.estado,task.estado,task.id]);
     const count = (await db.query(`SELECT count(*) FILTER(WHERE estado IN ('finalizada','publicada'))::int completadas,count(*)::int total
-      FROM cliente_objetivo_piezas WHERE objetivo_id=$1 AND tipo=$2`, [piece.objetivo_id,piece.tipo])).rows[0];
+      FROM cliente_objetivo_piezas WHERE objetivo_id=$1 AND tipo=$2 AND numero <= $3`,
+    [piece.objetivo_id,piece.tipo,piece.tipo === 'video' ? piece.reels : piece.carruseles])).rows[0];
     await db.query('COMMIT');
     return { pieza_id:pieceId, tarea_id:task.id, tarea_anterior_id:piece.tarea_id,
       publicacion_anterior_id:piece.publicacion_id, periodo:piece.periodo,
@@ -481,6 +545,19 @@ export function createClientGoalsRouter({ pool }) {
       responsibleByAccount:req.body.responsables_por_cuenta,
       persistResponsibles:true, actor: req.auth.nombre || req.auth.usuario })); }
     catch (error) { if (error.status) return res.status(error.status).json({ error: error.message }); next(error); }
+  });
+  router.post('/reconciliar', requireRole('admin'), async (req, res, next) => {
+    try {
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)
+        || Object.keys(req.body).some(key => !['periodo','clave','responsables','responsables_por_formato','responsables_por_cuenta','expected_quota_revision'].includes(key))) {
+        throw fail('Campos de reconciliación no válidos.');
+      }
+      res.json(await prepareGoal(pool, { period: req.body.periodo, key: req.body.clave,
+        responsibleIds: req.body.responsables, responsibleByType: req.body.responsables_por_formato,
+        responsibleByAccount: req.body.responsables_por_cuenta, persistResponsibles: true,
+        actor: req.auth.nombre || req.auth.usuario,
+        quotaReview: { expected: req.body.expected_quota_revision, auth: req.auth } }));
+    } catch (error) { if (error.status) return res.status(error.status).json({ error: error.message }); next(error); }
   });
   return router;
 }

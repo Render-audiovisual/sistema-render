@@ -5,6 +5,7 @@ import ts from 'typescript';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { createSessionView, sessionViewInputs } from '../shared/session/session-view.js';
+import { verifiedGoalPreparationAck } from './clientGoalQuota.js';
 
 // Execute the actual hook/callback source with injected effects, not mounted React.
 const source = readFileSync(new URL('./ClientesObjetivos.jsx', import.meta.url), 'utf8');
@@ -161,7 +162,7 @@ test('actual dirty modal close and cancel share discard checks; pending operatio
 test('preparation serializes original body, validates ACK and ignores account-switch success', async () => {
   const wait = deferred(), f = fixture(() => wait.promise), effects = [];
   const deps = { capture: f.capture, captureLifetime: f.captureLifetime, pending: { current: false }, period: '2026-10', client: { clave: 'cliente-9' },
-    formats: { video: [7], carrusel: [8] }, shared: false, accounts: {}, goalId, isSessionFailure,
+    formats: { video: [7], carrusel: [8] }, shared: false, accounts: {}, goalId, isSessionFailure, reconciling:false, reviewBlocked:{current:false}, verifiedGoalPreparationAck,
     setBusy: value => effects.push(['busy', value]), setError: value => effects.push(['error', value]), saved: value => effects.push(['saved', value]) };
   const submit = callback('PrepareGoal', 'submit', deps), event = { preventDefault() {} };
   const promise = submit(event); await submit(event); assert.equal(f.calls.length, 1);
