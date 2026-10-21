@@ -19,6 +19,16 @@ test('legacy clones yield identical complete primitive memo inputs without makin
     { ...session, usuario: { ...session.usuario, id: 8 } }, { ...session, usuario: { ...session.usuario, activo: true } }])
     assert.notEqual(sessionViewKey(changed), before.key);
 });
+test('legacy presentation keys never expose credentials and account ABA gets a fresh observation', () => {
+  const a = { token: 'SECRET_FIXTURE_NOT_A_RENDER_KEY', usuario: { id: 1, rol: 'admin' } };
+  const first = sessionViewKey(a);
+  assert.match(first, /^bearer-observation:\d+$/);
+  assert.equal(first.includes(a.token), false);
+  assert.equal(sessionViewKey(structuredClone(a)), first);
+  sessionViewKey({ ...a, token: 'OTHER_SECRET_FIXTURE' });
+  const returned = sessionViewKey(a); assert.notEqual(returned, first);
+  sessionViewKey(null); assert.notEqual(sessionViewKey(a), returned);
+});
 test('cookie view preserves exact DTO ownership; copied/expired observations cannot render as current', () => {
   const store = createBrowserSessionState(); install(store);
   const session = store.getSession(), inputs = sessionViewInputs(session), view = createSessionView(inputs);

@@ -123,7 +123,10 @@ test('UI requests bounded report DTO and does not use local identities, name mat
   assert.match(source, /new URLSearchParams\(\{ desde: range.desde, hasta: range.hasta/);
   assert.match(source, /data\?\.producciones/);
   assert.match(source, /Histórico · Filmaciones agregadas/);
-  assert.doesNotMatch(source, /belongsToPerson|nombrePropio|getSesion|OBJETIVOS_MENSUALES_EQUIPO|getDesignerCarouselTaskSummary|groupProductionByClient|mergeReportTaskSources/);
+  assert.doesNotMatch(source, /belongsToPerson|nombrePropio|OBJETIVOS_MENSUALES_EQUIPO|getDesignerCarouselTaskSummary|groupProductionByClient|mergeReportTaskSources/);
+  assert.match(source, /useSessionView\(getSesion\(\)\)/);
+  assert.match(source, /createReportLoader\(\{ session, readSession: getSesion/);
+  assert.match(source, /loader.current\(\) && payload/);
   assert.doesNotMatch(source, /data\?\.(finance|sueldos|contratos)|\/api\/(sueldos|contratos)/);
 });
 

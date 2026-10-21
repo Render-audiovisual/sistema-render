@@ -28,14 +28,12 @@ export async function loadProductionReport(db, range) {
     WHERE v.fecha >= $1::date AND v.fecha < $2::date ORDER BY v.fecha,v.id`, [range.desde, range.hasta])).rows;
   if (!visits.length) return { ...range, visitas: [] };
   const ids = visits.map(visit => visit.id);
-  const [videos, photos] = await Promise.all([
-    db.query(`SELECT pv.id,pv.visita_id,pv.titulo,pv.estado,pv.tarea_edicion_id,t.estado tarea_estado,
+  const videos = await db.query(`SELECT pv.id,pv.visita_id,pv.titulo,pv.estado,pv.tarea_edicion_id,t.estado tarea_estado,
       (SELECT a.usuario_id FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.tipo='responsable' ORDER BY a.usuario_id LIMIT 1) editor_actual_id,
       to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_entrega_actual
       FROM produccion_videos pv LEFT JOIN tareas t ON t.id=pv.tarea_edicion_id
-      WHERE pv.visita_id=ANY($1::uuid[]) ORDER BY pv.created_at,pv.id`, [ids]),
-    db.query('SELECT id,visita_id,tipo,estado FROM produccion_fotos WHERE visita_id=ANY($1::uuid[]) ORDER BY created_at,id', [ids]),
-  ]);
+      WHERE pv.visita_id=ANY($1::uuid[]) ORDER BY pv.created_at,pv.id`, [ids]);
+  const photos = await db.query('SELECT id,visita_id,tipo,estado FROM produccion_fotos WHERE visita_id=ANY($1::uuid[]) ORDER BY created_at,id', [ids]);
   return { ...range, visitas: visits.map(visit => ({
     id: visit.id, tarea_origen_id: visit.tarea_origen_id, cliente_id: visit.cliente_id,
     cliente_nombre: visit.cliente_nombre, fecha: visit.fecha, titulo: visit.titulo,

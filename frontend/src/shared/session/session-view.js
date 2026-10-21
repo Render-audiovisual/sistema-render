@@ -2,14 +2,24 @@ import { captureSessionBinding } from './session-binding.js';
 
 const cookieViews = new WeakMap();
 let serial = 0;
+let bearerObservation = null;
 function viewKey(binding, session) {
-  if (!binding) return null;
+  if (!binding) { bearerObservation = null; return null; }
   if (binding.mode === 'cookie') {
+    bearerObservation = null;
     if (!cookieViews.has(session)) cookieViews.set(session, `cookie-observation:${++serial}`);
     return cookieViews.get(session);
   }
-  // Legacy-only private render key, as before. Never render/log it or persist it.
-  return JSON.stringify(['bearer', typeof binding.id, binding.id, binding.role, typeof binding.active, binding.active, binding.token]);
+  // Keys can appear in React diagnostics. Keep only the current comparison in
+  // memory and expose an opaque counter, never a serialized credential. Exact
+  // clones remain stable; a changed/returned observation receives a new key.
+  const previous = bearerObservation;
+  if (!previous || previous.id !== binding.id || previous.role !== binding.role
+    || previous.active !== binding.active || previous.token !== binding.token) {
+    bearerObservation = { id: binding.id, role: binding.role, active: binding.active,
+      token: binding.token, key: `bearer-observation:${++serial}` };
+  }
+  return bearerObservation.key;
 }
 export function sessionViewKey(session) { return viewKey(captureSessionBinding(session), session); }
 

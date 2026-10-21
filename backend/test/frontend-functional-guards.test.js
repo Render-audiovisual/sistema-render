@@ -266,7 +266,11 @@ test("el reporte conserva formatos y piezas personales por ID sin inferir public
 test("el reporte se actualiza al volver a la pestaña y periódicamente", () => {
   const reportesSource = readFileSync(new URL("../../frontend/src/pages/Reportes.jsx", import.meta.url), "utf8");
   assert.match(reportesSource, /new URLSearchParams\(\{ desde: range.desde, hasta: range.hasta/);
-  assert.match(reportesSource, /fetch\(['"]\/api\/reportes\/datos\?/);
+  assert.match(reportesSource, /createReportLoader\(\{ session, readSession: getSesion/);
+  assert.match(reportesSource, /await loader.load\(query\)/);
+  const reportLoaderSource = readFileSync(new URL('../../frontend/src/shared/reports/report-loader.js', import.meta.url), 'utf8');
+  assert.match(reportLoaderSource, /scope.request\('\/api\/reportes\/datos\?/);
+  assert.match(reportesSource, /observation\?\.context === context \? observation.data : null/);
   assert.match(reportesSource, /setInterval\(refresh, 30000\)/);
   assert.match(reportesSource, /addEventListener\(['"]focus['"], refresh\)/);
   assert.match(reportesSource, /addEventListener\(['"]visibilitychange['"], refresh\)/);

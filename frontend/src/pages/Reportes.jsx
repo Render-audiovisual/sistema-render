@@ -1,5 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { getHoyLocalISO } from '../utils.jsx';
+import React, { useEffect, useRef, useState } from 'react';
+import { getHoyLocalISO, getSesion } from '../utils.jsx';
+import { useSessionView } from '../shared/session/use-session-view.js';
+import { createReportLoader } from '../shared/reports/report-loader.js';
+import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { ROL_LABELS } from '../constants.js';
 import { getReportPeriodRange } from '../shared/reports/report-utils.js';
 import { pushUrlContext, readUrlContext, replaceUrlContext } from '../shared/navigation/url-context.js';
@@ -37,13 +40,21 @@ function PersonDetails({ person, tasks, data, range }) {
   </section>;
 }
 export function ReportesEquipoPage() {
+  const view = useSessionView(getSesion()), identity = useRef({ view, epoch: 0 });
+  if (identity.current.view !== view) identity.current = { view, epoch: identity.current.epoch + 1 };
+  return <ReportesContent key={identity.current.epoch} session={view.session}/>;
+}
+function ReportesContent({ session }) {
   const [period, setPeriod] = useState(initialPeriod);
-  const [data, setData] = useState(null);
+  const [observation, setObservation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [today, setToday] = useState(getHoyLocalISO);
   const [selectedPerson, setSelectedPerson] = useState(null);
   const range = getReportPeriodRange(period, new Date(today + 'T12:00:00'));
+  const context = JSON.stringify([period, today, range.desde, range.hasta]);
+  // Do not render an old period's data during the render before effect cleanup.
+  const data = observation?.context === context ? observation.data : null;
   useEffect(() => { replaceUrlContext({ periodo: period }); }, [period]);
   useEffect(() => {
     const restore = () => setPeriod(initialPeriod());
@@ -52,21 +63,19 @@ export function ReportesEquipoPage() {
   }, []);
   useEffect(() => {
     let active = true, fetching = false;
-    const abort = new AbortController();
+    const loader = createReportLoader({ session, readSession: getSesion, request: apiRequest, isActive: () => active });
     const load = async (silent = false) => {
       if (fetching) return;
       fetching = true;
-      if (!silent) { setLoading(true); setData(null); }
+      if (!silent) { setLoading(true); setObservation(null); setError(''); }
       const query = new URLSearchParams({ desde: range.desde, hasta: range.hasta,
         mes_configuracion: period === 'mes_pasado' ? range.desde.slice(0, 7) : today.slice(0, 7) });
       try {
-        const response = await fetch('/api/reportes/datos?' + query, { cache: 'no-store', signal: abort.signal });
-        if (!response.ok) throw new Error('No se pudieron cargar los reportes.');
-        const payload = await response.json();
-        if (active) { setData(payload); setError(''); }
+        const payload = await loader.load(query);
+        if (active && loader.current() && payload) { setObservation({ context, data: payload }); setError(''); }
       } catch (reason) {
-        if (active && reason.name !== 'AbortError') setError('No se pudieron actualizar los reportes. Los datos anteriores pueden estar desactualizados.');
-      } finally { fetching = false; if (active) setLoading(false); }
+        if (active && loader.current() && reason.name !== 'AbortError') setError('No se pudieron actualizar los reportes. Los datos anteriores pueden estar desactualizados.');
+      } finally { fetching = false; if (active && loader.current()) setLoading(false); }
     };
     const refresh = () => {
       const next = getHoyLocalISO();
@@ -77,8 +86,8 @@ export function ReportesEquipoPage() {
     const timer = window.setInterval(refresh, 30000);
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
-    return () => { active = false; abort.abort(); window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
-  }, [period, range.desde, range.hasta, today]);
+    return () => { active = false; loader.cancel(); window.clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, [session, period, range.desde, range.hasta, today, context]);
   const tasks = uniqueReportTasks(data?.tareas, data?.tareasRenderOs);
   const employees = buildEmployeeReport(data?.usuarios, tasks, range, today);
   const production = buildProductionRegistryReport(data?.producciones, data?.usuarios, range);

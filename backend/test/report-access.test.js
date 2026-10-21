@@ -91,9 +91,11 @@ test("el resumen compartido expone solo totales diarios y no detalles de tareas"
 });
 
 test("el reporte obtiene la cuota compartida desde grupos_feed", () => {
-  assert.match(serverSource, /gf\.cuota_carruseles AS cuota_feed_carruseles/);
-  assert.match(serverSource, /LEFT JOIN grupos_feed gf ON gf\.id=c\.grupo_feed_id/);
-  assert.doesNotMatch(serverSource, /SELECT id,nombre,cuota_carruseles,cuota_feed_carruseles,grupo_feed_id FROM clientes/);
+  const snapshotSource = readFileSync(new URL('../src/report-snapshot.js', import.meta.url), 'utf8');
+  assert.match(serverSource, /res.json\(await loadReportSnapshot\(pool, req.auth, req.query\)\)/);
+  assert.match(snapshotSource, /gf\.cuota_carruseles AS cuota_feed_carruseles/);
+  assert.match(snapshotSource, /LEFT JOIN grupos_feed gf ON gf\.id=c\.grupo_feed_id/);
+  assert.doesNotMatch(snapshotSource, /SELECT id,nombre,cuota_carruseles,cuota_feed_carruseles,grupo_feed_id FROM clientes/);
 });
 
 test('task/user identity survives rename and rejects homonyms, display aliases and historical labels', () => {

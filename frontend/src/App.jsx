@@ -41,6 +41,13 @@ export function App() {
   const sesion = sessionSnapshot.session;
   const legacyDestination = canonicalLegacyRoute(route);
   const sessionKey = sessionViewKey(sesion);
+  // Session comparison may contain credentials in the legacy bearer adapter.
+  // Never hand that value to React keys (which can appear in diagnostics).
+  const renderIdentity = React.useRef({ observed: sessionKey, epoch: 0 });
+  if (renderIdentity.current.observed !== sessionKey) {
+    renderIdentity.current = { observed: sessionKey, epoch: renderIdentity.current.epoch + 1 };
+  }
+  const sessionRenderEpoch = renderIdentity.current.epoch;
 
   React.useEffect(() => {
     const syncPath = () => setRoute(readRouteKey(window));
@@ -163,11 +170,11 @@ export function App() {
     return null;
   }
 
-  const loadedDashboard = <React.Suspense key={sessionKey} fallback={<RouteLoading />}>{dashboard}</React.Suspense>;
+  const loadedDashboard = <React.Suspense key={`dashboard:${sessionRenderEpoch}`} fallback={<RouteLoading />}>{dashboard}</React.Suspense>;
 
   return (
     <>
-      <Sidebar key={sessionKey} path={path} search={window.location.search} sesion={sesion} onNavigate={navigate} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
+      <Sidebar key={`sidebar:${sessionRenderEpoch}`} path={path} search={window.location.search} sesion={sesion} onNavigate={navigate} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
       {loadedDashboard}
     </>
   );

@@ -50,8 +50,11 @@ test('actual App handles pending/error before auth redirects and remounts operat
   assert.match(source, /sessionSnapshot.status === 'error' && path !== '\/login'/);
   assert.match(source, /<LoginPage key=\{route\} sessionPending=\{sessionSnapshot.status === 'loading'\}/);
   assert.match(source, /role="alert"/);
-  assert.match(source, /<React.Suspense key=\{sessionKey\} fallback=\{<RouteLoading \/>\}>\{dashboard\}/);
-  assert.match(source, /<Sidebar key=\{sessionKey\}/);
+  assert.match(source, /renderIdentity.current.observed !== sessionKey/);
+  assert.match(source, /epoch: renderIdentity.current.epoch \+ 1/);
+  assert.match(source, /<React.Suspense key=\{`dashboard:\$\{sessionRenderEpoch\}`\} fallback=\{<RouteLoading \/>\}>\{dashboard\}/);
+  assert.match(source, /<Sidebar key=\{`sidebar:\$\{sessionRenderEpoch\}`\}/);
+  assert.doesNotMatch(source, /key=\{sessionKey\}/);
   assert.doesNotMatch(source, /getSesion\(\)|sessionToken/);
 });
 test('actual utility bridge uses exact runtime DTO and denies local writes in browser mode (source)', () => {
