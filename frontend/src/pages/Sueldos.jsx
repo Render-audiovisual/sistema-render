@@ -208,29 +208,29 @@ function SueldosContent({ sesion }) {
       <section className="finance-billing-hero"><div><span>INGRESOS ESPERADOS</span><small>{labelPeriod(period)} · trabajo de {labelPeriod(finance.workPeriod)}</small><strong>{ars.format(finance.facturacion)}</strong><p>Estimación por contratos a mes vencido; no confirma facturas emitidas ni cobros.{facturacionVariation ? ` Variación contra el mes anterior: ${facturacionVariation.percent}%.` : ""}</p></div><b>Mes vencido · estimado</b></section>
 
       <section className="finance-metrics" aria-label="Proyección financiera mensual">
-        <article style={{background: '#f0f4f8', borderColor: '#d4dce5'}}>
+        <article className="is-result">
           <span>📊 Resultado proyectado</span>
-          <strong style={{fontSize: '28px', color: finance.resultadoARS >= 0 ? '#2d5a4e' : '#a7322a'}}>{ars.format(finance.resultadoARS)}</strong>
-          <small style={{color: 'var(--muted)', marginTop: '4px'}}>Margen: <strong>{margen}%</strong></small>
-          {resultadoVariation && <small style={{color: resultadoVariation.isNegative ? '#a7322a' : '#2d5a4e', fontSize: '11px'}}>{resultadoVariation.isNegative ? '↓' : '↑'} {resultadoVariation.percent}%</small>}
+          <strong className={`finance-metric-value ${finance.resultadoARS >= 0 ? 'is-positive' : 'is-negative'}`}>{ars.format(finance.resultadoARS)}</strong>
+          <small className="finance-metric-note">Margen: <strong>{margen}%</strong></small>
+          {resultadoVariation && <small className={resultadoVariation.isNegative ? 'is-negative' : 'is-positive'}>{resultadoVariation.isNegative ? '↓' : '↑'} {resultadoVariation.percent}%</small>}
         </article>
-        <article style={{background: '#fff7e9', borderColor: '#e7c99e'}}>
+        <article>
           <span>💵 Ingresos esperados</span>
-          <strong style={{fontSize: '28px', color: '#755315'}}>{ars.format(finance.facturacion)}</strong>
-          <small style={{color: 'var(--muted)', marginTop: '4px'}}>Contratos incluidos: <strong>{finance.ingresos.length}</strong></small>
-          {facturacionVariation && <small style={{color: facturacionVariation.isNegative ? '#a7322a' : '#2d5a4e', fontSize: '11px'}}>{facturacionVariation.isNegative ? '↓' : '↑'} {facturacionVariation.percent}%</small>}
+          <strong className="finance-metric-value is-expected">{ars.format(finance.facturacion)}</strong>
+          <small className="finance-metric-note">Contratos incluidos: <strong>{finance.ingresos.length}</strong></small>
+          {facturacionVariation && <small className={facturacionVariation.isNegative ? 'is-negative' : 'is-positive'}>{facturacionVariation.isNegative ? '↓' : '↑'} {facturacionVariation.percent}%</small>}
         </article>
-        <article style={{background: '#f0f8f4', borderColor: '#d4e5dc'}}>
+        <article>
           <span>👥 Sueldos calculados</span>
-          <strong style={{fontSize: '28px', color: '#556b7f'}}>{ars.format(finance.sueldos)}</strong>
-          <small style={{color: 'var(--muted)', marginTop: '4px'}}>Estimación del período; no acredita pagos</small>
-          {sueldosVariation && <small style={{color: sueldosVariation.isNegative ? '#2d5a4e' : '#a7322a', fontSize: '11px'}}>{sueldosVariation.isNegative ? '↓' : '↑'} {sueldosVariation.percent}%</small>}
+          <strong className="finance-metric-value">{ars.format(finance.sueldos)}</strong>
+          <small className="finance-metric-note">Estimación del período; no acredita pagos</small>
+          {sueldosVariation && <small className={sueldosVariation.isNegative ? 'is-positive' : 'is-negative'}>{sueldosVariation.isNegative ? '↓' : '↑'} {sueldosVariation.percent}%</small>}
         </article>
-        <article style={{background: '#f8f0f0', borderColor: '#e5d4d4'}}>
+        <article>
           <span>📋 Gastos fijos previstos</span>
-          <strong style={{fontSize: '28px', color: '#9b4f4f'}}>{ars.format(finance.gastosFijosARS)}</strong>
-          <small style={{color: 'var(--muted)', marginTop: '4px'}}>Impuestos + herramientas</small>
-          {gastosVariation && <small style={{color: gastosVariation.isNegative ? '#2d5a4e' : '#a7322a', fontSize: '11px'}}>{gastosVariation.isNegative ? '↓' : '↑'} {gastosVariation.percent}%</small>}
+          <strong className="finance-metric-value">{ars.format(finance.gastosFijosARS)}</strong>
+          <small className="finance-metric-note">Impuestos + herramientas</small>
+          {gastosVariation && <small className={gastosVariation.isNegative ? 'is-positive' : 'is-negative'}>{gastosVariation.isNegative ? '↓' : '↑'} {gastosVariation.percent}%</small>}
         </article>
       </section>
       <div className={`finance-exchange-note${exchangeRate?.fallback ? " is-fallback" : ""}`}>
