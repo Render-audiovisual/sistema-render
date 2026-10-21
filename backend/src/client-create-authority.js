@@ -15,11 +15,11 @@ export function captureClientCreator(auth) {
   return Object.freeze({ id, session_version });
 }
 
-// Caller order: BEGIN -> this actor SHARE lock -> lockClientAdministration
-// (advisory 8142,1) -> business DML -> COMMIT. This matches quota reconciliation;
-// never acquire the advisory first, including when a user UPDATE is queued.
-// Caller owns transaction cleanup/release and acquires the advisory AFTER this
-// helper. Keep actor SHARE through the whole client/configuration/fee commit.
+// Caller order: BEGIN -> lockClientAdministration (advisory 8142,1) -> this
+// actor SHARE lock -> domain locks/DML -> COMMIT. The scheduler uses that same
+// order; holding a user while waiting for its mutex can create a lock cycle.
+// Caller owns transaction cleanup/release. Revalidate after the mutex wait and
+// keep actor SHARE through the whole client/configuration/fee commit.
 // This helper acquires no advisory or domain locks itself.
 export async function lockCurrentClientCreator(db, captured) {
   const { id, session_version } = captureClientCreator(captured);

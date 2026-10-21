@@ -25,13 +25,40 @@ test('canonical client objectives preserve quotas, ID write access and task revi
   });
   const goals = async token => ok(await api('/cliente-objetivos?periodo=2026-10', token));
   const selected = data => data.clientes.find(row => row.clave === prepare.clave);
+  const observedPreparation = async token => {
+    const data = await goals(token);
+    assert.equal(data.periodo, prepare.periodo);
+    const row = selected(data); assert.ok(row);
+    assert.match(row.preparacion_revision, /^[0-9a-f]{64}$/);
+    return { ...prepare, expected_preparation_revision: row.preparacion_revision };
+  };
+  await t.test('preparation requires a real observation; missing/malformed or extra fields never write', async () => {
+    const before = await snapshots();
+    ok(await api('/cliente-objetivos/preparar', owner, 'POST', prepare), 428);
+    for (const expected_preparation_revision of [null, '', 7, [], {}]) {
+      ok(await api('/cliente-objetivos/preparar', owner, 'POST', { ...prepare, expected_preparation_revision }), 400);
+    }
+    const observed = await observedPreparation(owner);
+    ok(await api('/cliente-objetivos/preparar', owner, 'POST', { ...observed, unexpected: true }), 400);
+    assert.deepEqual(await snapshots(), before);
+  });
   await t.test('two owners prepare one quota only; employee cannot change monthly assignments', async () => {
-    const results = await Promise.all([api('/cliente-objetivos/preparar', owner, 'POST', prepare), api('/cliente-objetivos/preparar', secondOwner, 'POST', prepare)]);
-    assert.equal(results.reduce((count, response) => count + ok(response).creadas, 0), 3);
+    const observed = await observedPreparation(owner);
+    const results = await Promise.all([api('/cliente-objetivos/preparar', owner, 'POST', observed), api('/cliente-objetivos/preparar', secondOwner, 'POST', observed)]);
+    assert.deepEqual(results.map(response => response.status).sort(), [200, 409]);
+    const winner = ok(results.find(response => response.status === 200));
+    assert.equal(winner.creadas, 3);
     const goal = selected(await goals(designer));
     assert.equal(goal.piezas.length, 3); assert.equal(goal.reels, 2); assert.equal(goal.carruseles, 1);
+    const beforeRetry = await snapshots();
+    const retryActor = results[0].status === 409 ? owner : secondOwner;
+    const retry = ok(await api('/cliente-objetivos/preparar', retryActor, 'POST', await observedPreparation(retryActor)));
+    assert.equal(retry.creadas, 0); assert.equal(winner.creadas + retry.creadas, 3);
+    const afterRetry = await snapshots();
+    for (const name of ['tasks', 'goals', 'pieces', 'publications', 'events']) assert.deepEqual(afterRetry[name], beforeRetry[name], name);
+    assert.deepEqual(selected(await goals(designer)).piezas.map(row => [row.id, row.tarea_id]), goal.piezas.map(row => [row.id, row.tarea_id]));
     const before = await snapshots();
-    assert.equal((await api('/cliente-objetivos/preparar', unrelated, 'POST', prepare)).status, 403);
+    assert.equal((await api('/cliente-objetivos/preparar', unrelated, 'POST', await observedPreparation(unrelated))).status, 403);
     assert.deepEqual(await snapshots(), before);
   });
   const piece = selected(await goals(designer)).piezas.find(row => row.tipo === 'carrusel');

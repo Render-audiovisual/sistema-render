@@ -1352,10 +1352,10 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
     }
 
     await client.query("BEGIN");
-    // Match quota reconciliation's actor -> administration lock order. Hold
-    // current authority through client/configuration/fee commit, not JWT role.
-    const actor = await lockCurrentClientCreator(client, creator);
+    // Share preparation/scheduler ordering: never hold a user row while
+    // waiting behind client administration. Revalidate after that wait.
     await lockClientAdministration(client);
+    const actor = await lockCurrentClientCreator(client, creator);
     const result = await client.query(
       `INSERT INTO clientes (nombre, cuota_reels, cuota_carruseles, rubro, activo, fecha_inicio)
        VALUES ($1, $2, $3, $4, TRUE, $5)
@@ -1514,6 +1514,7 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
     }
 
     await client.query("BEGIN");
+    await lockClientAdministration(client);
     await lockCurrentClientCreator(client, administrator);
     const existente = await lockClientAgreement(client, id, req.body?.expected_revision);
     const grupoFeedId = existente.grupo_feed_id;

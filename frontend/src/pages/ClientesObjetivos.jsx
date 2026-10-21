@@ -5,10 +5,11 @@ import { createCapturedRequest, isSessionFailure } from '../shared/session/captu
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { Modal } from '../components/Modal.jsx';
 import { PageState } from '../components/PageState.jsx';
-import { validateGoalQuota, goalQuotaProgress, goalQuotaReviewBody, validGoalQuotaRevision, verifiedGoalPreparationAck } from './clientGoalQuota.js';
+import { validateGoalQuota, goalQuotaProgress, goalQuotaReviewBody, validGoalQuotaRevision, verifiedGoalPreparationAck, goalPreparationRevision, goalPreparationBody } from './clientGoalQuota.js';
 import './ClientesObjetivos.css';
 import { clientOperationHref } from './clientOperation.js';
 import { navigateWithinApp } from '../shared/navigation/location.js';
+import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 
 const STATES = { pendiente: 'Pendiente', en_progreso: 'En proceso', en_revision: 'En revisión', aprobada: 'Aprobada', finalizada: 'Finalizada', programada: 'Programada', publicada: 'Finalizada' };
 const AUTO_UPDATE_ERROR = 'No se pudo actualizar el avance. Reintentaremos automáticamente.';
@@ -31,6 +32,7 @@ function goalOverview(value, period) {
       || client.cuentas.some(account => !goalId(account.id) || typeof account.nombre !== 'string')) throw new Error('Respuesta de objetivos inválida.');
     keys.add(client.clave);
     validateGoalQuota(client);
+    goalPreparationRevision(client);
     for (const piece of client.piezas) {
       if (!goalId(piece.id) || ids.has(piece.id) || !['video', 'carrusel'].includes(piece.tipo) || typeof piece.estado !== 'string'
         || !Array.isArray(piece.responsables) || piece.responsables.some(name => typeof name !== 'string')
@@ -117,7 +119,7 @@ function GoalPage({ sesion }) {
   const isDemo = ['127.0.0.1', 'localhost'].includes(window.location.hostname) && sesion?.usuario?.usuario === 'community-demo';
   const refresh = () => { if (modalOpen.current) { deferred.current = true; return; } setRevision(value => value + 1); };
   const closeModal = () => {
-    if (preparing === 'reconcile') { loaded.current = false; setLoading(true); deferred.current = true; }
+    if (preparing) { loaded.current = false; setLoading(true); deferred.current = true; }
     modalOpen.current = false; setPreparing(false); setSelectedPiece(null);
     if (pendingPeriod.current) { const next = pendingPeriod.current; pendingPeriod.current = null; setPeriod(next.period); setLocationError(next.error); }
     if (deferred.current) { deferred.current = false; setRevision(value => value + 1); }
@@ -180,6 +182,10 @@ function GoalPage({ sesion }) {
     if (!capture().current() || !loaded.current || !canReviewQuota || modalOpen.current) return;
     modalOpen.current = true; deferred.current = true; setPreparing('reconcile');
   };
+  const openPreparation = () => {
+    if(!capture().current()||!loaded.current||modalOpen.current||!canManage||historic||!client||client.cuota_desactualizada||!validGoalQuotaRevision(client.preparacion_revision)||total===0)return;
+    modalOpen.current=true;setPreparing(true);
+  };
 
   return <main className="client-goals" aria-label="Objetivos mensuales de clientes"><div className="frame"><div className="content cg-content">
     <header className="cg-header"><div className="cg-heading-group"><span className="cg-page-icon"><GoalIcon name="clients" /></span><div><span className="cg-eyebrow">Seguimiento del equipo</span><h1>Clientes</h1><p>Todo el contenido del mes, en un mismo lugar.</p></div></div>
@@ -192,7 +198,7 @@ function GoalPage({ sesion }) {
         <div className="cg-client-items">{filtered.map(item => {
           const count = goalQuotaProgress(item).completed, quantity = item.reels + item.carruseles;
           return <button className={`cg-client${item.clave === selectedKey ? ' is-selected' : ''}`} disabled={Boolean(preparing || selectedPiece)} key={item.clave} aria-pressed={item.clave === selectedKey} aria-label={`${item.nombre}: ${item.preparado ? `${count} de ${quantity} completados` : 'Objetivo por preparar'}`} onClick={() => { setSelectedKey(item.clave); setSelectedPiece(null); }}>
-            <span className="cg-avatar" aria-hidden="true">{item.nombre.slice(0, 1)}</span><span className="cg-client-text"><strong>{item.nombre}</strong><span className="cg-client-progress" aria-hidden="true"><span style={{width:`${quantity ? Math.min(100, count / quantity * 100) : 0}%`}} /></span></span><GoalIcon name="arrow" className="cg-client-arrow" />
+            <span className="cg-avatar" aria-hidden="true">{item.nombre.slice(0, 1)}</span><span className="cg-client-text"><strong>{item.nombre}</strong>{item.preparado ? <span className="cg-client-progress" aria-hidden="true"><span style={{width:`${quantity ? Math.min(100, count / quantity * 100) : 0}%`}} /></span> : <small>Objetivo por preparar</small>}</span><GoalIcon name="arrow" className="cg-client-arrow" />
           </button>;
         })}{filtered.length === 0 && <p className="cg-muted">No encontramos ese cliente.</p>}</div>
       </aside>
@@ -203,22 +209,24 @@ function GoalPage({ sesion }) {
           event.preventDefault(); if (modalOpen.current) return;
           navigateWithinApp(window, clientOperationHref(account.id, period));
         }}>Ver operación de {account.nombre}</a>)}</nav>
-        <div className="cg-board-summary"><header className="cg-board-header"><div><span className="cg-eyebrow">Objetivo mensual · {monthLabel(period)}</span><h2>{client.nombre}</h2>{client.cuentas.length > 1 && <p className="cg-shared">Objetivo compartido · {client.cuentas.map(account => account.nombre).join(' + ')}</p>}</div><div className={`cg-overall${total > 0 && completed === total ? ' is-complete' : ''}`}><span>Contenido completado</span><strong>{completed}<span> / {total}</span></strong></div></header>
-        <div className="cg-progress" role="progressbar" aria-label="Avance mensual" aria-valuemin={0} aria-valuemax={total || 1} aria-valuenow={completed}><span style={{ width: `${total ? Math.min(100, completed / total * 100) : 0}%` }} /></div>
-        <div className="cg-progress-caption"><span>{client.preparado ? total > 0 && completed === total ? 'Objetivo del mes completado' : `${Math.max(0, total - completed)} piezas pendientes` : 'Objetivo por preparar'}</span><strong>{total ? Math.round(completed / total * 100) : 0}%</strong></div></div>
+        <div className="cg-board-summary"><header className="cg-board-header"><div><span className="cg-eyebrow">Objetivo mensual · {monthLabel(period)}</span><h2>{client.nombre}</h2>{client.cuentas.length > 1 && <p className="cg-shared">Objetivo compartido · {client.cuentas.map(account => account.nombre).join(' + ')}</p>}</div>{client.preparado && total>0 && <div className={`cg-overall${completed === total ? ' is-complete' : ''}`}><span>Contenido completado</span><strong>{completed}<span> / {total}</span></strong></div>}</header>
+        {client.preparado && total>0 && <><div className="cg-progress" role="progressbar" aria-label="Avance mensual" aria-valuemin={0} aria-valuemax={total} aria-valuenow={completed}><span style={{ width: `${Math.min(100, completed / total * 100)}%` }} /></div>
+        <div className="cg-progress-caption"><span>{completed === total ? 'Objetivo del mes completado' : `${Math.max(0, total - completed)} piezas pendientes`}</span><strong>{Math.round(completed / total * 100)}%</strong></div></>}</div>
         {client.preparado && client.cuota_desactualizada && <section className="cg-quota-notice" aria-label="Cuota mensual desactualizada"><div><strong>La cuota del objetivo cambió</strong><p>Preparada: {client.reels} reels · {client.carruseles} carruseles.{client.cuota_actual ? ` Vigente: ${client.cuota_actual.reels} reels · ${client.cuota_actual.carruseles} carruseles.` : ' No hay una cuota vigente verificable para este objetivo.'}</p><small>El avance conserva la cuota preparada hasta que administración revise el cambio.</small></div>{canReviewQuota && <button type="button" className="cg-button" onClick={openQuotaReview}>Revisar cuota</button>}</section>}
-        {!client.preparado && <div className="cg-prepare-state"><strong>{historic ? 'El historial anterior se conserva' : 'Generación mensual automática'}</strong><p>{historic ? 'El nuevo seguimiento comienza en octubre. Podés consultar las piezas anteriores en Publicaciones.' : 'Las tareas del mes actual se crean automáticamente con los responsables del cliente. Si falta una asignación, configurala una vez. No se duplican tareas ni se cambia el historial.'}</p>
-          {historic ? <a className="cg-button" href={`/planificacion-publicaciones?mes=${period}&cliente=${client.cliente_id}`}>Consultar publicaciones</a> : canManage ? <button className="cg-button cg-primary" onClick={() => { modalOpen.current = true; setPreparing(true); }}>Configurar responsables</button> : <small>La CM o el Líder pueden completar la asignación del cliente.</small>}
+        {!client.preparado && <div className="cg-prepare-state"><strong>{historic ? 'El historial anterior se conserva' : 'Objetivo por preparar'}</strong><p>{historic ? 'El seguimiento comienza en octubre de 2026. El historial anterior no se modifica.' : 'Todavía no se preparó el objetivo de este mes. Prepararlo vincula tareas existentes y crea sólo las faltantes según la cuota observada.'}</p>
+          {total>0 ? <p>Cuota del mes: {client.reels} reels · {client.carruseles} carruseles{client.cuentas.length>1?' compartidos entre todas las cuentas, no por cuenta':''}.</p> : <p>No hay piezas incluidas en la cuota de este mes.</p>}
+          {!historic && total>0 && (canManage ? <button className="cg-button cg-primary" disabled={!validGoalQuotaRevision(client.preparacion_revision)} onClick={openPreparation}>Preparar objetivo del mes</button> : <small>Administración o CM pueden preparar este objetivo.</small>)}
+          {!historic && total===0 && view.role==='admin' && <nav className="cg-prepare-links" aria-label="Administrar cuentas">{client.cuentas.map(account=><a className="cg-button" key={account.id} href={`/clientes?gestion=1&cliente=${account.id}&periodo=${period}`}>Administrar {account.nombre}</a>)}</nav>}
         </div>}
-        <div className="cg-format-grid">{[['video', 'Reels', client.reels], ['carrusel', 'Carruseles', client.carruseles]].map(([type, label, quantity]) => {
+        {client.preparado && <div className="cg-format-grid">{[['video', 'Reels', client.reels], ['carrusel', 'Carruseles', client.carruseles]].map(([type, label, quantity]) => {
           const {quota:pieces,completed:count} = goalQuotaProgress(client,type);
-          return <section className={`cg-format cg-format-${type}`} key={type} aria-label={label}><header><h3><span className="cg-format-icon"><GoalIcon name={type === 'video' ? 'video' : 'carousel'} /></span>{label}</h3><span className={`cg-format-count${quantity > 0 && count === quantity ? ' is-complete' : ''}`}>{count} de {quantity}</span></header>
+          return <section className={`cg-format cg-format-${type}`} key={type} aria-label={label}><header><h3><span className="cg-format-icon"><GoalIcon name={type === 'video' ? 'video' : 'carousel'} /></span>{label}</h3>{quantity>0 && <span className={`cg-format-count${count === quantity ? ' is-complete' : ''}`}>{count} de {quantity}</span>}</header>
             <p className="cg-format-subtitle">{quantity === 0 ? 'No incluido este mes' : count === quantity ? 'Objetivo completado' : `${quantity - count === 1 ? 'Falta' : 'Faltan'} ${quantity - count} para completar el mes`}</p>
             <div className="cg-piece-list">{pieces.map(piece => <GoalPieceButton key={piece.id} piece={piece} onOpen={value=>{modalOpen.current=true;setSelectedPiece(value)}}/>)}{!client.preparado && quantity > 0 && <p className="cg-format-empty">{quantity} tareas previstas · aún sin vincular</p>}</div>
           </section>;
-        })}</div>
+        })}</div>}
         {additional.length > 0 && <section className="cg-additional" aria-label="Contenido adicional"><header><h3>Contenido adicional</h3><span>No cuenta para la cuota</span></header><p className="cg-muted">Se conservan sus tareas, entregas, correcciones e historial.</p><div className="cg-piece-list">{additional.map(piece=><GoalPieceButton key={piece.id} piece={piece} onOpen={value=>{modalOpen.current=true;setSelectedPiece(value)}}/>)}</div></section>}
-        <footer className="cg-board-footer"><GoalIcon name="sync" /><p>Conectado con Tareas. Cada mes se generan las piezas con los responsables del cliente. El avance se actualiza al finalizar.</p>{canManage && client.preparado && <button className="cg-button" onClick={() => { modalOpen.current = true; setPreparing(true); }}>Responsables del cliente</button>}</footer>
+        <footer className="cg-board-footer"><GoalIcon name="sync" /><p>Conectado con Tareas. El avance refleja trabajo finalizado, no publicaciones confirmadas. Las tareas existentes conservan sus responsables.</p>{canManage && client.preparado && !historic && total>0 && !client.cuota_desactualizada && validGoalQuotaRevision(client.preparacion_revision) && <button className="cg-button" onClick={openPreparation}>Actualizar responsables y completar objetivo</button>}</footer>
       </section>}
     </div>}
     {preparing && client && <PrepareGoal key={`${epoch}:${period}:${client.clave}:${preparing === 'reconcile' ? 'reconcile' : 'prepare'}`} sesion={view.session} client={client} period={period} mode={preparing === 'reconcile' ? 'reconcile' : 'prepare'} close={closeModal} saved={result => { closeModal(); setNotice(`${result.vinculadas} tareas vinculadas · ${result.creadas} tareas nuevas. ${preparing === 'reconcile' ? 'Cuota revisada; el contenido existente se conserva.' : 'El objetivo está preparado.'}`); refresh(); }} />}
@@ -240,9 +248,14 @@ function PrepareGoal({ sesion, client, period, mode = 'prepare', close, saved })
     (client.responsables_por_cuenta?.[account.id] || client.responsables_por_formato?.carrusel || []).map(user => user.id)])));
   const formats = { ...selected, carrusel: shared ? [...new Set(Object.values(accounts).flat())] : selected.carrusel };
   const initialSelection = useRef(JSON.stringify({ selected, accounts }));
+  const preparationNavigationStatus = () => {
+    if (!capture().current()) return { dirty:false, busy:false };
+    return { dirty:Boolean(reviewBlocked.current || acknowledged || JSON.stringify({ selected, accounts }) !== initialSelection.current), busy:Boolean(pending.current) };
+  };
+  useNavigationGuard(preparationNavigationStatus);
   const closeSafely = () => {
     if (pending.current || !capture().current()) return;
-    if (JSON.stringify({ selected, accounts }) !== initialSelection.current && !window.confirm('¿Descartar los cambios de responsables sin guardar?')) return;
+    if ((reviewBlocked.current || acknowledged || JSON.stringify({ selected, accounts }) !== initialSelection.current) && !window.confirm(reviewBlocked.current ? 'El envío puede haberse guardado sin confirmación. ¿Cerrar esta revisión y recargar los datos guardados?' : '¿Descartar esta revisión de responsables sin guardar?')) return;
     close();
   };
   const fields = [{key:'video',label:'Reels',quantity:quota?.reels,ids:selected.video}, ...(shared
@@ -252,7 +265,7 @@ function PrepareGoal({ sesion, client, period, mode = 'prepare', close, saved })
     if (pending.current || reviewBlocked.current || !capture().current()) return;
     const update = current => ({...current,[field.key]:current[field.key].includes(id) ? current[field.key].filter(value => value !== id) : [...current[field.key],id]});
     if (shared && field.key !== 'video') setAccounts(update); else setSelected(update);
-    if (reconciling) setAcknowledged(false);
+    setAcknowledged(false);
   };
   useEffect(() => { const controller = new AbortController(), scope = capture(); scope.request('/api/cliente-objetivos/responsables', { signal: controller.signal }).then(value => { if (!Array.isArray(value) || value.some(user => !goalId(user.id) || typeof user.nombre !== 'string') || new Set(value.map(user => user.id)).size !== value.length) throw new Error('Responsables inválidos.'); if (scope.current() && !controller.signal.aborted) setUsers(value); }).catch(reason => { if (scope.current() && !controller.signal.aborted && !isSessionFailure(reason)) setError(reason.message); }); return () => controller.abort(); }, [capture]);
   const submit = async event => {
@@ -261,20 +274,19 @@ function PrepareGoal({ sesion, client, period, mode = 'prepare', close, saved })
     let body;
     try { body = JSON.stringify(reconciling
       ? goalQuotaReviewBody({client,period,formats,accounts,role:view.role,acknowledged})
-      : { periodo: period, clave: client.clave, responsables: [...new Set(Object.values(formats).flat())], responsables_por_formato: formats, ...(shared ? {responsables_por_cuenta:accounts} : {}) });
+      : goalPreparationBody({client,period,formats,accounts,role:view.role,acknowledged}));
     } catch(reason) { if(scope.current())setError(reason.message); return; }
     pending.current = true; setBusy(true); setError('');
     try { const response = await scope.request(reconciling ? '/api/cliente-objetivos/reconciliar' : '/api/cliente-objetivos/preparar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
-      const result = verifiedGoalPreparationAck(response,reconciling ? client.id : undefined);
-      scope.assertCurrent(); saved(result);
+      const result = verifiedGoalPreparationAck(response,client.preparado ? client.id : undefined);
+      scope.assertCurrent(); reviewBlocked.current=true; saved(result);
     } catch (reason) { if (scope.current() && !isSessionFailure(reason)) {
-      if(reconciling){reviewBlocked.current=true;setBlocked(true);setError(`${reason.status===409?'La cuota o el contenido cambió.':'No pudimos confirmar la reconciliación.'} Conservamos tus selecciones. Cerrá y volvé a abrir la revisión para cargar los datos guardados; no repetiremos el envío.`);}
-      else setError(reason.message);
+      reviewBlocked.current=true;setBlocked(true);setError(`${reason.status===409?'La cuota, los responsables o el objetivo cambiaron.':'No pudimos confirmar el resultado.'} Conservamos tus selecciones. Cerrá y volvé a abrir la revisión para cargar los datos guardados; no repetiremos el envío.`);
     } }
     finally { pending.current = false; if (lifetime.current()) setBusy(false); }
   };
-  return <Modal title={reconciling ? 'Revisar cuota mensual' : 'Responsables del cliente'} overlayAriaLabel={reconciling ? 'Revisar cuota mensual' : 'Responsables del cliente'} onClose={closeSafely} className="cg-modal"><form className={`cg-modal-body${shared ? ' cg-shared-responsables' : ''}`} onSubmit={submit}>
-    <h2>{client.nombre}</h2><p>Esta asignación se reutiliza cada mes. Las tareas existentes mantienen sus responsables.</p>
+  return <Modal title={reconciling ? 'Revisar cuota mensual' : client.preparado ? 'Actualizar responsables y completar objetivo' : 'Preparar objetivo del mes'} overlayAriaLabel={reconciling ? 'Revisar cuota mensual' : 'Preparar objetivo mensual'} onClose={closeSafely} className="cg-modal"><form className={`cg-modal-body${shared ? ' cg-shared-responsables' : ''}`} onSubmit={submit}>
+    <h2>{client.nombre}</h2><section className="cg-preparation-observation" aria-label="Preparación observada"><p>Mes de trabajo: <strong>{monthLabel(period)}</strong></p><p>Cuota: <strong>{quota?.reels} reels · {quota?.carruseles} carruseles</strong></p><p>Cuentas incluidas:</p><ul>{client.cuentas.map(account=><li key={account.id}>{account.nombre} · #{account.id}</li>)}</ul></section><p>Los responsables seleccionados se guardan para futuras preparaciones. Las tareas existentes mantienen sus responsables. Esta acción también vincula o crea las tareas faltantes del mes seleccionado; no es sólo un cambio de asignaciones.</p>
     {reconciling && <section className="cg-quota-review" aria-label="Comparación de cuota mensual"><p>Mes de trabajo: <strong>{monthLabel(period)}</strong></p><dl><div><dt>Formato</dt><dd>Preparada → Vigente</dd></div><div><dt>Reels</dt><dd>{client.reels} → {quota?.reels ?? 'No disponible'}</dd></div><div><dt>Carruseles</dt><dd>{client.carruseles} → {quota?.carruseles ?? 'No disponible'}</dd></div></dl><p>Se crean o vinculan sólo las tareas faltantes. Si la cuota baja, lo que exceda queda como contenido adicional, fuera del avance de cuota. No se borran ni dividen tareas, entregas o correcciones.</p></section>}
     {shared && <p className="cg-muted">{quota?.carruseles ?? client.carruseles} carruseles compartidos entre las cuentas, no por cuenta. Cada tarea nueva usa los responsables de su cuenta; los reels mantienen una asignación común.</p>}
     {fields.map(field => <fieldset className="cg-responsables" key={field.key}><legend>{field.label}</legend>
@@ -282,8 +294,8 @@ function PrepareGoal({ sesion, client, period, mode = 'prepare', close, saved })
       {users.map(user => <label key={user.id}><input type="checkbox" disabled={busy || blocked} checked={field.ids.includes(user.id)} onChange={() => toggle(field,user.id)} /><span>{user.nombre}</span></label>)}
     </fieldset>)}
     <p className="cg-muted">Se vinculan las tareas existentes y se crean únicamente las que faltan para el mes seleccionado.</p>
-    {reconciling && <label className="cg-quota-ack"><input type="checkbox" checked={acknowledged} disabled={busy || blocked} onChange={event=>{if(!pending.current&&!reviewBlocked.current&&capture().current())setAcknowledged(event.target.checked)}}/><span>Revisé ambas cuotas y confirmo que se conservarán las tareas, el contenido y su historial.</span></label>}{error && <p className="cg-error" role="alert">{error}</p>}
-    <footer><button className="cg-button" type="button" disabled={busy} onClick={closeSafely}>Cancelar</button><button className="cg-button cg-primary" disabled={busy || blocked || (reconciling && (!acknowledged || view.role !== 'admin' || !quota || !validGoalQuotaRevision(client.cuota_revision))) || (quota?.reels > 0 && !selected.video.length) || (shared ? Object.values(accounts).some(ids => !ids.length) : quota?.carruseles > 0 && !selected.carrusel.length) || !Object.values(formats).flat().length}>{busy ? 'Guardando…' : reconciling ? 'Confirmar nueva cuota' : 'Guardar responsables'}</button></footer>
+    <label className="cg-quota-ack"><input type="checkbox" checked={acknowledged} disabled={busy || blocked} onChange={event=>{if(!pending.current&&!reviewBlocked.current&&capture().current())setAcknowledged(event.target.checked)}}/><span>{reconciling ? 'Revisé ambas cuotas y confirmo que se conservarán las tareas, el contenido y su historial.' : 'Revisé el mes, la cuota, todas las cuentas y los responsables. Confirmo vincular las tareas existentes y crear sólo las faltantes, conservando su historial.'}</span></label>{error && <p className="cg-error" role="alert">{error}</p>}
+    <footer><button className="cg-button" type="button" disabled={busy} onClick={closeSafely}>Cancelar</button><button className="cg-button cg-primary" disabled={busy || blocked || !acknowledged || (reconciling ? view.role !== 'admin' || !quota || !validGoalQuotaRevision(client.cuota_revision) : !['admin','community'].includes(view.role) || !validGoalQuotaRevision(client.preparacion_revision) || client.cuota_desactualizada || !(quota?.reels + quota?.carruseles > 0)) || (quota?.reels > 0 && !selected.video.length) || (shared ? Object.values(accounts).some(ids => !ids.length) : quota?.carruseles > 0 && !selected.carrusel.length) || !Object.values(formats).flat().length}>{busy ? 'Guardando…' : reconciling ? 'Confirmar nueva cuota' : client.preparado ? 'Actualizar y completar objetivo' : 'Confirmar preparación del mes'}</button></footer>
   </form></Modal>;
 }
 

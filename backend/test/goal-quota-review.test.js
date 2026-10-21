@@ -141,7 +141,7 @@ test('review fills increased slots in same transaction, preserves original IDs a
   assert.equal(f.state.audits.length, 1); assert.equal(f.state.audits[0][1], auth.id);
   assert.equal(f.state.audits[0].at(-1).length, 64);
   const sql = f.calls.map(call => call.sql);
-  const order = ['SELECT id,rol,activo', 'pg_advisory_xact_lock(8142, 1)', "hashtext('vinculo-objetivo-mensual')", 'hashtext($1)', 'SELECT * FROM cliente_objetivos_mensuales', 'SELECT id FROM tareas WHERE id=ANY', 'SELECT id FROM cliente_objetivo_piezas WHERE id=ANY', 'SELECT p.id,p.tipo,p.numero', 'UPDATE cliente_objetivos_mensuales', 'INSERT INTO tareas(', 'COMMIT'];
+  const order = ['pg_advisory_xact_lock(8142, 1)', 'SELECT id,rol,activo', "hashtext('vinculo-objetivo-mensual')", 'hashtext($1)', 'SELECT * FROM cliente_objetivos_mensuales', 'SELECT id FROM tareas WHERE id=ANY', 'SELECT id FROM cliente_objetivo_piezas WHERE id=ANY', 'SELECT p.id,p.tipo,p.numero', 'UPDATE cliente_objetivos_mensuales', 'INSERT INTO tareas(', 'COMMIT'];
   let previous = -1;
   for (const fragment of order) { const index = sql.findIndex((value, i) => i > previous && value.includes(fragment)); assert.ok(index > previous, fragment); previous = index; }
 });
@@ -160,10 +160,13 @@ test('stale confirmation, duplicate success and membership drift reject without 
   await assert.rejects(g.reconcile(), { status: 409 }); assert.deepEqual(g.state, before);
 });
 
-test('review current actor rejects role/epoch/inactivity before domain mutex or DML', async () => {
+test('review current actor rejects role/epoch/inactivity after the shared client mutex but before goal locks or DML', async () => {
   for (const settings of [{ role: 'community' }, { epoch: 3 }, { active: false }]) {
     const f = fixture(settings); await assert.rejects(f.reconcile(), { status: settings.role ? 403 : 401 });
-    assert.equal(f.calls.some(call => call.sql.includes('pg_advisory')), false);
+    const sql=f.calls.map(call=>call.sql);
+    assert.ok(sql.findIndex(value=>value.includes('pg_advisory_xact_lock(8142, 1)'))<sql.findIndex(value=>value.includes('SELECT id,rol,activo')));
+    assert.equal(sql.some(value=>value.includes('hashtext(')),false);
+    assert.equal(sql.some(value=>/^(?:INSERT|UPDATE|DELETE)\b/.test(value)),false);
   }
   for (const observed of [{ ...auth, id: null }, { ...auth, session_version: 0 }]) {
     const f = fixture(); await assert.rejects(f.reconcile(f.revision(), observed), { status: 401 });

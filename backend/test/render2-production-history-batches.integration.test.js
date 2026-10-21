@@ -187,8 +187,13 @@ test('historical production batches preserve independent live editing evidence i
     const clients = ok(await api('/clientes?periodo=2026-10', admin));
     const agreement = clients.find(row => row.id === client.id); assert.ok(agreement);
     ok(await api(`/clientes/${client.id}`, admin, 'PATCH', { cuota_reels: 20, expected_revision: agreement.agreement_revision }));
+    const goals = ok(await api('/cliente-objetivos?periodo=2026-10', admin));
+    assert.equal(goals.periodo, '2026-10');
+    const preparation = goals.clientes.find(row => row.clave === `cliente-${client.id}`); assert.ok(preparation);
+    assert.match(preparation.preparacion_revision, /^[0-9a-f]{64}$/);
     ok(await api('/cliente-objetivos/preparar', admin, 'POST', { periodo: '2026-10', clave: `cliente-${client.id}`,
-      responsables: [91003], responsables_por_formato: { video: [91003], carrusel: [91003] } }));
+      responsables: [91003], responsables_por_formato: { video: [91003], carrusel: [91003] },
+      expected_preparation_revision: preparation.preparacion_revision }));
     const candidates = ok(await api(`/producciones/${oldVisitId}/videos/${id}/vinculo?periodo=2026-10`, admin));
     assert.ok(candidates.casilleros.length); const slot = candidates.casilleros[0];
     const linked = ok(await api(`/producciones/${oldVisitId}/videos/${id}/vincular-objetivo`, admin, 'POST', {

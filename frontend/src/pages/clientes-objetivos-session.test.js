@@ -5,7 +5,7 @@ import ts from 'typescript';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { createSessionView, sessionViewInputs } from '../shared/session/session-view.js';
-import { verifiedGoalPreparationAck } from './clientGoalQuota.js';
+import { verifiedGoalPreparationAck,goalPreparationBody } from './clientGoalQuota.js';
 
 // Execute the actual hook/callback source with injected effects, not mounted React.
 const source = readFileSync(new URL('./ClientesObjetivos.jsx', import.meta.url), 'utf8');
@@ -153,7 +153,7 @@ test('actual dirty modal close and cancel share discard checks; pending operatio
   callback('PieceDetail','closeSafely',deps)(); callback('PieceDetail','cancelEdit',deps)(); assert.deepEqual(effects, []);
   deps.window.confirm = () => true; callback('PieceDetail','closeSafely',deps)(); assert.deepEqual(effects, ['close']);
   deps.pending.current = true; callback('PieceDetail','cancelEdit',deps)(); assert.deepEqual(effects, ['close']);
-  const prepare = { pending: { current: false }, capture: deps.capture, selected: { video: [9] }, accounts: {}, initialSelection: { current: '{}' }, window: { confirm: () => false }, close: deps.close };
+  const prepare = { pending: { current: false }, reviewBlocked:{current:false},capture: deps.capture, acknowledged:false, selected: { video: [9] }, accounts: {}, initialSelection: { current: '{}' }, window: { confirm: () => false }, close: deps.close };
   callback('PrepareGoal','closeSafely',prepare)(); assert.deepEqual(effects, ['close']);
   assert.equal((source.match(/onClose=\{closeSafely\}/g) || []).length, 2);
   assert.match(source, /onClick=\{cancelEdit\}/);
@@ -161,7 +161,7 @@ test('actual dirty modal close and cancel share discard checks; pending operatio
 
 test('preparation serializes original body, validates ACK and ignores account-switch success', async () => {
   const wait = deferred(), f = fixture(() => wait.promise), effects = [];
-  const deps = { capture: f.capture, captureLifetime: f.captureLifetime, pending: { current: false }, period: '2026-10', client: { clave: 'cliente-9' },
+  const deps = { capture: f.capture, captureLifetime: f.captureLifetime, pending: { current: false }, period: '2026-10', view:{role:'community'},acknowledged:true,goalPreparationBody,client: { clave: 'cliente-9',cuentas:[{id:9,nombre:'QA'}],preparado:false,reels:1,carruseles:1,cuota_actual:{reels:1,carruseles:1},cuota_desactualizada:false,cuota_revision:null,preparacion_revision:'a'.repeat(64),piezas:[] },
     formats: { video: [7], carrusel: [8] }, shared: false, accounts: {}, goalId, isSessionFailure, reconciling:false, reviewBlocked:{current:false}, verifiedGoalPreparationAck,
     setBusy: value => effects.push(['busy', value]), setError: value => effects.push(['error', value]), saved: value => effects.push(['saved', value]) };
   const submit = callback('PrepareGoal', 'submit', deps), event = { preventDefault() {} };

@@ -5,6 +5,7 @@ import { isTaskFinalized } from './workflow-contract.js';
 import { buildTaskAccessClause } from './task-access.js';
 import { lockClientAdministration } from './client-agreement.js';
 import { GOAL_QUOTA_SOURCE, assertQuotaRevision, goalPieceInQuota, goalQuotaObservation, lockGoalQuotaReviewer, reviewGoalQuota } from './goal-quota-review.js';
+import { assertPreparationRevision, goalPreparationRevision, lockGoalPreparer, parseGoalPreparation } from './goal-preparation.js';
 
 export const GOALS_START_PERIOD = '2026-10';
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -94,7 +95,9 @@ export async function readGoals(db, period) {
     to_char(periodo,'YYYY-MM') periodo FROM cliente_objetivos_mensuales WHERE periodo=$1::date`, [`${period}-01`]);
   const pieces = await db.query(`SELECT p.id,p.objetivo_id,p.tipo,p.numero,p.tarea_id,p.publicacion_id,p.titulo,p.copy,
     p.responsables,p.estado,p.completada_at,p.updated_at,p.updated_at::text quota_piece_version,
-    t.revision tarea_revision,t.updated_at tarea_updated_at
+    t.revision tarea_revision,t.updated_at tarea_updated_at,
+    (SELECT COALESCE(jsonb_agg(jsonb_build_array(a.usuario_id,a.tipo) ORDER BY a.usuario_id,a.tipo),'[]'::jsonb)
+      FROM tarea_asignaciones a WHERE a.tarea_id=t.id) AS preparation_membership
     FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id
     LEFT JOIN tareas t ON t.id=p.tarea_id
     WHERE o.periodo=$1::date ORDER BY p.tipo DESC,p.numero`, [`${period}-01`]);
@@ -111,20 +114,24 @@ export async function readGoals(db, period) {
     return { ...client, ...(stored || {}), preparado: Boolean(stored), responsables_por_formato: assignments.get(client.clave),
       responsables_por_cuenta: accountAssignments.get(client.clave) || {},
       cuota_actual: quota.current, cuota_desactualizada: quota.drift, cuota_revision: stored && quota.current ? quota.revision : null,
+      preparacion_revision: goalPreparationRevision(currentClients.get(client.clave), stored, observedPieces, period,
+        assignments.get(client.clave), accountAssignments.get(client.clave)),
       piezas: observedPieces.map(piece => {
-        const { quota_piece_version, ...publicPiece } = piece;
+        const { quota_piece_version, preparation_membership, ...publicPiece } = piece;
         return { ...publicPiece, en_cuota: goalPieceInQuota(piece, stored) };
       }) };
   }) };
 }
 
-export async function prepareGoal(pool, { period, key, responsibleIds, responsibleByType, responsibleByAccount, actor, persistResponsibles = false, quotaReview }) {
+export async function prepareGoal(pool, { period, key, responsibleIds, responsibleByType, responsibleByAccount, actor, persistResponsibles = false, quotaReview, preparation, automaticObservation }) {
   goalPeriod(period);
   if (quotaReview !== undefined && (typeof key !== 'string'
     || !/^(?:cliente|grupo)-[1-9]\d*$/.test(key) || /\s/.test(key)
     || !Number.isSafeInteger(Number(key.slice(key.indexOf('-') + 1)))
     || Number(key.slice(key.indexOf('-') + 1)) > 2147483647)) throw fail('Clave de objetivo no válida.');
   if (period < GOALS_START_PERIOD) throw fail('El nuevo seguimiento comienza en octubre de 2026. El historial anterior no se modifica.');
+  if (preparation !== undefined) assertPreparationRevision(preparation?.expected);
+  if (automaticObservation !== undefined) assertPreparationRevision(automaticObservation);
   if (!Array.isArray(responsibleIds) || !responsibleIds.length || responsibleIds.length > 20 ||
     responsibleIds.some(id => !Number.isSafeInteger(id) || id <= 0)) throw fail('Elegí al menos un responsable para las tareas nuevas.');
   if (responsibleByType && (Object.keys(responsibleByType).some(type => !['video','carrusel'].includes(type)) ||
@@ -139,15 +146,19 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
   let discard;
   try {
     await db.query('BEGIN');
+    // Every preparation path, including the internal scheduler, takes the
+    // client mutex before user row locks. Never hold an actor while waiting
+    // behind a scheduler that may need that same user row.
+    await lockClientAdministration(db);
     let reviewer;
+    if (preparation !== undefined) {
+      const current = await lockGoalPreparer(db, preparation?.auth);
+      actor = current.nombre || current.usuario;
+    }
     if (quotaReview !== undefined) {
       assertQuotaRevision(quotaReview?.expected);
       reviewer = await lockGoalQuotaReviewer(db, quotaReview?.auth);
     }
-    await lockClientAdministration(db);
-    await db.query("SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
-    // Serializa preparaciones simultáneas del mismo feed/mes sin duplicar tareas.
-    await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`objetivo:${period}:${key}`]);
     const client = (await loadGoalClients(db, period)).find(item => item.clave === key);
     if (!client) throw fail('No hay un cliente activo para ese mes.', 404);
     if (responsibleByAccount !== undefined && (client.cuentas.length < 2 ||
@@ -156,13 +167,34 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
       throw fail('Las cuentas deben pertenecer al mismo objetivo compartido.');
     }
     if (client.reels > 100 || client.carruseles > 100) throw fail('Revisá el objetivo mensual antes de generar tareas.');
-    // El generador mensual también reutiliza las parejas por cuenta, sin
-    // repartir ni duplicar la cuota del feed y sin tocar tareas ya vinculadas.
+    // All user locks precede task/editorial domain mutexes, matching task
+    // writers. The client mutex already stabilizes quota/feed configuration.
     const storedAccounts = (await loadGoalAccountAssignments(db, [client])).get(key) || {};
     const accountIds = responsibleByAccount ?? Object.fromEntries(Object.entries(storedAccounts).map(([id, people]) => [id, people.map(person => person.id)]));
     const allIds = [...new Set([...responsibleIds, ...Object.values(accountIds).flat()])];
     const users = await db.query('SELECT id,nombre,usuario FROM usuarios WHERE id=ANY($1::int[]) AND activo IS TRUE ORDER BY id FOR SHARE', [allIds]);
     if (users.rows.length !== allIds.length) throw fail('Uno de los responsables ya no está disponible.');
+    await db.query("SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))");
+    await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`objetivo:${period}:${key}`]);
+    if (preparation !== undefined || automaticObservation !== undefined) {
+      const objective = (await db.query('SELECT * FROM cliente_objetivos_mensuales WHERE clave=$1 AND periodo=$2::date FOR UPDATE', [key, `${period}-01`])).rows[0];
+      let pieces = [];
+      if (objective) {
+        const found = (await db.query('SELECT id,tarea_id FROM cliente_objetivo_piezas WHERE objetivo_id=$1 ORDER BY id', [objective.id])).rows;
+        const taskIds = [...new Set(found.map(piece => piece.tarea_id).filter(id => Number.isSafeInteger(id) && id > 0))].sort((a, b) => a - b);
+        if (taskIds.length) await db.query('SELECT id FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE', [taskIds]);
+        if (found.length) await db.query('SELECT id FROM cliente_objetivo_piezas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE', [found.map(piece => piece.id)]);
+        pieces = (await db.query(`SELECT p.id,p.tipo,p.numero,p.tarea_id,p.publicacion_id,p.updated_at,p.updated_at::text quota_piece_version,p.estado,p.completada_at,t.revision tarea_revision,
+          (SELECT COALESCE(jsonb_agg(jsonb_build_array(a.usuario_id,a.tipo) ORDER BY a.usuario_id,a.tipo),'[]'::jsonb)
+            FROM tarea_asignaciones a WHERE a.tarea_id=t.id) AS preparation_membership
+          FROM cliente_objetivo_piezas p LEFT JOIN tareas t ON t.id=p.tarea_id WHERE p.objetivo_id=$1 ORDER BY p.id`, [objective.id])).rows;
+      }
+      const formats = (await loadGoalAssignments(db, [client], period)).get(key);
+      const accounts = (await loadGoalAccountAssignments(db, [client])).get(key);
+      if (goalPreparationRevision(client, objective, pieces, period, formats, accounts) !== (preparation?.expected ?? automaticObservation)) {
+        throw fail('La cuota, las cuentas, las piezas o los responsables cambiaron. Recargá antes de preparar.', 409);
+      }
+    }
     const namesByType = {};
     for (const type of ['video', 'carrusel']) {
       const selected = responsibleByType?.[type] || responsibleIds;
@@ -335,24 +367,26 @@ export async function reconcileMonthlyGoals(pool, period) {
   goalPeriod(period);
   const result = { periodo: period, creadas: 0, vinculadas: 0, pendientes: [] };
   if (period < GOALS_START_PERIOD) return result;
-  const clients = await loadGoalClients(pool, period);
-  const assignments = await loadGoalAssignments(pool, clients, period);
+  // The job is trusted code, not a browser identity. Still bind its intended
+  // assignments to one read-only observation so it cannot overwrite newer CM
+  // choices after waiting for client administration or task locks.
+  const clients = (await readGoals(pool, period)).clientes.filter(client => client.cuota_actual !== null);
   for (const client of clients) {
+    if (client.cuota_desactualizada) {
+      result.pendientes.push({ clave:client.clave, motivo:'Las cuotas del objetivo cambiaron. Administración debe reconciliarlas explícitamente.' });
+      continue;
+    }
     if (!client.reels && !client.carruseles) {
-      const stored = (await pool.query(`SELECT reels,carruseles,cuentas FROM cliente_objetivos_mensuales
-        WHERE clave=$1 AND periodo=$2::date`, [client.clave,`${period}-01`])).rows[0];
-      if (stored && goalQuotaObservation(client,stored,[],period).drift) {
-        result.pendientes.push({ clave:client.clave, motivo:'Las cuotas del objetivo cambiaron. Administración debe reconciliarlas explícitamente.' });
-      }
       continue;
     }
     try {
-      const byType = assignments.get(client.clave);
+      const byType = client.responsables_por_formato;
       const missing = [['video',client.reels],['carrusel',client.carruseles]].filter(([type, quota]) => quota > 0 && !byType[type].length);
       if (missing.length) { result.pendientes.push({ clave: client.clave, motivo: 'Faltan responsables configurados', formatos: missing.map(([type]) => type) }); continue; }
       const responsibleByType = Object.fromEntries(Object.entries(byType).map(([type, users]) => [type, users.map(user => user.id)]));
       const prepared = await prepareGoal(pool, { period, key:client.clave, responsibleByType,
-        responsibleIds:[...new Set(Object.values(responsibleByType).flat())], persistResponsibles:true, actor:'Generación mensual automática' });
+        responsibleIds:[...new Set(Object.values(responsibleByType).flat())], persistResponsibles:true, actor:'Generación mensual automática',
+        automaticObservation:client.preparacion_revision });
       result.creadas += prepared.creadas; result.vinculadas += prepared.vinculadas;
     } catch (error) {
       if (!error.status) throw error;
@@ -540,10 +574,9 @@ export function createClientGoalsRouter({ pool }) {
     catch (error) { if (error.status) return res.status(error.status).json({ error:error.message }); next(error); }
   });
   router.post('/preparar', requireRole('admin', 'community'), async (req, res, next) => {
-    try { res.json(await prepareGoal(pool, { period: req.body.periodo, key: String(req.body.clave || ''),
-      responsibleIds: req.body.responsables, responsibleByType:req.body.responsables_por_formato,
-      responsibleByAccount:req.body.responsables_por_cuenta,
-      persistResponsibles:true, actor: req.auth.nombre || req.auth.usuario })); }
+    try { res.json(await prepareGoal(pool, { ...parseGoalPreparation(req.body),
+      persistResponsibles:true, preparation: { expected:req.body.expected_preparation_revision,
+        auth:{id:req.auth.id,rol:req.auth.rol,session_version:req.auth.session_version} } })); }
     catch (error) { if (error.status) return res.status(error.status).json({ error: error.message }); next(error); }
   });
   router.post('/reconciliar', requireRole('admin'), async (req, res, next) => {

@@ -78,14 +78,14 @@ test('successful actor is a frozen explicit safe projection for creado_por', asy
   assert.ok(db.calls.every(call => /^SELECT /.test(call.sql)));
 });
 
-test('caller order is BEGIN then actor SHARE then global advisory, without helper business writes', async () => {
+test('caller order is BEGIN then global advisory then actor SHARE, without helper business writes', async () => {
   const db = database();
   await db.query('BEGIN');
-  await lockCurrentClientCreator(db,captureClientCreator(observed()));
   await lockClientAdministration(db);
+  await lockCurrentClientCreator(db,captureClientCreator(observed()));
   assert.deepEqual(db.calls.map(call=>call.sql),['BEGIN',
-    'SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios WHERE id=$1 FOR SHARE',
-    'SELECT pg_advisory_xact_lock(8142, 1)']);
+    'SELECT pg_advisory_xact_lock(8142, 1)',
+    'SELECT id,rol,activo,session_version,nombre,usuario FROM usuarios WHERE id=$1 FOR SHARE']);
   assert.equal(db.calls.some(call => /COMMIT|ROLLBACK|INSERT|UPDATE|DELETE/.test(call.sql)),false);
 });
 

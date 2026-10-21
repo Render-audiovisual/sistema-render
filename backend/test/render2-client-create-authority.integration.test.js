@@ -12,7 +12,7 @@ const revocations = [
   { name: 'inactive account', sql: 'UPDATE usuarios SET activo=false WHERE id=$1', status: 401 },
 ];
 
-test('canonical client creation and basic identity PATCH linearize actor authority before agreement locks', {
+test('canonical client creation and basic identity PATCH revalidate actor after client mutex, before domain DML', {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 180000,
 }, async t => {
   const f = await startLocalHarness({ port });
@@ -153,36 +153,33 @@ test('canonical client creation and basic identity PATCH linearize actor authori
     }
   });
 
-  for (const kind of ['basic', 'full']) await t.test(`${kind}: actor held while waiting advisory; queued epoch revocation follows successful commit`, async () => {
+  for (const kind of ['basic', 'full']) await t.test(`${kind}: advisory wait holds no actor lock; committed epoch revocation denies creation without business writes`, async () => {
     const user = await actor(), input = body(kind, `QA105 advisory held ${serial}`);
+    const before = await snapshot();
     const barrier = await auxiliary(), revoker = await auxiliary(), monitor = await auxiliary(); let pending, revocation;
     try {
       await barrier.query('BEGIN'); await barrier.query('SELECT pg_advisory_xact_lock(8142, 1)');
       pending = observed(create(user, input));
       const createPid = await waitFor(() => blocked(monitor, barrier.pid, '%pg_advisory_xact_lock(8142, 1)%'), pending, 'create advisory');
       revocation = observed(revoker.query('UPDATE usuarios SET session_version=session_version+1 WHERE id=$1', [user.id]));
-      await waitFor(async () => (await monitor.query(`SELECT 1 FROM pg_stat_activity
-        WHERE pid=$1 AND $2::int=ANY(pg_blocking_pids(pid)) AND query LIKE 'UPDATE usuarios SET session_version%'`,
-      [revoker.pid, createPid])).rowCount > 0, revocation, 'revocation behind exact create PID');
+      // The autocommit UPDATE must finish while our client mutex is STILL held.
+      // The previous actor-first implementation blocks here and fails boundedly.
+      await waitFor(async () => { if (revocation.error) throw revocation.error; return revocation.settled; }, pending,
+        'epoch revocation commits before the client mutex is released');
+      assert.equal((await revocation.promise).rowCount, 1);
+      assert.equal((await monitor.query('SELECT session_version FROM usuarios WHERE id=$1', [user.id])).rows[0].session_version, 2);
       assert.equal(pending.settled, false);
+      assert.equal(await blocked(monitor, barrier.pid, '%pg_advisory_xact_lock(8142, 1)%'), createPid,
+        'The exact create request remains behind the client mutex after revocation commits');
+      assert.deepEqual(await snapshot(), before);
       await barrier.query('COMMIT');
       const response = await pending.promise;
-      assert.equal((await revocation.promise).rowCount, 1);
-      // A fresh database name, changed after HTTP authentication but before its
-      // actor lock, must be used for fee attribution (seeded below in the next case).
-      if (kind === 'full') {
-        const fees = await f.query('SELECT creado_por FROM cliente_abonos WHERE cliente_id=$1', [response.body.id]);
-        assert.equal(fees[0]?.creado_por, `QA105 creator ${serial}`);
-      }
-      const saved = await snapshot();
-      assert.equal(response.status, 201, JSON.stringify(response.body));
+      assert.equal(response.status, 401, JSON.stringify(response.body));
+      assert.deepEqual(await snapshot(), before);
       const rows = await f.query('SELECT id FROM clientes WHERE nombre=$1', [input.nombre]);
-      assert.equal(rows.length, 1); assert.equal(rows[0].id, response.body.id);
-      for (const table of ['cliente_configuraciones', 'cliente_abonos']) {
-        assert.equal((await f.query(`SELECT id FROM ${table} WHERE cliente_id=$1`, [rows[0].id])).length, kind === 'full' ? 1 : 0);
-      }
+      assert.equal(rows.length, 0);
       assert.equal((await create(user, body(kind, `${input.nombre} revoked`))).status, 401);
-      assert.deepEqual(await snapshot(), saved);
+      assert.deepEqual(await snapshot(), before);
     } finally {
       await barrier.query('ROLLBACK').catch(() => {});
       await Promise.allSettled([pending?.promise, revocation?.promise].filter(Boolean));

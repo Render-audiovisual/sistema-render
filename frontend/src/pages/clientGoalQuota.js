@@ -23,6 +23,25 @@ export function goalQuotaProgress(client,type){
   const quota=pieces.filter(piece=>piece.en_cuota===true),additional=pieces.filter(piece=>piece.en_cuota===false);
   return {quota,additional,completed:quota.filter(piece=>['finalizada','publicada'].includes(piece.estado)).length};
 }
+export function goalPreparationRevision(client){
+  if(client?.preparado===true&&client.cuota_actual===null&&client.preparacion_revision===null)return null;
+  if(!validGoalQuotaRevision(client?.preparacion_revision))throw new Error('No se pudo verificar la preparación del objetivo. Recargá antes de continuar.');
+  return client.preparacion_revision;
+}
+export function goalPreparationBody({client,period,formats,accounts,role,acknowledged}){
+  const observation=validateGoalQuota(client),revision=goalPreparationRevision(client);
+  const match=typeof client.clave==='string'&&/^(cliente|grupo)-([1-9]\d*)$/.exec(client.clave);
+  if(!['admin','community'].includes(role)||acknowledged!==true||!revision||observation.drift||!match||match[0]!==client.clave||!positive(Number(match[2]))
+    ||typeof period!=='string'||period.length!==7||!/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(period)||period<'2026-10'
+    ||!Array.isArray(client.cuentas)||!client.cuentas.length||client.cuentas.some(account=>!positive(account.id))||new Set(client.cuentas.map(account=>account.id)).size!==client.cuentas.length
+    ||client.reels+client.carruseles===0||client.reels>100||client.carruseles>100)throw new Error('Revisá el mes, la cuota y las cuentas antes de confirmar la preparación.');
+  if(!formats||Object.keys(formats).some(type=>!['video','carrusel'].includes(type))||!['video','carrusel'].every(type=>Array.isArray(formats[type])&&formats[type].every(positive)))throw new Error('Revisá los responsables de cada formato.');
+  const responsables=[...new Set(Object.values(formats).flat())];
+  if(!responsables.length||responsables.length>20||client.reels>0&&!formats.video.length||client.carruseles>0&&!formats.carrusel.length)throw new Error('Elegí responsables para las tareas nuevas de cada formato.');
+  const shared=client.cuentas.length>1;
+  if(shared&&(!accounts||Object.keys(accounts).length!==client.cuentas.length||client.cuentas.some(account=>!Array.isArray(accounts[account.id])||!accounts[account.id].length||accounts[account.id].some(id=>!positive(id)||!responsables.includes(id)))))throw new Error('Revisá los responsables de cada cuenta del objetivo.');
+  return {periodo:period,clave:client.clave,responsables,responsables_por_formato:{video:[...formats.video],carrusel:[...formats.carrusel]},...(shared?{responsables_por_cuenta:Object.fromEntries(client.cuentas.map(account=>[account.id,[...accounts[account.id]]]))}:{}),expected_preparation_revision:revision};
+}
 export function goalQuotaReviewBody({client,period,formats,accounts,role,acknowledged}){
   const observation=validateGoalQuota(client);
   if(role!=='admin'||!observation.prepared||!observation.drift||!observation.current||!validGoalQuotaRevision(observation.revision)

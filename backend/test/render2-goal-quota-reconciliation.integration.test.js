@@ -53,11 +53,21 @@ test('monthly quota review: explicit 2→3→1→3 preserves canonical work and 
     const data = ok(await api(`/cliente-objetivos?periodo=${period}`, token)); privacy(data);
     assert.equal(JSON.stringify(data).includes('817293.46'), false);
     const row = data.clientes.find(item => item.clave === prepare.clave); assert.ok(row);
+    assert.match(row.preparacion_revision, /^[0-9a-f]{64}$/);
     assert.match(row.cuota_revision, /^[0-9a-f]{64}$/);
     assert.equal(typeof row.cuota_desactualizada, 'boolean');
     for (const piece of row.piezas) assert.equal(typeof piece.en_cuota, 'boolean');
     return row;
   };
+  const observedPreparation = async (token = admin) => {
+    const data = ok(await api(`/cliente-objetivos?periodo=${period}`, token)); privacy(data);
+    assert.equal(data.periodo, period);
+    const row = data.clientes.find(item => item.clave === prepare.clave); assert.ok(row);
+    assert.match(row.preparacion_revision, /^[0-9a-f]{64}$/);
+    return { ...prepare, expected_preparation_revision: row.preparacion_revision };
+  };
+  // Reconciliation has its own closed observation contract, never the
+  // preparation token returned by observedPreparation.
   const review = (observed, token = admin) => api('/cliente-objetivos/reconciliar', token, 'POST', {
     ...prepare, expected_quota_revision: observed.cuota_revision,
   });
@@ -76,14 +86,14 @@ test('monthly quota review: explicit 2→3→1→3 preserves canonical work and 
   let initial, expanded, videoVisit, videoId, thirdSelection, standalone;
 
   await t.test('prepare two through API, then new configuration reports drift; GET and ordinary prepare cannot accept it', async () => {
-    ok(await api('/cliente-objetivos/preparar', admin, 'POST', prepare));
+    ok(await api('/cliente-objetivos/preparar', admin, 'POST', await observedPreparation()));
     initial = await goal(); assert.equal(initial.reels, 2); assert.equal(initial.piezas.length, 2);
     assert.equal(initial.piezas.every(piece => piece.en_cuota), true);
     await configure(3);
     const before = await snapshot(), observed = await goal(employee);
     assert.equal(observed.reels, 2); assert.deepEqual(observed.cuota_actual, { reels: 3, carruseles: 0 });
     assert.equal(observed.cuota_desactualizada, true);
-    ok(await api('/cliente-objetivos/preparar', admin, 'POST', prepare), 409);
+    ok(await api('/cliente-objetivos/preparar', admin, 'POST', await observedPreparation()), 409);
     assert.deepEqual(await snapshot(), before);
   });
 

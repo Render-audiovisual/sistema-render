@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import ts from 'typescript';
-import {validateGoalQuota,goalQuotaProgress,goalQuotaReviewBody,validGoalQuotaRevision,verifiedGoalPreparationAck} from './clientGoalQuota.js';
+import {validateGoalQuota,goalQuotaProgress,goalQuotaReviewBody,validGoalQuotaRevision,verifiedGoalPreparationAck,goalPreparationBody} from './clientGoalQuota.js';
 import {createCapturedRequest,isSessionFailure} from '../shared/session/captured-request.js';
 import {createBrowserSessionState} from '../shared/session/browser-session-state.js';
 import {clientOperationHref} from './clientOperation.js';
