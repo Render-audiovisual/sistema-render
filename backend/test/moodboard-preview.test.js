@@ -22,7 +22,7 @@ test("el moodboard contempla clientes compartidos, tareas y límites de archivo"
   assert.match(page, /cuentas compartidas/);
   assert.match(page, /Vinculada a tareas/);
   assert.match(page, /10\s*\*\s*1024\s*\*\s*1024/);
-  assert.ok(page.includes("/image\\/(jpeg|png)/"));
+  assert.ok(page.includes("/^image\\/(jpeg|png)$/.test(f.type)"));
 });
 
 test("la galería tipo Pinterest se adapta a móvil y movimiento reducido", () => {

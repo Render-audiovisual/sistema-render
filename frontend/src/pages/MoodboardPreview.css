@@ -24,6 +24,15 @@
 .moodboard-loading-page{min-height:100vh;display:grid;place-content:center;gap:12px;text-align:center;background:#f4f5f1;color:#283022}.moodboard-loading-page span,.moodboard-spinner{display:inline-block;color:#719300;animation:moodboard-pulse 1.1s ease-in-out infinite}.moodboard-error{margin:14px auto;max-width:1500px;padding:12px 14px;border:1px solid #e4b9b5;border-radius:10px;background:#fff3f1;color:#8f3d38;font-size:12px}.moodboard-image-loading{min-height:180px;display:grid;place-items:center;background:linear-gradient(120deg,#e9ede5,#f8faf6,#e9ede5);background-size:200% 100%;animation:moodboard-shimmer 1.3s linear infinite}.moodboard-image-loading span{color:#718166}.moodboard-link-preview.detail{text-decoration:none}
 @keyframes moodboard-pulse{50%{opacity:.35;transform:scale(.88)}}@keyframes moodboard-shimmer{to{background-position:-200% 0}}
 
+.moodboard-recovery{box-sizing:border-box;display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;min-width:0;margin:16px 0;padding:16px;border:1px solid #dce1d8;border-radius:12px;background:#f3f5f1;color:#596155;font-family:inherit;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
+.moodboard-recovery>p{flex-basis:100%;min-width:0;margin:0 0 4px}
+.moodboard-recovery>button{box-sizing:border-box;flex:1 1 160px;min-width:0;max-width:100%;min-height:44px;padding:10px 14px;border:1px solid #d7dcd3;border-radius:9px;background:#fff;color:#30362c;font:inherit;font-size:13px;font-weight:600;line-height:1.4;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
+.moodboard-recovery>button:hover:not(:disabled){background:#edf0ea;border-color:#bdc4b9}
+.moodboard-recovery>button:focus-visible{outline:2px solid #556b42;outline-offset:3px}
+.moodboard-recovery>button:disabled{opacity:.6;cursor:wait}
+.moodboard-composer>.moodboard-recovery{margin:16px 22px}
+.moodboard-composer>.moodboard-error{box-sizing:border-box;margin:14px 22px;overflow-wrap:anywhere}
+
 /* Pulido final: controles claros y legibles sin alterar la galería. */
 .moodboard-search{height:44px}
 .moodboard-search input{font-size:13px}
