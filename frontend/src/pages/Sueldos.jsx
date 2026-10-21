@@ -3,6 +3,7 @@ import { getSesion } from '../utils.jsx';
 import { useScopedRequest } from '../shared/session/use-scoped-request.js';
 import { isSessionFailure } from '../shared/session/captured-request.js';
 import { FinanceContractsPanel } from '../components/FinanceContractsPanel.jsx';
+import { TeamPaymentsPanel } from '../components/TeamPaymentsPanel.jsx';
 
 const ars = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const monthLabel = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" });
@@ -99,7 +100,9 @@ function SueldosContent({ sesion }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [contractActive,setContractActive] = useState(false), [deferredNotice,setDeferredNotice] = useState('');
+  const [paymentActive,setPaymentActive] = useState(false);
   const active = useRef(false), pendingPeriod = useRef(null), financeGeneration = useRef(0), contractsGeneration = useRef(0), financeDeferred = useRef(false);
+  const contractActivity = useRef(false), paymentActivity = useRef(false);
 
   const loadContracts = useCallback(async (signal) => {
     if (active.current) return;
@@ -125,12 +128,22 @@ function SueldosContent({ sesion }) {
   }, []);
 
   const onActivityChange = useCallback(value => {
-    const next = value === true; active.current = next; setContractActive(next);
+    contractActivity.current = value === true;
+    const next = contractActivity.current || paymentActivity.current; active.current = next; setContractActive(next);
     if (!next) {
       if (pendingPeriod.current) { const queued = pendingPeriod.current; pendingPeriod.current = null; setPeriod(queued.period); setPeriodError(queued.error); setDeferredNotice(''); }
       if (financeDeferred.current) { financeDeferred.current = false; setRefreshVersion(version => version + 1); }
     }
   }, []);
+  const requestContractEdit = useCallback(() => {
+    if (!captureContracts().current() || paymentActivity.current) return false;
+    onActivityChange(true); return true;
+  }, [captureContracts,onActivityChange]);
+  const onPaymentActivityChange = useCallback(value => {
+    if (!captureContracts().current() || value === true && contractActivity.current) return false;
+    paymentActivity.current = value === true; setPaymentActive(paymentActivity.current);
+    onActivityChange(contractActivity.current); return true;
+  }, [captureContracts,onActivityChange]);
 
   useEffect(() => {
     const controller = new AbortController(); loadContracts(controller.signal);
@@ -185,7 +198,8 @@ function SueldosContent({ sesion }) {
       <div><span className="section-label">Finanzas · Sólo administración</span><h1>Finanzas de Render</h1><p>Proyección mensual de ingresos, sueldos y gastos.</p></div>
       <label className="finance-period-select"><span>Mes de cobro previsto</span><input type="month" value={period} min="2026-09" disabled={contractActive} onChange={(event) => { if (active.current) return; try { const next = salaryPeriod(`?periodo=${encodeURIComponent(event.target.value)}`); setPeriod(next); setPeriodError(''); } catch (reason) { setError(reason.message); } }} /></label>
     </section>
-    <p className="finance-disclaimer" role="note">Los importes son una proyección calculada. No acreditan cobros ni pagos realizados. Esta vista no registra pagos.</p>
+    <p className="finance-disclaimer" role="note">Los importes son una proyección calculada. No acreditan cobros ni pagos realizados. Los pagos manuales se registran por separado.</p>
+    <TeamPaymentsPanel sesion={view.session} disabled={contractActive && !paymentActive} onActivityChange={onPaymentActivityChange}/>
 
     {loading && <div className="salary-state">Calculando el mes…</div>}
     {deferredNotice && <div className="salary-state" role="status">{deferredNotice}</div>}
@@ -251,7 +265,7 @@ function SueldosContent({ sesion }) {
         <header><div><span className="section-label">ADMINISTRACIÓN</span><h2>Contratos financieros</h2></div><small>Registros financieros independientes; sus nombres no identifican clientes operativos.</small></header>
         {contractsError && <div className="salary-state is-error" role="alert">{contractsError}</div>}
         <button type="button" className="btn" disabled={contractActive} onClick={() => loadContracts()}>Recargar contratos</button>
-        {contractsReady ? <FinanceContractsPanel contracts={contracts} sesion={view.session} ars={ars} onSaved={onSaved} onActivityChange={onActivityChange} /> : <div className="salary-state">Los contratos financieros aún no están disponibles.</div>}
+        {contractsReady ? <FinanceContractsPanel contracts={contracts} sesion={view.session} ars={ars} onSaved={onSaved} onActivityChange={onActivityChange} disabled={paymentActive} onBeforeEdit={requestContractEdit} /> : <div className="salary-state">Los contratos financieros aún no están disponibles.</div>}
       </section>
 
     {finance && <>

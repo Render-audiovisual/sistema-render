@@ -69,7 +69,8 @@ test("Finanzas expone el cálculo automático a mes vencido", () => {
   assert.match(frontend, /Dólar usado/);
   assert.doesNotMatch(frontend, /Equipo \+ Franco programador|Herramientas USD|Herramientas ARS/);
   assert.match(backend, /getCardDollarRate/);
-  assert.match(frontend, /no (?:confirma|registra)[^\n]*pagos|no son comprobantes/i);
+  assert.match(frontend, /No acreditan cobros ni pagos realizados/);
+  assert.match(frontend, /Los pagos manuales se registran por separado/);
   assert.doesNotMatch(frontend, /Guardar cierre mensual/);
 });
 

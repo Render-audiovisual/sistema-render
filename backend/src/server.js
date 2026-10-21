@@ -60,6 +60,7 @@ import { createPersonalHomeRouter } from "./personal-home.js";
 import { createProjectsRouter } from "./projects.js";
 import { createClientOperationRouter } from "./client-operation.js";
 import { createMonthlyAgreementRouter, strictAgreementPeriod, strictAgreementMoney, strictAgreementClientId, validateLegacyConfigurationRequest } from "./monthly-agreement.js";
+import { createTeamPaymentsRouter } from './team-payments.js';
 import { projectDomainConflict } from "./project-errors.js";
 import { createEditorialPublicationRouter } from "./editorial-publication.js";
 import { createEditingDeliveriesRouter } from "./editing-deliveries.js";
@@ -234,6 +235,7 @@ router.use('/inicio', createPersonalHomeRouter({ express, pool }));
 router.use('/proyectos', createProjectsRouter({ express, pool }));
 router.use('/clientes', createClientOperationRouter({ express, pool }));
 router.use('/clientes', createMonthlyAgreementRouter({ express, pool }));
+router.use('/finanzas/pagos', createTeamPaymentsRouter({ express, pool }));
 router.use('/editorial-publicacion', createEditorialPublicationRouter({ express, pool }));
 router.get('/tareas-edicion/inventario-feedback', async (req, res, next) => {
   res.set('Cache-Control', 'no-store');
@@ -573,25 +575,23 @@ router.get("/reportes/datos", async (req, res, next) => {
 
 async function loadPayrollForCollectionPeriod(collectionPeriod, db) {
   const workPeriod = previousPeriod(collectionPeriod);
-  const [tasks, histories, publications, compensations, editingDeliveries] = await Promise.all([
-    db.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
+  const tasks = await db.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
       to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.propiedades_extra,t.created_at,t.updated_at,
       c.nombre AS cliente_nombre FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
       WHERE t.propiedades_extra->>'workspace'='render_os' AND (to_char(t.fecha_vencimiento,'YYYY-MM')=$1
-        OR t.propiedades_extra->>'reporte_periodo'=$1 OR (t.fecha_vencimiento IS NULL AND to_char(t.updated_at,'YYYY-MM')=$1))`, [workPeriod]),
-    db.query(`SELECT h.id,h.estado,to_char(h.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
+        OR t.propiedades_extra->>'reporte_periodo'=$1 OR (t.fecha_vencimiento IS NULL AND to_char(t.updated_at,'YYYY-MM')=$1))`, [workPeriod]);
+  const histories = await db.query(`SELECT h.id,h.estado,to_char(h.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
       h.idea,h.copy,h.fecha_publicación_real,h.updated_at,c.nombre AS cliente_nombre
-      FROM historias h JOIN clientes c ON c.id=h.cliente_id WHERE to_char(h.fecha_programada,'YYYY-MM')=$1`, [workPeriod]),
-    db.query(`SELECT p.id,p.tipo,p.estado,to_char(p.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
+      FROM historias h JOIN clientes c ON c.id=h.cliente_id WHERE to_char(h.fecha_programada,'YYYY-MM')=$1`, [workPeriod]);
+  const publications = await db.query(`SELECT p.id,p.tipo,p.estado,to_char(p.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
       p.idea,p.copy,p.fecha_publicación_real,p.updated_at,c.nombre AS cliente_nombre
-      FROM publicaciones p JOIN clientes c ON c.id=p.cliente_id WHERE to_char(p.fecha_programada,'YYYY-MM')=$1`, [workPeriod]),
-    db.query(`SELECT DISTINCT ON (empleado_clave) empleado_clave,modalidad,sueldo_base,tarifa_facil,tarifa_intermedia
+      FROM publicaciones p JOIN clientes c ON c.id=p.cliente_id WHERE to_char(p.fecha_programada,'YYYY-MM')=$1`, [workPeriod]);
+  const compensations = await db.query(`SELECT DISTINCT ON (empleado_clave) empleado_clave,modalidad,sueldo_base,tarifa_facil,tarifa_intermedia
       FROM empleado_compensaciones WHERE vigente_desde <= ($1 || '-01')::date
-      ORDER BY empleado_clave,vigente_desde DESC`, [collectionPeriod]),
-    db.query(`SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
+      ORDER BY empleado_clave,vigente_desde DESC`, [collectionPeriod]);
+  const editingDeliveries = await db.query(`SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
       cliente_etiqueta,categoria,importe FROM entregas_edicion
-      WHERE to_char(fecha_entrega,'YYYY-MM')=$1 ORDER BY fecha_entrega,id`, [workPeriod]),
-  ]);
+      WHERE to_char(fecha_entrega,'YYYY-MM')=$1 ORDER BY fecha_entrega,id`, [workPeriod]);
   const payroll = applyCompensations(calculateSalaryDashboard({
     period: workPeriod,
     tasks: tasks.rows,
@@ -703,14 +703,12 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
     const exchangeRate = await getCardDollarRate();
     const response = await withFinanceSnapshot(pool, observed, async db => {
     const previousCollectionPeriod = previousPeriod(period);
-    const [contracts, expenses, currentPayrollData, previousPayrollData] = await Promise.all([
-      db.query(`SELECT nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
-        to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM contratos_financieros ORDER BY nombre,inicia_el`),
-      db.query(`SELECT nombre,categoria,moneda,importe,dia_pago,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
-        to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM gastos_fijos_financieros ORDER BY dia_pago,nombre`),
-      loadPayrollForCollectionPeriod(period, db),
-      loadPayrollForCollectionPeriod(previousCollectionPeriod, db),
-    ]);
+    const contracts = await db.query(`SELECT nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
+      to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM contratos_financieros ORDER BY nombre,inicia_el`);
+    const expenses = await db.query(`SELECT nombre,categoria,moneda,importe,dia_pago,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
+      to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM gastos_fijos_financieros ORDER BY dia_pago,nombre`);
+    const currentPayrollData = await loadPayrollForCollectionPeriod(period, db);
+    const previousPayrollData = await loadPayrollForCollectionPeriod(previousCollectionPeriod, db);
     const payroll = currentPayrollData.payroll;
     const finance = buildAutomaticFinanceSummary({
       period,

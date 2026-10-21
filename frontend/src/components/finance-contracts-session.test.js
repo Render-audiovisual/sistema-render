@@ -36,7 +36,7 @@ function fixture({ edit = false } = {}) {
     draft: { nombre: 'Edited', importe_mensual: '250.25', inicia_el: '2026-10-01', finaliza_el: '' },
     newContract: { nombre: 'New financial contract', importe_mensual: '200.50', inicia_el: '2026-11-01', finaliza_el: '' },
     newBaseline: { current: 'initial' }, pending: { current: false }, blockedRef: { current: null }, createConsumed: { current: null },
-    capture: scope.capture, activityCallback: { current: value => activity.push(value) },
+    capture: scope.capture, disabled:false,onBeforeEdit:undefined,activityCallback: { current: value => activity.push(value) },
     dirty: true, window: { confirm: () => true },
     onSaved: async (value, guard) => { guard.assertCurrent(); saved.push({ value, guard }); } };
   for (const name of ['Editing', 'Draft', 'NewContract', 'Rows', 'Loading', 'Error', 'Blocked']) context[`set${name}`] = value => {
@@ -44,6 +44,7 @@ function fixture({ edit = false } = {}) {
   };
   for (const name of ['contractRevision', 'contractDate', 'contractRow', 'contractDraft', 'contractPayload', 'assertContractAck']) context[name] = evaluate(fn(file, name), context);
   context.emptyContract = evaluate(variable('emptyContract').initializer, context);
+  context.admitEdit = evaluate(variable('admitEdit').initializer, context);
   return { context, calls, saved, effects, state, activity, store, accept, render,
     unmount: () => cleanups.forEach(cleanup => cleanup?.()), run: name => evaluate(variable(name).initializer, context) };
 }

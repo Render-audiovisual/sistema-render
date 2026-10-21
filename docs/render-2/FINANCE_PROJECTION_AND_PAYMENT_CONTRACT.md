@@ -10,7 +10,9 @@
 - Authority is observed at the transaction's first account read. This is a point-in-time read authorization, not a claim that revocation committed after that boundary cancels an already-running response. No row lock, global mutex or business write is introduced by this GET.
 - Response is no-store. Existing six-field DTO remains unchanged. The UI labels expected income, calculated salaries, planned expenses and projected result; it explicitly says that they do not prove money received or paid. It retains two display decimals and the separate contract editor/session guards.
 
-## Payment gap — not completed by this integration
+## Historical payment gap at110
+
+Integration111 introduces a separate manual ledger under the [team-payment contract](TEAM_PAYMENT_LEDGER_CONTRACT.md). The following describes the pre111 state and its design constraints, not a claim that the new ledger is missing. Actual implementation/acceptance evidence and remaining limits belong in STATUS.md.
 
 Migration020 defines `empleado_pagos_mensuales` and `empleado_pagos_historial`. The former associates a legacy employee key/month with a final amount and a textual confirmer. `applyCompensations` can use such an amount as a payable override, but the canonical summary currently passes an empty final-payment collection. No current connected payment writer or independent employee-ID payment ledger was found in `backend/src`.
 

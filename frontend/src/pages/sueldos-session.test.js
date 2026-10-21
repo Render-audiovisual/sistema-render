@@ -34,7 +34,7 @@ function fixture(request=async()=>({})) {
   const make=contextual=>{const observed=context;return createCapturedRequest({session:original,readSession:()=>store.getSession(),isActive:()=>mounted&&(!contextual||observed===context),request:(url,options)=>{calls.push({url,options});return request(url,options);}});};
   let contracts=[],version=0;
   const deps={capture:()=>make(true),captureContracts:()=>make(false),contractRow,contractRows,financeDto,isSessionFailure,
-    period:'2026-10',periodError:'',active:{current:false},pendingPeriod:{current:null},financeGeneration:{current:0},contractsGeneration:{current:0},financeDeferred:{current:false},
+    period:'2026-10',periodError:'',active:{current:false},contractActivity:{current:false},paymentActivity:{current:false},pendingPeriod:{current:null},financeGeneration:{current:0},contractsGeneration:{current:0},financeDeferred:{current:false},
     AbortController,URL,window:{location:{href:'http://localhost/sueldos?periodo=2026-10&keep=yes#summary'},history:{state:{qa:true},replaceState:(...args)=>effects.push(['url',...args])}},
     ...Object.fromEntries(['Loading','Error','Data','ContractsError','ContractsReady','ContractActive','Period','PeriodError','DeferredNotice'].map(name=>[`set${name}`,value=>effects.push([name,value])])),
     setContracts:value=>{contracts=typeof value==='function'?value(contracts):value;effects.push(['Contracts',contracts]);},
