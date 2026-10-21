@@ -3,6 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import express from "express";
 import { buildMoodboardTaskReadPredicate, moodboardTaskId, mutateMoodboardTaskLink } from './moodboard-task-access.js';
+import { createMoodboardCategoriesRouter } from './moodboard-categories.js';
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_CATEGORIES = ["Fotografía", "Tipografía", "Color", "Composición", "Historias", "Carrusel", "Flyer"];
@@ -23,6 +24,9 @@ async function ensureBoards(pool) {
     let board = await pool.query("SELECT id FROM moodboard_boards WHERE lower(nombre) = lower($1) ORDER BY id LIMIT 1", [boardName]);
     if (!board.rowCount) board = await pool.query("INSERT INTO moodboard_boards(nombre) VALUES ($1) RETURNING id", [boardName]);
     const boardId = board.rows[0].id;
+    // Match category batches: serialize a board before touching its categories.
+    // Non-key lock allows normal FK references without locking their rows first.
+    await pool.query('SELECT id FROM moodboard_boards WHERE id=$1 FOR NO KEY UPDATE', [boardId]);
     await pool.query("INSERT INTO moodboard_board_clients(board_id, cliente_id) VALUES ($1, $2) ON CONFLICT (cliente_id) DO NOTHING", [boardId, client.id]);
     for (const [index, category] of DEFAULT_CATEGORIES.entries()) {
       await pool.query("INSERT INTO moodboard_categories(board_id, nombre, orden) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING", [boardId, category, index + 1]);
@@ -63,6 +67,7 @@ function parseImage(dataUrl) {
 
 export function createMoodboardsRouter({ pool }) {
   const router = express.Router();
+  router.use(createMoodboardCategoriesRouter({ pool }));
   const hostingerVersionsMarker = `${path.sep}hbuilds${path.sep}versions${path.sep}`;
   const persistentRoot = process.cwd().includes(hostingerVersionsMarker)
     ? process.cwd().split(hostingerVersionsMarker)[0]
@@ -195,19 +200,16 @@ export function createMoodboardsRouter({ pool }) {
   });
 
   router.post("/boards/:id/categories", async (req, res, next) => {
-    try {
-      const name = String(req.body?.name || "").trim(); if (!name) return res.status(400).json({ error: "Escribí un nombre." });
-      const { rows } = await pool.query("INSERT INTO moodboard_categories(board_id,nombre,orden) VALUES ($1,$2,(SELECT COALESCE(max(orden),0)+1 FROM moodboard_categories WHERE board_id=$1)) RETURNING *", [req.params.id, name]);
-      res.status(201).json(rows[0]);
-    } catch (error) { if (error.code === "23505") return res.status(409).json({ error: "Esa categoría ya existe." }); next(error); }
+    res.set('Cache-Control', 'no-store');
+    res.status(410).json({ error: 'Actualizá las categorías y usá el guardado conjunto con revisión.' });
   });
   router.patch("/categories/:id", async (req, res, next) => {
-    try { const name = String(req.body?.name || "").trim(); const { rows } = await pool.query("UPDATE moodboard_categories SET nombre=$1 WHERE id=$2 RETURNING *", [name, req.params.id]); res.json(rows[0]); }
-    catch (error) { next(error); }
+    res.set('Cache-Control', 'no-store');
+    res.status(410).json({ error: 'Actualizá las categorías y usá el guardado conjunto con revisión.' });
   });
   router.delete("/categories/:id", async (req, res, next) => {
-    try { await pool.query("DELETE FROM moodboard_categories WHERE id=$1", [req.params.id]); res.status(204).end(); }
-    catch (error) { next(error); }
+    res.set('Cache-Control', 'no-store');
+    res.status(410).json({ error: 'Actualizá las categorías y usá el guardado conjunto con revisión.' });
   });
   return router;
 }

@@ -7,172 +7,142 @@ import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { installUnsavedNavigation, registerNavigationGuard } from '../shared/navigation/unsaved.js';
 import { requestAppNavigation } from '../shared/navigation/location.js';
-const categories = () => [{ id: 11, nombre: 'One', orden: 1 }, { id: 12, nombre: 'Two', orden: 2 }];
-const edits = () => categories().map(row => ({ ...row, changed: true, nombre: `${row.nombre} edited` }));
-const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
-function fixture(request, cookie = false) {
-  let active = true, origin = {}, captures = 0, reads = 0;
-  const store = createBrowserSessionState();
-  if (cookie) store.acceptBootstrap(store.beginBootstrap(), { usuario: { id: 1, usuario: 'qa', nombre: 'QA', rol: 'admin' }, session_context: 'a'.repeat(43), csrf_token: 'b'.repeat(43) });
-  let session = cookie ? store.getSession() : { token: 'original', usuario: { id: 1, rol: 'admin' } };
-  const original = session, calls = [];
-  const capture = () => { captures++; const selected = origin; return createCapturedRequest({ session, readSession: () => session,
-    isActive: () => active && origin === selected,
-    request: async (url, options) => { calls.push({ url, options }); return request(url, options, calls.length); } }); };
-  const refresh = async guard => { reads++; return { categories: await guard.request('/api/moodboards/boards/9/categories', { cache: 'no-store' }) }; };
-  const model = createMoodboardCategoryOperation({ boardId: 9, categories: categories(), capture, refresh });
-  return { model, calls, capture, original, get captures() { return captures; }, get reads() { return reads; },
-    switch() { session = { token: 'replacement', usuario: { id: 2, rol: 'admin' } }; },
-    boardABA() { origin = {}; origin = {}; }, unmount() { active = false; } };
+const categories = () => [{id:11,nombre:'One',orden:1},{id:12,nombre:'Two',orden:2}];
+const observation = (extra = {}) => ({version:1,board_id:9,revision:7,categories:categories(),...extra});
+const deferred = () => { let resolve, reject; const promise = new Promise((yes,no)=>{resolve=yes;reject=no;}); return {promise,resolve,reject}; };
+const requestId = '00000000-0000-4000-8000-000000000001';
+function ack(options, extra = {}) {
+  return {...observation({revision:10,categories:[{id:11,nombre:'Renamed',orden:1},{id:13,nombre:'New',orden:3}]}),
+    operation:{request_id:JSON.parse(options.body).request_id,replayed:false,result_revision:10},...extra};
 }
-function ack(url, options, extra = {}) {
-  return { id: url.endsWith('/boards/9/categories') ? 13 : Number(url.split('/').at(-1)), board_id: 9,
-    nombre: JSON.parse(options.body).name, orden: 1, ...extra };
+function fixture(request = async (_url,options)=>options.method ? ack(options) : observation(), cookie = false) {
+  let origin={},active=true,captures=0,reads=0,refreshError=false,ids=0;
+  const store=createBrowserSessionState();
+  if(cookie) store.acceptBootstrap(store.beginBootstrap(),{usuario:{id:1,usuario:'qa',nombre:'QA',rol:'admin'},session_context:'a'.repeat(43),csrf_token:'b'.repeat(43)});
+  let session=cookie?store.getSession():{token:'original',usuario:{id:1,rol:'admin'}};
+  const original=session,calls=[];
+  const capture=()=>{captures++;const selected=origin;return createCapturedRequest({session,readSession:()=>session,isActive:()=>active&&origin===selected,
+    request:async(url,options)=>{calls.push({url,options});return request(url,options,calls.length);}})};
+  const refresh=async guard=>{reads++;guard.assertCurrent();if(refreshError)throw Error('overview read failed');return {categories:categories()};};
+  const model=createMoodboardCategoryOperation({boardId:9,capture,refresh,uuid:()=>requestId.slice(0,-1)+String(++ids)});
+  return {model,calls,capture,refresh,original,get captures(){return captures},get reads(){return reads},
+    failRefresh(value){refreshError=value},switch(){session={token:'replacement',usuario:{id:2,rol:'admin'}}},
+    boardABA(){origin={};origin={}},unmount(){active=false}};
 }
-test('one captured immutable ordered plan with synchronous double-submit guard and validated ACK IDs', async () => {
-  const first = deferred();
-  const f = fixture(async (url, options, count) => {
-    if (!options.method) return [...edits(), { id: 13, nombre: 'New', orden: 3 }];
-    if (count === 1) await first.promise; return ack(url, options);
-  });
-  const draft = edits(), pending = f.model.save(draft, ' New ');
-  await assert.rejects(f.model.save(draft, 'Duplicate')); await assert.rejects(f.model.remove(12)); assert.equal(f.calls.length, 1);
-  draft[1].nombre = 'Mutated'; first.resolve(); const result = await pending;
-  assert.deepEqual(f.calls.filter(call => call.options.method).map(call => [call.options.method, JSON.parse(call.options.body).name]),
-    [['PATCH', 'One edited'], ['PATCH', 'Two edited'], ['POST', 'New']]);
-  assert.equal(f.captures, 1); assert.equal(f.reads, 1); assert.equal(result.scope.current(), true);
-  assert.deepEqual(f.model.snapshot.completed.map(row => row.id), [11, 12, 13]); assert.equal(f.model.snapshot.phase, 'complete');
+const draft = () => [{id:11,nombre:' Renamed ',orden:1}];
+
+test('fresh snapshot is mandatory; immutable atomic rename/delete/create has one captured scope and synchronous submit guard',async()=>{
+  const first=deferred(),f=fixture(async(_url,options)=>{if(!options.method)return observation();await first.promise;return ack(options)});
+  await assert.rejects(f.model.save(draft(),'New'));assert.equal(f.calls.length,0);
+  const prepared=await f.model.prepare();assert.equal(prepared.revision,7);assert.deepEqual(prepared.categories,categories());
+  const edited=draft(),sent=f.model.save(edited,' New ');edited[0].nombre='MUTATED';
+  await assert.rejects(f.model.save(draft(),'Duplicate'));await assert.rejects(f.model.prepare());
+  assert.equal(f.calls.length,2);assert.equal(f.model.snapshot.busy,true);first.resolve();await sent;
+  const write=f.calls[1];assert.equal(write.url,'/api/moodboards/boards/9/category-changes');
+  assert.deepEqual(JSON.parse(write.options.body),{request_id:requestId,expected_revision:7,changes:[{type:'rename',id:11,name:'Renamed'},{type:'delete',id:12},{type:'create',name:'New'}]});
+  assert.equal(f.captures,1);assert.equal(f.reads,1);assert.equal(f.model.snapshot.phase,'complete');
 });
-for (const status of [409, 500]) test(`middle ${status} keeps confirmed steps; recovery only reads and never resumes later POST`, async () => {
-  const f = fixture(async (url, options, count) => {
-    if (!options.method) return categories();
-    if (count === 2) throw Object.assign(Error('middle failed'), { status }); return ack(url, options);
-  });
-  await assert.rejects(f.model.save(edits(), 'New'));
-  assert.deepEqual(f.model.snapshot.completed.map(row => row.id), [11]); assert.equal(f.calls.length, 2);
-  assert.equal(f.model.snapshot.phase, status === 409 ? 'failed' : 'uncertain');
-  await assert.rejects(f.model.save(edits(), 'New')); assert.throws(() => f.model.finish());
-  await f.model.refresh(); await f.model.refresh();
-  assert.equal(f.calls.length, 4); assert.equal(f.calls.filter(call => call.options.method).length, 2);
-  assert.equal(f.model.snapshot.failed.id, 12); assert.equal(f.model.finish().scope.current(), true);
-  await assert.rejects(f.model.save(edits(), 'New')); assert.equal(f.calls.length, 4);
+test('uncertainty is locked; only explicit verification retransmits the exact UUID/body and later replay snapshot is current',async()=>{
+  let writes=0;
+  const f=fixture(async(_url,options)=>{if(!options.method)return observation();if(++writes===1)throw Error('lost response');
+    return ack(options,{revision:15,categories:categories(),operation:{request_id:requestId,replayed:true,result_revision:10}})});
+  await f.model.prepare();await assert.rejects(f.model.save(draft(),'New'));
+  assert.equal(f.model.snapshot.phase,'uncertain');assert.equal(writes,1);
+  await assert.rejects(f.model.refresh());await assert.rejects(f.model.save(draft(),'Other'));assert.throws(()=>f.model.adoptReviewed());
+  assert.equal(writes,1);const value=await f.model.verify();
+  assert.equal(value.revision,15);assert.deepEqual(value.categories,categories(),'Do not infer old intent state from replay');
+  assert.equal(f.calls[1].options.body,f.calls[2].options.body);assert.equal(writes,2);assert.equal(f.model.snapshot.phase,'complete');
 });
-test('uncertain POST is never automatically repeated, matched by name, or inferred as owned from readback', async () => {
-  const f = fixture(async (_url, options) => {
-    if (options.method === 'POST') throw Error('POST response lost');
-    return [...categories(), { id: 99, nombre: 'New', orden: 3 }];
-  });
-  await assert.rejects(f.model.save(categories(), 'New'));
-  assert.equal(f.model.snapshot.phase, 'uncertain'); assert.equal(f.model.snapshot.completed.length, 0);
-  await f.model.refresh(); assert.equal(f.model.snapshot.completed.length, 0); assert.equal(f.model.snapshot.failed.kind, 'create');
-  f.model.finish(); assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1);
+for(const status of [400,404,409,413,422,428])test('definite '+status+' needs explicit read/review/adopt, never rebases or resubmits draft',async()=>{
+  let reads=0,writes=0;
+  const f=fixture(async(_url,options)=>{if(!options.method)return observation({revision:reads++?20:7});writes++;throw Object.assign(Error('rejected'),{status})});
+  await f.model.prepare();await assert.rejects(f.model.save(draft(),'New'));assert.equal(f.model.snapshot.phase,'conflict');
+  await assert.rejects(f.model.verify());await assert.rejects(f.model.save(draft(),'New'));
+  await f.model.refresh();assert.equal(f.model.snapshot.phase,'conflict');await assert.rejects(f.model.save(draft(),'New'));
+  assert.equal(writes,1);assert.equal(JSON.parse(f.calls[1].options.body).expected_revision,7);
+  const current=f.model.adoptReviewed();assert.equal(current.revision,20);assert.equal(f.model.snapshot.phase,'idle');
+  await assert.rejects(f.model.save(draft(),'Revised'));assert.equal(writes,2);
+  const final=JSON.parse(f.calls.at(-1).options.body);assert.equal(final.expected_revision,20);assert.notEqual(final.request_id,requestId);
 });
-test('uncertain DELETE keeps recovery even when refreshed list no longer contains ID, and never repeats DELETE', async () => {
-  const f = fixture(async (_url, options) => { if (options.method === 'DELETE') throw Error('lost DELETE response'); return [categories()[1]]; });
-  await assert.rejects(f.model.remove(11)); assert.equal(f.model.snapshot.phase, 'uncertain');
-  await assert.rejects(f.model.remove(11)); await f.model.refresh();
-  assert.equal(f.model.snapshot.completed.length, 0); assert.equal(f.model.snapshot.failed.id, 11);
-  assert.throws(() => f.model.acceptRemoval()); assert.equal(f.model.finish().categories.length, 1);
-  assert.equal(f.calls.filter(call => call.options.method === 'DELETE').length, 1);
+test('confirmed ACK plus failed refresh is read-only recovery, never another mutation',async()=>{
+  const f=fixture();await f.model.prepare();f.failRefresh(true);
+  await assert.rejects(f.model.save(draft(),'New'));assert.equal(f.model.snapshot.accepted,true);assert.equal(f.model.snapshot.phase,'read_failed');
+  await assert.rejects(f.model.verify());assert.equal(f.calls.length,2);
+  f.failRefresh(false);await f.model.verify();assert.equal(f.calls.length,2);assert.equal(f.reads,3);assert.equal(f.model.snapshot.phase,'complete');
 });
-test('validated DELETE204 plus fresh scoped read can resume editing; no repeated acknowledged mutation', async () => {
-  const f = fixture(async (url, options) => {
-    if (options.method === 'DELETE') return null;
-    if (!options.method) return [categories()[1]]; return ack(url, options);
-  });
-  await f.model.remove(11); assert.deepEqual(f.model.snapshot.completed, [{ kind: 'delete', id: 11, name: null }]);
-  const removed = f.model.acceptRemoval(); assert.equal(removed.removedId, 11); assert.equal(f.model.snapshot.phase, 'idle');
-  await assert.rejects(f.model.remove(11)); assert.equal(f.calls.length, 2);
-  await f.model.save([{ id: 12, nombre: 'Two changed', orden: 2, changed: true }]);
-  assert.equal(f.calls.filter(call => call.options.method === 'DELETE').length, 1);
+for(const cookie of [false,true])for(const change of ['switch','boardABA','unmount'])test((cookie?'cookie':'bearer')+' '+change+' invalidates held ACK and forbids retry/read',async()=>{
+  const pending=deferred(),f=fixture(async(_url,options)=>{if(!options.method)return observation();await pending.promise;return ack(options)},cookie);
+  await f.model.prepare();const sent=f.model.save(draft(),'New');f[change]();pending.resolve();await assert.rejects(sent);
+  assert.equal(f.model.snapshot.phase,'blocked');await assert.rejects(f.model.verify());await assert.rejects(f.model.refresh());assert.equal(f.calls.length,2);
+  if(cookie)assert.equal(f.calls[1].options.sessionIntent.session,f.original);else assert.equal(f.calls[1].options.headers.Authorization,'Bearer original');
 });
-for (const cookie of [false, true]) for (const change of ['switch','boardABA','unmount']) test(`${cookie ? 'cookie' : 'bearer'} ${change} stops later writes/read/finish from old operation`, async () => {
-  const pending = deferred(), f = fixture(async (url, options) => { await pending.promise; return ack(url, options); }, cookie);
-  const sent = f.model.save(edits(), 'New'); assert.equal(f.calls.length, 1); f[change]();
-  pending.resolve(); await assert.rejects(sent);
-  assert.equal(f.model.snapshot.phase, 'blocked'); assert.equal(f.calls.length, 1);
-  await assert.rejects(f.model.refresh()); assert.throws(() => f.model.finish()); assert.equal(f.calls.length, 1);
-  if (cookie) assert.equal(f.calls[0].options.sessionIntent.session, f.original); else assert.equal(f.calls[0].options.headers.Authorization, 'Bearer original');
+for(const patch of [{board_id:10},{version:2},{revision:'7'},{extra:true},{categories:[{id:11,nombre:'One',orden:1,board_id:9}]},{categories:[categories()[0],categories()[0]]}])
+test('snapshot fails closed '+JSON.stringify(patch),async()=>{
+  const f=fixture(async()=>observation(patch));await assert.rejects(f.model.prepare());await assert.rejects(f.model.save(draft(),'New'));assert.equal(f.calls.length,1);
 });
-test('ACK board/category/name validation prevents chaining into another ID or board', async () => {
-  for (const patch of [{ id: 999 }, { board_id: 10 }, { nombre: 'Wrong name' }, { orden: '1' }]) {
-    const f = fixture(async (url, options) => ack(url, options, patch)); await assert.rejects(f.model.save(edits(), 'New'));
-    assert.equal(f.calls.length, 1); assert.equal(f.model.snapshot.completed.length, 0); assert.equal(f.model.snapshot.phase, 'uncertain');
-  }
-  const f = fixture(async () => undefined); await assert.rejects(f.model.save(edits())); assert.equal(f.calls.length, 1);
+for(const patch of [{board_id:10},{revision:6},{operation:{request_id:requestId,replayed:false,result_revision:7}},
+  {operation:{request_id:requestId,replayed:'true',result_revision:10}},
+  {operation:{request_id:'00000000-0000-4000-8000-000000000099',replayed:true,result_revision:10}},
+  {operation:{request_id:requestId,replayed:false,result_revision:9}},
+  {operation:{request_id:requestId,replayed:true,result_revision:11}},
+  {operation:{request_id:requestId,replayed:true,result_revision:10,extra:true}}])
+test('invalid mutation identity/revision stays uncertain '+JSON.stringify(patch),async()=>{
+  const f=fixture(async(_url,options)=>options.method?ack(options,patch):observation());await f.model.prepare();await assert.rejects(f.model.save(draft(),'New'));
+  assert.equal(f.model.snapshot.phase,'uncertain');assert.equal(f.model.snapshot.accepted,false);assert.equal(f.reads,0);assert.throws(()=>f.model.adoptReviewed());
 });
-test('unobserved IDs and blank names fail before any write; malformed current lists never unlock finish', async () => {
-  const f = fixture(async () => []);
-  await assert.rejects(f.model.save([{ id: 999, nombre: 'Other board', changed: true }], 'New'));
-  await assert.rejects(f.model.remove(999)); await assert.rejects(f.model.save([{ id: 11, nombre: ' ', changed: true }], 'New'));
-  assert.equal(f.calls.length, 0); assert.equal(f.captures, 0);
-  for (const current of [[{ id: 11, nombre: 'One' }], [{ id: 11, nombre: 'One', orden: 1, board_id: 10 }], [{ id: 11, nombre: 'One', orden: 1 }, { id: 11, nombre: 'Duplicate', orden: 2 }], null]) {
-    const bad = fixture(async (url, options) => options.method ? ack(url, options) : current);
-    await assert.rejects(bad.model.save([edits()[0]])); assert.equal(bad.model.snapshot.phase, 'read_failed');
-    assert.throws(() => bad.model.finish()); assert.equal(bad.calls.filter(call => call.options.method).length, 1);
-  }
+test('foreign IDs, duplicate IDs, blanks, and no-op fail without POST',async()=>{
+  const f=fixture();await f.model.prepare();
+  for(const rows of [[{id:99,nombre:'Foreign'}],[...categories(),categories()[0]],[{id:11,nombre:' '}],categories()])await assert.rejects(f.model.save(rows,''));
+  assert.equal(f.calls.length,1);assert.equal(f.model.snapshot.phase,'idle');
 });
-test('all mutation ACKs followed by failed read recover with GET only; failed read never replays accepted steps', async () => {
-  let reads = 0;
-  const f = fixture(async (url, options) => { if (options.method) return ack(url, options); if (++reads === 1) throw Error('read failed'); return categories(); });
-  await assert.rejects(f.model.save(edits(), 'New')); assert.equal(f.model.snapshot.completed.length, 3);
-  assert.equal(f.model.snapshot.phase, 'read_failed'); await f.model.refresh(); f.model.finish();
-  assert.equal(f.calls.filter(call => call.options.method).length, 3); assert.equal(f.reads, 2);
+test('each StrictMode-like setup owns a fresh model; canceled first read/ACK cannot mutate the replacement',async()=>{
+  const pending=deferred(),f=fixture(async()=>pending.promise);
+  const old=f.model.prepare();f.model.cancel();
+  const next=createMoodboardCategoryOperation({boardId:9,capture:f.capture,refresh:f.refresh});
+  const fresh=next.prepare();pending.resolve(observation());await assert.rejects(old);await fresh;
+  assert.equal(next.snapshot.phase,'idle');assert.equal(f.model.snapshot.phase,'blocked');await assert.rejects(f.model.prepare());
 });
-const source = readFileSync(new URL('./MoodboardPreview.jsx', import.meta.url), 'utf8');
-const file = ts.createSourceFile('MoodboardPreview.jsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
-const nodes = (root, predicate) => { const result = []; const visit = node => { if (predicate(node)) result.push(node); ts.forEachChild(node, visit); }; visit(root); return result; };
-const editor = file.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'CategoryEditor');
-const evaluate = (node, deps) => new Function(...Object.keys(deps), `return (${node.getText(file)});`)(...Object.values(deps));
-const callback = (name, deps) => evaluate(nodes(editor, node => ts.isVariableDeclaration(node) && node.name.getText(file) === name)[0].initializer, deps);
-test('actual CategoryEditor captures through parent origin, integrates busy/recovery and has no direct api/chained writes', () => {
-  assert.equal(file.parseDiagnostics.length, 0); const text = editor.getText(file);
-  assert.match(text, /useMoodboardOperation\(capture/); assert.match(text, /createMoodboardCategoryOperation/);
-  assert.doesNotMatch(text, /await api\(|api\(/); assert.match(text, /Actualizar y revisar categorías/);
-  assert.match(text, /No lo repetiremos ni continuaremos/); assert.match(text, /no demuestra quién realizó/);
-  const entry = nodes(file, node => ts.isJsxSelfClosingElement(node) && node.tagName.getText(file) === 'CategoryEditor')[0].getText(file);
-  for (const prop of ['capture={captureOperation}', 'reload={reloadOperation}', 'onBusy={onOperationBusy}', 'scope.assertCurrent()']) assert.ok(entry.includes(prop));
+const source=readFileSync(new URL('./MoodboardPreview.jsx',import.meta.url),'utf8');
+const file=ts.createSourceFile('MoodboardPreview.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
+const nodes=(root,predicate)=>{const result=[];const visit=node=>{if(predicate(node))result.push(node);ts.forEachChild(node,visit)};visit(root);return result};
+const editor=file.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='CategoryEditor');
+const evaluate=(node,deps)=>new Function(...Object.keys(deps),`return (${node.getText(file)});`)(...Object.values(deps));
+const callback=(name,deps)=>evaluate(nodes(editor,node=>ts.isVariableDeclaration(node)&&node.name.getText(file)===name)[0].initializer,deps);
+test('actual editor owns fresh setup/cleanup, reads before editing, stages deletion, shares scoped parent ownership',()=>{
+  assert.equal(file.parseDiagnostics.length,0);const text=editor.getText(file);
+  assert.doesNotMatch(text,/useMoodboardOperation|api\(/);
+  assert.match(text,/model\.prepare\(\)/);assert.match(text,/entry\.model\.cancel\(\)/);
+  assert.match(text,/Todos los cambios se guardan juntos/);assert.doesNotMatch(text,/guardado parcial|Cada cambio se guarda por separado/);
+  const entry=nodes(file,node=>ts.isJsxSelfClosingElement(node)&&node.tagName.getText(file)==='CategoryEditor')[0].getText(file);
+  for(const prop of ['capture={captureOperation}','reload={reloadOperation}','onBusy={onOperationBusy}','scope.assertCurrent()'])assert.ok(entry.includes(prop));
 });
-test('actual CategoryEditor close cannot discard a partial/uncertain save or close while busy; only explicit reviewed finish calls saved', () => {
-  const effects = [], deps = { busy: false, model: { snapshot: { phase: 'uncertain', busy: false } }, approveDiscard: () => true, close: () => effects.push('close'), setError: text => effects.push(text) };
-  callback('leave', deps)(); assert.equal(effects.includes('close'), false); assert.equal(effects.length, 1);
-  callback('leave', { ...deps, busy: true })(); assert.equal(effects.length, 1);
-  callback('leave', { ...deps, model: { snapshot: { phase: 'idle', busy: false } } })(); assert.equal(effects.at(-1), 'close');
-  const scope = {}, saved = []; callback('finish', { busy: false, approveDiscard: () => true, run: (action, done) => done(action()), model: { snapshot: { busy: false, reviewed: [] }, finish: () => ({ scope }) }, saved: own => saved.push(own) })();
-  assert.deepEqual(saved, [scope]);
+test('actual effect replay creates two instances, cancels only old setup, and applies only live prepared draft',async()=>{
+  const effects=[],models=[],drafts=[],ownership=[],holder={current:null},scope={current:()=>true};
+  const initial={current:{capture:()=>scope,reload(){},onBusy:(...args)=>ownership.push(args)}};
+  const layout=nodes(editor,node=>ts.isCallExpression(node)&&node.expression.getText(file)==='useLayoutEffect')[0];
+  const run=async(action,done)=>{const own=holder.current;const result=await action(own.model);if(own.active&&holder.current===own)done(result)};
+  const effect=evaluate(layout.arguments[0],{holder,initial,boardId:9,run,installDraft:value=>drafts.push(value),
+    operationOwner:{current:'operation'},draftOwner:{current:'draft'},
+    createMoodboardCategoryOperation:options=>{const gate=deferred(),model={options,prepare:()=>gate.promise,cancel(){this.canceled=true}};models.push(model);effects.push(gate);return model}});
+  const cleanupOld=effect();cleanupOld();const cleanupNew=effect();assert.equal(models[0].canceled,true);assert.equal(models[1].canceled,undefined);
+  effects[0].resolve(observation({revision:1}));effects[1].resolve(observation({revision:2}));await Promise.resolve();await Promise.resolve();
+  assert.deepEqual(drafts.map(row=>row.revision),[2]);assert.equal(models[1].options.capture(),scope);cleanupNew();assert.equal(models[1].canceled,true);
 });
-test('actual hook synchronously owns parent busy/recovery across partial write, review and explicit finish', async () => {
-  const hookNode = file.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'useMoodboardOperation');
-  let layout, count = 0;
-  const ownership = [], painted = [], first = deferred();
-  const session = { token: 'owner', usuario: { id: 1, rol: 'admin' } };
-  const capture = active => createCapturedRequest({ session, readSession: () => session, isActive: active,
-    request: async (url, options) => {
-      if (!options.method) return categories();
-      if (++count === 1) { await first.promise; return ack(url, options); }
-      throw Error('Second rename uncertain');
-    } });
-  const hook = evaluate(hookNode, { useRef: initial => ({ current: initial }), useState: initial => [typeof initial === 'function' ? initial() : initial, value => painted.push(value)],
-    useLayoutEffect: effect => { layout = effect; } });
-  const operation = hook(capture, own => createMoodboardCategoryOperation({ boardId: 9, categories: categories(), capture: own,
-    refresh: async guard => ({ categories: await guard.request('/api/moodboards/boards/9/categories', {}) }) }),
-  (owner, busy, recovery = false) => ownership.push({ owner, busy, recovery }));
-  const cleanup = layout(), pending = operation.run(() => operation.model.save(edits(), 'New'));
-  await operation.run(() => assert.fail('Synchronous duplicate must not run')); assert.equal(count, 1); assert.equal(ownership[0].busy, true);
-  const leaveEffects = [];
-  callback('leave', { busy: false, model: operation.model, close: () => leaveEffects.push('closed'), setError: message => leaveEffects.push(message) })();
-  assert.deepEqual(leaveEffects, [], 'Live busy check protects close even before React rerenders');
-  first.resolve(); await pending;
-  assert.equal(operation.model.snapshot.phase, 'uncertain'); assert.deepEqual(ownership.at(-1), { owner: ownership[0].owner, busy: false, recovery: true });
-  await operation.run(() => operation.model.refresh()); assert.equal(ownership.at(-1).recovery, true);
-  let finished = 0; await operation.run(() => operation.model.finish(), () => { finished++; });
-  assert.equal(finished, 1); assert.equal(count, 2); assert.equal(ownership.at(-1).recovery, false);
-  assert.ok(ownership.every(item => item.owner === ownership[0].owner)); cleanup();
+test('actual run synchronously fences duplicate submit and stale cleanup never releases replacement owner',async()=>{
+  const gate=deferred(),ownership=[],entry={active:true,pending:false,scope:{current:()=>true},model:{snapshot:{phase:'uncertain'}}},holder={current:entry};
+  const run=callback('run',{holder,initial:{current:{onBusy:(...args)=>ownership.push(args)}},operationOwner:{current:'owner'},setError(){},paint(){}});
+  const first=run(()=>gate.promise);await run(()=>assert.fail('duplicate'));assert.equal(entry.pending,true);assert.equal(ownership.length,1);
+  entry.active=false;holder.current={active:true};gate.resolve({});await first;assert.equal(ownership.length,1,'Old finally cannot clear new setup');
+});
+test('actual removal only stages draft and dirty owner; never starts a write',()=>{
+  const draftObservation={current:{draft:categories(),newCategory:'New'}},dirty=[];
+  callback('remove',{editable:()=>true,confirm:()=>true,draftObservation,setDraft(){},syncDraftOwner:()=>dirty.push(true)})({id:11,nombre:'One'});
+  assert.deepEqual(draftObservation.current.draft,[categories()[1]]);assert.equal(draftObservation.current.newCategory,'New');assert.equal(dirty.length,1);
 });
 test('draft dirty is value-based, not model phase/changed flag; reverting values clears only genuine local changes', () => {
   assert.equal(moodboardCategoryDraftDirty(categories(), categories(), ''), false);
   assert.equal(moodboardCategoryDraftDirty(categories(), categories().map(row => ({ ...row, changed: true })), ''), false);
-  assert.equal(moodboardCategoryDraftDirty(categories(), edits(), ''), true);
+  assert.equal(moodboardCategoryDraftDirty(categories(), categories().map(row=>({...row,nombre:row.nombre+' edited'})), ''), true);
   assert.equal(moodboardCategoryDraftDirty(categories(), categories(), 'New'), true);
   assert.equal(moodboardCategoryDraftDirty(categories(), categories(), ' '), true);
   assert.equal(moodboardCategoryDraftDirty(categories(), categories().slice(1), ''), true);
@@ -186,11 +156,12 @@ test('actual draft owner/close callbacks consult product guard: cancel preserves
   const busyNode = nodes(file, node => ts.isVariableDeclaration(node) && node.name.getText(file) === 'onOperationBusy')[0].initializer;
   const onBusy = evaluate(busyNode, { operationOwners, recoveryOwners, mounted, originCurrent: () => true, setOperationBusy() {} });
   const baseline = { current: categories() }, draftObservation = { current: { draft: categories(), newCategory: '' } }, draftOwner = { current: Symbol('draft') };
-  const deps = { baseline, draftObservation, draftOwner, onBusy, moodboardCategoryDraftDirty, busy: false,
+  const holder = {current:{active:true,pending:false,scope:{current:()=>true},model:{snapshot:{phase:'idle',busy:false}}}};
+  const deps = { baseline, draftObservation, draftOwner, initial:{current:{onBusy}}, holder, editable:()=>!holder.current.pending&&holder.current.model.snapshot.phase==='idle', moodboardCategoryDraftDirty, busy: false,
     model: { snapshot: { phase: 'idle', busy: false } }, setDraft() {}, setNewCategory() {}, saved() { saved++; } };
   deps.syncDraftOwner = callback('syncDraftOwner', deps);
-  const layout = nodes(editor, node => ts.isCallExpression(node) && node.expression.getText(file) === 'useLayoutEffect')[0];
-  const cleanup = evaluate(layout.arguments[0], deps)();
+  deps.syncDraftOwner();
+  const cleanup = ()=>onBusy(draftOwner.current,false,false);
   const session = { token: 'original', usuario: { id: 1, rol: 'admin' } };
   const statusNode = nodes(file, node => ts.isVariableDeclaration(node) && node.name.getText(file) === 'moodboardNavigationStatus')[0].initializer;
   const status = evaluate(statusNode, { sesion: session, getSesion: () => session, api: () => assert.fail('No mutation on discard'),
@@ -198,7 +169,7 @@ test('actual draft owner/close callbacks consult product guard: cancel preserves
   const installation = installUnsavedNavigation(win), off = registerNavigationGuard(win, status);
   try {
     const scope = { current: () => true };
-    deps.approveDiscard = callback('approveDiscard', { captureCurrent: () => scope, CustomEvent, window: win });
+    deps.approveDiscard = callback('approveDiscard', { holder, CustomEvent, window: win });
     deps.close = () => { closed++; }; deps.setError = () => assert.fail('Idle draft should use product discard prompt');
     const leave = callback('leave', deps), editName = callback('editName', deps), editNew = callback('editNewName', deps);
     editName(11, 'Unsaved rename'); editNew('Unsaved new category');

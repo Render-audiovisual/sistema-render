@@ -20,6 +20,9 @@ test('explicit initialization serializes, locks current actor/clients, creates d
   assert.equal(f.sql[0], 'BEGIN'); assert.match(f.sql[1], /pg_advisory_xact_lock/);
   assert.match(f.sql[2], /usuarios.*FOR SHARE/); assert.equal(f.sql.at(-1), 'COMMIT'); assert.equal(f.released, 1);
   assert.equal(f.sql.filter(sql => sql.includes('INSERT INTO moodboard_categories')).length, 7);
+  const boardLock = f.sql.findIndex(sql => sql.includes('FOR NO KEY UPDATE'));
+  assert.ok(boardLock > 2);
+  assert.ok(boardLock < f.sql.findIndex(sql => sql.includes('INSERT INTO moodboard_categories')));
   assert.ok(!f.sql.some(sql => sql.includes('moodboard_references')));
 });
 test('failed initialization rolls back and releases its connection', async () => {
