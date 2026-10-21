@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import express from "express";
+import { buildMoodboardTaskReadPredicate, moodboardTaskId, mutateMoodboardTaskLink } from './moodboard-task-access.js';
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_CATEGORIES = ["Fotografía", "Tipografía", "Color", "Composición", "Historias", "Carrusel", "Flyer"];
@@ -96,16 +97,20 @@ export function createMoodboardsRouter({ pool }) {
 
   router.get("/boards/:id/references", async (req, res, next) => {
     try {
+      const boardId = moodboardTaskId(req.params.id);
+      const predicate = buildMoodboardTaskReadPredicate(req.auth, 't', '$2');
       const { rows } = await pool.query(`SELECT r.*, c.nombre AS categoria,
         COALESCE(json_agg(json_build_object('id', t.id, 'titulo', t.titulo)) FILTER (WHERE t.id IS NOT NULL), '[]') AS tareas
         FROM moodboard_references r
         LEFT JOIN moodboard_categories c ON c.id = r.category_id
         LEFT JOIN moodboard_reference_tasks rt ON rt.reference_id = r.id
-        LEFT JOIN tareas t ON t.id = rt.tarea_id
+        LEFT JOIN tareas t ON t.id = rt.tarea_id AND ${predicate.sql}
+          AND EXISTS (SELECT 1 FROM moodboard_board_clients bc WHERE bc.board_id=r.board_id AND bc.cliente_id=t.cliente_id)
         WHERE r.board_id = $1 GROUP BY r.id, c.nombre
-        ORDER BY CASE r.estado WHEN 'aprobada' THEN 0 WHEN 'libre' THEN 1 ELSE 2 END, r.created_at DESC`, [req.params.id]);
+        ORDER BY CASE r.estado WHEN 'aprobada' THEN 0 WHEN 'libre' THEN 1 ELSE 2 END, r.created_at DESC`,
+      predicate.value === null ? [boardId] : [boardId,predicate.value]);
       res.json(rows);
-    } catch (error) { next(error); }
+    } catch (error) { if(error.status)return res.status(error.status).json({error:error.message});next(error); }
   });
 
   router.get("/boards/:id/categories", async (req, res, next) => {
@@ -115,12 +120,14 @@ export function createMoodboardsRouter({ pool }) {
 
   router.get("/boards/:id/tasks", async (req, res, next) => {
     try {
+      const boardId = moodboardTaskId(req.params.id);
+      const predicate = buildMoodboardTaskReadPredicate(req.auth, 't', '$2');
       const { rows } = await pool.query(`SELECT DISTINCT t.id, t.titulo FROM tareas t
         JOIN moodboard_board_clients bc ON bc.cliente_id = t.cliente_id
-        WHERE bc.board_id = $1
-        ORDER BY t.titulo LIMIT 150`, [req.params.id]);
+        WHERE bc.board_id = $1 AND ${predicate.sql}
+        ORDER BY t.titulo,t.id LIMIT 150`, predicate.value === null ? [boardId] : [boardId,predicate.value]);
       res.json(rows);
-    } catch (error) { next(error); }
+    } catch (error) { if(error.status)return res.status(error.status).json({error:error.message});next(error); }
   });
 
   router.get("/assets/:filename", (req, res) => {
@@ -179,12 +186,12 @@ export function createMoodboardsRouter({ pool }) {
   });
 
   router.post("/references/:id/tasks/:taskId", async (req, res, next) => {
-    try { await pool.query("INSERT INTO moodboard_reference_tasks(reference_id, tarea_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [req.params.id, req.params.taskId]); res.status(204).end(); }
-    catch (error) { next(error); }
+    try { await mutateMoodboardTaskLink(pool,req.auth,req.params.id,req.params.taskId); res.status(204).end(); }
+    catch (error) { if(error.status)return res.status(error.status).json({error:error.message});next(error); }
   });
   router.delete("/references/:id/tasks/:taskId", async (req, res, next) => {
-    try { await pool.query("DELETE FROM moodboard_reference_tasks WHERE reference_id = $1 AND tarea_id = $2", [req.params.id, req.params.taskId]); res.status(204).end(); }
-    catch (error) { next(error); }
+    try { await mutateMoodboardTaskLink(pool,req.auth,req.params.id,req.params.taskId,{remove:true}); res.status(204).end(); }
+    catch (error) { if(error.status)return res.status(error.status).json({error:error.message});next(error); }
   });
 
   router.post("/boards/:id/categories", async (req, res, next) => {
