@@ -51,12 +51,17 @@ test('actual PostgreSQL dispatch row writers invalidate the shared API revision'
     const replay = await api('/publicacion-envios', { token, method: 'POST', body });
     assert.equal(replay.status, 409); assert.equal(replay.body.code, 'DISPATCH_REPLAY_CHANGED');
   });
-  await t.test('parent API deletion advances revision instead of silently changing the same snapshot', async () => {
+  await t.test('retired parent API preserves history; fixture-only parent deletion still advances dispatch FK revision', async () => {
     const { piece, body, draft } = await create();
     const materials = await f.query('SELECT * FROM publicacion_envio_materiales WHERE envio_id=$1', [draft.id]);
     const targets = await f.query('SELECT * FROM publicacion_envio_destinos WHERE envio_id=$1', [draft.id]);
     const deleted = await api(`/publicaciones/${piece.id}`, { token, method: 'DELETE' });
-    assert.equal(deleted.status, 200);
+    assert.equal(deleted.status, 410);
+    assert.deepEqual((await f.query('SELECT * FROM publicaciones WHERE id=$1', [piece.id]))[0], piece);
+    assert.deepEqual(await read(draft.id), draft);
+    // Verify071's physical FK writer separately on synthetic fixture data. The
+    // retired HTTP endpoint is never used as permission for a hard deletion.
+    await f.query('DELETE FROM publicaciones WHERE id=$1', [piece.id]);
     const current = await read(draft.id);
     assert.equal(current.publicationId, null); assert.ok(current.revision > draft.revision);
     assert.equal(current.caption, draft.caption); assert.equal(current.status, 'borrador'); assert.equal(current.previewOnly, true);
@@ -89,16 +94,20 @@ test('actual PostgreSQL dispatch row writers invalidate the shared API revision'
       END $$`);
     assert.equal((await read(draft.id)).revision, '2099-01-01T00:00:00.000004Z');
   });
-  await t.test('editorial reconciliation invalidates a dispatch revision when it removes an unused automatic slot', async () => {
+  await t.test('editorial reconciliation preserves a dispatch-linked automatic piece even when quota becomes zero', async () => {
     const { piece, draft, body } = await create();
     await f.query("UPDATE clientes SET cuota_reels=0,cuota_carruseles=0 WHERE id=$1", [client.id]);
     await f.query("UPDATE publicaciones SET origen_calendario='automatico',fecha_bloqueada=false,calendario_clave=$2 WHERE id=$1", [piece.id, `2026-10:${client.id}:video:999`]);
+    const beforePiece=await f.query('SELECT * FROM publicaciones WHERE id=$1',[piece.id]);
+    const beforeDraft=await read(draft.id);
     const response = await api('/calendario-editorial/generar', { token, method: 'POST', body: { periodo: '2026-10' } });
     assert.equal(response.status, 200, JSON.stringify(response.body));
-    assert.equal((await f.query('SELECT id FROM publicaciones WHERE id=$1', [piece.id])).length, 0);
+    assert.deepEqual(await f.query('SELECT * FROM publicaciones WHERE id=$1', [piece.id]),beforePiece);
     const current = await read(draft.id);
-    assert.equal(current.publicationId, null); assert.ok(current.revision > draft.revision);
-    const stale = await api(`/publicacion-envios/${draft.id}`, { token, method: 'PATCH', body: { ...body, publicationId: null, expectedRevision: draft.revision } });
-    assert.equal(stale.status, 409); assert.equal(stale.body.code, 'DISPATCH_REVISION_CONFLICT');
+    assert.deepEqual(current,beforeDraft);assert.equal(current.publicationId,piece.id);
+    const saved=await api(`/publicacion-envios/${draft.id}`,{token,method:'PATCH',body:{...body,
+      expectedRevision:current.revision,caption:'QA79 preserved linked work'}});
+    assert.equal(saved.status,200);assert.equal(saved.body.publicationId,piece.id);
+    assert.ok(saved.body.revision>current.revision);
   });
 });

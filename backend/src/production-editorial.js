@@ -11,6 +11,7 @@ const version = (actual, expected) => actual != null && typeof expected === 'str
   && Number.isFinite(Date.parse(expected)) && stamp(actual) === stamp(expected);
 const period = value => typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
 const hidden = task => ['archivada_render_os', 'papelera_render_os'].some(key => [true, 'true'].includes(task?.propiedades_extra?.[key]));
+const archivedPublication = publication => [true,'true'].includes(publication?.metadata?.archivado_tablero);
 const usable = task => task && task.estado === 'pendiente' && task.propiedades_extra?.workspace === 'render_os'
   && !hidden(task) && !task.historia_id && task.tipo_tarea !== 'produccion';
 const SLOT = `SELECT s.*,o.clave,o.cuentas,to_char(o.periodo,'YYYY-MM') periodo,
@@ -143,6 +144,9 @@ export async function associateProductionEditorial(db, visitId, videoId, body, a
       || (emptySlot && publication.fecha_programada !== body.fecha_programada)) throw fail('El video ya tiene otro vínculo.');
     return result(false);
   }
+  // The publication above was read under FOR UPDATE, after task locks. Do not
+  // apply this new-selection guard to the exact already-linked replay branch.
+  if (archivedPublication(publication)) throw fail('La publicación está archivada. Elegí una pieza activa.');
   if (visit.revision !== body.expected_revision || !task || task.revision !== body.expected_tarea_revision) throw fail('La visita o tarea cambió. Recargá sus versiones.');
   if ((slot?.id ?? null) !== (body.objetivo_pieza_id ?? null)
     || (slot && !version(slot.updated_at, body.expected_objetivo_updated_at))) throw fail('Confirmá el casillero actual y su versión.');
@@ -197,6 +201,7 @@ export async function productionEditorialCandidates(db, visitId, videoId, month)
     LEFT JOIN cliente_objetivo_piezas s ON s.publicacion_id=p.id OR s.tarea_id=t.id
     LEFT JOIN cliente_objetivos_mensuales o ON o.id=s.objetivo_id
     WHERE p.cliente_id=$1 AND p.tipo IN ('video','reel') AND p.estado='pendiente'
+      AND p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
       AND to_char(p.fecha_programada,'YYYY-MM')=$2 AND t.cliente_id=$1
       AND t.estado='pendiente' AND t.historia_id IS NULL AND t.tipo_tarea IS DISTINCT FROM 'produccion'
       AND t.propiedades_extra->>'workspace'='render_os'

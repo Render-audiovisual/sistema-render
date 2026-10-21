@@ -222,7 +222,7 @@ test('link options bound candidate ordinals to stored quota and forged extra wri
     if (sql.startsWith('SELECT p.id,p.tipo,p.numero')) { assert.match(sql,/p.numero <= \$3/); assert.equal(params[2],1); return {rows:[]}; }
     if (sql.startsWith('SELECT p.tarea_id,p.publicacion_id')) return {rows:[{tarea_id:21,clave:'cliente-1',periodo:'2026-10'}]};
     if (sql.startsWith('SELECT p.*,')) return {rows:[{id:10,numero:2,tipo:'video',reels:1,carruseles:0}]};
-    if (/^(BEGIN|COMMIT|ROLLBACK|SELECT pg_advisory|SELECT id FROM tareas|SELECT p.id FROM publicaciones)/.test(sql)) return {rows:[]};
+    if (/^(BEGIN|COMMIT|ROLLBACK|SELECT pg_advisory|SELECT id FROM tareas|SELECT p.id FROM publicaciones|SELECT h.id FROM historias)/.test(sql)) return {rows:[]};
     throw Error(`Unexpected link query: ${sql}`);
   }, release() {} };
   await goalLinkOptions(db,20,'2026-10');

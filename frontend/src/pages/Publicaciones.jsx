@@ -16,6 +16,8 @@ import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
 import { createEditorialCreateIntent } from '../shared/editorial/editorial-create-intent.js';
+import { EditorialArchiveControl } from '../components/EditorialArchiveControl.jsx';
+import { EditorialArchivePanel } from '../components/EditorialArchivePanel.jsx';
 
 function usePublicationSession(sesion, context = null) {
   const view = useSessionView(sesion || getSesion());
@@ -797,7 +799,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
 
   const guardarEnServidor = async (id, campos, scope = capture()) => {
     if (!scope.current()) return;
-    if (pendingWrites.current.has(`delete:${id}`)) return;
+    if (pendingWrites.current.has(`archive:${id}`)) return;
     campos = editorialFields(publicaciones.find(p => p.id === id), campos, view.role === 'admin');
     if (!Object.keys(campos).length) return;
     const observed = publicaciones.find(p => p.id === id);
@@ -841,7 +843,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
 
   const crearPublicacion = async (verify = false) => {
     const scope = capture();
-    if (!scope.current() || creating.current) return;
+    if (!scope.current() || creating.current || [...pendingWrites.current].some(key => String(key).startsWith('archive:'))) return;
     const model = creation.current.model;
     if (!verify && model.snapshot.locked) return;
     creating.current = true;
@@ -874,22 +876,18 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     } finally { creating.current = false; if (scope.current()) renderCreation(value => value + 1); }
   };
 
-  const borrarPublicacion = async (id) => {
-    const scope = capture();
-    const key = `delete:${id}`;
-    if (!scope.current() || pendingWrites.current.has(key) || writeQueues.current.has(id)) return;
-    if (!window.confirm("¿Eliminar esta publicación de la planilla?")) return;
-    if (!scope.current()) return;
-    pendingWrites.current.add(key);
-    try {
-      await scope.request(`/api/publicaciones/${id}`, { method: "DELETE" });
-      scope.assertCurrent();
-      ++listGeneration.current;
-      onCommittedChange?.({ deletedId: id });
-      setPublicaciones((prev) => prev.filter((p) => p.id !== id));
-    } catch {
-      if (scope.current()) setError("No se pudo eliminar la publicación.");
-    } finally { pendingWrites.current.delete(key); }
+  const canArchivePublication = row => view.role === 'admin' && capture().current() && Number.isSafeInteger(row?.id) && !writeQueues.current.has(row.id)
+    && ![...pendingWrites.current].some(key => String(key).startsWith('archive:') && key !== `archive:${row.id}`);
+  const archivePublicationLock = (id, locked) => { const key = `archive:${id}`; if (locked) pendingWrites.current.add(key); else pendingWrites.current.delete(key); };
+  const archivePublicationSaved = async (dto, scope) => {
+    if (view.role !== 'admin') throw new Error('Solo administración puede archivar o restaurar piezas.');
+    scope.assertCurrent();
+    if (dto.piece.dominio !== 'publicacion') throw new Error('La respuesta no corresponde a una publicación.');
+    ++listGeneration.current;
+    onCommittedChange?.(dto.piece.archived ? { deletedId: dto.piece.id } : { invalidate: true });
+    if (dto.piece.archived) setPublicaciones(prev => prev.filter(row => row.id !== dto.piece.id));
+    const loaded = await cargar(scope); scope.assertCurrent();
+    if (loaded !== true) throw new Error('Cambio guardado. No se pudo actualizar la lista; verificá la lectura sin repetir la operación.');
   };
 
   const copiarFila = async (p) => {
@@ -1146,15 +1144,8 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                         >
                           ⧉
                         </button>
-                        <button
-                          type="button"
-                          className="sheet-icon-btn"
-                          onClick={() => borrarPublicacion(p.id)}
-                          disabled={writeQueues.current.has(p.id) || pendingWrites.current.has(`delete:${p.id}`)}
-                          title="Eliminar"
-                        >
-                          🗑
-                        </button>
+                        {view.role === 'admin' && <EditorialArchiveControl dominio="publicacion" piece={p} isAdmin capture={capture}
+                          canStart={() => canArchivePublication(p)} onSaved={archivePublicationSaved} onLockChange={locked => archivePublicationLock(p.id, locked)} />}
                       </div>
                     </td>
                   </tr>
@@ -1184,7 +1175,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
   const initialContext = readUrlContext(window.location.search, { tab: tabInicial, cliente: "", mes: "" });
   const initialDate = readMonthContext(initialContext.mes, new Date().getFullYear(), new Date().getMonth());
   const [tabPrincipal, setTabPrincipal] = useState(
-    ["calendario", "preparar", "programadas", "historial", "lista", "planilla"].includes(initialContext.tab) ? initialContext.tab : tabInicial,
+    ["calendario", "preparar", "programadas", "historial", "lista", "planilla", "archivadas"].includes(initialContext.tab) ? initialContext.tab : tabInicial,
   );
   const [clienteSeleccionado, setClienteSeleccionado] = useState(Number(initialContext.cliente) || null);
   const [clientes, setClientes] = useState([]);
@@ -1206,7 +1197,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
     const restoreContext = () => {
       const context = readUrlContext(window.location.search, { tab: "calendario", cliente: "", mes: "" });
       const date = readMonthContext(context.mes, hoyDate.getFullYear(), hoyDate.getMonth());
-      setTabPrincipal(["calendario", "preparar", "programadas", "historial", "lista", "planilla"].includes(context.tab) ? context.tab : "calendario");
+      setTabPrincipal(["calendario", "preparar", "programadas", "historial", "lista", "planilla", "archivadas"].includes(context.tab) ? context.tab : "calendario");
       setClienteSeleccionado(Number(context.cliente) || null);
       setYear(date.year);
       setMonth(date.month);
@@ -1252,10 +1243,18 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
   const overviewCommittedChange = useCallback(change => {
     if (!capture().current()) return;
     ++overviewGeneration.current;
+    if (change.invalidate) return;
     setPublicaciones(prev => change.deletedId != null
       ? prev.filter(row => row.id !== change.deletedId)
       : [...prev.filter(row => row.id !== change.row.id), change.row]);
   }, [capture]);
+
+  const archiveOverviewSaved = async (dto, scope) => {
+    if (view.role !== 'admin' || dto.piece.dominio !== 'publicacion') throw new Error('No se pudo verificar la pieza restaurada.');
+    scope.assertCurrent(); const generation = ++overviewGeneration.current;
+    const rows = await scope.request('/api/publicaciones', { cache: 'no-store' }); scope.assertCurrent();
+    if (generation === overviewGeneration.current && Array.isArray(rows)) setPublicaciones(rows);
+  };
 
   const publicationSaved = useCallback(dto => {
     const scope = capture();
@@ -1308,6 +1307,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
     { id: "programadas", label: "Programadas" },
     { id: "historial", label: "Historial" },
     { id: "lista", label: "Seguimiento" },
+    ...(view.role === 'admin' ? [{ id: 'archivadas', label: 'Archivadas' }] : []),
   ];
   const canPublish = ["admin", "community"].includes(view.role);
 
@@ -1383,6 +1383,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
               )}
 
               <div className="h-body">
+                {tabPrincipal === 'archivadas' && view.role === 'admin' && <EditorialArchivePanel dominio="publicacion" isAdmin capture={capture} onSaved={archiveOverviewSaved} />}
                 {tabPrincipal === "calendario" && (
                   <PublicacionesCalendarioTab
                     sesion={view.session}

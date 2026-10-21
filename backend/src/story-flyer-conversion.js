@@ -18,8 +18,10 @@ export async function convertUnlinkedFlyer(pool, rawId) {
       OR EXISTS(SELECT 1 FROM cliente_objetivo_piezas WHERE publicacion_id=$1)
       OR EXISTS(SELECT 1 FROM produccion_videos WHERE publicacion_id=$1)
       OR EXISTS(SELECT 1 FROM publicacion_envios WHERE publicacion_id=$1)
-      OR EXISTS(SELECT 1 FROM editorial_publicacion_eventos WHERE publicacion_id=$1) AS linked`, [rawId]);
-    if (links.rows[0].linked || piece.estado === 'publicada' || piece.fecha_publicación_real != null) {
+      OR EXISTS(SELECT 1 FROM editorial_publicacion_eventos WHERE publicacion_id=$1)
+      OR EXISTS(SELECT 1 FROM editorial_archive_events WHERE publicacion_id=$1) AS linked`, [rawId]);
+    if (links.rows[0].linked || [true,'true'].includes(piece.metadata?.archivado_tablero)
+      || piece.estado === 'publicada' || piece.fecha_publicación_real != null) {
       throw fail('Este flyer tiene vínculos o historial. Se conserva sin convertir para no perder información.', 409, 'FLYER_REQUIRES_REVIEW');
     }
     const metadata = { ...(piece.metadata || {}), migrada_desde_flyer_id: piece.id, flyer_origen: piece };

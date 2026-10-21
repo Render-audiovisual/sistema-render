@@ -13,6 +13,8 @@ import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { requestAppNavigation } from '../shared/navigation/location.js';
 import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
 import { createEditorialCreateIntent } from '../shared/editorial/editorial-create-intent.js';
+import { EditorialArchiveControl } from '../components/EditorialArchiveControl.jsx';
+import { EditorialArchivePanel } from '../components/EditorialArchivePanel.jsx';
 
 function useStorySession(context = null) {
   const view = useSessionView(getSesion());
@@ -61,7 +63,9 @@ export function HistoriasPlanillaTab({
   onGuardarServidor,
   onAgregar,
   onDuplicar,
-  onEliminar,
+  onArchiveSaved,
+  onArchiveLock,
+  canArchive,
   clienteFiltradoNombre,
   contextKey = '',
 }) {
@@ -478,15 +482,8 @@ export function HistoriasPlanillaTab({
                         >
                           ⎘
                         </button>
-                        <button
-                          type="button"
-                          className="sheet-icon-btn"
-                          onClick={() => onEliminar(h.id)}
-                          title="Eliminar"
-                          aria-label={`Eliminar historia de ${h.cliente_nombre || "este cliente"}`}
-                        >
-                          🗑
-                        </button>
+                        {view.role === 'admin' && <EditorialArchiveControl dominio="historia" piece={h} isAdmin capture={capture}
+                          canStart={() => canArchive(h)} onSaved={onArchiveSaved} onLockChange={locked => onArchiveLock(h.id, locked)} />}
                       </div>
                     </td>
                   </tr>
@@ -1314,7 +1311,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   const initialContext = readUrlContext(window.location.search, { vista: initialTab, cliente: "", filtro: "", mes: "" });
   const initialDate = readMonthContext(initialContext.mes, new Date().getFullYear(), new Date().getMonth());
   const [vista, setVista] = useState(
-    ["estructura", "checklist", "fechas", "planilla"].includes(initialContext.vista) ? initialContext.vista : "estructura",
+    ["estructura", "checklist", "fechas", "planilla", "archivadas"].includes(initialContext.vista) ? initialContext.vista : "estructura",
   );
   const [clientes, setClientes] = useState([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState(Number(initialContext.cliente) || null);
@@ -1369,7 +1366,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     const restoreContext = () => {
       const context = readUrlContext(window.location.search, { vista: "estructura", cliente: "", filtro: "", mes: "" });
       const date = readMonthContext(context.mes, hoyDate.getFullYear(), hoyDate.getMonth());
-      setVista(["estructura", "checklist", "fechas", "planilla"].includes(context.vista) ? context.vista : "estructura");
+      setVista(["estructura", "checklist", "fechas", "planilla", "archivadas"].includes(context.vista) ? context.vista : "estructura");
       setClienteSeleccionado(Number(context.cliente) || null);
       setFiltroClientePlanilla(context.filtro || "");
       setYear(date.year);
@@ -1552,7 +1549,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   // fila nueva apenas aparece.
   const agregarHistoriaEnMesActual = async () => {
     const scope = capture();
-    if (!scope.current() || creationLocks.current.has('new') || creation.current.model.snapshot.locked) return;
+    if (!scope.current() || creationLocks.current.has('new') || deleting.current.size > 0 || creation.current.model.snapshot.locked) return;
     // Si la Planilla está filtrada a un cliente, la historia nueva se crea
     // para ESE cliente (no tendría sentido crearla para otro mientras se
     // está mirando la hoja de uno en particular).
@@ -1577,7 +1574,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   const duplicarHistoria = async (historia) => {
     const scope = capture();
     const key = `duplicate:${historia.id}`;
-    if (!scope.current() || creationLocks.current.has(key) || creation.current.model.snapshot.locked) return;
+    if (!scope.current() || creationLocks.current.has(key) || deleting.current.size > 0 || creation.current.model.snapshot.locked) return;
     creationLocks.current.add(key);
     try {
       const responsableId = newStoryResponsibleId();
@@ -1642,19 +1639,17 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     finally { if (scope.current()) renderCreation(value => value + 1); }
   };
 
-  const eliminarHistoria = async (historiaId) => {
-    const scope = capture();
-    if (!scope.current() || deleting.current.has(historiaId) || writeQueues.current.has(historiaId)) return;
-    if (!window.confirm("¿Eliminar esta historia de la planilla?")) return;
-    if (!scope.current()) return;
-    deleting.current.add(historiaId);
-    try {
-      await scope.request(`/api/historias/${historiaId}`, { method: "DELETE" });
-      scope.assertCurrent();
-      setHistorias((prev) => prev.filter((h) => h.id !== historiaId));
-    } catch {
-      if (scope.current()) setErrorHistorias("No se pudo eliminar la historia.");
-    } finally { deleting.current.delete(historiaId); }
+  const canArchiveHistoria = row => view.role === 'admin' && capture().current() && Number.isSafeInteger(row?.id) && !writeQueues.current.has(row.id)
+    && (deleting.current.size === 0 || deleting.current.size === 1 && deleting.current.has(row.id));
+  const archiveHistoriaLock = (id, locked) => { if (locked) deleting.current.add(id); else deleting.current.delete(id); };
+  const archiveHistoriaSaved = async (dto, scope) => {
+    if (view.role !== 'admin') throw new Error('Solo administración puede archivar o restaurar piezas.');
+    scope.assertCurrent();
+    if (dto.piece.dominio !== 'historia') throw new Error('La respuesta no corresponde a una historia.');
+    if (dto.piece.archived) setHistorias(prev => prev.filter(row => row.id !== dto.piece.id));
+    // Always read current operational rows; an old archive replay may now be active.
+    const loaded = await cargarHistorias(scope); scope.assertCurrent();
+    if (loaded !== true) throw new Error('Cambio guardado. No se pudo actualizar la lista; verificá la lectura sin repetir la operación.');
   };
 
   const actualizarHistoriasObservadas = useCallback(update => { if (capture().current()) setHistorias(update); }, [capture]);
@@ -1689,6 +1684,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
               {vista === 'planilla' ? 'Volver al checklist' : 'Editar historias'}
             </button>}
           </header>
+          {view.role === 'admin' && <button type="button" className="btn" onClick={() => cambiarVista(vista === 'archivadas' ? 'planilla' : 'archivadas')}>{vista === 'archivadas' ? 'Volver a historias activas' : 'Archivadas'}</button>}
           {vista === 'planilla' && <label className="stories-context-field">
             <span>Responsable de nuevas historias</span>
             <select aria-label="Responsable de nuevas historias" value={responsableNuevoId} disabled={!responsablesReady || creationState.locked} onChange={event => setResponsableNuevoId(event.target.value)}>
@@ -1760,6 +1756,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
               )}
 
               <div className="h-body">
+                {vista === 'archivadas' && view.role === 'admin' && <EditorialArchivePanel dominio="historia" isAdmin capture={capture} onSaved={archiveHistoriaSaved} />}
                 {vista === "planilla" && <FlyersMigrarBanner contextKey={contextKey} onMigrado={flyersMigrados} />}
 
                 {vista === "planilla" && (
@@ -1776,7 +1773,9 @@ export function HistoriasPage({ initialTab = "estructura" }) {
                     onGuardarServidor={guardarHistoriaEnServidor}
                     onAgregar={agregarHistoriaEnMesActual}
                     onDuplicar={duplicarHistoria}
-                    onEliminar={eliminarHistoria}
+                    onArchiveSaved={archiveHistoriaSaved}
+                    onArchiveLock={archiveHistoriaLock}
+                    canArchive={canArchiveHistoria}
                     clienteFiltradoNombre={
                       filtroClientePlanilla
                         ? clientes.find((c) => String(c.id) === filtroClientePlanilla)?.nombre

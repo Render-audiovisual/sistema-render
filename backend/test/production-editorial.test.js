@@ -106,6 +106,19 @@ test('empty slot creates exactly one draft publication from video title and SLOT
   assert.equal(f.video.tarea_edicion_id,null);assert.equal(f.task.estado,'pendiente');
   assert.deepEqual(f.calls.find(c=>c.sql.startsWith('INSERT INTO publicaciones')).params,[1,'2026-10-30','Video filmado','COPY FROM SLOT']);
 });
+test('locked archived publication rejects new association, but exact existing linkage remains visible and replayable',async()=>{
+  for(const archivado_tablero of [true,'true']){
+    const f=fixture({publication:{metadata:{archivado_tablero}}});
+    await assert.rejects(f.associate(),error=>error.status===409&&/archivada/.test(error.message));
+    assert.equal(f.video.publicacion_id,null);assert.equal(f.insertPublications,0);
+    assert.equal(f.calls.some(call=>/^(INSERT|UPDATE)/.test(call.sql)),false);
+    assert.ok(f.calls.some(call=>call.sql.includes('FOR UPDATE OF p')));
+    const held=fixture({linked:true,publication:{metadata:{archivado_tablero}}});
+    assert.equal((await held.associate()).created,false);
+    assert.equal(held.video.publicacion_id,30);
+    assert.equal(held.calls.some(call=>/^(INSERT|UPDATE)/.test(call.sql)),false);
+  }
+});
 test('exact existing and empty-slot retries ignore stale revisions without mutation after progress',async()=>{
   const f=fixture({linked:true,task:{estado:'finalizada'},publication:{estado:'publicada'}});
   assert.equal((await f.associate({...body,expected_revision:1,expected_tarea_revision:1})).created,false);

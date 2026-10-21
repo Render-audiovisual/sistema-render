@@ -77,7 +77,7 @@ test('missing/non-flyer lookup returns404 and rolls back without checking links 
   assert.match(h.calls[1].sql, /tipo='flyer' FOR UPDATE$/); assert.equal(h.state.released, 1);
 });
 
-for (const linkedTable of ['tareas', 'cliente_objetivo_piezas', 'produccion_videos', 'publicacion_envios', 'editorial_publicacion_eventos'])
+for (const linkedTable of ['tareas', 'cliente_objetivo_piezas', 'produccion_videos', 'publicacion_envios', 'editorial_publicacion_eventos', 'editorial_archive_events'])
 test(`${linkedTable} attachment is checked only after source FOR UPDATE; conflict does no DML`, async () => {
   const h = fixture({ linkedTable }), before = structuredClone(h.state.publications);
   await assert.rejects(convertUnlinkedFlyer(h.pool, '41'), error => error.status === 409 && error.code === 'FLYER_REQUIRES_REVIEW');
@@ -86,7 +86,8 @@ test(`${linkedTable} attachment is checked only after source FOR UPDATE; conflic
   assert.deepEqual(h.state.publications, before); assert.deepEqual(h.state.stories, []); assert.equal(h.state.released, 1);
 });
 
-for (const historical of [{ estado: 'publicada' }, { fecha_publicación_real: '2026-10-19T12:00:00Z' }, { fecha_publicación_real: '' }])
+for (const historical of [{ estado: 'publicada' }, { fecha_publicación_real: '2026-10-19T12:00:00Z' }, { fecha_publicación_real: '' },
+  {metadata:{archivado_tablero:true}}, {metadata:{archivado_tablero:'true'}}])
 test(`historical/actual publication ${JSON.stringify(historical)} remains unchanged with409`, async () => {
   const h = fixture({ piece: { ...source(), ...historical } });
   await assert.rejects(convertUnlinkedFlyer(h.pool, '41'), error => error.status === 409 && error.code === 'FLYER_REQUIRES_REVIEW');

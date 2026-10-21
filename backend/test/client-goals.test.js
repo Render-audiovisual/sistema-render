@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { goalPeriod, goalClients, goalTaskType, candidateTasks, prepareGoal, editGoalContent, inheritedGoalResponsibles, reconcileMonthlyGoals } from '../src/client-goals.js';
+import { goalPeriod, goalClients, goalTaskType, candidateTasks, prepareGoal, editGoalContent, inheritedGoalResponsibles, reconcileMonthlyGoals, linkGoalTask } from '../src/client-goals.js';
 
 test('los objetivos sólo aceptan un mes explícito válido', () => {
   assert.equal(goalPeriod('2026-10'), '2026-10');
@@ -81,7 +81,7 @@ test('hereda la última asignación del cliente cuando el mes nuevo aún no tien
 });
 
 // In-memory query double only: no PostgreSQL connection or integration harness.
-function preparationDouble({ reused = false, inactive = false, assignmentFailure = false, shared = false } = {}) {
+function preparationDouble({ reused = false, inactive = false, assignmentFailure = false, shared = false, archivedCandidate = false, used = false } = {}) {
   const calls = [];
   const clientRows = shared ? [
     {id:1,nombre:'Cuenta A',grupo_feed_id:8,grupo_feed_nombre:'Feed',cuota_feed_carruseles:1},
@@ -100,11 +100,11 @@ function preparationDouble({ reused = false, inactive = false, assignmentFailure
         return {rows:users.filter(user => params[0].includes(user.id) && !(inactive && user.id === 22))};
       }
       if (sql.includes('SELECT * FROM cliente_objetivos_mensuales')) return {rows:[objective]};
-      if (sql.startsWith('SELECT tipo,numero')) return {rows:[]};
+      if (sql.startsWith('SELECT tipo,numero')) return {rows:used ? [{tipo:'carrusel',numero:1}] : []};
       if (sql.includes('SELECT t.*,p.tipo pieza_tipo')) return {rows:reused ? [
-        {id:100,titulo:'Carrusel existente',asignado_a:'Etiqueta histórica',estado:'pendiente',propiedades_extra:{colaboradores:['Histórico']}}
+        {id:100,titulo:'Carrusel existente',asignado_a:'Etiqueta histórica',estado:'pendiente',...(archivedCandidate?{publicacion_id:8}:{}),propiedades_extra:{colaboradores:['Histórico']}}
       ] : []};
-      if (sql.includes('FROM publicaciones p WHERE')) return {rows:shared ? [{id:8,cliente_id:2,tipo:'carrusel',estado:'pendiente'}] : []};
+      if (sql.includes('FROM publicaciones p WHERE')) return {rows:shared || archivedCandidate ? [{id:8,cliente_id:2,tipo:'carrusel',estado:'pendiente',preparation_candidate:true,metadata:archivedCandidate?{archivado_tablero:true}:{}}] : []};
       if (sql.startsWith('INSERT INTO tareas(')) return {rows:[{id:100,titulo:params[0],estado:params[1],asignado_a:params[2],publicacion_id:params[4],propiedades_extra:JSON.parse(params[7])}]};
       if (sql.startsWith('INSERT INTO tarea_asignaciones') && assignmentFailure) throw new Error('assignment failure');
       if (/^(BEGIN|COMMIT|ROLLBACK|SELECT pg_advisory|DELETE FROM tarea_asignaciones|INSERT INTO tarea_asignaciones|INSERT INTO cliente_objetivo_piezas|DELETE FROM cliente_objetivo_responsables|INSERT INTO cliente_objetivo_responsables)/.test(sql)) return {rows:[]};
@@ -114,6 +114,35 @@ function preparationDouble({ reused = false, inactive = false, assignmentFailure
   };
   return {calls,pool:{connect:async () => db}};
 }
+
+test('preparation rechecks locked piece metadata and never replaces an already-used archived slot', async () => {
+  const pending = preparationDouble({reused:true,archivedCandidate:true});
+  const result = await prepareGoal(pending.pool,{period:'2026-10',key:'cliente-1',responsibleIds:[11]});
+  assert.equal(result.vinculadas,0);assert.equal(result.creadas,1);
+  const created=pending.calls.find(call=>call.sql.startsWith('INSERT INTO tareas('));
+  assert.equal(created.params[4],null,'new quota work must not adopt the archived piece');
+  const taskLock=pending.calls.findIndex(call=>call.sql.includes('ORDER BY t.id FOR UPDATE'));
+  const pieceLock=pending.calls.findIndex(call=>call.sql.includes('ORDER BY p.id FOR UPDATE'));
+  assert.ok(taskLock>=0&&pieceLock>taskLock);
+  assert.deepEqual(pending.calls[pieceLock].params[2],[8]);
+  const held=preparationDouble({reused:true,archivedCandidate:true,used:true});
+  const unchanged=await prepareGoal(held.pool,{period:'2026-10',key:'cliente-1',responsibleIds:[11]});
+  assert.equal(unchanged.creadas,0);assert.equal(unchanged.vinculadas,0);
+  assert.equal(held.calls.some(call=>/^INSERT INTO (tareas\(|cliente_objetivo_piezas)/.test(call.sql)),false);
+});
+
+test('manual goal link rejects archived task-backed piece only after task and piece locks, without writes',async()=>{
+  const calls=[],db={release(){},async query(sql,params){calls.push({sql,params});
+    if(sql.includes('SELECT p.tarea_id,p.publicacion_id,o.clave'))return{rows:[{tarea_id:3,publicacion_id:null,clave:'cliente-1',periodo:'2026-10'}]};
+    if(sql.startsWith('SELECT t.*,p.tipo pieza_tipo'))return{rows:[{id:2,tipo_tarea:'edicion',subtipo:'reel',estado:'pendiente',publicacion_id:8,pieza_metadata:{archivado_tablero:'true'},propiedades_extra:{workspace:'render_os'}}]};
+    if(/^(BEGIN|ROLLBACK|SELECT pg_advisory|SELECT id FROM tareas|SELECT p.id FROM publicaciones|SELECT h.id FROM historias)/.test(sql))return{rows:[]};
+    throw Error('Unexpected SQL '+sql);
+  }};
+  await assert.rejects(linkGoalTask({connect:async()=>db},1,{tarea_id:2,expected_tarea_updated_at:'2026-10-01T00:00:00Z',expected_pieza_updated_at:'2026-10-01T00:00:00Z'},'QA'),error=>error.status===409);
+  assert.ok(calls.findIndex(call=>call.sql.startsWith('SELECT id FROM tareas'))<calls.findIndex(call=>call.sql.startsWith('SELECT p.id FROM publicaciones')));
+  assert.ok(calls.findIndex(call=>call.sql.startsWith('SELECT p.id FROM publicaciones'))<calls.findIndex(call=>call.sql.startsWith('SELECT t.*,p.tipo pieza_tipo')));
+  assert.equal(calls.some(call=>/^(INSERT|UPDATE|DELETE|COMMIT)/.test(call.sql)),false);
+});
 
 test('crear una tarea guarda IDs distintos aunque los nombres coincidan, antes del COMMIT', async () => {
   const {pool,calls} = preparationDouble();

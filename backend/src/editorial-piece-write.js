@@ -56,6 +56,9 @@ export function normalizeEditorialPiecePatch(domain, body, legacy = false) {
       if (!Number.isSafeInteger(value) || value < 0 || value > 2147483647) throw fail('Cantidad editorial inválida.');
     } else if (key === 'metadata') {
       if (typeof value !== 'object' || Array.isArray(value)) throw fail('Metadatos editoriales inválidos.');
+      if (Object.keys(value).some(name=>name.startsWith('archivado_')||name.startsWith('restaurado_'))) {
+        throw fail('El archivo editorial se modifica desde su operación específica.');
+      }
     } else if (typeof value !== 'string' || value.includes('\u0000')) throw fail('Texto editorial inválido.');
     fields[key] = value;
   }
@@ -135,8 +138,9 @@ export async function writeEditorialPiece(pool, auth, domain, rawId, body, { leg
     const clients = [...new Set([found.cliente_id,input.fields.cliente_id].filter(Boolean))].sort((a,b)=>a-b);
     const locked = (await db.query('SELECT id FROM clientes WHERE id=ANY($1::int[]) AND activo IS DISTINCT FROM FALSE ORDER BY id FOR SHARE',[clients])).rows;
     if (locked.length !== clients.length) throw fail('El cliente no está disponible.',409);
-    const current = (await db.query(`SELECT cliente_id,estado FROM ${identity.table} WHERE id=$1 FOR UPDATE`,[identity.id])).rows[0];
+    const current = (await db.query(`SELECT cliente_id,estado,metadata->>'archivado_tablero' AS archived FROM ${identity.table} WHERE id=$1 FOR UPDATE`,[identity.id])).rows[0];
     if (!current) throw fail('Pieza no encontrada.',404);
+    if (current.archived === 'true') throw fail('La pieza está archivada. Restaurala antes de editar.',409);
     if (current.cliente_id !== found.cliente_id) throw fail('La pieza cambió de cliente. Actualizá antes de editar.',409);
     const version = (await db.query('SELECT revision FROM editorial_publicacion_versiones WHERE dominio=$1 AND pieza_id=$2',[domain,identity.id])).rows[0];
     if (Number(version?.revision ?? 0) !== input.expected_revision) throw fail('La pieza cambió. Actualizá antes de reintentar.',409);

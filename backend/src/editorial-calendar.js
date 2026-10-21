@@ -1,3 +1,5 @@
+import {captureEditorialActor,currentEditorialActor} from './editorial-piece-write.js';
+
 // La cartera vigente suma más de 120 piezas mensuales. Cinco espacios diarios
 // permiten distribuirla sin dejar clientes fuera del calendario.
 const MAX_PER_DAY = 5;
@@ -72,10 +74,10 @@ export function buildEditorialSlots({ period, clients, occupied = [] }) {
   return slots;
 }
 
-export async function reconcileEditorialCalendar(db, period) {
+async function reconcileInTransaction(db, period) {
   const normalized = normalizeEditorialPeriod(period);
   const periodDate = `${normalized}-01`;
-  const clientsResult = await db.query(`
+  const clientsSql = `
     SELECT c.id, c.nombre, c.rubro, c.activo,
       to_char(c.fecha_inicio, 'YYYY-MM-DD') fecha_inicio,
       to_char(c.fecha_fin, 'YYYY-MM-DD') fecha_fin,
@@ -102,12 +104,37 @@ export async function reconcileEditorialCalendar(db, period) {
         AND member.activo IS NOT FALSE
         AND (member.fecha_inicio IS NULL OR member.fecha_inicio <= ($1::date + interval '1 month - 1 day'))
         AND (member.fecha_fin IS NULL OR member.fecha_fin >= $1::date)
-    ) group_members ON c.grupo_feed_id IS NOT NULL`, [periodDate]);
-  const existingResult = await db.query(`
+    ) group_members ON c.grupo_feed_id IS NOT NULL`;
+  let clientsResult = await db.query(clientsSql, [periodDate]);
+  const clientIds=clientsResult.rows.map(row=>row.id).sort((a,b)=>a-b);
+  await db.query('SELECT id FROM clientes WHERE id=ANY($1::int[]) ORDER BY id FOR SHARE',[clientIds]);
+  const lockedClients=new Set(clientIds);
+  clientsResult={rows:(await db.query(clientsSql,[periodDate])).rows.filter(row=>lockedClients.has(row.id))};
+  // Lock first; compute archive/work predicates in a NEW statement after waits.
+  // New FK-linked work cannot race this preservation check through the lock.
+  await db.query("SELECT id FROM publicaciones WHERE to_char(fecha_programada,'YYYY-MM')=$1 OR calendario_clave LIKE ($1||':%') ORDER BY id FOR UPDATE",[normalized]);
+  const observedResult = await db.query(`
     SELECT id, cliente_id, tipo, estado, to_char(fecha_programada, 'YYYY-MM-DD') fecha_programada,
-      origen_calendario, calendario_clave, fecha_bloqueada
-    FROM publicaciones WHERE to_char(fecha_programada, 'YYYY-MM') = $1`, [normalized]);
-  const fixed = existingResult.rows.filter((item) => item.origen_calendario !== "automatico" || item.fecha_bloqueada || item.estado === "publicada");
+      origen_calendario, calendario_clave, fecha_bloqueada,
+      (metadata->>'archivado_tablero' IS NOT DISTINCT FROM 'true') AS archived,
+      ((metadata IS NOT NULL AND metadata<>'{}'::jsonb)
+        OR NULLIF(btrim(COALESCE(idea,'')),'') IS NOT NULL OR NULLIF(btrim(COALESCE(copy,'')),'') IS NOT NULL
+        OR NULLIF(btrim(COALESCE(material_referencia,'')),'') IS NOT NULL OR NULLIF(btrim(COALESCE(aclaraciones,'')),'') IS NOT NULL
+        OR fecha_publicación_real IS NOT NULL
+        OR EXISTS(SELECT 1 FROM tareas t WHERE t.publicacion_id=p.id)
+        OR EXISTS(SELECT 1 FROM cliente_objetivo_piezas s WHERE s.publicacion_id=p.id)
+        OR EXISTS(SELECT 1 FROM produccion_videos v WHERE v.publicacion_id=p.id)
+        OR EXISTS(SELECT 1 FROM publicacion_envios e WHERE e.publicacion_id=p.id)
+        OR EXISTS(SELECT 1 FROM editorial_publicacion_eventos e WHERE e.publicacion_id=p.id)
+        OR EXISTS(SELECT 1 FROM editorial_create_receipts r WHERE r.dominio='publicacion' AND r.pieza_id=p.id)
+        OR EXISTS(SELECT 1 FROM editorial_archive_events e WHERE e.publicacion_id=p.id)) AS protected_work
+    FROM publicaciones p WHERE to_char(fecha_programada, 'YYYY-MM') = $1 OR calendario_clave LIKE ($1||':%')`, [normalized]);
+  const preserved=item=>item.origen_calendario!=="automatico"||item.fecha_bloqueada
+    ||item.estado!=="pendiente"||item.archived||item.protected_work;
+  // Date-based capacity stays unchanged, while old keys moved to another month
+  // remain locked/protected against this month's ON CONFLICT target.
+  const existingResult={rows:observedResult.rows.filter(row=>row.fecha_programada.startsWith(normalized))};
+  const fixed = existingResult.rows.filter(preserved);
   const clientsAdjusted = clientsResult.rows.map((client) => {
     const adjusted = { ...client };
     for (const type of ["video", "carrusel"]) {
@@ -123,7 +150,9 @@ export async function reconcileEditorialCalendar(db, period) {
   });
   const desired = buildEditorialSlots({ period: normalized, clients: clientsAdjusted, occupied: fixed });
   const desiredKeys = new Set(desired.map((item) => item.calendario_clave));
-  const removable = existingResult.rows.filter((item) => item.origen_calendario === "automatico" && !item.fecha_bloqueada && item.estado !== "publicada" && !desiredKeys.has(item.calendario_clave));
+  const fixedIds=new Set(fixed.map(row=>row.id));
+  const protectedIds=observedResult.rows.filter(preserved).map(row=>row.id);
+  const removable = existingResult.rows.filter((item) => !fixedIds.has(item.id) && !desiredKeys.has(item.calendario_clave));
   if (removable.length) await db.query("DELETE FROM publicaciones WHERE id = ANY($1::int[])", [removable.map((item) => item.id)]);
   let created = 0;
   let updated = 0;
@@ -135,8 +164,34 @@ export async function reconcileEditorialCalendar(db, period) {
         fecha_programada = CASE WHEN publicaciones.fecha_bloqueada OR publicaciones.estado = 'publicada'
           THEN publicaciones.fecha_programada ELSE EXCLUDED.fecha_programada END,
         updated_at = now()
-      RETURNING (xmax = 0) AS inserted`, [slot.cliente_id, slot.tipo, slot.fecha_programada, slot.calendario_clave]);
+      WHERE publicaciones.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
+        AND publicaciones.fecha_bloqueada IS NOT TRUE AND publicaciones.estado='pendiente'
+        AND NOT (publicaciones.id=ANY($5::int[]))
+      RETURNING (xmax = 0) AS inserted`, [slot.cliente_id, slot.tipo, slot.fecha_programada, slot.calendario_clave,protectedIds]);
+    if(!result.rows.length)continue;
     if (result.rows[0].inserted) created += 1; else updated += 1;
   }
   return { periodo: normalized, creadas: created, actualizadas: updated, eliminadas: removable.length, preservadas: fixed.length };
+}
+
+export async function reconcileEditorialCalendar(pool,period,{actor=null}={}) {
+  const normalized=normalizeEditorialPeriod(period);
+  const observed=actor===null?null:captureEditorialActor(actor);
+  if(typeof pool?.connect!=='function')throw new Error('El calendario requiere una transacción PostgreSQL propia.');
+  const db=await pool.connect();let discard;
+  try {
+    await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    if(observed) {
+      await db.query('SELECT pg_advisory_xact_lock(20261019, 1)');
+      await currentEditorialActor(db,observed,true);
+    }
+    // Internal jobs remain protected by existing explicit startup job approval;
+    // HTTP callers supply their captured actor and hold authority through commit.
+    await db.query("SELECT pg_advisory_xact_lock(hashtext('editorial-calendar'),hashtext($1))",[normalized]);
+    const result=await reconcileInTransaction(db,normalized);
+    await db.query('COMMIT');return result;
+  } catch(error) {
+    try{await db.query('ROLLBACK');}catch(rollback){discard=rollback;}
+    throw error;
+  } finally {db.release(discard);}
 }

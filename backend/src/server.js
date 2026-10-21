@@ -75,6 +75,7 @@ import { editorialPublicationDomainConflict } from "./editorial-publication-erro
 import { annotateEditorialEvidence } from "./editorial-evidence-read.js";
 import { legacyPieceSelection, readLegacyEditorialPiece, writeEditorialPiece } from './editorial-piece-write.js';
 import { createEditorialPiece } from './editorial-piece-create.js';
+import { createEditorialArchiveRouter } from './editorial-archive.js';
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
@@ -249,6 +250,7 @@ router.use('/tareas-edicion', createEditingDeliveriesRouter({ express, pool }));
 router.use('/tareas-edicion', createEditingReviewsRouter({ express, pool }));
 router.use('/calendario', createCalendarRouter({ express, pool }));
 router.use('/editorial-control', createEditorialControlRouter({ express, pool }));
+router.use('/editorial-archivo', createEditorialArchiveRouter({ express, pool }));
 
 router.get("/sesion", async (req, res, next) => {
   res.set('Cache-Control', 'no-store');
@@ -1643,22 +1645,9 @@ router.patch("/historias/:id", requireRole("admin"), async (req, res, next) => {
   } catch (error) { return editorialPieceApiError(error,res,next); }
 });
 
-router.delete("/historias/:id", requireRole("admin"), async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const result = await pool.query(
-      "DELETE FROM historias WHERE id = $1 RETURNING id",
-      [id],
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Historia no encontrada." });
-    }
-
-    res.json({ ok: true });
-  } catch (error) {
-    next(error);
-  }
+router.delete("/historias/:id", requireRole("admin"), (_req, res) => {
+  res.set('Cache-Control','no-store');
+  return res.status(410).json({error:'El borrado definitivo está deshabilitado. Archivá la pieza para conservar su trabajo e historial.'});
 });
 
 router.get("/historias", async (req, res, next) => {
@@ -1711,25 +1700,14 @@ router.patch("/publicaciones/:id", requireRole("admin"), async (req, res, next) 
   } catch (error) { return editorialPieceApiError(error,res,next); }
 });
 
-router.delete("/publicaciones/:id", requireRole("admin"), async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const result = await pool.query(
-      "DELETE FROM publicaciones WHERE id = $1 RETURNING id",
-      [id],
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Publicación no encontrada." });
-    }
-    res.json({ ok: true });
-  } catch (error) {
-    next(error);
-  }
+router.delete("/publicaciones/:id", requireRole("admin"), (_req, res) => {
+  res.set('Cache-Control','no-store');
+  return res.status(410).json({error:'El borrado definitivo está deshabilitado. Archivá la pieza para conservar su trabajo e historial.'});
 });
 
 router.post("/calendario-editorial/generar", requireRole("admin"), async (req, res, next) => {
   try {
-    res.json(await reconcileEditorialCalendar(pool, req.body.periodo));
+    res.json(await reconcileEditorialCalendar(pool, req.body.periodo, {actor:req.auth}));
   } catch (error) {
     if (/período|capacidad/i.test(error.message || "")) return res.status(400).json({ error: error.message });
     next(error);

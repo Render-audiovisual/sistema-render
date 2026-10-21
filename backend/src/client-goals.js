@@ -9,6 +9,8 @@ import { assertPreparationRevision, goalPreparationRevision, lockGoalPreparer, p
 
 export const GOALS_START_PERIOD = '2026-10';
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+const editorialArchived = metadata => [true,'true'].includes(metadata?.archivado_tablero);
+const archivedGoalTask = task => editorialArchived(task?.pieza_metadata) || editorialArchived(task?.historia_metadata);
 
 export function goalPeriod(value) {
   if (typeof value !== 'string' || value.length !== 7 || value.startsWith('0000-')
@@ -245,25 +247,42 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
     const ids = objective.cuentas.map(account => account.id);
     const candidates = await db.query(`SELECT t.*,p.tipo pieza_tipo,p.copy pieza_copy
       FROM tareas t LEFT JOIN publicaciones p ON p.id=t.publicacion_id
+      LEFT JOIN historias h ON h.id=t.historia_id
       WHERE t.cliente_id=ANY($1::int[]) AND t.propiedades_extra->>'workspace'='render_os'
         AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
         AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+        AND p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
+        AND h.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
         AND COALESCE(t.propiedades_extra->>'objetivo_periodo',to_char(p.fecha_programada,'YYYY-MM'),to_char(t.fecha_vencimiento,'YYYY-MM'))=$2
         AND NOT EXISTS(SELECT 1 FROM cliente_objetivo_piezas link WHERE link.tarea_id=t.id OR link.publicacion_id=t.publicacion_id)
       ORDER BY t.id FOR UPDATE OF t`, [ids, period]);
-    const publications = await db.query(`SELECT p.id,p.cliente_id,p.tipo,p.idea,p.copy,p.estado,
+    // Lock all task-backed pieces as well as new standalone candidates in ID
+    // order. A task lock alone does not serialize an editorial archive.
+    const lockedPublications = await db.query(`SELECT p.id,p.cliente_id,p.tipo,p.idea,p.copy,p.estado,p.metadata,
+      (p.cliente_id=ANY($1::int[]) AND to_char(p.fecha_programada,'YYYY-MM')=$2
+        AND p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
+        AND NOT EXISTS(SELECT 1 FROM cliente_objetivo_piezas link WHERE link.publicacion_id=p.id)) AS preparation_candidate,
       to_char(p.fecha_programada,'YYYY-MM-DD') fecha_programada
-      FROM publicaciones p WHERE p.cliente_id=ANY($1::int[]) AND to_char(p.fecha_programada,'YYYY-MM')=$2
-        AND NOT EXISTS(SELECT 1 FROM cliente_objetivo_piezas link WHERE link.publicacion_id=p.id)
-      ORDER BY p.id FOR UPDATE OF p`, [ids, period]);
+      FROM publicaciones p WHERE p.id=ANY($3::int[]) OR
+        (p.cliente_id=ANY($1::int[]) AND to_char(p.fecha_programada,'YYYY-MM')=$2
+        AND p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
+        AND NOT EXISTS(SELECT 1 FROM cliente_objetivo_piezas link WHERE link.publicacion_id=p.id))
+      ORDER BY p.id FOR UPDATE OF p`, [ids, period, candidates.rows.map(task=>task.publicacion_id).filter(Boolean)]);
+    const lockedStories = candidates.rows.some(task=>task.historia_id) ? (await db.query(
+      'SELECT id,metadata FROM historias WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',
+      [candidates.rows.map(task=>task.historia_id).filter(Boolean)])).rows : [];
+    const visibleTaskCandidates = candidates.rows.filter(task =>
+      (!task.publicacion_id || lockedPublications.rows.some(piece=>piece.id===task.publicacion_id && !editorialArchived(piece.metadata))) &&
+      (!task.historia_id || lockedStories.some(piece=>piece.id===task.historia_id && !editorialArchived(piece.metadata))));
+    const publications = { rows: lockedPublications.rows.filter(piece=>piece.preparation_candidate===true && !editorialArchived(piece.metadata)) };
     // Acquire row locks in canonical ID order, then preserve the existing
     // completion/publication preference in memory (never in lock acquisition).
-    candidates.rows.sort((a, b) => Number(isTaskFinalized(b)) - Number(isTaskFinalized(a)) || a.id - b.id);
+    visibleTaskCandidates.sort((a, b) => Number(isTaskFinalized(b)) - Number(isTaskFinalized(a)) || a.id - b.id);
     publications.rows.sort((a, b) => Number(b.estado === 'publicada') - Number(a.estado === 'publicada') || a.id - b.id);
     let created = 0, reused = 0;
     const seenPublications = new Set();
     for (const [type, quota] of [['video', objective.reels], ['carrusel', objective.carruseles]]) {
-      const available = candidateTasks(candidates.rows, type);
+      const available = candidateTasks(visibleTaskCandidates, type);
       for (let index = 1; index <= quota; index++) {
         if (used.has(`${type}:${index}`)) continue;
         let task = available.shift();
@@ -271,7 +290,7 @@ export async function prepareGoal(pool, { period, key, responsibleIds, responsib
         if (task) reused++;
         else {
           const piece = publications.rows.find(row => row.tipo === type && !seenPublications.has(row.id) &&
-            !candidates.rows.some(candidate => Number(candidate.publicacion_id) === row.id));
+            !visibleTaskCandidates.some(candidate => Number(candidate.publicacion_id) === row.id));
           if (piece) seenPublications.add(piece.id);
           const accountId = piece?.cliente_id || client.cliente_id;
           const selectedIds = type === 'carrusel' && accountIds[accountId]?.length
@@ -435,10 +454,11 @@ const sameVersion = (actual, expected) => typeof expected === 'string' &&
 
 async function goalLinkTask(db, id) {
   if (!positiveId(id)) throw fail('Elegí una tarea válida.');
-  const task = (await db.query(`SELECT t.*,p.tipo pieza_tipo,p.copy pieza_copy,
+  const task = (await db.query(`SELECT t.*,p.tipo pieza_tipo,p.copy pieza_copy,p.metadata pieza_metadata,h.metadata historia_metadata,
     COALESCE(t.propiedades_extra->>'objetivo_periodo',to_char(p.fecha_programada,'YYYY-MM'),
       to_char(t.fecha_vencimiento,'YYYY-MM')) periodo_trabajo
-    FROM tareas t LEFT JOIN publicaciones p ON p.id=t.publicacion_id WHERE t.id=$1`, [id])).rows[0];
+    FROM tareas t LEFT JOIN publicaciones p ON p.id=t.publicacion_id
+    LEFT JOIN historias h ON h.id=t.historia_id WHERE t.id=$1`, [id])).rows[0];
   if (!task || task.propiedades_extra?.workspace !== 'render_os' ||
     String(task.propiedades_extra?.papelera_render_os) === 'true' ||
     String(task.propiedades_extra?.archivada_render_os) === 'true') throw fail('La tarea no está disponible en el tablero.', 404);
@@ -465,6 +485,7 @@ export async function goalLinkOptions(db, taskId, period) {
   if (period < GOALS_START_PERIOD) throw fail('El seguimiento comienza en octubre de 2026.');
   const task = await goalLinkTask(db, taskId);
   const linked = await taskFamilyLink(db, task);
+  if (!linked && archivedGoalTask(task)) throw fail('La pieza está archivada. No se puede crear un vínculo nuevo.',409);
   if (task.periodo_trabajo && task.periodo_trabajo !== period && !linked) {
     throw fail(`La tarea corresponde a ${task.periodo_trabajo}. Elegí ese mes para vincularla.`);
   }
@@ -473,9 +494,13 @@ export async function goalLinkOptions(db, taskId, period) {
       EXISTS(SELECT 1 FROM jsonb_array_elements(cuentas) cuenta WHERE (cuenta->>'id')::int=$2)`,
   [`${period}-01`, task.cliente_id])).rows[0] || null;
   const slots = objective ? (await db.query(`SELECT p.id,p.tipo,p.numero,p.tarea_id,p.publicacion_id,p.titulo,p.estado,p.updated_at
-    FROM cliente_objetivo_piezas p LEFT JOIN publicaciones pub ON pub.id=p.publicacion_id
+    FROM cliente_objetivo_piezas p LEFT JOIN tareas t ON t.id=p.tarea_id
+    LEFT JOIN publicaciones pub ON pub.id=COALESCE(p.publicacion_id,t.publicacion_id)
+    LEFT JOIN historias h ON h.id=t.historia_id
     WHERE p.objetivo_id=$1 AND p.tipo=$2 AND p.estado='pendiente' AND p.completada_at IS NULL
-      AND p.numero <= $3 AND (p.publicacion_id IS NULL OR pub.estado='pendiente') ORDER BY p.numero`,
+      AND p.numero <= $3 AND (p.publicacion_id IS NULL OR pub.estado='pendiente')
+      AND pub.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
+      AND h.metadata->>'archivado_tablero' IS DISTINCT FROM 'true' ORDER BY p.numero`,
   [objective.id, task.formato_objetivo,task.formato_objetivo === 'video' ? objective.reels : objective.carruseles])).rows : [];
   return { tarea: { id: task.id, titulo: task.titulo, estado: task.estado, tipo: task.formato_objetivo,
     revision: task.revision, updated_at: task.updated_at }, vinculo_actual: linked, objetivo: objective, casilleros: slots };
@@ -498,8 +523,13 @@ export async function linkGoalTask(pool, pieceId, body, actor) {
     await db.query('SELECT id FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',
       [[body.tarea_id, before.tarea_id].filter(Boolean)]);
     await db.query(`SELECT p.id FROM publicaciones p WHERE p.id=$2 OR p.id IN
-      (SELECT publicacion_id FROM tareas WHERE id=$1) ORDER BY p.id FOR UPDATE`, [body.tarea_id,before.publicacion_id]);
+      (SELECT publicacion_id FROM tareas WHERE id=ANY($1::int[])) ORDER BY p.id FOR UPDATE`,
+    [[body.tarea_id,before.tarea_id].filter(Boolean),before.publicacion_id]);
+    await db.query(`SELECT h.id FROM historias h WHERE h.id IN
+      (SELECT historia_id FROM tareas WHERE id=ANY($1::int[])) ORDER BY h.id FOR UPDATE`,
+    [[body.tarea_id,before.tarea_id].filter(Boolean)]);
     const task = await goalLinkTask(db, body.tarea_id);
+    if (archivedGoalTask(task)) throw fail('La pieza está archivada. No se puede crear un vínculo nuevo.',409);
     const piece = (await db.query(`SELECT p.*,to_char(o.periodo,'YYYY-MM') periodo,o.cuentas,o.reels,o.carruseles
       FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id
       WHERE p.id=$1 FOR UPDATE OF p`, [pieceId])).rows[0];
@@ -521,11 +551,15 @@ export async function linkGoalTask(pool, pieceId, body, actor) {
     if (piece.tarea_id === task.id || await taskFamilyLink(db, task, pieceId)) {
       throw fail('Esta tarea o una etapa de la misma pieza ya cuenta en un objetivo mensual.', 409);
     }
-    const oldPublication = piece.publicacion_id && (await db.query('SELECT estado FROM publicaciones WHERE id=$1',[piece.publicacion_id])).rows[0];
+    const oldPublication = piece.publicacion_id && (await db.query('SELECT estado,metadata FROM publicaciones WHERE id=$1',[piece.publicacion_id])).rows[0];
+    if (editorialArchived(oldPublication?.metadata)) throw fail('La pieza del casillero está archivada.',409);
     if (piece.estado !== 'pendiente' || piece.completada_at || (piece.publicacion_id && oldPublication?.estado !== 'pendiente')) {
       throw fail('Elegí un casillero pendiente. No se reemplaza trabajo ya realizado o programado.', 409);
     }
-    const oldTask = piece.tarea_id && (await db.query('SELECT estado FROM tareas WHERE id=$1', [piece.tarea_id])).rows[0];
+    const oldTask = piece.tarea_id && (await db.query(`SELECT t.estado,p.metadata pieza_metadata,h.metadata historia_metadata
+      FROM tareas t LEFT JOIN publicaciones p ON p.id=t.publicacion_id LEFT JOIN historias h ON h.id=t.historia_id
+      WHERE t.id=$1`, [piece.tarea_id])).rows[0];
+    if (archivedGoalTask(oldTask)) throw fail('La pieza de la tarea inicial está archivada.',409);
     if (oldTask && oldTask.estado !== 'pendiente') throw fail('La tarea inicial ya está en proceso. Elegí otro casillero.', 409);
     const people = [...new Set([task.asignado_a, ...(Array.isArray(task.propiedades_extra?.colaboradores)
       ? task.propiedades_extra.colaboradores : [])].filter(value => typeof value === 'string' && value.trim()))];

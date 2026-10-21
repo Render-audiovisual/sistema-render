@@ -307,7 +307,7 @@ test('production editorial: canonical delivery identity and atomic association',
       }, admin, 'PATCH')).status, 409);
       assert.deepEqual(await snapshot(), before);
     }
-    assert.equal((await api(`/publicaciones/${existing.publication.id}`, undefined, admin, 'DELETE')).status, 409);
+    assert.equal((await api(`/publicaciones/${existing.publication.id}`, undefined, admin, 'DELETE')).status, 410);
     assert.deepEqual(await snapshot(), before);
     const replacement = await seed();
     const [slot] = await fixture.query('SELECT updated_at FROM cliente_objetivo_piezas WHERE id=$1', [existing.slot.id]);

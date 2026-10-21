@@ -49,7 +49,7 @@ function sheetFixture(request, cookie = true) {
     setError: value => effects.push(['error', value]), setPublicaciones: value => { rows = typeof value === 'function' ? value(rows) : value; effects.push(['rows', rows]); }, setCargando: value => effects.push(['loading', value]),
     window: { confirm: () => true } };
   deps.cargar = callback(sheet, 'cargar', deps);
-  for (const name of ['guardarEnServidor', 'crearPublicacion', 'borrarPublicacion']) deps[name] = callback(sheet, name, deps);
+  for (const name of ['guardarEnServidor', 'crearPublicacion', 'canArchivePublication', 'archivePublicationLock', 'archivePublicationSaved']) deps[name] = callback(sheet, name, deps);
   return { ...f, deps, effects, get rows() { return rows; } };
 }
 function calendarFixture(request, cookie = true) {
@@ -117,13 +117,13 @@ test('queued sheet edits do not dispatch under B or after unmount; late errors n
   const f = sheetFixture(async () => ({})); const a = f.deps.guardarEnServidor(5, { idea: 'queued' }); f.switch(); await a;
   assert.equal(f.requests.length, 0);
 });
-test('delete refuses pending row writes; creates/deletes cannot duplicate while pending', async () => {
+test('archive refuses pending row writes and its lock blocks PATCH; creation cannot duplicate while pending', async () => {
   const pending = deferred(), f = sheetFixture(() => pending.promise);
-  const patch = f.deps.guardarEnServidor(5, { idea: 'A' }); await settle(); await f.deps.borrarPublicacion(5);
+  const patch = f.deps.guardarEnServidor(5, { idea: 'A' }); await settle(); assert.equal(f.deps.canArchivePublication({ id: 5 }), false);
   assert.equal(f.requests.length, 1); pending.resolve({}); await patch;
-  const deletion = deferred(), d = sheetFixture(() => deletion.promise);
-  const first = d.deps.borrarPublicacion(5); await d.deps.borrarPublicacion(5); assert.equal(d.requests.length, 1);
-  deletion.resolve({}); await first; assert.equal(d.requests[0].options.method, 'DELETE');
+  const d = sheetFixture(async () => assert.fail('No PATCH while archive is unresolved'));
+  d.deps.archivePublicationLock(5, true); await d.deps.guardarEnServidor(5, { copy: 'blocked' }); assert.equal(d.requests.length, 0);
+  d.deps.archivePublicationLock(5, false); assert.equal(d.deps.pendingWrites.current.size, 0);
   const create = deferred(), c = sheetFixture(() => create.promise);
   const created = c.deps.crearPublicacion(); await c.deps.crearPublicacion(); assert.equal(c.requests.length, 1);
   c.switch(); create.resolve({ id: 9 }); await created; assert.equal(c.requests.length, 1); assert.equal(c.deps.enfocarProximoId.current, null);
@@ -290,7 +290,7 @@ function connectOverview(f) {
   const committed = callback('PublicacionesPage', 'overviewCommittedChange', deps);
   Object.assign(f.deps, { onSnapshotLoaded: snapshot, onCommittedChange: committed });
   f.deps.cargar = callback(sheet, 'cargar', f.deps);
-  for (const name of ['guardarEnServidor', 'crearPublicacion', 'borrarPublicacion']) f.deps[name] = callback(sheet, name, f.deps);
+  for (const name of ['guardarEnServidor', 'crearPublicacion', 'canArchivePublication', 'archivePublicationLock', 'archivePublicationSaved']) f.deps[name] = callback(sheet, name, f.deps);
   const initial = nodes(owner('PublicacionesPage'), n => ts.isCallExpression(n) && text(n.expression) === 'useEffect')
     .find(n => text(n.arguments[0]).includes('scope.request("/api/publicaciones"'));
   return { snapshot, committed, initial: () => evaluate(initial.arguments[0], deps)(), get rows() { return rows; } };
@@ -308,12 +308,12 @@ test('child confirmed create/read updates overview once; delayed initial root GE
   assert.equal(overview.rows.length, 2, 'Full snapshot, not just the child filtered client');
   root.resolve([]); await settle(); assert.equal(overview.rows.length, 2); cleanup();
 });
-test('overview receives only confirmed PATCH/delete; a failed PATCH and local date draft never move counters', async () => {
+test('overview receives only confirmed PATCH/archive; a failed PATCH and local date draft never move counters', async () => {
   let fail = true;
   const original = { id: 5, cliente_id: 2, estado: 'pendiente', fecha_programada: '2026-10-20', publicacion_evidencia: { revision: 0 } };
   const saved = { ...original, fecha_programada: '2026-11-20', publicacion_evidencia: { revision: 1 } };
   const f = sheetFixture(async (_url, options) => {
-    if (options.method === 'DELETE') return {};
+    if (!options.method) return [];
     if (fail) throw Object.assign(Error('stale'), { status: 409 }); return saved;
   });
   const overview = connectOverview(f); overview.snapshot([original]);
@@ -323,7 +323,7 @@ test('overview receives only confirmed PATCH/delete; a failed PATCH and local da
   fail = false; await f.deps.guardarEnServidor(5, { fecha_programada: '2026-11-20' }); await settle();
   assert.deepEqual(overview.rows, [saved]);
   assert.equal(overview.rows.filter(row => row.fecha_programada.startsWith('2026-10')).length, 0);
-  await f.deps.borrarPublicacion(5); assert.deepEqual(overview.rows, []);
+  await f.deps.archivePublicationSaved({ piece: { id: 5, dominio: 'publicacion', archived: true } }, f.capture()); assert.deepEqual(overview.rows, []);
 });
 test('older child list cannot overwrite its newer create snapshot or parent overview; obsolete scope cannot notify parent', async () => {
   const old = deferred(); let reads = 0, saved;
@@ -336,17 +336,30 @@ test('older child list cannot overwrite its newer create snapshot or parent over
   assert.deepEqual(overview.rows, [saved]); assert.deepEqual(f.rows, [saved]);
   f.switch(); overview.snapshot([]); overview.committed({ deletedId: saved.id }); assert.deepEqual(overview.rows, [saved]);
 });
-for (const operation of ['PATCH', 'DELETE', 'confirmation']) for (const reject of [false, true]) {
+test('publication archive gates current admin and replay CURRENT active state reloads without removing row or using DELETE', async () => {
+  const current = { id: 5, cliente_id: 2, copy: 'Current operational row', publicacion_evidencia: { revision: 4 } };
+  const f = sheetFixture(async () => [current]), overview = connectOverview(f); overview.snapshot([current]);
+  const staff = callback(sheet, 'canArchivePublication', { ...f.deps, view: { role: 'edicion' } }); assert.equal(staff(current), false);
+  await f.deps.archivePublicationSaved({ piece: { id: 5, dominio: 'publicacion', archived: false } }, f.capture());
+  assert.deepEqual(f.rows, [current]); assert.deepEqual(overview.rows, [current]); assert.equal(f.requests.length, 1);
+  const deny = callback(sheet, 'archivePublicationSaved', { ...f.deps, view: { role: 'edicion' } });
+  await assert.rejects(deny({ piece: { id: 5, dominio: 'publicacion', archived: true } }, f.capture())); assert.equal(f.requests.length, 1);
+  const scope = f.capture(); f.switch(); await assert.rejects(f.deps.archivePublicationSaved({ piece: { id: 5, dominio: 'publicacion', archived: true } }, scope));
+  assert.equal(f.requests.length, 1); assert.deepEqual(overview.rows, [current]);
+  assert.doesNotMatch(source, /method: "DELETE"|borrarPublicacion/); assert.match(source, /<EditorialArchivePanel dominio="publicacion"/);
+});
+for (const operation of ['PATCH', 'archive', 'confirmation']) for (const reject of [false, true]) {
   test(`held GET then ${operation} ACK and GET ${reject ? 'reject' : 'resolve'} preserves committed state and releases loading`, async () => {
     const held = deferred();
     const original = { id: 5, cliente_id: 2, estado: 'pendiente', fecha_programada: '2026-10-20', publicacion_evidencia: { revision: 0 } };
     const saved = { ...original, estado: 'lista', publicacion_evidencia: { revision: 1 } };
-    const f = sheetFixture(async (_url, options) => options.method === 'PATCH' ? saved : options.method === 'DELETE' ? {} : held.promise);
+    let reads = 0;
+    const f = sheetFixture(async (_url, options) => options.method === 'PATCH' ? saved : ++reads === 1 ? held.promise : []);
     const overview = connectOverview(f); overview.snapshot([original]); f.deps.setPublicaciones([original]);
     const read = f.deps.cargar();
     assert.equal(f.effects.at(-1)[0], 'loading'); assert.equal(f.effects.at(-1)[1], true);
     if (operation === 'PATCH') await f.deps.guardarEnServidor(5, { estado: 'lista' });
-    else if (operation === 'DELETE') await f.deps.borrarPublicacion(5);
+    else if (operation === 'archive') await f.deps.archivePublicationSaved({ piece: { id: 5, dominio: 'publicacion', archived: true } }, f.capture());
     else {
       const confirmed = { ...saved, estado: 'publicada' };
       const notify = callback(sheet, 'publicationSaved', { ...f.deps,
@@ -361,8 +374,8 @@ for (const operation of ['PATCH', 'DELETE', 'confirmation']) for (const reject o
     await read;
     assert.deepEqual(f.rows, expectedRows); assert.deepEqual(overview.rows, expectedOverview);
     assert.deepEqual(f.effects.filter(([key]) => key === 'error'), errors);
-    assert.deepEqual(f.effects.filter(([key]) => key === 'loading'), [['loading', true], ['loading', false]]);
-    assert.equal(f.deps.loadingGeneration.current, 1, 'Write ACK must not take read loading ownership');
+    assert.deepEqual(f.effects.filter(([key]) => key === 'loading'), operation === 'archive' ? [['loading', true], ['loading', true], ['loading', false]] : [['loading', true], ['loading', false]]);
+    assert.equal(f.deps.loadingGeneration.current, operation === 'archive' ? 2 : 1, 'Only reads take loading ownership, not the ACK itself');
   });
 }
 for (const reject of [false, true]) test(`older GET ${reject ? 'rejection' : 'success'} finally cannot clear newer GET loading`, async () => {

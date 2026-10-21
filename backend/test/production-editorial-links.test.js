@@ -124,8 +124,8 @@ test('goal preparation locks candidates by ID then preserves completed/publicati
     }
     if (statement.includes('FROM publicaciones p WHERE')) {
       assert.match(statement, /ORDER BY p.id FOR UPDATE OF p/);
-      return { rows: [{ id: 30, cliente_id: 1, tipo: 'video', estado: 'pendiente' },
-        { id: 40, cliente_id: 1, tipo: 'video', estado: 'publicada' }] };
+      return { rows: [{ id: 30, cliente_id: 1, tipo: 'video', estado: 'pendiente', preparation_candidate:true, metadata:{} },
+        { id: 40, cliente_id: 1, tipo: 'video', estado: 'publicada', preparation_candidate:true, metadata:{} }] };
     }
     if (statement.startsWith('INSERT INTO tareas(')) return { rows: [{ id: 100, titulo: params[0], estado: params[1],
       asignado_a: params[2], publicacion_id: params[4], propiedades_extra: JSON.parse(params[7]) }] };
@@ -161,7 +161,8 @@ function mockLink({ oldPublication = 10, incomingPublication = null } = {}) {
       if (statement.includes('SELECT p.tarea_id,p.publicacion_id,o.clave')) return { rows: [{ tarea_id: 1, publicacion_id: oldPublication, clave: 'cliente-1', periodo: '2026-10' }] };
       if (statement.includes('SELECT t.*,p.tipo pieza_tipo')) return { rows: [task] };
       if (statement.includes('SELECT p.*,to_char(o.periodo')) return { rows: [piece] };
-      if (statement.startsWith('SELECT estado FROM')) return { rows: [{ estado: 'pendiente' }] };
+      if (statement.startsWith('SELECT estado,metadata FROM publicaciones')) return { rows: [{ estado: 'pendiente', metadata:{} }] };
+      if (statement.startsWith('SELECT t.estado,p.metadata pieza_metadata')) return { rows: [{ estado: 'pendiente', pieza_metadata:null, historia_metadata:null }] };
       if (statement.includes('SELECT count(*) FILTER')) return { rows: [{ completadas: 0, total: 1 }] };
       return { rows: [] };
     } };

@@ -109,7 +109,7 @@ for (const page of pages) {
     assert.equal(f.rows[0], original); assert.match(f.errors[0], /Recargá/);
   });
 }
-test('all six actual PATCH sites capture an observation; DELETE and publication confirmation stay separate', () => {
+test('all six actual PATCH sites capture an observation; archive and publication confirmation stay separate', () => {
   let total = 0;
   for (const page of pages) {
     assert.equal(page.file.parseDiagnostics.length, 0);
@@ -121,7 +121,8 @@ test('all six actual PATCH sites capture an observation; DELETE and publication 
       assert.match(text, /body: editorialPatchBody\(|\bbody,/);
       assert.doesNotMatch(text, /JSON.stringify\(/);
     }
-    assert.match(page.source, /method: "DELETE"/);
+    assert.doesNotMatch(page.source, /method: "DELETE"/);
+    assert.match(page.source, /EditorialArchive/);
   }
   assert.equal(total, 6);
 });

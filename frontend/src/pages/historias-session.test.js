@@ -60,7 +60,7 @@ function fixture(request, cookie = true) {
     setCargandoHistorias: value => effects.push(['loading', value]),
     setGuardandoId: value => { busy = typeof value === 'function' ? value(busy) : value; effects.push(['busy', busy]); },
     pendingChecks: { current: new Set() }, setChecks: value => effects.push(['checks', value]), setError: value => effects.push(['error', value]) };
-  for (const key of ['newStoryResponsibleId', 'cargarHistorias', 'guardarHistoriaEnServidor', 'crearHistoria', 'agregarHistoriaEnMesActual', 'duplicarHistoria', 'verificarCreacionHistoria', 'eliminarHistoria']) deps[key] = callback(page, key, deps);
+  for (const key of ['newStoryResponsibleId', 'cargarHistorias', 'guardarHistoriaEnServidor', 'crearHistoria', 'agregarHistoriaEnMesActual', 'duplicarHistoria', 'verificarCreacionHistoria', 'canArchiveHistoria', 'archiveHistoriaLock', 'archiveHistoriaSaved']) deps[key] = callback(page, key, deps);
   return { ...f, deps, effects, get rows() { return rows; }, get busy() { return busy; } };
 }
 
@@ -153,6 +153,22 @@ test('story accepted create plus metadata error and failed read cannot create ag
   await f.deps.agregarHistoriaEnMesActual(); assert.equal(posts, 1);
   await f.deps.verificarCreacionHistoria(); assert.equal(posts, 1); assert.equal(patches, 1); assert.equal(reads, 2);
   assert.deepEqual(f.rows, [current]); assert.equal(f.deps.creation.current.model.snapshot.locked, false);
+});
+test('story archive is current-admin-only, blocks row PATCH and reloads CURRENT state instead of inferring archive replay', async () => {
+  const operational = { id: 5, cliente_id: 2, copy: 'Preserved current story', publicacion_evidencia: { revision: 4 } };
+  const f = fixture(async () => [operational]);
+  const staff = callback(page, 'canArchiveHistoria', { ...f.deps, view: { role: 'edicion' } });
+  assert.equal(staff(operational), false); assert.equal(f.deps.canArchiveHistoria(operational), true);
+  f.deps.writeQueues.current.set(5, Promise.resolve()); assert.equal(f.deps.canArchiveHistoria(operational), false); f.deps.writeQueues.current.clear();
+  f.deps.archiveHistoriaLock(5, true); await f.deps.guardarHistoriaEnServidor(5, { copy: 'blocked' }); assert.equal(f.requests.length, 0);
+  f.deps.archiveHistoriaLock(5, false);
+  await f.deps.archiveHistoriaSaved({ piece: { id: 5, dominio: 'historia', archived: false } }, f.capture());
+  assert.deepEqual(f.rows, [operational]); assert.equal(f.requests.length, 1); assert.equal(f.requests[0].url, '/api/historias');
+  const deny = callback(page, 'archiveHistoriaSaved', { ...f.deps, view: { role: 'edicion' } });
+  await assert.rejects(deny({ piece: { id: 5, dominio: 'historia', archived: true } }, f.capture())); assert.equal(f.requests.length, 1);
+  const scope = f.capture(); f.switch(); await assert.rejects(f.deps.archiveHistoriaSaved({ piece: { id: 5, dominio: 'historia', archived: true } }, scope));
+  assert.deepEqual(f.rows, [operational]); assert.equal(f.requests.length, 1);
+  assert.doesNotMatch(source, /method: "DELETE"|onEliminar/); assert.match(source, /<EditorialArchivePanel dominio="historia"/);
 });
 test('create chain stops follow-up PATCH and UI after B/unmount/context ABA; double add while pending never duplicates POST', async () => {
   for (const change of ['switch', 'unmount', 'context']) {
