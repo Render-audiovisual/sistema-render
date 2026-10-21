@@ -130,7 +130,7 @@ test('shared UI exposes safe linkage IDs/task link; admin alone mounts candidate
   assert.match(ui,/kind === 'goal' && <label.*Fecha de programación/);
   assert.match(ui,/tarea de entrega/);assert.match(ui,/No se crea otra tarea/);
   assert.match(ui,/El guion no se usa como copy/);
-  assert.match(source,/fecha_entrega:date/);
+  assert.match(source,/fecha_entrega:intent.draft.date/);
   assert.match(css,/prod-editorial-kind label.*min-height:44px/);
   assert.doesNotMatch(source,/localStorage|sessionStorage/);
 });

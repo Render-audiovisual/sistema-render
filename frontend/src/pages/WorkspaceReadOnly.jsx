@@ -1263,11 +1263,13 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   const updateTask = (id, changes, activity, observedRevision = null) => {
     const guard = captureRequest();
     changes = JSON.parse(JSON.stringify(changes));
+    const requiresReviewObservation = ["aprobada", "finalizada", "publicada"].includes(changes.estado);
+    if (requiresReviewObservation && observedRevision === null) observedRevision = tasksRef.current.find((task) => task.id === id)?.revision ?? null;
     const run = async () => {
       guard.assertCurrent();
       const previous = tasksRef.current.find((task) => task.id === id);
       if (!previous) throw new Error("La tarea ya no está disponible.");
-      if (observedRevision !== null && previous.revision !== observedRevision) throw Object.assign(new Error("La tarea cambió desde la revisión. Actualizá y revisá la entrega antes de aprobar."), { status: 409 });
+      if ((requiresReviewObservation && !Number.isSafeInteger(observedRevision)) || (observedRevision !== null && previous.revision !== observedRevision)) throw Object.assign(new Error("La tarea cambió desde la revisión. Actualizá y revisá el trabajo antes de aprobar o finalizar."), { status: 409 });
       setTasks((current) => current.map((task) => task.id === id ? { ...task, ...changes } : task));
       try {
         const updated = await guard.request(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: previous.revision, expected_updated_at: previous.updated_at || undefined }) });
@@ -1291,7 +1293,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
           try {
             currentTask = await guard.request(`/api/tareas/${id}?workspace=render_os`);
             guard.assertCurrent();
-            if (observedRevision === null && canRetryTaskUpdate(previous, currentTask, changes)) {
+            if (!requiresReviewObservation && observedRevision === null && canRetryTaskUpdate(previous, currentTask, changes)) {
               const retried = await guard.request(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: currentTask.revision, expected_updated_at: currentTask.updated_at || undefined }) });
               guard.assertCurrent();
               const selectedClient = clients.find((item) => String(item.id) === String(retried.cliente_id));
@@ -1450,7 +1452,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       const usesDelivery = task.tipo_tarea === 'edicion' && task.propiedades_extra?.workspace === 'render_os';
       if (usesDelivery && (!review || review.revision !== task.revision)) throw new Error("Actualizá el historial y revisá la versión antes de aprobar.");
       const deliveryPrecondition = review?.deliveryId ? { expected_entrega_id: review.deliveryId } : {};
-      if (responsable_publicacion_id === undefined) return await updateTask(task.id, { estado: "aprobada", ...deliveryPrecondition }, "aprobó la revisión de la tarea", review?.revision ?? null);
+      if (responsable_publicacion_id === undefined) return await updateTask(task.id, { estado: "aprobada", ...deliveryPrecondition }, "aprobó la revisión de la tarea", review?.revision ?? task.revision);
       const publisher = users.find((user) => user.id === responsable_publicacion_id && ["admin", "community"].includes(user.rol));
       if (responsable_publicacion_id !== undefined && (!Number.isSafeInteger(responsable_publicacion_id) || responsable_publicacion_id <= 0 || !publisher)) throw new Error("Elegí un responsable de publicación válido.");
       const responsable_publicacion = publisher?.nombre;

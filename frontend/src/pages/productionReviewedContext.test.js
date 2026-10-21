@@ -27,7 +27,7 @@ test('actual visit form binds reviewed explanation/date and projects PATCH input
   assert.match(editor,/type="date" disabled=\{busy \|\| reviewed\}/);
   assert.match(editor,/aria-describedby=\{reviewed \? `reviewed-context-\$\{visit.id\}` : undefined\}/);
   assert.match(editor,/Fecha y cliente protegidos/);
-  assert.match(editor,/onWrite\(visit,'','PATCH',productionVisitEditInput\(visit,draft\)\)/);
-  assert.match(editor,/<button disabled=\{busy\} type="submit">Guardar visita/);
+  assert.match(editor,/onWrite\(intent.visit,'','PATCH',productionVisitEditInput\(intent.visit,intent.draft\)\)/);
+  assert.match(editor,/<button disabled=\{busy \|\| form.pending \|\| form.blocked\} type="submit">Guardar visita/);
   assert.match(editor,/<Participants[^>]+disabled=\{busy\}/);
 });

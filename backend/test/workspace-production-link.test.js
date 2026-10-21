@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {canonicalTaskState} from '../../frontend/src/features/render-os/constants.js';
 import {getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask} from '../../frontend/src/features/render-os/utils/task-content.js';
 import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
+import {verifiedProductionDraftVisit} from '../../frontend/src/pages/productionDraft.js';
 const session={token:'synthetic-production-link',usuario:{id:1,rol:'admin',activo:true}};
 const captureFor=request=>()=>createCapturedRequest({session,readSession:()=>session,request});
 const workspace=readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
@@ -160,13 +161,15 @@ function visitLoader(request) {
   const state={selected:null,month:null,day:null,error:null,busy:false};
   const writes=[];const openVersion={current:0};
   const context={mayLeave:()=>true,openVersion,setCreating:()=>{},setSelected:value=>{state.selected=value;},setDetailLoading:value=>{state.busy=value;},setError:value=>{state.error=value;},
-    setMonth:value=>{state.month=value;},setDay:value=>{state.day=value;},visitDTO:data=>data.visita || data,apiRequest:request,writeProductionLocation:value=>writes.push(value)};
+    setMonth:value=>{state.month=value;},setDay:value=>{state.day=value;},verifiedProductionDraftVisit,apiRequest:request,writeProductionLocation:value=>writes.push(value)};
   const open=new Function(...Object.keys(context),`${extract(productions,'  const openVisit =','  const restoreProductionLocation =')}return openVisit;`)(...Object.values(context));
   return {open,state,writes};
 }
+const fullVisit=(visitId,fecha)=>({id:visitId,revision:1,cliente_id:1,cliente_nombre:'QA observed client',
+  fecha,titulo:'QA observed visit',observaciones:'',drive_url:'',participante_ids:[],videos:[],fotos:[]});
 test('actual deep-link loader selects remote month/day and avoids pushing history on reload or popstate',async()=>{
   const calls=[];
-  const h=visitLoader(async url=>{calls.push(url);return {id,fecha:'2026-09-12'};});
+  const h=visitLoader(async url=>{calls.push(url);return fullVisit(id,'2026-09-12');});
   await h.open(id,{history:false});
   assert.equal(calls[0],`/api/producciones/${id}`);
   assert.equal(h.state.month,'2026-09');assert.equal(h.state.day,'2026-09-12');assert.equal(h.state.selected.id,id);
@@ -176,10 +179,16 @@ test('actual deep-link loader selects remote month/day and avoids pushing histor
 });
 test('late visit response cannot replace a newer navigation selection',async()=>{
   let resolveFirst;
-  const h=visitLoader(url=>url.endsWith(id) ? new Promise(resolve=>{resolveFirst=resolve;}) : Promise.resolve({id:'second',fecha:'2026-10-20'}));
+  const h=visitLoader(url=>url.endsWith(id) ? new Promise(resolve=>{resolveFirst=resolve;}) : Promise.resolve(fullVisit('second','2026-10-20')));
   const first=h.open(id,{history:false});await h.open('second',{history:false});
-  resolveFirst({id,fecha:'2026-09-12'});await first;
+  resolveFirst(fullVisit(id,'2026-09-12'));await first;
   assert.equal(h.state.selected.id,'second');assert.equal(h.state.month,'2026-10');
+});
+test('actual deep-link loader rejects incomplete readback instead of publishing an empty visit',async()=>{
+  const h=visitLoader(async()=>({id,revision:2,fecha:'2026-09-12'}));
+  await h.open(id,{history:false});
+  assert.equal(h.state.selected,null);assert.equal(h.state.month,null);assert.equal(h.writes.length,0);
+  assert.match(h.state.error,/detalle completo/);assert.equal(h.state.busy,false);
 });
 test('popstate listener uses latest handler, cleans up and never stores business data',()=>{
   assert.match(productions,/navigationRef.current = restoreProductionLocation/);

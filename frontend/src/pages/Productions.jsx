@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getHoyLocalISO } from '../utils.jsx';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { hasReviewedProductionContext, productionVisitEditInput } from './productionVisitEdit.js';
+import { createProductionDraft, productionMediaDraft, productionVisitDraft, verifiedProductionDraftVisit } from './productionDraft.js';
 import './Productions.css';
 
 const VIDEO_STATES = { planificado:'Planificado', grabado:'Grabado', pendiente:'Pendiente', repetir:'Repetir' };
@@ -92,33 +93,77 @@ function CreateVisit({clients, users, date, busy, onCreate, onCancel, onDirty}) 
   </form></section>;
 }
 
-function MediaForm({visit, item, kind, busy, onWrite, onDirty, onCreated}) {
+function useProductionDraft({visit, source, key, onDirty, onReload}) {
+  const [draftModel] = useState(()=>createProductionDraft(visit,source(visit)));
+  const latest = useRef(null), mounted = useRef(false);
+  const [,render] = useState(0);
+  const state = draftModel.snapshot;
+  const publish = () => { if (mounted.current) render(value=>value+1); };
+  const report = () => {if(mounted.current){const next=draftModel.snapshot;onDirty(key,next.dirty || next.blocked || next.pending);}};
+  useLayoutEffect(()=>{mounted.current=true;return()=>{mounted.current=false;onDirty(key,false);}},[key,onDirty]);
+  // Do not mutate the model on speculative React renders. begin() independently
+  // rejects a changed latest prop even before this layout effect can execute.
+  useLayoutEffect(()=>{latest.current={visit,source};});
+  const sourceKey=JSON.stringify(visit);
+  useLayoutEffect(()=>{
+    try{draftModel.observe(visit,source(visit));}catch(reason){draftModel.fail(reason);}
+    report();publish();
+  },[sourceKey]);
+  const edit = value => {draftModel.edit(value);report();publish();};
+  const begin = () => {try{return draftModel.begin(visit);}finally{report();publish();}};
+  const complete = result => {
+    const fresh=verifiedProductionDraftVisit(result,visit.id);
+    draftModel.complete(fresh,latest.current.source(fresh));report();publish();
+  };
+  const fail = reason => {draftModel.fail(reason);report();publish();};
+  const reload = async () => {
+    if(!draftModel.beginReload(()=>window.confirm('¿Descartar estos campos y cargar la versión guardada? Si el envío fue incierto, revisá los registros antes de crear otro.')))return;
+    report();publish();
+    try{complete(await onReload(visit.id));}
+    catch(reason){fail(reason);}
+  };
+  return {...state,edit,begin,complete,fail,reload};
+}
+function DraftRecovery({form,busy}) {
+  if(!form.dirty && !form.blocked)return null;
+  return <div className="prod-wide">{form.blocked && <p role="alert">{form.saved ? 'El cambio se guardó. No repitas el envío: cargá la versión guardada para verificarlo.' : form.uncertain ? 'No se pudo confirmar el envío. No lo repitas: revisá los registros guardados.' : 'La visita cambió. Tus campos se conservan, pero no se pueden guardar sobre otra revisión.'}</p>}<button type="button" disabled={busy || form.pending} onClick={()=>void form.reload()}>Descartar campos y cargar versión guardada</button></div>;
+}
+function MediaForm({visit, item, kind, busy, onWrite, onDirty, onCreated, onReload}) {
   const video = kind === 'videos';
   const key = `${kind}:${item?.id || 'new'}`;
-  const [draft, setDraft] = useState(() => video ? {titulo:item?.titulo || '',guion:item?.guion || '',estado:item?.estado || 'planificado',material_url:item?.material_url || '',observaciones:item?.observaciones || ''} : {tipo:item?.tipo || '',estado:item?.estado || 'realizada',drive_url:item?.drive_url || '',observaciones:item?.observaciones || ''});
+  const source = current => {
+    const row=item ? current[kind]?.find(row=>row.id===item.id) : null;
+    if(item && !row)throw new Error('El registro ya no está disponible. Cerrá y recargá la visita.');
+    return productionMediaDraft(row,kind);
+  };
+  const form=useProductionDraft({visit,source,key,onDirty,onReload});
+  const draft=form.draft,setDraft=form.edit;
   const [error, setError] = useState('');
   const submit = async event => {
     event.preventDefault(); setError('');
     try {
       const url = video ? draft.material_url : draft.drive_url;
       if (url && !safeProductionUrl(url)) throw new Error('Usá un enlace http o https.');
-      await onWrite(visit,`/${kind}${item ? `/${encodeURIComponent(item.id)}` : ''}`,item ? 'PATCH' : 'POST',draft);
-      onDirty(key,false);
+      const intent=form.begin();
+      try{form.complete(await onWrite(intent.visit,`/${kind}${item ? `/${encodeURIComponent(item.id)}` : ''}`,item ? 'PATCH' : 'POST',intent.draft));}
+      catch(reason){form.fail(reason);throw reason;}
       if (!item) onCreated();
     } catch (reason) { setError(reason.message); }
   };
-  return <form className="prod-form prod-media-form" onSubmit={submit} onChange={()=>onDirty(key,true)}>
+  return <form className="prod-form prod-media-form" onSubmit={submit}>
     <label>{video ? 'Título del video' : 'Tipo de fotos'}<input required maxLength={250} value={video ? draft.titulo : draft.tipo} disabled={busy} onChange={e=>setDraft({...draft,[video ? 'titulo' : 'tipo']:e.target.value})}/></label>
     <label>Estado<select value={draft.estado} disabled={busy} onChange={e=>setDraft({...draft,estado:e.target.value})}>{Object.entries(video ? VIDEO_STATES : PHOTO_STATES).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
     {video && <label className="prod-wide">Guion<textarea rows={5} value={draft.guion} disabled={busy} onChange={e=>setDraft({...draft,guion:e.target.value})}/><small>El guion se conserva al dejar pendiente o marcar para repetir.</small></label>}
     <label className="prod-wide">{video ? 'Enlace del material' : 'Enlace Drive'}<input type="url" value={video ? draft.material_url : draft.drive_url} disabled={busy} onChange={e=>setDraft({...draft,[video ? 'material_url' : 'drive_url']:e.target.value})}/></label>
     <label className="prod-wide">Observaciones<textarea value={draft.observaciones} disabled={busy} onChange={e=>setDraft({...draft,observaciones:e.target.value})}/></label>
-    {error && <p className="prod-error prod-wide" role="alert">{error}</p>}<footer className="prod-wide"><button type="submit" disabled={busy}>{busy ? 'Guardando…' : item ? 'Guardar cambios' : video ? 'Registrar video' : 'Registrar fotos'}</button></footer>
+    <DraftRecovery form={form} busy={busy}/>{error && <p className="prod-error prod-wide" role="alert">{error}</p>}<footer className="prod-wide"><button type="submit" disabled={busy || form.pending || form.blocked}>{busy ? 'Guardando…' : item ? 'Guardar cambios' : video ? 'Registrar video' : 'Registrar fotos'}</button></footer>
   </form>;
 }
-function SendToEditing({visit, video, users, busy, onWrite, onDirty}) {
-  const [editorId, setEditorId] = useState('');
-  const [date, setDate] = useState(''); // Deliberately no inferred delivery date.
+function SendToEditing({visit, video, users, busy, onWrite, onDirty, onReload}) {
+  const form=useProductionDraft({visit,source:()=>({editorId:'',date:''}),key:`handoff:${video.id}`,onDirty,onReload});
+  const {editorId,date}=form.draft; // Deliberately no inferred editor/date.
+  const setEditorId=value=>form.edit({...form.draft,editorId:value});
+  const setDate=value=>form.edit({...form.draft,date:value});
   const [error, setError] = useState('');
   const hasMaterial = Boolean(safeProductionUrl(video.material_url) || safeProductionUrl(visit.drive_url));
   const submit = async event => {
@@ -126,27 +171,31 @@ function SendToEditing({visit, video, users, busy, onWrite, onDirty}) {
     try {
       if (!positiveId(Number(editorId)) || !date) throw new Error('Elegí editor y fecha de entrega.');
       if (!hasMaterial) throw new Error('Vinculá el material del video o la carpeta Drive de la visita.');
-      await onWrite(visit,`/videos/${encodeURIComponent(video.id)}/enviar-edicion`,'POST',{editor_id:Number(editorId),fecha_entrega:date});
-      onDirty(`handoff:${video.id}`,false);
+      const intent=form.begin();
+      try{form.complete(await onWrite(intent.visit,`/videos/${encodeURIComponent(video.id)}/enviar-edicion`,'POST',{editor_id:Number(intent.draft.editorId),fecha_entrega:intent.draft.date}));}
+      catch(reason){form.fail(reason);throw reason;}
     } catch (reason) { setError(reason.message); }
   };
-  return <details className="prod-handoff"><summary>Enviar a edición</summary><form className="prod-form" onSubmit={submit} onChange={()=>onDirty(`handoff:${video.id}`,true)}><label>Editor<select required value={editorId} disabled={busy} onChange={e=>setEditorId(e.target.value)}><option value="">Elegí una persona</option>{users.filter(user=>user.activo === true && ['admin','edicion'].includes(user.rol)).map(user=><option key={user.id} value={user.id}>{user.nombre} · #{user.id}</option>)}</select></label><label>Fecha de entrega<input required type="date" value={date} disabled={busy} onChange={e=>setDate(e.target.value)}/></label>{!hasMaterial && <p className="prod-muted prod-wide">Vinculá el material del video o la carpeta Drive de la visita antes de enviar.</p>}{error && <p className="prod-error prod-wide" role="alert">{error}</p>}<footer className="prod-wide"><button disabled={busy || !editorId || !date || !hasMaterial} type="submit">Enviar video a edición</button></footer></form></details>;
+  return <details className="prod-handoff"><summary>Enviar a edición</summary><form className="prod-form" onSubmit={submit}><label>Editor<select required value={editorId} disabled={busy} onChange={e=>setEditorId(e.target.value)}><option value="">Elegí una persona</option>{users.filter(user=>user.activo === true && ['admin','edicion'].includes(user.rol)).map(user=><option key={user.id} value={user.id}>{user.nombre} · #{user.id}</option>)}</select></label><label>Fecha de entrega<input required type="date" value={date} disabled={busy} onChange={e=>setDate(e.target.value)}/></label>{!hasMaterial && <p className="prod-muted prod-wide">Vinculá el material del video o la carpeta Drive de la visita antes de enviar.</p>}<DraftRecovery form={form} busy={busy}/>{error && <p className="prod-error prod-wide" role="alert">{error}</p>}<footer className="prod-wide"><button disabled={busy || form.pending || form.blocked || !editorId || !date || !hasMaterial} type="submit">Enviar video a edición</button></footer></form></details>;
 }
-function VisitEditor({visit, users, busy, onWrite, onDirty}) {
+function VisitEditor({visit, users, busy, onWrite, onDirty, onReload}) {
   const reviewed = hasReviewedProductionContext(visit);
-  const [draft,setDraft] = useState(()=>({fecha:visit.fecha,titulo:visit.titulo,participante_ids:visit.participante_ids || [],drive_url:visit.drive_url || '',observaciones:visit.observaciones || ''}));
+  const form=useProductionDraft({visit,source:productionVisitDraft,key:`visit:${visit.id}`,onDirty,onReload});
+  const draft=form.draft,setDraft=form.edit;
   const [error,setError] = useState('');
   const submit = async event => {
     event.preventDefault();setError('');
     try {
       if(draft.drive_url && !safeProductionUrl(draft.drive_url)) throw new Error('Usá un enlace http o https.');
-      await onWrite(visit,'','PATCH',productionVisitEditInput(visit,draft));onDirty(`visit:${visit.id}`,false);
+      const intent=form.begin();
+      try{form.complete(await onWrite(intent.visit,'','PATCH',productionVisitEditInput(intent.visit,intent.draft)));}
+      catch(reason){form.fail(reason);throw reason;}
     }catch(reason){setError(reason.message);}
   };
-  return <details className="prod-visit-editor"><summary>Editar datos de la visita</summary><form className="prod-form" onSubmit={submit} onChange={()=>onDirty(`visit:${visit.id}`,true)}>
+  return <details className="prod-visit-editor"><summary>Editar datos de la visita</summary><form className="prod-form" onSubmit={submit}>
     <label>Fecha de visita<input required type="date" disabled={busy || reviewed} aria-describedby={reviewed ? `reviewed-context-${visit.id}` : undefined} value={draft.fecha} onChange={e=>setDraft({...draft,fecha:e.target.value})}/></label>
     {reviewed && <p className="prod-muted prod-wide" id={`reviewed-context-${visit.id}`}>Fecha y cliente protegidos por la revisión del registro histórico. Podés editar los demás datos de la visita.</p>}
-    <label>Título<input required maxLength={250} disabled={busy} value={draft.titulo} onChange={e=>setDraft({...draft,titulo:e.target.value})}/></label><label className="prod-wide">Carpeta Drive<input type="url" disabled={busy} value={draft.drive_url} onChange={e=>setDraft({...draft,drive_url:e.target.value})}/></label><div className="prod-wide"><Participants users={users} selected={draft.participante_ids} disabled={busy} onChange={ids=>{onDirty(`visit:${visit.id}`,true);setDraft({...draft,participante_ids:ids});}}/></div><label className="prod-wide">Observaciones<textarea disabled={busy} value={draft.observaciones} onChange={e=>setDraft({...draft,observaciones:e.target.value})}/></label><small className="prod-wide">Cambiar la visita no elige ni modifica automáticamente la fecha de entrega de edición.</small>{error && <p className="prod-error prod-wide" role="alert">{error}</p>}<footer className="prod-wide"><button disabled={busy} type="submit">Guardar visita</button></footer></form></details>;
+    <label>Título<input required maxLength={250} disabled={busy} value={draft.titulo} onChange={e=>setDraft({...draft,titulo:e.target.value})}/></label><label className="prod-wide">Carpeta Drive<input type="url" disabled={busy} value={draft.drive_url} onChange={e=>setDraft({...draft,drive_url:e.target.value})}/></label><div className="prod-wide"><Participants users={users} selected={draft.participante_ids} disabled={busy} onChange={ids=>setDraft({...draft,participante_ids:ids})}/></div><label className="prod-wide">Observaciones<textarea disabled={busy} value={draft.observaciones} onChange={e=>setDraft({...draft,observaciones:e.target.value})}/></label><small className="prod-wide">Cambiar la visita no elige ni modifica automáticamente la fecha de entrega de edición.</small><DraftRecovery form={form} busy={busy}/>{error && <p className="prod-error prod-wide" role="alert">{error}</p>}<footer className="prod-wide"><button disabled={busy || form.pending || form.blocked} type="submit">Guardar visita</button></footer></form></details>;
 }
 function VisitAgendaItem({visit, selected, onOpen}) {
   return <article className="prod-agenda-entry"><button type="button" className="prod-agenda-item" aria-pressed={selected} onClick={()=>onOpen(visit.id)}><span><strong>{visit.titulo}</strong><small>{visit.cliente_nombre}</small></span><span aria-hidden="true">›</span></button><ul className="prod-agenda-media">{(visit.videos || []).map(video=><li key={video.id}><span>Video · {video.titulo}</span><span className={`prod-status is-${video.estado}`}>{VIDEO_STATES[video.estado] || video.estado}</span></li>)}{(visit.fotos || []).map(photo=><li key={photo.id}><span>Fotos · {photo.tipo}</span><span className={`prod-status is-${photo.estado}`}>{PHOTO_STATES[photo.estado] || photo.estado}</span></li>)}</ul>{!visit.videos?.length && !visit.fotos?.length && <p className="prod-muted">Sin material registrado todavía.</p>}</article>;
@@ -255,23 +304,23 @@ function EditorialAssociation({visit,video,busy,onWrite,onDirty}) {
     </form>}
   </details>;
 }
-function VisitDetail({visit, users, busy, isAdmin, onWrite, onDirty}) {
+function VisitDetail({visit, users, busy, isAdmin, onWrite, onDirty, onReload}) {
   const [adding, setAdding] = useState({});
   return <section className="prod-panel prod-detail" aria-label="Detalle de visita"><header className="prod-detail-heading"><span>{visit.cliente_nombre}</span><h2>{visit.titulo}</h2><p>{dateLabel(visit.fecha)}</p><SafeLink url={visit.drive_url}/></header>
     {visit.observaciones && <p className="prod-notes">{visit.observaciones}</p>}<p className="prod-muted">Participantes: {(visit.participante_ids || []).map(id=>users.find(user=>user.id===id)?.nombre || `Usuario #${id}`).join(', ') || 'Sin participantes'}</p>
     {visit.tarea_origen_id && <a href={`/workspace/tareas?task=${visit.tarea_origen_id}`}>Ver tarea de origen ↗</a>}
-    <VisitEditor visit={visit} users={users} busy={busy} onWrite={onWrite} onDirty={onDirty}/>
+    <VisitEditor visit={visit} users={users} busy={busy} onWrite={onWrite} onDirty={onDirty} onReload={onReload}/>
     {['videos','fotos'].map(kind=><section key={kind} className="prod-media-section"><header className="prod-section-heading"><h3>{kind === 'videos' ? 'Videos' : 'Fotos'} <span>{visit[kind]?.length || 0}</span></h3><button disabled={busy} type="button" onClick={()=>setAdding(current=>({...current,[kind]:true}))}>+ {kind === 'videos' ? 'Video' : 'Fotos'}</button></header>
       {(visit[kind] || []).map(item=><article className="prod-media" key={item.id}><header><h4>{item.titulo || item.tipo}</h4><span className={`prod-status is-${item.estado}`}>{(kind === 'videos' ? VIDEO_STATES : PHOTO_STATES)[item.estado] || item.estado}</span></header><SafeLink url={item.material_url || item.drive_url}/>
         {item.tarea_edicion_id && <a className="prod-task-link" href={`/workspace/tareas?task=${item.tarea_edicion_id}`}>Edición · {TASK_STATES[item.tarea_estado] || item.tarea_estado || 'Ver tarea'} ↗</a>}
         {item.tarea_edicion_id && <EditingAssignment video={item} users={users}/>}
         {kind === 'videos' && <EditorialLinkSummary video={item}/>}
         {kind === 'videos' && item.guion && <details><summary>Ver guion</summary><p className="prod-script">{item.guion}</p></details>}
-        <details><summary>Editar {kind === 'videos' ? 'video' : 'fotos'}</summary><MediaForm visit={visit} item={item} kind={kind} busy={busy} onWrite={onWrite} onDirty={onDirty}/></details>
+        <details><summary>Editar {kind === 'videos' ? 'video' : 'fotos'}</summary><MediaForm visit={visit} item={item} kind={kind} busy={busy} onWrite={onWrite} onDirty={onDirty} onReload={onReload}/></details>
         {isAdmin && kind === 'videos' && <EditorialAssociation visit={visit} video={item} busy={busy} onWrite={onWrite} onDirty={onDirty}/>}
-        {isAdmin && kind === 'videos' && item.estado === 'grabado' && !item.tarea_edicion_id && <SendToEditing visit={visit} video={item} users={users} busy={busy} onWrite={onWrite} onDirty={onDirty}/>}
+        {isAdmin && kind === 'videos' && item.estado === 'grabado' && !item.tarea_edicion_id && <SendToEditing visit={visit} video={item} users={users} busy={busy} onWrite={onWrite} onDirty={onDirty} onReload={onReload}/>}
       </article>)}{!visit[kind]?.length && <p className="prod-empty">Sin {kind} registrados.</p>}
-      {adding[kind] && <MediaForm key={`${visit.id}:${kind}:new`} visit={visit} kind={kind} busy={busy} onWrite={onWrite} onDirty={onDirty} onCreated={()=>setAdding(current=>({...current,[kind]:false}))}/>}
+      {adding[kind] && <MediaForm key={`${visit.id}:${kind}:new`} visit={visit} kind={kind} busy={busy} onWrite={onWrite} onDirty={onDirty} onReload={onReload} onCreated={()=>setAdding(current=>({...current,[kind]:false}))}/>}
     </section>)}
   </section>;
 }
@@ -318,7 +367,7 @@ export function ProductionsPage({sesion}) {
     return()=>controller.abort();
   },[tab,clientId,reload]);
   const refreshVisit = async id => {
-    const value = visitDTO(await apiRequest(`/api/producciones/${encodeURIComponent(id)}`));
+    const value = verifiedProductionDraftVisit(await apiRequest(`/api/producciones/${encodeURIComponent(id)}`),id);
     setSelected(current=>current?.id === id ? value : current);
     setVisits(current=>current.map(visit=>visit.id === id ? value : visit));
     return value;
@@ -327,7 +376,7 @@ export function ProductionsPage({sesion}) {
     if(checkDirty && !mayLeave()) return;
     const version=++openVersion.current;setCreating(false);setSelected(null);setDetailLoading(true);setError('');
     try {
-      const value=visitDTO(await apiRequest(`/api/producciones/${encodeURIComponent(id)}`));
+      const value=verifiedProductionDraftVisit(await apiRequest(`/api/producciones/${encodeURIComponent(id)}`),id);
       if(version===openVersion.current) {
         setSelected(value);setMonth(value.fecha.slice(0,7));setDay(value.fecha);
         if(history) writeProductionLocation({id:value.id,month:value.fecha.slice(0,7)});
@@ -368,8 +417,14 @@ export function ProductionsPage({sesion}) {
       // Read back the full aggregate: nested endpoints may return only the changed record.
       let fresh;
       try { fresh=await refreshVisit(visit.id);setNotice('Cambios guardados.'); }
-      catch { setNotice('Se guardó el cambio, pero no pudimos recargar el detalle. Actualizá la visita antes de volver a registrar.'); }
-      setReload(value=>value+1);return fresh || response;
+      catch {
+        const ack=visitDTO(response);
+        const saved=ack?.id===visit.id && positiveId(ack.revision) && ack.revision>visit.revision;
+        throw Object.assign(new Error(saved
+          ? 'El cambio se guardó, pero no pudimos verificar el detalle completo. No repitas el envío: cargá la versión guardada.'
+          : 'No pudimos verificar el resultado completo. No repitas el envío antes de cargar la versión guardada.'),{productionSaved:saved});
+      }
+      setReload(value=>value+1);return fresh;
     } catch(reason){setNotice(reason.message);throw reason;}
     finally{writeLock.current=false;setBusy(false);}
   };
@@ -399,6 +454,6 @@ export function ProductionsPage({sesion}) {
         <section className="prod-day-agenda"><h3>{dateLabel(day)}</h3>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día. Podés crear una nueva.</p>}</section>
         <section className="prod-mobile-agenda" aria-label="Agenda del mes"><label>Elegir día<input type="date" value={day} min={`${month}-01`} max={`${month}-${String(new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate()).padStart(2,'0')}`} onChange={e=>{if(e.target.value)setDay(e.target.value);}}/></label>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día.</p>}</section>
       </> : <div className="prod-pending"><p className="prod-muted">Guiones pendientes o para repetir. Retomarlos conserva la visita original.</p><label>Visita de destino<select value={selected?.id || ''} disabled={busy} onChange={e=>{if(e.target.value)openVisit(e.target.value);}}><option value="">Elegí una visita del mes</option>{filtered.map(visit=><option key={visit.id} value={visit.id}>{visit.fecha} · {visit.cliente_nombre} · {visit.titulo}</option>)}</select></label>{pending.map(video=><article className="prod-media" key={video.id}><header><h3>{video.titulo}</h3><span className="prod-status">{VIDEO_STATES[video.estado] || video.estado}</span></header><p className="prod-muted">{video.cliente_nombre} · {video.fecha}</p><p className="prod-script">{video.guion || 'Sin guion cargado'}</p><button type="button" disabled={busy || !selected || selected.cliente_id!==video.cliente_id} onClick={()=>resume(video)}>Retomar en la visita seleccionada</button></article>)}{!pending.length && <p className="prod-empty">No hay guiones pendientes para este filtro.</p>}</div>}
-    </section><div className="prod-detail-column">{creating ? <CreateVisit key="create" clients={clients} users={users} date={day} busy={busy} onCreate={createVisit} onDirty={onDirty} onCancel={()=>{if(mayLeave())setCreating(false);}}/> : detailLoading ? <p role="status" className="prod-empty">Cargando visita…</p> : selected ? <VisitDetail key={selected.id} visit={selected} users={users} busy={busy} isAdmin={isAdmin} onWrite={writeVisit} onDirty={onDirty}/> : <div className="prod-panel prod-empty"><h2>Elegí una visita</h2><p>Acá verás los videos, fotos y guiones del rodaje.</p></div>}</div></div>
+    </section><div className="prod-detail-column">{creating ? <CreateVisit key="create" clients={clients} users={users} date={day} busy={busy} onCreate={createVisit} onDirty={onDirty} onCancel={()=>{if(mayLeave())setCreating(false);}}/> : detailLoading ? <p role="status" className="prod-empty">Cargando visita…</p> : selected ? <VisitDetail key={selected.id} visit={selected} users={users} busy={busy} isAdmin={isAdmin} onWrite={writeVisit} onDirty={onDirty} onReload={refreshVisit}/> : <div className="prod-panel prod-empty"><h2>Elegí una visita</h2><p>Acá verás los videos, fotos y guiones del rodaje.</p></div>}</div></div>
   </main>;
 }
