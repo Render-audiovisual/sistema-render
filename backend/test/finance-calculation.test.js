@@ -62,13 +62,14 @@ test("Finanzas expone el cálculo automático a mes vencido", () => {
   const backend = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
   const frontend = readFileSync(new URL("../../frontend/src/pages/Sueldos.jsx", import.meta.url), "utf8");
   assert.match(backend, /buildAutomaticFinanceSummary/);
-  assert.match(frontend, /FACTURACIÓN A COBRAR/);
+  assert.match(frontend, /INGRESOS ESPERADOS/);
+  assert.match(frontend, /no confirma facturas emitidas ni cobros/);
   assert.match(frontend, /Mes vencido/);
   assert.match(frontend, /Gastos fijos/);
   assert.match(frontend, /Dólar usado/);
   assert.doesNotMatch(frontend, /Equipo \+ Franco programador|Herramientas USD|Herramientas ARS/);
   assert.match(backend, /getCardDollarRate/);
-  assert.match(frontend, /Sin cargas manuales/);
+  assert.match(frontend, /no (?:confirma|registra)[^\n]*pagos|no son comprobantes/i);
   assert.doesNotMatch(frontend, /Guardar cierre mensual/);
 });
 
@@ -155,8 +156,8 @@ test("los contratos financieros se adaptan a celular sin una tabla horizontal", 
 
 test("los comparativos financieros calculan la nómina del mes anterior", () => {
   const backend = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
-  assert.match(backend, /loadPayrollForCollectionPeriod\(period\)/);
-  assert.match(backend, /loadPayrollForCollectionPeriod\(previousCollectionPeriod\)/);
+  assert.match(backend, /loadPayrollForCollectionPeriod\(period, db\)/);
+  assert.match(backend, /loadPayrollForCollectionPeriod\(previousCollectionPeriod, db\)/);
   assert.match(backend, /payrollARS: previousPayrollData\.payroll\.summary\.configuredPayroll/);
   assert.match(backend, /history\.push\(\{\s*period: cursor,\s*total:/);
 });

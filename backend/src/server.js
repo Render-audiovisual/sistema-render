@@ -45,10 +45,11 @@ import { normalizeTaskState, taskTransitionError, isTaskFinalized } from "./work
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { parseTaskPagination } from "./task-pagination.js";
 import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
-import { calculateSalaryDashboard, isValidSalaryPeriod } from "./salary-calculation.js";
+import { calculateSalaryDashboard } from "./salary-calculation.js";
 import { applyCompensations, nextPeriod } from "./finance-calculation.js";
 import { buildAutomaticFinanceSummary, previousPeriod } from "./automatic-finance.js";
 import { getCardDollarRate } from "./exchange-rate.js";
+import { captureFinanceActor, financePeriod, withFinanceSnapshot } from './finance-snapshot.js';
 import { createWilsonRouter } from "./wilson-integration.js";
 import { createWilsonChatRouter, scheduleWilsonMessages } from "./wilson-chat.js";
 import { readMigrationIdentity, readMigrationStatus } from "./migrations.js";
@@ -570,24 +571,24 @@ router.get("/reportes/datos", async (req, res, next) => {
   }
 });
 
-async function loadPayrollForCollectionPeriod(collectionPeriod) {
+async function loadPayrollForCollectionPeriod(collectionPeriod, db) {
   const workPeriod = previousPeriod(collectionPeriod);
   const [tasks, histories, publications, compensations, editingDeliveries] = await Promise.all([
-    pool.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
+    db.query(`SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
       to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,t.propiedades_extra,t.created_at,t.updated_at,
       c.nombre AS cliente_nombre FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
       WHERE t.propiedades_extra->>'workspace'='render_os' AND (to_char(t.fecha_vencimiento,'YYYY-MM')=$1
         OR t.propiedades_extra->>'reporte_periodo'=$1 OR (t.fecha_vencimiento IS NULL AND to_char(t.updated_at,'YYYY-MM')=$1))`, [workPeriod]),
-    pool.query(`SELECT h.id,h.estado,to_char(h.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
+    db.query(`SELECT h.id,h.estado,to_char(h.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
       h.idea,h.copy,h.fecha_publicación_real,h.updated_at,c.nombre AS cliente_nombre
       FROM historias h JOIN clientes c ON c.id=h.cliente_id WHERE to_char(h.fecha_programada,'YYYY-MM')=$1`, [workPeriod]),
-    pool.query(`SELECT p.id,p.tipo,p.estado,to_char(p.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
+    db.query(`SELECT p.id,p.tipo,p.estado,to_char(p.fecha_programada,'YYYY-MM-DD') AS fecha_programada,
       p.idea,p.copy,p.fecha_publicación_real,p.updated_at,c.nombre AS cliente_nombre
       FROM publicaciones p JOIN clientes c ON c.id=p.cliente_id WHERE to_char(p.fecha_programada,'YYYY-MM')=$1`, [workPeriod]),
-    pool.query(`SELECT DISTINCT ON (empleado_clave) empleado_clave,modalidad,sueldo_base,tarifa_facil,tarifa_intermedia
+    db.query(`SELECT DISTINCT ON (empleado_clave) empleado_clave,modalidad,sueldo_base,tarifa_facil,tarifa_intermedia
       FROM empleado_compensaciones WHERE vigente_desde <= ($1 || '-01')::date
       ORDER BY empleado_clave,vigente_desde DESC`, [collectionPeriod]),
-    pool.query(`SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
+    db.query(`SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
       cliente_etiqueta,categoria,importe FROM entregas_edicion
       WHERE to_char(fecha_entrega,'YYYY-MM')=$1 ORDER BY fecha_entrega,id`, [workPeriod]),
   ]);
@@ -694,20 +695,21 @@ router.delete("/contratos/:id", requireRole("admin"), async (req, res, next) => 
 });
 
 router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
+  res.set('Cache-Control','no-store');
   try {
-    const period = String(req.query.periodo || "");
-    if (!isValidSalaryPeriod(period)) {
-      return res.status(400).json({ error: "Usá un período válido con formato YYYY-MM." });
-    }
+    const period = financePeriod(req.query);
+    const observed = captureFinanceActor(req.auth);
+    // No PostgreSQL lease/snapshot is held while an exchange provider waits.
+    const exchangeRate = await getCardDollarRate();
+    const response = await withFinanceSnapshot(pool, observed, async db => {
     const previousCollectionPeriod = previousPeriod(period);
-    const [contracts, expenses, currentPayrollData, previousPayrollData, exchangeRate] = await Promise.all([
-      pool.query(`SELECT nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
+    const [contracts, expenses, currentPayrollData, previousPayrollData] = await Promise.all([
+      db.query(`SELECT nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
         to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM contratos_financieros ORDER BY nombre,inicia_el`),
-      pool.query(`SELECT nombre,categoria,moneda,importe,dia_pago,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
+      db.query(`SELECT nombre,categoria,moneda,importe,dia_pago,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
         to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el FROM gastos_fijos_financieros ORDER BY dia_pago,nombre`),
-      loadPayrollForCollectionPeriod(period),
-      loadPayrollForCollectionPeriod(previousCollectionPeriod),
-      getCardDollarRate(),
+      loadPayrollForCollectionPeriod(period, db),
+      loadPayrollForCollectionPeriod(previousCollectionPeriod, db),
     ]);
     const payroll = currentPayrollData.payroll;
     const finance = buildAutomaticFinanceSummary({
@@ -734,15 +736,18 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
       });
       cursor = nextPeriod(cursor);
     }
-    res.json({
+    return {
       finance,
       previousFinance,
       exchangeRate,
       payroll: payroll.employees.map((employee) => ({ name: employee.name, total: Number(employee.total || 0) })),
       payrollPending: payroll.summary.pendingConfigurations,
       billingHistory: history,
+    };
     });
+    res.json(response);
   } catch (error) {
+    if ([400,401,403].includes(error.status)) return res.status(error.status).json({error:error.message});
     next(error);
   }
 });

@@ -4,7 +4,7 @@ import { useScopedRequest } from '../shared/session/use-scoped-request.js';
 import { isSessionFailure } from '../shared/session/captured-request.js';
 import { FinanceContractsPanel } from '../components/FinanceContractsPanel.jsx';
 
-const ars = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+const ars = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const monthLabel = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric", timeZone: "UTC" });
 
 function currentPeriod() {
@@ -68,7 +68,7 @@ function financeDto(value, period) {
 function BillingChart({ items = [], selectedPeriod }) {
   const visible = items.slice(-8);
   const maximum = Math.max(...visible.map((item) => Number(item.total || 0)), 1);
-  return <div className="finance-chart" role="img" aria-label="Evolución mensual de la facturación">
+  return <div className="finance-chart" role="img" aria-label="Evolución mensual de ingresos proyectados">
     {visible.map((item) => <div className={`finance-chart-column${item.period === selectedPeriod ? " is-current" : ""}`} key={item.period}>
       <strong>{ars.format(item.total || 0)}</strong><div><i style={{ height: `${Math.max(((item.total || 0) / maximum) * 100, 4)}%` }} /></div>
       <span>{labelPeriod(item.period).split(" de ")[0].slice(0, 3)}</span>
@@ -182,37 +182,38 @@ function SueldosContent({ sesion }) {
 
   return <main className="page-shell salary-page finance-dashboard">
     <section className="salary-hero">
-      <div><span className="section-label">Finanzas · Solo Líder</span><h1>Finanzas de Render</h1><p>Ingresos y gastos mensuales calculados automáticamente.</p></div>
-      <label className="finance-period-select"><span>Mes de cobro</span><input type="month" value={period} min="2026-09" disabled={contractActive} onChange={(event) => { if (active.current) return; try { const next = salaryPeriod(`?periodo=${encodeURIComponent(event.target.value)}`); setPeriod(next); setPeriodError(''); } catch (reason) { setError(reason.message); } }} /></label>
+      <div><span className="section-label">Finanzas · Sólo administración</span><h1>Finanzas de Render</h1><p>Proyección mensual de ingresos, sueldos y gastos.</p></div>
+      <label className="finance-period-select"><span>Mes de cobro previsto</span><input type="month" value={period} min="2026-09" disabled={contractActive} onChange={(event) => { if (active.current) return; try { const next = salaryPeriod(`?periodo=${encodeURIComponent(event.target.value)}`); setPeriod(next); setPeriodError(''); } catch (reason) { setError(reason.message); } }} /></label>
     </section>
+    <p className="finance-disclaimer" role="note">Los importes son una proyección calculada. No acreditan cobros ni pagos realizados. Esta vista no registra pagos.</p>
 
     {loading && <div className="salary-state">Calculando el mes…</div>}
     {deferredNotice && <div className="salary-state" role="status">{deferredNotice}</div>}
     {error && <div className="salary-state is-error"><strong>No se pudo calcular Finanzas.</strong><span>{error}</span><button type="button" className="btn" disabled={contractActive} onClick={() => setRefreshVersion(version => version + 1)}>Reintentar resumen</button></div>}
     {finance && <>
-      <section className="finance-billing-hero"><div><span>FACTURACIÓN A COBRAR</span><small>{labelPeriod(period)} · trabajo de {labelPeriod(finance.workPeriod)}</small><strong>{ars.format(finance.facturacion)}</strong><p>Los clientes se facturan automáticamente a mes vencido.{facturacionVariation ? ` Variación contra el mes anterior: ${facturacionVariation.percent}%.` : ""}</p></div><b>Mes vencido</b></section>
+      <section className="finance-billing-hero"><div><span>INGRESOS ESPERADOS</span><small>{labelPeriod(period)} · trabajo de {labelPeriod(finance.workPeriod)}</small><strong>{ars.format(finance.facturacion)}</strong><p>Estimación por contratos a mes vencido; no confirma facturas emitidas ni cobros.{facturacionVariation ? ` Variación contra el mes anterior: ${facturacionVariation.percent}%.` : ""}</p></div><b>Mes vencido · estimado</b></section>
 
-      <section className="finance-metrics" aria-label="Resumen financiero automático">
+      <section className="finance-metrics" aria-label="Proyección financiera mensual">
         <article style={{background: '#f0f4f8', borderColor: '#d4dce5'}}>
-          <span>📊 Resultado</span>
+          <span>📊 Resultado proyectado</span>
           <strong style={{fontSize: '28px', color: finance.resultadoARS >= 0 ? '#2d5a4e' : '#a7322a'}}>{ars.format(finance.resultadoARS)}</strong>
           <small style={{color: 'var(--muted)', marginTop: '4px'}}>Margen: <strong>{margen}%</strong></small>
           {resultadoVariation && <small style={{color: resultadoVariation.isNegative ? '#a7322a' : '#2d5a4e', fontSize: '11px'}}>{resultadoVariation.isNegative ? '↓' : '↑'} {resultadoVariation.percent}%</small>}
         </article>
         <article style={{background: '#fff7e9', borderColor: '#e7c99e'}}>
-          <span>💵 Facturación</span>
+          <span>💵 Ingresos esperados</span>
           <strong style={{fontSize: '28px', color: '#755315'}}>{ars.format(finance.facturacion)}</strong>
-          <small style={{color: 'var(--muted)', marginTop: '4px'}}>Contratos facturados: <strong>{finance.ingresos.length}</strong></small>
+          <small style={{color: 'var(--muted)', marginTop: '4px'}}>Contratos incluidos: <strong>{finance.ingresos.length}</strong></small>
           {facturacionVariation && <small style={{color: facturacionVariation.isNegative ? '#a7322a' : '#2d5a4e', fontSize: '11px'}}>{facturacionVariation.isNegative ? '↓' : '↑'} {facturacionVariation.percent}%</small>}
         </article>
         <article style={{background: '#f0f8f4', borderColor: '#d4e5dc'}}>
-          <span>👥 Equipo</span>
+          <span>👥 Sueldos calculados</span>
           <strong style={{fontSize: '28px', color: '#556b7f'}}>{ars.format(finance.sueldos)}</strong>
-          <small style={{color: 'var(--muted)', marginTop: '4px'}}>Total de sueldos</small>
+          <small style={{color: 'var(--muted)', marginTop: '4px'}}>Estimación del período; no acredita pagos</small>
           {sueldosVariation && <small style={{color: sueldosVariation.isNegative ? '#2d5a4e' : '#a7322a', fontSize: '11px'}}>{sueldosVariation.isNegative ? '↓' : '↑'} {sueldosVariation.percent}%</small>}
         </article>
         <article style={{background: '#f8f0f0', borderColor: '#e5d4d4'}}>
-          <span>📋 Gastos fijos</span>
+          <span>📋 Gastos fijos previstos</span>
           <strong style={{fontSize: '28px', color: '#9b4f4f'}}>{ars.format(finance.gastosFijosARS)}</strong>
           <small style={{color: 'var(--muted)', marginTop: '4px'}}>Impuestos + herramientas</small>
           {gastosVariation && <small style={{color: gastosVariation.isNegative ? '#2d5a4e' : '#a7322a', fontSize: '11px'}}>{gastosVariation.isNegative ? '↓' : '↑'} {gastosVariation.percent}%</small>}
@@ -223,14 +224,14 @@ function SueldosContent({ sesion }) {
         <strong>{ars.format(exchangeRate?.rounded || 0)} por USD</strong>
         <small>Cotización tarjeta vendedor: {ars.format(exchangeRate?.original || 0)}, redondeada hacia arriba · {exchangeRate?.source}</small>
       </div>
-      {data.payrollPending?.length > 0 && <div className="salary-banner"><strong>Sueldo variable pendiente:</strong> falta clasificar las piezas de {data.payrollPending.join(", ")} para completar ese importe automáticamente.</div>}
+      {data.payrollPending?.length > 0 && <div className="salary-banner"><strong>Cálculo de sueldo variable pendiente:</strong> falta clasificar las piezas de {data.payrollPending.join(", ")} para completar ese importe automáticamente.</div>}
 
       <section className="finance-panel">
         <header><div><span className="section-label">CONTRATOS FINANCIEROS</span><h2>Ingresos por contrato</h2></div></header>
         <div className="finance-client-table">
           <div className="finance-client-row is-heading">
             <div>Contrato</div>
-            <div>Monto facturado</div>
+            <div>Monto estimado</div>
             <div style={{textAlign: 'right'}}>% del total</div>
           </div>
           {[...finance.ingresos].sort((a, b) => b.importe - a.importe).map((cliente) => (
@@ -255,15 +256,15 @@ function SueldosContent({ sesion }) {
 
     {finance && <>
       <section className="finance-panel finance-auto-details">
-        <header><div><span className="section-label">DETALLE AUTOMÁTICO</span><h2>¿De dónde sale cada número?</h2></div><small>Sin cargas manuales</small></header>
+        <header><div><span className="section-label">DETALLE DEL CÁLCULO</span><h2>¿De dónde sale cada número?</h2></div><small>No son movimientos de dinero registrados</small></header>
         <div className="finance-detail-columns">
-          <details open><summary>Contratos · {ars.format(finance.facturacion)}</summary>{finance.ingresos.map((item) => <p key={item.nombre}><span>{item.nombre}{item.prorrateado ? ` · ${item.diasActivos}/${item.diasDelMes} días` : ""}</span><strong>{ars.format(item.importe)}</strong></p>)}</details>
-          <details><summary>Equipo · {ars.format(finance.sueldos)}</summary>{(data.payroll || []).map((item) => <p key={item.name}><span>{item.name}</span><strong>{ars.format(item.total)}</strong></p>)}{salaryExpenses.map((item) => <p key={item.nombre}><span>{item.nombre}</span><strong>{ars.format(item.importe)}</strong></p>)}</details>
-          <details><summary>Gastos fijos · {ars.format(finance.gastosFijosARS)}</summary>{taxExpenses.map((item) => <p key={item.nombre}><span>Día {item.diaPago} · {item.nombre}</span><strong>{ars.format(item.importe)}</strong></p>)}{toolExpenses.map((item) => <p key={item.nombre}><span>Día {item.diaPago} · {item.nombre}{item.moneda === "USD" ? ` · USD ${item.importe}` : ""}</span><strong>{ars.format(item.moneda === "USD" ? item.importe * (exchangeRate?.rounded || 0) : item.importe)}</strong></p>)}</details>
+          <details open><summary>Contratos · proyección {ars.format(finance.facturacion)}</summary>{finance.ingresos.map((item) => <p key={item.nombre}><span>{item.nombre}{item.prorrateado ? ` · ${item.diasActivos}/${item.diasDelMes} días` : ""}</span><strong>{ars.format(item.importe)}</strong></p>)}</details>
+          <details><summary>Equipo · cálculo {ars.format(finance.sueldos)}</summary>{(data.payroll || []).map((item) => <p key={item.name}><span>{item.name}</span><strong>{ars.format(item.total)}</strong></p>)}{salaryExpenses.map((item) => <p key={item.nombre}><span>{item.nombre}</span><strong>{ars.format(item.importe)}</strong></p>)}</details>
+          <details><summary>Gastos fijos · previstos {ars.format(finance.gastosFijosARS)}</summary>{taxExpenses.map((item) => <p key={item.nombre}><span>Día previsto {item.diaPago} · {item.nombre}</span><strong>{ars.format(item.importe)}</strong></p>)}{toolExpenses.map((item) => <p key={item.nombre}><span>Día previsto {item.diaPago} · {item.nombre}{item.moneda === "USD" ? ` · USD ${item.importe}` : ""}</span><strong>{ars.format(item.moneda === "USD" ? item.importe * (exchangeRate?.rounded || 0) : item.importe)}</strong></p>)}</details>
         </div>
       </section>
 
-      <section className="finance-panel"><header><div><span className="section-label">HISTORIAL</span><h2>Facturación mes a mes</h2></div><small>Siempre según el trabajo del mes anterior</small></header><BillingChart items={data.billingHistory} selectedPeriod={period} /></section>
+      <section className="finance-panel"><header><div><span className="section-label">EVOLUCIÓN CALCULADA</span><h2>Proyección mes a mes</h2></div><small>Según el trabajo del mes anterior; no acredita cobros</small></header><BillingChart items={data.billingHistory} selectedPeriod={period} /></section>
       <p className="finance-disclaimer">Los consumos en USD se convierten con dólar tarjeta vendedor y se redondean hacia arriba al próximo múltiplo de $100.</p>
     </>}
   </main>;
