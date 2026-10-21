@@ -201,13 +201,17 @@ test('conflict refresh does not key forms by revision or silently discard unsave
 test('visit creation sends only creation fields, never expected_revision',async()=>{
   const body=section('  const createVisit = async','  const navigateMonth =');
   const requests=[];
-  const data={cliente_id:1,fecha:'2026-10-30',titulo:'Visita',participante_ids:[2],tarea_origen_id:null,observaciones:'',drive_url:''};
+  const data={cliente_id:1,fecha:'2026-10-30',titulo:'Visita',participante_ids:[2],tarea_origen_id:null,observaciones:'',drive_url:'',request_id:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'};
   const noop=()=>{};
-  const context={writeLock:{current:false},setBusy:noop,visitDTO:value=>value,
-    apiRequest:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return {...data,id:visit.id,revision:1};},
+  const context={writeLock:{current:false},setBusy:noop,verifiedProductionDraftVisit,
     setCreating:noop,setSelected:noop,setMonth:noop,setDay:noop,setReload:noop,setNotice:noop,writeProductionLocation:noop};
+  const guard={assertCurrent:noop,current:()=>true,request:async(url,options)=>{
+    requests.push({url,body:JSON.parse(options.body)});
+    return {visita:{...visit,...data,revision:1}};
+  }};
   const create=new Function(...Object.keys(context),`${body}\nreturn createVisit;`)(...Object.values(context));
-  await create(data);
+  const result=await create(JSON.stringify(data),guard);
+  assert.equal(result.id,visit.id);assert.equal(result.fecha,data.fecha);
   assert.deepEqual(requests,[{url:'/api/producciones',body:data}]);
   assert.equal(Object.hasOwn(requests[0].body,'expected_revision'),false);
 });

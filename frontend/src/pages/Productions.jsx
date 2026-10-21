@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { getHoyLocalISO } from '../utils.jsx';
+import { getHoyLocalISO, getSesion } from '../utils.jsx';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { hasReviewedProductionContext, productionVisitEditInput } from './productionVisitEdit.js';
 import { createProductionDraft, productionMediaDraft, productionVisitDraft, verifiedProductionDraftVisit } from './productionDraft.js';
+import { createCapturedRequest } from '../shared/session/captured-request.js';
+import { createProductionCreateIntent } from './productionCreateIntent.js';
 import './Productions.css';
 
 const VIDEO_STATES = { planificado:'Planificado', grabado:'Grabado', pendiente:'Pendiente', repetir:'Repetir' };
@@ -67,29 +69,39 @@ function SafeLink({url, children = 'Abrir Drive'}) {
 function Participants({users, selected, onChange, disabled}) {
   return <fieldset className="prod-participants" disabled={disabled}><legend>Participantes</legend>{users.map(user => <label key={user.id}><input type="checkbox" checked={selected.includes(user.id)} onChange={event => onChange(event.target.checked ? [...selected,user.id] : selected.filter(id => id !== user.id))}/><span>{user.nombre}<small>@{user.usuario || user.id} · #{user.id}</small></span></label>)}{!users.length && <p className="prod-muted">No hay usuarios activos disponibles.</p>}</fieldset>;
 }
-function CreateVisit({clients, users, date, busy, onCreate, onCancel, onDirty}) {
+function CreateVisit({clients, users, date, busy, sesion, onCreate, onCreated, onCancel, onDirty}) {
   const [draft, setDraft] = useState({cliente_id:'',fecha:date,titulo:'',participante_ids:[],tarea_origen_id:'',observaciones:'',drive_url:''});
   const [error, setError] = useState('');
+  const mounted=useRef(false),model=useRef(null),originalScope=useRef(null),[,render]=useState(0);
+  useLayoutEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
+  if(!model.current)model.current=createProductionCreateIntent({
+    capture:()=>{const scope=createCapturedRequest({session:sesion,readSession:getSesion,request:apiRequest,isActive:()=>mounted.current});originalScope.current=scope;return scope},
+    request:(body,scope)=>onCreate(body,scope),
+  });
+  const state=model.current.snapshot,locked=busy||state.locked;
   const submit = async event => {
-    event.preventDefault(); setError('');
+    event.preventDefault();if(model.current.snapshot.busy)return;setError('');
     try {
+      if(model.current.snapshot.locked){const pending=model.current.verify();render(value=>value+1);const visit=await pending;originalScope.current.assertCurrent();onDirty('create',false);onCreated(visit,originalScope.current);return;}
       if (!positiveId(Number(draft.cliente_id)) || !draft.titulo.trim()) throw new Error('Elegí cliente y título de la visita.');
       if (draft.drive_url && !safeProductionUrl(draft.drive_url)) throw new Error('Usá un enlace http o https para Drive.');
       const source = draft.tarea_origen_id === '' ? null : Number(draft.tarea_origen_id);
       if (source !== null && !positiveId(source)) throw new Error('El ID de la tarea debe ser un entero positivo.');
-      await onCreate({...draft,cliente_id:Number(draft.cliente_id),tarea_origen_id:source,titulo:draft.titulo.trim()});
-      onDirty('create',false);
-    } catch (reason) { setError(reason.message); }
+      const pending=model.current.submit({...draft,cliente_id:Number(draft.cliente_id),tarea_origen_id:source,titulo:draft.titulo.trim()});render(value=>value+1);const visit=await pending;
+      originalScope.current.assertCurrent();onDirty('create',false);onCreated(visit,originalScope.current);
+    } catch (reason) { if(mounted.current&&(!originalScope.current||originalScope.current.current()))setError(reason.message); }
+    finally{if(mounted.current&&(!originalScope.current||originalScope.current.current()))render(value=>value+1);}
   };
   return <section className="prod-panel"><header className="prod-section-heading"><h2>Nueva visita</h2><button type="button" disabled={busy} onClick={onCancel}>Cancelar</button></header><form className="prod-form" onSubmit={submit} onChange={()=>onDirty('create',true)}>
-    <label>Cliente<select required value={draft.cliente_id} disabled={busy} onChange={e=>setDraft({...draft,cliente_id:e.target.value})}><option value="">Elegí un cliente</option>{clients.map(client=><option value={client.id} key={client.id}>{client.nombre}</option>)}</select></label>
-    <label>Fecha<input required type="date" value={draft.fecha} disabled={busy} onChange={e=>setDraft({...draft,fecha:e.target.value})}/></label>
-    <label className="prod-wide">Título<input required maxLength={250} value={draft.titulo} disabled={busy} onChange={e=>setDraft({...draft,titulo:e.target.value})}/></label>
-    <div className="prod-wide"><Participants users={users} selected={draft.participante_ids} disabled={busy} onChange={ids=>{onDirty('create',true);setDraft({...draft,participante_ids:ids});}}/></div>
-    <details className="prod-wide"><summary>Vincular tarea existente (opcional)</summary><label>Tarea de origen (ID)<input inputMode="numeric" type="number" min="1" step="1" value={draft.tarea_origen_id} disabled={busy} onChange={e=>setDraft({...draft,tarea_origen_id:e.target.value})}/></label><small>Usá esta opción solo para vincular una tarea que ya existe.</small></details>
-    <label>Carpeta Drive (opcional)<input type="url" value={draft.drive_url} disabled={busy} onChange={e=>setDraft({...draft,drive_url:e.target.value})}/></label>
-    <label className="prod-wide">Observaciones<textarea value={draft.observaciones} disabled={busy} onChange={e=>setDraft({...draft,observaciones:e.target.value})}/></label>
-    {error && <p className="prod-error prod-wide" role="alert">{error}</p>}<footer className="prod-wide"><button className="prod-primary" disabled={busy} type="submit">{busy ? 'Guardando…' : 'Crear visita'}</button></footer>
+    <label>Cliente<select required value={draft.cliente_id} disabled={locked} onChange={e=>setDraft({...draft,cliente_id:e.target.value})}><option value="">Elegí un cliente</option>{clients.map(client=><option value={client.id} key={client.id}>{client.nombre}</option>)}</select></label>
+    <label>Fecha<input required type="date" value={draft.fecha} disabled={locked} onChange={e=>setDraft({...draft,fecha:e.target.value})}/></label>
+    <label className="prod-wide">Título<input required maxLength={250} value={draft.titulo} disabled={locked} onChange={e=>setDraft({...draft,titulo:e.target.value})}/></label>
+    <div className="prod-wide"><Participants users={users} selected={draft.participante_ids} disabled={locked} onChange={ids=>{onDirty('create',true);setDraft({...draft,participante_ids:ids});}}/></div>
+    <details className="prod-wide"><summary>Vincular tarea existente (opcional)</summary><label>Tarea de origen (ID)<input inputMode="numeric" type="number" min="1" step="1" value={draft.tarea_origen_id} disabled={locked} onChange={e=>setDraft({...draft,tarea_origen_id:e.target.value})}/></label><small>Usá esta opción solo para vincular una tarea que ya existe.</small></details>
+    <label>Carpeta Drive (opcional)<input type="url" value={draft.drive_url} disabled={locked} onChange={e=>setDraft({...draft,drive_url:e.target.value})}/></label>
+    <label className="prod-wide">Observaciones<textarea value={draft.observaciones} disabled={locked} onChange={e=>setDraft({...draft,observaciones:e.target.value})}/></label>
+    {state.locked&&<p className="prod-muted prod-wide">Conservamos este intento sin cambiar sus datos. {state.uncertain?'Verificá si ya se guardó antes de crear otra visita.':'Revisá las visitas guardadas antes de crear otra.'} Al salir de este formulario o cambiar de sesión se pierde esta clave de recuperación.</p>}
+    {error && <p className="prod-error prod-wide" role="alert">{error}</p>}<footer className="prod-wide"><button className="prod-primary" disabled={busy||state.busy||state.blocked} type="submit">{busy||state.busy ? 'Guardando…' : state.uncertain ? 'Verificar creación' : 'Crear visita'}</button></footer>
   </form></section>;
 }
 
@@ -428,14 +440,19 @@ export function ProductionsPage({sesion}) {
     } catch(reason){setNotice(reason.message);throw reason;}
     finally{writeLock.current=false;setBusy(false);}
   };
-  const createVisit = async data => {
+  const createVisit = async (body, guard) => {
+    guard.assertCurrent();
     if(writeLock.current) throw new Error('Hay otra operación en curso.');
     writeLock.current=true;setBusy(true);
     try {
-      const value=visitDTO(await apiRequest('/api/producciones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}));
-      setCreating(false);setSelected(value);setMonth(value.fecha.slice(0,7));setDay(value.fecha);setReload(current=>current+1);setNotice('Visita creada.');
-      writeProductionLocation({id:value.id,month:value.fecha.slice(0,7)});
-    } finally{writeLock.current=false;setBusy(false);}
+      const response=await guard.request('/api/producciones',{method:'POST',headers:{'Content-Type':'application/json'},body});
+      guard.assertCurrent();return verifiedProductionDraftVisit(response);
+    } finally{writeLock.current=false;if(guard.current())setBusy(false);}
+  };
+  const createdVisit = (value, guard) => {
+    guard.assertCurrent();value=verifiedProductionDraftVisit(value);
+    setCreating(false);setSelected(value);setMonth(value.fecha.slice(0,7));setDay(value.fecha);setReload(current=>current+1);setNotice('Visita guardada. Se muestra la versión actual.');
+    writeProductionLocation({id:value.id,month:value.fecha.slice(0,7)});
   };
   const navigateMonth = amount => {if(!mayLeave())return;const next=shiftProductionMonth(month,amount);++openVersion.current;setMonth(next);setDay(`${next}-01`);setDetailLoading(false);setSelected(null);setCreating(false);writeProductionLocation({month:next});};
   const filtered = visits.filter(visit=>!clientId || visit.cliente_id === Number(clientId));
@@ -454,6 +471,6 @@ export function ProductionsPage({sesion}) {
         <section className="prod-day-agenda"><h3>{dateLabel(day)}</h3>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día. Podés crear una nueva.</p>}</section>
         <section className="prod-mobile-agenda" aria-label="Agenda del mes"><label>Elegir día<input type="date" value={day} min={`${month}-01`} max={`${month}-${String(new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate()).padStart(2,'0')}`} onChange={e=>{if(e.target.value)setDay(e.target.value);}}/></label>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día.</p>}</section>
       </> : <div className="prod-pending"><p className="prod-muted">Guiones pendientes o para repetir. Retomarlos conserva la visita original.</p><label>Visita de destino<select value={selected?.id || ''} disabled={busy} onChange={e=>{if(e.target.value)openVisit(e.target.value);}}><option value="">Elegí una visita del mes</option>{filtered.map(visit=><option key={visit.id} value={visit.id}>{visit.fecha} · {visit.cliente_nombre} · {visit.titulo}</option>)}</select></label>{pending.map(video=><article className="prod-media" key={video.id}><header><h3>{video.titulo}</h3><span className="prod-status">{VIDEO_STATES[video.estado] || video.estado}</span></header><p className="prod-muted">{video.cliente_nombre} · {video.fecha}</p><p className="prod-script">{video.guion || 'Sin guion cargado'}</p><button type="button" disabled={busy || !selected || selected.cliente_id!==video.cliente_id} onClick={()=>resume(video)}>Retomar en la visita seleccionada</button></article>)}{!pending.length && <p className="prod-empty">No hay guiones pendientes para este filtro.</p>}</div>}
-    </section><div className="prod-detail-column">{creating ? <CreateVisit key="create" clients={clients} users={users} date={day} busy={busy} onCreate={createVisit} onDirty={onDirty} onCancel={()=>{if(mayLeave())setCreating(false);}}/> : detailLoading ? <p role="status" className="prod-empty">Cargando visita…</p> : selected ? <VisitDetail key={selected.id} visit={selected} users={users} busy={busy} isAdmin={isAdmin} onWrite={writeVisit} onDirty={onDirty} onReload={refreshVisit}/> : <div className="prod-panel prod-empty"><h2>Elegí una visita</h2><p>Acá verás los videos, fotos y guiones del rodaje.</p></div>}</div></div>
+    </section><div className="prod-detail-column">{creating ? <CreateVisit key="create" clients={clients} users={users} date={day} busy={busy} sesion={sesion} onCreate={createVisit} onCreated={createdVisit} onDirty={onDirty} onCancel={()=>{if(mayLeave())setCreating(false);}}/> : detailLoading ? <p role="status" className="prod-empty">Cargando visita…</p> : selected ? <VisitDetail key={selected.id} visit={selected} users={users} busy={busy} isAdmin={isAdmin} onWrite={writeVisit} onDirty={onDirty} onReload={refreshVisit}/> : <div className="prod-panel prod-empty"><h2>Elegí una visita</h2><p>Acá verás los videos, fotos y guiones del rodaje.</p></div>}</div></div>
   </main>;
 }

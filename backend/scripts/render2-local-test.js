@@ -58,9 +58,10 @@ export function fixtureWilsonEnvironment(config = {}) {
   return result;
 }
 
-export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, wilson = {} } = {}) {
+export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, deferProductionCreateReceiptsMigration = false, wilson = {} } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   if (typeof deferUserAdminMigration !== 'boolean') throw new Error('Invalid account observation migration fixture option');
+  if (typeof deferProductionCreateReceiptsMigration !== 'boolean') throw new Error('Invalid production creation receipt migration fixture option');
   if (typeof supervisorEnabled !== 'boolean') throw new Error('Invalid supervisor fixture option');
   if (typeof clusterOnly !== 'boolean') throw new Error('Invalid cluster-only fixture option');
   if (typeof browserSessions !== 'boolean') throw new Error('Invalid browser-session fixture option');
@@ -116,6 +117,7 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
         ...(browserSessions ? { RENDER_BROWSER_SESSIONS: 'true', RENDER_BROWSER_ORIGIN: 'http://127.0.0.1:5195', RENDER_BROWSER_ALLOW_LOCAL_HTTP: 'true' } : {}),
         RENDER2_FIXTURE_PORT: String(port), RENDER2_DEFER_GOAL_MIGRATION: String(deferGoalMigration),
         RENDER2_DEFER_USER_ADMIN_MIGRATION: String(deferUserAdminMigration),
+        RENDER2_DEFER_PRODUCTION_CREATE_RECEIPTS_MIGRATION: String(deferProductionCreateReceiptsMigration),
         RENDER2_DEFER_ASSIGNMENT_MIGRATION: String(deferAssignmentMigration),
         RENDER2_DEFER_TASK_STATE_MIGRATION: String(deferTaskStateMigration),
         RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION: String(deferProductionRegistryMigration),
@@ -233,6 +235,10 @@ async function fixtureChild() {
   // the test snapshots populated rows and applies the actual forward SQL.
   // No migration ledger entry is forged; all other baseline files run normally.
   const deferredMigrations = [
+    // Creation receipts reference the registry; preserve older populated
+    // upgrade fixtures by deferring this dependent forward migration too.
+    ...(['RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION','RENDER2_DEFER_PRODUCTION_CREATE_RECEIPTS_MIGRATION']
+      .some(key => process.env[key] === 'true') ? ['075_production_create_receipts.sql'] : []),
     ...(process.env.RENDER2_DEFER_USER_ADMIN_MIGRATION === 'true' ? ['074_user_administration_versions.sql'] : []),
     ...(process.env.RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION === 'true' ? ['069_production_reconciliation.sql', '070_production_editing_adoptions.sql'] : []),
     ...(['RENDER2_DEFER_EDITING_REVIEWS_MIGRATION', 'RENDER2_DEFER_EDITING_DELIVERIES_MIGRATION']

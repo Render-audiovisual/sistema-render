@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { withProductionAuthority as transaction } from './production-authority.js';
+import { extractProductionCreateRequest, withProductionCreateReceipt } from './production-create-receipts.js';
 import { isProductionVisitTask, isValidProductionDate } from './production-visits.js';
 import { annotateTaskAssignments, replaceTaskAssignments } from './task-assignments.js';
 import { taskOperationalDto } from './operational-dto.js';
@@ -209,8 +210,12 @@ export function createProductionRegistryRouter({ express, pool }) {
     return res.json({ visita: visit });
   }));
   router.post('/', handle(async (req, res) => {
-    const input = validateProductionVisit(req.body);
-    const visita = await transaction(pool, req.auth, false, async db => {
+    const envelope = extractProductionCreateRequest(req.body);
+    const input = validateProductionVisit(envelope.body);
+    const result = await transaction(pool, req.auth, false, db => withProductionCreateReceipt(db,
+      {actorId:req.auth.id,requestId:envelope.requestId,input}, {
+      read: async id => (await readVisits(db,'WHERE v.id=$1',[id]))[0],
+      create: async () => {
       if (input.tarea_origen_id) {
         const source = await sourceTask(db, input.tarea_origen_id);
         // Do not create a mixed registry that neither legacy nor per-video
@@ -225,8 +230,9 @@ export function createProductionRegistryRouter({ express, pool }) {
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8)`, [id,input.tarea_origen_id,input.cliente_id,input.fecha,input.titulo,input.observaciones,input.drive_url,req.auth.id]);
       await replaceParticipants(db,id,input.participante_ids);
       return (await readVisits(db,'WHERE v.id=$1',[id]))[0];
-    });
-    return res.status(201).json({ visita });
+      },
+    }));
+    return res.status(result.replayed ? 200 : 201).json({ visita:result.visita });
   }));
   router.patch('/:id', handle(async (req, res) => {
     const id=routeId(req), input=validateProductionVisit(req.body,{partial:true});
