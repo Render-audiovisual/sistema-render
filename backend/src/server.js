@@ -44,7 +44,7 @@ import { productionEditorialConflict } from "./production-link-errors.js";
 import { normalizeTaskState, taskTransitionError, isTaskFinalized } from "./workflow-contract.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { parseTaskPagination } from "./task-pagination.js";
-import { buildAutoTaskProperties, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
+import { publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
 import { calculateSalaryDashboard } from "./salary-calculation.js";
 import { applyCompensations, nextPeriod } from "./finance-calculation.js";
 import { buildAutomaticFinanceSummary, previousPeriod } from "./automatic-finance.js";
@@ -74,6 +74,7 @@ import { createEditorialControlRouter } from "./editorial-control.js";
 import { editorialPublicationDomainConflict } from "./editorial-publication-errors.js";
 import { annotateEditorialEvidence } from "./editorial-evidence-read.js";
 import { legacyPieceSelection, readLegacyEditorialPiece, writeEditorialPiece } from './editorial-piece-write.js';
+import { createEditorialPiece } from './editorial-piece-create.js';
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
@@ -3228,165 +3229,17 @@ router.get("/piezas/:id", async (req, res, next) => {
   } catch (error) { return editorialPieceApiError(error,res,next); }
 });
 
-// Un día antes de fecha_programada, sin bajar de la fecha de hoy.
-function fechaVencimientoTarea(fechaProgramada, diasAntes = 1) {
-  const f = new Date(`${fechaProgramada}T00:00:00`);
-  f.setDate(f.getDate() - diasAntes);
-  return f.toISOString().slice(0, 10);
-}
-
-async function crearTareaAuto({ titulo, asignado_a, asignado_a_id, cliente_id, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, tarea_padre_id }, db = pool) {
-  const assignment = await resolveTaskAssignments(db, { asignado_a, asignado_a_id, colaborador_ids: [] });
-  const { rows } = await db.query(
-    `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, tarea_padre_id)
-     VALUES ($1, $2, $3, 'pendiente', false, $4, $5, $6, $7, $8, $9, 'media', $10)
-     RETURNING id`,
-    [
-      titulo,
-      assignment.ownerName,
-      cliente_id,
-      JSON.stringify(buildAutoTaskProperties()),
-      fecha_vencimiento,
-      historia_id || null,
-      publicacion_id || null,
-      tipo_tarea,
-      subtipo || null,
-      tarea_padre_id || null,
-    ],
-  );
-  await replaceTaskAssignments(db, rows[0].id, assignment);
-  return rows[0].id;
-}
-
-router.post("/piezas", requireRole("admin"), async (req, res, next) => {
-  let db;
+async function editorialCreateHandler(req, res, next) {
+  res.set('Cache-Control','no-store');
   try {
-    const {
-      tipo,
-      cliente_id,
-      responsable: requestedResponsible,
-      fecha_programada,
-      estado,
-      idea,
-      copy,
-      material_referencia,
-      aclaraciones,
-      prioridad,
-    } = req.body;
-
-    if (!tipo || !cliente_id || (!requestedResponsible && !req.body.responsable_id) || !fecha_programada) {
-      return res
-        .status(400)
-        .json({
-          error: "Faltan tipo, cliente_id, responsable o fecha_programada.",
-        });
-    }
-    if (estado === 'publicada') return res.status(409).json({error:'Registrá la publicación real desde su confirmación editorial.'});
-    db = await pool.connect();
-    await db.query("BEGIN");
-    const assignment = await resolveTaskAssignments(db, {
-      asignado_a: requestedResponsible, asignado_a_id: req.body.responsable_id, colaborador_ids: [],
-    });
-    const responsable = assignment.ownerName;
-
-    if (tipo === "historia") {
-      const result = await db.query(
-        `INSERT INTO historias (cliente_id, estado, fecha_programada, responsable, responsable_diseño, idea, copy, material_referencia, aclaraciones, prioridad)
-         VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9)
-         RETURNING 'historia' AS origen, id, 'historia' AS tipo, cliente_id, estado, fecha_programada, responsable, idea, copy, material_referencia, aclaraciones, prioridad, created_at, updated_at`,
-        [
-          cliente_id,
-          estado || "pendiente",
-          fecha_programada,
-          responsable,
-          idea || "",
-          copy || "",
-          material_referencia || "",
-          aclaraciones || "",
-          prioridad || "media",
-        ],
-      );
-      const historia = result.rows[0];
-
-      await crearTareaAuto({
-        titulo: `Diseñar historia - ${idea || "sin idea"}`,
-        asignado_a: responsable,
-        asignado_a_id: assignment.ownerId,
-        cliente_id,
-        fecha_vencimiento: fechaVencimientoTarea(fecha_programada, 1),
-        historia_id: historia.id,
-        tipo_tarea: "diseno",
-        subtipo: "diseñar",
-      }, db);
-
-      const [observed] = await annotateEditorialEvidence(db,'historia',[historia]);
-      await db.query("COMMIT");
-      return res.status(201).json(editorialOperationalDto(observed, req.auth));
-    }
-
-    if (["carrusel", "video"].includes(tipo)) {
-      const result = await db.query(
-        `INSERT INTO publicaciones (cliente_id, tipo, estado, fecha_programada, responsable, responsable_diseño, idea, copy, material_referencia, aclaraciones, prioridad)
-         VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10)
-         RETURNING 'publicacion' AS origen, id, tipo, cliente_id, estado, fecha_programada, responsable, idea, copy, material_referencia, aclaraciones, prioridad, created_at, updated_at`,
-        [
-          cliente_id,
-          tipo,
-          estado || "pendiente",
-          fecha_programada,
-          responsable,
-          idea || "",
-          copy || "",
-          material_referencia || "",
-          aclaraciones || "",
-          prioridad || "media",
-        ],
-      );
-      const publicacion = result.rows[0];
-
-      if (tipo === "carrusel") {
-        // El responsable elegido define el diseñador; no todos los clientes
-        // pertenecen a la misma persona.
-        await crearTareaAuto({
-          titulo: `Diseñar assets - ${idea || "sin idea"}`,
-          asignado_a: responsable,
-          asignado_a_id: assignment.ownerId,
-          cliente_id,
-          fecha_vencimiento: fechaVencimientoTarea(fecha_programada, 1),
-          publicacion_id: publicacion.id,
-          tipo_tarea: "diseno",
-          subtipo: "diseñar",
-        }, db);
-      } else {
-        // Un video nace como una sola tarea simple del Líder. Filmación y
-        // edición se asignan después, cuando ya existen idea, guion y material.
-        await crearTareaAuto({
-          titulo: `Video - ${idea || "por definir"}`,
-          asignado_a: responsable,
-          asignado_a_id: assignment.ownerId,
-          cliente_id,
-          fecha_vencimiento: fecha_programada,
-          publicacion_id: publicacion.id,
-          tipo_tarea: "administracion",
-          subtipo: "video",
-        }, db);
-      }
-
-      const [observed] = await annotateEditorialEvidence(db,'publicacion',[publicacion]);
-      await db.query("COMMIT");
-      return res.status(201).json(editorialOperationalDto(observed, req.auth));
-    }
-
-    await db.query("ROLLBACK");
-    res.status(400).json({
-      error: "Tipo de pieza inválido. Usa: historia, carrusel, video",
-    });
-  } catch (error) {
-    if (db) await db.query("ROLLBACK");
-    if ([400, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
-    next(error);
-  } finally { db?.release(); }
-});
+    const created=await createEditorialPiece(pool,req.auth,req.body);
+    return res.status(created.status).json(created.piece);
+  } catch(error) { return editorialPieceApiError(error,res,next); }
+}
+// New UI never submits to an older server that silently ignores request_id.
+// Both accepted routes use exactly the same identity, receipt and transaction.
+router.post("/editorial-creaciones", requireRole("admin"), editorialCreateHandler);
+router.post("/piezas", requireRole("admin"), editorialCreateHandler);
 
 router.post("/historias/convertir-flyer/:publicacionId", requireRole("admin"), async (req, res, next) => {
   try {

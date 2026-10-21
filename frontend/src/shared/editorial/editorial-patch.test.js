@@ -55,11 +55,12 @@ function callback(page, ownerName, name, deps) {
 }
 const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 function sheetFixture(page, request, observation = row()) {
-  let rows = [observation]; const errors = [], requests = [];
+  let rows = [observation]; const errors = [], requests = [], committed = [];
   const scope = { current: () => true, assertCurrent() {}, async request(url, options) { requests.push({ url, options }); return request(url, options); } };
   const deps = { ...helpers, capture: () => scope, view: { role: 'admin' }, editorialFields,
     historias: rows, publicaciones: rows, deleting: { current: new Set() }, pendingWrites: { current: new Set() },
-    latestWrites: { current: new Map() }, writeQueues: { current: new Map() },
+    latestWrites: { current: new Map() }, writeQueues: { current: new Map() }, listGeneration: { current: 0 },
+    onCommittedChange(change) { committed.push(change); },
     enqueueStoryWrite(queues, id, run) {
       const queued = (queues.current.get(id) || Promise.resolve()).catch(() => {}).then(run);
       queues.current.set(id, queued); return queued;
@@ -68,7 +69,7 @@ function sheetFixture(page, request, observation = row()) {
     setErrorHistorias(error) { errors.push(error); }, setError(error) { errors.push(error); } };
   const owner = page.name === 'Historias' ? 'HistoriasPage' : 'PublicacionesPlanillaTab';
   const name = page.name === 'Historias' ? 'guardarHistoriaEnServidor' : 'guardarEnServidor';
-  return { save: callback(page, owner, name, deps), deps, requests, errors, get rows() { return rows; } };
+  return { save: callback(page, owner, name, deps), deps, requests, errors, committed, get rows() { return rows; } };
 }
 for (const page of pages) {
   test(`${page.name}: actual sheet callback uses its own row revision, not submitted fields`, async () => {
@@ -78,6 +79,7 @@ for (const page of pages) {
     assert.deepEqual(JSON.parse(f.requests[0].options.body), { copy: 'submitted', expected_revision: 21 });
     assert.equal(f.requests.length, 1); assert.deepEqual(f.errors, []);
     assert.equal(f.rows[0].copy, 'newer draft'); assert.equal(editorialRevision(f.rows[0]), 22);
+    if (page.name === 'Publicaciones') assert.equal(f.committed[0].row.copy, 'server older text', 'overview receives committed server data, not newer unsaved draft');
   });
   test(`${page.name}: absent row evidence never sends an unversioned PATCH`, async () => {
     const f = sheetFixture(page, () => assert.fail('No transport without an observation'), { id: 7 });

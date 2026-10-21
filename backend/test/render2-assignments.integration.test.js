@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { access, readFile } from 'node:fs/promises';
 import { startLocalHarness, request, fixturePassword } from '../scripts/render2-local-test.js';
 
@@ -138,6 +139,7 @@ test('stable task assignments: real HTTP identity, annotations and atomicity', {
       (SELECT count(*)::int FROM tarea_asignaciones) AS asignaciones`);
     for (const tipo of ['historia', 'carrusel', 'video']) {
       const created = await api('/piezas', { token: admin, method: 'POST', body: {
+        request_id: randomUUID(),
         tipo, cliente_id: client.id, responsable_id: ids.owner, responsable: 'QA Same Name',
         fecha_programada: '2026-10-25', idea: `QA automatic ${tipo}`,
       } });
@@ -155,6 +157,7 @@ test('stable task assignments: real HTTP identity, annotations and atomicity', {
       const before = await counts();
       for (const responsable_id of [2147483647, ids.inactive]) {
         const rejected = await api('/piezas', { token: admin, method: 'POST', body: {
+          request_id: randomUUID(),
           tipo, cliente_id: client.id, responsable_id, fecha_programada: '2026-10-25', idea: 'Must not persist',
         } });
         assert.equal(rejected.status, 400, JSON.stringify(rejected.body));

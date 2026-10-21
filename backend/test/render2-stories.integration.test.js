@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { access } from 'node:fs/promises';
 import { startLocalHarness, request, fixturePassword } from '../scripts/render2-local-test.js';
 
@@ -12,7 +13,7 @@ test('stories principal persistence, planning distinction and safe legacy flyer 
   const login = async usuario => { const result = await api('/login', { method: 'POST', body: { usuario, password: fixturePassword } }); assert.equal(result.status, 200); return result.body.token; };
   const owner = await login('qa_franco'), otherOwner = await login('qa_agustin'), employee = await login('qa_designer');
   const [client] = await f.query("INSERT INTO clientes(nombre) VALUES ('QA78 Historias') RETURNING id");
-  const create = await api('/piezas', { token: owner, method: 'POST', body: { tipo: 'historia', cliente_id: client.id,
+  const create = await api('/piezas', { token: owner, method: 'POST', body: { request_id: randomUUID(), tipo: 'historia', cliente_id: client.id,
     responsable_id: 91004, fecha_programada: '2026-10-22', estado: 'pendiente', idea: 'QA story', copy: 'Initial copy' } });
   assert.equal(create.status, 201, JSON.stringify(create.body)); const storyId = create.body.id;
   assert.ok(Number.isSafeInteger(create.body.publicacion_evidencia?.revision));

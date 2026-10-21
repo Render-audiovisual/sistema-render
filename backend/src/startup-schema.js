@@ -10,6 +10,7 @@ export const CORE_SCHEMA_COLUMNS = Object.freeze({
   historias: { id: 'integer', cliente_id: 'integer', estado: 'text', fecha_programada: 'date', 'fecha_publicación_real': 'timestamp with time zone' },
   editorial_publicacion_versiones: { dominio: 'text', pieza_id: 'integer', historia_id: 'integer', publicacion_id: 'integer', revision: 'bigint', current_event_id: 'uuid' },
   editorial_publicacion_eventos: { id: 'uuid', dominio: 'text', pieza_id: 'integer', historia_id: 'integer', publicacion_id: 'integer', cliente_id: 'integer', actor_id: 'integer', action: 'text', source: 'text', request_id: 'uuid', intent_hash: 'text', expected_revision: 'bigint', occurred_at: 'timestamp with time zone', recorded_at: 'timestamp with time zone', previous_event_id: 'uuid' },
+  editorial_create_receipts: { actor_user_id: 'integer', request_id: 'uuid', payload_hash: 'text', dominio: 'text', pieza_id: 'integer', tarea_id: 'integer', committed_at: 'timestamp with time zone' },
   cliente_objetivos_mensuales: { id: 'integer', periodo: 'date' },
   cliente_objetivo_piezas: { id: 'integer', objetivo_id: 'integer', tarea_id: 'integer', publicacion_id: 'integer' },
   produccion_visitas: { id: 'uuid', fecha: 'date', revision: 'integer' },

@@ -154,7 +154,7 @@ test('editorial piece writes: explicit legacy domain, one shared revision, curre
       const current = await read(piece);
       for (const route of [legacy(piece), canonical(piece)])
         ok(await http(route, admin, 'PATCH', { expected_revision: current.revision, estado: 'publicada' }), 409);
-      ok(await api('/piezas', admin, 'POST', { tipo: piece.domain === 'historia' ? 'historia' : 'video',
+      ok(await api('/piezas', admin, 'POST', { request_id: randomUUID(), tipo: piece.domain === 'historia' ? 'historia' : 'video',
         cliente_id: clients[0].id, responsable_id: 91004, fecha_programada: '2026-10-24', estado: 'publicada', idea: 'Must not publish' }), 409);
     }
     assert.deepEqual(await snapshot(), before);
@@ -180,7 +180,7 @@ test('editorial piece writes: explicit legacy domain, one shared revision, curre
   });
 
   await t.test('successful ordinary creation returns annotated revision0; historical published content does not gain confirmation', async () => {
-    const created = ok(await api('/piezas', admin, 'POST', { tipo: 'historia', cliente_id: clients[0].id,
+    const created = ok(await api('/piezas', admin, 'POST', { request_id: randomUUID(), tipo: 'historia', cliente_id: clients[0].id,
       responsable_id: 91004, fecha_programada: '2026-10-24', estado: 'pendiente', idea: 'QA114 actual creation' }), 201);
     assert.equal(created.publicacion_evidencia.revision, 0); assert.equal(created.publicacion_evidencia.classification, 'no_publicada');
     const historical = await seed('historia', collision + 3, 'publicada'), current = await read(historical);

@@ -8,6 +8,7 @@ import { createSessionView, sessionViewInputs } from '../shared/session/session-
 import { editorialFields } from '../components/EditorialPublicationControl.model.js';
 import { isConfirmedPublication } from '../shared/editorial/publication-evidence.js';
 import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
+import { createEditorialCreateIntent } from '../shared/editorial/editorial-create-intent.js';
 
 // Actual callbacks/hook logic with injected effects; no mounted React/browser claim.
 const source = readFileSync(new URL('./Publicaciones.jsx', import.meta.url), 'utf8');
@@ -37,22 +38,26 @@ function sessionFixture(request, cookie = true) {
     switch() { if (cookie) { accept(8); live = store.getSession(); } else live = { token: 'b', usuario: { id: 8, rol: 'admin', activo: true } }; currentView = createSessionView(sessionViewInputs(live)); render('period-A'); } };
 }
 function sheetFixture(request, cookie = true) {
-  const f = sessionFixture(request, cookie), effects = [];
+  const f = sessionFixture(request, cookie), effects = []; let rows = [];
   const deps = { capture: f.capture, view: f.view, clienteId: 2, publicaciones: [{ id: 5, estado: 'pendiente', publicacion_evidencia: { revision: 0 } }], editorialFields,
+    onSnapshotLoaded: undefined, onCommittedChange: undefined, overviewGeneration: { current: 0 },
     editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError,
+    creation: { current: { model: createEditorialCreateIntent({ capture: f.capture, randomUUID: () => '11111111-1111-4111-8111-111111111111' }) } }, renderCreation() {},
+    responsablesReady: true, responsableNuevoId: '9', responsables: [{ id: 9, nombre: 'Actual catalog person', activo: true }],
     pendingWrites: { current: new Set() }, writeQueues: { current: new Map() }, latestWrites: { current: new Map() }, creating: { current: false },
-    listGeneration: { current: 0 }, enfocarProximoId: { current: null }, mesPrefix: '2026-10', hoyISO: '2026-10-20',
-    setError: value => effects.push(['error', value]), setPublicaciones: value => effects.push(['rows', value]), setCargando: value => effects.push(['loading', value]),
+    listGeneration: { current: 0 }, loadingGeneration: { current: 0 }, enfocarProximoId: { current: null }, mesPrefix: '2026-10', hoyISO: '2026-10-20',
+    setError: value => effects.push(['error', value]), setPublicaciones: value => { rows = typeof value === 'function' ? value(rows) : value; effects.push(['rows', rows]); }, setCargando: value => effects.push(['loading', value]),
     window: { confirm: () => true } };
   deps.cargar = callback(sheet, 'cargar', deps);
   for (const name of ['guardarEnServidor', 'crearPublicacion', 'borrarPublicacion']) deps[name] = callback(sheet, name, deps);
-  return { ...f, deps, effects };
+  return { ...f, deps, effects, get rows() { return rows; } };
 }
 function calendarFixture(request, cookie = true) {
   const f = sessionFixture(request, cookie), effects = [], a = { id: 5, tipo: 'video', estado: 'pendiente', publicacion_evidencia: { revision: 0 } }, day = { fecha: '2026-10-20', items: [a] };
   let piece = a, selectedDay = day, saving = null;
   const selection = { current: { piece, day, year: 2026, month: 9, generation: 0 } }, selectedPiece = { current: { piece, generation: 0 } };
   const deps = { capture: f.capture, captureLifetime: f.captureLifetime, view: f.view, selection, selectedPiece, piezaSel: a, pendingWrites: { current: new Set() }, generating: { current: false },
+    onCommittedChange: undefined,
     editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError,
     listGeneration: { current: 0 }, mesISO: '2026-10', isConfirmedPublication, getTipoPublicacionLabel: () => 'Reel',
     setActualizando: value => effects.push(['generating', value]), setError: value => effects.push(['error', value]),
@@ -220,11 +225,153 @@ test('current session failure never retries; publication state/evidence and pars
   const c = calendarFixture(async () => ({})); await c.deps.cambiarEstadoPublicacion(c.a, 'publicada'); assert.equal(c.requests.length, 0);
   assert.match(source, /nuevoEstado === 'publicada' \|\| isConfirmedPublication\(publicacion\) \|\| view.role !== 'admin'/);
   assert.match(source, /editorialFields\(publicaciones.find\(p => p.id === id\), campos, view.role === 'admin'\)/);
-  assert.match(source, /responsable: "Augusto"/); assert.match(source, /tipo: "video"/);
+  assert.doesNotMatch(source, /responsable: "Augusto"/); assert.match(source, /responsable_id: responsableId/); assert.match(source, /tipo: "video"/);
   assert.equal((source.match(/sesion=\{view.session\}/g) || []).length, 6);
   for (const name of [cal, sheet, 'PublicacionesGeneralTab', 'PublicacionesPage']) {
     assert.match(text(init(name, 'publicationSaved')), /mergeEditorialStatus\(row, dto\)/);
     const value = callback(name, 'publicationSaved', { capture: f.capture, setPublicaciones: () => assert.fail('stale callback'), setPiezas: () => assert.fail('stale callback'), setPiezaSel: () => assert.fail('stale callback'), setDiaSel: () => assert.fail('stale callback') });
     f.switch(); value({});
   }
+});
+
+const publicationAck = (body, replayed = false) => ({ id: 31, cliente_id: 2, tipo: 'video', idea: 'Current server idea',
+  publicacion_evidencia: { revision: replayed ? 9 : 0 },
+  creation: { request_id: JSON.parse(body).request_id, dominio: 'publicacion', pieza_id: 31, tarea_id: 32, replayed } });
+test('publication lost ACK only explicit verification resends frozen ID/body; catalog ID replaces hardcoded name', async () => {
+  let posts = 0, saved;
+  const f = sheetFixture(async (url, options) => {
+    if (url === '/api/editorial-creaciones') { if (++posts === 1) throw Error('lost ACK'); saved = publicationAck(options.body, true); return saved; }
+    assert.equal(url, '/api/publicaciones'); return [saved];
+  });
+  await f.deps.crearPublicacion(); assert.equal(f.deps.creation.current.model.snapshot.phase, 'uncertain');
+  await f.deps.crearPublicacion(); assert.equal(posts, 1);
+  await f.deps.crearPublicacion(true); assert.equal(posts, 2); assert.deepEqual(f.rows, [saved]);
+  const writes = f.requests.filter(row => row.options.method === 'POST');
+  assert.equal(writes[0].options.body, writes[1].options.body);
+  const body = JSON.parse(writes[0].options.body); assert.equal(body.responsable_id, 9); assert.equal(body.responsable, undefined);
+  assert.match(body.request_id, /^[0-9a-f-]{36}$/); assert.equal(f.deps.creation.current.model.snapshot.locked, false);
+  assert.ok(f.effects.some(([key, value]) => key === 'error' && /ya creada/.test(value)));
+});
+test('publication ACK then failed list read stays locked; verification retries only GET and deduplicates saved ID', async () => {
+  let reads = 0, posts = 0, saved;
+  const f = sheetFixture(async (url, options) => {
+    if (url === '/api/editorial-creaciones') { posts++; saved = publicationAck(options.body); return saved; }
+    if (++reads === 1) throw Error('read failed'); return [saved];
+  });
+  await f.deps.crearPublicacion(); assert.equal(posts, 1); assert.equal(f.rows.length, 1);
+  assert.equal(f.deps.creation.current.model.snapshot.phase, 'confirmed');
+  await f.deps.crearPublicacion(); assert.equal(posts, 1);
+  await f.deps.crearPublicacion(true); assert.equal(posts, 1); assert.equal(reads, 2); assert.equal(f.rows.length, 1);
+  assert.equal(f.deps.creation.current.model.snapshot.locked, false);
+});
+test('actual row responsible select preserves catalog and historical labels without fabricating Augusto', () => {
+  const select = nodes(owner(sheet), n => ts.isJsxElement(n) && text(n.openingElement.tagName) === 'select')
+    .find(n => n.openingElement.attributes.properties.some(p => ts.isJsxAttribute(p) && text(p.name) === 'value' && text(p.initializer).includes('p.responsable')));
+  assert.ok(select);
+  const value = select.openingElement.attributes.properties.find(p => ts.isJsxAttribute(p) && text(p.name) === 'value').initializer.expression;
+  for (const name of ['Luciano QA', 'Historical person', '', undefined]) {
+    assert.equal(evaluate(value, { p: { responsable: name } }), name || '');
+  }
+  assert.match(text(select), /<option value="">Sin responsable<\/option>/);
+  assert.match(text(select), /responsables.map/); assert.match(text(select), /value=\{person.nombre\}/);
+  assert.match(text(select), /<option value=\{p.responsable\}>\{p.responsable\}<\/option>/);
+  const condition = nodes(select, n => ts.isBinaryExpression(n) && ts.isJsxElement(n.right))[0];
+  assert.equal(evaluate(condition.left, { p: { responsable: 'Luciano QA' }, responsables: [{ id: 91003, nombre: 'Luciano QA' }] }), false);
+  assert.equal(evaluate(condition.left, { p: { responsable: 'Historical person' }, responsables: [{ id: 91003, nombre: 'Luciano QA' }] }), true);
+  assert.doesNotMatch(text(select), /Augusto|RESPONSABLES_EQUIPO|responsable_id/);
+  assert.match(text(select), /responsable: e.target.value/);
+  assert.match(text(select), /Responsable de la pieza. Para reasignar el trabajo, abrí la tarea vinculada/);
+});
+
+function connectOverview(f) {
+  let rows = [];
+  const deps = { ...f.deps, setPublicaciones: update => { rows = typeof update === 'function' ? update(rows) : update; } };
+  const snapshot = callback('PublicacionesPage', 'overviewSnapshotLoaded', deps);
+  const committed = callback('PublicacionesPage', 'overviewCommittedChange', deps);
+  Object.assign(f.deps, { onSnapshotLoaded: snapshot, onCommittedChange: committed });
+  f.deps.cargar = callback(sheet, 'cargar', f.deps);
+  for (const name of ['guardarEnServidor', 'crearPublicacion', 'borrarPublicacion']) f.deps[name] = callback(sheet, name, f.deps);
+  const initial = nodes(owner('PublicacionesPage'), n => ts.isCallExpression(n) && text(n.expression) === 'useEffect')
+    .find(n => text(n.arguments[0]).includes('scope.request("/api/publicaciones"'));
+  return { snapshot, committed, initial: () => evaluate(initial.arguments[0], deps)(), get rows() { return rows; } };
+}
+test('child confirmed create/read updates overview once; delayed initial root GET cannot erase committed row', async () => {
+  const root = deferred(); let reads = 0, saved;
+  const f = sheetFixture(async (url, options) => {
+    if (url === '/api/editorial-creaciones') return saved = publicationAck(options.body);
+    if (++reads === 1) return root.promise;
+    return [saved, { id: 99, cliente_id: 3, fecha_programada: '2026-10-20' }];
+  });
+  const overview = connectOverview(f), cleanup = overview.initial();
+  await f.deps.crearPublicacion();
+  assert.equal(overview.rows.filter(row => row.cliente_id === 2).length, 1);
+  assert.equal(overview.rows.length, 2, 'Full snapshot, not just the child filtered client');
+  root.resolve([]); await settle(); assert.equal(overview.rows.length, 2); cleanup();
+});
+test('overview receives only confirmed PATCH/delete; a failed PATCH and local date draft never move counters', async () => {
+  let fail = true;
+  const original = { id: 5, cliente_id: 2, estado: 'pendiente', fecha_programada: '2026-10-20', publicacion_evidencia: { revision: 0 } };
+  const saved = { ...original, fecha_programada: '2026-11-20', publicacion_evidencia: { revision: 1 } };
+  const f = sheetFixture(async (_url, options) => {
+    if (options.method === 'DELETE') return {};
+    if (fail) throw Object.assign(Error('stale'), { status: 409 }); return saved;
+  });
+  const overview = connectOverview(f); overview.snapshot([original]);
+  const local = callback(sheet, 'actualizarLocal', f.deps);
+  local(5, { fecha_programada: '2026-11-20' }); assert.deepEqual(overview.rows, [original]);
+  await f.deps.guardarEnServidor(5, { fecha_programada: '2026-11-20' }); assert.deepEqual(overview.rows, [original]);
+  fail = false; await f.deps.guardarEnServidor(5, { fecha_programada: '2026-11-20' }); await settle();
+  assert.deepEqual(overview.rows, [saved]);
+  assert.equal(overview.rows.filter(row => row.fecha_programada.startsWith('2026-10')).length, 0);
+  await f.deps.borrarPublicacion(5); assert.deepEqual(overview.rows, []);
+});
+test('older child list cannot overwrite its newer create snapshot or parent overview; obsolete scope cannot notify parent', async () => {
+  const old = deferred(); let reads = 0, saved;
+  const f = sheetFixture(async (url, options) => {
+    if (url === '/api/editorial-creaciones') return saved = publicationAck(options.body);
+    if (++reads === 1) return old.promise; return [saved];
+  });
+  const overview = connectOverview(f), initial = f.deps.cargar();
+  await f.deps.crearPublicacion(); old.resolve([]); await initial;
+  assert.deepEqual(overview.rows, [saved]); assert.deepEqual(f.rows, [saved]);
+  f.switch(); overview.snapshot([]); overview.committed({ deletedId: saved.id }); assert.deepEqual(overview.rows, [saved]);
+});
+for (const operation of ['PATCH', 'DELETE', 'confirmation']) for (const reject of [false, true]) {
+  test(`held GET then ${operation} ACK and GET ${reject ? 'reject' : 'resolve'} preserves committed state and releases loading`, async () => {
+    const held = deferred();
+    const original = { id: 5, cliente_id: 2, estado: 'pendiente', fecha_programada: '2026-10-20', publicacion_evidencia: { revision: 0 } };
+    const saved = { ...original, estado: 'lista', publicacion_evidencia: { revision: 1 } };
+    const f = sheetFixture(async (_url, options) => options.method === 'PATCH' ? saved : options.method === 'DELETE' ? {} : held.promise);
+    const overview = connectOverview(f); overview.snapshot([original]); f.deps.setPublicaciones([original]);
+    const read = f.deps.cargar();
+    assert.equal(f.effects.at(-1)[0], 'loading'); assert.equal(f.effects.at(-1)[1], true);
+    if (operation === 'PATCH') await f.deps.guardarEnServidor(5, { estado: 'lista' });
+    else if (operation === 'DELETE') await f.deps.borrarPublicacion(5);
+    else {
+      const confirmed = { ...saved, estado: 'publicada' };
+      const notify = callback(sheet, 'publicationSaved', { ...f.deps,
+        mergeEditorialStatus: () => confirmed,
+        onPublicationSaved: () => overview.committed({ row: confirmed }),
+      });
+      notify({ piece: { id: 5 } });
+    }
+    const expectedRows = [...f.rows], expectedOverview = [...overview.rows];
+    const errors = f.effects.filter(([key]) => key === 'error');
+    if (reject) held.reject(Error('obsolete read failed')); else held.resolve([original]);
+    await read;
+    assert.deepEqual(f.rows, expectedRows); assert.deepEqual(overview.rows, expectedOverview);
+    assert.deepEqual(f.effects.filter(([key]) => key === 'error'), errors);
+    assert.deepEqual(f.effects.filter(([key]) => key === 'loading'), [['loading', true], ['loading', false]]);
+    assert.equal(f.deps.loadingGeneration.current, 1, 'Write ACK must not take read loading ownership');
+  });
+}
+for (const reject of [false, true]) test(`older GET ${reject ? 'rejection' : 'success'} finally cannot clear newer GET loading`, async () => {
+  const old = deferred(), next = deferred(); let reads = 0;
+  const f = sheetFixture(() => ++reads === 1 ? old.promise : next.promise);
+  const first = f.deps.cargar(), second = f.deps.cargar();
+  if (reject) old.reject(Error('old failure')); else old.resolve([]); await first;
+  assert.deepEqual(f.effects.filter(([key]) => key === 'loading'), [['loading', true], ['loading', true]]);
+  next.resolve([{ id: 6, cliente_id: 2 }]); await second;
+  assert.deepEqual(f.effects.filter(([key]) => key === 'loading'), [['loading', true], ['loading', true], ['loading', false]]);
+  assert.deepEqual(f.rows, [{ id: 6, cliente_id: 2 }]);
 });

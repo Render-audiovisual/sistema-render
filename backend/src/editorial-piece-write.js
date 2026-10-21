@@ -64,13 +64,13 @@ export function normalizeEditorialPiecePatch(domain, body, legacy = false) {
   return { expected_revision: body.expected_revision, fields };
 }
 
-function captureActor(auth) {
+export function captureEditorialActor(auth) {
   if (!Number.isSafeInteger(auth?.id) || auth.id < 1 || !Number.isSafeInteger(auth.session_version)
     || auth.session_version < 1 || typeof auth.rol !== 'string') throw fail('Sesión requerida.',401);
   return { id: auth.id, session_version: auth.session_version, rol: auth.rol };
 }
 
-async function currentActor(db, auth, write) {
+export async function currentEditorialActor(db, auth, write) {
   const user = (await db.query(`SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1${write ? ' FOR SHARE' : ''}`, [auth.id])).rows[0];
   if (!user || user.id !== auth.id || user.activo !== true || user.session_version !== auth.session_version) throw fail('La sesión cambió. Volvé a ingresar.',401);
   if (write && user.rol !== 'admin') throw fail('Solo administración puede editar piezas.',403);
@@ -99,12 +99,12 @@ function legacyDto(row, user) {
 }
 
 export async function readLegacyEditorialPiece(pool, auth, rawId, query) {
-  const selected = legacyPieceSelection(rawId,query), observed = captureActor(auth);
+  const selected = legacyPieceSelection(rawId,query), observed = captureEditorialActor(auth);
   const db = await pool.connect();
   let discard;
   try {
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    const user = await currentActor(db,observed,false);
+    const user = await currentEditorialActor(db,observed,false);
     let domain = selected.domain;
     if (!domain) {
       const matches = (await db.query(`SELECT 'historia'::text AS dominio FROM historias WHERE id=$1
@@ -124,12 +124,12 @@ export async function readLegacyEditorialPiece(pool, auth, rawId, query) {
 
 export async function writeEditorialPiece(pool, auth, domain, rawId, body, { legacy = false } = {}) {
   const identity = editorialPieceIdentity(domain,rawId), input = normalizeEditorialPiecePatch(domain,body,legacy);
-  const observed = captureActor(auth), db = await pool.connect();
+  const observed = captureEditorialActor(auth), db = await pool.connect();
   let discard;
   try {
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
     await db.query('SELECT pg_advisory_xact_lock(20261019, 1)');
-    const user = await currentActor(db,observed,true);
+    const user = await currentEditorialActor(db,observed,true);
     const found = (await db.query(`SELECT cliente_id FROM ${identity.table} WHERE id=$1`,[identity.id])).rows[0];
     if (!found) throw fail('Pieza no encontrada.',404);
     const clients = [...new Set([found.cliente_id,input.fields.cliente_id].filter(Boolean))].sort((a,b)=>a-b);

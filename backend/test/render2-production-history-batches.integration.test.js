@@ -211,7 +211,7 @@ test('historical production batches preserve independent live editing evidence i
   await t.test('reviewed video associates an existing publication and continues on its exact canonical task only', async () => {
     const reviewed = ack(await post(bodyFor(await context(origin.id), [video('Existing publication entry')])), true);
     const id = reviewed.video_ids[0];
-    const publication = ok(await api('/piezas', admin, 'POST', { tipo: 'video', cliente_id: client.id,
+    const publication = ok(await api('/piezas', admin, 'POST', { request_id: randomUUID(), tipo: 'video', cliente_id: client.id,
       responsable_id: 91003, fecha_programada: '2026-10-30', estado: 'pendiente', idea: 'QA102 existing publication', copy: 'Canonical editorial copy' }), 201);
     const canonicalRows = await f.query('SELECT id FROM tareas WHERE publicacion_id=$1 ORDER BY id', [publication.id]);
     assert.equal(canonicalRows.length, 1); const canonicalId = canonicalRows[0].id;
@@ -266,7 +266,7 @@ test('historical production batches preserve independent live editing evidence i
     const freshSource = await source();
     const reviewed = ack(await post(bodyFor(await context(freshSource.id), [video('Historical proof rollback item')])), true);
     const id = reviewed.video_ids[0];
-    const publication = ok(await api('/piezas', admin, 'POST', { tipo: 'video', cliente_id: client.id,
+    const publication = ok(await api('/piezas', admin, 'POST', { request_id: randomUUID(), tipo: 'video', cliente_id: client.id,
       responsable_id: 91003, fecha_programada: '2026-10-30', estado: 'pendiente', idea: 'QA102 stale history publication', copy: 'Keep original copy' }), 201);
     const candidates = ok(await api(`/producciones/${reviewed.visita_id}/videos/${id}/vinculo?periodo=2026-10`, admin));
     const selected = candidates.publicaciones.find(row => row.publicacion_id === publication.id); assert.ok(selected);

@@ -8,8 +8,11 @@ import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { PageState } from "../components/PageState.jsx";
-import { formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+import { buildContextUrl, formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
+import { requestAppNavigation } from '../shared/navigation/location.js';
 import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
+import { createEditorialCreateIntent } from '../shared/editorial/editorial-create-intent.js';
 
 function useStorySession(context = null) {
   const view = useSessionView(getSesion());
@@ -1344,6 +1347,12 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   const [month, setMonth] = useState(initialDate.month);
   const contextKey = `${vista}:${clienteSeleccionado}:${filtroClientePlanilla}:${year}:${month}`;
   const { view, capture, captureLifetime } = useStorySession(contextKey);
+  const creation = useRef(null);
+  const [, renderCreation] = useState(0);
+  if (!creation.current || creation.current.capture !== capture) creation.current = { capture, model: createEditorialCreateIntent({ capture }) };
+  const creationState = creation.current.model.snapshot;
+  useNavigationGuard(() => ({ dirty: creation.current.model.snapshot.locked, busy: creationLocks.current.size > 0 || creation.current.model.snapshot.busy }));
+  const approveContextChange = changes => requestAppNavigation(window, buildContextUrl(window.location.href, changes));
 
   const newStoryResponsibleId = () => {
     const id = Number(responsableNuevoId);
@@ -1407,9 +1416,11 @@ export function HistoriasPage({ initialTab = "estructura" }) {
         if (!current()) return;
         setHistorias(storyArray(data));
         setErrorHistorias(null);
+        return true;
       })
       .catch(() => {
         if (current()) setErrorHistorias("No se pudieron cargar las historias.");
+        return false;
       })
       .finally(() => { if (current()) setCargandoHistorias(false); });
   }, [capture]);
@@ -1436,11 +1447,13 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     let m = month + delta;
     let y = year;
     if (m < 0) { m = 11; y -= 1; } else if (m > 11) { m = 0; y += 1; }
+    if (!approveContextChange({ mes: formatMonthContext(y, m) })) return;
     pushUrlContext({ mes: formatMonthContext(y, m) });
     setMonth(m);
     setYear(y);
   };
   const irAHoy = () => {
+    if (!approveContextChange({ mes: formatMonthContext(hoyDate.getFullYear(), hoyDate.getMonth()) })) return;
     pushUrlContext({ mes: formatMonthContext(hoyDate.getFullYear(), hoyDate.getMonth()) });
     setMonth(hoyDate.getMonth());
     setYear(hoyDate.getFullYear());
@@ -1493,21 +1506,21 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     const patron = estructura.find((e) => e.cliente_id === clienteIdDestino && e.dia_semana === diaSemana);
     const metadataSugerida = patron?.tema || patron?.horario
       ? { tipo: patron.tema || '', hora: patron.horario?.match(/\d{1,2}:\d{2}/)?.[0] || '' } : {};
-    const creada = createdStory(await scope.request("/api/piezas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const model = creation.current.model;
+    const pending = model.submit({
         tipo: "historia",
         cliente_id: clienteIdDestino,
         responsable_id: responsableId,
         fecha_programada: fechaISO,
         estado: "pendiente",
         idea: "",
-      }),
-    }));
+    }, scope);
+    renderCreation(value => value + 1);
+    const creada = createdStory(await pending);
     scope.assertCurrent();
     let persisted = creada;
-    if (Object.keys(metadataSugerida).length) {
+    let metadataFailed = false;
+    if (!creada.creation.replayed && Object.keys(metadataSugerida).length) {
       try {
       const updated = editorialPatchAck(creada, createdStory(await scope.request(`/api/historias/${creada.id}`, {
         method: "PATCH",
@@ -1519,12 +1532,16 @@ export function HistoriasPage({ initialTab = "estructura" }) {
       persisted = { ...creada, ...updated };
       } catch (reason) {
         if (!scope.current() || isSessionFailure(reason)) throw reason;
+        metadataFailed = true;
         setErrorHistorias(`Historia #${creada.id} creada; no se pudo confirmar el tipo y horario. Se muestran los datos recibidos al crearla. Revisá esa historia; no vuelvas a crearla.`);
       }
     }
 
     scope.assertCurrent();
-    setHistorias((prev) => [...prev, persisted]);
+    setHistorias((prev) => prev.some(row => row.id === persisted.id) ? prev : [...prev, persisted]);
+    if (!metadataFailed) model.complete();
+    if (creada.creation.replayed) setErrorHistorias(`Historia #${creada.id} ya creada. Revisá sus datos actuales; no se reaplicaron sugerencias.`);
+    renderCreation(value => value + 1);
     return creada.id;
   };
 
@@ -1535,7 +1552,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   // fila nueva apenas aparece.
   const agregarHistoriaEnMesActual = async () => {
     const scope = capture();
-    if (!scope.current() || creationLocks.current.has('new')) return;
+    if (!scope.current() || creationLocks.current.has('new') || creation.current.model.snapshot.locked) return;
     // Si la Planilla está filtrada a un cliente, la historia nueva se crea
     // para ESE cliente (no tendría sentido crearla para otro mientras se
     // está mirando la hoja de uno en particular).
@@ -1554,21 +1571,19 @@ export function HistoriasPage({ initialTab = "estructura" }) {
       setUltimoIdCreado(id);
     } catch (reason) {
       if (scope.current()) setErrorHistorias(reason.message || 'No se pudo confirmar la creación. Revisá la lista antes de volver a crear.');
-    } finally { creationLocks.current.delete('new'); }
+    } finally { creationLocks.current.delete('new'); if (scope.current()) renderCreation(value => value + 1); }
   };
 
   const duplicarHistoria = async (historia) => {
     const scope = capture();
     const key = `duplicate:${historia.id}`;
-    if (!scope.current() || creationLocks.current.has(key)) return;
+    if (!scope.current() || creationLocks.current.has(key) || creation.current.model.snapshot.locked) return;
     creationLocks.current.add(key);
     try {
       const responsableId = newStoryResponsibleId();
       const metadata = storyDuplicationMetadata(historia.metadata);
-      const creada = createdStory(await scope.request("/api/piezas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const model = creation.current.model;
+      const pending = model.submit({
           tipo: "historia",
           cliente_id: historia.cliente_id,
           responsable_id: responsableId,
@@ -1579,11 +1594,13 @@ export function HistoriasPage({ initialTab = "estructura" }) {
           material_referencia: historia.material_referencia || "",
           aclaraciones: historia.aclaraciones || "",
           prioridad: historia.prioridad || "media",
-        }),
-      }));
+      }, scope);
+      renderCreation(value => value + 1);
+      const creada = createdStory(await pending);
       scope.assertCurrent();
       let nueva = creada;
-      if (Object.keys(metadata).length) {
+      let metadataFailed = false;
+      if (!creada.creation.replayed && Object.keys(metadata).length) {
         try {
         const updated = editorialPatchAck(creada, createdStory(await scope.request(`/api/historias/${creada.id}`, {
           method: "PATCH",
@@ -1595,15 +1612,34 @@ export function HistoriasPage({ initialTab = "estructura" }) {
         nueva = { ...creada, ...updated };
         } catch (reason) {
           if (!scope.current() || isSessionFailure(reason)) throw reason;
+          metadataFailed = true;
           setErrorHistorias(`Historia #${creada.id} duplicada; no se pudo confirmar el tipo y horario. No vuelvas a duplicarla: revisá ese registro.`);
         }
       }
       scope.assertCurrent();
-      setHistorias((prev) => [...prev, nueva]);
+      setHistorias((prev) => prev.some(row => row.id === nueva.id) ? prev : [...prev, nueva]);
       setUltimoIdCreado(nueva.id);
+      if (!metadataFailed) model.complete();
+      if (creada.creation.replayed) setErrorHistorias(`Historia #${creada.id} ya creada. Revisá sus datos actuales; no se reaplicó metadata de la copia.`);
     } catch (reason) {
       if (scope.current()) setErrorHistorias(reason.message || 'No se pudo confirmar la copia. Revisá la lista antes de volver a duplicar.');
-    } finally { creationLocks.current.delete(key); }
+    } finally { creationLocks.current.delete(key); if (scope.current()) renderCreation(value => value + 1); }
+  };
+
+  const verificarCreacionHistoria = async () => {
+    const scope = capture(), model = creation.current.model;
+    if (!scope.current() || model.snapshot.busy) return;
+    try {
+      const pending = model.verify(); renderCreation(value => value + 1);
+      const saved = await pending; scope.assertCurrent();
+      // Recovery never reapplies suggested/copied metadata against a new revision.
+      setHistorias(prev => prev.some(row => row.id === saved.id) ? prev : [...prev, saved]);
+      setUltimoIdCreado(saved.id);
+      const loaded = await cargarHistorias(scope); scope.assertCurrent();
+      if (loaded === true) model.complete();
+      setErrorHistorias(`Historia #${saved.id} ya creada. Revisá los datos actuales; no se reaplicaron sugerencias ni metadata de copia.`);
+    } catch (reason) { if (scope.current()) setErrorHistorias(reason.message); }
+    finally { if (scope.current()) renderCreation(value => value + 1); }
   };
 
   const eliminarHistoria = async (historiaId) => {
@@ -1638,6 +1674,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
 
   const cambiarVista = (siguienteVista) => {
     if (!capture().current()) return;
+    if (!approveContextChange({ vista: siguienteVista })) return;
     pushUrlContext({ vista: siguienteVista });
     setVista(siguienteVista);
   };
@@ -1654,12 +1691,15 @@ export function HistoriasPage({ initialTab = "estructura" }) {
           </header>
           {vista === 'planilla' && <label className="stories-context-field">
             <span>Responsable de nuevas historias</span>
-            <select aria-label="Responsable de nuevas historias" value={responsableNuevoId} disabled={!responsablesReady} onChange={event => setResponsableNuevoId(event.target.value)}>
+            <select aria-label="Responsable de nuevas historias" value={responsableNuevoId} disabled={!responsablesReady || creationState.locked} onChange={event => setResponsableNuevoId(event.target.value)}>
               <option value="">Elegí una persona</option>
               {responsables.map(person => <option key={person.id} value={person.id}>{person.nombre} · #{person.id}</option>)}
             </select>
             <small>Se usará al agregar o duplicar. No modifica las historias existentes.</small>
           </label>}
+          {creationState.locked && <div role="status"><p>Conservamos el intento original. No agregues ni dupliques otra historia sin verificarlo. Al salir de este contexto se pierde la clave de recuperación.</p>
+            <button type="button" disabled={creationState.busy || creationState.phase === 'blocked'} onClick={() => void verificarCreacionHistoria()}>Verificar creación</button>
+          </div>}
           {(errorClientes || errorHistorias) && <PageState compact type="error" title={errorClientes || errorHistorias} description="La vista y el período siguen guardados." onRetry={() => window.location.reload()} />}
 
           <div className="h-workspace">
@@ -1681,6 +1721,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
                         className="h-toolbar-client-select"
                         value={filtroClientePlanilla}
                         onChange={(e) => {
+                          if (!approveContextChange({ filtro: e.target.value })) return;
                           pushUrlContext({ filtro: e.target.value });
                           setFiltroClientePlanilla(e.target.value);
                         }}

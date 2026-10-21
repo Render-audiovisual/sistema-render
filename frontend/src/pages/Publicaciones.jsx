@@ -4,15 +4,18 @@ import { editorialFields, mergeEditorialStatus } from '../components/EditorialPu
 import { isConfirmedPublication, isHistoricalPublication } from '../shared/editorial/publication-evidence.js';
 import { getSesion } from '../utils.jsx';
 import { etiquetaCortaPublicacion, fechaISODesde, getCheckPublicacionLabel, getEstadoHistoriaLabel, getGrillaMes, getHoyLocalISO, getTipoPublicacionLabel, payloadColumnaPublicacion, sumarDiasISO } from "../utils.jsx";
-import { COLUMNAS_PUBLICACION, DIAS_SEMANA, ESTADOS_PUBLICACION, MESES, RESPONSABLES_EQUIPO, TIPOS_PUBLICACION } from "../constants.js";
+import { COLUMNAS_PUBLICACION, DIAS_SEMANA, ESTADOS_PUBLICACION, MESES, TIPOS_PUBLICACION } from "../constants.js";
 import { Modal } from "../components/Modal.jsx";
 import { PageState } from "../components/PageState.jsx";
 import { PublicationComposer, PublicationPreviewQueue } from "../components/PublicationComposer.jsx";
-import { formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+import { buildContextUrl, formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
+import { requestAppNavigation } from '../shared/navigation/location.js';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
+import { createEditorialCreateIntent } from '../shared/editorial/editorial-create-intent.js';
 
 function usePublicationSession(sesion, context = null) {
   const view = useSessionView(sesion || getSesion());
@@ -29,7 +32,7 @@ function usePublicationSession(sesion, context = null) {
   return { view, capture, captureLifetime };
 }
 
-export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, contextMonth, onMonthChange, sesion, onPublicationSaved }) {
+export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, contextMonth, onMonthChange, sesion, onPublicationSaved, onCommittedChange }) {
   const hoy = new Date();
   const [localYear, setLocalYear] = useState(hoy.getFullYear());
   const [localMonth, setLocalMonth] = useState(hoy.getMonth());
@@ -204,13 +207,15 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
     try {
       const actualizada = editorialPatchAck(publicacion, await scope.request(`/api/publicaciones/${publicacion.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: editorialPatchBody(publicacion, { fecha_programada: fecha }) }));
       scope.assertCurrent();
+      ++listGeneration.current;
+      onCommittedChange?.({ row: actualizada });
       const completa = { ...publicacion, ...actualizada, tipoLabel: getTipoPublicacionLabel(actualizada.tipo) };
       setPiezas((prev) => prev.map((item) => item.id === completa.id ? completa : item));
       setPiezaSel(current => selection.current === observation && current === observation.piece && current?.id === publicacion.id ? completa : current);
       setDiaSel(current => selection.current === observation && current === observation.day ? null : current);
     } catch (err) { if (scope.current()) setError(editorialPatchError(err)); }
     finally { pendingWrites.current.delete(publicacion.id); if (lifetime.current()) setGuardandoId(current => current === publicacion.id ? null : current); }
-  }, [capture, captureLifetime]);
+  }, [capture, captureLifetime, onCommittedChange]);
 
   const cambiarEstadoPublicacion = useCallback(async (publicacion, nuevoEstado) => {
     const scope = capture();
@@ -227,6 +232,8 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
         body: editorialPatchBody(publicacion, { estado: nuevoEstado }),
       }));
       scope.assertCurrent();
+      ++listGeneration.current;
+      onCommittedChange?.({ row: actualizada });
       const piezaActualizada = {
         ...publicacion,
         ...actualizada,
@@ -252,7 +259,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
       pendingWrites.current.delete(publicacion.id);
       if (lifetime.current()) setGuardandoId(current => current === publicacion.id ? null : current);
     }
-  }, [capture, captureLifetime, view.role]);
+  }, [capture, captureLifetime, view.role, onCommittedChange]);
 
   const publicationSaved = useCallback(dto => {
     const scope = capture();
@@ -690,7 +697,7 @@ export function PublicacionesGeneralTab({ clientes, onIrACliente, sesion, onPubl
   );
 }
 
-export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month, sesion, onPublicationSaved }) {
+export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month, sesion, onPublicationSaved, onSnapshotLoaded, onCommittedChange }) {
   const { view, capture } = usePublicationSession(sesion, `${clienteId}:${year}:${month}`);
   const [publicaciones, setPublicaciones] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -698,27 +705,55 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
   const gridRef = useRef(null);
   const enfocarProximoId = useRef(null);
   const listGeneration = useRef(0);
+  const loadingGeneration = useRef(0);
   const pendingWrites = useRef(new Set());
   const writeQueues = useRef(new Map());
   const latestWrites = useRef(new Map());
   const creating = useRef(false);
+  const creation = useRef(null);
+  const [, renderCreation] = useState(0);
+  const [responsables, setResponsables] = useState([]);
+  const [responsablesReady, setResponsablesReady] = useState(false);
+  const [responsableNuevoId, setResponsableNuevoId] = useState('');
+  if (!creation.current || creation.current.capture !== capture) creation.current = { capture, model: createEditorialCreateIntent({ capture }) };
+  const creationState = creation.current.model.snapshot;
+  useNavigationGuard(() => ({ dirty: creation.current.model.snapshot.locked, busy: creating.current || creation.current.model.snapshot.busy }));
+
+  useEffect(() => {
+    const scope = capture(), controller = new AbortController();
+    setResponsablesReady(false);
+    scope.request('/api/usuarios', { signal: controller.signal }).then(data => {
+      if (!scope.current() || controller.signal.aborted) return;
+      if (!Array.isArray(data)) throw new Error('Catálogo de responsables inválido.');
+      setResponsables(data.filter(row => Number.isSafeInteger(row.id) && row.id > 0 && row.id <= 2147483647 && row.activo !== false));
+      setResponsablesReady(true);
+    }).catch(() => { if (scope.current() && !controller.signal.aborted) setError('No se pudo cargar el catálogo de responsables.'); });
+    return () => controller.abort();
+  }, [capture]);
 
   const cargar = useCallback((scope = capture(), options = {}) => {
     if (!scope.current()) return Promise.resolve();
     const generation = ++listGeneration.current;
+    // Writes invalidate read data, but only a newer read takes loading ownership.
+    const loadingToken = ++loadingGeneration.current;
     const current = () => scope.current() && !options.signal?.aborted && generation === listGeneration.current;
     setCargando(true);
     return scope.request("/api/publicaciones", options)
       .then((data) => {
         if (!current()) return;
         setPublicaciones(data.filter((p) => p.cliente_id === clienteId));
+        onSnapshotLoaded?.(data);
         setError(null);
+        return true;
       })
       .catch(() => {
         if (current()) setError("No se pudieron cargar las publicaciones.");
+        return false;
       })
-      .finally(() => { if (current()) setCargando(false); });
-  }, [capture, clienteId]);
+      .finally(() => {
+        if (scope.current() && !options.signal?.aborted && loadingToken === loadingGeneration.current) setCargando(false);
+      });
+  }, [capture, clienteId, onSnapshotLoaded]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -729,6 +764,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
   const publicationSaved = useCallback(dto => {
     const scope = capture();
     if (!scope.current()) return;
+    ++listGeneration.current;
     setPublicaciones(prev => prev.map(row => row.id === dto.piece.id ? mergeEditorialStatus(row, dto) : row));
     onPublicationSaved?.(dto);
   }, [capture, onPublicationSaved]);
@@ -782,6 +818,8 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
           body,
         }));
         scope.assertCurrent();
+        ++listGeneration.current;
+        onCommittedChange?.({ row: saved });
         setPublicaciones(prev => prev.map(row => row.id === id ? mergeEditorialPatchEvidence(row, saved) : row));
       } catch (err) {
         if (scope.current()) setError(editorialPatchError(err));
@@ -801,30 +839,39 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     void guardarEnServidor(id, campos, scope);
   };
 
-  const crearPublicacion = async () => {
+  const crearPublicacion = async (verify = false) => {
     const scope = capture();
     if (!scope.current() || creating.current) return;
+    const model = creation.current.model;
+    if (!verify && model.snapshot.locked) return;
     creating.current = true;
     const iso = mesPrefix === hoyISO.slice(0, 7) ? hoyISO : `${mesPrefix}-01`;
     try {
-      const creada = await scope.request("/api/piezas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const responsableId = Number(responsableNuevoId);
+      if (!verify && (!responsablesReady || !responsables.some(row => row.id === responsableId && row.activo !== false))) throw new Error('Elegí un responsable válido del catálogo.');
+      const pending = verify ? model.verify() : model.submit({
           tipo: "video",
           cliente_id: clienteId,
-          responsable: "Augusto",
+          responsable_id: responsableId,
           fecha_programada: iso,
           estado: "pendiente",
           idea: "",
-        }),
-      });
+      }, scope);
+      renderCreation(value => value + 1);
+      const creada = await pending;
       scope.assertCurrent();
+      ++listGeneration.current;
+      onCommittedChange?.({ row: creada });
+      setPublicaciones(prev => prev.some(row => row.id === creada.id) ? prev : [...prev, creada]);
       enfocarProximoId.current = creada.id;
-      await cargar(scope);
-    } catch {
-      if (scope.current()) setError("No se pudo crear la publicación.");
-    } finally { creating.current = false; }
+      // The accepted piece is already visible even if this follow-up read fails.
+      const loaded = await cargar(scope);
+      scope.assertCurrent();
+      if (loaded === true) model.complete();
+      if (creada.creation.replayed) setError(`Publicación #${creada.id} ya creada. Revisá sus datos actuales.`);
+    } catch (reason) {
+      if (scope.current()) setError(reason.message || 'No se pudo confirmar la creación. Verificá el mismo intento.');
+    } finally { creating.current = false; if (scope.current()) renderCreation(value => value + 1); }
   };
 
   const borrarPublicacion = async (id) => {
@@ -837,6 +884,8 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     try {
       await scope.request(`/api/publicaciones/${id}`, { method: "DELETE" });
       scope.assertCurrent();
+      ++listGeneration.current;
+      onCommittedChange?.({ deletedId: id });
       setPublicaciones((prev) => prev.filter((p) => p.id !== id));
     } catch {
       if (scope.current()) setError("No se pudo eliminar la publicación.");
@@ -914,6 +963,15 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
 
   return (
     <>
+      <label>Responsable de nuevas publicaciones
+        <select aria-label="Responsable de nuevas publicaciones" value={responsableNuevoId} disabled={!responsablesReady || creationState.locked} onChange={event => setResponsableNuevoId(event.target.value)}>
+          <option value="">Elegí una persona</option>
+          {responsables.map(person => <option key={person.id} value={person.id}>{person.nombre} · #{person.id}</option>)}
+        </select>
+      </label>
+      {creationState.locked && <div role="status"><p>Conservamos el intento original. No crees otra pieza sin verificarlo. Al salir de este contexto se pierde la clave de recuperación.</p>
+        <button type="button" disabled={creationState.busy || creationState.phase === 'blocked'} onClick={() => void crearPublicacion(true)}>Verificar creación</button>
+      </div>}
       {error && (
         <div className="alert is-error">{error}</div>
       )}
@@ -1042,15 +1100,20 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                       <select
                         className="sheet-cell"
                         data-cell={`${rowIndex}:responsable`}
-                        value={p.responsable || "Augusto"}
+                        value={p.responsable || ""}
+                        title="Responsable de la pieza. Para reasignar el trabajo, abrí la tarea vinculada."
                         onChange={(e) => {
                           actualizarLocal(p.id, { responsable: e.target.value });
                           guardarEnServidor(p.id, { responsable: e.target.value });
                         }}
                         onKeyDown={(e) => manejarEnterOTab(e, rowIndex, "responsable")}
                       >
-                        {RESPONSABLES_EQUIPO.map((r) => (
-                          <option key={r} value={r}>{r}</option>
+                        <option value="">Sin responsable</option>
+                        {p.responsable && !responsables.some(person => person.nombre === p.responsable) &&
+                          <option value={p.responsable}>{p.responsable}</option>}
+                        {/* Existing-row PATCH still edits its legacy display name, not assignment IDs. */}
+                        {responsables.map((person) => (
+                          <option key={person.id} value={person.nombre}>{person.nombre}</option>
                         ))}
                       </select>
                     </td>
@@ -1099,7 +1162,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
               })}
               <tr>
                 <td colSpan={10} style={{ padding: 0 }}>
-                  <button type="button" className="sheet-add-row" onClick={crearPublicacion}>
+                  <button type="button" className="sheet-add-row" disabled={creationState.locked || !responsablesReady || !responsableNuevoId} onClick={() => void crearPublicacion()}>
                     <span style={{ fontSize: "15px" }}>+</span> Agregar publicación
                   </button>
                 </td>
@@ -1127,10 +1190,13 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
   const [clientes, setClientes] = useState([]);
   const [errorClientes, setErrorClientes] = useState(null);
   const [publicaciones, setPublicaciones] = useState([]);
+  const overviewGeneration = useRef(0);
 
   const hoyDate = new Date();
   const [year, setYear] = useState(initialDate.year);
   const [month, setMonth] = useState(initialDate.month);
+
+  const approveContextChange = changes => requestAppNavigation(window, buildContextUrl(window.location.href, changes));
 
   useEffect(() => {
     replaceUrlContext({ tab: tabPrincipal, cliente: clienteSeleccionado, mes: formatMonthContext(year, month) });
@@ -1165,25 +1231,41 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
     return () => controller.abort();
   }, [capture]);
 
-  // Solo para alimentar el punto rojo del panel lateral (quién tiene
-  // publicaciones atrasadas) sin entrar a cada cliente — la grilla editable
-  // de cada cliente sigue trayendo sus propios datos por separado.
+  // Initial sidebar/overview read. A newer child snapshot or committed write
+  // invalidates this generation before a delayed initial response can paint.
   useEffect(() => {
     const scope = capture();
     const controller = new AbortController();
+    const generation = ++overviewGeneration.current;
     scope.request("/api/publicaciones", { signal: controller.signal })
-      .then((data) => { if (scope.current() && !controller.signal.aborted) setPublicaciones(Array.isArray(data) ? data : []); })
+      .then((data) => { if (scope.current() && !controller.signal.aborted && generation === overviewGeneration.current) setPublicaciones(Array.isArray(data) ? data : []); })
       .catch(() => { /* Complementary overview must not bypass session failure. */ });
     return () => controller.abort();
+  }, [capture]);
+
+  const overviewSnapshotLoaded = useCallback(data => {
+    if (!capture().current() || !Array.isArray(data)) return;
+    ++overviewGeneration.current;
+    setPublicaciones(data);
+  }, [capture]);
+
+  const overviewCommittedChange = useCallback(change => {
+    if (!capture().current()) return;
+    ++overviewGeneration.current;
+    setPublicaciones(prev => change.deletedId != null
+      ? prev.filter(row => row.id !== change.deletedId)
+      : [...prev.filter(row => row.id !== change.row.id), change.row]);
   }, [capture]);
 
   const publicationSaved = useCallback(dto => {
     const scope = capture();
     if (!scope.current()) return;
+    ++overviewGeneration.current;
     setPublicaciones(prev => prev.map(row => row.id === dto.piece.id ? mergeEditorialStatus(row, dto) : row));
   }, [capture]);
 
   const irAPlanillaDeCliente = (clienteId) => {
+    if (!approveContextChange({ tab: 'planilla', cliente: clienteId, mes: formatMonthContext(year, month) })) return;
     pushUrlContext({ tab: "planilla", cliente: clienteId, mes: formatMonthContext(year, month) });
     setClienteSeleccionado(clienteId);
     setTabPrincipal("planilla");
@@ -1198,11 +1280,13 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
     let m = month + delta;
     let y = year;
     if (m < 0) { m = 11; y -= 1; } else if (m > 11) { m = 0; y += 1; }
+    if (!approveContextChange({ mes: formatMonthContext(y, m) })) return;
     pushUrlContext({ mes: formatMonthContext(y, m) });
     setMonth(m);
     setYear(y);
   };
   const irAHoy = () => {
+    if (!approveContextChange({ mes: formatMonthContext(hoyDate.getFullYear(), hoyDate.getMonth()) })) return;
     pushUrlContext({ mes: formatMonthContext(hoyDate.getFullYear(), hoyDate.getMonth()) });
     setMonth(hoyDate.getMonth());
     setYear(hoyDate.getFullYear());
@@ -1228,6 +1312,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
   const canPublish = ["admin", "community"].includes(view.role);
 
   const cambiarVista = (tab) => {
+    if (!approveContextChange({ tab })) return;
     pushUrlContext({ tab });
     setTabPrincipal(tab);
   };
@@ -1302,10 +1387,11 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
                   <PublicacionesCalendarioTab
                     sesion={view.session}
                     onPublicationSaved={publicationSaved}
+                    onCommittedChange={overviewCommittedChange}
                     onIrAPlanilla={irAPlanillaDeCliente}
                     contextYear={year}
                     contextMonth={month}
-                    onMonthChange={(nextYear, nextMonth) => { pushUrlContext({ mes: formatMonthContext(nextYear, nextMonth) }); setYear(nextYear); setMonth(nextMonth); }}
+                    onMonthChange={(nextYear, nextMonth) => { if (!approveContextChange({ mes: formatMonthContext(nextYear, nextMonth) })) return; pushUrlContext({ mes: formatMonthContext(nextYear, nextMonth) }); setYear(nextYear); setMonth(nextMonth); }}
                   />
                 )}
 
@@ -1325,6 +1411,8 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
                   <PublicacionesPlanillaTab
                     sesion={view.session}
                     onPublicationSaved={publicationSaved}
+                    onSnapshotLoaded={overviewSnapshotLoaded}
+                    onCommittedChange={overviewCommittedChange}
                     key={`pub-${clienteSeleccionado}`}
                     clienteId={clienteSeleccionado}
                     clienteNombre={clienteNombre}

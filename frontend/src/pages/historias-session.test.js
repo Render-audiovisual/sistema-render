@@ -6,6 +6,7 @@ import { createCapturedRequest, isSessionFailure } from '../shared/session/captu
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { createSessionView, sessionViewInputs } from '../shared/session/session-view.js';
 import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
+import { createEditorialCreateIntent } from '../shared/editorial/editorial-create-intent.js';
 
 // Actual hook logic/callbacks with injected effects, not a mounted React/HTTP claim.
 const source = readFileSync(new URL('./Historias.jsx', import.meta.url), 'utf8');
@@ -36,10 +37,19 @@ function sessionFixture(request, cookie = true) {
     switch() { if (cookie) { accept(8); session = store.getSession(); } else session = { token: 'b', usuario: { id: 8, rol: 'admin', activo: true } }; view = createSessionView(sessionViewInputs(session)); render('A'); } };
 }
 function fixture(request, cookie = true) {
-  const f = sessionFixture(request, cookie), effects = []; let rows = [], busy = null;
+  const f = sessionFixture(async (url, options) => {
+    const value = await request(url, options);
+    if (url === '/api/editorial-creaciones' && Number.isSafeInteger(value?.id)) {
+      // Adapt legacy fixture ACKs to the actual receipt contract, never IDs.
+      Object.assign(value, { publicacion_evidencia: value.publicacion_evidencia || { revision: 0 },
+        creation: value.creation || { request_id: JSON.parse(options.body).request_id, dominio: 'historia', pieza_id: value.id, tarea_id: 17, replayed: false } });
+    }
+    return value;
+  }, cookie), effects = []; let rows = [], busy = null;
   const deps = { capture: f.capture, captureLifetime: f.captureLifetime, view: f.view, isSessionFailure, storyArray, createdStory, enqueueStoryWrite, storyDuplicationMetadata,
     editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError,
     historias: [{ id: 5, publicacion_evidencia: { revision: 0 } }],
+    creation: { current: { model: createEditorialCreateIntent({ capture: f.capture, randomUUID: () => '11111111-1111-4111-8111-111111111111' }) } }, renderCreation() {},
     writeQueues: { current: new Map() }, latestWrites: { current: new Map() }, creationLocks: { current: new Set() }, deleting: { current: new Set() }, listGeneration: { current: 0 },
     responsablesReady: true, responsableNuevoId: '9', responsables: [{ id: 9, nombre: 'Alex', activo: true }, { id: 10, nombre: 'Alex', activo: true }],
     estructura: [{ cliente_id: 2, dia_semana: 2, tema: 'Tema real', horario: '10:30' }],
@@ -50,7 +60,7 @@ function fixture(request, cookie = true) {
     setCargandoHistorias: value => effects.push(['loading', value]),
     setGuardandoId: value => { busy = typeof value === 'function' ? value(busy) : value; effects.push(['busy', busy]); },
     pendingChecks: { current: new Set() }, setChecks: value => effects.push(['checks', value]), setError: value => effects.push(['error', value]) };
-  for (const key of ['newStoryResponsibleId', 'cargarHistorias', 'guardarHistoriaEnServidor', 'crearHistoria', 'agregarHistoriaEnMesActual', 'duplicarHistoria', 'eliminarHistoria']) deps[key] = callback(page, key, deps);
+  for (const key of ['newStoryResponsibleId', 'cargarHistorias', 'guardarHistoriaEnServidor', 'crearHistoria', 'agregarHistoriaEnMesActual', 'duplicarHistoria', 'verificarCreacionHistoria', 'eliminarHistoria']) deps[key] = callback(page, key, deps);
   return { ...f, deps, effects, get rows() { return rows; }, get busy() { return busy; } };
 }
 
@@ -103,6 +113,47 @@ test('POST success then metadata PATCH500 reports created ID and only actual ser
   assert.deepEqual(f.rows, [actual]); assert.deepEqual(f.rows[0].metadata, { hora: 'server time' });
   assert.match(f.effects.find(([key]) => key === 'error')[1], /Historia #5 creada;.*no vuelvas a crearla/);
 });
+
+test('story ambiguous create recovers only on explicit verification and never applies suggested metadata on replay', async () => {
+  let posts = 0, saved;
+  const f = fixture(async (url, options) => {
+    if (url === '/api/editorial-creaciones') {
+      if (++posts === 1) throw Error('lost ACK');
+      saved = { id: 5, metadata: { tipo: 'Current edited type' }, publicacion_evidencia: { revision: 13 },
+        creation: { request_id: JSON.parse(options.body).request_id, dominio: 'historia', pieza_id: 5, tarea_id: 17, replayed: true } };
+      return saved;
+    }
+    assert.equal(url, '/api/historias'); return [saved];
+  });
+  await f.deps.agregarHistoriaEnMesActual(); await f.deps.agregarHistoriaEnMesActual(); assert.equal(posts, 1);
+  await f.deps.verificarCreacionHistoria(); assert.equal(posts, 2); assert.deepEqual(f.rows, [saved]);
+  const writes = f.requests.filter(row => row.options.method === 'POST'); assert.equal(writes[0].options.body, writes[1].options.body);
+  assert.equal(f.requests.some(row => row.options.method === 'PATCH'), false);
+  assert.equal(f.deps.creation.current.model.snapshot.locked, false);
+});
+test('duplicate replay skips copied metadata and adds a saved ID only once', async () => {
+  const saved = { id: 12, metadata: { tipo: 'Current server metadata' }, publicacion_evidencia: { revision: 8 },
+    creation: { request_id: '11111111-1111-4111-8111-111111111111', dominio: 'historia', pieza_id: 12, tarea_id: 17, replayed: true } };
+  const f = fixture(async () => saved);
+  await f.deps.duplicarHistoria({ id: 5, cliente_id: 2, fecha_programada: '2026-10-20', metadata: { tipo: 'Old copied metadata', hora: '10:00' } });
+  assert.deepEqual(f.rows, [saved]); assert.equal(f.requests.length, 1); assert.equal(f.requests[0].options.method, 'POST');
+  assert.ok(f.effects.some(([key, value]) => key === 'error' && /no se reaplicó/.test(value)));
+});
+test('story accepted create plus metadata error and failed read cannot create again; recovery performs only reads', async () => {
+  let posts = 0, patches = 0, reads = 0;
+  const saved = { id: 5, publicacion_evidencia: { revision: 0 } };
+  const current = { id: 5, metadata: { tipo: 'Saved current' }, publicacion_evidencia: { revision: 2 } };
+  const f = fixture(async (url, options) => {
+    if (url === '/api/editorial-creaciones') { posts++; return saved; }
+    if (options.method === 'PATCH') { patches++; throw Error('lost metadata ACK'); }
+    if (++reads === 1) throw Error('read failed'); return [current];
+  });
+  await f.deps.agregarHistoriaEnMesActual(); assert.equal(f.deps.creation.current.model.snapshot.phase, 'confirmed');
+  await f.deps.verificarCreacionHistoria(); assert.equal(f.deps.creation.current.model.snapshot.locked, true);
+  await f.deps.agregarHistoriaEnMesActual(); assert.equal(posts, 1);
+  await f.deps.verificarCreacionHistoria(); assert.equal(posts, 1); assert.equal(patches, 1); assert.equal(reads, 2);
+  assert.deepEqual(f.rows, [current]); assert.equal(f.deps.creation.current.model.snapshot.locked, false);
+});
 test('create chain stops follow-up PATCH and UI after B/unmount/context ABA; double add while pending never duplicates POST', async () => {
   for (const change of ['switch', 'unmount', 'context']) {
     const pending = deferred(), f = fixture(() => pending.promise);
@@ -124,11 +175,12 @@ test('duplicate copies only business tipo/hora, never publication proof; failed 
 test('same-scope metadata ACK uses actual updated row; missing/mismatched create/PATCH ACK never fabricates suggested fields', async () => {
   const updated = { id: 5, copy: 'server updated', metadata: { tipo: 'Server', hora: '12:00' }, publicacion_evidencia: { revision: 1 } };
   const good = fixture(async (_url, options) => options.method === 'POST' ? { id: 5, publicacion_evidencia: { revision: 0 } } : updated);
-  assert.equal(await good.deps.crearHistoria(2, '2026-10-20'), 5); assert.deepEqual(good.rows, [updated]);
+  assert.equal(await good.deps.crearHistoria(2, '2026-10-20'), 5); assert.deepEqual(good.rows, [{ ...updated, creation: good.rows[0].creation }]);
+  assert.equal(good.rows[0].creation.pieza_id, updated.id);
   assert.equal(JSON.parse(good.requests[1].options.body).expected_revision, 0);
   const missing = fixture(async () => ({})); await assert.rejects(missing.deps.crearHistoria(2, '2026-10-20')); assert.equal(missing.requests.length, 1); assert.deepEqual(missing.rows, []);
   const wrong = fixture(async (_url, options) => options.method === 'POST' ? { id: 5, publicacion_evidencia: { revision: 0 } } : { id: 999, metadata: { tipo: 'wrong' }, publicacion_evidencia: { revision: 1 } });
-  await wrong.deps.crearHistoria(2, '2026-10-20'); assert.deepEqual(wrong.rows, [{ id: 5, publicacion_evidencia: { revision: 0 } }]); assert.ok(wrong.effects.some(([key]) => key === 'error'));
+  await wrong.deps.crearHistoria(2, '2026-10-20'); assert.equal(wrong.rows.length, 1); assert.equal(wrong.rows[0].id, 5); assert.deepEqual(wrong.rows[0].publicacion_evidencia, { revision: 0 }); assert.equal(wrong.rows[0].metadata, undefined); assert.ok(wrong.effects.some(([key]) => key === 'error'));
 });
 test('checklist remains planning-only; context-invalid success/error cleans original busy but never paints check or story publication', async () => {
   for (const fail of [false, true]) {
