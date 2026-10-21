@@ -3,10 +3,19 @@ import { isValidProductionDate } from './production-visits.js';
 const fail=message=>Object.assign(new Error(message),{status:409});
 const positive=n=>Number.isSafeInteger(n)&&n>0&&n<=2147483647;
 
+export async function findProductionAdoptedEditingTasks(db,visitId) {
+  const rows=(await db.query(`SELECT a.tarea_edicion_id FROM produccion_edicion_adopciones a
+    JOIN produccion_reconciliaciones r ON r.id=a.reconciliacion_id WHERE r.visita_id=$1
+    UNION SELECT m.tarea_edicion_id FROM produccion_lote_edicion_mapeos m WHERE m.visita_id=$1
+    ORDER BY tarea_edicion_id`,[visitId])).rows;
+  if(rows.some(row=>!positive(row.tarea_edicion_id)))throw fail('No se pudo verificar el conjunto de ediciones originales.');
+  return [...new Set(rows.map(row=>row.tarea_edicion_id))].sort((a,b)=>a-b);
+}
+
+// Compatibility helper only; operational callers use the complete ordered set.
 export async function findProductionAdoptedEditingTask(db,visitId) {
-  const row=(await db.query(`SELECT a.tarea_edicion_id FROM produccion_edicion_adopciones a
-    JOIN produccion_reconciliaciones r ON r.id=a.reconciliacion_id WHERE r.visita_id=$1`,[visitId])).rows[0];
-  return positive(row?.tarea_edicion_id)?row.tarea_edicion_id:null;
+  const ids=await findProductionAdoptedEditingTasks(db,visitId);
+  return ids.length===1?ids[0]:null;
 }
 
 // Caller holds the objective-link advisory and both task locks in ID order.

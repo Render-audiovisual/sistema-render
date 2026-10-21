@@ -37,6 +37,9 @@ test('a mapped existing child permits only matching reviewed lineage and an inta
   const source={propiedades_extra:{produccion_registros:[{cantidad:2}]}};
   const visit={id:'visit',tarea_origen_id:7};let childRows=[{id:99}],mapped=true,reviewed=true;
   const db={async query(sql,values){
+    if(sql.startsWith('SELECT l.id,l.visita_id,l.tarea_origen_id,l.source_history_hash,')){
+      assert.deepEqual(values,['video']);return{rows:[]};
+    }
     if(sql.startsWith('SELECT id FROM tareas'))return{rows:childRows};
     if(sql.includes('FROM produccion_edicion_adopciones')){
       assert.deepEqual(values,['video','visit',7,99]);
@@ -54,7 +57,11 @@ test('a mapped existing child permits only matching reviewed lineage and an inta
 test('provenance requires exact reviewed video/source/visit and no aggregate child; unknown IDs do not grant access',async()=>{
   const source={propiedades_extra:{produccion_registros:[{cantidad:2}]}};
   const visit={id:'visit',tarea_origen_id:7};let child=false,hash=productionHistoryHash(source);const calls=[];
-  const db={async query(sql,values){calls.push({sql,values});return{rows:sql.includes("origen_visita_id")?(child?[{id:99}]:[]):hash?[{source_history_hash:hash}]:[]};}};
+  const db={async query(sql,values){calls.push({sql,values});
+    if(sql.startsWith('SELECT l.id,l.visita_id,l.tarea_origen_id,l.source_history_hash,')){
+      assert.equal(values.length,1);assert.ok(['video','other'].includes(values[0]));return{rows:[]};
+    }
+    return{rows:sql.includes("origen_visita_id")?(child?[{id:99}]:[]):hash?[{source_history_hash:hash}]:[]};}};
   assert.equal(await isReconciledProductionVideo(db,visit,source,null),false);assert.equal(calls.length,0);
   assert.equal(await isReconciledProductionVideo(db,visit,source,'video'),true);
   assert.deepEqual(calls.at(-1).values,['video','visit',7]);

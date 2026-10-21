@@ -132,7 +132,7 @@ test('actual writeVisit distinguishes saved ACK from readback and never falls ba
   const declaration=nodes(fn('ProductionsPage'),ts.isVariableDeclaration).find(n=>n.name.getText(ast)==='writeVisit');
   for(const confirmed of [true,false]){
     let sends=0;
-    const write=evaluate(declaration.initializer,{writeLock:{current:false},setBusy(){},setNotice(){},setReload(){},
+    const write=evaluate(declaration.initializer,{writeLock:{current:false},batchDraft:{current:{dirty:false,busy:false}},setBusy(){},setNotice(){},setReload(){},
       productionWrite:async()=>{sends++;return confirmed?{visita:aggregate(2)}:{id:'video-only'}},
       refreshVisit:async()=>{throw new Error('readback unavailable')},positiveId:Number.isSafeInteger,visitDTO:value=>value?.visita||value});
     await assert.rejects(write(aggregate(),'/videos','POST',{}),error=>{assert.equal(error.productionSaved,confirmed);assert.match(error.message,/No repitas/);return true});

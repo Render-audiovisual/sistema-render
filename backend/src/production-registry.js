@@ -6,7 +6,7 @@ import { annotateTaskAssignments, replaceTaskAssignments } from './task-assignme
 import { taskOperationalDto } from './operational-dto.js';
 import { productionEditorialConflict } from './production-link-errors.js';
 import { registerProductionReconciliationRoutes } from './production-reconciliation.js';
-import { findProductionAdoptedEditingTask } from './production-editing-adoption.js';
+import { findProductionAdoptedEditingTasks } from './production-editing-adoption.js';
 import { registerProductionEditorialRoutes, lockProductionEditorialContext, lockProductionObjectiveLinks, rejectLegacyProductionSource, hasLegacyProductionSource, assertProductionLineageAvailable } from './production-editorial.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -77,7 +77,8 @@ export function validateProductionItem(body, kind, { partial = false, reuse = fa
 
 const VISITS = `SELECT v.id,v.tarea_origen_id,v.cliente_id,c.nombre cliente_nombre,
   to_char(v.fecha,'YYYY-MM-DD') fecha,v.titulo,v.observaciones,v.drive_url,v.revision,
-  EXISTS(SELECT 1 FROM produccion_reconciliaciones r WHERE r.visita_id=v.id) contexto_historico_revisado,
+  (EXISTS(SELECT 1 FROM produccion_reconciliaciones r WHERE r.visita_id=v.id)
+    OR EXISTS(SELECT 1 FROM produccion_revision_lotes b WHERE b.visita_id=v.id)) contexto_historico_revisado,
   ARRAY(SELECT p.usuario_id FROM produccion_visita_participantes p WHERE p.visita_id=v.id ORDER BY p.usuario_id) participante_ids
   FROM produccion_visitas v JOIN clientes c ON c.id=v.cliente_id`;
 const VIDEOS = `SELECT pv.id,pv.visita_id,pv.video_origen_id,pv.titulo,pv.guion,pv.estado,pv.material_url,pv.observaciones,
@@ -131,16 +132,17 @@ async function sourceTask(db, id, { available = true } = {}) {
 async function lockVisit(db, id) {
   const link = (await db.query('SELECT tarea_origen_id FROM produccion_visitas WHERE id=$1', [id])).rows[0];
   if (!link) throw fail('Visita no encontrada.', 404);
-  const adoptedTaskId=await findProductionAdoptedEditingTask(db,id);
-  if(adoptedTaskId) {
-    await lockProductionObjectiveLinks(db);
-    const ids=[...new Set([link.tarea_origen_id,adoptedTaskId].filter(positive))].sort((a,b)=>a-b);
-    await db.query('SELECT id FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',[ids]);
-    if(await findProductionAdoptedEditingTask(db,id)!==adoptedTaskId)throw fail('La correspondencia histórica cambió. Recargá la visita.',409);
-  }
+  // Every writer takes the same domain before discovery: a new batch may add
+  // another original mapping even when the earlier set was empty.
+  await lockProductionObjectiveLinks(db);
+  const adoptedTaskIds=await findProductionAdoptedEditingTasks(db,id);
+  const ids=[...new Set([link.tarea_origen_id,...adoptedTaskIds].filter(positive))].sort((a,b)=>a-b);
+  if(ids.length)await db.query('SELECT id FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE',[ids]);
+  if(JSON.stringify(await findProductionAdoptedEditingTasks(db,id))!==JSON.stringify(adoptedTaskIds))throw fail('La correspondencia histórica cambió. Recargá la visita.',409);
   if (link.tarea_origen_id) await sourceTask(db, link.tarea_origen_id, { available: false });
   const row = (await db.query(`${VISITS} WHERE v.id=$1 FOR UPDATE OF v`, [id])).rows[0];
   if (!row) throw fail('Visita no encontrada.', 404);
+  if(row.tarea_origen_id!==link.tarea_origen_id)throw fail('El origen de la visita cambió. Recargá sus datos.',409);
   return row;
 }
 function checkRevision(visit, expected) { if (visit.revision !== expected) throw fail('La visita cambió. Recargá su revisión.', 409); }
@@ -240,7 +242,8 @@ export function createProductionRegistryRouter({ express, pool }) {
       const current=await lockVisit(db,id);checkRevision(current,req.body.expected_revision);
       const changedReviewedDimensions=(own(input,'cliente_id')&&input.cliente_id!==current.cliente_id)
         ||(own(input,'fecha')&&input.fecha!==current.fecha);
-      if(changedReviewedDimensions&&(await db.query('SELECT id FROM produccion_reconciliaciones WHERE visita_id=$1',[id])).rows.length) {
+      if(changedReviewedDimensions&&(await db.query(`SELECT id FROM produccion_reconciliaciones WHERE visita_id=$1
+        UNION ALL SELECT id FROM produccion_revision_lotes WHERE visita_id=$1 LIMIT 1`,[id])).rows.length) {
         throw fail('La fecha y el cliente de una conciliación histórica requieren una nueva revisión explícita.',409);
       }
       if (own(input,'cliente_id')) {
@@ -311,6 +314,10 @@ export function createProductionRegistryRouter({ express, pool }) {
       if((video.publicacion_id??null)!==(discovered.publicacion_id??null) || (video.tarea_entrega_id??null)!==(discovered.tarea_entrega_id??null)) throw fail('El vínculo editorial cambió. Recargá la visita.',409);
       if(video.tarea_edicion_id) {
         if(video.editor_id!==req.body.editor_id||video.fecha_entrega!==req.body.fecha_entrega) throw fail('El video ya fue enviado con otro editor o fecha.',409);
+        if(visit.tarea_origen_id){
+          const source=context?.source ?? await sourceTask(db,visit.tarea_origen_id,{available:false});
+          await rejectLegacyProductionSource(db,visit,source,video.id);
+        }
         const task=(await db.query("SELECT t.*,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento FROM tareas t WHERE t.id=$1",[video.tarea_edicion_id])).rows[0];
         if(!task) throw fail('Tarea vinculada no disponible.',404);
         return {created:false,task:taskOperationalDto((await annotateTaskAssignments(db,[task]))[0],req.auth),visita:(await readVisits(db,'WHERE v.id=$1',[id]))[0]};

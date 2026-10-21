@@ -1,6 +1,7 @@
 import { isValidProductionDate } from './production-visits.js';
 import { isReconciledProductionVideo } from './production-history.js';
-import { findProductionAdoptedEditingTask } from './production-editing-adoption.js';
+import { findProductionAdoptedEditingTasks } from './production-editing-adoption.js';
+import { productionBatchCandidateProvenance } from './production-batch-evidence.js';
 
 const fail = (message, status = 409) => Object.assign(new Error(message), { status });
 const positive = value => Number.isSafeInteger(value) && value > 0;
@@ -36,7 +37,8 @@ export async function rejectLegacyProductionSource(db, visit, source, videoId = 
   // intentionally remains unchanged for source synchronization callers.
   const requiresReview = await hasLegacyProductionSource(db, visit.tarea_origen_id, source)
     || (visit.tarea_origen_id != null && (await db.query(
-      'SELECT id FROM produccion_reconciliaciones WHERE visita_id=$1 AND tarea_origen_id=$2 LIMIT 1',
+      `SELECT id FROM produccion_reconciliaciones WHERE visita_id=$1 AND tarea_origen_id=$2
+       UNION ALL SELECT id FROM produccion_revision_lotes WHERE visita_id=$1 AND tarea_origen_id=$2 LIMIT 1`,
       [visit.id, visit.tarea_origen_id],
     )).rows.length > 0);
   if (requiresReview) {
@@ -70,9 +72,10 @@ export async function lockProductionEditorialContext(db, visitId, videoId, selec
   if (slots.length > 1) throw fail('La tarea y la pieza pertenecen a casilleros diferentes.');
   const discovered = slots[0];
   if (discovered) await db.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`objetivo:${discovered.periodo}:${discovered.clave}`]);
-  const adoptedTaskId=await findProductionAdoptedEditingTask(db,visitId);
-  const ids = [...new Set([before.tarea_origen_id, before.tarea_edicion_id, before.tarea_entrega_id, taskId, discovered?.tarea_id, adoptedTaskId].filter(positive))].sort((a,b) => a-b);
+  const adoptedTaskIds=await findProductionAdoptedEditingTasks(db,visitId);
+  const ids = [...new Set([before.tarea_origen_id, before.tarea_edicion_id, before.tarea_entrega_id, taskId, discovered?.tarea_id, ...adoptedTaskIds].filter(positive))].sort((a,b) => a-b);
   const tasks = (await db.query('SELECT t.* FROM tareas t WHERE t.id=ANY($1::int[]) ORDER BY t.id FOR UPDATE', [ids])).rows;
+  if(JSON.stringify(await findProductionAdoptedEditingTasks(db,visitId))!==JSON.stringify(adoptedTaskIds))throw fail('Las ediciones históricas cambiaron. Recargá la visita.');
   const publication = publicationId ? (await db.query(`${PUBLICATION} WHERE p.id=$1 FOR UPDATE OF p`, [publicationId])).rows[0] : null;
   const slot = discovered ? (await db.query(`${SLOT} WHERE s.id=$1 FOR UPDATE OF s`, [discovered.id])).rows[0] : null;
   const visit = await lockVisit(db, visitId);
@@ -130,11 +133,11 @@ export async function associateProductionEditorial(db, visitId, videoId, body, a
   const context = await lockProductionEditorialContext(db, visitId, videoId, body, deps);
   const { visit,video,task,slot } = context;
   let { publication } = context;
-  await rejectLegacyProductionSource(db, visit, context.source, video.id);
   await assertProductionLineageAvailable(db, video.id);
   const result = async created => ({ visita: (await deps.readVisits(db,'WHERE v.id=$1',[visit.id]))[0],
     publicacion_id: publication.id, tarea_id: task.id, objetivo_pieza_id: slot?.id ?? null, created });
   if (video.publicacion_id) {
+    await rejectLegacyProductionSource(db, visit, context.source, video.id);
     if (video.tarea_entrega_id !== body.tarea_id || (!emptySlot && video.publicacion_id !== body.publicacion_id)
       || (slot?.id ?? null) !== (body.objetivo_pieza_id ?? null) || !publication || !task
       || (emptySlot && publication.fecha_programada !== body.fecha_programada)) throw fail('El video ya tiene otro vínculo.');
@@ -165,6 +168,10 @@ export async function associateProductionEditorial(db, visitId, videoId, body, a
   }
   await db.query(`UPDATE produccion_videos SET publicacion_id=$3,tarea_entrega_id=$4,cliente_editorial_id=$5,
     actualizado_por_id=$6,updated_at=now() WHERE id=$1 AND visita_id=$2`, [video.id,visit.id,publication.id,task.id,visit.cliente_id,actorId]);
+  // Validate the actual locked canonical tuple, not a hypothetical exception.
+  // The caller owns the transaction: an invalid historical proof rolls back
+  // this association and any empty-slot publication created above together.
+  await rejectLegacyProductionSource(db, visit, context.source, video.id);
   await deps.bump(db,visit.id,actorId);
   return result(emptySlot);
 }
@@ -179,8 +186,11 @@ export async function productionEditorialCandidates(db, visitId, videoId, month)
     ...(actualSlot ? {objetivo_pieza_id:actualSlot.id} : {})} : null;
   if (actual) return {actual,publicaciones:[],casilleros:[]};
   await assertProductionLineageAvailable(db,videoId);
-  const source = current.tarea_origen_id ? (await db.query('SELECT propiedades_extra FROM tareas WHERE id=$1',[current.tarea_origen_id])).rows[0] : null;
-  await rejectLegacyProductionSource(db,{id:visitId,tarea_origen_id:current.tarea_origen_id},source,videoId);
+  const source = current.tarea_origen_id ? (await db.query('SELECT id,cliente_id,propiedades_extra FROM tareas WHERE id=$1',[current.tarea_origen_id])).rows[0] : null;
+  const provenanceVisit={id:visitId,tarea_origen_id:current.tarea_origen_id};
+  const provenance=await productionBatchCandidateProvenance(db,provenanceVisit,source,videoId);
+  if(provenance===false)throw fail('El expediente histórico cambió. Revisá las correspondencias antes de vincular.');
+  if(provenance===null)await rejectLegacyProductionSource(db,provenanceVisit,source,videoId);
   const publications = (await db.query(`SELECT p.id publicacion_id,p.idea titulo,to_char(p.fecha_programada,'YYYY-MM-DD') fecha_programada,
     p.updated_at publicacion_updated_at,t.id tarea_id,t.revision tarea_revision,s.id objetivo_pieza_id,s.updated_at objetivo_updated_at,
     to_char(o.periodo,'YYYY-MM') periodo FROM publicaciones p JOIN tareas t ON t.publicacion_id=p.id

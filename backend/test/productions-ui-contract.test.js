@@ -173,7 +173,7 @@ test('editing video pending/repeat preserves guion in actual form submit payload
 test('confirmed ACK plus failed readback reports saved recovery and blocks duplicate registration',async()=>{
   const body=section('  const writeVisit = async', '  const createVisit = async');
   let writes=0;const messages=[];const busy=[];
-  const context={writeLock:{current:false},setBusy:value=>busy.push(value),setNotice:value=>messages.push(value),
+  const context={writeLock:{current:false},batchDraft:{current:{dirty:false,busy:false}},setBusy:value=>busy.push(value),setNotice:value=>messages.push(value),
     productionWrite:async()=>{writes++;return {visita:{...visit,revision:8}};},refreshVisit:async()=>{throw Error('offline');},setReload:()=>{},
     visitDTO:value=>value?.visita||value,positiveId:helpers.positiveId};
   const write=new Function(...Object.keys(context),`${body}\nreturn writeVisit;`)(...Object.values(context));

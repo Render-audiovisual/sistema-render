@@ -58,12 +58,13 @@ export function fixtureWilsonEnvironment(config = {}) {
   return result;
 }
 
-export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, deferProductionCreateReceiptsMigration = false, deferTaskBoardOrderMigration = false, deferGoalQuotaReviewMigration = false, wilson = {} } = {}) {
+export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, deferProductionCreateReceiptsMigration = false, deferTaskBoardOrderMigration = false, deferGoalQuotaReviewMigration = false, deferProductionHistoryBatchMigration = false, wilson = {} } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   if (typeof deferUserAdminMigration !== 'boolean') throw new Error('Invalid account observation migration fixture option');
   if (typeof deferProductionCreateReceiptsMigration !== 'boolean') throw new Error('Invalid production creation receipt migration fixture option');
   if (typeof deferTaskBoardOrderMigration !== 'boolean') throw new Error('Invalid task board order migration fixture option');
   if (typeof deferGoalQuotaReviewMigration !== 'boolean') throw new Error('Invalid goal quota review migration fixture option');
+  if (typeof deferProductionHistoryBatchMigration !== 'boolean') throw new Error('Invalid production batch migration fixture option');
   if (typeof supervisorEnabled !== 'boolean') throw new Error('Invalid supervisor fixture option');
   if (typeof clusterOnly !== 'boolean') throw new Error('Invalid cluster-only fixture option');
   if (typeof browserSessions !== 'boolean') throw new Error('Invalid browser-session fixture option');
@@ -122,6 +123,7 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
         RENDER2_DEFER_PRODUCTION_CREATE_RECEIPTS_MIGRATION: String(deferProductionCreateReceiptsMigration),
         RENDER2_DEFER_TASK_BOARD_ORDER_MIGRATION: String(deferTaskBoardOrderMigration),
         RENDER2_DEFER_GOAL_QUOTA_REVIEW_MIGRATION: String(deferGoalQuotaReviewMigration),
+        RENDER2_DEFER_PRODUCTION_HISTORY_BATCH_MIGRATION: String(deferProductionHistoryBatchMigration),
         RENDER2_DEFER_ASSIGNMENT_MIGRATION: String(deferAssignmentMigration),
         RENDER2_DEFER_TASK_STATE_MIGRATION: String(deferTaskStateMigration),
         RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION: String(deferProductionRegistryMigration),
@@ -239,6 +241,9 @@ async function fixtureChild() {
   // the test snapshots populated rows and applies the actual forward SQL.
   // No migration ledger entry is forged; all other baseline files run normally.
   const deferredMigrations = [
+    ...(['RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION','RENDER2_DEFER_PRODUCTION_EDITORIAL_MIGRATION',
+      'RENDER2_DEFER_PRODUCTION_HISTORY_BATCH_MIGRATION'].some(key => process.env[key] === 'true')
+      ? ['078_production_history_batches.sql'] : []),
     ...(['RENDER2_DEFER_GOAL_MIGRATION','RENDER2_DEFER_GOAL_QUOTA_REVIEW_MIGRATION']
       .some(key => process.env[key] === 'true') ? ['077_goal_quota_reviews.sql'] : []),
     ...(process.env.RENDER2_DEFER_TASK_BOARD_ORDER_MIGRATION === 'true' ? ['076_task_board_order.sql'] : []),

@@ -1,21 +1,11 @@
-import { createHash } from 'node:crypto';
-
-function canonical(value) {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value !== null && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key,canonical(value[key])]));
-  return value;
-}
-
-// Only historical production evidence; ordinary title/priority edits do not
-// invalidate review. Never return or copy arbitrary task metadata into a DTO.
-export function productionHistoryHash(source) {
-  const properties = source?.propiedades_extra || {};
-  const history = Object.fromEntries(Object.keys(properties).filter(key => key.startsWith('produccion_')).sort().map(key => [key,properties[key]]));
-  return createHash('sha256').update(JSON.stringify(canonical(history))).digest('hex');
-}
+import { productionHistoryHash } from './production-history-hash.js';
+import { productionBatchVideoEvidence } from './production-batch-evidence.js';
+export { productionHistoryHash } from './production-history-hash.js';
 
 export async function isReconciledProductionVideo(db, visit, source, videoId) {
   if (!videoId || !visit?.tarea_origen_id || !source) return false;
+  const batch = await productionBatchVideoEvidence(db,visit,source,videoId);
+  if (batch !== null) return batch;
   // A later/unmapped aggregate editing child cannot inherit this review.
   const children=(await db.query("SELECT id FROM tareas WHERE propiedades_extra->>'origen_visita_id'=$1 ORDER BY id LIMIT 2",[String(visit.tarea_origen_id)])).rows;
   if(children.length>1)return false;

@@ -3,6 +3,7 @@ import { isProductionVisitTask, isValidProductionDate } from './production-visit
 import { hasLegacyProductionSource } from './production-editorial.js';
 import { productionHistoryHash } from './production-history.js';
 import { prepareProductionEditingAdoption, persistProductionEditingAdoption } from './production-editing-adoption.js';
+import { readProductionHistoryBatchContext, reconcileProductionHistoryBatch } from './production-history-batches.js';
 
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const positive=n=>Number.isSafeInteger(n)&&n>0&&n<=2147483647;
@@ -184,6 +185,10 @@ export async function readProductionReconciliationContext(pool,auth,rawSourceId,
 }
 
 export function registerProductionReconciliationRoutes(router,{pool,handle}) {
+  router.get('/reconciliaciones/lotes/origen/:sourceId',handle(async(req,res)=>{
+    res.set('Cache-Control','no-store');
+    return res.json(await readProductionHistoryBatchContext(pool,req.auth,req.params.sourceId,req.query??{}));
+  }));
   router.get('/reconciliaciones/origen/:sourceId',handle(async(req,res)=>{
     res.set('Cache-Control','no-store');
     return res.json(await readProductionReconciliationContext(pool,req.auth,req.params.sourceId,req.query??{}));
@@ -191,7 +196,8 @@ export function registerProductionReconciliationRoutes(router,{pool,handle}) {
   router.post('/reconciliaciones',handle(async(req,res)=>{
     res.set('Cache-Control','no-store');
     if(Object.keys(req.query??{}).length)throw fail('La conciliación no acepta filtros de identidad.');
-    const value=await reconcileProductionHistory(pool,req.auth,req.body);
+    const value=req.body?.version===2 ? await reconcileProductionHistoryBatch(pool,req.auth,req.body)
+      : await reconcileProductionHistory(pool,req.auth,req.body);
     return res.status(value.created?201:200).json(value);
   }));
 }

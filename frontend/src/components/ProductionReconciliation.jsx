@@ -1,8 +1,9 @@
-import React,{useEffect,useRef,useState}from 'react';
+import React,{useCallback,useEffect,useRef,useState}from 'react';
 import {apiRequest}from '../features/render-os/services/render-os-api.js';
 import {getSesion}from '../utils.jsx';
 import {useSessionView}from '../shared/session/use-session-view.js';
 import {DiscardChangesDialog}from './DiscardChangesDialog.jsx';
+import {ProductionHistoryBatchReview}from './ProductionHistoryBatchReview.jsx';
 import {createProductionReconciliationModel,emptyReconciliationVideo,reconciliationAdoptionTask}from './productionReconciliation.js';
 import './ProductionReconciliation.css';
 
@@ -19,17 +20,20 @@ export function ProductionReconciliation(props){
 function ReconciliationForm({taskId,sesion,users=[],onDraftStateChange,onSaved,disabled=false,available=true,request=apiRequest}){
   const [state,setState]=useState({phase:'closed',busy:false,dirty:false});
   const [discard,setDiscard]=useState(false);
+  const [batchState,setBatchState]=useState({dirty:false,busy:false}),batchRef=useRef(batchState),stateRef=useRef(state);
+  stateRef.current=state;
   const model=useRef(null),callback=useRef(onDraftStateChange),saved=useRef(onSaved),disabledRef=useRef(disabled),notified=useRef(null);
-  callback.current=onDraftStateChange;saved.current=onSaved;disabledRef.current=disabled;
+  callback.current=onDraftStateChange;saved.current=onSaved;disabledRef.current=disabled||batchState.dirty||batchState.busy;
+  const reportBatch=useCallback(next=>{batchRef.current=next;setBatchState(next);callback.current?.({dirty:stateRef.current.dirty||next.dirty,busy:stateRef.current.busy||next.busy});},[]);
   useEffect(()=>{const instance=createProductionReconciliationModel({taskId,sesion,request,readSession:getSesion,onChange:setState,canAct:()=>!disabledRef.current});
     model.current=instance;return()=>{instance.dispose();callback.current?.({dirty:false,busy:false});if(model.current===instance)model.current=null;};},[taskId,request,sesion]);
-  useEffect(()=>{callback.current?.({dirty:state.dirty,busy:state.busy});},[state.dirty,state.busy]);
+  useEffect(()=>{callback.current?.({dirty:state.dirty||batchRef.current.dirty,busy:state.busy||batchRef.current.busy});},[state.dirty,state.busy]);
   useEffect(()=>{if(state.phase==='saved'&&notified.current!==state.result.reconciliation_id){notified.current=state.result.reconciliation_id;saved.current?.(state.result);}},[state.phase,state.result]);
   const context=state.context,draft=state.draft;
   const adoptionTask=reconciliationAdoptionTask(context);
   const update=changes=>model.current?.update(changes);
   const videoChange=(index,field,value)=>update({videos:draft.videos.map((v,n)=>n===index?{...v,[field]:value}:v)});
-  const close=()=>{if(state.dirty)setDiscard(true);else model.current?.cancel();};
+  const close=()=>{if(state.busy||batchRef.current.busy)return;if(state.dirty||batchRef.current.dirty)setDiscard(true);else model.current?.cancel();};
   if(state.phase==='closed'&&!available)return null;
   return <section className="ros-work-block ros-reconciliation" aria-label="Revisión de producción histórica">
     <h3>Producción histórica</h3>
@@ -55,14 +59,15 @@ function ReconciliationForm({taskId,sesion,users=[],onDraftStateChange,onSaved,d
               {' · '}{legacyTaskStateLabel(task.estado)}
             </li>)}</ul>
           </div>}
+          {['legacy_editing','already_linked'].includes(context.eligibility.status)&&<ProductionHistoryBatchReview sourceId={taskId} sesion={sesion} users={users} request={request} disabled={disabled||state.busy||state.dirty} onDraftStateChange={reportBatch} onSaved={result=>saved.current?.(result)}/>}
         </>:null}
         {draft&&state.phase!=='saved'&&(context.eligibility.status==='ready'||adoptionTask)&&<>
-          {adoptionTask&&<fieldset disabled={state.busy||state.frozen||disabled}>
+          {adoptionTask&&<fieldset disabled={state.busy||state.frozen||disabled||batchState.dirty||batchState.busy}>
             <label><input type="checkbox" checked={draft.adoption_enabled} onChange={e=>update({adoption_enabled:e.target.checked,adoption_acknowledged:false})}/>Vincular edición existente a un solo video</label>
             <p>Solo si esta tarea corresponde a un único video; si agrupa varios no usar.</p>
           </fieldset>}
           {(context.eligibility.status==='ready'||draft.adoption_enabled===true)&&<form onSubmit={event=>{event.preventDefault();void model.current?.submit();}}>
-          <fieldset disabled={state.busy||state.frozen||disabled}>
+          <fieldset disabled={state.busy||state.frozen||disabled||batchState.dirty||batchState.busy}>
             <label>Nombre de la visita<input maxLength={250} value={draft.titulo} onChange={e=>update({titulo:e.target.value})}/></label>
             <label>Carpeta de material<input inputMode="url" placeholder="https://drive.google.com/…" maxLength={4000} value={draft.drive_url} onChange={e=>update({drive_url:e.target.value})}/></label>
             <details><summary>Participantes y observaciones</summary>
@@ -92,8 +97,8 @@ function ReconciliationForm({taskId,sesion,users=[],onDraftStateChange,onSaved,d
         </>}
       </>}
       {state.phase==='saved'&&<p role="status">Revisión guardada. <a href={`/producciones?visita=${state.result.visita_id}`}>Abrir visita en Producciones ↗</a></p>}
-      <button type="button" disabled={state.busy||disabled} onClick={close}>Cerrar revisión</button>
+      <button type="button" disabled={state.busy||batchState.busy||disabled} onClick={close}>Cerrar revisión</button>
     </>}
-    <DiscardChangesDialog open={discard} busy={state.busy} onKeepEditing={()=>setDiscard(false)} onDiscard={()=>{setDiscard(false);model.current?.cancel();}}/>
+    <DiscardChangesDialog open={discard} busy={state.busy||batchState.busy} onKeepEditing={()=>setDiscard(false)} onDiscard={()=>{setDiscard(false);model.current?.cancel();}}/>
   </section>;
 }

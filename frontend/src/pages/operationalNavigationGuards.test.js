@@ -36,7 +36,7 @@ function sectionHarness(win) {
 }
 
 test('both pages register live dirty/busy getters and remove duplicate unload/custom guards', () => {
-  assert.match(production, /useNavigationGuard\(\(\) => \(\{ dirty: dirty.current.size > 0, busy: writeLock.current \}\)\)/);
+  assert.match(production, /useNavigationGuard\(\(\) => \(\{ dirty: dirty.current.size > 0, busy: writeLock.current\|\|batchDraft.current.busy \}\)\)/);
   assert.match(feedback, /useNavigationGuard\(\(\) => \(\{ dirty, busy: lock.current \}\)\)/);
   for (const source of [production, feedback]) {
     assert.doesNotMatch(source, /addEventListener\(['"]beforeunload|addEventListener\(['"]render:before-navigation/);
@@ -45,12 +45,14 @@ test('both pages register live dirty/busy getters and remove duplicate unload/cu
 });
 
 test('production getter reads mutable set/write lock at navigation time without clearing either', () => {
-  const expression = /useNavigationGuard\((\(\) => \(\{ dirty: dirty.current.size > 0, busy: writeLock.current \}\))\)/.exec(production)[1];
-  const dirty = { current: new Set() }, writeLock = { current: false };
-  const getter = Function('dirty', 'writeLock', `return ${expression};`)(dirty, writeLock);
+  const expression = /useNavigationGuard\((\(\) => \(\{ dirty: dirty.current.size > 0, busy: writeLock.current\|\|batchDraft.current.busy \}\))\)/.exec(production)[1];
+  const dirty = { current: new Set() }, writeLock = { current: false }, batchDraft = { current: {busy:false} };
+  const getter = Function('dirty', 'writeLock', 'batchDraft', `return ${expression};`)(dirty, writeLock, batchDraft);
   assert.deepEqual(getter(), { dirty: false, busy: false }); dirty.current.add('video'); writeLock.current = true;
   assert.deepEqual(getter(), { dirty: true, busy: true }); assert.equal(dirty.current.size, 1);
   writeLock.current = false; assert.deepEqual(getter(), { dirty: true, busy: false });
+  batchDraft.current.busy = true; assert.deepEqual(getter(), { dirty: true, busy: true });
+  assert.equal(dirty.current.size,1); assert.equal(writeLock.current,false);
 });
 
 test('feedback getter uses current render dirty and synchronous current write lock', () => {
@@ -139,11 +141,12 @@ test('production committed popstate restoration does not prompt or roll back the
 
 test('production local controls retain one explicit confirmation and busy denies without discard', () => {
   const source = /  const mayLeave = ([^\n]+);/.exec(production)[1];
-  const dirty = { current: new Set(['draft']) }, writeLock = { current: false }; let asks = 0, answer = false;
-  const mayLeave = Function('window', 'dirty', 'writeLock', `return ${source};`)({ confirm() { asks++; return answer; } }, dirty, writeLock);
+  const dirty = { current: new Set(['draft']) }, writeLock = { current: false }, batchDraft = { current: {busy:false} }; let asks = 0, answer = false;
+  const mayLeave = Function('window', 'dirty', 'writeLock', 'batchDraft', `return ${source};`)({ confirm() { asks++; return answer; } }, dirty, writeLock, batchDraft);
   assert.equal(mayLeave(), false); assert.equal(dirty.current.size, 1); assert.equal(asks, 1);
   writeLock.current = true; assert.equal(mayLeave(), false); assert.equal(asks, 1); assert.equal(dirty.current.size, 1);
-  writeLock.current = false; answer = true; assert.equal(mayLeave(), true); assert.equal(dirty.current.size, 0); assert.equal(asks, 2);
+  writeLock.current = false; batchDraft.current.busy=true; assert.equal(mayLeave(),false);assert.equal(asks,1);assert.equal(dirty.current.size,1);
+  batchDraft.current.busy=false; answer = true; assert.equal(mayLeave(), true); assert.equal(dirty.current.size, 0); assert.equal(asks, 2);
   assert.match(production, /if\(!selected && !mayLeave\(\)\) return;/);
 });
 

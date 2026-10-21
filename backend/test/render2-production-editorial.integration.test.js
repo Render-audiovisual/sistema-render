@@ -88,6 +88,17 @@ test('production editorial: canonical delivery identity and atomic association',
     await fixture.query('INSERT INTO _migrations(nombre) VALUES ($1)', [names[0]]);
     await fixture.query(await readFile(new URL('../migrations/063_projects.sql', import.meta.url), 'utf8'));
     await fixture.query("INSERT INTO _migrations(nombre) VALUES ('063_projects.sql')");
+    // The harness also defers 078 until the real 060 forward SQL has run.
+    // Preserve the original 060 column/history assertions above unchanged.
+    assert.deepEqual(await fixture.query("SELECT nombre FROM _migrations WHERE nombre='078_production_history_batches.sql'"), []);
+    const beforeBatches = await snapshot();
+    await fixture.query(await readFile(new URL('../migrations/078_production_history_batches.sql', import.meta.url), 'utf8'));
+    await fixture.query("INSERT INTO _migrations(nombre) VALUES ('078_production_history_batches.sql')");
+    assert.deepEqual(await snapshot(), beforeBatches, '078 must preserve populated task, editorial, goal and registry history');
+    for (const table of ['produccion_revision_lotes', 'produccion_lote_edicion_mapeos',
+      'produccion_revision_lote_videos', 'produccion_revision_lote_hijos']) {
+      assert.deepEqual(await fixture.query(`SELECT count(*)::int AS count FROM ${table}`), [{ count: 0 }]);
+    }
   });
   const readVisit = async id => ok(await api(`/producciones/${id}`, undefined, admin, 'GET')).visita;
   const video = async () => {

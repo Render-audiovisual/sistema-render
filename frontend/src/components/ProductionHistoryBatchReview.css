@@ -1,0 +1,19 @@
+.production-history-batch-review{min-width:0;margin:20px 0;padding:16px;border:1px solid var(--render-line,#dde2d7);border-radius:10px;background:var(--render-surface,#fff);color:var(--render-ink,#202419);font:inherit;font-size:13px}
+.production-history-batch-review :is(p,dd,span,a){overflow-wrap:anywhere;line-height:1.6}
+.production-history-batch-review p{color:var(--render-muted,#687062)}
+.production-history-batch-review fieldset{display:grid;gap:16px;min-width:0;margin:16px 0;padding:0;border:0}
+.production-history-batch-review :is(section,details,form){min-width:0}
+.production-history-batch-review label{display:grid;gap:6px;min-width:0;font-size:13px}
+.production-history-batch-review :is(input:not([type=checkbox]),select,textarea){box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:10px 12px;border:1px solid var(--render-line,#dde2d7);border-radius:8px;background:var(--render-surface,#fff);color:var(--render-ink,#202419);font:inherit}
+.production-history-batch-review textarea{resize:vertical;line-height:1.5}
+.production-history-batch-review button{box-sizing:border-box;max-width:100%;min-height:44px;padding:10px 12px;border:1px solid var(--render-line,#dde2d7);border-radius:8px;background:var(--render-surface,#fff);color:var(--render-ink,#202419);font:inherit;font-size:13px;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
+.production-history-batch-review button:disabled{opacity:.55;cursor:default}
+.production-history-batch-review summary{min-height:44px;align-content:center;cursor:pointer}
+.production-history-batch-review dd{margin:4px 0 16px;white-space:pre-wrap}
+.production-history-batch-review .production-history-check,.production-history-batch-review .production-history-people label{display:flex;gap:8px;align-items:flex-start;min-height:44px;padding:6px 0}
+.production-history-batch-review input[type=checkbox]{width:18px;height:18px;flex-shrink:0;margin-top:3px}
+.production-history-card{display:grid;gap:12px;min-width:0;margin:12px 0;padding:16px;border:1px solid var(--render-line,#dde2d7);border-radius:10px}
+.production-history-card header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.production-history-card h4{margin:0;font-size:14px;overflow-wrap:anywhere}
+.production-history-batch-review :is(input,select,textarea,button,summary):focus-visible{outline:2px solid var(--render-accent,#556b42);outline-offset:3px}
+@media(max-width:600px){.production-history-batch-review,.production-history-card{padding:12px}.production-history-card header button{width:100%}}

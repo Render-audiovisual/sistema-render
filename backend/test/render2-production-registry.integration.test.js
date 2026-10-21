@@ -127,6 +127,19 @@ test('production registry: historical invariance and real per-video HTTP workflo
     await fixture.query("INSERT INTO _migrations(nombre) VALUES ('070_production_editing_adoptions.sql')");
     assert.deepEqual(await history(), beforeAdoptions, '070 must preserve all populated historical rows and assignments');
     assert.deepEqual(await fixture.query('SELECT count(*)::int AS count FROM produccion_edicion_adopciones'), [{ count: 0 }]);
+    // 078 is deferred with 059/060. Only after their original invariance
+    // assertions may its forward SQL retire the legacy single-child index.
+    const batchTables = ['produccion_revision_lotes', 'produccion_lote_edicion_mapeos',
+      'produccion_revision_lote_videos', 'produccion_revision_lote_hijos'];
+    assert.deepEqual(await fixture.query("SELECT nombre FROM _migrations WHERE nombre='078_production_history_batches.sql'"), []);
+    const beforeBatches = await history();
+    const beforeRegistry = {};
+    for (const table of registryTables) beforeRegistry[table] = await fixture.query(`SELECT * FROM ${table}`);
+    await fixture.query(await readFile(new URL('../migrations/078_production_history_batches.sql', import.meta.url), 'utf8'));
+    await fixture.query("INSERT INTO _migrations(nombre) VALUES ('078_production_history_batches.sql')");
+    assert.deepEqual(await history(), beforeBatches, '078 must not rewrite existing historical rows, assignments or goals');
+    for (const table of registryTables) assert.deepEqual(await fixture.query(`SELECT * FROM ${table}`), beforeRegistry[table]);
+    for (const table of batchTables) assert.deepEqual(await fixture.query(`SELECT count(*)::int AS count FROM ${table}`), [{ count: 0 }]);
   });
   await t.test('task POST registers one visit with no inferred videos; task-only date/client writes and deletion reject', async () => {
     const [client] = await fixture.query("INSERT INTO clientes(nombre) VALUES ('QA source task client') RETURNING id");

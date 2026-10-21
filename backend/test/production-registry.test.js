@@ -24,6 +24,9 @@ function fixture({linked=true,legacy=false,wrongScope=false,failAssignments=fals
     if(sql.startsWith('SELECT tarea_origen_id FROM produccion_visitas'))return{rows:[{tarea_origen_id:visit.tarea_origen_id}]};
     if(sql.startsWith('SELECT a.tarea_edicion_id FROM produccion_edicion_adopciones'))return{rows:[]};
     if(sql.startsWith('SELECT r.source_history_hash'))return{rows:[]};
+    if(sql.startsWith('SELECT l.id,l.visita_id,l.tarea_origen_id,l.source_history_hash,')){
+      assert.deepEqual(params,[videoId]);return{rows:[]};
+    }
     if(sql.startsWith('SELECT id,cliente_id,to_char'))return{rows:linked?[{id:visitId,cliente_id:visit.cliente_id,fecha:visit.fecha}]:[]};
     if(sql.startsWith('SELECT v.cliente_id FROM produccion_videos'))return{rows:[]};
     if(sql.startsWith('SELECT id FROM produccion_reconciliaciones WHERE visita_id='))return{rows:[]};

@@ -28,6 +28,7 @@ function fixture(options={}) {
     if(sql.startsWith('WITH RECURSIVE familia'))return{rows:options.family?[{id:'ancestor'}]:[]};
     if(sql.startsWith('SELECT pv.*,v.tarea_origen_id')||sql.startsWith('SELECT pv.*,v.cliente_id'))return{rows:options.wrongScope?[]:[{...video,tarea_origen_id:10,cliente_id:1}]};
     if(sql.startsWith('SELECT t.* FROM tareas t WHERE'))return{rows:[source,task]};
+    if(sql==='SELECT id FROM tareas WHERE id=ANY($1::int[]) ORDER BY id FOR UPDATE')return{rows:params[0].map(id=>({id}))};
     if(sql.startsWith('SELECT p.*,to_char'))return{rows:publication?[publication]:[]};
     if(sql.startsWith('SELECT s.*,o.clave'))return{rows:slot?[{...slot}]:[]};
     if(sql.startsWith('SELECT * FROM produccion_videos'))return{rows:[{...video,...(options.changedLink?{tarea_entrega_id:99}: {})}]};
@@ -39,7 +40,9 @@ function fixture(options={}) {
     if(sql.startsWith('UPDATE tareas SET publicacion_id')){task.publicacion_id=params[1];task.revision++;return{rows:[]};}
     if(sql.startsWith('UPDATE cliente_objetivo_piezas SET publicacion_id')){slot.publicacion_id=params[1];return{rows:[]};}
     if(sql.startsWith('UPDATE produccion_videos SET publicacion_id')){if(options.bindingFailure)throw Object.assign(Error('tuple conflict'),{code:'23503',constraint:'produccion_editorial_tarea_publicacion_cliente_fk'},options.bindingError);video={...video,publicacion_id:params[2],tarea_entrega_id:params[3],cliente_editorial_id:params[4]};return{rows:[]};}
-    if(sql.startsWith('SELECT propiedades_extra FROM tareas'))return{rows:[source]};
+    if(sql==='SELECT id,cliente_id,propiedades_extra FROM tareas WHERE id=$1'){
+      assert.deepEqual(params,[source.id]);return{rows:[source]};
+    }
     if(sql==='SELECT id FROM cliente_objetivo_piezas WHERE publicacion_id=$1')return{rows:slot?[{id:slot.id}]:[]};
     if(sql.startsWith('SELECT p.id publicacion_id'))return{rows:[{publicacion_id:30,titulo:'Pieza',fecha_programada:'2026-10-30',publicacion_updated_at:updated,tarea_id:20,tarea_revision:4}]};
     if(sql.startsWith('SELECT s.id objetivo_pieza_id'))return{rows:[]};
@@ -65,6 +68,9 @@ function fixture(options={}) {
     if(sql.startsWith('INSERT INTO produccion_videos('))return{rows:[]};
     if(sql.startsWith('INSERT INTO tareas')){insertTasks++;throw Error('Unexpected second delivery task');}
     if(sql.includes('FROM produccion_reconciliacion_videos rv'))return{rows:[]};
+    if(sql.startsWith('SELECT l.id,l.visita_id,l.tarea_origen_id,l.source_history_hash,')){
+      assert.deepEqual(params,[videoId]);return{rows:[]};
+    }
     throw Error('Unhandled mock SQL: '+sql);
   }};
   const deps={lockVisit:async()=>{calls.push({sql:'LOCK VISIT'});return visit;},readVisits:async()=>[{...visit,videos:[video]}],activeClient:async()=>{},bump:async()=>{visit.revision++;}};
@@ -226,11 +232,14 @@ function historyGuardFixture({ receipt = true, reviewed = true, original, childr
   const db = { async query(sql, params) {
     calls.push({ sql, params });
     if (sql.startsWith('SELECT id FROM produccion_reconciliaciones WHERE')) {
-      assert.equal(sql, 'SELECT id FROM produccion_reconciliaciones WHERE visita_id=$1 AND tarea_origen_id=$2 LIMIT 1');
+      assert.equal(sql.replace(/\s+/g,' '), 'SELECT id FROM produccion_reconciliaciones WHERE visita_id=$1 AND tarea_origen_id=$2 UNION ALL SELECT id FROM produccion_revision_lotes WHERE visita_id=$1 AND tarea_origen_id=$2 LIMIT 1');
       return { rows: receipt && params[0] === receiptVisit && params[1] === receiptSource ? [{ id: 'receipt' }] : [] };
     }
     if (sql.startsWith("SELECT id FROM tareas WHERE propiedades_extra->>'origen_visita_id'")) {
       assert.deepEqual(params, ['10']); return { rows: children };
+    }
+    if (sql.startsWith('SELECT l.id,l.visita_id,l.tarea_origen_id,l.source_history_hash,')) {
+      assert.deepEqual(params, [videoId]); return { rows: [] };
     }
     if (sql.includes('FROM produccion_reconciliacion_videos rv')) {
       assert.deepEqual(params, [videoId, visitId, 10]);
