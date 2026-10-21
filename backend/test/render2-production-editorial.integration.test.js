@@ -100,6 +100,11 @@ test('production editorial: canonical delivery identity and atomic association',
       assert.deepEqual(await fixture.query(`SELECT count(*)::int AS count FROM ${table}`), [{ count: 0 }]);
     }
   });
+  const beforeApprovals = await snapshot();
+  await fixture.query(await readFile(new URL('../migrations/079_project_deliverable_approvals.sql', import.meta.url), 'utf8'));
+  await fixture.query("INSERT INTO _migrations(nombre) VALUES ('079_project_deliverable_approvals.sql')");
+  assert.deepEqual(await snapshot(), beforeApprovals, '079 must preserve existing operational history');
+  assert.deepEqual(await fixture.query('SELECT * FROM proyecto_entregable_aprobaciones'), []);
   const readVisit = async id => ok(await api(`/producciones/${id}`, undefined, admin, 'GET')).visita;
   const video = async () => {
     let visit = ok(await api('/producciones', { cliente_id: client.id, fecha: '2026-10-20', titulo: `QA editorial visit ${++number}`, participante_ids: [101001] }), [201]).visita;

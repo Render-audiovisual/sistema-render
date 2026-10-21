@@ -3,12 +3,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createProjectsRouter, normalizeProjectInput, normalizeProjectChild, projectRequestHash,
   projectPermissions, projectSummaryDto, lockProjectLinks } from '../src/projects.js';
+import { projectDeliverableContentHash } from '../src/project-deliverable-approvals.js';
 
 const P = '10000000-0000-4000-8000-000000000001';
 const C = '20000000-0000-4000-8000-000000000001';
 const BASE = { request_id: P, titulo: 'Proyecto', cliente_id: 1, responsable_id: 2, tipo: 'web' };
 const admin = { id: 1, rol: 'admin', activo: true, session_version: 1 };
 const owner = { id: 2, rol: 'diseno', activo: true, session_version: 1 };
+const content = { titulo: 'Entregable', url: '', observaciones: '' };
+const approvalInput = () => ({ request_id: C, expected_revision: 1, expected_entregable_revision: 1,
+  expected_content_revision: 1, expected_content_hash: projectDeliverableContentHash(content) });
 
 test('canonical create hash excludes request ID, key ordering and explicit defaults', () => {
   const hash = projectRequestHash(BASE);
@@ -66,6 +70,9 @@ test('summary never includes arbitrary fields, even for administrators', () => {
 function harness({ user = owner, project = {}, childState = 'pendiente', fault, task = {}, hidden = false } = {}) {
   const routes = new Map(), calls = [], events = [];
   let released = false;
+  let receipt;
+  const deliverable = { id: C, proyecto_id: P, ...content, estado: childState, contenido_revision: 1,
+    entregable_revision: 1, aprobado_por_id: null, aprobado_at: null, aprobacion_actual_id: null, current_proof: false };
   const row = { id: P, titulo: 'Proyecto', cliente_id: 1, cliente_nombre: 'Cliente', responsable_id: 2, responsable_nombre: 'Persona', tipo: 'web', estado: 'en_curso', archivado: false, revision: 1, descripcion: '', fecha_inicio: null, fecha_entrega: null, tareas: 0, tareas_visibles: 0, finalizadas: 0, hitos: 0, entregables: 1, ...project };
   const db = { release() { released = true; }, async query(sql, params = []) {
     calls.push({ sql, params });
@@ -73,6 +80,25 @@ function harness({ user = owner, project = {}, childState = 'pendiente', fault, 
     if (sql.startsWith('SELECT id,nombre,rol,activo,session_version FROM usuarios')) return { rows: [user] };
     if (sql.includes('FROM proyectos WHERE id=$1 FOR UPDATE')) return { rows: [row] };
     if (sql.startsWith('SELECT p.id,p.titulo')) return { rows: [row] };
+    if (sql.startsWith('SELECT d.id,d.titulo,d.url')) return { rows: [deliverable] };
+    if (sql.startsWith('SELECT id,proyecto_id,titulo,url,observaciones')) return { rows: [structuredClone(deliverable)] };
+    if (sql.startsWith('SELECT * FROM proyecto_entregable_aprobaciones')) return { rows: receipt ? [receipt] : [] };
+    if (sql.startsWith('INSERT INTO proyecto_entregable_aprobaciones')) {
+      const [id,proyecto_id,entregable_id,actor_id,request_id,payload_hash,observed_project_revision,
+        observed_entregable_revision,contenido_revision,entregable_revision,contenido_hash,titulo,url,observaciones] = params;
+      receipt = { id,proyecto_id,entregable_id,actor_id,request_id,payload_hash,observed_project_revision,
+        observed_entregable_revision,contenido_revision,entregable_revision,contenido_hash,titulo,url,observaciones,
+        aprobado_at: '2026-10-19T12:00:00Z' };
+      return { rows: [receipt] };
+    }
+    if (sql.startsWith('UPDATE proyecto_entregables')) {
+      if (sql.includes("SET estado='aprobado'")) Object.assign(deliverable, { estado: 'aprobado',
+        aprobacion_actual_id: params[2], aprobado_por_id: params[3], aprobado_at: receipt.aprobado_at,
+        entregable_revision: receipt.entregable_revision, approval_hash: receipt.contenido_hash, current_proof: true });
+      else Object.assign(deliverable, { estado: params[2], aprobacion_actual_id: null, aprobado_por_id: null,
+        aprobado_at: null, entregable_revision: deliverable.entregable_revision + 1, current_proof: false });
+      return { rows: [{ estado: deliverable.estado }] };
+    }
     if (sql.startsWith('SELECT id,estado FROM proyecto_')) return { rows: [{ id: C, estado: childState }] };
     if (sql.startsWith('SELECT count(*)::int AS total')) return { rows: [{ total: 0 }] };
     if (sql.startsWith('SELECT id,revision,cliente_id FROM tareas')) return { rows: [{ id: 8, revision: 3, cliente_id: 1, ...task }] };
@@ -99,10 +125,18 @@ function harness({ user = owner, project = {}, childState = 'pendiente', fault, 
 }
 
 test('approval then corrections retain actor/resource and historical approved state', async () => {
+  const generic = harness();
+  assert.equal((await generic.run('patch', '/:id/entregables/:child', { expected_revision: 1, estado: 'aprobado' })).status, 400);
+  assert.equal(generic.calls.some(c => c.sql.startsWith('UPDATE proyecto_') || c.sql.startsWith('INSERT INTO proyecto_')), false);
   const first = harness();
-  const approved = await first.run('patch', '/:id/entregables/:child', { expected_revision: 1, estado: 'aprobado' });
-  assert.equal(approved.status, 200);
-  assert.match(first.calls.find(c => c.sql.startsWith('UPDATE proyecto_entregables')).sql, /aprobado_por_id=\$4,aprobado_at=clock_timestamp\(\)/);
+  const approved = await first.run('post', '/:id/entregables/:child/aprobaciones', approvalInput());
+  assert.equal(approved.status, 201);
+  const approvalWrite = first.calls.find(c => c.sql.startsWith('UPDATE proyecto_entregables'));
+  assert.match(approvalWrite.sql, /aprobado_por_id=\$4/);
+  assert.match(approvalWrite.sql, /aprobado_at=\(SELECT aprobado_at FROM proyecto_entregable_aprobaciones WHERE id=\$3\)/);
+  assert.equal(approvalWrite.params[3], owner.id);
+  assert.equal(approved.payload.proyecto.entregables[0].aprobacion_versionada, true);
+  assert.equal(approved.payload.aprobacion.actor_id, owner.id);
   assert.deepEqual(first.events[0], { id: 1, actor_id: 2, accion: 'editar_entregable', recurso_id: C, tarea_id: null, estado_anterior: 'pendiente', estado_nuevo: 'aprobado', created_at: '2026-10-19T12:00:00Z' });
   assert.equal(approved.payload.proyecto.actividad[0].estado_nuevo, 'aprobado');
   const second = harness({ childState: 'aprobado' });
@@ -117,21 +151,21 @@ test('approval then corrections retain actor/resource and historical approved st
 test('stale CAS, wrong owner, inactive and changed roles deny without child writes', async () => {
   for (const options of [{ project: { revision: 2 } }, { user: { ...owner, id: 3, nombre: 'Admin' } }, { user: { ...owner, activo: false } }, { user: { ...owner, rol: 'unknown' } }]) {
     const h = harness(options);
-    const result = await h.run('patch', '/:id/entregables/:child', { expected_revision: 1, estado: 'aprobado' });
+    const result = await h.run('post', '/:id/entregables/:child/aprobaciones', approvalInput());
     assert.ok([401, 403, 409].includes(result.status));
     assert.equal(h.calls.some(c => c.sql.startsWith('UPDATE proyecto_')), false);
     assert.equal(h.calls.at(-1).sql, 'ROLLBACK');
     assert.equal(h.released(), true);
   }
   const h = harness();
-  assert.equal((await h.run('patch', '/:id/entregables/:child', { expected_revision: 1, estado: 'aprobado' }, { auth: { ...owner, rol: 'admin' } })).status, 401);
+  assert.equal((await h.run('post', '/:id/entregables/:child/aprobaciones', approvalInput(), { auth: { ...owner, rol: 'admin' } })).status, 401);
   const unsupported = harness({ user: { ...owner, rol: 'unknown' } });
-  assert.equal((await unsupported.run('patch', '/:id/entregables/:child', { expected_revision: 1, estado: 'aprobado' })).status, 403);
+  assert.equal((await unsupported.run('post', '/:id/entregables/:child/aprobaciones', approvalInput())).status, 403);
 });
 
 test('unknown SQL fault rolls back, reaches global 500 handler and never commits', async () => {
   const h = harness({ fault: sql => sql.startsWith('INSERT INTO proyecto_actividad') });
-  const result = await h.run('patch', '/:id/entregables/:child', { expected_revision: 1, estado: 'aprobado' });
+  const result = await h.run('post', '/:id/entregables/:child/aprobaciones', approvalInput());
   assert.equal(result.error?.code, 'P0001');
   assert.equal(result.status, undefined);
   assert.equal(h.calls.at(-1).sql, 'ROLLBACK');

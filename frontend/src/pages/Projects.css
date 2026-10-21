@@ -16,6 +16,9 @@
 .projects-page :is(a,button,input,select,textarea,summary):focus-visible{outline:2px solid var(--render-accent);outline-offset:3px}
 .projects-page input:not([type=checkbox]),.projects-page select,.projects-page textarea{background:var(--pr-bg);border:1px solid var(--pr-line);border-radius:8px;color:var(--pr-text);min-width:0;min-height:44px;padding:8px 10px;width:100%}
 .projects-page textarea{resize:vertical}
+.pr-form-fields{display:contents;min-width:0;margin:0;padding:0;border:0}
+.pr-deliverable-review{min-width:0;overflow-wrap:anywhere}
+.pr-deliverable-review>p:last-child{white-space:pre-wrap}
 .projects-page label{display:grid;gap:8px;font-size:12px;font-weight:500;min-width:0}
 .projects-page small,.pr-muted{color:var(--pr-muted);font-size:12px;font-weight:400}
 .pr-page-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
@@ -70,6 +73,7 @@
 .pr-section>.pr-notice{margin:0 16px 16px}
 .pr-editor{background:var(--pr-soft);border:1px solid var(--pr-line);border-radius:12px;padding:16px}
 .pr-editor>.pr-section-heading{padding:0 0 16px}
+.pr-editor #pr-editor-title{scroll-margin-top:88px}
 .pr-version{font-size:12px;color:var(--pr-muted);font-variant-numeric:tabular-nums;margin-bottom:16px!important}
 .pr-editor>.pr-error,.pr-editor>.pr-notice{margin-bottom:16px}
 .pr-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;min-width:0}

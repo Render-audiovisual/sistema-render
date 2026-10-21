@@ -76,6 +76,14 @@ test('principal projects: additive history, ID authority, atomic CRUD and recipr
     await fixture.query('UPDATE tareas SET titulo=titulo WHERE id=$1', [oldTask.id]);
     assert.equal((await fixture.query('SELECT revision FROM tareas WHERE id=$1', [oldTask.id]))[0].revision, revision.revision + 1);
   });
+  await t.test('079 follows the original 063 invariance checks without backfilling approvals', async () => {
+    const before = await snapshot();
+    await fixture.query(await readFile(new URL('../migrations/079_project_deliverable_approvals.sql', import.meta.url), 'utf8'));
+    await fixture.query("INSERT INTO public._migrations(nombre) VALUES ('079_project_deliverable_approvals.sql')");
+    assert.deepEqual(await snapshot(), before);
+    assert.deepEqual(await fixture.query('SELECT * FROM proyecto_entregable_aprobaciones'), []);
+    projectTables.push('proyecto_entregable_aprobaciones');
+  });
   const read = async (id, token = admin) => ok(await api(`/proyectos/${id}`, undefined, token, 'GET')).proyecto;
   const createBody = (extra = {}) => ({ request_id: crypto.randomUUID(), titulo: `QA project ${++serial}`, cliente_id: client.id,
     responsable_id: ids.responsible, tipo: 'web', descripcion: 'QA shared operational description',
@@ -104,7 +112,7 @@ test('principal projects: additive history, ID authority, atomic CRUD and recipr
     keys(project.permissions, ['administrar', 'editar']); assert.ok(project.actividad.length <= 20);
     for (const item of project.etapas) keys(item, ['id', 'titulo', 'posicion', 'estado']);
     for (const item of project.hitos) keys(item, ['id', 'etapa_id', 'titulo', 'fecha', 'estado']);
-    for (const item of project.entregables) keys(item, ['id', 'titulo', 'url', 'observaciones', 'estado', 'aprobado_por_id', 'aprobado_at']);
+    for (const item of project.entregables) keys(item, ['id', 'titulo', 'url', 'observaciones', 'estado', 'aprobado_por_id', 'aprobado_at', 'contenido_revision', 'entregable_revision', 'aprobacion_actual_id', 'contenido_hash', 'aprobacion_versionada']);
     for (const item of project.tareas) {
       keys(item, ['id', 'titulo', 'estado', 'prioridad', 'revision', 'fecha_vencimiento', 'etapa_id', 'href']);
       assert.equal(item.href, `/workspace/tareas?task=${item.id}`);
@@ -165,12 +173,21 @@ test('principal projects: additive history, ID authority, atomic CRUD and recipr
     assert.equal(project.hitos.find(item => item.id === milestone.id).fecha, null);
     project = await mutate(main.project.id, '/entregables', { titulo: 'QA deliverable', url: 'https://example.invalid/qa-project', observaciones: 'Operational evidence' }, responsible);
     const delivery = project.entregables.find(item => item.titulo === 'QA deliverable');
-    project = await mutate(main.project.id, `/entregables/${delivery.id}`, { estado: 'aprobado' }, responsible, 'PATCH');
+    const beforeApproval = await snapshot();
+    assert.equal((await api(`/proyectos/${main.project.id}/entregables/${delivery.id}`, { expected_revision: project.revision, estado: 'aprobado' }, responsible, 'PATCH')).status, 400);
+    assert.deepEqual(await snapshot(), beforeApproval);
+    project = await mutate(main.project.id, `/entregables/${delivery.id}/aprobaciones`, {
+      request_id: crypto.randomUUID(), expected_entregable_revision: delivery.entregable_revision,
+      expected_content_revision: delivery.contenido_revision, expected_content_hash: delivery.contenido_hash,
+    }, responsible, 'POST');
     const approved = project.entregables.find(item => item.id === delivery.id);
     assert.equal(approved.aprobado_por_id, ids.responsible); assert.ok(Number.isFinite(Date.parse(approved.aprobado_at)));
+    assert.equal(approved.aprobacion_versionada, true);
+    assert.equal(approved.contenido_revision, delivery.contenido_revision);
     project = await mutate(main.project.id, `/entregables/${delivery.id}`, { estado: 'correcciones' }, responsible, 'PATCH');
     const corrected = project.entregables.find(item => item.id === delivery.id);
     assert.equal(corrected.aprobado_por_id, null); assert.equal(corrected.aprobado_at, null);
+    assert.equal(corrected.aprobacion_actual_id, null); assert.equal(corrected.aprobacion_versionada, false);
     const historyRows = await fixture.query('SELECT * FROM proyecto_actividad WHERE proyecto_id=$1 AND recurso_id=$2 ORDER BY id', [main.project.id, delivery.id]);
     assert.ok(historyRows.some(row => row.actor_id === ids.responsible && row.estado_nuevo === 'aprobado' && row.created_at));
     assert.ok(historyRows.some(row => row.actor_id === ids.responsible && row.estado_anterior === 'aprobado' && row.estado_nuevo === 'correcciones'));

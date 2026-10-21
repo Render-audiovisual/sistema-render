@@ -140,6 +140,11 @@ test('production registry: historical invariance and real per-video HTTP workflo
     assert.deepEqual(await history(), beforeBatches, '078 must not rewrite existing historical rows, assignments or goals');
     for (const table of registryTables) assert.deepEqual(await fixture.query(`SELECT * FROM ${table}`), beforeRegistry[table]);
     for (const table of batchTables) assert.deepEqual(await fixture.query(`SELECT count(*)::int AS count FROM ${table}`), [{ count: 0 }]);
+    const beforeApprovals = await history();
+    await fixture.query(await readFile(new URL('../migrations/079_project_deliverable_approvals.sql', import.meta.url), 'utf8'));
+    await fixture.query("INSERT INTO _migrations(nombre) VALUES ('079_project_deliverable_approvals.sql')");
+    assert.deepEqual(await history(), beforeApprovals, '079 must preserve existing operational history');
+    assert.deepEqual(await fixture.query('SELECT * FROM proyecto_entregable_aprobaciones'), []);
   });
   await t.test('task POST registers one visit with no inferred videos; task-only date/client writes and deletion reject', async () => {
     const [client] = await fixture.query("INSERT INTO clientes(nombre) VALUES ('QA source task client') RETURNING id");

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { SYSTEM_USER_ROLES } from './user-roles.js';
 import { projectDomainConflict } from './project-errors.js';
+import { approveProjectDeliverable, PROJECT_DELIVERABLE_READ_SQL, projectDeliverableDto } from './project-deliverable-approvals.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const own = (o, k) => Object.hasOwn(o, k);
@@ -107,6 +108,7 @@ export function normalizeProjectChild(kind, input, { create = false } = {}) {
   const spec = CHILDREN[kind];
   if (!spec) throw fail('Recurso inválido.');
   closed(input, ['expected_revision', ...spec.fields]);
+  if (kind === 'entregables' && input.estado === 'aprobado') throw fail('Usá la acción explícita de aprobar la versión observada.');
   const result = { expected_revision: integer(input.expected_revision, 'Revisión') };
   for (const key of spec.fields) {
     if (!own(input, key)) continue;
@@ -146,7 +148,7 @@ export async function readProjectDetail(db, id, user) {
   const miembro_ids = (await db.query('SELECT usuario_id FROM proyecto_miembros WHERE proyecto_id=$1 ORDER BY usuario_id', [id])).rows.map(r => r.usuario_id);
   const etapas = await query('SELECT id,titulo,posicion,estado FROM proyecto_etapas WHERE proyecto_id=$1 ORDER BY posicion,id LIMIT 100', ['id', 'titulo', 'posicion', 'estado']);
   const hitos = await query("SELECT id,etapa_id,titulo,to_char(fecha,'YYYY-MM-DD') AS fecha,estado FROM proyecto_hitos WHERE proyecto_id=$1 ORDER BY fecha NULLS LAST,id LIMIT 200", ['id', 'etapa_id', 'titulo', 'fecha', 'estado']);
-  const entregables = await query('SELECT id,titulo,url,observaciones,estado,aprobado_por_id,aprobado_at FROM proyecto_entregables WHERE proyecto_id=$1 ORDER BY id LIMIT 200', ['id', 'titulo', 'url', 'observaciones', 'estado', 'aprobado_por_id', 'aprobado_at']);
+  const entregables = (await db.query(`${PROJECT_DELIVERABLE_READ_SQL} WHERE d.proyecto_id=$1 ORDER BY d.id LIMIT 200`,[id])).rows.map(projectDeliverableDto);
   const tareas = (await query(`SELECT t.id,t.titulo,t.estado,t.prioridad,t.revision,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,x.etapa_id
     FROM proyecto_tareas x JOIN tareas t ON t.id=x.tarea_id WHERE x.proyecto_id=$1 AND ${VISIBLE} ORDER BY t.id LIMIT 200`, ['id', 'titulo', 'estado', 'prioridad', 'revision', 'fecha_vencimiento', 'etapa_id'])).map(t => ({ ...t, href: `/workspace/tareas?task=${t.id}` }));
   const actividad = await query('SELECT id,actor_id,accion,created_at,recurso_id,tarea_id,estado_anterior,estado_nuevo FROM proyecto_actividad WHERE proyecto_id=$1 ORDER BY id DESC LIMIT 20', ['id', 'actor_id', 'accion', 'created_at', 'recurso_id', 'tarea_id', 'estado_anterior', 'estado_nuevo']);
@@ -171,7 +173,7 @@ async function lockProject(db, id, revision, user, reactivation = false) {
   if (!row) throw fail('Proyecto no encontrado.', 404);
   const permissions = projectPermissions(row, user);
   if (!permissions.editar && !(reactivation && permissions.administrar)) throw fail('No podés editar este proyecto.', 403);
-  if (row.revision !== revision) throw fail('El proyecto cambió. Actualizá antes de reintentar.', 409);
+  if (revision !== null && row.revision !== revision) throw fail('El proyecto cambió. Actualizá antes de reintentar.', 409);
   return row;
 }
 async function activeClient(db, id) {
@@ -200,20 +202,21 @@ export function createProjectsRouter({ express, pool }) {
   const router = express.Router();
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   const route = (write, handler) => async (req, res, next) => {
-    let db;
+    let db, discard;
+    const observedAuth = {id:req.auth?.id,session_version:req.auth?.session_version,rol:req.auth?.rol};
     try {
       db = await pool.connect();
       await db.query(write ? 'BEGIN ISOLATION LEVEL READ COMMITTED' : 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-      const user = await actor(db, req.auth, write);
+      const user = await actor(db, observedAuth, write);
       const result = await handler(req, db, user);
       await db.query('COMMIT');
       res.status(result.status ?? 200).json(result.body);
     } catch (error) {
-      if (db) { try { await db.query('ROLLBACK'); } catch { /* preserve original error */ } }
+      if (db) { try { await db.query('ROLLBACK'); } catch (rollbackError) { discard=rollbackError; } }
       if (error.status) res.status(error.status).json({ error: error.message });
       else if (projectDomainConflict(error)) res.status(409).json({ error: 'La relación del proyecto cambió o no es compatible.' });
       else next(error);
-    } finally { db?.release(); }
+    } finally { db?.release(discard); }
   };
   router.get('/', route(false, async (req, db, user) => {
     const q = req.query ?? {};
@@ -271,6 +274,9 @@ export function createProjectsRouter({ express, pool }) {
     await activity(db, id, user, 'editar_proyecto', id, old.estado, input.estado ?? old.estado);
     return { body: { proyecto: await readProjectDetail(db, id, user) } };
   }));
+  router.post('/:id/entregables/:child/aprobaciones', route(true, async (req,db,user) =>
+    approveProjectDeliverable(db,{projectId:req.params.id,deliverableId:req.params.child,input:req.body,user},
+      {lockProjectLinks,lockProject,bump,activity,readProjectDetail})));
   for (const [kind, spec] of Object.entries(CHILDREN)) {
     const mutate = create => route(true, async (req, db, user) => {
       const id = uuid(req.params.id), child = create ? randomUUID() : uuid(req.params.child);
@@ -284,24 +290,27 @@ export function createProjectsRouter({ express, pool }) {
       } else if (Number((await db.query(`SELECT count(*)::int AS total FROM ${spec.table} WHERE proyecto_id=$1`, [id])).rows[0].total) >= spec.cap) throw fail('Límite de recursos alcanzado.', 409);
       if (own(input, 'etapa_id')) await stage(db, id, input.etapa_id);
       const fields = Object.entries(input).filter(([k]) => k !== 'expected_revision');
+      let actualState;
       if (create) {
         if (kind === 'etapas') fields.push(['posicion', Number((await db.query('SELECT COALESCE(max(posicion),-1)+1 AS posicion FROM proyecto_etapas WHERE proyecto_id=$1', [id])).rows[0].posicion)]);
         const values = [child, id, ...fields.map(([, v]) => v)];
         const columns = ['id', 'proyecto_id', ...fields.map(([k]) => k)];
         let placeholders = values.map((_, i) => `$${i + 1}`);
-        if (kind === 'entregables' && input.estado === 'aprobado') { columns.push('aprobado_por_id', 'aprobado_at'); values.push(user.id); placeholders.push(`$${values.length}`, 'clock_timestamp()'); }
         await db.query(`INSERT INTO ${spec.table}(${columns.join(',')}) VALUES(${placeholders.join(',')})`, values);
       } else {
         const values = [id, child, ...fields.map(([, v]) => v)];
         let approval = '';
         if (kind === 'entregables' && own(input, 'estado')) {
-          if (input.estado === 'aprobado') { values.push(user.id); approval = `,aprobado_por_id=$${values.length},aprobado_at=clock_timestamp()`; }
-          else approval = ',aprobado_por_id=NULL,aprobado_at=NULL';
+          approval = ',aprobacion_actual_id=NULL,aprobado_por_id=NULL,aprobado_at=NULL';
         }
-        await db.query(`UPDATE ${spec.table} SET ${fields.map(([k], i) => `${k}=$${i + 3}`).join(',')}${approval} WHERE proyecto_id=$1 AND id=$2`, values);
+        const updated = await db.query(`UPDATE ${spec.table} SET ${fields.map(([k], i) => `${k}=$${i + 3}`).join(',')}${approval} WHERE proyecto_id=$1 AND id=$2${kind==='entregables'?' RETURNING estado':''}`, values);
+        if(kind==='entregables'){
+          if(!updated.rows[0])throw fail('El entregable dejó de estar disponible.',409);
+          actualState=updated.rows[0].estado;
+        }
       }
       await bump(db, id, input.expected_revision, user);
-      await activity(db, id, user, `${create ? 'crear' : 'editar'}_${spec.singular}`, child, old?.estado ?? null, input.estado ?? old?.estado ?? 'pendiente');
+      await activity(db, id, user, `${create ? 'crear' : 'editar'}_${spec.singular}`, child, old?.estado ?? null, actualState ?? input.estado ?? old?.estado ?? 'pendiente');
       return { status: create ? 201 : 200, body: { proyecto: await readProjectDetail(db, id, user) } };
     });
     router.post(`/:id/${kind}`, mutate(true));

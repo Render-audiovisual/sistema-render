@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { projectDeliverableContentHash } from '../src/project-deliverable-approvals.js';
 import { buildProjectMutation, createProjectsTransport, observedProjectTask, parseProject, parseProjectsPage, projectHref, projectLocation, projectLocationUrl, projectsListUrl, projectError, safeProjectUrl } from '../../frontend/src/pages/projectsModel.js';
 
 const source = readFileSync(new URL('../../frontend/src/pages/Projects.jsx', import.meta.url), 'utf8');
@@ -17,7 +18,7 @@ function fixture() {
     counts: { tareas: 2, finalizadas: 0, hitos: 1, entregables: 1 }, href: projectHref(id), descripcion: 'Alcance real', miembro_ids: [22],
     etapas: [{ id: stage, titulo: 'Diseño', posicion: 0, estado: 'en_progreso' }, { id: secondStage, titulo: 'Entrega', posicion: 1, estado: 'pendiente' }],
     hitos: [{ id: secondStage, etapa_id: stage, titulo: 'Revisión', fecha: null, estado: 'pendiente' }],
-    entregables: [{ id: deliverable, titulo: 'Prototipo', url: 'https://example.test/prototipo', observaciones: '', estado: 'correcciones', aprobado_por_id: null, aprobado_at: null }],
+    entregables: [{ id: deliverable, titulo: 'Prototipo', url: 'https://example.test/prototipo', observaciones: '', estado: 'correcciones', aprobado_por_id: null, aprobado_at: null, contenido_revision: 2, entregable_revision: 3, aprobacion_actual_id: null, contenido_hash: projectDeliverableContentHash({ titulo: 'Prototipo', url: 'https://example.test/prototipo', observaciones: '' }), aprobacion_versionada: false }],
     tareas: [{ id: 101, titulo: 'Implementación', estado: 'en_progreso', prioridad: 'alta', revision: 7, fecha_vencimiento: null, etapa_id: stage, href: '/workspace/tareas?task=101' }], tareas_no_disponibles: 1,
     actividad: [{ id: '9223372036854775806', actor_id: 21, accion: 'editar_entregable', created_at: '2026-10-19T12:00:00Z', recurso_id: deliverable, tarea_id: null, estado_anterior: 'aprobado', estado_nuevo: 'correcciones' }], permissions: { administrar: false, editar: true } };
 }
@@ -97,11 +98,20 @@ test('stage, milestone, deliverable and archive mutations use parent revision on
     [form('milestone-create', { titulo: 'Revisión', fecha: '', estado: 'pendiente', etapa_id: stage }), 'POST', '/hitos', { titulo: 'Revisión', fecha: null, estado: 'pendiente', etapa_id: stage }],
     [form('milestone-edit', { titulo: 'Revisión', fecha: '2026-11-10', estado: 'completado', etapa_id: '' }, { childId: secondStage }), 'PATCH', `/hitos/${secondStage}`, { titulo: 'Revisión', fecha: '2026-11-10', estado: 'completado', etapa_id: null }],
     [form('deliverable-create', { titulo: 'Entrega', url: '', observaciones: '', estado: 'pendiente' }), 'POST', '/entregables', { titulo: 'Entrega', url: '', observaciones: '', estado: 'pendiente' }],
-    [form('deliverable-edit', { titulo: 'Entrega', url: 'https://example.test', observaciones: 'Corrección', estado: 'aprobado', aprobado_por_id: 99, aprobado_at: 'fake' }, { childId: deliverable }), 'PATCH', `/entregables/${deliverable}`, { titulo: 'Entrega', url: 'https://example.test', observaciones: 'Corrección', estado: 'aprobado' }],
+    [form('deliverable-edit', { titulo: 'Entrega', url: 'https://example.test', observaciones: 'Corrección', estado: 'correcciones', aprobado_por_id: 99, aprobado_at: 'fake' }, { childId: deliverable }), 'PATCH', `/entregables/${deliverable}`, { titulo: 'Entrega', url: 'https://example.test', observaciones: 'Corrección', estado: 'correcciones' }],
     [form('archive', { archivado: true }), 'PATCH', '', { archivado: true }],
     [form('archive', { archivado: false }), 'PATCH', '', { archivado: false }],
   ];
   for (const [input, method, suffix, business] of cases) assert.deepEqual(buildProjectMutation(input), { method, path: `/api/proyectos/${id}${suffix}`, body: { expected_revision: 5, ...business } });
+  assert.throws(() => buildProjectMutation(form('deliverable-edit', { titulo: 'Entrega', url: '', observaciones: '', estado: 'aprobado' }, { childId: deliverable })));
+  const observedDeliverable = fixture().entregables[0];
+  const approval = form('deliverable-approve', { acknowledged: true, aprobado_por_id: 99 }, { childId: deliverable, requestId, observedDeliverable });
+  assert.deepEqual(buildProjectMutation(approval), { method: 'POST', path: `/api/proyectos/${id}/entregables/${deliverable}/aprobaciones`, body: {
+    request_id: requestId, expected_revision: 5, expected_entregable_revision: 3,
+    expected_content_revision: 2, expected_content_hash: observedDeliverable.contenido_hash,
+  } });
+  assert.throws(() => buildProjectMutation({ ...approval, draft: { acknowledged: false } }));
+  assert.throws(() => buildProjectMutation({ ...approval, observedDeliverable: { ...observedDeliverable, id: stage } }));
 });
 
 test('reorder requires exactly the observed unique stage set; all positions remain manual', () => {
@@ -168,7 +178,8 @@ test('JSX syntax parses in memory without bundling, build, API or artifacts', ()
 test('principal UI uses server permissions, visible CAS, progressive forms, stable links and typed approval transitions', () => {
   assert.match(source, /export function ProjectsPage\(/);
   assert.match(source, /request = apiRequest/);
-  assert.match(source, /key=\{JSON\.stringify\(\[user\.id, user\.rol, user\.activo, sesion\.token\]\)\}/);
+  assert.match(source, /view\s*=\s*useSessionView\(sesion\)/);
+  assert.match(source, /<ProjectsSession key=\{view\.key\} sesion=\{view\.session\}/);
   assert.match(source, /client\.dispose\(\)/);
   assert.match(source, /project\.permissions\.editar && !project\.archivado/);
   assert.match(source, /project\.permissions\.administrar/);
@@ -177,6 +188,12 @@ test('principal UI uses server permissions, visible CAS, progressive forms, stab
   assert.match(source, /form\.conflict && structural/);
   assert.match(source, /Actualizar proyecto y revisar/);
   assert.match(source, /Usar revisión \{project\.revision\}/);
+  assert.match(source, /kind!=='deliverable-approve' && <button[^>]+onClick=\{adoptRevision\}/);
+  assert.match(source, /observedDeliverable:kind==='deliverable-approve'\?Object\.freeze\(\{\.\.\.item\}\)/);
+  assert.match(source, /form\.observedDeliverable\.contenido_revision/);
+  assert.match(source, /form\.observedDeliverable\.entregable_revision/);
+  assert.match(source, /checked=\{d\.acknowledged\}/);
+  assert.match(source, /projectDeliverableApprovalLabel\(item\)/);
   assert.match(source, /mutationBusy\.current/);
   assert.match(source, /window\.addEventListener\("popstate", navigate\)/);
   assert.match(source, /window\.removeEventListener\("popstate", navigate\)/);

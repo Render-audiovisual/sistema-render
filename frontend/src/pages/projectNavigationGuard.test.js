@@ -20,8 +20,9 @@ const popSource = section('    const navigate = () => {', '    window.addEventLi
 function state() {
   const formRef = { current: null }, mutationBusy = { current: false }, selectionRef = { current: { id: ID, invalid: false } };
   const win = { location: new URL(`https://render.test/proyectos?proyecto=${ID}`) };
-  const status = new Function('formRef', 'mutationBusy', 'selectionRef', 'projectLocation', 'window', `${statusSource}\nreturn navigationStatus;`)(formRef, mutationBusy, selectionRef, projectLocation, win);
-  return { formRef, mutationBusy, selectionRef, win, status };
+  let current=true;
+  const status = new Function('formRef', 'mutationBusy', 'selectionRef', 'projectLocation', 'window', 'captureAction', `${statusSource}\nreturn navigationStatus;`)(formRef, mutationBusy, selectionRef, projectLocation, win,()=>({current:()=>current}));
+  return { formRef, mutationBusy, selectionRef, win, status,obsolete(){current=false} };
 }
 const dirtyForm = () => ({ draft: { titulo: 'Borrador' }, initial: { titulo: 'Original' }, busy: false, baseRevision: 3, conflict: true });
 
@@ -47,6 +48,7 @@ test('getter reads latest draft/form busy and mutation lock refs, not captured s
   h.mutationBusy.current = false;
   h.formRef.current = { draft: { titulo: 'Guardado' }, initial: { titulo: 'Guardado' }, busy: false };
   assert.deepEqual(h.status(context), { dirty: false, busy: false });
+  h.formRef.current=dirtyForm();h.mutationBusy.current=true;h.obsolete();assert.deepEqual(h.status(context),{dirty:false,busy:false});
 });
 
 test('same-project URL context preserves draft, different/invalid project and unload remain guarded', () => {
@@ -132,7 +134,7 @@ test('task link delegates to shared navigation exactly once, with no pre-confirm
 test('select/cancel local gates and successful-save reset stay separate from shared navigation', () => {
   assert.match(source, /selection.id !== item.id && canLeave\(\)\) selectProject\(item.id\)/);
   assert.match(source, /if \(canLeave\(\)\) selectProject\(null\)/);
-  assert.match(source, /function openForm\(kind, item\) \{\s*if \(!canLeave\(\)\) return/);
+  assert.match(source, /function openForm\(kind, item\) \{\s*const scope=captureAction\(\);if\(!scope.current\(\)\)return;\s*if \(!canLeave\(\)\) return/);
   assert.match(source, /setForm\(null\); formRef.current = null;\s*if \(current.kind === "create"\) selectProject\(data.id\)/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|history\.go\(|history\.back\(/);
 });
