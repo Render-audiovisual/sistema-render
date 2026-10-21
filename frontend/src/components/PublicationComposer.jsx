@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { publicationUploadPlan, uploadFileToDrive } from "../features/drive/drive-api.js";
+import { createUploadRecovery } from '../features/drive/upload-recovery.js';
 import { getSesion } from '../utils.jsx';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
@@ -195,6 +196,8 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
   const [uploadingMaterial, setUploadingMaterial] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadedAssets, setUploadedAssets] = useState([]);
+  const uploadRecoveryModel=useRef(null),uploadAttemptGuard=useRef(null),uploadDestination=useRef(null);
+  const [uploadRecovery,setUploadRecovery]=useState({blocked:false,confirmed:[]});
   const [driveReconnectRequired, setDriveReconnectRequired] = useState(false);
   const [sourceSelection, setSourceSelection] = useState("");
   const fileInputRef = useRef(null);
@@ -230,6 +233,7 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
   useEffect(() => { refreshDrafts(); }, []);
 
   const openSavedDraft = (selected) => {
+    if(uploadRecoveryModel.current?.snapshot.blocked)return;
     if (!validDispatchAck(selected, 'draft', selected?.id)) throw new Error('El borrador guardado no tiene una revisión válida. Conservamos tus cambios.');
     const restored = savedDraft(selected, clients);
     uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
@@ -242,6 +246,7 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
 
   const selectPublication = (id) => {
     if (pending.current) return;
+    if(uploadRecoveryModel.current?.snapshot.blocked)return;
     if (String(id) === String(sourceSelection)) return;
     if ((draftEdited.current || dispatchConflict) && !window.confirm('Cambiar de origen descartará tus cambios locales. ¿Querés continuar?')) return;
     if (String(id).startsWith("draft:")) {
@@ -265,6 +270,8 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
 
   const clearUploads = () => {
     if (pending.current) return;
+    if(uploadRecoveryModel.current?.snapshot.blocked)return;
+    uploadAttemptGuard.current?.cancel();uploadAttemptGuard.current?.release();uploadAttemptGuard.current=null;uploadRecoveryModel.current=null;uploadDestination.current=null;setUploadRecovery({blocked:false,confirmed:[]});
     if (uploadsRef.current.length || uploadedAssets.length) draftEdited.current = true;
     uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     uploadsRef.current = [];
@@ -277,12 +284,14 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
 
   const changeType = (type) => {
     if (pending.current) return;
+    if(uploadRecoveryModel.current?.snapshot.blocked)return;
     clearUploads();
     setField("type", type);
   };
 
   const chooseFiles = (fileList) => {
     if (pending.current) return;
+    if(uploadRecoveryModel.current?.snapshot.blocked)return;
     const incoming = Array.from(fileList || []);
     const allowed = draft.type === "reel"
       ? incoming.filter((file) => file.type === "video/mp4" || file.name.toLowerCase().endsWith(".mp4"))
@@ -304,6 +313,7 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
       setFileError(draft.type === "reel" ? "El MP4 supera los 500 MB." : "Una de las piezas supera los 50 MB.");
       return;
     }
+    uploadAttemptGuard.current?.cancel();uploadAttemptGuard.current?.release();uploadAttemptGuard.current=null;uploadRecoveryModel.current=null;uploadDestination.current=null;setUploadRecovery({blocked:false,confirmed:[]});
     uploadsRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
     const selected = allowed.map((file, index) => ({
       id: `${file.name}-${file.size}-${index}`,
@@ -323,52 +333,50 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
   };
 
   const uploadMaterial = async () => {
-    if (!uploads.length || uploadingMaterial || pending.current) return;
-    const guard = captureRequest(fetch);
+    if (!uploads.length || uploadingMaterial || pending.current || uploadRecoveryModel.current?.snapshot.blocked) return;
+    const guard = uploadAttemptGuard.current || captureRequest(fetch);
     if (!guard.current()) { guard.release(); return; }
+    uploadAttemptGuard.current=guard;
     pending.current = true; ++draftsGeneration.current;
     const selectedUploads = uploads.slice();
-    setUploadingMaterial(true);
-    setFileError("");
-    setDriveReconnectRequired(false);
-    setNotice("");
-    setUploadProgress(0);
+    setUploadingMaterial(true);setFileError("");setDriveReconnectRequired(false);setNotice("");setUploadProgress(0);
     try {
-      const destination = await publicationUploadPlan(guard.options({ signal: guard.signal }));
-      guard.assertCurrent();
-      if (destination.status !== "resolved" || !destination.folder?.id) throw new Error(destination.reason || "No encontramos la carpeta privada de publicaciones.");
-      const completed = [];
-      for (let index = 0; index < selectedUploads.length; index += 1) {
-        guard.assertCurrent();
-        const item = selectedUploads[index];
-        const uploaded = await uploadFileToDrive(item.file, {
-          parentId: destination.folder.id,
-          duplicateAction: "keep",
-          session, readSession: getSesion, signal: guard.signal, isActive: guard.current,
-          request: (url, options) => guard.request(url, { ...options, sessionIntent: guard.options().sessionIntent }),
-          onProgress: (progress) => { if (guard.current()) setUploadProgress(Math.round(((index + progress / 100) / selectedUploads.length) * 100)); },
-        });
-        guard.assertCurrent();
-        if (!uploaded?.webViewLink) throw new Error(`No pudimos confirmar la carga de ${item.name}.`);
-        completed.push(uploaded);
+      if(!uploadDestination.current){
+        const destination=await publicationUploadPlan(guard.options({signal:guard.signal}));guard.assertCurrent();
+        if(destination.status!=="resolved"||!destination.folder?.id)throw new Error(destination.reason||"No encontramos la carpeta privada de publicaciones.");
+        uploadDestination.current=destination;
       }
-      setUploadedAssets(completed);
-      draftEdited.current = true;
-      setDraft((current) => ({ ...current, material: completed.map((item) => item.webViewLink).join("\n") }));
-      setUploadProgress(100);
-      setNotice(`${completed.length === 1 ? "Archivo guardado" : "Archivos guardados"} en el Drive privado de Render.`);
+      if(!uploadRecoveryModel.current)uploadRecoveryModel.current=createUploadRecovery({
+        capture:()=>guard,
+        upload:(file,options)=>uploadFileToDrive(file,{...options,session,readSession:getSesion,signal:guard.signal,isActive:guard.current,
+          request:(url,settings)=>guard.request(url,{...settings,sessionIntent:guard.options().sessionIntent})}),
+        onConfirmed:(_uploaded,confirmed,original)=>{
+          original.assertCurrent();
+          // Preserve each real ACK before starting the next file.
+          setUploadRecovery(uploadRecoveryModel.current.snapshot);
+          const links=confirmed.map(file=>{const url=new URL(file.webViewLink);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw new Error('Archivo guardado, pero su enlace no pudo verificarse. Revisá Drive; no se repetirá la carga.');return file.webViewLink;});
+          setUploadedAssets([...confirmed]);draftEdited.current=true;
+          setDraft(current=>({...current,material:links.join("\n")}));
+        },
+      });
+      const completed=await uploadRecoveryModel.current.run(selectedUploads,{
+        parentId:uploadDestination.current.folder.id,duplicateAction:"keep",
+      },(progress,index,total)=>{if(guard.current())setUploadProgress(Math.round(((index+progress/100)/total)*100));});
+      guard.assertCurrent();setUploadRecovery(uploadRecoveryModel.current.snapshot);setUploadProgress(100);
+      setNotice(`${completed.length===1?"Archivo guardado":"Archivos guardados"} en el Drive privado de Render.`);
     } catch (error) {
       if (guard.current()) {
+        if(uploadRecoveryModel.current)setUploadRecovery(uploadRecoveryModel.current.snapshot);
         setFileError(error.message || "No se pudo guardar el material en Drive.");
-        setDriveReconnectRequired(error.body?.code === "GOOGLE_DRIVE_RECONNECT_REQUIRED");
+        setDriveReconnectRequired(error.code==="GOOGLE_DRIVE_RECONNECT_REQUIRED");
       }
     } finally {
-      if (guard.current()) { pending.current = false; setUploadingMaterial(false); }
-      guard.release();
+      pending.current=false;if(guard.current())setUploadingMaterial(false);
+      if(!uploadRecoveryModel.current||uploadRecoveryModel.current.snapshot.confirmed.length===selectedUploads.length){guard.release();if(!uploadRecoveryModel.current)uploadAttemptGuard.current=null;}
     }
   };
 
-  const setField = (field, value) => { if (!pending.current) { draftEdited.current = true; setDraft((current) => ({ ...current, [field]: value })); } };
+  const setField = (field, value) => { if (!pending.current&&!(uploadRecoveryModel.current?.snapshot.blocked&&['clientId','type','material','publicationId'].includes(field))) { draftEdited.current = true; setDraft((current) => ({ ...current, [field]: value })); } };
   const setPlatform = (platform, value) => { if (!pending.current) { draftEdited.current = true; setDraft((current) => ({
     ...current,
     platforms: { ...current.platforms, [platform]: value },
@@ -411,6 +419,7 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
   }, [draft, uploads]);
 
   const simulate = async (mode) => {
+    if(uploadRecoveryModel.current?.snapshot.blocked){setNotice('La carga tiene un resultado sin confirmar. Revisá Drive manualmente; no se repetirá ni se publicará este intento.');return;}
     if (pending.current) return;
     if (dispatchConflict) { setNotice('Hay un conflicto. Conservamos tus cambios; cargá explícitamente la versión guardada antes de volver a enviar.'); return; }
     if (draftId && !validDispatchRevision(draftRevision)) { setNotice('Falta la revisión del borrador. Conservamos tus cambios; cargá explícitamente la versión guardada.'); setDispatchConflict(true); return; }
@@ -510,7 +519,7 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
 
           <label className="publisher-field publisher-field-wide">
             <span>Publicación planificada</span>
-            <select disabled={operationBusy} value={sourceSelection} onChange={(event) => selectPublication(event.target.value)}>
+            <select disabled={operationBusy||uploadRecovery.blocked} value={sourceSelection} onChange={(event) => selectPublication(event.target.value)}>
               <option value="">Nueva publicación sin planificación</option>
               {savedDrafts.length > 0 && <optgroup label="Borradores guardados">{savedDrafts.map((item) => <option key={`draft-${item.id}`} value={`draft:${item.id}`}>{item.clientName} · {item.type === "carrusel" ? "Carrusel" : "Reel"} · Borrador #{item.id}</option>)}</optgroup>}
               <optgroup label="Calendario editorial">
@@ -523,30 +532,31 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
           </label>
 
           <div className="publisher-fields-grid">
-            <label className="publisher-field"><span>Cliente</span><select disabled={operationBusy} value={draft.clientId} onChange={(event) => setField("clientId", Number(event.target.value))}>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label>
-            <label className="publisher-field"><span>Formato</span><select disabled={operationBusy} value={draft.type} onChange={(event) => changeType(event.target.value)}><option value="reel">Reel</option><option value="carrusel">Carrusel</option></select></label>
+            <label className="publisher-field"><span>Cliente</span><select disabled={operationBusy||uploadRecovery.blocked} value={draft.clientId} onChange={(event) => setField("clientId", Number(event.target.value))}>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label>
+            <label className="publisher-field"><span>Formato</span><select disabled={operationBusy||uploadRecovery.blocked} value={draft.type} onChange={(event) => changeType(event.target.value)}><option value="reel">Reel</option><option value="carrusel">Carrusel</option></select></label>
           </div>
 
           <div className="publisher-upload-block">
             <div className="publisher-upload-heading"><div><span>Material</span><strong>{draft.type === "reel" ? "Subí el video terminado" : "Subí las piezas del carrusel"}</strong></div><small>{draft.type === "reel" ? "MP4 · hasta 500 MB" : "JPG, PNG, WebP o MP4 · de 2 a 10 piezas"}</small></div>
-            <input disabled={operationBusy} ref={fileInputRef} className="publisher-file-input" type="file" accept={draft.type === "reel" ? ".mp4,video/mp4" : ".jpg,.jpeg,.png,.webp,.mp4,image/jpeg,image/png,image/webp,video/mp4"} multiple={draft.type === "carrusel"} onChange={(event) => chooseFiles(event.target.files)}/>
+            <input disabled={operationBusy||uploadRecovery.blocked} ref={fileInputRef} className="publisher-file-input" type="file" accept={draft.type === "reel" ? ".mp4,video/mp4" : ".jpg,.jpeg,.png,.webp,.mp4,image/jpeg,image/png,image/webp,video/mp4"} multiple={draft.type === "carrusel"} onChange={(event) => chooseFiles(event.target.files)}/>
             {uploads.length === 0 ? (
               <div className="publisher-dropzone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); chooseFiles(event.dataTransfer.files); }}>
                 <span className="publisher-upload-icon" aria-hidden="true">↑</span>
                 <div><strong>{draft.type === "reel" ? "Arrastrá el MP4 acá" : "Arrastrá las fotos acá"}</strong><small>o elegí los archivos desde tu computadora</small></div>
-                <button disabled={operationBusy} type="button" className="publisher-upload-button" onClick={() => fileInputRef.current?.click()}>{draft.type === "reel" ? "Seleccionar MP4" : "Seleccionar fotos"}</button>
+                <button disabled={operationBusy||uploadRecovery.blocked} type="button" className="publisher-upload-button" onClick={() => fileInputRef.current?.click()}>{draft.type === "reel" ? "Seleccionar MP4" : "Seleccionar fotos"}</button>
               </div>
             ) : (
               <div className="publisher-uploaded-files">
-                <div className="publisher-files-toolbar"><strong>{uploads.length} {uploads.length === 1 ? "archivo listo" : "archivos listos"}</strong><div><button disabled={operationBusy} type="button" onClick={() => fileInputRef.current?.click()}>Cambiar</button><button disabled={operationBusy} type="button" className="is-danger" onClick={clearUploads}>Quitar</button></div></div>
+                <div className="publisher-files-toolbar"><strong>{uploads.length} {uploads.length === 1 ? "archivo listo" : "archivos listos"}</strong><div><button disabled={operationBusy||uploadRecovery.blocked} type="button" onClick={() => fileInputRef.current?.click()}>Cambiar</button><button disabled={operationBusy||uploadRecovery.blocked} type="button" className="is-danger" onClick={clearUploads}>Quitar</button></div></div>
                 <div className="publisher-file-grid">{uploads.map((file, index) => <article key={file.id}>{file.type.startsWith("image/") ? <img src={file.previewUrl} alt=""/> : <video src={file.previewUrl} muted/>}<div><b>{draft.type === "carrusel" ? `${index + 1}. ` : ""}{file.name}</b><span>{formatFileSize(file.size)}</span></div></article>)}</div>
-                <div className="publisher-drive-upload-action"><div><strong>{uploadedAssets.length === uploads.length ? "Material privado listo" : "Guardalo antes de continuar"}</strong><small>{uploadedAssets.length === uploads.length ? "Los enlaces quedaron vinculados al borrador." : "Se subirá a RENDER_UPLOADS, sin publicar en redes."}</small></div><button type="button" disabled={operationBusy || uploadedAssets.length === uploads.length} onClick={uploadMaterial}>{uploadingMaterial ? `${uploadProgress}%` : uploadedAssets.length === uploads.length ? "Guardado en Drive" : "Subir a Drive"}</button></div>
+                <div className="publisher-drive-upload-action"><div><strong>{uploadedAssets.length === uploads.length ? "Material privado listo" : "Guardalo antes de continuar"}</strong><small>{uploadedAssets.length === uploads.length ? "Los enlaces quedaron vinculados al borrador." : "Se subirá a RENDER_UPLOADS, sin publicar en redes."}</small></div><button type="button" disabled={operationBusy || uploadRecovery.blocked || uploadedAssets.length === uploads.length} onClick={uploadMaterial}>{uploadingMaterial ? `${uploadProgress}%` : uploadedAssets.length === uploads.length ? "Guardado en Drive" : "Subir a Drive"}</button></div>
                 {uploadingMaterial && <div className="publisher-upload-progress"><i style={{ width: `${uploadProgress}%` }}/></div>}
               </div>
             )}
+            {uploadRecovery.blocked&&<div className="publisher-file-error" role="status"><span>{uploadedAssets.length} de {uploads.length} archivos con enlace confirmado. Otra carga puede haberse completado total o parcialmente; no se reenviará. Revisá Drive manualmente: buscar por nombre no confirma su resultado. Esta recuperación se conserva sólo mientras permanezcas en esta sesión y formulario.</span><a href="/drive" target="_blank" rel="noopener noreferrer">Abrir Drive para revisión manual</a></div>}
             {fileError && <div className="publisher-file-error" role="alert"><span>{fileError}</span>{driveReconnectRequired && <a href="/drive">Volver a conectar Drive</a>}</div>}
-            <div className="publisher-upload-alternative"><span>También podés usar un archivo que ya está online</span><button disabled={operationBusy} type="button" onClick={() => { if (!pending.current) setShowDriveField((visible) => !visible); }}>{showDriveField ? "Ocultar enlace" : "Elegir desde Drive"}</button></div>
-            {showDriveField && <label className="publisher-field publisher-field-wide publisher-drive-field"><span>{draft.type === "carrusel" ? "Enlaces de Drive" : "Enlace de Drive"}</span><textarea disabled={operationBusy} rows={draft.type === "carrusel" ? 4 : 2} value={draft.material} onChange={(event) => { setField("material", event.target.value); if (event.target.value) clearUploads(); }} placeholder={draft.type === "carrusel" ? "Pegá un enlace por línea, en el orden del carrusel" : "Pegá el enlace del video final"}/><small>{draft.type === "carrusel" ? `${materialCount(draft)} piezas enlazadas` : "Render validará el acceso antes de publicar."}</small></label>}
+            <div className="publisher-upload-alternative"><span>También podés usar un archivo que ya está online</span><button disabled={operationBusy||uploadRecovery.blocked} type="button" onClick={() => { if (!pending.current) setShowDriveField((visible) => !visible); }}>{showDriveField ? "Ocultar enlace" : "Elegir desde Drive"}</button></div>
+            {showDriveField && <label className="publisher-field publisher-field-wide publisher-drive-field"><span>{draft.type === "carrusel" ? "Enlaces de Drive" : "Enlace de Drive"}</span><textarea disabled={operationBusy||uploadRecovery.blocked} rows={draft.type === "carrusel" ? 4 : 2} value={draft.material} onChange={(event) => { setField("material", event.target.value); if (event.target.value) clearUploads(); }} placeholder={draft.type === "carrusel" ? "Pegá un enlace por línea, en el orden del carrusel" : "Pegá el enlace del video final"}/><small>{draft.type === "carrusel" ? `${materialCount(draft)} piezas enlazadas` : "Render validará el acceso antes de publicar."}</small></label>}
           </div>
 
           <div className="publisher-divider" />

@@ -5,6 +5,7 @@ import ts from 'typescript';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { driveRequest, uploadFileToDrive } from '../features/drive/drive-api.js';
+import { createUploadRecovery } from '../features/drive/upload-recovery.js';
 
 const source = readFileSync(new URL('./PublicationComposer.jsx', import.meta.url), 'utf8');
 const file = ts.createSourceFile('PublicationComposer.jsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
@@ -14,7 +15,7 @@ const fn = name => nodes(file, ts.isFunctionDeclaration).find(n => n.name?.text 
 const evaluate = (node, deps) => new Function(...Object.keys(deps), `return (${node.getText(file)});`)(...Object.values(deps));
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const settle = async () => { for (let i = 0; i < 36; i++) await Promise.resolve(); };
-const response = (body, status = 200) => new Response(JSON.stringify(body), { status });
+const response = (body, status = body?.token ? 201 : 200) => new Response(JSON.stringify(body), { status });
 const revisionA = '2026-10-20T12:00:00.123456Z', revisionB = '2026-10-20T12:00:00.123457Z';
 const ack = (mode = 'draft', id = '31', revision = revisionA) => ({ id, revision, status: mode === 'draft' ? 'borrador' : mode === 'now' ? 'lista_para_publicar' : 'programada', previewOnly: true });
 function fixture(mode = 'cookie') {
@@ -32,6 +33,7 @@ function fixture(mode = 'cookie') {
   const captureRequest = evaluate(fn('usePublicationCapture'), { useRef: value => ({ current: value }), useEffect, useCallback: callback => callback,
     apiRequest, createCapturedRequest, getSesion: () => session })(original, view, currentView);
   const context = { captureRequest, session: original, getSesion: () => session, fetch: rawFetch, pending: { current: false },
+    createUploadRecovery, uploadRecoveryModel: { current: null }, uploadAttemptGuard: { current: null }, uploadDestination: { current: null },
     draftsGeneration: { current: 0 }, dispatchOperation: { current: null }, draftEdited: { current: false }, draftRevision: revisionA,
     dispatchConflict: false, canPublish: true, validation: '', uploads: [], uploadedAssets: [], draftId: null,
     uploadingMaterial: false, clients: [], savedDrafts: [], candidates: [], sourceSelection: '', uploadsRef: { current: [] }, fileInputRef: { current: null },
@@ -41,7 +43,7 @@ function fixture(mode = 'cookie') {
     CustomEvent: class { constructor(type) { this.type = type; } },
     publicationUploadPlan: options => driveRequest('/api/drive/publication-upload-plan', options, rawFetch), uploadFileToDrive,
   };
-  for (const name of ['Saving', 'Notice', 'SavedDrafts', 'DraftId', 'DraftRevision', 'DispatchConflict', 'UploadingMaterial', 'FileError', 'DriveReconnectRequired', 'UploadProgress', 'UploadedAssets', 'Draft', 'ShowDriveField', 'Uploads', 'SourceSelection']) {
+  for (const name of ['Saving', 'Notice', 'SavedDrafts', 'DraftId', 'DraftRevision', 'DispatchConflict', 'UploadingMaterial', 'FileError', 'DriveReconnectRequired', 'UploadProgress', 'UploadedAssets', 'UploadRecovery', 'Draft', 'ShowDriveField', 'Uploads', 'SourceSelection']) {
     state[name] = name === 'Draft' ? structuredClone(context.draft) : null;
     context[`set${name}`] = value => { state[name] = typeof value === 'function' ? value(state[name]) : value; effects.push(name); };
   }
@@ -131,10 +133,10 @@ test('upload plan, every real Drive chunk and progress use original scope; repla
   const intent = h.calls[0].options.sessionIntent;
   h.calls[0].resolve(response({ status: 'resolved', folder: { id: 'private-folder' } })); await settle();
   assert.equal(h.calls[1].url, '/api/drive/uploads'); assert.equal(h.calls[1].options.sessionIntent, intent);
-  h.calls[1].resolve(response({ token: 'synthetic-upload' })); await settle();
+  h.calls[1].resolve(response({ token: 'synthetic-upload', name: 'one.mp4' })); await settle();
   assert.ok(h.calls[2].options.body instanceof Blob); assert.equal(h.calls[2].options.sessionIntent, intent);
   const count = h.effects.length; h.accept(8);
-  h.calls[2].resolve(response({ webViewLink: 'https://drive.google.com/synthetic' })); await pending;
+  h.calls[2].resolve(response({ id: 'file-one', webViewLink: 'https://drive.google.com/synthetic' })); await pending;
   assert.equal(h.calls.length, 3); assert.equal(h.effects.length, count); assert.equal(h.state.UploadedAssets, null);
 });
 
@@ -152,15 +154,15 @@ test('two-file upload completes under the same original scope and progress canno
   const initialIntent = h.calls[0].options.sessionIntent;
   await h.run('uploadMaterial')(); await h.run('simulate')('draft'); assert.equal(h.calls.length, 1);
   h.calls[0].resolve(response({ status: 'resolved', folder: { id: 'private-folder' } })); await settle();
-  h.calls[1].resolve(response({ token: 'upload-one' })); await settle();
-  h.calls[2].resolve(response({ webViewLink: 'https://drive.google.com/one' })); await settle();
+  h.calls[1].resolve(response({ token: 'upload-one', name: 'one.mp4' })); await settle();
+  h.calls[2].resolve(response({ id: 'file-one', name: 'one.mp4', mimeType: 'application/octet-stream', size: 9, webViewLink: 'https://drive.google.com/file/d/file-one/view' })); await settle();
   assert.equal(h.state.UploadProgress, 50);
   h.run('setField')('caption', 'blocked during second file'); assert.equal(h.state.Draft.caption, 'Exact caption');
-  h.calls[3].resolve(response({ token: 'upload-two' })); await settle();
-  h.calls[4].resolve(response({ webViewLink: 'https://drive.google.com/two' })); await pending;
+  h.calls[3].resolve(response({ token: 'upload-two', name: 'two.mp4' })); await settle();
+  h.calls[4].resolve(response({ id: 'file-two', name: 'two.mp4', mimeType: 'application/octet-stream', size: 9, webViewLink: 'https://drive.google.com/file/d/file-two/view' })); await pending;
   assert.equal(h.calls.length, 5);
   assert.ok(h.calls.every(call => call.options.sessionIntent === initialIntent));
-  assert.equal(h.state.Draft.material, 'https://drive.google.com/one\nhttps://drive.google.com/two');
+  assert.equal(h.state.Draft.material, 'https://drive.google.com/file/d/file-one/view\nhttps://drive.google.com/file/d/file-two/view');
   assert.equal(h.state.UploadProgress, 100); assert.equal(h.state.UploadingMaterial, false); assert.equal(h.context.pending.current, false);
 });
 
@@ -209,8 +211,16 @@ test('all editable controls disable while pending, scoped state is keyed by sess
   const controls = nodes(component, ts.isJsxSelfClosingElement).concat(nodes(component, ts.isJsxOpeningElement))
     .filter(n => ['input', 'select', 'textarea'].includes(n.tagName.getText(file)));
   assert.ok(controls.length >= 12);
-  for (const control of controls) assert.ok(control.attributes.properties.some(p => p.name?.getText(file) === 'disabled'
-    && p.initializer.expression.getText(file) === 'operationBusy'));
+  for (const control of controls) {
+    const disabled = control.attributes.properties.find(p => p.name?.getText(file) === 'disabled');
+    assert.ok(disabled, `${control.tagName.getText(file)} must declare its pending guard`);
+    for (const blocked of [false, true]) {
+      assert.equal(evaluate(disabled.initializer.expression, { operationBusy: true, uploadRecovery: { blocked } }), true,
+        'Every editable control remains disabled while an operation is pending');
+    }
+    assert.equal(evaluate(disabled.initializer.expression, { operationBusy: false, uploadRecovery: { blocked: false } }), false,
+      'Controls remain available when idle without uncertain uploads');
+  }
   assert.match(source, /key=\{view.key\}/); assert.doesNotMatch(source, /localStorage|sessionStorage|\.token\s*\|\|/);
   assert.match(source, /Simulación lista\. No se envió nada a Meta/);
   assert.match(source, /Programación simulada\. El calendario editorial no fue modificado/);

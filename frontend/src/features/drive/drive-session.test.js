@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { uploadFileToDrive, driveRequest } from './drive-api.js';
 import { createBrowserSessionState } from '../../shared/session/browser-session-state.js';
-const response = (body, status = 200) => new Response(JSON.stringify(body), { status });
+const response = (body, status = body?.token?201:200) => new Response(JSON.stringify(body?.token ? { name: 'synthetic.bin', ...body } : body), { status });
 const file = size => { const blob = new Blob([new Uint8Array(size)]); return Object.assign(blob, { name: 'synthetic.bin' }); };
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 function actor() {
@@ -15,28 +15,28 @@ function actor() {
 }
 const obsolete = error => error.code === 'session_binding_obsolete';
 
-test('upload POST, all chunks and transient retry retain one genuine intent, exact Blob/range/token and original task', async () => {
+test('upload POST and acknowledged chunks retain one genuine intent, exact Blob/range/token and original task', async () => {
   const a = actor(), calls = [], progress = []; let chunks = 0;
   const result = await uploadFileToDrive(file(8 * 1024 * 1024 + 2), { ...a, parentId: 'folder', taskId: 42,
     onProgress: value => progress.push(value), request: async (url, options) => {
       calls.push({ url, options });
       if (options.method === 'POST') return response({ token: 'synthetic-upload' });
-      if (++chunks === 1) throw new TypeError('synthetic uncertain connection');
-      return response({ id: 'actual-synthetic-file' }, chunks === 2 ? 202 : 200);
+      if (++chunks === 1) return response({received:'bytes=0-8388607'},202);
+      return response({ id: 'actual-synthetic-file', name: 'synthetic.bin', mimeType: 'application/octet-stream', size: 8388610, webViewLink: 'https://drive.google.com/file/d/actual-synthetic-file/view' });
     } });
-  assert.equal(result.id, 'actual-synthetic-file'); assert.equal(calls.length, 4);
+  assert.equal(result.id, 'actual-synthetic-file'); assert.equal(calls.length, 3);
   const intent = calls[0].options.sessionIntent;
   for (const call of calls) {
     assert.equal(call.options.sessionIntent, intent); assert.equal(a.store.isCurrent(intent), true);
     assert.equal(new Headers(call.options.headers).has('Authorization'), false);
   }
   assert.equal(JSON.parse(calls[0].options.body).taskId, 42);
-  assert.equal(calls[1].options.body, calls[2].options.body);
+  assert.equal(calls[1].options.body.size,8*1024*1024);assert.equal(calls[2].options.body.size,2);
   assert.equal(calls[1].url, calls[2].url);
   assert.equal(new Headers(calls[1].options.headers).get('Content-Range'), 'bytes 0-8388607/8388610');
-  assert.equal(new Headers(calls[1].options.headers).get('Content-Range'), new Headers(calls[2].options.headers).get('Content-Range'));
+  assert.equal(new Headers(calls[2].options.headers).get('Content-Range'),'bytes 8388608-8388609/8388610');
   assert.ok(calls[1].options.body instanceof Blob); assert.equal(typeof calls[1].options.body.getReader, 'undefined');
-  assert.deepEqual(progress, [100, 100]);
+  assert.deepEqual(progress, [99, 100]);
 });
 
 for (const stage of ['post', 'chunk', 'body']) test(`session B during ${stage} stops old upload without progress/result or B dispatch`, async () => {
@@ -77,14 +77,14 @@ for (const kind of ['typed', 'abort', 'json']) test(`${kind} chunk body failure 
   await assert.rejects(driveRequest('/api/drive/status', {}, async () => ({ json: async () => { throw error; } })), caught => caught === error);
 });
 
-test('transient chunk retries stop at three and preserve legacy captured Authorization', async () => {
+test('uncertain503 chunk is not retried and preserves legacy captured Authorization', async () => {
   const session = { token: 'synthetic-bearer', usuario: { id: 7, rol: 'edicion' } }, calls = [];
   await assert.rejects(uploadFileToDrive(file(1), { session, readSession: () => session, request: async (_url, options) => {
     calls.push(options); return options.method === 'POST' ? response({ token: 'synthetic-upload' }) : response({}, 503);
   } }), error => error.status === 503);
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 2);
   assert.ok(calls.every(options => new Headers(options.headers).get('Authorization') === 'Bearer synthetic-bearer'));
-  assert.equal(calls[1].body, calls[3].body);
+  assert.ok(calls[1].body instanceof Blob);assert.equal(new Headers(calls[1].headers).get('Content-Range'),'bytes 0-0/1');
 });
 
 test('abort and changed task activity fence progress/result; empty file uses a Blob and bytes */0', async () => {
@@ -141,10 +141,11 @@ test('uploader source gates same-tick upload and chooser, suppresses stale catch
   const upload = source.slice(source.indexOf('const upload ='), source.indexOf('return <div className="drive-uploader"'));
   assert.match(choose, /if \(pending\.current \|\| !isActive\(\)\) return/);
   assert.match(upload, /if \([^\n]*pending\.current[^\n]*\) return;\s*pending\.current = true/);
-  assert.ok(upload.indexOf('pending.current = true') < upload.indexOf('await uploadFileToDrive'));
+  assert.ok(upload.indexOf('pending.current = true') < upload.indexOf('await recovery.current.run'));
+  assert.match(upload,/upload:uploadFileToDrive/);
   assert.match(choose, /catch \(reason\) \{ if \(scope\.current\(\)\) setError/);
   assert.match(upload, /catch \(reason\) \{\s*if \(!scope\.current\(\)\) return/);
   assert.match(upload, /finally \{ pending\.current = false; if \(scope\.current\(\)\) setUploading/);
   assert.match(upload, /await onUploaded\?\.\(uploaded, scope\)/);
-  assert.match(upload, /const scope = createCapturedRequest\(\{ session, readSession: getSesion/);
+  assert.match(upload, /const original=createCapturedRequest\(\{session,readSession:getSesion/);
 });
