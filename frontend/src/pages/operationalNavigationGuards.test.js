@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { navigateWithinApp } from '../shared/navigation/location.js';
+import { readFeedbackNotesLocation, feedbackNotesLocationUrl } from './feedbackNotesPagination.js';
 
 // Extract real non-JSX handlers. These are protocol/source tests, not mounted
 // React or native browser traversal verification.
@@ -28,10 +29,19 @@ class FakeWindow extends EventTarget {
 function sectionHarness(win) {
   const state = { selected: { id: 7 }, draft: { titulo: 'No perder' }, baseline: 'original', section: 'clients' };
   const changes = [];
-  const bindings = { window: win, navigateWithinApp };
+  const bindings = { window: win, navigateWithinApp, selection:readFeedbackNotesLocation(win.location.search), section:'clients', feedbackNotesLocationUrl,
+    setError: error => { throw error; }, contextEpoch:{current:0}, panelEpoch:{current:0}, readerRef:{current:null}, linkedNoteId:{current:null},
+    setQuery(){},setNotes(){},setPage(){},setConflict(){},setDuplicates(){},
+    feedbackNotesLocation:()=>({selection:readFeedbackNotesLocation(win.location.search),error:''}) };
   for (const [name, key] of [['setSection', 'section'], ['setSelected', 'selected'], ['setDraft', 'draft'], ['setBaseline', 'baseline']]) {
     bindings[name] = value => { changes.push([key, value]); state[key] = value; };
   }
+  bindings.setLocation = next => { changes.push(['section',next.selection.section]); state.section=next.selection.section; };
+  bindings.moveNotes = feedbackHandler('moveNotes', bindings);
+  const start=feedback.indexOf('  restoreLocationRef.current = () => {'),end=feedback.indexOf('  useEffect(() => {',start);
+  const restoreLocationRef={current:null};
+  Function(...Object.keys(bindings),'restoreLocationRef',feedback.slice(start,end))(...Object.values(bindings),restoreLocationRef);
+  win.addEventListener('popstate',()=>restoreLocationRef.current());
   return { state, changes, change: feedbackHandler('changeSection', bindings) };
 }
 
@@ -77,10 +87,10 @@ test('accepted section navigation asks protocol before clearing and commits exac
   const win = new FakeWindow(), panel = sectionHarness(win);
   win.addEventListener('render:before-navigation', event => {
     assert.equal(event.cancelable, true); assert.equal(panel.changes.length, 0);
-    assert.equal(panel.state.draft.titulo, 'No perder'); assert.equal(event.detail.href, '/feedback?section=team');
+    assert.equal(panel.state.draft.titulo, 'No perder'); assert.equal(event.detail.href, '/feedback?section=team&limit=50&offset=0');
   });
   panel.change('team');
-  assert.equal(win.location.search, '?section=team'); assert.equal(panel.state.section, 'team');
+  assert.equal(win.location.search, '?section=team&limit=50&offset=0'); assert.equal(panel.state.section, 'team');
   assert.equal(panel.state.draft, null); assert.equal(panel.state.selected, null); assert.equal(panel.state.baseline, '');
   assert.deepEqual(win.trace, ['render:before-navigation', 'push', 'popstate', 'scroll']);
 });
@@ -153,7 +163,7 @@ test('production local controls retain one explicit confirmation and busy denies
 
 test('feedback local panel close retains draft on refused discard and permits deliberate accepted close', () => {
   let allow = false; const changes = [];
-  const bindings = { canLeave: () => allow };
+  const bindings = { canLeave: () => allow, recordSelected: value => changes.push(['recordSelected',value]) };
   for (const name of ['setSelected', 'setDraft', 'setBaseline', 'setConflict', 'setDuplicates']) bindings[name] = value => changes.push([name, value]);
   const close = feedbackHandler('closePanel', bindings);
   close(); assert.equal(changes.length, 0); allow = true; close(); assert.ok(changes.some(([name, value]) => name === 'setDraft' && value === null));

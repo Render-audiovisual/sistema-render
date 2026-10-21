@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { feedbackNoteMetadataDto } from '../src/feedback-notes-read.js';
 import { normalizeFeedback, assertFeedbackBusinessInput } from '../src/feedback-fields.js';
 
 // Execute the actual notes handlers with a fake pool: no server start, migrations,
@@ -14,7 +15,7 @@ function harness(results = []) {
   const routes = new Map(); const calls = [];
   const router = Object.fromEntries(['get','post','patch','delete'].map((method) => [method, (path, fn) => routes.set(`${method} ${path}`, fn)]));
   const pool = { query: async (sql, params) => { calls.push({ sql, params }); return results.shift() || { rows: [] }; } };
-  new Function('router','pool','normalizeFeedback','getTaskActor','assertFeedbackBusinessInput', source.slice(start,end))(router,pool,normalizeFeedback,() => 'empleado',assertFeedbackBusinessInput);
+  new Function('router','pool','normalizeFeedback','getTaskActor','assertFeedbackBusinessInput','feedbackNoteMetadataDto', source.slice(start,end))(router,pool,normalizeFeedback,() => 'empleado',assertFeedbackBusinessInput,feedbackNoteMetadataDto);
   return { calls, async run(route, body = {}, query = {}) {
     const response = { code: 200, status(code) { this.code = code; return this; }, json(data) { this.data = data; return this; } };
     await routes.get(route)({ body, query, params: { id: 8 }, auth: { rol: 'empleado' } }, response, (error) => { throw error; });

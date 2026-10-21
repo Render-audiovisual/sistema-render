@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { normalizeFeedback, assertFeedbackBusinessInput } from "./feedback-fields.js";
+import { readFeedbackNotesPage, readFeedbackNoteDetail, readLegacyFeedbackNotes, feedbackNoteMetadataDto } from './feedback-notes-read.js';
 import { convertUnlinkedFlyer } from './story-flyer-conversion.js';
 import { deleteEmptyClient } from './delete-empty-client.js';
 import { clientAgreementRevisionSql, lockClientAdministration, lockClientAgreement, readClientAgreementRevision } from './client-agreement.js';
@@ -323,29 +324,34 @@ function normalizeNotaCategoria(value) {
 }
 
 router.get("/notas", async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
   try {
-    const papelera = req.query.papelera === "true";
-    const busqueda = String(req.query.q || "").trim();
-    const params = [];
-    let where = papelera ? "eliminado_at IS NOT NULL" : "eliminado_at IS NULL";
-    const categoria = req.query.categoria ? normalizeNotaCategoria(req.query.categoria) : null;
-    if (req.query.categoria && !categoria) return res.status(400).json({ error: "Categoría de nota inválida." });
-    if (categoria) {
-      params.push(categoria);
-      where += ` AND categoria=$${params.length}`;
-    }
-    if (busqueda) {
-      params.push(`%${busqueda}%`);
-      where += ` AND (titulo ILIKE $${params.length} OR contenido ILIKE $${params.length})`;
-    }
-    const result = await pool.query(
-      `SELECT id,titulo,contenido,categoria,feedback,creado_por,modificado_por,eliminado_at,created_at,updated_at
-       FROM notas_compartidas WHERE ${where}
-       ORDER BY updated_at DESC,id DESC LIMIT 500`,
-      params,
-    );
-    res.json(result.rows);
-  } catch (error) { next(error); }
+    const page = await readLegacyFeedbackNotes(pool, req.auth, req.query);
+    res.set('X-Total-Count', String(page.total));
+    res.set('X-Feedback-Truncated', String(page.has_more));
+    res.json(page.items);
+  } catch (error) {
+    if ([400,401,403,404,409,428].includes(error.status)) return res.status(error.status).json({ error: error.message });
+    next(error);
+  }
+});
+
+router.get('/notas/pagina', async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  try { res.json(await readFeedbackNotesPage(pool, req.auth, req.query)); }
+  catch (error) {
+    if ([400,401,403,404,409,428].includes(error.status)) return res.status(error.status).json({ error: error.message });
+    next(error);
+  }
+});
+
+router.get('/notas/:id/detalle', async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  try { res.json(await readFeedbackNoteDetail(pool, req.auth, req.params.id, req.query)); }
+  catch (error) {
+    if ([400,401,403,404,409,428].includes(error.status)) return res.status(error.status).json({ error: error.message });
+    next(error);
+  }
 });
 
 router.get("/notas/nuevas", async (req, res, next) => {
@@ -364,6 +370,7 @@ router.get("/notas/nuevas", async (req, res, next) => {
 });
 
 router.get("/notas/similares", async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const cliente = String(req.query.cliente || "").trim();
     const titulo = String(req.query.titulo || "").trim();
@@ -376,7 +383,8 @@ router.get("/notas/similares", async (req, res, next) => {
          AND ($2::bigint=0 OR id<>$2) ORDER BY updated_at DESC LIMIT 100`,
       [cliente, Number.isInteger(excludeId) && excludeId > 0 ? excludeId : 0],
     );
-    return res.json({ similares: findSimilarFeedback({ cliente, titulo, contenido }, result.rows) });
+    const candidates = result.rows.map(row => ({ ...row, feedback: feedbackNoteMetadataDto(row.feedback) }));
+    return res.json({ similares: findSimilarFeedback({ cliente, titulo, contenido }, candidates) });
   } catch (error) { return next(error); }
 });
 
@@ -402,7 +410,7 @@ router.post("/notas", async (req, res, next) => {
       [titulo, contenido, categoria, actor, JSON.stringify(feedback)],
     );
     const saved = result.rows[0];
-    res.status(201).json(saved);
+    res.status(201).json({ ...saved, feedback: feedbackNoteMetadataDto(saved.feedback) });
     if (feedback.flujo === "feedback") notificarFeedbackSinInterrumpir({ pool, nota: saved, actor });
   } catch (error) { next(error); }
 });
@@ -461,7 +469,7 @@ router.patch("/notas/:id", async (req, res, next) => {
       }
       return res.status(404).json({ error: "Nota no encontrada." });
     }
-    res.json(result.rows[0]);
+    res.json({ ...result.rows[0], feedback: feedbackNoteMetadataDto(result.rows[0].feedback) });
   } catch (error) { next(error); }
 });
 

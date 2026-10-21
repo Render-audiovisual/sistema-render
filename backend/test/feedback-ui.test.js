@@ -6,16 +6,20 @@ import { resolveFeedbackClient } from "../../frontend/src/features/render-os/uti
 const feedbackSource = readFileSync(new URL("../../frontend/src/pages/Feedback.jsx", import.meta.url), "utf8");
 const feedbackStyles = readFileSync(new URL("../../frontend/src/pages/Feedback.css", import.meta.url), "utf8");
 const feedbackClientSource = readFileSync(new URL("../../frontend/src/features/render-os/utils/feedback-client.js", import.meta.url), "utf8");
+const sharedClientSource = readFileSync(new URL('../../shared/feedback-client.mjs', import.meta.url), 'utf8');
+const notesReadSource = readFileSync(new URL('../src/feedback-notes-read.js', import.meta.url), 'utf8');
 
 test("Feedback separa las notas del equipo de las notas de clientes", () => {
-  assert.match(feedbackSource, /isClientFeedback/);
-  assert.match(feedbackSource, /resolveFeedbackClient/);
+  assert.match(feedbackSource, /selected\.section|selected\?\.section/);
+  assert.match(feedbackSource, /resolved_client/);
   assert.match(feedbackSource, /aria-label="Tipo de feedback"/);
   assert.match(feedbackSource, />Equipo</);
   assert.match(feedbackSource, />Clientes</);
-  assert.match(feedbackSource, /section === "clients" \? belongsToClients : !belongsToClients/);
-  assert.match(feedbackClientSource, /matches\.length === 1 \? matches\[0\] : ""/);
-  assert.match(feedbackSource, /note\.creado_por/);
+  assert.match(feedbackSource, /const visible = notes/);
+  assert.match(notesReadSource, /context.section!=='all'&&item.section!==context.section/);
+  assert.match(feedbackClientSource, /shared\/feedback-client\.mjs/);
+  assert.match(sharedClientSource, /matches.length === 1 \? matches\[0\] : ''/);
+  assert.match(feedbackSource, /selected\.creado_por/);
 });
 
 test("Feedback recupera el cliente de notas antiguas sin metadata", () => {
@@ -27,9 +31,10 @@ test("Feedback recupera el cliente de notas antiguas sin metadata", () => {
 });
 
 test("Feedback distingue notas compartidas del inventario real de revisión de edición", () => {
-  assert.match(feedbackSource, /<FeedbackTaskInventory request=\{request\} sesion=\{sesion\} clients=\{clients\}/);
+  assert.match(feedbackSource, /<FeedbackTaskInventory request=\{transport\} sesion=\{sesion\} clients=\{clients\}/);
   assert.doesNotMatch(feedbackSource, /q=feedback|source: "task"|setTaskFeedbacks/);
-  assert.match(feedbackSource, /const feedbackEntries = notes/);
+  assert.match(feedbackSource, /const visible = notes/);
+  assert.match(feedbackSource, /createFeedbackNotesReader/);
 });
 
 test("Feedback presenta resúmenes compactos y abre el contenido en un panel", () => {

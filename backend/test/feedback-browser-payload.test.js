@@ -35,7 +35,7 @@ for (const editing of [false, true]) test(`real persistDraft ${editing ? "PATCH"
     request: async (url, options) => { calls.push({ url, ...options }); return note; },
     setBusy: noop, setError: noop, setNotes: noop, markFeedbackSeen: noop,
     sesion: null, setSelected: noop, setDraft: noop, setBaseline: noop,
-    setMessage: noop, setDuplicates: noop, setConflict: noop,
+    setMessage: noop, setDuplicates: noop, setConflict: noop, restartNotes: noop,
   });
   await save({ skipDuplicateCheck: true });
   assert.equal(calls.length, 1);
@@ -52,7 +52,7 @@ test("real status PATCH strips GET provenance and preserves business fields and 
   const toggle = handler("async function toggleStatus", "  async function trashAction", {
     feedbackBusinessInput: project, lock: { current: false }, setBusy: noop, setError: noop,
     request: async (_url, options) => { sent = JSON.parse(options.body); return note; },
-    setNotes: noop, setSelected: noop, setMessage: noop,
+    setNotes: noop, setSelected: noop, setMessage: noop, restartNotes: noop,
   });
   await toggle(note);
   assert.deepEqual(sent, { feedback: { ...business, estado: "resuelto" }, expected_updated_at: note.updated_at });
@@ -65,6 +65,7 @@ test("duplicate selection uses target version without copying target provenance"
   let draft = { titulo: "Nuevo pedido", feedback: { ...business } };
   const noop = () => {};
   const select = handler("function updateDuplicate", "  async function toggleStatus", {
+    lock: { current: false },
     notes: [note], setDraft: (update) => { draft = update(draft); },
     setDuplicates: noop, setMessage: noop,
   });
