@@ -297,8 +297,14 @@ test('production editorial: canonical delivery identity and atomic association',
     const before = await snapshot();
     assert.equal((await api(`/tareas/${existing.task.id}`, undefined, admin, 'DELETE')).status, 409);
     assert.deepEqual(await snapshot(), before);
+    const publications = ok(await api('/publicaciones', undefined, admin, 'GET'));
+    const observedPublication = publications.find(row => row.id === existing.publication.id);
+    assert.ok(observedPublication);
+    assert.ok(Number.isSafeInteger(observedPublication.publicacion_evidencia?.revision));
     for (const body of [{ tipo: 'carrusel' }]) {
-      assert.equal((await api(`/publicaciones/${existing.publication.id}`, body, admin, 'PATCH')).status, 409);
+      assert.equal((await api(`/publicaciones/${existing.publication.id}`, {
+        ...body, expected_revision: observedPublication.publicacion_evidencia.revision,
+      }, admin, 'PATCH')).status, 409);
       assert.deepEqual(await snapshot(), before);
     }
     assert.equal((await api(`/publicaciones/${existing.publication.id}`, undefined, admin, 'DELETE')).status, 409);
@@ -324,17 +330,42 @@ test('production editorial: canonical delivery identity and atomic association',
     const [beforePiece] = await fixture.query('SELECT estado,fecha_programada,fecha_publicación_real FROM publicaciones WHERE id=$1', [target.publication.id]);
     const [beforeSlot] = await fixture.query('SELECT estado,completada_at FROM cliente_objetivo_piezas WHERE id=$1', [target.slot.id]);
     const detail = ok(await api(`/tareas/${target.task.id}?workspace=render_os`, undefined, admin, 'GET'));
+    const publications = ok(await api('/publicaciones', undefined, admin, 'GET'));
+    const observedPublication = publications.find(row => row.id === target.publication.id);
+    assert.ok(observedPublication);
+    assert.ok(Number.isSafeInteger(observedPublication.publicacion_evidencia?.revision));
     const results = await Promise.all([
       api(`/tareas/${target.task.id}?workspace=render_os`, { expected_revision: detail.revision,
         propiedades_extra: { copy_trabajo: 'QA task concurrent copy' } }, admin, 'PATCH'),
-      api(`/publicaciones/${target.publication.id}`, { copy: 'QA publication concurrent copy' }, admin, 'PATCH'),
+      api(`/publicaciones/${target.publication.id}`, { copy: 'QA publication concurrent copy',
+        expected_revision: observedPublication.publicacion_evidencia.revision }, admin, 'PATCH'),
     ]);
-    for (const result of results) ok(result);
+    ok(results[0]);
+    assert.ok([200,409].includes(results[1].status), JSON.stringify(results[1]));
+    if (results[1].status === 409) {
+      const [preserved] = await fixture.query('SELECT copy FROM publicaciones WHERE id=$1', [target.publication.id]);
+      assert.equal(preserved.copy, 'QA task concurrent copy', 'rejected stale editorial intent must not overwrite the task writer');
+      const freshRows = ok(await api('/publicaciones', undefined, admin, 'GET'));
+      const fresh = freshRows.find(row => row.id === target.publication.id); assert.ok(fresh);
+      assert.equal(fresh.copy, preserved.copy, 'reading a conflict must not replay the discarded intent');
+      assert.ok(Number.isSafeInteger(fresh.publicacion_evidencia?.revision));
+      assert.ok(fresh.publicacion_evidencia.revision > observedPublication.publicacion_evidencia.revision);
+      // An explicit new observation and manual save, not an automatic retry/rebase.
+      const manual = ok(await api(`/publicaciones/${target.publication.id}`, {
+        copy: 'QA publication manually reviewed copy', expected_revision: fresh.publicacion_evidencia.revision,
+      }, admin, 'PATCH'));
+      assert.equal(manual.copy, 'QA publication manually reviewed copy');
+    } else {
+      assert.equal(results[1].body.copy, 'QA publication concurrent copy');
+    }
     assert.deepEqual(await fixture.query('SELECT estado,fecha_programada,fecha_publicación_real FROM publicaciones WHERE id=$1', [target.publication.id]), [beforePiece]);
     assert.deepEqual(await fixture.query('SELECT estado,completada_at FROM cliente_objetivo_piezas WHERE id=$1', [target.slot.id]), [beforeSlot]);
     const [copy] = await fixture.query(`SELECT p.copy,s.copy AS slot_copy FROM publicaciones p
       JOIN cliente_objetivo_piezas s ON s.publicacion_id=p.id WHERE p.id=$1`, [target.publication.id]);
     assert.equal(copy.slot_copy, copy.copy);
+    if (results[1].status === 409) assert.equal(copy.copy, 'QA publication manually reviewed copy');
+    else assert.ok(['QA task concurrent copy','QA publication concurrent copy'].includes(copy.copy),
+      'when both writes succeed, the last serialized writer supplies the coherent piece/slot copy');
   });
   await t.test('canonical identity is unique across editorial delivery and prior handoff columns, not globally per publication', async () => {
     const target = await seed();

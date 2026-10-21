@@ -9,6 +9,7 @@ import { createCapturedRequest, isSessionFailure } from '../shared/session/captu
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { PageState } from "../components/PageState.jsx";
 import { formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
 
 function useStorySession(context = null) {
   const view = useSessionView(getSesion());
@@ -1460,20 +1461,25 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   const guardarHistoriaEnServidor = async (historiaId, campos) => {
     const scope = capture();
     if (!scope.current() || deleting.current.has(historiaId)) return;
-    const body = JSON.stringify(campos);
+    const observed = historias.find(row => row.id === historiaId);
+    let body;
+    try { body = editorialPatchBody(observed, campos); }
+    catch (err) { if (scope.current()) setErrorHistorias(editorialPatchError(err)); return; }
     const previous = writeQueues.current.get(historiaId);
     const latest = latestWrites.current.get(historiaId);
     if (previous && latest?.body === body && latest.scope.current()) return previous;
     latestWrites.current.set(historiaId, { body, scope });
     const queued = enqueueStoryWrite(writeQueues, historiaId, async () => {
     try {
-      await scope.request(`/api/historias/${historiaId}`, {
+      const saved = editorialPatchAck(observed, await scope.request(`/api/historias/${historiaId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body,
-      });
-    } catch {
-      if (scope.current()) setErrorHistorias("No se pudo guardar un cambio — reintentá.");
+      }));
+      scope.assertCurrent();
+      setHistorias(prev => prev.map(row => row.id === historiaId ? mergeEditorialPatchEvidence(row, saved) : row));
+    } catch (err) {
+      if (scope.current()) setErrorHistorias(editorialPatchError(err));
     }
     });
     void queued.finally(() => { if (!writeQueues.current.has(historiaId)) latestWrites.current.delete(historiaId); }).catch(() => {});
@@ -1503,11 +1509,11 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     let persisted = creada;
     if (Object.keys(metadataSugerida).length) {
       try {
-      const updated = createdStory(await scope.request(`/api/historias/${creada.id}`, {
+      const updated = editorialPatchAck(creada, createdStory(await scope.request(`/api/historias/${creada.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ metadata: metadataSugerida }),
-      }));
+        body: editorialPatchBody(creada, { metadata: metadataSugerida }),
+      })));
       scope.assertCurrent();
       if (updated.id !== creada.id) throw new Error('La respuesta no corresponde a la historia creada.');
       persisted = { ...creada, ...updated };
@@ -1579,11 +1585,11 @@ export function HistoriasPage({ initialTab = "estructura" }) {
       let nueva = creada;
       if (Object.keys(metadata).length) {
         try {
-        const updated = createdStory(await scope.request(`/api/historias/${creada.id}`, {
+        const updated = editorialPatchAck(creada, createdStory(await scope.request(`/api/historias/${creada.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ metadata }),
-        }));
+          body: editorialPatchBody(creada, { metadata }),
+        })));
         scope.assertCurrent();
         if (updated.id !== creada.id) throw new Error('La respuesta no corresponde a la historia creada.');
         nueva = { ...creada, ...updated };

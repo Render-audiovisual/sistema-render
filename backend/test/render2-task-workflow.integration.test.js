@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { access, readFile } from 'node:fs/promises';
 import { startLocalHarness, request, fixturePassword } from '../scripts/render2-local-test.js';
 
@@ -116,11 +117,22 @@ test('canonical task workflow: approval, finalization and editorial independence
     await assertState(id, await patch(id, community, { estado: 'finalizada' }), 'finalizada');
     assert.ok((await detail(id)).propiedades_extra.finalizada_at);
     assert.deepEqual(await editorial(pieceId), before, 'Task finalization cannot publish editorial state or actual date');
-    const published = await api(`/publicaciones/${pieceId}`, { token: admin, method: 'PATCH', body: { estado: 'publicada' } });
-    assert.equal(published.status, 200, JSON.stringify(published.body));
+    const listed = await api('/publicaciones', { token: admin }); assert.equal(listed.status, 200);
+    const observed = listed.body.find(row => row.id === pieceId); assert.ok(observed);
+    const expected_revision = observed.publicacion_evidencia.revision;
+    const taskBeforePublication = await snapshot(id);
+    const rejected = await api(`/publicaciones/${pieceId}`, { token: admin, method: 'PATCH', body: { expected_revision, estado: 'publicada' } });
+    assert.equal(rejected.status, 409, JSON.stringify(rejected.body));
+    assert.deepEqual(await editorial(pieceId), before, 'ordinary piece PATCH cannot manufacture publication evidence');
+    assert.deepEqual(await snapshot(id), taskBeforePublication);
+    const published = await api(`/editorial-publicacion/publicacion/${pieceId}/confirmar`, { token: admin, method: 'POST', body: {
+      request_id: randomUUID(), expected_revision, occurred_at: '2026-08-01T03:30:00.000Z' } });
+    assert.equal(published.status, 201, JSON.stringify(published.body));
     const actual = await editorial(pieceId);
     assert.equal(actual[0].estado, 'publicada');
     assert.ok(actual[0].fecha_publicación_real, 'Only actual editorial publication sets its real date');
+    assert.equal((await fixture.query("SELECT count(*)::int AS n FROM editorial_publicacion_eventos WHERE dominio='publicacion' AND pieza_id=$1 AND action='confirmar'", [pieceId]))[0].n, 1);
+    assert.deepEqual(await snapshot(id), taskBeforePublication, 'manual publication cannot finalize or reopen linked tasks');
     await assertState(id, await patch(id, admin, { estado: 'en_progreso' }), 'en_progreso');
     assert.deepEqual(await editorial(pieceId), actual, 'Task reopening cannot unpublish an actual publication');
   });

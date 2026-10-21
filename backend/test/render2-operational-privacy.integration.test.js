@@ -133,7 +133,7 @@ test('operational HTTP DTOs remove structured financial data for every non-admin
     assert.ok(recommendations.recommendations.some(row => row.id === root), 'Recommendation fixture must be nonempty');
     const linked = safe(await api(`/publicaciones/${pieces[0].id}/tareas`, { token }));
     assert.ok(linked.some(row => row.id === root));
-    for (const route of ['/publicaciones', '/historias', '/piezas', `/piezas/${pieces[0].id}`])
+    for (const route of ['/publicaciones', '/historias', '/piezas', `/piezas/${pieces[0].id}?dominio=publicacion`])
       safe(await api(route, { token }));
     const editorial = safe(await api('/publicaciones', { token })).find(row => row.id === pieces[0].id);
     assert.equal(editorial.copy, 'QA legitimate editorial copy');

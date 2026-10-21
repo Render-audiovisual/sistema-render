@@ -15,22 +15,41 @@ test('stories principal persistence, planning distinction and safe legacy flyer 
   const create = await api('/piezas', { token: owner, method: 'POST', body: { tipo: 'historia', cliente_id: client.id,
     responsable_id: 91004, fecha_programada: '2026-10-22', estado: 'pendiente', idea: 'QA story', copy: 'Initial copy' } });
   assert.equal(create.status, 201, JSON.stringify(create.body)); const storyId = create.body.id;
+  assert.ok(Number.isSafeInteger(create.body.publicacion_evidencia?.revision));
+  const observedStory = async () => {
+    const result = await api('/historias', { token: owner }); assert.equal(result.status, 200);
+    const row = result.body.find(item => item.id === storyId); assert.ok(row);
+    assert.ok(Number.isSafeInteger(row.publicacion_evidencia?.revision) && row.publicacion_evidencia.revision >= 0);
+    return row;
+  };
   await t.test('story and linked task use real assignment; date, metadata and empty text persist across users', async () => {
     const tasks = await f.query(`SELECT t.id,a.usuario_id FROM tareas t JOIN tarea_asignaciones a ON a.tarea_id=t.id
       WHERE t.historia_id=$1 AND a.tipo='responsable'`, [storyId]);
     assert.equal(tasks.length, 1); assert.equal(tasks[0].usuario_id, 91004);
     const home = await api('/inicio', { token: employee }); assert.equal(home.status, 200);
     assert.ok(home.body.tasks.some(row => row.id === tasks[0].id), 'new linked task must reach the actual responsible personal Home');
+    const observation = await observedStory();
     const patched = await api(`/historias/${storyId}`, { token: otherOwner, method: 'PATCH', body: {
+      expected_revision: observation.publicacion_evidencia.revision,
       fecha_programada: '2026-10-24', metadata: { tipo: 'Producto', hora: '10:30' }, copy: '', idea: '', material_referencia: '', aclaraciones: '', notas_planificacion: '' } });
     assert.equal(patched.status, 200, JSON.stringify(patched.body));
     const listed = await api('/historias', { token: employee }); assert.equal(listed.status, 200);
     const saved = listed.body.find(row => row.id === storyId); assert.equal(saved.copy, ''); assert.equal(saved.idea, '');
     assert.equal(saved.fecha_programada, '2026-10-24'); assert.equal(saved.metadata.hora, '10:30');
     const before = (await f.query('SELECT * FROM historias WHERE id=$1', [storyId]))[0];
-    assert.equal((await api(`/historias/${storyId}`, { token: owner, method: 'PATCH', body: { copy: { unsafe: true } } })).status, 400);
+    const expected_revision = (await observedStory()).publicacion_evidencia.revision;
+    for (const body of [{ copy: { unsafe: true } }, { unknown_field: 'reject' }])
+      assert.equal((await api(`/historias/${storyId}`, { token: owner, method: 'PATCH', body: { expected_revision, ...body } })).status, 400);
     assert.deepEqual((await f.query('SELECT * FROM historias WHERE id=$1', [storyId]))[0], before);
-    assert.equal((await api(`/historias/${storyId}`, { token: employee, method: 'PATCH', body: { copy: 'Denied' } })).status, 403);
+    assert.equal((await api(`/historias/${storyId}`, { token: employee, method: 'PATCH', body: { expected_revision, copy: 'Denied' } })).status, 403);
+    const taskBefore = await f.query('SELECT id,estado FROM tareas WHERE historia_id=$1 ORDER BY id', [storyId]);
+    const nullOmitted = await api(`/historias/${storyId}`, { token: owner, method: 'PATCH', body: {
+      expected_revision, copy: null, idea: null, aclaraciones: 'Explicit note' } });
+    assert.equal(nullOmitted.status, 200, JSON.stringify(nullOmitted.body));
+    const afterNull = await observedStory(); assert.equal(afterNull.copy, ''); assert.equal(afterNull.idea, '');
+    assert.equal(afterNull.aclaraciones, 'Explicit note');
+    assert.deepEqual(await f.query('SELECT id,estado FROM tareas WHERE historia_id=$1 ORDER BY id', [storyId]), taskBefore,
+      'ordinary editorial content writes cannot finalize linked tasks');
   });
   await t.test('weekly theme and daily planning check do not manufacture a real publication', async () => {
     const before = (await f.query('SELECT * FROM historias WHERE id=$1', [storyId]))[0];

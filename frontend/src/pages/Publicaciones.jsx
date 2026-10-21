@@ -12,6 +12,7 @@ import { formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, r
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { useSessionView } from '../shared/session/use-session-view.js';
+import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
 
 function usePublicationSession(sesion, context = null) {
   const view = useSessionView(sesion || getSesion());
@@ -201,13 +202,13 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
     pendingWrites.current.add(publicacion.id);
     setGuardandoId(publicacion.id); setError(null);
     try {
-      const actualizada = await scope.request(`/api/publicaciones/${publicacion.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fecha_programada: fecha }) });
+      const actualizada = editorialPatchAck(publicacion, await scope.request(`/api/publicaciones/${publicacion.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: editorialPatchBody(publicacion, { fecha_programada: fecha }) }));
       scope.assertCurrent();
       const completa = { ...publicacion, ...actualizada, tipoLabel: getTipoPublicacionLabel(actualizada.tipo) };
       setPiezas((prev) => prev.map((item) => item.id === completa.id ? completa : item));
       setPiezaSel(current => selection.current === observation && current === observation.piece && current?.id === publicacion.id ? completa : current);
       setDiaSel(current => selection.current === observation && current === observation.day ? null : current);
-    } catch (err) { if (scope.current()) setError(err.message); }
+    } catch (err) { if (scope.current()) setError(editorialPatchError(err)); }
     finally { pendingWrites.current.delete(publicacion.id); if (lifetime.current()) setGuardandoId(current => current === publicacion.id ? null : current); }
   }, [capture, captureLifetime]);
 
@@ -220,11 +221,11 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
     setGuardandoId(publicacion.id);
     setError(null);
     try {
-      const actualizada = await scope.request(`/api/publicaciones/${publicacion.id}`, {
+      const actualizada = editorialPatchAck(publicacion, await scope.request(`/api/publicaciones/${publicacion.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ estado: nuevoEstado }),
-      });
+        body: editorialPatchBody(publicacion, { estado: nuevoEstado }),
+      }));
       scope.assertCurrent();
       const piezaActualizada = {
         ...publicacion,
@@ -246,7 +247,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
           : dia,
       );
     } catch (err) {
-      if (scope.current()) setError(err.message);
+      if (scope.current()) setError(editorialPatchError(err));
     } finally {
       pendingWrites.current.delete(publicacion.id);
       if (lifetime.current()) setGuardandoId(current => current === publicacion.id ? null : current);
@@ -763,7 +764,10 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     if (pendingWrites.current.has(`delete:${id}`)) return;
     campos = editorialFields(publicaciones.find(p => p.id === id), campos, view.role === 'admin');
     if (!Object.keys(campos).length) return;
-    const body = JSON.stringify(campos);
+    const observed = publicaciones.find(p => p.id === id);
+    let body;
+    try { body = editorialPatchBody(observed, campos); }
+    catch (err) { if (scope.current()) setError(editorialPatchError(err)); return; }
     const previous = writeQueues.current.get(id) || Promise.resolve();
     // Deduplicate only the latest adjacent intent, never an older pending A
     // that must be sent again after an intervening B.
@@ -772,13 +776,15 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     const run = async () => {
       try {
         scope.assertCurrent();
-        await scope.request(`/api/publicaciones/${id}`, {
+        const saved = editorialPatchAck(observed, await scope.request(`/api/publicaciones/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body,
-        });
-      } catch {
-        if (scope.current()) setError("No se pudo guardar un cambio — reintentá.");
+        }));
+        scope.assertCurrent();
+        setPublicaciones(prev => prev.map(row => row.id === id ? mergeEditorialPatchEvidence(row, saved) : row));
+      } catch (err) {
+        if (scope.current()) setError(editorialPatchError(err));
       }
     };
     const queued = previous.catch(() => {}).then(run);

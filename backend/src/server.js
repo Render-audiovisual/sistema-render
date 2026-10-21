@@ -44,7 +44,7 @@ import { productionEditorialConflict } from "./production-link-errors.js";
 import { normalizeTaskState, taskTransitionError, isTaskFinalized } from "./workflow-contract.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
 import { parseTaskPagination } from "./task-pagination.js";
-import { buildAutoTaskProperties, completeLinkedAutoTasks, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
+import { buildAutoTaskProperties, publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
 import { calculateSalaryDashboard } from "./salary-calculation.js";
 import { applyCompensations, nextPeriod } from "./finance-calculation.js";
 import { buildAutomaticFinanceSummary, previousPeriod } from "./automatic-finance.js";
@@ -73,6 +73,7 @@ import { createCalendarRouter } from "./calendar.js";
 import { createEditorialControlRouter } from "./editorial-control.js";
 import { editorialPublicationDomainConflict } from "./editorial-publication-errors.js";
 import { annotateEditorialEvidence } from "./editorial-evidence-read.js";
+import { legacyPieceSelection, readLegacyEditorialPiece, writeEditorialPiece } from './editorial-piece-write.js';
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
@@ -1629,116 +1630,16 @@ router.delete("/clientes/:id", requireRole("admin"), async (req, res, next) => {
   }
 });
 
+function editorialPieceApiError(error,res,next) {
+  if ([400,401,403,404,409,413,428].includes(error.status)) return res.status(error.status).json({error:error.message});
+  return next(error);
+}
+
 router.patch("/historias/:id", requireRole("admin"), async (req, res, next) => {
+  res.set('Cache-Control','no-store');
   try {
-    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
-      return res.status(400).json({ error: 'La edición de la historia no es válida.' });
-    }
-    const textFields = ['idea','copy','material_referencia','aclaraciones','notas_planificacion','notas_diseño','notas_revisión','notas_bloqueador'];
-    if (textFields.some(field => req.body[field] != null && typeof req.body[field] !== 'string')) {
-      return res.status(400).json({ error: 'Los campos de texto de la historia no son válidos.' });
-    }
-    const { id } = req.params;
-    const {
-      estado,
-      idea,
-      copy,
-      material_referencia,
-      aclaraciones,
-      prioridad,
-      cliente_id,
-      fecha_programada,
-      responsable,
-      responsable_planificacion,
-      responsable_diseño,
-      responsable_revisión,
-      responsable_publicacion,
-      fecha_diseño_entrega,
-      fecha_revisión_aprobación,
-      notas_planificacion,
-      notas_diseño,
-      notas_revisión,
-      notas_bloqueador,
-      metadata
-    } = req.body;
-
-    const estadosValidos = [
-      "pendiente",
-      "en_diseño",
-      "en_revision",
-      "lista",
-      "publicada",
-      "bloqueada",
-    ];
-
-    if (estado !== undefined && !estadosValidos.includes(estado)) {
-      return res.status(400).json({ error: "Estado inválido." });
-    }
-
-    const result = await pool.query(
-      `UPDATE historias
-       SET
-         estado = COALESCE($1, estado),
-         idea = COALESCE($2, idea),
-         copy = COALESCE($3, copy),
-         material_referencia = COALESCE($4, material_referencia),
-         aclaraciones = COALESCE($5, aclaraciones),
-         prioridad = COALESCE($6, prioridad),
-         cliente_id = COALESCE($7, cliente_id),
-         fecha_programada = COALESCE($8, fecha_programada),
-         responsable = COALESCE($9, responsable),
-         responsable_planificacion = COALESCE($10, responsable_planificacion),
-         responsable_diseño = COALESCE($11, responsable_diseño),
-         responsable_revisión = COALESCE($12, responsable_revisión),
-         responsable_publicacion = COALESCE($13, responsable_publicacion),
-         fecha_diseño_entrega = COALESCE($14, fecha_diseño_entrega),
-         fecha_revisión_aprobación = COALESCE($15, fecha_revisión_aprobación),
-         notas_planificacion = COALESCE($16, notas_planificacion),
-         notas_diseño = COALESCE($17, notas_diseño),
-         notas_revisión = COALESCE($18, notas_revisión),
-         notas_bloqueador = COALESCE($19, notas_bloqueador),
-         metadata = CASE WHEN $20::jsonb IS NOT NULL THEN metadata || $20::jsonb ELSE metadata END,
-         updated_at = now()
-       WHERE id = $21
-       RETURNING id, cliente_id, estado, to_char(fecha_programada, 'YYYY-MM-DD') AS fecha_programada,
-                 idea, copy, material_referencia, aclaraciones, prioridad, responsable,
-                 responsable_diseño, responsable_revisión, to_char(fecha_diseño_entrega, 'YYYY-MM-DD') AS fecha_diseño_entrega,
-                 to_char(fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
-                 fecha_publicación_real, notas_diseño, notas_revisión, notas_bloqueador, metadata, created_at, updated_at`,
-      [
-        estado || null,
-        idea ?? null,
-        copy ?? null,
-        material_referencia ?? null,
-        aclaraciones ?? null,
-        prioridad || null,
-        cliente_id || null,
-        fecha_programada || null,
-        responsable || null,
-        responsable_planificacion || null,
-        responsable_diseño || null,
-        responsable_revisión || null,
-        responsable_publicacion || null,
-        fecha_diseño_entrega || null,
-        fecha_revisión_aprobación || null,
-        notas_planificacion ?? null,
-        notas_diseño ?? null,
-        notas_revisión ?? null,
-        notas_bloqueador ?? null,
-        metadata ? JSON.stringify(metadata) : null,
-        id
-      ],
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Historia no encontrada." });
-    }
-
-    await completeLinkedAutoTasks(pool, { estado: result.rows[0].estado, historiaId: Number(id) });
-    res.json(editorialOperationalDto((await annotateEditorialEvidence(pool, 'historia', result.rows))[0], req.auth));
-  } catch (error) {
-    next(error);
-  }
+    return res.json(await writeEditorialPiece(pool,req.auth,'historia',req.params.id,req.body));
+  } catch (error) { return editorialPieceApiError(error,res,next); }
 });
 
 router.delete("/historias/:id", requireRole("admin"), async (req, res, next) => {
@@ -1803,121 +1704,10 @@ router.get("/historias", async (req, res, next) => {
 });
 
 router.patch("/publicaciones/:id", requireRole("admin"), async (req, res, next) => {
+  res.set('Cache-Control','no-store');
   try {
-    const { id } = req.params;
-    const {
-      estado,
-      tipo,
-      idea,
-      copy,
-      material_referencia,
-      aclaraciones,
-      prioridad,
-      fecha_programada,
-      responsable,
-      duracion_segundos,
-      num_imagenes,
-      responsable_diseño,
-      responsable_edición,
-      responsable_revisión,
-      responsable_publicacion,
-      fecha_diseño_entrega,
-      fecha_edición_entrega,
-      fecha_revisión_aprobación,
-      metadata,
-    } = req.body;
-
-    const estadosValidos = [
-      "pendiente",
-      "en_diseño",
-      "en_edición",
-      "en_revision",
-      "en_revisión",
-      "lista",
-      "publicada",
-      "bloqueada",
-    ];
-    const tiposValidos = ["video", "carrusel"];
-
-    if (estado !== undefined && !estadosValidos.includes(estado)) {
-      return res.status(400).json({ error: "Estado inválido." });
-    }
-    if (tipo !== undefined && !tiposValidos.includes(tipo)) {
-      return res.status(400).json({ error: "Tipo inválido. Usa: video, carrusel" });
-    }
-
-    const result = await pool.query(
-      `UPDATE publicaciones
-       SET
-         estado = COALESCE($1, estado),
-         tipo = COALESCE($2, tipo),
-         idea = COALESCE($3, idea),
-         copy = COALESCE($4, copy),
-         material_referencia = COALESCE($5, material_referencia),
-         aclaraciones = COALESCE($6, aclaraciones),
-         prioridad = COALESCE($7, prioridad),
-         fecha_programada = COALESCE($8, fecha_programada),
-         fecha_bloqueada = CASE WHEN $8::date IS NOT NULL AND $8::date IS DISTINCT FROM fecha_programada THEN TRUE ELSE fecha_bloqueada END,
-         responsable = COALESCE($9, responsable),
-         duracion_segundos = COALESCE($10, duracion_segundos),
-         num_imagenes = COALESCE($11, num_imagenes),
-         responsable_diseño = COALESCE($12, responsable_diseño),
-         responsable_edición = COALESCE($13, responsable_edición),
-         responsable_revisión = COALESCE($14, responsable_revisión),
-         responsable_publicacion = COALESCE($15, responsable_publicacion),
-         fecha_diseño_entrega = COALESCE($16, fecha_diseño_entrega),
-         fecha_edición_entrega = COALESCE($17, fecha_edición_entrega),
-         fecha_revisión_aprobación = COALESCE($18, fecha_revisión_aprobación),
-         fecha_publicación_real = CASE
-           WHEN $1 = 'publicada' AND estado <> 'publicada' THEN now()
-           WHEN $1 IS NOT NULL AND $1 <> 'publicada' THEN NULL
-           ELSE fecha_publicación_real
-         END,
-         metadata = CASE WHEN $19::jsonb IS NOT NULL THEN metadata || $19::jsonb ELSE metadata END,
-         updated_at = now()
-       WHERE id = $20
-       RETURNING id, cliente_id, tipo, estado, to_char(fecha_programada, 'YYYY-MM-DD') AS fecha_programada,
-                 idea, copy, material_referencia, aclaraciones, prioridad, responsable,
-                 duracion_segundos, num_imagenes,
-                 responsable_diseño, responsable_edición, responsable_revisión, responsable_publicacion,
-                 to_char(fecha_diseño_entrega, 'YYYY-MM-DD') AS fecha_diseño_entrega,
-                 to_char(fecha_edición_entrega, 'YYYY-MM-DD') AS fecha_edición_entrega,
-                 to_char(fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
-                 fecha_publicación_real,
-                 origen_calendario, calendario_clave, fecha_bloqueada, metadata, created_at, updated_at`,
-      [
-        estado || null,
-        tipo || null,
-        idea || null,
-        copy || null,
-        material_referencia || null,
-        aclaraciones || null,
-        prioridad || null,
-        fecha_programada || null,
-        responsable || null,
-        duracion_segundos || null,
-        num_imagenes || null,
-        responsable_diseño || null,
-        responsable_edición || null,
-        responsable_revisión || null,
-        responsable_publicacion || null,
-        fecha_diseño_entrega || null,
-        fecha_edición_entrega || null,
-        fecha_revisión_aprobación || null,
-        metadata ? JSON.stringify(metadata) : null,
-        id,
-      ],
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Publicación no encontrada." });
-    }
-
-    await completeLinkedAutoTasks(pool, { estado: result.rows[0].estado, publicacionId: Number(id) });
-    res.json(editorialOperationalDto((await annotateEditorialEvidence(pool, 'publicacion', result.rows))[0], req.auth));
-  } catch (error) {
-    next(error);
-  }
+    return res.json(await writeEditorialPiece(pool,req.auth,'publicacion',req.params.id,req.body));
+  } catch (error) { return editorialPieceApiError(error,res,next); }
 });
 
 router.delete("/publicaciones/:id", requireRole("admin"), async (req, res, next) => {
@@ -3432,66 +3222,10 @@ router.get("/piezas", async (req, res, next) => {
 });
 
 router.get("/piezas/:id", async (req, res, next) => {
+  res.set('Cache-Control','no-store');
   try {
-    const { id } = req.params;
-    const resultP = await pool.query(
-      `SELECT
-        'publicacion' AS origen,
-        p.id,
-        p.tipo,
-        p.estado,
-        p.cliente_id,
-        c.nombre AS cliente_nombre,
-        p.responsable,
-        p.fecha_programada,
-        p.idea,
-        p.copy,
-        p.material_referencia,
-        p.aclaraciones,
-        p.prioridad,
-        p.created_at,
-        p.updated_at
-      FROM publicaciones p
-      LEFT JOIN clientes c ON c.id = p.cliente_id
-      WHERE p.id = $1`,
-      [id],
-    );
-
-    if (resultP.rows.length > 0) {
-      return res.json(editorialOperationalDto(resultP.rows[0], req.auth));
-    }
-
-    const resultH = await pool.query(
-      `SELECT
-        'historia' AS origen,
-        h.id,
-        'historia'::text AS tipo,
-        h.estado,
-        h.cliente_id,
-        c.nombre AS cliente_nombre,
-        h.responsable,
-        h.fecha_programada,
-        h.idea,
-        h.copy,
-        h.material_referencia,
-        h.aclaraciones,
-        h.prioridad,
-        h.created_at,
-        h.updated_at
-      FROM historias h
-      LEFT JOIN clientes c ON c.id = h.cliente_id
-      WHERE h.id = $1`,
-      [id],
-    );
-
-    if (resultH.rows.length === 0) {
-      return res.status(404).json({ error: "Pieza no encontrada." });
-    }
-
-    res.json(editorialOperationalDto(resultH.rows[0], req.auth));
-  } catch (error) {
-    next(error);
-  }
+    return res.json(await readLegacyEditorialPiece(pool,req.auth,req.params.id,req.query));
+  } catch (error) { return editorialPieceApiError(error,res,next); }
 });
 
 // Un día antes de fecha_programada, sin bajar de la fecha de hoy.
@@ -3547,6 +3281,7 @@ router.post("/piezas", requireRole("admin"), async (req, res, next) => {
           error: "Faltan tipo, cliente_id, responsable o fecha_programada.",
         });
     }
+    if (estado === 'publicada') return res.status(409).json({error:'Registrá la publicación real desde su confirmación editorial.'});
     db = await pool.connect();
     await db.query("BEGIN");
     const assignment = await resolveTaskAssignments(db, {
@@ -3584,8 +3319,9 @@ router.post("/piezas", requireRole("admin"), async (req, res, next) => {
         subtipo: "diseñar",
       }, db);
 
+      const [observed] = await annotateEditorialEvidence(db,'historia',[historia]);
       await db.query("COMMIT");
-      return res.status(201).json(editorialOperationalDto(historia, req.auth));
+      return res.status(201).json(editorialOperationalDto(observed, req.auth));
     }
 
     if (["carrusel", "video"].includes(tipo)) {
@@ -3636,8 +3372,9 @@ router.post("/piezas", requireRole("admin"), async (req, res, next) => {
         }, db);
       }
 
+      const [observed] = await annotateEditorialEvidence(db,'publicacion',[publicacion]);
       await db.query("COMMIT");
-      return res.status(201).json(editorialOperationalDto(publicacion, req.auth));
+      return res.status(201).json(editorialOperationalDto(observed, req.auth));
     }
 
     await db.query("ROLLBACK");
@@ -3661,86 +3398,11 @@ router.post("/historias/convertir-flyer/:publicacionId", requireRole("admin"), a
 });
 
 router.patch("/piezas/:id", requireRole("admin"), async (req, res, next) => {
+  res.set('Cache-Control','no-store');
   try {
-    const { id } = req.params;
-    const { estado, prioridad, idea, copy, material_referencia, aclaraciones } =
-      req.body;
-
-    const estadosValidos = [
-      "pendiente",
-      "en_diseño",
-      "en_edición",
-      "en_revisión",
-      "lista",
-      "publicada",
-      "bloqueada",
-    ];
-
-    if (estado && !estadosValidos.includes(estado)) {
-      return res.status(400).json({ error: "Estado inválido." });
-    }
-
-    let resultP = await pool.query(
-      `UPDATE publicaciones
-       SET
-         estado = COALESCE($1, estado),
-         prioridad = COALESCE($2, prioridad),
-         idea = COALESCE($3, idea),
-         copy = COALESCE($4, copy),
-         material_referencia = COALESCE($5, material_referencia),
-         aclaraciones = COALESCE($6, aclaraciones),
-         updated_at = now()
-       WHERE id = $7
-       RETURNING 'publicacion' AS origen, id, tipo, estado, cliente_id, responsable, prioridad, idea, copy, material_referencia, aclaraciones, updated_at`,
-      [
-        estado || null,
-        prioridad || null,
-        idea || null,
-        copy || null,
-        material_referencia || null,
-        aclaraciones || null,
-        id,
-      ],
-    );
-
-    if (resultP.rows.length > 0) {
-      await completeLinkedAutoTasks(pool, { estado: resultP.rows[0].estado, publicacionId: Number(id) });
-      return res.json(editorialOperationalDto(resultP.rows[0], req.auth));
-    }
-
-    let resultH = await pool.query(
-      `UPDATE historias
-       SET
-         estado = COALESCE($1, estado),
-         prioridad = COALESCE($2, prioridad),
-         idea = COALESCE($3, idea),
-         copy = COALESCE($4, copy),
-         material_referencia = COALESCE($5, material_referencia),
-         aclaraciones = COALESCE($6, aclaraciones),
-         updated_at = now()
-       WHERE id = $7
-       RETURNING 'historia' AS origen, id, 'historia' AS tipo, estado, cliente_id, responsable, prioridad, idea, copy, material_referencia, aclaraciones, updated_at`,
-      [
-        estado || null,
-        prioridad || null,
-        idea || null,
-        copy || null,
-        material_referencia || null,
-        aclaraciones || null,
-        id,
-      ],
-    );
-
-    if (resultH.rows.length === 0) {
-      return res.status(404).json({ error: "Pieza no encontrada." });
-    }
-
-    await completeLinkedAutoTasks(pool, { estado: resultH.rows[0].estado, historiaId: Number(id) });
-
-    res.json(editorialOperationalDto(resultH.rows[0], req.auth));
-  } catch (error) {
-    next(error);
-  }
+    const selected = legacyPieceSelection(req.params.id,req.query,true);
+    return res.json(await writeEditorialPiece(pool,req.auth,selected.domain,req.params.id,req.body,{legacy:true}));
+  } catch (error) { return editorialPieceApiError(error,res,next); }
 });
 
 app.use("/api", router);

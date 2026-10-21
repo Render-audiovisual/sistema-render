@@ -7,6 +7,7 @@ import { createBrowserSessionState } from '../shared/session/browser-session-sta
 import { createSessionView, sessionViewInputs } from '../shared/session/session-view.js';
 import { editorialFields } from '../components/EditorialPublicationControl.model.js';
 import { isConfirmedPublication } from '../shared/editorial/publication-evidence.js';
+import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
 
 // Actual callbacks/hook logic with injected effects; no mounted React/browser claim.
 const source = readFileSync(new URL('./Publicaciones.jsx', import.meta.url), 'utf8');
@@ -37,7 +38,8 @@ function sessionFixture(request, cookie = true) {
 }
 function sheetFixture(request, cookie = true) {
   const f = sessionFixture(request, cookie), effects = [];
-  const deps = { capture: f.capture, view: f.view, clienteId: 2, publicaciones: [{ id: 5, estado: 'pendiente' }], editorialFields,
+  const deps = { capture: f.capture, view: f.view, clienteId: 2, publicaciones: [{ id: 5, estado: 'pendiente', publicacion_evidencia: { revision: 0 } }], editorialFields,
+    editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError,
     pendingWrites: { current: new Set() }, writeQueues: { current: new Map() }, latestWrites: { current: new Map() }, creating: { current: false },
     listGeneration: { current: 0 }, enfocarProximoId: { current: null }, mesPrefix: '2026-10', hoyISO: '2026-10-20',
     setError: value => effects.push(['error', value]), setPublicaciones: value => effects.push(['rows', value]), setCargando: value => effects.push(['loading', value]),
@@ -47,10 +49,11 @@ function sheetFixture(request, cookie = true) {
   return { ...f, deps, effects };
 }
 function calendarFixture(request, cookie = true) {
-  const f = sessionFixture(request, cookie), effects = [], a = { id: 5, tipo: 'video', estado: 'pendiente' }, day = { fecha: '2026-10-20', items: [a] };
+  const f = sessionFixture(request, cookie), effects = [], a = { id: 5, tipo: 'video', estado: 'pendiente', publicacion_evidencia: { revision: 0 } }, day = { fecha: '2026-10-20', items: [a] };
   let piece = a, selectedDay = day, saving = null;
   const selection = { current: { piece, day, year: 2026, month: 9, generation: 0 } }, selectedPiece = { current: { piece, generation: 0 } };
   const deps = { capture: f.capture, captureLifetime: f.captureLifetime, view: f.view, selection, selectedPiece, piezaSel: a, pendingWrites: { current: new Set() }, generating: { current: false },
+    editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError,
     listGeneration: { current: 0 }, mesISO: '2026-10', isConfirmedPublication, getTipoPublicacionLabel: () => 'Reel',
     setActualizando: value => effects.push(['generating', value]), setError: value => effects.push(['error', value]),
     setGuardandoId: value => { saving = typeof value === 'function' ? value(saving) : value; effects.push(['saving', saving]); }, setPiezas: value => { effects.push(['rows', typeof value === 'function' ? value([a]) : value]); },
@@ -126,7 +129,7 @@ test('calendar A response never closes newly selected B or the ABA observation, 
     const result = f.deps[action](f.a, action === 'cambiarFecha' ? '2026-10-21' : 'lista');
     const b = { id: 6 }, dayB = { fecha: '2026-10-22', items: [b] };
     f.select(b, dayB); if (aba) f.select(f.a, f.day);
-    pending.resolve({ ...f.a, estado: 'lista', fecha_programada: '2026-10-21' }); await result;
+    pending.resolve({ ...f.a, estado: 'lista', fecha_programada: '2026-10-21', publicacion_evidencia: { revision: 1 } }); await result;
     assert.equal(f.piece, aba ? f.a : b); assert.equal(f.selectedDay, aba ? f.day : dayB);
     assert.ok(f.effects.some(([key]) => key === 'rows'));
   }
@@ -168,7 +171,7 @@ test('date/state busy releases on month change, but old row completion never cle
   const a = f.deps.cambiarFecha(f.a, '2026-10-21');
   const next = f.render('period-B');
   const changeInNextMonth = callback(cal, 'cambiarFecha', { ...f.deps, ...next });
-  const b = changeInNextMonth({ id: 6, tipo: 'video' }, '2026-11-21');
+  const b = changeInNextMonth({ id: 6, tipo: 'video', publicacion_evidencia: { revision: 0 } }, '2026-11-21');
   assert.equal(f.saving, 6); first.resolve({ ...f.a }); await a; assert.equal(f.saving, 6);
   second.resolve({ id: 6, tipo: 'video' }); await b; assert.equal(f.saving, null);
 });
@@ -213,7 +216,7 @@ test('all four list/page loaders fence late success/error after identity replace
 test('current session failure never retries; publication state/evidence and parsed creation contract remain unchanged', async () => {
   const f = sheetFixture(async () => { throw Object.assign(Error('private'), { name: 'ApplicationSessionError', status: 409 }); });
   await f.deps.guardarEnServidor(5, { copy: 'A' }); assert.equal(f.requests.length, 1);
-  assert.deepEqual(f.effects, [['error', 'No se pudo guardar un cambio — reintentá.']]);
+  assert.deepEqual(f.effects, [['error', editorialPatchError({ status: 409 })]]);
   const c = calendarFixture(async () => ({})); await c.deps.cambiarEstadoPublicacion(c.a, 'publicada'); assert.equal(c.requests.length, 0);
   assert.match(source, /nuevoEstado === 'publicada' \|\| isConfirmedPublication\(publicacion\) \|\| view.role !== 'admin'/);
   assert.match(source, /editorialFields\(publicaciones.find\(p => p.id === id\), campos, view.role === 'admin'\)/);

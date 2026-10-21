@@ -5,6 +5,7 @@ import ts from 'typescript';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { createSessionView, sessionViewInputs } from '../shared/session/session-view.js';
+import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
 
 // Actual hook logic/callbacks with injected effects, not a mounted React/HTTP claim.
 const source = readFileSync(new URL('./Historias.jsx', import.meta.url), 'utf8');
@@ -37,6 +38,8 @@ function sessionFixture(request, cookie = true) {
 function fixture(request, cookie = true) {
   const f = sessionFixture(request, cookie), effects = []; let rows = [], busy = null;
   const deps = { capture: f.capture, captureLifetime: f.captureLifetime, view: f.view, isSessionFailure, storyArray, createdStory, enqueueStoryWrite, storyDuplicationMetadata,
+    editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError,
+    historias: [{ id: 5, publicacion_evidencia: { revision: 0 } }],
     writeQueues: { current: new Map() }, latestWrites: { current: new Map() }, creationLocks: { current: new Set() }, deleting: { current: new Set() }, listGeneration: { current: 0 },
     responsablesReady: true, responsableNuevoId: '9', responsables: [{ id: 9, nombre: 'Alex', activo: true }, { id: 10, nombre: 'Alex', activo: true }],
     estructura: [{ cliente_id: 2, dia_semana: 2, tema: 'Tema real', horario: '10:30' }],
@@ -91,11 +94,12 @@ test('explicit catalog ID is required, preserves homonyms and sends no name/curr
   assert.match(source, /No modifica las historias existentes/);
 });
 test('POST success then metadata PATCH500 reports created ID and only actual server fields, without repeating POST', async () => {
-  const actual = { id: 5, cliente_id: 2, estado: 'pendiente', copy: 'server copy', metadata: { hora: 'server time' } };
+  const actual = { id: 5, cliente_id: 2, estado: 'pendiente', copy: 'server copy', metadata: { hora: 'server time' }, publicacion_evidencia: { revision: 0 } };
   const f = fixture(async (_url, options) => { if (options.method === 'POST') return actual; throw Object.assign(Error('patch failed'), { status: 500 }); });
   const id = await f.deps.crearHistoria(2, '2026-10-20'); assert.equal(id, 5);
   assert.equal(f.requests.length, 2); assert.deepEqual(f.requests.map(row => row.options.method), ['POST', 'PATCH']);
   assert.equal(JSON.parse(f.requests[0].options.body).responsable_id, 9); assert.equal(JSON.parse(f.requests[0].options.body).responsable, undefined);
+  assert.equal(JSON.parse(f.requests[1].options.body).expected_revision, actual.publicacion_evidencia.revision);
   assert.deepEqual(f.rows, [actual]); assert.deepEqual(f.rows[0].metadata, { hora: 'server time' });
   assert.match(f.effects.find(([key]) => key === 'error')[1], /Historia #5 creada;.*no vuelvas a crearla/);
 });
@@ -109,21 +113,22 @@ test('create chain stops follow-up PATCH and UI after B/unmount/context ABA; dou
 });
 test('duplicate copies only business tipo/hora, never publication proof; failed second step shows actual created fields', async () => {
   const metadata = { tipo: 'Promo', hora: '11:30', publicacion_evidencia: { confirmed: true }, fecha_publicacion_real: '2026-10-20', actor: 'private' };
-  const actual = { id: 12, estado: 'pendiente', metadata: {} };
+  const actual = { id: 12, estado: 'pendiente', metadata: {}, publicacion_evidencia: { revision: 0 } };
   const f = fixture(async (_url, options) => { if (options.method === 'POST') return actual; throw Error('metadata failed'); });
   await f.deps.duplicarHistoria({ id: 5, cliente_id: 2, fecha_programada: '2026-10-20', metadata });
-  assert.deepEqual(JSON.parse(f.requests[1].options.body), { metadata: { tipo: 'Promo', hora: '11:30' } });
+  assert.deepEqual(JSON.parse(f.requests[1].options.body), { metadata: { tipo: 'Promo', hora: '11:30' }, expected_revision: 0 });
   assert.equal(JSON.parse(f.requests[0].options.body).responsable_id, 9); assert.equal(JSON.parse(f.requests[0].options.body).estado, 'pendiente');
   assert.deepEqual(f.rows, [actual]); assert.match(f.effects.find(([key]) => key === 'error')[1], /#12 duplicada;.*No vuelvas a duplicarla/);
   assert.equal(metadata.publicacion_evidencia.confirmed, true);
 });
 test('same-scope metadata ACK uses actual updated row; missing/mismatched create/PATCH ACK never fabricates suggested fields', async () => {
-  const updated = { id: 5, copy: 'server updated', metadata: { tipo: 'Server', hora: '12:00' } };
-  const good = fixture(async (_url, options) => options.method === 'POST' ? { id: 5 } : updated);
+  const updated = { id: 5, copy: 'server updated', metadata: { tipo: 'Server', hora: '12:00' }, publicacion_evidencia: { revision: 1 } };
+  const good = fixture(async (_url, options) => options.method === 'POST' ? { id: 5, publicacion_evidencia: { revision: 0 } } : updated);
   assert.equal(await good.deps.crearHistoria(2, '2026-10-20'), 5); assert.deepEqual(good.rows, [updated]);
+  assert.equal(JSON.parse(good.requests[1].options.body).expected_revision, 0);
   const missing = fixture(async () => ({})); await assert.rejects(missing.deps.crearHistoria(2, '2026-10-20')); assert.equal(missing.requests.length, 1); assert.deepEqual(missing.rows, []);
-  const wrong = fixture(async (_url, options) => options.method === 'POST' ? { id: 5 } : { id: 999, metadata: { tipo: 'wrong' } });
-  await wrong.deps.crearHistoria(2, '2026-10-20'); assert.deepEqual(wrong.rows, [{ id: 5 }]); assert.ok(wrong.effects.some(([key]) => key === 'error'));
+  const wrong = fixture(async (_url, options) => options.method === 'POST' ? { id: 5, publicacion_evidencia: { revision: 0 } } : { id: 999, metadata: { tipo: 'wrong' }, publicacion_evidencia: { revision: 1 } });
+  await wrong.deps.crearHistoria(2, '2026-10-20'); assert.deepEqual(wrong.rows, [{ id: 5, publicacion_evidencia: { revision: 0 } }]); assert.ok(wrong.effects.some(([key]) => key === 'error'));
 });
 test('checklist remains planning-only; context-invalid success/error cleans original busy but never paints check or story publication', async () => {
   for (const fail of [false, true]) {
