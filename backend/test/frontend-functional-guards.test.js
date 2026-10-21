@@ -172,7 +172,9 @@ test("el tablero móvil renderiza solo el proceso visible y conserva todos los c
 
 test("abrir una tarea no compite con el arrastre de la tarjeta", () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
-  assert.match(workspaceSource, /<article[^>]+draggable=\{canMove\}/);
+  assert.match(workspaceSource, /const canDrag = canMove \|\| Boolean\(manualControls\)/);
+  assert.match(workspaceSource, /<article[^>]+draggable=\{canDrag\}/);
+  assert.match(workspaceSource, /if \(!canDrag \|\| moveBlocked \|\| dragRef\.current\.blocked\)/);
   assert.match(workspaceSource, /dragRef\.current\.suppressClick/);
   assert.match(workspaceSource, /dragRef\.current\.blocked/);
   assert.match(workspaceSource, /event\.target !== event\.currentTarget/);
@@ -182,7 +184,9 @@ test("abrir una tarea no compite con el arrastre de la tarjeta", () => {
 test('el tablero compacto permite soltar tarjetas sobre los botones de procesos', () => {
   const workspaceSource = readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx', import.meta.url),'utf8');
   assert.match(workspaceSource,/onDrop=\{\(event\) => dropOnProcessButton\(event,column\)\}/);
-  assert.match(workspaceSource,/if \(canUserMoveTaskToState\(task, sesion\?\.usuario, status\)\) selectMobileBoardColumn/);
+  assert.match(workspaceSource,/if \(compactBoard && canUserMoveTaskToState\(task, sesion\?\.usuario, status\)\) selectMobileBoardColumn/);
+  assert.match(workspaceSource,/if \(!canUserMoveTask\(task, sesion\?\.usuario\)\) return;\s*move\(task, status\)/);
+  assert.match(workspaceSource,/if\(manualReady&&canUserEditTask\(task,sesion\?\.usuario\)\)void onReorder\(task,null\)/);
   assert.match(workspaceSource,/event.dataTransfer.dropEffect = 'move'/);
   const css = readFileSync(new URL('../../frontend/src/pages/TaskBoardMotion.css',import.meta.url),'utf8');
   assert.match(css,/\.ros-page \{ overflow:clip; \}/);

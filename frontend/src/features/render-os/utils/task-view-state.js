@@ -15,6 +15,7 @@ export function getTaskViewState(search = "") {
   const calendarMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(params.get("month") || "") ? params.get("month") : "";
   return {
     view: VALID_VIEWS.has(view) ? view : "board",
+    sort: params.getAll("sort").length === 1 && params.get("sort") === "manual" ? "manual" : "date",
     archiveMode: VALID_ARCHIVE_MODES.has(archiveMode) ? archiveMode : "active",
     responsible: params.getAll("responsible").length > 1 ? "invalid:duplicate" : params.get("responsible") || "all",
     client: params.get("client") || "all",
@@ -30,6 +31,7 @@ export function updateTaskViewUrl(currentUrl, state) {
   const url = new URL(currentUrl);
   const values = {
     view: state.view === "board" ? null : state.view,
+    sort: state.sort === "manual" ? "manual" : null,
     mode: state.archiveMode === "active" ? null : state.archiveMode,
     responsible: state.responsible === "all" ? null : state.responsible,
     client: state.client === "all" ? null : state.client,

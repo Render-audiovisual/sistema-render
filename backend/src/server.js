@@ -80,6 +80,8 @@ import { buildMiaStatePendingMarker } from "./mia-task-digest.js";
 import { scheduleRenderOsTrashCleanup } from "./task-trash-retention.js";
 import { scheduleMiaSupervisor } from "./mia-supervisor.js";
 import { createMoodboardsRouter } from "./moodboards.js";
+import { createTaskBoardOrderRouter } from './task-board-order.js';
+import { parseTaskOrderRead, readTaskBoardPage } from './task-board-page.js';
 import { createClientGoalsRouter, reconcileMonthlyGoals } from "./client-goals.js";
 import {
   getStateNotification,
@@ -149,6 +151,7 @@ router.use((req, res, next) => {
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   }
   res.header("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
+  res.header('Access-Control-Expose-Headers', 'X-Total-Count, X-Task-Order-Revision, X-Task-Order-Snapshot');
   next();
 });
 // Express 5 / path-to-regexp ya no acepta "*" como patrón de ruta.
@@ -291,6 +294,7 @@ router.get("/producciones/tareas/:id", async (req, res, next) => {
 });
 router.use("/producciones", createProductionRegistryRouter({ express, pool }));
 router.use("/moodboards", createMoodboardsRouter({ pool }));
+router.use('/tareas/orden', createTaskBoardOrderRouter({ express, pool }));
 
 router.use("/drive", createGoogleDriveRouter({ express, pool, requireRole }));
 router.use("/wilson", createWilsonChatRouter({ express, pool }));
@@ -2886,6 +2890,7 @@ router.post("/tareas/acciones-masivas", async (req, res, next) => {
 
 router.get("/tareas", async (req, res, next) => {
   try {
+    const orderRead = parseTaskOrderRead(req.query);
     const {
       asignado_a,
       asignado_a_id,
@@ -3063,6 +3068,15 @@ router.get("/tareas", async (req, res, next) => {
       }
     }
 
+    if (orderRead.sort === 'manual') {
+      const page = await readTaskBoardPage({ pool, query, params, limit: limite, offset: desplazamiento,
+        expectedSnapshot: orderRead.snapshot, auth: req.auth,
+        serialize: async (db, rows) => (await annotateTaskAssignments(db, rows)).map(row => taskOperationalDto(row, req.auth)) });
+      res.set('X-Total-Count', String(page.total));
+      res.set('X-Task-Order-Revision', page.orderRevision);
+      res.set('X-Task-Order-Snapshot', page.snapshot);
+      return res.json(page.items);
+    }
     const countQuery = `SELECT COUNT(*)::int AS total_count FROM (${query}) AS filtered_tasks`;
     const countParams = [...params];
     query += ` ORDER BY t.fecha_vencimiento ASC NULLS LAST, t.id DESC`;
@@ -3082,6 +3096,7 @@ router.get("/tareas", async (req, res, next) => {
     res.json((await annotateTaskAssignments(pool, result.rows.map(({ total_count, ...tarea }) => tarea)))
       .map((row) => taskOperationalDto(row, req.auth)));
   } catch (error) {
+    if ([400, 401, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });

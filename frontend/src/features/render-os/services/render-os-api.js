@@ -1,5 +1,6 @@
 import { responsibleFilterId } from '../utils/task-responsible-filter.js';
 import { isSessionFailure } from '../../../shared/session/captured-request.js';
+import { validTaskOrderRevision, validTaskOrderSnapshot } from '../utils/task-manual-order.js';
 const WORKSPACE_QUERY = "workspace=render_os";
 
 export async function apiRequest(url, options) {
@@ -28,6 +29,15 @@ export function buildTaskPageUrl(options = {}) {
     throw new Error("Paginación de tareas no válida.");
   }
   const params = new URLSearchParams({ workspace: "render_os", limit: String(limit), offset: String(offset) });
+  if (settings.sort !== undefined && !['date','manual'].includes(settings.sort)) throw new Error('Orden de tareas inválido.');
+  if (settings.sort === 'manual') {
+    params.set('sort','manual');
+    if (offset > 0 && !validTaskOrderSnapshot(settings.expectedSnapshot)) throw new Error('Recargá la primera página antes de continuar el orden manual.');
+    if (settings.expectedSnapshot !== undefined) {
+      if (!validTaskOrderSnapshot(settings.expectedSnapshot)) throw new Error('Snapshot de tareas inválido.');
+      params.set('expected_snapshot',settings.expectedSnapshot);
+    }
+  }
   if (settings.archiveMode === "trash") params.set("papelera", "true");
   if (settings.responsible !== undefined && settings.responsible !== "all") {
     const id = responsibleFilterId(settings.responsible);
@@ -45,8 +55,16 @@ export function buildTaskPageUrl(options = {}) {
 export async function apiTaskPage(options = {}, requestOptions) {
   const settings = typeof options === "number" ? { offset: options } : options;
   const response = await fetch(buildTaskPageUrl(settings), requestOptions);
-  const body = await response.json().catch(error => { if (isSessionFailure(error)) throw error; return []; });
-  if (!response.ok) throw new Error(body.error || "No se pudieron cargar las tareas.");
+  const body = await response.json().catch(error => { if (isSessionFailure(error)) throw error; if(settings.sort==='manual'&&response.ok)throw new Error('No se pudo verificar la página de orden manual.'); return []; });
+  if (!response.ok) throw Object.assign(new Error(body?.error || "No se pudieron cargar las tareas."), {status:response.status});
+  if (settings.sort === 'manual') {
+    const orderRevision=response.headers.get('X-Task-Order-Revision'),orderSnapshot=response.headers.get('X-Task-Order-Snapshot'),count=response.headers.get('X-Total-Count');
+    if(!Array.isArray(body)||body.some(item=>!Number.isSafeInteger(item?.id)||item.id<=0||item.id>2147483647)||new Set(body.map(item=>item.id)).size!==body.length
+      ||!validTaskOrderRevision(orderRevision)||!validTaskOrderSnapshot(orderSnapshot)||typeof count!=='string'||!/^(0|[1-9]\d*)$/.test(count)||count.trim()!==count||!Number.isSafeInteger(Number(count)))throw new Error('No se pudo verificar la página de orden manual.');
+    if(settings.expectedSnapshot!==undefined&&settings.expectedSnapshot!==orderSnapshot)throw Object.assign(new Error('El orden o los filtros cambiaron. Recargá la primera página.'),{status:409});
+    if(body.length!==Math.min(settings.limit??50,Math.max(0,Number(count)-(settings.offset??0))))throw new Error('La página manual está incompleta. Recargá la primera página.');
+    return {items:body,total:Number(count),orderRevision,orderSnapshot};
+  }
   const items = Array.isArray(body) ? body : [];
   const totalHeader = Number.parseInt(response.headers.get("X-Total-Count"), 10);
   return { items, total: Number.isFinite(totalHeader) ? totalHeader : (settings.offset || 0) + items.length };
