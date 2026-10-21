@@ -28,7 +28,7 @@ const RUBROS = ["Gastronomía", "Tecnología", "Turismo", "Educación", "Automot
 const WEEKDAYS = [
   [1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"],
 ];
-const MONEY = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+const MONEY = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function emptyClientForm() {
   return {
@@ -730,7 +730,7 @@ function ClientesAdminContent({ sesion }) {
                 </label>
                 <label className="cliente-service-field">
                   <span>Abono mensual</span>
-                  <input min="0" step="1" type="number" placeholder="$ 0" value={nuevoCliente.abono_mensual}
+                  <input min="0" step="0.01" type="number" placeholder="$ 0" value={nuevoCliente.abono_mensual}
                     onChange={(e) => setNuevoCliente((prev) => ({ ...prev, abono_mensual: e.target.value }))} />
                   <small>Importe fijo en pesos argentinos.</small>
                 </label>
@@ -741,7 +741,7 @@ function ClientesAdminContent({ sesion }) {
                 <small>
                   {historiasMensualesNuevoCliente} historias · {nuevoCliente.cuota_reels || 0} reels · {nuevoCliente.cuota_carruseles || 0} carruseles
                 </small>
-                <small>{nuevoCliente.disenador_responsable || "Sin diseñador"} · {Number(nuevoCliente.abono_mensual || 0).toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 })}</small>
+                <small>{nuevoCliente.disenador_responsable || "Sin diseñador"} · {Number(nuevoCliente.abono_mensual || 0).toLocaleString("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2, maximumFractionDigits: 2 })}</small>
                 </div>
               </section>}
               {!basicCreation && <p className="cliente-create-guidance" aria-live="polite">

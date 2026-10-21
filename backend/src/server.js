@@ -58,6 +58,7 @@ import { assertTaskBusinessInput, assertTaskCoordinationPatch } from "./task-int
 import { createPersonalHomeRouter } from "./personal-home.js";
 import { createProjectsRouter } from "./projects.js";
 import { createClientOperationRouter } from "./client-operation.js";
+import { createMonthlyAgreementRouter, strictAgreementPeriod, strictAgreementMoney, strictAgreementClientId, validateLegacyConfigurationRequest } from "./monthly-agreement.js";
 import { projectDomainConflict } from "./project-errors.js";
 import { createEditorialPublicationRouter } from "./editorial-publication.js";
 import { createEditingDeliveriesRouter } from "./editing-deliveries.js";
@@ -231,6 +232,7 @@ router.use(createPrincipalAuthentication({ browserTransport: browserSessions, po
 router.use('/inicio', createPersonalHomeRouter({ express, pool }));
 router.use('/proyectos', createProjectsRouter({ express, pool }));
 router.use('/clientes', createClientOperationRouter({ express, pool }));
+router.use('/clientes', createMonthlyAgreementRouter({ express, pool }));
 router.use('/editorial-publicacion', createEditorialPublicationRouter({ express, pool }));
 router.get('/tareas-edicion/inventario-feedback', async (req, res, next) => {
   res.set('Cache-Control', 'no-store');
@@ -746,26 +748,31 @@ router.get("/sueldos", requireRole("admin"), async (req, res, next) => {
 });
 
 router.post("/clientes/:id/abono-proximo-mes", requireRole("admin"), async (req, res, next) => {
+  const administrator = captureClientCreator(req.auth);
   const client = await pool.connect();
+  let discard;
   try {
-    const amount = Number(req.body.importe);
-    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "El abono debe ser positivo o cero." });
+    strictAgreementClientId(req.params.id);
+    if(!req.body||typeof req.body!=='object'||Array.isArray(req.body)||Object.keys(req.body).some(key=>!['importe','expected_revision'].includes(key)))throw Object.assign(new Error('Campos de abono inválidos.'),{status:400});
+    const amount = strictAgreementMoney(req.body.importe,{numeric:true});
     const now = new Date();
     const current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const vigenteDesde = `${nextPeriod(current)}-01`;
     await client.query('BEGIN');
+    await lockClientAdministration(client);
+    const actor = await lockCurrentClientCreator(client, administrator);
     await lockClientAgreement(client, req.params.id, req.body?.expected_revision);
     const result = await client.query(`INSERT INTO cliente_abonos (cliente_id,vigente_desde,importe,creado_por) VALUES ($1,$2,$3,$4)
       ON CONFLICT (cliente_id,vigente_desde) DO UPDATE SET importe=EXCLUDED.importe,creado_por=EXCLUDED.creado_por
-      RETURNING cliente_id,importe,to_char(vigente_desde,'YYYY-MM-DD') AS vigente_desde`, [req.params.id, vigenteDesde, amount, req.auth.nombre || req.auth.usuario]);
+      RETURNING cliente_id,importe,to_char(vigente_desde,'YYYY-MM-DD') AS vigente_desde`, [req.params.id, vigenteDesde, amount, actor.nombre || actor.usuario]);
     const agreement_revision = await readClientAgreementRevision(client, req.params.id);
     await client.query('COMMIT');
     res.json({ ...result.rows[0], agreement_revision });
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(error => { discard=error; });
     if (error.status) return res.status(error.status).json({error:error.message,code:error.code});
     if (error.code === "23503") return res.status(404).json({ error: "Cliente no encontrado." }); next(error);
-  } finally { client.release(); }
+  } finally { client.release(discard); }
 });
 
 router.post("/usuarios", requireRole("admin"), async (req, res, next) => {
@@ -1273,8 +1280,8 @@ router.get("/clientes", async (req, res, next) => {
         c.id,
         c.nombre,
         ${clientAgreementRevisionSql('c','gf')} AS agreement_revision,
-        COALESCE(cfg.cuota_reels, c.cuota_reels) AS cuota_reels,
-        COALESCE(cfg.cuota_carruseles, c.cuota_carruseles) AS cuota_carruseles,
+        COALESCE(cfg.cuota_reels, CASE WHEN c.fecha_inicio >= $1::date + INTERVAL '1 month' THEN 0 ELSE c.cuota_reels END) AS cuota_reels,
+        COALESCE(cfg.cuota_carruseles, CASE WHEN c.fecha_inicio >= $1::date + INTERVAL '1 month' THEN 0 ELSE c.cuota_carruseles END) AS cuota_carruseles,
         c.rubro,
         c.activo,
         to_char(c.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
@@ -1408,11 +1415,19 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
 });
 
 router.post("/clientes/:id/configuraciones", requireRole("admin"), async (req, res, next) => {
+  const administrator = captureClientCreator(req.auth);
   const client = await pool.connect();
+  let discard;
   try {
+    strictAgreementClientId(req.params.id);
+    // Legacy optional weekday preferences remain compatible; blank/null money
+    // or quota inputs and a silently substituted month are never valid writes.
+    validateLegacyConfigurationRequest(req.body);
     const config = normalizeClientConfiguration(req.body);
-    const vigenteDesde = normalizePeriod(req.body.vigente_desde);
+    const vigenteDesde = strictAgreementPeriod(req.body.vigente_desde);
     await client.query("BEGIN");
+    await lockClientAdministration(client);
+    const actor = await lockCurrentClientCreator(client, administrator);
     await lockClientAgreement(client, req.params.id, req.body?.expected_revision);
     await client.query(
       `INSERT INTO cliente_configuraciones
@@ -1435,7 +1450,7 @@ router.post("/clientes/:id/configuraciones", requireRole("admin"), async (req, r
        ON CONFLICT (cliente_id, vigente_desde) DO UPDATE SET
          importe = EXCLUDED.importe,
          creado_por = EXCLUDED.creado_por`,
-      [req.params.id, vigenteDesde, config.abono_mensual, req.auth.nombre || req.auth.usuario],
+      [req.params.id, vigenteDesde, config.abono_mensual, actor.nombre || actor.usuario],
     );
     const nombre = String(req.body.nombre || "").trim();
     const rubro = String(req.body.rubro || "").trim();
@@ -1457,14 +1472,14 @@ router.post("/clientes/:id/configuraciones", requireRole("admin"), async (req, r
       agreement_revision,
     });
   } catch (error) {
-    await client.query("ROLLBACK").catch(() => {});
+    await client.query("ROLLBACK").catch(error => { discard=error; });
     if (error.status) return res.status(error.status).json({error:error.message,code:error.code});
     if (/cuotas|abono mensual|día válido|diseñador responsable/i.test(error.message || "")) {
       return res.status(400).json({ error: error.message });
     }
     next(error);
   } finally {
-    client.release();
+    client.release(discard);
   }
 });
 
@@ -1593,9 +1608,9 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
 
 router.delete("/clientes/:id", requireRole("admin"), async (req, res, next) => {
   try {
-    res.json(await deleteEmptyClient(pool, req.params.id, req.body?.expected_revision));
+    res.json(await deleteEmptyClient(pool, req.params.id, req.body?.expected_revision, req.auth));
   } catch (error) {
-    if ([400,404,409,428].includes(error.status)) return res.status(error.status).json({ error:error.message,code:error.code });
+    if ([400,401,403,404,409,428].includes(error.status)) return res.status(error.status).json({ error:error.message,code:error.code });
     next(error);
   }
 });

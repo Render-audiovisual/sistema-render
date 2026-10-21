@@ -16,7 +16,7 @@ const owner=name=>nodes(ast,ts.isFunctionDeclaration).find(n=>n.name?.text===nam
 const evaluate=(node,deps)=>Function(...Object.keys(deps),`return (${node.getText(ast)});`)(...Object.values(deps));
 const callback=(name,deps)=>evaluate(nodes(owner('EditarIdentidadSession'),n=>ts.isVariableDeclaration(n)&&n.name.getText(ast)===name)[0].initializer,deps);
 const basic=()=>({id:9,nombre:'Basic QA',activo:true,agreement_revision:'a1:9:1:0:0',grupo_feed_id:null,
-  cuota_reels:0,cuota_carruseles:0,rubro:null,fecha_inicio:null,configuracion_vigente_desde:null,configuracion_completa:false});
+  cuota_reels:0,cuota_carruseles:0,rubro:null,fecha_inicio:null,fecha_fin:null,configuracion_vigente_desde:null,configuracion_completa:false});
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return{promise,resolve,reject}};
 function fixture(request){
   let current={token:'synthetic-A',usuario:{id:7,rol:'admin',activo:true}},live=true,observation={},held=observation;
@@ -93,7 +93,7 @@ test('actual basic editor/detail SSR is name/state only: no invented $0, monthly
   const props={cliente:basic(),periodo:'2026-10',capture:()=>({current:()=>true}),historias:[],publicaciones:[],onClose:()=>{},onGuardado:()=>{}};
   const editor=renderComponent('EditarIdentidadSession',{props});
   assert.match(editor,/Editar nombre y estado/);assert.match(editor,/Cliente activo/);assert.doesNotMatch(editor,/type="number"|Abono mensual|por mes|Configurar acuerdo/);
-  const detail=renderComponent('DetalleClienteSession',{props});assert.match(detail,/Sin acuerdo mensual configurado/);assert.doesNotMatch(detail,/Abono mensual|\$0|cliente-detail-metrics|% del acuerdo|Configurar acuerdo/);
+  const detail=renderComponent('DetalleClienteSession',{props});assert.match(detail,/Sin acuerdo mensual vigente en este período/);assert.doesNotMatch(detail,/Abono mensual|\$0|cliente-detail-metrics|% del acuerdo|Configurar acuerdo/);
   assert.match(detail,/Piezas del mes/);assert.match(detail,/Editar nombre y estado/);
   const denied=renderComponent('EditarIdentidadSession',{props},{4:true});assert.doesNotMatch(denied,/Basic QA|Nombre del cliente|Guardar cambios/);assert.match(denied,/Acceso no disponible/);
 });

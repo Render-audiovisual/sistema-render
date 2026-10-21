@@ -1,16 +1,20 @@
-import { lockClientAgreement } from './client-agreement.js';
+import { lockClientAdministration, lockClientAgreement } from './client-agreement.js';
+import { captureClientCreator, lockCurrentClientCreator } from './client-create-authority.js';
 const fail = (message, status, code) => Object.assign(new Error(message), { status, code });
 const quote = value => `"${String(value).replaceAll('"', '""')}"`;
 
 // Only genuinely empty clients can be removed. Archive/deactivate preserves
 // business and financial history. Never infer emptiness from five UI sections.
-export async function deleteEmptyClient(pool, rawId, expectedRevision) {
-  if (typeof rawId !== 'string' || !/^[1-9]\d*$/.test(rawId) || Number(rawId) > 2147483647) {
+export async function deleteEmptyClient(pool, rawId, expectedRevision, auth) {
+  if (typeof rawId !== 'string' || rawId.trim()!==rawId || !/^[1-9]\d*$/.test(rawId) || Number(rawId) > 2147483647) {
     throw fail('Cliente inválido.', 400, 'CLIENT_INVALID');
   }
-  const db = await pool.connect();
+  const observed=captureClientCreator(auth),db = await pool.connect();
+  let discard;
   try {
     await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await lockClientAdministration(db);
+    await lockCurrentClientCreator(db,observed);
     await lockClientAgreement(db, rawId, expectedRevision);
     // FK writers acquire KEY SHARE on the parent. UPDATE lock waits for
     // earlier inserts and prevents later inserts from racing this inspection.
@@ -37,8 +41,8 @@ export async function deleteEmptyClient(pool, rawId, expectedRevision) {
     await db.query('COMMIT');
     return { ok: true, cliente: deleted.rows[0] };
   } catch (error) {
-    await db.query('ROLLBACK').catch(() => {});
+    await db.query('ROLLBACK').catch(error => { discard=error; });
     if (error.code === '23503') throw fail('El cliente tiene registros asociados. Desactivalo para conservar su historial.', 409, 'CLIENT_HAS_HISTORY');
     throw error;
-  } finally { db.release(); }
+  } finally { db.release(discard); }
 }

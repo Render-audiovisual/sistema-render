@@ -15,6 +15,7 @@ import { Modal } from "./Modal.jsx";
 import { hasNoConfiguredMonthlyAgreement } from '../pages/clientCreate.js';
 import { clientOperationHref } from '../pages/clientOperation.js';
 import { navigateWithinApp } from '../shared/navigation/location.js';
+import { StartMonthlyAgreementModal } from './StartMonthlyAgreementModal.jsx';
 
 const WEEKDAYS = [[1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"]];
 
@@ -385,7 +386,7 @@ function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuard
               : 'El abono se programa para el próximo mes del servidor, no para el período seleccionado.'}</small></div>
             <label className="cliente-money-input">
               <span>$</span>
-              <input disabled={guardando} min="0" step="1" type="number" placeholder="0" value={abonoMensual} onChange={(event) => { if (!pending.current) setAbonoMensual(event.target.value); }} />
+              <input disabled={guardando} min="0" step="0.01" type="number" placeholder="0" value={abonoMensual} onChange={(event) => { if (!pending.current) setAbonoMensual(event.target.value); }} />
             </label>
           </section>
           {error && <div className="caption login-error">{error}</div>}
@@ -406,11 +407,11 @@ function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuard
 
 export function DetalleClienteModal({ sesion, periodo = getMesActualISO(), ...props }) {
   const { view, capture, epoch } = useScopedRequest(sesion, `detalle-cliente:${props.cliente.id}:${periodo}`);
-  return <DetalleClienteSession key={`${view.key}:${epoch}`} {...props} periodo={periodo} sesion={view.session} capture={capture}/>;
+  return <DetalleClienteSession key={`${view.key}:${epoch}`} {...props} periodo={periodo} sesion={view.session} capture={capture} canStartAgreement={view.binding?.role === 'admin' && Number.isInteger(view.id) && view.id > 0 && view.id <= 2147483647}/>;
 }
 
 function DetalleClienteSession({
-  sesion, periodo, capture,
+  sesion, periodo, capture, canStartAgreement = false,
   cliente,
   historias,
   publicaciones,
@@ -424,6 +425,7 @@ function DetalleClienteSession({
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
   const [editandoCuota, setEditandoCuota] = useState(false);
+  const [startingAgreement, setStartingAgreement] = useState(false);
   const [detailDenied, setDetailDenied] = useState(false);
   const detailAccessDenied = useRef(false);
   const basicClient = hasNoConfiguredMonthlyAgreement(cliente);
@@ -501,16 +503,17 @@ function DetalleClienteSession({
     amarillo: "En seguimiento",
     verde: "Buen ritmo",
   }[estado] || getEstadoLabel(estado);
-  const abono = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 })
+  const abono = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2, maximumFractionDigits: 2 })
     .format(Number(cliente.abono_mensual) || 0);
 
   return (
     <>
     <Modal onClose={closeDetail} title={<span>{cliente.nombre}</span>}>
         <div className="modal-body">
-          {basicClient ? <section className="modal-client-summary" aria-label="Cliente sin acuerdo mensual">
-            <strong>Sin acuerdo mensual configurado</strong>
-            <p className="caption">Cliente {cliente.activo === false ? 'inactivo' : 'activo'}. No tiene cuotas ni abono mensual configurados.</p>
+          {basicClient ? <section className="modal-client-summary" aria-label="Acuerdo mensual en el período seleccionado">
+            <strong>Sin acuerdo mensual vigente en este período</strong>
+            <p className="caption">Cliente {cliente.activo === false ? 'inactivo' : 'activo'}. No hay cuotas ni abono mensual vigentes para {periodo}.</p>
+            {typeof cliente.fecha_inicio === 'string' && monthStart(cliente.fecha_inicio) && validPeriod(periodo) && cliente.fecha_inicio > `${periodo}-01` && <p className="caption">Inicio del acuerdo registrado: {cliente.fecha_inicio}.</p>}
           </section> : <div className="modal-client-summary">
             <div className="modal-client-status">
               <span className={`semaforo ${estado}`}></span>
@@ -587,14 +590,18 @@ function DetalleClienteSession({
           </details>
 
           <div className="modal-actions cliente-detail-actions">
-            <button className="btn" type="button" disabled={enviando !== null || editandoCuota} onClick={() => {
+            {basicClient && canStartAgreement && cliente.fecha_inicio === null && cliente.fecha_fin === null && <button className="btn" type="button" disabled={enviando !== null || editandoCuota || startingAgreement} onClick={() => {
+              const guard = capture(); if (pending.current || nestedEditing.current || detailAccessDenied.current || !guard.current()) return;
+              nestedEditing.current = true; setStartingAgreement(true);
+            }}>Configurar acuerdo mensual</button>}
+            <button className="btn" type="button" disabled={enviando !== null || editandoCuota || startingAgreement} onClick={() => {
               const guard = capture(); if (pending.current || nestedEditing.current || detailAccessDenied.current || !guard.current()) return;
               const href = clientOperationHref(cliente.id, periodo); if (href) navigateWithinApp(window, href);
             }}>Ver operación del cliente</button>
             <button
               className="btn"
               type="button"
-              disabled={enviando !== null || editandoCuota}
+              disabled={enviando !== null || editandoCuota || startingAgreement}
               onClick={() => {
                 const guard = capture(); if (pending.current || nestedEditing.current || detailAccessDenied.current || !guard.current()) return;
                 window.history.pushState({}, "", `/moodboards?cliente=${cliente.id}`);
@@ -606,15 +613,15 @@ function DetalleClienteSession({
             <button
               className="btn primary"
               type="button"
-              disabled={enviando !== null}
-              onClick={() => { const guard = capture(); if (!pending.current && !detailAccessDenied.current && guard.current()) { nestedEditing.current = true; setEditandoCuota(true); } }}
+              disabled={enviando !== null || editandoCuota || startingAgreement}
+              onClick={() => { const guard = capture(); if (pending.current || nestedEditing.current || detailAccessDenied.current || !guard.current()) return; nestedEditing.current = true; setEditandoCuota(true); }}
             >
               {basicClient ? 'Editar nombre y estado' : 'Editar cliente'}
             </button>
             <button
               className="btn danger cliente-detail-delete"
               type="button"
-              disabled={enviando !== null}
+              disabled={enviando !== null || editandoCuota || startingAgreement}
               onClick={handleEliminarCliente}
             >
               {enviando === "eliminar" ? "Eliminando..." : "Eliminar cliente"}
@@ -636,6 +643,12 @@ function DetalleClienteSession({
         }}
       />
     )}
+    {startingAgreement && <StartMonthlyAgreementModal sesion={sesion} clientId={cliente.id}
+      onAccessDenied={denyDetailAccess}
+      onClose={async (guard, { refresh }) => {
+        guard.assertCurrent(); if (refresh) { await onCuotaActualizada?.(guard); guard.assertCurrent(); }
+        nestedEditing.current = false; setStartingAgreement(false); if (refresh) onClose();
+      }}/>}
     </>
   );
 }

@@ -1,5 +1,7 @@
 # Integration81 — client administration session adoption and history-safe deletion
 
+Historical verification below describes81, not the current remaining-gap list. Integration82 added agreement CAS;108 corrected the client mutex/user lock ordering;109 adds explicit first-agreement onboarding and transactional current-administrator checks to configuration, next-fee and empty-client deletion. Current evidence is in STATUS109 and the project-only client contract. Delete's complete history/reference rejection is preserved, not broadened by those authority changes.
+
 ## Ownership and boundaries
 
 Carson owns Clientes.jsx/admin session tests; Hypatia owns ClienteModals.jsx/modal tests; coordinator owns shared useScopedRequest hook, canonical overview loader/tests, deleteEmptyClient/server route, real principal QA and integration. Beauvoir independently reviews contracts and frozen source. App20+/1-,Vite5+ and untracked reference work excluded. No configured database/provider, real commercial records, migration/dependency/environment, push or production deployment.
