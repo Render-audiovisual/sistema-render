@@ -50,6 +50,7 @@ import { applyCompensations, nextPeriod } from "./finance-calculation.js";
 import { buildAutomaticFinanceSummary, previousPeriod } from "./automatic-finance.js";
 import { getCardDollarRate } from "./exchange-rate.js";
 import { captureFinanceActor, financePeriod, withFinanceSnapshot } from './finance-snapshot.js';
+import { withFinanceWrite } from './finance-write-authority.js';
 import { createWilsonRouter } from "./wilson-integration.js";
 import { createWilsonChatRouter, scheduleWilsonMessages } from "./wilson-chat.js";
 import { readMigrationIdentity, readMigrationStatus } from "./migrations.js";
@@ -611,26 +612,28 @@ function contractApiError(error, res, next) {
   return next(error);
 }
 
-router.get("/contratos", requireRole("admin"), async (_req, res, next) => {
+router.get("/contratos", requireRole("admin"), async (req, res, next) => {
+  res.set('Cache-Control','no-store');
   try {
-    const result = await pool.query(`SELECT id,nombre,importe_mensual,
+    const result = await withFinanceSnapshot(pool, req.auth, db => db.query(`SELECT id,nombre,importe_mensual,
       to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,activo,
       ${CONTRACT_REVISION_SQL} AS contract_revision
-      FROM contratos_financieros ORDER BY activo DESC,nombre,inicia_el DESC`);
+      FROM contratos_financieros ORDER BY activo DESC,nombre,inicia_el DESC`));
     return res.json(result.rows);
   } catch (error) {
-    return next(error);
+    return contractApiError(error, res, next);
   }
 });
 
 router.post("/contratos", requireRole("admin"), async (req, res, next) => {
+  res.set('Cache-Control','no-store');
   try {
     const input = normalizeContractInput(req.body, {operation:'create'});
-    const result = await pool.query(`INSERT INTO contratos_financieros
+    const result = await withFinanceWrite(pool, req.auth, db => db.query(`INSERT INTO contratos_financieros
       (nombre,importe_mensual,inicia_el,finaliza_el,activo) VALUES ($1,$2,$3::date,$4::date,true)
       RETURNING id,nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,
         to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,activo,${CONTRACT_REVISION_SQL} AS contract_revision`,
-      [input.nombre,input.importe_mensual,input.inicia_el,input.finaliza_el ?? null]);
+      [input.nombre,input.importe_mensual,input.inicia_el,input.finaliza_el ?? null]));
     return res.status(201).json(result.rows[0]);
   } catch (error) {
     return contractApiError(error, res, next);
@@ -638,6 +641,7 @@ router.post("/contratos", requireRole("admin"), async (req, res, next) => {
 });
 
 router.patch("/contratos/:id", requireRole("admin"), async (req, res, next) => {
+  res.set('Cache-Control','no-store');
   try {
     const id = contractId(req.params.id);
     const input = normalizeContractInput(req.body);
@@ -667,11 +671,14 @@ router.patch("/contratos/:id", requireRole("admin"), async (req, res, next) => {
     if (!updates.length) return res.status(400).json({ error: "No hay campos para actualizar." });
     const idIndex = values.push(id);
     const versionIndex = values.push(expected);
-    const result = await pool.query(`UPDATE contratos_financieros SET ${updates.join(", ")}
+    const result = await withFinanceWrite(pool, req.auth, async db => {
+      const updated = await db.query(`UPDATE contratos_financieros SET ${updates.join(", ")}
       WHERE id = $${idIndex} AND contract_version = $${versionIndex} RETURNING id,nombre,importe_mensual,
       to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,activo,
       ${CONTRACT_REVISION_SQL} AS contract_revision`, values);
-    if (!result.rows[0]) return await contractNotUpdated(pool,id);
+      if (!updated.rows[0]) return await contractNotUpdated(db,id);
+      return updated;
+    });
     return res.json(result.rows[0]);
   } catch (error) {
     return contractApiError(error, res, next);
@@ -679,15 +686,19 @@ router.patch("/contratos/:id", requireRole("admin"), async (req, res, next) => {
 });
 
 router.delete("/contratos/:id", requireRole("admin"), async (req, res, next) => {
+  res.set('Cache-Control','no-store');
   try {
     const id = contractId(req.params.id);
     normalizeContractInput(req.body ?? {}, {operation:'archive'});
     const expected = expectedContractVersion(req.body?.expected_revision,id);
-    const result = await pool.query(`UPDATE contratos_financieros
+    const result = await withFinanceWrite(pool, req.auth, async db => {
+      const updated = await db.query(`UPDATE contratos_financieros
       SET activo=false,finaliza_el=COALESCE(finaliza_el,CURRENT_DATE) WHERE id=$1 AND contract_version=$2
       RETURNING id,nombre,importe_mensual,to_char(inicia_el,'YYYY-MM-DD') AS inicia_el,activo,
       to_char(finaliza_el,'YYYY-MM-DD') AS finaliza_el,${CONTRACT_REVISION_SQL} AS contract_revision`, [id,expected]);
-    if (!result.rows[0]) return await contractNotUpdated(pool,id);
+      if (!updated.rows[0]) return await contractNotUpdated(db,id);
+      return updated;
+    });
     return res.json(result.rows[0]);
   } catch (error) {
     return contractApiError(error, res, next);

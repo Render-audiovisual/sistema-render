@@ -4,6 +4,8 @@ Status: source inspection, not a production certification. No database queried, 
 
 This document captures the pre-rescue architecture review. Subsequent local patches and guarded fixture executions are tracked in `STATUS.md` and `LOCAL_TESTING.md`; use those for current implementation and verification status.
 
+Current cross-sector entry point: [MASTER_LOCAL_ACCEPTANCE.md](MASTER_LOCAL_ACCEPTANCE.md) distinguishes the connected modules, newly executed acceptance evidence and remaining master gates. The historical table below must not be read as the present missing-feature inventory.
+
 Current startup delta (2026-10-19): start/dev/hosting entrypoints no longer migrate or seed, and jobs are opt-in behind target approval. Runtime inspects ledger/core public schema before listening. Migration runner requires explicit approved identity/plan and one locked client; fixtures require fresh physical isolation. Legacy goal opt-ins/preview bootstrap are quarantined before DB use. See `STARTUP_SAFETY_CONTRACT.md` and actual coordinator evidence in `STARTUP_SAFETY_QA.md`. No production rollout or overall security completion is implied; task mutation replay P1 remains documented in `TASK_REPLAY_FINDINGS.md`.
 
 ## Current → target
