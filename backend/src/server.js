@@ -83,6 +83,7 @@ import { scheduleMiaSupervisor } from "./mia-supervisor.js";
 import { createMoodboardsRouter } from "./moodboards.js";
 import { createTaskBoardOrderRouter } from './task-board-order.js';
 import { parseTaskOrderRead, readTaskBoardPage } from './task-board-page.js';
+import { parseTaskReviewRead, parseTaskStateRead, buildTaskReviewClause, effectiveTaskStateSql, readTaskReviewPage } from './task-review-query.js';
 import { createClientGoalsRouter, reconcileMonthlyGoals } from "./client-goals.js";
 import {
   getStateNotification,
@@ -2903,6 +2904,11 @@ router.post("/tareas/acciones-masivas", async (req, res, next) => {
 router.get("/tareas", async (req, res, next) => {
   try {
     const orderRead = parseTaskOrderRead(req.query);
+    const reviewRead = parseTaskReviewRead(req.query);
+    const taskStates = parseTaskStateRead(req.query.estado);
+    if (reviewRead?.scope === 'team' && req.auth.rol !== 'admin') {
+      return res.status(403).json({ error: 'La cola de revisión del equipo requiere administración.' });
+    }
     const {
       asignado_a,
       asignado_a_id,
@@ -2911,7 +2917,6 @@ router.get("/tareas", async (req, res, next) => {
       publicacion_id,
       cliente_id,
       prioridad,
-      estado,
       incluir_archivadas,
       solo_archivadas,
       papelera,
@@ -2990,6 +2995,13 @@ router.get("/tareas", async (req, res, next) => {
       paramCount++;
     }
 
+    if (reviewRead) {
+      const review = buildTaskReviewClause({ scope: reviewRead.scope, auth: req.auth,
+        taskAlias: 't', clientAlias: 'c', placeholder: `$${paramCount}` });
+      query += review.sql;
+      if (review.value !== null) { params.push(review.value); paramCount++; }
+    }
+
     if (asignado_a_id !== undefined) {
       query += ` AND EXISTS (SELECT 1 FROM tarea_asignaciones filtro WHERE filtro.tarea_id=t.id AND filtro.usuario_id=$${paramCount}::integer)`;
       params.push(Number(asignado_a_id));
@@ -3050,9 +3062,9 @@ router.get("/tareas", async (req, res, next) => {
       params.push(prioridad);
       paramCount++;
     }
-    if (estado) {
-      query += ` AND t.estado = ANY($${paramCount}::text[])`;
-      params.push(normalizeTaskState(estado) === "finalizada" ? ["finalizada", "publicada"] : [estado]);
+    if (taskStates) {
+      query += ` AND ${workspace === 'render_os' ? effectiveTaskStateSql('t') : 't.estado'} = ANY($${paramCount}::text[])`;
+      params.push(taskStates);
       paramCount++;
     }
 
@@ -3080,6 +3092,14 @@ router.get("/tareas", async (req, res, next) => {
       }
     }
 
+    if (reviewRead) {
+      const page = await readTaskReviewPage({ pool, query, params, limit: limite, offset: desplazamiento,
+        expectedSnapshot: reviewRead.snapshot, auth: req.auth, scope: reviewRead.scope,
+        serialize: async (db, rows) => (await annotateTaskAssignments(db, rows)).map(row => taskOperationalDto(row, req.auth)) });
+      res.set('X-Total-Count', String(page.total));
+      res.set('X-Task-Review-Snapshot', page.snapshot);
+      return res.json(page.items);
+    }
     if (orderRead.sort === 'manual') {
       const page = await readTaskBoardPage({ pool, query, params, limit: limite, offset: desplazamiento,
         expectedSnapshot: orderRead.snapshot, auth: req.auth,
@@ -3108,7 +3128,7 @@ router.get("/tareas", async (req, res, next) => {
     res.json((await annotateTaskAssignments(pool, result.rows.map(({ total_count, ...tarea }) => tarea)))
       .map((row) => taskOperationalDto(row, req.auth)));
   } catch (error) {
-    if ([400, 401, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
+    if ([400, 401, 403, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });

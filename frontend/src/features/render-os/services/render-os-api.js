@@ -1,6 +1,7 @@
 import { responsibleFilterId } from '../utils/task-responsible-filter.js';
 import { isSessionFailure } from '../../../shared/session/captured-request.js';
 import { validTaskOrderRevision, validTaskOrderSnapshot } from '../utils/task-manual-order.js';
+import { taskQueryNotice } from '../utils/task-view-state.js';
 const WORKSPACE_QUERY = "workspace=render_os";
 
 export async function apiRequest(url, options) {
@@ -29,6 +30,17 @@ export function buildTaskPageUrl(options = {}) {
     throw new Error("Paginación de tareas no válida.");
   }
   const params = new URLSearchParams({ workspace: "render_os", limit: String(limit), offset: String(offset) });
+  const reviewScope = settings.reviewScope ?? '', status = settings.status ?? (reviewScope ? 'en_revision' : 'all');
+  // This validates query shape only. The server independently verifies scope.
+  const notice = taskQueryNotice({status,reviewScope,sort:settings.sort??'date',archiveMode:settings.archiveMode??'active'});
+  if (notice) throw new Error(notice);
+  if (status !== 'all') params.set('estado',status);
+  if (reviewScope) params.set('review_scope',reviewScope);
+  if (reviewScope && offset > 0 && !validTaskOrderSnapshot(settings.expectedReviewSnapshot)) throw new Error('Actualizá la cola desde el principio antes de continuar.');
+  if (settings.expectedReviewSnapshot !== undefined) {
+    if (!reviewScope || !validTaskOrderSnapshot(settings.expectedReviewSnapshot)) throw new Error('Snapshot de revisión inválido.');
+    params.set('expected_review_snapshot',settings.expectedReviewSnapshot);
+  }
   if (settings.sort !== undefined && !['date','manual'].includes(settings.sort)) throw new Error('Orden de tareas inválido.');
   if (settings.sort === 'manual') {
     params.set('sort','manual');
@@ -55,8 +67,16 @@ export function buildTaskPageUrl(options = {}) {
 export async function apiTaskPage(options = {}, requestOptions) {
   const settings = typeof options === "number" ? { offset: options } : options;
   const response = await fetch(buildTaskPageUrl(settings), requestOptions);
-  const body = await response.json().catch(error => { if (isSessionFailure(error)) throw error; if(settings.sort==='manual'&&response.ok)throw new Error('No se pudo verificar la página de orden manual.'); return []; });
+  const body = await response.json().catch(error => { if (isSessionFailure(error)) throw error; if((settings.sort==='manual'||settings.reviewScope)&&response.ok)throw new Error('No se pudo verificar la página de tareas.'); return []; });
   if (!response.ok) throw Object.assign(new Error(body?.error || "No se pudieron cargar las tareas."), {status:response.status});
+  if (settings.reviewScope) {
+    const reviewSnapshot=response.headers.get('X-Task-Review-Snapshot'),count=response.headers.get('X-Total-Count');
+    if (!validTaskOrderSnapshot(reviewSnapshot) || typeof count!=='string' || !/^(0|[1-9]\d*)$/.test(count) || count.trim()!==count || !Number.isSafeInteger(Number(count))
+      || !Array.isArray(body) || body.some(item=>!Number.isSafeInteger(item?.id)||item.id<1||item.id>2147483647) || new Set(body.map(item=>item.id)).size!==body.length
+      || body.length!==Math.min(settings.limit??50,Math.max(0,Number(count)-(settings.offset??0)))) throw new Error('No se pudo verificar la cola de revisión. Actualizala desde el principio.');
+    if (settings.expectedReviewSnapshot!==undefined && settings.expectedReviewSnapshot!==reviewSnapshot) throw Object.assign(new Error('La cola cambió. Actualizala desde el principio.'),{status:409});
+    return {items:body,total:Number(count),reviewSnapshot};
+  }
   if (settings.sort === 'manual') {
     const orderRevision=response.headers.get('X-Task-Order-Revision'),orderSnapshot=response.headers.get('X-Task-Order-Snapshot'),count=response.headers.get('X-Total-Count');
     if(!Array.isArray(body)||body.some(item=>!Number.isSafeInteger(item?.id)||item.id<=0||item.id>2147483647)||new Set(body.map(item=>item.id)).size!==body.length

@@ -5,7 +5,7 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import ts from 'typescript';
 import {groupTasksByResponsible,groupTasksByClient} from '../features/render-os/utils/task-groups.js';
-import {getTaskViewState,updateTaskViewUrl} from '../features/render-os/utils/task-view-state.js';
+import {getTaskViewState,updateTaskViewUrl,effectiveTaskFilterState} from '../features/render-os/utils/task-view-state.js';
 import {initials,formatDate} from '../features/render-os/utils/task-formatters.js';
 import {STATUSES,canonicalTaskState} from '../features/render-os/constants.js';
 
@@ -17,7 +17,7 @@ const declarations=['TasksByClient','TasksByResponsible','TaskGroups'].map(name=
  return node.getText(file);
 }).join('\n');
 const compiled=ts.transpileModule(declarations,{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;
-function components(react=React){return new Function('React','useMemo','groupTasksByResponsible','groupTasksByClient','initials','STATUSES','canonicalTaskState','taskResponsiblesLabel','formatDate',`${compiled};return {TasksByClient,TasksByResponsible,TaskGroups}`)(react,fn=>fn(),groupTasksByResponsible,groupTasksByClient,initials,STATUSES,canonicalTaskState,()=> 'Responsable observado',formatDate)}
+function components(react=React){return new Function('React','useMemo','groupTasksByResponsible','groupTasksByClient','initials','STATUSES','canonicalTaskState','effectiveTaskFilterState','taskResponsiblesLabel','formatDate',`${compiled};return {TasksByClient,TasksByResponsible,TaskGroups}`)(react,fn=>fn(),groupTasksByResponsible,groupTasksByClient,initials,STATUSES,canonicalTaskState,effectiveTaskFilterState,()=> 'Responsable observado',formatDate)}
 const users=[{id:11,nombre:'Alex'},{id:22,nombre:'Alex'},{id:33,nombre:'Sin tareas'}];
 const tasks=[{id:1,titulo:'Compartida <script>',estado:'en_revision',asignado_a_id:11,colaborador_ids:[22],cliente_id:5,cliente_nombre:'Marca'}, {id:2,titulo:'Otra',estado:'pendiente',asignado_a_id:22,cliente_id:6,cliente_nombre:'Marca'}, {id:3,titulo:'Histórica',estado:'pendiente',asignado_a:'Alex',cliente_nombre:'Marca'}];
 

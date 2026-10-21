@@ -92,27 +92,34 @@ test("approval sends selected publisher ID, keeps display label; generic approva
   const requests = [];
   const notices = [];
   const updates = [];
+  const stale = [];
   const users = [{ id: 1, nombre: "Alex", rol: "community" }, { id: 2, nombre: "Alex", rol: "admin" }, { id: 3, nombre: "Other", rol: "diseno" }];
   const task = { id: 5, revision: 7, cliente_nombre: "Client" };
   const sesion = displaySession; let currentSession = sesion;
   const request = async (url, request) => { requests.push(JSON.parse(request.body)); return task; };
   const captureRequest = () => createCapturedRequest({session:sesion,readSession:()=>currentSession,request});
-  const approve = new Function("users", "apiRequest", "tasksRef", "setTasks", "logActivity", "notify", "updateTask", "sesion", "getSesion", "captureRequest", "isSessionFailure", `${body}\nreturn approveTask;`)(
+  const approve = new Function("users", "apiRequest", "tasksRef", "setTasks", "logActivity", "notify", "updateTask", "sesion", "getSesion", "captureRequest", "isSessionFailure", "markReviewQueueStale", `${body}\nreturn approveTask;`)(
     users, async (url, request) => { requests.push(JSON.parse(request.body)); return task; },
     { current: [task] }, () => {}, async () => {}, (message) => notices.push(message), async (id, changes) => updates.push({id,changes}), sesion, () => currentSession, captureRequest, isSessionFailure,
+    (guard,uncertain=false)=>{guard.assertCurrent();stale.push(uncertain);},
   );
   await approve(task, 2);
   assert.deepEqual(requests, [{ responsable_publicacion_id: 2, expected_revision: 7 }]);
   assert.equal(notices.at(-1), "Tarea aprobada y enviada a Alex.");
+  assert.deepEqual(stale,[false]);
   await approve(task);
   assert.deepEqual(updates, [{id:5,changes:{estado:"aprobada"}}]);
+  assert.deepEqual(stale,[false], 'Generic approval delegates invalidation to updateTask, never double-counts it');
   for (const id of [null, "2", 0, -1, 1.5, 3, 999]) {
     await assert.rejects(approve(task, id), /responsable de publicación válido/);
   }
   assert.equal(requests.length, 1);
+  assert.equal(stale.filter(uncertain=>!uncertain).length,1,'Invalid publishers must not claim confirmed approval');
+  const beforeSessionChange=[...stale];
   currentSession = {token:'different-synthetic-session'};
   await assert.rejects(approve(task, 2), /sesión cambió/);
   assert.equal(requests.length, 1);
+  assert.deepEqual(stale,beforeSessionChange);
 });
 
 test("source contract: existing unsaved, keyboard, focus and mobile behavior remains", () => {

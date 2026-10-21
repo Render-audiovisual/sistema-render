@@ -44,7 +44,9 @@ export function installUnsavedNavigation(win) {
     if (event.defaultPrevented) return;
     if (typeof event.detail?.href !== 'string' || !event.detail.href.trim()) { event.preventDefault(); return; }
     let navigation;
-    try { navigation = context(win, event.detail?.href, 'link'); } catch { event.preventDefault(); return; }
+    // A same-location data refresh can replace component state. It must not
+    // borrow a task guard's harmless "keeps this task open" link exemption.
+    try { navigation = context(win, event.detail?.href, event.detail?.type === 'refresh' ? 'refresh' : 'link'); } catch { event.preventDefault(); return; }
     if (!navigation || !approve(win, navigation)) event.preventDefault();
   };
   const unload = event => {

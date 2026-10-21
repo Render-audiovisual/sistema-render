@@ -238,7 +238,7 @@ test('load-more guards tasks, totals, error notification and finally against sta
 });
 
 test('blocked responsible filters retain selected task identity and mark it direct-only instead of clearing an editor', () => {
-  const blocked = nodes(file, ts.isIfStatement).find(node => text(node.expression) === '!responsibleSelection.ready');
+  const blocked = nodes(file, ts.isIfStatement).find(node => text(node.expression) === '!responsibleSelection.ready || queryNotice');
   assert.ok(blocked, 'Inspect real blocked-list branch');
   const writes = calls(blocked.thenStatement, 'setTasks');
   const preserve = writes.find(call => ts.isArrowFunction(call.arguments[0]));
@@ -259,7 +259,7 @@ test('blocked responsible filters retain selected task identity and mark it dire
 });
 
 test('blocked direct-context lookup success and failure check active generation and current URL before side effects', () => {
-  const blocked = nodes(file, ts.isIfStatement).find(node => text(node.expression) === '!responsibleSelection.ready');
+  const blocked = nodes(file, ts.isIfStatement).find(node => text(node.expression) === '!responsibleSelection.ready || queryNotice');
   assert.ok(blocked);
   const handlers = nodes(blocked.thenStatement, node => ts.isCallExpression(node)
     && ts.isPropertyAccessExpression(node.expression) && ['then', 'catch'].includes(node.expression.name.text)

@@ -6,6 +6,7 @@ import { canUserMoveTaskToState, canRetryTaskUpdate } from "../../frontend/src/f
 import { getProductionPhase } from "../../frontend/src/features/render-os/utils/production-visits.js";
 import { getCanonicalTaskContentMetadata, isLinkedProductionEditorialTask } from "../../frontend/src/features/render-os/utils/task-content.js";
 import { createCapturedRequest, isSessionFailure } from '../../frontend/src/shared/session/captured-request.js';
+import { effectiveTaskFilterState } from '../../frontend/src/features/render-os/utils/task-view-state.js';
 
 const source = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
 const admin = {id:1,rol:"admin"};
@@ -97,11 +98,53 @@ test("saving content on historical task does not emit a state change or mutate a
   }
 });
 
-test("source wiring covers all views, state filter, generic approval PATCH and safe creation defaults", () => {
-  assert.match(source,/column.states.includes\(canonicalTaskState\(task.estado\)\)/);
-  assert.match(source,/taskStatus === "all" \|\| canonicalTaskState\(task.estado\) === taskStatus/);
+test("effective approval display never replaces the raw business state or grants finalization", () => {
+  for (const flag of [true, false, 'true', null, undefined]) {
+    const dto = Object.freeze({ ...task, propiedades_extra: Object.freeze({ revision_aprobada: flag }) });
+    assert.equal(effectiveTaskFilterState(dto), flag === true ? 'aprobada' : 'en_revision');
+    assert.equal(BOARD_COLUMNS.filter(column => column.states.includes(effectiveTaskFilterState(dto))).length, 1);
+    assert.equal(dto.estado, 'en_revision');
+    assert.equal(canonicalTaskState(dto.estado), 'en_revision');
+    assert.equal(isTaskCompleted(dto), false);
+    assert.equal(canUserMoveTaskToState(dto, admin, 'finalizada'), false);
+    assert.equal(canUserMoveTaskToState(dto, community, 'finalizada'), false);
+    assert.equal(canUserMoveTaskToState(dto, admin, 'aprobada'), true);
+    assert.equal(canUserMoveTaskToState(dto, owner, 'aprobada'), false);
+  }
+  const historical = Object.freeze({ ...task, estado: 'publicada' });
+  assert.equal(effectiveTaskFilterState(historical), 'finalizada');
+  assert.equal(historical.estado, 'publicada');
+});
+
+test("actual move callback keeps historical approval display out of generic business writes", () => {
+  const body = source.slice(source.indexOf('  const move = useCallback((task, status) =>'), source.indexOf('  const openFeedback = useCallback'));
+  assert.ok(body.startsWith('  const move = useCallback'));
+  const writes = [], approvals = [], errors = [];
+  const context = { useCallback: callback => callback, orderState: { busy: false, locked: false },
+    canonicalTaskState, canUserMoveTaskToState, STATUSES, sesion: { usuario: admin },
+    onUpdate: (...args) => { writes.push(args); return Promise.resolve(); },
+    onApprove: dto => { approvals.push(dto); return Promise.resolve(); }, onError: message => errors.push(message) };
+  const move = new Function(...Object.keys(context), `${body}\nreturn move;`)(...Object.values(context));
+  const dto = Object.freeze({ ...task, propiedades_extra: Object.freeze({ revision_aprobada: true }) });
+  assert.equal(effectiveTaskFilterState(dto), 'aprobada');
+  move(dto, 'en_revision');
+  assert.deepEqual(writes, []); assert.deepEqual(approvals, []); assert.deepEqual(errors, []);
+  move(dto, 'finalizada');
+  assert.equal(errors.length, 1); assert.deepEqual(writes, []); assert.deepEqual(approvals, []);
+  move(dto, 'aprobada');
+  assert.deepEqual(approvals, [dto]); assert.deepEqual(writes, []);
+  assert.equal(dto.estado, 'en_revision');
+});
+
+test("source wiring covers all views, effective state filter, generic approval PATCH and safe creation defaults", () => {
+  assert.match(source,/column.states.includes\(effectiveTaskFilterState\(task\)\)/);
+  assert.match(source,/taskStatus === "all" \|\| effectiveTaskFilterState\(task\) === taskStatus/);
   assert.match(source,/aria-label="Filtrar por estado"/);
   assert.match(source,/item.id === canonicalTaskState\(task.estado\)/);
+  assert.match(source,/value=\{canonicalTaskState\(task.estado\)\}/);
+  assert.match(source,/if \(status === canonicalTaskState\(task.estado\)\) return/);
+  assert.match(source,/if \(!canUserMoveTaskToState\(task, sesion\?\.usuario, status\)\)/);
+  assert.match(source,/Aprobada \(registro histórico; sin evidencia de entrega\)/);
   assert.match(source,/repeat\(5, minmax\(220px, 1fr\)\)/);
   assert.match(source,/const canApproveForOriana = isLeader && task.estado === "en_revision";/);
   assert.match(source,/Aprobar revisión/);

@@ -6,7 +6,7 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {createTaskManualOrder,taskOrderInput,verifiedTaskOrderAck,validTaskOrderRevision,validTaskOrderSnapshot,taskOrderArrowAnchor} from '../features/render-os/utils/task-manual-order.js';
 import {apiTaskPage,buildTaskPageUrl} from '../features/render-os/services/render-os-api.js';
-import {getTaskViewState,updateTaskViewUrl} from '../features/render-os/utils/task-view-state.js';
+import {getTaskViewState,updateTaskViewUrl,effectiveTaskFilterState} from '../features/render-os/utils/task-view-state.js';
 import {createCapturedRequest,isSessionFailure} from '../shared/session/captured-request.js';
 import {createBrowserSessionState} from '../shared/session/browser-session-state.js';
 import {canUserEditTask,canUserMoveTask} from '../workspace-task-state.js';
@@ -91,7 +91,7 @@ test('real apiTaskPage parses exact manual headers including empty0/large revisi
 // Actual page callbacks extracted with injected transport/effects, not mounted UI.
 const source=readFileSync(new URL('./WorkspaceReadOnly.jsx',import.meta.url),'utf8'),file=ts.createSourceFile('WorkspaceReadOnly.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
 function initializer(owner,name){const component=file.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===owner);let result;function visit(n){if(ts.isVariableDeclaration(n)&&n.name.getText(file)===name)result=n.initializer;ts.forEachChild(n,visit)}visit(component);return result}
-function callback(owner,name,deps){let init=initializer(owner,name);if(ts.isCallExpression(init)&&init.expression.getText(file)==='useCallback')init=init.arguments[0];return new Function(...Object.keys(deps),`return (${init.getText(file)});`)(...Object.values(deps))}
+function callback(owner,name,deps){let init=initializer(owner,name);if(ts.isCallExpression(init)&&init.expression.getText(file)==='useCallback')init=init.arguments[0];const context={canonicalTaskState,effectiveTaskFilterState,...deps};return new Function(...Object.keys(context),`return (${init.getText(file)});`)(...Object.values(context))}
 test('actual card drop uses same-column before anchor only; cross-column bubbles to existing state flow',()=>{
  const events=[],deps={sort:'manual',archiveMode:'active',manualReady:true,tasksLatestRef:{current:[task]},sesion:{usuario:{id:7,rol:'admin'}},canonicalTaskState,canUserEditTask,setDragOver:()=>{},onReorder:(...args)=>events.push(args)};
  const drop=callback('TasksView','dropBeforeTask',deps),event=()=>({dataTransfer:{types:['text/task-id'],getData:()=> '5'},preventDefault(){this.prevented=true},stopPropagation(){this.stopped=true}});
@@ -136,7 +136,7 @@ test('actual reorder UI suppresses late account/unmount ACK and rejects stale fi
 test('actual pagination sends original snapshot; stale/error/foreign pages never append or turn into success',async()=>{
  for(const scenario of ['409','mismatch','duplicate','context','ABA','generation','valid']){
   const effects=[],context='observed',observation={context},wait=deferred(),f=fixture(async()=>({}));
-  const deps={captureRequest:f.capture,taskQueryGenerationRef:{current:3},tasks:[task],responsibleSelection:{ready:true,value:'all'},loadingMore:false,pagingBlocked:false,orderState:{busy:false},totalTasks:2,effectiveSort:'manual',orderPageRef:{current:{revision:'3',snapshot,context,observation}},orderContext:context,orderObservation:observation,orderContextRef:{current:observation},query:'',area:'all',client:'all',sector:'all',priority:'all',archiveMode:'active',isSessionFailure,apiTaskPage:async(options)=>{assert.equal(options.expectedSnapshot,snapshot);return wait.promise},setTasks:()=>effects.push('append'),setTotalTasks:()=>effects.push('total'),setLoadingMore:()=>{},setPagingBlocked:()=>effects.push('blocked'),setOrderMessage:()=>effects.push('message'),notify:()=>effects.push('notify')};
+  const deps={captureRequest:f.capture,queryNotice:'',reviewScope:'',taskStatus:'all',reviewPageRef:{current:null},taskQueryGenerationRef:{current:3},tasks:[task],responsibleSelection:{ready:true,value:'all'},loadingMore:false,pagingBlocked:false,orderState:{busy:false},totalTasks:2,effectiveSort:'manual',orderPageRef:{current:{revision:'3',snapshot,context,observation}},orderContext:context,orderObservation:observation,orderContextRef:{current:observation},query:'',area:'all',client:'all',sector:'all',priority:'all',archiveMode:'active',isSessionFailure,apiTaskPage:async(options)=>{assert.equal(options.expectedSnapshot,snapshot);return wait.promise},setTasks:()=>effects.push('append'),setTotalTasks:()=>effects.push('total'),setLoadingMore:()=>{},setPagingBlocked:()=>effects.push('blocked'),setOrderMessage:()=>effects.push('message'),notify:()=>effects.push('notify')};
   const pending=callback('WorkspaceReadOnlyPage','loadMoreTasks',deps)();
   if(scenario==='context')deps.orderContextRef.current={context:'new'};if(scenario==='ABA')deps.orderContextRef.current={context};if(scenario==='generation')deps.taskQueryGenerationRef.current++;
   if(scenario==='409')wait.reject(Object.assign(Error('changed'),{status:409}));else wait.resolve({items:[scenario==='duplicate'?task:before],total:2,orderRevision:'3',orderSnapshot:scenario==='mismatch'?'b'.repeat(64):snapshot});
@@ -156,7 +156,7 @@ test('actual toolbar JSX is a compact independent control with closed optional h
  assert.ok(toolbar);const jsx=toolbar.getText(file);assert.doesNotMatch(jsx,/ros-filter-bar/);
  const compiled=ts.transpileModule(`const Toolbar=()=>(${jsx});`,{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;
  for(const sort of ['date','manual']){
-  const Toolbar=new Function('React','sort','view','archiveMode','orderState','setSort',`${compiled};return Toolbar;`)(React,sort,'board','active',{busy:false},()=>{});
+  const Toolbar=new Function('React','sort','view','archiveMode','orderState','setSort','reviewScope',`${compiled};return Toolbar;`)(React,sort,'board','active',{busy:false},()=>{},'');
   const html=renderToStaticMarkup(React.createElement(Toolbar));assert.match(html,/aria-label="Orden de tareas"/);
   if(sort==='manual'){assert.match(html,/<summary>Orden compartido<\/summary>/);assert.match(html,/<details class="ros-order-help">/);assert.doesNotMatch(html,/<details[^>]* open/)}else assert.doesNotMatch(html,/<details/);
  }

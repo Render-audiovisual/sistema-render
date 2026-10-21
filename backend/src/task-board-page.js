@@ -36,9 +36,12 @@ export async function readTaskBoardPage({ pool, query, params, limit, offset, ex
           FROM tarea_asignaciones ta WHERE ta.tarea_id=candidates.id)) ORDER BY id)::text,'[]') AS signature
       FROM (${query}) AS candidates`, params)).rows[0];
     if (!Number.isSafeInteger(summary?.total) || summary.total < 0 || typeof summary.signature !== 'string') throw new Error('Invalid task collection summary');
-    // Only IDs/revisions/membership/order enter this opaque token. Never hash
-    // private task metadata or serialized financial values into a public oracle.
-    const snapshot = createHash('sha256').update(JSON.stringify({ actor: actor.id, role: actor.rol,
+    // Bind the exact server-built parameterized collection, before LIMIT/OFFSET.
+    // No row payload, private metadata or serialized financial values enter the
+    // token. Page size/offset are intentionally absent so continuation can vary.
+    // Version 2 is ephemeral: old manual tokens fail409 and require a first-page
+    // refresh, never a compatibility fallback that drops filter binding.
+    const snapshot = createHash('sha256').update(JSON.stringify({ version: 2, query, params, actor: actor.id, role: actor.rol,
       session_version: actor.session_version, revision: order.revision, ids: order.task_ids, signature: summary.signature })).digest('hex');
     if (expectedSnapshot !== undefined && snapshot !== expectedSnapshot) throw fail(409, 'El listado cambió. Actualizá las tareas antes de seguir cargando.');
     const index = params.length + 1;

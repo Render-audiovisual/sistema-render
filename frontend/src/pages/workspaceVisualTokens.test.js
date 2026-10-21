@@ -76,11 +76,34 @@ test('document surfaces, quiet accents and keyboard focus use shared tokens', ()
 // declaration counts, sizing, layout, visibility and motion remain pinned.
 const paint = /^(?:--ros-(?:ink|muted|line|soft|lime(?:-hover|-muted)?|graphite(?:-soft|-deep)?|warm|neutral|accent-strong)|background(?:-color)?|color|border(?:-(?:top|bottom|left|right|block))?(?:-color)?|outline(?:-color)?|box-shadow|text-decoration-color|scrollbar-color|font-family|font-weight)$/;
 const groupLabelSelector = '.render-workspace .ros-project-card>header small,.render-workspace .ros-project-card button>b,.render-workspace .ros-project-card button small';
+const reviewQueueSelectors = new Set([
+  '.render-workspace .ros-review-queue',
+  '.render-workspace .ros-review-queue > strong, .render-workspace .ros-review-queue > p',
+  '.render-workspace .ros-review-queue > p',
+  '.render-workspace .ros-review-queue button',
+  '.render-workspace .ros-review-queue button:focus-visible',
+]);
+test('review queue adds only its reviewed scoped wrapping, touch and focus rules', () => {
+  const rules = [];
+  roots.TaskHeader.walkRules(rule => {
+    if (!rule.selector.includes('.ros-review-queue')) return;
+    assert.ok(reviewQueueSelectors.has(normalize(rule.selector)), 'No broad selector may borrow this component exception');
+    rules.push([normalize(rule.selector), rule.nodes.map(node => [node.prop, node.value, !!node.important])]);
+  });
+  assert.equal(rules.length, 5);
+  assert.equal(hash(rules), '9ca97bf413ce9c7cdbe6287752d0fcb9b1e6578824568631e63cb5039d82a2cd');
+  assert.equal(last('TaskHeader', '.render-workspace .ros-review-queue', 'flex-wrap'), 'wrap');
+  assert.equal(last('TaskHeader', '.render-workspace .ros-review-queue button', 'min-height'), '44px');
+  assert.equal(last('TaskHeader', '.render-workspace .ros-review-queue button:focus-visible', 'outline'), `2px solid ${token('accent')}`);
+});
 test('group counts and task states use the existing readable label token, not legacy 6px text', () => {
   assert.deepEqual(values('WorkspaceReadOnly', groupLabelSelector, 'font-size'), ['var(--ros-type-label)']);
 });
 function structure(node) {
   if (node.type === 'comment') return null;
+  // Integration106 adds a separately fingerprinted component, not a rewrite
+  // of the existing header. Keep the original migration baseline intact.
+  if (node.type === 'rule' && reviewQueueSelectors.has(normalize(node.selector))) return null;
   // New recorded-context component styles have their own integration guards;
   // retain the exact migration baseline for every preexisting task rule.
   if (node.type === 'rule' && [

@@ -87,6 +87,9 @@ export function personalProductionTaskHref(userId) {
   return Number.isSafeInteger(userId) && userId > 0 && userId <= 2147483647
     ? `/workspace/tareas?view=list&responsible=id%3A${userId}&sector=produccion` : null;
 }
+export function homeReviewTaskHref(scope) {
+  return ['personal','team'].includes(scope) ? `/workspace/tareas?view=list&review_scope=${scope}` : null;
+}
 export function homeDeadline(value, today) {
   if (!value) return "Sin fecha";
   return value === today ? "Hoy" : `${value < today ? "Venció el " : ""}${homeDate(value)}`;

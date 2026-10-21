@@ -542,3 +542,32 @@
   .render-workspace .ros-primary-button,
   .render-workspace .ros-controls :is(button, a) { transition: none; }
 }
+
+.render-workspace .ros-review-queue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: var(--render-surface-soft);
+  border-color: var(--render-line);
+  color: var(--render-ink);
+  font-size: 13px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.render-workspace .ros-review-queue > strong,
+.render-workspace .ros-review-queue > p { flex-basis: 100%; margin: 0; }
+.render-workspace .ros-review-queue > p { color: var(--render-muted); }
+.render-workspace .ros-review-queue button {
+  min-height: 44px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--render-line-strong);
+  border-radius: 10px;
+  background: var(--render-surface);
+  color: var(--render-ink);
+  font: inherit;
+  white-space: normal;
+}
+.render-workspace .ros-review-queue button:focus-visible { outline: 2px solid var(--render-accent); outline-offset: 2px; }

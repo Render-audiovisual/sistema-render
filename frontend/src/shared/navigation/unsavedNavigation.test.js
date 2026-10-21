@@ -70,6 +70,32 @@ const unchanged = (win, location, state, length = 3) => {
   assert.equal(win.history.scrollRestoration, 'manual'); assert.deepEqual(win.effects, []); assert.deepEqual(win.storageAccess, []);
 };
 
+test('explicit same-location refresh exposes destructive intent without changing history or bypassing dirty/busy', () => {
+  const win = mockWindow(), installed = installUnsavedNavigation(win), seen = [];
+  const location = win.location.href, state = win.history.state;
+  let busy = false;
+  const unsubscribe = registerNavigationGuard(win, navigation => {
+    seen.push(navigation);
+    return navigation.type === 'refresh' ? { dirty: true, busy } : { dirty: false, busy: false };
+  });
+  const refresh = () => {
+    const event = new MockCustomEvent('render:before-navigation', { detail: { href: location, type: 'refresh' }, cancelable: true });
+    win.dispatchEvent(event); return event;
+  };
+  try {
+    assert.equal(beforeLink(win, location).defaultPrevented, false);
+    assert.deepEqual(win.confirmCalls, []);
+    assert.equal(refresh().defaultPrevented, true);
+    assert.equal(seen.at(-1).type, 'refresh');
+    assert.equal(seen.at(-1).from, seen.at(-1).to);
+    win.accept = true; assert.equal(refresh().defaultPrevented, false);
+    const prompts = win.confirmCalls.length;
+    busy = true; assert.equal(refresh().defaultPrevented, true);
+    assert.equal(win.confirmCalls.length, prompts, 'Pending writes cannot be discarded by accepting a prompt');
+    unchanged(win, location, state);
+  } finally { unsubscribe(); installed.dispose(); }
+});
+
 test('one consolidated dirty confirmation across all guards cancels traversal before route/popstate commit', () => {
   const win = mockWindow(), installed = installUnsavedNavigation(win), seen = [];
   const location = win.location.href, state = win.history.state;

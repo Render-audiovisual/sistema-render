@@ -12,10 +12,10 @@ const original={id:5,revision:7,estado:'en_revision',titulo:'Observed',tipo_tare
 const conflict=()=>Object.assign(new Error('Changed'),{status:409});
 function fixture({task=original,transport}={}){
  let items=[{...task}],live={token:'a',usuario:{id:7,rol:'admin',activo:true}},active=true;
- const session=live,calls=[],effects=[],deps={tasksRef:{current:items},updateQueuesRef:{current:new Map()},clients:[],users:[],canRetryTaskUpdate,isSessionFailure};
+ const session=live,calls=[],effects=[],deps={tasksRef:{current:items},updateQueuesRef:{current:new Map()},clients:[],users:[],canRetryTaskUpdate,isSessionFailure,reviewScopeRef:{current:''}};
  deps.captureRequest=()=>createCapturedRequest({session,readSession:()=>live,isActive:()=>active,request:async(url,options={})=>{calls.push({url,options});return transport(url,options,calls)}});
  deps.setTasks=update=>{items=update(items);effects.push('paint')};deps.notify=()=>effects.push('notify');deps.logActivity=async()=>effects.push('activity');
- deps.updateTask=callback('updateTask',deps);deps.approveTask=callback('approveTask',deps);
+ deps.markReviewQueueStale=callback('markReviewQueueStale',deps);deps.updateTask=callback('updateTask',deps);deps.approveTask=callback('approveTask',deps);
  return{deps,calls,effects,get items(){return items},switch(){live={token:'b',usuario:{id:8,rol:'admin',activo:true}}},unmount(){active=false}};
 }
 test('actual non-editing approval sends observed task revision and never retries unseen content after 409',async()=>{

@@ -7,7 +7,7 @@ import { HomeEscalations } from "../components/HomeEscalations.jsx";
 import { HomeMonthlyProgress } from "../components/HomeMonthlyProgress.jsx";
 import { HomeTeamWorkload } from "../components/HomeTeamWorkload.jsx";
 import { HomeEditorialControl } from "../components/HomeEditorialControl.jsx";
-import { createPersonalHomeLoader, homeDate, homeDeadline, homeStateLabel, personalHomeNavigate, personalProductionTaskHref, subscribePersonalHomeRefresh } from "./personalHome.js";
+import { createPersonalHomeLoader, homeDate, homeDeadline, homeStateLabel, homeReviewTaskHref, personalHomeNavigate, personalProductionTaskHref, subscribePersonalHomeRefresh } from "./personalHome.js";
 import "./QuickHome.css";
 
 const WORK_AREAS = [
@@ -130,6 +130,7 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
                 <ListCount shown={data.review.items.length} total={data.review.total}/></header>
               {data.review.items.length ? <TaskRows items={data.review.items} today={data.today} onNavigate={onNavigate}/> :
                 <p className="qh-empty">No hay tareas en revisión.</p>}
+              <HomeLink className="qh-section-link" href={homeReviewTaskHref(data.review.scope)} onNavigate={onNavigate}>Ver toda la cola de revisión <span aria-hidden="true">→</span></HomeLink>
             </section>
             <HomeTeamWorkload sesion={sesion} onNavigate={onNavigate} request={request}/>
             <HomeEditorialControl sesion={sesion} onNavigate={onNavigate} request={request} onRecordOpenChange={recordOpenChanged}/>

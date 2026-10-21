@@ -1,4 +1,5 @@
 import { SYSTEM_USER_ROLES } from './user-roles.js';
+import { effectiveTaskStateSql, taskLiveVisibilitySql, taskReviewStateSql, taskReviewMembershipSql } from './task-review-query.js';
 
 const fail = (message, status) => Object.assign(new Error(message), { status });
 
@@ -142,17 +143,12 @@ export async function readHomeTeamWorkload(pool, auth, query = {}) {
 // Shared task membership/visibility, monthly date fallback and production groups
 // keep the home preview and full client pagination on the same business scope.
 const personalTaskScopeSql = `visible AS MATERIALIZED (
-    SELECT t.id,t.titulo,CASE WHEN t.estado='en_revision' AND t.propiedades_extra->'revision_aprobada'='true'::jsonb
-      THEN 'aprobada' ELSE t.estado END AS estado,t.prioridad,t.revision,t.fecha_vencimiento,t.updated_at,
+    SELECT t.id,t.titulo,${effectiveTaskStateSql('t')} AS estado,t.prioridad,t.revision,t.fecha_vencimiento,t.updated_at,
       t.cliente_id,c.nombre AS cliente_nombre,t.tipo_tarea
     FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
-    WHERE t.propiedades_extra->>'workspace'='render_os'
-      AND COALESCE(t.propiedades_extra->>'archivada_render_os','false')<>'true'
-      AND COALESCE(t.propiedades_extra->>'papelera_render_os','false')<>'true'
-      AND (t.cliente_id IS NULL OR c.activo IS DISTINCT FROM FALSE)
+    WHERE ${taskLiveVisibilitySql('t','c')}
   ),
-  mine AS MATERIALIZED (SELECT v.* FROM visible v WHERE EXISTS (
-    SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=v.id AND a.usuario_id=$1))`;
+  mine AS MATERIALIZED (SELECT v.* FROM visible v WHERE ${taskReviewMembershipSql('v','$1')})`;
 const monthlyWorkSql = (start, end) => `monthly_work AS MATERIALIZED (
     SELECT m.* FROM mine m CROSS JOIN day
     WHERE COALESCE(m.fecha_vencimiento,(m.updated_at AT TIME ZONE 'America/Argentina/Cordoba')::date)
@@ -185,8 +181,8 @@ export const PERSONAL_HOME_SQL = `WITH
     SELECT cliente_id,cliente_nombre,total,completed FROM monthly_production_clients
     ORDER BY total DESC,cliente_id ASC NULLS LAST LIMIT 20
   ),
-  reviews AS MATERIALIZED (SELECT * FROM visible v WHERE estado='en_revision' AND
-    ($2::boolean OR EXISTS(SELECT 1 FROM tarea_asignaciones a WHERE a.tarea_id=v.id AND a.usuario_id=$1))),
+  reviews AS MATERIALIZED (SELECT * FROM visible v WHERE ${taskReviewStateSql({taskAlias:null,projected:true})} AND
+    ($2::boolean OR ${taskReviewMembershipSql('v','$1')})),
   client_work AS (SELECT cliente_id AS id,cliente_nombre AS nombre,count(*)::int AS open FROM open
     WHERE cliente_id IS NOT NULL GROUP BY cliente_id,cliente_nombre),
   my_visits AS MATERIALIZED (

@@ -26,11 +26,12 @@ function fixture({ cookie = false, transport = async () => task() } = {}) {
   const captureRequest = () => createCapturedRequest({ session, readSession: () => live, isActive: () => active,
     request: (url, options) => { requests.push({ url, options }); return transport(url, options); } });
   const deps = { captureRequest, isSessionFailure, clients: [], users: [{ id: 9, nombre: 'Publisher', rol: 'community' }],
-    sesion: session, tasksRef, updateQueuesRef: { current: new Map() }, canRetryTaskUpdate,
+    sesion: session, tasksRef, updateQueuesRef: { current: new Map() }, canRetryTaskUpdate, reviewScopeRef: { current: '' },
     setTasks: update => { items = typeof update === 'function' ? update(items) : update; effects.push('tasks'); },
     setTotalTasks: update => { total = update(total); effects.push('total'); }, notify: () => effects.push('notify'),
     mergeRelatedTasks: (current, additions) => [...current, ...additions] };
   deps.logActivity = run(initializer('WorkspaceReadOnlyPage', 'logActivity'), deps);
+  deps.markReviewQueueStale = run(initializer('WorkspaceReadOnlyPage', 'markReviewQueueStale'), deps);
   for (const name of ['updateTask', 'createTask', 'productionTaskSnapshot', 'refreshProductionConflict', 'registerProduction', 'confirmProduction', 'correctProduction', 'approveTask', 'bulkTaskAction']) deps[name] = run(initializer('WorkspaceReadOnlyPage', name), deps);
   return { deps, effects, requests, captureRequest, session, get items() { return items; },
     switch() { if (cookie) { bootstrap(8); live = store.getSession(); } else live = { token: 'b', usuario: { id: 8, rol: 'admin', activo: true } }; tasksRef.current = [{ id: 5, revision: 99 }]; },

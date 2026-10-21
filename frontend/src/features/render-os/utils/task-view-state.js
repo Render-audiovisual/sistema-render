@@ -7,14 +7,35 @@ export function getTasksEmptyMessage({ hasFilters, query, totalTasks, archiveMod
 
 const VALID_VIEWS = new Set(["board", "list", "calendar", "clients", "responsibles"]);
 const VALID_ARCHIVE_MODES = new Set(["active", "trash"]);
+const VALID_TASK_STATES = new Set(['pendiente','en_progreso','en_revision','aprobada','finalizada']);
+export function effectiveTaskFilterState(task) {
+  if (task?.estado === 'publicada') return 'finalizada';
+  return task?.estado === 'en_revision' && task.propiedades_extra?.revision_aprobada === true ? 'aprobada' : task?.estado;
+}
+export function taskQueryNotice({ status = 'all', reviewScope = '', archiveMode = 'active', sort = 'date' }, role) {
+  if (status !== 'all' && !VALID_TASK_STATES.has(status)) return 'El filtro de estado no es válido. Elegí un estado o limpiá los filtros.';
+  if (typeof reviewScope !== 'string' || reviewScope && !['personal','team'].includes(reviewScope)) return 'El alcance de revisión no es válido. Salí de la cola para continuar.';
+  if (reviewScope === 'team' && role !== undefined && role !== 'admin') return 'La revisión del equipo está reservada a administración. Salí de esta cola para consultar tus tareas.';
+  if (reviewScope && (status !== 'en_revision' || archiveMode !== 'active' || sort !== 'date')) return 'La cola de revisión requiere tareas activas, estado en revisión y orden por fecha. Salí de la cola o corregí los filtros.';
+  return '';
+}
+export function taskMatchesReviewScope(task, scope, user) {
+  if (!scope) return true;
+  if (effectiveTaskFilterState(task) !== 'en_revision' || !Number.isSafeInteger(user?.id) || user.id < 1 || user.id > 2147483647) return false;
+  if (scope === 'team') return user.rol === 'admin';
+  return scope === 'personal' && (task.asignado_a_id === user.id || (Array.isArray(task.colaborador_ids) && task.colaborador_ids.includes(user.id)));
+}
 
 export function getTaskViewState(search = "") {
   const params = new URLSearchParams(search);
   const view = params.get("view");
   const archiveMode = params.get("mode");
   const calendarMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(params.get("month") || "") ? params.get("month") : "";
+  const reviewScope = params.getAll('review_scope').length > 1 ? 'invalid:duplicate' : params.has('review_scope') ? params.get('review_scope') || 'invalid:empty' : '';
+  const status = params.getAll('estado').length > 1 ? 'invalid:duplicate' : params.get('estado') ?? (reviewScope ? 'en_revision' : 'all');
   return {
     view: VALID_VIEWS.has(view) ? view : "board",
+    status, reviewScope,
     sort: params.getAll("sort").length === 1 && params.get("sort") === "manual" ? "manual" : "date",
     archiveMode: VALID_ARCHIVE_MODES.has(archiveMode) ? archiveMode : "active",
     responsible: params.getAll("responsible").length > 1 ? "invalid:duplicate" : params.get("responsible") || "all",
@@ -31,6 +52,8 @@ export function updateTaskViewUrl(currentUrl, state) {
   const url = new URL(currentUrl);
   const values = {
     view: state.view === "board" ? null : state.view,
+    estado: !state.status || state.status === 'all' ? null : state.status,
+    review_scope: state.reviewScope || null,
     sort: state.sort === "manual" ? "manual" : null,
     mode: state.archiveMode === "active" ? null : state.archiveMode,
     responsible: state.responsible === "all" ? null : state.responsible,

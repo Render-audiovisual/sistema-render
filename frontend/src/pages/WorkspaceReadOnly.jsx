@@ -5,7 +5,7 @@ import { AREAS, BOARD_COLUMNS, STATUSES, TASK_TYPES, canonicalTaskState, isTaskC
 import { apiJson, apiRequest, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
 import { areaForTask, emojiForTaskCard, formatDate, formatDateTime, initials, personForTask, taskResponsibleLabels } from "../features/render-os/utils/task-formatters.js";
 import { canRetryTaskUpdate, canUserDeleteTask, canUserEditTask, canUserMoveTask, canUserMoveTaskToState, mergeRelatedTasks } from "../workspace-task-state.js";
-import { getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
+import { effectiveTaskFilterState, getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, taskMatchesReviewScope, taskQueryNotice, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
 import { buildResponsibleOptions, resolveResponsibleFilter, taskMatchesResponsible } from "../features/render-os/utils/task-responsible-filter.js";
 import { groupTasksByResponsible, groupTasksByClient } from "../features/render-os/utils/task-groups.js";
 import { createTaskManualOrder, taskOrderArrowAnchor } from "../features/render-os/utils/task-manual-order.js";
@@ -185,7 +185,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const taskDraftDirty = isTaskDraftDirty(task, draft) || Boolean(comment.trim()) || deliveryDirty || coordinationDraft.dirty || reconciliationDraft.dirty
     || (isProductionVisitTask(task || {}) && productionDriveLink.trim() !== String(task?.material_referencia || '').trim());
   const taskWriteBusy = saving || commenting || archiving || registeringProduction || savingProductionDrive || approving || confirmingProduction || deliveryBusy || coordinationDraft.busy || reconciliationDraft.busy;
-  useNavigationGuard(({ to }) => discardDialogOpen ? { dirty: taskDraftDirty, busy: true } : closeApprovedRef.current || keepsTaskOpen(to, task?.id)
+  useNavigationGuard(({ to, type }) => discardDialogOpen ? { dirty: taskDraftDirty, busy: true } : type !== 'refresh' && (closeApprovedRef.current || keepsTaskOpen(to, task?.id))
     ? { dirty: false, busy: false }
     : { dirty: taskDraftDirty, busy: taskWriteBusy || archivePendingRef.current || discardDialogOpen });
   const scriptEditorRef = useRef(null);
@@ -302,7 +302,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   }, [task?.id]);
 
   if (!task) return null;
-  const status = STATUSES.find((item) => item.id === canonicalTaskState(task.estado)) || { label: task.estado, color: "#777" };
+  const status = STATUSES.find((item) => item.id === effectiveTaskFilterState(task)) || { label: task.estado, color: "#777" };
   const metadata = task.propiedades_extra || {};
   const driveFiles = Array.isArray(metadata.drive_archivos) ? metadata.drive_archivos : [];
   const isProductionVisit = isProductionVisitTask(task);
@@ -831,6 +831,7 @@ const TaskCard = React.memo(function TaskCard({ task, users, user, today, onOpen
     onKeyDown={(event) => { if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return; event.preventDefault(); onOpen(task.id); }}>
     <div className="ros-card-badges"><AreaBadge task={task} card/>{phase && <span className={`ros-phase-badge ${phase.id}`}>{phase.label}</span>}{canDrag && <span className="ros-card-drag-handle" aria-hidden="true" title="Arrastrá desde cualquier parte de la tarjeta">⠿</span>}</div><h3>{task.titulo}</h3><p>{task.cliente_nombre || "Sin cliente"}</p>
     {task.propiedades_extra?.resumen && <div className="ros-card-summary">{task.propiedades_extra.resumen}</div>}
+    {task.estado === 'en_revision' && effectiveTaskFilterState(task) === 'aprobada' && <small className="ros-card-summary">Aprobada (registro histórico; sin evidencia de entrega)</small>}
     {tags.length > 0 && <div className="ros-card-tags">{tags.slice(0, 3).map((tag) => <span key={tag}>{tag}</span>)}</div>}
     {esperandoMaterial(task) && <div className="ros-card-warning">Esperando material</div>}
     <footer><Avatar person={person} name={primaryLabel}/><span title={`Responsables: ${taskResponsiblesLabel(task, users)}`}>{primaryLabel}{responsibleLabels.length > 1 ? ` +${responsibleLabels.length - 1}` : ""}</span><b className={task.fecha_vencimiento && task.fecha_vencimiento < today && !isTaskCompleted(task) ? "urgent" : ""}>□ {formatDate(task.fecha_vencimiento)}</b></footer>
@@ -886,7 +887,7 @@ function TaskCalendar({ tasks, users = [], onOpen, monthValue, onMonthChange }) 
     {selectedDate && <div className="ros-day-preview-backdrop" role="presentation" onMouseDown={() => setSelectedDate("")}>
       <section className="ros-day-preview" role="dialog" aria-modal="true" aria-labelledby="ros-day-preview-title" onMouseDown={(event) => event.stopPropagation()}>
         <header><div><small>Resumen del día</small><h2 id="ros-day-preview-title">{selectedDateLabel}</h2><span>{selectedTasks.length} {selectedTasks.length === 1 ? "tarea" : "tareas"}</span></div><button type="button" aria-label="Cerrar resumen" onClick={() => setSelectedDate("")}>×</button></header>
-        <div className="ros-day-preview-list">{selectedTasks.map((task) => { const state = STATUSES.find((item) => item.id === canonicalTaskState(task.estado)); return <button type="button" key={task.id} onClick={() => openFromSummary(task.id)}><i style={{ background: state?.color || "#8d9095" }}/><div><strong>{task.titulo}</strong><span>{task.cliente_nombre || "Sin cliente"} · {taskResponsiblesLabel(task, users)}</span></div><b>{state?.label || task.estado}</b><em>›</em></button>; })}{selectedTasks.length === 0 && <div className="ros-day-preview-empty"><span>○</span><strong>No hay tareas para este día</strong><small>Podés elegir otra fecha o cerrar el resumen.</small></div>}</div>
+        <div className="ros-day-preview-list">{selectedTasks.map((task) => { const state = STATUSES.find((item) => item.id === effectiveTaskFilterState(task)); return <button type="button" key={task.id} onClick={() => openFromSummary(task.id)}><i style={{ background: state?.color || "#8d9095" }}/><div><strong>{task.titulo}</strong><span>{task.cliente_nombre || "Sin cliente"} · {taskResponsiblesLabel(task, users)}</span></div><b>{state?.label || task.estado}</b><em>›</em></button>; })}{selectedTasks.length === 0 && <div className="ros-day-preview-empty"><span>○</span><strong>No hay tareas para este día</strong><small>Podés elegir otra fecha o cerrar el resumen.</small></div>}</div>
       </section>
     </div>}
   </>;
@@ -903,10 +904,10 @@ const TasksByResponsible = React.memo(function TasksByResponsible({ tasks, users
 });
 
 function TaskGroups({ groups, users, onOpen }) {
-  return <div className="ros-project-grid">{groups.map((group) => <section className="ros-project-card" key={group.key}><header><div><span>{initials(group.label)}</span><strong>{group.label}</strong></div><small>{group.tasks.length} {group.tasks.length === 1 ? "tarea cargada" : "tareas cargadas"}</small></header><div>{group.tasks.map((task) => <button type="button" key={task.id} onClick={() => onOpen(task.id)}><span>{task.titulo}</span><b>{STATUSES.find((item) => item.id === canonicalTaskState(task.estado))?.label || task.estado}</b><small>{task.cliente_nombre || "Sin cliente"} · {taskResponsiblesLabel(task, users)} · {formatDate(task.fecha_vencimiento)}</small></button>)}</div></section>)}</div>;
+  return <div className="ros-project-grid">{groups.map((group) => <section className="ros-project-card" key={group.key}><header><div><span>{initials(group.label)}</span><strong>{group.label}</strong></div><small>{group.tasks.length} {group.tasks.length === 1 ? "tarea cargada" : "tareas cargadas"}</small></header><div>{group.tasks.map((task) => <button type="button" key={task.id} onClick={() => onOpen(task.id)}><span>{task.titulo}</span><b>{STATUSES.find((item) => item.id === effectiveTaskFilterState(task))?.label || task.estado}</b><small>{task.cliente_nombre || "Sin cliente"} · {taskResponsiblesLabel(task, users)} · {formatDate(task.fecha_vencimiento)}</small></button>)}</div></section>)}</div>;
 }
 
-function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, responsible, setResponsible, client, setClient, sector, setSector, priority, setPriority, archiveMode, setArchiveMode, sort, setSort, manualReady, orderState, orderMessage, onReorder, onVerifyOrder, onRefreshOrder, pagingBlocked, sesion, onCreate, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onBulkAction, onError }) {
+function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients, query, setQuery, area, setArea, responsible, setResponsible, client, setClient, sector, setSector, priority, setPriority, archiveMode, setArchiveMode, sort, setSort, taskStatus, setTaskStatus, reviewScope, setReviewScope, queryNotice, onRefreshReview, manualReady, orderState, orderMessage, onReorder, onVerifyOrder, onRefreshOrder, pagingBlocked, sesion, onCreate, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onBulkAction, onError }) {
   const captureRequest = useWorkspaceCapture(sesion);
   const initialViewState = useMemo(() => getTaskViewState(window.location.search), []);
   const initialTask = Number(new URLSearchParams(window.location.search).get("task")) || null;
@@ -915,7 +916,6 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const [selectedId, setSelectedId] = useState(initialTask);
   const [creatingStatus, setCreatingStatus] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [taskStatus, setTaskStatus] = useState("all");
   const [dragOver, setDragOver] = useState("");
   const [newFeedbackCount, setNewFeedbackCount] = useState(0);
   const [mobileBoardColumn, setMobileBoardColumn] = useState(BOARD_COLUMNS[0].id);
@@ -937,17 +937,18 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     const isTrashed = task.propiedades_extra?.papelera_render_os === true;
     return !task.__renderOsDirectOnly
       && (archiveMode === "trash" ? isTrashed : !isArchived && !isTrashed)
-      && (taskStatus === "all" || canonicalTaskState(task.estado) === taskStatus)
+      && (taskStatus === "all" || effectiveTaskFilterState(task) === taskStatus)
+      && taskMatchesReviewScope(task, reviewScope, sesion?.usuario)
       && (area === "all" || areaForTask(task) === area)
       && taskMatchesResponsible(task, responsible)
       && (client === "all" || String(task.cliente_id || "none") === client)
       && (sector === "all" || String(task.tipo_tarea || "none") === sector)
       && (priority === "all" || task.prioridad === priority)
-      && text.includes(query.toLowerCase());
-  }), [tasks, query, area, responsible, client, sector, priority, archiveMode, taskStatus]);
+      && (reviewScope || text.includes(query.toLowerCase()));
+  }), [tasks, query, area, responsible, client, sector, priority, archiveMode, taskStatus, reviewScope, sesion?.usuario]);
   const boardColumnCounts = useMemo(() => Object.fromEntries(BOARD_COLUMNS.map((column) => [
     column.id,
-    visible.filter((task) => column.states.includes(canonicalTaskState(task.estado))).length,
+    visible.filter((task) => column.states.includes(effectiveTaskFilterState(task))).length,
   ])), [visible]);
   const renderedBoardColumns = useMemo(() => compactBoard
     ? BOARD_COLUMNS.filter((column) => column.id === mobileBoardColumn)
@@ -955,7 +956,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   useTaskBoardMotion(boardRef, visible, view);
   const paginatedTaskCount = tasks.filter((task) => !task.__renderOsDirectOnly).length;
   const hasFilters = responsible !== "all" || client !== "all" || sector !== "all" || priority !== "all" || area !== "all" || taskStatus !== "all";
-  const activeFilterCount = [responsible, client, sector, priority, area, taskStatus].filter((value) => value !== "all").length;
+  const activeFilterCount = [responsible, client, sector, priority, area, taskStatus].filter((value) => value !== "all").length + Number(Boolean(reviewScope));
   const emptyMessage = getTasksEmptyMessage({ hasFilters, query, totalTasks, archiveMode });
   const refreshFeedbackCount = useCallback(async () => {
     const guard = captureRequest();
@@ -1053,9 +1054,9 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   useEffect(() => {
-    const url = updateTaskViewUrl(window.location.href, { view, sort, archiveMode, responsible, client, sector, priority, area, query, calendarMonth });
+    const url = updateTaskViewUrl(window.location.href, { view, sort, archiveMode, responsible, client, sector, priority, area, query, calendarMonth, status:taskStatus, reviewScope });
     window.history.replaceState(window.history.state, "", url);
-  }, [view, sort, archiveMode, responsible, client, sector, priority, area, query, calendarMonth]);
+  }, [view, sort, archiveMode, responsible, client, sector, priority, area, query, calendarMonth, taskStatus, reviewScope]);
 
   const move = useCallback((task, status) => {
     if (orderState.busy || orderState.locked) return;
@@ -1074,7 +1075,10 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     window.history.pushState({ ...window.history.state, fromTasks: window.location.href }, "", "/feedback");
     window.dispatchEvent(new PopStateEvent("popstate"));
   }, []);
-  const clearFilters = () => { setQuery(""); setResponsible("all"); setClient("all"); setSector("all"); setPriority("all"); setArea("all"); setTaskStatus("all"); };
+  const clearFilters = () => { setQuery(""); setResponsible("all"); setClient("all"); setSector("all"); setPriority("all"); setArea("all"); setTaskStatus("all"); setReviewScope(''); };
+  const changeTaskStatus = value => { if (value !== 'en_revision') setReviewScope(''); setTaskStatus(value); };
+  const changeArchiveMode = value => { setReviewScope(''); setArchiveMode(value); };
+  const exitReviewQueue = () => { setReviewScope(''); setTaskStatus('all'); };
   const selectMobileBoardColumn = useCallback((columnId) => {
     setMobileBoardColumn(columnId);
     window.requestAnimationFrame(() => mobileBoardNavRef.current?.scrollIntoView({ behavior: "auto", block: "start" }));
@@ -1086,6 +1090,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     const task = tasksLatestRef.current.find(item => String(item.id) === event.dataTransfer.getData('text/task-id'));
     if (!task) return;
     const status = column.dropState || column.id;
+    if (sort === 'manual' && effectiveTaskFilterState(task) !== canonicalTaskState(task.estado) && status === effectiveTaskFilterState(task)) return;
     if (sort === 'manual' && archiveMode === 'active' && canonicalTaskState(task.estado) === status) { if(manualReady&&canUserEditTask(task,sesion?.usuario))void onReorder(task,null); return; }
     if (!canUserMoveTask(task, sesion?.usuario)) return;
     move(task, status);
@@ -1094,30 +1099,35 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const dropBeforeTask = (event, before) => {
     if (sort !== 'manual' || archiveMode !== 'active' || !event.dataTransfer.types.includes('text/task-id')) return;
     const task = tasksLatestRef.current.find(item => String(item.id) === event.dataTransfer.getData('text/task-id'));
+    if (effectiveTaskFilterState(before) !== canonicalTaskState(before.estado) || task && effectiveTaskFilterState(task) !== canonicalTaskState(task.estado)) { event.preventDefault(); event.stopPropagation(); return; }
     if (!task || canonicalTaskState(task.estado) !== canonicalTaskState(before.estado)) return;
     event.preventDefault(); event.stopPropagation(); setDragOver('');
     if (manualReady && task.id !== before.id && canUserEditTask(task,sesion?.usuario)) void onReorder(task,before);
   };
   const orderControls = (task, items, index) => {
-    if(sort !== 'manual' || archiveMode !== 'active' || !canUserEditTask(task,sesion?.usuario))return undefined;
-    const up=taskOrderArrowAnchor(items,index,'up'),down=index+2<250?taskOrderArrowAnchor(items,index,'down'):undefined;
+    if(sort !== 'manual' || archiveMode !== 'active' || !canUserEditTask(task,sesion?.usuario) || effectiveTaskFilterState(task) !== canonicalTaskState(task.estado))return undefined;
+    const candidates=items.slice(0,250).filter(item=>effectiveTaskFilterState(item)===canonicalTaskState(item.estado));
+    const observedIndex=candidates.findIndex(item=>item.id===task.id);
+    const up=taskOrderArrowAnchor(candidates,observedIndex,'up'),down=observedIndex+2<250?taskOrderArrowAnchor(candidates,observedIndex,'down'):undefined;
     return {up:manualReady&&up!==undefined?()=>void onReorder(task,up):null,down:manualReady&&down!==undefined?()=>void onReorder(task,down):null,end:manualReady?()=>void onReorder(task,null):null};
   };
 
   return <><section className="ros-page">
     <div className="ros-title-row"><div className="ros-title-copy"><span className="ros-page-emoji" aria-hidden="true">📋</span><div><h1>Tareas</h1><p>Organizá y priorizá el trabajo del equipo.</p></div></div><div className="ros-title-actions"><input className="ros-top-search" aria-label="Buscar tareas" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar tarea, cliente o responsable…"/><button className="ros-primary-button" type="button" onClick={() => setCreatingStatus("pendiente")}><TaskViewIcon name="plus"/>Nueva tarea</button></div></div>
-    <div className="ros-controls"><div className="ros-primary-navigation" aria-label="Vistas de tareas"><div className="ros-view-tabs"><button aria-pressed={view === "board"} className={view === "board" ? "active" : ""} onClick={() => setView("board")}><TaskViewIcon name="board"/>Tablero</button><button aria-pressed={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")}><TaskViewIcon name="list"/>Lista</button><button aria-pressed={view === "calendar"} className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}><TaskViewIcon name="calendar"/>Calendario</button><button aria-pressed={view === "clients"} className={view === "clients" ? "active" : ""} onClick={() => setView("clients")}><TaskViewIcon name="clients"/>Por cliente</button><button aria-pressed={view === "responsibles"} className={view === "responsibles" ? "active" : ""} onClick={() => setView("responsibles")}><TaskViewIcon name="clients"/>Por responsable</button></div><button className={`ros-feedback-link ${newFeedbackCount ? "has-new" : ""}`} type="button" onClick={openFeedback}><TaskViewIcon name="feedback"/>Feedback{newFeedbackCount > 0 && <b aria-label={`${newFeedbackCount} feedbacks nuevos`}>{newFeedbackCount > 99 ? "99+" : newFeedbackCount}</b>}</button></div><div className="ros-controls-meta"><span>Mostrando {visible.length} de {totalTasks}</span>{archiveMode !== "active" && <button className="ros-archive-link" type="button" onClick={() => setArchiveMode("active")}>← Volver a tareas activas</button>}{archiveMode !== "trash" && <button className="ros-archive-link" type="button" onClick={() => setArchiveMode("trash")}>Papelera</button>}</div></div>
-    <div className="ros-order-toolbar"><label><span>Orden</span><select aria-label="Orden de tareas" value={sort} disabled={orderState.busy} onChange={event=>setSort(event.target.value)}><option value="date">Fecha</option><option value="manual">Manual</option></select></label>{sort === 'manual' && view === 'board' && archiveMode === 'active' && <details className="ros-order-help"><summary>Orden compartido</summary><p>Soltá sobre una tarjeta para ubicar antes, o sobre la columna para mover al final. Las flechas usan tareas cargadas; «Al final» usa la columna completa.</p></details>}</div>
-    {(orderMessage || orderState.locked || pagingBlocked) && <div className="ros-warning-banner" role="status"><p>{orderMessage || 'Movimiento pendiente de confirmación.'}</p>{orderState.status === 'uncertain' && <button type="button" disabled={orderState.busy} onClick={onVerifyOrder}>Verificar movimiento</button>}<button type="button" disabled={orderState.busy} onClick={onRefreshOrder}>{orderState.locked ? 'Descartar intento y recargar primera página' : 'Recargar primera página'}</button></div>}
+    <div className="ros-controls"><div className="ros-primary-navigation" aria-label="Vistas de tareas"><div className="ros-view-tabs"><button aria-pressed={view === "board"} className={view === "board" ? "active" : ""} onClick={() => setView("board")}><TaskViewIcon name="board"/>Tablero</button><button aria-pressed={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")}><TaskViewIcon name="list"/>Lista</button><button aria-pressed={view === "calendar"} className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}><TaskViewIcon name="calendar"/>Calendario</button><button aria-pressed={view === "clients"} className={view === "clients" ? "active" : ""} onClick={() => setView("clients")}><TaskViewIcon name="clients"/>Por cliente</button><button aria-pressed={view === "responsibles"} className={view === "responsibles" ? "active" : ""} onClick={() => setView("responsibles")}><TaskViewIcon name="clients"/>Por responsable</button></div><button className={`ros-feedback-link ${newFeedbackCount ? "has-new" : ""}`} type="button" onClick={openFeedback}><TaskViewIcon name="feedback"/>Feedback{newFeedbackCount > 0 && <b aria-label={`${newFeedbackCount} feedbacks nuevos`}>{newFeedbackCount > 99 ? "99+" : newFeedbackCount}</b>}</button></div><div className="ros-controls-meta"><span>Mostrando {visible.length} de {totalTasks}</span>{archiveMode !== "active" && <button className="ros-archive-link" type="button" onClick={() => changeArchiveMode("active")}>← Volver a tareas activas</button>}{archiveMode !== "trash" && <button className="ros-archive-link" type="button" onClick={() => changeArchiveMode("trash")}>Papelera</button>}</div></div>
+    {reviewScope && <section className="ros-warning-banner ros-review-queue" aria-label="Cola de revisión"><strong>{reviewScope === 'team' ? 'Revisión del equipo' : reviewScope === 'personal' ? 'Tu trabajo en revisión' : 'Cola de revisión no válida'}</strong><p>Mostrando {visible.length} de {totalTasks}. Tareas que esperan revisión; las aprobadas no se incluyen. Los demás filtros también se aplican. Al recargar se vuelve al principio.</p>{orderMessage && <p role="status">{orderMessage}</p>}<button type="button" disabled={loadingMore || orderState.busy || Boolean(queryNotice)} onClick={onRefreshReview}>Actualizar cola desde el principio</button>{view !== "list" && <button type="button" onClick={() => setView("list")}>Ver toda la cola en lista</button>}<button type="button" disabled={orderState.busy} onClick={exitReviewQueue}>Salir de la cola</button></section>}
+    {queryNotice && <p className="ros-warning-banner" role="alert">{queryNotice}</p>}
+    <div className="ros-order-toolbar"><label><span>Orden</span><select aria-label="Orden de tareas" value={sort} disabled={orderState.busy} onChange={event=>setSort(event.target.value)}><option value="date">Fecha</option><option value="manual" disabled={Boolean(reviewScope)}>Manual</option></select></label>{sort === 'manual' && view === 'board' && archiveMode === 'active' && <details className="ros-order-help"><summary>Orden compartido</summary><p>Soltá sobre una tarjeta para ubicar antes, o sobre la columna para mover al final. Las flechas usan tareas cargadas; «Al final» usa la columna completa.</p></details>}</div>
+    {!reviewScope && (orderMessage || orderState.locked || pagingBlocked) && <div className="ros-warning-banner" role="status"><p>{orderMessage || 'Movimiento pendiente de confirmación.'}</p>{orderState.status === 'uncertain' && <button type="button" disabled={orderState.busy} onClick={onVerifyOrder}>Verificar movimiento</button>}<button type="button" disabled={orderState.busy} onClick={onRefreshOrder}>{orderState.locked ? 'Descartar intento y recargar primera página' : 'Recargar primera página'}</button></div>}
     {responsibleNotice && <p className="ros-warning-banner" role="status">{responsibleNotice}</p>}
     <button className="ros-filter-toggle" type="button" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((current) => !current)}>Filtros{activeFilterCount ? <b>{activeFilterCount}</b> : null}<span>{filtersOpen ? "Ocultar" : "Mostrar"}</span></button>
-    <div className={`ros-filter-bar ${filtersOpen ? "open" : ""}`}><label><span>Estado</span><select aria-label="Filtrar por estado" value={taskStatus} onChange={(event) => setTaskStatus(event.target.value)}><option value="all">Todos</option>{STATUSES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Área</span><select aria-label="Área" value={area} onChange={(event) => setArea(event.target.value)}><option value="all">Todas</option>{AREAS.slice(1).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Responsable</span><select aria-label="Responsable" value={responsible} onChange={(event) => setResponsible(event.target.value)}><option value="all">Todos</option>{responsibleNotice && <option value={responsible} disabled>Elegí un integrante</option>}{responsibleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label><span>Cliente</span><select aria-label="Cliente" value={client} onChange={(event) => setClient(event.target.value)}><option value="all">Todos</option><option value="none">Sin cliente</option>{clients.map((item) => <option key={item.id} value={String(item.id)}>{item.nombre}</option>)}</select></label><label><span>Sector</span><select aria-label="Sector" value={sector} onChange={(event) => setSector(event.target.value)}><option value="all">Todos</option><option value="none">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Prioridad</span><select aria-label="Prioridad" value={priority} onChange={(event) => setPriority(event.target.value)}><option value="all">Todas</option><option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option></select></label>{hasFilters && <button type="button" onClick={clearFilters}>Limpiar filtros</button>}</div>
+    <div className={`ros-filter-bar ${filtersOpen ? "open" : ""}`}><label><span>Estado</span><select aria-label="Filtrar por estado" value={taskStatus} onChange={(event) => changeTaskStatus(event.target.value)}>{taskStatus !== "all" && !STATUSES.some(item=>item.id===taskStatus) && <option value={taskStatus} disabled>Estado no válido</option>}<option value="all">Todos</option>{STATUSES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Área</span><select aria-label="Área" value={area} onChange={(event) => setArea(event.target.value)}><option value="all">Todas</option>{AREAS.slice(1).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Responsable</span><select aria-label="Responsable" value={responsible} onChange={(event) => setResponsible(event.target.value)}><option value="all">Todos</option>{responsibleNotice && <option value={responsible} disabled>Elegí un integrante</option>}{responsibleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label><span>Cliente</span><select aria-label="Cliente" value={client} onChange={(event) => setClient(event.target.value)}><option value="all">Todos</option><option value="none">Sin cliente</option>{clients.map((item) => <option key={item.id} value={String(item.id)}>{item.nombre}</option>)}</select></label><label><span>Sector</span><select aria-label="Sector" value={sector} onChange={(event) => setSector(event.target.value)}><option value="all">Todos</option><option value="none">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Prioridad</span><select aria-label="Prioridad" value={priority} onChange={(event) => setPriority(event.target.value)}><option value="all">Todas</option><option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option></select></label>{hasFilters && <button type="button" onClick={clearFilters}>Limpiar filtros</button>}</div>
     {view === "board" && <><nav ref={mobileBoardNavRef} className="ros-mobile-board-nav" aria-label="Estados del tablero">{BOARD_COLUMNS.map((column) => <button aria-pressed={mobileBoardColumn === column.id} className={`${mobileBoardColumn === column.id ? 'active' : ''} ${dragOver === column.id ? 'drag-over' : ''}`} key={column.id} type="button" onClick={() => selectMobileBoardColumn(column.id)}
       onDragOver={(event) => { if (!event.dataTransfer.types.includes('text/task-id')) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOver(column.id); }}
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(''); }}
       onDrop={(event) => dropOnProcessButton(event,column)}><i style={{ background: column.color }}/><span>{column.label}</span><b>{boardColumnCounts[column.id] || 0}</b></button>)}</nav>
-      <div ref={boardRef} className="ros-board ros-board-four" style={{ gridTemplateColumns: compactBoard ? undefined : "repeat(5, minmax(220px, 1fr))" }}>{renderedBoardColumns.map((column) => { const items = visible.filter((task) => column.states.includes(canonicalTaskState(task.estado))); return <section className={`ros-column ${mobileBoardColumn === column.id ? "is-mobile-active" : ""} ${dragOver === column.id ? "drag-over" : ""}`} key={column.id} onDragOver={(event) => { if (!event.dataTransfer.types.includes("text/task-id")) return; event.preventDefault(); setDragOver(column.id); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(""); }} onDrop={(event) => dropOnProcessButton(event,column)}><header><span style={{ color: column.color }}>●</span><strong>{column.label}</strong><small>{items.length}</small></header><div>{items.slice(0, 250).map((task,index) => <TaskCard key={task.id} task={task} users={users} user={sesion?.usuario} today={today} onOpen={openTask} onMove={move} canMove={canUserMoveTask(task, sesion?.usuario)} moveBlocked={orderState.busy||orderState.locked} onOrderDrop={sort==='manual'&&archiveMode==='active'?dropBeforeTask:undefined} manualControls={orderControls(task,items,index)}/>)}{items.length > 250 && <div className="ros-column-limit">Mostrando 250 de {items.length}. Usá los filtros para acotar.</div>}{items.length === 0 && <button className="ros-empty-column" type="button" onClick={() => setCreatingStatus(column.dropState || column.id)}><span>+</span>Nueva tarea</button>}</div></section>; })}</div></>}
-    {view === "list" && <div className="ros-task-list"><div className="ros-task-list-head"><span>TAREA</span><span>ÁREA</span><span>CLIENTE</span><span>RESPONSABLES</span><span>ESTADO</span><span>FECHA</span></div>{visible.slice(0, 500).map((task) => <button key={task.id} onClick={() => openTask(task.id)}><strong>{task.titulo}</strong><AreaBadge task={task}/><span>{task.cliente_nombre || "Sin cliente"}</span><span>{taskResponsiblesLabel(task, users)}</span><span>{STATUSES.find((item) => item.id === canonicalTaskState(task.estado))?.label || task.estado}</span><span>{formatDate(task.fecha_vencimiento)}</span></button>)}{visible.length > 500 && <div className="ros-list-limit">Mostrando 500 de {visible.length}. Usá los filtros para acotar.</div>}</div>}
+      <div ref={boardRef} className="ros-board ros-board-four" style={{ gridTemplateColumns: compactBoard ? undefined : "repeat(5, minmax(220px, 1fr))" }}>{renderedBoardColumns.map((column) => { const items = visible.filter((task) => column.states.includes(effectiveTaskFilterState(task))); return <section className={`ros-column ${mobileBoardColumn === column.id ? "is-mobile-active" : ""} ${dragOver === column.id ? "drag-over" : ""}`} key={column.id} onDragOver={(event) => { if (!event.dataTransfer.types.includes("text/task-id")) return; event.preventDefault(); setDragOver(column.id); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDragOver(""); }} onDrop={(event) => dropOnProcessButton(event,column)}><header><span style={{ color: column.color }}>●</span><strong>{column.label}</strong><small>{items.length}</small></header><div>{items.slice(0, 250).map((task,index) => <TaskCard key={task.id} task={task} users={users} user={sesion?.usuario} today={today} onOpen={openTask} onMove={move} canMove={canUserMoveTask(task, sesion?.usuario)} moveBlocked={orderState.busy||orderState.locked} onOrderDrop={sort==='manual'&&archiveMode==='active'?dropBeforeTask:undefined} manualControls={orderControls(task,items,index)}/>)}{items.length > 250 && <div className="ros-column-limit">Mostrando 250 de {items.length}. Usá los filtros para acotar.</div>}{items.length === 0 && <button className="ros-empty-column" type="button" onClick={() => setCreatingStatus(column.dropState || column.id)}><span>+</span>Nueva tarea</button>}</div></section>; })}</div></>}
+    {view === "list" && <div className="ros-task-list"><div className="ros-task-list-head"><span>TAREA</span><span>ÁREA</span><span>CLIENTE</span><span>RESPONSABLES</span><span>ESTADO</span><span>FECHA</span></div>{visible.slice(0, reviewScope ? visible.length : 500).map((task) => <button key={task.id} onClick={() => openTask(task.id)}><strong>{task.titulo}</strong><AreaBadge task={task}/><span>{task.cliente_nombre || "Sin cliente"}</span><span>{taskResponsiblesLabel(task, users)}</span><span>{STATUSES.find((item) => item.id === effectiveTaskFilterState(task))?.label || task.estado}</span><span>{formatDate(task.fecha_vencimiento)}</span></button>)}{!reviewScope && visible.length > 500 && <div className="ros-list-limit">Mostrando 500 de {visible.length}. Usá los filtros para acotar.</div>}</div>}
     {view === "calendar" && <TaskCalendar tasks={visible} users={users} onOpen={openTask} monthValue={calendarMonth} onMonthChange={setCalendarMonth}/>} {view === "clients" && <TasksByClient tasks={visible} users={users} onOpen={openTask}/>} {view === "responsibles" && <TasksByResponsible tasks={visible} users={users} onOpen={openTask}/>} {view !== "board" && visible.length === 0 && <div className="ros-no-results">{emptyMessage}</div>}
     {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore||pagingBlocked||orderState.busy||orderState.locked} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
@@ -1146,23 +1156,34 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   const [priority, setPriority] = useState(initialViewState.priority);
   const [archiveMode, setArchiveMode] = useState(initialViewState.archiveMode);
   const [sort, setSort] = useState(initialViewState.sort);
+  const [taskStatus, setTaskStatus] = useState(initialViewState.status);
+  const [reviewScope, setReviewScope] = useState(initialViewState.reviewScope);
+  const reviewScopeRef = useRef(reviewScope); reviewScopeRef.current = reviewScope;
+  const reviewPageRef = useRef(null);
   const [orderReload, setOrderReload] = useState(0);
   const [orderPage, setOrderPage] = useState(null);
   const [pagingBlocked, setPagingBlocked] = useState(false);
   const [orderMessage, setOrderMessage] = useState('');
   const [, renderOrder] = useState(0);
-  const effectiveSort = sort === 'manual' && archiveMode === 'active' ? 'manual' : 'date';
-  const orderContext = JSON.stringify([effectiveSort, query, area, responsible, client, sector, priority, archiveMode]);
+  const queryNotice = taskQueryNotice({status:taskStatus,reviewScope,archiveMode,sort},sesion?.usuario?.rol);
+  const effectiveSort = !reviewScope && sort === 'manual' && archiveMode === 'active' ? 'manual' : 'date';
+  const orderContext = JSON.stringify([effectiveSort, sort, query, area, responsible, client, sector, priority, archiveMode, taskStatus, reviewScope]);
   const orderObservation = useMemo(() => ({context:orderContext}), [orderContext,captureRequest]);
   const orderContextRef = useRef(orderObservation); orderContextRef.current = orderObservation;
   const orderPageRef = useRef(null);
   const orderModel = useMemo(() => createTaskManualOrder({capture:captureRequest}), [captureRequest]);
   const orderState = orderModel.snapshot;
-  const manualReady = effectiveSort === 'manual' && orderPage?.observation === orderObservation && !orderState.locked && !pagingBlocked;
+  const manualReady = !reviewScope && !queryNotice && effectiveSort === 'manual' && orderPage?.observation === orderObservation && !orderState.locked && !pagingBlocked;
   useNavigationGuard(() => captureRequest().current() ? {dirty:orderModel.snapshot.locked,busy:orderModel.snapshot.busy} : {dirty:false,busy:false});
   const tasksRef = useRef(tasks);
   const updateQueuesRef = useRef(new Map());
   const taskQueryGenerationRef = useRef(0);
+  const markReviewQueueStale = (guard, uncertain = false) => {
+    guard.assertCurrent(); if (!reviewScopeRef.current) return;
+    taskQueryGenerationRef.current++; reviewPageRef.current = null;
+    setLoadingMore(false); setLoading(false); setError(''); setPagingBlocked(true);
+    setOrderMessage(`${uncertain ? 'La cola puede haber cambiado.' : 'La cola cambió.'} El total corresponde a la consulta anterior; actualizá desde el principio para continuar.`);
+  };
   const responsibleSelection = useMemo(() => resolveResponsibleFilter(responsible, users, catalogReady, sesion?.usuario?.rol === 'admin'), [responsible, users, catalogReady, sesion?.usuario?.rol]);
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
 
@@ -1171,6 +1192,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       const next = getTaskViewState(window.location.search);
       setQuery(next.query); setArea(next.area); setResponsible(next.responsible);
       setClient(next.client); setSector(next.sector); setPriority(next.priority); setArchiveMode(next.archiveMode); setSort(next.sort);
+      setTaskStatus(next.status); setReviewScope(next.reviewScope);
     };
     window.addEventListener('popstate', syncFilters);
     return () => window.removeEventListener('popstate', syncFilters);
@@ -1201,8 +1223,9 @@ export function WorkspaceReadOnlyPage({ sesion }) {
     const generation = ++taskQueryGenerationRef.current;
     setLoadingMore(false);
     orderPageRef.current = null; setOrderPage(null); setPagingBlocked(false);
-    if (!responsibleSelection.ready) {
-      if (responsibleSelection.status !== 'pending' && responsibleSelection.status !== 'resolved') {
+    reviewPageRef.current = null;
+    if (!responsibleSelection.ready || queryNotice) {
+      if (queryNotice || responsibleSelection.status !== 'pending' && responsibleSelection.status !== 'resolved') {
         const contextId = Number(new URLSearchParams(window.location.search).get('task')) || null;
         // A blocked list filter is not permission to discard an open editor.
         setTasks(current => current.filter(task => task.id === contextId).map(task => ({ ...task, __renderOsDirectOnly: true })));
@@ -1224,7 +1247,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
     }
     const timer = window.setTimeout(() => {
       if (!guard.current()) return;
-      apiTaskPage({ offset: 0, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode, sort: effectiveSort }, guard.options())
+      apiTaskPage({ offset: 0, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode, sort: effectiveSort, status:taskStatus, reviewScope }, guard.options())
         .then(async (taskPage) => {
           if (!active || !guard.current() || generation !== taskQueryGenerationRef.current || orderContextRef.current !== orderObservation) return;
           let items = taskPage.items;
@@ -1238,6 +1261,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
             } catch (reason) {
               if (!active || !guard.current() || isSessionFailure(reason) || generation !== taskQueryGenerationRef.current
                 || Number(new URLSearchParams(window.location.search).get('task')) !== directTaskId) return;
+              if (reviewScope && ![401,403,404].includes(reason?.status)) throw reason;
               notify(reason.message || "La tarea enlazada no está disponible.", "error");
               const url = new URL(window.location.href);
               url.searchParams.delete("task");
@@ -1248,21 +1272,28 @@ export function WorkspaceReadOnlyPage({ sesion }) {
           if (!active || !guard.current() || generation !== taskQueryGenerationRef.current || orderContextRef.current !== orderObservation) return;
           const metadata = effectiveSort === 'manual' ? {revision:taskPage.orderRevision,snapshot:taskPage.orderSnapshot,context:orderContext,observation:orderObservation} : null;
           orderPageRef.current = metadata; setOrderPage(metadata);
+          reviewPageRef.current = reviewScope ? {snapshot:taskPage.reviewSnapshot,total:taskPage.total,observation:orderObservation} : null;
           setTasks(items);
           setTotalTasks(taskPage.total);
           setError("");
         })
-        .catch((reason) => { if (active && guard.current() && generation === taskQueryGenerationRef.current && orderContextRef.current === orderObservation && !isSessionFailure(reason)) setError(reason.message || "No se pudieron cargar las tareas."); })
+        .catch((reason) => {
+          if (!active || !guard.current() || generation !== taskQueryGenerationRef.current || orderContextRef.current !== orderObservation || isSessionFailure(reason)) return;
+          if (reviewScope && ![401,403].includes(reason?.status)) {
+            setPagingBlocked(true); setOrderMessage(reason.message || 'No se pudo actualizar la cola. Conservamos la tarea abierta y los datos observados.');
+          } else setError(reason.message || "No se pudieron cargar las tareas.");
+        })
         .finally(() => { if (active && guard.current() && generation === taskQueryGenerationRef.current && orderContextRef.current === orderObservation) setLoading(false); });
     }, query ? 250 : 0);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [query, area, responsibleSelection.ready, responsibleSelection.status, responsibleSelection.value, client, sector, priority, archiveMode, effectiveSort, orderContext, orderObservation, orderReload, reloadKey, captureRequest]);
+  }, [query, area, responsibleSelection.ready, responsibleSelection.status, responsibleSelection.value, client, sector, priority, archiveMode, taskStatus, reviewScope, queryNotice, effectiveSort, orderContext, orderObservation, orderReload, reloadKey, captureRequest]);
 
   useEffect(() => {
     const guard = captureRequest();
     const incorporate = (event) => {
       if (!guard.current()) return;
       const items = Array.isArray(event.detail) ? event.detail : [];
+      if (items.some(item=>tasksRef.current.some(current=>current.id===item.id&&current.revision!==item.revision))) markReviewQueueStale(guard);
       setTasks((current) => mergeRelatedTasks(current, items));
     };
     window.addEventListener("render-os:related-tasks", incorporate);
@@ -1274,15 +1305,18 @@ export function WorkspaceReadOnlyPage({ sesion }) {
     if (!guard.current()) return;
     const generation = taskQueryGenerationRef.current;
     const paginatedTaskCount = tasks.filter((task) => !task.__renderOsDirectOnly).length;
-    if (!responsibleSelection.ready || loadingMore || pagingBlocked || orderState.busy || paginatedTaskCount >= totalTasks) return;
+    if (!responsibleSelection.ready || queryNotice || loadingMore || pagingBlocked || orderState.busy || paginatedTaskCount >= totalTasks) return;
     const manualPage = orderPageRef.current;
+    const reviewPage = reviewPageRef.current;
+    if (reviewScope && reviewPage?.observation !== orderObservation) return;
     if (effectiveSort === 'manual' && manualPage?.observation !== orderObservation) return;
     setLoadingMore(true);
     try {
-      const page = await apiTaskPage({ offset: paginatedTaskCount, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode, sort: effectiveSort, ...(effectiveSort === 'manual' ? {expectedSnapshot:manualPage.snapshot} : {}) }, guard.options());
+      const page = await apiTaskPage({ offset: paginatedTaskCount, query, area, responsible: responsibleSelection.value, client, sector, priority, archiveMode, sort: effectiveSort, status:taskStatus, reviewScope, ...(reviewScope ? {expectedReviewSnapshot:reviewPage.snapshot} : {}), ...(effectiveSort === 'manual' ? {expectedSnapshot:manualPage.snapshot} : {}) }, guard.options());
       guard.assertCurrent();
       if (generation !== taskQueryGenerationRef.current) return;
       if (orderContextRef.current !== orderObservation) return;
+      if (reviewScope && (page.reviewSnapshot !== reviewPage.snapshot || page.total !== reviewPage.total || page.items.some(item=>tasks.some(task=>!task.__renderOsDirectOnly&&task.id===item.id)))) throw Object.assign(new Error('La cola cambió. Actualizala desde el principio.'),{status:409});
       if (effectiveSort === 'manual' && (page.orderRevision !== manualPage.revision || page.orderSnapshot !== manualPage.snapshot)) throw Object.assign(new Error('El orden cambió. Recargá la primera página.'), {status:409});
       if (effectiveSort === 'manual' && (page.total !== totalTasks || page.items.some(item=>tasks.some(task=>!task.__renderOsDirectOnly&&task.id===item.id)))) throw Object.assign(new Error('La página no coincide con la colección observada. Recargá la primera página.'), {status:409});
       setTasks((current) => {
@@ -1294,12 +1328,23 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       setTotalTasks(page.total);
     } catch (reason) {
       if (guard.current() && !isSessionFailure(reason) && generation === taskQueryGenerationRef.current && orderContextRef.current === orderObservation) {
-        if (effectiveSort === 'manual') { setPagingBlocked(true); setOrderMessage(reason.message || 'No se pudo verificar la continuación. Recargá la primera página.'); }
+        if (effectiveSort === 'manual' || reviewScope) { setPagingBlocked(true); setOrderMessage(reason.message || 'No se pudo verificar la continuación. Recargá la primera página.'); }
         else notify(reason.message || "No se pudieron cargar más tareas.", "error");
       }
     } finally {
       if (guard.current() && generation === taskQueryGenerationRef.current && orderContextRef.current === orderObservation) setLoadingMore(false);
     }
+  };
+
+  const refreshReviewQueue = () => {
+    const guard = captureRequest();
+    if (!guard.current() || !reviewScope || orderModel.snapshot.busy) return;
+    // Reuse the app's cancelable unsaved-work protocol even though this is
+    // an explicit same-location refresh, not a history navigation.
+    const before = new CustomEvent('render:before-navigation',{detail:{href:window.location.href,type:'refresh'},cancelable:true});
+    if (!window.dispatchEvent(before)) return;
+    guard.assertCurrent(); taskQueryGenerationRef.current++; reviewPageRef.current = null;
+    setLoadingMore(false); setPagingBlocked(false); setOrderMessage(''); setOrderReload(value=>value+1);
   };
 
   const reloadTaskOrder = () => {
@@ -1349,6 +1394,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       try {
         const updated = await guard.request(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: previous.revision, expected_updated_at: previous.updated_at || undefined }) });
         guard.assertCurrent();
+        markReviewQueueStale(guard);
         const selectedClient = clients.find((item) => String(item.id) === String(updated.cliente_id));
         const complete = { ...previous, ...updated, cliente_nombre: selectedClient?.nombre || null };
         tasksRef.current = tasksRef.current.map((task) => task.id === id ? complete : task);
@@ -1363,6 +1409,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
         return complete;
       } catch (reason) {
         if (!guard.current() || isSessionFailure(reason)) throw reason;
+        if (![400,401,403].includes(reason?.status)) markReviewQueueStale(guard, true);
         if (reason.status === 409) {
           let currentTask = null;
           try {
@@ -1371,6 +1418,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
             if (!requiresReviewObservation && observedRevision === null && canRetryTaskUpdate(previous, currentTask, changes)) {
               const retried = await guard.request(`/api/tareas/${id}?workspace=render_os`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...changes, expected_revision: currentTask.revision, expected_updated_at: currentTask.updated_at || undefined }) });
               guard.assertCurrent();
+              markReviewQueueStale(guard);
               const selectedClient = clients.find((item) => String(item.id) === String(retried.cliente_id));
               const complete = { ...currentTask, ...retried, cliente_nombre: selectedClient?.nombre || currentTask.cliente_nombre || null };
               tasksRef.current = tasksRef.current.map((task) => task.id === id ? complete : task);
@@ -1414,10 +1462,11 @@ export function WorkspaceReadOnlyPage({ sesion }) {
     try {
       const created = await guard.request("/api/tareas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...draft, workspace: "render_os" }) });
       guard.assertCurrent();
+      markReviewQueueStale(guard);
       const client = clients.find((item) => String(item.id) === String(created.cliente_id));
-      const complete = { ...created, cliente_nombre: client?.nombre || null };
+      const complete = { ...created, cliente_nombre: client?.nombre || null, ...(reviewScopeRef.current ? {__renderOsDirectOnly:true} : {}) };
       setTasks((current) => [complete, ...current]);
-      setTotalTasks((current) => current + 1);
+      if (!reviewScopeRef.current) setTotalTasks((current) => current + 1);
       try {
         await logActivity(created.id, draft.tarea_padre_id ? `creó esta subtarea dentro de la tarea #${draft.tarea_padre_id}` : "creó y asignó la tarea desde RENDER OS", guard);
         guard.assertCurrent();
@@ -1429,6 +1478,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       return complete;
     } catch (reason) {
       if (!guard.current() || isSessionFailure(reason)) throw reason;
+      if (![400,401,403].includes(reason?.status)) markReviewQueueStale(guard, true);
       notify(reason.message || "No se pudo crear la tarea.", "error");
       throw reason;
     }
@@ -1463,6 +1513,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
         body: JSON.stringify({ cantidad, fecha, finalizar, expected_revision: snapshot.revision, expected_updated_at: snapshot.updated_at || undefined }),
       });
       guard.assertCurrent();
+      markReviewQueueStale(guard);
       const complete = { ...snapshot, ...updated, cliente_nombre: snapshot.cliente_nombre || null };
       tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? complete : item);
       setTasks((current) => current.map((item) => item.id === task.id ? complete : item));
@@ -1470,6 +1521,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       return complete;
     } catch (reason) {
       if (!guard.current() || isSessionFailure(reason)) throw reason;
+      if (![400,401,403].includes(reason?.status)) markReviewQueueStale(guard, true);
       if (reason.status === 409) await refreshProductionConflict(task, guard);
       else notify(reason.message || "No se pudo registrar la grabación.", "error");
       throw reason;
@@ -1482,6 +1534,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       const snapshot = productionTaskSnapshot(task);
       const result = await guard.request(`/api/tareas/${task.id}/produccion/confirmar?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expected_revision: snapshot.revision }) });
       guard.assertCurrent();
+      markReviewQueueStale(guard);
       const updated = { ...snapshot, ...result.task, cliente_nombre: snapshot.cliente_nombre || null };
       const additions = result.editing_task ? [{ ...result.editing_task, cliente_nombre: task.cliente_nombre || null }] : [];
       tasksRef.current = mergeRelatedTasks(tasksRef.current.map((item) => item.id === task.id ? updated : item), additions);
@@ -1490,6 +1543,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       return updated;
     } catch (reason) {
       if (!guard.current() || isSessionFailure(reason)) throw reason;
+      if (![400,401,403].includes(reason?.status)) markReviewQueueStale(guard, true);
       if (reason.status === 409) await refreshProductionConflict(task, guard);
       else notify(reason.message || "No se pudo confirmar la grabación.", "error");
       throw reason;
@@ -1508,6 +1562,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cantidad, expected_revision: snapshot.revision }),
       });
       guard.assertCurrent();
+      markReviewQueueStale(guard);
       const complete = { ...snapshot, ...updated, cliente_nombre: snapshot.cliente_nombre || null };
       tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? complete : item);
       setTasks((current) => current.map((item) => item.id === task.id ? complete : item));
@@ -1515,6 +1570,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       return complete;
     } catch (reason) {
       if (!guard.current() || isSessionFailure(reason)) throw reason;
+      if (![400,401,403].includes(reason?.status)) markReviewQueueStale(guard, true);
       if (reason.status === 409) await refreshProductionConflict(task, guard);
       else notify(reason.message || "No se pudo corregir el registro.", "error");
       throw reason;
@@ -1533,6 +1589,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       const responsable_publicacion = publisher?.nombre;
       const updated = await guard.request(`/api/tareas/${task.id}/aprobar-publicacion?workspace=render_os`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responsable_publicacion_id, expected_revision: review?.revision ?? task.revision, ...deliveryPrecondition }) });
       guard.assertCurrent();
+      markReviewQueueStale(guard);
       const complete = { ...task, ...updated, cliente_nombre: task.cliente_nombre || null };
       tasksRef.current = tasksRef.current.map((item) => item.id === task.id ? complete : item);
       setTasks((current) => current.map((item) => item.id === task.id ? complete : item));
@@ -1543,6 +1600,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       return complete;
     } catch (reason) {
       if (!guard.current() || isSessionFailure(reason)) throw reason;
+      if (![400,401,403].includes(reason?.status)) markReviewQueueStale(guard, true);
       notify(reason.message || "No se pudo aprobar la tarea.", "error");
       throw reason;
     }
@@ -1557,8 +1615,9 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       });
       guard.assertCurrent();
       const affected = new Set(result.ids || []);
+      markReviewQueueStale(guard);
       setTasks((current) => current.filter((task) => !affected.has(task.id)));
-      setTotalTasks((current) => Math.max(0, current - affected.size));
+      if (!reviewScopeRef.current) setTotalTasks((current) => Math.max(0, current - affected.size));
       const message = action === "papelera"
           ? `${affected.size} ${affected.size === 1 ? "tarea enviada" : "tareas enviadas"} a Papelera.`
           : `${affected.size} ${affected.size === 1 ? "tarea restaurada" : "tareas restauradas"}.`;
@@ -1566,11 +1625,12 @@ export function WorkspaceReadOnlyPage({ sesion }) {
       return result;
     } catch (reason) {
       if (!guard.current() || isSessionFailure(reason)) throw reason;
+      if (![400,401,403].includes(reason?.status)) markReviewQueueStale(guard, true);
       notify(reason.message || "No se pudo completar la acción masiva.", "error");
       throw reason;
     }
   };
 
   const retry = () => { setError(""); setLoading(true); setReloadKey((current) => current + 1); };
-  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} setQuery={setQuery} area={area} setArea={setArea} responsible={responsible} setResponsible={setResponsible} client={client} setClient={setClient} sector={sector} setSector={setSector} priority={priority} setPriority={setPriority} archiveMode={archiveMode} setArchiveMode={setArchiveMode} sort={sort} setSort={setSort} manualReady={manualReady} orderState={orderState} orderMessage={orderMessage} onReorder={reorderTask} onVerifyOrder={()=>void reorderTask(null,null,true)} onRefreshOrder={refreshTaskOrder} pagingBlocked={pagingBlocked} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onRegisterProduction={registerProduction} onCorrectProduction={correctProduction} onConfirmProduction={confirmProduction} onApprove={approveTask} onBulkAction={bulkTaskAction} onError={(message) => notify(message, "error")}/>}</main></div>;
+  return <div className="render-workspace"><Toast toast={toast} onClose={() => setToast(null)}/><main className="ros-main">{loading || error ? <LoadingState error={error} onRetry={retry}/> : <TasksView tasks={tasks} totalTasks={totalTasks} loadingMore={loadingMore} onLoadMore={loadMoreTasks} users={users} clients={clients} query={query} setQuery={setQuery} area={area} setArea={setArea} responsible={responsible} setResponsible={setResponsible} client={client} setClient={setClient} sector={sector} setSector={setSector} priority={priority} setPriority={setPriority} archiveMode={archiveMode} setArchiveMode={setArchiveMode} sort={sort} setSort={setSort} taskStatus={taskStatus} setTaskStatus={setTaskStatus} reviewScope={reviewScope} setReviewScope={setReviewScope} queryNotice={queryNotice} onRefreshReview={refreshReviewQueue} manualReady={manualReady} orderState={orderState} orderMessage={orderMessage} onReorder={reorderTask} onVerifyOrder={()=>void reorderTask(null,null,true)} onRefreshOrder={refreshTaskOrder} pagingBlocked={pagingBlocked} sesion={sesion} onCreate={createTask} onUpdate={updateTask} onRegisterProduction={registerProduction} onCorrectProduction={correctProduction} onConfirmProduction={confirmProduction} onApprove={approveTask} onBulkAction={bulkTaskAction} onError={(message) => notify(message, "error")}/>}</main></div>;
 }
