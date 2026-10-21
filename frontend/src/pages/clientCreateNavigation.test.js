@@ -13,9 +13,9 @@ function find(name) {
 }
 const blank = () => ({ nombre: '', rubro: '', cuota_reels: '', cuota_carruseles: '', dias_historias: [], dias_reels: [], dias_carruseles: [], disenador_responsable: '', abono_mensual: '', vigente_desde: '2026-10' });
 function fixture() {
-  const state = { active: true, altaClienteAbierta: false, nuevoCliente: blank(), createBaseline: { current: JSON.stringify(blank()) }, creating: { current: false } };
-  const read = () => new Function('capture', 'altaClienteAbierta', 'nuevoCliente', 'createBaseline', 'creating', `return (${find('clientCreateNavigationStatus')})();`)(
-    () => ({ current: () => state.active }), state.altaClienteAbierta, state.nuevoCliente, state.createBaseline, state.creating,
+  const state = { active: true, altaClienteAbierta: false, nuevoCliente: blank(), createBaseline: { current: JSON.stringify(blank()) }, creating: { current: false },createRecovery:{current:null} };
+  const read = () => new Function('capture', 'altaClienteAbierta', 'nuevoCliente', 'createBaseline', 'creating','createRecovery','denied', `return (${find('clientCreateNavigationStatus')})();`)(
+    () => ({ current: () => state.active }), state.altaClienteAbierta, state.nuevoCliente, state.createBaseline, state.creating,state.createRecovery,{current:false},
   );
   return { state, read };
 }
@@ -32,8 +32,8 @@ test('client creation protects only an open changed draft and its synchronous pe
 test('opening captures one baseline and close uses it rather than recalculating a clock-dependent month', () => {
   const state = fixture().state, effects = [];
   const blankNext = { ...blank(), vigente_desde: '2026-11' };
-  const run = new Function('capture','modalOpen','emptyClientForm','createBaseline','setNuevoCliente','setPasoAltaCliente','setErrorAltaCliente','setAltaClienteAbierta',`return (${find('abrirAltaCliente')})();`);
-  run(() => ({ current: () => true }), { current: false }, () => blankNext, state.createBaseline, value => { state.nuevoCliente = value; }, () => {}, () => {}, value => effects.push(value));
+  const run = new Function('capture','modalOpen','emptyClientForm','createBaseline','setNuevoCliente','setPasoAltaCliente','setErrorAltaCliente','setAltaClienteAbierta','createRecovery','setCreateStatus','denied',`return (${find('abrirAltaCliente')})();`);
+  run(() => ({ current: () => true }), { current: false }, () => blankNext, state.createBaseline, value => { state.nuevoCliente = value; }, () => {}, () => {}, value => effects.push(value),state.createRecovery,()=>{},{current:false});
   assert.equal(state.createBaseline.current, JSON.stringify(blankNext)); assert.equal(state.nuevoCliente, blankNext); assert.deepEqual(effects, [true]);
   assert.match(find('cerrarAltaCliente'), /JSON\.stringify\(nuevoCliente\) !== createBaseline\.current/);
   assert.doesNotMatch(find('cerrarAltaCliente'), /emptyClientForm/);

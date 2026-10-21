@@ -20,6 +20,8 @@ import { PageState } from "../components/PageState.jsx";
 import { readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
 import { createClientOverviewLoader } from "./clientOverview.js";
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
+import { CLIENT_CREATE_MODES, createClientCreation, hasNoConfiguredMonthlyAgreement } from './clientCreate.js';
+import './ClientesCreate.css';
 
 const CLIENT_COLORS = ["#547aa5", "#6f72a8", "#4f8a7a", "#a36d5d", "#8a6fa5", "#647c99"];
 const RUBROS = ["Gastronomía", "Tecnología", "Turismo", "Educación", "Automotor", "Comercio", "Salud", "Servicios"];
@@ -30,6 +32,7 @@ const MONEY = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS
 
 function emptyClientForm() {
   return {
+    creation_mode: 'editorial',
     nombre: "", rubro: "", cuota_reels: "", cuota_carruseles: "",
     dias_historias: [], dias_reels: [], dias_carruseles: [], disenador_responsable: "", abono_mensual: "",
     vigente_desde: getMesActualISO(),
@@ -77,11 +80,6 @@ function clientPeriod(search) {
   if (values.length !== 1 || !/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(values[0])) throw new Error('Elegí un mes válido para consultar clientes.');
   return values[0];
 }
-function createdClient(value, nombre) {
-  if (!Number.isSafeInteger(value?.id) || value.id < 1 || value.id > 2147483647 || value.nombre !== nombre) throw new Error('No se pudo verificar el alta. Revisá la cartera antes de volver a crear el cliente.');
-  return value;
-}
-
 export function ClientesAdminPage({ sesion }) {
   const { view } = useScopedRequest(sesion || getSesion(), 'client-admin');
   const identity = useRef({ view, epoch: 0 });
@@ -115,11 +113,15 @@ function ClientesAdminContent({ sesion }) {
   const [pasoAltaCliente, setPasoAltaCliente] = useState(1);
   const [clienteCuotaEnEdicion, setClienteCuotaEnEdicion] = useState(null);
   const [errorAltaCliente, setErrorAltaCliente] = useState(null);
+  const createRecovery = useRef(null);
+  const [createStatus, setCreateStatus] = useState({ busy: false, blocked: false });
+  const [creationDenied, setCreationDenied] = useState(false);
+  const basicCreation = nuevoCliente.creation_mode === 'basic';
   const modalOpen = useRef(false), deferredLoad = useRef(false), pendingPeriod = useRef(null), loadGeneration = useRef(0), loaded = useRef(false), creating = useRef(false), denied = useRef(false);
   const createBaseline = useRef(JSON.stringify(nuevoCliente));
   const clientCreateNavigationStatus = () => {
-    if (!capture().current()) return { dirty: false, busy: false };
-    return { dirty: altaClienteAbierta && JSON.stringify(nuevoCliente) !== createBaseline.current, busy: creating.current };
+    if (!capture().current() || denied.current) return { dirty: false, busy: false };
+    return { dirty: altaClienteAbierta && (JSON.stringify(nuevoCliente) !== createBaseline.current || Boolean(createRecovery.current?.snapshot.blocked)), busy: creating.current };
   };
   useNavigationGuard(clientCreateNavigationStatus);
   modalOpen.current = Boolean(altaClienteAbierta || clienteSeleccionado || clienteCuotaEnEdicion);
@@ -241,9 +243,10 @@ function ClientesAdminContent({ sesion }) {
     nuevoCliente.abono_mensual !== "" && Number(nuevoCliente.abono_mensual) >= 0;
 
   const abrirAltaCliente = () => {
-    if (!capture().current() || modalOpen.current) return;
+    if (!capture().current() || modalOpen.current || denied.current) return;
     modalOpen.current = true;
     const blank = emptyClientForm();
+    createRecovery.current = null; setCreateStatus({ busy: false, blocked: false });
     createBaseline.current = JSON.stringify(blank);
     setNuevoCliente(blank);
     setPasoAltaCliente(1);
@@ -253,15 +256,33 @@ function ClientesAdminContent({ sesion }) {
 
   const cerrarAltaCliente = () => {
     if (creating.current || !capture().current()) return;
-    if (JSON.stringify(nuevoCliente) !== createBaseline.current && !window.confirm('¿Descartar los datos del nuevo cliente sin guardar?')) return;
+    const blocked = createRecovery.current?.snapshot.blocked;
+    if ((JSON.stringify(nuevoCliente) !== createBaseline.current || blocked) && !window.confirm(blocked
+      ? 'El alta no está confirmada. Al salir se pierde la revisión de este intento; revisá la cartera antes de crear otro cliente. ¿Salir de todos modos?'
+      : '¿Descartar los datos del nuevo cliente sin guardar?')) return;
     setAltaClienteAbierta(false);
     setErrorAltaCliente(null);
     closeModal();
   };
 
+  const denyCreationAccess = () => {
+    denied.current = true; loaded.current = false;
+    loadGeneration.current += 1; overviewLoader.cancel(); modalOpen.current = false;
+    createRecovery.current = null;
+    const blank = emptyClientForm(); createBaseline.current = JSON.stringify(blank);
+    setNuevoCliente(blank); setClientes([]); setHistorias([]); setPublicaciones([]);
+    setClienteSeleccionado(null); setClienteCuotaEnEdicion(null);
+    setAltaClienteAbierta(false); setErrorAltaCliente(null);
+    setCreateStatus({ busy: false, blocked: false }); setCreationDenied(true);
+  };
+  const denyClientAccess = guard => {
+    if (!guard?.current() || !capture().current()) return;
+    guard.assertCurrent(); denyCreationAccess();
+  };
+
   const crearCliente = async (event) => {
     event.preventDefault();
-    if (creating.current) return;
+    if (denied.current || creating.current || createRecovery.current?.snapshot.submitted) return;
     const scope = capture(), lifetime = captureLifetime();
     if (!scope.current() || view.role !== 'admin') return;
     const nombre = nuevoCliente.nombre.trim();
@@ -270,32 +291,47 @@ function ClientesAdminContent({ sesion }) {
       setErrorAltaCliente("El nombre del cliente es obligatorio.");
       return;
     }
-    if (
+    if (!basicCreation && (
       !validarCuota(nuevoCliente.cuota_reels) ||
       !validarCuota(nuevoCliente.cuota_carruseles)
-    ) {
+    )) {
       setErrorAltaCliente("Completá ambas cuotas con números enteros iguales o mayores a 0.");
       return;
     }
-    const cuota_reels = Number(nuevoCliente.cuota_reels);
-    const cuota_carruseles = Number(nuevoCliente.cuota_carruseles);
-    if (!altaClienteValida) { setErrorAltaCliente('Revisá todos los datos del acuerdo antes de crear el cliente.'); return; }
-    const body = JSON.stringify({ ...nuevoCliente, nombre, cuota_reels, cuota_carruseles });
+    if (!basicCreation && !altaClienteValida) { setErrorAltaCliente('Revisá todos los datos del acuerdo antes de crear el cliente.'); return; }
+    if (!createRecovery.current) createRecovery.current = createClientCreation({ capture: () => scope });
     creating.current = true;
     setGuardandoCliente(true);
     setErrorAltaCliente(null);
     try {
-      const cliente = createdClient(await scope.request("/api/clientes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-    }), nombre);
+      const cliente = await createRecovery.current.submit(nuevoCliente, basicCreation ? 'basic' : 'editorial');
         scope.assertCurrent();
         setClientes((prev) => [...prev.filter(item => item.id !== cliente.id), cliente]);
         setNuevoCliente(emptyClientForm());
         setAltaClienteAbierta(false);
         closeModal(); deferredLoad.current = true;
-    } catch (err) { if (scope.current() && !isSessionFailure(err)) setErrorAltaCliente('No se pudo confirmar el alta. Conservamos los datos; revisá la cartera antes de volver a crear el cliente.'); }
+    } catch (err) {
+      if (scope.current() && [401,403].includes(err?.status)) denyCreationAccess();
+      else if (scope.current() && !isSessionFailure(err)) {
+        const status = createRecovery.current.snapshot; setCreateStatus(status);
+        setErrorAltaCliente(status.rejection || 'No se pudo confirmar el alta. Conservamos los datos; revisá la cartera antes de volver a crear el cliente.');
+      }
+    }
+    finally { creating.current = false; if (lifetime.current()) setGuardandoCliente(false); }
+  };
+
+  const refreshCreationPortfolio = async () => {
+    if (denied.current || creating.current || !createRecovery.current?.snapshot.blocked) return;
+    const scope = capture(), lifetime = captureLifetime(); if (!scope.current()) return;
+    creating.current = true; setGuardandoCliente(true);
+    try {
+      const rows = await createRecovery.current.refresh(mesSeleccionado); scope.assertCurrent();
+      setClientes(rows);
+      setErrorAltaCliente('Cartera actualizada. Encontrar un nombre no confirma este intento. No repetiremos el alta; revisá los clientes guardados antes de salir.');
+    } catch (err) {
+      if (scope.current() && [401,403].includes(err?.status)) denyCreationAccess();
+      else if (scope.current() && !isSessionFailure(err)) setErrorAltaCliente('No pudimos actualizar la cartera. El alta sigue sin confirmar y no se volvió a enviar.');
+    }
     finally { creating.current = false; if (lifetime.current()) setGuardandoCliente(false); }
   };
 
@@ -330,8 +366,10 @@ function ClientesAdminContent({ sesion }) {
     [filasTodas, filtroEstado],
   );
   const totales = useMemo(() => getTotalesCartera(filasTodas), [filasTodas]);
-  const getAlertaCliente = (cliente) => cliente.totalSinConfirmacion > 0
+  const getAlertaCliente = (cliente) => hasNoConfiguredMonthlyAgreement(cliente) ? 'Sin acuerdo mensual configurado' : cliente.totalSinConfirmacion > 0
     ? "Revisar registros sin confirmar" : cliente.estadoGeneral.label;
+
+  if (creationDenied) return <main aria-label="Administración de clientes"><PageState type="error" title="Ya no tenés acceso a la administración de clientes" description="Se retiraron los datos de esta vista. Revisá tu acceso antes de continuar." /></main>;
 
   return (
     <main aria-label="Administración de clientes">
@@ -408,22 +446,24 @@ function ClientesAdminContent({ sesion }) {
                         <div><strong>{cliente.nombre}</strong><small>{cliente.rubro || "Sin rubro cargado"} · {cliente.activo ? "Activo" : "Inactivo"}</small></div>
                       </div>
                       <div className="clientes-portfolio-contract">
-                        <strong>{cuotaReels} reels · {cuotaCarruseles} carruseles</strong>
-                        <small>{cliente.cuotaHistorias ? `${cliente.historiasMes} planificadas de ${cliente.cuotaHistorias} contratadas` : "Historias no incluidas"}</small>
+                        <strong>{hasNoConfiguredMonthlyAgreement(cliente) ? 'Sin acuerdo mensual configurado' : `${cuotaReels} reels · ${cuotaCarruseles} carruseles`}</strong>
+                        <small>{hasNoConfiguredMonthlyAgreement(cliente) ? 'Cliente disponible para el equipo' : cliente.cuotaHistorias ? `${cliente.historiasMes} planificadas de ${cliente.cuotaHistorias} contratadas` : "Historias no incluidas"}</small>
                       </div>
                       <div className="clientes-portfolio-commercial">
-                        <strong>{MONEY.format(Number(cliente.abono_mensual) || 0)}</strong>
+                        <strong>{cliente.abono_mensual == null ? 'Sin abono configurado' : MONEY.format(Number(cliente.abono_mensual))}</strong>
                         <small>Abono mensual</small>
                       </div>
                       <div className="clientes-portfolio-progress">
+                        {hasNoConfiguredMonthlyAgreement(cliente) ? <strong>Sin cuota mensual</strong> : <>
                         <strong>{publicadas} de {comprometidas} confirmados</strong>
                         {cliente.totalSinConfirmacion > 0 && <small>{cliente.totalSinConfirmacion} registros históricos sin confirmar</small>}
                         <span><i style={{ width: `${Math.min(progreso, 100)}%` }} /></span>
                         <small>{progreso}% del acuerdo mensual</small>
+                        </>}
                       </div>
                       <div className="clientes-portfolio-status">
                         <strong className={cliente.estadoGeneral.color === "rojo" ? "attention" : ""}>{getAlertaCliente(cliente)}</strong>
-                        <small>{pendientes ? `${pendientes} sin confirmación` : "Acuerdo con confirmación completa"}</small>
+                        <small>{hasNoConfiguredMonthlyAgreement(cliente) ? 'Sin seguimiento de cuota editorial' : pendientes ? `${pendientes} sin confirmación` : "Acuerdo con confirmación completa"}</small>
                       </div>
                       <button className="btn clientes-portfolio-action" type="button"
                         onClick={(event) => { event.stopPropagation(); selectClient(cliente); }}>
@@ -447,10 +487,10 @@ function ClientesAdminContent({ sesion }) {
                       </div>
                       <span className={`cliente-status-pill ${cliente.estadoGeneral.color}`}>
                         <span className={`semaforo ${cliente.estadoGeneral.color}`}></span>
-                        {cliente.estadoGeneral.label}
+                        {hasNoConfiguredMonthlyAgreement(cliente) ? 'Sin acuerdo mensual configurado' : cliente.estadoGeneral.label}
                       </span>
                     </div>
-                    <div className="cliente-mobile-quotas">
+                    {!hasNoConfiguredMonthlyAgreement(cliente) && <div className="cliente-mobile-quotas">
                       {cliente.feedCompartido ? (
                         <>
                           <ClienteCuotaResumen
@@ -478,23 +518,23 @@ function ClientesAdminContent({ sesion }) {
                           />
                         </>
                       )}
-                    </div>
+                    </div>}
                     <div className="cliente-mobile-status-grid">
                       <div>
                         <span>Abono mensual</span>
-                        <strong>{MONEY.format(Number(cliente.abono_mensual) || 0)}</strong>
+                        <strong>{cliente.abono_mensual == null ? 'Sin abono configurado' : MONEY.format(Number(cliente.abono_mensual))}</strong>
                         <small>Facturación del cliente</small>
                       </div>
                       <div>
                         <span>Historias</span>
-                        <strong>{cliente.historiasPublicadas} de {cliente.cuotaHistorias} confirmadas</strong>
-                        <small>{cliente.historiasMes} planificadas · {cliente.porcentajeHistorias}% del acuerdo</small>
+                        <strong>{hasNoConfiguredMonthlyAgreement(cliente) ? 'Sin cuota mensual' : `${cliente.historiasPublicadas} de ${cliente.cuotaHistorias} confirmadas`}</strong>
+                        {!hasNoConfiguredMonthlyAgreement(cliente) && <small>{cliente.historiasMes} planificadas · {cliente.porcentajeHistorias}% del acuerdo</small>}
                       </div>
                       <div>
                         <span>Próxima acción</span>
                         <strong>{getAlertaCliente(cliente)}</strong>
                         <small>
-                          {cliente.cuotaHistorias === 0
+                          {hasNoConfiguredMonthlyAgreement(cliente) ? 'Sin seguimiento mensual configurado.' : cliente.cuotaHistorias === 0
                             ? "Historias no incluidas."
                             : `${Math.max(cliente.cuotaHistorias - cliente.historiasPublicadas, 0)} contratadas sin confirmar.`}
                         </small>
@@ -506,7 +546,7 @@ function ClientesAdminContent({ sesion }) {
                         type="button"
                         onClick={() => setClienteCuotaEnEdicion(cliente)}
                       >
-                        Editar cuota
+                        {hasNoConfiguredMonthlyAgreement(cliente) ? 'Editar nombre y estado' : 'Editar cuota'}
                       </button>
                       <button
                         className="btn primary"
@@ -543,8 +583,17 @@ function ClientesAdminContent({ sesion }) {
           className="cliente-create-modal"
         >
             <form className="modal-body cliente-create-modal-body" onSubmit={crearCliente}>
-              <fieldset disabled={guardandoCliente} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-              <div className="cliente-create-progress" aria-label={`Paso ${pasoAltaCliente} de 3`}>
+              <fieldset disabled={guardandoCliente || createStatus.blocked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+              <label className="cliente-service-field cliente-create-mode">
+                <span>Cómo querés crear el cliente</span>
+                <select value={nuevoCliente.creation_mode || 'editorial'} onChange={event => {
+                  if (creating.current || createRecovery.current?.snapshot.submitted) return;
+                  setNuevoCliente(prev => ({ ...prev, creation_mode: event.target.value })); setPasoAltaCliente(1);
+                }}>
+                  {CLIENT_CREATE_MODES.map(mode => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
+                </select>
+              </label>
+              {!basicCreation && <div className="cliente-create-progress" aria-label={`Paso ${pasoAltaCliente} de 3`}>
                 {["Datos", "Acuerdo", "Responsable"].map((etiqueta, index) => {
                   const numero = index + 1;
                   return (
@@ -558,9 +607,20 @@ function ClientesAdminContent({ sesion }) {
                     </div>
                   );
                 })}
-              </div>
+              </div>}
 
-              {pasoAltaCliente === 1 && <section className="cliente-create-step">
+              {basicCreation && <section className="cliente-create-step">
+                <div className="cliente-create-step-copy">
+                  <strong>Creá el cliente sin un acuerdo mensual</strong>
+                  <span>Para trabajar sin configurar cuotas ni abono. No se crean proyectos ni tareas automáticamente.</span>
+                </div>
+                <label className="cliente-service-field"><span>Nombre del cliente</span>
+                  <input autoFocus type="text" value={nuevoCliente.nombre} placeholder="Nombre del cliente"
+                    onChange={event => setNuevoCliente(prev => ({ ...prev, nombre: event.target.value }))} />
+                </label>
+              </section>}
+
+              {!basicCreation && pasoAltaCliente === 1 && <section className="cliente-create-step">
                 <div className="cliente-create-step-copy">
                   <strong>¿A quién vamos a gestionar?</strong>
                   <span>Ingresá los datos básicos del cliente y desde qué mes comienza el acuerdo.</span>
@@ -585,7 +645,7 @@ function ClientesAdminContent({ sesion }) {
                 </div>
               </section>}
 
-              {pasoAltaCliente === 2 && <section className="cliente-create-step">
+              {!basicCreation && pasoAltaCliente === 2 && <section className="cliente-create-step">
                 <div className="cliente-create-step-copy">
                   <strong>¿Qué incluye el acuerdo mensual?</strong>
                   <span>Definí las piezas contratadas. Si un formato no está incluido, escribí 0.</span>
@@ -653,7 +713,7 @@ function ClientesAdminContent({ sesion }) {
                 ))}
               </section>}
 
-              {pasoAltaCliente === 3 && <section className="cliente-create-step">
+              {!basicCreation && pasoAltaCliente === 3 && <section className="cliente-create-step">
                 <div className="cliente-create-step-copy">
                   <strong>¿Quién lo gestiona y cuál es el abono?</strong>
                   <span>Asigná al responsable y revisá el acuerdo antes de crear el cliente.</span>
@@ -684,12 +744,11 @@ function ClientesAdminContent({ sesion }) {
                 <small>{nuevoCliente.disenador_responsable || "Sin diseñador"} · {Number(nuevoCliente.abono_mensual || 0).toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 })}</small>
                 </div>
               </section>}
-              {errorAltaCliente && <div className="caption login-error">{errorAltaCliente}</div>}
-              <p className="cliente-create-guidance" aria-live="polite">
+              {!basicCreation && <p className="cliente-create-guidance" aria-live="polite">
                 {pasoAltaCliente === 1 && !pasoIdentidadValido && "Completá el nombre y el rubro para continuar."}
                 {pasoAltaCliente === 2 && !pasoAcuerdoValido && "Indicá ambas cuotas y elegí al menos un día de historias."}
                 {pasoAltaCliente === 3 && !pasoResponsableValido && "Elegí un responsable e ingresá el abono mensual."}
-              </p>
+              </p>}
               <div className="modal-actions cliente-create-actions">
                 <button
                   className="btn"
@@ -699,7 +758,7 @@ function ClientesAdminContent({ sesion }) {
                 >
                   {pasoAltaCliente === 1 ? "Cancelar" : "Volver"}
                 </button>
-                {pasoAltaCliente < 3 ? <button
+                {!basicCreation && pasoAltaCliente < 3 ? <button
                   className="btn primary"
                   type="button"
                   disabled={pasoAltaCliente === 1 ? !pasoIdentidadValido : !pasoAcuerdoValido}
@@ -709,12 +768,20 @@ function ClientesAdminContent({ sesion }) {
                 </button> : <button
                   className="btn primary"
                   type="submit"
-                  disabled={guardandoCliente || !pasoResponsableValido || !altaClienteValida}
+                  disabled={guardandoCliente || (basicCreation ? !nuevoCliente.nombre.trim() : !pasoResponsableValido || !altaClienteValida)}
                 >
                   {guardandoCliente ? "Creando..." : "Crear cliente"}
                 </button>}
               </div>
               </fieldset>
+              {errorAltaCliente && <div className="caption login-error" role="alert">{errorAltaCliente}</div>}
+              {createStatus.blocked && <section className="cliente-create-recovery" aria-label="Revisión del alta sin confirmar">
+                <p>No volveremos a enviar este intento. Al salir se pierde esta revisión; comprobá la cartera antes de crear otro cliente.</p>
+                <div>
+                  <button type="button" className="btn" disabled={guardandoCliente} onClick={refreshCreationPortfolio}>Actualizar cartera sin crear</button>
+                  <button type="button" className="btn" disabled={guardandoCliente} onClick={cerrarAltaCliente}>Salir y revisar cartera</button>
+                </div>
+              </section>}
             </form>
         </Modal>
       )}
@@ -725,6 +792,7 @@ function ClientesAdminContent({ sesion }) {
           sesion={view.session}
           periodo={mesSeleccionado}
           cliente={clienteCuotaEnEdicion}
+          onAccessDenied={denyClientAccess}
           onClose={() => { setClienteCuotaEnEdicion(null); closeModal(); }}
           onGuardado={(clienteActualizado) => {
             actualizarClienteLocal(clienteActualizado.id, clienteActualizado);
@@ -739,6 +807,7 @@ function ClientesAdminContent({ sesion }) {
           sesion={view.session}
           periodo={mesSeleccionado}
           cliente={clienteSeleccionado}
+          onAccessDenied={denyClientAccess}
           historias={historias.filter(
             (historia) => historia.cliente_id === clienteSeleccionado.id && esDelMes(historia.fecha_programada, mesSeleccionado),
           )}

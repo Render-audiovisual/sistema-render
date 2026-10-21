@@ -5,6 +5,7 @@ import ts from 'typescript';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { getResumenClientes } from '../clientesStats.js';
+import { createClientCreation } from './clientCreate.js';
 
 // Actual callbacks with injected effects and transport; not mounted React/browser.
 const source = readFileSync(new URL('./Clientes.jsx', import.meta.url), 'utf8');
@@ -15,16 +16,19 @@ const owner = name => file.statements.find(n => ts.isFunctionDeclaration(n) && n
 const evaluate = (node,deps) => new Function(...Object.keys(deps), `return (${text(node)});`)(...Object.values(deps));
 function callback(name,deps) { const init = nodes(owner('ClientesAdminContent'),n => ts.isVariableDeclaration(n) && text(n.name) === name)[0].initializer; return evaluate(ts.isCallExpression(init) && text(init.expression) === 'useCallback' ? init.arguments[0] : init,deps); }
 const deferred = () => { let resolve,reject; const promise = new Promise((a,b) => {resolve=a;reject=b;}); return {promise,resolve,reject}; };
-const createdClient = evaluate(owner('createdClient'), {});
+const createdAck = {id:9,nombre:'QA Cliente',activo:true,agreement_revision:'a1:9:1:0:0',grupo_feed_id:null,
+  rubro:'Servicios',cuota_reels:2,cuota_carruseles:0,dias_historias:[1],dias_reels:[],dias_carruseles:[],
+  disenador_responsable:'QA',abono_mensual:100,fecha_inicio:'2026-10-01',configuracion_vigente_desde:'2026-10-01',configuracion_completa:true};
 function fixture(request = async () => ({})) {
   const store = createBrowserSessionState();
   const accept = id => store.acceptBootstrap(store.beginBootstrap(), {usuario:{id,rol:'admin',usuario:'qa',nombre:'QA'},session_context:'a'.repeat(43),csrf_token:'b'.repeat(43)});
   accept(7); const original = store.getSession(); let active = true;
   const effects = [], calls = [], scope = createCapturedRequest({ session:original,readSession:()=>store.getSession(),isActive:()=>active,
     request:(url,options)=>{calls.push({url,options});return request(url,options);} });
-  const deps = { capture:()=>scope,captureLifetime:()=>scope,view:{role:'admin'},createdClient,isSessionFailure,
+  const deps = { capture:()=>scope,captureLifetime:()=>scope,view:{role:'admin'},createClientCreation,isSessionFailure,basicCreation:false,
+    createRecovery:{current:null},setCreateStatus:value=>effects.push(['CreateStatus',value]),
     modalOpen:{current:false},deferredLoad:{current:false},pendingPeriod:{current:null},loadGeneration:{current:0},loaded:{current:false},denied:{current:false},creating:{current:false},createBaseline:{current:'{}'},
-    periodError:null,mesSeleccionado:'2026-10',nuevoCliente:{nombre:'  QA Cliente  ',rubro:'Servicios',cuota_reels:'2',cuota_carruseles:'0',dias_historias:[1],vigente_desde:'2026-10'},
+    periodError:null,mesSeleccionado:'2026-10',nuevoCliente:{nombre:'  QA Cliente  ',rubro:'Servicios',cuota_reels:'2',cuota_carruseles:'0',dias_historias:[1],dias_reels:[],dias_carruseles:[],disenador_responsable:'QA',abono_mensual:'100',vigente_desde:'2026-10'},
     validarCuota:value=>Number.isInteger(Number(value))&&Number(value)>=0,altaClienteValida:true,emptyClientForm:()=>({}),closeModal:()=>effects.push(['close']),
     ...Object.fromEntries(['Cargando','Error','Clientes','Historias','Publicaciones','LoadedPeriod','GuardandoCliente','ErrorAltaCliente','NuevoCliente','AltaClienteAbierta'].map(name=>[`set${name}`,value=>effects.push([name,value])])) };
   return {deps,calls,effects,switch:()=>accept(8),unmount:()=>{active=false;}};
@@ -47,7 +51,7 @@ test('actual creation captures original cookie, immutable body, one dispatch and
   f.deps.nuevoCliente.nombre='Later';f.deps.nuevoCliente.dias_historias.push(2);
   const body=JSON.parse(f.calls[0].options.body);assert.equal(body.nombre,'QA Cliente');assert.deepEqual(body.dias_historias,[1]);
   assert.ok(f.calls[0].options.sessionIntent);assert.equal(f.calls[0].options.headers.Authorization,undefined);
-  wait.resolve({id:9,nombre:'QA Cliente'});await pending;assert.ok(f.effects.some(([name])=>name==='close'));
+  wait.resolve(createdAck);await pending;assert.ok(f.effects.some(([name])=>name==='close'));
 });
 
 test('late creation success/error after account change or unmount cannot paint/close/retry',async()=>{

@@ -43,7 +43,7 @@ function fixture({ complete = false, sharedFeed = false, mode = 'cookie' } = {})
   const renderScope = context => { index = 0; const result = hook(original, context); mounted = true; return result; };
   const scope = renderScope('client:12');
   const cliente = { ...client(complete), ...(sharedFeed ? { grupo_feed_id: 3, cuota_feed_reels: 4, cuota_feed_carruseles: 2 } : {}) };
-  const context = { cliente, capture: scope.capture, pending: { current: false }, nestedEditing: { current: false },
+  const context = { cliente, capture: scope.capture, pending: { current: false }, nestedEditing: { current: false }, detailAccessDenied: { current: false },
     revision: { current: initialRevision }, blocked: { current: false },
     periodo: '2026-10', nombre: 'Synthetic renamed', activo: complete ? false : true, cuotaReels: '3', cuotaCarruseles: '2',
     cuotaFeedReels: '5', cuotaFeedCarruseles: '3', abonoMensual: '120', diasReels: [4, 1], diasCarruseles: [5],

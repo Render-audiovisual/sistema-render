@@ -3,6 +3,7 @@ import { normalizeFeedback, assertFeedbackBusinessInput } from "./feedback-field
 import { convertUnlinkedFlyer } from './story-flyer-conversion.js';
 import { deleteEmptyClient } from './delete-empty-client.js';
 import { clientAgreementRevisionSql, lockClientAdministration, lockClientAgreement, readClientAgreementRevision } from './client-agreement.js';
+import { captureClientCreator, lockCurrentClientCreator } from './client-create-authority.js';
 import { CONTRACT_REVISION_SQL, contractId, expectedContractVersion, normalizeContractInput, contractNotUpdated } from './financial-contract.js';
 import { findSimilarFeedback } from "./feedback-workflow.js";
 import fs from "node:fs";
@@ -1312,25 +1313,30 @@ router.get("/clientes", async (req, res, next) => {
 });
 
 router.post("/clientes", requireRole("admin"), async (req, res, next) => {
+  const creator = captureClientCreator(req.auth);
   const client = await pool.connect();
   try {
-    const nombre = (req.body.nombre || "").trim();
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) || typeof req.body.nombre !== 'string') {
+      return res.status(400).json({ error: "Falta el nombre del cliente.", code: "CLIENT_CREATE_INPUT_INVALID" });
+    }
+    const nombre = req.body.nombre.trim();
     const esAltaCompleta = ["rubro", "vigente_desde", "dias_historias", "disenador_responsable", "abono_mensual"]
       .some((field) => Object.hasOwn(req.body, field));
     const cuota_reels = Number(req.body.cuota_reels ?? 0);
     const cuota_carruseles = Number(req.body.cuota_carruseles ?? 0);
 
     if (!nombre) {
-      return res.status(400).json({ error: "Falta el nombre del cliente." });
+      return res.status(400).json({ error: "Falta el nombre del cliente.", code: "CLIENT_CREATE_INPUT_INVALID" });
     }
     if (
-      !Number.isInteger(cuota_reels) ||
-      !Number.isInteger(cuota_carruseles) ||
+      !Number.isSafeInteger(cuota_reels) ||
+      !Number.isSafeInteger(cuota_carruseles) ||
+      cuota_reels > 2147483647 || cuota_carruseles > 2147483647 ||
       cuota_reels < 0 ||
       cuota_carruseles < 0
     ) {
       return res.status(400).json({
-        error: "cuota_reels y cuota_carruseles deben ser enteros ≥ 0.",
+        error: "cuota_reels y cuota_carruseles deben ser enteros ≥ 0.", code: "CLIENT_CREATE_INPUT_INVALID",
       });
     }
 
@@ -1338,11 +1344,14 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
     const rubro = String(req.body.rubro || "").trim();
     const vigenteDesde = normalizePeriod(req.body.vigente_desde);
     if (esAltaCompleta) {
-      if (!rubro) return res.status(400).json({ error: "El rubro es obligatorio." });
+      if (!rubro) return res.status(400).json({ error: "El rubro es obligatorio.", code: "CLIENT_CREATE_INPUT_INVALID" });
       config = normalizeClientConfiguration(req.body);
     }
 
     await client.query("BEGIN");
+    // Match quota reconciliation's actor -> administration lock order. Hold
+    // current authority through client/configuration/fee commit, not JWT role.
+    const actor = await lockCurrentClientCreator(client, creator);
     await lockClientAdministration(client);
     const result = await client.query(
       `INSERT INTO clientes (nombre, cuota_reels, cuota_carruseles, rubro, activo, fecha_inicio)
@@ -1362,7 +1371,7 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
       await client.query(
         `INSERT INTO cliente_abonos (cliente_id, vigente_desde, importe, creado_por)
          VALUES ($1, $2, $3, $4) ON CONFLICT (cliente_id, vigente_desde) DO UPDATE SET importe = EXCLUDED.importe`,
-        [result.rows[0].id, vigenteDesde, config.abono_mensual, req.auth.nombre || req.auth.usuario],
+        [result.rows[0].id, vigenteDesde, config.abono_mensual, actor.nombre || actor.usuario],
       );
     }
     const agreement_revision = await readClientAgreementRevision(client, result.rows[0].id);
@@ -1382,11 +1391,12 @@ router.post("/clientes", requireRole("admin"), async (req, res, next) => {
     });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
+    if ([401, 403].includes(error.status)) return res.status(error.status).json({ error: error.message, code: error.code });
     if (error.code === "23505") {
-      return res.status(409).json({ error: "Ya existe un cliente con ese nombre." });
+      return res.status(409).json({ error: "Ya existe un cliente con ese nombre.", code: "CLIENT_NAME_EXISTS" });
     }
     if (/cuotas|abono mensual|día válido|diseñador responsable/i.test(error.message || "")) {
-      return res.status(400).json({ error: error.message });
+      return res.status(400).json({ error: error.message, code: "CLIENT_CREATE_INPUT_INVALID" });
     }
     next(error);
   } finally {
@@ -1456,6 +1466,7 @@ router.post("/clientes/:id/configuraciones", requireRole("admin"), async (req, r
 });
 
 router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
+  const administrator = captureClientCreator(req.auth);
   const client = await pool.connect();
   try {
     const { id } = req.params;
@@ -1500,6 +1511,7 @@ router.patch("/clientes/:id", requireRole("admin"), async (req, res, next) => {
     }
 
     await client.query("BEGIN");
+    await lockCurrentClientCreator(client, administrator);
     const existente = await lockClientAgreement(client, id, req.body?.expected_revision);
     const grupoFeedId = existente.grupo_feed_id;
     const actualizaCuotaFeed =

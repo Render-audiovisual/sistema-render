@@ -12,6 +12,7 @@ import {
   getTipoPublicacionLabel,
 } from "../utils.jsx";
 import { Modal } from "./Modal.jsx";
+import { hasNoConfiguredMonthlyAgreement } from '../pages/clientCreate.js';
 
 const WEEKDAYS = [[1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"]];
 
@@ -62,7 +63,96 @@ function assertFeeAck(data, id, amount) {
 
 export function EditarCuotaClienteModal({ sesion, periodo = getMesActualISO(), ...props }) {
   const { view, capture, epoch } = useScopedRequest(sesion, `editar-cliente:${props.cliente.id}:${periodo}`);
+  if (hasNoConfiguredMonthlyAgreement(props.cliente)) return <EditarIdentidadSession key={`${view.key}:${epoch}`} {...props} periodo={periodo} capture={capture}/>;
   return <EditarCuotaSession key={`${view.key}:${epoch}`} {...props} periodo={periodo} capture={capture}/>;
+}
+
+function EditarIdentidadSession({ cliente, periodo, capture, onClose, onGuardado, onAccessDenied }) {
+  const [nombre, setNombre] = useState(cliente.nombre);
+  const [activo, setActivo] = useState(cliente.activo !== false);
+  const [busy, setBusy] = useState(false), [blocked, setBlocked] = useState(false), [denied, setDenied] = useState(false);
+  const [error, setError] = useState(null), [confirmReload, setConfirmReload] = useState(false);
+  const pending = useRef(false), locked = useRef(false), accessDenied = useRef(false);
+  const revision = useRef(cliente.agreement_revision);
+  const snapshot = JSON.stringify({ nombre, activo });
+  const baseline = useRef(snapshot);
+  const identityNavigationStatus = () => {
+    if (accessDenied.current || !capture().current()) return { dirty: false, busy: false };
+    return { dirty: snapshot !== baseline.current || locked.current, busy: pending.current };
+  };
+  useNavigationGuard(identityNavigationStatus);
+  const denyIdentityAccess = guard => {
+    guard.assertCurrent(); accessDenied.current = true; locked.current = true; revision.current = null;
+    baseline.current = ''; setNombre(''); setActivo(false); setError(null); setConfirmReload(false); setDenied(true);
+    onAccessDenied?.(guard);
+  };
+  const closeIdentity = () => {
+    if (pending.current || !capture().current()) return;
+    if (!accessDenied.current && (snapshot !== baseline.current || locked.current)
+      && !window.confirm('¿Salir sin guardar el borrador? Si el resultado era incierto, revisá el cliente antes de volver a guardar.')) return;
+    onClose();
+  };
+  const saveIdentity = async event => {
+    event.preventDefault();
+    if (pending.current || locked.current || accessDenied.current) return;
+    const guard = capture(); if (!guard.current()) return;
+    const before = agreementParts(revision.current, cliente.id);
+    if (!before || !nombre.trim() || !hasNoConfiguredMonthlyAgreement(cliente)) { setError('Revisá el nombre y la versión del cliente antes de guardar.'); return; }
+    const payload = { nombre: nombre.trim(), activo, expected_revision: revision.current };
+    pending.current = true; setBusy(true); setError(null);
+    let confirmed = false;
+    try {
+      const data = await guard.request(`/api/clientes/${cliente.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      guard.assertCurrent(); assertClientAck(data, cliente.id, { nombre: payload.nombre, activo });
+      const after = agreementParts(data.agreement_revision, cliente.id);
+      if (!after || after[1] !== before[1] + 1 || after[2] !== before[2] || after[3] !== before[3]) throw new Error('No se confirmó la nueva revisión.');
+      revision.current = data.agreement_revision; confirmed = true; baseline.current = snapshot;
+      await onGuardado({ ...cliente, nombre: data.nombre, activo: data.activo, agreement_revision: data.agreement_revision,
+        ...(Object.hasOwn(data, 'fecha_fin') ? { fecha_fin: data.fecha_fin } : {}) }, guard);
+      guard.assertCurrent();
+    } catch (reason) {
+      if (!guard.current()) return;
+      if ([401,403].includes(reason?.status)) denyIdentityAccess(guard);
+      else { locked.current = true; setBlocked(true); setError(confirmed ? 'Los cambios se guardaron, pero no se pudo actualizar la vista. Revisá la versión guardada; no vuelvas a enviar.' : 'No se confirmaron los cambios. Conservamos el borrador; revisá explícitamente la versión guardada antes de volver a editar.'); }
+    } finally { pending.current = false; if (guard.current()) setBusy(false); }
+  };
+  const reloadIdentity = async () => {
+    if (pending.current || accessDenied.current || !locked.current || !confirmReload) return;
+    const guard = capture(); if (!guard.current() || !validPeriod(periodo)) return;
+    pending.current = true; setBusy(true);
+    try {
+      const rows = await guard.request(`/api/clientes?periodo=${encodeURIComponent(periodo)}`, { method: 'GET' }); guard.assertCurrent();
+      const row = Array.isArray(rows) && rows.find(item => sameClient(item?.id, cliente.id));
+      if (!object(row) || !agreementParts(row.agreement_revision, cliente.id) || typeof row.nombre !== 'string' || !row.nombre.trim() || typeof row.activo !== 'boolean') throw new Error('invalid');
+      // A concurrent monthly conversion changes the editor's contract: close
+      // and reopen from the current list rather than silently switching mode.
+      if (!hasNoConfiguredMonthlyAgreement(row)) throw new Error('configuration_changed');
+      setNombre(row.nombre); setActivo(row.activo); revision.current = row.agreement_revision;
+      baseline.current = JSON.stringify({ nombre: row.nombre, activo: row.activo }); locked.current = false;
+      setBlocked(false); setConfirmReload(false); setError(null);
+    } catch (reason) {
+      if (!guard.current()) return;
+      if ([401,403].includes(reason?.status)) denyIdentityAccess(guard);
+      else setError('No se pudo cargar una versión básica válida. Conservamos el borrador; cerrá y revisá la cartera si cambió el acuerdo.');
+    } finally { pending.current = false; if (guard.current()) setBusy(false); }
+  };
+  if (denied) return <Modal onClose={closeIdentity} title="Acceso no disponible"><div className="modal-body"><p>Se retiraron los datos del cliente. Ya no tenés acceso a esta edición.</p></div></Modal>;
+  return <Modal onClose={closeIdentity} title="Editar nombre y estado" className="cliente-create-modal">
+    <form className="modal-body cliente-create-modal-body" onSubmit={saveIdentity}>
+      <p className="caption">Sin acuerdo mensual configurado. Esta edición no crea cuotas ni abonos.</p>
+      <label className="cliente-service-field"><span>Nombre del cliente</span><input disabled={busy || blocked} value={nombre} onChange={event => { if (!pending.current && !locked.current) setNombre(event.target.value); }}/></label>
+      <label className="cliente-active-toggle"><input type="checkbox" disabled={busy || blocked} checked={activo} onChange={event => { if (!pending.current && !locked.current) setActivo(event.target.checked); }}/><span>Cliente activo</span></label>
+      {error && <p role="alert" className="caption login-error">{error}</p>}
+      {blocked && <section className="cliente-create-recovery" aria-label="Revisar versión guardada">
+        {confirmReload ? <><p>Se descartará este borrador al cargar la versión guardada.</p><div>
+          <button type="button" className="btn" disabled={busy} onClick={() => { if (!pending.current) setConfirmReload(false); }}>Conservar borrador</button>
+          <button type="button" className="btn" disabled={busy} onClick={reloadIdentity}>Descartar y recargar</button>
+        </div></> : <button type="button" className="btn" disabled={busy} onClick={() => { if (!pending.current && capture().current()) setConfirmReload(true); }}>Revisar versión guardada</button>}
+      </section>}
+      <div className="modal-actions cliente-edit-actions"><button type="button" className="btn ghost" disabled={busy} onClick={closeIdentity}>Cancelar</button>
+        <button type="submit" className="btn primary" disabled={busy || blocked || !nombre.trim()}>{busy ? 'Guardando...' : 'Guardar cambios'}</button></div>
+    </form>
+  </Modal>;
 }
 
 function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuardado, capture }) {
@@ -326,11 +416,20 @@ function DetalleClienteSession({
   onCuotaActualizada,
   onClienteActualizado,
   onClienteEliminado,
+  onAccessDenied,
 }) {
   const pending = useRef(false), nestedEditing = useRef(false);
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
   const [editandoCuota, setEditandoCuota] = useState(false);
+  const [detailDenied, setDetailDenied] = useState(false);
+  const detailAccessDenied = useRef(false);
+  const basicClient = hasNoConfiguredMonthlyAgreement(cliente);
+  const denyDetailAccess = guard => {
+    guard.assertCurrent(); detailAccessDenied.current = true;
+    nestedEditing.current = false; setEditandoCuota(false); setError(null); setDetailDenied(true);
+    onAccessDenied?.(guard);
+  };
   const estado = cliente.estadoGeneral?.color || cliente.estadoHistorias?.color || "gris";
 
   const closeDetail = () => {
@@ -339,7 +438,7 @@ function DetalleClienteSession({
     onClose();
   };
   const handleEliminarCliente = async () => {
-    if (pending.current || nestedEditing.current) return;
+    if (pending.current || nestedEditing.current || detailAccessDenied.current) return;
     const guard = capture();
     if (!guard.current()) return;
     if (!validPeriod(periodo)) { setError('Elegí un período válido antes de eliminar el cliente.'); return; }
@@ -362,9 +461,14 @@ function DetalleClienteSession({
       deleted = true;
       await onClienteEliminado(cliente.id, guard); guard.assertCurrent();
     } catch (reason) {
-      if (guard.current()) setError(`${deleted ? 'El cliente se eliminó, pero no se pudo actualizar la vista. ' : ''}${reason.message}`);
+      if (guard.current()) {
+        if ([401,403].includes(reason?.status)) denyDetailAccess(guard);
+        else setError(`${deleted ? 'El cliente se eliminó, pero no se pudo actualizar la vista. ' : ''}${reason.message}`);
+      }
     } finally { if (guard.current()) { pending.current = false; setEnviando(null); } }
   };
+
+  if (detailDenied) return <Modal onClose={closeDetail} title="Acceso no disponible"><div className="modal-body"><p>Se retiraron los datos del cliente. Revisá tu acceso antes de continuar.</p></div></Modal>;
 
   const piezas = [
     ...historias.map((h) => ({
@@ -402,7 +506,10 @@ function DetalleClienteSession({
     <>
     <Modal onClose={closeDetail} title={<span>{cliente.nombre}</span>}>
         <div className="modal-body">
-          <div className="modal-client-summary">
+          {basicClient ? <section className="modal-client-summary" aria-label="Cliente sin acuerdo mensual">
+            <strong>Sin acuerdo mensual configurado</strong>
+            <p className="caption">Cliente {cliente.activo === false ? 'inactivo' : 'activo'}. No tiene cuotas ni abono mensual configurados.</p>
+          </section> : <div className="modal-client-summary">
             <div className="modal-client-status">
               <span className={`semaforo ${estado}`}></span>
               <strong>{estadoTexto}</strong>
@@ -417,9 +524,9 @@ function DetalleClienteSession({
               <div><span>Abono mensual</span><strong>{abono}</strong></div>
               <div><span>Servicios</span><strong>Reels · Carruseles · Historias</strong></div>
             </div>
-          </div>
+          </div>}
 
-          <div className="cliente-detail-metrics">
+          {!basicClient && <div className="cliente-detail-metrics">
             <div>
               <span>Historias</span>
               <strong>{cliente.historiasPublicadas || 0} <small>/ {cliente.cuotaHistorias || 0}</small></strong>
@@ -452,7 +559,7 @@ function DetalleClienteSession({
                 </div>
               </>
             )}
-          </div>
+          </div>}
 
           {error && <div className="caption login-error">{error}</div>}
           <details className="cliente-detail-pieces">
@@ -483,7 +590,7 @@ function DetalleClienteSession({
               type="button"
               disabled={enviando !== null || editandoCuota}
               onClick={() => {
-                const guard = capture(); if (pending.current || nestedEditing.current || !guard.current()) return;
+                const guard = capture(); if (pending.current || nestedEditing.current || detailAccessDenied.current || !guard.current()) return;
                 window.history.pushState({}, "", `/moodboards?cliente=${cliente.id}`);
                 window.dispatchEvent(new PopStateEvent("popstate"));
               }}
@@ -494,9 +601,9 @@ function DetalleClienteSession({
               className="btn primary"
               type="button"
               disabled={enviando !== null}
-              onClick={() => { const guard = capture(); if (!pending.current && guard.current()) { nestedEditing.current = true; setEditandoCuota(true); } }}
+              onClick={() => { const guard = capture(); if (!pending.current && !detailAccessDenied.current && guard.current()) { nestedEditing.current = true; setEditandoCuota(true); } }}
             >
-              Editar cliente
+              {basicClient ? 'Editar nombre y estado' : 'Editar cliente'}
             </button>
             <button
               className="btn danger cliente-detail-delete"
@@ -514,6 +621,7 @@ function DetalleClienteSession({
         sesion={sesion}
         periodo={periodo}
         cliente={cliente}
+        onAccessDenied={denyDetailAccess}
         onClose={() => { const guard = capture(); if (!guard.current()) return; nestedEditing.current = false; setEditandoCuota(false); }}
         onGuardado={async (clienteActualizado, guard) => {
           guard.assertCurrent(); await onClienteActualizado?.(clienteActualizado, guard);
