@@ -3,18 +3,28 @@ import assert from 'node:assert/strict';
 import { CORE_SCHEMA_COLUMNS, assertCoreSchemaReady } from '../src/startup-schema.js';
 const complete = () => Object.entries(CORE_SCHEMA_COLUMNS).flatMap(([table_name, columns]) =>
   Object.entries(columns).map(([column_name, data_type]) => ({ table_name, column_name, data_type })));
-const response = (sql, rows) => ({ rows: sql.includes('current_schemas') ? [{ schemas: ['public'] }] : rows });
+const response = (sql, rows) => ({ rows: sql.includes('current_schemas') ? [{ schemas: ['public'] }] : sql.includes('pg_trigger') ? [{ready:true}] : rows });
 
 test('principal compatibility inspection uses a parameterized SELECT only', async () => {
   const calls = [];
   await assertCoreSchemaReady({ async query(sql, values) { calls.push({ sql, values }); return response(sql, complete()); } });
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.match(calls[0].sql, /current_schemas\(false\)::text\[\]/);
   for (const call of calls) {
     assert.match(call.sql.trim(), /^SELECT /);
     assert.doesNotMatch(call.sql, /CREATE|ALTER|INSERT|UPDATE|DELETE|TRUNCATE/);
   }
   assert.deepEqual(calls[1].values, [Object.keys(CORE_SCHEMA_COLUMNS)]);
+  assert.deepEqual(calls[2].values, ['feedback_notes_monotonic_version']);
+});
+
+test('missing or disabled monotonic note trigger rejects startup without installing or repairing it', async () => {
+  for (const ready of [false,null,undefined,'true']) {
+    await assert.rejects(assertCoreSchemaReady({query:async sql=>sql.includes('pg_trigger')?{rows:[{ready}]}:response(sql,complete())}),/note clock is not compatible/);
+  }
+  await assert.rejects(assertCoreSchemaReady({query:async sql=>{
+    if(sql.includes('pg_trigger'))throw Error('private clock detail');return response(sql,complete());
+  }}),error=>{assert.equal(error.message,'Cannot inspect principal note clock.');return true;});
 });
 
 test('missing principal table/column or incompatible data type rejects without repair', async () => {

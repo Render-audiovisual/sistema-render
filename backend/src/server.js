@@ -1,5 +1,6 @@
 import "dotenv/config";
-import { normalizeFeedback, assertFeedbackBusinessInput } from "./feedback-fields.js";
+import { applyFeedbackBrowserOperation } from './feedback-browser-write.js';
+import { feedbackBrowserAliasInput, feedbackBrowserAliasBody } from './feedback-browser-compat.js';
 import { readFeedbackNotesPage, readFeedbackNoteDetail, readLegacyFeedbackNotes, feedbackNoteMetadataDto } from './feedback-notes-read.js';
 import { convertUnlinkedFlyer } from './story-flyer-conversion.js';
 import { deleteEmptyClient } from './delete-empty-client.js';
@@ -316,13 +317,6 @@ router.use("/wilson", createWilsonChatRouter({ express, pool }));
 router.use("/publicacion-envios", createPublicationDispatchRouter({ express, pool, requireRole }));
 router.use("/listas-personales", createPersonalListsRouter({ express, pool }));
 
-const NOTAS_CATEGORIAS = new Set(["general", "diseno", "web", "reunion", "contenido"]);
-
-function normalizeNotaCategoria(value) {
-  const categoria = String(value || "general").trim().toLowerCase();
-  return NOTAS_CATEGORIAS.has(categoria) ? categoria : null;
-}
-
 router.get("/notas", async (req, res, next) => {
   res.set('Cache-Control', 'no-store');
   try {
@@ -388,122 +382,31 @@ router.get("/notas/similares", async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 
-router.post("/notas", async (req, res, next) => {
-  try {
-    try { assertFeedbackBusinessInput(req.body || {}); }
-    catch (error) { return res.status(400).json({ error: error.message }); }
-    const actor = getTaskActor(req.auth);
-    const titulo = String(req.body?.titulo || "Nueva nota").trim() || "Nueva nota";
-    const contenido = String(req.body?.contenido || "");
-    const categoria = normalizeNotaCategoria(req.body?.categoria);
-    if (!categoria) return res.status(400).json({ error: "Categoría de nota inválida." });
-    let feedback;
-    try { feedback = normalizeFeedback(req.body?.feedback ?? {}); }
-    catch (error) { return res.status(400).json({ error: error.message }); }
-    if (feedback.flujo === "feedback" && !feedback.responsables.length) {
-      return res.status(422).json({ error: "Elegí al menos una persona responsable." });
-    }
-    const result = await pool.query(
-      `INSERT INTO notas_compartidas (titulo,contenido,categoria,creado_por,modificado_por,feedback)
-       VALUES ($1,$2,$3,$4,$4,$5)
-       RETURNING id,titulo,contenido,categoria,feedback,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
-      [titulo, contenido, categoria, actor, JSON.stringify(feedback)],
-    );
-    const saved = result.rows[0];
-    res.status(201).json({ ...saved, feedback: feedbackNoteMetadataDto(saved.feedback) });
-    if (feedback.flujo === "feedback") notificarFeedbackSinInterrumpir({ pool, nota: saved, actor });
-  } catch (error) { next(error); }
-});
-
-router.patch("/notas/:id", async (req, res, next) => {
-  try {
-    try { assertFeedbackBusinessInput(req.body || {}); }
-    catch (error) { return res.status(400).json({ error: error.message }); }
-    const actor = getTaskActor(req.auth);
-    const sets = [];
-    const params = [];
-    if (Object.prototype.hasOwnProperty.call(req.body || {}, "feedback")) {
-      try {
-        const feedback = normalizeFeedback(req.body.feedback);
-        if (feedback.flujo === "feedback" && !feedback.responsables.length) {
-          return res.status(422).json({ error: "Elegí al menos una persona responsable." });
-        }
-        params.push(JSON.stringify(feedback));
+function handleFeedbackBrowserWrite(aliasAction = null) {
+  return async (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      const input = aliasAction ? feedbackBrowserAliasInput(aliasAction, req) : req.body;
+      const result = await applyFeedbackBrowserOperation(pool, req.auth, input, aliasAction ? {} : req.query);
+      res.status(result.status).json(aliasAction ? feedbackBrowserAliasBody(result) : result.body);
+      const { note, operation } = result.body;
+      if (operation.action === 'create' && !operation.replayed && note?.feedback?.flujo === 'feedback') {
+        notificarFeedbackSinInterrumpir({ pool, nota: note, actor: note.creado_por });
       }
-      catch (error) { return res.status(400).json({ error: error.message }); }
-      // Merge only normalized business fields; caller cannot erase trusted or historical provenance.
-      sets.push(`feedback=COALESCE(feedback,'{}'::jsonb)||$${params.length}::jsonb`);
-    }
-    if (Object.prototype.hasOwnProperty.call(req.body || {}, "titulo")) {
-      params.push(String(req.body.titulo || "").trim() || "Nueva nota");
-      sets.push(`titulo=$${params.length}`);
-    }
-    if (Object.prototype.hasOwnProperty.call(req.body || {}, "contenido")) {
-      params.push(String(req.body.contenido || ""));
-      sets.push(`contenido=$${params.length}`);
-    }
-    if (Object.prototype.hasOwnProperty.call(req.body || {}, "categoria")) {
-      const categoria = normalizeNotaCategoria(req.body.categoria);
-      if (!categoria) return res.status(400).json({ error: "Categoría de nota inválida." });
-      params.push(categoria);
-      sets.push(`categoria=$${params.length}`);
-    }
-    if (!sets.length) return res.status(400).json({ error: "No se enviaron cambios." });
-    params.push(actor);
-    sets.push(`modificado_por=$${params.length}`, "updated_at=now()");
-    params.push(req.params.id);
-    let where = `id=$${params.length} AND eliminado_at IS NULL`;
-    if (req.body.expected_updated_at) {
-      params.push(req.body.expected_updated_at);
-      where += ` AND date_trunc('milliseconds',updated_at)=date_trunc('milliseconds',$${params.length}::timestamptz)`;
-    }
-    const result = await pool.query(
-      `UPDATE notas_compartidas SET ${sets.join(",")} WHERE ${where}
-       RETURNING id,titulo,contenido,categoria,feedback,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
-      params,
-    );
-    if (!result.rows[0]) {
-      const exists = await pool.query("SELECT id FROM notas_compartidas WHERE id=$1 AND eliminado_at IS NULL", [req.params.id]);
-      if (exists.rows[0] && req.body.expected_updated_at) {
-        return res.status(409).json({ error: "Otra persona modificó esta nota. Conservamos tu texto para que puedas revisarlo." });
+    } catch (error) {
+      if ([400,401,403,404,409,413,422,428].includes(error.status)) {
+        return res.status(error.status).json({ error: error.message, ...(error.code ? { code: error.code } : {}) });
       }
-      return res.status(404).json({ error: "Nota no encontrada." });
+      next(error);
     }
-    res.json({ ...result.rows[0], feedback: feedbackNoteMetadataDto(result.rows[0].feedback) });
-  } catch (error) { next(error); }
-});
+  };
+}
 
-router.delete("/notas/:id", async (req, res, next) => {
-  try {
-    if (req.query.permanente === "true") {
-      const result = await pool.query("DELETE FROM notas_compartidas WHERE id=$1 AND eliminado_at IS NOT NULL RETURNING id", [req.params.id]);
-      if (!result.rows[0]) return res.status(404).json({ error: "Nota no encontrada en la Papelera." });
-      return res.json({ ok: true });
-    }
-    const actor = getTaskActor(req.auth);
-    const result = await pool.query(
-      `UPDATE notas_compartidas SET eliminado_at=now(),modificado_por=$2,updated_at=now()
-       WHERE id=$1 AND eliminado_at IS NULL RETURNING id`,
-      [req.params.id, actor],
-    );
-    if (!result.rows[0]) return res.status(404).json({ error: "Nota no encontrada." });
-    return res.json({ ok: true });
-  } catch (error) { next(error); }
-});
-
-router.post("/notas/:id/restaurar", async (req, res, next) => {
-  try {
-    const actor = getTaskActor(req.auth);
-    const result = await pool.query(
-      `UPDATE notas_compartidas SET eliminado_at=NULL,modificado_por=$2,updated_at=now()
-       WHERE id=$1 AND eliminado_at IS NOT NULL
-       RETURNING id,titulo,contenido,categoria,creado_por,modificado_por,eliminado_at,created_at,updated_at`,
-      [req.params.id, actor],
-    );
-    if (!result.rows[0]) return res.status(404).json({ error: "Nota no encontrada en la Papelera." });
-    res.json(result.rows[0]);
-  } catch (error) { next(error); }
-});
+router.post('/notas/operaciones', handleFeedbackBrowserWrite());
+router.post("/notas", handleFeedbackBrowserWrite('create'));
+router.patch("/notas/:id", handleFeedbackBrowserWrite('edit'));
+router.delete("/notas/:id", handleFeedbackBrowserWrite('trash'));
+router.post("/notas/:id/restaurar", handleFeedbackBrowserWrite('restore'));
 
 router.get("/usuarios", async (req, res, next) => {
   try {

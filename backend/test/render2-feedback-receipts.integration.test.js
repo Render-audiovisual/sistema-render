@@ -56,9 +56,21 @@ test('feedback durable receipts: signed human confirmation, scoped retry and ato
       SELECT $1,$2,$3,'diseno',password_hash,true,1,$4,true FROM usuarios WHERE id=91004`,
     [id, `qa_feedback_${actor}`, `QA Feedback ${actor}`, hash(actors[actor])]);
   const browserToken = await login('qa_franco');
-  const browser = (route, body, method = 'PATCH') => request(fixture.base, `/api${route}`, { token: browserToken, method, body });
+  const browserMutation = async (token,route,body,method) => {
+    if(method!=='GET' && /^\/notas(?:\/|$)/.test(route)) {
+      body={...body,...(Object.hasOwn(body??{},'request_id')?{}:{request_id:crypto.randomUUID()})};
+      const match=/^\/notas\/(\d+)/.exec(route);
+      if(match && !Object.hasOwn(body,'expected_updated_at')) {
+        const observed=await request(fixture.base, `/api/notas/${match[1]}/detalle${route.endsWith('/restaurar') || route.includes('permanente=true') ? '?papelera=true' : ''}`, {token});
+        assert.equal(observed.status,200,'Ordinary browser mutation must observe the note before writing');
+        body.expected_updated_at=observed.body.item.updated_at;
+      }
+    }
+    return request(fixture.base, `/api${route}`, {token,method,body});
+  };
+  const browser = (route, body, method = 'PATCH') => browserMutation(browserToken,route,body,method);
   const employeeToken = await login('qa_designer');
-  const employeeBrowser = (route, body, method = 'PATCH') => request(fixture.base, `/api${route}`, { token: employeeToken, method, body });
+  const employeeBrowser = (route, body, method = 'PATCH') => browserMutation(employeeToken,route,body,method);
   const [legacy] = await fixture.query(`INSERT INTO notas_compartidas(titulo,contenido,categoria,creado_por,modificado_por,feedback,updated_at)
     VALUES ('QA legacy receipt poison','Preserve historical note','general','QA history','QA history',
       '{"origen":"mia_whatsapp","confirmado_por":"Unverified legacy","wilson_idempotency_key":"qa-legacy-key","responsables":["Luciano QA"],"flujo":"feedback"}',
@@ -90,6 +102,14 @@ test('feedback durable receipts: signed human confirmation, scoped retry and ato
       'payload_hash', 'note_id', 'note_updated_at', 'committed_at'].sort());
     await fixture.query("INSERT INTO _migrations(nombre) VALUES ('061_feedback_operation_receipts.sql')");
   });
+  //085 depends on061's version trigger. Install only after the complete061
+  // historical-preservation proof above, never before its baseline snapshot.
+  assert.deepEqual(await fixture.query("SELECT to_regclass('public.feedback_browser_operations') AS relation"),[{relation:null}]);
+  const beforeBrowserMigration=await snapshot();
+  await fixture.query(await readFile(new URL('../migrations/085_feedback_browser_operations.sql',import.meta.url),'utf8'));
+  assert.deepEqual(await snapshot(),beforeBrowserMigration,'085 must preserve all061 notes/receipts/audit/outbox/confirmation history');
+  assert.deepEqual(await fixture.query('SELECT * FROM feedback_browser_operations'),[]);
+  await fixture.query("INSERT INTO _migrations(nombre) VALUES ('085_feedback_browser_operations.sql')");
   let serial = 0;
   const business = () => ({ seccion: 'equipo', titulo: `QA receipt distinct subject ${++serial}`,
     contenido: `Synthetic independent detail ${serial}`, responsables: ['Luciano QA'],

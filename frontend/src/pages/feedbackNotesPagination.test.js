@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import {createFeedbackScopedRequest,createFeedbackNotesReader,readFeedbackNotesLocation,feedbackNotesLocationUrl,feedbackNotesPageUrl,normalizeFeedbackNotesSelection,parseFeedbackNotesPage,parseFeedbackNote} from './feedbackNotesPagination.js';
 import {createBrowserSessionState} from '../shared/session/browser-session-state.js';
+import {createFeedbackNotesMutation} from './feedbackNotesMutation.js';
 import {installUnsavedNavigation,registerNavigationGuard} from '../shared/navigation/unsaved.js';
 import {navigateWithinApp} from '../shared/navigation/location.js';
 const token='a'.repeat(64),other='b'.repeat(64);
@@ -88,25 +89,28 @@ test('actual restart invalidates before reload, resets first page and token, pre
   const effects=[],contextEpoch={current:4},panelEpoch={current:2},linkedNoteId={current:null};let next;
   const win={location:{href:'https://render.test/feedback?section=clients&offset=600&expected_snapshot='+token},history:{state:{fromTasks:'/workspace/tareas'},replaceState(_state,_title,url){effects.push(url)}}};
   handler('restartNotes',{contextEpoch,panelEpoch,readerRef:{current:{invalidate:()=>effects.push('invalidated')}},selection:selection({offset:600,expected_snapshot:token}),window:win,feedbackNotesLocationUrl,linkedNoteId,
-    setNotes:value=>effects.push(value),setPage(){},setLoading(){},setLocation:value=>{next=value}})(note());
+    preparedPage:{current:null},setNotes:value=>effects.push(value),setPage(){},setLoading(){},setLocation:value=>{next=value}})(note());
   assert.equal(effects[0],'invalidated');assert.equal(contextEpoch.current,5);assert.equal(panelEpoch.current,3);assert.equal(next.selection.offset,0);assert.equal(next.selection.expected_snapshot,null);assert.equal(linkedNoteId.current,620);assert.match(effects[1],/note=620/);assert.doesNotMatch(effects[1],/expected_snapshot/);
 });
 test('actual duplicate jump outside page reads exact target version, preserving user text and provenance-free draft',async()=>{
   const gate=deferred(),calls=[],reader={detail:(...args)=>{calls.push(args);return gate.promise}},readerRef={current:reader},panelEpoch={current:2},lock={current:false};let draft={titulo:'My draft',contenido:'Keep',feedback:{cliente:'Mine'}};
-  handler('updateDuplicate',{lock,notes:[],readerRef,panelEpoch,setBusy(){},setError:assert.fail,setDraft:update=>{draft=update(draft)},setDuplicates(){},setMessage(){}})(620);
+  handler('updateDuplicate',{lock,mutationRef:{current:null},notes:[],readerRef,panelEpoch,setBusy(){},setError:assert.fail,setDraft:update=>{draft=update(draft)},setDuplicates(){},setMessage(){}})(620);
   assert.equal(lock.current,true);assert.deepEqual(calls,[[620,false]]);gate.resolve(note());await Promise.resolve();await Promise.resolve();await Promise.resolve();
   assert.equal(draft.id,620);assert.equal(draft.updated_at,note().updated_at);assert.equal(draft.titulo,'My draft');assert.equal(draft.feedback.cliente,'Mine');assert.equal(Object.hasOwn(draft,'origen'),false);
 });
 test('actual chained save cannot dispatch POST after context or account changes during similarity request',async()=>{
   for(const change of ['switch','context']){const gate=deferred(),f=scopedFixture(async()=>gate.promise),errors=[],draft={titulo:'Title',contenido:'Body',categoria:'general',feedback:{cliente:'Cliente',responsables:['Ana']}};
-    const save=handler('persistDraft',{draft,section:'clients',lock:{current:false},conflict:false,feedbackResponsibles:value=>value.feedback.responsables,request:f.request,setBusy(){},setError:value=>errors.push(value),setDuplicates(){},setConflict(){},feedbackBusinessInput:()=>assert.fail('No write after obsolete preflight')});
+    const model=createFeedbackNotesMutation({capture:()=>({current:()=>true,assertCurrent(){},request:f.request.capture()}),refresh:()=>assert.fail('No read after obsolete preflight'),randomUUID:()=> '00000000-0000-4000-8000-000000000001'});
+    const mutationRef={current:{active:true,scope:{current:()=>true},model}},lock={current:false};
+    const runMutation=handler('runMutation',{mutationRef,lock,setBusy(){},setError:value=>errors.push(value),setDuplicates(){},setConflict(){},acceptMutation:()=>assert.fail('Obsolete preflight cannot publish ACK')});
+    const save=handler('persistDraft',{draft,section:'clients',lock,mutationRef,conflict:false,runMutation,feedbackResponsibles:value=>value.feedback.responsables,feedbackBusinessInput:value=>({cliente:value.cliente,responsables:[...value.responsables]})});
     const pending=save();f[change]();gate.resolve({similares:[]});await pending;assert.equal(f.calls.length,1);assert.deepEqual(errors,['']);}
 });
-test('actual edit/status/save use business projection and microsecond observation; each ACK restarts list',async()=>{
-  const feedback={cliente:'Cliente',responsables:['Ana'],estado:'pendiente'},original=note(620,{feedback:{...feedback,wilson_idempotency_key:'must-not-write'}}),calls=[],restarts=[];
+test('actual status controller input uses business projection and exact microsecond observation',async()=>{
+  const feedback={cliente:'Cliente',responsables:['Ana'],estado:'pendiente'},original=note(620,{feedback:{...feedback,wilson_idempotency_key:'must-not-write'}}),calls=[];
   const project=value=>Object.fromEntries(Object.entries(value).filter(([key])=>['cliente','responsables','estado'].includes(key)));
-  const deps={request:async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});return original},lock:{current:false},setBusy(){},setError(){},setNotes(){},setSelected(){},setMessage(){},restartNotes:value=>restarts.push(value),feedbackBusinessInput:project};
-  await handler('toggleStatus',deps)(original);assert.deepEqual(calls[0].body,{feedback:{...feedback,estado:'resuelto'},expected_updated_at:original.updated_at});assert.deepEqual(restarts,[original]);
+  const model={snapshot:{locked:false},start:value=>calls.push(value)},deps={mutationRef:{current:{model}},runMutation:action=>action(model),lock:{current:false},feedbackBusinessInput:project};
+  await handler('toggleStatus',deps)(original);assert.deepEqual(calls,[{action:'edit',note:{id:original.id,updated_at:original.updated_at},fields:{feedback:{...feedback,estado:'resuelto'}}}]);
 });
 test('navigation to a filtered page consults existing dirty/busy product guard and preserves canceled URL',()=>{
   const win=new EventTarget();win.location=new URL('https://render.test/feedback?section=clients');win.CustomEvent=class extends Event{constructor(type,options){super(type,options);this.detail=options.detail}};win.PopStateEvent=class extends Event{};win.scrollTo=()=>{};let accept=false,pushes=0,busy=false;

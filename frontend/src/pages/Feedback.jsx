@@ -6,7 +6,9 @@ import { CATEGORIAS_NOTA } from "./BlocNotas.jsx";
 import { markFeedbackSeen } from "../features/render-os/utils/feedback-notifications.js";
 import { useSessionView } from "../shared/session/use-session-view.js";
 import { getSesion } from "../utils.jsx";
-import { createFeedbackScopedRequest, createFeedbackNotesReader, readFeedbackNotesLocation, feedbackNotesLocationUrl } from "./feedbackNotesPagination.js";
+import { createFeedbackScopedRequest, createFeedbackNotesReader, readFeedbackNotesLocation, feedbackNotesLocationUrl, feedbackNotesPageUrl, parseFeedbackNotesPage } from "./feedbackNotesPagination.js";
+import { createCapturedRequest } from "../shared/session/captured-request.js";
+import { createFeedbackNotesMutation } from "./feedbackNotesMutation.js";
 import "./Feedback.css";
 import { FeedbackTaskInventory } from './FeedbackTaskInventory.jsx';
 
@@ -55,11 +57,12 @@ function FeedbackContent({transport,view,sesion}) {
   const [location,setLocation] = useState(feedbackNotesLocation);
   const selection = location.selection;
   const section = selection?.section ?? "clients", trash = selection?.papelera ?? false;
-  const mounted = useRef(false), contextEpoch = useRef(0), panelEpoch = useRef(0), readerRef = useRef(null);
+  const mounted = useRef(false), contextEpoch = useRef(0), panelEpoch = useRef(0), readerRef = useRef(null), mutationRef = useRef(null), preparedPage = useRef(null);
   const request = useMemo(() => createFeedbackScopedRequest({session:view.session,readSession:getSesion,request:transport,
     isActive:()=>mounted.current&&["/feedback","/bloc-notas"].includes(window.location.pathname),readContext:()=>contextEpoch.current}),[transport,view]);
   useLayoutEffect(()=>{mounted.current=true;return()=>{mounted.current=false;contextEpoch.current++;readerRef.current?.dispose()}},[]);
   const [page,setPage] = useState(null);
+  const [mutation,setMutation] = useState({phase:"idle",busy:false,locked:false,accepted:null,observed:null});
   const [notes, setNotes] = useState([]);
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
@@ -79,7 +82,25 @@ function FeedbackContent({transport,view,sesion}) {
   const restoreLocationRef = useRef(null);
   const dirty = Boolean(draft && JSON.stringify(draft) !== baseline);
   const panelOpen = Boolean(selected || draft);
-  useNavigationGuard(() => ({ dirty, busy: lock.current }));
+  useNavigationGuard(() => {
+    const state=mutationRef.current?.model.snapshot;
+    return {dirty:dirty||Boolean(state?.locked),busy:lock.current||Boolean(state?.locked&&state.phase!=="duplicates")};
+  });
+  useLayoutEffect(()=>{
+    const entry={active:true,model:null};
+    const epoch=contextEpoch.current;
+    const capture=()=>createCapturedRequest({session:view.session,readSession:getSesion,request:transport,
+      isActive:()=>entry.active&&mounted.current&&mutationRef.current===entry&&contextEpoch.current===epoch&&["/feedback","/bloc-notas"].includes(window.location.pathname)});
+    entry.scope=capture();
+    entry.model=createFeedbackNotesMutation({capture,onChange:state=>{if(entry.scope.current())setMutation(state)},
+      refresh:async scope=>{
+        const first={...(selection??{section:"clients",papelera:false,categoria:null,q:"",limit:50}),offset:0,expected_snapshot:null};
+        const value=await scope.request(feedbackNotesPageUrl(first),{cache:"no-store"});scope.assertCurrent();
+        return parseFeedbackNotesPage(value,first);
+      }});
+    mutationRef.current=entry;lock.current=false;setBusy(false);setMutation(entry.model.snapshot);
+    return()=>{entry.active=false;entry.model.cancel();};
+  },[request,location]);
   restoreLocationRef.current = () => {
     if (!["/feedback", "/bloc-notas"].includes(window.location.pathname)) return;
     const next = feedbackNotesLocation();
@@ -108,9 +129,10 @@ function FeedbackContent({transport,view,sesion}) {
       if(state.status==="ready"&&!trash)markFeedbackSeen(sesion?.usuario);
     }});
     readerRef.current=reader;
-    void reader.load(selection);
+    const confirmed=preparedPage.current?.location===location?preparedPage.current.data:null;
+    if(confirmed){setPage({status:"ready",data:confirmed,error:""});setNotes(confirmed.items);setLoading(false);}else void reader.load(selection);
     const noteId=linkedNoteId.current??selection.note, observedPanel=panelEpoch.current;
-    if(noteId)void reader.detail(noteId,trash).then(item=>{
+    if(noteId&&!confirmed)void reader.detail(noteId,trash).then(item=>{
       if(readerRef.current===reader&&observedPanel===panelEpoch.current){linkedNoteId.current=null;setSelected(item);}
     }).catch(reason=>{if(reason.code!=="session_binding_obsolete"&&readerRef.current===reader&&observedPanel===panelEpoch.current)setError(reason.message||"No pudimos abrir la nota.");});
     return ()=>{reader.dispose();if(readerRef.current===reader)readerRef.current=null;};
@@ -131,12 +153,14 @@ function FeedbackContent({transport,view,sesion}) {
     try { navigateWithinApp(window,feedbackNotesLocationUrl(window.location.href,{...selection,...changes},null)); }
     catch(reason){setError(reason.message);}
   }
-  function restartNotes(item = null) {
+  function restartNotes(item = null, confirmed = null) {
     contextEpoch.current++;panelEpoch.current++;readerRef.current?.invalidate();
     const next={...(selection ?? {section:"clients",papelera:false,categoria:null,q:"",limit:50}),offset:0,expected_snapshot:null,note:item?.id??null};
     window.history.replaceState(window.history.state,"",feedbackNotesLocationUrl(window.location.href,next,next.note));
     linkedNoteId.current=next.note;
-    setNotes([]);setPage(null);setLoading(true);setLocation({selection:next,error:""});
+    const nextLocation={selection:next,error:""};
+    preparedPage.current=confirmed?{location:nextLocation,data:confirmed}:null;
+    setNotes(confirmed?.items??[]);setPage(confirmed?{status:"ready",data:confirmed,error:""}:null);setLoading(!confirmed);setLocation(nextLocation);
   }
   function recordSelected(note) {
     panelEpoch.current++;
@@ -144,7 +168,48 @@ function FeedbackContent({transport,view,sesion}) {
   }
 
   function canLeave() {
-    return !lock.current && (!dirty || window.confirm("Tenés cambios sin guardar. ¿Querés descartarlos?"));
+    const model=mutationRef.current?.model,state=model?.snapshot;
+    if(lock.current||state?.locked&&state.phase!=="duplicates")return false;
+    if((dirty||state?.locked)&&!window.confirm("Tenés cambios sin guardar. ¿Querés descartarlos?"))return false;
+    if(state?.phase==="duplicates")model.releaseUnsent();
+    return true;
+  }
+  function acceptMutation(result) {
+    const model=mutationRef.current?.model;
+    if(!result?.ack||model?.snapshot.phase!=="complete")return;
+    model.complete(); // Settle receipt ownership BEFORE changing the page context.
+    const item=result.ack.note, visibleItem=item&&(item.eliminado_at!==null)===trash?item:null;
+    setSelected(visibleItem);setDraft(null);setBaseline("");setDuplicates([]);setConflict(false);setError("");
+    if(!item)setMessage("La operación está confirmada. La nota ya no está disponible; fue eliminada definitivamente.");
+    else setMessage(result.ack.operation.replayed?"Intento verificado. Se muestra el estado actual de la nota.":"Operación confirmada.");
+    markFeedbackSeen(sesion?.usuario);
+    restartNotes(visibleItem,result.data);
+  }
+  async function runMutation(action) {
+    if(lock.current)return;
+    const entry=mutationRef.current;if(!entry?.scope.current())return;
+    lock.current=true;setBusy(true);setError("");
+    try{
+      const result=await action(entry.model);
+      if(!entry.scope.current()||mutationRef.current!==entry)return;
+      if(result?.duplicates)setDuplicates(result.duplicates);
+      else acceptMutation(result);
+    }catch(reason){
+      if(reason.code!=="session_binding_obsolete"&&entry.scope.current()){
+        setError(reason.message||"No se pudo confirmar la operación. Tu texto se conserva.");
+        setConflict(entry.model.snapshot.phase==="conflict");
+      }
+    }finally{if(mutationRef.current===entry){lock.current=false;if(entry.active)setBusy(false);}}
+  }
+  function verifyMutation(){void runMutation(model=>model.verify());}
+  function observeMutation(){void runMutation(model=>model.observe());}
+  function finishConflict(){
+    const model=mutationRef.current?.model;
+    if(lock.current||model?.snapshot.phase!=="reviewed")return;
+    const observed=model.releaseConflict();setConflict(true);setError("");
+    setMessage("Revisión cerrada. Tu borrador conserva su versión anterior; copiá el texto y abrí la nota actual para editarla.");
+    const item=observed?.note&&(observed.note.eliminado_at!==null)===trash?observed.note:null;
+    setSelected(item);restartNotes(item);
   }
 
   function backToTasks() {
@@ -189,7 +254,7 @@ function FeedbackContent({transport,view,sesion}) {
   }
 
   function editNote(note) {
-    if(lock.current)return;
+    if(lock.current||mutationRef.current?.model.snapshot.locked)return;
     recordSelected(note);
     const next = {
       ...note,
@@ -219,52 +284,13 @@ function FeedbackContent({transport,view,sesion}) {
   }
 
   async function persistDraft({ skipDuplicateCheck = false } = {}) {
-    const writeSection = draft?.section ?? section;
-    const clientName = String(draft?.feedback?.cliente || "").trim();
-    const responsables = feedbackResponsibles(draft);
-    if (lock.current || conflict || !draft?.titulo.trim() || !draft?.contenido.trim()
-      || !responsables.length || (writeSection === "clients" && !clientName)) return;
-    const writeRequest = request.capture?.() ?? request;
-    lock.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      if (!draft.id && !skipDuplicateCheck) {
-        const params = new URLSearchParams({ cliente: writeSection === "team" ? "" : clientName, titulo: draft.titulo, contenido: draft.contenido });
-        const result = await writeRequest(`/api/notas/similares?${params}`);
-        if (result.similares?.length) {
-          setDuplicates(result.similares);
-          return;
-        }
-      }
-      const body = {
-        titulo: draft.titulo.trim(),
-        contenido: draft.contenido,
-        categoria: draft.categoria,
-        feedback: { ...feedbackBusinessInput(draft.feedback), responsables, responsable: responsables[0], cliente: writeSection === "team" ? "" : clientName, flujo: "feedback" },
-        ...(draft.id ? { expected_updated_at: draft.updated_at } : {}),
-      };
-      const saved = await writeRequest(draft.id ? `/api/notas/${draft.id}` : "/api/notas", {
-        method: draft.id ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      setNotes([]);
-      markFeedbackSeen(sesion?.usuario);
-      setSelected(saved);
-      setDraft(null);
-      setBaseline("");
-      setMessage("Feedback guardado y disponible para el equipo.");
-      setDuplicates([]);
-      restartNotes(saved);
-    } catch (reason) {
-      if(reason.code==="session_binding_obsolete")return;
-      setError(reason.message || "No se pudo guardar. Tu texto sigue acá.");
-      setConflict(reason.status === 409);
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
+    if(skipDuplicateCheck&&mutationRef.current?.model.snapshot.phase==="duplicates")return runMutation(model=>model.confirmCreate());
+    const writeSection=draft?.section??section,clientName=String(draft?.feedback?.cliente||"").trim(),responsables=feedbackResponsibles(draft);
+    if(lock.current||mutationRef.current?.model.snapshot.locked||conflict||!draft?.titulo.trim()||!draft?.contenido.trim()
+      ||!responsables.length||writeSection==="clients"&&!clientName)return;
+    const fields={titulo:draft.titulo.trim(),contenido:draft.contenido,categoria:draft.categoria,
+      feedback:{...feedbackBusinessInput(draft.feedback),responsables,responsable:responsables[0],cliente:writeSection==="team"?"":clientName,flujo:"feedback"}};
+    return runMutation(model=>model.start({action:draft.id?"edit":"create",note:draft.id?{id:draft.id,updated_at:draft.updated_at}:undefined,fields},{checkDuplicates:!draft.id&&!skipDuplicateCheck}));
   }
 
   function save(event) {
@@ -274,6 +300,9 @@ function FeedbackContent({transport,view,sesion}) {
 
   function updateDuplicate(noteId) {
     if(lock.current)return;
+    const model=mutationRef.current?.model;
+    if(model?.snapshot.phase==="duplicates")model.releaseUnsent();
+    else if(model?.snapshot.locked)return;
     const existing = notes.find((note) => Number(note.id) === Number(noteId));
     const apply = item => {
       setDraft((current)=>({...current,id:item.id,updated_at:item.updated_at,section:item.section??current.section}));
@@ -286,50 +315,20 @@ function FeedbackContent({transport,view,sesion}) {
     void reader.detail(Number(noteId),false).then(item=>{
       if(readerRef.current===reader&&panelEpoch.current===observedPanel)apply(item);
     }).catch(reason=>{if(reason.code!=="session_binding_obsolete"&&readerRef.current===reader)setError(reason.message||"No pudimos abrir el feedback anterior.");})
-      .finally(()=>{lock.current=false;setBusy(false);});
+      .finally(()=>{if(readerRef.current===reader&&panelEpoch.current===observedPanel){lock.current=false;setBusy(false);}});
   }
 
   async function toggleStatus(note) {
-    if (note.source === "task" || lock.current) return;
-    const nextStatus = note.feedback?.estado === "resuelto" ? "pendiente" : "resuelto";
-    const writeRequest = request.capture?.() ?? request;
-    lock.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      const saved = await writeRequest(`/api/notas/${note.id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ feedback: { ...feedbackBusinessInput(note.feedback), estado: nextStatus }, expected_updated_at: note.updated_at }),
-      });
-      setNotes([]);
-      setSelected(saved);
-      setMessage(nextStatus === "resuelto" ? "Feedback marcado como resuelto." : "Feedback volvió a pendiente.");
-      restartNotes(saved);
-    } catch (reason) { if(reason.code!=="session_binding_obsolete")setError(reason.message || "No se pudo cambiar el estado."); }
-    finally { lock.current = false; setBusy(false); }
+    if(note.source==="task"||lock.current||mutationRef.current?.model.snapshot.locked)return;
+    const nextStatus=note.feedback?.estado==="resuelto"?"pendiente":"resuelto";
+    return runMutation(model=>model.start({action:"edit",note:{id:note.id,updated_at:note.updated_at},
+      fields:{feedback:{...feedbackBusinessInput(note.feedback),estado:nextStatus}}}));
   }
 
   async function trashAction(note) {
-    if (lock.current || !canLeave()) return;
-    if (!trash && !window.confirm(`¿Mover “${note.titulo}” a la Papelera? Podés restaurarlo después.`)) return;
-    const writeRequest = request.capture?.() ?? request;
-    lock.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      await writeRequest(`/api/notas/${note.id}${trash ? "/restaurar" : ""}`, { method: trash ? "POST" : "DELETE" });
-      setNotes((rows) => rows.filter((item) => item.id !== note.id));
-      setSelected(null);
-      setDraft(null);
-      setMessage(trash ? "Feedback restaurado." : "Feedback movido a la Papelera.");
-      restartNotes();
-    } catch (reason) {
-      if(reason.code==="session_binding_obsolete")return;
-      setError(reason.message || "No se pudo completar la acción.");
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
+    if(lock.current||!canLeave())return;
+    if(!trash&&!window.confirm(`¿Mover “${note.titulo}” a la Papelera? Podés restaurarlo después.`))return;
+    return runMutation(model=>model.start({action:trash?"restore":"trash",note:{id:note.id,updated_at:note.updated_at}}));
   }
 
   const clientOptions = useMemo(() => [...new Set([
@@ -349,6 +348,16 @@ function FeedbackContent({transport,view,sesion}) {
   });
   const sectionTitle = section === "all" ? "Todas las notas" : section === "clients" ? "Feedback de clientes" : "Feedback del equipo";
   const sectionCopy = section === "clients" ? "Pedidos, correcciones y comentarios de cada cliente." : "Conclusiones y acuerdos de nuestras reuniones internas.";
+
+  const recoveryControls=<section aria-label="Estado de la operación de nota">
+    {error&&<p className="rf-conflict" role="alert">{error}</p>}
+    {["preflight","writing"].includes(mutation.phase)&&<p className="rf-message" role="status">Confirmando la operación…</p>}
+    {mutation.phase==="uncertain"&&<><p className="rf-conflict" role="alert">No sabemos si la operación se guardó. No vuelvas a crearla: verificá únicamente este mismo intento.</p><button type="button" disabled={busy} onClick={verifyMutation}>Verificar el mismo intento</button></>}
+    {mutation.phase==="read_failed"&&<><p className="rf-message">La operación está confirmada. Falta actualizar el listado; no volveremos a enviarla.</p><button type="button" disabled={busy} onClick={verifyMutation}>Actualizar listado confirmado</button></>}
+    {mutation.phase==="conflict"&&<><p className="rf-conflict">La nota cambió o ya no está disponible. Tu texto y su versión original se conservan.</p><button type="button" disabled={busy} onClick={observeMutation}>Observar versión actual</button></>}
+    {mutation.phase==="reviewed"&&<><p className="rf-message">{mutation.observed?.note?`Versión actual observada: ${mutation.observed.note.titulo} · ${formatDate(mutation.observed.note.updated_at)}`:"La nota no está disponible o la operación de creación no identifica una nota observable."}</p><button type="button" disabled={busy} onClick={finishConflict}>Cerrar revisión y conservar borrador</button></>}
+    {mutation.phase==="blocked"&&<p className="rf-conflict" role="alert">La sesión o el contexto cambió. No enviaremos otro intento desde aquí.</p>}
+  </section>;
 
   return <main className="render-feedback">
     <header className="rf-header">
@@ -373,8 +382,9 @@ function FeedbackContent({transport,view,sesion}) {
     </form>
 
     {(location.error || page?.error) && <div className="rf-error" role="alert">{location.error || page.error}<button type="button" disabled={busy} onClick={()=>{if(canLeave())restartNotes(selected)}}>{page?.status==="stale"?"El listado cambió · Reiniciar desde la primera página":"Reiniciar listado"}</button></div>}
-    {error && <div className="rf-error" role="alert">{error}{!panelOpen && <button disabled={busy} onClick={() => restartNotes(selected)}>Reintentar</button>}</div>}
+    {error && <div className="rf-error" role="alert">{error}{!panelOpen && <button disabled={busy||mutation.locked} onClick={() => restartNotes(selected)}>Reintentar</button>}</div>}
     {message && <p className="rf-message" role="status">{message}</p>}
+    {!panelOpen&&mutation.locked&&recoveryControls}
 
     {loading ? <div className="rf-loading" role="status"><span/><span/><span/></div> : <div className="rf-grid">
       {visible.map((note) => <button type="button" className="rf-note-card" key={note.id} onClick={() => openNote(note)}>
@@ -389,9 +399,10 @@ function FeedbackContent({transport,view,sesion}) {
       <section className={`rf-panel ${draft ? "is-editing" : ""}`} role="dialog" aria-modal="true" aria-label={draft ? (draft.id ? "Editar feedback" : "Nuevo feedback") : selected?.titulo} onMouseDown={(event) => event.stopPropagation()}>
         <header className="rf-panel-header"><div><span>{panelSection === "clients" ? "CLIENTE" : "EQUIPO"}</span><strong>{draft ? (draft.id ? "Editar feedback" : "Nuevo feedback") : selected?.titulo}</strong></div><button type="button" aria-label="Cerrar" onClick={closePanel}>×</button></header>
 
+        {recoveryControls}
         {draft ? <form className="rf-editor" onSubmit={save}>
           <fieldset disabled={busy}>
-            <div className="rf-fields">
+            <fieldset className="rf-fields" disabled={mutation.locked} style={{border:0,margin:0,padding:0,minWidth:0}}>
               {panelSection === "clients" && <label className="rf-wide">Cliente<input ref={!draft.id ? titleRef : undefined} required list="rf-clients" maxLength={200} value={draft.feedback.cliente} onChange={(event) => changeMeta("cliente", event.target.value)}/><datalist id="rf-clients">{clientOptions.map((name) => <option key={name} value={name}/>)}</datalist></label>}
               <label className="rf-wide">Título<input ref={panelSection === "team" || draft.id ? titleRef : undefined} required value={draft.titulo} placeholder={panelSection === "team" ? "Ej.: Reunión semanal de comunicación" : "Ej.: Corrección de campaña de septiembre"} onChange={(event) => change("titulo", event.target.value)}/></label>
               <label className="rf-wide">Detalle<textarea required rows={9} value={draft.contenido} placeholder="Escribí el feedback completo…" onChange={(event) => change("contenido", event.target.value)}/></label>
@@ -399,10 +410,10 @@ function FeedbackContent({transport,view,sesion}) {
               <label>Categoría<select value={draft.categoria} onChange={(event) => change("categoria", event.target.value)}>{EDITABLE_CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
               <label>Vigencia<select value={draft.feedback.vigencia || "puntual"} onChange={(event) => changeMeta("vigencia", event.target.value)}><option value="puntual">Puntual</option><option value="permanente">Permanente</option></select></label>
               <label>Estado<select value={draft.feedback.estado || "pendiente"} onChange={(event) => changeMeta("estado", event.target.value)}><option value="pendiente">Pendiente</option><option value="resuelto">Resuelto</option></select></label>
-              <label className="rf-wide">Referencia · opcional<input maxLength={2000} placeholder="Enlace, mensaje o dato relacionado" value={draft.feedback.referencia} onChange={(event) => changeMeta("referencia", event.target.value)}/></label>
-            </div>
+              <label className="rf-wide">Referencia · opcional<input maxLength={2000} placeholder="Enlace, mensaje o dato relacionado" value={draft.feedback.referencia??""} onChange={(event) => changeMeta("referencia", event.target.value)}/></label>
+            </fieldset>
             {duplicates.length > 0 && <section className="rf-duplicates" role="alert"><strong>Encontré un feedback parecido</strong><p>Podés actualizar el anterior o guardar este como uno nuevo.</p>{duplicates.map((item) => <div key={item.id}><span>{item.cliente} · {item.titulo}</span><button type="button" onClick={() => updateDuplicate(item.id)}>Modificar anterior</button></div>)}<button type="button" className="rf-save-anyway" onClick={() => void persistDraft({ skipDuplicateCheck: true })}>Crear uno nuevo igualmente</button></section>}
-            <div className="rf-form-actions"><button type="button" onClick={closePanel}>Cancelar</button><button className="rf-primary" disabled={conflict} type="submit">{busy ? "Guardando…" : "Guardar feedback"}</button></div>
+            <div className="rf-form-actions"><button type="button" onClick={closePanel}>Cancelar</button><button className="rf-primary" disabled={conflict||mutation.locked} type="submit">{busy ? "Guardando…" : "Guardar feedback"}</button></div>
           </fieldset>
           {conflict && <p className="rf-conflict" role="alert">Otra persona guardó una versión más reciente. Tu texto sigue acá para que puedas copiarlo antes de volver a cargar.</p>}
         </form> : selected && <div className="rf-detail">
@@ -410,7 +421,7 @@ function FeedbackContent({transport,view,sesion}) {
           <div className="rf-detail-content">{selected.contenido || "Sin contenido."}</div>
           {selected.feedback?.referencia && <section className="rf-reference"><span>REFERENCIA</span><Reference text={selected.feedback.referencia}/></section>}
           <dl className="rf-detail-meta"><div><dt>Responsables</dt><dd>{feedbackResponsibles(selected).join(", ") || "Sin asignar"}</dd></div><div><dt>Estado</dt><dd>{selected.feedback?.estado === "resuelto" ? "Resuelto" : "Pendiente"}</dd></div><div><dt>Vigencia</dt><dd>{selected.feedback?.vigencia === "permanente" ? "Permanente" : "Puntual"}</dd></div><div><dt>Categoría</dt><dd>{CATEGORY_LABELS[selected.categoria] || "General"}</dd></div><div><dt>Creado por</dt><dd>{selected.creado_por}</dd></div></dl>
-          <footer className="rf-detail-actions">{trash ? <button className="rf-primary" disabled={busy} onClick={() => trashAction(selected)}>Restaurar feedback</button> : <><button className="rf-danger" disabled={busy} onClick={() => trashAction(selected)}>Mover a Papelera</button><button disabled={busy} onClick={() => toggleStatus(selected)}>{selected.feedback?.estado === "resuelto" ? "Marcar pendiente" : "Marcar resuelto"}</button><button className="rf-primary" disabled={busy} onClick={() => editNote(selected)}>Editar feedback</button></>}</footer>
+          <footer className="rf-detail-actions">{trash ? <button className="rf-primary" disabled={busy||mutation.locked} onClick={() => trashAction(selected)}>Restaurar feedback</button> : <><button className="rf-danger" disabled={busy||mutation.locked} onClick={() => trashAction(selected)}>Mover a Papelera</button><button disabled={busy||mutation.locked} onClick={() => toggleStatus(selected)}>{selected.feedback?.estado === "resuelto" ? "Marcar pendiente" : "Marcar resuelto"}</button><button className="rf-primary" disabled={busy||mutation.locked} onClick={() => editNote(selected)}>Editar feedback</button></>}</footer>
         </div>}
       </section>
     </div>}

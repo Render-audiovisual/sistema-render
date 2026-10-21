@@ -8,6 +8,7 @@ const sidebar = readFileSync(new URL("../../frontend/src/components/Sidebar.jsx"
 const page = readFileSync(new URL("../../frontend/src/pages/BlocNotas.jsx", import.meta.url), "utf8");
 const migration = readFileSync(new URL("../migrations/013_bloc_notas.sql", import.meta.url), "utf8");
 const categoryMigration = readFileSync(new URL("../migrations/025_notas_categorias.sql", import.meta.url), "utf8");
+const writeService = readFileSync(new URL('../src/feedback-browser-write.js',import.meta.url),'utf8');
 
 test("el Bloc de notas exige sesión y expone el contrato CRUD con Papelera", () => {
   const authPosition = server.indexOf('router.use(createPrincipalAuthentication({ browserTransport: browserSessions, pool }))');
@@ -15,6 +16,7 @@ test("el Bloc de notas exige sesión y expone el contrato CRUD con Papelera", ()
   for (const route of [
     'router.get("/notas"',
     'router.get("/notas/nuevas"',
+    "router.post('/notas/operaciones'",
     'router.post("/notas"',
     'router.patch("/notas/:id"',
     'router.delete("/notas/:id"',
@@ -22,9 +24,11 @@ test("el Bloc de notas exige sesión y expone el contrato CRUD con Papelera", ()
   ]) {
     assert.ok(server.indexOf(route) > authPosition, `${route} debe quedar detrás de autenticación`);
   }
-  assert.match(server, /expected_updated_at/);
-  assert.match(server, /res\.status\(409\)/);
-  assert.match(server, /eliminado_at IS NOT NULL/);
+  assert.match(writeService, /expected_updated_at/);
+  assert.match(writeService, /fail\(409/);
+  assert.match(writeService, /input.action==='purge'/);
+  assert.match(writeService, /trashed/);
+  assert.match(server,/handleFeedbackBrowserWrite/);
 });
 
 test("la tabla conserva autor, última modificación, Papelera y versión", () => {
@@ -39,7 +43,7 @@ test("las notas admiten categorías persistentes y compatibles con datos existen
   for (const category of ["general", "diseno", "web", "reunion", "contenido"]) {
     assert.match(categoryMigration, new RegExp(`'${category}'`));
   }
-  assert.match(server, /normalizeNotaCategoria/);
+  for(const category of ['general','diseno','web','reunion','contenido'])assert.ok(writeService.includes(`'${category}'`));
   assert.match(page, /CATEGORIAS_NOTA/);
 });
 

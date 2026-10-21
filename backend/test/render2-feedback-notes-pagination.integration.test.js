@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID, createHash } from 'node:crypto';
 import { access } from 'node:fs/promises';
 import pg from 'pg';
 import { startLocalHarness, request, fixturePassword, assertFixtureIdentity } from '../scripts/render2-local-test.js';
@@ -20,7 +21,18 @@ test('QA119 physical shared feedback-note pagination, deep reads and observation
     host(inet_server_addr()) AS address,inet_server_port() AS port,current_setting('data_directory') AS directory`);
   assertFixtureIdentity({ root: f.root, cwd: f.root, port: 55768, url, identity });
   pool = new pg.Pool({ connectionString: url, max: 4, statement_timeout: 15000, application_name: 'qa119-own-notes' });
-  const api = (path, token, method = 'GET', body) => request(f.base, `/api${path}`, { token, method, body });
+  const api = async (path, token, method = 'GET', body) => {
+    if(method!=='GET' && /^\/notas(?:\/|$)/.test(path)) {
+      body={...body,...(Object.hasOwn(body??{},'request_id')?{}:{request_id:randomUUID()})};
+      const match=/^\/notas\/(\d+)/.exec(path);
+      if(match && !Object.hasOwn(body,'expected_updated_at')) {
+        const detail=await request(f.base, `/api/notas/${match[1]}/detalle${path.endsWith('/restaurar') || path.includes('permanente=true') ? '?papelera=true' : ''}`, {token});
+        assert.equal(detail.status,200,'Ordinary mutation must first observe the current note version');
+        body.expected_updated_at=detail.body.item.updated_at;
+      }
+    }
+    return request(f.base, `/api${path}`, { token, method, body });
+  };
   const ok = (response, status = 200) => { assert.equal(response.status, status, 'Unexpected principal HTTP status'); return response.body; };
   const login = async usuario => ok(await api('/login', null, 'POST', { usuario, password: fixturePassword })).token;
   const admin = await login('qa_franco'), staff = await login('qa_luciano');
@@ -329,12 +341,14 @@ test('QA119 physical shared feedback-note pagination, deep reads and observation
       assert.equal(stored.feedback.unknown_private_field, marker);
       assert.equal(stored.feedback.unknown_bag.marker, marker);
       const contenido = `QA119 verified ACK metadata closure ${index}`;
+      const requestId=randomUUID(),actorId=[91001,91003,customId][index];
       const saved = ok(await api(`/notas/${deep.id}`, token, 'PATCH', {
-        expected_updated_at: observed.updated_at, contenido,
+        request_id:requestId,expected_updated_at: observed.updated_at, contenido,
       }));
       keys(saved, ['id', 'titulo', 'contenido', 'categoria', 'feedback', 'creado_por', 'modificado_por',
-        'eliminado_at', 'created_at', 'updated_at']);
+        'eliminado_at', 'created_at', 'updated_at', 'resolved_client', 'section', 'operation']);
       assert.equal(saved.id, deep.id); assert.equal(saved.contenido, contenido);
+      assert.equal(saved.resolved_client,observed.resolved_client);assert.equal(saved.section,observed.section);
       assert.deepEqual(saved.feedback, observed.feedback);
       assert.equal(JSON.stringify(saved).includes(marker), false);
       assert.equal(JSON.stringify(saved).includes('817293.46'), false);
@@ -344,7 +358,28 @@ test('QA119 physical shared feedback-note pagination, deep reads and observation
       assert.equal(updated.contenido, contenido);
       assert.deepEqual(updated.feedback, stored.feedback, 'ACK projection must not rewrite historical stored JSON');
       assert.deepEqual(after.notas_compartidas.filter(row => row.id !== deep.id), before.notas_compartidas.filter(row => row.id !== deep.id));
-      for (const table of tables.filter(name => name !== 'notas_compartidas')) assert.deepEqual(after[table], before[table], table);
+      for (const table of tables.filter(name => !['notas_compartidas','feedback_browser_operations'].includes(name))) assert.deepEqual(after[table], before[table], table);
+      assert.equal(after.feedback_browser_operations.length,before.feedback_browser_operations.length+1,'one browser mutation adds exactly one durable receipt');
+      const receiptKey=row=>JSON.stringify([row.actor_user_id,row.request_id]);
+      const receiptIds=new Set(before.feedback_browser_operations.map(receiptKey));
+      const previous=after.feedback_browser_operations.filter(row=>receiptIds.has(receiptKey(row)));
+      assert.equal(JSON.stringify(previous),JSON.stringify(before.feedback_browser_operations),'all old receipts remain byte-preserved');
+      const inserted=after.feedback_browser_operations.filter(row=>!receiptIds.has(receiptKey(row)));
+      assert.equal(inserted.length,1,'exactly one new composite receipt identity');
+      const receipt=inserted[0];
+      keys(receipt,['actor_user_id','request_id','action','payload_hash','note_id','note_updated_at','recorded_at']);
+      assert.equal(receipt.actor_user_id,actorId);assert.equal(receipt.request_id,requestId);
+      assert.equal(receipt.request_id,saved.operation.request_id);assert.equal(receipt.action,'edit');
+      assert.equal(String(receipt.note_id),String(deep.id));assert.equal(saved.operation.note_id,deep.id);
+      assert.equal(saved.operation.action,'edit');assert.equal(saved.operation.replayed,false);
+      const expectedHash=createHash('sha256').update(JSON.stringify({
+        action:'edit',contract:'feedback-browser-operation-v1',
+        expected_updated_at:new Date(observed.updated_at).toISOString(),fields:{contenido},note_id:deep.id,
+      })).digest('hex');
+      assert.equal(receipt.payload_hash,expectedHash,'receipt binds exact normalized authorized PATCH intent');
+      assert.equal(new Date(receipt.note_updated_at).toISOString(),new Date(saved.updated_at).toISOString());
+      assert.equal(new Date(receipt.note_updated_at).toISOString(),new Date(saved.operation.note_updated_at).toISOString());
+      assert.ok(Number.isFinite(Date.parse(receipt.recorded_at)));
       const reloaded = ok(await api(`/notas/${deep.id}/detalle?papelera=false`, token)).item;
       assertNote(reloaded); assert.equal(reloaded.contenido, contenido); assert.deepEqual(reloaded.feedback, observed.feedback);
       const search = new URLSearchParams({ cliente: 'Zafiro119', titulo: reloaded.titulo, contenido });

@@ -265,7 +265,9 @@ async function fixtureChild() {
     ...(process.env.RENDER2_DEFER_EDITING_APPROVAL_MIGRATION === 'true' ? ['066_task_editing_approval.sql'] : []),
     ...(process.env.RENDER2_DEFER_EDITING_DELIVERIES_MIGRATION === 'true' ? ['065_task_editing_deliveries.sql'] : []),
     ...(process.env.RENDER2_DEFER_EDITORIAL_CONFIRMATION_MIGRATION === 'true' ? ['064_editorial_publication_confirmation.sql'] : []),
-    ...(process.env.RENDER2_DEFER_FEEDBACK_RECEIPTS_MIGRATION === 'true' ? ['061_feedback_operation_receipts.sql'] : []),
+    // 085 validates the clock installed by061; historical upgrade fixtures must
+    // defer both, then explicitly apply them in dependency order.
+    ...(process.env.RENDER2_DEFER_FEEDBACK_RECEIPTS_MIGRATION === 'true' ? ['061_feedback_operation_receipts.sql', '085_feedback_browser_operations.sql'] : []),
     ...(process.env.RENDER2_DEFER_TASK_RECEIPTS_MIGRATION === 'true' ? ['062_task_operation_receipts.sql'] : []),
     // 063's reciprocal guards depend on the actual 060 relationship columns.
     // Older populated-upgrade fixtures must defer the dependent SQL as well.

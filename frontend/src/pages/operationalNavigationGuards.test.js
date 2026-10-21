@@ -3,12 +3,18 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { navigateWithinApp } from '../shared/navigation/location.js';
 import { readFeedbackNotesLocation, feedbackNotesLocationUrl } from './feedbackNotesPagination.js';
+import { feedbackNotesMutationBody } from './feedbackNotesMutation.js';
+import ts from 'typescript';
 
 // Extract real non-JSX handlers. These are protocol/source tests, not mounted
 // React or native browser traversal verification.
 const production = readFileSync(new URL('./Productions.jsx', import.meta.url), 'utf8');
 const feedback = readFileSync(new URL('./Feedback.jsx', import.meta.url), 'utf8');
 const feedbackInventory = readFileSync(new URL('./FeedbackTaskInventory.jsx', import.meta.url), 'utf8');
+const feedbackTree=ts.createSourceFile('Feedback.jsx',feedback,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
+function nodes(root,predicate){const result=[];const visit=node=>{if(predicate(node))result.push(node);ts.forEachChild(node,visit)};visit(root);return result;}
+const feedbackGuards=nodes(feedbackTree,node=>ts.isCallExpression(node)&&node.expression.getText(feedbackTree)==='useNavigationGuard');
+function evaluate(node,bindings){return Function(...Object.keys(bindings),`return (${node.getText(feedbackTree).replace(/^export /,'')});`)(...Object.values(bindings));}
 function feedbackHandler(name, bindings) {
   const start = feedback.indexOf(`  function ${name}(`);
   const end = feedback.indexOf('\n  function ', start + 1);
@@ -47,7 +53,8 @@ function sectionHarness(win) {
 
 test('both pages register live dirty/busy getters and remove duplicate unload/custom guards', () => {
   assert.match(production, /useNavigationGuard\(\(\) => \(\{ dirty: dirty.current.size > 0, busy: writeLock.current\|\|batchDraft.current.busy \}\)\)/);
-  assert.match(feedback, /useNavigationGuard\(\(\) => \(\{ dirty, busy: lock.current \}\)\)/);
+  assert.equal(feedbackTree.parseDiagnostics.length,0);
+  assert.equal(feedbackGuards.length,1,'Feedback registers one live product guard');
   for (const source of [production, feedback]) {
     assert.doesNotMatch(source, /addEventListener\(['"]beforeunload|addEventListener\(['"]render:before-navigation/);
     assert.match(source, /useNavigationGuard.*shared\/navigation\/useNavigationGuard/);
@@ -65,12 +72,22 @@ test('production getter reads mutable set/write lock at navigation time without 
   assert.equal(dirty.current.size,1); assert.equal(writeLock.current,false);
 });
 
-test('feedback getter uses current render dirty and synchronous current write lock', () => {
-  const expression = /useNavigationGuard\((\(\) => \(\{ dirty, busy: lock.current \}\))\)/.exec(feedback)[1];
-  const lock = { current: false }, render = dirty => Function('dirty', 'lock', `return ${expression};`)(dirty, lock);
+test('feedback getter uses render dirty, synchronous lock and live unresolved receipt ownership', () => {
+  const lock = { current: false },mutationRef={current:{model:{snapshot:{locked:false,phase:'idle'}}}};
+  const render=dirty=>evaluate(feedbackGuards[0].arguments[0],{dirty,lock,mutationRef});
   let latest = render(false); assert.deepEqual(latest(), { dirty: false, busy: false });
   latest = render(true); lock.current = true; assert.deepEqual(latest(), { dirty: true, busy: true });
   lock.current = false; latest = render(false); assert.deepEqual(latest(), { dirty: false, busy: false });
+  for(const phase of ['preflight','writing','uncertain','read_failed','conflict','reviewed']){
+    const snapshot={locked:true,phase};mutationRef.current.model.snapshot=snapshot;
+    assert.deepEqual(latest(),{dirty:true,busy:true},`${phase} cannot discard/rebase an unresolved operation`);
+    assert.equal(mutationRef.current.model.snapshot,snapshot,'Reading the guard never resolves the receipt');
+  }
+  mutationRef.current.model.snapshot={locked:true,phase:'duplicates'};
+  assert.deepEqual(latest(),{dirty:true,busy:false},'Known-unsent duplicate requires discard confirmation, not an uncertain-write lock');
+  lock.current=true;assert.deepEqual(latest(),{dirty:true,busy:true});lock.current=false;
+  mutationRef.current.model.snapshot={locked:false,phase:'idle'};
+  assert.deepEqual(latest(),{dirty:false,busy:false});latest=render(true);assert.deepEqual(latest(),{dirty:true,busy:false});
 });
 
 test('rejected section navigation preserves URL/history, selected note, draft and baseline', () => {
@@ -169,12 +186,25 @@ test('feedback local panel close retains draft on refused discard and permits de
   close(); assert.equal(changes.length, 0); allow = true; close(); assert.ok(changes.some(([name, value]) => name === 'setDraft' && value === null));
 });
 
-test('popstate listeners restore location only, clean up and keep persisted business/CAS semantics unchanged', () => {
+test('popstate listeners restore location only, clean up and preserve exact DTO observation through canonical mutation serializer', async () => {
   assert.match(production, /removeEventListener\('popstate',restore\)/);
   assert.match(feedback, /removeEventListener\("popstate", restore\)/);
   const start = feedback.indexOf('  restoreLocationRef.current = () => {'), end = feedback.indexOf('  useEffect(() => {', start);
   assert.doesNotMatch(feedback.slice(start, end), /canLeave|confirm|history\.|replaceState/);
   assert.match(feedback, /if \(!\["\/feedback", "\/bloc-notas"\].includes\(window.location.pathname\)\) return;/);
-  assert.match(production, /expected_revision:visit.revision/); assert.match(feedback, /expected_updated_at: draft.updated_at/);
+  assert.match(production, /expected_revision:visit.revision/);
+  const draft={id:620,updated_at:'2026-10-22T10:00:00.123456Z',titulo:'User title',contenido:'Keep my text',categoria:'general',feedback:{cliente:'Client',responsables:['Ana'],origen:'server-only',wilson_idempotency_key:'private'}};
+  const project=evaluate(nodes(feedbackTree,node=>ts.isFunctionDeclaration(node)&&node.name?.text==='feedbackBusinessInput')[0],{});
+  const captured=[];
+  const model={snapshot:{locked:false},start:(input,options)=>{captured.push({input,options});}};
+  const persist=evaluate(nodes(feedbackTree,node=>ts.isFunctionDeclaration(node)&&node.name?.text==='persistDraft')[0],{
+    draft,section:'clients',lock:{current:false},conflict:false,mutationRef:{current:{model}},feedbackResponsibles:item=>item.feedback.responsables,
+    feedbackBusinessInput:project,runMutation:action=>action(model),
+  });
+  await persist();assert.equal(captured.length,1);assert.deepEqual(captured[0].input.note,{id:620,updated_at:draft.updated_at});
+  const body=feedbackNotesMutationBody(captured[0].input,'00000000-0000-4000-8000-000000000001');
+  assert.equal(body.action,'edit');assert.equal(body.note_id,draft.id);assert.equal(body.expected_updated_at,draft.updated_at);
+  assert.equal(body.fields.contenido,draft.contenido);assert.equal(Object.hasOwn(body.fields.feedback,'origen'),false);assert.equal(Object.hasOwn(body.fields.feedback,'wilson_idempotency_key'),false);
+  assert.equal(captured[0].options.checkDuplicates,false,'An observed edit never queues a duplicate-create preflight');
   assert.doesNotMatch(production + feedback, /localStorage|sessionStorage/);
 });

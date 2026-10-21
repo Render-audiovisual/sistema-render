@@ -12,8 +12,8 @@ function actorObservation(auth){
   return Object.freeze({id:auth.id,session_version:auth.session_version,rol:auth.rol});
 }
 function recordId(value){
-  if(typeof value==='number'&&positive(value))return value;
-  if(typeof value==='string'&&/^[1-9]\d*$/.test(value)&&positive(Number(value))&&String(Number(value))===value)return Number(value);
+  if(typeof value==='number'&&positive(value)&&value<=2147483647)return value;
+  if(typeof value==='string'&&/^[1-9]\d*$/.test(value)&&positive(Number(value))&&Number(value)<=2147483647&&String(Number(value))===value)return Number(value);
   throw fail(400,'Nota inválida.');
 }
 function integer(value,fallback,max){
@@ -78,6 +78,7 @@ const projection=`id,titulo,contenido,categoria,feedback,creado_por,modificado_p
   to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
   to_char(updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS updated_at`;
 const modeSql='(($1::boolean AND eliminado_at IS NOT NULL) OR (NOT $1::boolean AND eliminado_at IS NULL))';
+export { projection as FEEDBACK_NOTE_SQL_PROJECTION };
 async function clientCatalog(db,papelera){
   const rows=(await db.query(`SELECT nombre FROM clientes
     UNION SELECT feedback->>'cliente' AS nombre FROM notas_compartidas WHERE ${modeSql}
@@ -87,6 +88,15 @@ async function clientCatalog(db,papelera){
 }
 function classified(row,catalog){
   return{...row,resolved_client:resolveFeedbackClient(row,catalog),section:isClientFeedback(row,catalog)?'clients':'team'};
+}
+// Permission/transaction belongs to the caller; this helper never leases a new
+// connection or changes a row, and returns the same closed canonical note DTO.
+export async function readFeedbackNoteFromClient(db,rawId){
+  const id=recordId(rawId);
+  const raw=(await db.query(`SELECT ${projection} FROM notas_compartidas WHERE id=$1`,[id])).rows[0];
+  if(!raw)return null;
+  const note=dto(raw);if(note.id!==id)throw fail(500,'No se pudo verificar la nota.');
+  return classified(note,await clientCatalog(db,note.eliminado_at!==null));
 }
 async function transaction(pool,observed,read){
   const db=await pool.connect();let discard;
