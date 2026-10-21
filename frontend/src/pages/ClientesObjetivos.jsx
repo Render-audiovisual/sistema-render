@@ -7,6 +7,8 @@ import { Modal } from '../components/Modal.jsx';
 import { PageState } from '../components/PageState.jsx';
 import { validateGoalQuota, goalQuotaProgress, goalQuotaReviewBody, validGoalQuotaRevision, verifiedGoalPreparationAck } from './clientGoalQuota.js';
 import './ClientesObjetivos.css';
+import { clientOperationHref } from './clientOperation.js';
+import { navigateWithinApp } from '../shared/navigation/location.js';
 
 const STATES = { pendiente: 'Pendiente', en_progreso: 'En proceso', en_revision: 'En revisión', aprobada: 'Aprobada', finalizada: 'Finalizada', programada: 'Programada', publicada: 'Finalizada' };
 const AUTO_UPDATE_ERROR = 'No se pudo actualizar el avance. Reintentaremos automáticamente.';
@@ -196,6 +198,11 @@ function GoalPage({ sesion }) {
       </aside>
       <label className="cg-mobile-client"><span>Cliente</span><select aria-label="Elegir cliente" value={client?.clave || ''} disabled={!filtered.length || Boolean(preparing || selectedPiece)} onChange={event => setSelectedKey(event.target.value)}>{!filtered.length && <option value="">Sin coincidencias</option>}{filtered.map(item => <option key={item.clave} value={item.clave}>{item.nombre}</option>)}</select>{!filtered.length && <small>No encontramos ese cliente.</small>}</label>
       {client && <section className="cg-board" key={client.clave} aria-label={`Objetivo mensual de ${client.nombre}`}>
+        <nav aria-label="Operación por cuenta">{client.cuentas.map(account => <a className="cg-button" key={account.id} href={clientOperationHref(account.id, period)} onClick={event => {
+          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          event.preventDefault(); if (modalOpen.current) return;
+          navigateWithinApp(window, clientOperationHref(account.id, period));
+        }}>Ver operación de {account.nombre}</a>)}</nav>
         <div className="cg-board-summary"><header className="cg-board-header"><div><span className="cg-eyebrow">Objetivo mensual · {monthLabel(period)}</span><h2>{client.nombre}</h2>{client.cuentas.length > 1 && <p className="cg-shared">Objetivo compartido · {client.cuentas.map(account => account.nombre).join(' + ')}</p>}</div><div className={`cg-overall${total > 0 && completed === total ? ' is-complete' : ''}`}><span>Contenido completado</span><strong>{completed}<span> / {total}</span></strong></div></header>
         <div className="cg-progress" role="progressbar" aria-label="Avance mensual" aria-valuemin={0} aria-valuemax={total || 1} aria-valuenow={completed}><span style={{ width: `${total ? Math.min(100, completed / total * 100) : 0}%` }} /></div>
         <div className="cg-progress-caption"><span>{client.preparado ? total > 0 && completed === total ? 'Objetivo del mes completado' : `${Math.max(0, total - completed)} piezas pendientes` : 'Objetivo por preparar'}</span><strong>{total ? Math.round(completed / total * 100) : 0}%</strong></div></div>

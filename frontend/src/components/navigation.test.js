@@ -28,6 +28,13 @@ const adminOnly = new Map([
 const linksFor = role => getNavigationGroups(role).flatMap(group => group.links);
 const sortedHrefs = links => links.map(link => link.href).sort();
 
+test('client operation highlights only the shared client parent, never management', () => {
+  for (const href of [...shared.keys(), ...adminOnly.keys()]) {
+    assert.equal(isNavigationActive(href, '/clientes/operacion', '?cliente=17&periodo=2026-10&gestion=1'), href === '/clientes');
+  }
+  assert.equal(isNavigationActive('/clientes', '/clientes/operacion/unknown'), false);
+});
+
 for (const role of ["admin", ...employeeRoles]) {
   test(`${role}: labelled groups contain all shared destinations exactly once and no invented routes`, () => {
     const groups = getNavigationGroups(role);

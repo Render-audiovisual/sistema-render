@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createProductionDraft,productionMediaDraft,verifiedProductionDraftVisit} from '../../frontend/src/pages/productionDraft.js';
+import {productionReadUrl,assertProductionClient} from '../../frontend/src/pages/productionRouteContext.js';
 
 const source=readFileSync(new URL('../../frontend/src/pages/Productions.jsx',import.meta.url),'utf8');
 const css=readFileSync(new URL('../../frontend/src/pages/Productions.css',import.meta.url),'utf8');
@@ -128,7 +129,9 @@ test('handoff requires explicit editor/date/material; valid video or visit URL s
 
 test('real API/auth import, ID participants and complete principal read/write endpoints',()=>{
   assert.match(source,/import \{ apiRequest \} from '..\/features\/render-os\/services\/render-os-api.js'/);
-  for(const token of ['/api/producciones?mes=','/api/producciones/pendientes','/api/usuarios','/api/clientes','video_origen_id','expected_revision:visit.revision']) assert.ok(source.includes(token),token);
+  for(const token of ['/api/usuarios','/api/clientes','video_origen_id','expected_revision:visit.revision']) assert.ok(source.includes(token),token);
+  assert.equal(productionReadUrl({month:'2026-10',clientId:'1',tab:'calendar'}),'/api/producciones?mes=2026-10&cliente_id=1');
+  assert.equal(productionReadUrl({month:'2026-10',clientId:'1',tab:'pending'}),'/api/producciones/pendientes?cliente_id=1');
   assert.match(source,/export function ProductionsPage\(\{sesion\}\)/);
   assert.match(source,/selected.includes\(user.id\)/);
   assert.match(source,/tarea_estado/);
@@ -203,7 +206,7 @@ test('visit creation sends only creation fields, never expected_revision',async(
   const requests=[];
   const data={cliente_id:1,fecha:'2026-10-30',titulo:'Visita',participante_ids:[2],tarea_origen_id:null,observaciones:'',drive_url:'',request_id:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'};
   const noop=()=>{};
-  const context={writeLock:{current:false},setBusy:noop,verifiedProductionDraftVisit,
+  const context={writeLock:{current:false},setBusy:noop,verifiedProductionDraftVisit,assertProductionClient,
     setCreating:noop,setSelected:noop,setMonth:noop,setDay:noop,setReload:noop,setNotice:noop,writeProductionLocation:noop};
   const guard={assertCurrent:noop,current:()=>true,request:async(url,options)=>{
     requests.push({url,body:JSON.parse(options.body)});

@@ -5,6 +5,7 @@ import {canonicalTaskState} from '../../frontend/src/features/render-os/constant
 import {getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask} from '../../frontend/src/features/render-os/utils/task-content.js';
 import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
 import {verifiedProductionDraftVisit} from '../../frontend/src/pages/productionDraft.js';
+import {productionLocation,assertProductionClient} from '../../frontend/src/pages/productionRouteContext.js';
 const session={token:'synthetic-production-link',usuario:{id:1,rol:'admin',activo:true}};
 const captureFor=request=>()=>createCapturedRequest({session,readSession:()=>session,request});
 const workspace=readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
@@ -140,30 +141,33 @@ test('linked editing task can save delivery date but never client changes',async
   assert.deepEqual(writes,[{fecha_vencimiento:'2026-10-30'}]);
 });
 
-const locationFns=extract(productions,'function productionLocation','// CAS always uses');
+const locationFns=extract(productions,'function writeProductionLocation','// CAS always uses');
 test('deep-link URL validates UUID and persists real visit/month query across reload/back/forward',()=>{
   const events=[];
   const window={location:{href:'https://render.test/producciones?other=keep'},history:{state:{existing:1}}};
   for(const method of ['pushState','replaceState']) window.history[method]=(state,title,url)=>{events.push({method,url:String(url)});window.location.href=String(url);};
-  const h=new Function('window',`${locationFns}return {productionLocation,writeProductionLocation};`)(window);
+  const h=new Function('window','productionLocation',`${locationFns}return {productionLocation,writeProductionLocation};`)(window,productionLocation);
   h.writeProductionLocation({id,month:'2026-09'});
-  assert.deepEqual(h.productionLocation(window.location.href),{id,month:'2026-09'});
+  assert.deepEqual(h.productionLocation(window.location.href),{id,month:'2026-09',clientId:'',tab:'calendar'});
   assert.equal(new URL(window.location.href).searchParams.get('other'),'keep');
   const visitUrl=window.location.href;
   h.writeProductionLocation({month:'2026-10'});
-  assert.deepEqual(h.productionLocation(window.location.href),{id:null,month:'2026-10'});
-  assert.deepEqual(h.productionLocation(visitUrl),{id,month:'2026-09'});
+  assert.deepEqual(h.productionLocation(window.location.href),{id:null,month:'2026-10',clientId:'',tab:'calendar'});
+  assert.deepEqual(h.productionLocation(visitUrl),{id,month:'2026-09',clientId:'',tab:'calendar'});
   assert.throws(()=>h.productionLocation('https://render.test/producciones?visita=invalid'),/no es válido/);
   assert.equal(events.length,2);
 });
 
-function visitLoader(request) {
+function visitLoader(request, {href=`https://render.test/producciones?visita=${id}`,clientId='1',tab='calendar'} = {}) {
   const state={selected:null,month:null,day:null,error:null,busy:false};
   const writes=[];const openVersion={current:0};
-  const context={mayLeave:()=>true,openVersion,setCreating:()=>{},setSelected:value=>{state.selected=value;},setDetailLoading:value=>{state.busy=value;},setError:value=>{state.error=value;},
-    setMonth:value=>{state.month=value;},setDay:value=>{state.day=value;},verifiedProductionDraftVisit,apiRequest:request,writeProductionLocation:value=>writes.push(value)};
+  const historyEvents=[],window={location:{href},history:{state:{existing:1}}};
+  for(const method of ['pushState','replaceState'])window.history[method]=(saved,title,url)=>{historyEvents.push(method);window.location.href=String(url);};
+  const write=new Function('window',`${locationFns}return writeProductionLocation;`)(window);
+  const context={mayLeave:()=>true,openVersion,assertProductionClient,productionLocation,window,clientId,tab,setCreating:()=>{},setSelected:value=>{state.selected=value;},setDetailLoading:value=>{state.busy=value;},setError:value=>{state.error=value;},
+    setMonth:value=>{state.month=value;},setDay:value=>{state.day=value;},verifiedProductionDraftVisit,apiRequest:request,writeProductionLocation:value=>{writes.push(value);write(value);}};
   const open=new Function(...Object.keys(context),`${extract(productions,'  const openVisit =','  const restoreProductionLocation =')}return openVisit;`)(...Object.values(context));
-  return {open,state,writes};
+  return {open,state,writes,historyEvents,window};
 }
 const fullVisit=(visitId,fecha)=>({id:visitId,revision:1,cliente_id:1,cliente_nombre:'QA observed client',
   fecha,titulo:'QA observed visit',observaciones:'',drive_url:'',participante_ids:[],videos:[],fotos:[]});
@@ -175,7 +179,7 @@ test('actual deep-link loader selects remote month/day and avoids pushing histor
   assert.equal(h.state.month,'2026-09');assert.equal(h.state.day,'2026-09-12');assert.equal(h.state.selected.id,id);
   assert.equal(h.writes.length,0);
   await h.open(id);
-  assert.deepEqual(h.writes,[{id,month:'2026-09'}]);
+  assert.deepEqual(h.writes,[{id,month:'2026-09',clientId:'1',tab:'calendar'}]);
 });
 test('late visit response cannot replace a newer navigation selection',async()=>{
   let resolveFirst;
@@ -183,6 +187,39 @@ test('late visit response cannot replace a newer navigation selection',async()=>
   const first=h.open(id,{history:false});await h.open('second',{history:false});
   resolveFirst(fullVisit(id,'2026-09-12'));await first;
   assert.equal(h.state.selected.id,'second');assert.equal(h.state.month,'2026-10');
+  assert.deepEqual(h.writes,[],'obsolete response cannot canonicalize history');
+});
+test('verified date canonicalization replaces only differing explicit month and uses URL client/tab, not old closure',async()=>{
+  for(const month of ['2026-09','2026-10',null]) {
+    const h=visitLoader(async()=>fullVisit(id,'2026-09-12'),{
+      href:`https://render.test/producciones?visita=${id}&cliente=1&tab=pending${month ? `&mes=${month}` : ''}`,
+      clientId:'9',tab:'calendar',
+    });
+    await h.open(id,{history:false,checkDirty:false,expectedClient:'1'});
+    assert.equal(h.state.error,'');assert.equal(h.state.selected.id,id);
+    assert.deepEqual(h.writes,month==='2026-10' ? [{id,month:'2026-09',clientId:'1',tab:'pending',replace:true}] : []);
+    assert.deepEqual(h.historyEvents,month==='2026-10' ? ['replaceState'] : []);
+    assert.equal(productionLocation(h.window.location.href).tab,'pending');
+    assert.equal(productionLocation(h.window.location.href).clientId,'1');
+  }
+});
+test('foreign-client response cannot canonicalize mismatching URL month',async()=>{
+  const h=visitLoader(async()=>({...fullVisit(id,'2026-09-12'),cliente_id:2}),{
+    href:`https://render.test/producciones?visita=${id}&cliente=1&tab=pending&mes=2026-10`,
+  });
+  await h.open(id,{history:false,checkDirty:false,expectedClient:'1'});
+  assert.match(h.state.error,/no pertenece/);assert.equal(h.state.selected,null);assert.deepEqual(h.writes,[]);
+  assert.deepEqual(h.historyEvents,[]);
+});
+test('late version cannot replace URL even when its verified date differs',async()=>{
+  const resolvers=[];
+  const h=visitLoader(()=>new Promise(yes=>resolvers.push(yes)),{href:`https://render.test/producciones?visita=${id}&cliente=1&tab=pending&mes=2026-10`});
+  const pending=h.open(id,{history:false,checkDirty:false,expectedClient:'1'});
+  const newer=h.open('newer',{history:false,checkDirty:false});
+  resolvers[1](fullVisit('newer','2026-10-20'));await newer;
+  resolvers[0](fullVisit(id,'2026-09-12'));await pending;
+  assert.equal(h.state.selected.id,'newer');assert.deepEqual(h.writes,[]);
+  assert.deepEqual(h.historyEvents,[]);
 });
 test('actual deep-link loader rejects incomplete readback instead of publishing an empty visit',async()=>{
   const h=visitLoader(async()=>({id,revision:2,fecha:'2026-09-12'}));
@@ -194,20 +231,24 @@ test('popstate listener uses latest handler, cleans up and never stores business
   assert.match(productions,/navigationRef.current = restoreProductionLocation/);
   assert.match(productions,/window.addEventListener\('popstate',restore\)/);
   assert.match(productions,/window.removeEventListener\('popstate',restore\)/);
-  assert.match(productions,/openVisit\(location.id,\{history:false,checkDirty:false\}\)/);
+  assert.match(productions,/openVisit\(location.id,\{history:false,checkDirty:false,expectedClient:location.clientId\}\)/);
   assert.doesNotMatch(productions,/localStorage|sessionStorage/);
 });
 
 test('committed popstate restores UUID or calendar without a second dirty prompt or history rollback',async()=>{
-  const read=new Function(`${locationFns}return productionLocation;`)();
   for(const [href,allow] of [[`https://render.test/producciones?visita=${id}`,true],['https://render.test/producciones?mes=2026-08',true],[`https://render.test/producciones?visita=${id}`,false]]) {
     const calls=[];const state={selected:{id:'current'},month:'2026-10'};
-    const context={window:{location:{href}},mayLeave:()=>allow,selected:{id:'current'},month:'2026-10',today:'2026-10-19',
-      productionLocation:read,writeProductionLocation:value=>calls.push(['write',value]),openVisit:async(...args)=>calls.push(['open',...args]),openVersion:{current:0},
+    let prompts=0;
+    const context={window:{location:{href}},mayLeave:()=>{prompts++;return allow;},selected:{id:'current'},month:'2026-10',today:'2026-10-19',
+      productionLocation,writeProductionLocation:value=>calls.push(['write',value]),openVisit:async(...args)=>calls.push(['open',...args]),openVersion:{current:0},
+      readEpoch:{current:0},setListAvailable:()=>{},setContextError:()=>{},setClientId:()=>{},setTab:()=>{},setReload:()=>{},dirty:{current:new Set(['draft'])},
       setSelected:value=>{state.selected=value;},setCreating:()=>{},setDetailLoading:()=>{},setError:()=>{},setMonth:value=>{state.month=value;},setDay:()=>{}};
     const restore=new Function(...Object.keys(context),`${extract(productions,'  const restoreProductionLocation =','  navigationRef.current =')}return restoreProductionLocation;`)(...Object.values(context));
     await restore();
-    if(href.includes('visita=')) assert.deepEqual(calls,[['open',id,{history:false,checkDirty:false}]]);
+    assert.equal(prompts,0,'committed restoration never asks a second dirty prompt');
+    assert.equal(context.readEpoch.current,1,'restoration fences earlier collection reads');
+    assert.equal(context.dirty.current.size,1,'manual restoration is not a confirmed discard');
+    if(href.includes('visita=')) assert.deepEqual(calls,[['open',id,{history:false,checkDirty:false,expectedClient:''}]]);
     else {assert.equal(state.selected,null);assert.equal(state.month,'2026-08');assert.equal(calls.length,0);}
   }
 });

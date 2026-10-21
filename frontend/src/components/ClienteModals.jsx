@@ -13,6 +13,8 @@ import {
 } from "../utils.jsx";
 import { Modal } from "./Modal.jsx";
 import { hasNoConfiguredMonthlyAgreement } from '../pages/clientCreate.js';
+import { clientOperationHref } from '../pages/clientOperation.js';
+import { navigateWithinApp } from '../shared/navigation/location.js';
 
 const WEEKDAYS = [[1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"]];
 
@@ -585,6 +587,10 @@ function DetalleClienteSession({
           </details>
 
           <div className="modal-actions cliente-detail-actions">
+            <button className="btn" type="button" disabled={enviando !== null || editandoCuota} onClick={() => {
+              const guard = capture(); if (pending.current || nestedEditing.current || detailAccessDenied.current || !guard.current()) return;
+              const href = clientOperationHref(cliente.id, periodo); if (href) navigateWithinApp(window, href);
+            }}>Ver operación del cliente</button>
             <button
               className="btn"
               type="button"

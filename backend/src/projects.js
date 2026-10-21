@@ -198,6 +198,25 @@ async function stage(db, project, id) {
   if (id !== null && !(await db.query('SELECT id FROM proyecto_etapas WHERE proyecto_id=$1 AND id=$2', [project, id])).rows.length) throw fail('Etapa no encontrada.', 404);
 }
 
+export async function readProjectList(db, user, q = {}) {
+  closed(q, ['limit', 'offset', 'estado', 'cliente_id', 'archivados']);
+  const num = (v, fallback, min, max) => {
+    if (v === undefined) return fallback;
+    if (typeof v !== 'string' || !/^\d+$/.test(v) || !Number.isSafeInteger(Number(v)) || Number(v) < min || Number(v) > max) throw fail('Paginación o filtro inválido.');
+    return Number(v);
+  };
+  const limit = num(q.limit, 50, 1, 100), offset = num(q.offset, 0, 0, 2147483647);
+  if (q.archivados !== undefined && q.archivados !== 'true' && q.archivados !== 'false') throw fail('Filtro inválido.');
+  if (q.archivados === 'true' && user.rol !== 'admin') throw fail('Solo administración puede incluir archivados.', 403);
+  const values = [], conditions = q.archivados === 'true' ? [] : ['NOT p.archivado'];
+  if (q.estado !== undefined) { values.push(enumeration(q.estado, STATES)); conditions.push(`p.estado=$${values.length}`); }
+  if (q.cliente_id !== undefined) { values.push(num(q.cliente_id, null, 1, 2147483647)); conditions.push(`p.cliente_id=$${values.length}`); }
+  const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
+  const total = Number((await db.query(`SELECT count(*)::int AS total FROM proyectos p${where}`, values)).rows[0].total);
+  const rows = (await db.query(`${summarySql}${where} ORDER BY p.fecha_entrega NULLS LAST,p.id LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, [...values, limit, offset])).rows;
+  return { proyectos: rows.map(projectSummaryDto), total, limit, offset };
+}
+
 export function createProjectsRouter({ express, pool }) {
   const router = express.Router();
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
@@ -218,25 +237,7 @@ export function createProjectsRouter({ express, pool }) {
       else next(error);
     } finally { db?.release(discard); }
   };
-  router.get('/', route(false, async (req, db, user) => {
-    const q = req.query ?? {};
-    closed(q, ['limit', 'offset', 'estado', 'cliente_id', 'archivados']);
-    const num = (v, fallback, min, max) => {
-      if (v === undefined) return fallback;
-      if (typeof v !== 'string' || !/^\d+$/.test(v) || !Number.isSafeInteger(Number(v)) || Number(v) < min || Number(v) > max) throw fail('Paginación o filtro inválido.');
-      return Number(v);
-    };
-    const limit = num(q.limit, 50, 1, 100), offset = num(q.offset, 0, 0, 2147483647);
-    if (q.archivados !== undefined && q.archivados !== 'true' && q.archivados !== 'false') throw fail('Filtro inválido.');
-    if (q.archivados === 'true' && user.rol !== 'admin') throw fail('Solo administración puede incluir archivados.', 403);
-    const values = [], conditions = q.archivados === 'true' ? [] : ['NOT p.archivado'];
-    if (q.estado !== undefined) { values.push(enumeration(q.estado, STATES)); conditions.push(`p.estado=$${values.length}`); }
-    if (q.cliente_id !== undefined) { values.push(num(q.cliente_id, null, 1, 2147483647)); conditions.push(`p.cliente_id=$${values.length}`); }
-    const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
-    const total = Number((await db.query(`SELECT count(*)::int AS total FROM proyectos p${where}`, values)).rows[0].total);
-    const rows = (await db.query(`${summarySql}${where} ORDER BY p.fecha_entrega NULLS LAST,p.id LIMIT $${values.length + 1} OFFSET $${values.length + 2}`, [...values, limit, offset])).rows;
-    return { body: { proyectos: rows.map(projectSummaryDto), total, limit, offset } };
-  }));
+  router.get('/', route(false, async (req, db, user) => ({ body: await readProjectList(db, user, req.query ?? {}) })));
   router.get('/:id', route(false, async (req, db, user) => ({ body: { proyecto: await readProjectDetail(db, uuid(req.params.id), user) } })));
   router.post('/', route(true, async (req, db, user) => {
     const input = normalizeProjectInput(req.body, { create: true }), hash = projectRequestHash(req.body);

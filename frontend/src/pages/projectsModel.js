@@ -29,7 +29,7 @@ export function safeProjectUrl(value) {
   if (url.length > 4000 || /\s/.test(url)) return null;
   try { const parsed = new URL(url); return ["https:", "http:"].includes(parsed.protocol) && !parsed.username && !parsed.password ? url : null; } catch { return null; }
 }
-export function projectHref(id) { if (!isProjectId(id)) invalid(); return `/proyectos?proyecto=${id}`; }
+export function projectHref(id, contextHref) { if (!isProjectId(id)) invalid(); return contextHref === undefined ? `/proyectos?proyecto=${id}` : projectLocationUrl(contextHref, id); }
 export function projectLocation(href) {
   const url = new URL(href, "https://local.invalid");
   const id = url.searchParams.get("proyecto");
@@ -41,11 +41,39 @@ export function projectLocationUrl(href, id) {
   id ? url.searchParams.set("proyecto", id) : url.searchParams.delete("proyecto");
   return `${url.pathname}${url.search}${url.hash}`;
 }
-export function projectsListUrl({ offset = 0, estado = "", archivados = false } = {}) {
-  if (!count(offset) || (estado && !enumValue(estado, PROJECT_STATES))) invalid();
+// Listing context is independent of the observed project/form lifetime. Unknown
+// context (including a hub's period) survives links but is not an API filter.
+export function projectListLocation(href) {
+  const params = new URL(href, 'https://local.invalid').searchParams;
+  const values = key => params.getAll(key);
+  const client = values('cliente'), offsets = values('offset'), states = values('estado'), archives = values('archivados');
+  const exactId = value => typeof value === 'string' && /^[1-9][0-9]*$/.test(value) && pgRevision(Number(value)) && String(Number(value)) === value;
+  const validOffset = value => typeof value === 'string' && /^(0|[1-9][0-9]*)$/.test(value) && count(Number(value)) && Number(value) <= 2147483647 && String(Number(value)) === value;
+  const invalid = [...params.keys()].some(key => key.startsWith('cliente['))
+    || client.length > 1 || client.length === 1 && !exactId(client[0])
+    || offsets.length > 1 || offsets.length === 1 && !validOffset(offsets[0])
+    || states.length > 1 || states.length === 1 && !enumValue(states[0], PROJECT_STATES)
+    || archives.length > 1 || archives.length === 1 && !['true', 'false'].includes(archives[0]);
+  return { clientId: client.length === 1 && exactId(client[0]) ? Number(client[0]) : null,
+    offset: offsets.length === 1 && validOffset(offsets[0]) ? Number(offsets[0]) : 0,
+    estado: states.length === 1 && enumValue(states[0], PROJECT_STATES) ? states[0] : '',
+    archivados: archives.length === 1 && archives[0] === 'true', invalid: Boolean(invalid) };
+}
+export function projectListLocationUrl(href, filters) {
+  projectsListUrl(filters); // Same closed numeric/enum contract as the API builder.
+  const url = new URL(href, 'https://local.invalid');
+  const values = { cliente: filters.clientId ?? null, offset: filters.offset || null,
+    estado: filters.estado || null, archivados: filters.archivados ? 'true' : null };
+  for (const [key, value] of Object.entries(values)) value === null ? url.searchParams.delete(key) : url.searchParams.set(key, String(value));
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+export function projectsListUrl({ offset = 0, estado = "", archivados = false, clientId = null, invalid: invalidContext = false } = {}) {
+  if (invalidContext || !count(offset) || offset > 2147483647 || (estado && !enumValue(estado, PROJECT_STATES))
+    || typeof archivados !== 'boolean' || clientId !== null && !pgRevision(clientId)) invalid();
   const params = new URLSearchParams({ limit: "50", offset: String(offset) });
   if (estado) params.set("estado", estado);
   if (archivados) params.set("archivados", "true");
+  if (clientId !== null) params.set('cliente_id', String(clientId));
   return `/api/proyectos?${params}`;
 }
 

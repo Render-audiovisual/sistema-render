@@ -5,7 +5,7 @@ import { navigateWithinApp } from "../shared/navigation/location.js";
 import { getSesion } from '../utils.jsx';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
-import { DELIVERABLE_EDIT_STATES, parseProjectDeliverableApproval, projectDeliverableApprovalLabel } from './projectsModel.js';
+import { DELIVERABLE_EDIT_STATES, parseProjectDeliverableApproval, projectDeliverableApprovalLabel, projectListLocation, projectListLocationUrl } from './projectsModel.js';
 import { PROJECT_TYPES, PROJECT_STATES, STAGE_STATES, MILESTONE_STATES, DELIVERABLE_STATES, PROJECT_ACTIVITY, buildProjectMutation, createProjectsTransport, observedProjectTask, parseProject, parseProjectsPage, projectDate, projectError, projectHref, projectLocation, projectLocationUrl, projectsListUrl, safeProjectUrl } from "./projectsModel.js";
 import "./Projects.css";
 
@@ -168,7 +168,10 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   }), [request]);
   const [selection, setSelection] = useState(() => projectLocation(window.location.href));
   const selectionRef = useRef(selection); selectionRef.current = selection;
-  const [filters, setFilters] = useState({ offset: 0, estado: "", archivados: false });
+  const [filters, setFilters] = useState(() => projectListLocation(window.location.href));
+  const filtersRef = useRef(filters); filtersRef.current = filters;
+  const [contextHref, setContextHref] = useState(() => window.location.href);
+  const [filterClients, setFilterClients] = useState({ status: 'loading', items: [], error: '' });
   const [list, setList] = useState({ status: "loading", data: null, error: "" });
   const [detail, setDetail] = useState({ status: "idle", data: null, error: "" });
   const [catalog, setCatalog] = useState({ status: "idle", clients: [], users: [], error: "" });
@@ -189,13 +192,54 @@ function ProjectsSession({ sesion, onNavigate, request }) {
     setDetail({status:'error',data:null,error:'No tenés acceso actual a este proyecto. Se retiró el contenido de esta vista.'});
   }
 
+  function restoreListContext(href) {
+    const next = projectListLocation(href);
+    setContextHref(href);
+    if (JSON.stringify(next) === JSON.stringify(filtersRef.current)) return;
+    // Synchronously fence the old response before React applies the new filter.
+    transport.cancel('list'); filtersRef.current = next; setFilters(next);
+    setList({ status: 'loading', data: null, error: '', context: next });
+  }
+  function changeListFilters(changes) {
+    const next = { ...filtersRef.current, ...changes };
+    const href = projectListLocationUrl(window.location.href, next);
+    window.history.pushState(window.history.state, '', href);
+    restoreListContext(href);
+  }
+  function chooseClient(value) {
+    if (value !== '' && !filterClients.items.some(client => String(client.id) === value)) return;
+    changeListFilters({ clientId: value === '' ? null : Number(value), offset: 0, invalid: false });
+  }
+  async function loadProjectList() {
+    const observation = filtersRef.current;
+    const current = () => mounted.current && filtersRef.current === observation;
+    transport.cancel('list');
+    if (observation.invalid) {
+      setList({ status: 'error', data: null, context: observation, error: 'El filtro de cliente o listado no es válido. Corregí el cliente o limpiá los filtros; no se consultaron todos los proyectos.' });
+      return;
+    }
+    setList({ status: 'loading', data: null, error: '', context: observation });
+    try {
+      const value = await transport.read('list', projectsListUrl(observation));
+      if (value === undefined || !current()) return;
+      const data = parseProjectsPage(value);
+      if (observation.clientId !== null && data.proyectos.some(item => item.cliente.id !== observation.clientId)) throw new Error('Listado incompatible.');
+      setList({ status: 'ready', data, error: '', context: observation });
+    } catch (error) { if (current()) setList({ status: 'error', data: null, error: projectError(error), context: observation }); }
+  }
+  useEffect(() => {
+    void loadProjectList();
+    return () => { transport.cancel('list'); };
+  }, [transport, filters, listRefresh]);
   useEffect(() => {
     let active = true;
-    setList({ status: "loading", data: null, error: "" });
-    transport.read("list", projectsListUrl(filters)).then(value => { if (active && value !== undefined) setList({ status: "ready", data: parseProjectsPage(value), error: "" }); })
-      .catch(error => { if (active) setList({ status: "error", data: null, error: projectError(error) }); });
-    return () => { active = false; transport.cancel("list"); };
-  }, [transport, filters, listRefresh]);
+    transport.read('filter-clients', '/api/clientes').then(value => {
+      if (!active || value === undefined) return;
+      if (!Array.isArray(value) || value.some(item => !Number.isSafeInteger(item?.id) || item.id < 1 || item.id > 2147483647 || typeof item.nombre !== 'string')) throw new Error('Catálogo inválido.');
+      setFilterClients({ status: 'ready', items: value.map(item => ({ id: item.id, nombre: item.nombre })), error: '' });
+    }).catch(error => { if (active) setFilterClients({ status: 'error', items: [], error: projectError(error) }); });
+    return () => { active = false; transport.cancel('filter-clients'); };
+  }, [transport, listRefresh]);
 
   async function refreshDetail(review = false) {
     const observation=selectionRef.current,id = observation.id;
@@ -239,13 +283,16 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   function selectProject(id, replace = false) {
     const url = projectLocationUrl(window.location.href, id);
     window.history[replace ? "replaceState" : "pushState"](window.history.state, "", url);
-    setForm(null); formRef.current = null; setMessage(""); setSelection({ id, invalid: false });
-    selectionRef.current = { id, invalid: false };
+    restoreListContext(url);
+    const next = { id, invalid: false };
+    setForm(null); formRef.current = null; setMessage(""); setSelection(next);
+    selectionRef.current = next;
   }
   useEffect(() => {
     const navigate = () => {
       if (window.location.pathname !== "/proyectos") return;
       const next = projectLocation(window.location.href);
+      restoreListContext(window.location.href);
       if (next.id === selectionRef.current.id && !next.invalid) return;
       // Shared navigation protection has already accepted any cancelable exit.
       // Unsupported/noncancelable traversals are restored normally, never trapped.
@@ -342,18 +389,30 @@ function ProjectsSession({ sesion, onNavigate, request }) {
     else navigateWithinApp(window, href);
   }
 
+  const shownList = list.context === filters ? list : { status: 'loading', data: null, error: '' };
+  const clientLabel = filterClients.items.find(item => item.id === filters.clientId)?.nombre;
   return <main className="projects-page" aria-label="Proyectos de Render"><div className="pr-shell">
     <header className="pr-page-heading"><div><h1>Proyectos</h1><p>Etapas, entregas y tareas reales en un mismo lugar.</p></div><div className="pr-actions"><button type="button" disabled={form?.busy} onClick={() => { setListRefresh(version => version + 1); if (selection.id) void refreshDetail(); }}>Actualizar</button>{admin && <button type="button" className="pr-primary" disabled={form?.busy} onClick={() => openForm("create")}>Nuevo proyecto</button>}</div></header>
     {message && <p className="pr-notice" role="status">{message}</p>}
     <div className={`pr-layout${selection.id || form?.kind === "create" ? " has-detail" : ""}`}>
-      <section className="pr-project-list" aria-label="Lista de proyectos"><div className="pr-filters"><label>Estado<select value={filters.estado} onChange={event => setFilters(current => ({ ...current, estado: event.target.value, offset: 0 }))}><option value="">Todos los estados</option><Options values={PROJECT_STATES}/></select></label>{admin && <label className="pr-checkbox"><input type="checkbox" checked={filters.archivados} onChange={event => setFilters(current => ({ ...current, archivados: event.target.checked, offset: 0 }))}/>Incluir archivados</label>}</div>
-        {list.status === "loading" && <p className="pr-empty" role="status">Cargando proyectos…</p>}
-        {list.error && <div className="pr-error" role="alert"><p>{list.error}</p><button type="button" onClick={() => setListRefresh(version => version + 1)}>Reintentar lista</button></div>}
-        {list.data && <><p className="pr-list-total">{list.data.total ? `Mostrando ${list.data.offset + 1}–${list.data.offset + list.data.proyectos.length} de ${list.data.total}` : "No hay proyectos con este filtro."}</p><ul>{list.data.proyectos.map(item => <li key={item.id}><a href={projectHref(item.id)} aria-current={selection.id === item.id ? "page" : undefined} onClick={event => { if (!plainClick(event)) return; event.preventDefault(); if (selection.id !== item.id && canLeave()) selectProject(item.id); }}><strong>{item.titulo}</strong><span>{item.cliente.nombre} · {PROJECT_TYPES[item.tipo]}</span><small>{PROJECT_STATES[item.estado]}{item.archivado ? " · Archivado" : ""} · {item.counts.finalizadas}/{item.counts.tareas} tareas finalizadas</small><small>Entrega: {projectDate(item.fecha_entrega)}</small></a></li>)}</ul>
-          <nav className="pr-pagination" aria-label="Páginas de proyectos"><button type="button" disabled={list.data.offset === 0} onClick={() => setFilters(current => ({ ...current, offset: Math.max(0, list.data.offset - list.data.limit) }))}>Anterior</button><button type="button" disabled={list.data.offset + list.data.limit >= list.data.total} onClick={() => setFilters(current => ({ ...current, offset: list.data.offset + list.data.limit }))}>Siguiente</button></nav></>}
+      <section className="pr-project-list" aria-label="Lista de proyectos"><div className="pr-filters">
+        <label>Cliente<select aria-label="Filtrar proyectos por cliente" value={filters.invalid ? 'invalid' : filters.clientId ?? ''} onChange={event => chooseClient(event.target.value)}>
+          {filters.invalid && <option value="invalid" disabled>Filtro inválido</option>}<option value="">Todos los clientes</option>
+          {filters.clientId !== null && !filterClients.items.some(item => item.id === filters.clientId) && <option value={filters.clientId}>Cliente ID {filters.clientId}</option>}
+          {filterClients.items.map(item => <option key={item.id} value={item.id}>{item.nombre} · ID {item.id}</option>)}
+        </select></label>
+        <label>Estado<select value={filters.estado} disabled={filters.invalid} onChange={event => changeListFilters({ estado: event.target.value, offset: 0 })}><option value="">Todos los estados</option><Options values={PROJECT_STATES}/></select></label>{admin && <label className="pr-checkbox"><input type="checkbox" checked={filters.archivados} disabled={filters.invalid} onChange={event => changeListFilters({ archivados: event.target.checked, offset: 0 })}/>Incluir archivados</label>}</div>
+        <p className="pr-muted">{filters.invalid ? 'Contexto de listado inválido.' : filters.clientId === null ? 'Todos los clientes.' : `Cliente: ${clientLabel || `ID ${filters.clientId}`}.`} Proyectos de todos los períodos; el mes del cliente no filtra este listado.</p>
+        {filterClients.error && <p role="alert">No se pudo cargar el catálogo de clientes. El filtro por ID se conserva.<button type="button" onClick={() => setListRefresh(version => version + 1)}>Reintentar catálogo</button></p>}
+        {(filters.invalid || filters.clientId !== null) && <button type="button" onClick={() => changeListFilters({ clientId: null, offset: 0, estado: '', archivados: false, invalid: false })}>Limpiar filtros del listado</button>}
+        {shownList.status === "loading" && <p className="pr-empty" role="status">Cargando proyectos…</p>}
+        {shownList.error && <div className="pr-error" role="alert"><p>{shownList.error}</p><button type="button" onClick={() => setListRefresh(version => version + 1)}>Reintentar lista</button></div>}
+        {shownList.data && <><p className="pr-list-total">{shownList.data.total ? `Mostrando ${shownList.data.offset + 1}–${shownList.data.offset + shownList.data.proyectos.length} de ${shownList.data.total}` : "No hay proyectos con este filtro."}</p><ul>{shownList.data.proyectos.map(item => <li key={item.id}><a href={projectHref(item.id, contextHref)} aria-current={selection.id === item.id ? "page" : undefined} onClick={event => { if (!plainClick(event)) return; event.preventDefault(); if (selection.id !== item.id && canLeave()) selectProject(item.id); }}><strong>{item.titulo}</strong><span>{item.cliente.nombre} · {PROJECT_TYPES[item.tipo]}</span><small>{PROJECT_STATES[item.estado]}{item.archivado ? " · Archivado" : ""} · {item.counts.finalizadas}/{item.counts.tareas} tareas finalizadas</small><small>Entrega: {projectDate(item.fecha_entrega)}</small></a></li>)}</ul>
+          <nav className="pr-pagination" aria-label="Páginas de proyectos"><button type="button" disabled={shownList.data.offset === 0} onClick={() => changeListFilters({ offset: Math.max(0, shownList.data.offset - shownList.data.limit) })}>Anterior</button><button type="button" disabled={shownList.data.offset + shownList.data.limit >= shownList.data.total} onClick={() => changeListFilters({ offset: shownList.data.offset + shownList.data.limit })}>Siguiente</button></nav></>}
       </section>
       <div className="pr-detail-column">
-        {selection.id && <a href="/proyectos" className="pr-back" onClick={event => { if (!plainClick(event)) return; event.preventDefault(); if (canLeave()) selectProject(null); }}>← Todos los proyectos</a>}
+        {selection.id && <a href={projectLocationUrl(contextHref, null)} className="pr-back" onClick={event => { if (!plainClick(event)) return; event.preventDefault(); if (canLeave()) selectProject(null); }}>← Volver al listado{filters.clientId !== null ? ` del cliente ID ${filters.clientId}` : ''}</a>}
+        {project && filters.clientId !== null && project.cliente.id !== filters.clientId && <p className="pr-notice">El proyecto seleccionado pertenece a otro cliente. El filtro solo limita el listado; no modifica este proyecto ni sus permisos.</p>}
         {selection.invalid && <div className="pr-error" role="alert">El enlace no contiene un proyecto válido. Elegí uno de la lista.</div>}
         {detail.status === "loading" && selection.id && <p className="pr-empty" role="status">Actualizando proyecto…</p>}
         {detail.error && <div className="pr-error" role="alert"><p>{detail.error}</p><button type="button" onClick={() => refreshDetail(Boolean(form?.conflict))}>Reintentar proyecto</button></div>}

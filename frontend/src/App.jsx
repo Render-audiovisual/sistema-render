@@ -16,6 +16,7 @@ const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPa
 const ProjectsPage = lazyNamed(() => import("./pages/Projects.jsx"), "ProjectsPage");
 const ClientesAdminPage = lazyNamed(() => import("./pages/Clientes.jsx"), "ClientesAdminPage");
 const ClientesObjetivosPage = lazyNamed(() => import("./pages/ClientesObjetivos.jsx"), "ClientesObjetivosPage");
+const ClientOperationPage = lazyNamed(() => import("./pages/ClientOperationPage.jsx"), "ClientOperationPage");
 const EmpleadosPage = lazyNamed(() => import("./pages/Empleados.jsx"), "EmpleadosPage");
 const HistoriasPage = lazyNamed(() => import("./pages/Historias.jsx"), "HistoriasPage");
 const PerfilPage = lazyNamed(() => import("./pages/Perfil.jsx"), "PerfilPage");
@@ -91,7 +92,7 @@ export function App() {
     ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]
     : ["/inicio", "/perfil", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/clientes", ...(canUseSharedCalendarRole(sesion.usuario.rol) ? ["/calendario", "/calendario-estructura"] : [])];
   const rutaPermitida =
-    esAdmin || path === "/proyectos" || path === "/feedback" || path === "/producciones" || rutasCompartidas.includes(path) || rutaPropia === path;
+    esAdmin || (path === "/clientes/operacion" && canUseSharedCalendarRole(sesion.usuario.rol)) || path === "/proyectos" || path === "/feedback" || path === "/producciones" || rutasCompartidas.includes(path) || rutaPropia === path;
 
   if (!rutaPermitida) {
     window.location.href = rutaPropia || "/";
@@ -122,6 +123,9 @@ export function App() {
     }
     if (path === "/drive") {
       return <DrivePage sesion={sesion} />;
+    }
+    if (path === "/clientes/operacion") {
+      return <ClientOperationPage sesion={sesion} />;
     }
     if (path === "/clientes") {
       return esAdmin && new URLSearchParams(window.location.search).get("gestion") === "1"

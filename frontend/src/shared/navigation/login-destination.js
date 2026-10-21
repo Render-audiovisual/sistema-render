@@ -5,7 +5,7 @@ import { canUseSharedCalendarRole } from '../../components/navigation.js';
 // access. Keep API/static/dev-preview/login paths outside the return contract.
 const paths = new Set([
   '/inicio', '/workspace/tareas', '/calendario', '/calendario-estructura',
-  '/producciones', '/clientes', '/proyectos', '/planificacion-historias',
+  '/producciones', '/clientes', '/clientes/operacion', '/proyectos', '/planificacion-historias',
   '/planificacion-publicaciones', '/lista', '/feedback', '/bloc-notas',
   '/reportes-historias', '/drive', '/moodboards', '/sueldos', '/empleados', '/perfil',
 ]);

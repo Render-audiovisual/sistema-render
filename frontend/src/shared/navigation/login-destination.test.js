@@ -22,6 +22,7 @@ test('opaque query, fragment, task view and production day survive byte-for-byte
     '/producciones?day=2026-10-23&cliente=17&view=week#visita-42',
     '/inicio?production_period=2026-09&offset=20#produccion',
     '/clientes?periodo=2026-08&gestion=1#cliente-17',
+    '/clientes/operacion?cliente=17&periodo=2026-10',
     '/drive?q=%C3%A1%F0%9F%98%80&folder=a%2Fb%26next%3D%2Fsueldos#carpeta',
     '/feedback?q=a+b&literal=%252Flogin#caf%C3%A9',
     '/perfil#café',
@@ -29,6 +30,15 @@ test('opaque query, fragment, task view and production day survive byte-for-byte
     assert.equal(normalizeLoginDestination(route), route);
     const href = loginHrefForDestination(route);
     assert.equal(readLoginDestination(new URL(href, 'https://fixture.invalid').search), route);
+  }
+});
+
+test('client operation remains a shared canonical destination without granting administration', () => {
+  const route = '/clientes/operacion?cliente=17&periodo=2026-10';
+  for (const role of roles) assert.equal(resolveLoginDestination(route, user(role)), route);
+  assert.equal(resolveLoginDestination(route, user('unknown')), '/inicio');
+  for (const value of ['/clientes/operacion/extra', '/clientes/operacion/', '/clientes/../clientes/operacion']) {
+    assert.equal(normalizeLoginDestination(value), null);
   }
 });
 

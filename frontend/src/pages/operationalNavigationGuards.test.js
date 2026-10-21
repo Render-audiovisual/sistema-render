@@ -129,6 +129,7 @@ test('production committed popstate restoration does not prompt or roll back the
   assert.doesNotMatch(handlerSource, /mayLeave|writeProductionLocation|window.confirm|replaceState/);
   const dirty = { current: new Set(['draft']) }, openVersion = { current: 0 }, updates = [];
   const bindings = { window: { location: { href: 'https://render.test/producciones?mes=2026-11' } },
+    readEpoch:{current:0},setListAvailable:()=>{},setContextError:()=>{},setClientId:()=>{},setTab:()=>{},setReload:()=>{},
     productionLocation: () => ({ id: null, month: '2026-11' }), dirty, openVersion, today: '2026-10-19',
     openVisit: async () => { throw new Error('not expected'); } };
   for (const name of ['setSelected', 'setCreating', 'setDetailLoading', 'setError', 'setMonth', 'setDay']) bindings[name] = value => updates.push([name, value]);

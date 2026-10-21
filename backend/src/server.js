@@ -57,6 +57,7 @@ import { assertCoreSchemaReady } from "./startup-schema.js";
 import { assertTaskBusinessInput, assertTaskCoordinationPatch } from "./task-integration-fields.js";
 import { createPersonalHomeRouter } from "./personal-home.js";
 import { createProjectsRouter } from "./projects.js";
+import { createClientOperationRouter } from "./client-operation.js";
 import { projectDomainConflict } from "./project-errors.js";
 import { createEditorialPublicationRouter } from "./editorial-publication.js";
 import { createEditingDeliveriesRouter } from "./editing-deliveries.js";
@@ -229,6 +230,7 @@ router.use("/drive", createGoogleDrivePublicRouter({ express, pool }));
 router.use(createPrincipalAuthentication({ browserTransport: browserSessions, pool }));
 router.use('/inicio', createPersonalHomeRouter({ express, pool }));
 router.use('/proyectos', createProjectsRouter({ express, pool }));
+router.use('/clientes', createClientOperationRouter({ express, pool }));
 router.use('/editorial-publicacion', createEditorialPublicationRouter({ express, pool }));
 router.get('/tareas-edicion/inventario-feedback', async (req, res, next) => {
   res.set('Cache-Control', 'no-store');

@@ -5,6 +5,7 @@ import ts from 'typescript';
 import {createProductionCreateIntent} from './productionCreateIntent.js';
 import {createCapturedRequest} from '../shared/session/captured-request.js';
 import {verifiedProductionDraftVisit} from './productionDraft.js';
+import {assertProductionClient} from './productionRouteContext.js';
 const uuid='11111111-1111-4111-8111-111111111111';
 const visit={id:uuid,revision:1,cliente_id:7,cliente_nombre:'QA',fecha:'2026-10-20',titulo:'Actual',observaciones:'',drive_url:'',participante_ids:[],videos:[],fotos:[]};
 const input=()=>({cliente_id:7,fecha:'2026-10-20',titulo:'Intent',participante_ids:[9],observaciones:'',drive_url:'',tarea_origen_id:null});
@@ -44,10 +45,10 @@ test('pending response body remains bound to original session/lifetime and canno
  }
 });
 const source=readFileSync(new URL('./Productions.jsx',import.meta.url),'utf8'),file=ts.createSourceFile('Productions.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
-function callback(name,deps){let found;function visit(node){if(ts.isVariableDeclaration(node)&&node.name.getText(file)===name)found=node.initializer;ts.forEachChild(node,visit)}visit(file);return new Function(...Object.keys(deps),`return (${found.getText(file)});`)(...Object.values(deps))}
+function callback(name,deps){deps={assertProductionClient,readEpoch:{current:0},openVersion:{current:0},setListAvailable:()=>{},setClientId:()=>{},setContextError:()=>{},tab:'calendar',...deps};let found;function visit(node){if(ts.isVariableDeclaration(node)&&node.name.getText(file)===name)found=node.initializer;ts.forEachChild(node,visit)}visit(file);return new Function(...Object.keys(deps),`return (${found.getText(file)});`)(...Object.values(deps))}
 test('actual create transport validates full ACK before returning; stale session cannot paint or acknowledge',async()=>{
  for(const malformed of [false,true]){const effects=[],guard={assertCurrent(){},current:()=>true,request:async()=>malformed?{visita:{id:uuid}}:{visita:visit}},deps={writeLock:{current:false},setBusy:value=>effects.push(value),verifiedProductionDraftVisit};
-  const create=callback('createVisit',deps);if(malformed)await assert.rejects(create('{}',guard));else assert.equal(await create('{}',guard),visit);
+  const create=callback('createVisit',deps);if(malformed)await assert.rejects(create('{"cliente_id":7}',guard));else assert.equal(await create('{"cliente_id":7}',guard),visit);
   assert.deepEqual(effects,[true,false]);assert.equal(deps.writeLock.current,false);
  }
  let resolve,active=true;const effects=[],guard={assertCurrent(){if(!active)throw Error('obsolete')},current:()=>active,request:()=>new Promise(yes=>{resolve=yes})};

@@ -37,6 +37,7 @@ export function getNavigationGroups(role) {
 }
 
 export function isNavigationActive(href, pathname, search = "") {
+  if (pathname === '/clientes/operacion') return href === '/clientes';
   const aliases = { "/bloc-notas": "/feedback", "/calendario-estructura": "/planificacion-historias" };
   if (pathname === "/clientes" && ["/clientes", "/clientes?gestion=1"].includes(href)) {
     const management = new URLSearchParams(search).get("gestion") === "1";

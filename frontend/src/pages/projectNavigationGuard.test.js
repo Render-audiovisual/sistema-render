@@ -98,8 +98,9 @@ test('local cancel preserves refusal and clears form/ref only after one accepted
 
 test('committed popstate restores project selection once, never asks again or rewrites history', () => {
   const h = state(), updates = [];
-  const pop = new Function('window', 'projectLocation', 'selectionRef', 'formRef', 'setForm', 'setMessage', 'setSelection', `${popSource}\nreturn navigate;`)(
-    h.win, projectLocation, h.selectionRef, h.formRef, value => updates.push(['form', value]), value => updates.push(['message', value]), value => updates.push(['selection', value]));
+  const contexts = [];
+  const pop = new Function('window', 'projectLocation', 'selectionRef', 'formRef', 'setForm', 'setMessage', 'setSelection', 'restoreListContext', `${popSource}\nreturn navigate;`)(
+    h.win, projectLocation, h.selectionRef, h.formRef, value => updates.push(['form', value]), value => updates.push(['message', value]), value => updates.push(['selection', value]), href => contexts.push(href));
   h.formRef.current = dirtyForm();
   h.win.confirm = () => { throw new Error('must not confirm after approval'); };
   h.win.history = new Proxy({}, { get() { throw new Error('must not repair history'); } });
@@ -112,10 +113,11 @@ test('committed popstate restores project selection once, never asks again or re
   assert.equal(updates.filter(([key]) => key === 'selection').length, 1);
   pop();
   assert.equal(updates.filter(([key]) => key === 'selection').length, 1);
+  assert.equal(contexts.length, 3, 'List context is restored even when project selection is unchanged');
 });
 
 test('task link delegates to shared navigation exactly once, with no pre-confirm or draft clearing', () => {
-  const controller = section('  function openTask(event, href)', '\n  return <main className="projects-page"');
+  const controller = section('  function openTask(event, href)', '\n  const shownList =');
   assert.doesNotMatch(controller, /canLeave|confirm|setForm|formRef|pushState/);
   const calls = [];
   const plain = event => event.button === 0 && !event.ctrlKey;
