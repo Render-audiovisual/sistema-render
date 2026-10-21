@@ -237,6 +237,90 @@
   background-color: var(--render-surface);
 }
 
+/* El orden es un control breve, no otra cuadrícula de filtros. */
+.render-workspace .ros-order-toolbar {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  min-width: 0;
+  margin: 8px var(--task-gutter);
+  color: var(--render-muted);
+  font-size: 13px;
+}
+.render-workspace .ros-order-toolbar > label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 44px;
+}
+.render-workspace .ros-order-toolbar select {
+  width: 128px;
+  max-width: 180px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--render-line);
+  border-radius: var(--render-radius-control);
+  background: var(--render-surface);
+  color: var(--render-ink-soft);
+  font: inherit;
+}
+.render-workspace .ros-order-help {
+  flex: 1 1 140px;
+  min-width: 0;
+  max-width: 38rem;
+}
+.render-workspace .ros-order-help summary {
+  min-height: 44px;
+  padding-block: 12px;
+  cursor: pointer;
+  line-height: 20px;
+}
+.render-workspace .ros-order-help p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.render-workspace .ros-task-card .ros-order-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.render-workspace .ros-task-card .ros-order-actions button {
+  min-height: 44px;
+  min-width: 44px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--render-line);
+  border-radius: var(--render-radius-control);
+  background: var(--render-surface-soft);
+  color: var(--render-ink-soft);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.render-workspace .ros-task-card .ros-order-actions button:hover:not(:disabled) {
+  background: var(--render-surface-muted);
+  border-color: var(--render-line-strong);
+}
+.render-workspace .ros-task-card .ros-order-actions button:disabled {
+  color: var(--render-muted);
+  opacity: .5;
+  cursor: default;
+}
+.render-workspace .ros-order-toolbar :is(select, summary):focus-visible,
+.render-workspace .ros-task-card .ros-order-actions button:focus-visible {
+  outline: 2px solid var(--render-accent);
+  outline-offset: 2px;
+}
+
 @media (max-width: 980px) {
   .render-workspace .ros-title-row { grid-template-columns: 1fr; gap: 16px; }
   .render-workspace .ros-title-actions { grid-template-columns: minmax(0, 1fr) auto; }

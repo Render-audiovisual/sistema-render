@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
 import {createTaskManualOrder,taskOrderInput,verifiedTaskOrderAck,validTaskOrderRevision,validTaskOrderSnapshot,taskOrderArrowAnchor} from '../features/render-os/utils/task-manual-order.js';
 import {apiTaskPage,buildTaskPageUrl} from '../features/render-os/services/render-os-api.js';
 import {getTaskViewState,updateTaskViewUrl} from '../features/render-os/utils/task-view-state.js';
@@ -148,4 +150,24 @@ test('source wires URL sort, explicit recovery, own-card controls and manual-onl
  assert.match(source,/Verificar movimiento/);assert.match(source,/onRefreshOrder=\{refreshTaskOrder\}/);assert.match(source,/sort: effectiveSort/);
  const refresh=initializer('WorkspaceReadOnlyPage','refreshTaskOrder').getText(file);assert.match(refresh,/orderModel.reset\(\)/);assert.match(refresh,/reloadTaskOrder\(\)/);
  assert.doesNotMatch(readFileSync(new URL('../features/render-os/utils/task-manual-order.js',import.meta.url),'utf8'),/localStorage|Math.random|setTimeout/);
+});
+test('actual toolbar JSX is a compact independent control with closed optional help, not the filter grid',()=>{
+ let toolbar;function visit(node){if(ts.isJsxElement(node)&&node.openingElement.attributes.properties.some(attribute=>attribute.name?.getText(file)==='className'&&attribute.initializer?.text==='ros-order-toolbar'))toolbar=node;ts.forEachChild(node,visit)}visit(file);
+ assert.ok(toolbar);const jsx=toolbar.getText(file);assert.doesNotMatch(jsx,/ros-filter-bar/);
+ const compiled=ts.transpileModule(`const Toolbar=()=>(${jsx});`,{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;
+ for(const sort of ['date','manual']){
+  const Toolbar=new Function('React','sort','view','archiveMode','orderState','setSort',`${compiled};return Toolbar;`)(React,sort,'board','active',{busy:false},()=>{});
+  const html=renderToStaticMarkup(React.createElement(Toolbar));assert.match(html,/aria-label="Orden de tareas"/);
+  if(sort==='manual'){assert.match(html,/<summary>Orden compartido<\/summary>/);assert.match(html,/<details class="ros-order-help">/);assert.doesNotMatch(html,/<details[^>]* open/)}else assert.doesNotMatch(html,/<details/);
+ }
+});
+test('existing final header layer scopes quiet order surfaces, wrapping and 44px targets without another stylesheet',()=>{
+ const css=readFileSync(new URL('./TaskHeader.css',import.meta.url),'utf8');
+ assert.match(css,/\.render-workspace \.ros-order-toolbar\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap;/);
+ assert.match(css,/\.ros-order-toolbar select\s*\{[^}]*width: 128px;[^}]*max-width: 180px;[^}]*min-height: 44px;/);
+ assert.match(css,/\.ros-order-help p\s*\{[^}]*font-size: 13px;[^}]*overflow-wrap: anywhere;/);
+ assert.match(css,/\.ros-order-actions button\s*\{[^}]*min-height: 44px;[^}]*max-width: 100%;[^}]*border: 1px solid var\(--render-line\);[^}]*background: var\(--render-surface-soft\);/);
+ assert.match(css,/\.ros-order-actions button:focus-visible/);
+ assert.match(source,/className="ros-order-actions" role="group"/);
+ assert.doesNotMatch(source,/import .*Order.*\.css/);
 });

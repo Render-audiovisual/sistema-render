@@ -99,7 +99,8 @@ const hash = value => createHash('sha256').update(JSON.stringify(value)).digest(
 const layoutBaseline = {
   WorkspaceReadOnly: '4393c850d1030445e9ff49760d7a4a6b773d91a42f08aebb81da906a340c3a6e',
   RenderApplePolish: '622868f4d950c468758fd420378e644befbb93a0c1ea283a0fc331d2ecf370dd',
-  TaskHeader: '284515b36e7c319aef5c67edd9689c2dfcd68b3096f20fc8157d757a98dd86f4',
+  // Integration99: approved scoped order toolbar/actions in the existing layer.
+  TaskHeader: 'a068e76e9fa3fd15a9261c751ea0de66b91a7462cc0ae45d2393ee77dd472146',
   TaskDetailNotion: 'ea76f4d2e014e5f391e90938bc64f69d671c4a71acf045dc07001b8b1ae6f295',
   TaskDetailCompact: '852876b2b66daed8c935703fa48b76c50805f57d51b912521819ae4c48369cad',
 };
