@@ -3,6 +3,7 @@ import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { getSesion } from '../utils.jsx';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { createPersonalListSaveQueue } from './personalListSaveQueue.js';
+import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
 import "./PersonalLists.css";
 
 const EMOJI_OPTIONS = [
@@ -182,13 +183,18 @@ export function PersonalListsPage() {
   const listsRef = useRef([]);
   const controllers = useRef(new Set());
   const captured = useRef(getSesion());
+  const binding = useRef(null);
+  const bindingInitialized = useRef(false);
+  if (!bindingInitialized.current) {
+    binding.current = captureSessionBinding(captured.current);
+    bindingInitialized.current = true;
+  }
   const pendingSaves = useRef(0);
   const statusRef = useRef(status);statusRef.current=status;
   const activeList = useMemo(() => lists.find((list) => String(list.id) === String(activeId)) || lists[0] || null, [lists, activeId]);
 
   const currentSession = useCallback(() => {
-    try {const live=getSesion(),initial=captured.current;return mounted.current&&Boolean(initial?.token)
-      &&live?.token===initial.token&&live.usuario.id===initial.usuario.id&&live.usuario.rol===initial.usuario.rol&&live.usuario.activo!==false;}catch{return false;}
+    try {return mounted.current && sessionBindingMatches(binding.current, getSesion());}catch{return false;}
   },[]);
   const updateLists = useCallback(transform=>{const next=transform(listsRef.current);listsRef.current=next;setLists(next);},[]);
   const replaceList = useCallback((listId, transform) => updateLists(current=>current.map(list=>String(list.id)===String(listId)?transform(list):list)),[updateLists]);
@@ -198,8 +204,7 @@ export function PersonalListsPage() {
     const controller=new AbortController(),previous=options.signal;
     const abort=()=>controller.abort();previous?.addEventListener('abort',abort,{once:true});if(previous?.aborted)abort();
     controllers.current.add(controller);const timer=window.setTimeout(abort,15000);
-    const headers=new Headers(options.headers||{});headers.set('Authorization',`Bearer ${captured.current.token}`);
-    try {const result=await apiRequest(url,{...options,headers,signal:controller.signal});
+    try {const result=await apiRequest(url,sessionRequestOptions(binding.current,{...options,signal:controller.signal}));
       if(!currentSession())throw Object.assign(new Error('La sesión cambió.'),{status:401});return result;
     }finally{window.clearTimeout(timer);previous?.removeEventListener('abort',abort);controllers.current.delete(controller);}
   },[currentSession]);

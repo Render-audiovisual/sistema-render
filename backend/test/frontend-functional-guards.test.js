@@ -378,13 +378,13 @@ test("el detalle de todas las tareas conserva guion, copy e indicaciones en un Ã
   assert.match(workspaceStyles, /\.ros-controls-meta>span\{[^}]*font-weight:500/);
 });
 
-test("el frontend no fabrica sesiones y adjunta el JWT a la API", () => {
+test("el frontend no fabrica sesiones y usa el runtime browser; adaptador bearer conserva su contrato externo", () => {
   const appSource = readFileSync(new URL("../../frontend/src/App.jsx", import.meta.url), "utf8");
   const mainSource = readFileSync(new URL("../../frontend/src/main.jsx", import.meta.url), "utf8");
   const transportSource = readFileSync(new URL("../../frontend/src/shared/session/api-fetch.js", import.meta.url), "utf8");
 
   assert.doesNotMatch(appSource, /getSesionDelPath/);
-  assert.match(mainSource, /const applicationSession = createApplicationSession\(\{ mode: 'bearer', fetchImpl: fetchOriginal/);
+  assert.match(mainSource, /const applicationSession = createApplicationSession\(\{ mode: 'browser', fetchImpl: fetchOriginal/);
   assert.match(mainSource, /window.fetch = applicationSession.fetch/);
   assert.match(transportSource, /!headers.has\('Authorization'\)&&captured/);
   assert.match(transportSource, /headers.set\('Authorization',`Bearer \$\{captured.token\}`\)/);

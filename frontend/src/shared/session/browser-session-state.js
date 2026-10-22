@@ -68,6 +68,11 @@ export function createBrowserSessionState() {
       if (!isCurrent(intent)) return false;
       activeBootstrap = null; publish('anonymous'); return true;
     },
+    withdrawObservation() {
+      // An origin-wide change hint is never an identity DTO. Withdraw even a
+      // pending bootstrap so it cannot publish the cookie's previous owner.
+      activeBootstrap = null; publish('anonymous');
+    },
   });
   return api;
 }

@@ -1,5 +1,7 @@
 # Integration 71 — document-owned application session runtime
 
+Historical evidence below describes integration71, not today's entrypoint. Integration124 at the end records the canonical browser cutover; do not use the older bearer wiring as current architecture.
+
 Local only. The previous integration was progress (commit `108e86e`); this batch continues the same full Render 2.0 objective, without marking it achieved.
 
 ## Implemented
@@ -36,3 +38,17 @@ Both owned browser tabs closed; temporary viewport reset. Both browser fixture p
 - Preexisting App20+/1-, Vite5+ and untracked reference work remain untouched/excluded. No configured DB/provider/environment/schema/dependency changes, push or deployment. Not production-ready; master goal remains active.
 
 Security guidance kept browser mode Storage-free and same-origin; structured ownership isolated shared entrypoint changes. Browser QA deliberately separates observed behavior from unproven mounted/cookie behavior.
+
+## Integration124 — canonical cookie transport
+
+The operational `main.jsx` now chooses browser mode only. No public toggle silently restores bearer and no separate application is introduced. The server's explicit opt-in remains deliberate: operators must configure `RENDER_BROWSER_SESSIONS=true`, exact `RENDER_BROWSER_ORIGIN` and HTTPS for a coordinated authorized release. This source change does not configure or deploy a hosting environment. `VITE_API_BASE` must be empty; a foreign base or missing Web Locks fails closed with an actionable startup screen. Network bootstrap failure uses App's existing verification screen.
+
+The document-owned runtime is installed before React StrictMode; Login/Profile, captured requests and mounted editors consume it. The historical `render_sesion` key is removed without reading its contents. No drafts/preferences are deleted and no token property is fabricated on cookie DTOs. Bearer API/adapters remain for explicit non-browser compatibility and regression tests, not a second canonical browser mode.
+
+PersonalLists now captures a genuine binding once per component lifetime, preserving queued intent/CAS/abort guards without requiring `.token`. Productions captures a request before awaiting its write; write/readback/conflict observation use that same identity and context. Parent App's session-observation key remounts editor trees on account/bootstrap changes; token-only child key labels are not relied on to authorize requests.
+
+Cross-document coordination uses a single advisory BroadcastChannel with only `{reason:'login'|'logout'}`. Receiving a valid hint cancels local publication and withdraws pending/current observation; it never adopts a message DTO, automatically bootstraps a new account or rebroadcasts invalidation. Cookie-setting requests retain the shared Web Lock until their network result resolves even when local publication is canceled. Hint delivery is best effort if the browser cannot provide the channel; server exact-context/CSRF and response/body fences remain mandatory. This is not guaranteed crash/offline/hung-request recovery.
+
+Logout revokes the actor's existing server epoch, deliberately affecting that account's other sessions of the epoch. It does not clear cookies with a delayed Set-Cookie response that could overwrite another login. Other accounts are not revoked. Shared cookie state means tabs in one browser origin are not simultaneous independent account containers: account changes withdraw old views rather than mixing their data. Separate identities are verified accounts; separate private-browser profiles/devices can use their own cookie jars.
+
+No new migrations/dependencies. Production deployment additionally requires verified public origin/TLS/reverse proxy, approved account/provider onboarding and backup/restore/rollout. Native local acceptance uses only the restricted numeric-loopback dev cookie, not proof of HTTPS Secure/__Host enforcement in hosting. Actual Google/Drive provider authentication remains unverified. See MASTER_LOCAL_ACCEPTANCE and STATUS for final test counts and temporary native evidence.

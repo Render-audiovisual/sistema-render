@@ -42,7 +42,7 @@ function writeProductionLocation({id = null, month, clientId, tab, replace = fal
 }
 
 // CAS always uses the visit version supplied by the visible form, never a newer hidden ref.
-async function productionWrite({ visit, path = '', method = 'PATCH', data, request = apiRequest, refresh }) {
+async function productionWrite({ visit, path = '', method = 'PATCH', data, request, refresh }) {
   if (!positiveId(visit?.revision)) throw new Error('Recargá la visita antes de guardar: falta su revisión actual.');
   try {
     return await request(`/api/producciones/${encodeURIComponent(visit.id)}${path}`, {
@@ -384,9 +384,11 @@ export function ProductionsPage({sesion}) {
       .catch(reason=>{if(current())setError(reason.message);}).finally(()=>{if(current())setLoading(false);});
     return()=>controller.abort();
   },[month,clientId,tab,contextError,reload]);
-  const refreshVisit = async id => {
+  const refreshVisit = async (id, guard) => {
     const epoch=readEpoch.current;
-    const value = verifiedProductionDraftVisit(await apiRequest(`/api/producciones/${encodeURIComponent(id)}`),id);
+    const url=`/api/producciones/${encodeURIComponent(id)}`;
+    const value = verifiedProductionDraftVisit(await (guard ? guard.request(url) : apiRequest(url)),id);
+    guard?.assertCurrent();
     if(epoch!==readEpoch.current)throw new Error('El contexto de producciones cambió.');
     assertProductionClient(value,clientId);
     setSelected(current=>current?.id === id ? value : current);
@@ -451,13 +453,22 @@ export function ProductionsPage({sesion}) {
   };
   const writeVisit = async (visit,path,method,data) => {
     if(writeLock.current||batchDraft.current.busy) throw new Error('Hay otra operación en curso.');
+    // Pin the rendered actor and visible context before dispatch, including
+    // conflict recovery/readback. Never recapture a later cookie account.
+    const epoch=readEpoch.current,version=openVersion.current;
+    const guard=createCapturedRequest({session:sesion,readSession:getSesion,request:apiRequest,
+      isActive:()=>readEpoch.current===epoch&&openVersion.current===version});
+    guard.assertCurrent();
+    const refresh=id=>refreshVisit(id,guard);
     writeLock.current=true;setBusy(true);setNotice('');
     try {
-      const response=await productionWrite({visit,path,method,data,refresh:refreshVisit});
+      const response=await productionWrite({visit,path,method,data,request:guard.request,refresh});
+      guard.assertCurrent();
       // Read back the full aggregate: nested endpoints may return only the changed record.
       let fresh;
-      try { fresh=await refreshVisit(visit.id);setNotice('Cambios guardados.'); }
+      try { fresh=await refresh(visit.id);guard.assertCurrent();setNotice('Cambios guardados.'); }
       catch {
+        guard.assertCurrent();
         const ack=visitDTO(response);
         const saved=ack?.id===visit.id && positiveId(ack.revision) && ack.revision>visit.revision;
         throw Object.assign(new Error(saved
@@ -465,8 +476,8 @@ export function ProductionsPage({sesion}) {
           : 'No pudimos verificar el resultado completo. No repitas el envío antes de cargar la versión guardada.'),{productionSaved:saved});
       }
       setReload(value=>value+1);return fresh;
-    } catch(reason){setNotice(reason.message);throw reason;}
-    finally{writeLock.current=false;setBusy(false);}
+    } catch(reason){if(guard.current())setNotice(reason.message);throw reason;}
+    finally{writeLock.current=false;if(guard.current())setBusy(false);}
   };
   const createVisit = async (body, guard) => {
     guard.assertCurrent();

@@ -37,7 +37,8 @@ test('refresh is explicit discard, not an automatic error handler; request ident
   const reload=part('  const reload =','  const createList =');
   assert.ok(reload.indexOf('window.confirm(')<reload.indexOf('queue.current?.discard()'));
   assert.ok(reload.indexOf('queue.current?.discard()')<reload.indexOf('await load()'));
-  assert.match(source,/headers.set\('Authorization',`Bearer \$\{captured.current.token\}`\)/);
+  assert.match(source,/sessionRequestOptions\(binding.current,/);
+  assert.match(source,/sessionBindingMatches\(binding.current, getSesion\(\)\)/);
   assert.match(source,/queue.current\?\.dispose\(\)/);assert.match(source,/controller.abort\(\)/);
   assert.equal((source.match(/await apiRequest\(/g)||[]).length,1,'All page API calls pass through the session-scoped transport');
   assert.match(source,/Actualizar desde servidor/);assert.match(source,/Reintentar guardado/);assert.match(source,/Guardar ahora/);

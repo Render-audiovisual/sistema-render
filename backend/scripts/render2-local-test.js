@@ -58,7 +58,7 @@ export function fixtureWilsonEnvironment(config = {}) {
   return result;
 }
 
-export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, deferProductionCreateReceiptsMigration = false, deferTaskBoardOrderMigration = false, deferGoalQuotaReviewMigration = false, deferProductionHistoryBatchMigration = false, deferProjectDeliverableApprovalMigration = false, deferMoodboardReferenceMigration = false, wilson = {} } = {}) {
+export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, browserPort, deferProductionCreateReceiptsMigration = false, deferTaskBoardOrderMigration = false, deferGoalQuotaReviewMigration = false, deferProductionHistoryBatchMigration = false, deferProjectDeliverableApprovalMigration = false, deferMoodboardReferenceMigration = false, wilson = {} } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   if (typeof deferUserAdminMigration !== 'boolean') throw new Error('Invalid account observation migration fixture option');
   if (typeof deferProductionCreateReceiptsMigration !== 'boolean') throw new Error('Invalid production creation receipt migration fixture option');
@@ -70,6 +70,8 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
   if (typeof clusterOnly !== 'boolean') throw new Error('Invalid cluster-only fixture option');
   if (typeof deferMoodboardReferenceMigration !== 'boolean') throw new Error('Invalid reference migration fixture option');
   if (typeof browserSessions !== 'boolean') throw new Error('Invalid browser-session fixture option');
+  if (browserPort !== undefined && (!browserSessions || clusterOnly || !Number.isInteger(browserPort)
+    || browserPort < 1024 || browserPort > 65535 || browserPort === port)) throw new Error('Invalid browser HTTP fixture port');
   const wilsonEnv = fixtureWilsonEnvironment(wilson);
   const root = await mkdtemp('/private/tmp/render2-local-');
   const data = `${root}/data`;
@@ -119,7 +121,8 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
     const secret = randomBytes(32).toString('hex');
     child = fork(self, ['--fixture-child'], { cwd: root, execArgv: [],
       env: { ...env, ...wilsonEnv, MIA_SUPERVISOR_ENABLED: String(supervisorEnabled), DATABASE_URL: url, JWT_SECRET: secret, RENDER2_FIXTURE_ROOT: root,
-        ...(browserSessions ? { RENDER_BROWSER_SESSIONS: 'true', RENDER_BROWSER_ORIGIN: 'http://127.0.0.1:5195', RENDER_BROWSER_ALLOW_LOCAL_HTTP: 'true' } : {}),
+        ...(browserSessions ? { RENDER_BROWSER_SESSIONS: 'true', RENDER_BROWSER_ORIGIN: `http://127.0.0.1:${browserPort ?? 5195}`, RENDER_BROWSER_ALLOW_LOCAL_HTTP: 'true',
+          ...(browserPort !== undefined ? { RENDER2_FIXTURE_HTTP_PORT: String(browserPort) } : {}) } : {}),
         RENDER2_FIXTURE_PORT: String(port), RENDER2_DEFER_GOAL_MIGRATION: String(deferGoalMigration),
         RENDER2_DEFER_USER_ADMIN_MIGRATION: String(deferUserAdminMigration),
         RENDER2_DEFER_PRODUCTION_CREATE_RECEIPTS_MIGRATION: String(deferProductionCreateReceiptsMigration),
@@ -302,7 +305,10 @@ async function fixtureChild() {
   let server;
   if (process.env.RENDER2_FIXTURE_CLUSTER_ONLY !== 'true') {
     const { app } = await import('../src/server.js');
-    server = app.listen(0, '127.0.0.1');
+    const httpPort = process.env.RENDER2_FIXTURE_HTTP_PORT === undefined ? 0 : Number(process.env.RENDER2_FIXTURE_HTTP_PORT);
+    if (!Number.isInteger(httpPort) || httpPort < 0 || httpPort > 65535
+      || (httpPort !== 0 && (httpPort < 1024 || process.env.RENDER_BROWSER_ORIGIN !== `http://127.0.0.1:${httpPort}`))) throw new Error('Unsafe fixture HTTP origin');
+    server = app.listen(httpPort, '127.0.0.1');
     await once(server, 'listening');
   }
   process.on('message', async ({ id, sql, values }) => {

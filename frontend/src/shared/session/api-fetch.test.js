@@ -76,7 +76,7 @@ test('non-API input is delegated unchanged without credentials or URL rewrite',a
 test('network failure never mutates storage and bootstrap uses the tested transport',async()=>{
   const f=fixture(async()=>{throw Error('offline');});await assert.rejects(f.fetch('/api/inicio'),/offline/);assert.deepEqual(f.removed,[]);
   const main=readFileSync(new URL('../../main.jsx',import.meta.url),'utf8');
-  assert.match(main,/const applicationSession = createApplicationSession\(\{ mode: 'bearer', fetchImpl: fetchOriginal/);
+  assert.match(main,/const applicationSession = createApplicationSession\(\{ mode: 'browser', fetchImpl: fetchOriginal/);
   assert.match(main,/window.fetch = applicationSession.fetch/);
   assert.doesNotMatch(main,/response.status === 401|headers.set\("Authorization"/);
 });

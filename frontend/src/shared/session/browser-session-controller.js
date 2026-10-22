@@ -11,7 +11,7 @@ export class BrowserSessionControllerError extends Error {
 
 // One cooperative origin-wide lock covers all cookie-setting requests AND the
 // confirming bootstrap. Inject navigator.locks; never silently use a local lock.
-// Not mounted in main/App yet. Dispose is not a confirmed server logout.
+// Dispose and cross-document withdrawal are not confirmed server logout.
 export function createBrowserSessionController({ origin, store, fetchImpl, locks, notifyChange = () => {} }) {
   if (!locks || typeof locks.request !== 'function') throw new BrowserSessionControllerError('browser_locks_required');
   const apiFetch = createBrowserApiFetch({ origin, store, fetchImpl });
@@ -99,6 +99,13 @@ export function createBrowserSessionController({ origin, store, fetchImpl, locks
   }
   return Object.freeze({
     isBusy: () => active !== null,
+    invalidateExternal() {
+      if (disposed) return;
+      // Do not abort an unresolved cookie writer's network request or release
+      // its Web Lock early. Cancellation prevents publication, not commit.
+      active?.cancel(true);
+      store.withdrawObservation();
+    },
     bootstrap({ signal } = {}) {
       const op = start('bootstrap', signal); return run(op, () => observe(op));
     },

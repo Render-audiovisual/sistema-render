@@ -402,14 +402,18 @@ test('browser client against principal HTTP: memory observations, exact mutation
       return value;
     };
     const create = (task, requestDto = dto, queue = Promise.resolve()) => {
-      let rendered = [task]; const effects = [];
+      let rendered = [task]; const effects = [], reviewCalls = [];
       const tasksRef = { current: [task] }, sesion = runtime.getSession();
       const deps = { sesion, tasksRef, updateQueuesRef: { current: new Map([[task.id, queue]]) }, clients: [],
         setTasks: update => { effects.push('render'); rendered = update(rendered); },
         notify: () => effects.push('notify'), canRetryTaskUpdate, isSessionFailure,
+        markReviewQueueStale: (guard, uncertain = false) => {
+          guard.assertCurrent(); reviewCalls.push({ guard, uncertain });
+          effects.push(uncertain ? 'review-uncertain' : 'review-stale');
+        },
         captureRequest: () => createCapturedRequest({ session: sesion, readSession: runtime.getSession, request: requestDto }) };
-      const update = new Function('deps', `const {sesion,tasksRef,updateQueuesRef,clients,setTasks,notify,canRetryTaskUpdate,isSessionFailure,captureRequest}=deps;\n${actualCallbacks}\nreturn updateTask;`)(deps);
-      return { update, tasksRef, effects, get rendered() { return rendered; },
+      const update = new Function('deps', `const {sesion,tasksRef,updateQueuesRef,clients,setTasks,notify,canRetryTaskUpdate,isSessionFailure,captureRequest,markReviewQueueStale}=deps;\n${actualCallbacks}\nreturn updateTask;`)(deps);
+      return { update, tasksRef, effects, reviewCalls, get rendered() { return rendered; },
         replaceView: () => { rendered = [{ id: task.id, revision: 999, titulo: 'B view' }]; tasksRef.current = rendered; } };
     };
     const login = usuario => runtime.login({ kind: 'password', body: { usuario, password: fixturePassword } });
@@ -427,6 +431,8 @@ test('browser client against principal HTTP: memory observations, exact mutation
       const taskCalls = requests.slice(before).filter(entry => entry.path === `/api/tareas/${task.id}`);
       assert.deepEqual(taskCalls.map(entry => [entry.method, entry.status]), [['PATCH', 409], ['GET', 200], ['PATCH', 200]]);
       assert.equal(f.effects.filter(value => value === 'notify').length, 1);
+      assert.deepEqual(f.reviewCalls.map(call => call.uncertain), [true, false], '409 invalidates review observation; the successful permitted CAS retry marks confirmed staleness');
+      assert.equal(f.reviewCalls[0].guard,f.reviewCalls[1].guard,'retry and review invalidation remain bound to the same captured actor');
       const held = gate(), late = create(updated, async (url, options) => {
         const value = await dto(url, options);
         if (options?.method === 'PATCH') { held.entered.resolve(); await held.release.promise; }
@@ -437,6 +443,7 @@ test('browser client against principal HTTP: memory observations, exact mutation
       await waitEntered(held); await login('qa_luciano'); late.replaceView(); const effectCount = late.effects.length;
       held.release.resolve(); assert.ok(isSessionFailure((await pending).error));
       assert.equal(late.effects.length, effectCount); assert.equal(late.rendered[0].titulo, 'B view');
+      assert.equal(late.reviewCalls.length,0,'late A ACK cannot invalidate the B review view');
       assert.equal((await fixture.query('SELECT count(*)::int AS n FROM tarea_comentarios WHERE tarea_id=$1', [task.id]))[0].n, commentCount);
       await login('qa_agustin');
       const current = await dto(`/api/tareas/${task.id}?workspace=render_os`), waiting = gate();
@@ -444,6 +451,7 @@ test('browser client against principal HTTP: memory observations, exact mutation
       const result = observed(queued.update(task.id, { titulo: 'Must never dispatch under B' }, null));
       await login('qa_luciano'); const count = requests.length; waiting.release.resolve();
       assert.ok(isSessionFailure((await result).error)); assert.equal(requests.length, count);
+      assert.equal(queued.reviewCalls.length,0,'queued obsolete A work cannot mark the B review view stale');
       assert.equal((await fixture.query('SELECT titulo FROM tareas WHERE id=$1', [task.id]))[0].titulo, 'QA74 A persisted before B');
     } finally { runtime.dispose(); }
   });

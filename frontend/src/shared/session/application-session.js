@@ -13,7 +13,7 @@ export class ApplicationSessionError extends Error {
 
 // One instance belongs to one document, not to a React mount. No globals,
 // event listeners or storage access at module import time.
-export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, location, apiBase = '', locks, notifyChange, eventTarget } = {}) {
+export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, location, apiBase = '', locks, notifyChange, eventTarget, sessionChanges } = {}) {
   if (!['bearer', 'browser'].includes(mode) || typeof fetchImpl !== 'function')
     throw new ApplicationSessionError('application_session_config_invalid');
   let disposed = false, started;
@@ -41,6 +41,7 @@ export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, 
     const controller = createBrowserSessionController({ origin, store, fetchImpl, locks, notifyChange });
     const apiFetch = createBrowserApiFetch({ origin, store, fetchImpl });
     const subscriptions = new Set();
+    let removeChanges;
     return Object.freeze({ mode,
       fetch(input, options) { assertLive(); return apiFetch(input, options); },
       getSession: store.getSession, getSnapshot: store.getSnapshot,
@@ -50,14 +51,20 @@ export function createApplicationSession({ mode = 'bearer', fetchImpl, storage, 
         const unsubscribe = () => { remove(); subscriptions.delete(unsubscribe); };
         subscriptions.add(unsubscribe); return unsubscribe;
       },
-      start: () => startOnce(() => controller.bootstrap()),
+      start: () => startOnce(() => {
+        if (sessionChanges) {
+          if (typeof sessionChanges.subscribe !== 'function') throw new ApplicationSessionError('application_session_changes_invalid');
+          removeChanges = sessionChanges.subscribe(() => controller.invalidateExternal());
+        }
+        return controller.bootstrap();
+      }),
       login(options) { assertLive(); return controller.login(options); },
       logout(options) { assertLive(); return controller.logout(options); },
       refreshProfile(intent) { assertLive(); return controller.refreshProfile({ sessionIntent: intent }); },
       invalidateSession(intent) { assertLive(); return store.invalidate(intent); },
       sync() { assertLive(); throw new ApplicationSessionError('application_session_mode_unsupported'); },
       dispose() { if (!disposed) {
-        disposed = true; for (const unsubscribe of subscriptions) unsubscribe(); controller.dispose();
+        disposed = true; removeChanges?.(); for (const unsubscribe of subscriptions) unsubscribe(); controller.dispose();
       } },
     });
   }

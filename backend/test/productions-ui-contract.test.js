@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {createCapturedRequest} from '../../frontend/src/shared/session/captured-request.js';
 import {createProductionDraft,productionMediaDraft,verifiedProductionDraftVisit} from '../../frontend/src/pages/productionDraft.js';
 import {productionReadUrl,assertProductionClient} from '../../frontend/src/pages/productionRouteContext.js';
 
@@ -176,7 +177,9 @@ test('editing video pending/repeat preserves guion in actual form submit payload
 test('confirmed ACK plus failed readback reports saved recovery and blocks duplicate registration',async()=>{
   const body=section('  const writeVisit = async', '  const createVisit = async');
   let writes=0;const messages=[];const busy=[];
+  const sesion={token:'qa-production124',usuario:{id:7,rol:'admin',activo:true}};
   const context={writeLock:{current:false},batchDraft:{current:{dirty:false,busy:false}},setBusy:value=>busy.push(value),setNotice:value=>messages.push(value),
+    readEpoch:{current:0},openVersion:{current:0},createCapturedRequest,sesion,getSesion:()=>sesion,apiRequest:()=>assert.fail('stubbed productionWrite owns dispatch'),
     productionWrite:async()=>{writes++;return {visita:{...visit,revision:8}};},refreshVisit:async()=>{throw Error('offline');},setReload:()=>{},
     visitDTO:value=>value?.visita||value,positiveId:helpers.positiveId};
   const write=new Function(...Object.keys(context),`${body}\nreturn writeVisit;`)(...Object.values(context));
