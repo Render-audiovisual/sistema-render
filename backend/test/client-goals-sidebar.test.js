@@ -40,7 +40,10 @@ test('elimina la franja de búsqueda sin desactivar la actualización ni el rein
 });
 
 test('el encabezado conserva el selector mensual sin el botón Administración', () => {
-  const header = source.slice(source.indexOf('<header className="cg-header">'), source.indexOf('{isDemo &&'));
+  const start = source.indexOf('<header className="cg-header">');
+  const end = source.indexOf('</header>', start);
+  assert.ok(start >= 0 && end > start, 'El encabezado real debe estar delimitado');
+  const header = source.slice(start, end + '</header>'.length);
   assert.ok(header.length > 0);
   assert.doesNotMatch(header, /Administración|gestion=1/);
   assert.match(header, /aria-label="Mes de trabajo" type="month"/);

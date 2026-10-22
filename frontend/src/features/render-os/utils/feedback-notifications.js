@@ -8,17 +8,23 @@ export function feedbackSeenStorageKey(user) {
   return key ? `${STORAGE_PREFIX}:${key}` : "";
 }
 
-export function readFeedbackSeenAt(user, storage = globalThis.localStorage) {
+export function readFeedbackSeenAt(user, storage) {
   const key = feedbackSeenStorageKey(user);
-  if (!key || !storage) return null;
-  try { return storage.getItem(key); }
+  if (!key) return null;
+  try {
+    const available = storage === undefined ? globalThis.localStorage : storage;
+    return available ? available.getItem(key) : null;
+  }
   catch { return null; }
 }
 
-export function markFeedbackSeen(user, value = new Date().toISOString(), storage = globalThis.localStorage) {
+export function markFeedbackSeen(user, value = new Date().toISOString(), storage) {
   const key = feedbackSeenStorageKey(user);
-  if (!key || !storage) return;
-  try { storage.setItem(key, value); }
+  if (!key) return;
+  try {
+    const available = storage === undefined ? globalThis.localStorage : storage;
+    if (available) available.setItem(key, value);
+  }
   catch { /* El aviso no debe bloquear el trabajo si el navegador limita el almacenamiento. */ }
 }
 

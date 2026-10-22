@@ -116,7 +116,6 @@ function GoalPage({ sesion }) {
   const modalOpen = useRef(false), deferred = useRef(false), pendingPeriod = useRef(null), readGeneration = useRef(0), loaded = useRef(false);
   modalOpen.current = Boolean(preparing || selectedPiece);
   const canManage = ['admin', 'community'].includes(view.role);
-  const isDemo = ['127.0.0.1', 'localhost'].includes(window.location.hostname) && sesion?.usuario?.usuario === 'community-demo';
   const refresh = () => { if (modalOpen.current) { deferred.current = true; return; } setRevision(value => value + 1); };
   const closeModal = () => {
     if (preparing) { loaded.current = false; setLoading(true); deferred.current = true; }
@@ -191,7 +190,6 @@ function GoalPage({ sesion }) {
     <header className="cg-header"><div className="cg-heading-group"><span className="cg-page-icon"><GoalIcon name="clients" /></span><div><span className="cg-eyebrow">Seguimiento del equipo</span><h1>Clientes</h1><p>Todo el contenido del mes, en un mismo lugar.</p></div></div>
       <div className="cg-header-actions"><label className="cg-month"><span>Mes de trabajo</span><input aria-label="Mes de trabajo" type="month" value={period} disabled={Boolean(preparing || selectedPiece)} onChange={event => { if (/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) { setPeriod(event.target.value); setLocationError(''); setNotice(''); } }} /></label>
       </div></header>
-    {isDemo && <p className="cg-demo" role="note"><span>Vista de ejemplo</span>Los cambios de esta vista no afectan al sistema publicado.</p>}
     {notice && <p className="cg-notice" role="status">{notice}</p>}
     {loading ? <GoalLoading /> : error ? <PageState type="error" title="No pudimos cargar los objetivos" description={error} onRetry={refresh} /> : clients.length === 0 ? <PageState type="empty" title="No hay clientes para este mes" description="Elegí otro período para consultar su seguimiento." /> : <div className="cg-layout">
       <aside className="cg-clients" aria-label="Elegir cliente"><div className="cg-clients-heading"><span>Clientes</span><span>{filtered.length}</span></div>
