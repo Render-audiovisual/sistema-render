@@ -476,6 +476,12 @@ export function ProductionsPage({sesion}) {
           ? 'El cambio se guardó, pero no pudimos verificar el detalle completo. No repitas el envío: cargá la versión guardada.'
           : 'No pudimos verificar el resultado completo. No repitas el envío antes de cargar la versión guardada.'),{productionSaved:saved});
       }
+      // Follow only an explicit reschedule after its full server readback.
+      // Delivery dates and edits of videos/photos must not move the visit.
+      if(path==='' && method==='PATCH' && Object.hasOwn(data,'fecha') && fresh.fecha!==visit.fecha) {
+        setMonth(fresh.fecha.slice(0,7));setDay(fresh.fecha);
+        writeProductionLocation({id:fresh.id,month:fresh.fecha.slice(0,7),clientId,tab,replace:true});
+      }
       setReload(value=>value+1);return fresh;
     } catch(reason){if(guard.current())setNotice(reason.message);throw reason;}
     finally{writeLock.current=false;if(guard.current())setBusy(false);}
@@ -501,13 +507,19 @@ export function ProductionsPage({sesion}) {
     writeProductionLocation({month:nextMonth,clientId:nextClient,tab:nextTab});
   };
   const navigateMonth = amount => changeContext(clientId,tab,shiftProductionMonth(month,amount));
+  const startCreateVisit = () => {
+    // Re-entering the same mounted form must not clear its dirty registration
+    // or abandon an uncertain creation receipt while retaining visible fields.
+    if (creating || !mayLeave()) return;
+    ++openVersion.current;setDetailLoading(false);setSelected(null);setCreating(true);
+  };
   const filtered = visits.filter(visit=>!clientId || visit.cliente_id === Number(clientId));
   const selectedDayVisits = filtered.filter(visit=>visit.fecha === day);
   const resume = async video => {
     if(!selected || selected.cliente_id !== video.cliente_id){setNotice('Elegí una visita del mismo cliente antes de retomar este guion.');return;}
     try {await writeVisit(selected,'/videos','POST',{video_origen_id:video.id});}catch{/* Conflict message already visible. */}
   };
-  return <main className="productions-page"><header className="prod-page-heading"><div><h1>Producciones</h1><p>Visitas, guiones y material del equipo.</p></div><button className="prod-primary" type="button" disabled={busy} onClick={()=>{if(mayLeave()){++openVersion.current;setDetailLoading(false);setSelected(null);setCreating(true);}}}>Nueva visita</button></header>
+  return <main className="productions-page"><header className="prod-page-heading"><div><h1>Producciones</h1><p>Visitas, guiones y material del equipo.</p></div><button className="prod-primary" type="button" disabled={busy} onClick={startCreateVisit}>Nueva visita</button></header>
     <nav className="prod-toolbar" aria-label="Vistas de producciones"><div className="prod-tabs">{[['calendar','Calendario'],['pending','Banco de pendientes']].map(([id,label])=><button type="button" key={id} aria-pressed={tab===id} onClick={()=>changeContext(clientId,id)}>{label}</button>)}</div><FilterSelect label="Cliente" value={clientId} onChange={e=>changeContext(e.target.value,tab)}><option value="">Todos los clientes</option>{clientId && !clients.some(client=>String(client.id)===clientId) && <option value={clientId}>Cliente #{clientId}</option>}{clients.map(client=><option key={client.id} value={client.id}>{client.nombre}{client.activo === false ? ' (inactivo)' : ''}</option>)}</FilterSelect><button type="button" disabled={busy} onClick={()=>changeContext('',tab)}>Quitar filtro de cliente</button><button type="button" disabled={busy} onClick={retryProductionPage}>Actualizar</button></nav>
     {clientId && <p className="prod-muted" role="status">Cliente: {clients.find(client=>String(client.id)===clientId)?.nombre || `#${clientId}`} · {month}</p>}
     {notice && <p className="prod-notice" role="status">{notice}</p>}{error && <p className="prod-error" role="alert">{error} <button type="button" onClick={retryProductionPage}>Reintentar</button></p>}
