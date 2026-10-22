@@ -23,6 +23,64 @@ const observation = () => declarationFor((n) => ts.isCallExpression(n) && text(n
 const hasReturn = (node) => nodes(node, ts.isReturnStatement).length > 0;
 const compact = (node) => text(node).replace(/\s+/g, '');
 
+test('only Sidebar receives controlled navigation; Home/Calendar retain the synchronous legacy callback',()=>{
+  assert.match(source,/<Sidebar\b[^>]*onNavigate=\{navigateSidebar\}/);
+  assert.match(source,/<QuickHomePage\b[^>]*onNavigate=\{navigate\}/);
+  assert.match(source,/<CalendarPage\b[^>]*onNavigate=\{navigate\}/);
+  const legacy=nodes(app.body,n=>ts.isVariableDeclaration(n)&&text(n.name)==='navigate')[0];
+  assert.ok(legacy);assert.equal(calls(legacy,'navigateWithinApp').length,1);
+  assert.equal(calls(legacy,'navigateWithConfirmation').length,0);
+  assert.match(source,/useNavigationConfirmation\(\{ lifetime: navigationLifetime \}\)/);
+  assert.match(source,/\{navigationConfirmation.dialog\}/);
+});
+
+function controlledSidebarFixture(){
+  const declaration=nodes(app.body,n=>ts.isVariableDeclaration(n)&&text(n.name)==='navigateSidebar')[0];
+  assert.ok(declaration&&ts.isCallExpression(declaration.initializer));
+  const token=Object.freeze({}),snapshot={status:'authenticated',session:{usuario:{id:7}}};
+  const current={snapshot,route:'/feedback?note=7',delegations:[]};
+  const deps={window:{},sessionSnapshot:snapshot,path:'/feedback',route:current.route,navigationLifetime:token,
+    navigationEpoch:{current:3},navigationOwner:{current:{token}},navigationConfirmation:{request:()=>{}},
+    getApplicationSessionSnapshot:()=>current.snapshot,readRouteKey:()=>current.route,
+    navigateWithConfirmation:(win,href,options)=>{current.delegations.push({win,href,options});return Promise.resolve(false);}};
+  const run=Function(...Object.keys(deps),`return (${text(declaration.initializer.arguments[0])});`)(...Object.values(deps));
+  return{run,current,deps};
+}
+
+test('actual Sidebar App callback denies stale session/route/owner before opening confirmation',async()=>{
+  for(const change of ['snapshot','route','owner','unauthenticated']){
+    const f=controlledSidebarFixture();
+    if(change==='snapshot')f.current.snapshot={...f.current.snapshot};
+    if(change==='route')f.current.route='/proyectos?note=8';
+    if(change==='owner')f.deps.navigationOwner.current.token=Object.freeze({});
+    if(change==='unauthenticated')f.current.snapshot.status='unknown';
+    assert.equal(await f.run('/proyectos'),false);assert.equal(f.current.delegations.length,0,change);
+  }
+});
+
+test('actual Sidebar callback accepts child-owned query/hash before dispatch but fences subsequent context changes',async()=>{
+  const f=controlledSidebarFixture();
+  f.current.route='/feedback?note=8#contenido';
+  assert.equal(await f.run('/proyectos'),false);
+  assert.equal(f.current.delegations.length,1,'same pathname with current child query reaches controlled navigation');
+  const {options}=f.current.delegations[0];assert.equal(options.isCurrent(),true);
+  f.current.route='/feedback?note=7';assert.equal(options.isCurrent(),false,'consent binds the exact query/hash captured at invocation');
+});
+
+test('actual Sidebar callback passes stable presenter and fences pending approval by exact identity/route/epoch/opaque owner',async()=>{
+  for(const change of ['snapshot','route','epoch','owner']){
+    const f=controlledSidebarFixture();assert.equal(await f.run('/proyectos'),false);
+    assert.equal(f.current.delegations.length,1);const {win,href,options}=f.current.delegations[0];
+    assert.equal(win,f.deps.window);assert.equal(href,'/proyectos');assert.equal(options.present,f.deps.navigationConfirmation.request);
+    assert.equal(options.isCurrent(),true);
+    if(change==='snapshot')f.current.snapshot={...f.current.snapshot};
+    if(change==='route')f.current.route='/feedback?note=8';
+    if(change==='epoch')f.deps.navigationEpoch.current++;
+    if(change==='owner')f.deps.navigationOwner.current.token=Object.freeze({});
+    assert.equal(options.isCurrent(),false,change);
+  }
+});
+
 test('App imports real closed-policy helpers and resolves the complete reactive route', () => {
   const imported = file.statements.find((n) => ts.isImportDeclaration(n) && n.moduleSpecifier.text === './shared/navigation/legacy-routes.js');
   assert.ok(imported, 'Import real shared policy');

@@ -1,3 +1,4 @@
+import { withNavigationConsent, dispatchNavigationEvent } from './unsaved.js';
 // One notification protocol for principal SPA navigation. Not an authorization layer.
 export function readRouteKey(win) {
   return `${win.location.pathname}${win.location.search}${win.location.hash}`;
@@ -17,14 +18,25 @@ export function requestAppNavigation(win, href) {
   const target = navigationTarget(win, href);
   if (!target) return false;
   const before = new win.CustomEvent("render:before-navigation", { detail: { href: target }, cancelable: true });
-  return win.dispatchEvent(before);
+  return dispatchNavigationEvent(win, before);
 }
 
-export function navigateWithinApp(win, href) {
-  const target = navigationTarget(win, href);
-  if (!target || !requestAppNavigation(win, href)) return false;
+function commitNavigation(win, target, validate = () => true) {
+  if (!requestAppNavigation(win, target) || !validate()) return false;
   win.history.pushState({}, "", target);
   win.dispatchEvent(new win.PopStateEvent("popstate", { state: win.history.state }));
   win.scrollTo({ top: 0, behavior: "auto" });
   return true;
+}
+
+export function navigateWithinApp(win, href) {
+  const target = navigationTarget(win, href);
+  return target ? commitNavigation(win, target) : false;
+}
+
+export function navigateWithConfirmation(win, href, { present, isCurrent } = {}) {
+  const target = navigationTarget(win, href);
+  if (!target) return Promise.resolve(false);
+  return withNavigationConsent(win, target, { present, isCurrent,
+    perform: validate => commitNavigation(win, target, validate) });
 }

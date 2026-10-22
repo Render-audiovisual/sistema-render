@@ -32,12 +32,13 @@ export function MoodboardPreviewPage(){
 function MoodboardContent({sesion}){
   const mounted=useRef(false),initialization=useRef(null),initializingRef=useRef(false);
   const operationOwners=useRef(new Set()),recoveryOwners=useRef(new Set());
+  const operationObservation=useRef(Symbol('moodboard-form-observation'));
   const [operationBusy,setOperationBusy]=useState(false);
   const moodboardNavigationStatus=()=>{
     const scope=createCapturedRequest({session:sesion,readSession:getSesion,request:api,isActive:()=>mounted.current});
     return{dirty:scope.current()&&recoveryOwners.current.size>0,busy:scope.current()&&operationOwners.current.size>0};
   };
-  useNavigationGuard(moodboardNavigationStatus);
+  useNavigationGuard(moodboardNavigationStatus,()=>operationObservation.current);
   const boardObservation=useRef({id:null,generation:0}),boardLoader=useRef(null),loadGeneration=useRef(0),listController=useRef(null),listGeneration=useRef(0),catalog=useRef(null);
   const [location,setLocation]=useState(currentMoodboardLocation),locationRef=useRef(location);locationRef.current=location;
   const [boardEpoch,setBoardEpoch]=useState(0);
@@ -107,6 +108,7 @@ function MoodboardContent({sesion}){
   const onOperationBusy=(owner,busy,recovery=false)=>{
     if(busy){if(!originCurrent())return;operationOwners.current.add(owner);}
     else operationOwners.current.delete(owner);
+    operationObservation.current=Symbol('moodboard-form-observation');
     if(recovery&&originCurrent())recoveryOwners.current.add(owner);else recoveryOwners.current.delete(owner);
     if(mounted.current)setOperationBusy(operationOwners.current.size>0);
   };

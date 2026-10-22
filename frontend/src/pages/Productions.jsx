@@ -365,9 +365,10 @@ export function ProductionsPage({sesion}) {
   const openVersion = useRef(0);
   const navigationRef = useRef(null);
   const dirty = useRef(new Set());
-  useNavigationGuard(() => ({ dirty: dirty.current.size > 0, busy: writeLock.current||batchDraft.current.busy }));
+  const productionObservation = useRef(Symbol('production-form-observation'));
+  useNavigationGuard(() => ({ dirty: dirty.current.size > 0, busy: writeLock.current||batchDraft.current.busy }),()=>productionObservation.current);
   const isAdmin = positiveId(sesion?.usuario?.id) && sesion.usuario.rol === 'admin';
-  const onDirty = useCallback((key,value)=>{if(value) dirty.current.add(key); else dirty.current.delete(key);},[]);
+  const onDirty = useCallback((key,value)=>{productionObservation.current=Symbol('production-form-observation');if(value) dirty.current.add(key); else dirty.current.delete(key);},[]);
   const onBatchDraftStateChange=useCallback(next=>{batchDraft.current=next;setBatchBusy(next.busy);onDirty('history-batch',next.dirty);},[onDirty]);
   const mayLeave = () => { if (writeLock.current||batchDraft.current.busy) return false; if (dirty.current.size && !window.confirm('Hay cambios sin guardar. ¿Querés descartarlos?')) return false; dirty.current.clear(); return true; };
   useEffect(()=>{

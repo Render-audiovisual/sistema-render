@@ -154,13 +154,15 @@ test('actual draft owner/close callbacks consult product guard: cancel preserves
   win.confirm = () => { prompts++; return accept; };
   const operationOwners = { current: new Set() }, recoveryOwners = { current: new Set() }, mounted = { current: true };
   const busyNode = nodes(file, node => ts.isVariableDeclaration(node) && node.name.getText(file) === 'onOperationBusy')[0].initializer;
-  const onBusy = evaluate(busyNode, { operationOwners, recoveryOwners, mounted, originCurrent: () => true, setOperationBusy() {} });
+  const operationObservation={current:Symbol('initial')},initialObservation=operationObservation.current;
+  const onBusy = evaluate(busyNode, { operationOwners, recoveryOwners, operationObservation, mounted, originCurrent: () => true, setOperationBusy() {} });
   const baseline = { current: categories() }, draftObservation = { current: { draft: categories(), newCategory: '' } }, draftOwner = { current: Symbol('draft') };
   const holder = {current:{active:true,pending:false,scope:{current:()=>true},model:{snapshot:{phase:'idle',busy:false}}}};
   const deps = { baseline, draftObservation, draftOwner, initial:{current:{onBusy}}, holder, editable:()=>!holder.current.pending&&holder.current.model.snapshot.phase==='idle', moodboardCategoryDraftDirty, busy: false,
     model: { snapshot: { phase: 'idle', busy: false } }, setDraft() {}, setNewCategory() {}, saved() { saved++; } };
   deps.syncDraftOwner = callback('syncDraftOwner', deps);
   deps.syncDraftOwner();
+  assert.notEqual(operationObservation.current,initialObservation,'draft ownership notification rotates the explicit product observation');
   const cleanup = ()=>onBusy(draftOwner.current,false,false);
   const session = { token: 'original', usuario: { id: 1, rol: 'admin' } };
   const statusNode = nodes(file, node => ts.isVariableDeclaration(node) && node.name.getText(file) === 'moodboardNavigationStatus')[0].initializer;

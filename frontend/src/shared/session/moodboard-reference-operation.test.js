@@ -102,18 +102,22 @@ test('actual shared run catches update/delete failures and prevents rapid duplic
 });
 test('actual pending run registers synchronously; controlled board selection and activation cannot discard operation',async()=>{
  const operationOwners={current:new Set()},recoveryOwners={current:new Set()},states=[],owner={current:Symbol('first')},d=deferred();
- const signal=initializer('MoodboardContent','onOperationBusy',{operationOwners,recoveryOwners,originCurrent:()=>true,mounted:{current:true},setOperationBusy:x=>states.push(x)});
+ const operationObservation={current:Symbol('initial')},initialObservation=operationObservation.current;
+ const signal=initializer('MoodboardContent','onOperationBusy',{operationOwners,recoveryOwners,operationObservation,originCurrent:()=>true,mounted:{current:true},setOperationBusy:x=>states.push(x)});
  const guard={current:()=>true,assertCurrent(){}},pending={current:false},model={snapshot:{phase:'idle'}};
  const run=initializer('useMoodboardOperation','run',{pending,captureCurrent:()=>guard,setError:()=>{},paint:()=>{},onBusy:signal,owner,model,mounted:{current:true}});
  const request=run(async()=>{assert.equal(operationOwners.current.has(owner.current),true);await d.promise;model.snapshot.phase='creation_uncertain';throw error(503)});
  assert.equal(states.at(-1),true);
+ assert.notEqual(operationObservation.current,initialObservation,'synchronous pending notification rotates controlled observation');
  // No other dependencies supplied: any mutation/navigation beyond the busy guard would fail.
  initializer('MoodboardContent','chooseBoard',{operationOwners})(8);
  initializer('MoodboardContent','activateBoard',{operationOwners})(8);
  initializer('MoodboardContent','applyLocation',{operationOwners,catalog:{current:[]}})({selection:{boardId:8}});
  const newer=Symbol('newer');signal(newer,true);d.resolve();await request;
  assert.equal(operationOwners.current.has(newer),true);assert.equal(operationOwners.current.has(owner.current),false);assert.equal(recoveryOwners.current.has(owner.current),true);
- signal(owner.current,false);assert.equal(operationOwners.current.has(newer),true);signal(newer,false);assert.equal(states.at(-1),false);
+ const beforeNotification=operationObservation.current;
+ signal(owner.current,false);assert.notEqual(operationObservation.current,beforeNotification,'even a false notification rotates observation');
+ assert.equal(operationOwners.current.has(newer),true);signal(newer,false);assert.equal(states.at(-1),false);
 });
 test('blocked controlled location never compensates, overwrites or traverses browser history',()=>{
  const operationOwners={current:new Set([Symbol()])};
@@ -124,7 +128,12 @@ test('blocked controlled location never compensates, overwrites or traverses bro
  function visit(n){if(ts.isVariableDeclaration(n)&&n.name.getText(ast)==='applyLocation')declaration=n;ts.forEachChild(n,visit)}visit(fn);
  const body=declaration.initializer.body;
  assert.equal(body.statements[0].getText(ast),'if(operationOwners.current.size&&!allowEscape)return;');
- assert.match(source,/useNavigationGuard\(moodboardNavigationStatus\)/);
+ const guardCalls=[];function guardVisitor(n){if(ts.isCallExpression(n)&&n.expression.getText(ast)==='useNavigationGuard')guardCalls.push(n);ts.forEachChild(n,guardVisitor)}guardVisitor(fn);
+ assert.equal(guardCalls.length,1);assert.equal(guardCalls[0].arguments[0].getText(ast),'moodboardNavigationStatus');
+ assert.equal(guardCalls[0].arguments.length,2,'ref-only observations use an explicit provider');
+ const operationObservation={current:Symbol('first')};
+ const read=Function('operationObservation',`return (${guardCalls[0].arguments[1].getText(ast)});`)(operationObservation);
+ assert.equal(read(),operationObservation.current);operationObservation.current=Symbol('next');assert.equal(read(),operationObservation.current);
 });
 test('actual noncancelable pop follows new URL while pending and invalidates old board write scope',async()=>{
  const operationOwners={current:new Set([Symbol()])},boardObservation={current:{id:7,generation:1}},oldOrigin=boardObservation.current,effects=[],d=deferred();
@@ -144,7 +153,8 @@ test('actual noncancelable pop follows new URL while pending and invalidates old
 test('unmount then late failed finally cannot resurrect old recovery or clear newer busy owner',async()=>{
  for(const boardChanged of [false,true]){
   const operationOwners={current:new Set()},recoveryOwners={current:new Set()},parentMounted={current:true},childMounted={current:true},old={current:Symbol('old')},newOwner=Symbol('new'),d=deferred();let sameOrigin=true,paints=0;
-  const signal=initializer('MoodboardContent','onOperationBusy',{operationOwners,recoveryOwners,originCurrent:()=>sameOrigin,mounted:parentMounted,setOperationBusy:()=>{}});
+  const operationObservation={current:Symbol('initial')};
+  const signal=initializer('MoodboardContent','onOperationBusy',{operationOwners,recoveryOwners,operationObservation,originCurrent:()=>sameOrigin,mounted:parentMounted,setOperationBusy:()=>{}});
   const guard={current:()=>childMounted.current&&sameOrigin,assertCurrent(){if(!this.current())throw error(401)}};
   const run=initializer('useMoodboardOperation','run',{pending:{current:false},captureCurrent:()=>guard,setError:()=>{},paint:()=>{paints++},onBusy:signal,owner:old,model:{snapshot:{phase:'creation_uncertain'}},mounted:childMounted});
   const pending=run(async()=>{await d.promise;throw error(503)});

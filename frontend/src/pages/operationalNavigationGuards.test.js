@@ -12,8 +12,10 @@ const production = readFileSync(new URL('./Productions.jsx', import.meta.url), '
 const feedback = readFileSync(new URL('./Feedback.jsx', import.meta.url), 'utf8');
 const feedbackInventory = readFileSync(new URL('./FeedbackTaskInventory.jsx', import.meta.url), 'utf8');
 const feedbackTree=ts.createSourceFile('Feedback.jsx',feedback,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
+const productionTree=ts.createSourceFile('Productions.jsx',production,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
 function nodes(root,predicate){const result=[];const visit=node=>{if(predicate(node))result.push(node);ts.forEachChild(node,visit)};visit(root);return result;}
 const feedbackGuards=nodes(feedbackTree,node=>ts.isCallExpression(node)&&node.expression.getText(feedbackTree)==='useNavigationGuard');
+const productionGuards=nodes(productionTree,node=>ts.isCallExpression(node)&&node.expression.getText(productionTree)==='useNavigationGuard');
 function evaluate(node,bindings){return Function(...Object.keys(bindings),`return (${node.getText(feedbackTree).replace(/^export /,'')});`)(...Object.values(bindings));}
 function feedbackHandler(name, bindings) {
   const start = feedback.indexOf(`  function ${name}(`);
@@ -52,7 +54,9 @@ function sectionHarness(win) {
 }
 
 test('both pages register live dirty/busy getters and remove duplicate unload/custom guards', () => {
-  assert.match(production, /useNavigationGuard\(\(\) => \(\{ dirty: dirty.current.size > 0, busy: writeLock.current\|\|batchDraft.current.busy \}\)\)/);
+  assert.equal(productionTree.parseDiagnostics.length,0);
+  assert.equal(productionGuards.length,1,'Productions registers one live product guard');
+  assert.equal(productionGuards[0].arguments.length,2,'Productions explicitly wires its ref-only observation provider');
   assert.equal(feedbackTree.parseDiagnostics.length,0);
   assert.equal(feedbackGuards.length,1,'Feedback registers one live product guard');
   for (const source of [production, feedback]) {
@@ -62,7 +66,7 @@ test('both pages register live dirty/busy getters and remove duplicate unload/cu
 });
 
 test('production getter reads mutable set/write lock at navigation time without clearing either', () => {
-  const expression = /useNavigationGuard\((\(\) => \(\{ dirty: dirty.current.size > 0, busy: writeLock.current\|\|batchDraft.current.busy \}\))\)/.exec(production)[1];
+  const expression = productionGuards[0].arguments[0].getText(productionTree);
   const dirty = { current: new Set() }, writeLock = { current: false }, batchDraft = { current: {busy:false} };
   const getter = Function('dirty', 'writeLock', 'batchDraft', `return ${expression};`)(dirty, writeLock, batchDraft);
   assert.deepEqual(getter(), { dirty: false, busy: false }); dirty.current.add('video'); writeLock.current = true;
@@ -70,6 +74,14 @@ test('production getter reads mutable set/write lock at navigation time without 
   writeLock.current = false; assert.deepEqual(getter(), { dirty: true, busy: false });
   batchDraft.current.busy = true; assert.deepEqual(getter(), { dirty: true, busy: true });
   assert.equal(dirty.current.size,1); assert.equal(writeLock.current,false);
+});
+
+test('production explicit provider reads the current opaque observation without mutating guard state',()=>{
+  const provider=productionGuards[0].arguments[1];assert.ok(provider);
+  const productionObservation={current:Symbol('first')};
+  const read=Function('productionObservation',`return (${provider.getText(productionTree)});`)(productionObservation);
+  const first=productionObservation.current;assert.equal(read(),first);assert.equal(read(),first);
+  productionObservation.current=Symbol('next');assert.equal(read(),productionObservation.current);assert.notEqual(read(),first);
 });
 
 test('feedback getter uses render dirty, synchronous lock and live unresolved receipt ownership', () => {

@@ -1,12 +1,14 @@
 import React from "react";
 import { cerrarSesion, getRutaUsuario } from "./utils.jsx";
 import { useApplicationSession } from './shared/session/use-application-session.js';
+import { getApplicationSessionSnapshot } from './shared/session/application-session-access.js';
+import { useNavigationConfirmation } from './components/NavigationDiscardHost.jsx';
 import { sessionViewKey } from './shared/session/session-view.js';
 import { getRolLabel, ROL_LABELS } from "./constants.js";
 import { LoginPage } from "./pages/Login.jsx";
 import { Sidebar } from "./components/Sidebar.jsx";
 import { QuickHomePage } from "./pages/QuickHome.jsx";
-import { navigateWithinApp, readRouteKey } from "./shared/navigation/location.js";
+import { navigateWithinApp, navigateWithConfirmation, readRouteKey } from "./shared/navigation/location.js";
 import { canonicalLegacyRoute, replaceLegacyRoute } from "./shared/navigation/legacy-routes.js";
 import { loginHrefForDestination, readLoginDestination, resolveLoginDestination } from "./shared/navigation/login-destination.js";
 import { canUseSharedCalendarRole } from "./components/navigation.js";
@@ -36,6 +38,8 @@ function RouteLoading() {
 
 export function App() {
   const [route, setRoute] = React.useState(() => readRouteKey(window));
+  const [navigationTick, setNavigationTick] = React.useState(0);
+  const navigationEpoch = React.useRef(0);
   const path = route.split(/[?#]/, 1)[0];
   const sessionSnapshot = useApplicationSession();
   const sesion = sessionSnapshot.session;
@@ -48,9 +52,21 @@ export function App() {
     renderIdentity.current = { observed: sessionKey, epoch: renderIdentity.current.epoch + 1 };
   }
   const sessionRenderEpoch = renderIdentity.current.epoch;
+  // Opaque presentation lifetime: never put session keys/credentials in props.
+  const navigationOwner = React.useRef(null);
+  if (!navigationOwner.current || navigationOwner.current.snapshot !== sessionSnapshot
+    || navigationOwner.current.route !== route || navigationOwner.current.tick !== navigationTick) {
+    navigationOwner.current = { snapshot: sessionSnapshot, route, tick: navigationTick, token: Object.freeze({}) };
+  }
+  const navigationLifetime = navigationOwner.current.token;
+  const navigationConfirmation = useNavigationConfirmation({ lifetime: navigationLifetime });
 
   React.useEffect(() => {
-    const syncPath = () => setRoute(readRouteKey(window));
+    const syncPath = () => {
+      navigationEpoch.current++;
+      setNavigationTick(value => value + 1);
+      setRoute(readRouteKey(window));
+    };
     window.addEventListener("popstate", syncPath);
     return () => window.removeEventListener("popstate", syncPath);
   }, []);
@@ -63,6 +79,17 @@ export function App() {
   const navigate = React.useCallback((href) => {
     navigateWithinApp(window, href);
   }, []);
+  const navigateSidebar = React.useCallback((href) => {
+    try {
+      const observed = getApplicationSessionSnapshot();
+      const epoch = navigationEpoch.current, from = readRouteKey(window);
+      if (observed !== sessionSnapshot || observed.status !== 'authenticated' || !observed.session
+        || navigationOwner.current.token !== navigationLifetime || from.split(/[?#]/, 1)[0] !== path) return Promise.resolve(false);
+      return navigateWithConfirmation(window, href, { present: navigationConfirmation.request,
+        isCurrent: () => navigationEpoch.current === epoch && readRouteKey(window) === from
+          && navigationOwner.current.token === navigationLifetime && getApplicationSessionSnapshot() === observed });
+    } catch { return Promise.resolve(false); }
+  }, [path, sessionSnapshot, navigationLifetime, navigationConfirmation.request]);
 
   // Login owns its attempt lifetime. Keep the same form mounted while its
   // controller publishes loading/error, otherwise cleanup would cancel login.
@@ -174,8 +201,9 @@ export function App() {
 
   return (
     <>
-      <Sidebar key={`sidebar:${sessionRenderEpoch}`} path={path} search={window.location.search} sesion={sesion} onNavigate={navigate} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
+      <Sidebar key={`sidebar:${sessionRenderEpoch}`} path={path} search={window.location.search} sesion={sesion} onNavigate={navigateSidebar} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
       {loadedDashboard}
+      {navigationConfirmation.dialog}
     </>
   );
 }
