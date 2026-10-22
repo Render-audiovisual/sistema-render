@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { FilterSelect } from '../components/FilterSelect.jsx';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
 import { navigateWithinApp } from '../shared/navigation/location.js';
@@ -57,9 +58,9 @@ function CalendarContent({ sesion, onNavigate }) {
   return <main className="principal-calendar" aria-label="Calendario"><div className="principal-calendar-shell">
     <header className="principal-calendar-header"><div><h1>Calendario</h1><p>Entregas, visitas, hitos y contenido · Córdoba</p></div><button type="button" onClick={() => setRetry(value => value + 1)} disabled={status === 'loading'}>Actualizar</button></header>
     <div className="principal-calendar-toolbar"><div className="principal-calendar-month"><button type="button" aria-label="Mes anterior" onClick={() => change(shiftCalendarMonth(selection, -1))}>‹</button><h2>{dateLabel(`${selection.mes}-01`, { month: 'long', year: 'numeric' })}</h2><button type="button" aria-label="Mes siguiente" onClick={() => change(shiftCalendarMonth(selection, 1))}>›</button><button type="button" onClick={() => change({ mes: today.slice(0, 7), dia: today })}>Hoy</button></div>
-      <div className="principal-calendar-filters"><label>Ámbito<select value={selection.scope} onChange={event => change({ scope: event.target.value })}><option value="mine">Lo mío</option><option value="team">Equipo</option></select></label>
-        <label>Tipo<select value={selection.tipo} onChange={event => change({ tipo: event.target.value })}>{Object.entries(CALENDAR_KINDS).map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label>
-        <label>Cliente<select value={selection.cliente} onChange={event => change({ cliente: event.target.value })}><option value="">Todos los clientes</option>{selection.cliente && !data?.clients.some(c => String(c.id) === selection.cliente) && <option value={selection.cliente}>Cliente #{selection.cliente}</option>}{data?.clients.map(client => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label></div>
+      <div className="principal-calendar-filters"><FilterSelect label="Ámbito" value={selection.scope} onChange={event => change({ scope: event.target.value })}><option value="mine">Lo mío</option><option value="team">Equipo</option></FilterSelect>
+        <FilterSelect label="Tipo" value={selection.tipo} onChange={event => change({ tipo: event.target.value })}>{Object.entries(CALENDAR_KINDS).map(([id, label]) => <option value={id} key={id}>{label}</option>)}</FilterSelect>
+        <FilterSelect label="Cliente" value={selection.cliente} onChange={event => change({ cliente: event.target.value })}><option value="">Todos los clientes</option>{selection.cliente && !data?.clients.some(c => String(c.id) === selection.cliente) && <option value={selection.cliente}>Cliente #{selection.cliente}</option>}{data?.clients.map(client => <option key={client.id} value={client.id}>{client.nombre}</option>)}</FilterSelect></div>
     </div>
     {status === 'loading' && <p role="status">Cargando calendario…</p>}
     {status === 'error' && <div role="alert"><p>{result.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Reintentar</button></div>}

@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FilterSelect } from '../components/FilterSelect.jsx';
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
 import { navigateWithinApp } from "../shared/navigation/location.js";
@@ -396,12 +397,12 @@ function ProjectsSession({ sesion, onNavigate, request }) {
     {message && <p className="pr-notice" role="status">{message}</p>}
     <div className={`pr-layout${selection.id || form?.kind === "create" ? " has-detail" : ""}`}>
       <section className="pr-project-list" aria-label="Lista de proyectos"><div className="pr-filters">
-        <label>Cliente<select aria-label="Filtrar proyectos por cliente" value={filters.invalid ? 'invalid' : filters.clientId ?? ''} onChange={event => chooseClient(event.target.value)}>
+        <FilterSelect label="Cliente" aria-label="Filtrar proyectos por cliente" value={filters.invalid ? 'invalid' : filters.clientId ?? ''} onChange={event => chooseClient(event.target.value)}>
           {filters.invalid && <option value="invalid" disabled>Filtro inválido</option>}<option value="">Todos los clientes</option>
           {filters.clientId !== null && !filterClients.items.some(item => item.id === filters.clientId) && <option value={filters.clientId}>Cliente ID {filters.clientId}</option>}
           {filterClients.items.map(item => <option key={item.id} value={item.id}>{item.nombre} · ID {item.id}</option>)}
-        </select></label>
-        <label>Estado<select value={filters.estado} disabled={filters.invalid} onChange={event => changeListFilters({ estado: event.target.value, offset: 0 })}><option value="">Todos los estados</option><Options values={PROJECT_STATES}/></select></label>{admin && <label className="pr-checkbox"><input type="checkbox" checked={filters.archivados} disabled={filters.invalid} onChange={event => changeListFilters({ archivados: event.target.checked, offset: 0 })}/>Incluir archivados</label>}</div>
+        </FilterSelect>
+        <FilterSelect label="Estado" value={filters.estado} disabled={filters.invalid} onChange={event => changeListFilters({ estado: event.target.value, offset: 0 })}><option value="">Todos los estados</option><Options values={PROJECT_STATES}/></FilterSelect>{admin && <label className="pr-checkbox"><input type="checkbox" checked={filters.archivados} disabled={filters.invalid} onChange={event => changeListFilters({ archivados: event.target.checked, offset: 0 })}/>Incluir archivados</label>}</div>
         <p className="pr-muted">{filters.invalid ? 'Contexto de listado inválido.' : filters.clientId === null ? 'Todos los clientes.' : `Cliente: ${clientLabel || `ID ${filters.clientId}`}.`} Proyectos de todos los períodos; el mes del cliente no filtra este listado.</p>
         {filterClients.error && <p role="alert">No se pudo cargar el catálogo de clientes. El filtro por ID se conserva.<button type="button" onClick={() => setListRefresh(version => version + 1)}>Reintentar catálogo</button></p>}
         {(filters.invalid || filters.clientId !== null) && <button type="button" onClick={() => changeListFilters({ clientId: null, offset: 0, estado: '', archivados: false, invalid: false })}>Limpiar filtros del listado</button>}

@@ -7,19 +7,19 @@
 .projects-page h3,.pr-editor h2{font-size:16px;line-height:1.4;letter-spacing:-.015em;font-weight:600}
 .projects-page a{color:var(--pr-blue);text-decoration:none;overflow-wrap:anywhere;text-underline-offset:3px}
 .projects-page a:hover{text-decoration:underline}
-.projects-page button,.projects-page input,.projects-page select,.projects-page textarea{font:inherit}
+.projects-page button,.projects-page input,.projects-page select:not(.render-filter-select),.projects-page textarea{font:inherit}
 .projects-page button{background:var(--pr-bg);border:1px solid var(--pr-line);border-radius:9px;color:var(--pr-text);cursor:pointer;min-height:44px;padding:8px 12px;transition:background .15s ease}
 .projects-page button:hover:not(:disabled){background:var(--pr-soft)}
 .projects-page button:disabled{opacity:.5;cursor:default}
 .projects-page .pr-primary{background:var(--pr-blue);border-color:var(--pr-blue);color:var(--render-accent-ink);font-weight:550}
 .projects-page .pr-primary:hover:not(:disabled){background:var(--render-accent-hover)}
-.projects-page :is(a,button,input,select,textarea,summary):focus-visible{outline:2px solid var(--render-accent);outline-offset:3px}
-.projects-page input:not([type=checkbox]),.projects-page select,.projects-page textarea{background:var(--pr-bg);border:1px solid var(--pr-line);border-radius:8px;color:var(--pr-text);min-width:0;min-height:44px;padding:8px 10px;width:100%}
+.projects-page :is(a,button,input,select,textarea,summary):not(.render-filter-select):focus-visible{outline:2px solid var(--render-accent);outline-offset:3px}
+.projects-page input:not([type=checkbox]),.projects-page select:not(.render-filter-select),.projects-page textarea{background:var(--pr-bg);border:1px solid var(--pr-line);border-radius:8px;color:var(--pr-text);min-width:0;min-height:44px;padding:8px 10px;width:100%}
 .projects-page textarea{resize:vertical}
 .pr-form-fields{display:contents;min-width:0;margin:0;padding:0;border:0}
 .pr-deliverable-review{min-width:0;overflow-wrap:anywhere}
 .pr-deliverable-review>p:last-child{white-space:pre-wrap}
-.projects-page label{display:grid;gap:8px;font-size:12px;font-weight:500;min-width:0}
+.projects-page label:not(.render-filter-field){display:grid;gap:8px;font-size:12px;font-weight:500;min-width:0}
 .projects-page small,.pr-muted{color:var(--pr-muted);font-size:12px;font-weight:400}
 .pr-page-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
 .pr-page-heading p{color:var(--pr-muted);margin-top:8px;font-size:13px}
