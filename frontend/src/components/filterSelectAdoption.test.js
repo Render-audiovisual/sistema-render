@@ -26,8 +26,14 @@ function find(root, predicate) {
 const attribute = (node, name) => node.attributes.properties.find(item => ts.isJsxAttribute(item) && item.name.text === name);
 const label = node => attribute(node.openingElement, 'label')?.initializer?.text;
 const adopted = tree => find(tree, node => ts.isJsxElement(node) && node.openingElement.tagName.getText(tree) === 'FilterSelect');
+const filterControls = tree => adopted(tree).filter(node => {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (ts.isJsxElement(parent) && /^(?:pr-filters|prod-toolbar|principal-calendar-filters)$/.test(attribute(parent.openingElement, 'className')?.initializer?.text || '')) return true;
+  }
+  return false;
+});
 const control = (route, name) => {
-  const result = adopted(routes[route]).filter(node => label(node) === name);
+  const result = filterControls(routes[route]).filter(node => label(node) === name);
   assert.equal(result.length, 1, `${route}/${name} has exactly one shared control`);
   return result[0];
 };
@@ -59,10 +65,11 @@ function optionRows(element) {
 }
 const row = (value, text, disabled = false) => ({ value, text, disabled });
 
-test('only six intended filter controls adopt the real shared import, never business editors', () => {
+test('six list filters and unified form selects adopt the real shared import without nested labels', () => {
   for (const [name, labels] of Object.entries({ Projects: ['Cliente', 'Estado'], Productions: ['Cliente'], Calendar: ['Ámbito', 'Tipo', 'Cliente'] })) {
     const tree = routes[name];
-    assert.deepEqual(adopted(tree).map(label), labels);
+    assert.deepEqual(filterControls(tree).map(label), labels);
+    assert.equal(adopted(tree).length, { Projects: 10, Productions: 6, Calendar: 3 }[name]);
     const imports = tree.statements.filter(node => ts.isImportDeclaration(node) && node.moduleSpecifier.text === '../components/FilterSelect.jsx');
     assert.equal(imports.length, 1);
     assert.ok(imports[0].importClause.namedBindings.elements.some(node => node.name.text === 'FilterSelect' && !node.propertyName));
@@ -79,7 +86,8 @@ test('only six intended filter controls adopt the real shared import, never busi
   }
   for (const route of ['Projects', 'Productions']) {
     const native = find(routes[route], node => ts.isJsxElement(node) && node.openingElement.tagName.getText(routes[route]) === 'select');
-    assert.ok(native.some(node => attribute(node.openingElement, 'required')), `${route} business selects remain native and required`);
+    assert.equal(native.length, 0, `${route} delegates all select presentation`);
+    assert.ok(adopted(routes[route]).some(node => attribute(node.openingElement, 'required')), `${route} business selects retain native required validation`);
   }
 });
 

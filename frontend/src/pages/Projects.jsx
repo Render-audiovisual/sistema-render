@@ -16,7 +16,7 @@ const FORM_TITLES = { create: "Nuevo proyecto", project: "Editar proyecto", arch
 const states = { ...PROJECT_STATES, ...STAGE_STATES, ...MILESTONE_STATES, ...DELIVERABLE_STATES };
 const plainClick = event => !event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 function Options({ values }) { return Object.entries(values).map(([value, label]) => <option value={value} key={value}>{label}</option>); }
-function StageSelect({ value, project, onChange }) { return <label>Etapa<select value={value || ""} onChange={event => onChange(event.target.value)}><option value="">Sin etapa</option>{project.etapas.map(stage => <option key={stage.id} value={stage.id}>{stage.titulo}</option>)}</select></label>; }
+function StageSelect({ value, project, onChange }) { return <FilterSelect label="Etapa" value={value || ""} onChange={event => onChange(event.target.value)}><option value="">Sin etapa</option>{project.etapas.map(stage => <option key={stage.id} value={stage.id}>{stage.titulo}</option>)}</FilterSelect>; }
 function DateInput({ label, value, onChange }) { return <label>{label}<input type="date" value={value || ""} onChange={event => onChange(event.target.value)}/></label>; }
 function TitleInput({ value, onChange }) { return <label className="pr-wide">Título<input required maxLength={250} value={value} onChange={event => onChange(event.target.value)}/></label>; }
 function dateTime(value) { return new Intl.DateTimeFormat("es-AR", { timeZone: "America/Argentina/Cordoba", dateStyle: "short", timeStyle: "short" }).format(new Date(value)); }
@@ -38,24 +38,24 @@ function ProjectFields({ form, project, catalog, change, retryCatalog }) {
   const inactiveIds = d.miembro_ids.filter(id => !catalog.users.some(user => user.id === id));
   return <>
     <TitleInput value={d.titulo} onChange={value => change("titulo", value)}/>
-    <label>Tipo<select value={d.tipo} onChange={event => change("tipo", event.target.value)}><Options values={PROJECT_TYPES}/></select></label>
-    {!creating && <label>Estado del proyecto<select value={d.estado} onChange={event => change("estado", event.target.value)}><Options values={PROJECT_STATES}/></select></label>}
+    <FilterSelect label="Tipo" value={d.tipo} onChange={event => change("tipo", event.target.value)}><Options values={PROJECT_TYPES}/></FilterSelect>
+    {!creating && <FilterSelect label="Estado del proyecto" value={d.estado} onChange={event => change("estado", event.target.value)}><Options values={PROJECT_STATES}/></FilterSelect>}
     <DateInput label="Fecha de inicio" value={d.fecha_inicio} onChange={value => change("fecha_inicio", value)}/>
     <DateInput label="Fecha de entrega" value={d.fecha_entrega} onChange={value => change("fecha_entrega", value)}/>
     <label className="pr-wide">Descripción<textarea maxLength={20000} rows={4} value={d.descripcion} onChange={event => change("descripcion", event.target.value)}/></label>
     {admin && <>
       {catalog.status === "loading" && <p className="pr-muted pr-wide" role="status">Cargando clientes y personas…</p>}
       {catalog.error && <div className="pr-error pr-wide" role="alert">{catalog.error}<button type="button" onClick={retryCatalog}>Reintentar catálogos</button></div>}
-      <label>Cliente<select required value={d.cliente_id} disabled={catalog.status !== "ready" || (!creating && project.counts.tareas > 0)} onChange={event => change("cliente_id", event.target.value)}>
+      <div className="pr-field-stack"><FilterSelect label="Cliente" required value={d.cliente_id} disabled={catalog.status !== "ready" || (!creating && project.counts.tareas > 0)} aria-describedby={!creating && project.counts.tareas > 0 ? 'project-client-lock-help' : undefined} onChange={event => change("cliente_id", event.target.value)}>
         <option value="">Elegir cliente activo</option>
         {!creating && !catalog.clients.some(client => String(client.id) === String(d.cliente_id)) && <option value={project.cliente.id}>{project.cliente.nombre} (actual)</option>}
         {catalog.clients.map(client => <option key={client.id} value={client.id}>{client.nombre} · ID {client.id}</option>)}
-      </select>{!creating && project.counts.tareas > 0 && <small>El cliente no se cambia mientras haya tareas vinculadas.</small>}</label>
-      <label>Responsable<select required value={d.responsable_id} disabled={catalog.status !== "ready"} onChange={event => change("responsable_id", event.target.value)}>
+      </FilterSelect>{!creating && project.counts.tareas > 0 && <small id="project-client-lock-help">El cliente no se cambia mientras haya tareas vinculadas.</small>}</div>
+      <FilterSelect label="Responsable" required value={d.responsable_id} disabled={catalog.status !== "ready"} onChange={event => change("responsable_id", event.target.value)}>
         <option value="">Elegir persona activa</option>
         {!creating && !catalog.users.some(user => String(user.id) === String(d.responsable_id)) && <option value={project.responsable.id}>{project.responsable.nombre} · ID {project.responsable.id} (actual)</option>}
         {catalog.users.map(user => <option key={user.id} value={user.id}>{user.nombre} · {user.usuario || `ID ${user.id}`} · ID {user.id}</option>)}
-      </select></label>
+      </FilterSelect>
       <fieldset className="pr-members pr-wide"><legend>Miembros</legend><small>Ser miembro no concede permisos de edición del proyecto.</small>
         {catalog.status === "ready" && !catalog.users.length && <p>No hay personas activas disponibles.</p>}
         {catalog.users.map(user => <label key={user.id}><input type="checkbox" checked={d.miembro_ids.includes(user.id)} disabled={catalog.status !== "ready"} onChange={event => change("miembro_ids", event.target.checked ? [...d.miembro_ids, user.id] : d.miembro_ids.filter(id => id !== user.id))}/>{user.nombre} · ID {user.id}</label>)}
@@ -92,11 +92,11 @@ function ProjectEditor({ form, project, catalog, change, cancel, submit, refresh
       <fieldset className="pr-form-fields" disabled={form.busy||form.uncertain}>
       {(kind === "create" || kind === "project") && <ProjectFields {...{ form, project, catalog, change, retryCatalog }}/>}
       {kind === "archive" && <p className="pr-wide">{d.archivado ? "Archivar oculta el proyecto del listado habitual y bloquea sus cambios. No borra tareas ni historial." : "Reactivar permite volver a trabajar en el proyecto."}</p>}
-      {kind.startsWith("stage-") && <><TitleInput value={d.titulo} onChange={value => change("titulo", value)}/>{kind === "stage-edit" && <label>Estado<select value={d.estado} onChange={event => change("estado", event.target.value)}><Options values={STAGE_STATES}/></select></label>}</>}
-      {kind.startsWith("milestone-") && <><TitleInput value={d.titulo} onChange={value => change("titulo", value)}/><DateInput label="Fecha del hito" value={d.fecha} onChange={value => change("fecha", value)}/><StageSelect value={d.etapa_id} project={project} onChange={value => change("etapa_id", value)}/><label>Estado<select value={d.estado} onChange={event => change("estado", event.target.value)}><Options values={MILESTONE_STATES}/></select></label></>}
+      {kind.startsWith("stage-") && <><TitleInput value={d.titulo} onChange={value => change("titulo", value)}/>{kind === "stage-edit" && <FilterSelect label="Estado" value={d.estado} onChange={event => change("estado", event.target.value)}><Options values={STAGE_STATES}/></FilterSelect>}</>}
+      {kind.startsWith("milestone-") && <><TitleInput value={d.titulo} onChange={value => change("titulo", value)}/><DateInput label="Fecha del hito" value={d.fecha} onChange={value => change("fecha", value)}/><StageSelect value={d.etapa_id} project={project} onChange={value => change("etapa_id", value)}/><FilterSelect label="Estado" value={d.estado} onChange={event => change("estado", event.target.value)}><Options values={MILESTONE_STATES}/></FilterSelect></>}
       {kind.startsWith("deliverable-") && kind!=='deliverable-approve' && <><TitleInput value={d.titulo} onChange={value => change("titulo", value)}/><label className="pr-wide">Enlace de entrega<input type="url" value={d.url} onChange={event => change("url", event.target.value)} placeholder="https://"/></label>
         <label className="pr-wide">Observaciones<textarea rows={3} maxLength={20000} value={d.observaciones} onChange={event => change("observaciones", event.target.value)}/></label>
-        <label>Estado<select value={d.estado} onChange={event => change("estado", event.target.value)}>{d.estado==='aprobado'&&<option disabled value="aprobado">Aprobación registrada (no editable aquí)</option>}<Options values={DELIVERABLE_EDIT_STATES}/></select></label>
+        <FilterSelect label="Estado" value={d.estado} onChange={event => change("estado", event.target.value)}>{d.estado==='aprobado'&&<option disabled value="aprobado">Aprobación registrada (no editable aquí)</option>}<Options values={DELIVERABLE_EDIT_STATES}/></FilterSelect>
         <p className="pr-muted pr-wide">Editar título, enlace u observaciones de un entregable aprobado requiere otra revisión. Guardar este formulario no aprueba contenido.</p>
       </>}
       {kind==='deliverable-approve'&&<><div className="pr-observed pr-wide pr-deliverable-review"><h3>{form.observedDeliverable.titulo}</h3><p>Contenido versión {form.observedDeliverable.contenido_revision} · Entregable revisión {form.observedDeliverable.entregable_revision}</p>{safeProjectUrl(form.observedDeliverable.url)&&<a href={safeProjectUrl(form.observedDeliverable.url)} target="_blank" rel="noopener noreferrer">Abrir la entrega observada ↗</a>}<p>{form.observedDeliverable.observaciones||'Sin observaciones'}</p></div><label className="pr-checkbox pr-wide"><input type="checkbox" checked={d.acknowledged} onChange={event=>change('acknowledged',event.target.checked)}/>Revisé este título, enlace y observaciones y apruebo únicamente la versión indicada.</label></>}

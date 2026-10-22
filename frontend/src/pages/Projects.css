@@ -17,6 +17,7 @@
 .projects-page input:not([type=checkbox]),.projects-page select:not(.render-filter-select),.projects-page textarea{background:var(--pr-bg);border:1px solid var(--pr-line);border-radius:8px;color:var(--pr-text);min-width:0;min-height:44px;padding:8px 10px;width:100%}
 .projects-page textarea{resize:vertical}
 .pr-form-fields{display:contents;min-width:0;margin:0;padding:0;border:0}
+.pr-field-stack{display:grid;gap:8px;min-width:0;align-content:start}
 .pr-deliverable-review{min-width:0;overflow-wrap:anywhere}
 .pr-deliverable-review>p:last-child{white-space:pre-wrap}
 .projects-page label:not(.render-filter-field){display:grid;gap:8px;font-size:12px;font-weight:500;min-width:0}
