@@ -24,7 +24,7 @@ function harness({date='2026-11-03',failWrite,failRead,read}={}){
 }
 for(const date of ['2026-10-25','2026-11-03'])test(`actual callback follows verified explicit date edit ${date}`,async()=>{
  const h=harness({date}),data={fecha:date};assert.equal(await h.write(original,'','PATCH',data),h.fresh);
- assert.deepEqual(h.moves(),[['Month',date.slice(0,7)],['Day',date],['url',{id:original.id,month:date.slice(0,7),clientId:'7',tab:'calendar',replace:true}]]);
+ assert.deepEqual(h.moves(),[['Month',date.slice(0,7)],['Day',date],['url',{id:original.id,month:date.slice(0,7),day:date,clientId:'7',tab:'calendar',replace:true}]]);
  assert.ok(h.events.findIndex(([name])=>name==='read')<h.events.findIndex(([name])=>name==='Month'));
  assert.ok(h.events.findIndex(([name])=>name==='url')<h.events.findIndex(([name])=>name==='Reload'));
  assert.deepEqual(data,{fecha:date});

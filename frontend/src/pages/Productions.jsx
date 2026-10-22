@@ -9,7 +9,7 @@ import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { createProductionCreateIntent } from './productionCreateIntent.js';
 import { ProductionHistoryBatchReview } from '../components/ProductionHistoryBatchReview.jsx';
 import './Productions.css';
-import { productionLocation, initialProductionContext, productionReadUrl, assertProductionClient } from './productionRouteContext.js';
+import { productionLocation, initialProductionContext, productionReadUrl, assertProductionClient, productionCalendarDay, validProductionDay } from './productionRouteContext.js';
 
 const VIDEO_STATES = { planificado:'Planificado', grabado:'Grabado', pendiente:'Pendiente', repetir:'Repetir' };
 const PHOTO_STATES = { realizada:'Realizada', pendiente:'Pendiente', repetir:'Repetir' };
@@ -32,11 +32,12 @@ function shiftProductionMonth(month, amount) {
 const monthLabel = month => new Intl.DateTimeFormat('es-AR', {month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${month}-01T12:00:00Z`));
 const dateLabel = date => new Intl.DateTimeFormat('es-AR', {weekday:'long',day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(`${date}T12:00:00Z`));
 const visitDTO = data => data?.visita || data;
-function writeProductionLocation({id = null, month, clientId, tab, replace = false}) {
+function writeProductionLocation({id = null, month, day, clientId, tab, replace = false}) {
   const url = new URL(window.location.href);
   if (id) url.searchParams.set('visita',id); else url.searchParams.delete('visita');
   if (month) url.searchParams.set('mes',month);
-  for (const key of [...url.searchParams.keys()]) if (key.startsWith('cliente[') || key.startsWith('mes[') || key.startsWith('visita[') || key.startsWith('tab[')) url.searchParams.delete(key);
+  if (day) url.searchParams.set('dia',day); else url.searchParams.delete('dia');
+  for (const key of [...url.searchParams.keys()]) if (key.startsWith('cliente[') || key.startsWith('mes[') || key.startsWith('visita[') || key.startsWith('tab[') || key.startsWith('dia[')) url.searchParams.delete(key);
   if (clientId !== undefined) { if(clientId) url.searchParams.set('cliente',clientId); else url.searchParams.delete('cliente'); }
   if (tab) url.searchParams.set('tab',tab);
   if (url.href !== window.location.href) window.history[replace ? 'replaceState' : 'pushState'](window.history.state,'',url);
@@ -343,7 +344,7 @@ export function ProductionsPage({sesion}) {
   const [initial] = useState(()=>initialProductionContext(window.location.href,today));
   const [contextError,setContextError] = useState(initial.error);
   const [month, setMonth] = useState(initial.month || today.slice(0,7));
-  const [day, setDay] = useState(initial.month ? `${initial.month}-01` : today);
+  const [day, setDay] = useState(()=>productionCalendarDay(initial,today));
   const [tab, setTab] = useState(initial.tab);
   const [clientId, setClientId] = useState(initial.clientId);
   const [listAvailable,setListAvailable] = useState(false);
@@ -413,12 +414,12 @@ export function ProductionsPage({sesion}) {
           // Restoration may still close over the previous filter/tab. Only the
           // current URL can supply the context for this verified-date repair.
           const context=productionLocation(window.location.href);
-          if(context.id===value.id && context.clientId===expectedClient && context.month && context.month!==value.fecha.slice(0,7)) {
-            writeProductionLocation({id:value.id,month:value.fecha.slice(0,7),clientId:context.clientId,tab:context.tab,replace:true});
+          if(context.id===value.id && context.clientId===expectedClient && (context.month!==value.fecha.slice(0,7) || context.day!==value.fecha)) {
+            writeProductionLocation({id:value.id,month:value.fecha.slice(0,7),day:value.fecha,clientId:context.clientId,tab:context.tab,replace:true});
           }
         }
         setSelected(value);setMonth(value.fecha.slice(0,7));setDay(value.fecha);
-        if(history) writeProductionLocation({id:value.id,month:value.fecha.slice(0,7),clientId,tab});
+        if(history) writeProductionLocation({id:value.id,month:value.fecha.slice(0,7),day:value.fecha,clientId,tab});
       }
     }
     catch(reason){if(version===openVersion.current)setError(reason.message);}
@@ -429,14 +430,14 @@ export function ProductionsPage({sesion}) {
       const location=productionLocation(window.location.href);
       ++readEpoch.current;setListAvailable(false);setContextError('');setClientId(location.clientId);setTab(location.tab);
       const restoredMonth=location.month || today.slice(0,7);
-      setMonth(restoredMonth);setDay(restoredMonth===today.slice(0,7) ? today : `${restoredMonth}-01`);
+      setMonth(restoredMonth);setDay(productionCalendarDay(location,today));
       setReload(value=>value+1);
       if(discardDrafts) dirty.current.clear();
       if(location.id) await openVisit(location.id,{history:false,checkDirty:false,expectedClient:location.clientId});
       else {
         ++openVersion.current;setSelected(null);setCreating(false);setDetailLoading(false);setError('');
         const restoredMonth=location.month || today.slice(0,7);
-        setMonth(restoredMonth);setDay(restoredMonth===today.slice(0,7) ? today : `${restoredMonth}-01`);
+        setMonth(restoredMonth);setDay(productionCalendarDay(location,today));
       }
     }catch(reason){++readEpoch.current;++openVersion.current;setListAvailable(false);setContextError(reason.message);setSelected(null);setDetailLoading(false);setError(reason.message);}
   };
@@ -480,7 +481,7 @@ export function ProductionsPage({sesion}) {
       // Delivery dates and edits of videos/photos must not move the visit.
       if(path==='' && method==='PATCH' && Object.hasOwn(data,'fecha') && fresh.fecha!==visit.fecha) {
         setMonth(fresh.fecha.slice(0,7));setDay(fresh.fecha);
-        writeProductionLocation({id:fresh.id,month:fresh.fecha.slice(0,7),clientId,tab,replace:true});
+        writeProductionLocation({id:fresh.id,month:fresh.fecha.slice(0,7),day:fresh.fecha,clientId,tab,replace:true});
       }
       setReload(value=>value+1);return fresh;
     } catch(reason){if(guard.current())setNotice(reason.message);throw reason;}
@@ -499,12 +500,18 @@ export function ProductionsPage({sesion}) {
     guard.assertCurrent();value=verifiedProductionDraftVisit(value);
     ++readEpoch.current;++openVersion.current;setListAvailable(false);setClientId(String(value.cliente_id));setContextError('');
     setCreating(false);setSelected(value);setMonth(value.fecha.slice(0,7));setDay(value.fecha);setReload(current=>current+1);setNotice('Visita guardada. Se muestra la versión actual.');
-    writeProductionLocation({id:value.id,month:value.fecha.slice(0,7),clientId:String(value.cliente_id),tab});
+    writeProductionLocation({id:value.id,month:value.fecha.slice(0,7),day:value.fecha,clientId:String(value.cliente_id),tab});
   };
   const changeContext = (nextClient, nextTab, nextMonth=month) => {
     if(!mayLeave())return;
-    ++readEpoch.current;++openVersion.current;setListAvailable(false);setLoading(true);setContextError('');setError('');setClientId(nextClient);setTab(nextTab);setMonth(nextMonth);setDay(`${nextMonth}-01`);setDetailLoading(false);setSelected(null);setCreating(false);setReload(value=>value+1);
-    writeProductionLocation({month:nextMonth,clientId:nextClient,tab:nextTab});
+    const nextDay=productionCalendarDay({month:nextMonth,day:nextMonth===month?day:`${nextMonth}-01`},today);
+    ++readEpoch.current;++openVersion.current;setListAvailable(false);setLoading(true);setContextError('');setError('');setClientId(nextClient);setTab(nextTab);setMonth(nextMonth);setDay(nextDay);setDetailLoading(false);setSelected(null);setCreating(false);setReload(value=>value+1);
+    writeProductionLocation({month:nextMonth,day:nextDay,clientId:nextClient,tab:nextTab});
+  };
+  const selectDay = nextDay => {
+    if(!validProductionDay(nextDay)||!nextDay.startsWith(`${month}-`)||nextDay===day||!mayLeave())return;
+    ++openVersion.current;setDay(nextDay);setSelected(null);setCreating(false);setDetailLoading(false);
+    writeProductionLocation({month,day:nextDay,clientId,tab,replace:true});
   };
   const navigateMonth = amount => changeContext(clientId,tab,shiftProductionMonth(month,amount));
   const startCreateVisit = () => {
@@ -526,9 +533,9 @@ export function ProductionsPage({sesion}) {
     <div className="prod-layout"><section className="prod-schedule" aria-label={tab==='calendar' ? 'Calendario de visitas' : 'Guiones pendientes'}>
       <header className="prod-month-nav"><button type="button" aria-label="Mes anterior" disabled={busy} onClick={()=>navigateMonth(-1)}>‹</button><h2>{monthLabel(month)}</h2><button type="button" aria-label="Mes siguiente" disabled={busy} onClick={()=>navigateMonth(1)}>›</button></header>
       {loading ? <p className="prod-empty" role="status">Cargando producciones…</p> : !listAvailable || contextError ? <p className="prod-empty" role="status">Lista no disponible. Revisá el contexto y volvé a consultar.</p> : tab === 'calendar' ? <>
-        <div className="prod-month-grid"><div className="prod-weekdays" aria-hidden="true">{['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(name=><span key={name}>{name}</span>)}</div><div className="prod-days">{productionMonthDays(month).map((date,index)=>date ? <button type="button" key={date} aria-pressed={date===day} aria-current={date===today ? 'date' : undefined} aria-label={`${dateLabel(date)}, ${filtered.filter(v=>v.fecha===date).length} visitas`} onClick={()=>setDay(date)}><time dateTime={date}>{Number(date.slice(-2))}</time>{filtered.filter(visit=>visit.fecha===date).slice(0,2).map(visit=><span key={visit.id}>{visit.cliente_nombre}</span>)}</button> : <span key={`blank-${index}`} aria-hidden="true"/>)}</div></div>
+        <div className="prod-month-grid"><div className="prod-weekdays" aria-hidden="true">{['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(name=><span key={name}>{name}</span>)}</div><div className="prod-days">{productionMonthDays(month).map((date,index)=>date ? <button type="button" key={date} aria-pressed={date===day} aria-current={date===today ? 'date' : undefined} aria-label={`${dateLabel(date)}, ${filtered.filter(v=>v.fecha===date).length} visitas`} onClick={()=>selectDay(date)}><time dateTime={date}>{Number(date.slice(-2))}</time>{filtered.filter(visit=>visit.fecha===date).slice(0,2).map(visit=><span key={visit.id}>{visit.cliente_nombre}</span>)}</button> : <span key={`blank-${index}`} aria-hidden="true"/>)}</div></div>
         <section className="prod-day-agenda"><h3>{dateLabel(day)}</h3>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día. Podés crear una nueva.</p>}</section>
-        <section className="prod-mobile-agenda" aria-label="Agenda del mes"><label>Elegir día<input type="date" value={day} min={`${month}-01`} max={`${month}-${String(new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate()).padStart(2,'0')}`} onChange={e=>{if(e.target.value)setDay(e.target.value);}}/></label>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día.</p>}</section>
+        <section className="prod-mobile-agenda" aria-label="Agenda del mes"><label>Elegir día<input type="date" value={day} min={`${month}-01`} max={`${month}-${String(new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate()).padStart(2,'0')}`} onChange={e=>selectDay(e.target.value)}/></label>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día.</p>}</section>
       </> : <div className="prod-pending"><p className="prod-muted">Guiones pendientes o para repetir. Retomarlos conserva la visita original.</p><label>Visita de destino<select value={selected?.id || ''} disabled={busy} onChange={e=>{if(e.target.value)openVisit(e.target.value);}}><option value="">Elegí una visita del mes</option>{filtered.map(visit=><option key={visit.id} value={visit.id}>{visit.fecha} · {visit.cliente_nombre} · {visit.titulo}</option>)}</select></label>{pending.map(video=><article className="prod-media" key={video.id}><header><h3>{video.titulo}</h3><span className="prod-status">{VIDEO_STATES[video.estado] || video.estado}</span></header><p className="prod-muted">{video.cliente_nombre} · {video.fecha}</p><p className="prod-script">{video.guion || 'Sin guion cargado'}</p><button type="button" disabled={busy || !selected || selected.cliente_id!==video.cliente_id} onClick={()=>resume(video)}>Retomar en la visita seleccionada</button></article>)}{!pending.length && <p className="prod-empty">No hay guiones pendientes para este filtro.</p>}</div>}
     </section><div className="prod-detail-column">{creating ? <CreateVisit key="create" clients={clients} users={users} date={day} busy={busy} sesion={sesion} onCreate={createVisit} onCreated={createdVisit} onDirty={onDirty} onCancel={()=>{if(mayLeave())setCreating(false);}}/> : detailLoading ? <p role="status" className="prod-empty">Cargando visita…</p> : selected ? <VisitDetail key={selected.id} sesion={sesion} onBatchDraftStateChange={onBatchDraftStateChange} onBatchSaved={onBatchSaved} visit={selected} users={users} busy={busy} isAdmin={isAdmin} onWrite={writeVisit} onDirty={onDirty} onReload={refreshVisit}/> : <div className="prod-panel prod-empty"><h2>Elegí una visita</h2><p>Acá verás los videos, fotos y guiones del rodaje.</p></div>}</div></div>
   </main>;

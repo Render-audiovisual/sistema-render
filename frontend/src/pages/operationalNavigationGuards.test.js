@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { navigateWithinApp } from '../shared/navigation/location.js';
 import { readFeedbackNotesLocation, feedbackNotesLocationUrl } from './feedbackNotesPagination.js';
 import { feedbackNotesMutationBody } from './feedbackNotesMutation.js';
+import { productionCalendarDay } from './productionRouteContext.js';
 import ts from 'typescript';
 
 // Extract real non-JSX handlers. These are protocol/source tests, not mounted
@@ -169,7 +170,7 @@ test('production committed popstate restoration does not prompt or roll back the
   const dirty = { current: new Set(['draft']) }, openVersion = { current: 0 }, updates = [];
   const bindings = { window: { location: { href: 'https://render.test/producciones?mes=2026-11' } },
     readEpoch:{current:0},setListAvailable:()=>{},setContextError:()=>{},setClientId:()=>{},setTab:()=>{},setReload:()=>{},
-    productionLocation: () => ({ id: null, month: '2026-11' }), dirty, openVersion, today: '2026-10-19',
+    productionLocation: () => ({ id: null, month: '2026-11' }), productionCalendarDay, dirty, openVersion, today: '2026-10-19',
     openVisit: async () => { throw new Error('not expected'); } };
   for (const name of ['setSelected', 'setCreating', 'setDetailLoading', 'setError', 'setMonth', 'setDay']) bindings[name] = value => updates.push([name, value]);
   const restore = Function(...Object.keys(bindings), `${handlerSource};return restoreProductionLocation;`)(...Object.values(bindings));

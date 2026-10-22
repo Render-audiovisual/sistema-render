@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
-import {productionLocation, initialProductionContext, productionReadUrl, assertProductionClient} from './productionRouteContext.js';
+import {productionLocation, initialProductionContext, productionReadUrl, assertProductionClient, productionCalendarDay, validProductionDay} from './productionRouteContext.js';
 import {verifiedProductionDraftVisit} from './productionDraft.js';
 const base='https://render.test/producciones',id='11111111-1111-4111-8111-111111111111';
 const source=readFileSync(new URL('./Productions.jsx',import.meta.url),'utf8');
@@ -19,19 +19,20 @@ test('strict scalar client and month reject malformed context before reads',()=>
 });
 test('reload/back preserves month, pending and visit; clearing client is explicit',()=>{
   const href=`${base}?cliente=7&mes=2026-11&tab=pending&visita=${id}`;
-  for(let n=0;n<3;n++)assert.deepEqual(productionLocation(href),{clientId:'7',month:'2026-11',tab:'pending',id});
+  for(let n=0;n<3;n++)assert.deepEqual(productionLocation(href),{clientId:'7',month:'2026-11',day:null,tab:'pending',id});
   assert.equal(productionReadUrl({month:'2026-11',clientId:'7',tab:'calendar'}),'/api/producciones?mes=2026-11&cliente_id=7');
   assert.equal(productionReadUrl({month:'2026-11',clientId:'7',tab:'pending'}),'/api/producciones/pendientes?cliente_id=7');
   assert.equal(productionReadUrl({month:'2026-11',clientId:'',tab:'calendar'}),'/api/producciones?mes=2026-11');
 });
-function harness(){const effects=[],deps={readEpoch:{current:0},openVersion:{current:0},clientId:'7',tab:'calendar',month:'2026-11',contextError:'',today:'2026-10-21',dirty:{current:new Set()},productionLocation,assertProductionClient,verifiedProductionDraftVisit,writeProductionLocation:v=>effects.push(['url',v]),mayLeave:()=>true};
+function harness(){const effects=[],deps={readEpoch:{current:0},openVersion:{current:0},clientId:'7',tab:'calendar',month:'2026-11',day:'2026-11-20',contextError:'',today:'2026-10-21',dirty:{current:new Set()},productionLocation,productionCalendarDay,validProductionDay,assertProductionClient,verifiedProductionDraftVisit,writeProductionLocation:v=>effects.push(['url',v]),mayLeave:()=>true};
   for(const key of ['ListAvailable','Loading','ContextError','Error','ClientId','Tab','Month','Day','DetailLoading','Selected','Creating','Reload','Notice'])deps[`set${key}`]=value=>effects.push([key,value]);
   return {effects,deps};}
 test('actual filter callback denies dirty/busy cancellation without state/history mutation',()=>{
   for(const reason of ['dirty','write','batch']){const h=harness();h.deps.mayLeave=()=>false;callback('changeContext',h.deps)('', 'pending');assert.deepEqual(h.effects,[],reason);assert.equal(h.deps.readEpoch.current,0);}
   const h=harness();callback('changeContext',h.deps)('','pending');
   assert.equal(h.deps.readEpoch.current,1);assert.equal(h.deps.openVersion.current,1);
-  assert.deepEqual(h.effects.at(-1),['url',{month:'2026-11',clientId:'',tab:'pending'}]);
+  assert.deepEqual(h.effects.at(-1),['url',{month:'2026-11',day:'2026-11-20',clientId:'',tab:'pending'}]);
+  assert.ok(h.effects.some(([key,value])=>key==='Day'&&value==='2026-11-20'),'same-month filter changes preserve the selected calendar day');
 });
 test('actual detail callback rejects mismatched client without retargeting URL/month',async()=>{
   const h=harness();h.deps.apiRequest=async()=>({id,revision:1,cliente_id:8,cliente_nombre:'B',fecha:'2026-11-20',titulo:'Visit',observaciones:'',drive_url:'',participante_ids:[],videos:[],fotos:[]});
@@ -53,7 +54,7 @@ test('actual created callback switches client explicitly only after verified agg
   assert.throws(()=>saved({id},guard));assert.deepEqual(h.effects,[]);
   saved({id,revision:1,cliente_id:8,cliente_nombre:'B',fecha:'2026-12-20',titulo:'Visit',observaciones:'',drive_url:'',participante_ids:[],videos:[],fotos:[]},guard);
   assert.ok(h.effects.some(([key,value])=>key==='ClientId'&&value==='8'));
-  assert.deepEqual(h.effects.at(-1),['url',{id,month:'2026-12',clientId:'8',tab:'calendar'}]);
+  assert.deepEqual(h.effects.at(-1),['url',{id,month:'2026-12',day:'2026-12-20',clientId:'8',tab:'calendar'}]);
 });
 test('failed collection read remains unavailable; inactive history does not enter creation selector',()=>{
   assert.match(source,/!listAvailable \|\| contextError/);assert.match(source,/Lista no disponible/);
@@ -90,16 +91,32 @@ test('actual create transport rejects foreign-client ACK before created callback
   await assert.rejects(callback('createVisit',h.deps)('{"cliente_id":7}',guard),/no pertenece/);
 });
 test('actual URL restore applies client/month/pending without history writes or confirmation',async()=>{
-  const h=harness();h.deps.window={location:{href:`${base}?cliente=8&mes=2026-12&tab=pending`}};
+  const h=harness();h.deps.window={location:{href:`${base}?cliente=8&mes=2026-12&dia=2026-12-19&tab=pending`}};
   h.deps.mayLeave=()=>assert.fail('committed restore must not prompt');h.deps.openVisit=()=>assert.fail('no visit');
   h.deps.dirty.current.add('draft');
   const restore=callback('restoreProductionLocation',h.deps);
   await restore();assert.equal(h.deps.dirty.current.size,1);
   assert.ok(h.effects.some(([key,value])=>key==='ClientId'&&value==='8'));
   assert.ok(h.effects.some(([key,value])=>key==='Month'&&value==='2026-12'));
+  assert.ok(h.effects.some(([key,value])=>key==='Day'&&value==='2026-12-19'),'restore uses the explicit observed URL day');
   assert.ok(h.effects.some(([key,value])=>key==='Tab'&&value==='pending'));
   await restore({discardDrafts:true});assert.equal(h.deps.dirty.current.size,0);
   assert.ok(!h.effects.some(([key])=>key==='url'));
   h.deps.window.location.href=`${base}?cliente=8&cliente=9`;
   await restore();assert.ok(h.effects.some(([key,value])=>key==='ContextError'&&value));
+});
+
+test('explicit day reload/back stays exact; invalid or cross-month days never become a broader context',()=>{
+  const href=`${base}?cliente=7&mes=2026-11&dia=2026-11-20&tab=pending&visita=${id}`;
+  assert.deepEqual(productionLocation(href),{clientId:'7',month:'2026-11',day:'2026-11-20',tab:'pending',id});
+  assert.equal(productionCalendarDay(productionLocation(href),'2026-10-21'),'2026-11-20');
+  for(const query of ['mes=2026-11&dia=2026-12-01','dia=2026-02-30','dia=2026-11-20&dia=2026-11-21','dia[]=2026-11-20']){
+    assert.throws(()=>productionLocation(`${base}?${query}`),query);
+    assert.ok(initialProductionContext(`${base}?${query}`,'2026-10-21').error);
+  }
+});
+test('actual month change writes the new first day, never an old-month selection',()=>{
+  const h=harness();callback('changeContext',h.deps)('7','calendar','2026-12');
+  assert.deepEqual(h.effects.at(-1),['url',{month:'2026-12',day:'2026-12-01',clientId:'7',tab:'calendar'}]);
+  assert.ok(h.effects.some(([key,value])=>key==='Day'&&value==='2026-12-01'));
 });
