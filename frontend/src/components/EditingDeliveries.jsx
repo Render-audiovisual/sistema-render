@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
-import { createEditingDeliveriesModel, deliveryUrl, isEditingDeliveryTask } from './EditingDeliveries.model.js';
+import { createEditingDeliveriesModel, deliveryUrl, isEditingDeliveryTask, editingDeliveryRefreshNeeded } from './EditingDeliveries.model.js';
 import './EditingDeliveries.css';
 
 export function EditingDeliveries({ task, sesion, onSaved, onDirty, onBusy, onReviewContext }) {
@@ -17,17 +17,26 @@ function DeliverySection({ task, sesion, onSaved, onDirty, onBusy, onReviewConte
   const [url, setUrl] = useState(''), [notes, setNotes] = useState('');
   const [state, setState] = useState({ loading: true, busy: false, data: null, uncertain: false, accepted: null });
   const model = useRef(null), saved = useRef(onSaved), reviewContext = useRef(onReviewContext);
+  const observedRevision = useRef(task.revision);
   saved.current = onSaved;
   reviewContext.current = onReviewContext;
   useEffect(() => {
     const instance = createEditingDeliveriesModel({ task, sesion, readSession: getSesion, request: apiRequest, onChange: setState,
       onReviewContext: context => reviewContext.current?.(context),
       onSaved: async (dto, isCurrent) => { await saved.current?.(dto, isCurrent); } });
-    model.current = instance; void instance.refresh();
+    model.current = instance; observedRevision.current = task.revision; void instance.refresh();
     return () => { instance.dispose(); if (model.current === instance) model.current = null; };
   }, []);
   useEffect(() => { if (state.accepted) { setUrl(''); setNotes(''); } }, [state.accepted]);
   const dirty = Boolean(url || notes || state.uncertain);
+  useLayoutEffect(() => {
+    if (!model.current || !editingDeliveryRefreshNeeded({ revision: task.revision,
+      observedRevision: observedRevision.current, dirty, state })) return;
+    // Only pristine forms follow a newer visible task. Existing refresh owns
+    // session/generation fencing; drafts and unresolved attempts never rebase.
+    observedRevision.current = task.revision;
+    if (state.data?.task.revision !== task.revision) void model.current.refresh();
+  }, [task.revision, dirty, state.loading, state.busy, state.uncertain, state.conflict, state.error, state.data]);
   useEffect(() => { onDirty?.(dirty); return () => onDirty?.(false); }, [dirty, onDirty]);
   useEffect(() => { onBusy?.(Boolean(state.busy)); return () => onBusy?.(false); }, [state.busy, onBusy]);
   const latest = state.data?.deliveries.at(-1);

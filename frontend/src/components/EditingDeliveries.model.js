@@ -4,6 +4,10 @@ const positive = value => Number.isSafeInteger(value) && value > 0;
 const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const states = ['pendiente', 'en_progreso', 'en_revision', 'aprobada', 'finalizada', 'publicada', 'programada'];
+export function editingDeliveryRefreshNeeded({ revision, observedRevision, dirty, state }) {
+  return positive(revision) && positive(observedRevision) && revision > observedRevision && dirty === false
+    && Boolean(state) && !state.loading && !state.busy && !state.uncertain && !state.conflict && !state.error;
+}
 export function isEditingDeliveryTask(task) {
   const persisted = task?.propiedades_extra?.workspace ?? task?.workspace;
   return positive(task?.id) && task.id <= 2147483647 && task.tipo_tarea === 'edicion' && persisted === 'render_os' &&
