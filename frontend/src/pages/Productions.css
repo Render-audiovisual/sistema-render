@@ -6,6 +6,7 @@
 .productions-page h4{font-size:14px;margin:0;font-weight:600}
 .productions-page p{margin:8px 0 16px}
 .productions-page button,.productions-page input,.productions-page select:not(.render-filter-select),.productions-page textarea{font:inherit}
+.productions-page input:not([type=checkbox]):not([type=radio]),.productions-page textarea{font-size:14px}
 .productions-page button{background:var(--prod-bg);border:1px solid var(--prod-line);border-radius:10px;padding:8px 12px;min-height:40px;color:var(--prod-text);cursor:pointer}
 .productions-page button:hover:not(:disabled){background:var(--prod-soft)}
 .productions-page button:disabled{opacity:.5;cursor:not-allowed}
@@ -14,7 +15,7 @@
 .productions-page :is(button,input,select,textarea,a,summary):not(.render-filter-select):focus-visible{outline:2px solid var(--render-accent);outline-offset:3px}
 .productions-page input:not([type=checkbox]):not([type=radio]),.productions-page select:not(.render-filter-select),.productions-page textarea{width:100%;min-height:40px;padding:8px 10px;background:var(--prod-bg);border:1px solid var(--prod-line);border-radius:8px;color:var(--prod-text)}
 .productions-page textarea{resize:vertical;min-height:80px}
-.productions-page label:not(.render-filter-field){display:grid;gap:8px;font-size:12px;font-weight:500}
+.productions-page label:where(:not(.render-filter-field)){display:grid;gap:8px;font-size:12px;font-weight:500}
 .productions-page small,.prod-muted{font-size:12px;color:var(--prod-muted)}
 .productions-page a{color:var(--prod-accent);overflow-wrap:anywhere;text-underline-offset:3px}
 .prod-page-heading,.prod-section-heading,.prod-media>header{display:flex;align-items:center;justify-content:space-between;gap:16px}
@@ -104,3 +105,4 @@
 @media(max-width:680px){.productions-page{padding:16px 12px}.prod-page-heading{align-items:flex-start;gap:8px}.productions-page button,.productions-page input:not([type=checkbox]):not([type=radio]),.productions-page select:not(.render-filter-select){min-height:44px}.prod-page-heading .prod-primary{white-space:nowrap;padding-inline:12px}.prod-toolbar{gap:8px}.prod-toolbar>label{flex:1}.prod-tabs{width:100%}.prod-tabs button{flex:1}.prod-layout{grid-template-columns:1fr;gap:16px}.prod-month-grid{display:none}.prod-day-agenda{display:none}.prod-mobile-agenda{display:block;padding:16px}.prod-panel{padding:16px}.prod-form,.prod-participants{grid-template-columns:1fr}.prod-form footer button{width:100%}.prod-media summary{min-height:44px}.prod-month-nav h2{font-size:16px}.prod-detail-heading h2{font-size:18px}}
 @media(prefers-reduced-motion:reduce){.productions-page *{scroll-behavior:auto;animation:none;transition:none}}
 @media(max-width:980px){.productions-page{margin-left:0;width:100%;padding-top:calc(var(--render-mobile-header-height,64px) + 16px)}}
+@media(max-width:1024px){.productions-page input:not([type=checkbox]):not([type=radio]),.productions-page textarea{font-size:16px}.productions-page input:not([type=checkbox]):not([type=radio]){min-height:44px}}
