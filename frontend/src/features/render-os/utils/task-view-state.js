@@ -1,3 +1,5 @@
+import { BOARD_COLUMNS } from '../constants.js';
+
 export function getTasksEmptyMessage({ hasFilters, query, totalTasks, archiveMode }) {
   if (query.trim() || hasFilters) return "No hay tareas con estos filtros.";
   if (archiveMode === "trash") return "La Papelera está vacía.";
@@ -8,6 +10,9 @@ export function getTasksEmptyMessage({ hasFilters, query, totalTasks, archiveMod
 const VALID_VIEWS = new Set(["board", "list", "calendar", "clients", "responsibles"]);
 const VALID_ARCHIVE_MODES = new Set(["active", "trash"]);
 const VALID_TASK_STATES = new Set(['pendiente','en_progreso','en_revision','aprobada','finalizada']);
+const VALID_BOARD_COLUMNS = new Set(BOARD_COLUMNS.map(column => column.id));
+const DEFAULT_BOARD_COLUMN = BOARD_COLUMNS[0].id;
+const boardColumn = value => VALID_BOARD_COLUMNS.has(value) ? value : DEFAULT_BOARD_COLUMN;
 export function effectiveTaskFilterState(task) {
   if (task?.estado === 'publicada') return 'finalizada';
   return task?.estado === 'en_revision' && task.propiedades_extra?.revision_aprobada === true ? 'aprobada' : task?.estado;
@@ -35,6 +40,8 @@ export function getTaskViewState(search = "") {
   const status = params.getAll('estado').length > 1 ? 'invalid:duplicate' : params.get('estado') ?? (reviewScope ? 'en_revision' : 'all');
   return {
     view: VALID_VIEWS.has(view) ? view : "board",
+    // Presentation only: never reinterpret this as the server estado filter.
+    boardColumn: params.getAll('board_column').length === 1 ? boardColumn(params.get('board_column')) : DEFAULT_BOARD_COLUMN,
     status, reviewScope,
     sort: params.getAll("sort").length === 1 && params.get("sort") === "manual" ? "manual" : "date",
     archiveMode: VALID_ARCHIVE_MODES.has(archiveMode) ? archiveMode : "active",
@@ -52,6 +59,10 @@ export function updateTaskViewUrl(currentUrl, state) {
   const url = new URL(currentUrl);
   const values = {
     view: state.view === "board" ? null : state.view,
+    board_column: (() => {
+      const selected = state.boardColumn === undefined ? getTaskViewState(url.search).boardColumn : boardColumn(state.boardColumn);
+      return selected === DEFAULT_BOARD_COLUMN ? null : selected;
+    })(),
     estado: !state.status || state.status === 'all' ? null : state.status,
     review_scope: state.reviewScope || null,
     sort: state.sort === "manual" ? "manual" : null,

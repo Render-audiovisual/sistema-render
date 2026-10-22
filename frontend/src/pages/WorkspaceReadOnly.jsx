@@ -918,7 +918,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [dragOver, setDragOver] = useState("");
   const [newFeedbackCount, setNewFeedbackCount] = useState(0);
-  const [mobileBoardColumn, setMobileBoardColumn] = useState(BOARD_COLUMNS[0].id);
+  const [mobileBoardColumn, setMobileBoardColumn] = useState(initialViewState.boardColumn);
   const compactBoard = useMediaQuery("(max-width: 1024px)");
   const boardRef = useRef(null);
   const mobileBoardNavRef = useRef(null);
@@ -1048,15 +1048,15 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
       openRequestRef.current?.abort();
       setSelectedId(Number(new URLSearchParams(window.location.search).get("task")) || null);
       const next = getTaskViewState(window.location.search);
-      setView(next.view); setCalendarMonth(next.calendarMonth);
+      setView(next.view); setCalendarMonth(next.calendarMonth); setMobileBoardColumn(next.boardColumn);
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   useEffect(() => {
-    const url = updateTaskViewUrl(window.location.href, { view, sort, archiveMode, responsible, client, sector, priority, area, query, calendarMonth, status:taskStatus, reviewScope });
+    const url = updateTaskViewUrl(window.location.href, { view, sort, archiveMode, responsible, client, sector, priority, area, query, calendarMonth, status:taskStatus, reviewScope, boardColumn:mobileBoardColumn });
     window.history.replaceState(window.history.state, "", url);
-  }, [view, sort, archiveMode, responsible, client, sector, priority, area, query, calendarMonth, taskStatus, reviewScope]);
+  }, [view, sort, archiveMode, responsible, client, sector, priority, area, query, calendarMonth, taskStatus, reviewScope, mobileBoardColumn]);
 
   const move = useCallback((task, status) => {
     if (orderState.busy || orderState.locked) return;
@@ -1080,6 +1080,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const changeArchiveMode = value => { setReviewScope(''); setArchiveMode(value); };
   const exitReviewQueue = () => { setReviewScope(''); setTaskStatus('all'); };
   const selectMobileBoardColumn = useCallback((columnId) => {
+    if (!BOARD_COLUMNS.some(column => column.id === columnId)) return;
     setMobileBoardColumn(columnId);
     window.requestAnimationFrame(() => mobileBoardNavRef.current?.scrollIntoView({ behavior: "auto", block: "start" }));
   }, []);
