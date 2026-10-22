@@ -3,29 +3,35 @@ import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { access } from 'node:fs/promises';
 import { startLocalHarness, request, fixturePassword, assertFixtureIdentity } from '../scripts/render2-local-test.js';
+import { loginProductionCookieSession, productionCookieRequest } from './helpers/production-cookie-session.js';
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 
 // Opt-in only; principal HTTP and fresh physical PG. No service imports,
 // simulated writers, ledger fixture INSERTs or configured database connection.
-test('three-video production journey persists exact deliveries/corrections/approvals across registry, Home, calendar and reports', {
+for (const transport of ['bearer', 'cookie']) test(`${transport}: three-video production journey persists exact deliveries/corrections/approvals across registry, Home, calendar and reports`, {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 240000,
 }, async t => {
-  const fixture = await startLocalHarness({ port: 55677 });
+  const port = transport === 'cookie' ? 55784 : 55677;
+  const fixture = await startLocalHarness({ port, browserSessions: transport === 'cookie' });
   t.after(async () => {
     await fixture.cleanup(); await assert.rejects(access(fixture.root), error => error.code === 'ENOENT');
     t.diagnostic(`Own full production-workflow fixture stopped and removed: ${fixture.root}`);
   });
   const [identity] = await fixture.query(`SELECT current_database() AS database,current_user AS username,
     host(inet_server_addr()) AS address,inet_server_port() AS port,current_setting('data_directory') AS directory`);
-  assertFixtureIdentity({ root: fixture.root, cwd: fixture.root, port: 55677,
-    url: 'postgresql://render2_fixture@127.0.0.1:55677/render2_local_test', identity });
+  assertFixtureIdentity({ root: fixture.root, cwd: fixture.root, port,
+    url: `postgresql://render2_fixture@127.0.0.1:${port}/render2_local_test`, identity });
   const checked = (response, status = 200) => {
     assert.equal(response.status, status, 'Unexpected principal HTTP status; authentication bodies intentionally omitted'); return response.body;
   };
-  const api = (route, token, method = 'GET', body) => request(fixture.base, `/api${route}`, { token, method, body });
-  const login = async usuario => checked(await api('/login', undefined, 'POST', { usuario, password: fixturePassword })).token;
+  const api = (route, token, method = 'GET', body) => transport === 'cookie'
+    ? productionCookieRequest(fixture.base, `/api${route}`, { session: token, method, body })
+    : request(fixture.base, `/api${route}`, { token, method, body });
+  const login = async usuario => transport === 'cookie'
+    ? loginProductionCookieSession(fixture.base, usuario, fixturePassword)
+    : checked(await api('/login', undefined, 'POST', { usuario, password: fixturePassword })).token;
   const actors = [
     { id: 91001, usuario: 'qa_franco', role: 'admin' },
     { id: 91002, usuario: 'qa_agustin', role: 'admin' },
@@ -145,7 +151,7 @@ test('three-video production journey persists exact deliveries/corrections/appro
   };
 
   await t.test('ordinary visit and three individually recorded scripts are created by actual registry APIs without inferred tasks', async () => {
-    const current = checked(await api('/producciones', actors[0].token, 'POST', { cliente_id: client.id,
+    const current = checked(await api('/producciones', actors[0].token, 'POST', { request_id: randomUUID(), cliente_id: client.id,
       fecha: start, titulo: 'QA ordinary new three-video full workflow', participante_ids: actors.map(actor => actor.id),
       drive_url: 'https://example.invalid/full-workflow-raw-material', observaciones: 'Explicit new visit, not historical aggregate reconciliation.',
     }), 201).visita;
@@ -174,6 +180,34 @@ test('three-video production journey persists exact deliveries/corrections/appro
       assert.equal(replay.created, false); assert.equal(replay.task.id, record.taskId); assert.deepEqual(await snapshot(), before);
     }
     assert.equal(new Set(records.map(row => row.taskId)).size, 3); await assertViews();
+  });
+
+  if (transport === 'cookie') await t.test('cookie actors cannot cross context or hand off as employee; logout withdraws the original session', async () => {
+    for (const actor of actors) assert.equal(actor.token.user.id, actor.id);
+    assert.equal(new Set(actors.map(actor => actor.token.context)).size, 3, 'Independent server sessions');
+    const before = await snapshot();
+    const crossedSession = { ...actors[0].token, cookie: actors[2].token.cookie };
+    // GET may run under the cookie's actual user; its proof must prevent the
+    // original caller from accepting another session's successful response.
+    await assert.rejects(productionCookieRequest(fixture.base, `/api/producciones/${visitId}`, {
+      session: crossedSession,
+    }), /Successful operational response must prove its original cookie context/);
+    const crossed = await productionCookieRequest(fixture.base, `/api/producciones/${visitId}/videos`, {
+      session: crossedSession, method: 'POST', body: { expected_revision: (await visit()).revision,
+        titulo: 'QA denied crossed-cookie video', estado: 'planificado' },
+    });
+    checked(crossed, 409); assert.equal(crossed.body.code, 'browser_session_changed');
+    const record = records[2];
+    checked(await api(`/producciones/${visitId}/videos/${record.videoId}/enviar-edicion`, actors[2].token, 'POST', {
+      expected_revision: (await visit()).revision, editor_id: record.actor.id, fecha_entrega: record.due,
+    }), 403);
+    assert.deepEqual(await snapshot(), before, 'Denied context/role must not rewrite existing handoffs');
+    const retired = actors[2].token;
+    checked(await api('/logout', retired, 'POST', {}));
+    checked(await api('/inicio', retired), 401);
+    actors[2].token = await login(actors[2].usuario);
+    assert.equal(actors[2].token.user.id, actors[2].id);
+    await assertViews(); assert.deepEqual(await snapshot(), before, 'New session recovers original shared records');
   });
 
   await t.test('allowed ordinary visit reschedule crosses month after handoff but before editing; no task deadline moves', async () => {
