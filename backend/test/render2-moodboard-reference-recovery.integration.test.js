@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { access } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { startLocalHarness, request, fixturePassword, assertFixtureIdentity } from '../scripts/render2-local-test.js';
 import { createCapturedRequest } from '../../frontend/src/shared/session/captured-request.js';
 import { createMoodboardReferenceOperation, createMoodboardTaskLinkOperation } from '../../frontend/src/shared/session/moodboard-reference-operation.js';
+import { createMoodboardReferenceWrite } from '../../frontend/src/shared/session/moodboard-reference-write.js';
 
 test('real Moodboard controllers recover observed failures without recreating references or replaying stale links', {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 180000,
@@ -48,7 +50,7 @@ test('real Moodboard controllers recover observed failures without recreating re
     let live = actor, active = true, epoch = 1;
     const renderedEpoch = epoch, calls = [];
     const transport = async (url, options) => {
-      calls.push({ url, method: options.method || 'GET' });
+      calls.push({ url, method: options.method || 'GET', body: options.body });
       return fault ? fault(url, options, real) : real(url, options);
     };
     const capture = () => createCapturedRequest({ session: actor, readSession: () => live,
@@ -63,9 +65,9 @@ test('real Moodboard controllers recover observed failures without recreating re
       changeBoardEpoch: () => { epoch++; } };
   }
   const creator = ctx => createMoodboardReferenceOperation({ boardId: board.id, taskId: task.id, capture: ctx.capture, refresh: ctx.refresh });
-  const createReference = async () => ok(await api(`/moodboards/boards/${board.id}/references`, {
-    token: actor.token, method: 'POST', body: data(),
-  }), 201);
+  const createReference = async () => ok(await api('/moodboards/reference-operations', {
+    token: actor.token, method: 'POST', body: { request_id:randomUUID(),action:'create',board_id:board.id,fields:data() },
+  }), 201).reference;
   const reference = async id => {
     const rows = ok(await api(`/moodboards/boards/${board.id}/references`, { token: actor.token }));
     return rows.find(row => row.id === id);
@@ -74,7 +76,7 @@ test('real Moodboard controllers recover observed failures without recreating re
 
   await t.test('real pre-insert validation400 permits corrected deliberate submission on the same controller', async () => {
     const ctx = context(), op = creator(ctx), before = await refs(), beforeLinks = await links();
-    await assert.rejects(op.create({ ...data(), note: '' }), error => error.status === 400);
+    await assert.rejects(op.create({ ...data(), external_url:'not-a-valid-url' }), error => error.status === 400);
     assert.equal(op.snapshot.phase, 'idle'); assert.equal(op.snapshot.busy, false);
     assert.equal(op.snapshot.createdId, null);
     assert.deepEqual(await refs(), before); assert.deepEqual(await links(), beforeLinks);
@@ -98,7 +100,7 @@ test('real Moodboard controllers recover observed failures without recreating re
     await op.retryLink();
     assert.equal(op.snapshot.createdId, id); assert.equal(op.snapshot.observedLinked, true);
     assert.equal((await refs()).length, before.length + 1);
-    assert.equal(writes(ctx).filter(call => call.url.endsWith('/references')).length, 1);
+    assert.equal(writes(ctx).filter(call => call.url.endsWith('/reference-operations')).length, 1);
     assert.equal(writes(ctx).filter(call => call.url.includes('/tasks/')).every(call => call.url === linkURL(id)), true);
   });
 
@@ -120,27 +122,70 @@ test('real Moodboard controllers recover observed failures without recreating re
     assert.equal(op.finish().referenceId, id);
   });
 
-  await t.test('initial create commits but response is lost: no repeat creation and no title-based ID recovery', async () => {
+  await t.test('initial create commits but response is lost: exact receipt verification, never title-based ID recovery', async () => {
     let lose = true;
     const ctx = context({ fault: async (url, options, send) => {
       const value = await send(url, options);
-      if (url.endsWith('/references') && options.method === 'POST' && lose) { lose = false; throw new TypeError('Synthetic create response loss'); }
+      if (url.endsWith('/reference-operations') && options.method === 'POST' && lose) { lose = false; throw new TypeError('Synthetic create response loss'); }
       return value;
     } });
     const op = creator(ctx), before = await refs();
     await assert.rejects(op.create(data())); assert.equal(op.snapshot.phase, 'creation_uncertain');
     assert.equal(op.snapshot.createdId, null); assert.equal((await refs()).length, before.length + 1);
-    const count = writes(ctx).length, beforeLinks = await links();
+    const count = writes(ctx).length, beforeLinks = await links(),savedRows=await refs(),committed=savedRows.find(row=>!before.some(old=>old.id===row.id));
     await assert.rejects(op.create(data())); await assert.rejects(op.retryLink());
-    await op.refresh(); assert.equal(op.snapshot.createdId, null); assert.equal(op.finish().referenceId, null);
+    await assert.rejects(op.refresh()); assert.equal(op.snapshot.createdId, null); assert.throws(()=>op.finish());
     assert.equal(writes(ctx).length, count); assert.deepEqual(await links(), beforeLinks);
+    await op.verifyCreate();assert.equal(op.snapshot.createdId,committed.id);assert.equal(op.finish().referenceId,committed.id);
+    assert.equal((await refs()).length,before.length+1);assert.equal(writes(ctx).length,count+1);
+    const creationWrites=writes(ctx).filter(call=>call.url.endsWith('/reference-operations'));
+    assert.equal(creationWrites.length,2);assert.equal(creationWrites[0].body,creationWrites[1].body);
+    assert.equal(writes(ctx).filter(call=>call.url.includes('/tasks/')).length,0);
+    assert.equal(op.snapshot.phase,'observed_missing');assert.equal(op.snapshot.observedLinked,false);
+  });
+
+  await t.test('lost creation ACK then peer link and unlink: receipt verification never restores removed link',async()=>{
+    let lose=true;const ctx=context({fault:async(url,options,send)=>{const value=await send(url,options);if(url.endsWith('/reference-operations')&&lose){lose=false;throw Error('Lost committed creation ACK');}return value;}});
+    const op=creator(ctx),before=await refs();await assert.rejects(op.create(data()));
+    const inserted=(await refs()).find(row=>!before.some(old=>old.id===row.id));assert.ok(inserted);
+    await peerLink(inserted.id,'POST');assert.ok((await links()).some(row=>row.reference_id===inserted.id&&row.tarea_id===task.id));
+    await peerLink(inserted.id,'DELETE');const beforeVerify=await links(),beforeReferences=await refs();
+    await op.verifyCreate();assert.equal(op.snapshot.createdId,inserted.id);assert.equal(op.snapshot.phase,'observed_missing');assert.equal(op.snapshot.observedLinked,false);assert.equal(op.snapshot.canRetryLink,false);
+    await assert.rejects(op.retryLink());assert.deepEqual(await links(),beforeVerify);assert.deepEqual(await refs(),beforeReferences);
+    assert.equal(writes(ctx).length,2);assert.equal(writes(ctx).filter(call=>call.url.includes('/tasks/')).length,0);assert.equal(writes(ctx)[0].body,writes(ctx)[1].body);
+  });
+
+  await t.test('physically deleted reference replay is unavailable and never recreated or linked',async()=>{
+    let lose=true;
+    const ctx=context({fault:async(url,options,send)=>{const value=await send(url,options);if(url.endsWith('/reference-operations')&&lose){lose=false;throw Error('Lost committed creation ACK');}return value;}});
+    const op=creator(ctx),before=await refs(),beforeLinks=await links();await assert.rejects(op.create(data()));
+    const inserted=(await refs()).find(row=>!before.some(old=>old.id===row.id));assert.ok(inserted);
+    const observed=await reference(inserted.id);
+    const deletion=ok(await api('/moodboards/reference-operations',{token:peer.token,method:'POST',body:{request_id:randomUUID(),action:'delete',board_id:board.id,reference_id:observed.id,expected_revision:observed.revision}}));
+    assert.equal(deletion.reference,null);assert.equal(deletion.operation.result_revision,observed.revision);
+    await op.verifyCreate();assert.equal(op.snapshot.gone,true);assert.equal(op.finish().referenceId,null);
+    assert.deepEqual(await refs(),before);assert.deepEqual(await links(),beforeLinks);
+    assert.equal(writes(ctx).length,2);assert.equal(writes(ctx)[0].body,writes(ctx)[1].body);assert.equal(writes(ctx).some(call=>call.url.includes('/tasks/')),false);
+  });
+
+  await t.test('real edit CAS conflict is explicit; uncertain delete verifies only its captured receipt',async()=>{
+    const observed=await createReference(),ctx=context(),edit=createMoodboardReferenceWrite({boardId:board.id,capture:ctx.capture,refresh:ctx.refresh});
+    const saved=await edit.submit('edit',observed,{status:'aprobada'});assert.equal(saved.ack.reference.revision,observed.revision+1);await edit.settle();edit.complete();
+    const stale=createMoodboardReferenceWrite({boardId:board.id,capture:ctx.capture,refresh:ctx.refresh}),before=await refs();
+    await assert.rejects(stale.submit('edit',observed,{status:'descartada'}),error=>error.status===409);const count=writes(ctx).length;
+    await assert.rejects(stale.verify());await stale.observe();assert.equal(stale.snapshot.observed.revision,saved.ack.reference.revision);assert.equal(writes(ctx).length,count);assert.deepEqual(await refs(),before);stale.releaseConflict();
+    let lose=true;const deleting=context({fault:async(url,options,send)=>{const value=await send(url,options);if(url.endsWith('/reference-operations')&&lose){lose=false;throw Error('Lost committed delete ACK');}return value;}});
+    const operation=createMoodboardReferenceWrite({boardId:board.id,capture:deleting.capture,refresh:deleting.refresh});
+    await assert.rejects(operation.submit('delete',saved.ack.reference));assert.equal(operation.snapshot.phase,'uncertain');
+    const verified=await operation.verify();assert.equal(verified.ack.reference,null);assert.equal(verified.ack.operation.replayed,true);assert.equal(verified.ack.operation.result_revision,saved.ack.reference.revision);
+    await operation.settle();assert.equal(writes(deleting).length,2);assert.equal(writes(deleting)[0].body,writes(deleting)[1].body);assert.equal((await refs()).some(row=>row.id===observed.id),false);
   });
 
   for (const transition of ['replace', 'unmount', 'changeBoardEpoch']) await t.test(`${transition} after real create ACK prevents link stage`, async () => {
     let ctx;
     ctx = context({ fault: async (url, options, send) => {
       const value = await send(url, options);
-      if (url.endsWith('/references') && options.method === 'POST') ctx[transition]();
+      if (url.endsWith('/reference-operations') && options.method === 'POST') ctx[transition]();
       return value;
     } });
     const op = creator(ctx), before = await refs(), beforeLinks = await links();

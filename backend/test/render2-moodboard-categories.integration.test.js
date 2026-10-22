@@ -116,7 +116,9 @@ test('QA118 principal moodboard category snapshots and atomic reviewed batches',
     assert.equal(saved.categories.some(row => row.id === removable.id), false);
     assert.equal(saved.categories.filter(row => row.nombre === 'QA118 explicit new').length, 1);
     const after = await snapshot();
-    assert.deepEqual(after.moodboard_references, before.moodboard_references.map(row => row.id === reference.id ? { ...row, category_id: null } : row));
+    assert.deepEqual(after.moodboard_references, before.moodboard_references.map(row => row.id === reference.id
+      ? { ...row, category_id: null, revision: (BigInt(row.revision) + 1n).toString() } : row),
+    'SET NULL advances the reference revision exactly once and preserves every other property');
     for (const table of tables.filter(name => !name.startsWith('moodboard_'))) assert.deepEqual(after[table], before[table], table);
   });
 

@@ -150,27 +150,69 @@ function readRouter(pool){
 }
 async function route(router,method,path,params,actor=auth({rol:'edicion'})){
   const handler=router.stack.find(layer=>layer.route?.path===path&&layer.route.methods[method]).route.stack[0].handle;
-  const res={code:200,status(value){this.code=value;return this;},json(value){this.body=value;return this;},end(){return this;}};
+  const res={code:200,status(value){this.code=value;return this;},set(){return this;},json(value){this.body=value;return this;},end(){return this;}};
   await handler({params,auth:actor},res,error=>{throw error;});return res;
 }
 
+function referenceReadPool(rows=[]){
+  const calls=[],state={actor:auth({rol:'edicion'})};
+  const query=async(sql,values=[])=>{
+    calls.push({sql,values});
+    if(sql.startsWith('BEGIN')||sql==='COMMIT'||sql==='ROLLBACK')return{rows:[]};
+    if(sql.startsWith('SELECT id,rol,activo,session_version'))return{rows:[state.actor]};
+    if(sql.startsWith('SELECT id FROM moodboard_boards'))return{rows:[{id:90}]};
+    if(sql.includes('FROM moodboard_references r'))return{rows};
+    if(sql.includes('SELECT DISTINCT t.id, t.titulo'))return{rows:[]};
+    assert.fail(`Unexpected read SQL: ${sql}`);
+  };
+  return{calls,state,pool:{query,connect:async()=>({query,release(){}})}};
+}
+
 test('actual board-task and linked-task read SQL share predicate + board/client membership; invalid IDs never query',async()=>{
-  const calls=[],router=readRouter({query:async(sql,values)=>{calls.push({sql,values});return{rows:[]}}});
+  const f=referenceReadPool(),{calls}=f,router=readRouter(f.pool);
   for(const path of ['/boards/:id/tasks','/boards/:id/references']){
     for(const actor of [auth({rol:'edicion'}),auth(),auth({id:null})]){
-      const result=await route(router,'get',path,{id:'90'},actor);assert.equal(result.code,200);
-      const query=calls.at(-1),predicate=buildMoodboardTaskReadPredicate(actor);
+      f.state.actor=actor;const before=calls.length;
+      const result=await route(router,'get',path,{id:'90'},actor);
+      if(path.endsWith('/references')&&actor.id===null){assert.equal(result.code,401);assert.equal(calls.length,before);continue;}
+      assert.equal(result.code,200);
+      const query=calls.slice(before).find(call=>path.endsWith('/references')?call.sql.includes('FROM moodboard_references r'):call.sql.includes('SELECT DISTINCT t.id')),
+        predicate=buildMoodboardTaskReadPredicate(actor);
+      assert.ok(query);
       assert.ok(query.sql.includes(predicate.sql));
       assert.deepEqual(query.values,predicate.value===null?[90]:[90,7]);
       if(path.endsWith('/references')){
-        assert.match(query.sql,/LEFT JOIN tareas t ON t.id = rt.tarea_id AND/);
+        assert.match(query.sql,/JOIN tareas t ON t.id\s*=\s*rt.tarea_id AND/);
         assert.match(query.sql,/bc.board_id=r.board_id AND bc.cliente_id=t.cliente_id/);
-        assert.match(query.sql,/FILTER \(WHERE t.id IS NOT NULL\)/);
+        assert.match(query.sql,/COALESCE\(\(SELECT json_agg/);
+        assert.match(calls[before].sql,/REPEATABLE READ READ ONLY/);
+        assert.ok(calls[before+1].sql.includes('FROM usuarios WHERE id=$1'));
+        assert.equal(calls.at(-1).sql,'COMMIT');
       }else assert.match(query.sql,/bc.cliente_id = t.cliente_id/);
       assert.doesNotMatch(query.sql,/\b(?:INSERT|UPDATE|DELETE)\b/);
     }
     const count=calls.length;assert.equal((await route(router,'get',path,{id:'90\n'})).code,400);assert.equal(calls.length,count);
   }
+});
+
+test('actual reference reader exposes closed revisioned DTO and ISO dates, never arbitrary database fields',async()=>{
+  const date='2026-10-21T12:00:00.123456Z';
+  const stored={id:1,board_id:90,category_id:3,titulo:'Observed reference',nota:'Observed note',etiquetas:['QA'],
+    estado:'libre',tipo_fuente:'enlace',enlace_externo:'https://example.invalid/qa122',archivo_nombre:null,
+    autor_id:7,autor_nombre:'Observed author',created_at:date,updated_at:date,categoria:'Direction',
+    tareas:[{id:12,titulo:'Visible task'}],revision:0,private_database_field:'QA122_PRIVATE_CANARY'};
+  const before=structuredClone(stored),f=referenceReadPool([stored]),{calls}=f;
+  const router=readRouter(f.pool);
+  const result=await route(router,'get','/boards/:id/references',{id:'90'});
+  assert.equal(result.code,200);assert.equal(result.body.length,1);
+  const row=result.body[0],keys=['id','board_id','category_id','titulo','nota','etiquetas','estado','tipo_fuente','enlace_externo','archivo_nombre','autor_id','autor_nombre','created_at','updated_at','categoria','tareas','revision'];
+  assert.deepEqual(Object.keys(row).sort(),keys.sort());
+  assert.equal(row.revision,0);assert.equal(row.created_at,date);assert.equal(row.updated_at,date);
+  assert.equal(JSON.stringify(row).includes('QA122_PRIVATE_CANARY'),false);
+  assert.deepEqual(row.tareas,[{id:12,titulo:'Visible task'}]);assert.deepEqual(stored,before,'projection never rewrites its source row');
+  const projection=calls.find(call=>call.sql.includes('FROM moodboard_references r'));
+  assert.ok(projection.sql.includes(buildMoodboardTaskReadPredicate(auth({rol:'edicion'}),'t','$2').sql));
+  assert.ok(calls.every(call=>!(/\b(?:INSERT|UPDATE|DELETE)\b/.test(call.sql))));
 });
 
 test('actual POST and DELETE routes use guarded transaction and safe status mapping',async()=>{

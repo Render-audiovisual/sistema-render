@@ -3,6 +3,16 @@ import assert from 'node:assert/strict';
 import { access } from 'node:fs/promises';
 import { startLocalHarness, request, fixturePassword, assertFixtureIdentity } from '../scripts/render2-local-test.js';
 
+const referenceKeys=['id','board_id','category_id','titulo','nota','etiquetas','estado','tipo_fuente','enlace_externo','archivo_nombre','autor_id','autor_nombre','created_at','updated_at','categoria','tareas','revision'];
+function assertReference(row){
+  assert.deepEqual(Object.keys(row).sort(),[...referenceKeys].sort(),'reference reads expose only the shared closed DTO');
+  assert.equal(row.revision,0,'read/link operations do not mutate the initial reference revision');
+  for(const key of ['created_at','updated_at']){assert.equal(typeof row[key],'string');assert.ok(Number.isFinite(Date.parse(row[key])));assert.match(row[key],/^\d{4}-\d{2}-\d{2}T.*Z$/);}
+  assert.ok(row.titulo===null||typeof row.titulo==='string','historical nullable titles remain preserved');
+  assert.equal(typeof row.nota,'string');
+  assert.ok(Array.isArray(row.etiquetas));assert.ok(Array.isArray(row.tareas));
+}
+
 test('moodboard task projections and links respect current ID scope and board client', {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 180000,
 }, async t => {
@@ -65,6 +75,7 @@ test('moodboard task projections and links respect current ID scope and board cl
   const assertView = async (token, taskIds, linkedIds, excluded) => {
     const tasks = expect(await getTasks(token));
     const refs = expect(await getReferences(token));
+    refs.forEach(assertReference);
     assert.deepEqual(ids(tasks), [...taskIds].sort((a, b) => a - b));
     const own = refs.find(row => row.id === reference.id);
     assert.ok(own);
@@ -150,6 +161,7 @@ test('moodboard task projections and links respect current ID scope and board cl
       [admin, [assignedLegacy.id, unassignedLegacy.id, assignedShared.id, unassignedShared.id]]]) {
       const tasks = expect(await api(`/moodboards/boards/${scopedBoard.id}/tasks`, { token }));
       const refs = expect(await api(`/moodboards/boards/${scopedBoard.id}/references`, { token }));
+      refs.forEach(assertReference);
       assert.deepEqual(ids(tasks), [...expected].sort((a, b) => a - b));
       assert.deepEqual(ids(refs.find(row => row.id === scopedRef.id).tareas), [...expected].sort((a, b) => a - b));
       if (token !== admin) assert.equal(JSON.stringify({ tasks, refs }).includes('QA97_EXPLICIT_LEGACY_PRIVATE'), false);

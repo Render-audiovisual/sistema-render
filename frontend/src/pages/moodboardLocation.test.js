@@ -53,7 +53,7 @@ test('actual activation clears collections, overlays and filters synchronously, 
 test('actual load fences late success/error/finally on board ABA, session change and unmount',async()=>{
   for(const change of ['board','session','unmount'])for(const fail of [false,true]){
     const calls=[],effects=[],session={token:'original',usuario:{id:1,rol:'admin',activo:true}},deps={sesion:structuredClone(session),mounted:{current:true},boardObservation:{current:{id:1,generation:1}},boardLoader:{current:null},loadGeneration:{current:0},getSesion:()=>session,api:()=>new Promise((resolve,reject)=>calls.push({resolve,reject})),createCapturedRequest,createMoodboardBoardLoader,moodboardTaskIntent,locationRef:{current:{selection:readMoodboardLocation('')}},catalog:{current:boards}};
-    for(const key of ['Loading','Refs','Categories','Tasks','Error','Composer'])deps[`set${key}`]=value=>effects.push([key,value]);
+    for(const key of ['Loading','Refs','Categories','Tasks','Error','Composer','Boards'])deps[`set${key}`]=value=>effects.push([key,value]);
     const pending=callback('load',deps)(1);assert.equal(calls.length,3);const count=effects.length;
     if(change==='board')deps.boardObservation.current={id:1,generation:3};
     if(change==='session')session.token='new';
@@ -80,7 +80,7 @@ test('actual same-board reload refreshes selected DTO by ID and closes removed r
     let selected={id:7,tareas:[]};const fresh={id:7,tareas:[{id:9}]};
     const session={token:'original',usuario:{id:1,rol:'admin',activo:true}};
     const deps={sesion:structuredClone(session),mounted:{current:true},boardObservation:{current:{id:1,generation:1}},boardLoader:{current:null},loadGeneration:{current:0},getSesion:()=>session,api:async url=>url.endsWith('/references')?(missing?[]:[fresh]):[],createCapturedRequest,createMoodboardBoardLoader,moodboardTaskIntent,locationRef:{current:{selection:readMoodboardLocation('')}},catalog:{current:boards},setSelected:update=>{selected=update(selected)}};
-    for(const key of ['Loading','Refs','Categories','Tasks','Error','Composer'])deps[`set${key}`]=()=>{};
+    for(const key of ['Loading','Refs','Categories','Tasks','Error','Composer','Boards'])deps[`set${key}`]=()=>{};
     await callback('load',deps)(1);assert.equal(selected,missing?null:fresh);
   }
 });
@@ -116,22 +116,27 @@ test('actual finish consumes only task intent with current origin/session; draft
   }
 });
 
-test('composer success and explicit finish invoke saved, while idle draft close does not',()=>{
+test('composer success and explicit finish invoke saved, while idle close and uncertain cancel never fake success',async()=>{
   const composer=nodes(file,n=>ts.isFunctionDeclaration(n)&&n.name?.text==='Composer')[0];
   const local=name=>nodes(composer,n=>ts.isVariableDeclaration(n)&&n.name.getText(file)===name)[0].initializer.getText(file);
-  const saved=[],scope={assertCurrent(){}};
-  const model={snapshot:{phase:'idle'},finish:()=>({scope})};
-  const completed=new Function('model','saved',`return (${local('completed')});`)(model,value=>saved.push(value));
-  completed({scope});assert.deepEqual(saved,[]);
-  model.snapshot.phase='complete';completed({scope});assert.deepEqual(saved,[scope]);
-  assert.match(local('finish'),/model.refresh\(\)/);
-  assert.match(local('finish'),/saved\(model.finish\(\).scope\)/);
-  const actions=[];
-  const leave=new Function('busy','state','close','finish',`return (${local('leave')});`);
-  leave(false,{phase:'idle'},()=>actions.push('close'),()=>actions.push('finish'))();
-  leave(false,{phase:'created'},()=>actions.push('close'),()=>actions.push('finish'))();
-  leave(true,{phase:'created'},()=>actions.push('close'),()=>actions.push('finish'))();
-  assert.deepEqual(actions,['close','finish']);
+  const evaluate=(name,deps)=>new Function(...Object.keys(deps),`return (${local(name)});`)(...Object.values(deps));
+  const saved=[],scope={assertCurrent(){}},draft={current:{title:'Keep'}},baseline={current:''},syncDraft=()=>{};
+  let reads=0,pending;
+  const model={snapshot:{phase:'idle',canFinish:false},refresh:async()=>{reads++},finish:()=>({scope})};
+  const completed=evaluate('completed',{baseline,draft,syncDraft,saved:value=>saved.push(value)});
+  completed({scope},model);assert.deepEqual(saved,[]);
+  model.snapshot.phase='complete';completed({scope},model);assert.deepEqual(saved,[scope]);
+  const operation={busy:false},getModel=()=>model;
+  const run=(action,done)=>{pending=Promise.resolve(action(model)).then(value=>done?.(value,model));};
+  const finish=evaluate('finish',{operation,getModel,run,baseline,draft,syncDraft,saved:value=>saved.push(value)});
+  finish();assert.equal(reads,0,'A model without confirmed/readable result cannot finish');
+  model.snapshot.canFinish=true;finish();await pending;assert.equal(reads,1);assert.deepEqual(saved,[scope,scope]);
+  const actions=[],win=new EventTarget();win.location={href:'https://render.test/moodboards?board=2&task=7'};
+  const Custom=class extends Event{constructor(type,options){super(type,options);this.detail=options.detail}};
+  const leave=evaluate('leave',{operation,getModel,captureCurrent:()=>({current:()=>true}),window:win,CustomEvent:Custom,close:()=>actions.push('close'),setError:()=>actions.push('blocked')});
+  model.snapshot.phase='idle';const canceled=event=>event.preventDefault();win.addEventListener('render:before-navigation',canceled);leave();assert.deepEqual(actions,[]);
+  win.removeEventListener('render:before-navigation',canceled);leave();model.snapshot.phase='creation_uncertain';leave();operation.busy=true;leave();
+  assert.deepEqual(actions,['close','blocked']);assert.deepEqual(saved,[scope,scope]);
 });
 
 test('actual controlled board selection checks busy owner and navigation approval before pushing history',()=>{

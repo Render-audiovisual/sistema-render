@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { CORE_SCHEMA_COLUMNS, assertCoreSchemaReady } from '../src/startup-schema.js';
 const complete = () => Object.entries(CORE_SCHEMA_COLUMNS).flatMap(([table_name, columns]) =>
   Object.entries(columns).map(([column_name, data_type]) => ({ table_name, column_name, data_type })));
-const response = (sql, rows) => ({ rows: sql.includes('current_schemas') ? [{ schemas: ['public'] }] : sql.includes('pg_trigger') ? [{ready:true}] : rows });
+const response = (sql, rows) => ({ rows: sql.includes('current_schemas') ? [{ schemas: ['public'] }] : sql.includes('pg_trigger') ? [{ready:true,reference_ready:true}] : rows });
 
 test('principal compatibility inspection uses a parameterized SELECT only', async () => {
   const calls = [];
@@ -15,7 +15,7 @@ test('principal compatibility inspection uses a parameterized SELECT only', asyn
     assert.doesNotMatch(call.sql, /CREATE|ALTER|INSERT|UPDATE|DELETE|TRUNCATE/);
   }
   assert.deepEqual(calls[1].values, [Object.keys(CORE_SCHEMA_COLUMNS)]);
-  assert.deepEqual(calls[2].values, ['feedback_notes_monotonic_version']);
+  assert.deepEqual(calls[2].values, ['feedback_notes_monotonic_version','moodboard_reference_advance_revision']);
 });
 
 test('missing or disabled monotonic note trigger rejects startup without installing or repairing it', async () => {
@@ -25,6 +25,12 @@ test('missing or disabled monotonic note trigger rejects startup without install
   await assert.rejects(assertCoreSchemaReady({query:async sql=>{
     if(sql.includes('pg_trigger'))throw Error('private clock detail');return response(sql,complete());
   }}),error=>{assert.equal(error.message,'Cannot inspect principal note clock.');return true;});
+});
+
+test('missing or disabled reference revision trigger rejects startup without repair',async()=>{
+  for(const reference_ready of [false,null,undefined,'true']){
+    await assert.rejects(assertCoreSchemaReady({query:async sql=>sql.includes('pg_trigger')?{rows:[{ready:true,reference_ready}]}:response(sql,complete())}),/moodboard clock is not compatible/);
+  }
 });
 
 test('missing principal table/column or incompatible data type rejects without repair', async () => {

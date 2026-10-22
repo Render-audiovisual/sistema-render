@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import express from "express";
 import { buildMoodboardTaskReadPredicate, moodboardTaskId, mutateMoodboardTaskLink } from './moodboard-task-access.js';
 import { createMoodboardCategoriesRouter } from './moodboard-categories.js';
+import {applyMoodboardReferenceOperation,readMoodboardReferences,readMoodboardReference} from './moodboard-reference-write.js';
+import {moodboardReferenceAliasInput,moodboardReferenceAliasBody} from './moodboard-reference-compat.js';
 
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_CATEGORIES = ["Fotografía", "Tipografía", "Color", "Composición", "Historias", "Carrusel", "Flyer"];
 
 function sharedBoardName(name) {
@@ -57,14 +57,6 @@ export async function initializeMoodboards(pool, auth) {
   } finally { client.release(); }
 }
 
-function parseImage(dataUrl) {
-  const match = /^data:image\/(jpeg|png);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ""));
-  if (!match) return null;
-  const buffer = Buffer.from(match[2], "base64");
-  if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) return null;
-  return { buffer, extension: match[1] === "jpeg" ? "jpg" : "png" };
-}
-
 export function createMoodboardsRouter({ pool }) {
   const router = express.Router();
   router.use(createMoodboardCategoriesRouter({ pool }));
@@ -72,19 +64,20 @@ export function createMoodboardsRouter({ pool }) {
   const persistentRoot = process.cwd().includes(hostingerVersionsMarker)
     ? process.cwd().split(hostingerVersionsMarker)[0]
     : process.cwd();
-  const uploadDir = process.env.MOODBOARD_UPLOAD_DIR || path.join(persistentRoot, "storage", "moodboards");
+  const uploadDir = path.resolve(process.env.MOODBOARD_UPLOAD_DIR || path.join(persistentRoot, "storage", "moodboards"));
   fs.mkdirSync(uploadDir, { recursive: true });
 
   router.get("/boards", async (_req, res, next) => {
     try {
       const { rows } = await pool.query(`SELECT b.id, b.nombre,
         COALESCE(json_agg(json_build_object('id', c.id, 'nombre', c.nombre) ORDER BY c.nombre) FILTER (WHERE c.id IS NOT NULL), '[]') AS clientes,
-        count(DISTINCT r.id)::int AS total_referencias
+        COALESCE(inventory.total_referencias,0)::int AS total_referencias
         FROM moodboard_boards b
         JOIN moodboard_board_clients bc ON bc.board_id = b.id
         JOIN clientes c ON c.id = bc.cliente_id AND COALESCE(c.activo, true) = true
-        LEFT JOIN moodboard_references r ON r.board_id = b.id
-        GROUP BY b.id ORDER BY b.nombre`);
+        LEFT JOIN (SELECT board_id,count(*)::int AS total_referencias
+          FROM moodboard_references GROUP BY board_id) inventory ON inventory.board_id=b.id
+        GROUP BY b.id,inventory.total_referencias ORDER BY b.nombre,b.id`);
       res.json(rows);
     } catch (error) { next(error); }
   });
@@ -100,22 +93,19 @@ export function createMoodboardsRouter({ pool }) {
     }
   });
 
-  router.get("/boards/:id/references", async (req, res, next) => {
-    try {
-      const boardId = moodboardTaskId(req.params.id);
-      const predicate = buildMoodboardTaskReadPredicate(req.auth, 't', '$2');
-      const { rows } = await pool.query(`SELECT r.*, c.nombre AS categoria,
-        COALESCE(json_agg(json_build_object('id', t.id, 'titulo', t.titulo)) FILTER (WHERE t.id IS NOT NULL), '[]') AS tareas
-        FROM moodboard_references r
-        LEFT JOIN moodboard_categories c ON c.id = r.category_id
-        LEFT JOIN moodboard_reference_tasks rt ON rt.reference_id = r.id
-        LEFT JOIN tareas t ON t.id = rt.tarea_id AND ${predicate.sql}
-          AND EXISTS (SELECT 1 FROM moodboard_board_clients bc WHERE bc.board_id=r.board_id AND bc.cliente_id=t.cliente_id)
-        WHERE r.board_id = $1 GROUP BY r.id, c.nombre
-        ORDER BY CASE r.estado WHEN 'aprobada' THEN 0 WHEN 'libre' THEN 1 ELSE 2 END, r.created_at DESC`,
-      predicate.value === null ? [boardId] : [boardId,predicate.value]);
-      res.json(rows);
-    } catch (error) { if(error.status)return res.status(error.status).json({error:error.message});next(error); }
+  const referenceFailure=(error,res,next)=>{
+    if([400,401,403,404,409,413,422,428].includes(error.status))return res.status(error.status).json({error:error.message,...(error.code?{code:error.code}:{})});
+    next(error);
+  };
+  router.get("/boards/:id/references", async (req,res,next)=>{
+    res.set('Cache-Control','no-store');
+    try{res.json(await readMoodboardReferences(pool,req.auth,req.params.id,req.query));}
+    catch(error){referenceFailure(error,res,next);}
+  });
+  router.get('/references/:id/detail',async(req,res,next)=>{
+    res.set('Cache-Control','no-store');
+    try{res.json({version:1,reference:await readMoodboardReference(pool,req.auth,req.params.id,req.query)});}
+    catch(error){referenceFailure(error,res,next);}
   });
 
   router.get("/boards/:id/categories", async (req, res, next) => {
@@ -135,60 +125,39 @@ export function createMoodboardsRouter({ pool }) {
     } catch (error) { if(error.status)return res.status(error.status).json({error:error.message});next(error); }
   });
 
-  router.get("/assets/:filename", (req, res) => {
+  router.get("/assets/:filename", async (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
     const filename = path.basename(req.params.filename);
     if (filename !== req.params.filename || !/^[a-f0-9-]+\.(jpg|png)$/.test(filename)) return res.sendStatus(404);
-    const target = path.join(uploadDir, filename);
-    if (!fs.existsSync(target)) return res.sendStatus(404);
-    return res.sendFile(target);
+    const {id,session_version,rol}=req.auth??{};
+    if(!Number.isSafeInteger(id)||id<1||id>2147483647||!Number.isSafeInteger(session_version)||session_version<1||typeof rol!=='string')return res.sendStatus(401);
+    try {
+      // A retained file from an uncertain COMMIT is not a published asset.
+      // Shared visibility still requires a current account and surviving row.
+      const result=await pool.query(`SELECT EXISTS (
+        SELECT 1 FROM usuarios u WHERE u.id=$1 AND u.activo IS TRUE
+          AND u.session_version=$2 AND u.rol=$3
+          AND EXISTS (SELECT 1 FROM moodboard_references r WHERE r.archivo_nombre=$4)
+      ) AS allowed`,[id,session_version,rol,filename]);
+      if(result.rows?.[0]?.allowed!==true)return res.sendStatus(404);
+      const target = path.join(uploadDir, filename);
+      if (!fs.existsSync(target)) return res.sendStatus(404);
+      return res.sendFile(target);
+    } catch(error) { next(error); }
   });
 
-  router.post("/boards/:id/references", async (req, res, next) => {
-    try {
-      const { title, note, category_id, tags = [], external_url, image_data } = req.body || {};
-      if (!String(note || "").trim() || !category_id) return res.status(400).json({ error: "La nota y la categoría son obligatorias." });
-      let fileName = null;
-      let sourceType = "enlace";
-      let link = String(external_url || "").trim() || null;
-      if (image_data) {
-        const image = parseImage(image_data);
-        if (!image) return res.status(400).json({ error: "Usá una imagen JPG o PNG de hasta 10 MB." });
-        fileName = `${crypto.randomUUID()}.${image.extension}`;
-        fs.writeFileSync(path.join(uploadDir, fileName), image.buffer, { flag: "wx" });
-        sourceType = "imagen";
-        link = null;
-      } else if (!link || !/^https?:\/\//i.test(link)) return res.status(400).json({ error: "Ingresá una imagen o un enlace válido." });
-      else if (/pinterest\.|pin\.it/i.test(link)) sourceType = "pinterest";
-      const { rows } = await pool.query(`INSERT INTO moodboard_references
-        (board_id, category_id, titulo, nota, etiquetas, estado, tipo_fuente, enlace_externo, archivo_nombre, autor_id, autor_nombre)
-        VALUES ($1,$2,$3,$4,$5,'libre',$6,$7,$8,$9,$10) RETURNING *`,
-      [req.params.id, category_id, String(title || "").trim() || "Referencia sin título", String(note).trim(), Array.isArray(tags) ? tags : [], sourceType, link, fileName, req.auth.id, req.auth.nombre || req.auth.usuario || "Equipo RENDER"]);
-      res.status(201).json(rows[0]);
-    } catch (error) { next(error); }
-  });
-
-  router.patch("/references/:id", async (req, res, next) => {
-    try {
-      const allowed = { title: "titulo", note: "nota", category_id: "category_id", tags: "etiquetas", status: "estado" };
-      const entries = Object.entries(req.body || {}).filter(([key]) => allowed[key]);
-      if (!entries.length) return res.status(400).json({ error: "No hay cambios para guardar." });
-      const values = entries.map(([, value]) => value);
-      const sets = entries.map(([key], index) => `${allowed[key]} = $${index + 1}`);
-      values.push(req.params.id);
-      const { rows } = await pool.query(`UPDATE moodboard_references SET ${sets.join(", ")}, updated_at = now() WHERE id = $${values.length} RETURNING *`, values);
-      if (!rows.length) return res.status(404).json({ error: "Referencia no encontrada." });
-      res.json(rows[0]);
-    } catch (error) { next(error); }
-  });
-
-  router.delete("/references/:id", async (req, res, next) => {
-    try {
-      const { rows } = await pool.query("DELETE FROM moodboard_references WHERE id = $1 RETURNING archivo_nombre", [req.params.id]);
-      if (!rows.length) return res.status(404).json({ error: "Referencia no encontrada." });
-      if (rows[0].archivo_nombre) fs.rm(path.join(uploadDir, rows[0].archivo_nombre), { force: true }, () => {});
-      res.status(204).end();
-    } catch (error) { next(error); }
-  });
+  const referenceWrite=(aliasAction=null)=>async(req,res,next)=>{
+    res.set('Cache-Control','no-store');
+    try{
+      const input=aliasAction?moodboardReferenceAliasInput(aliasAction,req):req.body;
+      const result=await applyMoodboardReferenceOperation(pool,req.auth,input,{uploadDir},aliasAction?{}:req.query);
+      res.status(result.status).json(aliasAction?moodboardReferenceAliasBody(result):result.body);
+    }catch(error){referenceFailure(error,res,next);}
+  };
+  router.post('/reference-operations',referenceWrite());
+  router.post("/boards/:id/references",referenceWrite('create'));
+  router.patch("/references/:id",referenceWrite('edit'));
+  router.delete("/references/:id",referenceWrite('delete'));
 
   router.post("/references/:id/tasks/:taskId", async (req, res, next) => {
     try { await mutateMoodboardTaskLink(pool,req.auth,req.params.id,req.params.taskId); res.status(204).end(); }

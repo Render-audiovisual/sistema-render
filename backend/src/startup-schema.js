@@ -15,6 +15,8 @@ export const CORE_SCHEMA_COLUMNS = Object.freeze({
   moodboard_boards: { id: 'integer', category_revision: 'bigint' },
   moodboard_categories: { id: 'integer', board_id: 'integer', nombre: 'text', orden: 'integer' },
   moodboard_category_operations: { actor_user_id: 'integer', request_id: 'uuid', board_id: 'integer', payload_hash: 'text', result_revision: 'bigint' },
+  moodboard_references: { id: 'integer', board_id: 'integer', category_id: 'integer', revision: 'bigint', archivo_nombre: 'text' },
+  moodboard_reference_operations: { actor_user_id: 'integer', request_id: 'uuid', action: 'text', payload_hash: 'text', board_id: 'integer', reference_id: 'integer', result_revision: 'bigint', recorded_at: 'timestamp with time zone' },
   cliente_objetivos_mensuales: { id: 'integer', periodo: 'date' },
   cliente_objetivo_piezas: { id: 'integer', objetivo_id: 'integer', tarea_id: 'integer', publicacion_id: 'integer' },
   produccion_visitas: { id: 'uuid', fecha: 'date', revision: 'integer' },
@@ -56,7 +58,7 @@ export async function assertCoreSchemaReady(db) {
   }
   // Browser and signed note writers share migration061's monotonic clock.
   // Inspect its enabled binding only; startup never installs or repairs it.
-  let clock;
+  let clock, referenceClock;
   try {
     const result = await db.query(`SELECT EXISTS (
       SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
@@ -64,8 +66,16 @@ export async function assertCoreSchemaReady(db) {
       WHERE t.tgrelid='public.notas_compartidas'::regclass AND t.tgname=$1
         AND p.proname=$1 AND n.nspname='public' AND NOT t.tgisinternal
         AND t.tgenabled IN ('O','A') AND t.tgtype=19 AND t.tgnargs=0
-    ) AS ready`, ['feedback_notes_monotonic_version']);
+    ) AS ready, EXISTS (
+      SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
+      JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE t.tgrelid='public.moodboard_references'::regclass AND t.tgname=$2
+        AND p.proname=$2 AND n.nspname='public' AND NOT t.tgisinternal
+        AND t.tgenabled IN ('O','A') AND t.tgtype=19 AND t.tgnargs=0
+    ) AS reference_ready`, ['feedback_notes_monotonic_version','moodboard_reference_advance_revision']);
     clock = result.rows?.[0]?.ready;
+    referenceClock = result.rows?.[0]?.reference_ready;
   } catch { throw new Error('Cannot inspect principal note clock.'); }
   if (clock !== true) throw new Error('Principal note clock is not compatible. No repair was attempted.');
+  if (referenceClock !== true) throw new Error('Principal moodboard clock is not compatible. No repair was attempted.');
 }

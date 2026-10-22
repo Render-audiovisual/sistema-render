@@ -58,7 +58,7 @@ export function fixtureWilsonEnvironment(config = {}) {
   return result;
 }
 
-export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, deferProductionCreateReceiptsMigration = false, deferTaskBoardOrderMigration = false, deferGoalQuotaReviewMigration = false, deferProductionHistoryBatchMigration = false, deferProjectDeliverableApprovalMigration = false, wilson = {} } = {}) {
+export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, deferProductionCreateReceiptsMigration = false, deferTaskBoardOrderMigration = false, deferGoalQuotaReviewMigration = false, deferProductionHistoryBatchMigration = false, deferProjectDeliverableApprovalMigration = false, deferMoodboardReferenceMigration = false, wilson = {} } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   if (typeof deferUserAdminMigration !== 'boolean') throw new Error('Invalid account observation migration fixture option');
   if (typeof deferProductionCreateReceiptsMigration !== 'boolean') throw new Error('Invalid production creation receipt migration fixture option');
@@ -68,6 +68,7 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
   if (typeof deferProjectDeliverableApprovalMigration !== 'boolean') throw new Error('Invalid project deliverable approval migration fixture option');
   if (typeof supervisorEnabled !== 'boolean') throw new Error('Invalid supervisor fixture option');
   if (typeof clusterOnly !== 'boolean') throw new Error('Invalid cluster-only fixture option');
+  if (typeof deferMoodboardReferenceMigration !== 'boolean') throw new Error('Invalid reference migration fixture option');
   if (typeof browserSessions !== 'boolean') throw new Error('Invalid browser-session fixture option');
   const wilsonEnv = fixtureWilsonEnvironment(wilson);
   const root = await mkdtemp('/private/tmp/render2-local-');
@@ -139,6 +140,7 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
         RENDER2_DEFER_LOGIN_ABUSE_MIGRATION: String(deferLoginAbuseMigration),
         RENDER2_DEFER_EDITING_REVIEWS_MIGRATION: String(deferEditingReviewsMigration),
         RENDER2_FIXTURE_CLUSTER_ONLY: String(clusterOnly),
+        RENDER2_DEFER_MOODBOARD_REFERENCE_MIGRATION: String(deferMoodboardReferenceMigration),
         PGOPTIONS: '-c statement_timeout=15000' }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
     const ready = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Fixture startup timeout')), 90000);
@@ -268,6 +270,7 @@ async function fixtureChild() {
     // 085 validates the clock installed by061; historical upgrade fixtures must
     // defer both, then explicitly apply them in dependency order.
     ...(process.env.RENDER2_DEFER_FEEDBACK_RECEIPTS_MIGRATION === 'true' ? ['061_feedback_operation_receipts.sql', '085_feedback_browser_operations.sql'] : []),
+    ...(process.env.RENDER2_DEFER_MOODBOARD_REFERENCE_MIGRATION === 'true' ? ['086_moodboard_reference_operations.sql'] : []),
     ...(process.env.RENDER2_DEFER_TASK_RECEIPTS_MIGRATION === 'true' ? ['062_task_operation_receipts.sql'] : []),
     // 063's reciprocal guards depend on the actual 060 relationship columns.
     // Older populated-upgrade fixtures must defer the dependent SQL as well.
