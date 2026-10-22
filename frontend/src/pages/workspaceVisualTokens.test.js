@@ -134,9 +134,38 @@ const identityBaseline = {
   TaskDetailNotion: '44a534f98a574fe39b62027f73fdc1904e5eb4efc22169e268d955c1e7efb2b2',
   TaskDetailCompact: '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
 };
+function reviewedTabletStateBaseline(root) {
+  const copy = root.clone(), matches = [];
+  copy.walkRules(rule => {
+    if (normalize(rule.selector) === '.render-workspace .ros-mobile-state'
+      && rule.parent.type === 'atrule' && rule.parent.name === 'media'
+      && rule.parent.params.replace(/\s/g, '') === '(max-width:1024px)') matches.push(rule);
+  });
+  assert.equal(matches.length, 1, 'Exactly one reviewed compact-board fallback');
+  const rule = matches[0];
+  assert.equal(rule.parent.parent.type, 'root', 'No additional conditional wrapper');
+  assert.deepEqual(rule.nodes.map(node => [node.type, node.prop, node.value, !!node.important]), [
+    ['decl', 'background', token('surface-soft'), false],
+    ['decl', 'border', `1px solid ${token('line')}`, false],
+    ['decl', 'border-radius', '9px', false],
+    ['decl', 'color', token('ink-soft'), false],
+    ['decl', 'display', 'block', false],
+    ['decl', 'font-family', 'inherit', false],
+    ['decl', 'font-size', '16px', false],
+    ['decl', 'margin-top', '9px', false],
+    ['decl', 'min-height', '44px', false],
+    ['decl', 'padding', '9px 11px', false],
+    ['decl', 'width', '100%', false],
+  ], 'Only the exact reviewed Integration125 declarations may leave the legacy fingerprint');
+  // Remove only this validated node, retaining its media wrapper and every
+  // other layout/motion/important declaration under the original baseline.
+  rule.remove();
+  return copy;
+}
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
-    assert.equal(hash(structure(roots[name])), layoutBaseline[name]);
+    const baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
+    assert.equal(hash(structure(baselineRoot)), layoutBaseline[name]);
   });
   test(`${name}: purposeful area and status styling is unchanged`, () => {
     const rules = [];

@@ -1971,6 +1971,19 @@
    Tablet y celular comparten navegación por estado; el corte de 600px queda
    reservado para ajustes de densidad propios de teléfonos. */
 @media(max-width:1024px){
+  .render-workspace .ros-mobile-state{
+    background:var(--render-surface-soft);
+    border:1px solid var(--render-line);
+    border-radius:9px;
+    color:var(--render-ink-soft);
+    display:block;
+    font-family:inherit;
+    font-size:16px;
+    margin-top:9px;
+    min-height:44px;
+    padding:9px 11px;
+    width:100%;
+  }
   .render-workspace{overflow-x:clip}
   .render-workspace .ros-main{min-width:0;overflow-x:clip;width:100%}
   .render-workspace .ros-page{
