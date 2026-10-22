@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
+import { sessionViewKey } from '../shared/session/session-view.js';
 import { isEditingDeliveryTask } from './EditingDeliveries.model.js';
 import { createEditingReviewsModel } from './EditingReviews.model.js';
 import './EditingReviews.css';
@@ -8,7 +9,7 @@ import './EditingReviews.css';
 const dateLabel = value => new Date(value).toLocaleString('es-AR', { timeZone: 'America/Argentina/Cordoba' });
 export function EditingReviews({ task, sesion, onSaved, onDirty, onBusy, disabled = false }) {
   if (!isEditingDeliveryTask(task)) return null;
-  return <ReviewsSection key={`${task.id}:${sesion?.usuario?.id}:${sesion?.usuario?.rol}:${sesion?.token || ''}`} task={task} sesion={sesion} onSaved={onSaved} onDirty={onDirty} onBusy={onBusy} disabled={disabled} />;
+  return <ReviewsSection key={`${task.id}:${sessionViewKey(sesion)}`} task={task} sesion={sesion} onSaved={onSaved} onDirty={onDirty} onBusy={onBusy} disabled={disabled} />;
 }
 function ReviewsSection({ task, sesion, onSaved, onDirty, onBusy, disabled }) {
   const [state, setState] = useState({ data: null, loading: true, notes: '', acknowledged: false, busy: false, uncertain: false });

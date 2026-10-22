@@ -1,12 +1,13 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
+import { sessionViewKey } from '../shared/session/session-view.js';
 import { createEditingDeliveriesModel, deliveryUrl, isEditingDeliveryTask, editingDeliveryRefreshNeeded } from './EditingDeliveries.model.js';
 import './EditingDeliveries.css';
 
 export function EditingDeliveries({ task, sesion, onSaved, onDirty, onBusy, onReviewContext }) {
   if (!isEditingDeliveryTask(task)) return null;
-  return <DeliverySection key={`${task.id}:${sesion?.usuario?.id}:${sesion?.usuario?.rol}:${sesion?.token || ''}`} task={task} sesion={sesion} onSaved={onSaved} onDirty={onDirty} onBusy={onBusy} onReviewContext={onReviewContext} />;
+  return <DeliverySection key={`${task.id}:${sessionViewKey(sesion)}`} task={task} sesion={sesion} onSaved={onSaved} onDirty={onDirty} onBusy={onBusy} onReviewContext={onReviewContext} />;
 }
 function DeliveryEntry({ item }) {
   return <article className="editing-delivery-entry"><a href={item.url} target="_blank" rel="noopener noreferrer">Abrir versión entregada ↗</a>

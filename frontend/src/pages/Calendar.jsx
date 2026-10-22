@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { FilterSelect } from '../components/FilterSelect.jsx';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
+import { sessionViewKey } from '../shared/session/session-view.js';
 import { navigateWithinApp } from '../shared/navigation/location.js';
 import { CALENDAR_KINDS, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarMilestoneState, calendarQuery, calendarTaskState, cordobaToday, createCalendarLoader, readCalendarSelection, shiftCalendarMonth } from './calendarModel.js';
 import './Calendar.css';
@@ -12,7 +13,7 @@ const dateLabel = (day, options) => {
 };
 const eventCount = count => `${count} ${count === 1 ? 'evento' : 'eventos'}`;
 export function CalendarPage({ sesion, onNavigate }) {
-  return <CalendarContent key={`${sesion?.usuario?.id}:${sesion?.usuario?.rol}:${sesion?.token || ''}`} sesion={sesion} onNavigate={onNavigate} />;
+  return <CalendarContent key={sessionViewKey(sesion)} sesion={sesion} onNavigate={onNavigate} />;
 }
 function CalendarContent({ sesion, onNavigate }) {
   const [selection, setSelection] = useState(() => readCalendarSelection(window.location.search));
