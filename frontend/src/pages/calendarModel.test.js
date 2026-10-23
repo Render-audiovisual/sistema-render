@@ -15,6 +15,11 @@ function dto(filters = selection, events = []) {
   const { desde, hasta } = calendarGrid(filters.mes);
   return { range: { desde, hasta }, scope: filters.scope, kind: filters.tipo, timezone: 'America/Argentina/Cordoba', clients: [{ id: 3, nombre: 'Cliente' }], events, truncated: false };
 }
+function pagedDto(filters = selection, events = []) {
+  return { ...dto(filters, events), pagination: { version: 1, limit: 200, offset: (filters.pagina || 0) * 200,
+    total: events.length, has_more: false, snapshot: `c1:${'a'.repeat(64)}`, day: filters.dia,
+    days: events.length ? [{ date: filters.dia, total: events.length, preview: events.slice(0, 2) }] : [] } };
+}
 const session = rol => ({ token: 'captured-token', usuario: { id: 4, rol: rol || 'employee' } });
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 
@@ -37,7 +42,7 @@ test('Córdoba today is not the browser UTC date', () => {
 
 test('URL selection round-trips all filters and normalizes invalid or inconsistent day', () => {
   const filters = readCalendarSelection('?mes=2026-11&dia=2026-10-19&scope=team&tipo=visita&cliente=3', '2026-10-19');
-  assert.deepEqual(filters, { mes: '2026-11', dia: '2026-11-01', scope: 'team', tipo: 'visita', cliente: '3' });
+  assert.deepEqual(filters, { mes: '2026-11', dia: '2026-11-01', scope: 'team', tipo: 'visita', cliente: '3', pagina: 0 });
   assert.deepEqual(readCalendarSelection(new URL(calendarHref(filters), 'https://example.org').search), filters);
   assert.deepEqual(readCalendarSelection('?mes=bad&dia=impossible&scope=private&tipo=money&cliente=-1', '2026-10-19'), selection);
   assert.equal(readCalendarSelection('?dia=2026-11-15', '2026-10-19').mes, '2026-11');
@@ -54,12 +59,13 @@ test('unsupported upper-bound month normalizes before any invalid API request', 
   await assert.rejects(loader.load({ ...selection, mes: '9999-12' })); assert.equal(calls, 0); loader.dispose();
 });
 
-test('request key excludes day but includes API kind/client_id and range/scope', () => {
-  assert.equal(calendarQuery(selection), calendarQuery({ ...selection, dia: '2026-10-21' }));
+test('paged request key includes selected day/page as well as API kind/client_id and range/scope', () => {
+  assert.notEqual(calendarQuery(selection), calendarQuery({ ...selection, dia: '2026-10-21' }));
+  assert.notEqual(calendarQuery(selection), calendarQuery({ ...selection, pagina: 1 }));
   assert.notEqual(calendarHref(selection), calendarHref({ ...selection, dia: '2026-10-21' }));
   const query = new URL(calendarQuery({ ...selection, tipo: 'visita', cliente: '3', scope: 'team' }), 'https://example.org').searchParams;
   assert.equal(query.get('kind'), 'visita'); assert.equal(query.get('cliente_id'), '3'); assert.equal(query.get('scope'), 'team');
-  assert.equal(query.has('dia'), false); assert.equal(query.has('tipo'), false);
+  assert.equal(query.get('dia'), selection.dia); assert.equal(query.get('limit'), '200'); assert.equal(query.get('offset'), '0'); assert.equal(query.has('tipo'), false);
 });
 
 test('decoder accepts all four sources, null visit state and closed manual proof', () => {
@@ -181,7 +187,7 @@ test('loader is GET-only and has no role/name matching or additional endpoints',
   for (const role of ['admin', 'employee', 'diseno', 'edicion', 'produccion', 'community']) {
     const current = session(role); let calls = 0;
     const loader = createCalendarLoader({ sesion: current, readSession: () => current, request: async (url, options) => {
-      calls++; assert.equal(url, calendarQuery(selection)); assert.equal(options.method, undefined); assert.ok(options.signal); return dto();
+      calls++; assert.equal(url, calendarQuery(selection)); assert.equal(options.method, 'GET'); assert.equal(options.cache, 'no-store'); assert.ok(options.signal); return pagedDto();
     } });
     assert.ok(await loader.load(selection)); assert.equal(calls, 1); loader.dispose();
   }
@@ -192,8 +198,8 @@ test('obsolete month success or transport failure is suppressed even if AbortSig
     const first = deferred(), second = deferred(), current = session(); let calls = 0;
     const next = { ...selection, mes: '2026-11', dia: '2026-11-01' };
     const loader = createCalendarLoader({ sesion: current, readSession: () => current, request: () => ++calls === 1 ? first.promise : second.promise });
-    const old = loader.load(selection), latest = loader.load(next); second.resolve(dto(next)); assert.ok(await latest);
-    if (fail) first.reject(new Error('private')); else first.resolve(dto()); assert.equal(await old, undefined); loader.dispose();
+    const old = loader.load(selection), latest = loader.load(next); second.resolve(pagedDto(next)); assert.ok(await latest);
+    if (fail) first.reject(new Error('private')); else first.resolve(pagedDto()); assert.equal(await old, undefined); loader.dispose();
   }
 });
 
@@ -203,7 +209,7 @@ test('ID/token/role session switch suppresses pending data/errors and prevents d
     const loader = createCalendarLoader({ sesion: current, readSession: () => current, onInvalidated: () => invalidations++, request: () => { calls++; return wait.promise; } });
     const pending = loader.load(selection);
     if (field === 'id') current.usuario.id = 5; else if (field === 'token') current.token = 'changed'; else current.usuario.rol = 'admin';
-    if (fail) wait.reject(new Error()); else wait.resolve(dto());
+    if (fail) wait.reject(new Error()); else wait.resolve(pagedDto());
     assert.equal(await pending, undefined); assert.equal(invalidations, 1);
     await assert.rejects(loader.load(selection), /sesión cambió/); assert.equal(calls, 1); loader.dispose();
   }
@@ -211,23 +217,24 @@ test('ID/token/role session switch suppresses pending data/errors and prevents d
 
 test('cancel/dispose suppress pending response and cancel permits a subsequent intentional refresh', async () => {
   const wait = deferred(), current = session(); let calls = 0;
-  const loader = createCalendarLoader({ sesion: current, readSession: () => current, request: () => ++calls === 1 ? wait.promise : dto() });
-  const pending = loader.load(selection); loader.cancel(); wait.resolve(dto()); assert.equal(await pending, undefined);
+  const loader = createCalendarLoader({ sesion: current, readSession: () => current, request: () => ++calls === 1 ? wait.promise : pagedDto() });
+  const pending = loader.load(selection); loader.cancel(); wait.resolve(pagedDto()); assert.equal(await pending, undefined);
   assert.ok(await loader.load(selection)); loader.dispose(); assert.equal(await loader.load(selection), undefined);
 });
 
 test('current failures reject bounded errors; explicit retry can reflect changed source dates', async () => {
   const current = session(); let fail = true;
-  const loader = createCalendarLoader({ sesion: current, readSession: () => current, request: async () => { if (fail) throw new Error('private-diagnostic'); return dto(selection, [{ ...taskEvent(), date: '2026-10-21' }]); } });
+  const next = { ...selection, dia: '2026-10-21' };
+  const loader = createCalendarLoader({ sesion: current, readSession: () => current, request: async () => { if (fail) throw new Error('private-diagnostic'); return pagedDto(next, [{ ...taskEvent(), date: '2026-10-21' }]); } });
   await assert.rejects(loader.load(selection), error => !error.message.includes('private') && error.message.includes('Reintentá'));
-  fail = false; assert.equal((await loader.load(selection)).events[0].date, '2026-10-21'); loader.dispose();
+  fail = false; assert.equal((await loader.load(next)).events[0].date, '2026-10-21'); loader.dispose();
 });
 
-test('source contracts protect day-only instant selection, history cleanup, honest counts and sidebar geometry', () => {
+test('source contracts protect selected-day pagination, history cleanup, honest full counts and sidebar geometry', () => {
   const jsx = readFileSync(new URL('./Calendar.jsx', import.meta.url), 'utf8');
   assert.match(jsx, /\[requestKey, retry\]/); assert.match(jsx, /requestKey = calendarQuery\(selection\)/);
   assert.match(jsx, /removeEventListener\('popstate'/); assert.match(jsx, /history.replaceState/); assert.match(jsx, /navigateWithinApp/);
-  assert.match(jsx, /Vista parcial/); assert.match(jsx, /solo a esta vista/); assert.match(jsx, /item.kind === 'tarea'.*calendarTaskState/);
+  assert.match(jsx, /Agenda paginada/); assert.match(jsx, /recuentos del calendario incluyen todos/); assert.match(jsx, /data\?\.pagination.days/); assert.match(jsx, /item.kind === 'tarea'.*calendarTaskState/);
   assert.doesNotMatch(jsx, /localStorage|sessionStorage|method: 'POST'|method: 'PATCH'/);
   const css = readFileSync(new URL('./Calendar.css', import.meta.url), 'utf8');
   assert.match(css, /margin-left:var\(--render-sidebar-width,236px\)/); assert.match(css, /max-width:980px.*margin-left:0/);

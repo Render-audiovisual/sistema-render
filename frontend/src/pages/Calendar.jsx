@@ -4,7 +4,7 @@ import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
 import { sessionViewKey } from '../shared/session/session-view.js';
 import { navigateWithinApp } from '../shared/navigation/location.js';
-import { CALENDAR_KINDS, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarMilestoneState, calendarQuery, calendarTaskState, cordobaToday, createCalendarLoader, readCalendarSelection, shiftCalendarMonth } from './calendarModel.js';
+import { CALENDAR_KINDS, CALENDAR_PAGE_LIMIT, MAX_CALENDAR_PAGE, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarMilestoneState, calendarQuery, calendarTaskState, cordobaToday, createCalendarLoader, readCalendarSelection, shiftCalendarMonth } from './calendarModel.js';
 import './Calendar.css';
 
 const dateLabel = (day, options) => {
@@ -22,6 +22,8 @@ function CalendarContent({ sesion, onNavigate }) {
   const today = cordobaToday(), grid = calendarGrid(selection.mes);
   const selectionKey = calendarHref(selection);
   const requestKey = calendarQuery(selection);
+  const requestObservation = useRef(null), lastRetry = useRef(retry);
+  if (!requestObservation.current || requestObservation.current.key !== requestKey || requestObservation.current.retry !== retry) requestObservation.current = { key: requestKey, retry };
   useEffect(() => {
     const instance = createCalendarLoader({ request: apiRequest, sesion, readSession: getSesion,
       onInvalidated: () => { generation.current++; setResult({ key: null, status: 'error', data: null, error: 'La sesión cambió. Volvé a abrir el calendario desde la sesión actual.' }); } });
@@ -39,23 +41,27 @@ function CalendarContent({ sesion, onNavigate }) {
   }, [selectionKey]);
   useEffect(() => {
     const version = ++generation.current;
-    setResult({ key: requestKey, status: 'loading', data: null, error: '' });
-    loader.current?.load(selection).then(data => { if (data && version === generation.current) setResult({ key: requestKey, status: 'ready', data, error: '' }); })
-      .catch(error => { if (version === generation.current) setResult({ key: requestKey, status: 'error', data: null, error: error.message }); });
+    const observation = requestObservation.current;
+    const current = () => version === generation.current && requestObservation.current === observation;
+    const refresh = lastRetry.current !== retry; lastRetry.current = retry;
+    setResult({ key: requestKey, attempt: retry, observation, status: 'loading', data: null, error: '' });
+    loader.current?.load(selection, { refresh }).then(data => { if (data && current()) setResult({ key: requestKey, attempt: retry, observation, status: 'ready', data, error: '' }); })
+      .catch(error => { if (current()) setResult({ key: requestKey, attempt: retry, observation, status: 'error', data: null, error: error.message }); });
     return () => { generation.current++; loader.current?.cancel(); };
   }, [requestKey, retry]);
   function change(fields) {
-    const next = readCalendarSelection(new URL(calendarHref({ ...selection, ...fields }), window.location.origin).search, today);
+    const changesContext = ['mes', 'dia', 'scope', 'tipo', 'cliente'].some(key => Object.hasOwn(fields, key));
+    const next = readCalendarSelection(new URL(calendarHref({ ...selection, ...fields, ...(changesContext ? { pagina: 0 } : {}) }), window.location.origin).search, today);
     navigateWithinApp(window, calendarHref(next));
   }
   function follow(event, href) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault(); if (onNavigate) onNavigate(href); else navigateWithinApp(window, href);
   }
-  const status = result.key === requestKey || (result.key === null && result.status === 'error') ? result.status : 'loading';
+  const status = (result.key === requestKey && result.attempt === retry && result.observation === requestObservation.current) || (result.key === null && result.status === 'error') ? result.status : 'loading';
   const data = status === 'ready' ? result.data : null;
-  const byDay = new Map(); for (const event of data?.events || []) { if (!byDay.has(event.date)) byDay.set(event.date, []); byDay.get(event.date).push(event); }
-  const agenda = byDay.get(selection.dia) || [];
+  const byDay = new Map((data?.pagination.days || []).map(day => [day.date, day]));
+  const agenda = data?.events || [];
   return <main className="principal-calendar" aria-label="Calendario"><div className="principal-calendar-shell">
     <header className="principal-calendar-header"><div><h1>Calendario</h1><p>Entregas, visitas, hitos y contenido · Córdoba</p></div><button type="button" onClick={() => setRetry(value => value + 1)} disabled={status === 'loading'}>Actualizar</button></header>
     <div className="principal-calendar-toolbar"><div className="principal-calendar-month"><button type="button" aria-label="Mes anterior" onClick={() => change(shiftCalendarMonth(selection, -1))}>‹</button><h2>{dateLabel(`${selection.mes}-01`, { month: 'long', year: 'numeric' })}</h2><button type="button" aria-label="Mes siguiente" onClick={() => change(shiftCalendarMonth(selection, 1))}>›</button><button type="button" onClick={() => change({ mes: today.slice(0, 7), dia: today })}>Hoy</button></div>
@@ -64,15 +70,21 @@ function CalendarContent({ sesion, onNavigate }) {
         <FilterSelect label="Cliente" value={selection.cliente} onChange={event => change({ cliente: event.target.value })}><option value="">Todos los clientes</option>{selection.cliente && !data?.clients.some(c => String(c.id) === selection.cliente) && <option value={selection.cliente}>Cliente #{selection.cliente}</option>}{data?.clients.map(client => <option key={client.id} value={client.id}>{client.nombre}</option>)}</FilterSelect></div>
     </div>
     {status === 'loading' && <p role="status">Cargando calendario…</p>}
-    {status === 'error' && <div role="alert"><p>{result.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Reintentar</button></div>}
-    {data?.truncated && <p className="principal-calendar-notice" role="status">Vista parcial: hay más eventos que los mostrados. Acotá por cliente o tipo; los recuentos corresponden solo a esta vista.</p>}
+    {status === 'error' && <div role="alert"><p>{result.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Reintentar</button>{selection.pagina > 0 && <button type="button" onClick={() => change({ pagina: 0 })}>Primera página</button>}</div>}
+    {data?.truncated && <p className="principal-calendar-notice" role="status">Agenda paginada: se muestran {agenda.length} de {data.pagination.total} eventos del día. Los recuentos del calendario incluyen todos los eventos.</p>}
     <div className="principal-calendar-layout"><section className="principal-calendar-month-view" aria-label="Selector de día"><div className="principal-calendar-weekdays" aria-hidden="true">{['L', 'M', 'X', 'J', 'V', 'S', 'D'].map((day, index) => <span key={index}>{day}</span>)}</div>
-      <div className="principal-calendar-grid">{grid.days.map(day => { const events = byDay.get(day) || []; return <button type="button" key={day} className={`${day.startsWith(selection.mes) ? '' : 'outside'} ${day === selection.dia ? 'selected' : ''}`} aria-pressed={day === selection.dia} aria-current={day === today ? 'date' : undefined} aria-label={`${dateLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}${data ? ` · ${eventCount(events.length)} ${events.length === 1 ? 'mostrado' : 'mostrados'}` : ''}`} onClick={() => change({ mes: day.slice(0, 7), dia: day })}>
-        <span>{Number(day.slice(-2))}</span>{data && events.length > 0 && <small>{events.length}<span className="principal-calendar-count-label"> {events.length === 1 ? 'evento' : 'eventos'}</span></small>}
-        <div className="principal-calendar-day-preview" aria-hidden="true">{events.slice(0, 2).map(item => <span key={item.key}>{calendarEventTitle(item)}</span>)}</div>
+      <div className="principal-calendar-grid">{grid.days.map(day => { const summary = byDay.get(day), count = summary?.total || 0, events = summary?.preview || []; return <button type="button" key={day} className={`${day.startsWith(selection.mes) ? '' : 'outside'} ${day === selection.dia ? 'selected' : ''}`} aria-pressed={day === selection.dia} aria-current={day === today ? 'date' : undefined} aria-label={`${dateLabel(day, { weekday: 'long', day: 'numeric', month: 'long' })}${data ? ` · ${eventCount(count)}` : ''}`} onClick={() => change({ mes: day.slice(0, 7), dia: day })}>
+        <span>{Number(day.slice(-2))}</span>{data && count > 0 && <small>{count}<span className="principal-calendar-count-label"> {count === 1 ? 'evento' : 'eventos'}</span></small>}
+        <div className="principal-calendar-day-preview" aria-hidden="true">{events.map(item => <span key={item.key}>{calendarEventTitle(item)}</span>)}</div>
       </button>; })}</div></section>
-      <section className="principal-calendar-agenda" aria-label="Agenda del día"><header><h2>{dateLabel(selection.dia, { weekday: 'long', day: 'numeric', month: 'long' })}</h2>{data && <p>{eventCount(agenda.length)} {data.truncated ? `${agenda.length === 1 ? 'mostrado' : 'mostrados'} · vista parcial` : 'en el día'}</p>}</header>
-        {data && agenda.length === 0 && <p>{data.truncated ? 'No hay eventos mostrados para este día en la vista parcial.' : 'Sin eventos para este día con estos filtros.'}</p>}
+      <section className="principal-calendar-agenda" aria-label="Agenda del día"><header><h2>{dateLabel(selection.dia, { weekday: 'long', day: 'numeric', month: 'long' })}</h2>{data && <p>{eventCount(data.pagination.total)} en el día · mostrando {agenda.length} de {data.pagination.total}</p>}</header>
+        {data && agenda.length === 0 && <p>{data.pagination.total > 0 ? 'Esta página está fuera de los resultados actuales. Volvé a la primera página.' : 'Sin eventos para este día con estos filtros.'}</p>}
+        {data && <nav className="principal-calendar-month" aria-label="Páginas de agenda">
+          <button type="button" disabled={selection.pagina === 0} onClick={() => change({ pagina: selection.pagina - 1 })}>Anterior</button>
+          <span>Página {selection.pagina + 1} · hasta {CALENDAR_PAGE_LIMIT} eventos por página</span>
+          <button type="button" disabled={!data.pagination.has_more || selection.pagina >= MAX_CALENDAR_PAGE} onClick={() => change({ pagina: selection.pagina + 1 })}>Siguiente</button>
+          {selection.pagina > 0 && <button type="button" onClick={() => change({ pagina: 0 })}>Primera página</button>}
+        </nav>}
         {data && <ol>{agenda.map(item => <li key={item.key}><small>{calendarEventLabel(item)}</small><h3>{calendarEventTitle(item)}</h3><p>{item.cliente_nombre || 'Sin cliente'}</p>
           {item.kind === 'tarea' && <span className="principal-calendar-state">{calendarTaskState(item.estado)}</span>}
           {item.kind === 'hito' && <span className="principal-calendar-state">{calendarMilestoneState(item.estado)}</span>}

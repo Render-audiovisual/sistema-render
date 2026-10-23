@@ -1,6 +1,7 @@
 import { SYSTEM_USER_ROLES } from './user-roles.js';
 import { annotateEditorialEvidence } from './editorial-evidence-read.js';
 import { productionVisitMembersSql } from './production-visit-membership.js';
+import { readCalendarPage } from './calendar-pagination.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 export const CALENDAR_TIMEZONE = 'America/Argentina/Cordoba';
@@ -9,6 +10,11 @@ const KINDS = ['all', 'tarea', 'visita', 'programacion', 'publicacion', 'hito'];
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const id = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
 const text = (value, max) => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, max) : '';
+const integerQuery = (value, minimum, maximum) => {
+  const match = typeof value === 'string' && /^(0|[1-9]\d*)$/.exec(value);
+  return match && match[0] === value && Number.isSafeInteger(Number(value))
+    && Number(value) >= minimum && Number(value) <= maximum ? Number(value) : null;
+};
 
 function day(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number(value.slice(0, 4)) < 1) return null;
@@ -17,7 +23,7 @@ function day(value) {
 }
 
 export function normalizeCalendarQuery(query = {}) {
-  const keys = ['desde', 'hasta', 'scope', 'kind', 'cliente_id'];
+  const keys = ['desde', 'hasta', 'scope', 'kind', 'cliente_id', 'limit', 'offset', 'expected_snapshot', 'dia'];
   if (!query || typeof query !== 'object' || Array.isArray(query) || Object.keys(query).some(k => !keys.includes(k))
     || Object.values(query).some(v => typeof v !== 'string')) throw fail('Filtros de calendario inválidos.');
   const desde = day(query.desde), hasta = day(query.hasta);
@@ -27,10 +33,23 @@ export function normalizeCalendarQuery(query = {}) {
   if (!['mine', 'team'].includes(scope) || !KINDS.includes(kind)) throw fail('Ámbito o tipo de calendario inválido.');
   let cliente_id = null;
   if (query.cliente_id !== undefined) {
-    if (!/^[1-9]\d*$/.test(query.cliente_id) || !id(Number(query.cliente_id))) throw fail('Cliente inválido.');
-    cliente_id = Number(query.cliente_id);
+    cliente_id = integerQuery(query.cliente_id, 1, 2147483647);
+    if (cliente_id === null) throw fail('Cliente inválido.');
   }
-  return { desde, hasta, scope, kind, cliente_id };
+  let pagination;
+  if (['limit', 'offset', 'expected_snapshot', 'dia'].some(key => Object.hasOwn(query, key))) {
+    const limit = integerQuery(query.limit, 1, 500);
+    const offset = query.offset === undefined ? 0 : integerQuery(query.offset, 0, Number.MAX_SAFE_INTEGER);
+    const expected_snapshot = query.expected_snapshot ?? null;
+    const match = typeof expected_snapshot === 'string' && /^c1:[a-f0-9]{64}$/.exec(expected_snapshot);
+    const dia = query.dia === undefined ? null : day(query.dia);
+    if (limit === null || offset === null || expected_snapshot !== null && (!match || match[0] !== expected_snapshot)
+      || offset > 0 && expected_snapshot === null || query.dia !== undefined && (!dia || dia < desde || dia >= hasta)) {
+      throw fail('Paginación de calendario inválida.');
+    }
+    pagination = Object.freeze({ limit, offset, expected_snapshot, dia });
+  }
+  return Object.freeze({ desde, hasta, scope, kind, cliente_id, ...(pagination ? { pagination } : {}) });
 }
 
 const visibleTask = alias => `${alias}.propiedades_extra->>'workspace'='render_os'
@@ -154,16 +173,29 @@ export function buildCalendarEvents({ tasks = [], visits = [], historias = [], p
 
 export async function readCalendar(pool, auth, query) {
   const filters = normalizeCalendarQuery(query);
+  // Capture only immutable authority primitives before the pool lease. Neither
+  // mutable middleware objects nor page filters may change while waiting.
+  const captured = Object.freeze({ id: auth?.id, rol: auth?.rol, session_version: auth?.session_version });
+  if (!id(captured.id) || !id(captured.session_version) || typeof captured.rol !== 'string') throw fail('Sesión requerida.', 401);
   let db;
+  let discard;
   try {
     db = await pool.connect();
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    if (!id(auth?.id) || !Number.isSafeInteger(auth.session_version)) throw fail('Sesión requerida.', 401);
-    const user = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1', [auth.id])).rows[0];
-    if (!user || user.id !== auth.id || user.activo !== true || user.session_version !== auth.session_version || user.rol !== auth.rol) throw fail('La sesión ya no está activa.', 401);
+    const user = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1', [captured.id])).rows[0];
+    if (!user || user.id !== captured.id || user.activo !== true || user.session_version !== captured.session_version || user.rol !== captured.rol) throw fail('La sesión ya no está activa.', 401);
     if (!SYSTEM_USER_ROLES.includes(user.rol)) throw fail('Este perfil no tiene acceso al calendario.', 403);
     const clients = (await db.query('SELECT id,nombre FROM clientes WHERE activo IS DISTINCT FROM FALSE ORDER BY nombre,id')).rows
       .filter(row => id(row.id)).map(row => ({ id: row.id, nombre: text(row.nombre, 250) }));
+    if (filters.pagination) {
+      const page = await readCalendarPage(db, { filters, page: filters.pagination, clients, user }, {
+        taskSql: CALENDAR_TASK_SQL, visitSql: CALENDAR_VISIT_SQL, milestoneSql: CALENDAR_MILESTONE_SQL,
+        editorialSql: calendarEditorialSql, buildEvents: buildCalendarEvents, annotateEvidence: annotateEditorialEvidence,
+      });
+      await db.query('COMMIT');
+      return { range: { desde: filters.desde, hasta: filters.hasta }, scope: filters.scope, kind: filters.kind,
+        timezone: CALENDAR_TIMEZONE, clients, ...page };
+    }
     const values = [filters.desde, filters.hasta, filters.cliente_id, user.id, filters.scope === 'team'];
     const data = { tasks: [], visits: [], historias: [], publicaciones: [], hitos: [] };
     let truncated = false;
@@ -188,9 +220,9 @@ export async function readCalendar(pool, auth, query) {
     return { range: { desde: filters.desde, hasta: filters.hasta }, scope: filters.scope, kind: filters.kind,
       timezone: CALENDAR_TIMEZONE, clients, events: events.slice(0, LIMIT), truncated };
   } catch (error) {
-    if (db) { try { await db.query('ROLLBACK'); } catch { /* preserve original failure */ } }
+    if (db) { try { await db.query('ROLLBACK'); } catch (rollbackError) { discard = rollbackError; } }
     throw error;
-  } finally { db?.release(); }
+  } finally { if (discard) db?.release(discard); else db?.release(); }
 }
 
 export function createCalendarRouter({ express, pool }) {
@@ -199,7 +231,7 @@ export function createCalendarRouter({ express, pool }) {
     res.set('Cache-Control', 'no-store');
     try { res.json(await readCalendar(pool, req.auth, req.query ?? {})); }
     catch (error) {
-      if ([400, 401, 403].includes(error.status)) res.status(error.status).json({ error: error.message });
+      if ([400, 401, 403, 409].includes(error.status)) res.status(error.status).json({ error: error.message });
       else next(error);
     }
   });

@@ -10,6 +10,8 @@ Actualización157: S155-02/03 quedan corregidos y probados localmente en PLANNIN
 
 Actualización158: el gate físico integrado de tres videos pasó, incluyendo cuotas, edición/correcciones/aprobaciones, publicación explícita, nuevas sesiones, Inicio, Calendario y Reportes; ver UNIFIED_THREE_VIDEO_JOURNEY_QA.md. El recorrido nativo íntegro de tres videos sigue pendiente. UX155-02 se corrigió para conservar los bloques y página de Inicio durante refrescos de la misma sesión; ver HOME_REFRESH_CONTEXT_QA.md. Las descripciones originales siguientes son históricas. UX155-01, UX155-03 y la aceptación visual/global no se dan por cerrados.
 
+Actualización159: UX155-01 quedó implementado y probado con agenda paginada, recuentos/previews completos y continuación ligada al snapshot; ver CALENDAR_PAGINATION_QA.md. Pasaron pruebas físicas por encima de2.000 eventos, invalidaciones, paridad de proyección y recorrido nativo de escritorio/móvil con URL/recarga/Atrás. La matriz original de155 es histórica. Permanecen abiertos UX155-03, drag nativo, recorrido UI íntegro de tres videos y aceptación visual/global.
+
 Integrador: cambios y pruebas de Seguimiento, contraste directo de hallazgos y este informe. Poincare: arquitectura/identidades/autoridad; Beauvoir: invariantes de negocio y límites de recorridos; Hypatia: navegación/Inicio/Calendario; Carver: pruebas de Seguimiento. Los tres auditores no editaron producto ni iniciaron servicios. Skills de trabajo estructurado y seguridad orientaron separación de evidencia, severidad y límites. Se preservó el informe de seguridad raíz no versionado; este corte se documenta aquí para no sobrescribirlo.
 
 ## Matriz de requisitos: qué prueba la evidencia actual

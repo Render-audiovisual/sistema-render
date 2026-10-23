@@ -2,6 +2,10 @@ import { createEditorialSessionGuard } from '../components/EditorialPublicationC
 import { confirmationDate, isConfirmedPublication } from '../shared/editorial/publication-evidence.js';
 
 export const CALENDAR_KINDS = { all: 'Todos', tarea: 'Entregas de tareas', visita: 'Visitas', hito: 'Hitos de proyectos', programacion: 'Programación', publicacion: 'Publicaciones confirmadas' };
+export const CALENDAR_PAGE_LIMIT = 200;
+export const MAX_CALENDAR_PAGE = Math.floor(Number.MAX_SAFE_INTEGER / CALENDAR_PAGE_LIMIT);
+const pageNumber = value => typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value) && String(Number(value)) === value && Number.isSafeInteger(Number(value)) && Number(value) <= MAX_CALENDAR_PAGE ? Number(value) : 0;
+const calendarSnapshot = value => typeof value === 'string' && value.length === 67 && /^c1:[a-f0-9]{64}$/.test(value);
 const positive = n => Number.isSafeInteger(n) && n > 0 && n <= 2147483647;
 const uuid = s => typeof s === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(s);
 export function calendarDay(value) {
@@ -24,11 +28,13 @@ export function readCalendarSelection(search, today = cordobaToday()) {
   const dia = calendarDay(params.get('dia')) && params.get('dia').startsWith(mes) ? params.get('dia') : today.startsWith(mes) ? today : `${mes}-01`;
   const client = params.get('cliente');
   return { mes, dia, scope: params.get('scope') === 'team' ? 'team' : 'mine', tipo: Object.hasOwn(CALENDAR_KINDS, params.get('tipo')) ? params.get('tipo') : 'all',
-    cliente: /^[1-9]\d*$/.test(client || '') && positive(Number(client)) ? client : '' };
+    cliente: /^[1-9]\d*$/.test(client || '') && positive(Number(client)) ? client : '',
+    pagina: params.getAll('pagina').length === 1 && ![...params.keys()].some(key => key.startsWith('pagina[')) ? pageNumber(params.get('pagina')) : 0 };
 }
 export function calendarHref(selection) {
   const params = new URLSearchParams({ mes: selection.mes, dia: selection.dia, scope: selection.scope, tipo: selection.tipo });
   if (selection.cliente) params.set('cliente', selection.cliente);
+  params.set('pagina', String(Number.isSafeInteger(selection.pagina) && selection.pagina >= 0 && selection.pagina <= MAX_CALENDAR_PAGE ? selection.pagina : 0));
   return `/calendario?${params}`;
 }
 export function calendarGrid(mes) {
@@ -44,12 +50,18 @@ export function calendarGrid(mes) {
 export function shiftCalendarMonth(selection, delta) {
   const date = new Date(`${selection.mes}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() + delta);
   const mes = date.toISOString().slice(0, 7);
-  return supportedMonth(mes) ? { ...selection, mes, dia: `${mes}-01` } : selection;
+  return supportedMonth(mes) ? { ...selection, mes, dia: `${mes}-01`, pagina: 0 } : selection;
 }
-export function calendarQuery(selection) {
+export function calendarQuery(selection, { offset = (selection.pagina || 0) * CALENDAR_PAGE_LIMIT, snapshot } = {}) {
   const grid = calendarGrid(selection.mes);
+  if (!Number.isSafeInteger(offset) || offset < 0 || !calendarDay(selection.dia) || selection.dia < grid.desde || selection.dia >= grid.hasta) throw new Error('Página o día de calendario inválido.');
   const params = new URLSearchParams({ desde: grid.desde, hasta: grid.hasta, scope: selection.scope, kind: selection.tipo });
   if (selection.cliente) params.set('cliente_id', selection.cliente);
+  params.set('dia', selection.dia); params.set('limit', String(CALENDAR_PAGE_LIMIT)); params.set('offset', String(offset));
+  if (snapshot !== undefined) {
+    if (!calendarSnapshot(snapshot)) throw new Error('Versión de calendario inválida.');
+    params.set('expected_snapshot', snapshot);
+  }
   return `/api/calendario?${params}`;
 }
 function eventHref(row) {
@@ -103,6 +115,39 @@ export function decodeCalendar(dto, selection) {
   }).sort((a, b) => a.date.localeCompare(b.date) || a.kind.localeCompare(b.kind) || a.key.localeCompare(b.key));
   return { range: { desde: grid.desde, hasta: grid.hasta }, scope: dto.scope, kind: dto.kind, timezone: dto.timezone, clients, events, truncated: dto.truncated };
 }
+const compareCalendarEvents = (a, b) => {
+  for (const key of ['date', 'kind', 'key']) { if (a[key] < b[key]) return -1; if (a[key] > b[key]) return 1; }
+  return 0;
+};
+export function decodePagedCalendar(dto, selection, { offset = (selection.pagina || 0) * CALENDAR_PAGE_LIMIT, snapshot } = {}) {
+  const invalid = () => { throw new Error('No se pudo validar la página del calendario.'); };
+  const p = dto?.pagination, grid = calendarGrid(selection.mes);
+  const count = value => Number.isSafeInteger(value) && value >= 0;
+  if (!p || p.version !== 1 || p.limit !== CALENDAR_PAGE_LIMIT || p.offset !== offset || !count(p.offset) || !count(p.total)
+    || !calendarSnapshot(p.snapshot) || (snapshot !== undefined && p.snapshot !== snapshot)
+    || p.day !== selection.dia || !Array.isArray(p.days) || p.days.length > grid.days.length || !Array.isArray(dto.events)
+    || dto.events.length !== Math.min(p.limit, Math.max(0, p.total - offset)) || dto.truncated !== (dto.events.length < p.total)
+    || p.has_more !== (offset + dto.events.length < p.total)) invalid();
+  if (dto.events.some((row, index, rows) => row?.date !== p.day || (index > 0 && compareCalendarEvents(rows[index - 1], row) >= 0))) invalid();
+  const decoded = decodeCalendar(dto, selection);
+  let previous = '', total = 0;
+  const seen = new Set();
+  const days = p.days.map(day => {
+    if (!calendarDay(day?.date) || day.date < grid.desde || day.date >= grid.hasta || day.date <= previous || !count(day.total) || day.total === 0
+      || !Array.isArray(day.preview) || day.preview.length !== Math.min(2, day.total)
+      || day.preview.some((row, index, rows) => row?.date !== day.date || (index > 0 && compareCalendarEvents(rows[index - 1], row) >= 0))) invalid();
+    previous = day.date; total += day.total; if (!count(total)) invalid();
+    const preview = decodeCalendar({ ...dto, events: day.preview }, selection).events.sort(compareCalendarEvents);
+    for (const row of preview) { if (seen.has(row.key)) invalid(); seen.add(row.key); }
+    return { date: day.date, total: day.total, preview };
+  });
+  if ((days.find(day => day.date === p.day)?.total || 0) !== p.total) invalid();
+  decoded.events.sort(compareCalendarEvents);
+  if (!offset && JSON.stringify(days.find(day => day.date === p.day)?.preview || []) !== JSON.stringify(decoded.events.slice(0, 2))) invalid();
+  return { ...decoded, events: decoded.events.sort(compareCalendarEvents), pagination: {
+    version: 1, limit: p.limit, offset, total: p.total, has_more: p.has_more, snapshot: p.snapshot, day: p.day, days,
+  } };
+}
 export function calendarEventLabel(event) {
   return ({ tarea: 'Entrega de tarea', visita: 'Visita de producción', hito: 'Hito de proyecto', programacion: 'Programación editorial', publicacion: 'Publicación confirmada manualmente' })[event.kind];
 }
@@ -117,20 +162,36 @@ export function calendarMilestoneState(value) {
   return ({ pendiente: 'Hito pendiente', completado: 'Hito completado', cancelado: 'Hito cancelado' })[value] || 'Estado de hito sin clasificar';
 }
 export function createCalendarLoader({ request, sesion, readSession, onInvalidated = () => {} }) {
-  let generation = 0, controller = null, disposed = false;
+  let generation = 0, controller = null, disposed = false, anchor = null;
   const guard = createEditorialSessionGuard(sesion, readSession, onInvalidated);
   return {
-    async load(selection) {
+    async load(selection, { refresh = false } = {}) {
       controller?.abort(); const version = ++generation;
       if (disposed) return undefined;
       if (!guard.isCurrent()) throw new Error('La sesión cambió. Volvé a abrir el calendario desde la sesión actual.');
       controller = new AbortController();
+      const signal = controller.signal;
+      const stale = () => disposed || version !== generation || !guard.isCurrent();
       try {
-        const raw = await guard.request(request, calendarQuery(selection), { signal: controller.signal });
-        if (disposed || version !== generation || !guard.isCurrent() || !raw) return undefined;
-        return decodeCalendar(raw, selection);
-      } catch {
-        if (disposed || version !== generation || !guard.isCurrent()) return undefined;
+        const offset = (selection.pagina || 0) * CALENDAR_PAGE_LIMIT;
+        const base = calendarQuery(selection, { offset: 0 });
+        if (refresh || anchor?.base !== base) anchor = null;
+        const read = async (offset, snapshot) => {
+          const raw = await guard.request(request, calendarQuery(selection, { offset, snapshot }), { method: 'GET', cache: 'no-store', signal });
+          if (stale()) return undefined;
+          return decodePagedCalendar(raw, selection, { offset, snapshot });
+        };
+        if (!offset || !anchor) {
+          const first = await read(0);
+          if (!first || stale()) return undefined;
+          anchor = { base, snapshot: first.pagination.snapshot };
+          if (!offset) return first;
+        }
+        return await read(offset, anchor.snapshot);
+      } catch (error) {
+        if (stale()) return undefined;
+        anchor = null;
+        if (error?.status === 409) throw new Error('El calendario cambió. Reintentá explícitamente para consultar una versión actualizada.');
         throw new Error('No se pudo cargar el calendario. Reintentá la consulta.');
       }
     },
