@@ -41,6 +41,7 @@ import { correctProductionRecord } from "./production-record-updates.js";
 import { taskOperationalDto, editorialOperationalDto } from "./operational-dto.js";
 import { loadClientCatalogSnapshot } from './client-catalog.js';
 import { loadUserCatalogSnapshot } from './user-catalog.js';
+import { saveClientStructure } from './client-structure.js';
 import { createProductionRegistryRouter, syncProductionVisitFromTask } from "./production-registry.js";
 import { rejectMixedProductionRecording } from "./production-registry-compatibility.js";
 import { loadProductionTaskContext } from "./production-reporting.js";
@@ -999,27 +1000,9 @@ router.get("/estructura", async (_req, res, next) => {
 
 router.post("/estructura", requireRole("admin"), async (req, res, next) => {
   try {
-    const { cliente_id, dia_semana, tema, horario, cta_fijo, tipo } = req.body;
-
-    if (!cliente_id || dia_semana === undefined) {
-      return res.status(400).json({ error: "Faltan cliente_id o dia_semana." });
-    }
-
-    const result = await pool.query(
-      `INSERT INTO estructura_cliente (cliente_id, dia_semana, tema, horario, cta_fijo, tipo)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (cliente_id, dia_semana) DO UPDATE SET
-         tema = EXCLUDED.tema,
-         horario = COALESCE(EXCLUDED.horario, estructura_cliente.horario),
-         cta_fijo = COALESCE(EXCLUDED.cta_fijo, estructura_cliente.cta_fijo),
-         tipo = COALESCE(EXCLUDED.tipo, estructura_cliente.tipo),
-         activo = true
-       RETURNING *`,
-      [cliente_id, dia_semana, tema || null, horario || null, cta_fijo || null, tipo || null],
-    );
-
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(await saveClientStructure(pool, req.auth, req.body));
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });

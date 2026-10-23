@@ -3,7 +3,8 @@ const denied = (status, code) => Object.assign(new Error(status === 401
   : 'Solo administración puede gestionar clientes.'), { status, code });
 const sessionInvalid = () => denied(401, 'CLIENT_CREATOR_SESSION_INVALID');
 
-// Reused by client creation and identity-only client edits; export names remain
+// Reused by client creation, identity-only client edits and weekly structure;
+// export names remain
 // stable. Call synchronously with req.auth BEFORE awaiting a pool lease. Cached names,
 // roles, mutable request objects and caller-supplied fields confer no authority.
 export function captureClientCreator(auth) {
