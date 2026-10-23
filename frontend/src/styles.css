@@ -3278,7 +3278,7 @@ textarea:disabled {
   justify-content: flex-end;
 }
 
-.cal-filters label {
+.cal-filters label:not(.render-filter-field) {
   align-items: center;
   color: #777;
   display: flex;
@@ -3289,7 +3289,7 @@ textarea:disabled {
   text-transform: uppercase;
 }
 
-.cal-filters select {
+.cal-filters select:not(.render-filter-select) {
   appearance: none;
   background: #fff;
   border: 1px solid #ccc;
@@ -3302,7 +3302,7 @@ textarea:disabled {
   text-transform: none;
 }
 
-.cal-filters label::after {
+.cal-filters label:not(.render-filter-field)::after {
   color: #777;
   content: "⌄";
   font-size: 13px;
@@ -3359,13 +3359,13 @@ textarea:disabled {
     grid-template-columns: 1fr 1fr;
   }
 
-  .cal-filters label {
+  .cal-filters label:not(.render-filter-field) {
     align-items: stretch;
     flex-direction: column;
     gap: 3px;
   }
 
-  .cal-filters select {
+  .cal-filters select:not(.render-filter-select) {
     min-width: 0;
     width: 100%;
   }
@@ -3625,17 +3625,18 @@ textarea:disabled {
   background: #fafbf8;
   border: 1px solid #e1e5dd;
   border-radius: 14px;
-  display: grid;
-  gap: 18px 28px;
-  grid-template-columns: minmax(240px, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
   margin: 22px 0 18px;
   padding: 14px 16px;
 }
 
 .publicaciones-viewport .cal-monthnav {
   display: grid;
+  flex: 0 1 280px;
   gap: 12px;
-  grid-template-columns: 44px minmax(150px, auto) 44px;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
   justify-content: start;
   min-width: 0;
 }
@@ -3660,10 +3661,18 @@ textarea:disabled {
 }
 
 .publicaciones-viewport .cal-filters {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: auto 76px 190px minmax(210px, auto);
-  justify-content: end;
+  align-items: end;
+  display: flex;
+  flex: 1 1 640px;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.publicaciones-viewport .cal-filters > * {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .publicaciones-viewport .editorial-view-toggle {
@@ -3683,7 +3692,7 @@ textarea:disabled {
 }
 
 .publicaciones-viewport .cal-filters > .btn,
-.publicaciones-viewport .editorial-type-filter select {
+.publicaciones-viewport .editorial-type-filter select:not(.render-filter-select) {
   align-items: center;
   display: inline-flex;
   font-size: 13px;
@@ -3701,14 +3710,20 @@ textarea:disabled {
 }
 
 .publicaciones-viewport .editorial-type-filter {
+  flex: 1 1 200px;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.publicaciones-viewport .editorial-type-filter:not(.render-filter-field) {
   align-items: center;
   display: grid;
   gap: 8px;
   grid-template-columns: auto minmax(120px, 1fr);
-  margin: 0;
 }
 
-.publicaciones-viewport .editorial-type-filter > span {
+.publicaciones-viewport .editorial-type-filter:not(.render-filter-field) > span {
   color: #6a7065;
   font-size: 10px;
   font-weight: 700;
@@ -3717,7 +3732,7 @@ textarea:disabled {
   text-transform: uppercase;
 }
 
-.publicaciones-viewport .editorial-type-filter select {
+.publicaciones-viewport .editorial-type-filter select:not(.render-filter-select) {
   border-color: #d7dcd3;
   border-radius: 10px;
   min-width: 0;
@@ -3755,27 +3770,22 @@ textarea:disabled {
   margin-top: 8px;
 }
 
-@media (max-width: 1120px) {
-  .publicaciones-viewport .cal-toolbar { grid-template-columns: 1fr; }
-  .publicaciones-viewport .cal-filters { justify-content: stretch; grid-template-columns: auto 76px minmax(170px, 1fr) minmax(200px, 1fr); }
-}
-
 @media (max-width: 760px) {
   .publicaciones-viewport .content { padding: 20px 16px 36px; }
   .publications-main-toolbar { align-items: stretch; grid-template-columns: 1fr; }
   .publications-view-switch { display: grid; grid-template-columns: 1fr 1fr; justify-self: stretch; }
   .publications-view-switch button,.publications-plan-action { min-width: 0; width: 100%; }
-  .publicaciones-viewport .cal-monthnav { grid-template-columns: 44px 1fr 44px; justify-content: stretch; }
-  .publicaciones-viewport .cal-filters { grid-template-columns: 1fr 1fr; }
+  .publicaciones-viewport .cal-monthnav { flex-basis: auto; grid-template-columns: 44px minmax(0, 1fr) 44px; justify-content: stretch; width: 100%; }
+  .publicaciones-viewport .cal-filters { display: grid; flex-basis: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
   .publicaciones-viewport .editorial-view-toggle { width: 100%; }
   .publicaciones-viewport .editorial-view-toggle button { flex: 1; }
-  .publicaciones-viewport .editorial-type-filter { grid-template-columns: 44px 1fr; }
+  .publicaciones-viewport .editorial-type-filter:not(.render-filter-field) { grid-template-columns: 44px 1fr; }
   .publicaciones-viewport .publication-check-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 440px) {
-  .publicaciones-viewport .cal-filters { grid-template-columns: 1fr; }
-  .publicaciones-viewport .editorial-type-filter { grid-template-columns: 52px 1fr; }
+  .publicaciones-viewport .cal-filters { grid-template-columns: minmax(0, 1fr); }
+  .publicaciones-viewport .editorial-type-filter:not(.render-filter-field) { grid-template-columns: 52px 1fr; }
 }
 
 /* Historias: estructura semanal editable, sin planilla diaria */

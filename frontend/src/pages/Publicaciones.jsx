@@ -19,6 +19,7 @@ import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, edi
 import { createEditorialCreateIntent } from '../shared/editorial/editorial-create-intent.js';
 import { EditorialArchiveControl } from '../components/EditorialArchiveControl.jsx';
 import { EditorialArchivePanel } from '../components/EditorialArchivePanel.jsx';
+import { FilterSelect } from '../components/FilterSelect.jsx';
 
 function usePublicationSession(sesion, context = null) {
   const view = useSessionView(sesion || getSesion());
@@ -291,9 +292,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
             <button type="button" className={vista === "semana" ? "active" : ""} onClick={() => setVista("semana")}>Semana</button>
           </div>
           <button className="btn" type="button" onClick={() => { const now = new Date(); if (onMonthChange) onMonthChange(now.getFullYear(), now.getMonth()); else { setLocalYear(now.getFullYear()); setLocalMonth(now.getMonth()); } }}>Hoy</button>
-          <label className="editorial-type-filter">
-            <span>Tipo</span>
-            <select
+          <FilterSelect label="Tipo" className="editorial-type-filter" aria-label="Tipo de publicación"
               value={filtroTipo}
               onChange={(event) => setFiltroTipo(event.target.value)}
             >
@@ -302,8 +301,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
                   {f.label}
                 </option>
               ))}
-            </select>
-          </label>
+          </FilterSelect>
           <button className="btn primary" type="button" disabled={actualizando} onClick={actualizarCalendario}>{actualizando ? "Actualizando…" : "Actualizar calendario"}</button>
         </div>
       </div>

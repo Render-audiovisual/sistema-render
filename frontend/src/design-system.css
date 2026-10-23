@@ -304,7 +304,7 @@ textarea {
   padding: var(--render-space-3);
 }
 
-:is(.historias-viewport, .publicaciones-viewport) :is(.stories-month-control, .h-toolbar-client-select, .editorial-type-filter select, .cal-navbtn, .h-today-btn) {
+:is(.historias-viewport, .publicaciones-viewport) :is(.stories-month-control, .h-toolbar-client-select, .editorial-type-filter select:not(.render-filter-select), .cal-navbtn, .h-today-btn) {
   background: var(--render-surface);
   border-color: var(--render-line-strong);
   border-radius: var(--render-radius-control);
