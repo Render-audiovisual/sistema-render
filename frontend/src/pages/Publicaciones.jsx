@@ -20,6 +20,7 @@ import { createEditorialCreateIntent } from '../shared/editorial/editorial-creat
 import { EditorialArchiveControl } from '../components/EditorialArchiveControl.jsx';
 import { EditorialArchivePanel } from '../components/EditorialArchivePanel.jsx';
 import { FilterSelect } from '../components/FilterSelect.jsx';
+import { normalizePublicationCalendarContext, readPublicationCalendarContext, publicationCalendarUrlChanges } from './publicationCalendarContext.js';
 
 function usePublicationSession(sesion, context = null) {
   const view = useSessionView(sesion || getSesion());
@@ -36,7 +37,7 @@ function usePublicationSession(sesion, context = null) {
   return { view, capture, captureLifetime };
 }
 
-export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, contextMonth, onMonthChange, sesion, onPublicationSaved, onCommittedChange }) {
+export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, contextMonth, onMonthChange, calendarContext, onCalendarContextChange, sesion, onPublicationSaved, onCommittedChange }) {
   const hoy = new Date();
   const [localYear, setLocalYear] = useState(hoy.getFullYear());
   const [localMonth, setLocalMonth] = useState(hoy.getMonth());
@@ -45,9 +46,8 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
   const { view, capture, captureLifetime } = usePublicationSession(sesion, `${year}:${month}`);
   const [piezas, setPiezas] = useState([]);
   const [error, setError] = useState(null);
-  const [filtroTipo, setFiltroTipo] = useState("todos");
+  const { type: filtroTipo, view: vista } = normalizePublicationCalendarContext(calendarContext);
   const [actualizando, setActualizando] = useState(false);
-  const [vista, setVista] = useState("mes");
   const [piezaSel, setPiezaSel] = useState(null);
   const [diaSel, setDiaSel] = useState(null);
   const [guardandoId, setGuardandoId] = useState(null);
@@ -302,13 +302,13 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
 
         <div className="cal-filters" aria-label="Filtros de calendario">
           <div className="editorial-view-toggle" aria-label="Vista del calendario">
-            <button type="button" className={vista === "mes" ? "active" : ""} onClick={() => setVista("mes")}>Mes</button>
-            <button type="button" className={vista === "semana" ? "active" : ""} onClick={() => setVista("semana")}>Semana</button>
+            <button type="button" className={vista === "mes" ? "active" : ""} onClick={() => onCalendarContextChange?.({ view: 'mes' })}>Mes</button>
+            <button type="button" className={vista === "semana" ? "active" : ""} onClick={() => onCalendarContextChange?.({ view: 'semana' })}>Semana</button>
           </div>
           <button className="btn" type="button" onClick={() => { const now = new Date(); if (onMonthChange) onMonthChange(now.getFullYear(), now.getMonth()); else { setLocalYear(now.getFullYear()); setLocalMonth(now.getMonth()); } }}>Hoy</button>
           <FilterSelect label="Tipo" className="editorial-type-filter" aria-label="Tipo de publicación"
               value={filtroTipo}
-              onChange={(event) => setFiltroTipo(event.target.value)}
+              onChange={(event) => onCalendarContextChange?.({ type: event.target.value })}
             >
               {FILTROS.map((f) => (
                 <option key={f.key} value={f.key}>
@@ -1175,6 +1175,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
     ["calendario", "preparar", "programadas", "historial", "lista", "planilla", "archivadas"].includes(initialContext.tab) ? initialContext.tab : tabInicial,
   );
   const [clienteSeleccionado, setClienteSeleccionado] = useState(Number(initialContext.cliente) || null);
+  const [calendarContext, setCalendarContext] = useState(() => readPublicationCalendarContext(window.location.search));
   const [clientes, setClientes] = useState([]);
   const [errorClientes, setErrorClientes] = useState(null);
   const [publicaciones, setPublicaciones] = useState([]);
@@ -1187,8 +1188,8 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
   const approveContextChange = changes => requestAppNavigation(window, buildContextUrl(window.location.href, changes));
 
   useEffect(() => {
-    replaceUrlContext({ tab: tabPrincipal, cliente: clienteSeleccionado, mes: formatMonthContext(year, month) });
-  }, [tabPrincipal, clienteSeleccionado, year, month]);
+    replaceUrlContext({ tab: tabPrincipal, cliente: clienteSeleccionado, mes: formatMonthContext(year, month), ...publicationCalendarUrlChanges(calendarContext) });
+  }, [tabPrincipal, clienteSeleccionado, year, month, calendarContext]);
 
   useEffect(() => {
     const restoreContext = () => {
@@ -1198,6 +1199,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
       setClienteSeleccionado(Number(context.cliente) || null);
       setYear(date.year);
       setMonth(date.month);
+      setCalendarContext(readPublicationCalendarContext(window.location.search));
     };
     window.addEventListener("popstate", restoreContext);
     return () => window.removeEventListener("popstate", restoreContext);
@@ -1314,6 +1316,16 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
     setTabPrincipal(tab);
   };
 
+  const cambiarCalendario = changes => {
+    if (!capture().current()) return;
+    const next = normalizePublicationCalendarContext({ ...calendarContext, ...changes });
+    if (next.view === calendarContext.view && next.type === calendarContext.type) return;
+    const urlChanges = publicationCalendarUrlChanges(next);
+    if (!approveContextChange(urlChanges)) return;
+    pushUrlContext(urlChanges);
+    setCalendarContext(next);
+  };
+
   return (
     <main aria-label="Render platform publicaciones" className="publicaciones-viewport">
       <div className="frame">
@@ -1389,6 +1401,8 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
                     onIrAPlanilla={irAPlanillaDeCliente}
                     contextYear={year}
                     contextMonth={month}
+                    calendarContext={calendarContext}
+                    onCalendarContextChange={cambiarCalendario}
                     onMonthChange={(nextYear, nextMonth) => { if (!approveContextChange({ mes: formatMonthContext(nextYear, nextMonth) })) return; pushUrlContext({ mes: formatMonthContext(nextYear, nextMonth) }); setYear(nextYear); setMonth(nextMonth); }}
                   />
                 )}

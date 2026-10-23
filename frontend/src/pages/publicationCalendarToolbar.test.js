@@ -25,9 +25,9 @@ const sharedTree=parse(read('../components/FilterSelect.jsx'));
 const sharedFn=sharedTree.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='FilterSelect');assert.ok(sharedFn);
 const FilterSelect=evaluate(`const result=(${sharedFn.getText().replace(/^export\s+/,'')});`);
 
-test('calendar type field preserves the exact pre-extraction value, change callback and mapped options',()=>{
+test('calendar type field preserves its controlled value, parent context callback and mapped options',()=>{
   // Explicit native-select baseline; no git dependency after committing.
-  const baseline=find(parse(`<select value={filtroTipo} onChange={(event) => setFiltroTipo(event.target.value)}>{FILTROS.map((f) => (<option key={f.key} value={f.key}>{f.label}</option>))}</select>`),ts.isJsxElement)[0];
+  const baseline=find(parse(`<select value={filtroTipo} onChange={(event) => onCalendarContextChange?.({ type: event.target.value })}>{FILTROS.map((f) => (<option key={f.key} value={f.key}>{f.label}</option>))}</select>`),ts.isJsxElement)[0];
   const native=field.openingElement.attributes.properties.filter(node=>!ts.isJsxAttribute(node)||!['label','className','aria-label'].includes(node.name.text));
   assert.deepEqual(native.map(signature),baseline.openingElement.attributes.properties.map(signature));
   assert.deepEqual(field.children.map(signature).filter(Boolean),baseline.children.map(signature).filter(Boolean));
@@ -45,8 +45,8 @@ test('actual FILTROS and real component SSR expose a named native select; origin
   const FILTROS=evaluate(`const result=(${memo.arguments[0].getText()})();`);
   assert.deepEqual(FILTROS,[{key:'todos',label:'Todo'},{key:'video',label:'Reels'},{key:'carrusel',label:'Carruseles'}]);
   const changes=[];
-  const element=evaluate(`const result=(${field.getText()});`,{FilterSelect,FILTROS,filtroTipo:'video',setFiltroTipo:value=>changes.push(value)});
-  element.props.onChange({target:{value:'carrusel'}});assert.deepEqual(changes,['carrusel']);
+  const element=evaluate(`const result=(${field.getText()});`,{FilterSelect,FILTROS,filtroTipo:'video',onCalendarContextChange:value=>changes.push(value)});
+  element.props.onChange({target:{value:'carrusel'}});assert.deepEqual(changes,[{type:'carrusel'}]);
   const label=FilterSelect(element.props);assert.equal(label.type,'label');
   const select=React.Children.toArray(label.props.children).find(node=>node.type==='select');assert.ok(select);
   assert.equal(select.props.value,'video');assert.equal(select.props.onChange,element.props.onChange);
