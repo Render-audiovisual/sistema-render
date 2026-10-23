@@ -5,7 +5,7 @@ import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/
 
 const source = readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
 function harness(tasks, allowNavigation = true) {
-  const selected = [], incorporated = [], errors = [], requests = [];
+  const selected = [], reviewRequested = [], incorporated = [], errors = [], requests = [];
   const tasksLatestRef = {current:tasks}, openRequestRef = {current:null};
   const window = {location:{href:'http://localhost/workspace/tareas?view=board&cliente=2'},history:{
     state:null, pushState(state,_title,url) {this.state=state;window.location.href=String(url);},
@@ -15,10 +15,10 @@ function harness(tasks, allowNavigation = true) {
   const request = (url,options) => new Promise((resolve,reject) => requests.push({id:Number(url.match(/\/tareas\/(\d+)/)[1]),url,options,resolve,reject}));
   const captureRequest=()=>createCapturedRequest({session,readSession:()=>session,request});
   const callbacks = source.slice(source.indexOf('  const openTask = useCallback'),source.indexOf('  useEffect(() => {\n    const onPop'));
-  const {openTask,closeTask} = new Function('useCallback','tasksLatestRef','openRequestRef','setSelectedId',
+  const {openTask,closeTask} = new Function('useCallback','tasksLatestRef','openRequestRef','setSelectedId','setReviewRequestedTaskId',
     'captureRequest','isSessionFailure','incorporateRelatedTasks','onError','window','requestAppNavigation',`${callbacks};return {openTask,closeTask};`)
-  (fn=>fn,tasksLatestRef,openRequestRef,id=>selected.push(id),captureRequest,isSessionFailure,items=>incorporated.push(items),message=>errors.push(message),window,()=>allowNavigation);
-  return {openTask,closeTask,tasksLatestRef,requests,selected,incorporated,errors,window,changeSession:()=>{session={...session,token:'synthetic-B',usuario:{...session.usuario,id:2}};}};
+  (fn=>fn,tasksLatestRef,openRequestRef,id=>selected.push(id),id=>reviewRequested.push(id),captureRequest,isSessionFailure,items=>incorporated.push(items),message=>errors.push(message),window,()=>typeof allowNavigation==='function'?allowNavigation():allowNavigation);
+  return {openTask,closeTask,tasksLatestRef,requests,selected,reviewRequested,incorporated,errors,window,changeSession:()=>{session={...session,token:'synthetic-B',usuario:{...session.usuario,id:2}};}};
 }
 
 test('una tarea cargada abre antes de la red y conserva filtros en el enlace', async () => {
@@ -26,6 +26,7 @@ test('una tarea cargada abre antes de la red y conserva filtros en el enlace', a
   const h = harness([task]);
   const pending = h.openTask(1);
   assert.deepEqual(h.selected,[1]);
+  assert.deepEqual(h.reviewRequested,[null]);
   assert.equal(new URL(h.window.location.href).searchParams.get('cliente'),'2');
   h.requests[0].resolve({...task,titulo:'Actualizado'});
   await pending;
@@ -37,6 +38,7 @@ test('cerrar cancela la consulta y una respuesta tardía no reabre la tarea', as
   const pending = h.openTask(1);
   h.closeTask();
   assert.deepEqual(h.selected,[1,null]);
+  assert.deepEqual(h.reviewRequested,[null,null]);
   assert.equal(h.requests[0].options.signal.aborted,true);
   h.requests[0].resolve({id:1});
   await pending;
@@ -72,7 +74,17 @@ test('cancelar cambio de tarea conserva selección y URL sin abrir ni solicitar 
   const h = harness([{id:1}], false), href = h.window.location.href;
   await h.openTask(1);
   assert.deepEqual(h.selected, []); assert.deepEqual(h.requests, []);
+  assert.deepEqual(h.reviewRequested, []);
   assert.equal(h.window.location.href, href);
+});
+
+test('cambio de sesión durante navegación aceptada impide selección, hint, historial y GET', async () => {
+  const h = harness([{id:1}], () => { h.changeSession(); return true; });
+  const href = h.window.location.href;
+  await h.openTask(1,true);
+  assert.deepEqual(h.selected,[]); assert.deepEqual(h.reviewRequested,[]);
+  assert.deepEqual(h.requests,[]); assert.deepEqual(h.incorporated,[]); assert.deepEqual(h.errors,[]);
+  assert.equal(h.window.location.href,href);
 });
 
 test('el detalle conserva borradores, cancela consultas y no reenfoca con cada actualización', () => {

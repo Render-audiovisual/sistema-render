@@ -185,10 +185,34 @@ test("abrir una tarea no compite con el arrastre de la tarjeta", () => {
 test('el tablero compacto permite soltar tarjetas sobre los botones de procesos', () => {
   const workspaceSource = readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx', import.meta.url),'utf8');
   assert.match(workspaceSource,/onDrop=\{\(event\) => dropOnProcessButton\(event,column\)\}/);
-  assert.match(workspaceSource,/if \(compactBoard && canUserMoveTaskToState\(task, sesion\?\.usuario, status\)\) selectMobileBoardColumn/);
-  assert.match(workspaceSource,/if \(!canUserMoveTask\(task, sesion\?\.usuario\)\) return;\s*move\(task, status\)/);
+  assert.match(workspaceSource,/if \(result !== 'review' && compactBoard && canUserMoveTaskToState\(task, sesion\?\.usuario, status\)\) selectMobileBoardColumn/);
+  assert.match(workspaceSource,/if \(!canUserMoveTask\(task, sesion\?\.usuario\)\) return;\s*const result = move\(task, status\)/);
   assert.match(workspaceSource,/if\(manualReady&&canUserEditTask\(task,sesion\?\.usuario\)\)void onReorder\(task,null\)/);
   assert.match(workspaceSource,/event.dataTransfer.dropEffect = 'move'/);
+  const extracted = workspaceSource.match(/const dropOnProcessButton = (\(event, column\) => \{[\s\S]*?\n  \});/);
+  assert.ok(extracted, 'Exercise the actual column-drop callback');
+  const moved = { id: 5, estado: 'en_revision' };
+  const exercise = ({ result, type = 'text/task-id', id = '5', allowed = true, sort = 'date', status = 'aprobada' } = {}) => {
+    const calls = [], deps = {
+      tasksLatestRef: { current: [moved] }, sort, archiveMode: 'active', manualReady: true,
+      effectiveTaskFilterState: task => task.estado, canonicalTaskState: state => state,
+      sesion: { usuario: { id: 7, rol: 'admin' } }, compactBoard: true,
+      setDragOver() {}, canUserEditTask: () => true, canUserMoveTask: () => allowed,
+      canUserMoveTaskToState: () => allowed,
+      move: (task, target) => { calls.push(['move', task.id, target]); return result; },
+      onReorder: (task, before) => calls.push(['order', task.id, before]),
+      selectMobileBoardColumn: column => calls.push(['column', column]),
+    };
+    const drop = new Function(...Object.keys(deps), `return (${extracted[1]});`)(...Object.values(deps));
+    drop({ dataTransfer: { types: [type], getData: () => id }, preventDefault() {} }, { id: status });
+    return calls;
+  };
+  assert.deepEqual(exercise({ result: 'review' }), [['move', 5, 'aprobada']], 'Opening review never advances the compact column');
+  assert.deepEqual(exercise(), [['move', 5, 'aprobada'], ['column', 'aprobada']]);
+  assert.deepEqual(exercise({ type: 'text/plain' }), []);
+  assert.deepEqual(exercise({ id: '999' }), []);
+  assert.deepEqual(exercise({ allowed: false }), []);
+  assert.deepEqual(exercise({ sort: 'manual', status: 'en_revision' }), [['order', 5, null]], 'Same-column manual drop remains order-only');
   const css = readFileSync(new URL('../../frontend/src/pages/TaskBoardMotion.css',import.meta.url),'utf8');
   assert.match(css,/\.ros-page \{ overflow:clip; \}/);
   assert.match(css,/\.ros-mobile-board-nav \{ position:sticky; top:58px/);

@@ -119,11 +119,12 @@ test("effective approval display never replaces the raw business state or grants
 test("actual move callback keeps historical approval display out of generic business writes", () => {
   const body = source.slice(source.indexOf('  const move = useCallback((task, status) =>'), source.indexOf('  const openFeedback = useCallback'));
   assert.ok(body.startsWith('  const move = useCallback'));
-  const writes = [], approvals = [], errors = [];
+  const writes = [], approvals = [], errors = [], openings = [];
   const context = { useCallback: callback => callback, orderState: { busy: false, locked: false },
     canonicalTaskState, canUserMoveTaskToState, STATUSES, sesion: { usuario: admin },
     onUpdate: (...args) => { writes.push(args); return Promise.resolve(); },
-    onApprove: dto => { approvals.push(dto); return Promise.resolve(); }, onError: message => errors.push(message) };
+    onApprove: dto => { approvals.push(dto); return Promise.resolve(); }, onError: message => errors.push(message),
+    openTask: (id, review) => { openings.push([id, review]); return Promise.resolve(); } };
   const move = new Function(...Object.keys(context), `${body}\nreturn move;`)(...Object.values(context));
   const dto = Object.freeze({ ...task, propiedades_extra: Object.freeze({ revision_aprobada: true }) });
   assert.equal(effectiveTaskFilterState(dto), 'aprobada');
@@ -134,6 +135,12 @@ test("actual move callback keeps historical approval display out of generic busi
   move(dto, 'aprobada');
   assert.deepEqual(approvals, [dto]); assert.deepEqual(writes, []);
   assert.equal(dto.estado, 'en_revision');
+  assert.deepEqual(openings, []);
+  const editing = Object.freeze({ ...dto, tipo_tarea: 'edicion', propiedades_extra: Object.freeze({ workspace: 'render_os' }) });
+  assert.equal(move(editing, 'aprobada'), 'review');
+  assert.deepEqual(openings, [[editing.id, true]]);
+  assert.deepEqual(approvals, [dto]); assert.deepEqual(writes, []);
+  assert.equal(editing.estado, 'en_revision', 'Opening a delivery review does not approve the work');
 });
 
 test("source wiring covers all views, effective state filter, generic approval PATCH and safe creation defaults", () => {

@@ -144,7 +144,7 @@ function taskProductionRegistryState(task, lookup) {
     dateEditable: ready && vinculo?.tipo !== "origen" };
 }
 
-function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onTrashAction }) {
+function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLoadSubtasks, onUpdate, onRegisterProduction, onCorrectProduction, onConfirmProduction, onApprove, onTrashAction, reviewRequestedTaskId = null }) {
   const captureRequest = useWorkspaceCapture(sesion);
   const windowMotion = useTaskWindowMotion(task?.id, onClose);
   const [editing, setEditing] = useState(false);
@@ -663,6 +663,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           <div className="ros-block-heading ros-operations-heading"><div><h3 id={`ros-task-operations-${task.id}`}>Flujo de trabajo</h3></div><small>Acciones y avance de la tarea</small></div>
         {esperandoMaterial(task) && <div className="ros-warning-banner">Esperando material: la tarea de origen todavía no está terminada.</div>}
         {areaForTask(task) === "edicion" && canChangeTaskState && ["pendiente", "en_progreso"].includes(task.estado) && <section className="ros-approval-handoff"><div><strong>¿Terminaste la edición?</strong><span>{task.tipo_tarea === "edicion" && metadata.workspace === "render_os" ? "Registrá el enlace de la versión editada para enviarla a revisión. Publicar es otro paso." : "Cambiar el estado no registra una entrega ni publica el contenido."}</span></div>{task.tipo_tarea === "edicion" && metadata.workspace === "render_os" ? <button type="button" disabled={saving || deliveryBusy} onClick={() => { deliverySectionRef.current?.scrollIntoView({ block: "center" }); deliverySectionRef.current?.querySelector("input")?.focus(); }}>Registrar entrega</button> : <button type="button" disabled={saving} onClick={sendTaskToReview}>Enviar tarea a revisión</button>}</section>}
+        {reviewRequestedTaskId === task.id && isAdmin && usesEditingReview && task.estado === 'en_revision' && <p role="status">Revisá la versión entregada y confirmá «Aprobar revisión». Arrastrar no aprueba ni publica.</p>}
         {canApproveForOriana && <section className="ros-approval-handoff"><div><strong>La tarea está esperando aprobación</strong><span>Aprobá la revisión. Si corresponde, también podés elegir quién publica.</span>{usesEditingReview && (!editingReviewReady ? <span>Actualizá el historial de entregas antes de aprobar.</span> : editingReview.latestDelivery ? <label><a href={editingReview.latestDelivery.url} target="_blank" rel="noopener noreferrer">Ver entrega · versión de tarea {editingReview.latestDelivery.task_revision} ↗</a><span><input type="checkbox" checked={reviewAcknowledged} disabled={approving || deliveryBusy} onChange={event => setReviewAcknowledged(event.target.checked)}/> Revisé esta versión y la apruebo.</span></label> : <span>Sin entrega registrada: esta aprobación de tarea no certifica un archivo.</span>)}</div><button type="button" disabled={approving || saving || deliveryBusy || deliveryDirty || !mayApproveObservedDelivery} onClick={() => approveForOriana()}>{approving ? "Aprobando…" : "Aprobar revisión"}</button><label>Publica (opcional)<select value={publicationResponsible ?? ""} onChange={(event) => setPublicationResponsible(event.target.value ? Number(event.target.value) : null)}><option value="">Elegí quién publica</option>{users.filter((user) => Number.isSafeInteger(user.id) && user.id > 0 && ["admin", "community"].includes(user.rol)).map((user) => <option key={user.id} value={user.id}>{user.nombre} · #{user.id}</option>)}</select></label><button type="button" disabled={approving || deliveryBusy || deliveryDirty || !mayApproveObservedDelivery || !selectedPublisher} onClick={() => approveForOriana(true)}>{approving ? "Enviando…" : `Aprobar y enviar${selectedPublisher ? ` a ${selectedPublisher.nombre}` : ""}`}</button></section>}
         {canApproveForOriana && usesEditingReview && <div className="ros-work-block"><button type="button" disabled={reviewRefreshing || approving || deliveryBusy} onClick={refreshReviewTask}>{reviewRefreshing ? 'Actualizando…' : 'Actualizar tarea para revisar'}</button><small>Si cambió la versión, actualizá también el historial de entregas y volvé a revisar.</small>{reviewError && <p role="alert">{reviewError}</p>}</div>}
         {task.estado === "aprobada" && <div className="ros-approved-banner">✓ Aprobada por {metadata.revision_aprobada_por || "Líder"}. {metadata.responsable_publicacion ? `${metadata.responsable_publicacion} se encarga de publicarla.` : "Lista para finalizar."}<small style={{display:'block',overflowWrap:'anywhere'}}>{metadata.revision_aprobada === true && typeof metadata.revision_aprobada_entrega_id === 'string' ? `Entrega vinculada: ${metadata.revision_aprobada_entrega_id}` : 'Sin versión de entrega vinculada; no certifica un archivo.'}</small></div>}
@@ -922,6 +923,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   const [view, setView] = useState(initialViewState.view);
   const [calendarMonth, setCalendarMonth] = useState(initialViewState.calendarMonth);
   const [selectedId, setSelectedId] = useState(initialTask);
+  const [reviewRequestedTaskId, setReviewRequestedTaskId] = useState(null);
   const [creatingStatus, setCreatingStatus] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [dragOver, setDragOver] = useState("");
@@ -1014,7 +1016,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     return items;
   }, [incorporateRelatedTasks, captureRequest]);
 
-  const openTask = useCallback(async (id) => {
+  const openTask = useCallback(async (id, requestReview = false) => {
     const guard = captureRequest();
     if (!guard.current()) return;
     openRequestRef.current?.abort();
@@ -1022,12 +1024,17 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     openRequestRef.current = controller;
     const cached = tasksLatestRef.current.find(task => task.id === id);
     const show = () => {
+      if (!guard.current() || controller.signal.aborted || openRequestRef.current !== controller) return false;
       const url = new URL(window.location.href);
-      if (url.searchParams.get('task') === String(id)) { setSelectedId(id); return true; }
-      url.searchParams.set("task", String(id));
-      if (!requestAppNavigation(window, url.href)) return false;
+      const alreadyOpen = url.searchParams.get('task') === String(id);
+      if (!alreadyOpen) {
+        url.searchParams.set("task", String(id));
+        if (!requestAppNavigation(window, url.href)) return false;
+      }
+      if (!guard.current() || controller.signal.aborted || openRequestRef.current !== controller) return false;
+      setReviewRequestedTaskId(requestReview === true ? id : null);
       setSelectedId(id);
-      window.history.pushState({ task: id }, "", url);
+      if (!alreadyOpen) window.history.pushState({ task: id }, "", url);
       return true;
     };
     if (cached && !show()) return;
@@ -1044,6 +1051,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   }, [incorporateRelatedTasks, captureRequest]);
   const closeTask = useCallback(() => {
     openRequestRef.current?.abort();
+    setReviewRequestedTaskId(null);
     setSelectedId(null);
     if (window.history.state?.task) {
       window.history.back();
@@ -1056,6 +1064,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
   useEffect(() => {
     const onPop = () => {
       openRequestRef.current?.abort();
+      setReviewRequestedTaskId(null);
       setSelectedId(Number(new URLSearchParams(window.location.search).get("task")) || null);
       const next = getTaskViewState(window.location.search);
       setView(next.view); setCalendarMonth(next.calendarMonth); setMobileBoardColumn(next.boardColumn);
@@ -1077,9 +1086,15 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
         : "No tenés permiso para mover esta tarea.");
       return;
     }
-    if (status === "aprobada") { void onApprove(task).catch(() => {}); return; }
+    if (status === "aprobada") {
+      if (task.tipo_tarea === 'edicion' && task.propiedades_extra?.workspace === 'render_os') {
+        void openTask(task.id, true);
+        return 'review'; // Explicit review, never an optimistic board transition.
+      }
+      void onApprove(task).catch(() => {}); return;
+    }
     void onUpdate(task.id, { estado: status }, `movió la tarea de ${STATUSES.find((item) => item.id === canonicalTaskState(task.estado))?.label || task.estado} a ${STATUSES.find((item) => item.id === status)?.label || status}`).catch(() => {});
-  }, [onError, onUpdate, onApprove, sesion?.usuario, orderState.busy, orderState.locked]);
+  }, [onError, onUpdate, onApprove, openTask, sesion?.usuario, orderState.busy, orderState.locked]);
   const openFeedback = useCallback(() => {
     if (!requestAppNavigation(window, "/feedback")) return;
     window.history.pushState({ ...window.history.state, fromTasks: window.location.href }, "", "/feedback");
@@ -1104,8 +1119,8 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     if (sort === 'manual' && effectiveTaskFilterState(task) !== canonicalTaskState(task.estado) && status === effectiveTaskFilterState(task)) return;
     if (sort === 'manual' && archiveMode === 'active' && canonicalTaskState(task.estado) === status) { if(manualReady&&canUserEditTask(task,sesion?.usuario))void onReorder(task,null); return; }
     if (!canUserMoveTask(task, sesion?.usuario)) return;
-    move(task, status);
-    if (compactBoard && canUserMoveTaskToState(task, sesion?.usuario, status)) selectMobileBoardColumn(column.id);
+    const result = move(task, status);
+    if (result !== 'review' && compactBoard && canUserMoveTaskToState(task, sesion?.usuario, status)) selectMobileBoardColumn(column.id);
   };
   const dropBeforeTask = (event, before) => {
     if (sort !== 'manual' || archiveMode !== 'active' || !event.dataTransfer.types.includes('text/task-id')) return;
@@ -1162,7 +1177,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     {view === "calendar" && <TaskCalendar tasks={visible} users={users} onOpen={openTask} monthValue={calendarMonth} onMonthChange={setCalendarMonth}/>} {view === "clients" && <TasksByClient tasks={visible} users={users} onOpen={openTask}/>} {view === "responsibles" && <TasksByResponsible tasks={visible} users={users} onOpen={openTask}/>} {view !== "board" && visible.length === 0 && <div className="ros-no-results">{emptyMessage}</div>}
     {paginatedTaskCount < totalTasks && <div className="ros-load-more"><button type="button" disabled={loadingMore||pagingBlocked||orderState.busy||orderState.locked} onClick={onLoadMore}>{loadingMore ? "Cargando…" : `Cargar más tareas (${paginatedTaskCount} de ${totalTasks})`}</button></div>}
   </section>
-  {selected && <TaskDetail key={selected.id} task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onCorrectProduction={onCorrectProduction} onConfirmProduction={onConfirmProduction} onApprove={onApprove} onTrashAction={async (task, action) => { const guard = captureRequest(); guard.assertCurrent(); await onBulkAction([task.id], action); guard.assertCurrent(); closeTask(); }}/>}
+  {selected && <TaskDetail key={selected.id} task={selected} tasks={tasks} users={users} clients={clients} sesion={sesion} reviewRequestedTaskId={reviewRequestedTaskId} onClose={closeTask} onOpen={openTask} onLoadSubtasks={loadSubtasks} onUpdate={onUpdate} onRegisterProduction={onRegisterProduction} onCorrectProduction={onCorrectProduction} onConfirmProduction={onConfirmProduction} onApprove={onApprove} onTrashAction={async (task, action) => { const guard = captureRequest(); guard.assertCurrent(); await onBulkAction([task.id], action); guard.assertCurrent(); closeTask(); }}/>}
   {creatingStatus && <NewTaskModal users={users} clients={clients} sesion={sesion} initialStatus={creatingStatus} onClose={() => setCreatingStatus(null)} onCreate={onCreate} onCreated={created => { setCreatingStatus(null); void openTask(created.id); }}/>}</>;
 }
 

@@ -51,12 +51,13 @@ test('actual popstate restores task/view/calendar/column and removes its exact l
   const cleanup = evaluate(effect.arguments[0], {
     window, URLSearchParams, openRequestRef: { current: { abort: () => aborted++ } },
     getTaskViewState: search => { assert.equal(search, window.location.search); return { view: 'board', calendarMonth: '2026-10', boardColumn: 'finalizadas' }; },
+    setReviewRequestedTaskId: v => observed.push(['review', v]),
     setSelectedId: v => observed.push(['task', v]), setView: v => observed.push(['view', v]),
     setCalendarMonth: v => observed.push(['month', v]), setMobileBoardColumn: v => observed.push(['column', v]),
   })();
   listeners.get('popstate')();
   assert.equal(aborted, 1);
-  assert.deepEqual(observed, [['task', 72], ['view', 'board'], ['month', '2026-10'], ['column', 'finalizadas']]);
+  assert.deepEqual(observed, [['review', null], ['task', 72], ['view', 'board'], ['month', '2026-10'], ['column', 'finalizadas']]);
   cleanup(); assert.equal(listeners.size, 0);
 });
 

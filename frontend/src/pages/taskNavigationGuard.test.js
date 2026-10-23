@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { isTaskDraftDirty, keepsTaskOpen } from './taskNavigationGuard.js';
 import { getUnifiedTaskContent } from '../features/render-os/utils/task-content.js';
 const task = { id: 1, titulo: 'Video', estado: 'pendiente', cliente_id: 3, propiedades_extra: { guiones: 'Guion', resumen: 'Idea', etiquetas: ['Reel'] } };
@@ -25,7 +26,28 @@ test('task detail protects content/comment/delivery and all current writes witho
   assert.doesNotMatch(source, /addEventListener\("(?:beforeunload|render:before-navigation)"/);
 });
 test('task switches gate before selection/history and feedback gates before history', () => {
-  assert.match(source, /if \(!requestAppNavigation\(window, url.href\)\) return false;\s+setSelectedId\(id\);\s+window.history.pushState/);
+  const ast = ts.createSourceFile('WorkspaceReadOnly.jsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
+  const declarations = [];
+  const visit = node => { if (ts.isVariableDeclaration(node)) declarations.push(node); ts.forEachChild(node, visit); };
+  visit(ast);
+  const open = declarations.find(node => node.name.getText(ast) === 'openTask').initializer.arguments[0];
+  const show = open.body.statements.find(node => ts.isVariableStatement(node)
+    && node.declarationList.declarations[0].name.getText(ast) === 'show').declarationList.declarations[0].initializer;
+  const statements = show.body.statements;
+  const compact = node => node.getText(ast).replace(/\s+/g, '');
+  const gate = statements.findIndex(node => ts.isIfStatement(node) && compact(node.expression) === '!alreadyOpen');
+  assert.ok(gate >= 0);
+  assert.match(compact(statements[gate].thenStatement), /if\(!requestAppNavigation\(window,url.href\)\)returnfalse;/);
+  const validation = statements.findIndex((node, index) => index > gate && ts.isIfStatement(node)
+    && compact(node.expression) === '!guard.current()||controller.signal.aborted||openRequestRef.current!==controller');
+  assert.ok(validation > gate, 'Revalidate current capture/request after navigation listeners');
+  assert.equal(compact(statements[validation].thenStatement), 'returnfalse;');
+  const review = statements.findIndex(node => compact(node).startsWith('setReviewRequestedTaskId('));
+  const selection = statements.findIndex(node => compact(node) === 'setSelectedId(id);');
+  const history = statements.findIndex(node => ts.isIfStatement(node) && compact(node.expression) === '!alreadyOpen'
+    && compact(node.thenStatement).includes('window.history.pushState('));
+  assert.ok(validation < review && review < selection && selection < history,
+    'Accepted navigation and post-listener validation precede hint, selection and history');
   assert.match(source, /if \(!requestAppNavigation\(window, "\/feedback"\)\) return;\s+window.history.pushState/);
   assert.match(source, /navigateWithinApp\(window, `\/moodboards\?/);
 });
