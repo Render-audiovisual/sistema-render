@@ -12,6 +12,8 @@ import { navigateWithinApp, navigateWithConfirmation, readRouteKey } from "./sha
 import { canonicalLegacyRoute, replaceLegacyRoute } from "./shared/navigation/legacy-routes.js";
 import { loginHrefForDestination, readLoginDestination, resolveLoginDestination } from "./shared/navigation/login-destination.js";
 import { canUseSharedCalendarRole } from "./components/navigation.js";
+import { useSectionContentFocus } from './components/SectionContentFocus.jsx';
+import { sectionFocusKey } from './shared/navigation/section-focus.js';
 
 const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
 const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPage");
@@ -60,6 +62,14 @@ export function App() {
   }
   const navigationLifetime = navigationOwner.current.token;
   const navigationConfirmation = useNavigationConfirmation({ lifetime: navigationLifetime });
+  // Presentation only: keep focus ownership separate from the full route/query
+  // lifetime used to protect unsaved changes. Filters must not refocus the page.
+  const contentFocus = useSectionContentFocus({
+    sectionKey: sectionFocusKey(path, route.slice(path.length).split('#', 1)[0]),
+    owner: sessionRenderEpoch,
+    enabled: sessionSnapshot.status === 'authenticated' && Boolean(sesion)
+      && path !== '/login' && path !== '/' && !legacyDestination,
+  });
 
   React.useEffect(() => {
     const syncPath = () => {
@@ -201,7 +211,9 @@ export function App() {
 
   return (
     <>
+      {contentFocus.skipLink}
       <Sidebar key={`sidebar:${sessionRenderEpoch}`} path={path} search={window.location.search} sesion={sesion} onNavigate={navigateSidebar} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
+      {contentFocus.marker}
       {loadedDashboard}
       {navigationConfirmation.dialog}
     </>
