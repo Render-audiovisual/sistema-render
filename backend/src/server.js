@@ -77,7 +77,7 @@ import { readFeedbackTaskInventory } from './feedback-task-inventory.js';
 import { createCalendarRouter } from "./calendar.js";
 import { createEditorialControlRouter } from "./editorial-control.js";
 import { editorialPublicationDomainConflict } from "./editorial-publication-errors.js";
-import { annotateEditorialEvidence } from "./editorial-evidence-read.js";
+import { loadEditorialCatalogSnapshot } from './editorial-catalog.js';
 import { legacyPieceSelection, readLegacyEditorialPiece, writeEditorialPiece } from './editorial-piece-write.js';
 import { createEditorialPiece } from './editorial-piece-create.js';
 import { createEditorialArchiveRouter } from './editorial-archive.js';
@@ -1447,44 +1447,11 @@ router.delete("/historias/:id", requireRole("admin"), (_req, res) => {
 });
 
 router.get("/historias", async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
   try {
-    const result = await pool.query(`
-      SELECT
-        h.id,
-        h.cliente_id,
-        c.nombre AS cliente_nombre,
-        h.estado,
-        to_char(h.fecha_programada, 'YYYY-MM-DD') AS fecha_programada,
-        h.idea,
-        h.copy,
-        h.material_referencia,
-        h.aclaraciones,
-        h.prioridad,
-        h.responsable,
-        h.responsable_planificacion,
-        h.responsable_diseño,
-        h.responsable_revisión,
-        h.responsable_publicacion,
-        to_char(h.fecha_planificacion_inicio, 'YYYY-MM-DD') AS fecha_planificacion_inicio,
-        to_char(h.fecha_diseño_inicio, 'YYYY-MM-DD') AS fecha_diseño_inicio,
-        to_char(h.fecha_diseño_entrega, 'YYYY-MM-DD') AS fecha_diseño_entrega,
-        to_char(h.fecha_revisión_inicio, 'YYYY-MM-DD') AS fecha_revisión_inicio,
-        to_char(h.fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
-        h.fecha_publicación_real,
-        h.notas_planificacion,
-        h.notas_diseño,
-        h.notas_revisión,
-        h.notas_bloqueador,
-        h.metadata,
-        h.created_at,
-        h.updated_at
-      FROM historias h
-      JOIN clientes c ON c.id = h.cliente_id
-      WHERE h.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
-      ORDER BY h.fecha_programada DESC, h.id
-    `);
-    res.json((await annotateEditorialEvidence(pool, 'historia', result.rows)).map((row) => editorialOperationalDto(row, req.auth)));
+    res.json(await loadEditorialCatalogSnapshot(pool, req.auth, 'historia'));
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });
@@ -1511,45 +1478,12 @@ router.post("/calendario-editorial/generar", requireRole("admin"), async (req, r
 });
 
 router.get("/publicaciones", async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const incluirArchivadas = req.query.incluir_archivadas === "true";
-    const result = await pool.query(`
-      SELECT
-        p.id,
-        p.cliente_id,
-        c.nombre AS cliente_nombre,
-        p.tipo,
-        p.estado,
-        to_char(p.fecha_programada, 'YYYY-MM-DD') AS fecha_programada,
-        p.idea,
-        p.copy,
-        p.material_referencia,
-        p.aclaraciones,
-        p.prioridad,
-        p.responsable,
-        p.duracion_segundos,
-        p.num_imagenes,
-        p.responsable_diseño,
-        p.responsable_edición,
-        p.responsable_revisión,
-        p.responsable_publicacion,
-        to_char(p.fecha_diseño_entrega, 'YYYY-MM-DD') AS fecha_diseño_entrega,
-        to_char(p.fecha_edición_entrega, 'YYYY-MM-DD') AS fecha_edición_entrega,
-        to_char(p.fecha_revisión_aprobación, 'YYYY-MM-DD') AS fecha_revisión_aprobación,
-        p.fecha_publicación_real,
-        p.origen_calendario,
-        p.calendario_clave,
-        p.fecha_bloqueada,
-        p.metadata,
-        p.created_at,
-        p.updated_at
-      FROM publicaciones p
-      JOIN clientes c ON c.id = p.cliente_id
-      WHERE $1::boolean OR p.metadata->>'archivado_tablero' IS DISTINCT FROM 'true'
-      ORDER BY p.fecha_programada DESC, p.id
-    `, [incluirArchivadas]);
-    res.json((await annotateEditorialEvidence(pool, 'publicacion', result.rows)).map((row) => editorialOperationalDto(row, req.auth)));
+    res.json(await loadEditorialCatalogSnapshot(pool, req.auth, 'publicacion', { includeArchived: incluirArchivadas }));
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });

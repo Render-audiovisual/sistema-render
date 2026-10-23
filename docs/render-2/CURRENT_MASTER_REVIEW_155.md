@@ -4,6 +4,8 @@
 
 La unificación NO está certificada completa ni preparada globalmente para producción. Se revisó fuente actual después de154 y se implementaron/probaron los filtros de Seguimiento en155. No se sustituyó el objetivo por el conjunto de cambios ya realizados. Los hallazgos147 resueltos en148–154 no se repiten como abiertos.
 
+Actualización156: S155-01 quedó implementado y probado localmente mediante snapshot actor/piezas/evidencia; ver EDITORIAL_CATALOG_AUTHORITY_QA.md. La matriz y las descripciones siguientes conservan el diagnóstico histórico de155; S155-02/03 y los gates globales siguen abiertos.
+
 Integrador: cambios y pruebas de Seguimiento, contraste directo de hallazgos y este informe. Poincare: arquitectura/identidades/autoridad; Beauvoir: invariantes de negocio y límites de recorridos; Hypatia: navegación/Inicio/Calendario; Carver: pruebas de Seguimiento. Los tres auditores no editaron producto ni iniciaron servicios. Skills de trabajo estructurado y seguridad orientaron separación de evidencia, severidad y límites. Se preservó el informe de seguridad raíz no versionado; este corte se documenta aquí para no sobrescribirlo.
 
 ## Matriz de requisitos: qué prueba la evidencia actual
