@@ -83,9 +83,13 @@ export function homeStateLabel(value) {
   return ({ pendiente: "Pendiente", en_progreso: "En progreso", en_revision: "En revisión", aprobada: "Aprobada", finalizada: "Finalizada", publicada: "Finalizada" })[value] || `Estado: ${value}`;
 }
 // A view filter, never an authorization grant or a name-to-identity mapping.
-export function personalProductionTaskHref(userId) {
+export function personalTaskHref(userId) {
   return Number.isSafeInteger(userId) && userId > 0 && userId <= 2147483647
-    ? `/workspace/tareas?view=list&responsible=id%3A${userId}&sector=produccion` : null;
+    ? `/workspace/tareas?view=list&responsible=id%3A${userId}` : null;
+}
+export function personalProductionTaskHref(userId) {
+  const href = personalTaskHref(userId);
+  return href ? `${href}&sector=produccion` : null;
 }
 export function homeReviewTaskHref(scope) {
   return ['personal','team'].includes(scope) ? `/workspace/tareas?view=list&review_scope=${scope}` : null;

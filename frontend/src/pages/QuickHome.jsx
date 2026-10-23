@@ -7,7 +7,7 @@ import { HomeEscalations } from "../components/HomeEscalations.jsx";
 import { HomeMonthlyProgress } from "../components/HomeMonthlyProgress.jsx";
 import { HomeTeamWorkload } from "../components/HomeTeamWorkload.jsx";
 import { HomeEditorialControl } from "../components/HomeEditorialControl.jsx";
-import { createPersonalHomeLoader, homeDate, homeDeadline, homeStateLabel, homeReviewTaskHref, personalHomeNavigate, personalProductionTaskHref, subscribePersonalHomeRefresh } from "./personalHome.js";
+import { createPersonalHomeLoader, homeDate, homeDeadline, homeStateLabel, homeReviewTaskHref, personalHomeNavigate, personalTaskHref, personalProductionTaskHref, subscribePersonalHomeRefresh } from "./personalHome.js";
 import "./QuickHome.css";
 
 const WORK_AREAS = [
@@ -119,7 +119,7 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
                 <ListCount shown={data.tasks.length} total={data.summary.open}/></header>
               {data.tasks.length ? <TaskRows items={data.tasks} today={data.today} onNavigate={onNavigate}/> :
                 <p className="qh-empty">No tenés tareas abiertas asignadas.</p>}
-              <HomeLink className="qh-section-link" href="/workspace/tareas" onNavigate={onNavigate}>Abrir tablero de tareas <span aria-hidden="true">→</span></HomeLink>
+              {personalTaskHref(userId) && <HomeLink className="qh-section-link" href={personalTaskHref(userId)} onNavigate={onNavigate}>Ver todas mis tareas <span aria-hidden="true">→</span></HomeLink>}
               {(role === 'produccion' || data.monthly_progress?.production?.total > 0) && personalProductionTaskHref(userId) &&
                 <HomeLink className="qh-section-link" href={personalProductionTaskHref(userId)} onNavigate={onNavigate}>Mis tareas de producción <span aria-hidden="true">→</span></HomeLink>}
             </section>
