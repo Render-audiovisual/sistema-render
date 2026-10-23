@@ -38,7 +38,8 @@ import { USER_ADMIN_REVISION_SQL, UserAdministrationInputError, userAdministrati
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { persistAssignedTask } from "./task-persistence.js";
 import { correctProductionRecord } from "./production-record-updates.js";
-import { taskOperationalDto, editorialOperationalDto, clientOperationalDto } from "./operational-dto.js";
+import { taskOperationalDto, editorialOperationalDto } from "./operational-dto.js";
+import { loadClientCatalogSnapshot } from './client-catalog.js';
 import { createProductionRegistryRouter, syncProductionVisitFromTask } from "./production-registry.js";
 import { rejectMixedProductionRecording } from "./production-registry-compatibility.js";
 import { loadProductionTaskContext } from "./production-reporting.js";
@@ -1143,51 +1144,12 @@ router.patch("/fechas-especiales/:id", requireRole("admin"), async (req, res, ne
 });
 
 router.get("/clientes", async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const periodo = normalizePeriod(req.query.periodo);
-    const result = await pool.query(`
-      SELECT
-        c.id,
-        c.nombre,
-        ${clientAgreementRevisionSql('c','gf')} AS agreement_revision,
-        COALESCE(cfg.cuota_reels, CASE WHEN c.fecha_inicio >= $1::date + INTERVAL '1 month' THEN 0 ELSE c.cuota_reels END) AS cuota_reels,
-        COALESCE(cfg.cuota_carruseles, CASE WHEN c.fecha_inicio >= $1::date + INTERVAL '1 month' THEN 0 ELSE c.cuota_carruseles END) AS cuota_carruseles,
-        c.rubro,
-        c.activo,
-        to_char(c.fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio,
-        to_char(c.fecha_fin, 'YYYY-MM-DD') AS fecha_fin,
-        cfg.dias_historias,
-        cfg.dias_reels,
-        cfg.dias_carruseles,
-        cfg.disenador_responsable,
-        COALESCE(abono.importe, cfg.abono_mensual) AS abono_mensual,
-        to_char(COALESCE(abono.vigente_desde, cfg.vigente_desde), 'YYYY-MM-DD') AS abono_vigente_desde,
-        to_char(cfg.vigente_desde, 'YYYY-MM-DD') AS configuracion_vigente_desde,
-        (cfg.id IS NOT NULL) AS configuracion_completa,
-        c.grupo_feed_id,
-        gf.nombre AS grupo_feed_nombre,
-        gf.cuota_reels AS cuota_feed_reels,
-        gf.cuota_carruseles AS cuota_feed_carruseles,
-        (gf.cuota_reels + gf.cuota_carruseles) AS cuota_feed_compartida
-      FROM clientes c
-      LEFT JOIN LATERAL (
-        SELECT cc.*
-        FROM cliente_configuraciones cc
-        WHERE cc.cliente_id = c.id AND cc.vigente_desde <= $1::date
-        ORDER BY cc.vigente_desde DESC
-        LIMIT 1
-      ) cfg ON TRUE
-      LEFT JOIN LATERAL (
-        SELECT ca.importe, ca.vigente_desde
-        FROM cliente_abonos ca
-        WHERE ca.cliente_id = c.id AND ca.vigente_desde <= $1::date
-        ORDER BY ca.vigente_desde DESC LIMIT 1
-      ) abono ON TRUE
-      LEFT JOIN grupos_feed gf ON gf.id = c.grupo_feed_id
-      ORDER BY c.id
-    `, [periodo]);
-    res.json(result.rows.map((row) => clientOperationalDto(row, req.auth)));
+    res.json(await loadClientCatalogSnapshot(pool, req.auth, periodo));
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });
