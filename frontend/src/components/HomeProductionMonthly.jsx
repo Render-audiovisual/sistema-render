@@ -5,24 +5,40 @@ import { createHomeProductionPageLoader, PRODUCTION_PAGE_LIMIT } from './homePro
 
 export function HomeProductionMonthly({ data, period, sesion, request }) {
   const view = useSessionView(sesion);
-  const scope = useMemo(() => ({ data, period, view }), [data, period, view]);
+  const scope = useMemo(() => ({ period, view }), [period, view]);
+  const snapshot = useMemo(() => ({ data, scope, request }), [data, scope, request]);
+  const snapshotRef = useRef(snapshot); snapshotRef.current = snapshot;
+  const initialSnapshot = useRef(snapshot);
   const scopeRef = useRef(scope); scopeRef.current = scope;
+  const offsetRef = useRef({ scope, offset: 0 });
+  if (offsetRef.current.scope !== scope) offsetRef.current = { scope, offset: 0 };
   const [result, setResult] = useState(null);
   const loaderRef = useRef(null);
-  const current = result?.scope === scope ? result : null;
-  const page = current ? current.data : { ...data, offset: 0, has_more: data.client_count > PRODUCTION_PAGE_LIMIT };
-  const loading = current?.status === 'loading';
+  const current = result?.scope === scope && result.snapshot === snapshot ? result : null;
+  const page = current ? current.data : snapshot === initialSnapshot.current
+    ? { ...data, offset: 0, has_more: data.client_count > PRODUCTION_PAGE_LIMIT } : null;
+  const loading = current?.status === 'loading' || (!current && !page);
   useEffect(() => {
     const loader = createHomeProductionPageLoader({ sesion: view.session, period,
       readSession: getSesion, request, onChange: state => {
-        if (scopeRef.current === scope) setResult({ ...state, scope });
+        if (scopeRef.current === scope && snapshotRef.current === snapshot) setResult({ ...state, scope, snapshot });
       } });
-    loaderRef.current = loader;
-    return () => { loader.dispose(); if (loaderRef.current === loader) loaderRef.current = null; };
-  }, [scope, view, period, request]);
-  const refresh = offset => { void loaderRef.current?.refresh(offset === undefined ? {} : { offset }); };
+    const binding = { loader, snapshot };
+    loaderRef.current = binding;
+    // The first page is already verified by Home. Later snapshots re-read the
+    // selected offset instead of treating their first-page data as a reset.
+    if (snapshot !== initialSnapshot.current) void loader.refresh({ offset: offsetRef.current.offset });
+    return () => { loader.dispose(); if (loaderRef.current === binding) loaderRef.current = null; };
+  }, [snapshot, scope, view, period, request]);
+  const refresh = offset => {
+    const binding = loaderRef.current;
+    if (!binding || snapshot !== snapshotRef.current || binding.snapshot !== snapshotRef.current) return;
+    const next = offset === undefined ? offsetRef.current.offset : offset;
+    offsetRef.current.offset = next;
+    void binding.loader.refresh({ offset: next });
+  };
   return <details className="qh-monthly-production">
-    <summary>Producción por cliente · {page?.completed ?? data.completed} / {page?.total ?? data.total} tareas terminadas</summary>
+    <summary>Producción por cliente{page ? ` · ${page.completed} / ${page.total} tareas terminadas` : ' · Sin resultado confirmado'}</summary>
     <p className="qh-section-description">Tu trabajo de producción del mes. No cuenta videos grabados ni cuotas de contenido.</p>
     {loading && <p className="qh-empty" role="status">Cargando clientes…</p>}
     {current?.error && <div className="qh-error" role="alert"><p>{current.error}</p>

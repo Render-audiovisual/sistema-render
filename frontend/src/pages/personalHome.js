@@ -1,5 +1,6 @@
 import { parseHomeMonthlyProgress } from '../components/homeMonthlyProgress.js';
 import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } from '../shared/session/session-binding.js';
+import { isSessionFailure } from '../shared/session/captured-request.js';
 
 const positive = (value) => Number.isSafeInteger(value) && value > 0;
 const count = (value) => Number.isSafeInteger(value) && value >= 0;
@@ -113,32 +114,52 @@ export function createPersonalHomeLoader({ request, userId, sesion, readSession 
     try { return positive(observedUserId) && (userId === undefined || userId === observedUserId)
       && sessionBindingMatches(binding, readSession()); } catch { return false; }
   };
-  let controller, version = 0, disposed = false, lastRequest = -Infinity, inFlight = false;
+  let controller, version = 0, disposed = false, lastRequest = -Infinity, inFlight = false, snapshot = null;
   async function refresh({ background = false } = {}) {
-    if (disposed || (background && (inFlight || now() - lastRequest < 30000))) return false;
-    if (!currentSession()) return false;
+    if (disposed) return false;
+    // Revocation is not throttled like an ordinary focus refresh. The render
+    // owner also fences identities, including before passive effect cleanup.
+    if (!currentSession()) {
+      controller?.abort(); ++version; inFlight = false; snapshot = null;
+      onChange({ status: 'error', data: null, error: 'La sesión cambió. Volvé a iniciar sesión para consultar tu inicio.' });
+      return false;
+    }
+    if (background && (inFlight || now() - lastRequest < 30000)) return false;
     controller?.abort();
     const current = ++version;
     controller = new AbortController();
     const signal = controller.signal;
     lastRequest = now();
     inFlight = true;
-    onChange({ status: "loading", data: null, error: "" });
+    // Retain only this loader's validated, session-bound snapshot. Keeping the
+    // subtree mounted preserves disclosure/page context during a same-session
+    // refresh; it never supplies data to a different session observation.
+    onChange({ status: "loading", data: snapshot, error: "" });
+    let received = false;
     try {
       const result = await request("/api/inicio", scoped ? sessionRequestOptions(binding, { signal }) : { signal });
       if (disposed || signal.aborted || current !== version || !currentSession()) return false;
+      received = true;
       const data = parsePersonalHome(result, observedUserId, allowTeamReview);
+      snapshot = data;
       onChange({ status: "ready", data, error: "" });
     } catch (error) {
       if (disposed || signal.aborted || current !== version || !currentSession()) return false;
-      const denied = [401, 403].includes(error.status);
-      onChange({ status: "error", data: null, error: denied ? "No pudimos validar tu acceso. Volvé a iniciar sesión para consultar tu inicio." : "No pudimos cargar tu inicio. Reintentá para consultar los datos actuales." });
+      const status = error?.status;
+      const denied = [401, 403].includes(status);
+      const temporary = !received && !denied && !isSessionFailure(error)
+        && (status === undefined || status === 408 || status === 429 || status >= 500 && status <= 599);
+      if (!temporary) snapshot = null;
+      onChange({ status: "error", data: snapshot, error: denied || isSessionFailure(error)
+        ? "No pudimos validar tu acceso. Volvé a iniciar sesión para consultar tu inicio."
+        : snapshot ? "No pudimos actualizar tu inicio. Mostramos la última consulta; reintentá para ver los datos actuales."
+          : "No pudimos cargar tu inicio. Reintentá para consultar los datos actuales." });
     } finally {
       if (current === version) inFlight = false;
     }
     return true;
   }
-  return { refresh, dispose() { disposed = true; ++version; controller?.abort(); } };
+  return { refresh, dispose() { disposed = true; snapshot = null; ++version; controller?.abort(); } };
 }
 
 export function subscribePersonalHomeRefresh(loader, windowTarget = window, documentTarget = document) {

@@ -49,7 +49,17 @@ test('piece and monthly scopes combine session view with existing domain/client/
   assert.match(piece, /useMemo\(\(\) => \(\{ id, domain, clientId, view \}\), \[id, domain, clientId, view\]\)/);
   assert.match(piece, /if \(!open \|\| !allowed\) return undefined/);
   assert.match(piece, /piece.estado, piece.fecha_programada/);
-  assert.match(monthly, /useMemo\(\(\) => \(\{ data, period, view \}\), \[data, period, view\]\)/);
+  // Domain identity is stable across refreshed parent data; snapshot ownership
+  // independently fences reads so keeping the page never admits old results.
+  assert.match(monthly, /useMemo\(\(\) => \(\{ period, view \}\), \[period, view\]\)/);
+  assert.match(monthly, /useMemo\(\(\) => \(\{ data, scope, request \}\), \[data, scope, request\]\)/);
+  assert.match(monthly, /if \(offsetRef.current.scope !== scope\) offsetRef.current = \{ scope, offset: 0 \}/);
+  assert.match(monthly, /result\?\.scope === scope && result.snapshot === snapshot/);
+  assert.match(monthly, /scopeRef.current === scope && snapshotRef.current === snapshot/);
+  assert.match(monthly, /loader.refresh\(\{ offset: offsetRef.current.offset \}\)/);
+  assert.match(monthly, /snapshot !== snapshotRef.current \|\| binding.snapshot !== snapshotRef.current/);
+  assert.match(monthly, /const page = current \? current.data : snapshot === initialSnapshot.current/);
+  assert.match(monthly, /Sin resultado confirmado/);
   assert.match(monthly, /aria-label="Páginas de producción por cliente"/);
   assert.match(monthly, /offset: 0, has_more: data.client_count > PRODUCTION_PAGE_LIMIT/);
 });

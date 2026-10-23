@@ -170,15 +170,18 @@ test('dispose/session switch aborts request and prevents previous user data from
   await next.refresh(); assert.equal(nextStates.at(-1).data.user.id, 12); next.dispose();
 });
 
-test('failure/revocation clears prior success, keeps errors generic and supports explicit retry', async () => {
-  for (const status of [403, 500]) {
+test('revocation clears prior success; temporary failure retains an explicitly stale snapshot without leaking errors', async () => {
+  for (const status of [401, 403, 404, 500]) {
     const states = []; let attempt = 0;
     const loader = createPersonalHomeLoader({ userId: 11, onChange: state => states.push(state), request: async () => {
       if (++attempt === 2) throw Object.assign(new Error(secret), { status });
       return fixture();
     } });
-    await loader.refresh(); await loader.refresh();
-    assert.equal(states.at(-1).status, 'error'); assert.equal(states.at(-1).data, null);
+    await loader.refresh(); const previous = states.at(-1).data;
+    await loader.refresh();
+    assert.equal(states.at(-1).status, 'error');
+    assert.equal(states.at(-1).data, status === 500 ? previous : null);
+    assert.equal(/última consulta/.test(states.at(-1).error), status === 500);
     assert.equal(states.at(-1).error.includes(secret), false);
     await loader.refresh(); assert.equal(states.at(-1).status, 'ready'); assert.equal(attempt, 3);
     loader.dispose();

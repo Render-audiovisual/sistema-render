@@ -100,7 +100,7 @@ export function QuickHomePage({ sesion, onNavigate, request = apiRequest }) {
         </button>
       </header>
 
-      {loading && <div className="qh-status" role="status">Cargando tu trabajo…</div>}
+      {loading && <div className="qh-status" role="status">{data ? "Actualizando tu trabajo…" : "Cargando tu trabajo…"}</div>}
       {error && <div className="qh-error" role="alert"><p>{error}</p>
         {validIdentity && <button type="button" onClick={refresh}>Reintentar</button>}
       </div>}
