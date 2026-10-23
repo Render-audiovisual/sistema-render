@@ -478,6 +478,10 @@ export function buildWilsonTask(input, { clients, users }) {
     ? Number(input.produccion_videos_previstos)
     : null;
   const errors = [];
+  const sourceId = input.tarea_origen_id == null ? null : Number(input.tarea_origen_id);
+  if (sourceId !== null && (!Number.isSafeInteger(sourceId) || sourceId <= 0 || sector !== "edicion")) {
+    errors.push("El origen debe ser una visita válida y el destino una tarea de Edición.");
+  }
   if (!title) errors.push("Falta el título.");
   if (!client) errors.push("El cliente no coincide con un cliente del sistema.");
   if (!assignees.primary) errors.push("Elegí al menos una persona responsable que exista en el sistema.");
@@ -509,6 +513,7 @@ export function buildWilsonTask(input, { clients, users }) {
       material_referencia: String(input.material || input.material_referencia || "").trim() || null,
       referencia: reference || null,
       produccion_videos_previstos: plannedProductionVideos,
+      tarea_padre_id: sourceId,
     },
   };
 }
@@ -589,8 +594,10 @@ function similarity(left, right) {
   return intersection / new Set([...a, ...b]).size;
 }
 
-export function findWilsonDuplicates(candidate, existingTasks) {
+export function findWilsonDuplicates(candidate, existingTasks, { verifiedSourceId = null } = {}) {
   return existingTasks.flatMap((task) => {
+    // Only the source visit checked against the database is not an editing duplicate.
+    if (verifiedSourceId !== null && Number(task.id) === verifiedSourceId) return [];
     const reasons = [];
     if (normalizeWilsonText(task.titulo) === normalizeWilsonText(candidate.titulo)) reasons.push("mismo título");
     if (candidate.material_referencia && task.material_referencia === candidate.material_referencia) reasons.push("mismo material");
@@ -615,20 +622,37 @@ async function loadCatalog(db) {
   return { clients: clients.rows, users: users.rows };
 }
 
-async function validate(db, body) {
+export function validateWilsonProductionLink(task, source) {
+  if (!source || source.propiedades_extra?.workspace !== "render_os"
+    || String(source.propiedades_extra?.archivada_render_os) === "true"
+    || !isProductionVisitTask(source) || String(source.cliente_id) !== String(task.cliente_id)
+    || task.tipo_tarea !== "edicion" || Number(source.id) !== task.tarea_padre_id
+    || getProductionProgress(source).recorded < 1
+    || !task.material_referencia || source.material_referencia !== task.material_referencia) {
+    return "El vínculo requiere una visita del mismo cliente, con producción registrada y el mismo material.";
+  }
+  return null;
+}
+
+async function validate(db, body, { lockSource = false } = {}) {
   const normalized = buildWilsonTask(body, await loadCatalog(db));
   if (normalized.errors.length) return { ...normalized, duplicates: [] };
   const task = normalized.task;
+  if (task.tarea_padre_id !== null) {
+    const source = await loadWilsonTask(db, task.tarea_padre_id, { forUpdate: lockSource });
+    const error = validateWilsonProductionLink(task, source);
+    if (error) return { ...normalized, errors: [error], duplicates: [] };
+  }
   const existing = await db.query(
     `SELECT t.id,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.material_referencia,
             to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,c.nombre AS cliente_nombre
      FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
      WHERE t.propiedades_extra->>'workspace'='render_os'
        AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
-       AND t.cliente_id=$1 ORDER BY t.id DESC LIMIT 100`,
+       AND t.cliente_id=$1 ORDER BY t.id DESC ${task.tarea_padre_id === null ? "LIMIT 100" : ""}`,
     [task.cliente_id],
   );
-  return { ...normalized, duplicates: findWilsonDuplicates(task, existing.rows) };
+  return { ...normalized, duplicates: findWilsonDuplicates(task, existing.rows, { verifiedSourceId: task.tarea_padre_id }) };
 }
 
 export function wilsonTaskForResponse(task, { includeUrl = true } = {}) {
@@ -738,7 +762,7 @@ async function loadWilsonTask(db, taskId, { forUpdate = false } = {}) {
   const result = await db.query(
     `SELECT t.id,t.titulo,t.asignado_a,t.cliente_id,t.estado,t.propiedades_extra,
             to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,
-            t.tipo_tarea,t.subtipo,t.prioridad,t.aclaraciones,t.material_referencia,
+            t.tipo_tarea,t.subtipo,t.prioridad,t.aclaraciones,t.material_referencia,t.tarea_padre_id,
             t.created_at,t.updated_at,c.nombre AS cliente_nombre
      FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
      WHERE t.id=$1
@@ -2095,14 +2119,19 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         await client.query("ROLLBACK");
         return undefined;
       }
-      const result = await validate(client, req.body);
+      // Serialize creates for a client even when different idempotency keys are used.
+      // The source row is also locked, without changing its state or production count.
+      const candidate = buildWilsonTask(req.body, await loadCatalog(client));
+      if (candidate.errors.length) { await client.query("ROLLBACK"); return res.status(422).json(candidate); }
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`wilson:client:${candidate.task.cliente_id}`]);
+      const result = await validate(client, req.body, { lockSource: true });
       if (result.errors.length) { await client.query("ROLLBACK"); return res.status(422).json(result); }
       const permissionError = privateAssignmentListError(req, env, result.task);
       if (permissionError) {
         await client.query("ROLLBACK");
         return res.status(403).json({ error: permissionError });
       }
-      if (result.duplicates.length && req.body.permitir_duplicado !== true) {
+      if (result.duplicates.length && (result.task.tarea_padre_id !== null || req.body.permitir_duplicado !== true)) {
         await client.query("ROLLBACK");
         return res.status(409).json({ error: "Encontré una posible tarea duplicada.", duplicates: result.duplicates });
       }
@@ -2113,22 +2142,25 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyFeedback, con
         wilson_confirmado_por: req.wilson.confirmedBy, ...(task.referencia ? { referencia: task.referencia } : {}),
         ...(task.colaboradores.length ? { colaboradores: task.colaboradores } : {}),
         ...(task.produccion_videos_previstos !== null ? { produccion_videos_previstos: task.produccion_videos_previstos } : {}),
+        ...(task.tarea_padre_id !== null ? { origen_visita_parcial_id: String(task.tarea_padre_id) } : {}),
       };
       const inserted = await client.query(
         `INSERT INTO tareas (titulo,asignado_a,cliente_id,estado,requiere_aprobacion,propiedades_extra,
-          fecha_vencimiento,tipo_tarea,subtipo,prioridad,aclaraciones,material_referencia)
-         VALUES ($1,$2,$3,'pendiente',false,$4::jsonb,$5,$6,$7,$8,$9,$10)
+          fecha_vencimiento,tipo_tarea,subtipo,prioridad,aclaraciones,material_referencia,tarea_padre_id)
+         VALUES ($1,$2,$3,'pendiente',false,$4::jsonb,$5,$6,$7,$8,$9,$10,$11)
          RETURNING id,titulo,asignado_a,cliente_id,estado,propiedades_extra,
           to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,tipo_tarea,subtipo,prioridad,
-          aclaraciones,material_referencia,created_at,updated_at`,
+          aclaraciones,material_referencia,tarea_padre_id,created_at,updated_at`,
         [task.titulo,task.asignado_a,task.cliente_id,JSON.stringify(properties),task.fecha_vencimiento,
-          task.tipo_tarea,task.subtipo,task.prioridad,task.aclaraciones,task.material_referencia],
+          task.tipo_tarea,task.subtipo,task.prioridad,task.aclaraciones,task.material_referencia,task.tarea_padre_id],
       );
-      await writeWilsonAudit(client, req, { action: "crear_tarea", taskId: inserted.rows[0].id, details: { idempotencyKey: key } });
+      await writeWilsonAudit(client, req, { action: "crear_tarea", taskId: inserted.rows[0].id, details: {
+        idempotencyKey: key, sourceTaskId: task.tarea_padre_id, notifyAssignment: req.body.notificar_asignacion !== false,
+      } });
       await client.query("COMMIT");
       const createdTask = { ...inserted.rows[0], cliente_nombre: task.cliente_nombre };
       res.status(201).json({ created: true, idempotent: false, task: taskWithUrl(createdTask) });
-      notifyAssignment?.({ pool, tarea: createdTask, motivo: "creada" });
+      if (req.body.notificar_asignacion !== false) notifyAssignment?.({ pool, tarea: createdTask, motivo: "creada" });
     } catch (error) {
       await client.query("ROLLBACK").catch(() => {});
       next(error);
