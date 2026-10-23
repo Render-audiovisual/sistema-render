@@ -120,10 +120,10 @@ function structure(node) {
 }
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const layoutBaseline = {
-  WorkspaceReadOnly: '4393c850d1030445e9ff49760d7a4a6b773d91a42f08aebb81da906a340c3a6e',
-  RenderApplePolish: '622868f4d950c468758fd420378e644befbb93a0c1ea283a0fc331d2ecf370dd',
+  WorkspaceReadOnly: 'cd36062210cde1ccd6a7f94280b514a620d5256cdbad66bee5bef3aeb5dcf11d',
+  RenderApplePolish: 'edd06507a2c251e039c9e8c6ded93140f4fee376a1126c4f8146d00967e47f41',
   // Integration99: approved scoped order toolbar/actions in the existing layer.
-  TaskHeader: 'a068e76e9fa3fd15a9261c751ea0de66b91a7462cc0ae45d2393ee77dd472146',
+  TaskHeader: '0570349431a2fafdcd47c0f0507d606f0c14479ea8f9001a0d0dfa8e4cb56a6e',
   TaskDetailNotion: 'ea76f4d2e014e5f391e90938bc64f69d671c4a71acf045dc07001b8b1ae6f295',
   TaskDetailCompact: '852876b2b66daed8c935703fa48b76c50805f57d51b912521819ae4c48369cad',
 };
@@ -134,6 +134,69 @@ const identityBaseline = {
   TaskDetailNotion: '44a534f98a574fe39b62027f73fdc1904e5eb4efc22169e268d955c1e7efb2b2',
   TaskDetailCompact: '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
 };
+// Integration142: normalize only the seven migrated native controls. Apply the
+// same projection to the pre-change HEAD once when recording the literals;
+// tests never consult Git. Grouped button/summary branches and label layout stay.
+function reviewedFilterPresentationBaseline(root) {
+  const copy = root.clone();
+  copy.walkRules(rule => {
+    // These legacy rules still own non-shared controls, with all declarations
+    // pinned. Only the exact shared-control exclusions change their selectors.
+    if (normalize(rule.selector) === '.render-workspace .ros-filter-bar label:not(.render-filter-field) > span') {
+      rule.selector = '.render-workspace .ros-filter-bar label > span';
+    }
+    if (normalize(rule.selector) === '.render-workspace .ros-filter-bar :is(select:not(.render-filter-select), button)') {
+      rule.selector = '.render-workspace .ros-filter-bar :is(select, button)';
+    }
+    const selectors = rule.selectors.map(normalize);
+    const retained = selectors.filter(selector => ![
+      '.ros-filter-bar label>span',
+      '.render-workspace .ros-filter-bar label>span',
+      '.render-workspace .ros-filter-bar label > span',
+      '.ros-filter-bar select',
+      '.render-workspace .ros-filter-bar select',
+      '.render-workspace .ros-filter-bar select:focus',
+    ].includes(selector));
+    if (retained.length !== selectors.length) {
+      const presentation = new Set(['background', 'background-color', 'border', 'border-color', 'border-radius', 'color',
+        'font-size', 'font-weight', 'padding', 'width', 'min-height', 'margin-bottom', 'letter-spacing', 'text-transform', 'box-shadow', 'outline']);
+      rule.walkDecls(declaration => {
+        assert.ok(presentation.has(declaration.prop), `Unexpected migrated control property: ${declaration.prop}`);
+        assert.equal(!!declaration.important, false, 'Migrated controls cannot add important');
+      });
+    }
+    if (!retained.length) { rule.remove(); return; }
+    rule.selector = retained.join(',');
+    if (retained.length === 1 && ['.ros-filter-bar label', '.render-workspace .ros-filter-bar label'].includes(retained[0])) {
+      rule.walkDecls('gap', declaration => declaration.remove());
+      if (!rule.nodes.some(node => node.type !== 'comment')) { rule.remove(); return; }
+    }
+    if (normalize(rule.selector) === '.render-workspace .ros-order-toolbar select') {
+      const presentation = new Set(['min-height', 'padding', 'border', 'border-radius', 'background', 'color', 'font']);
+      rule.walkDecls(declaration => { if (presentation.has(declaration.prop)) declaration.remove(); });
+    }
+    rule.selector = rule.selector.replace(':is(select:not(.render-filter-select), summary)', ':is(select, summary)');
+    if (rule.selector === '.render-workspace :is(button, input, select:not(.render-filter-select), textarea, [role="button"]):focus-visible') {
+      rule.selector = '.render-workspace :is(button, input, select, textarea, [role="button"]):focus-visible';
+    }
+  });
+  return copy;
+}
+test('Integration142 exceptions retain unrelated layout and exact shared-select focus exclusion', () => {
+  const selector = '.render-workspace :is(button, input, select:not(.render-filter-select), textarea, [role="button"]):focus-visible';
+  assert.equal(last('RenderApplePolish', selector, 'outline'), `2px solid ${token('accent')}`);
+  assert.equal(last('RenderApplePolish', '.render-workspace .ros-filter-bar label:not(.render-filter-field) > span', 'font-size'), '9px');
+  assert.equal(last('RenderApplePolish', '.render-workspace .ros-filter-bar :is(select:not(.render-filter-select), button)', 'min-height'), '40px');
+  const before = postcss.parse('.render-workspace .ros-filter-bar select,.render-workspace .ros-filter-bar button{min-height:36px}.render-workspace .ros-filter-bar label{gap:5px;min-width:0}');
+  const after = reviewedFilterPresentationBaseline(before);
+  assert.equal(after.nodes[0].selector, '.render-workspace .ros-filter-bar button');
+  assert.equal(after.nodes[0].first.value, '36px');
+  assert.deepEqual(after.nodes[1].nodes.map(node => [node.prop,node.value]), [['min-width','0']]);
+  const changed = after.clone(); changed.nodes[1].first.value = '1px';
+  assert.notEqual(hash(structure(after)), hash(structure(changed)), 'Label layout remains fingerprinted');
+  assert.throws(() => reviewedFilterPresentationBaseline(postcss.parse('.ros-filter-bar select{position:fixed}')), /Unexpected migrated control property/);
+  assert.throws(() => reviewedFilterPresentationBaseline(postcss.parse('.ros-filter-bar select{font-size:16px!important}')), /cannot add important/);
+});
 function reviewedTabletStateBaseline(root) {
   const copy = root.clone(), matches = [];
   copy.walkRules(rule => {
@@ -164,7 +227,8 @@ function reviewedTabletStateBaseline(root) {
 }
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
-    const baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
+    let baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
+    if (['WorkspaceReadOnly', 'TaskHeader', 'RenderApplePolish'].includes(name)) baselineRoot = reviewedFilterPresentationBaseline(baselineRoot);
     assert.equal(hash(structure(baselineRoot)), layoutBaseline[name]);
   });
   test(`${name}: purposeful area and status styling is unchanged`, () => {

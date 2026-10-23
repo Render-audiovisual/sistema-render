@@ -108,10 +108,12 @@ test('Workspace imports production helpers; real Responsible selector uses optio
   assert.ok(calls(view, 'taskMatchesResponsible').length, 'Use actual client matcher');
   const select = nodes(view, ts.isJsxElement).find(node => {
     const opening = node.openingElement;
-    return text(opening.tagName) === 'select' && opening.attributes.properties.some(attribute =>
+    return text(opening.tagName) === 'FilterSelect' && opening.attributes.properties.some(attribute =>
       ts.isJsxAttribute(attribute) && text(attribute.name) === 'aria-label' && attribute.initializer?.text === 'Responsable');
   });
-  assert.ok(select, 'Inspect actual Responsable select');
+  assert.ok(select, 'Inspect actual shared Responsable selector');
+  assert.ok(file.statements.some(node => ts.isImportDeclaration(node)
+    && node.moduleSpecifier.text === '../components/FilterSelect.jsx'));
   const mappedOption = nodes(select, ts.isJsxElement).find(node => text(node.openingElement.tagName) === 'option'
     && node.openingElement.attributes.properties.some(attribute => ts.isJsxAttribute(attribute)
       && text(attribute.name) === 'value' && attribute.initializer && /\.value\}/.test(text(attribute.initializer))));

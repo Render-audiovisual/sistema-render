@@ -7,13 +7,19 @@
 @media(max-width:640px){.ros-primary-button::before{content:none}.ros-task-card[draggable="true"]{cursor:pointer}.ros-mobile-state{background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:6px;color:var(--render-ink-soft);display:block;font-family:inherit;font-size:7px;margin-top:9px;padding:6px;width:100%}.ros-modal{margin:2vh auto;max-height:96vh;padding:18px}.ros-modal form{grid-template-columns:1fr}.ros-modal label,.ros-modal label.wide,.ros-modal footer{grid-column:1}.ros-toast{max-width:90vw;top:8px;width:max-content}}
 
 /* Task operations and alternate views */
-.ros-task-summary{color:var(--render-ink-soft);font-size:8px;line-height:1.6;margin:4px 0 14px}.ros-tags,.ros-card-tags{display:flex;flex-wrap:wrap;gap:5px}.ros-tags span,.ros-card-tags span{background:var(--render-surface-muted);border:1px solid var(--render-line);border-radius:999px;color:var(--render-accent);font-size:6px;padding:3px 6px}.ros-warning-banner{align-items:flex-start;background:#fff7df;border:1px solid #f0dfa6;border-radius:8px;color:#7b6120;display:flex;font-size:8px;gap:7px;line-height:1.5;margin:12px 0;padding:9px 10px}.ros-collaborators{display:flex;flex-wrap:wrap;gap:6px}.ros-collaborators span{align-items:center;background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:6px;display:flex;font-size:7px;gap:5px;padding:5px 7px}.ros-edit-extras{display:grid;gap:12px;margin:14px 0}.ros-edit-extras>label{display:grid;gap:5px}.ros-edit-extras>label>span,.ros-edit-extras legend{color:var(--render-muted);font-size:7px;font-weight:600}.ros-edit-extras input{background:var(--render-surface);border:1px solid var(--render-line);border-radius:6px;font-size:8px;padding:8px;width:100%}.ros-edit-extras fieldset{border:1px solid var(--render-line);border-radius:8px;margin:0;padding:9px}.ros-edit-extras legend{padding:0 5px}.ros-edit-extras fieldset>div{display:flex;flex-wrap:wrap;gap:6px}.ros-edit-extras fieldset label,.ros-modal-collaborators label{align-items:center;background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:6px;display:flex;font-size:7px;gap:5px;padding:6px 7px}.ros-edit-extras fieldset input,.ros-modal-collaborators input{height:auto;margin:0;width:auto}.ros-reference-list,.ros-context-list,.ros-subtasks{display:grid;gap:6px}.ros-reference-list a,.ros-context-list a{background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:7px;color:var(--render-ink-soft);font-size:7px;overflow:hidden;padding:8px 9px;text-decoration:none;text-overflow:ellipsis;white-space:nowrap}.ros-context-list span{color:var(--render-muted);font-size:7px;line-height:1.55}.ros-subtasks button{align-items:center;background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:7px;color:var(--render-ink);display:grid;font-size:7px;gap:7px;grid-template-columns:8px 1fr auto;padding:8px 9px;text-align:left}.ros-subtasks button i{border:2px solid var(--render-line-strong);border-radius:50%;height:8px;width:8px}.ros-subtasks button.done i{background:#79a94e;border-color:#79a94e}.ros-subtasks button small{color:var(--render-muted);font-size:6px}.ros-subtask-create{display:flex;gap:6px;margin-top:7px}.ros-subtask-create input{border:1px solid var(--render-line);border-radius:7px;font-size:8px;min-width:0;padding:8px;flex:1}.ros-subtask-create button{background:var(--render-surface-muted);border:1px solid var(--render-line);border-radius:7px;color:var(--render-ink-soft);font-size:8px;font-weight:600;padding:8px 10px}.ros-inline-error{background:#fae9e7;border:1px solid #efcbc7;border-radius:7px;color:#98453f;font-size:7px;line-height:1.5;padding:7px 9px}.ros-danger-zone{background:#fff7f6;border:1px solid #efcfcb;border-radius:9px;margin-top:23px;padding:12px}.ros-danger-zone strong{color:#853d38;display:block;font-size:8px}.ros-danger-zone p{color:#8c6764;font-size:7px;line-height:1.5;margin:5px 0 10px}.ros-detail-actions button.danger,.ros-danger-zone button.danger{background:#aa3d37;border:1px solid #aa3d37;border-radius:7px;color:#fff;font-size:8px;font-weight:600;padding:8px 11px}.ros-modal-collaborators{display:flex;flex-wrap:wrap;gap:6px}.ros-card-summary{color:var(--render-muted)!important;display:-webkit-box;font-size:7px!important;line-height:1.5;margin:5px 0 9px!important;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}.ros-card-tags{margin:0 0 9px}.ros-card-warning{background:#fff6dc;border-radius:5px;color:#7c6119;font-size:6px;margin:0 0 8px;padding:5px 6px}.ros-filter-bar{align-items:end;background:var(--render-surface);border:1px solid var(--ros-line);border-radius:9px;display:grid;gap:8px;grid-template-columns:repeat(4,minmax(110px,1fr)) auto;margin-top:14px;padding:10px}.ros-filter-bar label{display:grid;gap:4px}.ros-filter-bar label>span{color:var(--render-muted);font-size:6px;font-weight:600}.ros-filter-bar select{background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:6px;color:var(--render-ink-soft);font-size:7px;padding:7px;width:100%}.ros-filter-bar button{background:transparent;border:0;color:var(--render-muted);font-size:7px;padding:7px}.ros-calendar{background:var(--render-surface);border:1px solid var(--ros-line);border-radius:10px;margin-top:16px;overflow:hidden}.ros-calendar>header{align-items:center;border-bottom:1px solid var(--ros-line);display:flex;justify-content:space-between;padding:11px 13px}.ros-calendar>header strong{font-size:9px}.ros-calendar>header div{display:flex;gap:4px}.ros-calendar>header button{background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:6px;color:var(--render-ink-soft);font-size:11px;height:25px;width:27px}.ros-calendar-week,.ros-calendar-grid{display:grid;grid-template-columns:repeat(7,1fr)}.ros-calendar-week span{background:var(--render-surface-soft);color:var(--render-muted);font-size:6px;font-weight:700;padding:7px;text-align:center}.ros-calendar-day{background:var(--render-surface);border:0;border-right:1px solid var(--render-line);border-top:1px solid var(--render-line);min-height:92px;padding:7px;text-align:left}.ros-calendar-day.muted{background:var(--render-surface-soft);color:var(--render-muted)}.ros-calendar-day>span{font-size:7px;font-weight:600}.ros-calendar-task{background:var(--render-surface-muted);border-left:2px solid var(--render-accent);border-radius:4px;color:var(--render-accent);display:block;font-size:6px;margin-top:4px;overflow:hidden;padding:4px;text-overflow:ellipsis;white-space:nowrap}.ros-calendar-note,.ros-column-limit,.ros-list-limit,.ros-no-results{color:var(--render-muted);font-size:7px;line-height:1.5;padding:10px 12px;text-align:center}.ros-project-grid{display:grid;gap:10px;grid-template-columns:repeat(3,1fr);margin-top:16px}.ros-project-card{background:var(--render-surface);border:1px solid var(--ros-line);border-radius:10px;overflow:hidden}.ros-project-card>header{align-items:center;background:var(--render-surface-soft);border-bottom:1px solid var(--render-line);display:flex;justify-content:space-between;padding:11px 12px}.ros-project-card>header strong{font-size:9px}.ros-project-card>header span{background:var(--render-surface-muted);border-radius:5px;color:var(--render-muted);font-size:7px;padding:4px 6px}.ros-project-card>div{display:grid;gap:5px;padding:8px}.ros-project-card button{align-items:center;background:var(--render-surface);border:0;border-radius:6px;color:var(--render-ink-soft);display:grid;font-size:7px;gap:7px;grid-template-columns:1fr auto;padding:7px;text-align:left}.ros-project-card button:hover{background:var(--render-surface-soft)}.ros-project-card button strong{color:var(--render-ink);font-size:8px}.ros-project-card button small{color:var(--render-muted);font-size:6px}
+.ros-task-summary{color:var(--render-ink-soft);font-size:8px;line-height:1.6;margin:4px 0 14px}.ros-tags,.ros-card-tags{display:flex;flex-wrap:wrap;gap:5px}.ros-tags span,.ros-card-tags span{background:var(--render-surface-muted);border:1px solid var(--render-line);border-radius:999px;color:var(--render-accent);font-size:6px;padding:3px 6px}.ros-warning-banner{align-items:flex-start;background:#fff7df;border:1px solid #f0dfa6;border-radius:8px;color:#7b6120;display:flex;font-size:8px;gap:7px;line-height:1.5;margin:12px 0;padding:9px 10px}.ros-collaborators{display:flex;flex-wrap:wrap;gap:6px}.ros-collaborators span{align-items:center;background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:6px;display:flex;font-size:7px;gap:5px;padding:5px 7px}.ros-edit-extras{display:grid;gap:12px;margin:14px 0}.ros-edit-extras>label{display:grid;gap:5px}.ros-edit-extras>label>span,.ros-edit-extras legend{color:var(--render-muted);font-size:7px;font-weight:600}.ros-edit-extras input{background:var(--render-surface);border:1px solid var(--render-line);border-radius:6px;font-size:8px;padding:8px;width:100%}.ros-edit-extras fieldset{border:1px solid var(--render-line);border-radius:8px;margin:0;padding:9px}.ros-edit-extras legend{padding:0 5px}.ros-edit-extras fieldset>div{display:flex;flex-wrap:wrap;gap:6px}.ros-edit-extras fieldset label,.ros-modal-collaborators label{align-items:center;background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:6px;display:flex;font-size:7px;gap:5px;padding:6px 7px}.ros-edit-extras fieldset input,.ros-modal-collaborators input{height:auto;margin:0;width:auto}.ros-reference-list,.ros-context-list,.ros-subtasks{display:grid;gap:6px}.ros-reference-list a,.ros-context-list a{background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:7px;color:var(--render-ink-soft);font-size:7px;overflow:hidden;padding:8px 9px;text-decoration:none;text-overflow:ellipsis;white-space:nowrap}.ros-context-list span{color:var(--render-muted);font-size:7px;line-height:1.55}.ros-subtasks button{align-items:center;background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:7px;color:var(--render-ink);display:grid;font-size:7px;gap:7px;grid-template-columns:8px 1fr auto;padding:8px 9px;text-align:left}.ros-subtasks button i{border:2px solid var(--render-line-strong);border-radius:50%;height:8px;width:8px}.ros-subtasks button.done i{background:#79a94e;border-color:#79a94e}.ros-subtasks button small{color:var(--render-muted);font-size:6px}.ros-subtask-create{display:flex;gap:6px;margin-top:7px}.ros-subtask-create input{border:1px solid var(--render-line);border-radius:7px;font-size:8px;min-width:0;padding:8px;flex:1}.ros-subtask-create button{background:var(--render-surface-muted);border:1px solid var(--render-line);border-radius:7px;color:var(--render-ink-soft);font-size:8px;font-weight:600;padding:8px 10px}.ros-inline-error{background:#fae9e7;border:1px solid #efcbc7;border-radius:7px;color:#98453f;font-size:7px;line-height:1.5;padding:7px 9px}.ros-danger-zone{background:#fff7f6;border:1px solid #efcfcb;border-radius:9px;margin-top:23px;padding:12px}.ros-danger-zone strong{color:#853d38;display:block;font-size:8px}.ros-danger-zone p{color:#8c6764;font-size:7px;line-height:1.5;margin:5px 0 10px}.ros-detail-actions button.danger,.ros-danger-zone button.danger{background:#aa3d37;border:1px solid #aa3d37;border-radius:7px;color:#fff;font-size:8px;font-weight:600;padding:8px 11px}.ros-modal-collaborators{display:flex;flex-wrap:wrap;gap:6px}.ros-card-summary{color:var(--render-muted)!important;display:-webkit-box;font-size:7px!important;line-height:1.5;margin:5px 0 9px!important;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}.ros-card-tags{margin:0 0 9px}.ros-card-warning{background:#fff6dc;border-radius:5px;color:#7c6119;font-size:6px;margin:0 0 8px;padding:5px 6px}.ros-filter-bar{align-items:end;background:var(--render-surface);border:1px solid var(--ros-line);border-radius:9px;display:grid;gap:8px;grid-template-columns:repeat(4,minmax(110px,1fr)) auto;margin-top:14px;padding:10px}.ros-filter-bar label{display:grid;}.ros-filter-bar button{background:transparent;border:0;color:var(--render-muted);font-size:7px;padding:7px}.ros-calendar{background:var(--render-surface);border:1px solid var(--ros-line);border-radius:10px;margin-top:16px;overflow:hidden}.ros-calendar>header{align-items:center;border-bottom:1px solid var(--ros-line);display:flex;justify-content:space-between;padding:11px 13px}.ros-calendar>header strong{font-size:9px}.ros-calendar>header div{display:flex;gap:4px}.ros-calendar>header button{background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:6px;color:var(--render-ink-soft);font-size:11px;height:25px;width:27px}.ros-calendar-week,.ros-calendar-grid{display:grid;grid-template-columns:repeat(7,1fr)}.ros-calendar-week span{background:var(--render-surface-soft);color:var(--render-muted);font-size:6px;font-weight:700;padding:7px;text-align:center}.ros-calendar-day{background:var(--render-surface);border:0;border-right:1px solid var(--render-line);border-top:1px solid var(--render-line);min-height:92px;padding:7px;text-align:left}.ros-calendar-day.muted{background:var(--render-surface-soft);color:var(--render-muted)}.ros-calendar-day>span{font-size:7px;font-weight:600}.ros-calendar-task{background:var(--render-surface-muted);border-left:2px solid var(--render-accent);border-radius:4px;color:var(--render-accent);display:block;font-size:6px;margin-top:4px;overflow:hidden;padding:4px;text-overflow:ellipsis;white-space:nowrap}.ros-calendar-note,.ros-column-limit,.ros-list-limit,.ros-no-results{color:var(--render-muted);font-size:7px;line-height:1.5;padding:10px 12px;text-align:center}.ros-project-grid{display:grid;gap:10px;grid-template-columns:repeat(3,1fr);margin-top:16px}.ros-project-card{background:var(--render-surface);border:1px solid var(--ros-line);border-radius:10px;overflow:hidden}.ros-project-card>header{align-items:center;background:var(--render-surface-soft);border-bottom:1px solid var(--render-line);display:flex;justify-content:space-between;padding:11px 12px}.ros-project-card>header strong{font-size:9px}.ros-project-card>header span{background:var(--render-surface-muted);border-radius:5px;color:var(--render-muted);font-size:7px;padding:4px 6px}.ros-project-card>div{display:grid;gap:5px;padding:8px}.ros-project-card button{align-items:center;background:var(--render-surface);border:0;border-radius:6px;color:var(--render-ink-soft);display:grid;font-size:7px;gap:7px;grid-template-columns:1fr auto;padding:7px;text-align:left}.ros-project-card button:hover{background:var(--render-surface-soft)}.ros-project-card button strong{color:var(--render-ink);font-size:8px}.ros-project-card button small{color:var(--render-muted);font-size:6px}
+
+
 
 @media(max-width:1000px){.ros-project-grid{grid-template-columns:repeat(2,1fr)}.ros-filter-bar{grid-template-columns:repeat(2,1fr) auto}}
 @media(max-width:640px){.ros-filter-bar{display:flex;overflow-x:auto;padding:8px}.ros-filter-bar label{flex:0 0 135px}.ros-filter-bar button{flex:0 0 auto}.ros-controls{align-items:flex-start;overflow-x:auto}.ros-controls>div{flex:0 0 auto}.ros-controls>span{margin:5px 0}.ros-calendar{overflow-x:auto}.ros-calendar>header,.ros-calendar-week,.ros-calendar-grid{min-width:620px}.ros-calendar-day{min-height:82px}.ros-project-grid{grid-template-columns:1fr}.ros-danger-zone .ros-detail-actions,.ros-danger-zone>div{align-items:stretch;flex-direction:column}.ros-danger-zone button{width:100%}.ros-subtask-create{align-items:stretch}.ros-modal-collaborators{max-height:130px;overflow-y:auto}}
 
+
+
+
 .ros-context-list button{background:var(--render-surface-soft);border:1px solid var(--render-line);border-radius:7px;color:var(--render-ink-soft);font-size:7px;padding:8px 9px;text-align:left}.ros-danger-zone>div{display:flex;gap:7px;justify-content:flex-end}.ros-danger-zone>div>button:not(.danger){background:#fff;border:1px solid #deded9;border-radius:7px;color:#666;font-size:8px;padding:8px 11px}.ros-project-card>header>div{align-items:center;display:flex;gap:7px}.ros-project-card>header small{color:var(--render-muted);font-size:6px}.ros-project-card button>span{font-weight:600}.ros-project-card button>b{font-size:6px}.ros-project-card button>small{grid-column:1/-1}
 .ros-load-more{display:flex;justify-content:center;padding:18px}.ros-load-more button{background:var(--render-surface);border:1px solid var(--render-line-strong);border-radius:8px;color:var(--render-ink-soft);cursor:pointer;font-size:8px;font-weight:700;padding:9px 14px}.ros-load-more button:disabled{cursor:wait;opacity:.55}
+
 
 /* RENDER OS comparte la navegación principal del sistema. El antiguo menú
    interno queda conservado en el componente durante la transición, pero no
@@ -130,15 +136,6 @@
   gap:10px;
   margin:0 0 18px;
   padding:13px;
-}
-.render-workspace .ros-filter-bar label>span{
-  font-size:10px;
-  margin-bottom:2px;
-}
-.render-workspace .ros-filter-bar select{
-  font-size:12px;
-  min-height:40px;
-  padding:8px 10px;
 }
 .render-workspace .ros-filter-bar button{
   cursor:pointer;
@@ -790,14 +787,6 @@
   margin:0 22px;
   padding:12px;
 }
-.render-workspace .ros-filter-bar label>span{color:var(--render-muted);font-weight:700;letter-spacing:.04em;text-transform:uppercase}
-.render-workspace .ros-filter-bar select{
-  background:var(--render-surface-soft);
-  border:1px solid var(--render-line);
-  border-radius:8px;
-  color:var(--ros-graphite);
-}
-.render-workspace .ros-filter-bar select:focus{border-color:var(--ros-lime-muted);box-shadow:var(--render-focus);outline:0}
 .render-workspace .ros-board{gap:12px;margin-top:18px}
 .render-workspace .ros-column>header{color:var(--ros-graphite);padding:4px 4px 10px}
 .render-workspace .ros-column>header strong{font-size:9px;font-weight:800}
@@ -923,8 +912,7 @@
 .render-workspace .ros-section-bar>strong{font-size:var(--ros-type-body)}
 .render-workspace .ros-filter-toggle{font-size:var(--ros-type-secondary)}
 .render-workspace .ros-filter-toggle b{font-size:var(--ros-type-badge)}
-.render-workspace .ros-filter-bar label>span{font-size:var(--ros-type-label);font-weight:600}
-.render-workspace .ros-filter-bar select,.render-workspace .ros-filter-bar button{font-size:var(--ros-type-secondary);min-height:40px}
+.render-workspace .ros-filter-bar button{font-size:var(--ros-type-secondary);min-height:40px}
 .render-workspace .ros-column{min-width:230px;scroll-snap-align:start}
 .render-workspace .ros-board{
   grid-template-columns:repeat(5,minmax(230px,1fr));
@@ -1069,20 +1057,9 @@
   padding:16px 14px 18px;
   row-gap:12px;
 }
-.render-workspace .ros-filter-bar label{gap:7px;min-width:0}
-.render-workspace .ros-filter-bar label>span{
-  color:var(--render-muted);
-  font-size:var(--ros-type-badge);
-  font-weight:600;
-  letter-spacing:.065em;
-}
-.render-workspace .ros-filter-bar select{
-  background:var(--render-surface);
-  border-color:var(--render-line);
-  border-radius:8px;
-  min-height:40px;
-  padding:7px 34px 7px 12px;
-}
+.render-workspace .ros-filter-bar label{min-width:0}
+
+
 .render-workspace .ros-filter-bar button{
   align-self:end;
   background:var(--render-surface-muted);
@@ -1093,6 +1070,8 @@
   white-space:nowrap;
 }
 .render-workspace .ros-filter-bar button:hover{background:var(--render-surface-muted);color:var(--render-ink)}
+
+
 
 @media(max-width:1100px){
   .render-workspace .ros-filter-bar{grid-template-columns:repeat(3,minmax(150px,1fr))}
@@ -1300,9 +1279,7 @@
 .render-workspace .ros-controls-meta>span{font-size:11px;margin-right:2px;padding-right:10px}
 .render-workspace .ros-controls .ros-archive-link{min-height:34px;padding:6px 9px}
 .render-workspace .ros-filter-bar{column-gap:10px;margin:0 22px 12px;padding:10px 12px 12px;row-gap:8px}
-.render-workspace .ros-filter-bar label{gap:5px}
-.render-workspace .ros-filter-bar label>span{font-size:10px}
-.render-workspace .ros-filter-bar select,.render-workspace .ros-filter-bar button{min-height:36px}
+.render-workspace .ros-filter-bar button{min-height:36px}
 .render-workspace .ros-board{margin-top:6px}
 
 @media(max-width:1100px){
@@ -1718,7 +1695,7 @@
     padding:8px 10px 9px;
     row-gap:6px;
   }
-  .render-workspace .ros-filter-bar select,.render-workspace .ros-filter-bar button{min-height:34px}
+  .render-workspace .ros-filter-bar button{min-height:34px}
   .render-workspace .ros-board{gap:9px;margin-top:4px;padding-inline:18px}
   .render-workspace .ros-board-four{grid-template-columns:repeat(4,minmax(220px,1fr))}
   .render-workspace .ros-column>header{min-height:30px;padding:2px 4px 6px}

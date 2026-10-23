@@ -90,6 +90,11 @@ test('real apiTaskPage parses exact manual headers including empty0/large revisi
 
 // Actual page callbacks extracted with injected transport/effects, not mounted UI.
 const source=readFileSync(new URL('./WorkspaceReadOnly.jsx',import.meta.url),'utf8'),file=ts.createSourceFile('WorkspaceReadOnly.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
+const filterSource=readFileSync(new URL('../components/FilterSelect.jsx',import.meta.url),'utf8');
+const filterFile=ts.createSourceFile('FilterSelect.jsx',filterSource,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
+const filterDeclaration=filterFile.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='FilterSelect');
+const filterCompiled=ts.transpileModule(filterDeclaration.getText(filterFile).replace(/^export\s+/,''),{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;
+const FilterSelect=new Function('React',`${filterCompiled};return FilterSelect;`)(React);
 function initializer(owner,name){const component=file.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text===owner);let result;function visit(n){if(ts.isVariableDeclaration(n)&&n.name.getText(file)===name)result=n.initializer;ts.forEachChild(n,visit)}visit(component);return result}
 function callback(owner,name,deps){let init=initializer(owner,name);if(ts.isCallExpression(init)&&init.expression.getText(file)==='useCallback')init=init.arguments[0];const context={canonicalTaskState,effectiveTaskFilterState,...deps};return new Function(...Object.keys(context),`return (${init.getText(file)});`)(...Object.values(context))}
 test('actual card drop uses same-column before anchor only; cross-column bubbles to existing state flow',()=>{
@@ -156,7 +161,7 @@ test('actual toolbar JSX is a compact independent control with closed optional h
  assert.ok(toolbar);const jsx=toolbar.getText(file);assert.doesNotMatch(jsx,/ros-filter-bar/);
  const compiled=ts.transpileModule(`const Toolbar=()=>(${jsx});`,{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;
  for(const sort of ['date','manual']){
-  const Toolbar=new Function('React','sort','view','archiveMode','orderState','setSort','reviewScope',`${compiled};return Toolbar;`)(React,sort,'board','active',{busy:false},()=>{},'');
+  const Toolbar=new Function('React','FilterSelect','sort','view','archiveMode','orderState','setSort','reviewScope',`${compiled};return Toolbar;`)(React,FilterSelect,sort,'board','active',{busy:false},()=>{},'');
   const html=renderToStaticMarkup(React.createElement(Toolbar));assert.match(html,/aria-label="Orden de tareas"/);
   if(sort==='manual'){assert.match(html,/<summary>Orden compartido<\/summary>/);assert.match(html,/<details class="ros-order-help">/);assert.doesNotMatch(html,/<details[^>]* open/)}else assert.doesNotMatch(html,/<details/);
  }
@@ -164,7 +169,9 @@ test('actual toolbar JSX is a compact independent control with closed optional h
 test('existing final header layer scopes quiet order surfaces, wrapping and 44px targets without another stylesheet',()=>{
  const css=readFileSync(new URL('./TaskHeader.css',import.meta.url),'utf8');
  assert.match(css,/\.render-workspace \.ros-order-toolbar\s*\{[^}]*display: flex;[^}]*flex-wrap: wrap;/);
- assert.match(css,/\.ros-order-toolbar select\s*\{[^}]*width: 128px;[^}]*max-width: 180px;[^}]*min-height: 44px;/);
+ assert.match(css,/\.ros-order-toolbar select\s*\{[^}]*width: 128px;[^}]*max-width: 180px;[^}]*min-width: 0;/);
+ const sharedCss=readFileSync(new URL('../components/FilterSelect.css',import.meta.url),'utf8');
+ assert.match(sharedCss,/select\.render-filter-select\s*\{[^}]*min-height:\s*44px;/);
  assert.match(css,/\.ros-order-help p\s*\{[^}]*font-size: 13px;[^}]*overflow-wrap: anywhere;/);
  assert.match(css,/\.ros-order-actions button\s*\{[^}]*min-height: 44px;[^}]*max-width: 100%;[^}]*border: 1px solid var\(--render-line\);[^}]*background: var\(--render-surface-soft\);/);
  assert.match(css,/\.ros-order-actions button:focus-visible/);

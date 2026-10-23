@@ -19,7 +19,7 @@
   background: var(--ros-canvas);
 }
 
-.render-workspace :is(button, input, select, textarea, [role="button"]):focus-visible {
+.render-workspace :is(button, input, select:not(.render-filter-select), textarea, [role="button"]):focus-visible {
   outline: 2px solid var(--render-accent);
   outline-offset: 2px;
 }
@@ -148,13 +148,13 @@
   padding: 10px;
 }
 
-.render-workspace .ros-filter-bar label > span {
+.render-workspace .ros-filter-bar label:not(.render-filter-field) > span {
   color: var(--render-muted);
   font-size: 9px;
   font-weight: 600;
 }
 
-.render-workspace .ros-filter-bar :is(select, button) {
+.render-workspace .ros-filter-bar :is(select:not(.render-filter-select), button) {
   background-color: var(--render-surface);
   border-color: var(--render-line);
   border-radius: 9px;
