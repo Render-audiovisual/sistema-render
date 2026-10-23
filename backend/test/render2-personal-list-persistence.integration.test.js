@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import {access}from 'node:fs/promises';
 import {startLocalHarness,request,fixturePassword}from '../scripts/render2-local-test.js';
 
@@ -12,7 +13,7 @@ test('personal list HTTP persistence: private CAS, competing editors and reorder
   const ok=(result,status=200)=>{assert.equal(result.status,status,JSON.stringify(result.body));return result.body;};
   const login=async usuario=>ok(await api('/login',null,'POST',{usuario,password:fixturePassword})).token;
   const editor=await login('qa_luciano'),second=await login('qa_luciano'),foreign=await login('qa_designer');
-  const page=ok(await api('/listas-personales',editor,'POST',{titulo:'QA private page',emoji:'📝',bloques:[{tipo:'texto',contenido:{texto:'Original'}},{tipo:'checklist',contenido:{titulo:'QA checklist',items:[]}}]}),201);
+  const page=ok(await api('/listas-personales',editor,'POST',{request_id:randomUUID(),titulo:'QA private page',emoji:'📝',bloques:[{tipo:'texto',contenido:{texto:'Original'}},{tipo:'checklist',contenido:{titulo:'QA checklist',items:[]}}]}),201);
   const read=async token=>ok(await api('/listas-personales',token));
   const own=async()=> (await read(editor)).find(row=>row.id===page.id);
   const listPatch=(body,token=editor)=>api(`/listas-personales/${page.id}`,token,'PATCH',body);
@@ -50,7 +51,7 @@ test('personal list HTTP persistence: private CAS, competing editors and reorder
   await t.test('BIGSERIAL string identities remain exact through nesting, CAS and reorder',async()=>{
     await fixture.query("SELECT setval(pg_get_serial_sequence('listas_personales','id'),9007199254740991)");
     await fixture.query("SELECT setval(pg_get_serial_sequence('lista_bloques','id'),9007199254740991)");
-    const create=title=>api('/listas-personales',editor,'POST',{titulo:title,bloques:[{tipo:'texto',contenido:{texto:title}}]});
+    const create=title=>api('/listas-personales',editor,'POST',{request_id:randomUUID(),titulo:title,bloques:[{tipo:'texto',contenido:{texto:title}}]});
     const a=ok(await create('Big A'),201),b=ok(await create('Big B'),201);
     assert.equal(a.id,'9007199254740992');assert.equal(b.id,'9007199254740993');
     const rows=await read(editor);

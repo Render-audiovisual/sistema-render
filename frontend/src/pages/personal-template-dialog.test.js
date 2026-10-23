@@ -52,6 +52,17 @@ test('creating disables every system/custom choice, delete and native close with
   assert.ok(html.includes('Mi plantilla QA'));
 });
 
+test('uncertain creation blocks all new choices but leaves explicit verification and closing the picker available',()=>{
+  let verifies=0;
+  const recovery=React.createElement('button',{type:'button',onClick:()=>verifies++},'Verificar creación');
+  const element=TemplateDialog({templates:[custom],creating:false,creationBlocked:true,recovery,onChoose:()=>assert.fail('No new intent'),onDelete:()=>{},onClose:()=>{}});
+  assert.equal(element.props.closeDisabled,false);
+  const buttons=childrenOfType(element,'button');
+  const verify=buttons.find(button=>button===recovery);assert.ok(verify);assert.equal(verify.props.disabled,undefined);
+  assert.ok(buttons.filter(button=>button!==verify).every(button=>button.props.disabled===true));
+  verify.props.onClick();assert.equal(verifies,1);
+});
+
 test('name dialog uses native Modal, shared focus ref and disabled input/cancel/submit while saving',()=>{
   const node=fn('NameTemplateDialog');
   const modal=find(node,n=>ts.isJsxOpeningElement(n)&&n.tagName.getText()==='Modal');assert.equal(modal.length,1);
@@ -91,7 +102,7 @@ test('parent chooser props combine structural/create busy and consult the latest
   const expression=declarations[0].initializer.getText();
   for(const creating of [false,true])for(const structuralBusy of [false,true]){
     const pendingSaves={current:0},closed=[],templates=[custom],createList=()=>{},deleteTemplate=()=>{};
-    const props=Function('templates','creating','structuralBusy','createList','deleteTemplate','pendingSaves','setTemplateOpen',`return (${expression});`)(templates,creating,structuralBusy,createList,deleteTemplate,pendingSaves,value=>closed.push(value));
+    const props=Function('templates','creating','structuralBusy','createList','deleteTemplate','pendingSaves','setTemplateOpen','creationBlocked','creationRecovery',`return (${expression});`)(templates,creating,structuralBusy,createList,deleteTemplate,pendingSaves,value=>closed.push(value),false,null);
     assert.equal(props.creating,creating||structuralBusy);assert.equal(props.templates,templates);assert.equal(props.onChoose,createList);assert.equal(props.onDelete,deleteTemplate);
     pendingSaves.current=1;props.onClose();assert.deepEqual(closed,[],'Counter changes after callback creation still block close');
     pendingSaves.current=0;props.onClose();assert.deepEqual(closed,[false]);

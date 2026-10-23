@@ -26,6 +26,7 @@ export const CORE_SCHEMA_COLUMNS = Object.freeze({
   feedback_operation_receipts: { actor_user_id: 'integer', operation: 'text', payload_hash: 'text', note_id: 'bigint' },
   feedback_browser_operations: { actor_user_id: 'integer', request_id: 'uuid', action: 'text', payload_hash: 'text', note_id: 'bigint', note_updated_at: 'timestamp with time zone', recorded_at: 'timestamp with time zone' },
   task_operation_receipts: { actor_user_id: 'integer', operation: 'text', payload_hash: 'text', task_id: 'bigint', task_revision: 'integer' },
+  personal_list_create_receipts: { actor_user_id: 'integer', request_id: 'uuid', payload_hash: 'text', list_id: 'bigint', committed_at: 'timestamp with time zone' },
   task_editing_deliveries: { id: 'uuid', task_id: 'integer', actor_id: 'integer', request_id: 'uuid', payload_hash: 'text', task_revision: 'integer', url: 'text', notes: 'text', recorded_at: 'timestamp with time zone' },
   task_editing_reviews: { id: 'uuid', task_id: 'integer', delivery_id: 'uuid', actor_id: 'integer', action: 'text', task_revision: 'integer', notes: 'text', recorded_at: 'timestamp with time zone', request_id: 'uuid', payload_hash: 'text' },
   proyectos: { id: 'uuid', cliente_id: 'integer', responsable_id: 'integer', revision: 'integer', request_hash: 'text' },
@@ -58,7 +59,7 @@ export async function assertCoreSchemaReady(db) {
   }
   // Browser and signed note writers share migration061's monotonic clock.
   // Inspect its enabled binding only; startup never installs or repairs it.
-  let clock, referenceClock;
+  let clock, referenceClock, personalListReceipt;
   try {
     const result = await db.query(`SELECT EXISTS (
       SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
@@ -72,10 +73,20 @@ export async function assertCoreSchemaReady(db) {
       WHERE t.tgrelid='public.moodboard_references'::regclass AND t.tgname=$2
         AND p.proname=$2 AND n.nspname='public' AND NOT t.tgisinternal
         AND t.tgenabled IN ('O','A') AND t.tgtype=19 AND t.tgnargs=0
-    ) AS reference_ready`, ['feedback_notes_monotonic_version','moodboard_reference_advance_revision']);
+    ) AS reference_ready, EXISTS (
+      SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
+      JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE t.tgrelid='public.personal_list_create_receipts'::regclass AND t.tgname=$3
+        AND p.proname=$3 AND n.nspname='public' AND NOT t.tgisinternal
+        AND t.tgenabled IN ('O','A') AND t.tgtype=27 AND t.tgnargs=0
+    ) AS personal_list_receipt_ready`, ['feedback_notes_monotonic_version','moodboard_reference_advance_revision','personal_list_create_receipt_immutable']);
     clock = result.rows?.[0]?.ready;
     referenceClock = result.rows?.[0]?.reference_ready;
+    personalListReceipt = result.rows?.[0]?.personal_list_receipt_ready;
   } catch { throw new Error('Cannot inspect principal note clock.'); }
   if (clock !== true) throw new Error('Principal note clock is not compatible. No repair was attempted.');
   if (referenceClock !== true) throw new Error('Principal moodboard clock is not compatible. No repair was attempted.');
+  // Verify only the enabled row/before binding from087. This does not certify
+  // the function body, keys, constraints, indexes or migration preservation.
+  if (personalListReceipt !== true) throw new Error('Principal personal-list receipt guard is not compatible. No repair was attempted.');
 }

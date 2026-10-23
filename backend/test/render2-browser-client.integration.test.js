@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { access } from 'node:fs/promises';
 import { startLocalHarness, fixturePassword, assertFixtureIdentity } from '../scripts/render2-local-test.js';
@@ -140,7 +140,7 @@ test('browser client against principal HTTP: memory observations, exact mutation
 
   await t.test('explicit A intent creates/edits real private list rows; current response consumers and clone read actual persisted data', async () => {
     const response = await apiFetch('/api/listas-personales', { method: 'POST', sessionIntent: firstIntent,
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titulo: 'QA client intent private list', bloques: [] }) });
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: randomUUID(), titulo: 'QA client intent private list', bloques: [] }) });
     checked(response, 201);
     const cloned = response.clone(), created = await response.json(), repeated = await cloned.json();
     assert.equal(created.id, repeated.id); assert.equal(typeof created.id, 'string'); listId = created.id; listVersion = created.version;
@@ -224,7 +224,7 @@ test('browser client against principal HTTP: memory observations, exact mutation
     assert.ok(store.getSession() === localA, 'Cookie rotation must not silently change in-memory identity');
     const before = await snapshot(), count = requests.length;
     await rejectsCode(() => apiFetch('/api/listas-personales', { method: 'POST', sessionIntent: staleIntent,
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titulo: 'Must not create under B', bloques: [] }) }), 'browser_response_unverified');
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: randomUUID(), titulo: 'Must not create under B', bloques: [] }) }), 'browser_response_unverified');
     assert.equal(requests.length, count + 1); assert.equal(requests.at(-1).status, 409);
     assert.equal(store.getSession(), null); assert.equal(store.getSnapshot().status, 'anonymous');
     assert.deepEqual(await snapshot(), before);

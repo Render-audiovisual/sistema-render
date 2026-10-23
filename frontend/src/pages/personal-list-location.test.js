@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { personalListId, readPersonalListId, personalListUrl, keepsPersonalListDrafts } from './personalListLocation.js';
+import { createPersonalListCreation, reconcilePersonalListCreation } from './personalListCreation.js';
 
 // Pure helpers and actual extracted callbacks; no browser/HTTP persistence claim.
 const source = readFileSync(new URL('./PersonalLists.jsx', import.meta.url), 'utf8');
@@ -59,7 +60,7 @@ test('actual guard exempts internal queue state but never structural busy, exter
   const hook = nodes(page, n => ts.isCallExpression(n) && text(n.expression) === 'useNavigationGuard')[0];
   for (const current of [true, false]) for (const pending of [0, 1]) {
     const deps = { ...helpers, currentSession: () => current, window: { location: { href: 'https://render.test/lista?lista=1' } },
-      pendingSaves: { current: pending }, queue: { current: { snapshot: () => ({ dirty: true, busy: true }) } }, statusRef: { current: 'error' } };
+      creation:{current:null},pendingSaves: { current: pending }, queue: { current: { snapshot: () => ({ dirty: true, busy: true }) } }, statusRef: { current: 'error' } };
     const guard = evaluate(hook.arguments[0], deps);
     assert.deepEqual(guard({ type: 'link', to: '/lista?lista=2' }), { dirty: !current, busy: Boolean(pending || !current) });
     for (const context of [null, { type: 'refresh', to: '/lista?lista=2' }, { type: 'unload', to: null }, { type: 'link', to: '/inicio' }]) assert.deepEqual(guard(context), { dirty: true, busy: true });
@@ -100,15 +101,22 @@ test('actual create ACK selects only original selection observation; late/ABA/se
   for (const mode of ['same', 'changed', 'aba', 'stale']) {
     const f = locationFixture(), selection = { current: { id: '2' } }, calls = []; let release, current = true;
     const deps = { ...helpers, window: f.window, creating: false, listSelection: selection, currentSession: () => current,
-      setCreating: () => {}, runSaving: fn => fn(), scopedRequest: () => new Promise(resolve => { release = resolve; }), jsonOptions: (method, body) => ({ method, body }), cloneTemplateBlocks: value => value,
+      creation:{current:null},creationOrigin:{current:null},mounted:{current:true},pendingSaves:{current:0},
+      setCreating: () => {},setCreationState:()=>{},setTemplates:()=>{},setSaveTemplateOpen:()=>{},
+      runSaving: fn => fn(), scopedRequest: () => new Promise(resolve => { release = resolve; }), cloneTemplateBlocks: value => value,
+      createPersonalListCreation:options=>createPersonalListCreation({...options,createRequestId:()=> '10000000-0000-4000-8000-000000000164'}),reconcilePersonalListCreation,
       updateLists: fn => calls.push(['rows', fn([])]), setActiveId: id => calls.push(['id', id]), setTemplateOpen: () => {} };
+    const effect=effects().find(n=>text(n.arguments[0]).includes('const model=createPersonalListCreation'));
+    const cleanup=evaluate(effect.arguments[0],deps)();
     const pending = callback('createList', deps)({ titulo: 'New', emoji: 'x', bloques: [] });
     if (mode === 'changed' || mode === 'aba') selection.current = { id: mode === 'aba' ? '2' : '3' };
     if (mode === 'stale') current = false;
-    release({ id: '4' }); await pending;
-    assert.equal(f.writes.length, mode === 'same' ? 1 : 0); assert.deepEqual(calls.filter(([key]) => key === 'id'), mode === 'same' ? [['id', '4']] : []);
+    release({id:'4',titulo:'New',emoji:'x',posicion:0,version:1,created_at:'2026-10-23T12:00:00Z',updated_at:'2026-10-23T12:00:00Z',
+      creation_request_id:'10000000-0000-4000-8000-000000000164',bloques:[],secciones:[]}); await pending;
+    assert.equal(f.writes.length, mode === 'same' ? 1 : 0); assert.deepEqual(calls.filter(([key]) => key === 'id'), mode === 'same' ? [['id', '4']] : mode==='stale' ? [['id',null]] : []);
     if (mode === 'same') assert.equal(f.writes[0].url, '/lista?lista=4&other=keep#section');
-    if (mode === 'stale') assert.deepEqual(calls, []);
+    if (mode === 'stale') assert.deepEqual(calls, [['rows',[]],['id',null]],'Retired session purges private view without selecting created page or changing URL');
+    cleanup();
   }
 });
 test('actual delete ACK clears only deleted URL selection; other selection/query/hash survive', async () => {

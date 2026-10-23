@@ -267,7 +267,7 @@ test('QA124 cookie runtime composes canonical operational writes and exact actor
   });
 
   await t.test('personal-list BIGSERIAL IDs and the real save queue persist under cookie binding; other users never inherit private lists', async () => {
-    const created = await call('/listas-personales', { method: 'POST', body: { titulo: 'QA124 private administrator list', bloques: [] }, status: 201 });
+    const created = await call('/listas-personales', { method: 'POST', body: { request_id: randomUUID(), titulo: 'QA124 private administrator list', bloques: [] }, status: 201 });
     assert.equal(typeof created.id, 'string'); listId = created.id; listVersion = created.version;
     const saved = [], session = runtime.getSession();
     const queue = createPersonalListSaveQueue({ session, readSession: runtime.getSession, delayMs: 60000,
@@ -293,7 +293,7 @@ test('QA124 cookie runtime composes canonical operational writes and exact actor
       body: { titulo: 'QA124 B cannot edit A private list', expected_version: listVersion } });
     assert.deepEqual(await snapshot(), deniedBefore);
     const catalog = await call('/listas-personales'); assert.equal(catalog.some(row => row.id === listId), false);
-    const own = await call('/listas-personales', { method: 'POST', body: { titulo: 'QA124 employee own list', bloques: [] }, status: 201 });
+    const own = await call('/listas-personales', { method: 'POST', body: { request_id: randomUUID(), titulo: 'QA124 employee own list', bloques: [] }, status: 201 });
     assert.notEqual(own.id, listId); assert.equal((await f.query('SELECT usuario_id FROM listas_personales WHERE id=$1', [own.id]))[0].usuario_id, 91003);
   });
 
@@ -355,7 +355,7 @@ test('QA124 cookie runtime composes canonical operational writes and exact actor
     assert.deepEqual(after.usuarios.filter(row => row.id !== 91003), before.usuarios.filter(row => row.id !== 91003));
     for (const table of tables.filter(name => name !== 'usuarios')) assert.deepEqual(after[table], before[table], table);
     const count = network.length;
-    await assert.rejects(call('/listas-personales', { captured, method: 'POST', body: { titulo: 'Old logout scope' }, status: 201 }),
+    await assert.rejects(call('/listas-personales', { captured, method: 'POST', body: { request_id: randomUUID(), titulo: 'Old logout scope' }, status: 201 }),
       error => error.code === 'session_binding_obsolete');
     assert.equal(network.length, count);
     const unauthorized = await rawFetch('/api/sesion', { credentials: 'same-origin' });

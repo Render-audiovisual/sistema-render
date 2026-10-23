@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { CORE_SCHEMA_COLUMNS, assertCoreSchemaReady } from '../src/startup-schema.js';
 const complete = () => Object.entries(CORE_SCHEMA_COLUMNS).flatMap(([table_name, columns]) =>
   Object.entries(columns).map(([column_name, data_type]) => ({ table_name, column_name, data_type })));
-const response = (sql, rows) => ({ rows: sql.includes('current_schemas') ? [{ schemas: ['public'] }] : sql.includes('pg_trigger') ? [{ready:true,reference_ready:true}] : rows });
+const response = (sql, rows) => ({ rows: sql.includes('current_schemas') ? [{ schemas: ['public'] }] : sql.includes('pg_trigger') ? [{ready:true,reference_ready:true,personal_list_receipt_ready:true}] : rows });
 
 test('principal compatibility inspection uses a parameterized SELECT only', async () => {
   const calls = [];
@@ -15,7 +15,7 @@ test('principal compatibility inspection uses a parameterized SELECT only', asyn
     assert.doesNotMatch(call.sql, /CREATE|ALTER|INSERT|UPDATE|DELETE|TRUNCATE/);
   }
   assert.deepEqual(calls[1].values, [Object.keys(CORE_SCHEMA_COLUMNS)]);
-  assert.deepEqual(calls[2].values, ['feedback_notes_monotonic_version','moodboard_reference_advance_revision']);
+  assert.deepEqual(calls[2].values, ['feedback_notes_monotonic_version','moodboard_reference_advance_revision','personal_list_create_receipt_immutable']);
 });
 
 test('missing or disabled monotonic note trigger rejects startup without installing or repairing it', async () => {
@@ -68,5 +68,40 @@ test('account observation column must exist before startup without implicit migr
   for (const rows of [complete().filter(row=>!(row.table_name==='usuarios'&&row.column_name==='user_admin_version')),
     complete().map(row=>row.table_name==='usuarios'&&row.column_name==='user_admin_version'?{...row,data_type:'text'}:row)]) {
     await assert.rejects(assertCoreSchemaReady({query:async sql=>response(sql,rows)}),/not compatible/);
+  }
+});
+
+test('personal creation receipt table and each confirmed087 column/type are required without repair', async () => {
+  const expected = { actor_user_id: 'integer', request_id: 'uuid', payload_hash: 'text', list_id: 'bigint', committed_at: 'timestamp with time zone' };
+  assert.deepEqual(CORE_SCHEMA_COLUMNS.personal_list_create_receipts, expected);
+  const variants = [complete().filter(row => row.table_name !== 'personal_list_create_receipts')];
+  for (const column of Object.keys(expected)) {
+    variants.push(complete().filter(row => !(row.table_name === 'personal_list_create_receipts' && row.column_name === column)));
+    variants.push(complete().map(row => row.table_name === 'personal_list_create_receipts' && row.column_name === column
+      ? { ...row, data_type: row.data_type === 'text' ? 'jsonb' : 'text' } : row));
+  }
+  for (const rows of variants) {
+    const calls = [];
+    await assert.rejects(assertCoreSchemaReady({ query: async (sql, values) => {
+      calls.push({ sql, values }); return response(sql, rows);
+    } }), /Principal schema is not compatible/);
+    assert.equal(calls.length, 2, 'Reject incompatible columns before inspecting bindings');
+    assert.ok(calls.every(call => call.sql.trim().startsWith('SELECT ')));
+  }
+});
+
+test('missing/disabled personal receipt guard fails closed; inspection checks only exact enabled before-row binding', async () => {
+  for (const ready of [false, null, undefined, 'true', 1]) {
+    const calls = [];
+    await assert.rejects(assertCoreSchemaReady({ query: async (sql, values) => {
+      calls.push({ sql, values });
+      return sql.includes('pg_trigger') ? { rows: [{ ready: true, reference_ready: true, personal_list_receipt_ready: ready }] } : response(sql, complete());
+    } }), /personal-list receipt guard is not compatible.*No repair/);
+    const query = calls.at(-1);
+    assert.match(query.sql, /t\.tgrelid='public\.personal_list_create_receipts'::regclass AND t\.tgname=\$3/);
+    assert.match(query.sql, /p\.proname=\$3 AND n\.nspname='public' AND NOT t\.tgisinternal/);
+    assert.match(query.sql, /t\.tgenabled IN \('O','A'\) AND t\.tgtype=27 AND t\.tgnargs=0/);
+    assert.ok(calls.every(call => call.sql.trim().startsWith('SELECT ')));
+    assert.doesNotMatch(calls.map(call => call.sql).join('\n'), /CREATE|ALTER|INSERT|UPDATE|DELETE|TRUNCATE/);
   }
 });

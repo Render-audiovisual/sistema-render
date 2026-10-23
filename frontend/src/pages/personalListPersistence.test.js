@@ -12,7 +12,7 @@ test('actual page parses and navigation guard reads synchronous queue state befo
   const visit=node=>{if(ts.isCallExpression(node)&&node.expression.getText(file)==='useNavigationGuard')guard=node.arguments[0];ts.forEachChild(node,visit);};visit(file);
   assert.ok(guard);
   const state={dirty:false,busy:false},pendingSaves={current:0},statusRef={current:'saved'};
-  const read=new Function('currentSession','keepsPersonalListDrafts','window','queue','pendingSaves','statusRef',`return (${guard.getText(file)});`)(()=>true,keepsPersonalListDrafts,{location:{href:'https://render.test/lista?lista=1'}},{current:{snapshot:()=>state}},pendingSaves,statusRef);
+  const read=new Function('currentSession','keepsPersonalListDrafts','window','queue','pendingSaves','statusRef','creation',`return (${guard.getText(file)});`)(()=>true,keepsPersonalListDrafts,{location:{href:'https://render.test/lista?lista=1'}},{current:{snapshot:()=>state}},pendingSaves,statusRef,{current:null});
   for(const context of [undefined,{type:'unload',to:null},{type:'refresh',to:'/lista?lista=2'},{type:'link',to:'/inicio'}]){
     state.dirty=true;state.busy=false;assert.deepEqual(read(context),{dirty:true,busy:false});
     state.dirty=false;state.busy=true;assert.deepEqual(read(context),{dirty:false,busy:true});

@@ -72,7 +72,7 @@ test('UI/MIA private checklist interoperability: CAS, exact BIGSERIAL destinatio
   const create = async (token = owner) => {
     const itemId = crypto.randomUUID();
     const list = checked(await api('/listas-personales', token, 'POST', {
-      titulo: `QA MIA private page ${++serial}`, bloques: [{ tipo: 'checklist', contenido: {
+      request_id: crypto.randomUUID(), titulo: `QA MIA private page ${++serial}`, bloques: [{ tipo: 'checklist', contenido: {
         titulo: 'QA checklist', items: [{ id: itemId, texto: `Original QA item ${serial}`, completado: false }],
       } }],
     }), 201);

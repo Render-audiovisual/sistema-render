@@ -8,6 +8,7 @@ import { navigateWithinApp } from '../shared/navigation/location.js';
 import { personalListId, readPersonalListId, personalListUrl, keepsPersonalListDrafts } from './personalListLocation.js';
 import { PageState } from '../components/PageState.jsx';
 import { Modal } from '../components/Modal.jsx';
+import { createPersonalListCreation, reconcilePersonalListCreation } from './personalListCreation.js';
 import "./PersonalLists.css";
 
 const EMOJI_OPTIONS = [
@@ -69,11 +70,12 @@ function EmojiPicker({ value, onSelect, onClose }) {
   </div>;
 }
 
-function TemplateDialog({ templates, creating, onChoose, onClose, onDelete }) {
+function TemplateDialog({ templates, creating, creationBlocked = false, recovery, onChoose, onClose, onDelete }) {
   return <Modal native className="personal-template-modal" overlayAriaLabel="Nueva página" closeOnBackdropClick closeDisabled={creating} onClose={onClose}
     title={<div><span>Nueva página</span><h2>¿Cómo querés empezar?</h2></div>}>
-      <div className="personal-template-grid">{SYSTEM_TEMPLATES.map((template) => <button key={template.key} type="button" onClick={() => onChoose(template)} disabled={creating}><span>{template.emoji}</span><strong>{template.titulo}</strong><small>{template.descripcion}</small></button>)}</div>
-      {!!templates.length && <div className="personal-custom-templates"><h3>Mis plantillas</h3>{templates.map((template) => <div key={template.id}><button type="button" onClick={() => onChoose(template)} disabled={creating}><span>{template.emoji}</span><strong>{template.titulo}</strong></button><button className="danger" type="button" disabled={creating} onClick={() => onDelete(template)} aria-label={`Eliminar plantilla ${template.titulo}`}>×</button></div>)}</div>}
+      {recovery}
+      <div className="personal-template-grid">{SYSTEM_TEMPLATES.map((template) => <button key={template.key} type="button" onClick={() => onChoose(template)} disabled={creating || creationBlocked}><span>{template.emoji}</span><strong>{template.titulo}</strong><small>{template.descripcion}</small></button>)}</div>
+      {!!templates.length && <div className="personal-custom-templates"><h3>Mis plantillas</h3>{templates.map((template) => <div key={template.id}><button type="button" onClick={() => onChoose(template)} disabled={creating || creationBlocked}><span>{template.emoji}</span><strong>{template.titulo}</strong></button><button className="danger" type="button" disabled={creating || creationBlocked} onClick={() => onDelete(template)} aria-label={`Eliminar plantilla ${template.titulo}`}>×</button></div>)}</div>}
   </Modal>;
 }
 
@@ -196,6 +198,9 @@ export function PersonalListsPage() {
     bindingInitialized.current = true;
   }
   const pendingSaves = useRef(0);
+  const creation = useRef(null);
+  const creationOrigin = useRef(null);
+  const [creationState, setCreationState] = useState({phase:'idle',busy:false,unresolved:false,error:''});
   const statusRef = useRef(status);statusRef.current=status;
   const activeList = useMemo(() => activeId === null ? lists[0] || null : lists.find((list) => personalListId(list.id) === activeId) || null, [lists, activeId]);
   const listSelection = useRef({ id: activeId });
@@ -228,10 +233,34 @@ export function PersonalListsPage() {
       }});
     return()=>{mounted.current=false;queue.current?.dispose();for(const controller of controllers.current)controller.abort();controllers.current.clear();};
   },[currentSession,replaceBlock,replaceList,scopedRequest,updateLists]);
+  useEffect(()=>{
+    const model=createPersonalListCreation({request:scopedRequest,
+      isCurrent:()=>creation.current===model && currentSession(),
+      onState:value=>{
+        if(!mounted.current || creation.current!==model)return;
+        setCreationState(value);
+        if(value.phase==='denied'){
+          creationOrigin.current=null;updateLists(()=>[]);setTemplates([]);setActiveId(null);
+          setTemplateOpen(false);setSaveTemplateOpen(false);
+        }
+      },
+      onCreated:created=>{
+        if(creation.current!==model || !currentSession())return;
+        updateLists(current=>reconcilePersonalListCreation(current,created));
+        if(listSelection.current===creationOrigin.current){
+          const id=personalListId(created.id);
+          window.history.replaceState(window.history.state,'',personalListUrl(window.location.href,id));setActiveId(id);
+        }
+        creationOrigin.current=null;setTemplateOpen(false);
+      }});
+    creation.current=model;setCreationState(model.snapshot());
+    return()=>{model.dispose();if(creation.current===model){creation.current=null;creationOrigin.current=null;}};
+  },[currentSession,scopedRequest,updateLists]);
   useNavigationGuard(context=>{
     const internal = currentSession() && keepsPersonalListDrafts(window.location.href, context);
-    return {dirty:!internal && Boolean(queue.current?.snapshot().dirty||statusRef.current==='error'),
-      busy:Boolean(pendingSaves.current||(!internal && queue.current?.snapshot().busy))};
+    const creatingNow=currentSession()?creation.current?.snapshot():null;
+    return {dirty:Boolean(creatingNow?.unresolved)||(!internal && Boolean(queue.current?.snapshot().dirty||statusRef.current==='error')),
+      busy:Boolean(pendingSaves.current||creatingNow?.busy||(!internal && queue.current?.snapshot().busy))};
   });
 
   useEffect(() => {
@@ -288,13 +317,28 @@ export function PersonalListsPage() {
   };
 
   const createList = async (template) => {
-    if (creating) return; setCreating(true);
+    const model=creation.current;
+    if (creating || pendingSaves.current || !currentSession() || !model || !['idle','confirmed'].includes(model.snapshot().phase)) return;
+    setCreating(true);
     const observation = listSelection.current;
-    try { const created = await runSaving(() => scopedRequest("/api/listas-personales", jsonOptions("POST", { titulo: template.titulo === "Página vacía" ? "Sin título" : template.titulo, emoji: template.emoji, bloques: cloneTemplateBlocks(template.bloques || []) }))); if (!currentSession()) return;
-      updateLists(current=>[...current,created]);
-      if (listSelection.current === observation) { const id = personalListId(created.id); if (!id) throw new Error('No se pudo verificar la página creada.'); window.history.replaceState(window.history.state, '', personalListUrl(window.location.href, id)); setActiveId(id); }
-      setTemplateOpen(false); }
-    catch { /* El error queda visible. */ } finally { setCreating(false); }
+    try {
+      const payload={titulo:template.titulo==='Página vacía'?'Sin título':template.titulo,emoji:template.emoji,bloques:cloneTemplateBlocks(template.bloques||[])};
+      await runSaving(()=>{
+        if(creation.current!==model || !currentSession())return false;
+        creationOrigin.current=observation;return model.start(payload);
+      });
+    }catch { /* Queue errors remain visible; an uncertain intent stays in its model. */ }
+    finally { if(currentSession() && creation.current===model)setCreating(false); }
+  };
+  const recoverCreation = async action => {
+    const model=creation.current;
+    if(!model || pendingSaves.current || !currentSession() || model.snapshot().busy)return;
+    try {await runSaving(()=>creation.current===model && currentSession()?model[action]():false);}
+    catch { /* Never replace an unresolved attempt after a flush/transport error. */ }
+  };
+  const closeRejectedCreation = () => {
+    if(pendingSaves.current || !currentSession())return;
+    if(creation.current?.resetRejected()){creationOrigin.current=null;setError('');setStatus('saved');}
   };
   const saveListMeta = (changes) => {
     if (!activeList||pendingSaves.current||!currentSession()) return;
@@ -341,25 +385,34 @@ export function PersonalListsPage() {
     if (!window.confirm(`¿Eliminar la plantilla “${template.titulo}”?`)) return;
     try { await runSaving(() => scopedRequest(`/api/listas-personales/plantillas/${template.id}`, { method: "DELETE" })); setTemplates((current) => current.filter((item) => item.id !== template.id)); } catch { /* El error queda visible. */ }
   };
-  const effectiveStatus=saveState.status==='error'||status==='error'?'error':structuralBusy||saveState.busy?'saving':saveState.dirty?'pending':'saved';
+  const effectiveStatus=saveState.status==='error'||status==='error'?'error':structuralBusy||saveState.busy||creationState.busy?'saving':saveState.dirty||creationState.unresolved?'pending':'saved';
   const visibleError=saveState.error||error;
+  const creationBlocked=creationState.unresolved||creationState.phase==='rejected'||creationState.phase==='denied';
+  const creationRecovery=creationState.phase!=='idle'&&creationState.phase!=='confirmed'&&<section className="personal-list-error" aria-label="Recuperar creación de página" role="status">
+    <span>{creationState.error || 'Verificando la creación de tu página…'}</span>
+    {creationState.canVerify&&<button type="button" disabled={structuralBusy||creationState.busy} onClick={()=>void recoverCreation('verify')}>Verificar creación</button>}
+    {creationState.canRetry&&<button type="button" disabled={structuralBusy||creationState.busy} onClick={()=>void recoverCreation('retry')}>Reintentar la misma creación</button>}
+    {creationState.canReset&&<button type="button" disabled={structuralBusy} onClick={closeRejectedCreation}>Cerrar intento rechazado</button>}
+  </section>;
   const templateDialogProps = { templates, creating: creating || structuralBusy, onChoose: createList, onDelete: deleteTemplate,
+    creationBlocked,recovery:creationRecovery,
     onClose: () => { if (!pendingSaves.current) setTemplateOpen(false); } };
 
   if (loading) return <main className="personal-lists-page is-empty"><div className="personal-list-loading"><i/><span>Cargando tu espacio…</span></div></main>;
-  if (!lists.length) return <main className="personal-lists-page is-empty">{activeId !== null && <PageState type="error" title="Esta página no está disponible." description="El enlace no es válido o la página no pertenece a tu espacio." />}<section className="personal-list-empty"><span>📝</span><h1>Tu espacio, a tu manera</h1><p>Creá páginas privadas con tablas, listas y checklists.</p><button type="button" disabled={structuralBusy} onClick={() => setTemplateOpen(true)}>+ Crear mi primera página</button></section>{templateOpen && <TemplateDialog {...templateDialogProps}/>} {visibleError && <div className="personal-list-toast error" role="alert">{visibleError}<button type="button" onClick={reload}>Actualizar desde servidor</button></div>}</main>;
+  if (!lists.length) return <main className="personal-lists-page is-empty">{activeId !== null && <PageState type="error" title="Esta página no está disponible." description="El enlace no es válido o la página no pertenece a tu espacio." />}<section className="personal-list-empty"><span>📝</span><h1>Tu espacio, a tu manera</h1><p>Creá páginas privadas con tablas, listas y checklists.</p><button type="button" disabled={structuralBusy||creationState.phase==='denied'} onClick={() => setTemplateOpen(true)}>+ Crear mi primera página</button></section>{!templateOpen&&creationRecovery}{templateOpen && <TemplateDialog {...templateDialogProps}/>} {visibleError && <div className="personal-list-toast error" role="alert">{visibleError}<button type="button" onClick={reload}>Actualizar desde servidor</button></div>}</main>;
 
   return <main className={`personal-lists-page ${railOpen ? "rail-open" : "rail-closed"}`}>
     <button className="personal-list-rail-scrim" type="button" onClick={() => setRailOpen(false)} aria-label="Cerrar páginas" tabIndex={railOpen ? 0 : -1}/>
     <aside id="personal-list-pages" className="personal-list-rail" aria-label="Mis páginas" aria-hidden={!railOpen} inert={!railOpen ? true : undefined}><div className="personal-list-rail-heading"><span>Mis páginas</span><div><button type="button" disabled={structuralBusy} onClick={() => setTemplateOpen(true)} aria-label="Crear página">+</button><button className="personal-list-rail-close" type="button" onClick={() => setRailOpen(false)} aria-label="Cerrar panel de páginas">‹</button></div></div><div className="personal-list-tabs">{lists.map((list) => <button key={list.id} disabled={structuralBusy} className={String(list.id) === String(activeList?.id) ? "active" : ""} type="button" onClick={() => selectList(list.id)}><span>{list.emoji}</span><strong>{list.titulo}</strong></button>)}</div><p>Privado · solo vos podés verlo</p></aside>
     {activeList ? <article className="personal-list-document">
+      {!templateOpen&&creationRecovery}
       <div className="personal-list-toolbar"><div className="personal-list-toolbar-start"><button className="personal-list-rail-toggle" type="button" onClick={() => setRailOpen((current) => !current)} aria-expanded={railOpen} aria-controls="personal-list-pages"><span aria-hidden="true">{railOpen ? "‹" : "☰"}</span><strong>{railOpen ? "Ocultar" : "Páginas"}</strong></button><span>Página personal</span></div><div><SavingStatus status={effectiveStatus}/><button type="button" disabled={structuralBusy||saveState.busy||!saveState.dirty||Boolean(saveState.error)} onClick={()=>{void queue.current?.flush();}}>Guardar ahora</button><button type="button" disabled={structuralBusy} onClick={() => setSaveTemplateOpen(true)}>Guardar plantilla</button><button className="danger personal-list-delete" type="button" disabled={structuralBusy} onClick={deleteList} aria-label="Eliminar página"><span aria-hidden="true">×</span><strong>Eliminar página</strong></button></div></div>
       {visibleError && <div className="personal-list-error" role="alert"><span>{visibleError} Tus cambios locales se conservan hasta que elijas descartarlos.</span>{saveState.error&&!saveState.conflict&&<button type="button" disabled={saveState.busy||structuralBusy} onClick={()=>{void queue.current?.retry();}}>Reintentar guardado</button>}<button type="button" disabled={saveState.busy||structuralBusy} onClick={reload}>Actualizar desde servidor</button></div>}
       <div className="personal-list-cover"/><fieldset className="personal-editor-lock" disabled={structuralBusy}><div className="personal-list-content"><div className="personal-emoji-wrap"><button className="personal-list-emoji" type="button" onClick={() => setEmojiOpen((current) => !current)} aria-label="Cambiar emoji">{activeList.emoji}</button>{emojiOpen && <EmojiPicker value={activeList.emoji} onClose={() => setEmojiOpen(false)} onSelect={(emoji) => { setEmojiOpen(false); saveListMeta({ emoji }); }}/>}</div>
         <input className="personal-list-title" maxLength={120} value={activeList.titulo} aria-label="Título de la página" onChange={(event) => saveListMeta({ titulo: event.target.value })}/><p className="personal-list-hint">Combiná bloques y ordenalos como te resulte más cómodo. Los cambios se guardan automáticamente; revisá el estado antes de salir.</p>
         <div className="personal-editor-blocks">{(activeList.bloques || []).map((block, index) => <BlockEditor key={block.id} block={block} index={index} count={activeList.bloques.length} onChange={(content) => changeBlock(block, content)} onMove={moveBlock} onDelete={deleteBlock}/>)}{!activeList.bloques?.length && <div className="personal-page-empty"><span>Una página en blanco.</span><small>Agregá el primer bloque para empezar.</small></div>}</div><AddBlockMenu onAdd={addBlock}/>
       </div></fieldset>
-    </article> : <section className="personal-list-document"><div className="personal-list-content"><button className="btn" type="button" onClick={() => setRailOpen(true)}>Elegir una página</button><PageState type="error" title="Esta página no está disponible." description="El enlace no es válido, la página fue eliminada o no pertenece a tu espacio. Elegí otra página para continuar." onRetry={reload} /></div></section>}
+    </article> : <section className="personal-list-document"><div className="personal-list-content">{!templateOpen&&creationRecovery}<button className="btn" type="button" onClick={() => setRailOpen(true)}>Elegir una página</button><PageState type="error" title="Esta página no está disponible." description="El enlace no es válido, la página fue eliminada o no pertenece a tu espacio. Elegí otra página para continuar." onRetry={reload} /></div></section>}
     {templateOpen && <TemplateDialog {...templateDialogProps}/>}
     {saveTemplateOpen && activeList && <NameTemplateDialog defaultName={activeList.titulo} onSave={saveAsTemplate} onClose={() => { if (!pendingSaves.current) setSaveTemplateOpen(false); }} saving={structuralBusy}/>}</main>;
 }

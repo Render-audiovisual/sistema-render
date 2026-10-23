@@ -1,10 +1,25 @@
 import { normalizeBlockContent, normalizeBlocks, normalizeBlockType } from "./personal-list-blocks.js";
+import { createPersonalListWithReceipt, findPersonalListCreation, personalListCreationRequestId } from './personal-list-create-receipts.js';
 
-const MAX_LISTS_PER_USER = 100;
 const MAX_SECTIONS_PER_LIST = 100;
 const MAX_ITEMS_PER_SECTION = 500;
 const MAX_BLOCKS_PER_LIST = 80;
 const MAX_TEMPLATES_PER_USER = 30;
+
+export function normalizePersonalListCreateInput(body) {
+  if (body === undefined) personalListCreationRequestId(undefined);
+  if (!body || typeof body !== 'object' || Array.isArray(body)
+    || Object.keys(body).some(key => !['request_id', 'titulo', 'emoji', 'bloques'].includes(key))) {
+    throw httpError(400, 'Los campos de la creación no son válidos.');
+  }
+  const requestId = personalListCreationRequestId(body.request_id);
+  return { requestId, payload: {
+    titulo: normalizePersonalListText(body.titulo, { field: 'El título', max: 120, fallback: 'Sin título' }),
+    emoji: normalizePersonalListEmoji(body.emoji),
+    bloques: body.bloques === undefined ? [{ tipo: 'checklist', contenido: { titulo: 'Pendientes', items: [] } }]
+      : normalizeBlocks(body.bloques),
+  } };
+}
 
 function httpError(status, message) {
   const error = new Error(message);
@@ -119,6 +134,11 @@ export function createPersonalListsRouter({ express, pool }) {
     res.json(await loadPersonalLists(pool, Number(req.auth.id)));
   }));
 
+  router.get('/creaciones/:requestId', handler(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json(await findPersonalListCreation(pool, req.auth, req.params.requestId));
+  }));
+
   router.get("/plantillas", handler(async (req, res) => {
     const result = await pool.query(`SELECT id,titulo,emoji,bloques,created_at,updated_at
       FROM lista_plantillas_personales WHERE usuario_id=$1 ORDER BY updated_at DESC,id DESC`, [Number(req.auth.id)]);
@@ -146,41 +166,8 @@ export function createPersonalListsRouter({ express, pool }) {
   }));
 
   router.post("/", handler(async (req, res) => {
-    const userId = Number(req.auth.id);
-    const title = normalizePersonalListText(req.body?.titulo, { field: "El título", max: 120, fallback: "Sin título" });
-    const emoji = normalizePersonalListEmoji(req.body?.emoji);
-    const requestedBlocks = req.body?.bloques === undefined ? null : normalizeBlocks(req.body.bloques);
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      const count = await client.query("SELECT COUNT(*)::int total FROM listas_personales WHERE usuario_id=$1", [userId]);
-      if (count.rows[0].total >= MAX_LISTS_PER_USER) throw httpError(409, "Alcanzaste el límite de listas personales.");
-      const list = await client.query(`INSERT INTO listas_personales(usuario_id,titulo,emoji,posicion)
-        VALUES($1,$2,$3,(SELECT COALESCE(MAX(posicion),-1)+1 FROM listas_personales WHERE usuario_id=$1))
-        RETURNING id,titulo,emoji,posicion,version,created_at,updated_at`, [userId, title, emoji]);
-      const section = await client.query(`INSERT INTO lista_secciones(lista_id,titulo,posicion)
-        VALUES($1,'Pendientes',0) RETURNING id,lista_id,titulo,posicion,version,created_at,updated_at`, [list.rows[0].id]);
-      const blocks = requestedBlocks || [{
-        tipo: "checklist",
-        contenido: { titulo: "Pendientes", items: [] },
-      }];
-      const insertedBlocks = [];
-      for (let position = 0; position < blocks.length; position += 1) {
-        const block = blocks[position];
-        const inserted = await client.query(`INSERT INTO lista_bloques(lista_id,tipo,contenido,posicion)
-          VALUES($1,$2,$3::jsonb,$4)
-          RETURNING id,lista_id,tipo,contenido,posicion,version,created_at,updated_at`,
-        [list.rows[0].id, block.tipo, JSON.stringify(block.contenido), position]);
-        insertedBlocks.push(inserted.rows[0]);
-      }
-      await client.query("COMMIT");
-      res.status(201).json({ ...list.rows[0], secciones: [{ ...section.rows[0], items: [] }], bloques: insertedBlocks });
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
-      throw error;
-    } finally {
-      client.release();
-    }
+    const result = await createPersonalListWithReceipt(pool, req.auth, normalizePersonalListCreateInput(req.body));
+    res.status(result.replayed ? 200 : 201).json(result.list);
   }));
 
   router.patch("/:id", handler(async (req, res) => {
