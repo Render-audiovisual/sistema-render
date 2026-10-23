@@ -2,8 +2,9 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useMemo, useCallba
 import { EditorialPublicationControl } from '../components/EditorialPublicationControl.jsx';
 import { editorialFields, mergeEditorialStatus } from '../components/EditorialPublicationControl.model.js';
 import { isConfirmedPublication, isHistoricalPublication } from '../shared/editorial/publication-evidence.js';
+import { publicationCalendarSummary } from '../shared/editorial/publication-calendar-summary.js';
 import { getSesion } from '../utils.jsx';
-import { etiquetaCortaPublicacion, fechaISODesde, getCheckPublicacionLabel, getEstadoHistoriaLabel, getGrillaMes, getHoyLocalISO, getTipoPublicacionLabel, payloadColumnaPublicacion, sumarDiasISO } from "../utils.jsx";
+import { etiquetaCortaPublicacion, fechaISODesde, getCheckPublicacionLabel, getEstadoHistoriaLabel, getGrillaMes, getHoyLocalISO, getTipoPublicacionLabel, payloadColumnaPublicacion } from "../utils.jsx";
 import { COLUMNAS_PUBLICACION, DIAS_SEMANA, ESTADOS_PUBLICACION, MESES, TIPOS_PUBLICACION } from "../constants.js";
 import { Modal } from "../components/Modal.jsx";
 import { PageState } from "../components/PageState.jsx";
@@ -130,7 +131,6 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
 
   const semanas = useMemo(() => getGrillaMes(year, month), [year, month]);
   const hoyISO = getHoyLocalISO();
-  const finProximos7 = sumarDiasISO(hoyISO, 7);
   const mesISO = fechaISODesde(year, month, 1).slice(0, 7);
   const diasSemanaVisible = useMemo(() => {
     const base = mesISO === getHoyLocalISO().slice(0, 7) ? new Date(`${getHoyLocalISO()}T12:00:00`) : new Date(year, month, 1, 12);
@@ -142,25 +142,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
     });
   }, [mesISO, year, month]);
 
-  const estadisticas = useMemo(() => {
-    const piezasDelMes = piezas.filter(
-      (pz) => pz.fecha_programada?.slice(0, 7) === mesISO,
-    );
-    const pendientesDelMes = piezasDelMes.filter((pz) => !isConfirmedPublication(pz));
-    const publicadasDelMes = piezasDelMes.filter((pz) => isConfirmedPublication(pz));
-    const pendientesVencidas = piezas.filter(
-      (pz) => pz.fecha_programada < hoyISO && !isConfirmedPublication(pz),
-    );
-    const pendientesHoy = piezas.filter(
-      (pz) => pz.fecha_programada === hoyISO && !isConfirmedPublication(pz),
-    );
-    const proximos7 = piezas.filter(
-      (pz) =>
-        pz.fecha_programada >= hoyISO &&
-        pz.fecha_programada <= finProximos7,
-    );
-    return { piezasDelMes, pendientesDelMes, publicadasDelMes, pendientesVencidas, pendientesHoy, proximos7 };
-  }, [piezas, mesISO, hoyISO, finProximos7]);
+  const estadisticas = useMemo(() => publicationCalendarSummary(piezasFiltradas, { month: mesISO, today: hoyISO }), [piezasFiltradas, mesISO, hoyISO]);
 
   const irMes = useCallback((delta) => {
     let m = month + delta;
@@ -326,22 +308,22 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
         </div>
       </div>
 
-      <div className="publication-check-summary">
+      <div className="publication-check-summary" aria-label="Agenda por fecha programada; no acredita publicaciones realizadas">
         <div>
-          <strong>{estadisticas.piezasDelMes.length}</strong>
-          <span>Publicaciones del mes</span>
+          <strong>{estadisticas.scheduledMonth.length}</strong>
+          <span>Planificadas del mes</span>
         </div>
         <div>
-          <strong>{porFecha[hoyISO]?.length || 0}</strong>
-          <span>Salen hoy</span>
+          <strong>{estadisticas.today.length}</strong>
+          <span>Agenda de hoy</span>
         </div>
         <div>
-          <strong>{porFecha[sumarDiasISO(hoyISO, 1)]?.length || 0}</strong>
-          <span>Salen mañana</span>
+          <strong>{estadisticas.tomorrow.length}</strong>
+          <span>Agenda de mañana</span>
         </div>
         <div>
-          <strong>{estadisticas.proximos7.length}</strong>
-          <span>Esta semana</span>
+          <strong>{estadisticas.nextSevenDays.length}</strong>
+          <span>Próximos 7 días</span>
         </div>
       </div>
 
@@ -1375,7 +1357,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
                   <div className="stories-overview publications-overview" aria-label="Resumen del cliente y período">
                     <div><span>Planificadas</span><strong>{publicacionesClienteMes.length}</strong></div>
                     <div><span>Pendientes</span><strong>{pendientesCliente}</strong></div>
-                    <div className="is-success"><span>Confirmadas manualmente</span><strong>{publicadasCliente}</strong></div>
+                    <div className="is-success"><span>Confirmadas · cohorte programada</span><strong>{publicadasCliente}</strong></div>
                     <div><span>Históricas sin confirmación · cohorte programada</span><strong>{publicacionesClienteMes.filter(isHistoricalPublication).length}</strong></div>
                     <div className={atrasadasCliente > 0 ? "is-danger" : ""}><span>Atrasadas</span><strong>{atrasadasCliente}</strong></div>
                   </div>
