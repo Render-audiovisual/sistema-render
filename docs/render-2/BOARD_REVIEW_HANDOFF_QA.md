@@ -1,5 +1,7 @@
 # Revisión explícita desde el tablero de tareas
 
+Actualización: BOARD_NATIVE_DROP_QA.md registra posteriormente drops nativos exitosos en la página real para revisión, antes de tarjeta y final de columna. La sección de arrastre pendiente de este documento conserva el resultado histórico de este corte. La comprobación combinada con PostgreSQL todavía está abierta.
+
 Mover una tarea de edición Render OS hacia Aprobada abre ahora su detalle para revisar la entrega, sin aprobarla ni cambiar su estado. En celular se conserva la columna Para revisar hasta que el usuario confirme la aprobación real. Este corte unifica esa intención con el circuito del detalle; no cambia la autorización ni los contratos de backend.
 
 ## Error y contrato corregidos

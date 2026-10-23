@@ -1091,9 +1091,10 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
         void openTask(task.id, true);
         return 'review'; // Explicit review, never an optimistic board transition.
       }
-      void onApprove(task).catch(() => {}); return;
+      void onApprove(task).catch(() => {}); return 'approval';
     }
     void onUpdate(task.id, { estado: status }, `movió la tarea de ${STATUSES.find((item) => item.id === canonicalTaskState(task.estado))?.label || task.estado} a ${STATUSES.find((item) => item.id === status)?.label || status}`).catch(() => {});
+    return 'move';
   }, [onError, onUpdate, onApprove, openTask, sesion?.usuario, orderState.busy, orderState.locked]);
   const openFeedback = useCallback(() => {
     if (!requestAppNavigation(window, "/feedback")) return;
@@ -1120,7 +1121,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     if (sort === 'manual' && archiveMode === 'active' && canonicalTaskState(task.estado) === status) { if(manualReady&&canUserEditTask(task,sesion?.usuario))void onReorder(task,null); return; }
     if (!canUserMoveTask(task, sesion?.usuario)) return;
     const result = move(task, status);
-    if (result !== 'review' && compactBoard && canUserMoveTaskToState(task, sesion?.usuario, status)) selectMobileBoardColumn(column.id);
+    if ((result === 'move' || result === 'approval') && compactBoard && canUserMoveTaskToState(task, sesion?.usuario, status)) selectMobileBoardColumn(column.id);
   };
   const dropBeforeTask = (event, before) => {
     if (sort !== 'manual' || archiveMode !== 'active' || !event.dataTransfer.types.includes('text/task-id')) return;

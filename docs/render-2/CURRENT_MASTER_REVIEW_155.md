@@ -28,6 +28,8 @@ Actualización166: mover edición canónica hacia Aprobada abre el detalle para 
 
 Integrador: cambios y pruebas de Seguimiento, contraste directo de hallazgos y este informe. Poincare: arquitectura/identidades/autoridad; Beauvoir: invariantes de negocio y límites de recorridos; Hypatia: navegación/Inicio/Calendario; Carver: pruebas de Seguimiento. Los tres auditores no editaron producto ni iniciaron servicios. Skills de trabajo estructurado y seguridad orientaron separación de evidencia, severidad y límites. Se preservó el informe de seguridad raíz no versionado; este corte se documenta aquí para no sobrescribirlo.
 
+Actualización167: hay evidencia nativa de drop en la página real para revisión sin escritura, orden antes de tarjeta y final de columna. Las dos operaciones de orden enviaron un POST cada una mediante el adaptador/modelo reales y leyeron el nuevo orden; la recarga conservó la API sintética en memoria, no PostgreSQL. Se corrigió además el avance de columna móvil ante movimientos bloqueados mediante resultados admitidos explícitos. Ver BOARD_NATIVE_DROP_QA.md. Pasaron41 focales frontend y29 backend,2335 frontend,1956 backend/119 omitidas y build. El gate combinado navegador/PostgreSQL, audiovisual nativo conectado y aceptación global siguen abiertos; no hubo migración, limpieza IPC ni despliegue.
+
 ## Matriz de requisitos: qué prueba la evidencia actual
 
 | Requisito maestro | Evidencia actual | Estado y evidencia todavía necesaria |

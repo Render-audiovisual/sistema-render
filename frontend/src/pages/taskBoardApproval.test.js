@@ -107,9 +107,37 @@ test('actual same-column ordering remains before-anchor or explicit end; ordinar
   f.drop(event(), { id: 'en_revision' }); assert.deepEqual(f.effects.at(-1), ['reorder', task, null]);
   assert.equal(f.requests.length, 0); assert.equal(f.state.review, null);
   for (const row of [{ ...task, tipo_tarea: 'diseno' }, { ...task, propiedades_extra: {} }]) {
-    f.move(row, 'aprobada'); assert.deepEqual(f.effects.at(-1), ['approve', row]);
+    assert.equal(f.move(row, 'aprobada'), 'approval'); assert.deepEqual(f.effects.at(-1), ['approve', row]);
   }
-  f.move(task, 'en_progreso'); assert.equal(f.effects.at(-1)[0], 'update');
+  assert.equal(f.move(task, 'en_progreso'), 'move'); assert.equal(f.effects.at(-1)[0], 'update');
+});
+test('compact drops blocked by busy/locked, same state or permission rejection neither advance nor dispatch', () => {
+  for (const mode of ['busy', 'locked', 'same', 'rejected']) {
+    const f = fixture({ role: mode === 'rejected' ? 'edicion' : 'admin' });
+    // Date mode exercises the business-state path even for same-column drops,
+    // rather than the separate explicit manual-order end action.
+    f.deps.sort = 'date';
+    if (mode === 'busy') f.deps.orderState.busy = true;
+    if (mode === 'locked') f.deps.orderState.locked = true;
+    f.drop(event(), { id: mode === 'same' ? 'en_revision' : mode === 'rejected' ? 'aprobada' : 'en_progreso' });
+    assert.equal(f.requests.length, 0, mode);
+    assert.deepEqual(f.state, { selected: null, review: null }, mode);
+    assert.ok(!f.effects.some(([name]) => name === 'column'), mode);
+    noWrites(f);
+    if (mode === 'rejected') assert.equal(f.effects.filter(([name]) => name === 'error').length, 1);
+  }
+});
+test('only admitted move/legacy approval advance a compact drop once; desktop does not navigate columns', () => {
+  for (const compact of [true, false]) for (const action of ['move', 'approval']) {
+    const row = action === 'approval' ? { ...task, tipo_tarea: 'diseno' } : task;
+    const f = fixture({ rows: [row] }); f.deps.compactBoard = compact;
+    const destination = action === 'approval' ? 'aprobada' : 'en_progreso';
+    f.drop(event(), { id: destination });
+    assert.equal(f.effects.filter(([name]) => name === (action === 'approval' ? 'approve' : 'update')).length, 1);
+    assert.deepEqual(f.effects.filter(([name]) => name === 'column'), compact ? [['column', destination]] : []);
+    assert.equal(f.requests.length, 0); assert.equal(f.state.review, null);
+    assert.equal(row.estado, 'en_revision', 'Admission is not a server confirmation or local state mutation');
+  }
 });
 test('actual denied/foreign/missing task drops never open a review or issue HTTP', () => {
   for (const mode of ['denied', 'foreign', 'missing']) {
