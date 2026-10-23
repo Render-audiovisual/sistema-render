@@ -6,6 +6,7 @@ import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { driveRequest, uploadFileToDrive } from '../features/drive/drive-api.js';
 import { createUploadRecovery } from '../features/drive/upload-recovery.js';
+import { dispatchScheduleFields, dispatchScheduleInstant, dispatchToday } from './publicationSchedule.js';
 
 const source = readFileSync(new URL('./PublicationComposer.jsx', import.meta.url), 'utf8');
 const file = ts.createSourceFile('PublicationComposer.jsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
@@ -32,7 +33,7 @@ function fixture(mode = 'cookie') {
   const useEffect = setup => { cleanups.push(setup()); };
   const captureRequest = evaluate(fn('usePublicationCapture'), { useRef: value => ({ current: value }), useEffect, useCallback: callback => callback,
     apiRequest, createCapturedRequest, getSesion: () => session })(original, view, currentView);
-  const context = { captureRequest, session: original, getSesion: () => session, fetch: rawFetch, pending: { current: false },
+  const context = { dispatchScheduleInstant, captureRequest, session: original, getSesion: () => session, fetch: rawFetch, pending: { current: false },
     createUploadRecovery, uploadRecoveryModel: { current: null }, uploadAttemptGuard: { current: null }, uploadDestination: { current: null },
     draftsGeneration: { current: 0 }, dispatchOperation: { current: null }, draftEdited: { current: false }, draftRevision: revisionA,
     dispatchConflict: false, canPublish: true, validation: '', uploads: [], uploadedAssets: [], draftId: null,
@@ -49,7 +50,7 @@ function fixture(mode = 'cookie') {
   }
   context.validDispatchRevision = evaluate(fn('validDispatchRevision'), {});
   context.validDispatchAck = evaluate(fn('validDispatchAck'), context);
-  context.savedDraft = evaluate(fn('savedDraft'), { emptyDraft: evaluate(fn('emptyDraft'), {}) });
+  context.savedDraft = evaluate(fn('savedDraft'), { dispatchScheduleFields, emptyDraft: evaluate(fn('emptyDraft'), {dispatchToday}) });
   context.openSavedDraft = evaluate(declaration('openSavedDraft').initializer, context);
   context.refreshDrafts = evaluate(declaration('refreshDrafts').initializer, context);
   const run = name => evaluate(declaration(name).initializer, context);

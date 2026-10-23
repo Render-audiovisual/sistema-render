@@ -5,6 +5,7 @@ import { createUploadRecovery } from '../features/drive/upload-recovery.js';
 import { getSesion } from '../utils.jsx';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
+import { DISPATCH_TIME_ZONE, dispatchScheduleFields, dispatchScheduleInstant, dispatchToday } from './publicationSchedule.js';
 
 function usePublicationCapture(session, view, currentView) {
   const mounted = useRef(false), generation = useRef(0), controllers = useRef(new Set());
@@ -23,9 +24,12 @@ function usePublicationCapture(session, view, currentView) {
 
 function dateTimeLabel(date, time) {
   if (!date) return "Sin fecha";
-  const parsed = new Date(`${date}T${time || "09:00"}:00`);
-  if (Number.isNaN(parsed.getTime())) return `${date} · ${time || "09:00"}`;
+  if (!time) return `${date} · Sin hora`;
+  let parsed;
+  try { parsed=new Date(dispatchScheduleInstant({date,time},'schedule')); }
+  catch { return 'Fecha u hora no válida'; }
   return new Intl.DateTimeFormat("es-AR", {
+    timeZone: DISPATCH_TIME_ZONE,
     weekday: "short",
     day: "numeric",
     month: "short",
@@ -47,10 +51,12 @@ function platformsForItem(item) {
 }
 
 function dispatchDateTimeLabel(item) {
-  if (!item.scheduledAt) return dateTimeLabel(item.date, item.time);
+  if (item.scheduledAt === null || item.scheduledAt === undefined || item.scheduledAt === '') return dateTimeLabel(item.date, item.time);
+  try { dispatchScheduleFields(item.scheduledAt); } catch { return 'Fecha guardada no válida'; }
   const parsed = new Date(item.scheduledAt);
   if (Number.isNaN(parsed.getTime())) return "Sin fecha";
   return new Intl.DateTimeFormat("es-AR", {
+    timeZone: DISPATCH_TIME_ZONE,
     weekday: "short",
     day: "numeric",
     month: "short",
@@ -91,15 +97,16 @@ function emptyDraft(publication, clients) {
     collaborators: "",
     location: "",
     tags: "",
-    date: publication?.fecha_programada || new Date().toISOString().slice(0, 10),
+    date: publication?.fecha_programada || dispatchToday(),
     time: "09:00",
+    observedScheduledAt: null,
     platforms: { instagram: true, facebook: true },
   };
 }
 
 function savedDraft(dispatch, clients) {
   const base = emptyDraft(null, clients);
-  const scheduled = dispatch?.scheduledAt ? new Date(dispatch.scheduledAt) : null;
+  const scheduled = dispatchScheduleFields(dispatch?.scheduledAt);
   return {
     ...base,
     publicationId: dispatch?.publicationId || "",
@@ -111,8 +118,9 @@ function savedDraft(dispatch, clients) {
     collaborators: dispatch?.options?.collaborators || "",
     location: dispatch?.options?.location || "",
     tags: dispatch?.options?.tags || "",
-    date: scheduled && !Number.isNaN(scheduled.getTime()) ? scheduled.toISOString().slice(0, 10) : base.date,
-    time: scheduled && !Number.isNaN(scheduled.getTime()) ? scheduled.toTimeString().slice(0, 5) : base.time,
+    date: scheduled.date,
+    time: scheduled.time,
+    observedScheduledAt: dispatch?.scheduledAt || null,
     platforms: {
       instagram: (dispatch?.targets || []).some((target) => target.platform === "instagram"),
       facebook: (dispatch?.targets || []).some((target) => target.platform === "facebook"),
@@ -442,7 +450,7 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
     setNotice("");
     try {
       const materials = draft.material.split(/\n+/).map((item) => item.trim()).filter(Boolean);
-      const scheduledAt = new Date(`${draft.date}T${draft.time}:00-03:00`).toISOString();
+      const scheduledAt = dispatchScheduleInstant(draft,mode);
       const url = draftId ? `/api/publicacion-envios/${draftId}` : '/api/publicacion-envios';
       const method = draftId ? 'PATCH' : 'POST';
       const payload = {
@@ -453,7 +461,7 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
             firstComment: draft.firstComment,
             materials,
             platforms: draft.platforms,
-            scheduledAt: mode === "draft" ? (draft.date && draft.time ? scheduledAt : null) : scheduledAt,
+            scheduledAt,
             collaborators: draft.collaborators,
             location: draft.location,
             tags: draft.tags,
@@ -572,7 +580,7 @@ function ComposerSession({ publications, clients, canPublish, session, view, cur
           </div>
           <div className="publisher-fields-grid">
             <label className="publisher-field"><span>Fecha</span><input disabled={operationBusy} type="date" value={draft.date} onChange={(event) => setField("date", event.target.value)}/></label>
-            <label className="publisher-field"><span>Hora</span><input disabled={operationBusy} type="time" value={draft.time} onChange={(event) => setField("time", event.target.value)}/></label>
+            <label className="publisher-field"><span>Hora · Córdoba</span><input disabled={operationBusy} type="time" value={draft.time} onChange={(event) => setField("time", event.target.value)}/></label>
             <label className="publisher-field"><span>Colaboradores <em>Opcional</em></span><input disabled={operationBusy} value={draft.collaborators} onChange={(event) => setField("collaborators", event.target.value)} placeholder="@usuario, @usuario"/></label>
             <label className="publisher-field"><span>Ubicación <em>Opcional</em></span><input disabled={operationBusy} value={draft.location} onChange={(event) => setField("location", event.target.value)} placeholder="Local o ciudad"/></label>
             <label className="publisher-field publisher-field-wide"><span>Etiquetas <em>Opcional</em></span><input disabled={operationBusy} value={draft.tags} onChange={(event) => setField("tags", event.target.value)} placeholder="Personas o cuentas para etiquetar"/></label>

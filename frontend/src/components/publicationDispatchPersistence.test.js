@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { createUploadRecovery } from '../features/drive/upload-recovery.js';
+import { dispatchScheduleInstant } from './publicationSchedule.js';
 
 const source = readFileSync(new URL('./PublicationComposer.jsx', import.meta.url), 'utf8');
 const file = ts.createSourceFile('PublicationComposer.jsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
@@ -28,6 +29,7 @@ for (const status of [404, 503]) test(`save HTTP ${status} cannot fabricate an A
   const notices = [], busy = [], events = [], ids = [];
   let refreshes = 0;
   const callback = run(save, {
+    dispatchScheduleInstant,
     uploadRecoveryModel: { current: createUploadRecovery({
       capture: () => scope(async () => { throw new Error('Unexpected upload request'); }),
       upload: async () => { throw new Error('Saving a dispatch must not upload files'); },
