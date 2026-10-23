@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { normalizePublicationCalendarContext as normalize, readPublicationCalendarContext as read, publicationCalendarUrlChanges as changes } from './publicationCalendarContext.js';
 import { buildContextUrl, readUrlContext, readMonthContext, formatMonthContext } from '../shared/navigation/url-context.js';
+import { readPublicationTrackingContext, publicationTrackingUrlChanges } from './publicationTrackingContext.js';
 
 // Pure helpers and actual AST-extracted callbacks, not a mounted browser claim.
 const source = readFileSync(new URL('./Publicaciones.jsx', import.meta.url), 'utf8');
@@ -77,22 +78,23 @@ test('actual initialization reads URL; canonical replacement includes calendar k
   const calls = [];
   evaluate(effect.arguments[0], { tabPrincipal: 'calendario', clienteSeleccionado: 17, year: 2026, month: 9,
     calendarContext: { view: 'semana', type: 'video' }, publicationCalendarUrlChanges: changes, formatMonthContext,
+    trackingContext: readPublicationTrackingContext(''), publicationTrackingUrlChanges,
     replaceUrlContext: value => calls.push(value), pushUrlContext: () => assert.fail('Canonical effect must not push') })();
-  assert.deepEqual(calls, [{ tab: 'calendario', cliente: 17, mes: '2026-10', cal_vista: 'semana', cal_tipo: 'video' }]);
+  assert.deepEqual(calls, [{ tab: 'calendario', cliente: 17, mes: '2026-10', cal_vista: 'semana', cal_tipo: 'video', ...publicationTrackingUrlChanges({}) }]);
 });
 test('actual Back/Forward restoration restores calendar context and cleans listener with no URL writes or prompts', () => {
   const effect = nodes(parent, n => ts.isCallExpression(n) && text(n.expression) === 'useEffect').find(n => text(n.arguments[0]).includes('addEventListener("popstate"'));
   const listeners = new Map(), calls = [];
   const window = { location: { search: '' }, addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: (name, fn) => { assert.equal(listeners.get(name), fn); listeners.delete(name); } };
   const forbidden = () => assert.fail('Restoration cannot write history or request consent');
-  const deps = { window, hoyDate: new Date('2026-10-20T12:00:00Z'), readUrlContext, readMonthContext, readPublicationCalendarContext: read,
+  const deps = { window, hoyDate: new Date('2026-10-20T12:00:00Z'), readUrlContext, readMonthContext, readPublicationCalendarContext: read, readPublicationTrackingContext,
     pushUrlContext: forbidden, replaceUrlContext: forbidden, approveContextChange: forbidden,
     setTabPrincipal: value => calls.push(['tab', value]), setClienteSeleccionado: value => calls.push(['client', value]),
-    setYear: value => calls.push(['year', value]), setMonth: value => calls.push(['month', value]), setCalendarContext: value => calls.push(['calendar', value]) };
+    setYear: value => calls.push(['year', value]), setMonth: value => calls.push(['month', value]), setCalendarContext: value => calls.push(['calendar', value]), setTrackingContext: value => calls.push(['tracking', value]) };
   const cleanup = evaluate(effect.arguments[0], deps)();
   for (const [search, expected] of [['?tab=calendario&cliente=17&mes=2026-08&cal_vista=semana&cal_tipo=carrusel', { view: 'semana', type: 'carrusel' }], ['?tab=calendario&cliente=17&mes=2026-08', defaults]]) {
     calls.length = 0; window.location.search = search; listeners.get('popstate')();
-    assert.deepEqual(calls, [['tab', 'calendario'], ['client', 17], ['year', 2026], ['month', 7], ['calendar', expected]]);
+    assert.deepEqual(calls, [['tab', 'calendario'], ['client', 17], ['year', 2026], ['month', 7], ['calendar', expected], ['tracking', readPublicationTrackingContext(search)]]);
   }
   cleanup(); assert.equal(listeners.size, 0);
 });

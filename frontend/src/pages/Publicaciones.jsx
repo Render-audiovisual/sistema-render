@@ -21,6 +21,7 @@ import { EditorialArchiveControl } from '../components/EditorialArchiveControl.j
 import { EditorialArchivePanel } from '../components/EditorialArchivePanel.jsx';
 import { FilterSelect } from '../components/FilterSelect.jsx';
 import { normalizePublicationCalendarContext, readPublicationCalendarContext, publicationCalendarUrlChanges } from './publicationCalendarContext.js';
+import { normalizePublicationTrackingContext, readPublicationTrackingContext, publicationTrackingUrlChanges } from './publicationTrackingContext.js';
 
 function usePublicationSession(sesion, context = null) {
   const view = useSessionView(sesion || getSesion());
@@ -541,16 +542,12 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
   );
 }
 
-export function PublicacionesGeneralTab({ clientes, onIrACliente, sesion, onPublicationSaved }) {
+export function PublicacionesGeneralTab({ clientes, onIrACliente, trackingContext, onTrackingContextChange, sesion, onPublicationSaved }) {
   const { view, capture } = usePublicationSession(sesion);
   const [publicaciones, setPublicaciones] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
-  const [filtroCliente, setFiltroCliente] = useState("todos");
-  const [filtroMes, setFiltroMes] = useState("todos");
-  const [filtroEstado, setFiltroEstado] = useState("todos");
-  const [filtroResponsable, setFiltroResponsable] = useState("todos");
-  const [filtroTipo, setFiltroTipo] = useState("todos");
+  const { client: filtroCliente, month: filtroMes, state: filtroEstado, responsible: filtroResponsable, type: filtroTipo } = normalizePublicationTrackingContext(trackingContext);
 
   useEffect(() => {
     const scope = capture();
@@ -559,6 +556,7 @@ export function PublicacionesGeneralTab({ clientes, onIrACliente, sesion, onPubl
     scope.request("/api/publicaciones", { signal: controller.signal })
       .then((data) => {
         if (!current()) return;
+        if (!Array.isArray(data)) throw new Error('Respuesta de publicaciones no válida.');
         setPublicaciones(data);
         setError(null);
       })
@@ -599,50 +597,49 @@ export function PublicacionesGeneralTab({ clientes, onIrACliente, sesion, onPubl
     <>
       <div className="section-label">Control de publicaciones</div>
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
-        <select style={selectStyle} value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}>
+        <select aria-label="Cliente de seguimiento" style={selectStyle} value={filtroCliente} onChange={(e) => onTrackingContextChange?.({ client: e.target.value })}>
           <option value="todos">Todos los clientes</option>
+          {filtroCliente !== 'todos' && !clientes.some(c => String(c.id) === filtroCliente) && <option value={filtroCliente}>Cliente no disponible ({filtroCliente})</option>}
           {clientes.map((c) => (
             <option key={c.id} value={c.id}>{c.nombre}</option>
           ))}
         </select>
-        <select style={selectStyle} value={filtroMes} onChange={(e) => setFiltroMes(e.target.value)}>
+        <select aria-label="Mes de seguimiento" style={selectStyle} value={filtroMes} onChange={(e) => onTrackingContextChange?.({ month: e.target.value })}>
           <option value="todos">Todos los meses</option>
+          {filtroMes !== 'todos' && !mesesDisponibles.includes(filtroMes) && <option value={filtroMes}>{filtroMes} · sin publicaciones disponibles</option>}
           {mesesDisponibles.map((m) => (
             <option key={m} value={m}>
               {MESES[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}
             </option>
           ))}
         </select>
-        <select style={selectStyle} value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
+        <select aria-label="Estado de seguimiento" style={selectStyle} value={filtroEstado} onChange={(e) => onTrackingContextChange?.({ state: e.target.value })}>
           <option value="todos">Todos los estados</option>
           {ESTADOS_PUBLICACION.map((e) => (
             <option key={e.id} value={e.id}>{e.label}</option>
           ))}
         </select>
-        <select style={selectStyle} value={filtroResponsable} onChange={(e) => setFiltroResponsable(e.target.value)}>
+        <select aria-label="Responsable de seguimiento" style={selectStyle} value={filtroResponsable} onChange={(e) => onTrackingContextChange?.({ responsible: e.target.value })}>
           <option value="todos">Todos los responsables</option>
+          {filtroResponsable !== 'todos' && !responsablesDisponibles.includes(filtroResponsable) && <option value={filtroResponsable}>{filtroResponsable} · sin publicaciones disponibles</option>}
           {responsablesDisponibles.map((r) => (
             <option key={r} value={r}>{r}</option>
           ))}
         </select>
-        <select style={selectStyle} value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
+        <select aria-label="Tipo de seguimiento" style={selectStyle} value={filtroTipo} onChange={(e) => onTrackingContextChange?.({ type: e.target.value })}>
           <option value="todos">Todos los tipos</option>
           {TIPOS_PUBLICACION.map((t) => (
             <option key={t.id} value={t.id}>{t.label}</option>
           ))}
         </select>
         <span style={{ fontSize: "12px", color: "#777", alignSelf: "center", marginLeft: "auto" }}>
-          {filtradas.length} publicaciones
+          {!cargando && !error ? `${filtradas.length} publicaciones` : 'Sin resultado confirmado'}
         </span>
       </div>
 
-      {error && (
-        <div className="alert is-error">{error}</div>
-      )}
-
       {cargando ? (
         <div className="state-empty">Cargando publicaciones…</div>
-      ) : (
+      ) : error ? <PageState compact type="error" title={error} description="No se pudo verificar el resultado de estos filtros." onRetry={() => window.location.reload()} /> : (
         <div className="box" style={{ padding: 0, overflow: "auto", maxHeight: "70vh" }}>
           <table className="sheet-table">
             <thead>
@@ -1176,6 +1173,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
   );
   const [clienteSeleccionado, setClienteSeleccionado] = useState(Number(initialContext.cliente) || null);
   const [calendarContext, setCalendarContext] = useState(() => readPublicationCalendarContext(window.location.search));
+  const [trackingContext, setTrackingContext] = useState(() => readPublicationTrackingContext(window.location.search));
   const [clientes, setClientes] = useState([]);
   const [errorClientes, setErrorClientes] = useState(null);
   const [publicaciones, setPublicaciones] = useState([]);
@@ -1188,8 +1186,8 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
   const approveContextChange = changes => requestAppNavigation(window, buildContextUrl(window.location.href, changes));
 
   useEffect(() => {
-    replaceUrlContext({ tab: tabPrincipal, cliente: clienteSeleccionado, mes: formatMonthContext(year, month), ...publicationCalendarUrlChanges(calendarContext) });
-  }, [tabPrincipal, clienteSeleccionado, year, month, calendarContext]);
+    replaceUrlContext({ tab: tabPrincipal, cliente: clienteSeleccionado, mes: formatMonthContext(year, month), ...publicationCalendarUrlChanges(calendarContext), ...publicationTrackingUrlChanges(trackingContext) });
+  }, [tabPrincipal, clienteSeleccionado, year, month, calendarContext, trackingContext]);
 
   useEffect(() => {
     const restoreContext = () => {
@@ -1200,6 +1198,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
       setYear(date.year);
       setMonth(date.month);
       setCalendarContext(readPublicationCalendarContext(window.location.search));
+      setTrackingContext(readPublicationTrackingContext(window.location.search));
     };
     window.addEventListener("popstate", restoreContext);
     return () => window.removeEventListener("popstate", restoreContext);
@@ -1326,6 +1325,16 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
     setCalendarContext(next);
   };
 
+  const cambiarSeguimiento = changes => {
+    if (!capture().current()) return;
+    const next = normalizePublicationTrackingContext({ ...trackingContext, ...changes });
+    const urlChanges = publicationTrackingUrlChanges(next);
+    if (Object.keys(next).every(key => next[key] === trackingContext[key])) return;
+    if (!approveContextChange(urlChanges)) return;
+    pushUrlContext(urlChanges);
+    setTrackingContext(next);
+  };
+
   return (
     <main aria-label="Render platform publicaciones" className="publicaciones-viewport">
       <div className="frame">
@@ -1408,7 +1417,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
                 )}
 
                 {tabPrincipal === "lista" && (
-                  <PublicacionesGeneralTab sesion={view.session} onPublicationSaved={publicationSaved} clientes={clientes} onIrACliente={irAPlanillaDeCliente} />
+                  <PublicacionesGeneralTab sesion={view.session} onPublicationSaved={publicationSaved} clientes={clientes} onIrACliente={irAPlanillaDeCliente} trackingContext={trackingContext} onTrackingContextChange={cambiarSeguimiento} />
                 )}
 
                 {tabPrincipal === "preparar" && (
