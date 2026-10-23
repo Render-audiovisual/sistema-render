@@ -15,6 +15,7 @@ import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, edi
 import { createEditorialCreateIntent } from '../shared/editorial/editorial-create-intent.js';
 import { EditorialArchiveControl } from '../components/EditorialArchiveControl.jsx';
 import { EditorialArchivePanel } from '../components/EditorialArchivePanel.jsx';
+import { createStoryCellDraft } from './storyCellDraft.js';
 
 function useStorySession(context = null) {
   const view = useSessionView(getSesion());
@@ -60,6 +61,7 @@ export function HistoriasPlanillaTab({
   historias,
   ultimoIdCreado,
   onActualizarLocal,
+  onObserveLocal = onActualizarLocal,
   onGuardarServidor,
   onAgregar,
   onDuplicar,
@@ -137,8 +139,8 @@ export function HistoriasPlanillaTab({
 
   const publicationSaved = useCallback((historia, dto) => {
     if (!capture().current() || observedStories.current.find(row => row.id === historia.id) !== historia) return;
-    onActualizarLocal(historia.id, mergeEditorialStatus(historia, dto));
-  }, [capture, onActualizarLocal]);
+    onObserveLocal(historia.id, mergeEditorialStatus(historia, dto));
+  }, [capture, onObserveLocal]);
 
   // onBlur de las celdas de texto: recorta espacios y sincroniza el
   // estado local con lo mismo que se manda al servidor (evita que quede
@@ -1348,7 +1350,15 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   const [, renderCreation] = useState(0);
   if (!creation.current || creation.current.capture !== capture) creation.current = { capture, model: createEditorialCreateIntent({ capture }) };
   const creationState = creation.current.model.snapshot;
-  useNavigationGuard(() => ({ dirty: creation.current.model.snapshot.locked, busy: creationLocks.current.size > 0 || creation.current.model.snapshot.busy }));
+  const cellDraft = useRef(null);
+  const [, renderCellDraft] = useState(0);
+  if (!cellDraft.current || cellDraft.current.capture !== capture) cellDraft.current = { capture, model: createStoryCellDraft() };
+  const cellState = cellDraft.current.model.snapshot;
+  useNavigationGuard(() => ({ dirty: creation.current.model.snapshot.locked || cellDraft.current.model.snapshot.dirty,
+    busy: creationLocks.current.size > 0 || creation.current.model.snapshot.busy || cellDraft.current.model.snapshot.busy }), () => cellDraft.current.model.observation);
+  // A permitted context change discards local rows; never carry supposedly
+  // discarded input into a fresh month/session if its following GET fails.
+  useLayoutEffect(() => { setHistorias([]); }, [capture]);
   const approveContextChange = changes => requestAppNavigation(window, buildContextUrl(window.location.href, changes));
 
   const newStoryResponsibleId = () => {
@@ -1405,13 +1415,16 @@ export function HistoriasPage({ initialTab = "estructura" }) {
 
   const cargarHistorias = useCallback((scope = capture(), options = {}) => {
     if (!scope.current()) return Promise.resolve();
+    const draft = cellDraft.current.model, readObservation = draft.observation;
     const generation = ++listGeneration.current;
     const current = () => scope.current() && !options.signal?.aborted && generation === listGeneration.current;
     setCargandoHistorias(true);
     return scope.request("/api/historias", options)
       .then((data) => {
         if (!current()) return;
-        setHistorias(storyArray(data));
+        const rows = storyArray(data);
+        if (draft.observation !== readObservation) return false;
+        setHistorias(prev => draft.preserve(rows, prev));
         setErrorHistorias(null);
         return true;
       })
@@ -1457,7 +1470,13 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   };
 
   const actualizarHistoriaLocal = (historiaId, campos) => {
-    if (!capture().current()) return;
+    if (!capture().current() || deleting.current.has(historiaId)) return;
+    if (!Object.keys(campos).length) return;
+    const observed = historias.find(row => row.id === historiaId);
+    if (!observed || !Object.entries(campos).some(([key, value]) => key === 'metadata' && value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.entries(value).some(([field, next]) => !Object.is(observed.metadata?.[field], next))
+      : !Object.is(observed[key], value))) return;
+    cellDraft.current.model.edit(historiaId, campos);
     setHistorias((prev) =>
       prev.map((h) => {
         if (h.id !== historiaId) return h;
@@ -1468,29 +1487,50 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     );
   };
 
+  const mergeHistoriaObserved = (historiaId, campos) => {
+    if (!capture().current()) return;
+    const draft = cellDraft.current.model;
+    if (draft.has(historiaId)) { setErrorHistorias('La publicación se actualizó en el servidor. Conservamos tus ediciones locales; recargá para verificar ambos cambios.'); return; }
+    setHistorias(prev => prev.map(row => row.id === historiaId ? { ...row, ...campos } : row));
+  };
+
   const guardarHistoriaEnServidor = async (historiaId, campos) => {
     const scope = capture();
     if (!scope.current() || deleting.current.has(historiaId)) return;
     const observed = historias.find(row => row.id === historiaId);
+    const draft = cellDraft.current.model;
     let body;
-    try { body = editorialPatchBody(observed, campos); }
+    try {
+      if (!draft.isEdited(historiaId, campos) && !Object.entries(campos).some(([key, value]) => key === 'metadata' && value && typeof value === 'object' && !Array.isArray(value)
+        ? Object.entries(value).some(([field, next]) => !Object.is(observed?.metadata?.[field], next))
+        : !Object.is(observed?.[key], value))) return;
+      body = editorialPatchBody(observed, campos);
+    }
     catch (err) { if (scope.current()) setErrorHistorias(editorialPatchError(err)); return; }
     const previous = writeQueues.current.get(historiaId);
     const latest = latestWrites.current.get(historiaId);
-    if (previous && latest?.body === body && latest.scope.current()) return previous;
-    latestWrites.current.set(historiaId, { body, scope });
+    if (previous && latest?.body === body && latest.scope.current() && latest.draft === draft && draft.follow(latest.intent, campos)) return previous;
+    let intent;
+    try { intent = draft.begin(historiaId, campos); }
+    catch (err) { if (scope.current()) setErrorHistorias(err.message); return; }
+    renderCellDraft(value => value + 1);
+    latestWrites.current.set(historiaId, { body, scope, intent, draft });
     const queued = enqueueStoryWrite(writeQueues, historiaId, async () => {
     try {
+      scope.assertCurrent();
+      if (!draft.canDispatch(intent)) throw new Error('Hay un guardado sin confirmar. No reenviamos cambios; recargá para verificar.');
       const saved = editorialPatchAck(observed, await scope.request(`/api/historias/${historiaId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body,
       }));
       scope.assertCurrent();
+      draft.succeed(intent);
       setHistorias(prev => prev.map(row => row.id === historiaId ? mergeEditorialPatchEvidence(row, saved) : row));
     } catch (err) {
+      draft.fail(intent);
       if (scope.current()) setErrorHistorias(editorialPatchError(err));
-    }
+    } finally { if (scope.current()) renderCellDraft(value => value + 1); }
     });
     void queued.finally(() => { if (!writeQueues.current.has(historiaId)) latestWrites.current.delete(historiaId); }).catch(() => {});
     return queued;
@@ -1639,7 +1679,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
     finally { if (scope.current()) renderCreation(value => value + 1); }
   };
 
-  const canArchiveHistoria = row => view.role === 'admin' && capture().current() && Number.isSafeInteger(row?.id) && !writeQueues.current.has(row.id)
+  const canArchiveHistoria = row => view.role === 'admin' && capture().current() && Number.isSafeInteger(row?.id) && !cellDraft.current.model.has(row.id) && !writeQueues.current.has(row.id)
     && (deleting.current.size === 0 || deleting.current.size === 1 && deleting.current.has(row.id));
   const archiveHistoriaLock = (id, locked) => { if (locked) deleting.current.add(id); else deleting.current.delete(id); };
   const archiveHistoriaSaved = async (dto, scope) => {
@@ -1696,7 +1736,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
           {creationState.locked && <div role="status"><p>Conservamos el intento original. No agregues ni dupliques otra historia sin verificarlo. Al salir de este contexto se pierde la clave de recuperación.</p>
             <button type="button" disabled={creationState.busy || creationState.phase === 'blocked'} onClick={() => void verificarCreacionHistoria()}>Verificar creación</button>
           </div>}
-          {(errorClientes || errorHistorias) && <PageState compact type="error" title={errorClientes || errorHistorias} description="La vista y el período siguen guardados." onRetry={() => window.location.reload()} />}
+          {(errorClientes || errorHistorias) && <PageState compact type="error" title={errorClientes || errorHistorias} description={cellState.dirty ? "Las ediciones locales siguen visibles. Recargar las descarta y consulta el servidor; no revierte un guardado que pudo completarse." : "La vista y el período siguen guardados."} onRetry={() => window.location.reload()} />}
 
           <div className="h-workspace">
             <div className="h-main">
@@ -1770,6 +1810,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
                     historias={historiasPlanillaVisibles}
                     ultimoIdCreado={ultimoIdCreado}
                     onActualizarLocal={actualizarHistoriaLocal}
+                    onObserveLocal={mergeHistoriaObserved}
                     onGuardarServidor={guardarHistoriaEnServidor}
                     onAgregar={agregarHistoriaEnMesActual}
                     onDuplicar={duplicarHistoria}

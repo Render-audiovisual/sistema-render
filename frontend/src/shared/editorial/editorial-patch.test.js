@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { editorialRevision, editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from './editorial-patch.js';
 import { editorialFields } from '../../components/EditorialPublicationControl.model.js';
+import { createStoryCellDraft } from '../../pages/storyCellDraft.js';
 
 const row = (id = 7, revision = 0, rest = {}) => ({ id, publicacion_evidencia: { classification: 'no_publicada', revision, confirmation: null }, ...rest });
 const helpers = { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError };
@@ -60,6 +61,7 @@ function sheetFixture(page, request, observation = row()) {
   const deps = { ...helpers, capture: () => scope, view: { role: 'admin' }, editorialFields,
     historias: rows, publicaciones: rows, deleting: { current: new Set() }, pendingWrites: { current: new Set() },
     latestWrites: { current: new Map() }, writeQueues: { current: new Map() }, listGeneration: { current: 0 },
+    cellDraft: { current: { model: createStoryCellDraft() } }, renderCellDraft() {},
     onCommittedChange(change) { committed.push(change); },
     enqueueStoryWrite(queues, id, run) {
       const queued = (queues.current.get(id) || Promise.resolve()).catch(() => {}).then(run);

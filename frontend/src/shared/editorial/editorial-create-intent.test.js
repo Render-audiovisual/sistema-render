@@ -6,6 +6,7 @@ import { createEditorialCreateIntent, verifiedEditorialCreation } from './editor
 import { createCapturedRequest } from '../session/captured-request.js';
 import { registerNavigationGuard, installUnsavedNavigation } from '../navigation/unsaved.js';
 import { requestAppNavigation } from '../navigation/location.js';
+import { createStoryCellDraft } from '../../pages/storyCellDraft.js';
 
 const uuid = '11111111-1111-4111-8111-111111111111';
 const data = () => ({ tipo: 'historia', cliente_id: 8, responsable_id: 19, fecha_programada: '2026-10-29', idea: 'Original' });
@@ -97,8 +98,8 @@ for (const name of ['Historias', 'Publicaciones']) {
     const hook = descendants(file, node => ts.isCallExpression(node) && node.expression.getText(file) === 'useNavigationGuard')[0];
     assert.ok(hook);
     const f = fixture(async () => { throw Error('lost'); });
-    const getter = new Function('creation', 'creating', 'creationLocks', `return (${hook.arguments[0].getText(file)});`)(
-      { current: { model: f.model } }, { current: false }, { current: new Set() });
+    const getter = new Function('creation', 'creating', 'creationLocks', 'cellDraft', `return (${hook.arguments[0].getText(file)});`)(
+      { current: { model: f.model } }, { current: false }, { current: new Set() }, { current: { model: createStoryCellDraft() } });
     assert.deepEqual(getter(), { dirty: false, busy: false }); await assert.rejects(f.model.submit(data()));
     assert.deepEqual(getter(), { dirty: true, busy: false });
     const win = new EventTarget(); win.location = new URL('https://render.test/original');
