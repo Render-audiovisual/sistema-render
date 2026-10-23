@@ -577,8 +577,11 @@ function ClientesAdminContent({ sesion }) {
 
       {altaClienteAbierta && (
         <Modal
+          native
           key={`${epoch}:${mesSeleccionado}:create`}
           onClose={cerrarAltaCliente}
+          closeDisabled={guardandoCliente}
+          overlayAriaLabel="Nuevo cliente"
           title={<span>Nuevo cliente</span>}
           className="cliente-create-modal"
         >

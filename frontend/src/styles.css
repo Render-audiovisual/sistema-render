@@ -6727,7 +6727,7 @@ tr:hover .sheet-row-actions {
   text-transform: uppercase;
 }
 
-.cliente-create-modal-body input {
+.cliente-create-modal-body input:not([type="checkbox"]):not([type="radio"]) {
   background: #fff;
   border: 1px solid #dadce0;
   border-radius: 6px;
@@ -11813,9 +11813,10 @@ tr:hover .sheet-row-actions {
   color: var(--text);
 }
 
-.cliente-active-toggle {
+.cliente-create-modal-body .cliente-active-toggle {
   display: flex;
   align-items: flex-start;
+  min-height: 44px;
   gap: 11px;
   padding: 13px 14px;
   border: 1px solid #dfe3d8;
@@ -11823,8 +11824,14 @@ tr:hover .sheet-row-actions {
   background: #f8f9f4;
 }
 
-.cliente-active-toggle input {
-  margin-top: 3px;
+.cliente-active-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: 0 0 18px;
+  padding: 0;
+  margin: 3px 0 0;
+  accent-color: var(--render-accent);
 }
 
 .cliente-active-toggle span,

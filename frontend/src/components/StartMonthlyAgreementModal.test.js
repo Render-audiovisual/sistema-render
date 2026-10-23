@@ -23,12 +23,12 @@ function fixture(request){
  const session={token:'synthetic-A',usuario:{id:11,rol:'admin',activo:true}};let live=session,active=true;const states=[],effects=[],calls=[];
  const capture=()=>createCapturedRequest({session,readSession:()=>live,isActive:()=>active,request:(url,options)=>{calls.push({url,options});return request(url,options);}});
  const operation=createMonthlyAgreementOperation({clientId:7,capture,onChange:s=>states.push(s)});
- const deps={allowed:true,capture,operation,blankMonthlyAgreementDraft,draft:form(),acknowledged:true,publishing:{current:false},closing:{current:false},onSaved:async(row,guard)=>{guard.assertCurrent();effects.push(['saved',row]);},setDraft:value=>effects.push(['draft',value]),setAcknowledged:value=>effects.push(['ack',value]),setCallbackError:value=>effects.push(['error',value])};
+ const deps={allowed:true,capture,operation,agreementBodyRef:{current:null},closeFocusIntent:{current:null},blankMonthlyAgreementDraft,draft:form(),acknowledged:true,publishing:{current:false},closing:{current:false},onSaved:async(row,guard)=>{guard.assertCurrent();effects.push(['saved',row]);},setDraft:value=>effects.push(['draft',value]),setAcknowledged:value=>effects.push(['ack',value]),setCallbackError:value=>effects.push(['error',value])};
  return{operation,states,effects,calls,deps,capture,submit:()=>callback('submit',deps)({preventDefault(){}}),replace(){live={token:'synthetic-B',usuario:{id:12,rol:'admin',activo:true}};},unmount(){active=false;operation.dispose();}};
 }
 function render(state,draft=blankMonthlyAgreementDraft(),allowed=true){
  let index=0;const values=[state,draft,false,false,''];
- const deps={React,useState:()=>[values[index++],()=>{}],useRef:initial=>({current:initial}),useEffect(){},useNavigationGuard(){},blankMonthlyAgreementDraft,MONTHLY_AGREEMENT_DESIGNERS,WEEKDAYS:[[1,'Lun'],[2,'Mar'],[3,'Mié'],[4,'Jue'],[5,'Vie'],[6,'Sáb'],[0,'Dom']],Modal:({children,className,title})=>React.createElement('section',{className},React.createElement('h1',null,title),children)};
+ const deps={React,useState:()=>[values[index++],()=>{}],useRef:initial=>({current:initial}),useEffect(){},useLayoutEffect(){},useNavigationGuard(){},blankMonthlyAgreementDraft,MONTHLY_AGREEMENT_DESIGNERS,WEEKDAYS:[[1,'Lun'],[2,'Mar'],[3,'Mié'],[4,'Jue'],[5,'Vie'],[6,'Sáb'],[0,'Dom']],Modal:({children,className,title})=>React.createElement('section',{className},React.createElement('h1',null,title),children)};
  return renderToStaticMarkup(React.createElement(component(['AgreementDays','StartMonthlyAgreementSession'],deps),{clientId:7,allowed,capture:()=>({current:()=>true})}));
 }
 test('actual modal SSR presents empty required values, explicit zero policy and reference-only designer, consistent touch/mobile CSS',()=>{

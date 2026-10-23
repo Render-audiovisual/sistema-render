@@ -70,7 +70,8 @@ export function EditarCuotaClienteModal({ sesion, periodo = getMesActualISO(), .
   return <EditarCuotaSession key={`${view.key}:${epoch}`} {...props} periodo={periodo} capture={capture}/>;
 }
 
-function EditarIdentidadSession({ cliente, periodo, capture, onClose, onGuardado, onAccessDenied }) {
+function EditarIdentidadSession({ cliente, periodo, capture, onClose, onGuardado, onAccessDenied, returnFocusRef }) {
+  const nameInputRef = useRef(null);
   const [nombre, setNombre] = useState(cliente.nombre);
   const [activo, setActivo] = useState(cliente.activo !== false);
   const [busy, setBusy] = useState(false), [blocked, setBlocked] = useState(false), [denied, setDenied] = useState(false);
@@ -139,11 +140,11 @@ function EditarIdentidadSession({ cliente, periodo, capture, onClose, onGuardado
       else setError('No se pudo cargar una versión básica válida. Conservamos el borrador; cerrá y revisá la cartera si cambió el acuerdo.');
     } finally { pending.current = false; if (guard.current()) setBusy(false); }
   };
-  if (denied) return <Modal onClose={closeIdentity} title="Acceso no disponible"><div className="modal-body"><p>Se retiraron los datos del cliente. Ya no tenés acceso a esta edición.</p></div></Modal>;
-  return <Modal onClose={closeIdentity} title="Editar nombre y estado" className="cliente-create-modal">
+  if (denied) return <Modal native onClose={closeIdentity} title="Acceso no disponible" overlayAriaLabel="Acceso no disponible" closeDisabled={busy} returnFocusRef={returnFocusRef}><div className="modal-body"><p>Se retiraron los datos del cliente. Ya no tenés acceso a esta edición.</p></div></Modal>;
+  return <Modal native onClose={closeIdentity} title="Editar nombre y estado" overlayAriaLabel="Editar nombre y estado del cliente" closeDisabled={busy} initialFocusRef={nameInputRef} returnFocusRef={returnFocusRef} className="cliente-create-modal">
     <form className="modal-body cliente-create-modal-body" onSubmit={saveIdentity}>
       <p className="caption">Sin acuerdo mensual configurado. Esta edición no crea cuotas ni abonos.</p>
-      <label className="cliente-service-field"><span>Nombre del cliente</span><input disabled={busy || blocked} value={nombre} onChange={event => { if (!pending.current && !locked.current) setNombre(event.target.value); }}/></label>
+      <label className="cliente-service-field"><span>Nombre del cliente</span><input ref={nameInputRef} disabled={busy || blocked} value={nombre} onChange={event => { if (!pending.current && !locked.current) setNombre(event.target.value); }}/></label>
       <label className="cliente-active-toggle"><input type="checkbox" disabled={busy || blocked} checked={activo} onChange={event => { if (!pending.current && !locked.current) setActivo(event.target.checked); }}/><span>Cliente activo</span></label>
       {error && <p role="alert" className="caption login-error">{error}</p>}
       {blocked && <section className="cliente-create-recovery" aria-label="Revisar versión guardada">
@@ -158,7 +159,8 @@ function EditarIdentidadSession({ cliente, periodo, capture, onClose, onGuardado
   </Modal>;
 }
 
-function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuardado, capture }) {
+function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuardado, capture, returnFocusRef }) {
+  const nameInputRef = useRef(null);
   const [cliente, setCliente] = useState(initialCliente);
   const revision = useRef(initialCliente.agreement_revision), blocked = useRef(false);
   const [needsReload, setNeedsReload] = useState(false);
@@ -301,10 +303,14 @@ function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuard
 
   return (
     <Modal
+      native
       onClose={closeEditor}
       title={<span>Editar cliente</span>}
       className="cliente-create-modal"
       overlayAriaLabel="Editar cuota mensual"
+      closeDisabled={guardando}
+      initialFocusRef={nameInputRef}
+      returnFocusRef={returnFocusRef}
     >
         <form className="modal-body cliente-create-modal-body" onSubmit={guardar}>
           <div className="cliente-edit-intro">
@@ -316,7 +322,7 @@ function EditarCuotaSession({ cliente: initialCliente, periodo, onClose, onGuard
           </div>
           <label className="cliente-service-field cliente-edit-name">
             <span>Nombre del cliente</span>
-            <input disabled={guardando} value={nombre} onChange={(event) => { if (!pending.current) setNombre(event.target.value); }} />
+            <input ref={nameInputRef} disabled={guardando} value={nombre} onChange={(event) => { if (!pending.current) setNombre(event.target.value); }} />
           </label>
           <label className="cliente-active-toggle">
             <input disabled={guardando} type="checkbox" checked={activo} onChange={(event) => { if (!pending.current) setActivo(event.target.checked); }} />
@@ -422,6 +428,7 @@ function DetalleClienteSession({
   onAccessDenied,
 }) {
   const pending = useRef(false), nestedEditing = useRef(false);
+  const editInvokerRef = useRef(null), agreementInvokerRef = useRef(null);
   const [enviando, setEnviando] = useState(null);
   const [error, setError] = useState(null);
   const [editandoCuota, setEditandoCuota] = useState(false);
@@ -472,7 +479,7 @@ function DetalleClienteSession({
     } finally { if (guard.current()) { pending.current = false; setEnviando(null); } }
   };
 
-  if (detailDenied) return <Modal onClose={closeDetail} title="Acceso no disponible"><div className="modal-body"><p>Se retiraron los datos del cliente. Revisá tu acceso antes de continuar.</p></div></Modal>;
+  if (detailDenied) return <Modal native onClose={closeDetail} title="Acceso no disponible" overlayAriaLabel="Acceso no disponible" closeDisabled={enviando !== null}><div className="modal-body"><p>Se retiraron los datos del cliente. Revisá tu acceso antes de continuar.</p></div></Modal>;
 
   const piezas = [
     ...historias.map((h) => ({
@@ -508,7 +515,7 @@ function DetalleClienteSession({
 
   return (
     <>
-    <Modal onClose={closeDetail} title={<span>{cliente.nombre}</span>}>
+    <Modal native onClose={closeDetail} title={<span>{cliente.nombre}</span>} overlayAriaLabel="Detalle del cliente" closeDisabled={enviando !== null || editandoCuota || startingAgreement}>
         <div className="modal-body">
           {basicClient ? <section className="modal-client-summary" aria-label="Acuerdo mensual en el período seleccionado">
             <strong>Sin acuerdo mensual vigente en este período</strong>
@@ -590,7 +597,7 @@ function DetalleClienteSession({
           </details>
 
           <div className="modal-actions cliente-detail-actions">
-            {basicClient && canStartAgreement && cliente.fecha_inicio === null && cliente.fecha_fin === null && <button className="btn" type="button" disabled={enviando !== null || editandoCuota || startingAgreement} onClick={() => {
+            {basicClient && canStartAgreement && cliente.fecha_inicio === null && cliente.fecha_fin === null && <button ref={agreementInvokerRef} className="btn" type="button" disabled={enviando !== null || editandoCuota || startingAgreement} onClick={() => {
               const guard = capture(); if (pending.current || nestedEditing.current || detailAccessDenied.current || !guard.current()) return;
               nestedEditing.current = true; setStartingAgreement(true);
             }}>Configurar acuerdo mensual</button>}
@@ -611,6 +618,7 @@ function DetalleClienteSession({
               ✦ Abrir moodboard
             </button>
             <button
+              ref={editInvokerRef}
               className="btn primary"
               type="button"
               disabled={enviando !== null || editandoCuota || startingAgreement}
@@ -631,6 +639,7 @@ function DetalleClienteSession({
     </Modal>
     {editandoCuota && (
       <EditarCuotaClienteModal
+        returnFocusRef={editInvokerRef}
         sesion={sesion}
         periodo={periodo}
         cliente={cliente}
@@ -643,7 +652,7 @@ function DetalleClienteSession({
         }}
       />
     )}
-    {startingAgreement && <StartMonthlyAgreementModal sesion={sesion} clientId={cliente.id}
+    {startingAgreement && <StartMonthlyAgreementModal sesion={sesion} clientId={cliente.id} returnFocusRef={agreementInvokerRef}
       onAccessDenied={denyDetailAccess}
       onClose={async (guard, { refresh }) => {
         guard.assertCurrent(); if (refresh) { await onCuotaActualizada?.(guard); guard.assertCurrent(); }

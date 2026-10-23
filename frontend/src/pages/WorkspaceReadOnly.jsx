@@ -174,6 +174,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [registeringProduction, setRegisteringProduction] = useState(false);
   const [savingProductionDrive, setSavingProductionDrive] = useState(false);
   const [approving, setApproving] = useState(false);
+  const approvalPendingRef = useRef(false);
   const [publicationResponsible, setPublicationResponsible] = useState(null);
   const [confirmingProduction, setConfirmingProduction] = useState(false);
   const [coordinationDraft, setCoordinationDraft] = useState({ dirty: false, busy: false });
@@ -377,7 +378,10 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     }
     try {
       if (changes.estado && !canUserMoveTaskToState(task, sesion?.usuario, changes.estado)) throw new Error("Transición no permitida.");
-      if (changes.estado === "aprobada") { await onApprove(task); delete changes.estado; }
+      if (changes.estado === "aprobada") {
+        setReviewError('Para aprobar, revisá la versión y usá “Aprobar revisión”. Conservamos los cambios sin guardar.');
+        return; // Never approve implicitly or persist the rest of a mixed draft.
+      }
       guard.assertCurrent();
       if (Object.keys(changes).length) await onUpdate(task.id, changes, "editó los datos de la tarea");
       guard.assertCurrent();
@@ -395,14 +399,16 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     if (saving || (field === "estado" ? !canChangeTaskState : !canEditTask)) return;
     if ((field === "cliente_id" && !canEditVisitClient) || (field === "fecha_vencimiento" && !canEditVisitDate)) return;
     if (field === "estado" && (value === canonicalTaskState(task.estado) || !canUserMoveTaskToState(task, sesion?.usuario, value))) return;
+    // Approval is a reviewed operation, not an ordinary inline state PATCH.
+    // The same handler as the explicit button owns acknowledgment and delivery CAS.
+    if (field === "estado" && value === "aprobada") { await approveForOriana(); return; }
     const nullable = ["cliente_id", "fecha_vencimiento", "tipo_tarea", "subtipo", "material_referencia"];
     const nextValue = value === "" && nullable.includes(field) ? null : value;
     if (String(nextValue ?? "") === String(task[field] ?? "")) return;
     setDraft((current) => ({ ...current, [field]: value }));
     setSaving(true);
     try {
-      if (field === "estado" && value === "aprobada") await onApprove(task);
-      else await onUpdate(task.id, { [field]: nextValue }, activity);
+      await onUpdate(task.id, { [field]: nextValue }, activity);
     } catch {
       if (guard.current()) setDraft((current) => ({ ...current, [field]: task[field] ?? "" }));
     } finally {
@@ -549,12 +555,13 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
 
   const approveForOriana = async (withPublisher = false) => {
     const guard = captureRequest();
-    if (!guard.current()) return;
-    if (!canApproveForOriana || approving || deliveryBusy || deliveryDirty || !mayApproveObservedDelivery || (withPublisher && !selectedPublisher)) return;
+    if (!guard.current()) return false;
+    if (!canApproveForOriana || approvalPendingRef.current || approving || saving || deliveryBusy || deliveryDirty || !mayApproveObservedDelivery || (withPublisher && !selectedPublisher)) return false;
+    approvalPendingRef.current = true;
     setApproving(true);
-    try { await onApprove(task, withPublisher ? selectedPublisher.id : undefined, usesEditingReview ? { revision: editingReview.task.revision, deliveryId: editingReview.latestDelivery?.id || null } : null); }
-    catch (error) { if (guard.current()) { setReviewAcknowledged(false); setReviewError(error.message || 'No se pudo aprobar. Actualizá la tarea y el historial antes de volver a revisar.'); } }
-    finally { if (guard.current()) setApproving(false); }
+    try { await onApprove(task, withPublisher ? selectedPublisher.id : undefined, usesEditingReview ? { revision: editingReview.task.revision, deliveryId: editingReview.latestDelivery?.id || null } : null); return true; }
+    catch (error) { if (guard.current()) { setReviewAcknowledged(false); setReviewError(error.message || 'No se pudo aprobar. Actualizá la tarea y el historial antes de volver a revisar.'); } return false; }
+    finally { approvalPendingRef.current = false; if (guard.current()) setApproving(false); }
   };
 
   const refreshReviewTask = async () => {

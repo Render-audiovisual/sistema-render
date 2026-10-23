@@ -58,6 +58,30 @@ test('native hook focuses close fallback and never calls showModal twice on alre
   const f = fixture({ native: true }); f.dialog.open = true;
   const cleanup = f.mount(); assert.deepEqual(f.events, ['close-focus']); cleanup(); assert.deepEqual(f.events, ['close-focus', 'dialog-close', 'invoker-focus']);
 });
+test('explicit return target survives an invoker disabled before effect and restores only after it becomes usable', () => {
+  const target = { isConnected: true, disabled: true, matches: () => false, closest: () => null, focus() { events.push('explicit-focus'); } };
+  const returnFocusRef = { current: target }, events = [];
+  const f = fixture({ native: true, returnFocusRef });
+  f.document.activeElement = null;
+  const cleanup = f.mount(); target.disabled = false; cleanup();
+  assert.deepEqual(events, ['explicit-focus']);
+  assert.equal(f.events.includes('invoker-focus'), false);
+  const locked = fixture({ native: true, returnFocusRef }); target.disabled = true;
+  locked.mount()(); assert.deepEqual(events, ['explicit-focus'], 'Never focus an invoker still disabled');
+});
+test('cleanup consults the latest explicit return ref and excludes retired disconnected or inert targets', () => {
+  const f = fixture({ native: true });
+  const cleanup = f.mount(), events = [];
+  const target = { isConnected: true, disabled: false, matches: () => false, closest: () => null, focus: () => events.push('replacement') };
+  f.render({ returnFocusRef: { current: target } }); cleanup(); assert.deepEqual(events, ['replacement']);
+  for (const mode of ['disconnected', 'disabled', 'inert']) {
+    const g = fixture({ native: true, returnFocusRef: { current: { ...target, isConnected: mode !== 'disconnected', disabled: mode === 'disabled', closest: () => mode === 'inert' ? {} : null } } });
+    g.mount()(); assert.deepEqual(events, ['replacement'], mode);
+  }
+  const removed = fixture({ native: true }), finish = removed.mount();
+  removed.render({ returnFocusRef: { current: null } }); finish();
+  assert.equal(removed.events.includes('invoker-focus'), false, 'Explicitly missing target does not resurrect an old invoker');
+});
 test('retained native cancel/button handlers consult latest callback and busy state', () => {
   const f = fixture({ native: true }), cleanup = f.mount();
   const cancel = f.tree.props.onCancel, click = buttonOf(f).props.onClick;

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Modal } from './Modal.jsx';
 import { useScopedRequest } from '../shared/session/use-scoped-request.js';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
@@ -13,10 +13,11 @@ export function StartMonthlyAgreementModal({sesion,clientId,...props}){
  const {view,capture,epoch}=useScopedRequest(sesion,`primer-acuerdo:${clientId}`);
  return <StartMonthlyAgreementSession key={`${view.key}:${epoch}`} {...props} clientId={clientId} allowed={canStartMonthlyAgreement(view.session)} capture={capture}/>;
 }
-function StartMonthlyAgreementSession({clientId,allowed,capture,onClose,onSaved,onAccessDenied}){
+function StartMonthlyAgreementSession({clientId,allowed,capture,onClose,onSaved,onAccessDenied,returnFocusRef}){
  const [state,setState]=useState({status:'idle',context:null,result:null,error:'',busy:false,attempted:false});
  const [draft,setDraft]=useState(blankMonthlyAgreementDraft),[acknowledged,setAcknowledged]=useState(false),[confirmClose,setConfirmClose]=useState(false),[callbackError,setCallbackError]=useState('');
  const operationRef=useRef(null),closing=useRef(false),publishing=useRef(false),denialNotified=useRef(false);
+ const agreementBodyRef=useRef(null),keepDraftButtonRef=useRef(null),closeFocusIntent=useRef(null),returnDraftFocus=useRef(null);
  const operation={get snapshot(){return operationRef.current?.snapshot||{status:'idle',busy:false,attempted:false};},load:()=>operationRef.current?.load(),submit:(...args)=>operationRef.current?.submit(...args)};
  const dirty=JSON.stringify(draft)!==JSON.stringify(blankMonthlyAgreementDraft())||acknowledged;
  const monthlyAgreementNavigationStatus=()=>{
@@ -34,6 +35,32 @@ function StartMonthlyAgreementSession({clientId,allowed,capture,onClose,onSaved,
   setDraft(blankMonthlyAgreementDraft());setAcknowledged(false);setConfirmClose(false);setCallbackError('');
   const guard=capture();if(!denialNotified.current&&guard.current()){denialNotified.current=true;onAccessDenied?.(guard);}
  },[state.status,capture,onAccessDenied]);
+ useLayoutEffect(()=>()=>{closeFocusIntent.current=null;returnDraftFocus.current=null;},[]);
+ useLayoutEffect(()=>{
+  if(!allowed||state.status==='denied'){closeFocusIntent.current=null;returnDraftFocus.current=null;return;}
+  const intent=confirmClose?closeFocusIntent.current:returnDraftFocus.current;
+  if(!confirmClose)returnDraftFocus.current=null; // A return attempt belongs only to this committed re-enable.
+  if(!intent||!intent.guard.current()||!capture().current())return;
+  if(!intent.dialog?.isConnected||!intent.dialog.open||agreementBodyRef.current?.closest('dialog[open]')!==intent.dialog)return;
+  const doc=intent.doc;
+  if(doc.hidden||doc.hasFocus?.()===false)return;
+  const usable=node=>node?.isConnected===true&&node.ownerDocument===doc&&!node.disabled&&!node.matches(':disabled')
+   &&node.closest('dialog[open]')===intent.dialog&&!node.closest('[hidden],[inert],[aria-hidden="true"]')&&node.getClientRects().length>0;
+  if(confirmClose){
+   if(intent.promptFocused)return;
+   intent.promptFocused=true;
+   const target=keepDraftButtonRef.current,active=doc.activeElement;
+   if(!usable(target)||(active!==doc.body&&active!==intent.origin&&active!==target))return;
+   target.focus({preventScroll:true});
+   if(doc.activeElement===target)target.scrollIntoView({block:'nearest',behavior:'auto'});
+  }else{
+   const target=intent.origin,active=doc.activeElement;
+   if(!usable(target)||!intent.dialog?.isConnected||!intent.dialog.open||target.closest('dialog[open]')!==intent.dialog
+    ||(active!==doc.body&&active!==intent.keepButton&&active!==target))return;
+   target.focus({preventScroll:true});
+   if(doc.activeElement===target)target.scrollIntoView({block:'nearest',behavior:'auto'});
+  }
+ },[confirmClose,state.status,allowed,capture]);
  const canChange=()=>capture().current()&&operation.snapshot.status==='ready'&&!publishing.current&&!closing.current&&!confirmClose;
  const change=(field,value)=>{if(!canChange())return;setDraft(current=>({...current,[field]:value}));setAcknowledged(false);};
  const closeNow=async()=>{
@@ -43,9 +70,22 @@ function StartMonthlyAgreementSession({clientId,allowed,capture,onClose,onSaved,
   catch{if(guard.current()){closing.current=false;setCallbackError('No se pudo actualizar la cartera. El acuerdo no se volverá a enviar. Cerrá y revisá la versión guardada.');}}
  };
  const closeSafely=()=>{
-  if(!capture().current()||operation.snapshot.busy||publishing.current||closing.current)return;
-  if(operation.snapshot.status!=='denied'&&operation.snapshot.status!=='saved'&&(dirty||operation.snapshot.attempted)){setConfirmClose(true);return;}
+  const guard=capture();if(!guard.current()||operation.snapshot.busy||publishing.current||closing.current)return;
+  if(operation.snapshot.status!=='denied'&&operation.snapshot.status!=='saved'&&(dirty||operation.snapshot.attempted)){
+   if(!confirmClose){
+    const root=agreementBodyRef.current,doc=root?.ownerDocument,dialog=root?.closest('dialog[open]'),origin=doc?.activeElement;
+    closeFocusIntent.current=dialog&&origin?.closest?.('dialog[open]')===dialog?{guard,doc,dialog,origin,promptFocused:false}:null;
+    setConfirmClose(true);
+   }
+   return;
+  }
   void closeNow();
+ };
+ const keepEditing=event=>{
+  if(!capture().current()||operation.snapshot.status==='denied'||operation.snapshot.busy||publishing.current||closing.current)return;
+  const intent=closeFocusIntent.current;
+  if(intent?.guard.current())returnDraftFocus.current={...intent,keepButton:event.currentTarget};
+  closeFocusIntent.current=null;setConfirmClose(false);
  };
  const submit=async event=>{
   event.preventDefault();if(!allowed||!capture().current()||publishing.current||closing.current)return;
@@ -56,10 +96,10 @@ function StartMonthlyAgreementSession({clientId,allowed,capture,onClose,onSaved,
   catch{if(guard.current())setCallbackError('El acuerdo se guardó, pero no se pudo actualizar la vista. Cerrá y revisá la cartera; no vuelvas a enviarlo.');}
   finally{publishing.current=false;}
  };
- if(!allowed||state.status==='denied')return <Modal title="Acceso no disponible" onClose={closeSafely} className="start-monthly-agreement"><div className="sma-body"><p>Se retiraron los datos de esta configuración. Sólo administración puede iniciar acuerdos mensuales.</p></div></Modal>;
+ if(!allowed||state.status==='denied')return <Modal native title="Acceso no disponible" overlayAriaLabel="Acceso no disponible" closeDisabled={state.busy||publishing.current||closing.current} returnFocusRef={returnFocusRef} onClose={closeSafely} className="start-monthly-agreement"><div className="sma-body"><p>Se retiraron los datos de esta configuración. Sólo administración puede iniciar acuerdos mensuales.</p></div></Modal>;
  const locked=state.status!=='ready'||state.busy||confirmClose;
- return <Modal title="Configurar acuerdo mensual" overlayAriaLabel="Configurar primer acuerdo mensual" onClose={closeSafely} className="start-monthly-agreement">
-  <div className="sma-body">
+ return <Modal native title="Configurar acuerdo mensual" overlayAriaLabel="Configurar primer acuerdo mensual" closeDisabled={state.busy||publishing.current||closing.current} returnFocusRef={returnFocusRef} onClose={closeSafely} className="start-monthly-agreement">
+  <div className="sma-body" ref={agreementBodyRef}>
    {state.context&&<header><h2>{state.context.cliente.nombre}</h2><p>Cliente #{clientId} · primer acuerdo mensual</p></header>}
    {(state.status==='idle'||state.status==='loading')&&<p role="status">Verificando que el cliente pueda iniciar un acuerdo…</p>}
    {state.status==='error'&&<button type="button" onClick={()=>void operation.load()}>Reintentar consulta</button>}
@@ -82,7 +122,7 @@ function StartMonthlyAgreementSession({clientId,allowed,capture,onClose,onSaved,
     <footer><button type="button" disabled={state.busy} onClick={closeSafely}>Cancelar</button><button type="submit" disabled={locked||!acknowledged}>{state.busy?'Guardando…':'Iniciar acuerdo mensual'}</button></footer>
    </form>}
    {state.status==='ineligible'&&<button type="button" onClick={closeSafely}>Cerrar y revisar cartera</button>}
-   {confirmClose&&<section className="sma-recovery" aria-label="Confirmar cierre"><p>{state.attempted?'El envío puede haberse guardado aunque no recibimos confirmación. Se cerrará esta revisión y se actualizará la cartera, sin repetir el POST.':'Se descartará este borrador sin enviar.'}</p><div><button type="button" onClick={()=>{if(!operation.snapshot.busy&&!closing.current)setConfirmClose(false);}}>Conservar borrador</button><button type="button" onClick={()=>void closeNow()}>Cerrar y revisar cartera</button></div></section>}
+   {confirmClose&&<section className="sma-recovery" aria-label="Confirmar cierre"><p>{state.attempted?'El envío puede haberse guardado aunque no recibimos confirmación. Se cerrará esta revisión y se actualizará la cartera, sin repetir el POST.':'Se descartará este borrador sin enviar.'}</p><div><button ref={keepDraftButtonRef} type="button" onClick={keepEditing}>Conservar borrador</button><button type="button" onClick={()=>void closeNow()}>Cerrar y revisar cartera</button></div></section>}
   </div>
  </Modal>;
 }

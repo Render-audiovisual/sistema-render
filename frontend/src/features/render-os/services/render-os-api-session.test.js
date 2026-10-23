@@ -25,15 +25,15 @@ test('task pagination forwards original transport options without changing filte
       assert.match(url, /workspace=render_os/); assert.match(url, /asignado_a_id=7/);
       return { ok: true, json: async () => [{ id: 1 }], headers: new Headers({ 'X-Total-Count': '4' }) };
     };
-    assert.deepEqual(await apiTaskPage({ responsible: 'id:7', offset: 0 }, options), { items: [{ id: 1 }], total: 4 });
+    assert.deepEqual(await apiTaskPage({ responsible: 'id:7', offset: 0, limit: 1 }, options), { items: [{ id: 1 }], total: 4 });
   } finally { globalThis.fetch = original; }
 });
-test('ordinary legacy malformed JSON fallback remains unchanged without swallowing typed session errors', async () => {
+test('generic API fallback remains unchanged but task pages reject malformed successful JSON', async () => {
   const original = globalThis.fetch;
   try {
     globalThis.fetch = async () => ({ ok: true, json: async () => { throw new SyntaxError('fixture JSON'); }, headers: new Headers() });
     assert.deepEqual(await apiRequest('/api/inicio'), {});
-    assert.deepEqual(await apiTaskPage(), { items: [], total: 0 });
+    await assert.rejects(apiTaskPage(), { message: 'No se pudo verificar la página de tareas.' });
   } finally { globalThis.fetch = original; }
 });
 

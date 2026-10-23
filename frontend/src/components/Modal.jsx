@@ -18,18 +18,21 @@ export function Modal({
   native = false,
   closeDisabled = false,
   initialFocusRef,
+  returnFocusRef,
 }) {
   const closeButtonRef = useRef(null);
   const previousFocusRef = useRef(null);
   const dialogRef = useRef(null);
-  const onCloseRef = useRef({ onClose, closeDisabled });
-  onCloseRef.current = { onClose, closeDisabled };
+  const onCloseRef = useRef({ onClose, closeDisabled, returnFocusRef });
+  onCloseRef.current = { onClose, closeDisabled, returnFocusRef };
   const requestClose = () => {
     if (!onCloseRef.current.closeDisabled) onCloseRef.current.onClose?.();
   };
 
   useEffect(() => {
-    previousFocusRef.current = document.activeElement;
+    // A parent may disable its invoker as soon as a child opens. In that case
+    // the browser has already blurred it before this effect runs.
+    previousFocusRef.current = onCloseRef.current.returnFocusRef ? onCloseRef.current.returnFocusRef.current : document.activeElement;
     const dialog = native ? dialogRef.current : null;
     if (dialog) {
       try { if (!dialog.open) dialog.showModal(); }
@@ -43,7 +46,7 @@ export function Modal({
     return () => {
       if (!native) window.removeEventListener("keydown", handleKeyDown);
       if (dialog?.open) dialog.close();
-      const previous = previousFocusRef.current;
+      const previous = onCloseRef.current.returnFocusRef ? onCloseRef.current.returnFocusRef.current : previousFocusRef.current;
       if (previous?.isConnected !== false && !previous?.disabled && !previous?.matches?.(':disabled') && !previous?.closest?.('[inert]')) previous?.focus?.();
     };
   }, [native]);

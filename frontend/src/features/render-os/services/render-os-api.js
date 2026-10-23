@@ -67,7 +67,7 @@ export function buildTaskPageUrl(options = {}) {
 export async function apiTaskPage(options = {}, requestOptions) {
   const settings = typeof options === "number" ? { offset: options } : options;
   const response = await fetch(buildTaskPageUrl(settings), requestOptions);
-  const body = await response.json().catch(error => { if (isSessionFailure(error)) throw error; if((settings.sort==='manual'||settings.reviewScope)&&response.ok)throw new Error('No se pudo verificar la página de tareas.'); return []; });
+  const body = await response.json().catch(error => { if (isSessionFailure(error)) throw error; if(response.ok)throw new Error('No se pudo verificar la página de tareas.'); return []; });
   if (!response.ok) throw Object.assign(new Error(body?.error || "No se pudieron cargar las tareas."), {status:response.status});
   if (settings.reviewScope) {
     const reviewSnapshot=response.headers.get('X-Task-Review-Snapshot'),count=response.headers.get('X-Total-Count');
@@ -85,9 +85,14 @@ export async function apiTaskPage(options = {}, requestOptions) {
     if(body.length!==Math.min(settings.limit??50,Math.max(0,Number(count)-(settings.offset??0))))throw new Error('La página manual está incompleta. Recargá la primera página.');
     return {items:body,total:Number(count),orderRevision,orderSnapshot};
   }
-  const items = Array.isArray(body) ? body : [];
-  const totalHeader = Number.parseInt(response.headers.get("X-Total-Count"), 10);
-  return { items, total: Number.isFinite(totalHeader) ? totalHeader : (settings.offset || 0) + items.length };
+  const count = response.headers.get('X-Total-Count');
+  if (typeof count !== 'string' || !/^(0|[1-9]\d*)$/.test(count) || count.trim() !== count || !Number.isSafeInteger(Number(count))
+    || !Array.isArray(body) || body.some(item => !Number.isSafeInteger(item?.id) || item.id < 1 || item.id > 2147483647)
+    || new Set(body.map(item => item.id)).size !== body.length
+    || body.length !== Math.min(settings.limit ?? 50, Math.max(0, Number(count) - (settings.offset ?? 0)))) {
+    throw new Error('No se pudo verificar la página de tareas.');
+  }
+  return { items: body, total: Number(count) };
 }
 
 export function apiTaskById(id, options) {
