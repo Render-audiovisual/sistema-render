@@ -51,14 +51,24 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
   const [piezaSel, setPiezaSel] = useState(null);
   const [diaSel, setDiaSel] = useState(null);
   const [guardandoId, setGuardandoId] = useState(null);
-  const [tareasPieza, setTareasPieza] = useState([]);
-  const [cargandoTareas, setCargandoTareas] = useState(false);
+  const [tareasLectura, setTareasLectura] = useState(null);
+  const [tareasRetry, setTareasRetry] = useState(0);
   const selection = useRef({ piece: piezaSel, day: diaSel, year, month, generation: 0 });
   if (selection.current.piece !== piezaSel || selection.current.day !== diaSel || selection.current.year !== year || selection.current.month !== month) {
     selection.current = { piece: piezaSel, day: diaSel, year, month, generation: selection.current.generation + 1 };
   }
   const selectedPiece = useRef({ piece: piezaSel, generation: 0 });
   if (selectedPiece.current.piece !== piezaSel) selectedPiece.current = { piece: piezaSel, generation: selectedPiece.current.generation + 1 };
+  const tareasActuales = tareasLectura?.observation === selectedPiece.current && tareasLectura.capture === capture && tareasLectura.attempt === tareasRetry
+    ? tareasLectura : { status: 'loading', items: [] };
+  const tareasContext = useRef(null);
+  tareasContext.current = { capture, attempt: tareasRetry, read: tareasLectura };
+  const reintentarTareas = () => {
+    if (!capture().current() || tareasContext.current.capture !== capture || tareasContext.current.attempt !== tareasRetry
+      || tareasContext.current.read !== tareasLectura || selectedPiece.current !== tareasLectura?.observation || tareasLectura.capture !== capture
+      || tareasLectura.attempt !== tareasRetry || tareasLectura.status !== 'error') return;
+    setTareasRetry(value => value + 1);
+  };
   const listGeneration = useRef(0);
   const pendingWrites = useRef(new Set());
   const generating = useRef(false);
@@ -89,24 +99,28 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
 
   useEffect(() => {
     if (!piezaSel?.id) {
-      setTareasPieza([]);
+      setTareasLectura(null);
       return;
     }
     let active = true;
     const scope = capture();
     const controller = new AbortController();
     const observation = selectedPiece.current;
-    const current = () => active && scope.current() && !controller.signal.aborted && selectedPiece.current === observation;
-    setTareasPieza([]);
-    setCargandoTareas(true);
+    const current = () => active && scope.current() && !controller.signal.aborted && selectedPiece.current === observation
+      && tareasContext.current.capture === capture && tareasContext.current.attempt === tareasRetry;
+    const result = (status, items = []) => ({ observation, capture, attempt: tareasRetry, status, items });
+    setTareasLectura(result('loading'));
     scope.request(`/api/publicaciones/${piezaSel.id}/tareas`, { cache: "no-store", signal: controller.signal })
-      .then((items) => { if (current()) setTareasPieza(Array.isArray(items) ? items : []); })
-      .catch(() => {
-        if (current()) setTareasPieza([]);
+      .then((items) => {
+        if (!current()) return;
+        if (!Array.isArray(items)) throw new Error('Respuesta de tareas no válida.');
+        setTareasLectura(result('ready', items));
       })
-      .finally(() => { if (current()) setCargandoTareas(false); });
+      .catch(() => {
+        if (current()) setTareasLectura(result('error'));
+      });
     return () => { active = false; controller.abort(); };
-  }, [piezaSel, capture]);
+  }, [piezaSel, capture, tareasRetry]);
 
   const piezasFiltradas = useMemo(() => piezas.filter((pz) => {
     if (filtroTipo !== "todos" && pz.tipo !== filtroTipo) return false;
@@ -477,10 +491,13 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
               <section className="publication-linked-tasks" aria-label="Tareas para verificar">
                 <header>
                   <div><strong>Tareas para verificar</strong><span>Abrí el detalle sin volver al tablero.</span></div>
-                  {!cargandoTareas && tareasPieza.length > 0 && <b>{tareasPieza.length}</b>}
+                  {tareasActuales.status === 'ready' && tareasActuales.items.length > 0 && <b>{tareasActuales.items.length}</b>}
                 </header>
-                {cargandoTareas ? <p className="publication-linked-tasks-empty">Cargando tareas…</p> : tareasPieza.length > 0 ? (
-                  <div>{tareasPieza.map((tarea) => (
+                {tareasActuales.status === 'loading' ? <PageState compact type="loading" title="Cargando tareas…" />
+                  : tareasActuales.status === 'error' ? <PageState compact type="error" title="No se pudieron consultar las tareas vinculadas."
+                    description="No podemos confirmar si hay tareas disponibles. Reintentá la consulta." onRetry={reintentarTareas} />
+                  : tareasActuales.items.length > 0 ? (
+                  <div>{tareasActuales.items.map((tarea) => (
                     <a className="publication-linked-task" href={`/workspace/tareas?task=${tarea.id}`} key={tarea.id}>
                       <span><strong>{tarea.titulo}</strong><small>{tarea.asignado_a || "Sin responsable"} · {tarea.fecha_vencimiento || "Sin fecha"}</small></span>
                       <b>{getEstadoHistoriaLabel(tarea.estado)}</b><i>Ver tarea →</i>

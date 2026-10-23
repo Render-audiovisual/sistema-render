@@ -64,15 +64,21 @@ function calendarFixture(request, cookie = true) {
     setGuardandoId: value => { saving = typeof value === 'function' ? value(saving) : value; effects.push(['saving', saving]); }, setPiezas: value => { effects.push(['rows', typeof value === 'function' ? value([a]) : value]); },
     setPiezaSel: value => { piece = typeof value === 'function' ? value(piece) : value; effects.push(['piece', piece]); },
     setDiaSel: value => { selectedDay = typeof value === 'function' ? value(selectedDay) : value; effects.push(['day', selectedDay]); },
-    setTareasPieza: value => effects.push(['tasks', value]), setCargandoTareas: value => effects.push(['tasks-loading', value]) };
+    tareasLectura: null, tareasRetry: 0, tareasContext: { current: null },
+    setTareasLectura: value => { deps.tareasLectura = value; syncTasks(); effects.push(['tasks-read', value]); },
+    setTareasRetry: value => { deps.tareasRetry = typeof value === 'function' ? value(deps.tareasRetry) : value; syncTasks(); effects.push(['tasks-retry', deps.tareasRetry]); } };
+  const contextAssignment = nodes(owner(cal), n => ts.isBinaryExpression(n) && text(n.left) === 'tareasContext.current')[0];
+  assert.ok(contextAssignment, 'Extract actual render-owned task read context');
+  const syncTasks = () => { deps.tareasContext.current = evaluate(contextAssignment.right, deps); };
+  syncTasks();
   deps.cargarPublicaciones = callback(cal, 'cargarPublicaciones', deps);
   for (const name of ['cambiarFecha', 'cambiarEstadoPublicacion', 'actualizarCalendario']) deps[name] = callback(cal, name, deps);
   const observationUpdates = nodes(owner(cal), n => ts.isIfStatement(n) && (text(n.expression).startsWith('selection.current.piece') || text(n.expression).startsWith('selectedPiece.current.piece')));
   const select = (nextPiece, nextDay) => {
-    piece = nextPiece; selectedDay = nextDay;
+    piece = nextPiece; selectedDay = nextDay; deps.piezaSel = nextPiece;
     for (const n of observationUpdates) new Function('selection', 'selectedPiece', 'piezaSel', 'diaSel', 'year', 'month', text(n))(selection, selectedPiece, piece, selectedDay, 2026, 9);
   };
-  return { ...f, deps, effects, a, day, select, get piece() { return piece; }, get selectedDay() { return selectedDay; }, get saving() { return saving; } };
+  return { ...f, deps, effects, a, day, select, syncTasks, get piece() { return piece; }, get selectedDay() { return selectedDay; }, get saving() { return saving; } };
 }
 
 test('full file has zero raw fetch/JSON readers; layout lifetime precedes child passive requests and genuine DTO is retained', () => {
@@ -86,6 +92,90 @@ test('full file has zero raw fetch/JSON readers; layout lifetime precedes child 
   assert.match(hook, /live.current === observation/);
   assert.match(source, /usePublicationSession\(sesion, `\$\{year\}:\$\{month\}`\)/);
   assert.match(source, /usePublicationSession\(sesion, `\$\{clienteId\}:\$\{year\}:\$\{month\}`\)/);
+});
+const linkedTasksEffect = () => nodes(owner(cal), n => ts.isCallExpression(n) && text(n.expression) === 'useEffect').find(n => text(n.arguments[0]).includes('/tareas`'));
+const readLinkedTasks = f => { f.syncTasks(); return evaluate(init(cal, 'tareasActuales'), f.deps); };
+const retryLinkedTasks = f => { f.syncTasks(); return callback(cal, 'reintentarTareas', f.deps)(); };
+test('linked-task actual read distinguishes ready empty/data from transport and malformed errors without automatic retry', async () => {
+  assert.equal(text(linkedTasksEffect().arguments[1]), '[piezaSel, capture, tareasRetry]');
+  for (const response of [[], [{ id: 7, titulo: 'Observed task' }], null, {}, { items: [] }, Error('offline'), Object.assign(Error('server'), { status: 500 })]) {
+    const f = calendarFixture(async () => { if (response instanceof Error) throw response; return response; });
+    assert.deepEqual(readLinkedTasks(f), { status: 'loading', items: [] });
+    const cleanup = evaluate(linkedTasksEffect().arguments[0], f.deps)();
+    assert.equal(readLinkedTasks(f).status, 'loading');
+    await settle();
+    const actual = readLinkedTasks(f);
+    assert.equal(actual.status, Array.isArray(response) ? 'ready' : 'error');
+    assert.deepEqual(actual.items, Array.isArray(response) ? response : []);
+    assert.equal(actual.observation, f.deps.selectedPiece.current); assert.equal(actual.capture, f.capture); assert.equal(actual.attempt, 0);
+    await settle(); assert.equal(f.requests.length, 1); assert.equal(f.deps.tareasRetry, 0);
+    assert.equal(f.requests[0].url, '/api/publicaciones/5/tareas'); assert.equal(f.requests[0].options.cache, 'no-store');
+    cleanup(); assert.equal(f.requests[0].options.signal.aborted, true);
+  }
+});
+test('linked-task derived read hides old data before effects for selection ABA, capture replacement and retry attempt', async () => {
+  for (const change of ['selection', 'aba', 'capture', 'attempt']) {
+    const f = calendarFixture(async () => [{ id: 7 }]);
+    const cleanup = evaluate(linkedTasksEffect().arguments[0], f.deps)(); await settle();
+    assert.equal(readLinkedTasks(f).status, 'ready');
+    if (change === 'capture') f.deps.capture = () => f.capture();
+    else if (change === 'attempt') f.deps.tareasRetry++;
+    else { f.select({ id: 6 }, null); if (change === 'aba') f.select(f.a, f.day); }
+    assert.deepEqual(readLinkedTasks(f), { status: 'loading', items: [] });
+    assert.equal(f.requests.length, 1, 'render-owned projection does not dispatch'); cleanup();
+  }
+});
+test('linked-task retry is explicit, owner-bound and GET-only; each attempt starts loading and may recover', async () => {
+  const f = calendarFixture(async () => { if (f.requests.length === 1) throw Error('offline'); return [{ id: 8 }]; });
+  let cleanup = evaluate(linkedTasksEffect().arguments[0], f.deps)(); await settle();
+  assert.equal(readLinkedTasks(f).status, 'error'); retryLinkedTasks(f);
+  assert.equal(f.deps.tareasRetry, 1); assert.equal(f.requests.length, 1, 'callback schedules state, not transport');
+  assert.deepEqual(readLinkedTasks(f), { status: 'loading', items: [] });
+  retryLinkedTasks(f); assert.equal(f.deps.tareasRetry, 1, 'old error cannot authorize another attempt');
+  cleanup(); cleanup = evaluate(linkedTasksEffect().arguments[0], f.deps)();
+  assert.equal(readLinkedTasks(f).status, 'loading'); await settle();
+  assert.equal(readLinkedTasks(f).status, 'ready'); assert.deepEqual(readLinkedTasks(f).items, [{ id: 8 }]);
+  retryLinkedTasks(f); assert.equal(f.deps.tareasRetry, 1);
+  assert.equal(f.requests.length, 2); assert.ok(f.requests.every(r => r.url === '/api/publicaciones/5/tareas' && !r.options.method)); cleanup();
+});
+test('linked-task retry rejects null/loading/ready, foreign observation/capture/attempt and revoked or unmounted owners', async () => {
+  for (const change of ['null', 'loading', 'ready', 'selection', 'aba', 'capture', 'attempt', 'switch', 'unmount']) {
+    const f = calendarFixture(async () => { throw Error('offline'); });
+    const cleanup = evaluate(linkedTasksEffect().arguments[0], f.deps)(); await settle();
+    if (change === 'null') f.deps.tareasLectura = null;
+    else if (['loading', 'ready'].includes(change)) f.deps.tareasLectura = { ...f.deps.tareasLectura, status: change };
+    else if (change === 'capture') f.deps.capture = () => f.capture();
+    else if (change === 'attempt') f.deps.tareasRetry++;
+    else if (change === 'switch' || change === 'unmount') f[change]();
+    else { f.select({ id: 6 }, null); if (change === 'aba') f.select(f.a, f.day); }
+    const before = f.deps.tareasRetry; retryLinkedTasks(f); assert.equal(f.deps.tareasRetry, before, change);
+    assert.equal(f.requests.length, 1); cleanup();
+  }
+});
+test('retained retry handler cannot reuse an old attempt, capture or read even on the same selected piece', async () => {
+  for (const change of ['attempt', 'capture', 'read']) {
+    const f = calendarFixture(async () => { throw Error('offline'); });
+    const cleanup = evaluate(linkedTasksEffect().arguments[0], f.deps)(); await settle();
+    const retained = callback(cal, 'reintentarTareas', f.deps);
+    if (change === 'attempt') f.deps.tareasRetry++;
+    else if (change === 'capture') f.deps.capture = () => f.capture();
+    else f.deps.tareasLectura = { ...f.deps.tareasLectura };
+    f.syncTasks(); const before = [...f.effects], attempt = f.deps.tareasRetry;
+    retained(); await settle();
+    assert.equal(f.deps.tareasRetry, attempt, change); assert.deepEqual(f.effects, before, change);
+    assert.equal(f.requests.length, 1, change); cleanup();
+  }
+});
+test('render replacement of task attempt/capture fences held GET before passive cleanup', async () => {
+  for (const change of ['attempt', 'capture']) for (const fail of [false, true]) {
+    const pending = deferred(), f = calendarFixture(() => pending.promise);
+    const cleanup = evaluate(linkedTasksEffect().arguments[0], f.deps)(); const before = [...f.effects];
+    if (change === 'attempt') f.deps.tareasRetry++;
+    else f.deps.capture = () => f.capture();
+    f.syncTasks();
+    if (fail) pending.reject(Error('old')); else pending.resolve([{ id: 7 }]);
+    await settle(); assert.deepEqual(f.effects, before); assert.equal(f.requests.length, 1); cleanup();
+  }
 });
 test('sheet captures cookie/bearer body before queue and serializes slow-first then latest, without duplicate adjacent dispatch', async () => {
   for (const cookie of [false, true]) {
