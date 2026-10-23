@@ -173,11 +173,12 @@ test('SQL calendar uses Cordoba day and seven-day bounds without browser date in
   assert.match(sql, /v.fecha BETWEEN day.today AND day.today\+7/);
   const visits = sql.slice(sql.indexOf('my_visits AS MATERIALIZED'), sql.indexOf("SELECT jsonb_build_object( 'version'"));
   assert.ok(visits.length > 0);
-  assert.match(visits, /WHERE c.activo IS DISTINCT FROM FALSE AND v.fecha BETWEEN day.today AND day.today\+7 AND \(v.tarea_origen_id IS NULL OR EXISTS\(SELECT 1 FROM visible source WHERE source.id=v.tarea_origen_id\)\) AND \(EXISTS\(SELECT 1 FROM produccion_visita_participantes/,
+  assert.match(visits, /WHERE c.activo IS DISTINCT FROM FALSE AND v.fecha BETWEEN day.today AND day.today\+7 AND \(v.tarea_origen_id IS NULL OR EXISTS\(SELECT 1 FROM visible source WHERE source.id=v.tarea_origen_id\)\) AND EXISTS\(SELECT 1 FROM \(SELECT visit_participant.usuario_id FROM produccion_visita_participantes/,
     'source must be visible or absent independently of every participant/assigned-task OR branch');
-  assert.match(visits, /produccion_visita_participantes p WHERE p.visita_id=v.id AND p.usuario_id=\$1/);
-  assert.match(visits, /mine m WHERE m.id=v.tarea_origen_id/);
-  assert.match(visits, /JOIN mine m ON m.id=COALESCE\(pv.tarea_entrega_id,pv.tarea_edicion_id\)/);
+  assert.match(visits, /visit_mine.usuario_id=\$1/);
+  assert.match(visits, /visit_source.id=v.tarea_origen_id AND \(EXISTS\(SELECT 1 FROM visible visit_visible WHERE visit_visible.id=visit_source.id\)\)/);
+  assert.match(visits, /visit_editing.id=COALESCE\(visit_video.tarea_entrega_id,visit_video.tarea_edicion_id\)/);
+  assert.match(visits, /visit_video.visita_id=v.id AND \(EXISTS\(SELECT 1 FROM visible visit_visible WHERE visit_visible.id=visit_editing.id\)\)/);
   assert.doesNotMatch(visits, /\$2/);
   assert.match(sql, /'href','\/producciones\?visita='\|\|q.id\|\|'&mes='\|\|to_char\(q.fecha,'YYYY-MM'\)/);
   assert.match(sql, /'href','\/workspace\/tareas\?task='\|\|q.id/);

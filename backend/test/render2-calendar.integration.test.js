@@ -209,7 +209,12 @@ test('principal calendar: stable identities, separate dates and read-only bounde
     let task = checked(await api(`/tareas/${editingId}?workspace=render_os`));
     checked(await api(`/tareas/${editingId}?workspace=render_os`, owner.token, 'PATCH', { fecha_vencimiento: '2026-07-26', expected_revision: task.revision }));
     const actualVisit = await readVisit(); checked(await api(`/producciones/${visit.id}`, admin, 'PATCH', { expected_revision: actualVisit.revision, fecha: '2026-07-27' }));
-    for (const piece of [story, publication]) checked(await api(`/${tables[piece.domain]}/${piece.id}`, admin, 'PATCH', { fecha_programada: '2026-08-05' }));
+    for (const piece of [story, publication]) {
+      const observed = checked(await api(`/piezas/${piece.id}?dominio=${piece.domain}`));
+      checked(await api(`/${tables[piece.domain]}/${piece.id}`, admin, 'PATCH', {
+        expected_revision: observed.revision, fecha_programada: '2026-08-05',
+      }));
+    }
     // Login now reserves durable abuse counters. Snapshot after authentication
     // so the calendar read itself must still preserve every table, including it.
     const freshToken = await login('qa_calendar_110001');

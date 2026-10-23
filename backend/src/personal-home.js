@@ -1,5 +1,6 @@
 import { SYSTEM_USER_ROLES } from './user-roles.js';
 import { effectiveTaskStateSql, taskLiveVisibilitySql, taskReviewStateSql, taskReviewMembershipSql } from './task-review-query.js';
+import { productionVisitMembersSql } from './production-visit-membership.js';
 
 const fail = (message, status) => Object.assign(new Error(message), { status });
 
@@ -165,6 +166,8 @@ const monthlyProductionSql = `monthly_production AS MATERIALIZED (
       count(*) FILTER (WHERE estado IN ('finalizada','publicada'))::int AS completed
     FROM monthly_production GROUP BY cliente_id,cliente_nombre
   )`;
+const personalVisitMembers = productionVisitMembersSql('v', alias =>
+  `EXISTS(SELECT 1 FROM visible visit_visible WHERE visit_visible.id=${alias}.id)`);
 
 export const PERSONAL_HOME_SQL = `WITH
   day AS (SELECT (statement_timestamp() AT TIME ZONE 'America/Argentina/Cordoba')::date AS today),
@@ -190,10 +193,7 @@ export const PERSONAL_HOME_SQL = `WITH
     FROM produccion_visitas v JOIN clientes c ON c.id=v.cliente_id CROSS JOIN day
     WHERE c.activo IS DISTINCT FROM FALSE AND v.fecha BETWEEN day.today AND day.today+7
       AND (v.tarea_origen_id IS NULL OR EXISTS(SELECT 1 FROM visible source WHERE source.id=v.tarea_origen_id))
-      AND (EXISTS(SELECT 1 FROM produccion_visita_participantes p WHERE p.visita_id=v.id AND p.usuario_id=$1)
-        OR EXISTS(SELECT 1 FROM mine m WHERE m.id=v.tarea_origen_id)
-        OR EXISTS(SELECT 1 FROM produccion_videos pv JOIN mine m ON m.id=COALESCE(pv.tarea_entrega_id,pv.tarea_edicion_id)
-          WHERE pv.visita_id=v.id))
+      AND EXISTS(SELECT 1 FROM (${personalVisitMembers}) visit_mine WHERE visit_mine.usuario_id=$1)
   ),
   my_projects AS MATERIALIZED (
     SELECT p.id,p.titulo,p.tipo,p.estado,p.fecha_entrega,p.revision,p.cliente_id,c.nombre AS cliente_nombre

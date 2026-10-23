@@ -169,7 +169,9 @@ test('SQL scopes use assignment/participant IDs, exclude hidden/private and dedu
   assert.match(CALENDAR_TASK_SQL, /tarea_asignaciones mine.*mine.usuario_id=\$4/);
   assert.match(CALENDAR_TASK_SQL, /NOT EXISTS\(SELECT 1 FROM produccion_visitas v WHERE v.tarea_origen_id=t.id\)/);
   assert.doesNotMatch(CALENDAR_TASK_SQL, /tarea_edicion_id|estado NOT IN/);
-  assert.match(CALENDAR_VISIT_SQL, /produccion_visita_participantes p WHERE p.visita_id=v.id AND p.usuario_id=\$4/);
+  assert.match(CALENDAR_VISIT_SQL, /produccion_visita_participantes visit_participant\s+WHERE visit_participant.visita_id=v.id/);
+  assert.match(CALENDAR_VISIT_SQL, /visit_mine.usuario_id=\$4/);
+  assert.match(CALENDAR_VISIT_SQL, /visit_editing.id=COALESCE\(visit_video.tarea_entrega_id,visit_video.tarea_edicion_id\)/);
   assert.match(CALENDAR_VISIT_SQL, /source.id=v.tarea_origen_id/);
   for (const sql of [CALENDAR_TASK_SQL, CALENDAR_VISIT_SQL, calendarEditorialSql('historia', 'all'), calendarEditorialSql('publicacion', 'all')]) {
     assert.match(sql, /workspace'='render_os'/);

@@ -1,5 +1,6 @@
 import { SYSTEM_USER_ROLES } from './user-roles.js';
 import { annotateEditorialEvidence } from './editorial-evidence-read.js';
+import { productionVisitMembersSql } from './production-visit-membership.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 export const CALENDAR_TIMEZONE = 'America/Argentina/Cordoba';
@@ -37,6 +38,7 @@ const visibleTask = alias => `${alias}.propiedades_extra->>'workspace'='render_o
  AND COALESCE(${alias}.propiedades_extra->>'papelera_render_os','false')<>'true'
  AND (${alias}.cliente_id IS NULL OR EXISTS(SELECT 1 FROM clientes vc WHERE vc.id=${alias}.cliente_id AND vc.activo IS DISTINCT FROM FALSE))`;
 const assigned = alias => `EXISTS(SELECT 1 FROM tarea_asignaciones mine WHERE mine.tarea_id=${alias}.id AND mine.usuario_id=$4)`;
+const visitMembers = productionVisitMembersSql('v', visibleTask);
 
 export const CALENDAR_TASK_SQL = `SELECT t.id,t.titulo,t.estado,t.cliente_id,c.nombre AS cliente_nombre,
  to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS date,
@@ -50,16 +52,13 @@ export const CALENDAR_TASK_SQL = `SELECT t.id,t.titulo,t.estado,t.cliente_id,c.n
 export const CALENDAR_VISIT_SQL = `SELECT v.id,v.titulo,v.cliente_id,c.nombre AS cliente_nombre,
  to_char(v.fecha,'YYYY-MM-DD') AS date,
  ARRAY(SELECT DISTINCT members.usuario_id FROM (
-   SELECT p.usuario_id FROM produccion_visita_participantes p WHERE p.visita_id=v.id
-   UNION SELECT a.usuario_id FROM tarea_asignaciones a JOIN tareas source ON source.id=a.tarea_id
-     WHERE source.id=v.tarea_origen_id AND ${visibleTask('source')}
+   ${visitMembers}
  ) members ORDER BY members.usuario_id) AS responsable_ids
  FROM produccion_visitas v JOIN clientes c ON c.id=v.cliente_id
  WHERE c.activo IS DISTINCT FROM FALSE AND v.fecha >= $1::date AND v.fecha < $2::date
  AND ($3::int IS NULL OR v.cliente_id=$3)
  AND (v.tarea_origen_id IS NULL OR EXISTS(SELECT 1 FROM tareas source WHERE source.id=v.tarea_origen_id AND ${visibleTask('source')}))
- AND ($5::boolean OR EXISTS(SELECT 1 FROM produccion_visita_participantes p WHERE p.visita_id=v.id AND p.usuario_id=$4)
-   OR EXISTS(SELECT 1 FROM tareas source WHERE source.id=v.tarea_origen_id AND ${visibleTask('source')} AND ${assigned('source')}))
+ AND ($5::boolean OR EXISTS(SELECT 1 FROM (${visitMembers}) visit_mine WHERE visit_mine.usuario_id=$4))
  ORDER BY v.fecha,v.id LIMIT 2001`;
 
 export const CALENDAR_MILESTONE_SQL = `SELECT h.id,h.proyecto_id,h.titulo,h.estado,p.cliente_id,c.nombre AS cliente_nombre,
