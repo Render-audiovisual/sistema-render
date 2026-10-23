@@ -2,13 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync}from 'node:fs';
 import ts from 'typescript';
+import { keepsPersonalListDrafts } from './personalListLocation.js';
 const source=readFileSync(new URL('./PersonalLists.jsx',import.meta.url),'utf8');
 const part=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
 test('actual page parses and navigation guard reads synchronous queue state before debounce or React repaint',()=>{
   const file=ts.createSourceFile('PersonalLists.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
   assert.equal(file.parseDiagnostics.length,0);
-  assert.match(source,/useNavigationGuard\(\(\)=>\(\{dirty:Boolean\(queue.current\?\.snapshot\(\).dirty/);
-  assert.match(source,/busy:Boolean\(queue.current\?\.snapshot\(\).busy\|\|pendingSaves.current\)/);
+  let guard;
+  const visit=node=>{if(ts.isCallExpression(node)&&node.expression.getText(file)==='useNavigationGuard')guard=node.arguments[0];ts.forEachChild(node,visit);};visit(file);
+  assert.ok(guard);
+  const state={dirty:false,busy:false},pendingSaves={current:0},statusRef={current:'saved'};
+  const read=new Function('currentSession','keepsPersonalListDrafts','window','queue','pendingSaves','statusRef',`return (${guard.getText(file)});`)(()=>true,keepsPersonalListDrafts,{location:{href:'https://render.test/lista?lista=1'}},{current:{snapshot:()=>state}},pendingSaves,statusRef);
+  for(const context of [undefined,{type:'unload',to:null},{type:'refresh',to:'/lista?lista=2'},{type:'link',to:'/inicio'}]){
+    state.dirty=true;state.busy=false;assert.deepEqual(read(context),{dirty:true,busy:false});
+    state.dirty=false;state.busy=true;assert.deepEqual(read(context),{dirty:false,busy:true});
+    state.busy=false;statusRef.current='error';assert.deepEqual(read(context),{dirty:true,busy:false});statusRef.current='saved';
+    pendingSaves.current=1;assert.deepEqual(read(context),{dirty:false,busy:true});pendingSaves.current=0;
+  }
+  state.dirty=true;state.busy=true;assert.deepEqual(read({type:'link',to:'/lista?lista=2'}),{dirty:false,busy:false});
+  pendingSaves.current=1;assert.deepEqual(read({type:'link',to:'/lista?lista=2'}),{dirty:false,busy:true});
   assert.doesNotMatch(source,/timers.current|\.catch\(load\)|catch \{ load\(\)/);
   assert.match(source,/status === 'pending' \? 'Sin guardar'/);
 });
