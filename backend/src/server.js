@@ -40,6 +40,7 @@ import { persistAssignedTask } from "./task-persistence.js";
 import { correctProductionRecord } from "./production-record-updates.js";
 import { taskOperationalDto, editorialOperationalDto } from "./operational-dto.js";
 import { loadClientCatalogSnapshot } from './client-catalog.js';
+import { loadUserCatalogSnapshot } from './user-catalog.js';
 import { createProductionRegistryRouter, syncProductionVisitFromTask } from "./production-registry.js";
 import { rejectMixedProductionRecording } from "./production-registry-compatibility.js";
 import { loadProductionTaskContext } from "./production-reporting.js";
@@ -410,13 +411,11 @@ router.delete("/notas/:id", handleFeedbackBrowserWrite('trash'));
 router.post("/notas/:id/restaurar", handleFeedbackBrowserWrite('restore'));
 
 router.get("/usuarios", async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
   try {
-    const fields = req.auth.rol === "admin"
-      ? `id, usuario, nombre, rol, activo, email_notificaciones, google_email, foto_perfil, (whatsapp_id_hash IS NOT NULL AND whatsapp_habilitado IS TRUE) AS whatsapp_vinculado, created_at, ${USER_ADMIN_REVISION_SQL} AS admin_revision`
-      : "id, usuario, nombre, rol, activo, foto_perfil, created_at";
-    const result = await pool.query(`SELECT ${fields} FROM usuarios ${req.auth.rol === "admin" ? "" : "WHERE activo IS TRUE"} ORDER BY id`);
-    res.json(result.rows);
+    res.json(await loadUserCatalogSnapshot(pool, req.auth));
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });

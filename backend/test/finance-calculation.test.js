@@ -44,7 +44,10 @@ test("los endpoints financieros exigen Líder y clientes oculta abonos a emplead
   assert.match(source, /router\.get\("\/sueldos", requireRole\("admin"\)/);
   assert.doesNotMatch(source, /router\.(post|put)\("\/finanzas\//);
   assert.match(source, /router\.post\("\/clientes\/:id\/abono-proximo-mes", requireRole\("admin"\)/);
-  assert.match(source, /result\.rows\.map\(\(row\) => clientOperationalDto\(row, req\.auth\)\)/);
+  assert.match(source, /res\.json\(await loadClientCatalogSnapshot\(pool, req\.auth, periodo\)\)/);
+  const catalog = readFileSync(new URL('../src/client-catalog.js', import.meta.url), 'utf8');
+  assert.match(catalog, /result\.rows\.map\(row => clientOperationalDto\(row, actor\)\)/);
+  assert.match(catalog, /actor\.rol !== observed\.rol/);
 });
 
 test("la facturación automática queda separada de los abonos operativos de Clientes", () => {
