@@ -32,7 +32,7 @@ function draftHooks() {
   const hook=new Function('useState','useRef','useLayoutEffect','createProductionDraft','verifiedProductionDraftVisit','visitDTO','window',
     `${section('function useProductionDraft(', 'function DraftRecovery(')}\nreturn useProductionDraft;`)(
     useState,useRef,useLayoutEffect,createProductionDraft,verifiedProductionDraftVisit,value=>value?.visita||value,{confirm:()=>true});
-  return {useState,useProductionDraft:options=>(form=hook(options)),get form(){return form;},
+  return {useState,useRef,useLayoutEffect,useProductionDraft:options=>(form=hook(options)),get form(){return form;},
     render(render){stateIndex=0;refIndex=0;effectIndex=0;const result=render();const work=pending;pending=[];work.forEach(effect=>effect());return result;},
     cleanup(){effects.forEach(effect=>effect?.cleanup?.());}};
 }
@@ -160,7 +160,7 @@ test('editing video pending/repeat preserves guion in actual form submit payload
     const current={...visit,videos:[item]},calls=[],dirty=[],hooks=draftHooks();
     const context={visit:current,item,kind:'videos',onWrite:async(...args)=>{calls.push(args);return {...current,revision:8};},onDirty:(...args)=>dirty.push(args),onCreated:()=>assert.fail('existing media is not new'),
       onReload:async()=>current,productionMediaDraft,safeProductionUrl:helpers.safeProductionUrl,
-      useState:hooks.useState,useProductionDraft:hooks.useProductionDraft};
+      useState:hooks.useState,useRef:hooks.useRef,useLayoutEffect:hooks.useLayoutEffect,useProductionDraft:hooks.useProductionDraft};
     try{
       const submit=hooks.render(()=>new Function(...Object.keys(context),`${inner}\nreturn submit;`)(...Object.values(context)));
       await submit({preventDefault(){}});

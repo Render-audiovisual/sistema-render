@@ -12,6 +12,7 @@ import { STATUSES } from '../features/render-os/constants.js';
 import { canonicalTaskState } from '../features/render-os/constants.js';
 import { canUserEditTask, canRetryTaskUpdate } from '../workspace-task-state.js';
 import { taskOrderArrowAnchor } from '../features/render-os/utils/task-manual-order.js';
+import { taskVisibleWindow } from '../features/render-os/utils/task-visible-window.js';
 import { taskMatchesResponsible } from '../features/render-os/utils/task-responsible-filter.js';
 import { keepsTaskOpen, isTaskDraftDirty } from './taskNavigationGuard.js';
 import { registerNavigationGuard, installUnsavedNavigation } from '../shared/navigation/unsaved.js';
@@ -211,14 +212,17 @@ test('explicit queue refresh GET failure retains selected task/data and uses ban
  assert.ok(f.state.effects.slice(mark).some(value=>value[0]==='OrderMessage'));assert.equal(f.state.effects.slice(mark).some(value=>value[0]==='Error'),false);assert.equal(f.state.effects.slice(mark).includes('tasks'),false);cleanup();
 });
 
-test('actual list SSR keeps all 501 explicitly loaded review rows reachable; ordinary list retains its 500-row cap',()=>{
+test('actual list SSR keeps all review rows reachable and ordinary rows continue beyond the initial 500',()=>{
  const list=nodes(owner('TasksView'),n=>ts.isJsxElement(n)&&n.openingElement.attributes.properties.some(p=>p.name?.getText(ast)==='className'&&p.initializer?.text==='ros-task-list'))[0];
  const compiled=ts.transpileModule(`const List=()=>(${list.getText(ast)});`,{compilerOptions:{jsx:ts.JsxEmit.React}}).outputText;
- for(const reviewScope of ['personal','']){
-  const deps={React,visible:Array.from({length:501},(_,index)=>task(index+1)),reviewScope,users:[],onOpen:()=>{},AreaBadge:()=>null,STATUSES,effectiveTaskFilterState,taskResponsiblesLabel:()=> 'Member #7',formatDate:()=> 'Sin fecha'};
+ for(const [reviewScope,listLimit] of [['personal',500],['',500],['',1000]]){
+  const visible=Array.from({length:501},(_,index)=>task(index+1));
+  const listWindow=taskVisibleWindow(visible,reviewScope?visible.length:listLimit,500);
+  const deps={React,visible,listWindow,reviewScope,users:[],openTask:()=>{},setListLimit:()=>{},orderState:{busy:false,locked:false},AreaBadge:()=>null,STATUSES,effectiveTaskFilterState,taskResponsiblesLabel:()=> 'Member #7',formatDate:()=> 'Sin fecha'};
   const html=renderToStaticMarkup(Function(...Object.keys(deps),`${compiled};return React.createElement(List);`)(...Object.values(deps)));
-  assert.equal((html.match(/<button/g)||[]).length,reviewScope?501:500);
-  if(reviewScope){assert.match(html,/Task 501/);assert.doesNotMatch(html,/Mostrando 500 de/)}else assert.match(html,/Mostrando 500 de 501/);
+  assert.equal((html.match(/<button/g)||[]).length,listWindow.items.length+Number(listWindow.hasMore));
+  if(reviewScope||listLimit>500){assert.match(html,/Task 501/);assert.doesNotMatch(html,/Mostrar más tareas en lista/)}
+  else{assert.doesNotMatch(html,/Task 501/);assert.match(html,/Mostrar más tareas en lista/);assert.match(html.replace(/<!--.*?-->/g,''),/Mostrando 500 de 501 tareas cargadas/);}
  }
 });
 

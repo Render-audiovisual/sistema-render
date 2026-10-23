@@ -225,9 +225,28 @@ function reviewedTabletStateBaseline(root) {
   rule.remove();
   return copy;
 }
+// Integration162 adds real opening/continuation controls to the existing layer.
+// Pin every declaration of just these eight rules, then retain the original
+// fingerprint of all preexisting layout/motion rules rather than replacing it.
+function reviewedTaskContinuationBaseline(root) {
+  const copy=root.clone(),records=[];
+  const open='.render-workspace .ros-board .ros-task-card .ros-card-open';
+  const more='.render-workspace :is(.ros-column-limit, .ros-list-limit)';
+  const selectors=new Set([open,`${open}:hover`,`${open}:focus-visible`,more,`${more} p`,`${more} button`,`${more} button:focus-visible`]);
+  copy.walkRules(rule=>{
+    if(!selectors.has(normalize(rule.selector)))return;
+    records.push([normalize(rule.selector),rule.parent.type==='atrule'?rule.parent.params:null,
+      rule.nodes.map(node=>[node.type,node.prop,node.value,!!node.important])]);
+    rule.remove();
+  });
+  assert.equal(records.length,8,'Only the eight reviewed functional-control rules');
+  assert.equal(hash(records),'25b7e1d5e6aeaf3d40f233c57f9811d30e69b7a18cbe27b64d5063d3f735bd14');
+  return copy;
+}
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
     let baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
+    if(name==='TaskHeader')baselineRoot=reviewedTaskContinuationBaseline(baselineRoot);
     if (['WorkspaceReadOnly', 'TaskHeader', 'RenderApplePolish'].includes(name)) baselineRoot = reviewedFilterPresentationBaseline(baselineRoot);
     assert.equal(hash(structure(baselineRoot)), layoutBaseline[name]);
   });

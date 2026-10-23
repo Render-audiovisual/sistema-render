@@ -151,7 +151,7 @@ test('actual pagination sends original snapshot; stale/error/foreign pages never
 });
 test('source wires URL sort, explicit recovery, own-card controls and manual-only active board without state payloads',()=>{
  assert.equal(file.parseDiagnostics.length,0);assert.match(source,/setSort\(next.sort\)/);assert.match(source,/aria-label="Orden de tareas"/);
- assert.match(source,/manualControls=\{orderControls\(task,items,index\)\}/);assert.match(source,/minHeight:44/);assert.match(source,/>Al final<\/button>/);
+ assert.match(source,/manualControls=\{orderControls\(task,items,index,windowed.limit\)\}/);assert.match(source,/minHeight:44/);assert.match(source,/>Al final<\/button>/);
  assert.match(source,/Verificar movimiento/);assert.match(source,/onRefreshOrder=\{refreshTaskOrder\}/);assert.match(source,/sort: effectiveSort/);
  const refresh=initializer('WorkspaceReadOnlyPage','refreshTaskOrder').getText(file);assert.match(refresh,/orderModel.reset\(\)/);assert.match(refresh,/reloadTaskOrder\(\)/);
  assert.doesNotMatch(readFileSync(new URL('../features/render-os/utils/task-manual-order.js',import.meta.url),'utf8'),/localStorage|Math.random|setTimeout/);
