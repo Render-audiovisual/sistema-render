@@ -42,6 +42,7 @@ import { taskOperationalDto, editorialOperationalDto } from "./operational-dto.j
 import { loadClientCatalogSnapshot } from './client-catalog.js';
 import { loadUserCatalogSnapshot } from './user-catalog.js';
 import { saveClientStructure } from './client-structure.js';
+import { savePlanningCheck, updateSpecialDate } from './planning-writes.js';
 import { createProductionRegistryRouter, syncProductionVisitFromTask } from "./production-registry.js";
 import { rejectMixedProductionRecording } from "./production-registry-compatibility.js";
 import { loadProductionTaskContext } from "./production-reporting.js";
@@ -1037,34 +1038,11 @@ router.get("/check-publicacion", async (req, res, next) => {
 });
 
 router.post("/check-publicacion", requireRole("admin"), async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
   try {
-    const { cliente_id, fecha, publicado, confirmado_por } = req.body;
-
-    if (!cliente_id || !fecha) {
-      return res.status(400).json({ error: "Faltan cliente_id o fecha." });
-    }
-
-    const result = await pool.query(
-      `INSERT INTO check_publicacion (cliente_id, fecha, publicado, confirmado_por, confirmado_at)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (cliente_id, fecha)
-       DO UPDATE SET
-         publicado = EXCLUDED.publicado,
-         confirmado_por = EXCLUDED.confirmado_por,
-         confirmado_at = EXCLUDED.confirmado_at,
-         updated_at = now()
-       RETURNING id, cliente_id, to_char(fecha, 'YYYY-MM-DD') AS fecha, publicado, confirmado_por, confirmado_at`,
-      [
-        cliente_id,
-        fecha,
-        Boolean(publicado),
-        confirmado_por || null,
-        publicado ? new Date().toISOString() : null,
-      ],
-    );
-
-    res.json(result.rows[0]);
+    res.json(await savePlanningCheck(pool, req.auth, req.body));
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });
@@ -1095,32 +1073,11 @@ router.get("/fechas-especiales", async (_req, res, next) => {
 });
 
 router.patch("/fechas-especiales/:id", requireRole("admin"), async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
   try {
-    const { id } = req.params;
-    const { estado, idea } = req.body;
-
-    const estadosValidos = ["pendiente", "en_curso", "hecho"];
-    if (estado && !estadosValidos.includes(estado)) {
-      return res.status(400).json({ error: "Estado inválido." });
-    }
-
-    const result = await pool.query(
-      `UPDATE fechas_especiales
-       SET
-         estado = COALESCE($1, estado),
-         idea = COALESCE($2, idea),
-         updated_at = now()
-       WHERE id = $3
-       RETURNING id, to_char(fecha, 'YYYY-MM-DD') AS fecha, evento, tipo, anticipacion_dias, idea, estado`,
-      [estado || null, idea || null, id],
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Fecha especial no encontrada." });
-    }
-
-    res.json(result.rows[0]);
+    res.json(await updateSpecialDate(pool, req.auth, req.params.id, req.body));
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });

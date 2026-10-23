@@ -6,6 +6,8 @@ La unificación NO está certificada completa ni preparada globalmente para prod
 
 Actualización156: S155-01 quedó implementado y probado localmente mediante snapshot actor/piezas/evidencia; ver EDITORIAL_CATALOG_AUTHORITY_QA.md. La matriz y las descripciones siguientes conservan el diagnóstico histórico de155; S155-02/03 y los gates globales siguen abiertos.
 
+Actualización157: S155-02/03 quedan corregidos y probados localmente en PLANNING_WRITES_CONTRACT_QA.md. Se conserva el diagnóstico histórico debajo; los gates globales/UX no se consideran aprobados por estas correcciones. El siguiente recorrido integrado está definido, aún sin ejecutar, en INTEGRATED_JOURNEY_ACCEPTANCE_PLAN.md.
+
 Integrador: cambios y pruebas de Seguimiento, contraste directo de hallazgos y este informe. Poincare: arquitectura/identidades/autoridad; Beauvoir: invariantes de negocio y límites de recorridos; Hypatia: navegación/Inicio/Calendario; Carver: pruebas de Seguimiento. Los tres auditores no editaron producto ni iniciaron servicios. Skills de trabajo estructurado y seguridad orientaron separación de evidencia, severidad y límites. Se preservó el informe de seguridad raíz no versionado; este corte se documenta aquí para no sobrescribirlo.
 
 ## Matriz de requisitos: qué prueba la evidencia actual
