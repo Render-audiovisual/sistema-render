@@ -1,0 +1,26 @@
+/* Opt-in native top-layer behavior; existing div modals keep their styling. */
+.modal-overlay.render-native-dialog {
+  box-sizing: border-box;
+  border: 0;
+  margin: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  color: inherit;
+}
+.modal-overlay.render-native-dialog:not([open]) { display: none; }
+.render-native-dialog::backdrop { background: transparent; }
+.render-native-dialog .modal-close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 8px;
+  font-size: 20px;
+}
+.render-native-dialog .modal-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

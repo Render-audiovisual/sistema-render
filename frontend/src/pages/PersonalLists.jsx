@@ -7,6 +7,7 @@ import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } f
 import { navigateWithinApp } from '../shared/navigation/location.js';
 import { personalListId, readPersonalListId, personalListUrl, keepsPersonalListDrafts } from './personalListLocation.js';
 import { PageState } from '../components/PageState.jsx';
+import { Modal } from '../components/Modal.jsx';
 import "./PersonalLists.css";
 
 const EMOJI_OPTIONS = [
@@ -69,18 +70,20 @@ function EmojiPicker({ value, onSelect, onClose }) {
 }
 
 function TemplateDialog({ templates, creating, onChoose, onClose, onDelete }) {
-  return <div className="personal-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-    <section className="personal-template-modal" role="dialog" aria-modal="true" aria-labelledby="template-title">
-      <header><div><span>Nueva página</span><h2 id="template-title">¿Cómo querés empezar?</h2></div><button type="button" onClick={onClose} aria-label="Cerrar">×</button></header>
+  return <Modal native className="personal-template-modal" overlayAriaLabel="Nueva página" closeOnBackdropClick closeDisabled={creating} onClose={onClose}
+    title={<div><span>Nueva página</span><h2>¿Cómo querés empezar?</h2></div>}>
       <div className="personal-template-grid">{SYSTEM_TEMPLATES.map((template) => <button key={template.key} type="button" onClick={() => onChoose(template)} disabled={creating}><span>{template.emoji}</span><strong>{template.titulo}</strong><small>{template.descripcion}</small></button>)}</div>
-      {!!templates.length && <div className="personal-custom-templates"><h3>Mis plantillas</h3>{templates.map((template) => <div key={template.id}><button type="button" onClick={() => onChoose(template)} disabled={creating}><span>{template.emoji}</span><strong>{template.titulo}</strong></button><button className="danger" type="button" onClick={() => onDelete(template)} aria-label={`Eliminar plantilla ${template.titulo}`}>×</button></div>)}</div>}
-    </section>
-  </div>;
+      {!!templates.length && <div className="personal-custom-templates"><h3>Mis plantillas</h3>{templates.map((template) => <div key={template.id}><button type="button" onClick={() => onChoose(template)} disabled={creating}><span>{template.emoji}</span><strong>{template.titulo}</strong></button><button className="danger" type="button" disabled={creating} onClick={() => onDelete(template)} aria-label={`Eliminar plantilla ${template.titulo}`}>×</button></div>)}</div>}
+  </Modal>;
 }
 
 function NameTemplateDialog({ defaultName, onSave, onClose, saving }) {
   const [name, setName] = useState(defaultName || "Mi plantilla");
-  return <div className="personal-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><form className="personal-name-modal" onSubmit={(event) => { event.preventDefault(); if (name.trim()) onSave(name.trim()); }}><h2>Guardar como plantilla</h2><p>La plantilla será privada y podrás reutilizarla cuando quieras.</p><label>Nombre<input autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={120}/></label><footer><button type="button" onClick={onClose}>Cancelar</button><button className="primary" type="submit" disabled={!name.trim() || saving}>Guardar plantilla</button></footer></form></div>;
+  const nameRef = useRef(null);
+  return <Modal native className="personal-name-modal" overlayAriaLabel="Guardar como plantilla" title={<h2>Guardar como plantilla</h2>}
+    closeOnBackdropClick closeDisabled={saving} initialFocusRef={nameRef} onClose={onClose}>
+    <form onSubmit={(event) => { event.preventDefault(); if (!saving && name.trim()) onSave(name.trim()); }}><p>La plantilla será privada y podrás reutilizarla cuando quieras.</p><label>Nombre<input ref={nameRef} disabled={saving} value={name} onChange={(event) => setName(event.target.value)} maxLength={120}/></label><footer><button type="button" disabled={saving} onClick={onClose}>Cancelar</button><button className="primary" type="submit" disabled={!name.trim() || saving}>Guardar plantilla</button></footer></form>
+  </Modal>;
 }
 
 function BlockActions({ block, index, count, onMove, onDelete }) {
@@ -340,9 +343,11 @@ export function PersonalListsPage() {
   };
   const effectiveStatus=saveState.status==='error'||status==='error'?'error':structuralBusy||saveState.busy?'saving':saveState.dirty?'pending':'saved';
   const visibleError=saveState.error||error;
+  const templateDialogProps = { templates, creating: creating || structuralBusy, onChoose: createList, onDelete: deleteTemplate,
+    onClose: () => { if (!pendingSaves.current) setTemplateOpen(false); } };
 
   if (loading) return <main className="personal-lists-page is-empty"><div className="personal-list-loading"><i/><span>Cargando tu espacio…</span></div></main>;
-  if (!lists.length) return <main className="personal-lists-page is-empty">{activeId !== null && <PageState type="error" title="Esta página no está disponible." description="El enlace no es válido o la página no pertenece a tu espacio." />}<section className="personal-list-empty"><span>📝</span><h1>Tu espacio, a tu manera</h1><p>Creá páginas privadas con tablas, listas y checklists.</p><button type="button" disabled={structuralBusy} onClick={() => setTemplateOpen(true)}>+ Crear mi primera página</button></section>{templateOpen && <TemplateDialog templates={templates} creating={creating} onChoose={createList} onClose={() => setTemplateOpen(false)} onDelete={deleteTemplate}/>} {visibleError && <div className="personal-list-toast error" role="alert">{visibleError}<button type="button" onClick={reload}>Actualizar desde servidor</button></div>}</main>;
+  if (!lists.length) return <main className="personal-lists-page is-empty">{activeId !== null && <PageState type="error" title="Esta página no está disponible." description="El enlace no es válido o la página no pertenece a tu espacio." />}<section className="personal-list-empty"><span>📝</span><h1>Tu espacio, a tu manera</h1><p>Creá páginas privadas con tablas, listas y checklists.</p><button type="button" disabled={structuralBusy} onClick={() => setTemplateOpen(true)}>+ Crear mi primera página</button></section>{templateOpen && <TemplateDialog {...templateDialogProps}/>} {visibleError && <div className="personal-list-toast error" role="alert">{visibleError}<button type="button" onClick={reload}>Actualizar desde servidor</button></div>}</main>;
 
   return <main className={`personal-lists-page ${railOpen ? "rail-open" : "rail-closed"}`}>
     <button className="personal-list-rail-scrim" type="button" onClick={() => setRailOpen(false)} aria-label="Cerrar páginas" tabIndex={railOpen ? 0 : -1}/>
@@ -355,6 +360,6 @@ export function PersonalListsPage() {
         <div className="personal-editor-blocks">{(activeList.bloques || []).map((block, index) => <BlockEditor key={block.id} block={block} index={index} count={activeList.bloques.length} onChange={(content) => changeBlock(block, content)} onMove={moveBlock} onDelete={deleteBlock}/>)}{!activeList.bloques?.length && <div className="personal-page-empty"><span>Una página en blanco.</span><small>Agregá el primer bloque para empezar.</small></div>}</div><AddBlockMenu onAdd={addBlock}/>
       </div></fieldset>
     </article> : <section className="personal-list-document"><div className="personal-list-content"><button className="btn" type="button" onClick={() => setRailOpen(true)}>Elegir una página</button><PageState type="error" title="Esta página no está disponible." description="El enlace no es válido, la página fue eliminada o no pertenece a tu espacio. Elegí otra página para continuar." onRetry={reload} /></div></section>}
-    {templateOpen && <TemplateDialog templates={templates} creating={creating} onChoose={createList} onClose={() => setTemplateOpen(false)} onDelete={deleteTemplate}/>}
-    {saveTemplateOpen && activeList && <NameTemplateDialog defaultName={activeList.titulo} onSave={saveAsTemplate} onClose={() => setSaveTemplateOpen(false)} saving={status === "saving"}/>}</main>;
+    {templateOpen && <TemplateDialog {...templateDialogProps}/>}
+    {saveTemplateOpen && activeList && <NameTemplateDialog defaultName={activeList.titulo} onSave={saveAsTemplate} onClose={() => { if (!pendingSaves.current) setSaveTemplateOpen(false); }} saving={structuralBusy}/>}</main>;
 }

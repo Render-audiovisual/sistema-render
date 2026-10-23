@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import './Modal.css';
 
 /*
  * Chrome compartido de los modales: overlay + contenedor + fila de header
@@ -14,38 +15,71 @@ export function Modal({
   overlayAriaLabel,
   closeOnBackdropClick = false,
   closeLabel = "Cerrar",
+  native = false,
+  closeDisabled = false,
+  initialFocusRef,
 }) {
   const closeButtonRef = useRef(null);
   const previousFocusRef = useRef(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const dialogRef = useRef(null);
+  const onCloseRef = useRef({ onClose, closeDisabled });
+  onCloseRef.current = { onClose, closeDisabled };
+  const requestClose = () => {
+    if (!onCloseRef.current.closeDisabled) onCloseRef.current.onClose?.();
+  };
 
   useEffect(() => {
     previousFocusRef.current = document.activeElement;
-    closeButtonRef.current?.focus();
+    const dialog = native ? dialogRef.current : null;
+    if (dialog) {
+      try { if (!dialog.open) dialog.showModal(); }
+      catch { requestClose(); return undefined; }
+    }
+    (initialFocusRef?.current || closeButtonRef.current)?.focus();
     const handleKeyDown = (event) => {
-      if (event.key === "Escape") onCloseRef.current?.();
+      if (event.key === "Escape") requestClose();
     };
-    window.addEventListener("keydown", handleKeyDown);
+    if (!native) window.addEventListener("keydown", handleKeyDown);
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      previousFocusRef.current?.focus?.();
+      if (!native) window.removeEventListener("keydown", handleKeyDown);
+      if (dialog?.open) dialog.close();
+      const previous = previousFocusRef.current;
+      if (previous?.isConnected !== false && !previous?.disabled && !previous?.matches?.(':disabled') && !previous?.closest?.('[inert]')) previous?.focus?.();
     };
-  }, []);
+  }, [native]);
 
   const handleBackdropMouseDown = (event) => {
     if (closeOnBackdropClick && event.target === event.currentTarget) {
-      onClose?.();
+      requestClose();
     }
   };
 
+  const handleNativeKeyDown = event => {
+    if (event.key === 'Escape') { event.stopPropagation(); return; }
+    if (event.key !== 'Tab' || event.defaultPrevented) return;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const controls = [...dialog.querySelectorAll('button, input, select, textarea, a[href], [tabindex]')]
+      .filter(element => element.tabIndex >= 0 && !element.matches(':disabled') && !element.closest('[inert]') && element.getClientRects().length > 0);
+    const first = controls[0], last = controls.at(-1), active = document.activeElement;
+    if (!first) { event.preventDefault(); dialog.focus(); return; }
+    if (event.shiftKey && (active === first || !dialog.contains(active))) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && (active === last || !dialog.contains(active))) { event.preventDefault(); first.focus(); }
+  };
+
+  const Overlay = native ? 'dialog' : 'div';
   return (
-    <div
-      className="modal-overlay open"
+    <Overlay
+      ref={dialogRef}
+      className={`modal-overlay open${native ? ' render-native-dialog' : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label={overlayAriaLabel}
+      aria-busy={closeDisabled || undefined}
+      tabIndex={native ? -1 : undefined}
       onMouseDown={handleBackdropMouseDown}
+      onCancel={native ? event => { event.preventDefault(); event.stopPropagation(); requestClose(); } : undefined}
+      onKeyDown={native ? handleNativeKeyDown : undefined}
     >
       <div className={`modal${className ? ` ${className}` : ""}`} style={style}>
         <div className="modal-header">
@@ -54,14 +88,15 @@ export function Modal({
             ref={closeButtonRef}
             className="modal-close"
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label={closeLabel}
+            disabled={closeDisabled}
           >
             ×
           </button>
         </div>
         {children}
       </div>
-    </div>
+    </Overlay>
   );
 }
