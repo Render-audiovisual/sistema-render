@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { captureProductionMediaFocus } from './productionMediaFocus.js';
 import { FilterSelect } from '../components/FilterSelect.jsx';
 import { getHoyLocalISO, getSesion } from '../utils.jsx';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
@@ -141,8 +142,13 @@ function DraftRecovery({form,busy}) {
   if(!form.dirty && !form.blocked)return null;
   return <div className="prod-wide">{form.blocked && <p role="alert">{form.saved ? 'El cambio se guardó. No repitas el envío: cargá la versión guardada para verificarlo.' : form.uncertain ? 'No se pudo confirmar el envío. No lo repitas: revisá los registros guardados.' : 'La visita cambió. Tus campos se conservan, pero no se pueden guardar sobre otra revisión.'}</p>}<button type="button" disabled={busy || form.pending} onClick={()=>void form.reload()}>Descartar campos y cargar versión guardada</button></div>;
 }
-function MediaForm({visit, item, kind, busy, onWrite, onDirty, onCreated, onReload}) {
+function MediaForm({visit, item, kind, busy, onWrite, onDirty, onCreated, onReload, focusReturnTarget, focusReturnCurrent}) {
   const video = kind === 'videos';
+  const focusMounted = useRef(false);
+  const activeMediaFocus = useRef(null);
+  useLayoutEffect(()=>{focusMounted.current=true;return()=>{
+    focusMounted.current=false;activeMediaFocus.current?.dispose();activeMediaFocus.current=null;
+  };},[]);
   const key = `${kind}:${item?.id || 'new'}`;
   const source = current => {
     const row=item ? current[kind]?.find(row=>row.id===item.id) : null;
@@ -154,14 +160,25 @@ function MediaForm({visit, item, kind, busy, onWrite, onDirty, onCreated, onRelo
   const [error, setError] = useState('');
   const submit = async event => {
     event.preventDefault(); setError('');
+    const focusIntent = !item ? captureProductionMediaFocus({
+      form:event.currentTarget,target:focusReturnTarget?.current,documentTarget:document,
+      isCurrent:focusReturnCurrent,
+    }) : null;
+    activeMediaFocus.current?.dispose();activeMediaFocus.current=focusIntent;
     try {
       const url = video ? draft.material_url : draft.drive_url;
       if (url && !safeProductionUrl(url)) throw new Error('Usá un enlace http o https.');
       const intent=form.begin();
       try{form.complete(await onWrite(intent.visit,`/${kind}${item ? `/${encodeURIComponent(item.id)}` : ''}`,item ? 'PATCH' : 'POST',intent.draft));}
       catch(reason){form.fail(reason);throw reason;}
-      if (!item) onCreated();
-    } catch (reason) { setError(reason.message); }
+      if (!item && focusMounted.current) {
+        const confirmedFocus=focusIntent?.confirm() ? focusIntent : null;
+        activeMediaFocus.current=null; // Parent now owns confirmed restoration after child removal.
+        onCreated(confirmedFocus);
+      }
+      else focusIntent?.dispose();
+    } catch (reason) { focusIntent?.dispose();setError(reason.message); }
+    finally { if(activeMediaFocus.current===focusIntent)activeMediaFocus.current=null; }
   };
   return <form className="prod-form prod-media-form" onSubmit={submit}>
     <label>{video ? 'Título del video' : 'Tipo de fotos'}<input required maxLength={250} value={video ? draft.titulo : draft.tipo} disabled={busy} onChange={e=>setDraft({...draft,[video ? 'titulo' : 'tipo']:e.target.value})}/></label>
@@ -319,12 +336,21 @@ function EditorialAssociation({visit,video,busy,onWrite,onDirty}) {
 }
 function VisitDetail({visit, users, busy, isAdmin, sesion, onBatchDraftStateChange, onBatchSaved, onWrite, onDirty, onReload}) {
   const [adding, setAdding] = useState({});
+  const mediaFocusTargets = useRef({videos:{current:null},fotos:{current:null}});
+  const mediaFocusOwner = useRef(false);
+  useLayoutEffect(()=>{mediaFocusOwner.current=true;return()=>{mediaFocusOwner.current=false;};},[]);
+  const pendingMediaFocus = useRef(null);
+  useLayoutEffect(()=>{
+    const intent=pendingMediaFocus.current;pendingMediaFocus.current=null;
+    intent?.restore();
+  },[adding]);
+  useLayoutEffect(()=>()=>{pendingMediaFocus.current?.dispose();pendingMediaFocus.current=null;},[]);
   return <section className="prod-panel prod-detail" aria-label="Detalle de visita"><header className="prod-detail-heading"><span>{visit.cliente_nombre}</span><h2>{visit.titulo}</h2><p>{dateLabel(visit.fecha)}</p><SafeLink url={visit.drive_url}/></header>
     {visit.observaciones && <p className="prod-notes">{visit.observaciones}</p>}<p className="prod-muted">Participantes: {(visit.participante_ids || []).map(id=>users.find(user=>user.id===id)?.nombre || `Usuario #${id}`).join(', ') || 'Sin participantes'}</p>
     {visit.tarea_origen_id && <a href={`/workspace/tareas?task=${visit.tarea_origen_id}`}>Ver tarea de origen ↗</a>}
     {isAdmin&&visit.tarea_origen_id&&<ProductionHistoryBatchReview sourceId={visit.tarea_origen_id} sesion={sesion} users={users} disabled={busy} onDraftStateChange={onBatchDraftStateChange} onSaved={onBatchSaved}/>}
     <VisitEditor visit={visit} users={users} busy={busy} onWrite={onWrite} onDirty={onDirty} onReload={onReload}/>
-    {['videos','fotos'].map(kind=><section key={kind} className="prod-media-section"><header className="prod-section-heading"><h3>{kind === 'videos' ? 'Videos' : 'Fotos'} <span>{visit[kind]?.length || 0}</span></h3><button disabled={busy} type="button" onClick={()=>setAdding(current=>({...current,[kind]:true}))}>+ {kind === 'videos' ? 'Video' : 'Fotos'}</button></header>
+    {['videos','fotos'].map(kind=><section key={kind} className="prod-media-section"><header className="prod-section-heading"><h3>{kind === 'videos' ? 'Videos' : 'Fotos'} <span>{visit[kind]?.length || 0}</span></h3><button ref={mediaFocusTargets.current[kind]} disabled={busy} type="button" onClick={()=>setAdding(current=>({...current,[kind]:true}))}>+ {kind === 'videos' ? 'Video' : 'Fotos'}</button></header>
       {(visit[kind] || []).map(item=><article className="prod-media" key={item.id}><header><h4>{item.titulo || item.tipo}</h4><span className={`prod-status is-${item.estado}`}>{(kind === 'videos' ? VIDEO_STATES : PHOTO_STATES)[item.estado] || item.estado}</span></header><SafeLink url={item.material_url || item.drive_url}/>
         {item.tarea_edicion_id && <a className="prod-task-link" href={`/workspace/tareas?task=${item.tarea_edicion_id}`}>Edición · {TASK_STATES[item.tarea_estado] || item.tarea_estado || 'Ver tarea'} ↗</a>}
         {item.tarea_edicion_id && <EditingAssignment video={item} users={users}/>}
@@ -334,7 +360,10 @@ function VisitDetail({visit, users, busy, isAdmin, sesion, onBatchDraftStateChan
         {isAdmin && kind === 'videos' && <EditorialAssociation visit={visit} video={item} busy={busy} onWrite={onWrite} onDirty={onDirty}/>}
         {isAdmin && kind === 'videos' && item.estado === 'grabado' && !item.tarea_edicion_id && <SendToEditing visit={visit} video={item} users={users} busy={busy} onWrite={onWrite} onDirty={onDirty} onReload={onReload}/>}
       </article>)}{!visit[kind]?.length && <p className="prod-empty">Sin {kind} registrados.</p>}
-      {adding[kind] && <MediaForm key={`${visit.id}:${kind}:new`} visit={visit} kind={kind} busy={busy} onWrite={onWrite} onDirty={onDirty} onReload={onReload} onCreated={()=>setAdding(current=>({...current,[kind]:false}))}/>}
+      {adding[kind] && <MediaForm key={`${visit.id}:${kind}:new`} visit={visit} kind={kind} busy={busy} onWrite={onWrite} onDirty={onDirty} onReload={onReload} focusReturnTarget={mediaFocusTargets.current[kind]} focusReturnCurrent={()=>mediaFocusOwner.current} onCreated={intent=>{
+        pendingMediaFocus.current?.dispose();pendingMediaFocus.current=intent;
+        setAdding(current=>({...current,[kind]:false}));
+      }}/>}
     </section>)}
   </section>;
 }

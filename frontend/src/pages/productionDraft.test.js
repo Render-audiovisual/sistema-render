@@ -97,7 +97,7 @@ test('actual form submits send captured intent and do not dispatch when stale',a
     const a=aggregate(),project=name==='VisitEditor'?productionVisitDraft:name==='SendToEditing'?()=>({editorId:'7',date:'2026-10-29'}):v=>productionMediaDraft(v.videos[0],'videos');
     const model=createProductionDraft(a,project(a));let latest=a,writes=0,created=0;
     const form={begin:()=>model.begin(latest),complete:value=>model.complete(value,project(value)),fail:error=>model.fail(error)};
-    const context={form,draft:model.snapshot.draft,visit:a,item:a.videos[0],kind:'videos',video:a.videos[0],
+    const context={form,draft:model.snapshot.draft,visit:a,item:a.videos[0],kind:'videos',video:a.videos[0],activeMediaFocus:{current:null},
       editorId:'7',date:'2026-10-29',hasMaterial:true,positiveId:Number.isSafeInteger,safeProductionUrl:()=>true,
       productionVisitEditInput,setError(){},onCreated(){created++},async onWrite(visit){writes++;assert.equal(visit.revision,1);return aggregate(2)}};
     const declaration=nodes(fn(name),ts.isVariableDeclaration).find(n=>n.name.getText(ast)==='submit');
