@@ -1,6 +1,6 @@
 # Gate siguiente: aceptación intersectorial en un fixture único
 
-Propuesta de QA derivada de la revisión de157; NO ejecutada ni aprobada todavía. Al escribir la prueba se deben leer/verificar los contratos reales y reutilizar helpers de tests existentes, no copiar lógica de negocio ni fabricar ledger/evidencia para obtener un verde.
+El gate de API se ejecutó satisfactoriamente en158 y se amplió con Reportes y privacidad del empleado. Ver UNIFIED_THREE_VIDEO_JOURNEY_QA.md para el resultado, fixtures y límites. El recorrido nativo completo por UI sigue pendiente. La secuencia siguiente conserva el plan de aceptación; no autoriza fabricar ledger/evidencia ni reemplazar lógica de negocio en las pruebas.
 
 1. Fixture nuevo propio con identidad PostgreSQL verificada, cookie sessions independientes y cleanup ENOENT. Reutilizar backend/test/helpers/production-cookie-session.js. Reservar puerto no usado por otros fixtures. No usar DATABASE_URL configurada ni cuentas reales.
 2. Cliente sintético y acuerdo mensual con cuota3 reels/0 carruseles, importe sintético explícito y agreement_revision observada. Consultar objetivos y preparar tres slots/tareas con revisión real de preparación. Referencias: render2-first-monthly-agreement.integration.test.js y render2-goal-quota-reconciliation.integration.test.js.
