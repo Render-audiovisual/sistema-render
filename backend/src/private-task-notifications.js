@@ -48,7 +48,7 @@ export function destinatariosNuevosDeAsignacion({
 }
 
 async function resolverUsuarios(pool, nombres) {
-  const { rows } = await pool.query("SELECT usuario, nombre FROM usuarios");
+  const { rows } = await pool.query("SELECT usuario, nombre FROM usuarios WHERE activo IS TRUE");
   return nombres.map((nombre) => {
     const buscado = normalizarNombre(nombre);
     const usuarioEsperado = USUARIO_POR_RESPONSABLE.get(buscado);

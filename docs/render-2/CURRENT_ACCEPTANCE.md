@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Avisos legacy no seleccionan cuentas inactivas — corte237
+
+Ambas consultas por nombre filtran activo IS TRUE; tres unitarias nuevas rojas→verdes y28 focales. PostgreSQL descartable55880:4 físicas aprobadas con inactivo→activo→inactivo, cola exacta y SMTP simulado;106 tablas observadas con cambios intencionales controlados, fixture eliminado. No resuelve homónimos activos ni revocación posterior al SELECT y no elimina avisos anteriores. Binding del revisor extra pendiente de elección explícita, sin inferir cuentas por nombre. Sin frontend/build/migración/deploy nuevo. Ver TASK_WORKFLOW_QA.md.
+
 ### Drive distingue consulta fallida de cuenta desconectada — corte236
 
 Loading/error/ready separados: Reintentar consulta solo repite GETstatus, con latch y guardas de observación/sesión/montaje; sin OAuth ante error.8 nuevas y2781 frontend totales aprobadas; build index-DVX_VdUI.js. Navegador real/API y sesión sintéticas: loading→503neutral→clic→loading→200/archivos;44px y sin overflow a390.2 statusGET/1 filesGET, cero escrituras, fixture cerrado. Sin Google/PG real, backend nuevo o deploy. No acredita foco/lectores ni todos los dispositivos. Ver DRIVE_AUTHORITY_CONTRACT.md; el pendiente statusretry de235 queda implementado y probado con esos límites.

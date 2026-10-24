@@ -41,7 +41,7 @@ export async function buscarDestinatario(pool, asignadoA) {
   const { rows } = await pool.query(
     `SELECT usuario, nombre, email_notificaciones
      FROM usuarios
-     WHERE email_notificaciones IS NOT NULL`,
+     WHERE email_notificaciones IS NOT NULL AND activo IS TRUE`,
   );
 
   return (
