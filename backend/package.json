@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "test": "node --test test/*.test.js",
+    "qa:core:local": "node scripts/render2-core-acceptance.js",
     "start": "node src/server.js",
     "db:check": "node src/db-check.js",
     "recover:admin": "node scripts/recover-admin-password.js",
