@@ -243,6 +243,55 @@ function reviewedTaskContinuationBaseline(root) {
   assert.equal(hash(records),'25b7e1d5e6aeaf3d40f233c57f9811d30e69b7a18cbe27b64d5063d3f735bd14');
   return copy;
 }
+// Integration214: only the five reviewed comment-action rules may leave the
+// legacy fingerprint. Validate their complete records before removing anything.
+function reviewedCommentActionsBaseline(root) {
+  const copy = root.clone(), matches = [], records = [];
+  const selector = '.render-workspace .ros-task-comments-footer .ros-comment-action';
+  const selectors = new Set([selector, `${selector}:hover:not(:disabled)`, `${selector}:focus-visible`, `${selector}:disabled`]);
+  copy.walkRules(rule => {
+    if (!rule.selector.includes('.ros-comment-action')) return;
+    assert.ok(selectors.has(normalize(rule.selector)), 'No broad selector may borrow the comment-action exception');
+    const parent = rule.parent;
+    assert.ok(parent.type === 'root' || (parent.type === 'atrule' && parent.parent.type === 'root'), 'No additional comment-action wrapper');
+    records.push([normalize(rule.selector), parent.type === 'atrule' ? [parent.name, parent.params] : null,
+      rule.nodes.map(node => [node.type, node.prop, node.value, !!node.important])]);
+    matches.push(rule);
+  });
+  assert.equal(records.length, 5, 'Exactly five reviewed comment-action rules');
+  assert.equal(hash(records), '76e021be5580290c0eb9d1cb48e36a81ace3396b18bcf5c19b442b60b784456a',
+    'Exact declaration order, values, important flags and mobile media query');
+  const mobile = matches[4].parent;
+  assert.equal(mobile.type, 'atrule');
+  assert.equal(mobile.name, 'media');
+  assert.equal(mobile.params, '(max-width:640px)');
+  assert.equal(mobile.nodes.length, 1, 'Only the reviewed mobile rule owns this new wrapper');
+  matches.forEach(rule => rule.remove());
+  assert.equal(mobile.nodes.length, 0);
+  mobile.remove();
+  return copy;
+}
+test('Integration214 exception rejects changed declarations, selectors and wrappers without mutating source', () => {
+  const original = roots.WorkspaceReadOnly.toString();
+  reviewedCommentActionsBaseline(roots.WorkspaceReadOnly);
+  assert.equal(roots.WorkspaceReadOnly.toString(), original);
+  for (const mutate of [
+    rule => { rule.first.value = 'auto'; },
+    rule => { rule.first.important = true; },
+    rule => { rule.selector += ', .render-workspace button'; },
+    (_rule, mobile) => { mobile.params = '(max-width:800px)'; },
+    (_rule, mobile) => { mobile.append({ selector: '.unrelated', nodes: [{ prop: 'display', value: 'none' }] }); },
+  ]) {
+    const changed = roots.WorkspaceReadOnly.clone(), rules = [];
+    changed.walkRules(rule => { if (rule.selector.includes('.ros-comment-action')) rules.push(rule); });
+    mutate(rules[0], rules[4].parent);
+    assert.throws(() => reviewedCommentActionsBaseline(changed));
+  }
+  const unrelated = roots.WorkspaceReadOnly.clone();
+  unrelated.append({ selector: '.unrelated', nodes: [{ prop: 'display', value: 'none' }] });
+  const projected = reviewedCommentActionsBaseline(unrelated);
+  assert.equal(projected.last.selector, '.unrelated', 'Unreviewed rules remain in the legacy fingerprint');
+});
 function reviewedMobileTemplateBaseline(root) {
   const copy = root.clone(), reviewed = [];
   copy.walkRules(rule => {
@@ -266,6 +315,7 @@ function reviewedMobileTemplateBaseline(root) {
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
     let baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
+    if(name==='WorkspaceReadOnly')baselineRoot=reviewedCommentActionsBaseline(baselineRoot);
     if(name==='TaskDetailNotion')baselineRoot=reviewedMobileTemplateBaseline(baselineRoot);
     if(name==='TaskHeader')baselineRoot=reviewedTaskContinuationBaseline(baselineRoot);
     if (['WorkspaceReadOnly', 'TaskHeader', 'RenderApplePolish'].includes(name)) baselineRoot = reviewedFilterPresentationBaseline(baselineRoot);

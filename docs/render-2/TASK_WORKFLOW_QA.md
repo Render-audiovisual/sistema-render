@@ -1,5 +1,15 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Acciones de comentarios con estilo coherente — corte214
+
+Corregida la apariencia nativa detectada en213. Actualizar comentarios y Verificar envío comparten clase ros-comment-action, con tokens existentes, tipografía heredada13px, fondo suave, borde/radio8px, ancho acotado y foco explícito. No se cambiaron handlers, textos, permisos ni estados. Altura mínima40px desktop y44px hasta640px; sin animación nueva ni !important. Las skills frontend-design/apple-ui-design orientaron reutilizar la identidad existente y priorizar claridad/tacto en lugar de agregar otro tema.
+
+2732 pruebas frontend aprobadas, cero fallos/omisiones (`/private/tmp/render2-goal214-frontend-accepted.log`); build `index-Dh5kq_Ss.js` (`/private/tmp/render2-goal214-build.log`). La primera regresión detectó el fingerprint protector del CSS anterior. Se conservó el hash legacy y se validaron exactamente las cinco reglas nuevas/declaraciones/media query antes de proyectarlas fuera de esa comparación; pruebas negativas rechazan cambios/broadenings y preservan reglas ajenas. No se retiró la protección global. Tres nuevas pruebas de estilos y una de excepción se suman a las anteriores. Backend no modificado ni regresión backend renovada en214.
+
+Navegador cookie de Luciano, fixture aislado del runner213 con el nuevo build: Actualizar comentarios renderizado40px desktop,13px, radio8px; móvil390×844 renderizado44px y168,33px de ancho. Shift+Tab desde el compositor dio foco al botón, matches focus-visible true y outline sólido2px. Captura `/private/tmp/render2-goal214-styled-actions-mobile.png`, inspeccionada. Refrescó la fila de Franco y mantuvo el borrador sintético hasta vaciarlo manualmente sin envío. El botón Verificar comparte reglas/clase, pero no se provocó otro ACK perdido para verificarlo visualmente en214; estados disabled se comprobaron en fuente/tests, no mediante una petición retenida nativa en este corte.
+
+Runner real comprobó comentario/recibo/aviso esperados y102 tablas restantes invariantes, salida0 (`/private/tmp/render2-goal214-native.log`), cleanup ENOENT `/private/tmp/render2-local-yIwhqG`. Pestaña propia30 cerrada, viewport restaurado, sin instrumentar dist. Volta revisó CSS/JSX y reforzó el test del fingerprint; contraste por tokens calculado5,07:1 normal/4,83:1 hover, sin bloqueantes bajo este alcance. No certifica lectores de pantalla, todos los temas ni accesibilidad global. Sin producción, proveedores ni bases existentes. El pendiente visual puntual de213 queda corregido localmente.
+
 ## Lectura compartida nativa sin perder borradores — corte213
 
 Build212 `index-Bz8EzihW.js`, sin instrumentar dist ni reemplazar fetch. Dos identidades reales del fixture: Franco91001 escribe mediante API bearer autenticada del runner; Luciano91003 lee en un navegador con cookie. **No son dos navegadores/dispositivos ni una sesión cookie de Franco.** Runner `/private/tmp/render2-goal213-native.mjs`, PG55864/HTTP52826, identidad física exacta comprobada y tarea1 creada por API.

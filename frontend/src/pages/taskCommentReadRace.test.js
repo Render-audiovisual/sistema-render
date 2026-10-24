@@ -199,7 +199,7 @@ test('actual UI only offers explicit verification and disables Comentar for unre
   const disabled = button.openingElement.attributes.properties.find(a => a.name?.getText(file) === 'disabled').initializer.expression;
   assert.equal(evaluate(disabled, { comment: '', commenting: false, commentDraftOwner: { current: { creation: { snapshot: { locked: true } } } } }), true);
   assert.equal(evaluate(disabled, { comment: 'B', commenting: false, commentDraftOwner: { current: { creation: { snapshot: { locked: true } } } } }), true);
-  assert.match(detail.getText(file), /snapshot.canVerify && <button type="button" onClick=\{verifyCommentCreation\}>Verificar envío/);
+  assert.match(detail.getText(file), /snapshot.canVerify && <button type="button" className="ros-comment-action" onClick=\{verifyCommentCreation\}>Verificar envío/);
   assert.doesNotMatch(detail.getText(file), /creation\.discard\(/);
   assert.match(detail.getText(file), /Salir no cancela ni revierte el envío/);
 });
