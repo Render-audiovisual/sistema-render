@@ -42,4 +42,14 @@ Pruebas de transporte separadas:12 aprobadas y una integración optativa omitida
 
 ## Límites antes de producción
 
+### Revalidación local del 24 de octubre de 2026
+
+Tras la autorización explícita se retiraron25 segmentos SysV del usuario: cada ID se releyó inmediatamente antes de retirarlo, con cero conexiones y sin proceso creador ni último proceso vivos. Los dos segmentos con seis conexiones cada uno se preservaron. No se eliminaron archivos de bases ni se detuvieron servicios activos.
+
+Se repitió la matriz cookie con el mismo comando indicado arriba:16 aprobadas, cero fallos u omisiones. La identidad del clúster descartable fue comprobada por el harness y su limpieza confirmó ENOENT para `/private/tmp/render2-local-I4Lk12`.
+
+Después se ejecutaron las cinco suites de la cohorte anterior con `RENDER2_RUN_LOCAL_INTEGRATION=true node --test --test-concurrency=1`, pasando los cinco archivos explícitamente:37 aprobadas, cero fallos u omisiones. Ambas ejecuciones terminaron con código0. Son53 comprobaciones físicas renovadas, no53 pruebas nuevas ni aceptación global. La evidencia se obtuvo en la salida de terminal de esta ejecución; no se atribuye a los logs históricos del corte196.
+
+Volta contrastó en solo lectura el siguiente gate: preferencias nativas A/B/A, Atrás real, prioridad de URL explícita y ausencia de escrituras operativas. Ese recorrido sigue pendiente; esta renovación HTTP/PostgreSQL no lo sustituye. No cambiaron código de producto, frontend, configuración comercial ni producción.
+
 Falta ampliar la aceptación transversal y verificar cuentas reales, navegador/TLS/proxy, proveedores y respaldo/restauración en un destino autorizado. Los canarios comprueban datos privados estructurados, no cualquier contenido libre que un usuario pueda escribir. Los resultados no autorizan despliegue ni demuestran que producción esté actualizada.
