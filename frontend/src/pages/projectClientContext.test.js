@@ -44,6 +44,8 @@ function fixture(href = `https://render.test/proyectos?cliente=11&proyecto=${ID}
     setContextHref: value => effects.push(['context', value]), setFilters: value => effects.push(['filters', value]),
     setList: value => effects.push(['list', value]), setForm: value => effects.push(['form', value]),
     setMessage: value => effects.push(['message', value]), setSelection: value => effects.push(['selection', value]) };
+  deps.detailStateRef = { current: { status: 'ready', data: { id: selectionRef.current.id, permissions: { editar: true, administrar: true }, archivado: false }, error: '' } };
+  deps.setDetail = value => effects.push(['detail', value]); deps.publishDetail = callback('publishDetail', deps);
   deps.restoreListContext = callback('restoreListContext', deps);
   deps.changeListFilters = callback('changeListFilters', deps);
   return { ...deps, effects, calls, originalSelection, originalForm,
@@ -178,6 +180,8 @@ test('actual pending write ACK cannot restore an old client/page or wipe a repla
       transport: { cancel() {}, write: (mutation, scope) => scope.request(mutation.path, { method: mutation.method, body: JSON.stringify(mutation.body) }) },
       setDetail: value => paints.push(['detail', value]), setForm: value => { h.formRef.current = typeof value === 'function' ? value(h.formRef.current) : value; paints.push(['form']); },
       setMessage: value => paints.push(['message', value]), setListRefresh: () => paints.push(['refresh']), selectProject: h.select };
+    deps.selectionRef = h.selectionRef; deps.admin = true; deps.detailStateRef = h.detailStateRef;
+    deps.publishDetail = callback('publishDetail', deps); deps.canUseProjectObservation = callback('canUseProjectObservation', deps);
     const submit = callback('submit', deps), pending = submit({ preventDefault() {} });
     h.choose('22'); assert.equal(h.window.location.searchParams.get('offset'), null);
     const replacement = { seq: 2, draft: { titulo: 'Replacement' }, initial: {}, baseRevision: 9 };

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
-import {createCapturedRequest} from '../shared/session/captured-request.js';
+import {createCapturedRequest,isSessionFailure} from '../shared/session/captured-request.js';
 import {createBrowserSessionState} from '../shared/session/browser-session-state.js';
 import {parseProject,isProjectChildCreation,parseProjectChildCreation,buildProjectMutation,buildProjectDeliverableApproval,parseProjectDeliverableApproval,projectDeliverableApprovalLabel,createProjectsTransport,projectError} from './projectsModel.js';
 import {normalizeProjectDeliverableApprovalInput} from '../../../backend/src/project-deliverable-approvals.js';
@@ -23,6 +23,8 @@ function harness({cookie=false}={}){
  formRef.current.scope=createCapturedRequest({session:sesion,readSession:()=>live,isActive:()=>active,request:async(url,options)=>{calls.push({url,options});return transportFn(url,options)}});
  const originalScope=formRef.current.scope;
  const deps={formRef,mutationBusy,detailReadGeneration,selectionRef,sesion,captureAction:()=>originalScope,isProjectChildCreation,parseProjectChildCreation,buildProjectMutation,parseProject,parseProjectDeliverableApproval,projectError,transport:{cancel:key=>paints.push(['cancel',key]),read:async()=>({proyecto:project()}),write:(mutation,scope)=>scope.request(mutation.path,{method:mutation.method,body:JSON.stringify(mutation.body)})},setForm:update=>{formRef.current=typeof update==='function'?update(formRef.current):update;paints.push(['form',formRef.current])},setDetail:update=>{detailRef.current=typeof update==='function'?update(detailRef.current):update;paints.push(['detail',detailRef.current])},setMessage:value=>paints.push(['message',value]),setListRefresh:()=>paints.push(['list']),selectProject:()=>paints.push(['select'])};
+ deps.detailStateRef=detailRef;deps.admin=true;deps.isSessionFailure=isSessionFailure;
+ deps.publishDetail=callback('publishDetail',deps);deps.canUseProjectObservation=callback('canUseProjectObservation',deps);
  deps.purgeProjectAccess=scope=>{if(scope.current()){formRef.current=null;paints.push(['purge'])}};
  return{...deps,calls,paints,detailRef,submit:callback('submit',deps),refreshDetail:callback('refreshDetail',deps),setRead:fn=>{deps.transport.read=fn},transport:fn=>{transportFn=fn},replace:()=>{if(cookie){publish(2);live=store.getSession()}else live={token:'B',usuario:{id:2,rol:'admin',activo:true}}},unmount:()=>{active=false}};
 }
@@ -68,24 +70,25 @@ test('actual unmount/context-ABA guard suppresses late response, duplicate click
 test('actual403 removes approval intent and detail; no subsequent verification',async()=>{
  const h=harness();h.transport(async()=>{throw Object.assign(new Error('private'),{status:403})});await h.submit({preventDefault(){}});assert.equal(h.formRef.current,null);assert.ok(h.paints.some(([kind])=>kind==='purge'));await h.submit({preventDefault(){}},{verify:true});assert.equal(h.calls.length,1);
 });
-test('actual deferred GET cannot overwrite later approval ACK or paint stale error; 400 releases canceled loading',async()=>{
+test('actual refresh blocks retained approval until a verified read; pending write blocks new reads and400 preserves observed data',async()=>{
  for(const failedWrite of [false,true])for(const failedRead of [false,true]){
   const h=harness(),old=deferred(),write=deferred();let reads=0;
   h.setRead(()=>{reads++;return old.promise});h.transport(()=>write.promise);
   const reading=h.refreshDetail(true);assert.equal(h.detailRef.current.status,'loading');
-  const saving=h.submit({preventDefault(){}});assert.ok(h.paints.some(([kind,key])=>kind==='cancel'&&key==='detail'));assert.equal(h.detailRef.current.status,'ready');
-  await h.refreshDetail();assert.equal(reads,1,'A same-project refresh cannot begin during the write');
+  await h.submit({preventDefault(){}});assert.equal(h.calls.length,0,'Pending observation cannot authorize approval');
+  if(failedRead)old.reject(new Error('transient read failure'));else old.resolve({proyecto:project()});await reading;
+  if(failedRead){assert.equal(h.detailRef.current.status,'error');assert.equal(h.detailRef.current.data.revision,8);await h.submit({preventDefault(){}});assert.equal(h.calls.length,0);h.setRead(async()=>{reads++;return{proyecto:project()}});await h.refreshDetail(true);}
+  assert.equal(h.detailRef.current.status,'ready');
+  const saving=h.submit({preventDefault(){}});assert.equal(h.calls.length,1);const beforeReads=reads;
+  await h.refreshDetail();assert.equal(reads,beforeReads,'A same-project refresh cannot begin during the write');
   if(failedWrite)write.reject(Object.assign(new Error('validation'),{status:400}));else write.resolve(ack());await saving;
-  assert.equal(h.detailRef.current.status,'ready');assert.equal(h.detailRef.current.data.revision,failedWrite?8:9);
-  const count=h.paints.length;
-  if(failedRead)old.reject(Object.assign(new Error('old private error'),{status:403}));else old.resolve({proyecto:project()});await reading;
-  assert.equal(h.paints.length,count);assert.equal(h.detailRef.current.data.revision,failedWrite?8:9);assert.equal(h.detailRef.current.error,'');
+  assert.equal(h.detailRef.current.status,'ready');assert.equal(h.detailRef.current.data.revision,failedWrite?8:9);assert.equal(h.detailRef.current.error,'');
   if(!failedWrite)assert.equal(h.detailRef.current.data.entregables[0].aprobacion_versionada,true);
   else{assert.equal(h.formRef.current.busy,false);assert.equal(h.formRef.current.reviewed,false);}
  }
 });
 test('real purge callback clears form/observed content/catalog and cancels old reads, not another actor',()=>{
- const formRef={current:form()},effects=[],scope={current:()=>true};const purge=callback('purgeProjectAccess',{formRef,transport:{cancel:key=>effects.push(['cancel',key])},setForm:v=>effects.push(['form',v]),setCatalog:v=>effects.push(['catalog',v]),setMessage:v=>effects.push(['message',v]),setDetail:v=>effects.push(['detail',v])});
+ const formRef={current:form()},effects=[],scope={current:()=>true};const purge=callback('purgeProjectAccess',{formRef,transport:{cancel:key=>effects.push(['cancel',key])},setForm:v=>effects.push(['form',v]),setCatalog:v=>effects.push(['catalog',v]),setMessage:v=>effects.push(['message',v]),publishDetail:v=>effects.push(['detail',v])});
  purge(scope);assert.equal(formRef.current,null);assert.equal(effects.find(([kind])=>kind==='detail')[1].data,null);assert.deepEqual(effects.find(([kind])=>kind==='catalog')[1].users,[]);const count=effects.length;purge({current:()=>false});assert.equal(effects.length,count);
 });
 test('actual transport optional action scope keeps original captured headers and stops stale dispatch',async()=>{

@@ -62,6 +62,9 @@ function harness(kind) {
     setMessage: text => effects.push(['message', text]), setListRefresh: () => effects.push(['list']),
     selectProject: () => assert.fail('Child creation must not select another project'),
     purgeProjectAccess: guard => { guard.assertCurrent(); formRef.current = null; effects.push(['purge']); } };
+  deps.selectionRef = { current: { id: PROJECT } }; deps.admin = true;
+  deps.detailStateRef = { current: { status: 'ready', data: project(kind, 8), error: '' } };
+  deps.publishDetail = callback('publishDetail', deps); deps.canUseProjectObservation = callback('canUseProjectObservation', deps);
   return { deps, calls, effects, formRef, scope, submit: callback('submit', deps), send: fn => { send = fn; },
     replace: () => publish(2), reobserve: () => publish(1), aba: () => { context = {}; context = {}; },
     unmount: () => { mounted = false; transport.dispose(); } };
@@ -136,7 +139,7 @@ test('409 preserves child draft/original revision and cannot adopt a refreshed p
     assert.deepEqual(h.formRef.current.draft, before); assert.equal(h.formRef.current.requestId, REQUEST);
     await h.submit(event(), { verify: true }); assert.equal(h.calls.length, 1);
     const reviewed = { ...h.formRef.current, reviewed: true };
-    callback('adoptRevision', { project: project(kind, 20), form: reviewed, isProjectChildCreation,
+    callback('adoptRevision', { project: project(kind, 20), form: reviewed, isProjectChildCreation, canUseProjectObservation: h.deps.canUseProjectObservation,
       setForm: () => assert.fail('Never adopt a new base for a receipted child creation') })();
     assert.equal(h.effects.some(([name]) => name === 'list'), false);
   }
@@ -158,6 +161,8 @@ test('actual openForm allocates fresh UUIDs per explicit opening, retains captur
     initialForm: callback('initialForm', {}), isProjectChildCreation, crypto: { randomUUID: () => requestIds[n++] },
     formSequence: { current: 0 }, formRef: { current: null }, setForm: value => { observed = value; }, setMessage() {},
     catalog: { status: 'ready' }, loadCatalog: () => assert.fail('No child catalogue fetch') };
+  deps.selectionRef = { current: { id: PROJECT } }; deps.detailStateRef = { current: { status: 'ready', data: current, error: '' } };
+  deps.canUseProjectObservation = callback('canUseProjectObservation', deps);
   const open = callback('openForm', deps);
   for (const [kind] of cases) { open(kind); assert.equal(observed.kind, kind); assert.equal(observed.baseRevision, 8); assert.equal(observed.requestId, requestIds[n - 1]); assert.ok(observed.scope.current()); }
   assert.equal(n, 3); const last = observed;

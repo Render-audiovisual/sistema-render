@@ -32,6 +32,8 @@ Actualización167: hay evidencia nativa de drop en la página real para revisió
 
 Actualización168: las altas de etapas/hitos/entregables usan UUID, recibo transaccional por actor y recuperación explícita sin rebase. Ver PROJECT_CHILD_CREATION_QA.md. Pasaron2346 frontend,1969 backend/119 omitidas, build y39 comprobaciones físicas de Proyectos/aprobaciones/calendario sobre clústeres temporales nuevos. La prueba visual de escritorio/móvil usó API sintética y no equivale al recorrido nativo conectado. El usuario autorizó liberar solo huérfanos verificados; se retiraron cuatro segmentos sin conexiones, dejando intactos ambos PostgreSQL previos. Se recuperó capacidad para QA físico. Migración088 aplicada solo en fixtures, no en bases existentes. Se registra un P2 de editor oculto ante error no403 de refresh; continúan los gates globales y no hubo despliegue.
 
+Actualización169: el editor de Proyectos conserva borrador y observación ante fallos recuperables, con bloqueo visual/imperativo hasta una lectura válida;403 purga y401 no conserva snapshot. GoalTaskLink usa texto exterior neutral. Ver PROJECT_REFRESH_RECOVERY_QA.md. Pasaron61 focales,2360 frontend,1969 backend/119 omitidas y build separado para no interrumpir el fixture conectado. NATIVE_THREE_VIDEO_PROGRESS.md registra el primer tramo nativo real: visita3videos, cuota3tareas reutilizadas y ciclo completo de tarea1, con cero publicaciones reales comprobadas en PostgreSQL. Tareas2/3 y aceptación intersectorial siguen pendientes. El fixture propio queda en curso para continuarlo, no limpio ni certificado completo. Sin despliegue ni cambios de bases existentes.
+
 ## Matriz de requisitos: qué prueba la evidencia actual
 
 | Requisito maestro | Evidencia actual | Estado y evidencia todavía necesaria |

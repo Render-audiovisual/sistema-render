@@ -54,6 +54,16 @@ test('actual opener captures once from genuine runtime-backed reader; dialog rec
   assert.match(source, /expected_tarea_updated_at:data.tarea.updated_at, expected_pieza_updated_at:slot.updated_at/);
   assert.match(source, /isTaskCompleted\(data.tarea\)/);
 });
+test('exterior is a neutral consultation; authoritative dialog still distinguishes an existing link', () => {
+  const exterior = text(component('GoalTaskLink'));
+  assert.match(exterior, /<strong>Objetivo del mes<\/strong>/);
+  assert.match(exterior, /Consultá si esta pieza ya cuenta en un objetivo mensual\./);
+  assert.match(exterior, /onClick=\{openDialog\}>Consultar vínculo mensual<\/button>/);
+  assert.doesNotMatch(exterior, /Hacé que esta pieza cuente|Vincular al objetivo mensual/);
+  const dialog = text(component('LinkDialog'));
+  assert.match(dialog, /data\?\.vinculo_actual \? <p role="status">Esta pieza ya cuenta/);
+  assert.match(dialog, /disabled=\{loading \|\| saving \|\| !slot \|\| Boolean\(data\?\.vinculo_actual\)\}/);
+});
 test('actual GET and POST retain URLs, IDs, period, CAS and original bearer/cookie intent', async () => {
   for (const cookie of [false, true]) {
     const f = fixture({ cookie }); const cleanup = f.read('2026-10'); await settle();

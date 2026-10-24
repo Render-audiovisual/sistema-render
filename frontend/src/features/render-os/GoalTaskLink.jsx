@@ -115,7 +115,7 @@ export function GoalTaskLink({ task, canManage }) {
     setOpen({ taskId, scope });
   };
   if (!canManage || !task.cliente_id || task.historia_id || task.tipo_tarea === 'produccion') return null;
-  return <section className="ros-goal-link"><div><strong>Objetivo del mes</strong><span>Hacé que esta pieza cuente en el avance del cliente.</span></div>
-    <button type="button" onClick={openDialog}>Vincular al objetivo mensual</button>
+  return <section className="ros-goal-link"><div><strong>Objetivo del mes</strong><span>Consultá si esta pieza ya cuenta en un objetivo mensual.</span></div>
+    <button type="button" onClick={openDialog}>Consultar vínculo mensual</button>
     {open?.taskId === task.id && <LinkDialog task={task} scope={open.scope} onClose={() => setOpen(null)}/>}</section>;
 }

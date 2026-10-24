@@ -99,8 +99,8 @@ test('local cancel preserves refusal and clears form/ref only after one accepted
 test('committed popstate restores project selection once, never asks again or rewrites history', () => {
   const h = state(), updates = [];
   const contexts = [];
-  const pop = new Function('window', 'projectLocation', 'selectionRef', 'formRef', 'setForm', 'setMessage', 'setSelection', 'restoreListContext', `${popSource}\nreturn navigate;`)(
-    h.win, projectLocation, h.selectionRef, h.formRef, value => updates.push(['form', value]), value => updates.push(['message', value]), value => updates.push(['selection', value]), href => contexts.push(href));
+  const pop = new Function('window', 'projectLocation', 'selectionRef', 'formRef', 'setForm', 'setMessage', 'setSelection', 'restoreListContext', 'publishDetail', `${popSource}\nreturn navigate;`)(
+    h.win, projectLocation, h.selectionRef, h.formRef, value => updates.push(['form', value]), value => updates.push(['message', value]), value => updates.push(['selection', value]), href => contexts.push(href), value => updates.push(['detail', value]));
   h.formRef.current = dirtyForm();
   h.win.confirm = () => { throw new Error('must not confirm after approval'); };
   h.win.history = new Proxy({}, { get() { throw new Error('must not repair history'); } });
@@ -111,6 +111,7 @@ test('committed popstate restores project selection once, never asks again or re
   assert.deepEqual(h.selectionRef.current, { id: NEXT, invalid: false });
   assert.equal(h.formRef.current, null);
   assert.equal(updates.filter(([key]) => key === 'selection').length, 1);
+  assert.deepEqual(updates.find(([key]) => key === 'detail')[1], { status: 'loading', data: null, error: '' });
   pop();
   assert.equal(updates.filter(([key]) => key === 'selection').length, 1);
   assert.equal(contexts.length, 3, 'List context is restored even when project selection is unchanged');
@@ -136,7 +137,7 @@ test('task link delegates to shared navigation exactly once, with no pre-confirm
 test('select/cancel local gates and successful-save reset stay separate from shared navigation', () => {
   assert.match(source, /selection.id !== item.id && canLeave\(\)\) selectProject\(item.id\)/);
   assert.match(source, /if \(canLeave\(\)\) selectProject\(null\)/);
-  assert.match(source, /function openForm\(kind, item\) \{\s*const scope=captureAction\(\);if\(!scope.current\(\)\)return;\s*if \(!canLeave\(\)\) return/);
+  assert.match(source, /function openForm\(kind, item\) \{\s*const scope=captureAction\(\);if\(!scope.current\(\)\)return;\s*if \(!canUseProjectObservation\(kind\)\) return;\s*if \(!canLeave\(\)\) return/);
   assert.match(source, /setForm\(null\); formRef.current = null;\s*if \(current.kind === "create"\) selectProject\(data.id\)/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|history\.go\(|history\.back\(/);
 });

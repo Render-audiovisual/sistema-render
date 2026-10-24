@@ -5,7 +5,7 @@ import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
 import { navigateWithinApp } from "../shared/navigation/location.js";
 import { getSesion } from '../utils.jsx';
 import { useSessionView } from '../shared/session/use-session-view.js';
-import { createCapturedRequest } from '../shared/session/captured-request.js';
+import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { DELIVERABLE_EDIT_STATES, isProjectChildCreation, parseProjectChildCreation, parseProjectDeliverableApproval, projectDeliverableApprovalLabel, projectListLocation, projectListLocationUrl } from './projectsModel.js';
 import { PROJECT_TYPES, PROJECT_STATES, STAGE_STATES, MILESTONE_STATES, DELIVERABLE_STATES, PROJECT_ACTIVITY, buildProjectMutation, createProjectsTransport, observedProjectTask, parseProject, parseProjectsPage, projectDate, projectError, projectHref, projectLocation, projectLocationUrl, projectsListUrl, safeProjectUrl } from "./projectsModel.js";
 import "./Projects.css";
@@ -65,7 +65,7 @@ function ProjectFields({ form, project, catalog, change, retryCatalog }) {
   </>;
 }
 
-function ProjectEditor({ form, project, catalog, change, cancel, submit, refresh, adoptRevision, lookupTask, retryCatalog, moveStage }) {
+function ProjectEditor({ form, project, catalog, change, cancel, submit, refresh, adoptRevision, lookupTask, retryCatalog, moveStage, observationReady = true }) {
   const editorHeading=useRef(null),focusedSequence=useRef(null);
   useEffect(()=>{
     if(focusedSequence.current===form.seq)return;
@@ -83,8 +83,8 @@ function ProjectEditor({ form, project, catalog, change, cancel, submit, refresh
     {structural && <p className="pr-version">Base observada: revisión <strong>{form.baseRevision}</strong>{project && project.revision !== form.baseRevision && <> · Proyecto visible: revisión <strong>{project.revision}</strong></>}</p>}
     {form.error && <div className="pr-error" role="alert"><p>{form.error}</p>
       {form.conflict && structural && <div className="pr-actions"><button type="button" onClick={refresh} disabled={form.busy}>Actualizar proyecto y revisar</button>
-        {form.reviewed && project && kind!=='deliverable-approve' && !isProjectChildCreation(kind) && <button type="button" onClick={adoptRevision}>Usar revisión {project.revision}</button>}{kind==='deliverable-approve'&&<p>Cerrá esta revisión y volvé a abrir el entregable actualizado antes de aprobar. No se adoptará otra versión automáticamente.</p>}{isProjectChildCreation(kind)&&<p>Este intento conserva su identificador y revisión original. Revisá el proyecto; para iniciar una creación diferente, cerrá y volvé a abrir el formulario.</p>}</div>}
-      {form.uncertain&&<button type="button" disabled={form.busy} onClick={event=>submit(event,{verify:true})}>Verificar la misma solicitud</button>}
+        {form.reviewed && project && kind!=='deliverable-approve' && !isProjectChildCreation(kind) && <button type="button" disabled={!observationReady} onClick={adoptRevision}>Usar revisión {project.revision}</button>}{kind==='deliverable-approve'&&<p>Cerrá esta revisión y volvé a abrir el entregable actualizado antes de aprobar. No se adoptará otra versión automáticamente.</p>}{isProjectChildCreation(kind)&&<p>Este intento conserva su identificador y revisión original. Revisá el proyecto; para iniciar una creación diferente, cerrá y volvé a abrir el formulario.</p>}</div>}
+      {form.uncertain&&<button type="button" disabled={form.busy || !observationReady || !allowed} onClick={event=>submit(event,{verify:true})}>Verificar la misma solicitud</button>}
       {form.conflict && !structural && <p>Revisá la lista antes de cerrar este formulario e iniciar una creación diferente. Este intento conserva su identificador.</p>}
     </div>}
     {!allowed && <p className="pr-notice">No tenés permiso actual para guardar este formulario. Tus datos siguen acá.</p>}
@@ -103,24 +103,24 @@ function ProjectEditor({ form, project, catalog, change, cancel, submit, refresh
       {kind === "order" && <ol className="pr-order pr-wide">{d.etapa_ids.map((id, index) => <li key={id}><span>{project.etapas.find(stage => stage.id === id)?.titulo || `Etapa ${id}`}</span><button type="button" aria-label={`Subir etapa ${index + 1}`} disabled={index === 0 || form.busy} onClick={() => moveStage(index, -1)}>↑</button><button type="button" aria-label={`Bajar etapa ${index + 1}`} disabled={index === d.etapa_ids.length - 1 || form.busy} onClick={() => moveStage(index, 1)}>↓</button></li>)}</ol>}
       {kind === "task-link" && <>
         <label>ID de la tarea existente<input inputMode="numeric" pattern="[1-9][0-9]*" required value={d.tarea_id} onChange={event => change("tarea_id", event.target.value)}/></label>
-        <button type="button" className="pr-field-action" onClick={lookupTask} disabled={form.lookupBusy || form.busy}>{form.lookupBusy ? "Consultando…" : "Consultar tarea"}</button>
+        <button type="button" className="pr-field-action" onClick={lookupTask} disabled={form.lookupBusy || form.busy || !observationReady || !allowed}>{form.lookupBusy ? "Consultando…" : "Consultar tarea"}</button>
         <StageSelect value={d.etapa_id} project={project} onChange={value => change("etapa_id", value)}/>
         {form.observedTask && <div className="pr-observed pr-wide"><a href={form.observedTask.href} target="_blank" rel="noopener noreferrer">{form.observedTask.titulo} ↗</a><p>ID {form.observedTask.id} · Revisión observada {form.observedTask.revision}</p></div>}
         <p className="pr-muted pr-wide">Se vincula la tarea real, no se copia ni se crea otra. Consultala de nuevo solo para revisar explícitamente una versión más reciente.</p>
       </>}
       {kind === "task-unlink" && <p className="pr-wide">Se quitará el vínculo con “{form.itemTitle}”. La tarea seguirá existiendo con su historial y permisos.</p>}
-      </fieldset><footer className="pr-actions pr-wide"><button type="button" onClick={cancel} disabled={form.busy}>Cancelar</button><button type="submit" className="pr-primary" disabled={form.busy || form.uncertain || form.conflict || (kind==='deliverable-approve'&&!d.acknowledged) || !allowed || (needsCatalog && catalog.status !== "ready") || (kind === "task-link" && !form.observedTask)}>{form.busy ? "Guardando…" : kind === "create" ? "Crear proyecto" : kind === "archive" ? d.archivado ? "Archivar proyecto" : "Reactivar proyecto" : kind === "task-link" ? "Vincular tarea" : kind === "task-unlink" ? "Quitar vínculo" : kind==='deliverable-approve'?'Aprobar versión revisada': "Guardar cambios"}</button></footer>
+      </fieldset><footer className="pr-actions pr-wide"><button type="button" onClick={cancel} disabled={form.busy}>Cancelar</button><button type="submit" className="pr-primary" disabled={form.busy || form.uncertain || form.conflict || !observationReady || (kind==='deliverable-approve'&&!d.acknowledged) || !allowed || (needsCatalog && catalog.status !== "ready") || (kind === "task-link" && !form.observedTask)}>{form.busy ? "Guardando…" : kind === "create" ? "Crear proyecto" : kind === "archive" ? d.archivado ? "Archivar proyecto" : "Reactivar proyecto" : kind === "task-link" ? "Vincular tarea" : kind === "task-unlink" ? "Quitar vínculo" : kind==='deliverable-approve'?'Aprobar versión revisada': "Guardar cambios"}</button></footer>
     </form>
   </section>;
 }
 
-function Detail({ project, openForm, openTask }) {
-  const edit = project.permissions.editar && !project.archivado;
+function Detail({ project, openForm, openTask, observationReady = true }) {
+  const edit = observationReady && project.permissions.editar && !project.archivado;
   const stageName = id => project.etapas.find(stage => stage.id === id)?.titulo || "Sin etapa";
   const resourceName = id => [...project.entregables, ...project.hitos, ...project.etapas].find(item => item.id === id)?.titulo;
   return <>
     <header className="pr-detail-header"><div><span className="pr-kicker">{PROJECT_TYPES[project.tipo]} · {PROJECT_STATES[project.estado]}{project.archivado ? " · Archivado" : ""}</span><h2>{project.titulo}</h2><p>{project.cliente.nombre} · Responsable: {project.responsable.nombre} · ID {project.responsable.id}</p></div>
-      <div className="pr-actions">{edit && <button type="button" onClick={() => openForm("project")}>Editar proyecto</button>}{project.permissions.administrar && <button type="button" onClick={() => openForm("archive")}>{project.archivado ? "Reactivar" : "Archivar"}</button>}</div></header>
+      <div className="pr-actions">{edit && <button type="button" onClick={() => openForm("project")}>Editar proyecto</button>}{project.permissions.administrar && <button type="button" disabled={!observationReady} onClick={() => openForm("archive")}>{project.archivado ? "Reactivar" : "Archivar"}</button>}</div></header>
     <dl className="pr-facts"><div><dt>Inicio</dt><dd>{projectDate(project.fecha_inicio)}</dd></div><div><dt>Entrega</dt><dd>{projectDate(project.fecha_entrega)}</dd></div><div><dt>Tareas finalizadas</dt><dd>{project.counts.finalizadas} de {project.counts.tareas}</dd></div><div><dt>Revisión del proyecto</dt><dd>{project.revision}</dd></div></dl>
     {project.descripcion && <p className="pr-description">{project.descripcion}</p>}
     <p className="pr-members-summary">Miembros: {project.miembro_ids.length ? project.miembro_ids.map(id => `ID ${id}`).join(", ") : "sin miembros adicionales"}. El estado del proyecto se gestiona por separado de sus tareas.</p>
@@ -175,6 +175,20 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   const [filterClients, setFilterClients] = useState({ status: 'loading', items: [], error: '' });
   const [list, setList] = useState({ status: "loading", data: null, error: "" });
   const [detail, setDetail] = useState({ status: "idle", data: null, error: "" });
+  const detailStateRef = useRef(detail);
+  function publishDetail(next) {
+    const value = typeof next === 'function' ? next(detailStateRef.current) : next;
+    detailStateRef.current = value;
+    setDetail(value);
+  }
+  function canUseProjectObservation(kind) {
+    const id = selectionRef.current.id, current = detailStateRef.current;
+    if (id && (current.status !== 'ready' || current.data?.id !== id)) return false;
+    if (kind === 'create') return admin;
+    const data = current.data;
+    return Boolean(id && data?.id === id && (kind === 'archive'
+      ? data.permissions.administrar : data.permissions.editar && !data.archivado));
+  }
   const [catalog, setCatalog] = useState({ status: "idle", clients: [], users: [], error: "" });
   const [form, setForm] = useState(null);
   const formRef = useRef(form); formRef.current = form;
@@ -184,13 +198,14 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   const [listRefresh, setListRefresh] = useState(0);
   const [message, setMessage] = useState("");
   const project = detail.data?.id === selection.id ? detail.data : null;
+  const observationReady = !selection.id || (detail.status === 'ready' && project !== null);
   const dirty = form && (form.uncertain||JSON.stringify(form.draft) !== JSON.stringify(form.initial));
   const captureAction=()=>{const observation=selectionRef.current;return createCapturedRequest({session:sesion,readSession:getSesion,request,isActive:()=>mounted.current&&selectionRef.current===observation});};
   function purgeProjectAccess(scope){
     if(!scope.current())return;
     for(const key of ['detail','task','clients','users'])transport.cancel(key);
     formRef.current=null;setForm(null);setCatalog({status:'idle',clients:[],users:[],error:''});setMessage('');
-    setDetail({status:'error',data:null,error:'No tenés acceso actual a este proyecto. Se retiró el contenido de esta vista.'});
+    publishDetail({status:'error',data:null,error:'No tenés acceso actual a este proyecto. Se retiró el contenido de esta vista.'});
   }
 
   function restoreListContext(href) {
@@ -247,18 +262,21 @@ function ProjectsSession({ sesion, onNavigate, request }) {
     const scope=captureAction();if (!id||!scope.current()) return;
     if(mutationBusy.current&&formRef.current?.projectId===id)return;
     const generation=++detailReadGeneration.current;
-    setDetail(current => ({ ...current, status: "loading", error: "" }));
+    publishDetail(current => ({ status: "loading", data:current.data?.id===id?current.data:null, error: "" }));
     try {
       const value = await transport.read("detail", `/api/proyectos/${id}`);
       if (value === undefined || generation!==detailReadGeneration.current||!scope.current()||selectionRef.current!==observation) return;
       const data = parseProject(value.proyecto, true);
       if (data.id !== id) throw new Error("Proyecto incompatible.");
-      setDetail({ status: "ready", data, error: "" });
+      publishDetail({ status: "ready", data, error: "" });
       if (review) setForm(current => generation===detailReadGeneration.current&&current?.projectId === id ? { ...current, reviewed: true } : current);
-    } catch (error) { if (generation===detailReadGeneration.current&&scope.current()&&selectionRef.current===observation){if(error.status===403){purgeProjectAccess(scope);return;}setDetail({ status: "error", data: null, error: projectError(error) });} }
+    } catch (error) { if (generation===detailReadGeneration.current&&scope.current()&&selectionRef.current===observation){
+      if(error.status===403){purgeProjectAccess(scope);return;}
+      publishDetail(current=>({ status:"error",data:error.status===401||isSessionFailure(error)?null:current.data?.id===id?current.data:null,error:projectError(error) }));
+    } }
   }
   useEffect(() => {
-    setDetail({ status: selection.id ? "loading" : "idle", data: null, error: "" });
+    publishDetail({ status: selection.id ? "loading" : "idle", data: null, error: "" });
     if (selection.id) void refreshDetail();
     return () => {detailReadGeneration.current++;transport.cancel("detail");};
   }, [selection.id, transport]);
@@ -288,6 +306,7 @@ function ProjectsSession({ sesion, onNavigate, request }) {
     const next = { id, invalid: false };
     setForm(null); formRef.current = null; setMessage(""); setSelection(next);
     selectionRef.current = next;
+    publishDetail({ status:id?'loading':'idle',data:null,error:'' });
   }
   useEffect(() => {
     const navigate = () => {
@@ -298,6 +317,7 @@ function ProjectsSession({ sesion, onNavigate, request }) {
       // Shared navigation protection has already accepted any cancelable exit.
       // Unsupported/noncancelable traversals are restored normally, never trapped.
       setForm(null); formRef.current = null; setMessage(""); setSelection(next); selectionRef.current = next;
+      publishDetail({ status:next.id?'loading':'idle',data:null,error:'' });
     };
     window.addEventListener("popstate", navigate);
     return () => { window.removeEventListener("popstate", navigate); };
@@ -315,6 +335,7 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   }
   function openForm(kind, item) {
     const scope=captureAction();if(!scope.current())return;
+    if (!canUseProjectObservation(kind)) return;
     if (!canLeave()) return;
     if (kind === "create" ? !admin : !project || (kind === "archive" ? !project.permissions.administrar : !project.permissions.editar || project.archivado)) return;
     const draft = initialForm(kind, project, item);
@@ -338,17 +359,20 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   }
   async function lookupTask() {
     const current = formRef.current, id = Number(current?.draft.tarea_id);
+    if (!canUseProjectObservation('task-link')) return;
     if(current&&!current.scope.current())return;
     if (!current || !project || !Number.isSafeInteger(id) || id <= 0) { setForm(value => value ? { ...value, error: "Escribí el ID positivo de una tarea real." } : value); return; }
     setForm(value => ({ ...value, lookupBusy: true, error: "", observedTask: null }));
     try {
       const value = await transport.read("task", `/api/tareas/${id}?workspace=render_os`);
       if (value === undefined || !current.scope.current()||formRef.current?.seq !== current.seq || Number(formRef.current.draft.tarea_id) !== id) return;
+      if (!canUseProjectObservation('task-link')) { setForm(value=>value?.seq===current.seq?{...value,lookupBusy:false}:value); return; }
       const observedTask = observedProjectTask(value, id, project.cliente.id);
       setForm(value => value?.seq === current.seq ? { ...value, observedTask, lookupBusy: false } : value);
     } catch (error) { if(current.scope.current()){if(error.status===403){purgeProjectAccess(current.scope);return;}setForm(value => value?.seq === current.seq ? { ...value, error: error.status ? projectError(error) : error.message, lookupBusy: false } : value);} }
   }
   function adoptRevision() {
+    if (!canUseProjectObservation(form?.kind)) return;
     if (!project || !form?.reviewed) return;
     if(form.kind==='deliverable-approve'||isProjectChildCreation(form.kind))return;
     if (form.kind === "order" && (form.originalStageIds.length !== project.etapas.length || form.originalStageIds.some(id => !project.etapas.some(stage => stage.id === id)))) {
@@ -359,13 +383,14 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   async function submit(event,{verify=false}={}) {
     event.preventDefault();
     const current = formRef.current;
+    if (!canUseProjectObservation(current?.kind)) return;
     if (!current || !current.scope.current()||current.busy || current.conflict || mutationBusy.current||current.uncertain&&!verify||verify&&!current.frozenMutation) return;
     try {
       const mutation = current.frozenMutation||buildProjectMutation(current);
       const receipted=current.kind==='create'||current.kind==='deliverable-approve'||isProjectChildCreation(current.kind);
       mutationBusy.current = true;
       detailReadGeneration.current++;transport.cancel('detail');
-      setDetail(value=>value.status==='loading'?{...value,status:value.data?'ready':'idle'}:value);
+      publishDetail(value=>value.status==='loading'?{...value,status:value.data?'ready':'idle'}:value);
       const sending={...current,busy:true,error:'',...(receipted?{frozenMutation:JSON.parse(JSON.stringify(mutation))}:{})};formRef.current=sending;setForm(sending);
       const value = await transport.write(mutation,current.scope);
       if (value === undefined || !current.scope.current()||formRef.current?.seq !== current.seq) return;
@@ -374,7 +399,7 @@ function ProjectsSession({ sesion, onNavigate, request }) {
       if (current.kind !== "create" && data.id !== current.projectId) throw new Error("Proyecto incompatible.");
       setForm(null); formRef.current = null;
       if (current.kind === "create") selectProject(data.id);
-      setDetail({ status: "ready", data, error: "" });
+      publishDetail({ status: "ready", data, error: "" });
       setMessage(current.kind==='deliverable-approve'?'Aprobación registrada para la versión revisada. Se muestra el estado actual del proyecto.':isProjectChildCreation(current.kind)?'Creación verificada. Se muestra el estado actual del proyecto.':value.idempotent ? "El proyecto ya estaba creado. Mostramos su estado actual." : "Cambios guardados.");
       setListRefresh(version => version + 1);
     } catch (error) {
@@ -394,7 +419,7 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   const shownList = list.context === filters ? list : { status: 'loading', data: null, error: '' };
   const clientLabel = filterClients.items.find(item => item.id === filters.clientId)?.nombre;
   return <main className="projects-page" aria-label="Proyectos de Render"><div className="pr-shell">
-    <header className="pr-page-heading"><div><h1>Proyectos</h1><p>Etapas, entregas y tareas reales en un mismo lugar.</p></div><div className="pr-actions"><button type="button" disabled={form?.busy} onClick={() => { setListRefresh(version => version + 1); if (selection.id) void refreshDetail(); }}>Actualizar</button>{admin && <button type="button" className="pr-primary" disabled={form?.busy} onClick={() => openForm("create")}>Nuevo proyecto</button>}</div></header>
+    <header className="pr-page-heading"><div><h1>Proyectos</h1><p>Etapas, entregas y tareas reales en un mismo lugar.</p></div><div className="pr-actions"><button type="button" disabled={form?.busy} onClick={() => { setListRefresh(version => version + 1); if (selection.id) void refreshDetail(); }}>Actualizar</button>{admin && <button type="button" className="pr-primary" disabled={form?.busy || !observationReady} onClick={() => openForm("create")}>Nuevo proyecto</button>}</div></header>
     {message && <p className="pr-notice" role="status">{message}</p>}
     <div className={`pr-layout${selection.id || form?.kind === "create" ? " has-detail" : ""}`}>
       <section className="pr-project-list" aria-label="Lista de proyectos"><div className="pr-filters">
@@ -417,9 +442,10 @@ function ProjectsSession({ sesion, onNavigate, request }) {
         {project && filters.clientId !== null && project.cliente.id !== filters.clientId && <p className="pr-notice">El proyecto seleccionado pertenece a otro cliente. El filtro solo limita el listado; no modifica este proyecto ni sus permisos.</p>}
         {selection.invalid && <div className="pr-error" role="alert">El enlace no contiene un proyecto válido. Elegí uno de la lista.</div>}
         {detail.status === "loading" && selection.id && <p className="pr-empty" role="status">Actualizando proyecto…</p>}
+        {project && !observationReady && <p className="pr-notice" role="status">Mostramos la última versión observada, pendiente de actualizar. Conservamos tu borrador; podés editarlo o cerrar con confirmación. Guardar, verificar solicitudes y abrir otros formularios requiere actualizar el proyecto correctamente.</p>}
         {detail.error && <div className="pr-error" role="alert"><p>{detail.error}</p><button type="button" onClick={() => refreshDetail(Boolean(form?.conflict))}>Reintentar proyecto</button></div>}
-        {form && (form.kind === "create" || project) && <ProjectEditor {...{ form, project, catalog, change, cancel: cancelForm, submit, refresh: () => refreshDetail(true), adoptRevision, lookupTask, retryCatalog: loadCatalog, moveStage }}/>}
-        {project && <Detail project={project} openForm={openForm} openTask={openTask}/>}
+        {form && (form.kind === "create" || project) && <ProjectEditor {...{ form, project, catalog, change, cancel: cancelForm, submit, refresh: () => refreshDetail(true), adoptRevision, lookupTask, retryCatalog: loadCatalog, moveStage, observationReady }}/>}
+        {project && <Detail project={project} openForm={openForm} openTask={openTask} observationReady={observationReady}/>}
         {!selection.id && !selection.invalid && !form && <section className="pr-select-prompt"><h2>Elegí un proyecto</h2><p>Podés consultar su trabajo sin cambiar los permisos de las tareas vinculadas.</p></section>}
         {dirty && <p className="pr-draft-note">Borrador sin guardar. No se conserva al cerrar la sesión.</p>}
       </div>
