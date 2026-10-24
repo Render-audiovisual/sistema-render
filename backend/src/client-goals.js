@@ -77,13 +77,15 @@ export async function loadGoalClients(db, period) {
   return goalClients(result.rows);
 }
 
-export async function readGoals(db, period) {
+export async function readGoals(db, period, actor = {}) {
+  // Presentation capability only; the content writer still checks membership.
+  const observedActor = { id: actor?.id, rol: actor?.rol };
   if (typeof db.connect === 'function' && typeof db.release !== 'function') {
     const client = await db.connect();
     let discard;
     try {
       await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-      const value = await readGoals(client, period);
+      const value = await readGoals(client, period, observedActor);
       await client.query('COMMIT');
       return value;
     } catch (error) {
@@ -95,14 +97,20 @@ export async function readGoals(db, period) {
   const currentClients = new Map(clients.map(client => [client.clave,client]));
   const objectives = await db.query(`SELECT id,clave,nombre,cuentas,reels,carruseles,
     to_char(periodo,'YYYY-MM') periodo FROM cliente_objetivos_mensuales WHERE periodo=$1::date`, [`${period}-01`]);
+  const contentAccess = Number.isSafeInteger(observedActor.id) && observedActor.id > 0
+    ? buildTaskAccessClause(observedActor, 't', '$2') : { sql: ' AND FALSE', value: null };
   const pieces = await db.query(`SELECT p.id,p.objetivo_id,p.tipo,p.numero,p.tarea_id,p.publicacion_id,p.titulo,p.copy,
     p.responsables,p.estado,p.completada_at,p.updated_at,p.updated_at::text quota_piece_version,
     t.revision tarea_revision,t.updated_at tarea_updated_at,
+    COALESCE(t.id IS NOT NULL AND t.propiedades_extra->>'workspace'='render_os'
+      AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
+      AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'${contentAccess.sql},FALSE) AS puede_editar_contenido,
     (SELECT COALESCE(jsonb_agg(jsonb_build_array(a.usuario_id,a.tipo) ORDER BY a.usuario_id,a.tipo),'[]'::jsonb)
       FROM tarea_asignaciones a WHERE a.tarea_id=t.id) AS preparation_membership
     FROM cliente_objetivo_piezas p JOIN cliente_objetivos_mensuales o ON o.id=p.objetivo_id
     LEFT JOIN tareas t ON t.id=p.tarea_id
-    WHERE o.periodo=$1::date ORDER BY p.tipo DESC,p.numero`, [`${period}-01`]);
+    WHERE o.periodo=$1::date ORDER BY p.tipo DESC,p.numero`,
+  contentAccess.value === null ? [`${period}-01`] : [`${period}-01`, contentAccess.value]);
   const byKey = new Map(objectives.rows.map(row => [row.clave, row]));
   for (const stored of objectives.rows) {
     if (!clients.some(client => client.clave === stored.clave)) clients.push({ ...stored, cliente_id: stored.cuentas[0]?.id });
@@ -596,7 +604,7 @@ export function createClientGoalsRouter({ pool }) {
     catch (error) { if (error.status) return res.status(error.status).json({error:error.message}); next(error); }
   });
   router.get('/', async (req, res, next) => {
-    try { res.json(await readGoals(pool, goalPeriod(req.query.periodo))); }
+    try { res.json(await readGoals(pool, goalPeriod(req.query.periodo), req.auth)); }
     catch (error) { if (error.status) return res.status(error.status).json({ error: error.message }); next(error); }
   });
   router.get('/responsables', requireRole('admin', 'community'), async (_req, res, next) => {

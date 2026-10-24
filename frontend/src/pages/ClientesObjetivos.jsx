@@ -334,6 +334,7 @@ function PieceDetail({ sesion, piece, client, canManage, close, saved }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [copied, setCopied] = useState(false);
   const [editing,setEditing] = useState(false), [title,setTitle] = useState(piece.titulo), [copy,setCopy] = useState(piece.copy || ''), [taskVersion,setTaskVersion] = useState(''), [taskRevision,setTaskRevision] = useState(null);
   const editBaseline = useRef(null);
+  const canEditContent = goalId(piece.tarea_id) && piece.puede_editar_contenido === true;
   const contentNavigationStatus = () => {
     if (!capture().current()) return { dirty: false, busy: false };
     return { dirty: editing && JSON.stringify({ title, copy }) !== editBaseline.current, busy: pending.current };
@@ -347,7 +348,7 @@ function PieceDetail({ sesion, piece, client, canManage, close, saved }) {
   const cancelEdit = () => { if (discardAllowed()) setEditing(false); };
   const finalizable = piece.estado === 'aprobada' || done(piece);
   const beginEdit = async () => {
-    if (pending.current) return;
+    if (!canEditContent || pending.current) return;
     const scope = capture(), lifetime = captureLifetime(); if (!scope.current()) return;
     pending.current = true;
     setBusy(true); setError('');
@@ -358,7 +359,7 @@ function PieceDetail({ sesion, piece, client, canManage, close, saved }) {
     finally { pending.current = false; if (lifetime.current()) setBusy(false); }
   };
   const saveContent = async () => {
-    if (pending.current || !goalId(taskRevision) || !goalTime(taskVersion)) return;
+    if (!canEditContent || pending.current || !goalId(taskRevision) || !goalTime(taskVersion)) return;
     const scope = capture(), lifetime = captureLifetime(); if (!scope.current()) return;
     pending.current = true; setBusy(true); setError('');
     try { const result = await scope.request(`/api/cliente-objetivos/piezas/${piece.id}/contenido`, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({titulo:title,copy,expected_updated_at:taskVersion,expected_revision:taskRevision})});
@@ -383,5 +384,5 @@ function PieceDetail({ sesion, piece, client, canManage, close, saved }) {
   };
   return <Modal title={<span className="cg-detail-breadcrumb"><GoalIcon name={piece.tipo === 'video' ? 'video' : 'carousel'} />{client?.nombre} <span aria-hidden="true">/</span> {piece.tipo === 'video' ? 'Reel' : 'Carrusel'}</span>} overlayAriaLabel="Detalle de la pieza" onClose={closeSafely} className="cg-modal"><div className="cg-modal-body"><span className={`cg-detail-state${done(piece) ? ' is-done' : ''}`}>{done(piece) && <GoalIcon name="check" />}{STATES[piece.estado] || piece.estado}</span><h2>{pieceLabel(piece)}</h2><div className="cg-detail-responsables"><GoalIcon name="clients" /><div><span>Responsables</span><p>{piece.responsables.join(' · ') || 'Sin responsables registrados'}</p></div></div><div className="cg-copy-heading"><h3>Copy de la publicación</h3>{piece.copy && <button className="cg-button" onClick={async () => { const scope = capture(); if (!scope.current()) return; try { await navigator.clipboard.writeText(piece.copy); if (scope.current()) setCopied(true); } catch { if (scope.current()) setError('No se pudo copiar. Podés seleccionar el texto manualmente.'); } }}><GoalIcon name={copied ? 'check' : 'copy'} />{copied ? 'Copiado' : 'Copiar texto'}</button>}</div><div className={`cg-copy${!piece.copy ? ' is-empty' : ''}`}>{piece.copy || 'Todavía no hay un copy guardado para esta pieza. Podés cargarlo en la tarea vinculada.'}</div>
     {editing && <div className="cg-content-editor"><label>Título<input maxLength={500} value={title} disabled={busy} onChange={event => setTitle(event.target.value)} /></label><label>Copy<textarea maxLength={20000} value={copy} disabled={busy} onChange={event => setCopy(event.target.value)} rows={6} /></label><p>Se guarda también en la tarea. Si ya estaba aprobada, los cambios requieren otra revisión.</p></div>}
-    {piece.completada_at && <p className="cg-muted cg-completion-date"><GoalIcon name="check" />Completada el {new Date(piece.completada_at).toLocaleDateString('es-AR')}</p>}{!piece.tarea_id && <p className="cg-muted">La tarea ya no está disponible. El resultado mensual y su contenido se conservaron.</p>}{error && <p className="cg-error" role="alert">{error}</p>}<footer>{editing ? <><button className="cg-button" disabled={busy} onClick={cancelEdit}>Cancelar edición</button><button className="cg-button cg-primary" disabled={busy || !title.trim()} onClick={saveContent}>{busy ? 'Guardando…' : 'Guardar contenido'}</button></> : <>{piece.tarea_id && <><a className="cg-button" href={`/workspace/tareas?task=${piece.tarea_id}`}>Abrir tarea<GoalIcon name="external" /></a><button className="cg-button" disabled={busy} onClick={beginEdit}>Editar contenido</button></>}{canManage && piece.tarea_id && <button className={`cg-button${done(piece) ? '' : ' cg-primary'}`} disabled={busy || !finalizable} onClick={finish}>{busy ? 'Guardando…' : done(piece) ? 'Reabrir tarea' : finalizable ? 'Finalizar tarea' : 'Requiere aprobación'}</button>}</>}</footer></div></Modal>;
+    {piece.completada_at && <p className="cg-muted cg-completion-date"><GoalIcon name="check" />Completada el {new Date(piece.completada_at).toLocaleDateString('es-AR')}</p>}{!piece.tarea_id && <p className="cg-muted">La tarea ya no está disponible. El resultado mensual y su contenido se conservaron.</p>}{error && <p className="cg-error" role="alert">{error}</p>}<footer>{editing ? <><button className="cg-button" disabled={busy} onClick={cancelEdit}>Cancelar edición</button><button className="cg-button cg-primary" disabled={busy || !title.trim()} onClick={saveContent}>{busy ? 'Guardando…' : 'Guardar contenido'}</button></> : <>{piece.tarea_id && <><a className="cg-button" href={`/workspace/tareas?task=${piece.tarea_id}`}>Abrir tarea<GoalIcon name="external" /></a>{canEditContent && <button className="cg-button" disabled={busy} onClick={beginEdit}>Editar contenido</button>}</>}{canManage && piece.tarea_id && <button className={`cg-button${done(piece) ? '' : ' cg-primary'}`} disabled={busy || !finalizable} onClick={finish}>{busy ? 'Guardando…' : done(piece) ? 'Reabrir tarea' : finalizable ? 'Finalizar tarea' : 'Requiere aprobación'}</button>}</>}</footer></div></Modal>;
 }

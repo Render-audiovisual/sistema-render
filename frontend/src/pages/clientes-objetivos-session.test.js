@@ -35,7 +35,7 @@ function fixture(request) {
 }
 function detail(request, piece = {}) {
   const f = fixture(request), effects = [];
-  const deps = { capture: f.capture, captureLifetime: f.captureLifetime, pending: { current: false }, canManage: true, finalizable: true,
+  const deps = { capture: f.capture, captureLifetime: f.captureLifetime, pending: { current: false }, canManage: true, canEditContent: true, finalizable: true,
     piece: { id: 3, tarea_id: 9, estado: 'aprobada', tarea_revision: 4, tarea_updated_at: '2026-10-20T10:00:00.123Z', ...piece },
     title: 'Nuevo', copy: 'Copy', editBaseline: { current: null }, taskRevision: 6, taskVersion: '2026-10-20T11:00:00.123Z', goalId, goalTime, done, isSessionFailure,
     window: { confirm: () => true }, saved: () => effects.push(['saved']),

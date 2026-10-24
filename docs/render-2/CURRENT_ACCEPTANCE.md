@@ -23,6 +23,8 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 PieceDetail registra cambios y espera de guardado en el kernel global; cinco pruebas nuevas pasan. La aceptación nativa de Atrás sigue pendiente: una salida real perdió el borrador sin aviso. No se declara protegida esa salida. El recorrido de empleado Objetivos → tarea → Reportes sí se verificó con datos PostgreSQL de prueba, incluida la tabla editorial anidada poblada a390px sin desbordamiento del documento. Nueve tablas permanecieron sin cambios y el fixture se eliminó correctamente. Ver GOAL_PIECE_DRAFT_QA.md para los límites de diálogos, regresión y pendientes. Este resultado reduce el pendiente de tabla anidada de la matriz anterior solo para el rol y fixture comprobados.
 
+Editar contenido ahora depende de un booleano por pieza calculado en el servidor para la identidad actual; no se pierde lectura compartida ni se cambian permisos de escritura.27 pruebas frontend nuevas y17 comprobaciones físicas renovadas verifican asignación por ID, tareas ausentes, archivo/papelera, CAS y revocación de pertenencia posterior al GET. Validación nativa pendiente por indisponibilidad del navegador. S187 01 registra por fuente una carrera de revocación de cuenta en editGoalContent aún sin corregir; no se confunde este permiso de presentación con resolverla. Ver GOAL_CONTENT_CAPABILITY_QA.md.
+
 ## Cohorte física renovada de Mi lista
 
 Se ejecutaron secuencialmente, con RENDER2_RUN_LOCAL_INTEGRATION=true y un clúster nuevo por archivo:
