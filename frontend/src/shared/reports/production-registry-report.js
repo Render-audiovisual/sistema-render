@@ -7,7 +7,9 @@ const array = value => Array.isArray(value) ? value : [];
 const text = value => typeof value === 'string' ? value : '';
 const quantity = value => Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : 0;
 const finalized = task => ['finalizada', 'publicada'].includes(task.estado);
-const scopedReportTasks = (tasks, range) => uniqueReportTasks(tasks).filter(task => task.propiedades_extra?.archivada_render_os !== true
+const hiddenReportTask = task => task.propiedades_extra?.archivada_render_os === true
+  || (task.propiedades_extra?.workspace === 'render_os' && [true, 'true'].includes(task.propiedades_extra?.papelera_render_os));
+const scopedReportTasks = (tasks, range) => uniqueReportTasks(tasks).filter(task => !hiddenReportTask(task)
   && inReportRange(task.fecha_vencimiento || task.propiedades_extra?.finalizada_at || task.updated_at, range));
 export const inReportRange = (date, range) => typeof date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(date)
   && date.slice(0, 10) >= range.desde && date.slice(0, 10) < range.hasta;
@@ -77,7 +79,7 @@ export function buildHistoricalProductionReport(tasks, normalizedSourceIds, rang
   const clients = new Map();
   for (const task of uniqueReportTasks(tasks)) {
     // This DB-global flag also covers source visits rescheduled outside this DTO.
-    if (task.produccion_registro_individual === true || normalizedSourceIds.has(task.id) || task.propiedades_extra?.archivada_render_os === true) continue;
+    if (task.produccion_registro_individual === true || normalizedSourceIds.has(task.id) || hiddenReportTask(task)) continue;
     const records = array(task.propiedades_extra?.produccion_registros);
     if (!records.length) continue;
     let recorded = 0;
@@ -190,7 +192,7 @@ export function summarizeEditorialRecords(records, range) {
 export function personalEditorialReport(tasks, userId, stories, publications, range) {
   const links = new Set();
   for (const task of uniqueReportTasks(tasks)) {
-    if (!personId(userId) || !reportTaskPeople(task).includes(userId)) continue;
+    if (hiddenReportTask(task) || !personId(userId) || !reportTaskPeople(task).includes(userId)) continue;
     if (personId(task.historia_id)) links.add(`historia:${task.historia_id}`);
     if (personId(task.publicacion_id)) links.add(`publicacion:${task.publicacion_id}`);
   }

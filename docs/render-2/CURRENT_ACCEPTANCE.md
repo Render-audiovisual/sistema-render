@@ -4,7 +4,17 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Reportes: tareas vigentes y fecha de finalización — corte241
+
+Coordinador corrigió report-snapshot.js, report-access.js y production-registry-report.js: la consulta Render OS excluye Papelera true/string true además de archivo; el histórico independiente no se reinterpreta. El DTO de empleados conserva únicamente finalizada_at canónico ISO-Z válido, sin ampliar campos financieros. Las proyecciones frontend excluyen Papelera Render OS de totales, detalles y atribución personal, sin retirar publicaciones confirmadas independientes. El tratamiento frontend previo de archivo string no se normalizó globalmente.
+
+Volta añadió tres pruebas unitarias y revisó el delta sin bloqueantes; Erdos preparó la integración física y el coordinador la inspeccionó y ejecutó.64 pruebas focales backend,8 frontend de reportes aprobadas. Integración HTTP real con PostgreSQL temporal55882:5 aprobadas, admin/empleado, flags boolean/string, histórico, canarios privados, fecha exacta consumida por helpers reales y coherencia con Inicio. Las106 tablas públicas conservaron sus hashes durante lecturas. Fixture /private/tmp/render2-local-w8OYbz eliminado con ENOENT. No fue necesario liberar memoria compartida; ninguna base configurada ni proveedor utilizado.
+
+Regresión frontend2806 aprobadas,0 fallos/omisiones; build index-BPLI3RjQ.js. Evidencia en /private/tmp/render2-goal241-report-physical.log, report-unit.log, report-front.log, frontend.log y build.log (mismo prefijo render2-goal241-). La skill verification separó API/PG/proyecciones del navegador; guía PostgreSQL mantuvo el filtro acotado, sin optimización medida. Datos sembrados por SQL, autenticación bearer: no nuevo recorrido nativo, cookie, acción de Papelera ni finalización real. No acredita aceptación global ni despliegue.
+
 ### Nombres accesibles en cinco áreas canónicas — corte240
+
+Resultado adicional vigente241: regresión backend2214 aprobadas/138 integraciones optativas omitidas,0 fallos; log /private/tmp/render2-goal241-backend.log. Las5 físicas241 se ejecutaron por separado con opt-in.
 
 Revisión con web-design-guidelines y su [fuente pública vigente](https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md), sin acceder al hosting. Se corrigieron fallos de fuente alcanzables desde App: Drive exponía el nombre del buscador como glyph; checklist de Mi lista no tenía nombre y tabla lo asociaba a✓; brief dependía del placeholder;17 campos de planillas Historia/Publicación carecían de nombre programático por pieza. No revisión exhaustiva de accesibilidad ni nuevos permisos de lectura.
 

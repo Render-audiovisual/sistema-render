@@ -86,7 +86,8 @@ export async function loadReportSnapshot(pool, auth, query = {}) {
         t.created_at,t.updated_at,c.nombre AS cliente_nombre
         FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id
         WHERE t.propiedades_extra->>'workspace'='render_os'
-          AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'`);
+          AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
+          AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'`);
     const entregasEdicion = await db.query(`SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
         cliente_etiqueta,categoria,importe,fuente,fuente_item,confirmado_por
         FROM entregas_edicion ORDER BY fecha_entrega,fuente_item`);

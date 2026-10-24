@@ -78,6 +78,14 @@ function taskReportDto(task) {
     "clickup_cerrada_at", "reporte_fuente", "reporte_periodo", "revision_aprobada",
     "produccion_videos_previstos", "produccion_finalizada_at", "produccion_confirmada_at",
   ]);
+  // Server-written completion metadata is operational, not a free JSON bag.
+  // Expose only its canonical timestamp, never a numeric/object value hidden
+  // under the same key. Do not infer dates for historical records.
+  const completedAt = ownValue(extra, 'finalizada_at');
+  if (typeof completedAt === 'string' && /^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(completedAt)) {
+    const instant = Date.parse(completedAt);
+    if (Number.isFinite(instant) && new Date(instant).toISOString() === completedAt) result.propiedades_extra.finalizada_at = completedAt;
+  }
   const creditedEditorId = ownValue(extra, 'edicion_responsable_id');
   if (positiveId(creditedEditorId)) result.propiedades_extra.edicion_responsable_id = creditedEditorId;
   const collaborators = ownValue(extra, 'colaboradores');
