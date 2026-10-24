@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Avisos de finalización sin publicación inventada — corte234
+
+Fallo offline reproducido y corregido en ambos renderers: finalizada ya no cae en nueva tarea y publicada legacy describe finalización, no publicación editorial. Solo copy, sin cambios de claves/destinatarios/estado o datos históricos.36 focales y2205 backend aprobadas,136 optativas omitidas. Sin proveedor, fixture, frontend/build ni despliegue. Sigue abierto el routing genérico por nombres:3 rojos offline reproducen inactivo/homónimo/actor homónimo; falta binding explícito de revisores por ID, no ampliación indiscriminada de receptores. Ver TASK_WORKFLOW_QA.md.
+
 ### Proyectos: conflicto de etapa conectado y descarte parcial — cortes232–233
 
 Franco cookie conservó borrador/base2 al refrescar una edición remota de Agustín a revisión3; guardar mostró conflicto sin reemplazar el texto. Captura390×844 inspeccionada. SQL acreditó solo la edición remota prevista y luego105 tablas invariantes; fixture eliminado. No se capturó HTTP409 directamente: se infiere del estado específico de stage-edit. Confirm nativo abrió, pero su resolución no quedó comprobada por una limitación de herramienta; descarte, foco y recarga siguen pendientes. En233 inventario sin pestaña temporal y viewport restaurado. Regresión nueva de controladores prueba confirm false/true posconflicto sin reintentos ni cambios del detalle remoto:23 focales aprobadas. Sin producto/build/deploy nuevos. Ver PROJECT_REFRESH_RECOVERY_QA.md para alcance, comandos y logs.

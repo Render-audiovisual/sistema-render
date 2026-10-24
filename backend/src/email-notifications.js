@@ -79,7 +79,9 @@ export function crearContenidoCorreo({
     revision: "La tarea pasó a revisión",
     bloqueada: "Hay un bloqueo en tu tarea",
     en_progreso: "La tarea comenzó",
-    publicada: "La tarea fue publicada",
+    finalizada: "La tarea fue finalizada",
+    // Historical task event, not evidence of an editorial publication.
+    publicada: "La tarea fue finalizada",
     aprobada: "Una tarea aprobada está lista para publicar",
   })[motivo] || "Tenés una nueva tarea";
   const esRenderOS = tarea.propiedades_extra?.workspace === "render_os";

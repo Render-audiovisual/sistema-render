@@ -15,7 +15,9 @@ const TITULOS = Object.freeze({
   revision: "La tarea pasó a revisión",
   bloqueada: "Hay un bloqueo en la tarea",
   en_progreso: "La tarea comenzó",
-  publicada: "La tarea fue publicada",
+  finalizada: "La tarea fue finalizada",
+  // Preserve the legacy event key without asserting an effective publication.
+  publicada: "La tarea fue finalizada",
   aprobada: "La tarea está lista para publicar",
 });
 

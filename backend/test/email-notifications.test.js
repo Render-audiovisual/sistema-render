@@ -171,7 +171,8 @@ test("distingue comentarios, revisión y bloqueos en las notificaciones", () => 
   assert.match(crearContenidoCorreo({ ...base, motivo: "comentario" }).subject, /comentario nuevo/i);
   assert.match(crearContenidoCorreo({ ...base, motivo: "revision" }).subject, /pasó a revisión/i);
   assert.match(crearContenidoCorreo({ ...base, motivo: "en_progreso" }).subject, /comenzó/i);
-  assert.match(crearContenidoCorreo({ ...base, motivo: "publicada" }).subject, /publicada/i);
+  // Legacy task completion is not evidence that an editorial piece was posted.
+  assert.match(crearContenidoCorreo({ ...base, motivo: "publicada" }).subject, /finalizada/i);
   assert.match(crearContenidoCorreo({ ...base, motivo: "aprobada" }).subject, /lista para publicar/i);
   const bloqueo = crearContenidoCorreo({ ...base, motivo: "bloqueada" });
   assert.match(bloqueo.subject, /bloqueo/i);
