@@ -2803,24 +2803,15 @@ router.post("/tareas/:id/comentarios", async (req, res, next) => {
     res.status(result.replayed ? 200 : 201).json(result.requestId
       ? { ...comentario, creation_request_id: result.requestId } : comentario);
 
-    if (!result.replayed && !contenido.startsWith("[Actividad]")) {
-      void pool.query(
-        `SELECT id, titulo, asignado_a, cliente_id, prioridad, propiedades_extra,
-                to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento
-         FROM tareas WHERE id = $1`,
-        [req.params.id],
-      ).then((tarea) => {
-        if (!tarea.rows[0]) return;
-        const esBloqueo = /\bbloque(?:o|ado|ada|ante)?\b/i.test(contenido);
-        notificarAsignacionSinInterrumpir({
-          pool,
-          tarea: tarea.rows[0],
-          motivo: esBloqueo ? "bloqueada" : "comentario",
-          detalle: `${autor}: ${contenido.slice(0, 280)}`,
-          actor: autor,
-        });
-      }).catch((error) => {
-        console.error(`No se pudo preparar la notificación del comentario de la tarea ${req.params.id}:`, error.message);
+    if (!result.replayed && !contenido.startsWith("[Actividad]") && result.notification) {
+      // Recipient IDs and authenticated actor were captured with the comment.
+      // Neither a legacy display name nor an admin's free author label routes it.
+      const { tarea, destinatarioIds, actorId, actor } = result.notification;
+      const esBloqueo = /\bbloque(?:o|ado|ada|ante)?\b/i.test(contenido);
+      notificarAsignacionSinInterrumpir({
+        pool, tarea, destinatarioIds, actorId, actor,
+        motivo: esBloqueo ? "bloqueada" : "comentario",
+        detalle: `${autor}: ${contenido.slice(0, 280)}`,
       });
     }
   } catch (error) {

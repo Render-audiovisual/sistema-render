@@ -6,6 +6,8 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ### Repriorización transversal215 — dos defectos abiertos
 
+Actualización218: OP215-02 corregido en el enqueue de comentarios: destinatarios y actor por ID capturados en transacción, ambos canales reciben contexto interno y DTO público intacto.5 físicas nuevas y13 de recibos/migración renovadas aprobadas;2098 backend/2767 frontend aprobadas,129 optativas omitidas. Fixtures eliminados. Otros eventos legacy y entrega posterior por destinatario_clave siguen pendientes, sin outbox/exactly-once ni entrega externa acreditada. El diagnóstico215 de nombres debajo es histórico para comentarios, no cierre global de notificaciones. Ver TASK_WORKFLOW_QA.md.
+
 Actualización216–217: OP215-01 implementado con35 regresiones de callbacks/cola;2767 frontend y2083 backend aprobadas,128 optativas omitidas, build correcto.217 verifica Franco cookie/navegador con borrador rev1 → Agustín API confirma rev2 → refrescar/guardar rechaza localmente y conserva texto → Cancelar adopta explícitamente → recarga conserva remoto. SQL: fila remota exacta, cero comentarios/recibos y104 tablas invariantes; fixture eliminado. Falta guardado normal conectado, variantes concurrentes y legibilidad móvil del aviso; no se provocó HTTP409 nativo. OP215-02 continúa abierto. El diagnóstico215 debajo es histórico del defecto previo; ver TASK_WORKFLOW_QA.md.
 
 La revisión actual del código por coordinador/Erdos/Volta encontró dos fallos operativos corregibles localmente. No es una nueva certificación exhaustiva de todas las áreas ni una corrección ya implementada. La skill de trabajo estructurado orientó volver a requisitos de integridad/identidad después de las mejoras acotadas de comentarios.

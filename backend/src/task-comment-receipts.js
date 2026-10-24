@@ -29,6 +29,8 @@ function text(value) {
   return value.trim();
 }
 const commentDto = row => Object.fromEntries(['id', 'tarea_id', 'autor', 'contenido', 'created_at'].map(key => [key, row[key]]));
+const frozenCopy = value => Array.isArray(value) ? Object.freeze(value.map(frozenCopy))
+  : value && typeof value === 'object' ? Object.freeze(Object.fromEntries(Object.entries(value).map(([key, item]) => [key, frozenCopy(item)]))) : value;
 
 async function transaction(pool, observed, key, run) {
   const db = await pool.connect(); let discard;
@@ -49,7 +51,8 @@ async function transaction(pool, observed, key, run) {
 }
 async function lockTask(db, actor, input) {
   const workspaceClause = input.workspace === 'render_os' ? "= 'render_os'" : "IS DISTINCT FROM 'render_os'";
-  const task = (await db.query(`SELECT id FROM tareas WHERE id=$1
+  const task = (await db.query(`SELECT id,titulo,asignado_a,cliente_id,prioridad,propiedades_extra,
+    to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,revision FROM tareas WHERE id=$1
     AND propiedades_extra->>'workspace' ${workspaceClause} FOR SHARE`, [input.taskId])).rows[0];
   if (!task || task.id !== input.taskId) throw fail(404, 'Tarea no encontrada.');
   // A fresh READ COMMITTED statement AFTER the task lock sees assignments
@@ -58,6 +61,7 @@ async function lockTask(db, actor, input) {
   const allowed = (await db.query(`SELECT t.id FROM tareas t WHERE t.id=$1${access.sql}`,
     access.value === null ? [input.taskId] : [input.taskId, access.value])).rows[0];
   if (!allowed || allowed.id !== input.taskId) throw fail(404, 'Tarea no encontrada.');
+  return frozenCopy(task);
 }
 async function receipt(db, actorId, key) {
   return (await db.query(`SELECT payload_hash,tarea_id,comment_id,workspace FROM task_comment_create_receipts
@@ -80,25 +84,33 @@ export async function createTaskComment(pool, auth, { taskId, workspace, request
   const hash = createHash('sha256').update(JSON.stringify({ contract: 'task-comment-create-v1',
     taskId: input.taskId, workspace: input.workspace, contenido, autor })).digest('hex');
   return transaction(pool, observed, key, async (db, actor) => {
-    await lockTask(db, actor, input);
+    const task = await lockTask(db, actor, input);
     if (key !== null) {
       const previous = await receipt(db, observed.id, key);
       if (previous) {
         if (previous.payload_hash !== hash || previous.tarea_id !== input.taskId || previous.workspace !== input.workspace) {
           throw fail(409, 'Ese intento ya confirmó otro comentario.');
         }
-        return { comment: await retainedComment(db, previous), requestId: key, replayed: true };
+        return { comment: await retainedComment(db, previous), requestId: key, replayed: true, notification: null };
       }
     }
     const name = autor ?? ((typeof actor.nombre === 'string' ? actor.nombre.trim() : '')
       || (typeof actor.usuario === 'string' ? actor.usuario.trim() : ''));
     if (!name) throw fail(400, 'Falta el autor del comentario.');
+    const assignments = (await db.query('SELECT usuario_id FROM tarea_asignaciones WHERE tarea_id=$1 ORDER BY usuario_id', [input.taskId])).rows;
+    // Internal post-commit context only. Never resolve historical labels or
+    // invoke either notifier while holding the actor/task transaction locks.
+    const notification = Object.freeze({ tarea: task,
+      destinatarioIds: Object.freeze([...new Set(assignments.map(row => row.usuario_id))].sort((a, b) => a - b)),
+      actorId: actor.id,
+      actor: (typeof actor.nombre === 'string' ? actor.nombre.trim() : '') || (typeof actor.usuario === 'string' ? actor.usuario.trim() : ''),
+    });
     const created = (await db.query(`INSERT INTO tarea_comentarios(tarea_id,autor,contenido) VALUES($1,$2,$3)
       RETURNING id,tarea_id,autor,contenido,created_at`, [input.taskId, name, contenido])).rows[0];
     if (!created) throw new Error('No se pudo verificar el comentario creado.');
     if (key !== null) await db.query(`INSERT INTO task_comment_create_receipts(actor_user_id,request_id,payload_hash,tarea_id,comment_id,workspace)
       VALUES($1,$2,$3,$4,$5,$6)`, [observed.id, key, hash, input.taskId, created.id, input.workspace]);
-    return { comment: commentDto(created), requestId: key, replayed: false };
+    return { comment: commentDto(created), requestId: key, replayed: false, notification };
   });
 }
 

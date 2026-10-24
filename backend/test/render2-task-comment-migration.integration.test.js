@@ -160,7 +160,7 @@ test('089 real migration preserves populated 088 history, records only its ledge
     const recovered = await findTaskCommentCreation(pool, actor, input);
     assert.deepEqual(recovered, { ...created.comment,creation_request_id:requestId });
     const replay = await createTaskComment(pool, actor, input);
-    assert.deepEqual(replay, { ...created,replayed:true });
+    assert.deepEqual(replay, { ...created,replayed:true,notification:null });
     assert.equal((await rows('SELECT id FROM tarea_comentarios')).length, 3);
     const receipts = await rows('SELECT actor_user_id,request_id,tarea_id,comment_id,workspace,payload_hash FROM task_comment_create_receipts');
     assert.equal(receipts.length, 1);

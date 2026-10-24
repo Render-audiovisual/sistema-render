@@ -8,15 +8,18 @@ const auth = extra => ({ id: 7, session_version: 3, rol: 'diseno', nombre: 'Untr
 const input = extra => ({ taskId: 9, workspace: 'render_os', requestId: key, payload: { autor: 'Ignored cached author', contenido: '  A  ' }, ...extra });
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const status = expected => error => error.status === expected;
+const taskSnapshot = () => ({ id: 9, titulo: 'Locked task title', asignado_a: 'Historical alias, not authority', cliente_id: 4,
+  prioridad: 'alta', propiedades_extra: { workspace: 'render_os', colaboradores: ['Another historical alias'], nested: { retained: ['original'] } },
+  fecha_vencimiento: '2026-11-02', revision: 6 });
 
 // Real service; transactional rows and UUID mutex modeled in memory. This does
 // not claim PostgreSQL lock/FK/trigger or HTTP middleware verification.
 function fixture({ actor = { ...auth(), activo: true, nombre: 'Current DB actor', usuario: 'db_actor' },
-  task = { id: 9, workspace: 'render_os' }, assigned = true, failAt, rollbackFails = false,
-  leaseGate, taskLocked, commentGate } = {}) {
+  task = { ...taskSnapshot(), workspace: 'render_os' }, assigned = true, assignments = [{ tarea_id: 9, usuario_id: 7 }], failAt, rollbackFails = false,
+  leaseGate, taskLocked, commentGate, commitGate } = {}) {
   const calls = [], releases = [], comments = [], receipts = [], locks = new Map();
   const failure = new Error('Original query failure'), rollbackError = new Error('Rollback failure');
-  let leases = 0, nextId = 20, user = actor, access = assigned;
+  let leases = 0, nextId = 20, user = actor, access = assigned, taskAssignments = assignments;
   const pool = { async connect() {
     const lease = ++leases; if (leaseGate) await leaseGate.promise;
     const pendingComments = [], pendingReceipts = []; let unlock;
@@ -30,19 +33,21 @@ function fixture({ actor = { ...auth(), activo: true, nombre: 'Current DB actor'
       }
       if (failAt && sql.startsWith(failAt)) throw failure;
       if (sql.startsWith('BEGIN')) return { rows: [] };
-      if (sql === 'COMMIT') { comments.push(...pendingComments); receipts.push(...pendingReceipts); releaseMutex(); return { rows: [] }; }
+      if (sql === 'COMMIT') { if (commitGate) await commitGate.promise; comments.push(...pendingComments); receipts.push(...pendingReceipts); releaseMutex(); return { rows: [] }; }
       if (sql.startsWith('SELECT id,rol,activo,session_version')) return { rows: user ? [structuredClone(user)] : [] };
       if (sql.startsWith('SELECT pg_advisory_xact_lock')) {
         const previous = locks.get(params[0]) ?? Promise.resolve(), next = deferred();
         const tail = previous.then(() => next.promise); locks.set(params[0], tail);
         await previous; unlock = next.resolve; return { rows: [] };
       }
-      if (sql.startsWith('SELECT id FROM tareas')) {
+      if (sql.startsWith('SELECT id,titulo,asignado_a')) {
         if (taskLocked) await taskLocked();
         const workspaceMatches = sql.includes("IS DISTINCT FROM 'render_os'") ? task?.workspace !== 'render_os' : task?.workspace === 'render_os';
-        return { rows: task && task.id === params[0] && workspaceMatches ? [{ id: task.id }] : [] };
+        const snapshot = task && Object.fromEntries(['id','titulo','asignado_a','cliente_id','prioridad','propiedades_extra','fecha_vencimiento','revision'].map(key => [key,task[key]]));
+        return { rows: task && task.id === params[0] && workspaceMatches ? [snapshot] : [] };
       }
       if (sql.startsWith('SELECT t.id FROM tareas')) return { rows: !sql.includes('tarea_asignaciones') || access ? [{ id: params[0] }] : [] };
+      if (sql.startsWith('SELECT usuario_id FROM tarea_asignaciones')) return { rows: taskAssignments.filter(row => row.tarea_id === params[0]).map(row => ({ usuario_id: row.usuario_id })) };
       if (sql.includes('FROM task_comment_create_receipts')) return { rows: receipts.filter(r => r.actor_user_id === params[0] && r.request_id === params[1]) };
       if (sql.includes('FROM tarea_comentarios')) return { rows: comments.filter(r => r.id === params[0] && r.tarea_id === params[1]) };
       if (sql.startsWith('INSERT INTO tarea_comentarios')) {
@@ -58,7 +63,7 @@ function fixture({ actor = { ...auth(), activo: true, nombre: 'Current DB actor'
     }, release(discard) { releaseMutex(); releases.push({ lease, discard }); } };
   }, query() { throw new Error('Query escaped leased connection'); } };
   return { pool, calls, releases, comments, receipts, failure, rollbackError,
-    get leases() { return leases; }, setActor(value) { user = value; }, setAssigned(value) { access = value; } };
+    get leases() { return leases; }, setActor(value) { user = value; }, setAssigned(value) { access = value; }, setAssignments(value) { taskAssignments = value; } };
 }
 const create = (f, body = input(), actor = auth()) => createTaskComment(f.pool, actor, body);
 const lookup = (f, body = input(), actor = auth()) => findTaskCommentCreation(f.pool, actor, body);
@@ -66,9 +71,10 @@ function rollback(f) { assert.equal(f.calls.at(-1).sql, 'ROLLBACK'); assert.equa
 
 test('new/replay/recovery share current authority and return only operational comment fields', async () => {
   const f = fixture(), first = await create(f);
-  assert.deepEqual(first, { comment: f.comments[0], requestId: key, replayed: false });
+  assert.deepEqual(first, { comment: f.comments[0], requestId: key, replayed: false,
+    notification: { tarea: taskSnapshot(), destinatarioIds: [7], actorId: 7, actor: 'Current DB actor' } });
   assert.equal(first.comment.autor, 'Current DB actor'); assert.equal(first.comment.contenido, 'A');
-  assert.deepEqual(await create(f), { ...first, replayed: true });
+  assert.deepEqual(await create(f), { ...first, replayed: true, notification: null });
   assert.deepEqual(await lookup(f), { ...first.comment, creation_request_id: key });
   assert.equal(f.comments.length, 1); assert.equal(f.receipts.length, 1);
   assert.match(f.receipts[0].payload_hash, /^[a-f0-9]{64}$/);
@@ -84,7 +90,101 @@ test('lock order is READ COMMITTED, user SHARE, actor/key mutex, task SHARE, the
   assert.match(sql[3], /FROM tareas WHERE id=\$1.*workspace.*FOR SHARE$/); assert.doesNotMatch(sql[3], /tarea_asignaciones/);
   assert.match(sql[4], /tarea_asignaciones ta.*ta.tarea_id = t.id AND ta.usuario_id = \$2::integer/);
   assert.deepEqual(f.calls[4].params, [9, 7]);
+  const recipients = sql.findIndex(s => s.startsWith('SELECT usuario_id FROM tarea_asignaciones'));
+  assert.ok(recipients > sql.findIndex(s => s.includes('FROM task_comment_create_receipts')));
+  assert.ok(recipients < sql.findIndex(s => s.startsWith('INSERT INTO tarea_comentarios')));
+  assert.deepEqual(f.calls[recipients].params, [9]);
+  assert.match(sql[recipients], /WHERE tarea_id=\$1 ORDER BY usuario_id$/);
+  assert.doesNotMatch(sql[recipients], /JOIN|FOR (?:UPDATE|SHARE)|nombre|asignado_a/);
+  assert.equal(sql.filter(s => /FROM usuarios/.test(s)).length, 1, 'No new recipient user locks inside comment transaction');
   assert.equal(sql.at(-1), 'COMMIT');
+});
+
+for (const workspace of ['render_os','historical']) {
+  for (const requestId of [key,undefined]) {
+    test(`fresh ${workspace} comment captures only scoped IDs even for legacy key=${requestId??'none'}`, async () => {
+      const f = fixture({ task:{...taskSnapshot(),workspace:workspace==='render_os'?'render_os':null}, assignments:[
+        {tarea_id:9,usuario_id:12,tipo:'colaborador'}, {tarea_id:10,usuario_id:88,tipo:'responsable'},
+        {tarea_id:9,usuario_id:7,tipo:'responsable'}, {tarea_id:9,usuario_id:12,tipo:'colaborador'},
+        {tarea_id:9,usuario_id:3,tipo:'colaborador'},
+      ] });
+      const result = await create(f,input({workspace,requestId}));
+      assert.deepEqual(result.notification.destinatarioIds,[3,7,12]);
+      assert.equal(result.notification.actorId,7); assert.equal(result.notification.actor,'Current DB actor');
+      assert.deepEqual(result.notification.tarea,taskSnapshot());
+      assert.equal(f.calls.filter(c=>c.sql.startsWith('SELECT usuario_id FROM tarea_asignaciones')).length,1);
+      assert.deepEqual(Object.keys(result).sort(),['comment','notification','replayed','requestId']);
+      assert.deepEqual(Object.keys(result.comment).sort(),['id','tarea_id','autor','contenido','created_at'].sort());
+      assert.deepEqual(Object.keys(result.notification).sort(),['actor','actorId','destinatarioIds','tarea'].sort());
+    });
+  }
+}
+
+test('empty/unmapped assignment set stays empty even when historical names resemble real recipients', async () => {
+  const f=fixture({ actor:{...auth({rol:'admin'}),activo:true,nombre:'Actual admin',usuario:'current_admin'}, assignments:[],
+    task:{...taskSnapshot(),workspace:'render_os',asignado_a:'Luciano QA',propiedades_extra:{workspace:'render_os',colaboradores:['Agustin QA','Luciano QA']}} });
+  const result=await create(f,input({payload:{autor:'Franco QA',contenido:'A'}}),auth({rol:'admin'}));
+  assert.deepEqual(result.notification.destinatarioIds,[]);
+  assert.equal(result.notification.actor,'Actual admin'); assert.equal(result.comment.autor,'Franco QA');
+  assert.equal(f.calls.filter(c=>/FROM usuarios/.test(c.sql)).length,1,'No name/alias recipient catalogue query');
+});
+
+test('notification actor is locked DB identity, not free admin author or cached request name', async () => {
+  const actor={...auth({rol:'admin'}),activo:true,nombre:' Renamed current DB leader ',usuario:'db_leader'};
+  const f=fixture({actor});
+  const result=await create(f,input({payload:{autor:'Fictitious admin signature',contenido:'A'}}),auth({rol:'admin',nombre:'Stale session label'}));
+  assert.equal(result.comment.autor,'Fictitious admin signature');
+  assert.equal(result.notification.actor,'Renamed current DB leader');assert.equal(result.notification.actorId,actor.id);
+  assert.equal(result.notification.tarea.revision,6);assert.equal(result.notification.tarea.fecha_vencimiento,'2026-11-02');
+});
+
+test('notification label falls back only to locked username; employee comment still ignores submitted author', async () => {
+  const f=fixture({actor:{...auth(),activo:true,nombre:' ',usuario:' verified_db_username '}});
+  const result=await create(f,input({payload:{autor:'Other real person alias',contenido:'A'}}));
+  assert.equal(result.notification.actor,'verified_db_username');assert.equal(result.comment.autor,'verified_db_username');
+});
+
+test('recipient read observes current assignments after waiting for task lock/fresh ACL', async () => {
+  let f;f=fixture({assignments:[{tarea_id:9,usuario_id:88}],taskLocked:()=>f.setAssignments([{tarea_id:9,usuario_id:11},{tarea_id:9,usuario_id:7}])});
+  const result=await create(f);assert.deepEqual(result.notification.destinatarioIds,[7,11]);
+  const sql=f.calls.map(c=>c.sql), index=sql.findIndex(s=>s.startsWith('SELECT usuario_id FROM tarea_asignaciones'));
+  assert.ok(index>sql.findIndex(s=>s.startsWith('SELECT t.id FROM tareas')));
+});
+
+test('internal notification is deeply frozen and detached from task/assignment rows after commit', async () => {
+  const task={...taskSnapshot(),workspace:'render_os'},assignments=[{tarea_id:9,usuario_id:7}];
+  const f=fixture({task,assignments}),result=await create(f),context=result.notification;
+  task.titulo='Changed outside result';task.propiedades_extra.nested.retained.push('mutated later');
+  assignments[0].usuario_id=99;assignments.push({tarea_id:9,usuario_id:100});
+  assert.deepEqual(context.tarea,taskSnapshot());assert.deepEqual(context.destinatarioIds,[7]);
+  for(const value of [context,context.destinatarioIds,context.tarea,context.tarea.propiedades_extra,context.tarea.propiedades_extra.nested,context.tarea.propiedades_extra.nested.retained]) assert.equal(Object.isFrozen(value),true);
+  assert.throws(()=>{context.actorId=88;},TypeError);
+  assert.throws(()=>context.destinatarioIds.push(88),TypeError);
+  assert.throws(()=>{context.tarea.titulo='forged';},TypeError);
+  assert.throws(()=>context.tarea.propiedades_extra.nested.retained.push('forged'),TypeError);
+});
+
+test('fresh result/context is observable only after COMMIT; no external notification call occurs in transaction', async () => {
+  const commitGate=deferred(),f=fixture({commitGate});let observed=false;
+  const pending=create(f).then(result=>{observed=true;return result;});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.calls.at(-1).sql,'COMMIT');assert.equal(observed,false);assert.deepEqual(f.comments,[]);
+  commitGate.resolve();const result=await pending;
+  assert.equal(observed,true);assert.equal(f.comments.length,1);assert.equal(f.releases.length,1);
+  assert.deepEqual(result.notification.destinatarioIds,[7]);
+  const source=readFileSync(new URL('../src/task-comment-receipts.js',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/private-task-notifications|email-notifications|encolarNotificacion|notificarAsignacion|fetch\(/);
+});
+
+test('replay and recovery never reselect notification assignments or return a fresh notification', async () => {
+  const f=fixture();const first=await create(f);const start=f.calls.length;
+  f.setAssignments([{tarea_id:9,usuario_id:99}]);
+  const replay=await create(f),found=await lookup(f);
+  assert.deepEqual(replay,{...first,replayed:true,notification:null});
+  assert.deepEqual(found,{...first.comment,creation_request_id:key});assert.equal(Object.hasOwn(found,'notification'),false);
+  assert.equal(f.calls.slice(start).some(c=>c.sql.startsWith('SELECT usuario_id FROM tarea_asignaciones')),false);
+  assert.equal(f.calls.slice(start).some(c=>c.sql.startsWith('INSERT')),false);
+  assert.deepEqual(first.notification.destinatarioIds,[7]);
 });
 
 test('fresh ACL sees assignment withdrawal after task lock and never inserts or reads receipt', async () => {
@@ -140,9 +240,9 @@ test('missing receipt is 404; deleted comment tombstone is 409 for recovery and 
 });
 
 test('historical workspace uses IS DISTINCT FROM and both read/write recheck assignment; admin bypass is only DB-verified role', async () => {
-  const f = fixture({ task: { id: 9, workspace: null } });
+  const f = fixture({ task: { ...taskSnapshot(), workspace: null, propiedades_extra: {} } });
   await create(f, input({ workspace: 'historical' })); await lookup(f, input({ workspace: 'historical' }));
-  assert.ok(f.calls.filter(c => c.sql.startsWith('SELECT id FROM tareas')).every(c => c.sql.includes("IS DISTINCT FROM 'render_os'")));
+  assert.ok(f.calls.filter(c => c.sql.startsWith('SELECT id,titulo,asignado_a')).every(c => c.sql.includes("IS DISTINCT FROM 'render_os'")));
   f.setAssigned(false); await assert.rejects(lookup(f, input({ workspace: 'historical' })), status(404));
   await assert.rejects(create(f, input({ workspace: 'render_os' })), status(404));
   const admin = fixture({ assigned: false, actor: { ...auth({ rol: 'admin' }), activo: true } });
@@ -185,7 +285,7 @@ test('actor/input mutate during pool wait but immutable original binding/hash/au
   assert.deepEqual(f.calls[1].params, [7]); assert.equal(f.receipts[0].tarea_id, 9);
 });
 
-for (const failAt of ['SELECT id,rol', 'SELECT id FROM tareas', 'SELECT t.id', 'INSERT INTO tarea_comentarios', 'INSERT INTO task_comment_create_receipts', 'COMMIT']) {
+for (const failAt of ['SELECT id,rol', 'SELECT id,titulo,asignado_a', 'SELECT t.id', 'SELECT usuario_id FROM tarea_asignaciones', 'INSERT INTO tarea_comentarios', 'INSERT INTO task_comment_create_receipts', 'COMMIT']) {
   for (const rollbackFails of [false, true]) {
     test(`atomic rollback at ${failAt}, rollback failure=${rollbackFails} preserves original error`, async () => {
       const f = fixture({ failAt, rollbackFails });
