@@ -66,9 +66,11 @@ async function productionSection(db,id,period) {
     (SELECT count(*)::int FROM produccion_fotos p JOIN visits v ON v.id=p.visita_id) AS registros_fotos,
     (SELECT count(*)::int FROM produccion_videos pv JOIN produccion_visitas v ON v.id=pv.visita_id
       WHERE v.cliente_id=$1 AND pv.estado IN ('planificado','pendiente','repetir')
-        AND NOT EXISTS(SELECT 1 FROM produccion_videos child WHERE child.video_origen_id=pv.id)) AS pendientes_banco_todos_los_periodos`,values)).rows[0];
+        AND NOT EXISTS(SELECT 1 FROM produccion_videos child WHERE child.video_origen_id=pv.id)) AS pendientes_banco_todos_los_periodos,
+    (SELECT count(*)::int FROM produccion_fotos pf JOIN produccion_visitas v ON v.id=pf.visita_id
+      WHERE v.cliente_id=$1 AND pf.estado IN ('pendiente','repetir')) AS fotos_pendientes_banco_todos_los_periodos`,values)).rows[0];
   if (!stats) throw new Error('Missing client production counts');
-  const counts=Object.fromEntries(['visitas','videos_registrados','videos_reutilizados','registros_fotos','pendientes_banco_todos_los_periodos'].map(key=>[key,count(stats[key])]));
+  const counts=Object.fromEntries(['visitas','videos_registrados','videos_reutilizados','registros_fotos','pendientes_banco_todos_los_periodos','fotos_pendientes_banco_todos_los_periodos'].map(key=>[key,count(stats[key])]));
   const rows=(await db.query(`SELECT v.id,v.titulo,v.revision,to_char(v.fecha,'YYYY-MM-DD') AS fecha,
     (SELECT count(*)::int FROM produccion_videos pv WHERE pv.visita_id=v.id) AS videos_registrados,
     (SELECT count(*)::int FROM produccion_fotos p WHERE p.visita_id=v.id) AS registros_fotos

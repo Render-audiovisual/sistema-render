@@ -4,6 +4,18 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Banco de fotos integrado en Operación del cliente — corte222
+
+Corregida la discrepancia221: el resumen del cliente rotulaba como Banco pendiente un contador exclusivo de videos, omitiendo fotos de visitas anteriores. `GET /api/clientes/:id/operacion?periodo=YYYY-MM` conserva version1 y todos sus campos; añade `producciones.counts.fotos_pendientes_banco_todos_los_periodos`, entero no negativo para registros de fotos pendiente/repetir de ese cliente, sin filtro mensual. `pendientes_banco_todos_los_periodos` conserva su significado de videos pendientes no retomados; no se convierte en suma de medios. Visitas y registros_fotos siguen siendo mensuales. No son cantidades de fotografías físicas, sino registros por tipo de fotos.
+
+ClientOperationPage muestra ambos pendientes con etiquetas explícitas y un acceso `/producciones?cliente=ID&tab=pending`; el parser canónico de Producciones lo resuelve a `/api/producciones/pendientes?cliente_id=ID`, sin mes. Se reutilizan componentes y estilos existentes. Frontend exige el nuevo entero: no inventa0 si falta; requiere actualizar frontend y backend coordinadamente. No hay cambios de schema, permisos, tareas, cuotas ni publicación, y el resumen conserva su transacción REPEATABLE READ READ ONLY.
+
+Erdos implementó proyección y unitarias backend; coordinador integró parser, UI y pruebas React SSR/destino; Volta amplió la prueba física y revisó las fuentes finales sin bloqueantes. Skill superpowers orientó contrato previo y separación de archivos; guía PostgreSQL orientó el agregado independiente evitando multiplicar medios por joins. Sin cambios de índices ni afirmación de optimización medida.
+
+Resultados:17 focales backend y13 frontend; regresión backend2147 aprobadas/130 optativas omitidas, frontend2770 aprobadas, build index-9wJXgZmG.js correcto. Prueba física opt-in `render2-client-operation.integration.test.js`:7 aprobadas incluyendo padre, cero fallos/omisiones, con PostgreSQL temporal55745 e identidad exacta comprobada. Admin/empleado comparan contadores contra el banco real en tres meses: fotos pendiente/repetir anteriores incluidas, realizadas y otro cliente excluidos; cliente solo con fotos tiene videos0/fotos1. Snapshots de todas las tablas públicas antes/después acreditan lecturas sin DML. Fixture eliminado, cleanup ENOENT `/private/tmp/render2-local-ihxSCe`. Logs `/private/tmp/render2-goal222-{physical,backend,front-final,build}.log`.
+
+Pendiente recorrido nativo del nuevo enlace/recarga y layout móvil; React SSR/parser no lo sustituyen. Sin proveedores, bases existentes, despliegue ni preparación global para producción. Sigue pendiente el gate nativo de Calendario Lo mío por asignación derivada, distinto del circuito de tres videos ya acreditado.
+
 ### Repriorización transversal215 — dos defectos abiertos
 
 Actualización221: aviso de conflicto220 comprobado en navegador390×844:13px/19.5px, sin overflow horizontal del alert, borrador intacto. Adopción explícita y recarga conservan remoto; SQL fila exacta, cero comentarios/recibos y104 tablas invariantes, fixture eliminado. No HTTP409 nativo ni aceptación de todos los dispositivos. Ver TASK_WORKFLOW_QA.md.

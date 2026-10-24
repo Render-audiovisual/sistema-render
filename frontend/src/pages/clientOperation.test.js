@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clientOperationHref, readClientOperationLocation, clientOperationLocationUrl, parseClientOperation, createClientOperationLoader } from './clientOperation.js';
 import { goalClientHref } from './clientGoalLocation.js';
+import { productionLocation, productionReadUrl } from './productionRouteContext.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import {readFileSync} from 'node:fs';
@@ -17,7 +18,7 @@ function fixture() {
  return {version:1,generated_at:'2026-10-21T12:00:00.000Z',periodo:'2026-10',cliente:{...account,activo:true,rubro:null,fee:999},
  tareas:sect('render_os_cliente_sin_archivo_ni_papelera',{pendiente:1,en_progreso:0,en_revision:0,aprobada:0,finalizada:0,otros:0},[{id:8,titulo:'Trabajo',estado:'pendiente',revision:1,fecha_vencimiento:null,href:'https://evil.test'}]),
  proyectos:sect('compartidos_no_archivados_todos_los_periodos',{no_archivados:1},[{id:uid,titulo:'Web',tipo:'web',estado:'en_progreso',revision:2,fecha_inicio:null,fecha_entrega:'2026-11-01',responsable:{id:11,nombre:'Alex'},counts:{tareas:2,finalizadas:1,hitos:0,entregables:0}}]),
- producciones:sect('visitas_mes_y_banco_pendiente_global',{visitas:1,videos_registrados:3,videos_reutilizados:1,registros_fotos:1,pendientes_banco_todos_los_periodos:4},[{id:uid,titulo:'Visita',revision:1,fecha:'2026-10-03',videos_registrados:3,registros_fotos:1}]),
+ producciones:sect('visitas_mes_y_banco_pendiente_global',{visitas:1,videos_registrados:3,videos_reutilizados:1,registros_fotos:1,pendientes_banco_todos_los_periodos:4,fotos_pendientes_banco_todos_los_periodos:2},[{id:uid,titulo:'Visita',revision:1,fecha:'2026-10-03',videos_registrados:3,registros_fotos:1}]),
  editorial:sect('cohorte_mes_programado_visible',{confirmada_manualmente:0,historica_sin_confirmacion:1,no_publicada:1},['historia','publicacion'].map(domain=>({domain,id:8,titulo:'<img src=x onerror=alert(1)>',tipo:domain==='historia'?'historia':'video',estado:domain==='historia'?'publicada':'lista',fecha_programada:'2026-10-05',publicacion_evidencia:{classification:domain==='historia'?'historica_sin_confirmacion':'no_publicada',revision:0,confirmation:null}}))),
  objetivos:sect('objetivos_mes_por_grupo_sin_sumar_cuotas',{preparados:1,por_preparar:0},[{id:9,clave:'grupo-5',nombre:'Feed compartido',cuentas:[account,{id:12,nombre:'Otra cuenta'}],preparado:true,quota:{reels:3,carruseles:1},cuota_actual:{reels:4,carruseles:1},cuota_desactualizada:true,progress:{reels:{total:3,completed:1},carruseles:{total:1,completed:0}},extras:{total:2,completed:1}}]),
  financial:{salary:'SECRET'},metadata:{private:'SECRET'}};
@@ -90,6 +91,23 @@ test('actual hub JSX SSR shows real scopes, accounts, extras, evidence and inlin
  assert.match(html,/trabajo no confirma una publicación/);assert.match(html,/histórica sin confirmación/);assert.match(html,/data-domain="historia"/);assert.match(html,/data-domain="publicacion"/);
  assert.match(html,/&lt;img/);assert.doesNotMatch(html,/<img|javascript:|SECRET|fee|salary/);assert.match(html,/Administrar cliente/);assert.doesNotMatch(renderHub(data,'edicion'),/Administrar cliente/);
  assert.equal((html.match(/href="\/clientes\?cliente=7&amp;periodo=2026-10"/g)||[]).length,2,'Both return links retain exact client and month');
+});
+test('client bank distinguishes video and photo backlogs, independent of monthly photo records',()=>{
+ const raw=fixture();raw.producciones.counts.pendientes_banco_todos_los_periodos=0;
+ raw.producciones.counts.registros_fotos=0;
+ const parsed=parseClientOperation(raw,selection),html=renderHub(parsed,'edicion');
+ assert.equal(parsed.producciones.counts.fotos_pendientes_banco_todos_los_periodos,2);
+ assert.match(html,/Videos pendientes · todos los períodos<\/dt><dd>0/);
+ assert.match(html,/Fotos pendientes · todos los períodos<\/dt><dd>2/);
+ assert.match(html,/href="\/producciones\?cliente=7&amp;tab=pending"[^>]*>Abrir banco de pendientes/);
+ const destination=productionLocation('http://localhost/producciones?cliente=7&tab=pending');
+ assert.equal(destination.tab,'pending');assert.equal(destination.clientId,'7');assert.equal(destination.month,null);
+ assert.equal(productionReadUrl(destination),'/api/producciones/pendientes?cliente_id=7');
+ assert.doesNotMatch(html,/Banco pendiente · todos los períodos/);
+ for(const value of [undefined,-1,'2',null,NaN]){
+  const invalid=fixture();invalid.producciones.counts.fotos_pendientes_banco_todos_los_periodos=value;
+  assert.throws(()=>parseClientOperation(invalid,selection));
+ }
 });
 test('actual unprepared goal render never claims zero-ratio completion; prepared goals retain observed progress',()=>{
  const raw=fixture(),goal=raw.objetivos.items[0];goal.preparado=false;goal.quota={reels:0,carruseles:0};goal.progress={reels:{total:0,completed:0},carruseles:{total:0,completed:0}};goal.extras={total:0,completed:0};raw.objetivos.counts={preparados:0,por_preparar:1};

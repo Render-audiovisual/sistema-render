@@ -71,8 +71,21 @@ test('client operation hub: shared operational cohorts, closed privacy and read-
     await f.query(`INSERT INTO produccion_videos(id,visita_id,titulo,estado,creado_por_id,actualizado_por_id)
       VALUES ($1,$2,'QA107 video',$3,91001,91001)`, [randomUUID(), visit, state]);
   }
-  await f.query(`INSERT INTO produccion_fotos(id,visita_id,tipo,observaciones,creado_por_id,actualizado_por_id)
-    VALUES ($1,$2,'QA107 stills',$3,91001,91001)`, [randomUUID(), visits[0], marker]);
+  const currentPhoto = randomUUID();
+  await f.query(`INSERT INTO produccion_fotos(id,visita_id,tipo,estado,observaciones,creado_por_id,actualizado_por_id)
+    VALUES ($1,$2,'QA107 stills','pendiente',$3,91001,91001)`, [currentPhoto, visits[0], marker]);
+  // The bank is all-period, unlike the monthly visit/photo registry counts.
+  // Completed photos and a second account in the SAME feed are negative controls.
+  const oldPendingPhoto = randomUUID(), oldRepeatPhoto = randomUUID(), oldCompletedPhoto = randomUUID();
+  for (const [id, state] of [[oldPendingPhoto, 'pendiente'], [oldRepeatPhoto, 'repetir'], [oldCompletedPhoto, 'realizada']]) {
+    await f.query(`INSERT INTO produccion_fotos(id,visita_id,tipo,estado,observaciones,creado_por_id,actualizado_por_id)
+      VALUES ($1,$2,'QA222 previous-month photos',$3,$4,91001,91001)`, [id, visits[7], state, marker]);
+  }
+  const otherVisit = randomUUID(), otherPhoto = randomUUID();
+  await f.query(`INSERT INTO produccion_visitas(id,cliente_id,fecha,titulo,creado_por_id,actualizado_por_id)
+    VALUES ($1,$2,'2026-09-21','QA222 other-account history',91001,91001)`, [otherVisit, b.id]);
+  await f.query(`INSERT INTO produccion_fotos(id,visita_id,tipo,estado,observaciones,creado_por_id,actualizado_por_id)
+    VALUES ($1,$2,'QA222 foreign pending photos','pendiente',$3,91001,91001)`, [otherPhoto, otherVisit, marker]);
 
   // Both domains deliberately share integer IDs. Real confirmation is done via API below.
   for (const [domain, table] of [['historia', 'historias'], ['publicacion', 'publicaciones']]) {
@@ -150,7 +163,7 @@ test('client operation hub: shared operational cohorts, closed privacy and read-
       }
       assert.equal(body.producciones.total, 7);
       assert.deepEqual(body.producciones.counts, { visitas: 7, videos_registrados: 2, videos_reutilizados: 1,
-        registros_fotos: 1, pendientes_banco_todos_los_periodos: 2 });
+        registros_fotos: 1, pendientes_banco_todos_los_periodos: 2, fotos_pendientes_banco_todos_los_periodos: 3 });
       for (const item of body.producciones.items) keys(item, ['id', 'titulo', 'revision', 'fecha', 'videos_registrados', 'registros_fotos', 'href']);
       assert.equal(body.editorial.total, 8); assert.equal(body.editorial.items.length, 6);
       assert.deepEqual(body.editorial.counts, { confirmada_manualmente: 2, historica_sin_confirmacion: 2, no_publicada: 4 });
@@ -187,9 +200,47 @@ test('client operation hub: shared operational cohorts, closed privacy and read-
     const before = await snapshot(), body = ok(await hub(b.id, staff)); privacy(body);
     assert.equal(body.cliente.id, b.id); assert.equal(body.tareas.total, 1); assert.equal(body.proyectos.total, 0);
     assert.equal(body.producciones.total, 0); assert.equal(body.editorial.total, 2);
+    assert.equal(body.producciones.counts.pendientes_banco_todos_los_periodos, 0, 'Old video count is not a combined media total');
+    assert.equal(body.producciones.counts.fotos_pendientes_banco_todos_los_periodos, 1, 'Photo bank belongs to the account, not its shared feed');
     assert.equal(body.objetivos.total, 8); assert.deepEqual(body.objetivos.counts, { preparados: 7, por_preparar: 1 });
     assert.deepEqual(body.objetivos.items.map(item => item.clave), [...goalKeys].sort((x, y) => x.localeCompare(y, 'es')).slice(0, 6));
     assert.deepEqual(await snapshot(), before);
+  });
+
+  await t.test('all-period pending photo count matches the real production bank across months and excludes completed/foreign rows without DML', async () => {
+    const before = await snapshot();
+    const expectedPhotos = [currentPhoto, oldPendingPhoto, oldRepeatPhoto].sort();
+    for (const token of [admin, staff]) {
+      const bank = ok(await api(`/producciones/pendientes?cliente_id=${a.id}`, token));
+      assert.ok(Array.isArray(bank.videos)); assert.ok(Array.isArray(bank.fotos));
+      assert.equal(bank.videos.length, 2, 'Existing pending video semantics stay unchanged');
+      assert.deepEqual(bank.fotos.map(photo => photo.id).sort(), expectedPhotos);
+      assert.equal(new Set(bank.fotos.map(photo => photo.id)).size, expectedPhotos.length);
+      assert.ok(bank.fotos.every(photo => photo.cliente_id === a.id && ['pendiente', 'repetir'].includes(photo.estado)));
+      for (const [id, state] of [[oldPendingPhoto, 'pendiente'], [oldRepeatPhoto, 'repetir']]) {
+        const photo = bank.fotos.find(item => item.id === id);
+        assert.equal(photo.estado, state); assert.equal(photo.visita_id, visits[7]); assert.equal(photo.fecha, '2026-09-20');
+      }
+      assert.ok(!bank.fotos.some(photo => [oldCompletedPhoto, otherPhoto].includes(photo.id)));
+      for (const month of ['2026-09', period, '2026-11']) {
+        const body = ok(await hub(a.id, token, `periodo=${month}`)); privacy(body);
+        assert.equal(body.periodo, month);
+        assert.equal(body.producciones.counts.pendientes_banco_todos_los_periodos, bank.videos.length);
+        assert.equal(body.producciones.counts.fotos_pendientes_banco_todos_los_periodos, bank.fotos.length,
+          'Changing the hub month must not hide older pending/repeat photos');
+        assert.equal(body.producciones.counts.registros_fotos, month === '2026-09' ? 3 : month === period ? 1 : 0,
+          'Monthly registered photos include completed rows and remain separate from the pending bank');
+      }
+      const foreignBank = ok(await api(`/producciones/pendientes?cliente_id=${b.id}`, token));
+      assert.ok(Array.isArray(foreignBank.videos)); assert.ok(Array.isArray(foreignBank.fotos));
+      assert.deepEqual(foreignBank.videos, []);
+      assert.deepEqual(foreignBank.fotos.map(photo => photo.id), [otherPhoto]);
+      assert.ok(foreignBank.fotos.every(photo => photo.cliente_id === b.id));
+      const foreignHub = ok(await hub(b.id, token)); privacy(foreignHub);
+      assert.equal(foreignHub.producciones.counts.pendientes_banco_todos_los_periodos, foreignBank.videos.length);
+      assert.equal(foreignHub.producciones.counts.fotos_pendientes_banco_todos_los_periodos, foreignBank.fotos.length);
+    }
+    assert.deepEqual(await snapshot(), before, 'Hub and pending-bank reads preserve every existing table');
   });
 
   await t.test('required real period, canonical IDs, repeated/array/unknown query and missing client fail without DML', async () => {

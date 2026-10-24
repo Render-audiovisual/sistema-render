@@ -11,6 +11,8 @@ const stamp='2026-09-20T12:00:00.000Z';
 const keys=(value,expected)=>assert.deepEqual(Object.keys(value).sort(),expected.sort());
 function fixture({role='edicion',inactiveClient=false,missingClient=false,actor,rollbackFail=false,failAt,empty=false}={}) {
   const calls=[],release=[];
+  const productionCounts={visitas:empty?0:8,videos_registrados:empty?0:21,videos_reutilizados:empty?0:2,registros_fotos:empty?0:3,
+    pendientes_banco_todos_los_periodos:empty?0:10,fotos_pendientes_banco_todos_los_periodos:empty?0:4};
   const user=actor===undefined?{...auth,rol:role,activo:true}:actor;
   const client={id:1,nombre:'Synthetic client',activo:!inactiveClient,rubro:null,generated_at:'2026-10-22T12:00:00.000Z',abono_mensual:secret,metadata:{private:secret}};
   const taskCounts=empty?[]:[{estado:'pendiente',total:7},{estado:'en_progreso',total:1},{estado:'en_revision',total:2},
@@ -43,7 +45,7 @@ function fixture({role='edicion',inactiveClient=false,missingClient=false,actor,
     if (sql.startsWith('SELECT t.id,t.titulo,')) return {rows:tasks};
     if (sql.startsWith('SELECT count(*)::int AS total FROM proyectos')) return {rows:[{total:empty?0:9}]};
     if (sql.startsWith('SELECT p.id,p.titulo,p.cliente_id')) return {rows:projects};
-    if (sql.startsWith('WITH visits AS MATERIALIZED')) return {rows:[{visitas:empty?0:8,videos_registrados:empty?0:21,videos_reutilizados:empty?0:2,registros_fotos:empty?0:3,pendientes_banco_todos_los_periodos:empty?0:10}]};
+    if (sql.startsWith('WITH visits AS MATERIALIZED')) return {rows:[productionCounts]};
     if (sql.startsWith('SELECT v.id,v.titulo,v.revision')) return {rows:visits};
     if (sql.startsWith("SELECT 'historia'::text AS domain")) return {rows:inactiveClient?[]:editorial};
     if (sql.includes('p.id AS piece_id')) return {rows:params[0]==='publicacion'?editorial.filter(row=>[1,8].includes(row.id)&&row.domain==='publicacion').map(row=>({
@@ -57,7 +59,7 @@ function fixture({role='edicion',inactiveClient=false,missingClient=false,actor,
   }};
   let connections=0;
   const pool={connect:async()=>{connections++;return db;}};
-  return {db,pool,calls,release,client,user,tasks,taskCounts,projects,visits,editorial,sourceClients,objectives,pieces,
+  return {db,pool,calls,release,client,user,tasks,taskCounts,productionCounts,projects,visits,editorial,sourceClients,objectives,pieces,
     read:()=>readClientOperation(pool,{...auth,rol:role},'1',{periodo:period}),get connections(){return connections;}};
 }
 
@@ -113,12 +115,43 @@ test('project list extraction remains shared and nonarchived with exact canonica
 });
 test('production counts actual UUID records without visit/media join multiplication or legacy task aggregates',async()=>{
   const f=fixture(), result=await f.read(), sql=f.calls.find(call=>call.sql.startsWith('WITH visits AS MATERIALIZED')).sql;
-  assert.deepEqual(result.producciones.counts,{visitas:8,videos_registrados:21,videos_reutilizados:2,registros_fotos:3,pendientes_banco_todos_los_periodos:10});
+  assert.deepEqual(result.producciones.counts,{visitas:8,videos_registrados:21,videos_reutilizados:2,registros_fotos:3,pendientes_banco_todos_los_periodos:10,fotos_pendientes_banco_todos_los_periodos:4});
   assert.equal(result.producciones.total,8); assert.equal(result.producciones.items.length,6);
   assert.match(sql,/video_origen_id IS NOT NULL/); assert.match(sql,/NOT EXISTS\(SELECT 1 FROM produccion_videos child WHERE child.video_origen_id=pv.id\)/);
   assert.match(sql,/pv.estado IN \('planificado','pendiente','repetir'\)/); assert.doesNotMatch(sql,/produccion_registros|FROM tareas|legacy/);
   assert.equal(result.producciones.href,'/producciones?cliente=1&mes=2026-10');
   assert.match(result.producciones.items[0].href,/\?visita=.*&cliente=1&mes=2026-10$/);
+});
+test('photo bank count shares the aggregate read but independently scopes current client across ALL periods',async()=>{
+  const f=fixture({empty:true});
+  f.productionCounts.fotos_pendientes_banco_todos_los_periodos=3;
+  const result=await f.read();
+  assert.equal(result.producciones.total,0);
+  assert.deepEqual(result.producciones.items,[]);
+  assert.equal(result.producciones.counts.registros_fotos,0);
+  assert.equal(result.producciones.counts.pendientes_banco_todos_los_periodos,0);
+  assert.equal(result.producciones.counts.fotos_pendientes_banco_todos_los_periodos,3);
+  const reads=f.calls.filter(call=>call.sql.startsWith('WITH visits AS MATERIALIZED'));
+  assert.equal(reads.length,1);
+  assert.deepEqual(reads[0].params,[1,'2026-10-01']);
+  const photoSql=reads[0].sql.match(/\(SELECT count\(\*\)::int FROM produccion_fotos pf[\s\S]*?\) AS fotos_pendientes_banco_todos_los_periodos/)[0];
+  assert.match(photoSql,/JOIN produccion_visitas v ON v.id=pf.visita_id/);
+  assert.match(photoSql,/WHERE v.cliente_id=\$1 AND pf.estado IN \('pendiente','repetir'\)/);
+  assert.doesNotMatch(photoSql,/\$2|fecha|JOIN visits|LIMIT|planificado|video_origen_id|activo/);
+  assert.equal(f.connections,1);
+});
+test('photo bank count is required and fails closed without a missing or malformed count fallback',async()=>{
+  for (const value of [undefined,null,'3',-1,1.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1]) {
+    const f=fixture();
+    if(value===undefined) delete f.productionCounts.fotos_pendientes_banco_todos_los_periodos;
+    else f.productionCounts.fotos_pendientes_banco_todos_los_periodos=value;
+    await assert.rejects(f.read(),/Invalid client operation count/);
+    assert.equal(f.calls.at(-1).sql,'ROLLBACK');
+    assert.equal(f.calls.some(call=>call.sql==='COMMIT'),false);
+    assert.deepEqual(f.release,[undefined]);
+  }
+  const result=await fixture({empty:true}).read();
+  assert.equal(result.producciones.counts.fotos_pendientes_banco_todos_los_periodos,0);
 });
 test('editorial proof counts ALL planned-month rows through real domain-batched classifier, not six previews or task completion',async()=>{
   const f=fixture(), result=await f.read();
