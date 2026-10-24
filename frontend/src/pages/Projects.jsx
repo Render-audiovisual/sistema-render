@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FilterSelect } from '../components/FilterSelect.jsx';
+import { restoreProjectFormFocus } from './projectFormReturnFocus.js';
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
 import { navigateWithinApp } from "../shared/navigation/location.js";
@@ -192,6 +193,12 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   const [catalog, setCatalog] = useState({ status: "idle", clients: [], users: [], error: "" });
   const [form, setForm] = useState(null);
   const formRef = useRef(form); formRef.current = form;
+  const formReturnFocus = useRef(null);
+  useLayoutEffect(() => {
+    const pending = formReturnFocus.current;
+    formReturnFocus.current = null;
+    if (!form && pending) restoreProjectFormFocus(pending, document);
+  }, [form]);
   const formSequence = useRef(0);
   const detailReadGeneration=useRef(0);
   const mutationBusy = useRef(false);
@@ -351,7 +358,14 @@ function ProjectsSession({ sesion, onNavigate, request }) {
     if (key === "tarea_id") transport.cancel("task");
     setForm(current => !current || current.busy || current.uncertain || !current.scope.current() ? current : { ...current, draft: { ...current.draft, [key]: value }, ...(key === "tarea_id" ? { observedTask: null, lookupBusy: false } : {}) });
   }
-  function cancelForm() { if (canLeave()) { setForm(null); formRef.current = null; } }
+  function cancelForm() {
+    const current = formRef.current;
+    if (canLeave()) {
+      if (formRef.current !== current) return;
+      formReturnFocus.current = current ? {kind:current.kind, scope:current.scope} : null;
+      setForm(null); formRef.current = null;
+    }
+  }
   function moveStage(index, offset) {
     const ids = [...form.draft.etapa_ids], target = index + offset;
     if (target < 0 || target >= ids.length) return;

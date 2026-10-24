@@ -30,7 +30,7 @@ function fixture({ snapshot = project() } = {}) {
   let read = async () => ({ proyecto: project() }), write = async () => assert.fail('Unexpected mutation');
   const request = async (url, init = {}) => { calls.push({ url, init }); return init.method ? write(url, init) : read(url, init); };
   const detailStateRef = { current: { status: snapshot ? 'ready' : 'idle', data: snapshot, error: '' } }, formRef = { current: null };
-  const deps = { ...model, isSessionFailure, createCapturedRequest, sesion, getSesion: store.getSession, request, mounted, selectionRef, detailStateRef, formRef,
+  const deps = { ...model, isSessionFailure, createCapturedRequest, sesion, getSesion: store.getSession, request, mounted, selectionRef, detailStateRef, formRef, formReturnFocus:{current:null},
     admin: true, project: snapshot, detailReadGeneration: { current: 0 }, mutationBusy: { current: false }, formSequence: { current: 1 }, catalog: { status: 'ready' },
     crypto: { randomUUID: () => REQUEST }, window: { confirm: () => false },
     setDetail: value => paints.push(['detail', value]),

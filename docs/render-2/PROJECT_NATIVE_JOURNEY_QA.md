@@ -1,5 +1,7 @@
 # Prueba local de proyectos de Desarrollo
 
+Actualización197: PROJECT_MOBILE_FORMS_FOCUS_QA.md extiende las altas, reordenamiento y aprobación a360px, verifica recarga y corrige el foco perdido al cancelar un editor. Quedan formularios y accesibilidad restantes; el diálogo de descarte de esa segunda prueba no pudo completarse por bloqueo de herramienta.
+
 El recorrido conectado verificó la creación de un proyecto web, sus etapas, hitos, entregables y una tarea existente desde la interfaz real. La aprobación corresponde a una versión concreta del entregable y se invalida al cambiar su contenido. El proyecto no genera cuotas mensuales de contenido. Es aceptación parcial local, no autorización de despliegue.
 
 ## Entorno y responsabilidades

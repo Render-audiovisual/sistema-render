@@ -84,16 +84,29 @@ test('local cancel preserves refusal and clears form/ref only after one accepted
   const h = state(), calls = [];
   const cancelSource = section('  function cancelForm()', '  function moveStage(');
   let allowed = false, checks = 0;
-  const cancel = new Function('canLeave', 'setForm', 'formRef', `${cancelSource}\nreturn cancelForm;`)(() => { checks += 1; return allowed; }, value => calls.push(value), h.formRef);
+  const returnFocus = { current: null };
+  const cancel = new Function('canLeave', 'setForm', 'formRef', 'formReturnFocus', `${cancelSource}\nreturn cancelForm;`)(() => { checks += 1; return allowed; }, value => calls.push(value), h.formRef, returnFocus);
   h.formRef.current = dirtyForm();
   cancel();
   assert.equal(checks, 1);
   assert.deepEqual(calls, []);
+  assert.equal(returnFocus.current, null);
   assert.equal(h.formRef.current.draft.titulo, 'Borrador');
   allowed = true; cancel();
   assert.equal(checks, 2);
   assert.deepEqual(calls, [null]);
   assert.equal(h.formRef.current, null);
+  assert.ok(returnFocus.current);
+});
+
+test('reentrant discard decision cannot cancel a replacement form or queue focus for it', () => {
+  const h = state(), calls = [], queued = { current: null }, replacement = dirtyForm();
+  h.formRef.current = dirtyForm();
+  const cancelSource = section('  function cancelForm()', '  function moveStage(');
+  const cancel = new Function('canLeave', 'setForm', 'formRef', 'formReturnFocus', `${cancelSource}\nreturn cancelForm;`)(
+    () => { h.formRef.current = replacement; return true; }, value => calls.push(value), h.formRef, queued);
+  cancel();
+  assert.equal(h.formRef.current, replacement); assert.deepEqual(calls, []); assert.equal(queued.current, null);
 });
 
 test('committed popstate restores project selection once, never asks again or rewrites history', () => {
