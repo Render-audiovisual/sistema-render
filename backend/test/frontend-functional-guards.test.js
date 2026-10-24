@@ -379,15 +379,17 @@ test("Germán puede completar una visita desde el celular sin saltear la confirm
   assert.match(workspaceStyles, /\.ros-production-complete-action button\{[^}]*min-height:50px;[^}]*width:100%/);
 });
 
-test("el detalle de todas las tareas conserva guion, copy e indicaciones en un único espacio", () => {
+test("el detalle conserva un único documento y selecciona indicaciones según el contexto de tarea", async () => {
   const workspaceSource = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
   const workspaceStyles = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.css", import.meta.url), "utf8");
   assert.match(workspaceSource, /Contenido de trabajo/);
   assert.doesNotMatch(workspaceSource, /role="tablist"/);
-  assert.match(workspaceSource, /Escribí el guion, copy o las indicaciones acá/);
-  assert.match(workspaceSource, /metadataField: "guiones"/);
-  assert.match(workspaceSource, /metadataField: "copy_trabajo"/);
-  assert.match(workspaceSource, /field: "aclaraciones"/);
+  const {getTaskContentPresentation}=await import('../../frontend/src/features/render-os/utils/task-content-presentation.js');
+  assert.equal(getTaskContentPresentation({tipo_tarea:'edicion'}).placeholder,'Escribí el guion, copy o las indicaciones acá…');
+  assert.equal(getTaskContentPresentation({tipo_tarea:'desarrollo'}).placeholder,'Describí qué hay que resolver, cómo comprobarlo y qué se entrega…');
+  assert.match(workspaceSource, /getTaskContentPresentation\(task\)/);
+  assert.match(workspaceSource, /placeholder=\{presentation.placeholder\}/);
+  assert.match(workspaceSource, /setDraft\(\{ \.\.\.draft, aclaraciones: event.target.value \}\)/);
   assert.match(workspaceSource, /getCanonicalTaskContentMetadata/);
   assert.match(workspaceSource, /getUnifiedTaskContent\(task\)/);
   assert.match(workspaceSource, /Guardá antes de cerrar la tarea/);

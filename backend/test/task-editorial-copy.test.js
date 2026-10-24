@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {getUnifiedTaskContent,getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask} from '../../frontend/src/features/render-os/utils/task-content.js';
+import {getTaskContentPresentation} from '../../frontend/src/features/render-os/utils/task-content-presentation.js';
 import {canonicalTaskState} from '../../frontend/src/features/render-os/constants.js';
 import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
 const session={token:'synthetic-editorial',usuario:{id:1,rol:'admin',activo:true}};
@@ -72,6 +73,9 @@ test('editorial copy is read-only actual metadata with an honest fallback, and c
   assert.match(component,/editorialCopy.trim\(\) \?/);
   assert.match(component,/renderizarTextoTarea\(editorialCopy\)/);
   assert.match(component,/El copy editorial se gestiona en la pieza vinculada/);
-  assert.match(component,/!preserveEditorialCopy \|\| type.id !== "copy"/);
+  assert.match(component,/getTaskContentPresentation\(task\)/);
+  assert.match(component,/presentation.templates.map/);
+  assert.deepEqual(getTaskContentPresentation(task).templates.map(template=>template.label),['+ Video','+ Escena','+ Objetivo','+ Requisito']);
+  assert.deepEqual(getTaskContentPresentation({...task,publicacion_id:null}).templates.map(template=>template.label),['+ Video','+ Escena','+ Placa','+ Cierre / CTA','+ Objetivo','+ Requisito']);
   assert.doesNotMatch(component,/setDraft\([^\n]*copy_trabajo|value=\{editorialCopy\}/);
 });

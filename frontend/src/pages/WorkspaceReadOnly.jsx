@@ -13,6 +13,8 @@ import { createTaskManualOrder, taskOrderArrowAnchor } from "../features/render-
 import { taskVisibleWindow } from '../features/render-os/utils/task-visible-window.js';
 import { getProductionPhase, getProductionVisitProgress, isProductionVisitTask } from "../features/render-os/utils/production-visits.js";
 import { getCanonicalTaskContentMetadata, getUnifiedTaskContent, isLinkedProductionEditorialTask } from "../features/render-os/utils/task-content.js";
+import { getTaskContentPresentation } from "../features/render-os/utils/task-content-presentation.js";
+import { insertTaskContentBlock } from "../features/render-os/utils/task-content-insertion.js";
 import { getNewTaskSuggestions, getTaskDirectUrl } from "../features/render-os/utils/new-task-suggestions.js";
 import { getHoyLocalISO } from "../shared/date/date-utils.js";
 import { buildTaskAssignmentInput } from "../shared/task-assignment-input.js";
@@ -97,40 +99,20 @@ function Toast({ toast, onClose }) {
   return <button type="button" className={`ros-toast ${toast.type || "success"}`} onClick={onClose}><span>{toast.type === "error" ? "!" : "✓"}</span>{toast.message}</button>;
 }
 
-const TASK_CONTENT_TYPES = [
-  { id: "guion", label: "Guion", field: "guiones", metadataField: "guiones", empty: "Todavía no hay un guion cargado." },
-  { id: "copy", label: "Copy", field: "copy_trabajo", metadataField: "copy_trabajo", empty: "Todavía no hay un copy cargado." },
-  { id: "indicaciones", label: "Indicaciones", field: "aclaraciones", empty: "Esta tarea todavía no tiene indicaciones cargadas." },
-];
-
-const TASK_CONTENT_TEMPLATES = {
-  guion: [
-    { label: "+ Video", value: "VIDEO\nIdea:\nGuion:\nReferencia:" },
-    { label: "+ Escena", value: "ESCENA\nVisual:\nTexto / diálogo:" },
-  ],
-  copy: [
-    { label: "+ Placa", value: "PLACA\nTexto:\nVisual:" },
-    { label: "+ Cierre / CTA", value: "CIERRE / CTA\nAcción esperada:" },
-  ],
-  indicaciones: [
-    { label: "+ Objetivo", value: "OBJETIVO\n" },
-    { label: "+ Requisito", value: "• " },
-  ],
-};
-
 function TaskContentWorkspace({ task, metadata, editing, draft, setDraft, editorRef, onInsertTemplate, onEditContent, onCancelEdit, onSaveEdit, saving, canSave }) {
   const preserveEditorialCopy = isLinkedProductionEditorialTask(task);
+  const presentation = getTaskContentPresentation(task);
   const editorialCopy = typeof metadata.copy_trabajo === "string" ? metadata.copy_trabajo : "";
   const savedContent = getUnifiedTaskContent(task);
   const value = editing && String(draft.aclaraciones || "") !== String(task.aclaraciones || "") ? String(draft.aclaraciones || "") : savedContent;
   return <section className="ros-work-block ros-content-workspace">
-    <div className="ros-block-heading"><div><h3>Brief · Contenido de trabajo</h3></div><small>{preserveEditorialCopy ? "Guion e indicaciones. El copy editorial se gestiona por separado." : "Guion, copy e indicaciones en un solo lugar"}</small></div>
+    <div className="ros-block-heading"><div><h3>Brief · Contenido de trabajo</h3></div><small>{presentation.description}</small></div>
     {editing ? <div className="ros-content-editor">
       <div className="ros-content-editor-header"><div><span>Documento de trabajo</span><strong>Escribí todo lo necesario para resolver la tarea</strong></div></div>
-      <div className="ros-content-tools"><span>Usá bloques para ordenar el texto.</span>{TASK_CONTENT_TYPES.filter((type) => !preserveEditorialCopy || type.id !== "copy").flatMap((type) => TASK_CONTENT_TEMPLATES[type.id] || []).map((template) => <button type="button" key={`${template.label}-${template.value}`} onClick={() => onInsertTemplate(template.value)}>{template.label}</button>)}</div>
-      <textarea ref={editorRef} className="ros-detail-textarea ros-content-textarea" rows={16} value={value} placeholder={preserveEditorialCopy ? "Escribí el guion o las indicaciones acá…" : "Escribí el guion, copy o las indicaciones acá…"} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/>
+      <div className="ros-content-tools"><span>Usá bloques para ordenar el texto.</span>{presentation.templates.map((template) => <button type="button" key={`${template.label}-${template.value}`} onClick={() => onInsertTemplate(template.value)}>{template.label}</button>)}</div>
+      <textarea ref={editorRef} className="ros-detail-textarea ros-content-textarea" rows={16} value={value} placeholder={presentation.placeholder} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/>
       <div className="ros-content-edit-actions"><small>Guardá antes de cerrar la tarea.</small><div><button type="button" onClick={onCancelEdit}>Cancelar</button><button className="primary" type="button" disabled={saving || !canSave} onClick={onSaveEdit}>{saving ? "Guardando…" : "Guardar texto"}</button></div></div>
-    </div> : value ? <div className={`ros-content-editor ros-content-viewer ${onEditContent ? "is-editable" : ""}`} role={onEditContent ? "button" : undefined} tabIndex={onEditContent ? 0 : undefined} onClick={onEditContent || undefined} onKeyDown={onEditContent ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onEditContent(); } } : undefined}><div className="ros-content-editor-header"><div><span>Contenido de la tarea</span><strong>Información para trabajar</strong></div>{onEditContent && <b>Hacé clic para editar</b>}</div><div className="ros-content-reading">{renderizarTextoTarea(value)}</div></div> : <div className="ros-content-empty"><span>✎</span><div><strong>Todavía no hay contenido cargado.</strong><p>{preserveEditorialCopy ? "Agregá el guion o las indicaciones de trabajo." : "Agregá el guion, copy o las indicaciones en un solo lugar."}</p></div>{onEditContent && <button type="button" onClick={onEditContent}>Escribir contenido</button>}</div>}
+    </div> : value ? <div className={`ros-content-editor ros-content-viewer ${onEditContent ? "is-editable" : ""}`} role={onEditContent ? "button" : undefined} tabIndex={onEditContent ? 0 : undefined} onClick={onEditContent || undefined} onKeyDown={onEditContent ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onEditContent(); } } : undefined}><div className="ros-content-editor-header"><div><span>Contenido de la tarea</span><strong>Información para trabajar</strong></div>{onEditContent && <b>Hacé clic para editar</b>}</div><div className="ros-content-reading">{renderizarTextoTarea(value)}</div></div> : <div className="ros-content-empty"><span>✎</span><div><strong>Todavía no hay contenido cargado.</strong><p>{presentation.empty}</p></div>{onEditContent && <button type="button" onClick={onEditContent}>Escribir contenido</button>}</div>}
     {preserveEditorialCopy && <aside aria-label="Copy editorial"><h4>Copy editorial</h4>{editorialCopy.trim() ? <div className="ros-content-reading">{renderizarTextoTarea(editorialCopy)}</div> : <p>El copy editorial se gestiona en la pieza vinculada.</p>}</aside>}
   </section>;
 }
@@ -449,14 +431,12 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     const current = String(draft.aclaraciones || "") !== String(task.aclaraciones || "") ? String(draft.aclaraciones || "") : savedContent;
     const start = textarea?.selectionStart ?? current.length;
     const end = textarea?.selectionEnd ?? current.length;
-    const separator = current && start === current.length && !current.endsWith("\n") ? "\n\n" : "";
-    const nextValue = `${current.slice(0, start)}${separator}${template}${current.slice(end)}`;
-    setDraft({ ...draft, aclaraciones: nextValue });
+    const inserted = insertTaskContentBlock(current, template, start, end);
+    setDraft({ ...draft, aclaraciones: inserted.value });
     requestAnimationFrame(() => {
       if (!textarea) return;
-      const cursor = start + separator.length + template.length;
       textarea.focus();
-      textarea.setSelectionRange(cursor, cursor);
+      textarea.setSelectionRange(inserted.cursor, inserted.cursor);
     });
   };
 

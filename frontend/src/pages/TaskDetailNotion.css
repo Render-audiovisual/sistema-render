@@ -371,9 +371,9 @@
   .render-workspace .ros-content-workspace { padding-block:23px; }
   .render-workspace .ros-block-heading { align-items:flex-start;display:grid;gap:4px; }
   .render-workspace .ros-content-editor-header { padding:11px 12px; }
-  .render-workspace .ros-content-tools { flex-wrap:nowrap;overflow-x:auto;padding:7px 8px;scrollbar-width:none; }
+  .render-workspace .ros-content-tools { flex-wrap:wrap;overflow-x:visible;padding:7px 8px; }
   .render-workspace .ros-content-tools>span { display:none; }
-  .render-workspace .ros-content-tools button { flex:0 0 auto;font-size:13px;min-height:44px;white-space:nowrap; }
+  .render-workspace .ros-content-tools button { flex:0 1 auto;max-width:100%;font-size:13px;min-height:44px;white-space:normal; }
   .render-workspace .ros-content-textarea { font-size:16px;line-height:1.62;min-height:380px;padding:18px 14px; }
   .render-workspace .ros-task-operations { margin-top:22px;padding:13px; }
   .render-workspace .ros-task-operations .ros-operations-heading { display:grid; }

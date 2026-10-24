@@ -243,9 +243,30 @@ function reviewedTaskContinuationBaseline(root) {
   assert.equal(hash(records),'25b7e1d5e6aeaf3d40f233c57f9811d30e69b7a18cbe27b64d5063d3f735bd14');
   return copy;
 }
+function reviewedMobileTemplateBaseline(root) {
+  const copy = root.clone(), reviewed = [];
+  copy.walkRules(rule => {
+    if (rule.parent.type !== 'atrule' || rule.parent.name !== 'media' || rule.parent.params !== '(max-width: 600px)') return;
+    const selector = normalize(rule.selector);
+    if (selector === '.render-workspace .ros-content-tools') {
+      assert.equal(rule.toString().replace(/\s/g, ''), '.render-workspace.ros-content-tools{flex-wrap:wrap;overflow-x:visible;padding:7px8px;}');
+      rule.removeAll();
+      for (const [prop,value] of [['flex-wrap','nowrap'],['overflow-x','auto'],['padding','7px 8px'],['scrollbar-width','none']]) rule.append({prop,value});
+      reviewed.push(selector);
+    } else if (selector === '.render-workspace .ros-content-tools button') {
+      assert.equal(rule.toString().replace(/\s/g, ''), '.render-workspace.ros-content-toolsbutton{flex:01auto;max-width:100%;font-size:13px;min-height:44px;white-space:normal;}');
+      rule.removeAll();
+      for (const [prop,value] of [['flex','0 0 auto'],['font-size','13px'],['min-height','44px'],['white-space','nowrap']]) rule.append({prop,value});
+      reviewed.push(selector);
+    }
+  });
+  assert.deepEqual(reviewed, ['.render-workspace .ros-content-tools', '.render-workspace .ros-content-tools button']);
+  return copy;
+}
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
     let baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
+    if(name==='TaskDetailNotion')baselineRoot=reviewedMobileTemplateBaseline(baselineRoot);
     if(name==='TaskHeader')baselineRoot=reviewedTaskContinuationBaseline(baselineRoot);
     if (['WorkspaceReadOnly', 'TaskHeader', 'RenderApplePolish'].includes(name)) baselineRoot = reviewedFilterPresentationBaseline(baselineRoot);
     assert.equal(hash(structure(baselineRoot)), layoutBaseline[name]);
