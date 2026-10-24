@@ -30,10 +30,12 @@ La nueva sesión del navegador integrado no consiguió adjuntar una pestaña usa
 
 El fixture anterior reiniciado para investigar Atrás quedó sin coordinador tras una interrupción. Se comprobó que el PID69096 ya no existía; el postmaster69109 sí pertenecía exactamente a `/private/tmp/render2-local-F3XurX/data`, loopback55846. Se detuvo solo ese clúster, se comprobó ausencia de listener52811 y de postmaster.pid y se eliminó exclusivamente esa raíz sintética con ENOENT final. No se presenta esa limpieza manual como una comprobación de snapshots del recorrido interrumpido. No se tocaron bases configuradas, servicios activos ajenos ni producción.
 
-## Autoridad de escritura pendiente
+## Autoridad de escritura corregida en desarrollo
+
+Estado vigente: S187 01 fue corregido y verificado posteriormente en GOAL_CONTENT_AUTHORITY_QA.md. Los párrafos siguientes conservan el hallazgo original y el contrato que guio la corrección; no representan un pendiente reabierto ni una corrección atribuida al permiso visual.
 
 Hallazgo S187 01, Medium/P2, relacionado con REACT AUTHZ 001: editGoalContent toma ID y rol observados por middleware, pero su transacción solo bloquea la tarea. No retiene ni vuelve a verificar la fila del usuario antes de escribir. Evidencia en backend/src/client-goals.js, función editGoalContent, y backend/src/auth.js, requireCurrentIdentity. Una revocación, desactivación o cambio de rol confirmado entre ambas observaciones podría dejar una escritura usando autoridad anterior. Es un hallazgo por fuente; no se ejecutó esa carrera en este corte ni se probó acceso anónimo o financiero.
 
-La corrección requiere capturar actor, retener una lectura bloqueada de usuario antes de los locks de dominio y verificar activo, rol y versión de sesión en la misma transacción. Debe probarse con barreras PostgreSQL: revocación confirmada primero rechaza sin DML; escritor autorizado primero puede terminar antes de que la revocación obtenga el bloqueo. Ese cambio y sus pruebas son el siguiente trabajo de seguridad, no parte del permiso de presentación ya implementado.
+El contrato de corrección exige capturar actor, retener una lectura bloqueada de usuario antes de los locks de dominio y verificar activo, rol y versión de sesión en la misma transacción. Las barreras PostgreSQL deben acreditar que revocación confirmada primero rechaza sin DML y escritor autorizado primero puede terminar antes de que la revocación obtenga el bloqueo. La implementación y comprobación posterior pertenecen al cierre transaccional citado, no al permiso de presentación de este informe.
 
 Render2 sigue implementado solo en desarrollo local, con aceptación global y despliegue pendientes. No hubo push, despliegue ni cambios de producción.

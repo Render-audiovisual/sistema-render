@@ -433,12 +433,26 @@ export async function editGoalContent(pool, id, body = {}, actor = {}) {
     !Number.isSafeInteger(body.expected_revision) || body.expected_revision < 1) {
     throw fail('Revisá el título y el copy antes de guardar.');
   }
+  const observed = Object.freeze({ id: actor?.id, rol: actor?.rol, session_version: actor?.session_version });
+  const validIdentityNumber = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
+  if (!validIdentityNumber(observed.id) || !validIdentityNumber(observed.session_version)
+    || typeof observed.rol !== 'string' || !observed.rol.trim()) throw fail('La sesión cambió. Volvé a iniciar sesión.', 401);
+  const input = Object.freeze({ titulo: body.titulo.trim(), copy: body.copy,
+    expected_updated_at: body.expected_updated_at, expected_revision: body.expected_revision });
   const db = await pool.connect();
+  let discard;
   try {
-    await db.query('BEGIN');
+    await db.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    // Retain current authority before domain locks until COMMIT. Revocation
+    // committed first must win; a token/middleware snapshot is not authority.
+    const current = (await db.query('SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE', [observed.id])).rows[0];
+    if (!current || current.id !== observed.id || current.activo !== true
+      || current.rol !== observed.rol || current.session_version !== observed.session_version) {
+      throw fail('La sesión cambió. Volvé a iniciar sesión.', 401);
+    }
     // La pertenencia se verifica en la base: una etiqueta enviada por el cliente
     // no permite editar tareas privadas, reasignar ni cambiar estados.
-    const access = buildTaskAccessClause(actor, 't', '$2');
+    const access = buildTaskAccessClause(current, 't', '$2');
     const piece = (await db.query(`SELECT t.id,t.updated_at FROM cliente_objetivo_piezas p
       JOIN tareas t ON t.id=p.tarea_id WHERE p.id=$1 AND t.propiedades_extra->>'workspace'='render_os'
       AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'
@@ -449,11 +463,14 @@ export async function editGoalContent(pool, id, body = {}, actor = {}) {
       propiedades_extra=COALESCE(propiedades_extra,'{}'::jsonb) || jsonb_build_object('copy_trabajo',$2::text), updated_at=now()
       WHERE id=$3 AND date_trunc('milliseconds',updated_at)=date_trunc('milliseconds',$4::timestamptz)
         AND revision=$5 RETURNING updated_at,revision`,
-    [body.titulo.trim(),body.copy,piece.id,body.expected_updated_at,body.expected_revision]);
+    [input.titulo,input.copy,piece.id,input.expected_updated_at,input.expected_revision]);
     if (!updated.rows.length) throw fail('La tarea cambió mientras editabas. Recargá para no sobrescribir el trabajo de otra persona.', 409);
     await db.query('COMMIT'); return updated.rows[0];
-  } catch (error) { await db.query('ROLLBACK'); throw error; }
-  finally { db.release(); }
+  } catch (error) {
+    try { await db.query('ROLLBACK'); } catch (rollbackError) { discard = rollbackError; }
+    throw error;
+  }
+  finally { db.release(discard); }
 }
 
 const positiveId = value => Number.isSafeInteger(value) && value > 0;
