@@ -19,6 +19,9 @@ export function DrivePage({ sesion }) {
   const mounted = useRef(false), generation = useRef(0), live = useRef('');
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; generation.current++; }; }, []);
   const [status, setStatus] = useState(null);
+  const [connectionPhase, setConnectionPhase] = useState('loading');
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
+  const connectionRead = useRef(null);
   const [rootKey, setRootKey] = useState("general");
   const [stack, setStack] = useState([]);
   const [loadedFiles, setFiles] = useState([]);
@@ -52,16 +55,31 @@ export function DrivePage({ sesion }) {
 
   useEffect(() => {
     let active = true; const controller = new AbortController();
+    const observation = { phase: 'loading', active: true };
     const guard = createCapturedRequest({ session: view.session, readSession: getSesion,
-      request: (_url, options) => driveStatus(options), isActive: () => active && mounted.current });
+      request: (_url, options) => driveStatus(options), isActive: () => active && mounted.current && connectionRead.current === observation });
+    connectionRead.current = observation;
+    if (!guard.current()) return () => { active = false; observation.active = false; controller.abort(); };
+    setConnectionPhase('loading'); setError('');
     guard.request('/api/drive/status', { signal: controller.signal }).then((data) => {
       guard.assertCurrent();
-      setStatus(data);
       const first = { id: data.roots.general, name: ROOT_LABELS.general };
+      setStatus(data);
       setStack([first]);
-    }).catch(() => { if (guard.current()) setError('No pudimos consultar la conexión con Drive.'); });
-    return () => { active = false; controller.abort(); };
-  }, [view]);
+      observation.phase = 'ready'; setConnectionPhase('ready');
+    }).catch(() => { if (guard.current()) { observation.phase = 'error'; setConnectionPhase('error'); setError('No pudimos consultar la conexión con Drive.'); } });
+    return () => { active = false; observation.active = false; controller.abort(); };
+  }, [view, connectionAttempt]);
+  const retryConnection = () => {
+    const observation = connectionRead.current;
+    const guard = createCapturedRequest({ session: view.session, readSession: getSesion,
+      isActive: () => mounted.current && observation?.active === true && connectionRead.current === observation });
+    if (observation?.phase !== 'error' || !guard.current()) return;
+    // Synchronous latch: a second click before React renders cannot queue
+    // another read. This never retries OAuth, uploads or a file operation.
+    observation.phase = 'loading'; setConnectionPhase('loading'); setError('');
+    setConnectionAttempt(value => value + 1);
+  };
   useEffect(() => {
     if (!current?.id || !status?.connected) return;
     const timer = setTimeout(() => { void load(); }, query ? 250 : 0);
@@ -88,9 +106,9 @@ export function DrivePage({ sesion }) {
   };
 
   return <main className="drive-page">
-    {error && !status?.connected && <p className="drive-error-banner" role="alert">{error}</p>}
+    {error && connectionPhase === 'ready' && !status?.connected && <p className="drive-error-banner" role="alert">{error}</p>}
     <header className="drive-page-header"><div><span className="drive-kicker">ARCHIVOS DEL EQUIPO</span><h1>Drive</h1><p>Encontrá y cargá material sin salir de Render OS.</p></div>{status?.connected && <a href={`https://drive.google.com/drive/folders/${current?.id || status.roots.general}`} target="_blank" rel="noreferrer">Abrir en Google Drive ↗</a>}</header>
-    {!status?.connected ? <section className="drive-connect"><span className="drive-logo">▰</span><h2>{status?.reconnectRequired ? "Volvé a conectar el Drive de Render" : "Conectá el Drive de Render"}</h2><p>{status?.reconnectRequired ? "La autorización anterior venció. Los archivos siguen intactos en Google Drive; solo hay que renovar el acceso." : "Los archivos seguirán guardados en Google Drive. Render OS solo simplifica la carga y el acceso."}</p>{isAdmin ? <button type="button" disabled={!status?.configured} onClick={connect}>{status?.reconnectRequired ? "Volver a conectar Google Drive" : "Conectar Google Drive"}</button> : <strong>Un líder debe realizar la conexión.</strong>}{status && !status.configured && <small>Falta configurar el acceso de Google en Hostinger.</small>}</section> : <>
+    {connectionPhase === 'loading' ? <section className="drive-connect" role="status"><h2>Consultando Drive…</h2><p>Verificando la conexión del equipo.</p></section> : connectionPhase === 'error' ? <section className="drive-connect" role="alert"><h2>No pudimos consultar Drive</h2><p>Volvé a consultar antes de conectar una cuenta. No se modificaron los archivos.</p><button type="button" onClick={retryConnection}>Reintentar consulta</button></section> : !status?.connected ? <section className="drive-connect"><span className="drive-logo">▰</span><h2>{status?.reconnectRequired ? "Volvé a conectar el Drive de Render" : "Conectá el Drive de Render"}</h2><p>{status?.reconnectRequired ? "La autorización anterior venció. Los archivos siguen intactos en Google Drive; solo hay que renovar el acceso." : "Los archivos seguirán guardados en Google Drive. Render OS solo simplifica la carga y el acceso."}</p>{isAdmin ? <button type="button" disabled={!status?.configured} onClick={connect}>{status?.reconnectRequired ? "Volver a conectar Google Drive" : "Conectar Google Drive"}</button> : <strong>Un líder debe realizar la conexión.</strong>}{status && !status.configured && <small>Falta configurar el acceso de Google en Hostinger.</small>}</section> : <>
       <section className="drive-toolbar"><div className="drive-roots">{Object.keys(ROOT_LABELS).map((key) => <button className={rootKey === key ? "active" : ""} type="button" key={key} onClick={() => selectRoot(key)}>{ROOT_LABELS[key]}</button>)}</div><label><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar en esta carpeta…"/></label></section>
       <section className="drive-browser"><div className="drive-breadcrumbs">{stack.map((folder, index) => <button type="button" key={folder.id} onClick={() => setStack((items) => items.slice(0, index + 1))}>{folder.name}{index < stack.length - 1 ? " /" : ""}</button>)}</div><DriveUploader currentFolder={current} onUploaded={(_uploaded, scope) => load(current?.id, query, scope)}/>
         {error && <div className="drive-error-banner drive-folder-recovery" role="alert"><span>{error}</span>{folderReadError && <button type="button" disabled={loading} onClick={() => load()}>Reintentar carpeta</button>}</div>}
