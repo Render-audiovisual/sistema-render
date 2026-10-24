@@ -4,6 +4,8 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+Actualización194: GOAL_DRAFT_LOST_ACK_NATIVE_QA.md verifica guardado real con respuesta200 descartada mediante transporte de QA en navegador: aviso incierto, recuperación sin reenvío y segundo Guardar humano409. PostgreSQL confirmó un único incremento de revisión, tarea/pieza coherentes y siete tablas restantes sin cambios. Fixture eliminado. Este corte cubre el ACK ocultado después de commit, no desmontaje durante petición pendiente, pérdida física de red ni aceptación global.
+
 Actualización192–193: GOAL_DRAFT_LEGACY_BOUNDARY_QA.md documenta la corrección del desmontaje del provider durante aliases autenticados. Frontend2508 pruebas aprobadas y build correcto en192. En193, navegador conectado verificó texto exacto tras /luciano → Inicio → Retomar y ausencia de borrador tras logout/login de otra identidad. Entrada al alias mediante control temporal de historial de QA, retirado después; nueve tablas comerciales sin cambios y clúster eliminado. No acredita carreras de logout durante el render ni ACK perdido. Sin cambios de backend ni producción.
 
 Actualización191: GOAL_DRAFT_CONFLICT_NATIVE_QA.md verifica en navegador y PostgreSQL la recuperación del borrador frente a edición concurrente y retirada/devolución de asignación. Guardar conserva el conflicto original, sin sobrescribir; nueve tablas no tuvieron cambios adicionales a las tres mutaciones intencionales del fixture. Entorno temporal eliminado. Sin cambios de producto, despliegue ni renovación de suites globales; permanecen pendientes ACK perdido nativo, rutas heredadas y aceptación integral.
