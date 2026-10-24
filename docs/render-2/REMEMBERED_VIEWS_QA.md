@@ -60,6 +60,22 @@ La primera corrida focal necesitó completar los campos públicos del DTO de ses
 
 ## Pendientes y límites
 
+### Tareas pobladas: A/B/A, historial y móvil, corte204
+
+Se ejecutó el build203 sin modificar producto sobre un origen nuevo de QA, HTTP52819/PostgreSQL55857. El fixture verificó identidad exacta y creó mediante la API principal dos tareas sintéticas render_os: `QA204 video Luciano`, responsable91003 y prioridad alta, y `QA204 pieza Diseño`, responsable91004 y prioridad media, ambas pendientes con entrega2026-10-28. El baseline de integridad se tomó después de ese setup autorizado, no antes.
+
+Luciano entró por login real y Sidebar → Tareas. Configuró Lista, responsable por ID91003 y prioridad alta: se mostró una sola tarea, su video. Atrás real llevó a Inicio; reentrar por Sidebar recuperó esas selecciones. Añadió estado Pendientes y búsqueda `QA204 video Luciano`; tras salir a Inicio y volver se conservaron los tres filtros y Lista, pero no `q` ni el texto de búsqueda libre.
+
+Cerró sesión mediante el flujo neutral203. Designer91004 entró desde la URL que dejó la aplicación, sin navegación manual a login. Tareas mostró Tablero, todos los responsables/prioridades y las dos tareas: no heredó los filtros de Luciano. Eligió Por responsable, ID91004 y prioridad media; su pieza quedó como único resultado bajo su bloque. Inicio → Sidebar recuperó esa vista. Tras cerrar B y volver a A, se recuperaron Lista, Pendientes, ID91003 y prioridad alta. Recarga conservó la URL y el resultado; no se abrió ningún editor ni se cambió una tarea.
+
+A390×844, Filtros mostró3 selecciones activas y sus controles reales. Inicio → menú móvil → Tareas recuperó Lista y la misma tarea. Medidas DOM con filtros abiertos: innerWidth390, documentElement.clientWidth375, documentElement.scrollWidth375, body.scrollWidth375; no hubo overflow horizontal de página en ese estado poblado. No certifica todos los tamaños o menús nativos del sistema operativo. Finalmente, el enlace explícito `?view=board` ganó sobre lo recordado; el writer normalizó el valor predeterminado a ruta sin query, mostrando ambas tareas y filtros generales.
+
+Capturas útiles: `/private/tmp/render2-goal204-a-list.png`, `/private/tmp/render2-goal204-b-responsibles.png`, `/private/tmp/render2-goal204-mobile-filters.png` y `/private/tmp/render2-goal204-mobile-return.png`. Se inspeccionó visualmente la de filtros móviles. No se inyectaron preferencias ni respuestas en el navegador.
+
+El script `/private/tmp/render2-goal204-native.mjs` comparó103 tablas completas y la proyección de usuarios sin session_version/user_admin_version. Ambos contadores aumentaron exactamente1 para91003 y91004, sin cambios para otros usuarios. Los demás hashes coincidieron: `DOMAIN_SNAPSHOT_UNCHANGED 104 EXACT_LOGOUT_EPOCHS A1 B1`. Cleanup ENOENT de `/private/tmp/render2-local-zhcV0Q`, código0. Se cerró la pestaña y se restauró el viewport.
+
+Volta revisó parsers/writers en solo lectura y recomendó separar el orden manual y las colas de revisión de esta prueba. El coordinador ejecutó el recorrido; no se renovaron suites globales ni build, que no cambiaron desde203. Esto acredita los valores y roles descritos de Tareas, no el calendario, papelera, orden manual, todas las prioridades/estados ni las otras siete vistas recordadas. Sin producción ni despliegue.
+
 ### Cierre explícito y cambio de cuenta corregidos, corte203
 
 La observación de202 tenía un efecto real: App trataba el cierre voluntario como cualquier retirada de sesión y generaba `login?next=<URL de A>`. Otra persona podía entrar directamente al período anterior aunque sus preferencias estuvieran correctamente separadas. No era acceso financiero ni mezcla de identidades del backend; era arrastre del contexto de navegación.
