@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { clientOperationHref, readClientOperationLocation, clientOperationLocationUrl, parseClientOperation, createClientOperationLoader } from './clientOperation.js';
+import { goalClientHref } from './clientGoalLocation.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import {readFileSync} from 'node:fs';
@@ -80,7 +81,7 @@ const ast=ts.createSourceFile('ClientOperationPage.jsx',source,ts.ScriptTarget.L
 function componentFunctions(){const names=['HubLink','Preview','Block','ClientOperationRead'];return ast.statements.filter(n=>ts.isFunctionDeclaration(n)&&names.includes(n.name?.text)||ts.isVariableStatement(n)&&n.declarationList.declarations.some(d=>['states','evidence'].includes(d.name.getText(ast)))).map(n=>n.getText(ast)).join('\n');}
 function renderHub(data,role='admin') {
  const code=ts.transpileModule(componentFunctions(),{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;
- const Component=new Function('React','useScopedRequest','useState','useRef','useEffect','canReadEditorialControl','EditorialPieceDetails',`${code};return ClientOperationRead;`)(React,()=>({view:{session:session(11),role},capture:()=>{}}),()=>[{status:'ready',data,error:''},()=>{}],()=>({current:null}),()=>{},()=>true,props=>React.createElement('span',{'data-domain':props.piece.domain,'data-id':props.piece.id},'Detalle de pieza'));
+ const Component=new Function('goalClientHref','React','useScopedRequest','useState','useRef','useEffect','canReadEditorialControl','EditorialPieceDetails',`${code};return ClientOperationRead;`)(goalClientHref,React,()=>({view:{session:session(11),role},capture:()=>{}}),()=>[{status:'ready',data,error:''},()=>{}],()=>({current:null}),()=>{},()=>true,props=>React.createElement('span',{'data-domain':props.piece.domain,'data-id':props.piece.id},'Detalle de pieza'));
  return renderToStaticMarkup(React.createElement(Component,{session:session(11),selection}));
 }
 test('actual hub JSX SSR shows real scopes, accounts, extras, evidence and inline exact pieces, no finance or unsafe URLs',()=>{
@@ -88,6 +89,7 @@ test('actual hub JSX SSR shows real scopes, accounts, extras, evidence and inlin
  assert.match(html,/todos los períodos/);assert.match(html,/Feed compartido/);assert.match(html,/Otra cuenta \(#12\)/);assert.match(html,/Contenido adicional/);
  assert.match(html,/trabajo no confirma una publicación/);assert.match(html,/histórica sin confirmación/);assert.match(html,/data-domain="historia"/);assert.match(html,/data-domain="publicacion"/);
  assert.match(html,/&lt;img/);assert.doesNotMatch(html,/<img|javascript:|SECRET|fee|salary/);assert.match(html,/Administrar cliente/);assert.doesNotMatch(renderHub(data,'edicion'),/Administrar cliente/);
+ assert.equal((html.match(/href="\/clientes\?cliente=7&amp;periodo=2026-10"/g)||[]).length,2,'Both return links retain exact client and month');
 });
 test('actual unprepared goal render never claims zero-ratio completion; prepared goals retain observed progress',()=>{
  const raw=fixture(),goal=raw.objetivos.items[0];goal.preparado=false;goal.quota={reels:0,carruseles:0};goal.progress={reels:{total:0,completed:0},carruseles:{total:0,completed:0}};goal.extras={total:0,completed:0};raw.objetivos.counts={preparados:0,por_preparar:1};

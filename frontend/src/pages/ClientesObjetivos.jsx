@@ -8,15 +8,18 @@ import { PageState } from '../components/PageState.jsx';
 import { validateGoalQuota, goalQuotaProgress, goalQuotaReviewBody, validGoalQuotaRevision, verifiedGoalPreparationAck, goalPreparationRevision, goalPreparationBody } from './clientGoalQuota.js';
 import './ClientesObjetivos.css';
 import { clientOperationHref } from './clientOperation.js';
-import { navigateWithinApp } from '../shared/navigation/location.js';
+import { navigateWithinApp, requestAppNavigation } from '../shared/navigation/location.js';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
+import { parseGoalClientId, goalClientLocationUrl, resolveGoalClient } from './clientGoalLocation.js';
 
 const STATES = { pendiente: 'Pendiente', en_progreso: 'En proceso', en_revision: 'En revisión', aprobada: 'Aprobada', finalizada: 'Finalizada', programada: 'Programada', publicada: 'Finalizada' };
 const AUTO_UPDATE_ERROR = 'No se pudo actualizar el avance. Reintentaremos automáticamente.';
 const currentMonth = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Cordoba', year: 'numeric', month: '2-digit' }).format(new Date()).split('-').slice(0, 2).join('-');
 function monthLabel(period) { const [year, month] = period.split('-').map(Number); return new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, 1))); }
 function goalPeriod(search) {
-  const values = new URLSearchParams(search).getAll('periodo');
+  const params = new URLSearchParams(search);
+  if ([...params.keys()].some(key => key.startsWith('periodo['))) throw new Error('Período inválido. Elegí un mes válido.');
+  const values = params.getAll('periodo');
   if (!values.length) return currentMonth();
   if (values.length !== 1 || !/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(values[0])) throw new Error('Período inválido. Elegí un mes válido.');
   return values[0];
@@ -107,12 +110,14 @@ export function ClientesObjetivosPage({ sesion }) {
 
 function GoalPage({ sesion }) {
   const initial = useRef(null);
-  if (!initial.current) { try { initial.current = { period: goalPeriod(window.location.search), error: '' }; } catch (reason) { initial.current = { period: currentMonth(), error: reason.message }; } }
+  if (!initial.current) { try { initial.current = { period: goalPeriod(window.location.search), clientId:parseGoalClientId(window.location.search), error: '' }; } catch (reason) { initial.current = { period: currentMonth(), clientId:null, error: reason.message }; } }
   const [period, setPeriod] = useState(initial.current.period), [locationError, setLocationError] = useState(initial.current.error);
   const { view, capture, epoch } = useGoalSession(sesion, period);
   const [data, setData] = useState(null), [error, setError] = useState(''), [loading, setLoading] = useState(true);
   const [selectedKey, setSelectedKey] = useState(''), [selectedPiece, setSelectedPiece] = useState(null);
   const [revision, setRevision] = useState(0), [preparing, setPreparing] = useState(false), [notice, setNotice] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState(initial.current.clientId);
+  const activeHref = useRef(window.location.href);
   const modalOpen = useRef(false), deferred = useRef(false), pendingPeriod = useRef(null), readGeneration = useRef(0), loaded = useRef(false);
   modalOpen.current = Boolean(preparing || selectedPiece);
   const canManage = ['admin', 'community'].includes(view.role);
@@ -120,29 +125,36 @@ function GoalPage({ sesion }) {
   const closeModal = () => {
     if (preparing) { loaded.current = false; setLoading(true); deferred.current = true; }
     modalOpen.current = false; setPreparing(false); setSelectedPiece(null);
-    if (pendingPeriod.current) { const next = pendingPeriod.current; pendingPeriod.current = null; setPeriod(next.period); setLocationError(next.error); }
+    if (pendingPeriod.current) {
+      const next = pendingPeriod.current; pendingPeriod.current = null;
+      window.history.replaceState(window.history.state, '', next.href);
+      activeHref.current = window.location.href;
+      setPeriod(next.period); setSelectedClientId(next.clientId); setLocationError(next.error); setNotice('');
+    }
     if (deferred.current) { deferred.current = false; setRevision(value => value + 1); }
   };
   useEffect(() => {
     const pop = () => {
-      let next; try { next = { period: goalPeriod(window.location.search), error: '' }; } catch (reason) { next = { period, error: reason.message }; }
+      if (window.location.pathname !== '/clientes') return;
+      let next; try { next = { period: goalPeriod(window.location.search), clientId:parseGoalClientId(window.location.search), error: '' }; } catch (reason) { next = { period, clientId:selectedClientId, error: reason.message }; }
+      next.href = window.location.href;
       if (modalOpen.current) {
         pendingPeriod.current = next;
-        const params = new URLSearchParams(window.location.search); params.set('periodo', period);
-        window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params}${window.location.hash}`);
-        setNotice('El cambio de mes se aplicará al cerrar el detalle.'); return;
+        window.history.replaceState(window.history.state, '', activeHref.current);
+        setNotice('El cambio de cliente o mes se aplicará al cerrar el detalle.'); return;
       }
-      setPeriod(next.period); setLocationError(next.error);
+      activeHref.current = next.href;
+      setPeriod(next.period); setSelectedClientId(next.clientId); setLocationError(next.error);
     };
     window.addEventListener('popstate', pop); return () => window.removeEventListener('popstate', pop);
-  }, [period]);
+  }, [period, selectedClientId]);
   useEffect(() => {
     const controller = new AbortController();
     const scope = capture(), generation = ++readGeneration.current;
     loaded.current = false; setLoading(true); setError(''); setData(null);
     if (locationError) { setError(locationError); setLoading(false); return () => controller.abort(); }
-    const params = new URLSearchParams(window.location.search); params.set('periodo', period);
-    window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params}${window.location.hash}`);
+    window.history.replaceState(window.history.state, '', goalClientLocationUrl(window.location.href,{clientId:selectedClientId,period}));
+    activeHref.current = window.location.href;
     scope.request(`/api/cliente-objetivos?periodo=${encodeURIComponent(period)}`, { signal: controller.signal })
       .then(value => { const result = goalOverview(value, period); if (!scope.current() || controller.signal.aborted || generation !== readGeneration.current) return; if (modalOpen.current) { deferred.current = true; return; } loaded.current = true; setData(result); setSelectedKey(key => result.clientes.some(client => client.clave === key) ? key : result.clientes[0]?.clave || ''); })
       .catch(reason => { if (scope.current() && !controller.signal.aborted && generation === readGeneration.current && !isSessionFailure(reason)) setError(reason.message); })
@@ -171,7 +183,24 @@ function GoalPage({ sesion }) {
   }, [period, capture, locationError]);
   const clients = data?.periodo === period ? data.clientes : [];
   const filtered = clients;
-  const client = filtered.find(item => item.clave === selectedKey) || filtered[0];
+  const client = locationError ? null : resolveGoalClient(filtered, selectedClientId, selectedKey);
+  const activeKey = client?.clave || '';
+  function changeGoalContext(changes) {
+    const scope=capture();
+    if (modalOpen.current || !scope.current()) return false;
+    const href=goalClientLocationUrl(window.location.href,{clientId:selectedClientId,period,...changes});
+    if (href===`${window.location.pathname}${window.location.search}${window.location.hash}`) return true;
+    if (!requestAppNavigation(window,href) || modalOpen.current || !scope.current()) return false;
+    window.history.pushState(window.history.state,'',href);
+    window.dispatchEvent(new PopStateEvent('popstate',{state:window.history.state}));
+    setNotice(''); return true;
+  }
+  function chooseClient(key) {
+    if (modalOpen.current) return;
+    const next=clients.find(item=>item.clave===key), id=next?.cuentas[0]?.id;
+    if (!goalId(id) || !changeGoalContext({clientId:id})) return;
+    setSelectedKey(key); setSelectedPiece(null);
+  }
   const total = client ? client.reels + client.carruseles : 0;
   const completed = client ? goalQuotaProgress(client).completed : 0;
   const additional = client ? goalQuotaProgress(client).additional : [];
@@ -188,19 +217,20 @@ function GoalPage({ sesion }) {
 
   return <main className="client-goals" aria-label="Objetivos mensuales de clientes"><div className="frame"><div className="content cg-content">
     <header className="cg-header"><div className="cg-heading-group"><span className="cg-page-icon"><GoalIcon name="clients" /></span><div><span className="cg-eyebrow">Seguimiento del equipo</span><h1>Clientes</h1><p>Todo el contenido del mes, en un mismo lugar.</p></div></div>
-      <div className="cg-header-actions"><label className="cg-month"><span>Mes de trabajo</span><input aria-label="Mes de trabajo" type="month" value={period} disabled={Boolean(preparing || selectedPiece)} onChange={event => { if (/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) { setPeriod(event.target.value); setLocationError(''); setNotice(''); } }} /></label>
+      <div className="cg-header-actions"><label className="cg-month"><span>Mes de trabajo</span><input aria-label="Mes de trabajo" type="month" value={period} disabled={Boolean(preparing || selectedPiece)} onChange={event => { if (/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) changeGoalContext({period:event.target.value}); }} /></label>
       </div></header>
     {notice && <p className="cg-notice" role="status">{notice}</p>}
-    {loading ? <GoalLoading /> : error ? <PageState type="error" title="No pudimos cargar los objetivos" description={error} onRetry={refresh} /> : clients.length === 0 ? <PageState type="empty" title="No hay clientes para este mes" description="Elegí otro período para consultar su seguimiento." /> : <div className="cg-layout">
+    {loading ? <GoalLoading /> : error ? <PageState type="error" title="No pudimos cargar los objetivos" description={error} onRetry={refresh} /> : clients.length === 0 ? <PageState type="empty" title={selectedClientId != null ? `El cliente #${selectedClientId} no tiene un objetivo disponible en este período` : 'No hay clientes para este mes'} description="Elegí otro período para consultar su seguimiento." /> : <div className="cg-layout">
       <aside className="cg-clients" aria-label="Elegir cliente"><div className="cg-clients-heading"><span>Clientes</span><span>{filtered.length}</span></div>
         <div className="cg-client-items">{filtered.map(item => {
           const count = goalQuotaProgress(item).completed, quantity = item.reels + item.carruseles;
-          return <button className={`cg-client${item.clave === selectedKey ? ' is-selected' : ''}`} disabled={Boolean(preparing || selectedPiece)} key={item.clave} aria-pressed={item.clave === selectedKey} aria-label={`${item.nombre}: ${item.preparado ? `${count} de ${quantity} completados` : 'Objetivo por preparar'}`} onClick={() => { setSelectedKey(item.clave); setSelectedPiece(null); }}>
+          return <button className={`cg-client${item.clave === activeKey ? ' is-selected' : ''}`} disabled={Boolean(preparing || selectedPiece)} key={item.clave} aria-pressed={item.clave === activeKey} aria-label={`${item.nombre}: ${item.preparado ? `${count} de ${quantity} completados` : 'Objetivo por preparar'}`} onClick={() => chooseClient(item.clave)}>
             <span className="cg-avatar" aria-hidden="true">{item.nombre.slice(0, 1)}</span><span className="cg-client-text"><strong>{item.nombre}</strong>{item.preparado ? <span className="cg-client-progress" aria-hidden="true"><span style={{width:`${quantity ? Math.min(100, count / quantity * 100) : 0}%`}} /></span> : <small>Objetivo por preparar</small>}</span><GoalIcon name="arrow" className="cg-client-arrow" />
           </button>;
         })}{filtered.length === 0 && <p className="cg-muted">No encontramos ese cliente.</p>}</div>
       </aside>
-      <label className="cg-mobile-client"><span>Cliente</span><select aria-label="Elegir cliente" value={client?.clave || ''} disabled={!filtered.length || Boolean(preparing || selectedPiece)} onChange={event => setSelectedKey(event.target.value)}>{!filtered.length && <option value="">Sin coincidencias</option>}{filtered.map(item => <option key={item.clave} value={item.clave}>{item.nombre}</option>)}</select>{!filtered.length && <small>No encontramos ese cliente.</small>}</label>
+      <label className="cg-mobile-client"><span>Cliente</span><select aria-label="Elegir cliente" value={activeKey} disabled={!filtered.length || Boolean(preparing || selectedPiece)} onChange={event => chooseClient(event.target.value)}>{!client && <option value="">Elegí otro cliente</option>}{filtered.map(item => <option key={item.clave} value={item.clave}>{item.nombre}</option>)}</select>{!filtered.length && <small>No encontramos ese cliente.</small>}</label>
+      {!client && selectedClientId != null && <p className="cg-notice" role="status">El cliente #{selectedClientId} no tiene un objetivo disponible en este período. Elegí otro cliente del listado; no se seleccionó un objetivo diferente.</p>}
       {client && <section className="cg-board" key={client.clave} aria-label={`Objetivo mensual de ${client.nombre}`}>
         <nav aria-label="Operación por cuenta">{client.cuentas.map(account => <a className="cg-button" key={account.id} href={clientOperationHref(account.id, period)} onClick={event => {
           if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;

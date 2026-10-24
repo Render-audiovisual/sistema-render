@@ -7,6 +7,7 @@ import { navigateWithinApp } from '../shared/navigation/location.js';
 import { EditorialPieceDetails } from '../components/EditorialPieceDetails.jsx';
 import { canReadEditorialControl } from '../components/homeEditorialControl.js';
 import { clientOperationLocationUrl, readClientOperationLocation, createClientOperationLoader, validClientOperationPeriod } from './clientOperation.js';
+import { goalClientHref } from './clientGoalLocation.js';
 import './ClientOperation.css';
 
 const states = {pendiente:'Pendiente',en_progreso:'En progreso',en_revision:'En revisión',aprobada:'Aprobada',finalizada:'Trabajo finalizado',publicada:'Trabajo finalizado (estado histórico)'};
@@ -56,7 +57,7 @@ function ClientOperationRead({session,selection}) {
   if(!allowed||state.status==='denied') return <main className="client-operation"><h1>Operación del cliente</h1><p role="alert">Ya no tenés acceso a esta operación.</p></main>;
   const data=state.data;
   return <main className="client-operation">
-    <header className="co-header"><div><HubLink href="/clientes">Clientes</HubLink><p className="co-eyebrow">Operación del cliente · #{selection.clientId}</p><h1>{data?.cliente.nombre||'Operación del cliente'}</h1>{data?.cliente.activo===false && <p>Cliente inactivo · se conserva su historial operativo.</p>}</div>
+    <header className="co-header"><div><HubLink href={goalClientHref(selection.clientId,selection.period)}>Clientes</HubLink><p className="co-eyebrow">Operación del cliente · #{selection.clientId}</p><h1>{data?.cliente.nombre||'Operación del cliente'}</h1>{data?.cliente.activo===false && <p>Cliente inactivo · se conserva su historial operativo.</p>}</div>
       <label>Mes de producción y contenido<input type="month" value={selection.period} onChange={event=>{
         if(!validClientOperationPeriod(event.target.value)) return;
         navigateWithinApp(window,clientOperationLocationUrl(window.location.href,{clientId:selection.clientId,period:event.target.value}));
@@ -83,7 +84,7 @@ function ClientOperationRead({session,selection}) {
           <nav className="co-links" aria-label="Planillas del cliente"><HubLink className="co-action" href={`/planificacion-historias?vista=planilla&cliente=${data.cliente.id}&filtro=${data.cliente.id}&mes=${data.periodo}`}>Planilla de historias</HubLink><HubLink className="co-action" href={`/planificacion-publicaciones?tab=planilla&cliente=${data.cliente.id}&mes=${data.periodo}`}>Planilla de publicaciones</HubLink></nav>
           <Preview section={data.editorial}>{data.editorial.items.map(item=><li key={`${item.domain}:${item.id}`}><strong>{item.domain==='historia'?'Historia':'Publicación'} #{item.id} · {item.titulo||'Sin título'}</strong><small>{item.fecha_programada} · {evidence[item.publication_classification]}</small><EditorialPieceDetails key={`${item.domain}:${item.id}`} piece={item} sesion={view.session}/></li>)}</Preview>
         </Block>
-        <Block title="Objetivos" subtitle={`Trabajo mensual de ${data.periodo} · cada acuerdo compartido se muestra por separado`} total={data.objetivos.total} href={`/clientes?periodo=${data.periodo}`}>
+        <Block title="Objetivos" subtitle={`Trabajo mensual de ${data.periodo} · cada acuerdo compartido se muestra por separado`} total={data.objetivos.total} href={goalClientHref(data.cliente.id,data.periodo)}>
           <p className="co-muted">Completar el trabajo no confirma una publicación.</p>
           <Preview section={data.objetivos}>{data.objetivos.items.map(item=><li key={item.clave}><strong>{item.nombre}</strong><small>Cuentas: {item.cuentas.map(account=>`${account.nombre} (#${account.id})`).join(' · ')}</small><p>{item.preparado?'Objetivo preparado':'Objetivo por preparar'}{item.cuota_desactualizada?' · cuota pendiente de revisión':''}</p>{item.preparado ? <dl className="co-counts"><div><dt>Reels · trabajo completado</dt><dd>{item.progress.reels.completed}/{item.progress.reels.total}</dd></div><div><dt>Carruseles · trabajo completado</dt><dd>{item.progress.carruseles.completed}/{item.progress.carruseles.total}</dd></div><div><dt>Contenido adicional · fuera de cuota</dt><dd>{item.extras.completed}/{item.extras.total} completado</dd></div></dl> : <><p>Todavía no se preparó el objetivo de este mes.</p>{(item.quota.reels > 0 || item.quota.carruseles > 0) && <p className="co-muted">Cuota prevista: {item.quota.reels} reels · {item.quota.carruseles} carruseles.</p>}</>}</li>)}</Preview>
         </Block>

@@ -6,6 +6,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import ts from 'typescript';
 import {goalPreparationBody,goalPreparationRevision,goalQuotaProgress,goalQuotaReviewBody,validGoalQuotaRevision,verifiedGoalPreparationAck} from './clientGoalQuota.js';
 import {clientOperationHref} from './clientOperation.js';
+import * as goalLocation from './clientGoalLocation.js';
 import {createCapturedRequest,isSessionFailure} from '../shared/session/captured-request.js';
 import {createBrowserSessionState} from '../shared/session/browser-session-state.js';
 import {registerNavigationGuard,installUnsavedNavigation} from '../shared/navigation/unsaved.js';
@@ -60,7 +61,7 @@ test('closing ordinary preparation invalidates and reloads the baseline even wit
 function component(name,deps){const code=ts.transpileModule(owner(name).getText(file),{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;return new Function(...Object.keys(deps),`${code};return ${name};`)(...Object.values(deps));}
 function renderPage(value,role='community'){
  const state=['2026-11','',{periodo:'2026-11',clientes:[value]},'',false,value.clave,null,0,false,''];let index=0;
- const deps={React,useRef:initial=>({current:initial}),useState:()=>[state[index++],()=>{}],useEffect(){},useGoalSession:()=>({view:{role,session:{}},epoch:0,capture:()=>({current:()=>true})}),goalPeriod:()=> '2026-11',currentMonth:()=> '2026-11',goalQuotaProgress,validGoalQuotaRevision,clientOperationHref,window:{location:{search:'?periodo=2026-11',hostname:'render.test'}},GoalIcon:()=>null,GoalLoading:()=>null,PageState:()=>null,PrepareGoal:()=>null,PieceDetail:()=>null,GoalPieceButton:()=>null,monthLabel:()=> 'noviembre de 2026'};
+ const deps={...goalLocation,React,useRef:initial=>({current:initial}),useState:()=>[state[index++],()=>{}],useEffect(){},useGoalSession:()=>({view:{role,session:{}},epoch:0,capture:()=>({current:()=>true})}),goalPeriod:()=> '2026-11',currentMonth:()=> '2026-11',goalQuotaProgress,validGoalQuotaRevision,clientOperationHref,window:{location:{search:'?periodo=2026-11',hostname:'render.test'}},GoalIcon:()=>null,GoalLoading:()=>null,PageState:()=>null,PrepareGoal:()=>null,PieceDetail:()=>null,GoalPieceButton:()=>null,monthLabel:()=> 'noviembre de 2026'};
  return renderToStaticMarkup(React.createElement(component('GoalPage',deps),{sesion:{}}));
 }
 test('actual page SSR unprepared basic/nominal/shared has no compliance ratios or scheduler promises; zero quota is not missing agreement',()=>{

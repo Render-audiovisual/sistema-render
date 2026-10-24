@@ -24,9 +24,10 @@ test('las tarjetas preparadas muestran nombre y barra; las no preparadas informa
   assert.match(card, /item\.preparado \? `\$\{count\} de \$\{quantity\} completados` : 'Objetivo por preparar'/);
   assert.match(card, /cg-client-progress/);
   assert.match(card, /count \/ quantity \* 100/);
-  assert.match(card, /aria-pressed=\{item\.clave === selectedKey\}/);
+  assert.match(card, /aria-pressed=\{item\.clave === activeKey\}/);
   assert.match(card, /disabled=\{Boolean\(preparing \|\| selectedPiece\)\}/);
-  assert.match(card, /setSelectedKey\(item.clave\)/);
+  assert.match(card, /chooseClient\(item.clave\)/);
+  assert.match(source, /const activeKey = client\?\.clave \|\| ''/);
   assert.match(source, /select aria-label="Elegir cliente"/);
 });
 
@@ -47,5 +48,5 @@ test('el encabezado conserva el selector mensual sin el botón Administración',
   assert.ok(header.length > 0);
   assert.doesNotMatch(header, /Administración|gestion=1/);
   assert.match(header, /aria-label="Mes de trabajo" type="month"/);
-  assert.match(header, /setPeriod\(event.target.value\)/);
+  assert.match(header, /changeGoalContext\(\{period:event.target.value\}\)/);
 });
