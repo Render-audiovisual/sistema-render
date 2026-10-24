@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Banco del cliente verificado en navegador — corte223
+
+Recorrido nativo del cambio222 sobre build index-9wJXgZmG.js, Express/PostgreSQL temporales55869/browser52831. Erdos preparó `/private/tmp/render2-goal223-native.mjs`; coordinador inspeccionó y ejecutó. Creación mediante API de dos clientes y visitas de15/09, A con fotos pendiente/repetir/realizada, B con otra pendiente; sin videos ni cuotas. Identidad exacta del fixture comprobada. Volta revisó criterios y límites sin editar producto.
+
+Luciano QA inició sesión cookie. El enlace directo del resumen de A para octubre mostró0 visitas/registros mensuales/videos pendientes y2 registros de fotos pendientes. A390×844 se midió enlace de banco44px, document.scrollWidth375≤innerWidth390; captura inspeccionada `/private/tmp/render2-goal223-hub-mobile.png`. Click real abrió cliente1/tabpending, sin mes explícito; recarga conservó pestaña/filtro y las dos fotos antiguas, con sus estados y observaciones. La realizada y B no aparecen en la colección del banco. Botones de origen44px, mismo ancho sin overflow; captura inspeccionada `/private/tmp/render2-goal223-bank-mobile.png`.
+
+Ver visita de origen abrió UUID original8369120c-4627-4c1f-8e26-b0377716fa4e, septiembre/día15, conservando cliente y tab; detalle mostró las tres fotos originales, incluida la realizada (correcto en detalle). Dos Atrás volvieron al banco sin visita y al resumen octubre con fotos2. No se abrieron enlaces example.invalid ni servicios Drive. No se probaron ediciones: esta cuenta NO es globalmente de solo lectura. No se midió foco/lector de pantalla ni otros dispositivos.
+
+Al cerrar, hashes completos de105 tablas públicas excepto familias auth/browser_session permanecieron idénticos, incluyendo usuarios, visitas, fotos, tareas y notificaciones. Salida0; `/private/tmp/render2-goal223-native.log`, cleanup ENOENT `/private/tmp/render2-local-XMRSZJ`. Viewport restaurado y pestaña propia34 cerrada. Skill verification orientó UI→API→datos y recarga. Sin cambios de producto, nueva regresión global, deploy ni acceso a bases existentes. La evidencia reduce el pendiente nativo222 a los límites declarados; no implica aceptación global.
+
 ### Banco de fotos integrado en Operación del cliente — corte222
 
 Corregida la discrepancia221: el resumen del cliente rotulaba como Banco pendiente un contador exclusivo de videos, omitiendo fotos de visitas anteriores. `GET /api/clientes/:id/operacion?periodo=YYYY-MM` conserva version1 y todos sus campos; añade `producciones.counts.fotos_pendientes_banco_todos_los_periodos`, entero no negativo para registros de fotos pendiente/repetir de ese cliente, sin filtro mensual. `pendientes_banco_todos_los_periodos` conserva su significado de videos pendientes no retomados; no se convierte en suma de medios. Visitas y registros_fotos siguen siendo mensuales. No son cantidades de fotografías físicas, sino registros por tipo de fotos.
