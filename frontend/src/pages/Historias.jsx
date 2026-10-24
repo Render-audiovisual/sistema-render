@@ -339,6 +339,7 @@ export function HistoriasPlanillaTab({
                       <select
                         className="sheet-cell"
                         data-cell={`${rowIndex}:cliente`}
+                        aria-label={`Cliente · historia #${h.id}`}
                         value={h.cliente_id || ""}
                         onChange={(e) => {
                           const campos = { cliente_id: Number(e.target.value) };
@@ -357,6 +358,7 @@ export function HistoriasPlanillaTab({
                         type="date"
                         className="sheet-cell"
                         data-cell={`${rowIndex}:fecha`}
+                        aria-label={`Fecha programada · historia #${h.id}`}
                         value={h.fecha_programada || ""}
                         onChange={(e) => actualizarLocal(h.id, { fecha_programada: e.target.value })}
                         onBlur={(e) => guardarEnServidor(h.id, { fecha_programada: e.target.value })}
@@ -369,6 +371,7 @@ export function HistoriasPlanillaTab({
                         type="text"
                         className="sheet-cell"
                         data-cell={`${rowIndex}:hora`}
+                        aria-label={`Hora · historia #${h.id}`}
                         placeholder="—"
                         value={h.metadata?.hora || ""}
                         onChange={(e) => actualizarLocal(h.id, { metadata: { hora: e.target.value } })}
@@ -382,6 +385,7 @@ export function HistoriasPlanillaTab({
                         type="text"
                         className="sheet-cell"
                         data-cell={`${rowIndex}:tipo`}
+                        aria-label={`Tema / formato · historia #${h.id}`}
                         placeholder="Testimonio, promo…"
                         value={h.metadata?.tipo || ""}
                         onChange={(e) => actualizarLocal(h.id, { metadata: { tipo: e.target.value } })}
@@ -394,6 +398,7 @@ export function HistoriasPlanillaTab({
                       <textarea
                         className="sheet-cell sheet-cell-textarea"
                         data-cell={`${rowIndex}:copy`}
+                        aria-label={`Texto / copy · historia #${h.id}`}
                         placeholder="Escribir copy…"
                         rows={1}
                         ref={ajustarAltura}
@@ -412,6 +417,7 @@ export function HistoriasPlanillaTab({
                         type="text"
                         className="sheet-cell"
                         data-cell={`${rowIndex}:material`}
+                        aria-label={`Enlace de material · historia #${h.id}`}
                         placeholder="Link…"
                         value={h.material_referencia || ""}
                         onChange={(e) => actualizarLocal(h.id, { material_referencia: e.target.value })}
@@ -424,6 +430,7 @@ export function HistoriasPlanillaTab({
                       <textarea
                         className="sheet-cell sheet-cell-textarea"
                         data-cell={`${rowIndex}:aclaraciones`}
+                        aria-label={`Notas · historia #${h.id}`}
                         placeholder="—"
                         rows={1}
                         ref={ajustarAltura}
@@ -441,6 +448,7 @@ export function HistoriasPlanillaTab({
                       <select
                         className="sheet-cell"
                         data-cell={`${rowIndex}:responsable`}
+                        aria-label={`Responsable · historia #${h.id}`}
                         value={h.responsable_diseño || h.responsable || ""}
                         onChange={(e) => {
                           const campos = { responsable: e.target.value, responsable_diseño: e.target.value };
@@ -461,6 +469,7 @@ export function HistoriasPlanillaTab({
                       <select
                         className="sheet-cell"
                         data-cell={`${rowIndex}:estado`}
+                        aria-label={`Estado · historia #${h.id}`}
                         value={h.estado}
                         disabled={view.role !== 'admin' || isConfirmedPublication(h)}
                         onChange={(e) => {
@@ -485,7 +494,7 @@ export function HistoriasPlanillaTab({
                           title="Copiar fila (para pegar en otra fila o en Sheets)"
                           aria-label={`Copiar historia de ${h.cliente_nombre || "este cliente"}`}
                         >
-                          ⧉
+                          <span aria-hidden="true">⧉</span>
                         </button>
                         <button
                           type="button"
@@ -494,7 +503,7 @@ export function HistoriasPlanillaTab({
                           title="Duplicar historia"
                           aria-label={`Duplicar historia de ${h.cliente_nombre || "este cliente"}`}
                         >
-                          ⎘
+                          <span aria-hidden="true">⎘</span>
                         </button>
                         {view.role === 'admin' && <EditorialArchiveControl dominio="historia" piece={h} isAdmin capture={capture}
                           canStart={() => canArchive(h)} onSaved={onArchiveSaved} onLockChange={locked => onArchiveLock(h.id, locked)} />}

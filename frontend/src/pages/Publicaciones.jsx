@@ -1025,6 +1025,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                         type="date"
                         className="sheet-cell"
                         data-cell={`${rowIndex}:fecha`}
+                        aria-label={`Fecha programada · publicación #${p.id}`}
                         value={p.fecha_programada || ""}
                         onChange={(e) => actualizarLocal(p.id, { fecha_programada: e.target.value })}
                         onBlur={(e) => guardarEnServidor(p.id, { fecha_programada: e.target.value })}
@@ -1036,6 +1037,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                       <select
                         className="sheet-cell"
                         data-cell={`${rowIndex}:tipo`}
+                        aria-label={`Tipo de publicación · publicación #${p.id}`}
                         value={p.tipo}
                         onChange={(e) => {
                           actualizarLocal(p.id, { tipo: e.target.value });
@@ -1053,6 +1055,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                         type="text"
                         className="sheet-cell"
                         data-cell={`${rowIndex}:idea`}
+                        aria-label={`Idea · publicación #${p.id}`}
                         placeholder="Escribir idea…"
                         value={p.idea || ""}
                         onChange={(e) => actualizarLocal(p.id, { idea: e.target.value })}
@@ -1066,6 +1069,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                         type="text"
                         className="sheet-cell"
                         data-cell={`${rowIndex}:copy`}
+                        aria-label={`Texto / copy · publicación #${p.id}`}
                         placeholder="Escribir copy…"
                         value={p.copy || ""}
                         onChange={(e) => actualizarLocal(p.id, { copy: e.target.value })}
@@ -1079,6 +1083,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                         type="text"
                         className="sheet-cell"
                         data-cell={`${rowIndex}:material`}
+                        aria-label={`Enlace de material · publicación #${p.id}`}
                         placeholder="Link…"
                         value={p.material_referencia || ""}
                         onChange={(e) => actualizarLocal(p.id, { material_referencia: e.target.value })}
@@ -1092,6 +1097,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                         type="text"
                         className="sheet-cell"
                         data-cell={`${rowIndex}:aclaraciones`}
+                        aria-label={`Notas · publicación #${p.id}`}
                         placeholder="—"
                         value={p.aclaraciones || ""}
                         onChange={(e) => actualizarLocal(p.id, { aclaraciones: e.target.value })}
@@ -1104,6 +1110,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                       <select
                         className="sheet-cell"
                         data-cell={`${rowIndex}:responsable`}
+                        aria-label={`Responsable · publicación #${p.id}`}
                         value={p.responsable || ""}
                         title="Responsable de la pieza. Para reasignar el trabajo, abrí la tarea vinculada."
                         onChange={(e) => {
@@ -1125,6 +1132,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                       <select
                         className="sheet-cell"
                         data-cell={`${rowIndex}:estado`}
+                        aria-label={`Estado · publicación #${p.id}`}
                         value={p.estado}
                         disabled={view.role !== 'admin' || isConfirmedPublication(p)}
                         onChange={(e) => {
@@ -1147,8 +1155,9 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
                           className="sheet-icon-btn"
                           onClick={() => copiarFila(p)}
                           title="Copiar fila (para pegar en otra fila o en Sheets)"
+                          aria-label={`Copiar publicación #${p.id}`}
                         >
-                          ⧉
+                          <span aria-hidden="true">⧉</span>
                         </button>
                         {view.role === 'admin' && <EditorialArchiveControl dominio="publicacion" piece={p} isAdmin capture={capture}
                           canStart={() => canArchivePublication(p)} onSaved={archivePublicationSaved} onLockChange={locked => archivePublicationLock(p.id, locked)} />}
