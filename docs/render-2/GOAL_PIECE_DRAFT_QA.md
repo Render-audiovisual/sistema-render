@@ -10,6 +10,8 @@ El lector distingue cambios de título y copy frente al contenido observado, con
 
 ## Navegación pendiente de aceptación
 
+Estado posterior: la recuperación temporal para navegación canónica está implementada y verificada en GOAL_DRAFT_RECOVERY_QA.md. Los intentos originales y sus límites se conservan a continuación; no sustituyen ese resultado vigente ni acreditan cobertura de todas las rutas.
+
 Actualización vigente: NATIVE_GOAL_DRAFT_TRAVERSAL_QA.md registra posteriormente una primera salida cancelable rechazada que conserva el borrador y una segunda salida no cancelable que lo pierde. La conservación global sigue pendiente, pero ya hay traza nativa del mecanismo. Los párrafos siguientes corresponden al intento inicial sin instrumentación.
 
 En el navegador integrado Chrome155 se escribió un copy distinto mediante entrada nativa. tab.back salió a Inicio sin advertencia y perdió ese borrador no guardado. La Navigation API existe, pero no se observaron las propiedades del evento de esa salida. El kernel solo cancela traversal same-document cancelable; no está probado si ese límite explica esta ejecución. No se incorporaron bucles de compensación de historial.

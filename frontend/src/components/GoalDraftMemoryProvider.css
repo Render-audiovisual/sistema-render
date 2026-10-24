@@ -1,0 +1,39 @@
+.render-goal-draft-notice {
+  margin: 16px var(--render-page-gutter) 0 calc(var(--render-sidebar-width) + var(--render-page-gutter));
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  justify-content: space-between;
+  background: var(--render-surface);
+  border: 1px solid var(--render-accent-border);
+  border-radius: var(--render-radius-card);
+  box-shadow: var(--render-shadow-card);
+  color: var(--render-ink);
+  font-family: var(--render-font);
+}
+.render-goal-draft-notice strong { font-size: 14px; font-weight: 600; }
+.render-goal-draft-notice p { margin: 4px 0 0; color: var(--render-ink-soft); font-size: 13px; line-height: 1.5; }
+.render-goal-draft-actions { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+.render-goal-draft-actions button {
+  min-height: 44px; padding: 8px 16px; border: 1px solid var(--render-line-strong);
+  border-radius: var(--render-radius-control); background: var(--render-surface);
+  color: var(--render-ink); font: inherit; font-size: 13px; cursor: pointer;
+}
+.render-goal-draft-actions button:first-child { background: var(--render-accent); border-color: var(--render-accent); color: var(--render-accent-ink); }
+.render-goal-draft-actions button:focus-visible { outline: 2px solid var(--render-accent); outline-offset: 3px; }
+.render-goal-draft-actions button:disabled { cursor: wait; opacity: .6; }
+/* While a goal dialog owns editing/discard, its own controls are authoritative.
+   The recovery notice returns after route unmount, not behind an active form. */
+body:has(.modal-overlay[aria-label="Detalle de la pieza"]) .render-goal-draft-notice {
+  display: none;
+}
+@media (max-width: 980px) {
+  .render-goal-draft-notice { margin: calc(var(--render-mobile-header-height) + 16px) 16px 0; }
+  /* The notice already clears the fixed mobile header. */
+  .render-goal-draft-notice ~ .quick-home { padding-top: 24px; }
+}
+@media (max-width: 600px) {
+  .render-goal-draft-notice { flex-direction: column; align-items: stretch; gap: 12px; }
+  .render-goal-draft-actions button { flex: 1; }
+}

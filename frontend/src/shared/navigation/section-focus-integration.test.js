@@ -79,6 +79,7 @@ async function renderApp(route, { status = 'authenticated', session = { usuario:
     cerrarSesion() { throw Error('SSR cannot log out'); }, getRolLabel: value => value, ROL_LABELS: {},
     navigateWithinApp() { throw Error('SSR cannot navigate'); }, navigateWithConfirmation() { throw Error('SSR cannot navigate'); },
     Sidebar: () => React.createElement('nav', { 'data-qa-sidebar': true }, 'Navegación'),
+    GoalDraftMemoryProvider: ({ children }) => React.createElement(React.Fragment, null, children),
   };
   const pageNames = new Set(nodes(appFunction, n => ts.isJsxSelfClosingElement(n) && /Page$/.test(n.tagName.getText(app))).map(n => n.tagName.getText(app)));
   for (const name of pageNames) deps[name] = () => name === 'LoginPage'
@@ -106,10 +107,13 @@ test('actual App gate disables loading/error/anonymous/login/root/legacy focus a
   }
 });
 
-test('actual root Fragment keeps skip, Sidebar, marker and Suspense as siblings without wrapping any dashboard', async () => {
+test('transparent draft provider keeps skip, Sidebar, marker and Suspense as siblings without a DOM dashboard wrapper', async () => {
   const returned = appFunction.body.statements.filter(ts.isReturnStatement).at(-1).expression;
   const fragment = ts.isParenthesizedExpression(returned) ? returned.expression : returned;
-  assert.ok(ts.isJsxFragment(fragment));
+  assert.ok(ts.isJsxElement(fragment));
+  assert.equal(fragment.openingElement.tagName.getText(app), 'GoalDraftMemoryProvider');
+  assert.match(fragment.openingElement.getText(app), /session=\{sesion\}/);
+  assert.match(fragment.openingElement.getText(app), /sessionRenderEpoch/);
   const children = fragment.children.filter(n => !ts.isJsxText(n) || n.text.trim());
   assert.equal(children[0].expression.getText(app), 'contentFocus.skipLink');
   assert.equal(children[1].tagName.getText(app), 'Sidebar');

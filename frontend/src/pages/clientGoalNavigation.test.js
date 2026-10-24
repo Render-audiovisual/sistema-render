@@ -49,7 +49,7 @@ function renderPage(id, search = `?cliente=${id}&periodo=2026-10`) {
   let index = 0;
   const state = ['2026-10', '', { periodo: '2026-10', clientes: clients }, '', false, 'cliente-7', null, 0, false, '', id];
   const noWrite = () => assert.fail('SSR must not request or mutate');
-  const deps = { React, useRef: current => ({ current }), useState: () => [state[index++], noWrite], useEffect() {},
+  const deps = { React, useGoalDraftMemory: () => null, useRef: current => ({ current }), useState: () => [state[index++], noWrite], useEffect() {},
     currentMonth: () => '2026-10', goalPeriod: evaluate(owner('goalPeriod'), { currentMonth: () => '2026-10' }),
     parseGoalClientId, goalClientLocationUrl, resolveGoalClient, goalQuotaProgress, validGoalQuotaRevision, clientOperationHref,
     useGoalSession: () => ({ view: { role: 'edicion', session: {} }, capture: noWrite, epoch: 0 }),

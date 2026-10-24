@@ -88,6 +88,8 @@ test('actual page render counts only quota on sidebar/summary/formats and retain
  const compiled=ts.transpileModule(declarations,{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;
  const STATES={finalizada:'Finalizada',publicada:'Finalizada',pendiente:'Pendiente'};
  const deps={...goalLocation,React,useRef:initial=>({current:initial}),useState:()=>[state[index++],()=>{}],useEffect(){},useGoalSession:()=>({view:{role:'admin',session:{}},epoch:0,capture:()=>({current:()=>true})}),goalPeriod:()=> '2026-11',currentMonth:()=> '2026-11',goalQuotaProgress,validGoalQuotaRevision,window:{location:{search:'?periodo=2026-11',hostname:'render.test'}},GoalIcon:()=>null,GoalLoading:()=>null,PageState:()=>null,PrepareGoal:()=>null,PieceDetail:()=>null,monthLabel:()=> 'noviembre de 2026',done:piece=>['finalizada','publicada'].includes(piece.estado),pieceLabel:piece=>piece.tipo==='video'?`Reel ${piece.numero}`:piece.titulo,STATES};
+ deps.useGoalDraftMemory=()=>null;
+ deps.draftMemory=null;
  const Page=new Function('clientOperationHref',...Object.keys(deps),`${compiled};return GoalPage;`)(clientOperationHref,...Object.values(deps));const html=renderToStaticMarkup(React.createElement(Page,{sesion:{}}));
  assert.match(html,/Cliente QA: 1 de 2 completados/);assert.match(html,/aria-valuenow="1"/);assert.match(html,/1 de 1/);assert.match(html,/0 de 1/);assert.match(html,/Contenido adicional/);assert.match(html,/No cuenta para la cuota/);assert.match(html,/Reel 2/);assert.match(html,/Contenido 4/);assert.match(html,/Revisar cuota/);
  assert.equal((html.match(/class="cg-piece(?: is-done)?"/g)||[]).length,4);

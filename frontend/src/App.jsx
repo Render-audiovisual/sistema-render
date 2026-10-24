@@ -14,6 +14,7 @@ import { loginHrefForDestination, readLoginDestination, resolveLoginDestination 
 import { canUseSharedCalendarRole } from "./components/navigation.js";
 import { useSectionContentFocus } from './components/SectionContentFocus.jsx';
 import { sectionFocusKey } from './shared/navigation/section-focus.js';
+import { GoalDraftMemoryProvider } from './components/GoalDraftMemoryProvider.jsx';
 
 const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
 const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPage");
@@ -212,12 +213,12 @@ export function App() {
   const loadedDashboard = <React.Suspense key={`dashboard:${sessionRenderEpoch}`} fallback={<RouteLoading />}>{dashboard}</React.Suspense>;
 
   return (
-    <>
+    <GoalDraftMemoryProvider key={`draft-memory:${sessionRenderEpoch}`} session={sesion}>
       {contentFocus.skipLink}
       <Sidebar key={`sidebar:${sessionRenderEpoch}`} path={path} search={window.location.search} sesion={sesion} onNavigate={navigateSidebar} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
       {contentFocus.marker}
       {loadedDashboard}
       {navigationConfirmation.dialog}
-    </>
+    </GoalDraftMemoryProvider>
   );
 }

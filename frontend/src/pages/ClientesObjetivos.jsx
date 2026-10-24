@@ -11,6 +11,8 @@ import { clientOperationHref } from './clientOperation.js';
 import { navigateWithinApp, requestAppNavigation } from '../shared/navigation/location.js';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { parseGoalClientId, goalClientLocationUrl, resolveGoalClient } from './clientGoalLocation.js';
+import { useGoalDraftMemory } from '../components/GoalDraftMemoryProvider.jsx';
+import { resolveGoalDraftPiece } from '../shared/navigation/goalDraftMemory.js';
 
 const STATES = { pendiente: 'Pendiente', en_progreso: 'En proceso', en_revision: 'En revisión', aprobada: 'Aprobada', finalizada: 'Finalizada', programada: 'Programada', publicada: 'Finalizada' };
 const AUTO_UPDATE_ERROR = 'No se pudo actualizar el avance. Reintentaremos automáticamente.';
@@ -109,6 +111,7 @@ export function ClientesObjetivosPage({ sesion }) {
 }
 
 function GoalPage({ sesion }) {
+  const draftMemory = useGoalDraftMemory(), restoredHref = useRef(null);
   const initial = useRef(null);
   if (!initial.current) { try { initial.current = { period: goalPeriod(window.location.search), clientId:parseGoalClientId(window.location.search), error: '' }; } catch (reason) { initial.current = { period: currentMonth(), clientId:null, error: reason.message }; } }
   const [period, setPeriod] = useState(initial.current.period), [locationError, setLocationError] = useState(initial.current.error);
@@ -161,6 +164,25 @@ function GoalPage({ sesion }) {
       .finally(() => { if (scope.current() && !controller.signal.aborted && generation === readGeneration.current) setLoading(false); });
     return () => controller.abort();
   }, [period, revision, capture, locationError]);
+  useEffect(() => {
+    if (!draftMemory || !data || modalOpen.current || restoredHref.current === window.location.href) return;
+    const draft = draftMemory.getSnapshot();
+    if (!draft || new URLSearchParams(window.location.search).get('borrador') !== String(draft.pieceId)) return;
+    const scope = capture(); if (!scope.current()) return;
+    const restored = resolveGoalDraftPiece(data, draft, window.location.search);
+    restoredHref.current = window.location.href;
+    if (!restored) { setNotice('La tarea del borrador ya no está disponible para editar. Podés conservarlo en esta pestaña o descartarlo.'); return; }
+    modalOpen.current = true; setSelectedPiece(restored);
+  }, [draftMemory, data, period, selectedClientId, capture]);
+  useEffect(() => {
+    const retry = () => {
+      if (!modalOpen.current && draftMemory?.getSnapshot() && capture().current()) {
+        restoredHref.current = null; refresh();
+      }
+    };
+    window.addEventListener('render:retry-goal-draft', retry);
+    return () => window.removeEventListener('render:retry-goal-draft', retry);
+  }, [draftMemory, capture]);
   useEffect(() => {
     const controller = new AbortController();
     const scope = capture(); let busy = false, stopped = false;
@@ -258,7 +280,7 @@ function GoalPage({ sesion }) {
       </section>}
     </div>}
     {preparing && client && <PrepareGoal key={`${epoch}:${period}:${client.clave}:${preparing === 'reconcile' ? 'reconcile' : 'prepare'}`} sesion={view.session} client={client} period={period} mode={preparing === 'reconcile' ? 'reconcile' : 'prepare'} close={closeModal} saved={result => { closeModal(); setNotice(`${result.vinculadas} tareas vinculadas · ${result.creadas} tareas nuevas. ${preparing === 'reconcile' ? 'Cuota revisada; el contenido existente se conserva.' : 'El objetivo está preparado.'}`); refresh(); }} />}
-    {selectedPiece && client && <PieceDetail key={`${epoch}:${period}:${client.clave}:${selectedPiece.id}:${selectedPiece.tarea_id}`} sesion={view.session} piece={selectedPiece} client={client} canManage={canManage} close={closeModal} saved={() => { closeModal(); refresh(); }} />}
+    {selectedPiece && client && <PieceDetail key={`${epoch}:${period}:${client.clave}:${selectedPiece.id}:${selectedPiece.tarea_id}`} sesion={view.session} piece={selectedPiece} client={client} period={period} draftClientId={selectedClientId || client.cliente_id || client.cuentas[0]?.id} canManage={canManage} close={closeModal} saved={() => { closeModal(); refresh(); }} />}
   </div></div></main>;
 }
 
@@ -327,46 +349,84 @@ function PrepareGoal({ sesion, client, period, mode = 'prepare', close, saved })
   </form></Modal>;
 }
 
-function PieceDetail({ sesion, piece, client, canManage, close, saved }) {
+function PieceDetail({ sesion, piece, client, period, draftClientId, canManage, close, saved }) {
   useGoalModalFocus();
+  const draftMemory = useGoalDraftMemory();
   const { capture, captureLifetime } = useGoalSession(sesion, `${client.clave}:${piece.id}:${piece.tarea_id}`);
   const pending = useRef(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [copied, setCopied] = useState(false);
   const [editing,setEditing] = useState(false), [title,setTitle] = useState(piece.titulo), [copy,setCopy] = useState(piece.copy || ''), [taskVersion,setTaskVersion] = useState(''), [taskRevision,setTaskRevision] = useState(null);
   const editBaseline = useRef(null);
   const canEditContent = goalId(piece.tarea_id) && piece.puede_editar_contenido === true;
-  const contentNavigationStatus = () => {
+  const draftContext = { pieceId:piece.id, taskId:piece.tarea_id, clientId:draftClientId || client.cliente_id || client.cuentas?.[0]?.id, period:period || client.periodo };
+  const readRetainedDraft = () => {
+    const draft = draftMemory?.getSnapshot();
+    return draft && Object.entries(draftContext).every(([key,value]) => draft[key] === value) ? draft : null;
+  };
+  const rememberContent = (nextTitle, nextCopy) => {
+    if (pending.current || !capture().current()) return false;
+    if (!draftMemory) return true;
+    const previous = readRetainedDraft();
+    if (JSON.stringify({title:nextTitle,copy:nextCopy}) === editBaseline.current) {
+      if (previous) draftMemory.clear(previous);
+      return true;
+    }
+    const retained = draftMemory.retain({...draftContext,title:nextTitle,copy:nextCopy,
+      baseline:editBaseline.current,taskVersion,taskRevision});
+    if (!retained) setError('Hay otro borrador pendiente. Retomalo o descartalo antes de editar este contenido.');
+    return Boolean(retained);
+  };
+  const contentNavigationStatus = navigation => {
     if (!capture().current()) return { dirty: false, busy: false };
-    return { dirty: editing && JSON.stringify({ title, copy }) !== editBaseline.current, busy: pending.current };
+    // A same-document exit retains this form; it is not a discard operation.
+    // Reload/close still need the browser warning because memory cannot survive.
+    const retainedExit = ['link','traverse'].includes(navigation?.type) && Boolean(readRetainedDraft());
+    return { dirty: !retainedExit && editing && JSON.stringify({ title, copy }) !== editBaseline.current, busy: pending.current };
   };
   useNavigationGuard(contentNavigationStatus);
   const discardAllowed = () => {
     if (pending.current || !capture().current()) return false;
     return !editing || JSON.stringify({ title, copy }) === editBaseline.current || window.confirm('¿Descartar los cambios de contenido sin guardar?');
   };
-  const closeSafely = () => { if (discardAllowed()) close(); };
-  const cancelEdit = () => { if (discardAllowed()) setEditing(false); };
+  const closeSafely = () => { if (discardAllowed()) { draftMemory?.clear(readRetainedDraft()); close(); } };
+  const cancelEdit = () => { if (discardAllowed()) { draftMemory?.clear(readRetainedDraft()); setEditing(false); } };
   const finalizable = piece.estado === 'aprobada' || done(piece);
   const beginEdit = async () => {
     if (!canEditContent || pending.current) return;
+    const retained = readRetainedDraft();
+    if (draftMemory?.getSnapshot() && !retained) { setError('Hay otro borrador pendiente. Retomalo o descartalo antes de editar este contenido.'); return; }
+    if (retained?.status === 'saving') { setError('Hay un guardado en curso. Esperá a que termine antes de retomar el borrador.'); return; }
     const scope = capture(), lifetime = captureLifetime(); if (!scope.current()) return;
     pending.current = true;
     setBusy(true); setError('');
     try { const task = await scope.request(`/api/tareas/${piece.tarea_id}?workspace=render_os`);
       if (task?.id !== piece.tarea_id || !goalId(task.revision) || !goalTime(task.updated_at) || typeof task.titulo !== 'string' || (task.propiedades_extra?.copy_trabajo != null && typeof task.propiedades_extra.copy_trabajo !== 'string')) throw new Error('No se pudo verificar la tarea.');
-      scope.assertCurrent(); editBaseline.current = JSON.stringify({ title: task.titulo, copy: task.propiedades_extra?.copy_trabajo ?? piece.copy ?? '' }); setTaskVersion(task.updated_at); setTaskRevision(task.revision); setTitle(task.titulo); setCopy(task.propiedades_extra?.copy_trabajo ?? piece.copy ?? ''); setEditing(true); }
+      scope.assertCurrent();
+      if (retained) {
+        if (draftMemory.getSnapshot() !== retained) return;
+        editBaseline.current = retained.baseline; setTaskVersion(retained.taskVersion); setTaskRevision(retained.taskRevision);
+        setTitle(retained.title); setCopy(retained.copy);
+        if (task.revision !== retained.taskRevision || task.updated_at !== retained.taskVersion) setError('La tarea cambió mientras estabas fuera. Conservamos tu borrador y su revisión original; no se sobrescribirá el contenido más reciente.');
+      } else {
+        editBaseline.current = JSON.stringify({ title: task.titulo, copy: task.propiedades_extra?.copy_trabajo ?? piece.copy ?? '' });
+        setTaskVersion(task.updated_at); setTaskRevision(task.revision); setTitle(task.titulo); setCopy(task.propiedades_extra?.copy_trabajo ?? piece.copy ?? '');
+      }
+      setEditing(true); }
     catch (reason) { if (scope.current() && !isSessionFailure(reason)) setError(reason.message); }
     finally { pending.current = false; if (lifetime.current()) setBusy(false); }
   };
+  useEffect(() => { if (readRetainedDraft()) void beginEdit(); }, []);
   const saveContent = async () => {
     if (!canEditContent || pending.current || !goalId(taskRevision) || !goalTime(taskVersion)) return;
     const scope = capture(), lifetime = captureLifetime(); if (!scope.current()) return;
+    const retained = readRetainedDraft(), savingDraft = retained ? draftMemory?.markSaving(retained) : null;
+    if (retained && !savingDraft) return;
     pending.current = true; setBusy(true); setError('');
     try { const result = await scope.request(`/api/cliente-objetivos/piezas/${piece.id}/contenido`, {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({titulo:title,copy,expected_updated_at:taskVersion,expected_revision:taskRevision})});
       if (!goalTime(result?.updated_at) || !goalId(result?.revision) || result.revision <= taskRevision) throw new Error('No se pudo verificar el guardado. Revisá la tarea antes de reintentar.');
-      scope.assertCurrent(); saved(); }
+      scope.assertCurrent(); if (savingDraft) draftMemory.clear(savingDraft); saved(); }
     catch (reason) { if (scope.current() && !isSessionFailure(reason)) setError(reason.message); }
-    finally { pending.current = false; if (lifetime.current()) setBusy(false); }
+    finally { if (savingDraft) draftMemory.markUncertain(savingDraft); pending.current = false; if (lifetime.current()) setBusy(false); }
   };
   const finish = async () => {
     if (pending.current || !canManage || !finalizable) return;
@@ -383,6 +443,6 @@ function PieceDetail({ sesion, piece, client, canManage, close, saved }) {
     finally { pending.current = false; if (lifetime.current()) setBusy(false); }
   };
   return <Modal title={<span className="cg-detail-breadcrumb"><GoalIcon name={piece.tipo === 'video' ? 'video' : 'carousel'} />{client?.nombre} <span aria-hidden="true">/</span> {piece.tipo === 'video' ? 'Reel' : 'Carrusel'}</span>} overlayAriaLabel="Detalle de la pieza" onClose={closeSafely} className="cg-modal"><div className="cg-modal-body"><span className={`cg-detail-state${done(piece) ? ' is-done' : ''}`}>{done(piece) && <GoalIcon name="check" />}{STATES[piece.estado] || piece.estado}</span><h2>{pieceLabel(piece)}</h2><div className="cg-detail-responsables"><GoalIcon name="clients" /><div><span>Responsables</span><p>{piece.responsables.join(' · ') || 'Sin responsables registrados'}</p></div></div><div className="cg-copy-heading"><h3>Copy de la publicación</h3>{piece.copy && <button className="cg-button" onClick={async () => { const scope = capture(); if (!scope.current()) return; try { await navigator.clipboard.writeText(piece.copy); if (scope.current()) setCopied(true); } catch { if (scope.current()) setError('No se pudo copiar. Podés seleccionar el texto manualmente.'); } }}><GoalIcon name={copied ? 'check' : 'copy'} />{copied ? 'Copiado' : 'Copiar texto'}</button>}</div><div className={`cg-copy${!piece.copy ? ' is-empty' : ''}`}>{piece.copy || 'Todavía no hay un copy guardado para esta pieza. Podés cargarlo en la tarea vinculada.'}</div>
-    {editing && <div className="cg-content-editor"><label>Título<input maxLength={500} value={title} disabled={busy} onChange={event => setTitle(event.target.value)} /></label><label>Copy<textarea maxLength={20000} value={copy} disabled={busy} onChange={event => setCopy(event.target.value)} rows={6} /></label><p>Se guarda también en la tarea. Si ya estaba aprobada, los cambios requieren otra revisión.</p></div>}
+    {editing && <div className="cg-content-editor"><label>Título<input maxLength={500} value={title} disabled={busy} onChange={event => {if(rememberContent(event.target.value,copy))setTitle(event.target.value)}} /></label><label>Copy<textarea maxLength={20000} value={copy} disabled={busy} onChange={event => {if(rememberContent(title,event.target.value))setCopy(event.target.value)}} rows={6} /></label><p>Se guarda también en la tarea. Si ya estaba aprobada, los cambios requieren otra revisión.</p></div>}
     {piece.completada_at && <p className="cg-muted cg-completion-date"><GoalIcon name="check" />Completada el {new Date(piece.completada_at).toLocaleDateString('es-AR')}</p>}{!piece.tarea_id && <p className="cg-muted">La tarea ya no está disponible. El resultado mensual y su contenido se conservaron.</p>}{error && <p className="cg-error" role="alert">{error}</p>}<footer>{editing ? <><button className="cg-button" disabled={busy} onClick={cancelEdit}>Cancelar edición</button><button className="cg-button cg-primary" disabled={busy || !title.trim()} onClick={saveContent}>{busy ? 'Guardando…' : 'Guardar contenido'}</button></> : <>{piece.tarea_id && <><a className="cg-button" href={`/workspace/tareas?task=${piece.tarea_id}`}>Abrir tarea<GoalIcon name="external" /></a>{canEditContent && <button className="cg-button" disabled={busy} onClick={beginEdit}>Editar contenido</button>}</>}{canManage && piece.tarea_id && <button className={`cg-button${done(piece) ? '' : ' cg-primary'}`} disabled={busy || !finalizable} onClick={finish}>{busy ? 'Guardando…' : done(piece) ? 'Reabrir tarea' : finalizable ? 'Finalizar tarea' : 'Requiere aprobación'}</button>}</>}</footer></div></Modal>;
 }

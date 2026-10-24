@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { registerNavigationGuard, installUnsavedNavigation } from '../shared/navigation/unsaved.js';
+import { createGoalDraftMemory } from '../shared/navigation/goalDraftMemory.js';
 
 // Execute the canonical getter and real navigation kernel. No mounted React,
 // native browser dialog, HTTP, storage or backend authority claims.
@@ -20,7 +21,7 @@ function observation(extra = {}) {
   let current = true;
   const draft = { title: 'Título observado', copy: 'Copy observado' };
   const deps = { ...draft, editing: false, pending: { current: false }, editBaseline: { current: JSON.stringify(draft) },
-    capture: () => ({ current: () => current }), ...extra };
+    capture: () => ({ current: () => current }), readRetainedDraft: () => null, ...extra };
   return { deps, read: () => getter(deps)(), obsolete: () => { current = false; } };
 }
 class Target {
@@ -102,4 +103,23 @@ test('actual dirty editor also protects supported same-document browser traversa
     k.win.navigation.dispatchEvent(back); assert.equal(back.defaultPrevented, true);
     assert.equal(h.deps.title, 'Nuevo título'); assert.equal(k.prompts.length, 1);
   } finally { k.cleanup(); }
+});
+
+test('real retained draft exempts link/traverse only; unload still warns and pending stays busy', () => {
+  const memory = createGoalDraftMemory({ isCurrent: () => true });
+  const draft = memory.retain({ pieceId: 3, taskId: 9, clientId: 7, period: '2026-10',
+    title: 'Retained', copy: 'Retained copy', baseline: JSON.stringify({ title: 'Original', copy: 'Original copy' }),
+    taskRevision: 6, taskVersion: '2026-10-20T11:00:00.123Z' });
+  assert.ok(draft);
+  const h = observation({ editing: true, title: draft.title, copy: draft.copy,
+    editBaseline: { current: draft.baseline }, readRetainedDraft: () => memory.getSnapshot() });
+  const read = type => getter(h.deps)({ type });
+  for (const type of ['link', 'traverse']) assert.deepEqual(read(type), { dirty: false, busy: false });
+  assert.deepEqual(read('unload'), { dirty: true, busy: false });
+  assert.deepEqual(h.read(), { dirty: true, busy: false });
+  h.deps.pending.current = true;
+  for (const type of ['link', 'traverse']) assert.deepEqual(read(type), { dirty: false, busy: true });
+  assert.deepEqual(read('unload'), { dirty: true, busy: true });
+  h.deps.pending.current = false; memory.clear(draft);
+  for (const type of ['link', 'traverse', 'unload']) assert.deepEqual(read(type), { dirty: true, busy: false });
 });

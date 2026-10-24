@@ -1,5 +1,7 @@
 # Diagnóstico nativo de pérdida de borrador al volver atrás
 
+Estado posterior: GOAL_DRAFT_RECOVERY_QA.md documenta la conservación temporal implementada y comprobada para navegación canónica. Este diagnóstico conserva la falla original y su contrato; no significa que los recorridos ya verificados continúen perdiendo el borrador. Siguen abiertos los límites de rutas heredadas y otros formularios.
+
 La pérdida de borrador sigue sin corregir, pero ahora tiene una frontera observada: una salida nativa de Atrás llegó con cancelable false. El guard funciona para un traversal cancelable y conserva el borrador al rechazar el descarte; no puede garantizar conservación cuando el navegador permite salir sin cancelación. Esto explica un mecanismo reproducible, no prueba retrospectivamente todas las propiedades del intento anterior.
 
 ## Entorno y observación

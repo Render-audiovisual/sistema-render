@@ -31,7 +31,7 @@ const compiled = ts.transpileModule(owner.getText(file), {
 }).outputText;
 function render(piece, canManage) {
   const deps = {
-    React, useState, useRef, goalId,
+    React, useState, useRef, goalId, useEffect: harmless, useGoalDraftMemory: () => null,
     useGoalModalFocus: harmless, useNavigationGuard: harmless,
     useGoalSession: () => ({ capture: () => ({ current: () => true }), captureLifetime: () => ({ current: () => true }) }),
     Modal: ({ children }) => React.createElement('section', null, children),
@@ -74,6 +74,7 @@ function callbacks(capability) {
   };
   // Valid editor state deliberately simulates a forged UI/stale open editor.
   const deps = {
+    draftMemory: null, readRetainedDraft: () => null, useGoalDraftMemory: () => null,
     piece, editing: true, title: 'Borrador', copy: 'Copy borrador',
     taskRevision: 6, taskVersion: version, pending: { current: false }, editBaseline: { current: null },
     capture: () => scope, captureLifetime: () => scope,
