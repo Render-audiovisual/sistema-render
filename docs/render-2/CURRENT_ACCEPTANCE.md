@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Reasignación: revocación concurrente comprobada en el servicio — corte227
+
+PostgreSQL temporal con conexiones independientes y pg_blocking_pids: revocación previa por inactividad/epoch/rol rechaza401 sin DML; autorización retenida serializa la revocación detrás del commit. CAS vacío/rollback sin contexto ni cambios.6 físicas finales aprobadas,106 tablas observadas con cambios intencionales controlados, fixtures eliminados.2167 backend aprobadas/132 optativas omitidas;20 unitarias focales renovadas. Sin cambios de producto, frontend/build o proveedores. El pendiente226 de concurrencia se reduce a endpoint HTTP/ACL completo y otros límites; no confundir el servicio directo con ese recorrido. Detalle en TASK_WORKFLOW_QA.md.
+
 ### Reasignación sin confundir homónimos — corte226
 
 Implementado localmente el hallazgo225: delta de destinatarios por ID capturado en transacción, actor vigente retenido, contexto interno solo posCOMMIT y ambos canales ligados a IDs. PATCH físico entre responsables homónimos genera un único aviso para la cuenta nueva; controles de renombre/noop, colaboradores, autoasignación e inactivo pasan.5 físicas aprobadas y101 tablas ajenas invariantes, fixture eliminado;2167 backend/2770 frontend aprobadas,131 integraciones optativas omitidas. Sin entrega externa. Falta concurrencia física de revocación y locks; creación/estado legacy y outbox no se incluyen en el cierre. Detalle/contrato/límites en TASK_WORKFLOW_QA.md. El texto de225 debajo describe el hallazgo previo, no un defecto que siga sin implementación.
