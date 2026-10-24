@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Reasignación sin confundir homónimos — corte226
+
+Implementado localmente el hallazgo225: delta de destinatarios por ID capturado en transacción, actor vigente retenido, contexto interno solo posCOMMIT y ambos canales ligados a IDs. PATCH físico entre responsables homónimos genera un único aviso para la cuenta nueva; controles de renombre/noop, colaboradores, autoasignación e inactivo pasan.5 físicas aprobadas y101 tablas ajenas invariantes, fixture eliminado;2167 backend/2770 frontend aprobadas,131 integraciones optativas omitidas. Sin entrega externa. Falta concurrencia física de revocación y locks; creación/estado legacy y outbox no se incluyen en el cierre. Detalle/contrato/límites en TASK_WORKFLOW_QA.md. El texto de225 debajo describe el hallazgo previo, no un defecto que siga sin implementación.
+
 ### Retirada de visita del calendario personal verificada — corte225
 
 Ejecutado el runner224 corregido con ambos CAS sobre fixture nuevo55870/browser52832, raíz `/private/tmp/render2-local-asNBu6`, identidad exacta comprobada. Luciano QA cookie comenzó con una visita en Lo mío. La única señal de QA reasignó por API la tarea a Agustín91002 con colaboradores vacíos; confirmó una asignación responsable, participantes soloFranco, tarea origen nula, único vínculo de video preservado y ninguna publicación creada. Tarea incrementó una revisión y solo campos esperados; un aviso de reasignación quedó pendiente, sin proveedor. Las restantes tablas no cambiaron durante la mutación.

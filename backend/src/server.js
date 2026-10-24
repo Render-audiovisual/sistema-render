@@ -23,7 +23,7 @@ import {
   normalizarNombre,
   notificarAsignacionSinInterrumpir as notificarAsignacionPorCorreoSinInterrumpir,
 } from "./email-notifications.js";
-import { destinatariosNuevosDeAsignacion, encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
+import { encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
 import { encolarNotificacionPrivadaFeedback } from "./private-feedback-notifications.js";
 import { requireRole, issueUserToken } from "./auth.js";
 import { configuredBrowserSessions, createPrincipalAuthentication } from './browser-session-config.js';
@@ -1643,6 +1643,7 @@ const TAREA_COLUMNAS_EDITABLES = [
 
 router.patch("/tareas/:id", async (req, res, next) => {
   try {
+    const assignmentNotificationActor = Object.freeze({ id: req.auth.id, rol: req.auth.rol, session_version: req.auth.session_version });
     try { assertTaskBusinessInput(req.body); assertTaskCoordinationPatch(req.body); }
     catch (error) { return res.status(400).json({ error: error.message }); }
     const { id } = req.params;
@@ -1650,9 +1651,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
     const expectedEditingDelivery = normalizeExpectedEditingDelivery(body.expected_entrega_id);
     if (expectedEditingDelivery && body.estado !== 'aprobada') return res.status(400).json({ error: "La entrega observada solo se usa al aprobar." });
     const stateOnlyRequest = Object.keys(body).every((key) => ["estado", "expected_updated_at", "expected_revision", "expected_entrega_id"].includes(key));
-    let asignadoAnterior = null;
     let estadoAnterior = null;
-    let colaboradoresAnteriores = [];
     let tareaAnteriorCompleta = null;
     let esRenderOS = req.query.workspace === "render_os";
     let assignment;
@@ -1743,11 +1742,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
       tareaAnteriorCompleta = tareaAnterior.rows[0] || null;
       // Stored scope, not a caller-controlled query parameter, selects business guards.
       if (tareaAnteriorCompleta?.propiedades_extra?.workspace === "render_os") esRenderOS = true;
-      asignadoAnterior = tareaAnterior.rows[0]?.asignado_a || null;
       estadoAnterior = tareaAnterior.rows[0]?.estado || null;
-      colaboradoresAnteriores = Array.isArray(tareaAnterior.rows[0]?.propiedades_extra?.colaboradores)
-        ? tareaAnterior.rows[0].propiedades_extra.colaboradores
-        : [];
     }
     if (
       esRenderOS &&
@@ -1920,6 +1915,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
         }
         await syncProductionVisitFromTask(db, task, req.auth.id);
       }, body.estado === 'aprobada' && estadoAnterior !== 'aprobada' ? db => assertCurrentEditingApprover(db, req.auth) : null,
+      assignment ? { assignmentNotificationActor, assignmentNotificationTaskId: Number(id) } : {},
     );
 
     if (result.rows.length === 0) {
@@ -1947,24 +1943,11 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
     const actor = getTaskActor(req.auth);
 
-    const colaboradoresActuales = Array.isArray(tareaActualizada.propiedades_extra?.colaboradores)
-      ? tareaActualizada.propiedades_extra.colaboradores
-      : [];
-    const destinatariosNuevos = destinatariosNuevosDeAsignacion({
-      asignadoAnterior,
-      asignadoActual: tareaActualizada.asignado_a,
-      colaboradoresAnteriores,
-      colaboradoresActuales,
-      cambioAsignado: Object.prototype.hasOwnProperty.call(body, "asignado_a"),
-      cambioColaboradores: Object.prototype.hasOwnProperty.call(body.propiedades_extra || {}, "colaboradores"),
-    });
-    if (destinatariosNuevos.length) {
+    if (result.assignmentNotification?.destinatarioIds.length) {
       notificarAsignacionSinInterrumpir({
         pool,
-        tarea: tareaActualizada,
+        ...result.assignmentNotification,
         motivo: "reasignada",
-        nombresDestinatarios: destinatariosNuevos,
-        actor,
       });
     }
     const eventoEstado = getStateNotification(tareaActualizada, estadoAnterior);
@@ -1978,7 +1961,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
       });
     }
   } catch (error) {
-    if ([400, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
+    if ([400, 401, 403, 404, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });
