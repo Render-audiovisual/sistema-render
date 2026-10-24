@@ -1,5 +1,21 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Integración del cliente de comentarios — corte209b
+
+WorkspaceReadOnly/TaskDetail ya usa taskCommentCreation: cada acción admitida genera UUID, envía un único POST y exige recibo correlacionado antes de consumir confirmación. Ante resultado incierto conserva intento y ofrece **Verificar envío**, exclusivamente GET no-store.404 no desbloquea otra creación;401/403/409 mantienen intento no disponible. No hay reenvío automático ni botón para descartar el intento y volver a enviarlo dentro del detalle.
+
+El owner de tarea/sesión conserva el modelo independientemente de las rondas GET. Reset de lectura no habilita otro UUID ni borra B; confirmación fusiona en la lectura vigente mediante207, se consume una sola vez y limpia únicamente la generación206 enviada. Callbacks capturan owner de render: uno retenido después de cambiar tarea/sesión no usa el owner nuevo. Los guards/cierre consultan busy/locked síncronamente, además del estado React, para proteger intentos incluso con textarea vacío.
+
+DiscardChangesDialog acepta descripción opcional segura como texto; conserva el mensaje predeterminado para otros formularios. El detalle avisa que salir no cancela ni revierte el envío y que el intento no sobrevive una recarga. El descarte explícito permite cerrar, no hace rollback del comentario. No se agrega persistencia de negocio en navegador ni se promete recuperación tras desmontaje/otro dispositivo.
+
+Erdos integró producto y callbacks/tests de comentarios; coordinador ajustó diálogo, pruebas de cierre y fixtures de coordinación/revisión/movimiento. Las pruebas existentes conservaron sus comprobaciones; las aserciones literales antiguas se actualizaron a guards que incluyen el intento. No hubo cambios de backend productivo ni esquema en209b. La skill de trabajo estructurado separó implementación, revisión y evidencia sin tratar el build como prueba del recorrido completo.
+
+Frontend2699 aprobadas, cero fallos/omisiones, log `/private/tmp/render2-goal209b-frontend-accepted.log`; build `index-DwP2PAyw.js`, log `/private/tmp/render2-goal209b-build.log`. Focal de callbacks reportado por Erdos129 aprobadas; coordinador verificó15 de cierre/diálogo. Pruebas ejecutan handlers extraídos con transporte diferido y kernel de sesión real, no React montado ni navegador. El ACK perdido, texto B/ABA, reset de lectura, respuesta vieja,404 y bloqueo de doble POST se verifican bajo ese alcance.
+
+Backend2082 aprobadas,127 integraciones optativas omitidas, cero fallos; log `/private/tmp/render2-goal209b-backend-accepted.log`. La primera regresión frontend detectó tres fixtures/aserciones de guardas anteriores, y backend una aserción estática de cierre; se corrigieron sin retirar pruebas. Volta revisó el delta final sin bloqueantes, en solo lectura y sin ejecutar pruebas.
+
+Sigue pendiente prueba nativa conectada con PostgreSQL: ocultar ACK después del commit, verificar sin segundo POST, comprobar fila/recibo únicos y recarga. No se repitió aún la suite física208 ni se aplicó089 a base existente; no hay despliegue ni aceptación global. Tampoco se certifica montaje StrictMode por estos tests de callbacks.
+
 ## Preparación del cliente de comentarios — corte209a
 
 Se añadió `frontend/src/pages/taskCommentCreation.js` como modelo comprobable de un intento, todavía **sin importarlo en WorkspaceReadOnly ni cambiar el botón Comentar**. El riesgo de duplicación desde la interfaz descrito en208 sigue abierto hasta la integración209b y su prueba nativa. No se considera este helper una funcionalidad conectada ni otra fuente de datos.

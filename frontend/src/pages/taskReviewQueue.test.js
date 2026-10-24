@@ -187,8 +187,8 @@ test('actual TaskDetail guard receives refresh context and blocks dirty draft/co
   const win={location:new URL('https://render.test/workspace/tareas?review_scope=personal&task=1'),addEventListener:(type,fn)=>listeners.set(type,fn),removeEventListener:type=>listeners.delete(type),confirm:()=>{confirmations++;return false},
     dispatchEvent:event=>{listeners.get(event.type)?.(event);return !event.defaultPrevented}};
   const installed=installUnsavedNavigation(win),original=task(1);
-  const dirty=evaluate(dirtyNode,{task:original,draft:state==='draft'?{...original,titulo:'Unsaved'}:original,comment:state==='comment'?'Unsaved comment':'',isTaskDraftDirty,deliveryDirty:false,coordinationDraft:{dirty:false},reconciliationDraft:{dirty:false},isProductionVisitTask:()=>false});
-  const getStatus=evaluate(guardNode,{discardDialogOpen:false,taskDraftDirty:dirty,taskWriteBusy:state==='saving',archivePendingRef:{current:false},closeApprovedRef:{current:false},keepsTaskOpen,task:original});
+  const dirty=evaluate(dirtyNode,{task:original,draft:state==='draft'?{...original,titulo:'Unsaved'}:original,comment:state==='comment'?'Unsaved comment':'',commentDraftOwner:{current:{creation:{snapshot:{locked:false,busy:false}}}},isTaskDraftDirty,deliveryDirty:false,coordinationDraft:{dirty:false},reconciliationDraft:{dirty:false},isProductionVisitTask:()=>false});
+  const getStatus=evaluate(guardNode,{discardDialogOpen:false,taskDraftDirty:dirty,taskWriteBusy:state==='saving',commentDraftOwner:{current:{creation:{snapshot:{locked:false,busy:false}}}},archivePendingRef:{current:false},closeApprovedRef:{current:false},keepsTaskOpen,task:original});
   assert.deepEqual(getStatus({to:win.location.href,type:'link'}),{dirty:false,busy:false});
   const unregister=registerNavigationGuard(win,getStatus);f.deps.window=win;f.deps.CustomEvent=class{constructor(type,options){this.type=type;Object.assign(this,options);this.defaultPrevented=false}preventDefault(){this.defaultPrevented=true}};
   callback('WorkspaceReadOnlyPage','refreshReviewQueue',f.deps)();

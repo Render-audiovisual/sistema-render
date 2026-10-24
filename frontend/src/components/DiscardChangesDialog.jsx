@@ -1,7 +1,8 @@
 import React, { useEffect, useId, useRef } from 'react';
 import './DiscardChangesDialog.css';
 
-export function DiscardChangesDialog({ open, busy, onKeepEditing, onDiscard }) {
+export function DiscardChangesDialog({ open, busy, onKeepEditing, onDiscard,
+  description = 'Los cambios de este borrador no se guardaron. Si los descartás, perderás lo que editaste sin guardar.' }) {
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef(null);
@@ -71,7 +72,7 @@ export function DiscardChangesDialog({ open, busy, onKeepEditing, onDiscard }) {
     }}
     onKeyUpCapture={event => { if (event.key === 'Escape') event.stopPropagation(); }}>
     <h2 id={titleId}>¿Descartar los cambios?</h2>
-    <p id={descriptionId}>Los cambios de este borrador no se guardaron. Si los descartás, perderás lo que editaste sin guardar.</p>
+    <p id={descriptionId}>{description}</p>
     <div className="render-discard-dialog-actions">
       <button ref={keepRef} type="button" autoFocus onClick={() => finish(false)}>Seguir editando</button>
       <button type="button" className="render-discard-dialog-discard" disabled={busy}

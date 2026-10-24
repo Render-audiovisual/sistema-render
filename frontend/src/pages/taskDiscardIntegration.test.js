@@ -101,17 +101,18 @@ function controller(overrides = {}) {
   const closeApprovedRef = { current: false };
   const state = { taskWriteBusy: false, archive: false, closing: false, dirty: false, dialog: false, ...overrides };
   const make = name => new Function('taskWriteBusy', 'archivePendingRef', 'windowMotion', 'taskDraftDirty',
-    'discardDialogOpen', 'setDiscardDialogOpen', 'closeApprovedRef', 'window', `return (${text(callback(name))});`)(
+    'discardDialogOpen', 'setDiscardDialogOpen', 'closeApprovedRef', 'window', 'commentDraftOwner', `return (${text(callback(name))});`)(
     state.taskWriteBusy, { current: state.archive }, { closing: state.closing, close: () => {
       assert.equal(closeApprovedRef.current, true, 'Approval precedes animation'); events.push('close');
     } }, state.dirty, state.dialog, value => { dialog = value; events.push(['dialog', value]); },
-    closeApprovedRef, { confirm: () => { throw new Error('Native confirm must not be used'); } });
+    closeApprovedRef, { confirm: () => { throw new Error('Native confirm must not be used'); } },
+    { current: { creation: { snapshot: { busy: Boolean(state.commentBusy), locked: Boolean(state.commentLocked) } } } });
   return { events, approved: closeApprovedRef, get dialog() { return dialog; },
     close: make('closeDetail'), discard: make('discardDetail') };
 }
 
 test('actual callbacks refuse busy/archive/closing and repeated parent close while dialog is open', () => {
-  for (const flags of [{ taskWriteBusy: true }, { archive: true }, { closing: true }]) {
+  for (const flags of [{ taskWriteBusy: true }, { commentBusy: true }, { archive: true }, { closing: true }]) {
     for (const action of ['close', 'discard']) {
       const c = controller({ dirty: true, dialog: true, ...flags });
       c[action]();
@@ -139,6 +140,17 @@ test('dirty close only opens dialog; clean close approves; explicit discard clea
   assert.equal(discard.approved.current, true);
   assert.equal(discard.dialog, false);
   assert.deepEqual(discard.events, [['dialog', false], 'close']);
+});
+
+test('unresolved comment protects closing even with an empty draft and no pending React busy state', () => {
+  const uncertain = controller({ dirty: false, commentLocked: true });
+  uncertain.close();
+  assert.deepEqual(uncertain.events, [['dialog', true]]);
+  assert.equal(uncertain.approved.current, false);
+  const explicit = controller({ dirty: false, commentLocked: true, dialog: true });
+  explicit.discard();
+  assert.equal(explicit.approved.current, true);
+  assert.deepEqual(explicit.events, [['dialog', false], 'close']);
 });
 
 test('TaskDetail mounts controlled discard dialog; keep-editing only closes dialog and parent Escape routes through guarded close', () => {

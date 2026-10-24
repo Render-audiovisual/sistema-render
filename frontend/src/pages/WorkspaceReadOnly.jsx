@@ -36,6 +36,7 @@ import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
 import { navigateWithinApp, requestAppNavigation } from "../shared/navigation/location.js";
 import { isTaskDraftDirty, keepsTaskOpen } from "./taskNavigationGuard.js";
 import { mergeTaskComments } from './taskCommentCollection.js';
+import { createTaskCommentCreation } from './taskCommentCreation.js';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import "./WorkspaceReadOnly.css";
@@ -147,9 +148,21 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const draftSourceRef = useRef(task);
   const [comments, setComments] = useState([]);
   const [comment, setComment] = useState("");
+  const [, renderCommentCreation] = useState(0);
   const commentDraftOwner = useRef(null);
   if (!commentDraftOwner.current || commentDraftOwner.current.taskId !== task?.id || commentDraftOwner.current.captureRequest !== captureRequest) {
-    commentDraftOwner.current = { taskId: task?.id, captureRequest, generation: 0, readGeneration: 0, pendingComment: null, commentsRead: { items: [], confirmed: [] } };
+    const owner = { taskId: task?.id, captureRequest, generation: 0, readGeneration: 0, initialized: false, consumed: null, commentsRead: { items: [], confirmed: [] } };
+    commentDraftOwner.current = owner;
+    owner.creation = createTaskCommentCreation({
+      capture: () => {
+        const guard = captureRequest();
+        return { current: () => commentDraftOwner.current === owner && guard.current(), request: guard.request.bind(guard) };
+      },
+      onState: state => {
+        if (commentDraftOwner.current !== owner) return;
+        setCommenting(state.busy); setCommentError(state.error); renderCommentCreation(value => value + 1);
+      },
+    });
   }
   const [commentError, setCommentError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -174,11 +187,12 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const archivePendingRef = useRef(false);
   const closeApprovedRef = useRef(false);
   const taskDraftDirty = isTaskDraftDirty(task, draft) || Boolean(comment.trim()) || deliveryDirty || coordinationDraft.dirty || reconciliationDraft.dirty
-    || (isProductionVisitTask(task || {}) && productionDriveLink.trim() !== String(task?.material_referencia || '').trim());
+    || (isProductionVisitTask(task || {}) && productionDriveLink.trim() !== String(task?.material_referencia || '').trim())
+    || commentDraftOwner.current.creation.snapshot.locked;
   const taskWriteBusy = saving || commenting || archiving || registeringProduction || savingProductionDrive || approving || confirmingProduction || deliveryBusy || coordinationDraft.busy || reconciliationDraft.busy;
   useNavigationGuard(({ to, type }) => discardDialogOpen ? { dirty: taskDraftDirty, busy: true } : type !== 'refresh' && (closeApprovedRef.current || keepsTaskOpen(to, task?.id))
     ? { dirty: false, busy: false }
-    : { dirty: taskDraftDirty, busy: taskWriteBusy || archivePendingRef.current || discardDialogOpen });
+    : { dirty: taskDraftDirty || commentDraftOwner.current.creation.snapshot.locked, busy: taskWriteBusy || commentDraftOwner.current.creation.snapshot.busy || archivePendingRef.current || discardDialogOpen });
   const scriptEditorRef = useRef(null);
   const deliverySectionRef = useRef(null);
   async function refreshEditingTaskAfterSave(_result, isCurrent) {
@@ -232,17 +246,18 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     const controller = new AbortController();
     const guard = captureRequest(apiJson);
     const owner = commentDraftOwner.current, readGeneration = ++owner.readGeneration;
-    const commentsRead = { items: [], confirmed: [] }; owner.commentsRead = commentsRead;
-    // Retire only the old UI lease, not the already-dispatched server write.
-    owner.pendingComment = null; setCommenting(false);
+    const commentsRead = { items: [], confirmed: [...owner.commentsRead.confirmed] }; owner.commentsRead = commentsRead;
     const currentComments = () => guard.current() && !controller.signal.aborted
       && commentDraftOwner.current === owner && owner.readGeneration === readGeneration && owner.commentsRead === commentsRead;
     setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task) });
     setEditing(false);
-    commentDraftOwner.current.generation++;
-    setComment("");
-    setCommentError("");
+    if (!owner.initialized) {
+      owner.initialized = true; owner.generation++; setComment("");
+    }
+    setCommenting(owner.creation.snapshot.busy);
+    setCommentError(owner.creation.snapshot.error);
     setComments([]);
+    if (commentsRead.confirmed.length) setComments(commentsRead.confirmed);
     setLinkCopied(false);
     setProductionAmount(1);
     setProductionDate(getHoyLocalISO());
@@ -457,53 +472,48 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   };
 
   const closeDetail = () => {
-    if (windowMotion.closing || taskWriteBusy || archivePendingRef.current || discardDialogOpen) return;
-    if (taskDraftDirty) { setDiscardDialogOpen(true); return; }
+    if (windowMotion.closing || taskWriteBusy || commentDraftOwner.current.creation.snapshot.busy || archivePendingRef.current || discardDialogOpen) return;
+    if (taskDraftDirty || commentDraftOwner.current.creation.snapshot.locked) { setDiscardDialogOpen(true); return; }
     closeApprovedRef.current = true;
     windowMotion.close();
   };
 
   const discardDetail = () => {
     // Approval is explicit and current writes still take precedence over leaving.
-    if (!discardDialogOpen || windowMotion.closing || taskWriteBusy || archivePendingRef.current) return;
+    if (!discardDialogOpen || windowMotion.closing || taskWriteBusy || commentDraftOwner.current.creation.snapshot.busy || archivePendingRef.current) return;
     setDiscardDialogOpen(false);
     closeApprovedRef.current = true;
     windowMotion.close();
   };
 
-  const addComment = async () => {
-    const guard = captureRequest();
-    if (!guard.current()) return;
-    const content = comment.trim();
-    if (!content || commenting) return;
-    const owner = commentDraftOwner.current, generation = owner.generation, commentsRead = owner.commentsRead;
-    if (owner.pendingComment) return;
-    const pendingComment = {}; owner.pendingComment = pendingComment;
-    const current = () => guard.current() && commentDraftOwner.current === owner && owner.commentsRead === commentsRead;
-    setCommenting(true);
-    setCommentError("");
+  const acceptCommentCreation = owner => {
+    if (commentDraftOwner.current !== owner) return;
+    const state = owner.creation.snapshot;
+    if (state.phase !== 'confirmed' || !state.comment || owner.consumed === state.comment) return;
+    const commentsRead = owner.commentsRead;
     try {
-      const created = await guard.request(`/api/tareas/${task.id}/comentarios?workspace=render_os`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER", contenido: content }),
-      });
-      guard.assertCurrent();
-      if (!current()) return;
-      const confirmed = mergeTaskComments(commentsRead.confirmed, [created], owner.taskId);
+      const confirmed = mergeTaskComments(commentsRead.confirmed, [state.comment], owner.taskId);
       const merged = mergeTaskComments(commentsRead.items, confirmed, owner.taskId);
+      owner.consumed = state.comment;
       commentsRead.confirmed = confirmed; commentsRead.items = merged; setComments(merged);
-      // An ACK owns only the submitted draft observation, not later typing.
-      // Increment on every edit so A -> B -> A is not mistaken for untouched A.
-      if (owner.generation === generation) { owner.generation++; setComment(""); }
-    } catch (reason) {
-      if (current()) setCommentError(reason.message || "No se pudo guardar el comentario.");
-    } finally {
-      if (guard.current() && commentDraftOwner.current === owner && owner.pendingComment === pendingComment) {
-        owner.pendingComment = null; setCommenting(false);
-      }
-    }
+      // The captured generation, not text equality, owns clearing (including ABA).
+      if (owner.generation === state.attempt.generation) { owner.generation++; setComment(""); }
+    } catch (reason) { setCommentError(reason.message); }
   };
+
+  const addComment = (owner => async () => {
+    if (commentDraftOwner.current !== owner || owner.taskId !== task?.id || owner.captureRequest !== captureRequest) return;
+    if (!comment.trim() || owner.creation.snapshot.locked || owner.creation.snapshot.busy) return;
+    const accepted = await owner.creation.start({ taskId: owner.taskId,
+      autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER",
+      contenido: comment, generation: owner.generation, validateAuthor: sesion?.usuario?.rol === 'admin' });
+    if (accepted) acceptCommentCreation(owner);
+  })(commentDraftOwner.current);
+
+  const verifyCommentCreation = (owner => async () => {
+    if (commentDraftOwner.current !== owner || owner.taskId !== task?.id || owner.captureRequest !== captureRequest) return;
+    if (await owner.creation.verify()) acceptCommentCreation(owner);
+  })(commentDraftOwner.current);
 
   const changeTrashState = async () => {
     const guard = captureRequest();
@@ -707,18 +717,22 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         <section className="ros-task-comments-footer">
           <h3>Comentarios</h3>
           {commentError && <div className="ros-inline-error">{commentError}</div>}
+          {commentDraftOwner.current.creation.snapshot.locked && <p role="status">Salir no cancela ni revierte el envío. Este intento no sobrevive a una recarga. Verificá el envío antes de salir.</p>}
+          {commentDraftOwner.current.creation.snapshot.canVerify && <button type="button" onClick={verifyCommentCreation}>Verificar envío</button>}
           {teamComments.length > 0 && <div className="ros-comments">{teamComments.map((item) => <article key={item.id}><Avatar person={users.find((user) => user.nombre === item.autor)} name={item.autor}/><div className="ros-comment-body"><header><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></header><p>{renderizarTextoTarea(item.contenido)}</p></div></article>)}</div>}
           <div className="ros-comment-create">
             <Avatar person={users.find((user) => user.nombre === sesion?.usuario?.nombre)} name={sesion?.usuario?.nombre || sesion?.usuario?.usuario}/>
             <textarea rows={2} value={comment} placeholder="Agregar un comentario…" aria-label="Agregar un comentario" onChange={(event) => { commentDraftOwner.current.generation++; setComment(event.target.value); }}/>
-            <button type="button" disabled={!comment.trim() || commenting} onClick={addComment}>{commenting ? "Enviando…" : "Comentar"}</button>
+            <button type="button" disabled={!comment.trim() || commenting || commentDraftOwner.current.creation.snapshot.locked} onClick={addComment}>{commenting ? "Enviando…" : "Comentar"}</button>
           </div>
         </section>
         {isAdmin && editing && <div className="ros-detail-actions ros-edit-footer"><button type="button" onClick={cancelEditing}>Cancelar</button><button className="primary" type="button" disabled={saving || !canEditTask || !draft.titulo?.trim()} onClick={save}>{saving ? "Guardando…" : "Guardar cambios"}</button></div>}
         {canDeleteTask && <details className="ros-task-admin-actions ros-task-admin-actions-footer"><summary>Acciones de tarea</summary><div className="ros-danger-zone"><strong>{isTrashed ? "Tarea eliminada" : "Eliminar tarea"}</strong><p>{isTrashed ? "Podés restaurarla antes de que se elimine definitivamente." : "Permanecerá 10 días en Papelera antes de eliminarse definitivamente."}</p><div><button className={isTrashed ? "" : "danger"} type="button" disabled={archiving} onClick={changeTrashState}>{archiving ? (isTrashed ? "Restaurando…" : "Enviando…") : (isTrashed ? "Restaurar tarea" : "Enviar a Papelera")}</button></div></div></details>}
       </div>
     </aside>
-    <DiscardChangesDialog open={discardDialogOpen} busy={taskWriteBusy} onKeepEditing={() => setDiscardDialogOpen(false)} onDiscard={discardDetail}/>
+    <DiscardChangesDialog open={discardDialogOpen} busy={taskWriteBusy}
+      description={commentDraftOwner.current.creation.snapshot.locked ? "Salir no cancela ni revierte el envío. Este intento no sobrevive a una recarga. Verificá el envío antes de salir." : undefined}
+      onKeepEditing={() => setDiscardDialogOpen(false)} onDiscard={discardDetail}/>
   </div>;
 }
 

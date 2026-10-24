@@ -13,7 +13,9 @@ test('native modal uses unique accessible labels and safe default action', () =>
   assert.match(source, /<dialog ref=\{dialogRef\}/);
   assert.match(source, /aria-labelledby=\{titleId\} aria-describedby=\{descriptionId\}/);
   assert.match(source, /<h2 id=\{titleId\}>¿Descartar los cambios\?<\/h2>/);
-  assert.match(source, /<p id=\{descriptionId\}>Los cambios de este borrador no se guardaron/);
+  assert.match(source, /description = 'Los cambios de este borrador no se guardaron/);
+  assert.match(source, /<p id=\{descriptionId\}>\{description\}<\/p>/);
+  assert.doesNotMatch(source, /dangerouslySetInnerHTML/);
   assert.match(source, /if \(!dialog.isConnected\) throw/);
   assert.match(source, /if \(!dialog.open\) dialog.showModal\(\)/);
   assert.match(source, /ref=\{keepRef\} type="button" autoFocus/);

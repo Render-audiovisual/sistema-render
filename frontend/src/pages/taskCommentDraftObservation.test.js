@@ -5,6 +5,9 @@ import ts from 'typescript';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { mergeTaskComments } from './taskCommentCollection.js';
+import { createTaskCommentCreation as createCreation } from './taskCommentCreation.js';
+const requestId = '12345678-1234-4123-8123-123456789abc';
+const createTaskCommentCreation = options => createCreation({ ...options, randomUUID: () => requestId });
 
 // Actual input handler, owner reset and submit callback; real cookie-session
 // observation kernel. Deferred transport only, no server or React mount claim.
@@ -28,7 +31,7 @@ function fixture() {
   const accept = id => store.acceptBootstrap(store.beginBootstrap(), { usuario: { id, usuario: 'qa', nombre: 'QA', rol: 'diseno' },
     session_context: 'a'.repeat(43), csrf_token: 'b'.repeat(43) });
   accept(7); let active = true;
-  const deps = { mergeTaskComments, task: { id: 9 }, sesion: store.getSession(), comment: '', commenting: false,
+  const deps = { mergeTaskComments, createTaskCommentCreation, renderCommentCreation() {}, task: { id: 9 }, sesion: store.getSession(), comment: '', commenting: false,
     comments: [], commentError: '', commentDraftOwner: { current: null } };
   function captureFor(session) {
     return () => createCapturedRequest({ session, readSession: store.getSession, isActive: () => active,
@@ -41,6 +44,7 @@ function fixture() {
   deps.setComments = update => { deps.comments = typeof update === 'function' ? update(deps.comments) : update; effects.push(['comments', deps.comments]); };
   const renderOwner = () => Function(...Object.keys(deps), ownerReset.getText(file))(...Object.values(deps));
   renderOwner();
+  deps.acceptCommentCreation = owner => evaluate(find(n => ts.isVariableDeclaration(n) && n.name.getText(file) === 'acceptCommentCreation').initializer, deps)(owner);
   return { deps, wait, calls, effects, renderOwner,
     type(value) { evaluate(change, deps)({ target: { value } }); },
     send: () => evaluate(submit, deps)(),
@@ -48,13 +52,13 @@ function fixture() {
     switchSession(id) { accept(id); deps.sesion = store.getSession(); deps.captureRequest = captureFor(deps.sesion); renderOwner(); },
     unmount() { active = false; } };
 }
-const created = { id: 21, tarea_id: 9, contenido: 'A', autor: 'QA', created_at: '2026-10-24T12:00:00.123Z' };
+const created = { id: 21, tarea_id: 9, contenido: 'A', autor: 'QA', created_at: '2026-10-24T12:00:00.123Z', creation_request_id: requestId };
 
 test('untouched submitted comment clears on ACK; payload, task URL and cookie intent stay unchanged', async () => {
   const h = fixture(); h.type('  A  '); const pending = h.send();
   assert.equal(h.calls.length, 1); assert.equal(h.calls[0].url, '/api/tareas/9/comentarios?workspace=render_os');
   assert.equal(h.calls[0].options.method, 'POST');
-  assert.deepEqual(JSON.parse(h.calls[0].options.body), { autor: 'QA', contenido: 'A' });
+  assert.deepEqual(JSON.parse(h.calls[0].options.body), { autor: 'QA', contenido: 'A', request_id: requestId });
   assert.ok(h.calls[0].options.sessionIntent); assert.equal(h.calls[0].options.headers.Authorization, undefined);
   h.wait.resolve(created); await pending;
   assert.equal(h.deps.comment, ''); assert.equal(h.deps.commenting, false);
@@ -84,7 +88,7 @@ for (const edited of [false, true]) {
     const h = fixture(); h.type('A'); const pending = h.send(); if (edited) h.type('B');
     h.wait.reject(new Error('No se pudo guardar')); await pending;
     assert.equal(h.deps.comment, edited ? 'B' : 'A'); assert.deepEqual(h.deps.comments, []);
-    assert.equal(h.deps.commentError, 'No se pudo guardar'); assert.equal(h.deps.commenting, false); assert.equal(h.calls.length, 1);
+    assert.match(h.deps.commentError, /verific/); assert.equal(h.deps.commenting, false); assert.equal(h.calls.length, 1);
   });
 }
 

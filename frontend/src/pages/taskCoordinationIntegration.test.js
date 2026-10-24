@@ -9,7 +9,7 @@ test('principal detail supplies current task, identity, strict update queue and 
   assert.match(source, /const taskDraftDirty =[\s\S]*?coordinationDraft\.dirty/);
   assert.match(source, /const taskWriteBusy =[^;]*coordinationDraft\.busy/);
   assert.match(source, /if \(windowMotion.closing \|\| taskWriteBusy/);
-  assert.match(source, /useNavigationGuard\([\s\S]*?dirty: taskDraftDirty, busy: taskWriteBusy/);
+  assert.match(source, /useNavigationGuard\([\s\S]*?dirty: taskDraftDirty \|\| commentDraftOwner.current.creation.snapshot.locked, busy: taskWriteBusy/);
 });
 
 test('observed coordination revision cannot enter generic automatic conflict retry', () => {
