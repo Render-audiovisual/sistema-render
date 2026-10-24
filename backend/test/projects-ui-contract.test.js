@@ -23,7 +23,7 @@ function fixture() {
     actividad: [{ id: '9223372036854775806', actor_id: 21, accion: 'editar_entregable', created_at: '2026-10-19T12:00:00Z', recurso_id: deliverable, tarea_id: null, estado_anterior: 'aprobado', estado_nuevo: 'correcciones' }], permissions: { administrar: false, editar: true } };
 }
 const projectDraft = () => ({ titulo: 'Sitio web', tipo: 'web', descripcion: 'Alcance', estado: 'en_curso', cliente_id: '11', responsable_id: '21', miembro_ids: [22], fecha_inicio: '', fecha_entrega: '2026-11-20' });
-const form = (kind, draft, extra = {}) => ({ kind, draft, projectId: id, baseRevision: 5, ...extra });
+const form = (kind, draft, extra = {}) => ({ kind, draft, projectId: id, baseRevision: 5, ...(['stage-create', 'milestone-create', 'deliverable-create'].includes(kind) ? { requestId } : {}), ...extra });
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 
 test('project detail projects operational fields only and preserves BIGSERIAL string approval history after revocation', () => {
@@ -91,7 +91,7 @@ test('ordinary project edits send only explicit differences; admin membership ch
   assert.throws(() => buildProjectMutation({ kind: 'create', requestId, draft: { ...initial, fecha_inicio: '2026-12-01' } }), /anterior/);
 });
 
-test('stage, milestone, deliverable and archive mutations use parent revision only and typed closed business fields', () => {
+test('child creates bind UUID and original parent revision; edits/archive retain typed closed business fields', () => {
   const cases = [
     [form('stage-create', { titulo: 'Nueva' }), 'POST', '/etapas', { titulo: 'Nueva' }],
     [form('stage-edit', { titulo: 'Lista', estado: 'completada' }, { childId: stage }), 'PATCH', `/etapas/${stage}`, { titulo: 'Lista', estado: 'completada' }],
@@ -102,7 +102,10 @@ test('stage, milestone, deliverable and archive mutations use parent revision on
     [form('archive', { archivado: true }), 'PATCH', '', { archivado: true }],
     [form('archive', { archivado: false }), 'PATCH', '', { archivado: false }],
   ];
-  for (const [input, method, suffix, business] of cases) assert.deepEqual(buildProjectMutation(input), { method, path: `/api/proyectos/${id}${suffix}`, body: { expected_revision: 5, ...business } });
+  for (const [input, method, suffix, business] of cases) {
+    assert.deepEqual(buildProjectMutation(input), { method, path: `/api/proyectos/${id}${suffix}`, body: { expected_revision: 5, ...(['stage-create', 'milestone-create', 'deliverable-create'].includes(input.kind) ? { request_id: requestId } : {}), ...business } });
+    if (input.kind.endsWith('-create')) for (const invalid of [undefined, '', 'not-a-uuid']) assert.throws(() => buildProjectMutation({ ...input, requestId: invalid }));
+  }
   assert.throws(() => buildProjectMutation(form('deliverable-edit', { titulo: 'Entrega', url: '', observaciones: '', estado: 'aprobado' }, { childId: deliverable })));
   const observedDeliverable = fixture().entregables[0];
   const approval = form('deliverable-approve', { acknowledged: true, aprobado_por_id: 99 }, { childId: deliverable, requestId, observedDeliverable });
@@ -188,7 +191,7 @@ test('principal UI uses server permissions, visible CAS, progressive forms, stab
   assert.match(source, /form\.conflict && structural/);
   assert.match(source, /Actualizar proyecto y revisar/);
   assert.match(source, /Usar revisión \{project\.revision\}/);
-  assert.match(source, /kind!=='deliverable-approve' && <button[^>]+onClick=\{adoptRevision\}/);
+  assert.match(source, /kind!=='deliverable-approve' && !isProjectChildCreation\(kind\) && <button[^>]+onClick=\{adoptRevision\}/);
   assert.match(source, /observedDeliverable:kind==='deliverable-approve'\?Object\.freeze\(\{\.\.\.item\}\)/);
   assert.match(source, /form\.observedDeliverable\.contenido_revision/);
   assert.match(source, /form\.observedDeliverable\.entregable_revision/);

@@ -78,7 +78,7 @@ test('approval input is closed, exact lowercase hash and case-normalized UUID wi
 });
 
 test('both generic creation and PATCH refuse aprobado but permit explicit departure from approval',()=>{
-  for(const create of [false,true])assert.throws(()=>normalizeProjectChild('entregables',{expected_revision:1,titulo:'Web',estado:'aprobado'},{create}),{status:400});
+  for(const create of [false,true])assert.throws(()=>normalizeProjectChild('entregables',{...(create?{request_id:id(9)}:{}),expected_revision:1,titulo:'Web',estado:'aprobado'},{create}),{status:400});
   assert.equal(normalizeProjectChild('entregables',{expected_revision:1,estado:'en_revision'}).estado,'en_revision');
 });
 

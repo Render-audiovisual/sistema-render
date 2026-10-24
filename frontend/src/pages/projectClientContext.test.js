@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { projectHref, projectLocation, projectLocationUrl, projectListLocation, projectListLocationUrl,
-  projectsListUrl, parseProjectsPage, parseProject, buildProjectMutation, createProjectsTransport, projectError } from './projectsModel.js';
+  projectsListUrl, parseProjectsPage, parseProject, buildProjectMutation, createProjectsTransport, projectError, isProjectChildCreation } from './projectsModel.js';
 
 const ID = '10000000-0000-4000-8000-000000000001';
 const NEXT = '20000000-0000-4000-8000-000000000002';
@@ -174,7 +174,7 @@ test('actual pending write ACK cannot restore an old client/page or wipe a repla
       busy: false, conflict: false, scope: capture() };
     h.formRef.current = form;
     const paints = [], deps = { formRef: h.formRef, mutationBusy: { current: false }, detailReadGeneration: { current: 0 },
-      buildProjectMutation, parseProject, projectError, sesion,
+      buildProjectMutation, parseProject, projectError, sesion, isProjectChildCreation,
       transport: { cancel() {}, write: (mutation, scope) => scope.request(mutation.path, { method: mutation.method, body: JSON.stringify(mutation.body) }) },
       setDetail: value => paints.push(['detail', value]), setForm: value => { h.formRef.current = typeof value === 'function' ? value(h.formRef.current) : value; paints.push(['form']); },
       setMessage: value => paints.push(['message', value]), setListRefresh: () => paints.push(['refresh']), selectProject: h.select };

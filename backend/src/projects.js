@@ -29,7 +29,7 @@ function integer(value, label = 'ID') {
   return value;
 }
 function uuid(value) {
-  if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) throw fail('UUID inválido.');
+  if (typeof value !== 'string' || value.length !== 36 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) throw fail('UUID inválido.');
   return value.toLowerCase();
 }
 function text(value, max = 250, empty = false) {
@@ -107,9 +107,11 @@ export function projectPermissions(project, user) {
 export function normalizeProjectChild(kind, input, { create = false } = {}) {
   const spec = CHILDREN[kind];
   if (!spec) throw fail('Recurso inválido.');
-  closed(input, ['expected_revision', ...spec.fields]);
+  closed(input, ['expected_revision', ...(create ? ['request_id'] : []), ...spec.fields]);
+  if (create && input.request_id === undefined) throw fail('Falta request_id.', 428);
   if (kind === 'entregables' && input.estado === 'aprobado') throw fail('Usá la acción explícita de aprobar la versión observada.');
   const result = { expected_revision: integer(input.expected_revision, 'Revisión') };
+  if (create) result.request_id = uuid(input.request_id);
   for (const key of spec.fields) {
     if (!own(input, key)) continue;
     const v = input[key];
@@ -121,6 +123,12 @@ export function normalizeProjectChild(kind, input, { create = false } = {}) {
   if (create && kind === 'etapas' && own(input, 'estado')) throw fail('La etapa nueva comienza pendiente.');
   if (!create && Object.keys(result).length === 1) throw fail('No hay cambios.');
   return result;
+}
+
+export function projectChildCreationHash(projectId, kind, normalizedInput) {
+  const { request_id, ...input } = normalizedInput;
+  return createHash('sha256').update(JSON.stringify([projectId, kind,
+    Object.fromEntries(Object.keys(input).sort().map(key => [key, input[key]]))])).digest('hex');
 }
 
 const summarySql = `SELECT p.id,p.titulo,p.cliente_id,c.nombre AS cliente_nombre,p.responsable_id,u.nombre AS responsable_nombre,
@@ -280,17 +288,35 @@ export function createProjectsRouter({ express, pool }) {
       {lockProjectLinks,lockProject,bump,activity,readProjectDetail})));
   for (const [kind, spec] of Object.entries(CHILDREN)) {
     const mutate = create => route(true, async (req, db, user) => {
-      const id = uuid(req.params.id), child = create ? randomUUID() : uuid(req.params.child);
+      const id = uuid(req.params.id);
       const input = normalizeProjectChild(kind, req.body, { create });
       await lockProjectLinks(db);
+      let hash;
+      if (create) {
+        // Permission is current even on replay; the original revision is checked
+        // only for a new intent. The global project mutex serializes receipt keys.
+        await lockProject(db, id, null, user);
+        hash = projectChildCreationHash(id, kind, input);
+        const receipt = (await db.query(`SELECT actor_id,request_id,proyecto_id,recurso_tipo,recurso_id,expected_revision,payload_hash
+          FROM project_child_create_receipts WHERE actor_id=$1 AND request_id=$2`, [user.id,input.request_id])).rows[0];
+        if (receipt) {
+          if (receipt.proyecto_id !== id || receipt.recurso_tipo !== kind || receipt.payload_hash !== hash || receipt.expected_revision !== input.expected_revision)
+            throw fail('La solicitud ya fue usada para otra creación.',409);
+          if (!(await db.query(`SELECT id FROM ${spec.table} WHERE proyecto_id=$1 AND id=$2 FOR SHARE`,[id,receipt.recurso_id])).rows.length)
+            throw fail('El recurso creado ya no está disponible.',409);
+          const { payload_hash, ...creacion } = receipt;
+          return { body: { proyecto: await readProjectDetail(db,id,user), creacion, replayed:true } };
+        }
+      }
       await lockProject(db, id, input.expected_revision, user);
+      const child = create ? randomUUID() : uuid(req.params.child);
       let old = null;
       if (!create) {
         old = (await db.query(`SELECT id,estado FROM ${spec.table} WHERE proyecto_id=$1 AND id=$2 FOR UPDATE`, [id, child])).rows[0];
         if (!old) throw fail('Recurso no encontrado.', 404);
       } else if (Number((await db.query(`SELECT count(*)::int AS total FROM ${spec.table} WHERE proyecto_id=$1`, [id])).rows[0].total) >= spec.cap) throw fail('Límite de recursos alcanzado.', 409);
       if (own(input, 'etapa_id')) await stage(db, id, input.etapa_id);
-      const fields = Object.entries(input).filter(([k]) => k !== 'expected_revision');
+      const fields = Object.entries(input).filter(([k]) => !['expected_revision','request_id'].includes(k));
       let actualState;
       if (create) {
         if (kind === 'etapas') fields.push(['posicion', Number((await db.query('SELECT COALESCE(max(posicion),-1)+1 AS posicion FROM proyecto_etapas WHERE proyecto_id=$1', [id])).rows[0].posicion)]);
@@ -312,7 +338,13 @@ export function createProjectsRouter({ express, pool }) {
       }
       await bump(db, id, input.expected_revision, user);
       await activity(db, id, user, `${create ? 'crear' : 'editar'}_${spec.singular}`, child, old?.estado ?? null, actualState ?? input.estado ?? old?.estado ?? 'pendiente');
-      return { status: create ? 201 : 200, body: { proyecto: await readProjectDetail(db, id, user) } };
+      if (create) {
+        await db.query(`INSERT INTO project_child_create_receipts(actor_id,request_id,proyecto_id,recurso_tipo,recurso_id,expected_revision,payload_hash)
+          VALUES($1,$2,$3,$4,$5,$6,$7)`,[user.id,input.request_id,id,kind,child,input.expected_revision,hash]);
+        return { status:201, body:{ proyecto:await readProjectDetail(db,id,user),
+          creacion:{actor_id:user.id,request_id:input.request_id,proyecto_id:id,recurso_tipo:kind,recurso_id:child,expected_revision:input.expected_revision},replayed:false } };
+      }
+      return { body: { proyecto: await readProjectDetail(db, id, user) } };
     });
     router.post(`/:id/${kind}`, mutate(true));
     router.patch(`/:id/${kind}/:child`, mutate(false));

@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import {createCapturedRequest} from '../shared/session/captured-request.js';
 import {createBrowserSessionState} from '../shared/session/browser-session-state.js';
-import {parseProject,buildProjectMutation,buildProjectDeliverableApproval,parseProjectDeliverableApproval,projectDeliverableApprovalLabel,createProjectsTransport,projectError} from './projectsModel.js';
+import {parseProject,isProjectChildCreation,parseProjectChildCreation,buildProjectMutation,buildProjectDeliverableApproval,parseProjectDeliverableApproval,projectDeliverableApprovalLabel,createProjectsTransport,projectError} from './projectsModel.js';
 import {normalizeProjectDeliverableApprovalInput} from '../../../backend/src/project-deliverable-approvals.js';
 
 const PROJECT='11111111-1111-4111-8111-111111111111',CHILD='22222222-2222-4222-8222-222222222222',REQUEST='33333333-3333-4333-8333-333333333333',RECEIPT='44444444-4444-4444-8444-444444444444';
@@ -22,7 +22,7 @@ function harness({cookie=false}={}){
  const sesion=live,calls=[],paints=[],formRef={current:form()},mutationBusy={current:false},detailReadGeneration={current:0},selectionRef={current:{id:PROJECT}},detailRef={current:{status:'ready',data:project(),error:''}};
  formRef.current.scope=createCapturedRequest({session:sesion,readSession:()=>live,isActive:()=>active,request:async(url,options)=>{calls.push({url,options});return transportFn(url,options)}});
  const originalScope=formRef.current.scope;
- const deps={formRef,mutationBusy,detailReadGeneration,selectionRef,sesion,captureAction:()=>originalScope,buildProjectMutation,parseProject,parseProjectDeliverableApproval,projectError,transport:{cancel:key=>paints.push(['cancel',key]),read:async()=>({proyecto:project()}),write:(mutation,scope)=>scope.request(mutation.path,{method:mutation.method,body:JSON.stringify(mutation.body)})},setForm:update=>{formRef.current=typeof update==='function'?update(formRef.current):update;paints.push(['form',formRef.current])},setDetail:update=>{detailRef.current=typeof update==='function'?update(detailRef.current):update;paints.push(['detail',detailRef.current])},setMessage:value=>paints.push(['message',value]),setListRefresh:()=>paints.push(['list']),selectProject:()=>paints.push(['select'])};
+ const deps={formRef,mutationBusy,detailReadGeneration,selectionRef,sesion,captureAction:()=>originalScope,isProjectChildCreation,parseProjectChildCreation,buildProjectMutation,parseProject,parseProjectDeliverableApproval,projectError,transport:{cancel:key=>paints.push(['cancel',key]),read:async()=>({proyecto:project()}),write:(mutation,scope)=>scope.request(mutation.path,{method:mutation.method,body:JSON.stringify(mutation.body)})},setForm:update=>{formRef.current=typeof update==='function'?update(formRef.current):update;paints.push(['form',formRef.current])},setDetail:update=>{detailRef.current=typeof update==='function'?update(detailRef.current):update;paints.push(['detail',detailRef.current])},setMessage:value=>paints.push(['message',value]),setListRefresh:()=>paints.push(['list']),selectProject:()=>paints.push(['select'])};
  deps.purgeProjectAccess=scope=>{if(scope.current()){formRef.current=null;paints.push(['purge'])}};
  return{...deps,calls,paints,detailRef,submit:callback('submit',deps),refreshDetail:callback('refreshDetail',deps),setRead:fn=>{deps.transport.read=fn},transport:fn=>{transportFn=fn},replace:()=>{if(cookie){publish(2);live=store.getSession()}else live={token:'B',usuario:{id:2,rol:'admin',activo:true}}},unmount:()=>{active=false}};
 }
@@ -33,7 +33,7 @@ test('exact approval POST uses observed versions/hash, UUID and explicit indepen
  for(const mutate of [f=>{f.draft.acknowledged=false},f=>{f.requestId+='\n'},f=>{f.observedDeliverable={...item(),contenido_hash:hash+'\n'}},f=>{f.observedDeliverable={...item(),entregable_revision:2147483648}}]){const f=form();mutate(f);assert.throws(()=>buildProjectDeliverableApproval(f));}
 });
 test('generic create/edit never creates approval and approved content edit omits approval status',()=>{
- const base={kind:'deliverable-create',projectId:PROJECT,baseRevision:8,draft:{titulo:'Entrega',url:'',observaciones:'',estado:'aprobado'}};assert.throws(()=>buildProjectMutation(base));
+ const base={kind:'deliverable-create',requestId:REQUEST,projectId:PROJECT,baseRevision:8,draft:{titulo:'Entrega',url:'',observaciones:'',estado:'aprobado'}};assert.throws(()=>buildProjectMutation(base));
  const existing={...item(),estado:'aprobado'},f={...base,kind:'deliverable-edit',childId:CHILD,initial:existing,draft:{...existing,titulo:'Contenido nuevo'}};
  const result=buildProjectMutation(f);assert.deepEqual(result.body,{expected_revision:8,titulo:'Contenido nuevo'});assert.equal(result.path.endsWith('/aprobaciones'),false);
  f.initial={...existing,estado:'en_revision'};assert.throws(()=>buildProjectMutation(f));
@@ -95,7 +95,7 @@ test('real transport suppresses both stale read errors and successful DTOs befor
  for(const fail of [false,true]){const d=deferred();let current=true,calls=0;const transport=createProjectsTransport(()=>{calls++;return d.promise},{isCurrent:()=>current});const pending=transport.read('detail',`/api/proyectos/${PROJECT}`);current=false;if(fail)d.reject(new Error('private old failure'));else d.resolve({proyecto:project()});assert.equal(await pending,undefined);assert.equal(await transport.read('detail','/never'),undefined);assert.equal(calls,1);transport.dispose();}
 });
 test('JSX separates observed review from content editing and disables adoption of a newer approval revision',()=>{
- assert.equal(ast.parseDiagnostics.length,0);assert.match(source,/kind\.startsWith\("deliverable-"\) && kind!=='deliverable-approve'/);assert.match(source,/Options values=\{DELIVERABLE_EDIT_STATES\}/);assert.match(source,/Revisé este título, enlace y observaciones/);assert.match(source,/form\.kind==='deliverable-approve'\)return/);assert.match(source,/useLayoutEffect/);assert.match(source,/key=\{view.key\}/);assert.match(source,/Verificar la misma solicitud/);assert.doesNotMatch(source,/dangerouslySetInnerHTML/);
+ assert.equal(ast.parseDiagnostics.length,0);assert.match(source,/kind\.startsWith\("deliverable-"\) && kind!=='deliverable-approve'/);assert.match(source,/Options values=\{DELIVERABLE_EDIT_STATES\}/);assert.match(source,/Revisé este título, enlace y observaciones/);assert.match(source,/form\.kind==='deliverable-approve'\|\|isProjectChildCreation\(form.kind\)\)return/);assert.match(source,/kind!=='deliverable-approve' && !isProjectChildCreation\(kind\) && <button[^>]+onClick=\{adoptRevision\}/);assert.match(source,/useLayoutEffect/);assert.match(source,/key=\{view.key\}/);assert.match(source,/Verificar la misma solicitud/);assert.doesNotMatch(source,/dangerouslySetInnerHTML/);
  const css=readFileSync(new URL('./Projects.css',import.meta.url),'utf8');assert.match(css,/min-height:44px/);assert.match(css,/\.pr-form-fields\{display:contents/);
 });
 test('actual editor opening effect focuses/scrolls once per new sequence, never on retry, busy or disconnected heading',()=>{

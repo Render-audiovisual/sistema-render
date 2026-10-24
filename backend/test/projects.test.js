@@ -56,7 +56,7 @@ test('child validation scopes fields, approvals and safe URLs', () => {
   }
   assert.equal(normalizeProjectChild('entregables', { expected_revision: 1, url: 'https://example.com/a' }).url, 'https://example.com/a');
   assert.throws(() => normalizeProjectChild('entregables', { expected_revision: 1, aprobado_por_id: 1 }), { status: 400 });
-  assert.throws(() => normalizeProjectChild('etapas', { expected_revision: 1, titulo: 'Etapa', estado: 'completada' }, { create: true }), { status: 400 });
+  assert.throws(() => normalizeProjectChild('etapas', { request_id: '11111111-1111-4111-8111-111111111111', expected_revision: 1, titulo: 'Etapa', estado: 'completada' }, { create: true }), { status: 400 });
   assert.deepEqual(normalizeProjectChild('hitos', { expected_revision: 1, etapa_id: null, fecha: null }), { expected_revision: 1, fecha: null, etapa_id: null });
 });
 

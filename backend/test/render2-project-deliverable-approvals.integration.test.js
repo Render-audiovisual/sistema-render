@@ -31,7 +31,7 @@ test('project deliverable approvals bind observed content, preserve historical r
   const create = async title => {
     const current = await read();
     const result = ok(await api(`/proyectos/${project.id}/entregables`, responsible, 'POST', {
-      expected_revision: current.revision, titulo: title, url: 'https://example.invalid/qa103-a', observaciones: 'Original observed content',
+      request_id: randomUUID(), expected_revision: current.revision, titulo: title, url: 'https://example.invalid/qa103-a', observaciones: 'Original observed content',
     }), 201).proyecto;
     return result.entregables.find(row => row.titulo === title);
   };
@@ -75,7 +75,7 @@ test('project deliverable approvals bind observed content, preserve historical r
     deliverable = await create('QA103 content lifecycle');
     const current = await read(), before = await snapshot();
     ok(await api(`/proyectos/${project.id}/entregables`, responsible, 'POST', {
-      expected_revision: current.revision, titulo: 'Do not create approved', estado: 'aprobado' }), 400);
+      request_id: randomUUID(), expected_revision: current.revision, titulo: 'Do not create approved', estado: 'aprobado' }), 400);
     ok(await api(endpoint(deliverable.id), responsible, 'PATCH', { expected_revision: current.revision, estado: 'aprobado' }), 400);
     assert.deepEqual(await snapshot(), before);
     firstInput = await selection(deliverable.id);

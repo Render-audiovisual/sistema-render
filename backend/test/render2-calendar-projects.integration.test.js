@@ -29,7 +29,7 @@ test('calendar project milestones: principal CRUD, parent identity and independe
   const getProject = async id => checked(await api(`/proyectos/${id}`)).proyecto;
   const mutate = async (id, path, body, token = admin, method = 'PATCH') => {
     const observed = await getProject(id);
-    return checked(await api(`/proyectos/${id}${path}`, token, method, { expected_revision: observed.revision, ...body }), method === 'POST' ? 201 : 200).proyecto;
+    return checked(await api(`/proyectos/${id}${path}`, token, method, { expected_revision: observed.revision, ...(method === 'POST' && ['/etapas', '/hitos', '/entregables'].includes(path) ? { request_id: randomUUID() } : {}), ...body }), method === 'POST' ? 201 : 200).proyecto;
   };
   const createProject = async (extra = {}) => checked(await api('/proyectos', admin, 'POST', {
     request_id: randomUUID(), titulo: 'QA real project calendar', cliente_id: client.id, responsable_id: responsible.id,

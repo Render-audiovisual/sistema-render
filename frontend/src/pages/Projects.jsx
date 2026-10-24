@@ -6,7 +6,7 @@ import { navigateWithinApp } from "../shared/navigation/location.js";
 import { getSesion } from '../utils.jsx';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
-import { DELIVERABLE_EDIT_STATES, parseProjectDeliverableApproval, projectDeliverableApprovalLabel, projectListLocation, projectListLocationUrl } from './projectsModel.js';
+import { DELIVERABLE_EDIT_STATES, isProjectChildCreation, parseProjectChildCreation, parseProjectDeliverableApproval, projectDeliverableApprovalLabel, projectListLocation, projectListLocationUrl } from './projectsModel.js';
 import { PROJECT_TYPES, PROJECT_STATES, STAGE_STATES, MILESTONE_STATES, DELIVERABLE_STATES, PROJECT_ACTIVITY, buildProjectMutation, createProjectsTransport, observedProjectTask, parseProject, parseProjectsPage, projectDate, projectError, projectHref, projectLocation, projectLocationUrl, projectsListUrl, safeProjectUrl } from "./projectsModel.js";
 import "./Projects.css";
 
@@ -83,7 +83,7 @@ function ProjectEditor({ form, project, catalog, change, cancel, submit, refresh
     {structural && <p className="pr-version">Base observada: revisión <strong>{form.baseRevision}</strong>{project && project.revision !== form.baseRevision && <> · Proyecto visible: revisión <strong>{project.revision}</strong></>}</p>}
     {form.error && <div className="pr-error" role="alert"><p>{form.error}</p>
       {form.conflict && structural && <div className="pr-actions"><button type="button" onClick={refresh} disabled={form.busy}>Actualizar proyecto y revisar</button>
-        {form.reviewed && project && kind!=='deliverable-approve' && <button type="button" onClick={adoptRevision}>Usar revisión {project.revision}</button>}{kind==='deliverable-approve'&&<p>Cerrá esta revisión y volvé a abrir el entregable actualizado antes de aprobar. No se adoptará otra versión automáticamente.</p>}</div>}
+        {form.reviewed && project && kind!=='deliverable-approve' && !isProjectChildCreation(kind) && <button type="button" onClick={adoptRevision}>Usar revisión {project.revision}</button>}{kind==='deliverable-approve'&&<p>Cerrá esta revisión y volvé a abrir el entregable actualizado antes de aprobar. No se adoptará otra versión automáticamente.</p>}{isProjectChildCreation(kind)&&<p>Este intento conserva su identificador y revisión original. Revisá el proyecto; para iniciar una creación diferente, cerrá y volvé a abrir el formulario.</p>}</div>}
       {form.uncertain&&<button type="button" disabled={form.busy} onClick={event=>submit(event,{verify:true})}>Verificar la misma solicitud</button>}
       {form.conflict && !structural && <p>Revisá la lista antes de cerrar este formulario e iniciar una creación diferente. Este intento conserva su identificador.</p>}
     </div>}
@@ -318,10 +318,10 @@ function ProjectsSession({ sesion, onNavigate, request }) {
     if (!canLeave()) return;
     if (kind === "create" ? !admin : !project || (kind === "archive" ? !project.permissions.administrar : !project.permissions.editar || project.archivado)) return;
     const draft = initialForm(kind, project, item);
-    if((kind==='create'||kind==='deliverable-approve')&&typeof crypto?.randomUUID!=='function'){setMessage('No se puede generar una solicitud segura. No se envió ningún cambio.');return;}
+    if((kind==='create'||kind==='deliverable-approve'||isProjectChildCreation(kind))&&typeof crypto?.randomUUID!=='function'){setMessage('No se puede generar una solicitud segura. No se envió ningún cambio.');return;}
     if(kind==='deliverable-approve'&&(!item?.contenido_hash||item.aprobacion_versionada))return;
     const next = { seq: ++formSequence.current, kind, scope, observedDeliverable:kind==='deliverable-approve'?Object.freeze({...item}):null,projectId: project?.id, baseRevision: project?.revision, admin: project?.permissions.administrar === true,
-      childId: item?.id, itemTitle: item?.titulo, originalStageIds: project?.etapas.map(stage => stage.id), requestId: kind === "create"||kind==='deliverable-approve' ? crypto.randomUUID() : undefined,
+      childId: item?.id, itemTitle: item?.titulo, originalStageIds: project?.etapas.map(stage => stage.id), requestId: kind === "create"||kind==='deliverable-approve'||isProjectChildCreation(kind) ? crypto.randomUUID() : undefined,
       draft, initial: structuredClone(draft), busy: false, error: "", conflict: false, reviewed: false, observedTask: null };
     setForm(next); formRef.current = next; setMessage("");
     if ((kind === "create" || (kind === "project" && next.admin)) && catalog.status !== "ready") void loadCatalog();
@@ -350,7 +350,7 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   }
   function adoptRevision() {
     if (!project || !form?.reviewed) return;
-    if(form.kind==='deliverable-approve')return;
+    if(form.kind==='deliverable-approve'||isProjectChildCreation(form.kind))return;
     if (form.kind === "order" && (form.originalStageIds.length !== project.etapas.length || form.originalStageIds.some(id => !project.etapas.some(stage => stage.id === id)))) {
       setForm(current => ({ ...current, error: "Cambió la lista de etapas. Cerrá este formulario y volvé a ordenar las etapas actuales." })); return;
     }
@@ -362,19 +362,20 @@ function ProjectsSession({ sesion, onNavigate, request }) {
     if (!current || !current.scope.current()||current.busy || current.conflict || mutationBusy.current||current.uncertain&&!verify||verify&&!current.frozenMutation) return;
     try {
       const mutation = current.frozenMutation||buildProjectMutation(current);
-      const receipted=current.kind==='create'||current.kind==='deliverable-approve';
+      const receipted=current.kind==='create'||current.kind==='deliverable-approve'||isProjectChildCreation(current.kind);
       mutationBusy.current = true;
       detailReadGeneration.current++;transport.cancel('detail');
       setDetail(value=>value.status==='loading'?{...value,status:value.data?'ready':'idle'}:value);
       const sending={...current,busy:true,error:'',...(receipted?{frozenMutation:JSON.parse(JSON.stringify(mutation))}:{})};formRef.current=sending;setForm(sending);
       const value = await transport.write(mutation,current.scope);
       if (value === undefined || !current.scope.current()||formRef.current?.seq !== current.seq) return;
-      const data = current.kind==='deliverable-approve'?parseProjectDeliverableApproval(value,current,sesion.usuario.id):parseProject(value.proyecto, true);
+      const data = current.kind==='deliverable-approve'?parseProjectDeliverableApproval(value,current,sesion.usuario.id)
+        :isProjectChildCreation(current.kind)?parseProjectChildCreation(value,current,sesion.usuario.id):parseProject(value.proyecto, true);
       if (current.kind !== "create" && data.id !== current.projectId) throw new Error("Proyecto incompatible.");
       setForm(null); formRef.current = null;
       if (current.kind === "create") selectProject(data.id);
       setDetail({ status: "ready", data, error: "" });
-      setMessage(current.kind==='deliverable-approve'?'Aprobación registrada para la versión revisada. Se muestra el estado actual del proyecto.':value.idempotent ? "El proyecto ya estaba creado. Mostramos su estado actual." : "Cambios guardados.");
+      setMessage(current.kind==='deliverable-approve'?'Aprobación registrada para la versión revisada. Se muestra el estado actual del proyecto.':isProjectChildCreation(current.kind)?'Creación verificada. Se muestra el estado actual del proyecto.':value.idempotent ? "El proyecto ya estaba creado. Mostramos su estado actual." : "Cambios guardados.");
       setListRefresh(version => version + 1);
     } catch (error) {
       if(!current.scope.current())return;

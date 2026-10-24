@@ -248,6 +248,12 @@ async function fixtureChild() {
   // the test snapshots populated rows and applies the actual forward SQL.
   // No migration ledger entry is forged; all other baseline files run normally.
   const deferredMigrations = [
+    // 088 references063. Keep historical project/related upgrades additive;
+    // their owning tests apply the forward receipt SQL after preservation.
+    ...(['RENDER2_DEFER_PROJECTS_MIGRATION',
+      'RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION','RENDER2_DEFER_GOAL_MIGRATION',
+      'RENDER2_DEFER_TASK_STATE_MIGRATION','RENDER2_DEFER_PRODUCTION_EDITORIAL_MIGRATION']
+      .some(key => process.env[key] === 'true') ? ['088_project_child_create_receipts.sql'] : []),
     ...(['RENDER2_DEFER_PROJECT_DELIVERABLE_APPROVAL_MIGRATION','RENDER2_DEFER_PROJECTS_MIGRATION',
       'RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION','RENDER2_DEFER_GOAL_MIGRATION',
       'RENDER2_DEFER_TASK_STATE_MIGRATION','RENDER2_DEFER_PRODUCTION_EDITORIAL_MIGRATION']

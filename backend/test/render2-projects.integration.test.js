@@ -84,6 +84,20 @@ test('principal projects: additive history, ID authority, atomic CRUD and recipr
     assert.deepEqual(await fixture.query('SELECT * FROM proyecto_entregable_aprobaciones'), []);
     projectTables.push('proyecto_entregable_aprobaciones');
   });
+  await t.test('088 follows063/079 preservation with empty immutable actor-scoped creation receipts', async () => {
+    assert.deepEqual(await fixture.query("SELECT to_regclass('public.project_child_create_receipts') AS relation"), [{ relation: null }]);
+    const before = await snapshot();
+    await fixture.query(await readFile(new URL('../migrations/088_project_child_create_receipts.sql', import.meta.url), 'utf8'));
+    assert.deepEqual(await snapshot(), before);
+    assert.deepEqual(await fixture.query('SELECT * FROM project_child_create_receipts'), []);
+    assert.deepEqual(await fixture.query(`SELECT column_name,data_type FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='project_child_create_receipts' ORDER BY column_name`), [
+      ['actor_id','integer'], ['committed_at','timestamp with time zone'], ['expected_revision','integer'], ['payload_hash','text'],
+      ['proyecto_id','uuid'], ['recurso_id','uuid'], ['recurso_tipo','text'], ['request_id','uuid'],
+    ].map(([column_name,data_type]) => ({column_name,data_type})));
+    await fixture.query("INSERT INTO public._migrations(nombre) VALUES ('088_project_child_create_receipts.sql')");
+    projectTables.push('project_child_create_receipts');
+  });
   const read = async (id, token = admin) => ok(await api(`/proyectos/${id}`, undefined, token, 'GET')).proyecto;
   const createBody = (extra = {}) => ({ request_id: crypto.randomUUID(), titulo: `QA project ${++serial}`, cliente_id: client.id,
     responsable_id: ids.responsible, tipo: 'web', descripcion: 'QA shared operational description',
@@ -94,7 +108,15 @@ test('principal projects: additive history, ID authority, atomic CRUD and recipr
   };
   const mutate = async (id, path, body, token = admin, method = path ? 'POST' : 'PATCH') => {
     const current = await read(id); const beforeEvents = (await fixture.query('SELECT count(*)::int AS n FROM proyecto_actividad WHERE proyecto_id=$1', [id]))[0].n;
-    const result = ok(await api(`/proyectos/${id}${path}`, { expected_revision: current.revision, ...body }, token, method), method === 'POST' ? [201] : [200]);
+    const childCreate = method === 'POST' && ['/etapas', '/hitos', '/entregables'].includes(path);
+    const payload = { expected_revision: current.revision, ...(childCreate ? { request_id: crypto.randomUUID() } : {}), ...body };
+    const result = ok(await api(`/proyectos/${id}${path}`, payload, token, method), method === 'POST' ? [201] : [200]);
+    if (childCreate) {
+      assert.equal(result.replayed, false);
+      assert.deepEqual(result.creacion, { request_id: payload.request_id, proyecto_id: id, recurso_tipo: path.slice(1), recurso_id: result.creacion.recurso_id,
+        actor_id: token === responsible ? ids.responsible : 91001, expected_revision: payload.expected_revision });
+      assert.ok(result.proyecto[path.slice(1)].some(item => item.id === result.creacion.recurso_id));
+    }
     assert.equal(result.proyecto.revision, current.revision + 1, 'Each mutation advances parent revision exactly once');
     assert.equal((await fixture.query('SELECT count(*)::int AS n FROM proyecto_actividad WHERE proyecto_id=$1', [id]))[0].n, beforeEvents + 1);
     return result.proyecto;
@@ -159,6 +181,80 @@ test('principal projects: additive history, ID authority, atomic CRUD and recipr
     try { assert.equal(ok(await api('/proyectos', main.body)).proyecto.id, main.project.id); }
     finally { await fixture.query('UPDATE clientes SET activo=true WHERE id=$1', [client.id]); }
   });
+  await t.test('child creation lost-ACK recovery and concurrent replay preserve exact intent, actor, current content and one activity', async () => {
+    for (const kind of ['etapas', 'hitos', 'entregables']) {
+      const own = await create({ titulo: `QA168 receipts ${kind}` });
+      const path = `/proyectos/${own.project.id}/${kind}`;
+      const payload = { request_id: crypto.randomUUID(), expected_revision: own.project.revision, titulo: `QA168 ${kind}` };
+      const missing = { ...payload }; delete missing.request_id;
+      const beforeMissing = await snapshot(); assert.equal((await api(path, missing, responsible)).status, 428); assert.deepEqual(await snapshot(), beforeMissing);
+      // The first response is deliberately not used to construct the retry.
+      const committed = await api(path, payload, responsible); assert.equal(committed.status, 201);
+      const afterCommit = await snapshot();
+      const replay = ok(await api(path, payload, responsible));
+      assert.equal(replay.replayed, true); assert.deepEqual(await snapshot(), afterCommit);
+      assert.deepEqual(replay.creacion, { request_id: payload.request_id, proyecto_id: own.project.id, recurso_tipo: kind,
+        recurso_id: committed.body.creacion.recurso_id, actor_id: ids.responsible, expected_revision: payload.expected_revision });
+      const resource = replay.creacion.recurso_id;
+      assert.equal(replay.proyecto[kind].filter(item => item.id === resource).length, 1);
+      assert.equal((await fixture.query('SELECT count(*)::int AS n FROM proyecto_actividad WHERE proyecto_id=$1 AND recurso_id=$2', [own.project.id, resource]))[0].n, 1);
+      const [receipt] = await fixture.query('SELECT * FROM project_child_create_receipts WHERE actor_id=$1 AND request_id=$2', [ids.responsible, payload.request_id]);
+      assert.equal(receipt.recurso_id, resource); assert.match(receipt.payload_hash, /^[0-9a-f]{64}$/); assert.ok(receipt.committed_at);
+      assert.equal(receipt.payload_hash, crypto.createHash('sha256').update(JSON.stringify([own.project.id, kind,
+        { expected_revision: payload.expected_revision, titulo: payload.titulo }])).digest('hex'));
+      for (const different of [{ titulo: 'Changed intent' }, { expected_revision: payload.expected_revision + 1 }]) {
+        const before = await snapshot(); assert.equal((await api(path, { ...payload, ...different }, responsible)).status, 409); assert.deepEqual(await snapshot(), before);
+      }
+      const beforeCrossScope = await snapshot();
+      assert.equal((await api(`/proyectos/${own.project.id}/${kind === 'etapas' ? 'hitos' : 'etapas'}`, payload, responsible)).status, 409);
+      assert.equal((await api(`/proyectos/${second.project.id}/${kind}`, payload, responsible)).status, 409);
+      assert.deepEqual(await snapshot(), beforeCrossScope);
+      const changed = await mutate(own.project.id, `/${kind}/${resource}`, { titulo: 'Later content survives replay' }, responsible, 'PATCH');
+      const beforeCurrentReplay = await snapshot();
+      const currentReplay = ok(await api(path, payload, responsible));
+      assert.equal(currentReplay.proyecto.revision, changed.revision);
+      assert.equal(currentReplay.proyecto[kind].find(item => item.id === resource).titulo, 'Later content survives replay');
+      assert.deepEqual(await snapshot(), beforeCurrentReplay);
+      const next = { request_id: crypto.randomUUID(), expected_revision: changed.revision, titulo: 'Concurrent exact intent' };
+      const concurrent = await Promise.all([api(path, next, responsible), api(path, next, responsible)]);
+      assert.deepEqual(concurrent.map(result => result.status).sort(), [200, 201]);
+      assert.equal(concurrent[0].body.creacion.recurso_id, concurrent[1].body.creacion.recurso_id);
+      assert.equal((await fixture.query('SELECT count(*)::int AS n FROM proyecto_actividad WHERE proyecto_id=$1 AND recurso_id=$2', [own.project.id, concurrent[0].body.creacion.recurso_id]))[0].n, 1);
+      // Actor scope: another authorized actor may use the same UUID as a new intent.
+      const observed = await read(own.project.id);
+      const adminResult = ok(await api(path, { ...next, expected_revision: observed.revision }), [201]);
+      assert.equal(adminResult.creacion.actor_id, 91001); assert.notEqual(adminResult.creacion.recurso_id, concurrent[0].body.creacion.recurso_id);
+      assert.equal((await fixture.query('SELECT count(*)::int AS n FROM project_child_create_receipts WHERE request_id=$1', [next.request_id]))[0].n, 2);
+      await mutate(own.project.id, '', { responsable_id: ids.extra }, admin, 'PATCH');
+      const revoked = await snapshot(); assert.equal((await api(path, payload, responsible)).status, 403); assert.deepEqual(await snapshot(), revoked);
+      for (const sql of ['UPDATE project_child_create_receipts SET payload_hash=payload_hash WHERE actor_id=$1 AND request_id=$2', 'DELETE FROM project_child_create_receipts WHERE actor_id=$1 AND request_id=$2']) {
+        const beforeImmutableAttempt = await snapshot();
+        await assert.rejects(fixture.query(sql, [ids.responsible, payload.request_id]), /^Error: Project child creation receipts are immutable$/);
+        assert.deepEqual(await snapshot(), beforeImmutableAttempt);
+      }
+      assert.deepEqual((await fixture.query('SELECT * FROM project_child_create_receipts WHERE actor_id=$1 AND request_id=$2', [ids.responsible, payload.request_id]))[0], receipt);
+    }
+  });
+  await t.test('child receipt replay precedes cap but missing children remain tombstones, never resurrected', async () => {
+    for (const [kind, table, cap] of [['etapas', 'proyecto_etapas', 100], ['hitos', 'proyecto_hitos', 200], ['entregables', 'proyecto_entregables', 200]]) {
+      const own = await create({ titulo: `QA168 cap ${kind}` }); const path = `/proyectos/${own.project.id}/${kind}`;
+      const input = { request_id: crypto.randomUUID(), expected_revision: own.project.revision, titulo: 'Original cap survivor' };
+      const first = ok(await api(path, input), [201]); const child = first.creacion.recurso_id;
+      if (kind === 'etapas') await fixture.query(`INSERT INTO ${table}(id,proyecto_id,titulo,posicion)
+        SELECT gen_random_uuid(),$1,'QA cap stage '||n,n FROM generate_series(1,$2::int) n`, [own.project.id, cap - 1]);
+      else await fixture.query(`INSERT INTO ${table}(id,proyecto_id,titulo)
+        SELECT gen_random_uuid(),$1,'QA cap resource '||n FROM generate_series(1,$2::int) n`, [own.project.id, cap - 1]);
+      const before = await snapshot(); const replay = ok(await api(path, input)); assert.equal(replay.replayed, true); assert.deepEqual(await snapshot(), before);
+      const observed = await read(own.project.id);
+      assert.equal((await api(path, { ...input, request_id: crypto.randomUUID(), expected_revision: observed.revision })).status, 409);
+      assert.deepEqual(await snapshot(), before);
+      const receipts = await fixture.query('SELECT * FROM project_child_create_receipts WHERE proyecto_id=$1 ORDER BY actor_id,request_id', [own.project.id]);
+      await fixture.query(`DELETE FROM ${table} WHERE proyecto_id=$1 AND id=$2`, [own.project.id, child]);
+      const deleted = await snapshot(); assert.equal((await api(path, input)).status, 409); assert.deepEqual(await snapshot(), deleted);
+      assert.deepEqual(await fixture.query('SELECT * FROM project_child_create_receipts WHERE proyecto_id=$1 ORDER BY actor_id,request_id', [own.project.id]), receipts);
+      assert.deepEqual(await fixture.query(`SELECT id FROM ${table} WHERE id=$1`, [child]), []);
+    }
+  });
   await t.test('stage/milestone/deliverable CRUD and reorder enforce parent IDs and preserve explicit approval history', async () => {
     let project = await mutate(main.project.id, '/etapas', { titulo: 'QA design stage' }, responsible);
     stageId = project.etapas.find(item => item.titulo === 'QA design stage').id;
@@ -193,14 +289,14 @@ test('principal projects: additive history, ID authority, atomic CRUD and recipr
     assert.ok(historyRows.some(row => row.actor_id === ids.responsible && row.estado_anterior === 'aprobado' && row.estado_nuevo === 'correcciones'));
     const foreign = await mutate(second.project.id, '/etapas', { titulo: 'QA foreign stage' });
     const before = await snapshot();
-    const bad = await api(`/proyectos/${main.project.id}/hitos`, { expected_revision: project.revision, titulo: 'Forbidden foreign stage', etapa_id: foreign.etapas[0].id });
+    const bad = await api(`/proyectos/${main.project.id}/hitos`, { request_id: crypto.randomUUID(), expected_revision: project.revision, titulo: 'Forbidden foreign stage', etapa_id: foreign.etapas[0].id });
     assert.ok([400, 404, 409].includes(bad.status)); assert.deepEqual(await snapshot(), before);
     safeProject(await read(main.project.id, member));
   });
   await t.test('all parent mutations use exact CAS and concurrent edits have one winner', async () => {
     const current = await read(main.project.id); const before = await snapshot();
     assert.equal((await api(`/proyectos/${main.project.id}`, { titulo: 'Missing CAS' }, responsible, 'PATCH')).status, 400);
-    assert.equal((await api(`/proyectos/${main.project.id}/etapas`, { expected_revision: current.revision - 1, titulo: 'Stale stage' }, responsible)).status, 409);
+    assert.equal((await api(`/proyectos/${main.project.id}/etapas`, { request_id: crypto.randomUUID(), expected_revision: current.revision - 1, titulo: 'Stale stage' }, responsible)).status, 409);
     assert.deepEqual(await snapshot(), before);
     const results = await Promise.all(['one', 'two'].map(value => api(`/proyectos/${main.project.id}`, { expected_revision: current.revision, descripcion: `QA concurrent ${value}` }, responsible, 'PATCH')));
     assert.deepEqual(results.map(r => r.status).sort(), [200, 409]); assert.equal((await read(main.project.id)).revision, current.revision + 1);
@@ -438,7 +534,7 @@ test('principal projects: additive history, ID authority, atomic CRUD and recipr
   });
   await t.test('audit and child failures roll back parent CAS, rows and history then permit exact explicit retry', async () => {
     for (const table of ['proyecto_actividad', 'proyecto_hitos']) {
-      const project = await read(main.project.id); const payload = { expected_revision: project.revision, titulo: `QA rollback ${table}`, etapa_id: stageId };
+      const project = await read(main.project.id); const payload = { request_id: crypto.randomUUID(), expected_revision: project.revision, titulo: `QA rollback ${table}`, etapa_id: stageId };
       await fixture.query(`CREATE FUNCTION qa_project_fail() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN RAISE EXCEPTION 'QA project injected failure' USING ERRCODE='XX000'; END $$;
         CREATE TRIGGER qa_project_fail BEFORE INSERT ON ${table} FOR EACH ROW EXECUTE FUNCTION qa_project_fail()`);
@@ -490,7 +586,7 @@ test('principal projects: additive history, ID authority, atomic CRUD and recipr
     for (const query of ['limit=101', 'limit=0', 'offset=-1', 'estado=unknown', 'cliente_id=0']) assert.equal((await api(`/proyectos?${query}`, undefined, member, 'GET')).status, 400);
     const before = await snapshot(); const detail = await read(main.project.id, await login('qa_project_homonym')); safeProject(detail); assert.deepEqual(await snapshot(), before);
     const archived = await mutate(second.project.id, '', { archivado: true });
-    const beforeDenied = await snapshot(); assert.equal((await api(`/proyectos/${second.project.id}/etapas`, { expected_revision: archived.revision, titulo: 'Denied archived' }, responsible)).status, 403); assert.deepEqual(await snapshot(), beforeDenied);
+    const beforeDenied = await snapshot(); assert.equal((await api(`/proyectos/${second.project.id}/etapas`, { request_id: crypto.randomUUID(), expected_revision: archived.revision, titulo: 'Denied archived' }, responsible)).status, 403); assert.deepEqual(await snapshot(), beforeDenied);
     assert.equal((await api('/proyectos?archivados=true', undefined, member, 'GET')).status, 403);
     assert.ok(ok(await api('/proyectos?archivados=true', undefined, admin, 'GET')).proyectos.some(project => project.id === second.project.id));
     await mutate(second.project.id, '', { archivado: false });
@@ -510,7 +606,7 @@ test('principal projects: additive history, ID authority, atomic CRUD and recipr
     assert.equal(full.etapas.length, 100); assert.equal(full.hitos.length, 200); assert.equal(full.entregables.length, 200); assert.equal(full.tareas.length, 200);
     for (const child of ['etapas', 'hitos', 'entregables']) {
       const beforeFull = await snapshot();
-      assert.equal((await api(`/proyectos/${capId}/${child}`, { expected_revision: full.revision, titulo: 'QA beyond explicit bound' })).status, 409);
+      assert.equal((await api(`/proyectos/${capId}/${child}`, { request_id: crypto.randomUUID(), expected_revision: full.revision, titulo: 'QA beyond explicit bound' })).status, 409);
       assert.deepEqual(await snapshot(), beforeFull);
     }
     const extraTask = await seedTask(); const beforeFull = await snapshot();
@@ -527,7 +623,7 @@ test('principal projects: additive history, ID authority, atomic CRUD and recipr
       const before = await snapshot(); assert.ok([400, 422].includes((await api('/proyectos', createBody(invalid))).status)); assert.deepEqual(await snapshot(), before);
     }
     for (const url of ['javascript:alert(1)', 'https://user:password@example.invalid/file']) {
-      const before = await snapshot(); assert.ok([400, 422].includes((await api(`/proyectos/${main.project.id}/entregables`, { expected_revision: (await read(main.project.id)).revision, titulo: 'QA unsafe URL', url })).status)); assert.deepEqual(await snapshot(), before);
+      const before = await snapshot(); assert.ok([400, 422].includes((await api(`/proyectos/${main.project.id}/entregables`, { request_id: crypto.randomUUID(), expected_revision: (await read(main.project.id)).revision, titulo: 'QA unsafe URL', url })).status)); assert.deepEqual(await snapshot(), before);
     }
     const extra = await login('qa_project_extra'); await fixture.query("UPDATE usuarios SET rol='qa_unknown' WHERE id=$1", [ids.extra]);
     try { assert.equal((await api(`/proyectos/${main.project.id}`, undefined, extra, 'GET')).status, 403); }

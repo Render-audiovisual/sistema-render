@@ -13,6 +13,8 @@ const fail = message => { throw new Error(message); };
 const invalid = () => fail("La respuesta de Proyectos no es válida. Volvé a consultar.");
 const contentHash = value => typeof value === 'string' && value.length === 64 && /^[a-f0-9]{64}$/.test(value);
 const pgRevision = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
+const PROJECT_CHILD_CREATIONS = { 'stage-create': 'etapas', 'milestone-create': 'hitos', 'deliverable-create': 'entregables' };
+export const isProjectChildCreation = kind => Object.hasOwn(PROJECT_CHILD_CREATIONS, kind);
 const date = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T12:00:00Z`)) && new Date(`${value}T12:00:00Z`).toISOString().slice(0, 10) === value;
 const string = value => typeof value === "string";
 const nullableDate = value => value === null || date(value);
@@ -212,7 +214,28 @@ export function buildProjectMutation(form) {
       }
     }
   }
-  return { method, path, body: { expected_revision: form.baseRevision, ...changes } };
+  if (isProjectChildCreation(form.kind) && !isProjectId(form.requestId)) fail('Falta el identificador de este intento de creación.');
+  return { method, path, body: { expected_revision: form.baseRevision,
+    ...(isProjectChildCreation(form.kind) ? { request_id: form.requestId } : {}), ...changes } };
+}
+
+// Receipt binds the immutable creation intent, not the child's current content:
+// an explicit replay may legitimately return a subsequently edited resource.
+export function parseProjectChildCreation(value, form, actorId) {
+  const receipt = value?.creacion;
+  const keys = ['request_id', 'proyecto_id', 'recurso_tipo', 'recurso_id', 'actor_id', 'expected_revision'];
+  if (!isProjectChildCreation(form.kind) || !isProjectId(form.projectId) || !isProjectId(form.requestId)
+    || !pgRevision(form.baseRevision) || !pgRevision(actorId) || typeof value?.replayed !== 'boolean'
+    || !receipt || typeof receipt !== 'object' || Array.isArray(receipt)
+    || Object.keys(receipt).length !== keys.length || !keys.every(key => own(receipt, key))
+    || receipt.request_id !== form.requestId || receipt.proyecto_id !== form.projectId
+    || receipt.recurso_tipo !== PROJECT_CHILD_CREATIONS[form.kind] || !isProjectId(receipt.recurso_id)
+    || receipt.actor_id !== actorId || receipt.expected_revision !== form.baseRevision) invalid();
+  const project = parseProject(value.proyecto, true);
+  if (project.id !== form.projectId || project.revision <= form.baseRevision
+    || !value.replayed && project.revision !== form.baseRevision + 1
+    || !project[receipt.recurso_tipo].some(child => child.id === receipt.recurso_id)) invalid();
+  return project;
 }
 
 export function buildProjectDeliverableApproval(form){

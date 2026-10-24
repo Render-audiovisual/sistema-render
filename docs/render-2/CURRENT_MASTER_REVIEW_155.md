@@ -30,6 +30,8 @@ Integrador: cambios y pruebas de Seguimiento, contraste directo de hallazgos y e
 
 Actualización167: hay evidencia nativa de drop en la página real para revisión sin escritura, orden antes de tarjeta y final de columna. Las dos operaciones de orden enviaron un POST cada una mediante el adaptador/modelo reales y leyeron el nuevo orden; la recarga conservó la API sintética en memoria, no PostgreSQL. Se corrigió además el avance de columna móvil ante movimientos bloqueados mediante resultados admitidos explícitos. Ver BOARD_NATIVE_DROP_QA.md. Pasaron41 focales frontend y29 backend,2335 frontend,1956 backend/119 omitidas y build. El gate combinado navegador/PostgreSQL, audiovisual nativo conectado y aceptación global siguen abiertos; no hubo migración, limpieza IPC ni despliegue.
 
+Actualización168: las altas de etapas/hitos/entregables usan UUID, recibo transaccional por actor y recuperación explícita sin rebase. Ver PROJECT_CHILD_CREATION_QA.md. Pasaron2346 frontend,1969 backend/119 omitidas, build y39 comprobaciones físicas de Proyectos/aprobaciones/calendario sobre clústeres temporales nuevos. La prueba visual de escritorio/móvil usó API sintética y no equivale al recorrido nativo conectado. El usuario autorizó liberar solo huérfanos verificados; se retiraron cuatro segmentos sin conexiones, dejando intactos ambos PostgreSQL previos. Se recuperó capacidad para QA físico. Migración088 aplicada solo en fixtures, no en bases existentes. Se registra un P2 de editor oculto ante error no403 de refresh; continúan los gates globales y no hubo despliegue.
+
 ## Matriz de requisitos: qué prueba la evidencia actual
 
 | Requisito maestro | Evidencia actual | Estado y evidencia todavía necesaria |
