@@ -38,6 +38,8 @@ Actualización171: el mismo fixture nativo conectado completó los ciclos de tar
 
 Actualización172: corregido el recorte móvil de filtros del calendario observado en171, sin cambiar lógica ni datos. Ver CALENDAR_MOBILE_FILTERS_QA.md. Pasaron52 focales,2361 frontend y build; aplicación canónica con cookie/API/PostgreSQL reales verificó320/390/600/601/1440px, recarga y Atrás. El fixture de agenda vacía no repite el circuito editorial; terminó exit0 con cero tareas/eventos y cleanup absent:true. Permanecen abiertos los demás gates globales y no hubo despliegue.
 
+Actualización173: comprobado el gate concreto de orden nativo con PostgreSQL real: aplicación/cookie/API canónicas, arrastre1 antes de2 y al final, dos recibos, revisiones de orden2/3, recarga y lectura compartida desde nueva sesión HTTP. Tareas/asignaciones intactas, cero entidades editoriales en la cohorte. Ver BOARD_NATIVE_DROP_QA.md. El fixture terminó exit0 y cleanup absent:true. No se afirma un POST por gesto sin registro de red ni aceptación de todo drag/roles/móvil. Solo documentación de evidencia, sin cambios de producto ni despliegue; aceptación global abierta.
+
 ## Matriz de requisitos: qué prueba la evidencia actual
 
 | Requisito maestro | Evidencia actual | Estado y evidencia todavía necesaria |

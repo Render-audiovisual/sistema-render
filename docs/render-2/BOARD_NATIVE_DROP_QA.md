@@ -1,5 +1,7 @@
 # Arrastre nativo y navegación del tablero
 
+Actualización conectada: la sección final incorpora dos movimientos nativos con la aplicación canónica, sesión real y PostgreSQL temporal. Los apartados anteriores conservan la evidencia sintética de167; sus límites no describen el nuevo fixture físico.
+
 El tablero real recibió drops nativos para abrir revisión, ubicar una tarjeta antes de otra y enviarla al final de su columna. Las operaciones de orden utilizaron el adaptador y el modelo reales, con un POST por gesto y lectura posterior. El transporte HTTP es sintético y conserva datos en memoria; no acredita persistencia en PostgreSQL ni autenticación real.
 
 ## Corrección de navegación compacta
@@ -39,3 +41,19 @@ La revisión independiente no identificó nuevos P1/P2 en el delta. Las pruebas 
 El gate nativo de recepción y despacho de orden ya tiene evidencia. El gate combinado navegador y PostgreSQL sigue abierto: la recarga aquí conserva memoria del servidor sintético, no almacenamiento físico. También siguen pendientes el recorrido audiovisual nativo conectado, aceptación visual global y proveedores/cuentas autorizados. El botón Actualizar tarea para revisar conserva el pendiente visual anterior.
 
 No se aplicaron migraciones, limpiaron segmentos IPC, alteraron bases existentes ni desplegó producción. El bloqueo de recursos PostgreSQL y la autorización pendiente no permiten detener procesos ajenos. Render2 completo permanece activo y sin certificación global.
+
+## Orden compartido con PostgreSQL y navegador reales
+
+El scaffold `/private/tmp/render2-board173-native.mjs` inició un fixture nuevo en55831, HTTP52799, raíz `/private/tmp/render2-local-izRlmD`. Verificó identidad exacta antes de preparar dos tareas por SQL de fixture, IDs1 y2, responsables91001, estado pendiente y revisión1. La preparación no se presenta como alta nativa. La aplicación servida fue el build canónico index-gpBnBq_Z.js, sin reemplazar sesión, adaptadores ni API. Login qa_franco obtuvo cookie real.
+
+En1280×900 se seleccionó Manual. El orden inicial visible era `[2,1]`, fallback por fecha e ID. Arrastrar1 desde el handle observado `(453,640)` al margen interior de2 `(468,435)` mostró Orden guardado y `[1,2]`. El observador READ ONLY independiente `/private/tmp/render2-board173-observe.mjs before-card` verificó identidad, vector `[1,2]`, revisión2 y un recibo de actor91001, task_id1, before_id2 y changed:true. Las tareas conservaron pendiente/revisión1, responsables originales y cero filas en publicaciones/historias/casilleros/eventos editoriales.
+
+El aviso posterior cambió la geometría. Un intento desde la posición anterior no movió nada; no cuenta como gesto exitoso. Tras inspeccionar rectángulos y hit testing actuales, el arrastre desde `(453,500)` hasta `(483,866)` movió1 al final. El observador `end` comprobó vector `[2,1]`, revisión3 y exactamente dos recibos distintos, el segundo con before_id:null. Continuaron intactos estados, revisiones y responsables, con las entidades editoriales vacías.
+
+La recarga volvió a mostrar `[2,1]` y Manual en la URL. Captura inspeccionada: `/private/tmp/render2-board173-reloaded.png`. Una nueva sesión HTTP de qa_designer leyó el mismo orden del endpoint real, HTTP200, X-Task-Order-Revision3, X-Total-Count2 y snapshot con formato válido. No se exige que snapshots de identidades distintas sean iguales.
+
+Resultados locales: `/private/tmp/render2-board173-before-card.json`, `/private/tmp/render2-board173-end.json` y `/private/tmp/render2-board173-reader.json`. Un recibo no demuestra un único POST porque el replay puede compartirlo; no se capturó la red para afirmar cantidad exacta de solicitudes. Los movimientos provinieron de drag nativo mediante CUA, no de eventos JS inyectados; este corte no instrumentó isTrusted. Las pruebas de protocolo previas cubren recibos y concurrencia, pero no se repitieron sus suites completas aquí.
+
+Carver revisó el contrato y los límites del observador; el coordinador hizo las interacciones y lecturas aisladas. El proceso propio7689 se verificó antes de SIGTERM. El handle17319 terminó exit0, confirmó las tareas intactas y orden3/[2,1], y cleanup absent:true/ENOENT del directorio generado. El viewport se restauró y la pestaña158 se cerró. Migraciones solo en el fixture nuevo; ningún PostgreSQL previo ni producción se modificó.
+
+Esta evidencia cierra el pendiente concreto de combinar orden nativo antes de tarjeta/al final con persistencia física y recarga. No certifica todos los movimientos de estado, móvil, todos los permisos, grandes colecciones ni aceptación visual global. El recorrido audiovisual conectado tiene evidencia posterior en NATIVE_THREE_VIDEO_PROGRESS.md; no continúa bloqueado por el límite SysV histórico de167. Render2 completo permanece abierto.
