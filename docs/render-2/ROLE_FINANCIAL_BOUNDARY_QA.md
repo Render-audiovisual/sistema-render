@@ -1,5 +1,7 @@
 # Permisos financieros por rol
 
+Actualización196: COOKIE_ROLE_FINANCIAL_BOUNDARY_QA.md agrega la matriz física por cookie, sueldo/tarifas, acuerdo mensual y revocación, con53 comprobaciones físicas vigentes de su alcance. La matriz bearer y sus resultados históricos descritos debajo no se convierten en pruebas de navegador ni se suman como nuevas ejecuciones.
+
 La matriz local verificó que Diseño, Edición, Producción, Community y Programación pueden consultar los datos operativos probados sin recibir importes financieros privados. Los cinco roles tienen denegadas las rutas financieras y administrativas incluidas en la prueba. Franco QA y Agustín QA conservan acceso a importes genuinos de la base de prueba. No se encontró una fuga nueva en este alcance ni se modificó código del producto.
 
 ## Contratos verificados
