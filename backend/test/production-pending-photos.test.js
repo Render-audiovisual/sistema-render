@@ -10,15 +10,23 @@ const photo = extra => ({ id: '11111111-1111-4111-8111-111111111111',
   fecha: '2026-10-19', cliente_id: 7, cliente_nombre: 'QA', ...extra });
 function fixture({ photos = [], videos = [], error } = {}) {
   const calls = [];
-  const pool = { async query(sql, params) {
+  let currentAuth;
+  const db = { async query(sql, params) {
+    if (['BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY', 'COMMIT', 'ROLLBACK'].includes(sql)) return { rows: [] };
+    if (sql === 'SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1') {
+      assert.deepEqual(params, [currentAuth.id]);
+      return { rows: [{ ...currentAuth, activo: true }] };
+    }
     calls.push({ sql, params });
     if (sql.includes('FROM produccion_fotos pf')) { if (error) throw error; return { rows: photos }; }
     if (sql.includes('FROM produccion_videos pv')) return { rows: videos };
     throw new Error(`Unexpected SQL ${sql}`);
-  }, connect() { throw new Error('Read must not lease a mutation transaction'); } };
+  }, release() {} };
+  const pool = { query() { assert.fail('Pending reads must use the snapshot lease'); }, async connect() { return db; } };
   const router = createProductionRegistryRouter({ express, pool });
   return { calls, async run(query = {}, auth = { id: 11, rol: 'edicion' }) {
-    const req = { query, auth }, res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
+    currentAuth = auth ? { session_version: 1, ...auth } : auth;
+    const req = { query, auth: currentAuth }, res = { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };
     let allowed = false;
     router.stack[0].handle(req, res, () => { allowed = true; });
     if (allowed) await router.stack.find(l => l.route?.path === '/pendientes').route.stack[0].handle(req, res, e => { throw e; });

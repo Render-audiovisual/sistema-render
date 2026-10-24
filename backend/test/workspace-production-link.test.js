@@ -6,6 +6,7 @@ import {canonicalTaskState} from '../../frontend/src/features/render-os/constant
 import {getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask} from '../../frontend/src/features/render-os/utils/task-content.js';
 import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
 import {verifiedProductionDraftVisit} from '../../frontend/src/pages/productionDraft.js';
+import {createProductionVisitObserver} from '../../frontend/src/pages/productionVisitObservation.js';
 import {productionLocation,productionCalendarDay,assertProductionClient} from '../../frontend/src/pages/productionRouteContext.js';
 import {workspaceBriefSave} from './helpers/workspace-brief-fixture.js';
 const session={token:'synthetic-production-link',usuario:{id:1,rol:'admin',activo:true}};
@@ -167,7 +168,8 @@ function visitLoader(request, {href=`https://render.test/producciones?visita=${i
   const historyEvents=[],window={location:{href},history:{state:{existing:1}}};
   for(const method of ['pushState','replaceState'])window.history[method]=(saved,title,url)=>{historyEvents.push(method);window.location.href=String(url);};
   const write=new Function('window','notifyViewPreferenceChange',`${locationFns}return writeProductionLocation;`)(window,notifyViewPreferenceChange);
-  const context={mayLeave:()=>true,openVersion,assertProductionClient,productionLocation,window,clientId,tab,setCreating:()=>{},setSelected:value=>{state.selected=value;},setDetailLoading:value=>{state.busy=value;},setError:value=>{state.error=value;},
+  const observer=createProductionVisitObserver(()=>0);
+  const context={observeProductionVisit:value=>observer.observe(value),mayLeave:()=>true,openVersion,assertProductionClient,productionLocation,window,clientId,tab,setCreating:()=>{},setSelected:value=>{state.selected=value;},setDetailLoading:value=>{state.busy=value;},setError:value=>{state.error=value;},
     setMonth:value=>{state.month=value;},setDay:value=>{state.day=value;},verifiedProductionDraftVisit,apiRequest:request,writeProductionLocation:value=>{writes.push(value);write(value);}};
   const open=new Function(...Object.keys(context),`${extract(productions,'  const openVisit =','  const restoreProductionLocation =')}return openVisit;`)(...Object.values(context));
   return {open,state,writes,historyEvents,window};

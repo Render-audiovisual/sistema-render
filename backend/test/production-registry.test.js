@@ -16,7 +16,7 @@ function fixture({linked=true,legacy=false,wrongScope=false,failAssignments=fals
   let task={id:500,revision:1,cliente_id:1,estado:'pendiente',fecha_vencimiento:'2026-10-22',propiedades_extra:{private_finance:'PRIVATE'}};
   const db={release(){calls.push({sql:'RELEASE'});},async query(sql,params=[]){
     calls.push({sql,params});
-    if(sql==='BEGIN'||sql==='BEGIN ISOLATION LEVEL READ COMMITTED'){prior=structuredClone({visit,video,source,task,tasksCreated});return{rows:[]};}
+    if(sql==='BEGIN'||sql==='BEGIN ISOLATION LEVEL READ COMMITTED'||sql==='BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'){prior=structuredClone({visit,video,source,task,tasksCreated});return{rows:[]};}
     if(sql==='ROLLBACK'){({visit,video,source,task,tasksCreated}=prior);return{rows:[]};}
     if(sql==='COMMIT')return{rows:[]};
     if(sql==="SELECT pg_advisory_xact_lock(hashtext('vinculo-objetivo-mensual'))")return{rows:[]};
@@ -38,6 +38,7 @@ function fixture({linked=true,legacy=false,wrongScope=false,failAssignments=fals
     if(sql.includes("propiedades_extra->>'origen_visita_id'"))return{rows:legacy?[{id:99}]:[]};
     if(sql.includes('FROM clientes WHERE'))return{rows:[{id:params[0],nombre:'Cliente'}]};
     if(sql==='SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE')return{rows:[{id:11,rol:'admin',activo:true,session_version:1}]};
+    if(sql==='SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1')return{rows:[{id:11,rol:'admin',activo:true,session_version:1}]};
     if(sql.includes('FROM usuarios WHERE'))return{rows:missingEditor?[]:params[0].map(id=>({id,nombre:'Editor',rol:editorRole}))};
     if(sql.startsWith('SELECT tarea_id, usuario_id'))return{rows:[{tarea_id:500,usuario_id:7,tipo:'responsable'},{tarea_id:10,usuario_id:11,tipo:'responsable'}]};
     if(sql.includes('FROM produccion_visitas v JOIN clientes'))return{rows:[{...visit,private_finance:'PRIVATE'}]};
@@ -104,7 +105,7 @@ test('month/UUID validation and pending route do not invent filters or lineage',
   assert.equal((await fixture().run('get','/',{},undefined,{}, {mes:'2026-13'})).statusCode,400);
   assert.equal((await fixture().run('get','/:id',{},undefined,{id:'bad'})).statusCode,400);
   const f=fixture();await f.run('get','/pendientes');
-  assert.match(f.calls[0].sql,/NOT EXISTS\(SELECT 1 FROM produccion_videos child WHERE child.video_origen_id=pv.id\)/);
+  assert.match(f.calls.find(call=>call.sql.includes('FROM produccion_videos pv LEFT JOIN tareas')).sql,/NOT EXISTS\(SELECT 1 FROM produccion_videos child WHERE child.video_origen_id=pv.id\)/);
 });
 test('handoff creates exactly one pending video task with IDs atomically and source-first locks',async()=>{
   const f=fixture();const res=await f.run('post','/:id/videos/:videoId/enviar-edicion',{expected_revision:1,editor_id:7,fecha_entrega:'2026-10-22'});
