@@ -173,6 +173,30 @@ test('all three route sheets exclude shared control paint/type/focus while retai
   }
 });
 
+test('calendar mobile filters stack full-width without the desktop 240px cap', () => {
+  const root = postcss.parse(read('../pages/Calendar.css'));
+  const declarations = (selector, media) => {
+    const found = [];
+    root.walkRules(node => { if (node.selector === selector && (media ? node.parent.type === 'atrule' && node.parent.params === media : node.parent.type === 'root')) found.push(node); });
+    assert.equal(found.length, 1, `${selector}/${media}`);
+    return Object.fromEntries(found[0].nodes.filter(node => node.type === 'decl').map(node => [node.prop, node.value]));
+  };
+  const mobile = '(max-width:600px)';
+  const group = declarations('.principal-calendar-filters', mobile);
+  assert.equal(group.display, 'grid'); assert.equal(group['grid-template-columns'], 'minmax(0,1fr)');
+  assert.equal(group.width, '100%'); assert.equal(group['min-width'], '0');
+  assert.equal(declarations('.principal-calendar-filters label', mobile).width, '100%');
+  assert.deepEqual(declarations('.principal-calendar-filters select', mobile), { width: '100%', 'max-width': 'none' });
+  assert.equal(declarations('.principal-calendar-filters select')['max-width'], '240px');
+  const bindings = { selection: { scope: 'team', tipo: 'publicacion', cliente: '11' }, data: { clients: [{ id: 11, nombre: 'Estudio de comunicación audiovisual' }] }, change: () => {} };
+  for (const tipo of ['publicacion', 'programacion']) {
+    const type = element('Calendar', 'Tipo', { ...bindings, selection: { ...bindings.selection, tipo } });
+    assert.match(renderToStaticMarkup(type), new RegExp(`value="${tipo}" selected=""`));
+    assert.ok(optionRows(type).some(row => row.value === tipo && row.text === CALENDAR_KINDS[tipo]));
+  }
+  assert.match(renderToStaticMarkup(element('Calendar', 'Cliente', bindings)), /Estudio de comunicación audiovisual/);
+});
+
 test('shared CSS owns 44px controls, mobile readable text and focus; consumers keep layout constraints', () => {
   const root = postcss.parse(read('./FilterSelect.css'));
   const rule = selector => {
