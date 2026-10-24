@@ -334,6 +334,11 @@ function PieceDetail({ sesion, piece, client, canManage, close, saved }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [copied, setCopied] = useState(false);
   const [editing,setEditing] = useState(false), [title,setTitle] = useState(piece.titulo), [copy,setCopy] = useState(piece.copy || ''), [taskVersion,setTaskVersion] = useState(''), [taskRevision,setTaskRevision] = useState(null);
   const editBaseline = useRef(null);
+  const contentNavigationStatus = () => {
+    if (!capture().current()) return { dirty: false, busy: false };
+    return { dirty: editing && JSON.stringify({ title, copy }) !== editBaseline.current, busy: pending.current };
+  };
+  useNavigationGuard(contentNavigationStatus);
   const discardAllowed = () => {
     if (pending.current || !capture().current()) return false;
     return !editing || JSON.stringify({ title, copy }) === editBaseline.current || window.confirm('¿Descartar los cambios de contenido sin guardar?');

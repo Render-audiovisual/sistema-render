@@ -19,6 +19,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 | Diseño y experiencia uniforme | Componentes/tokens comunes y recorridos específicos de escritorio/móvil. Reportes adapta una única tabla a tarjetas hasta600px; métricas por persona y detalle conectado comprobados en cinco anchos. Ver REPORT_RESPONSIVE_QA.md. | Aceptación poblada de todas las áreas, tabla editorial anidada poblada, lectores de pantalla, teclado/zoom/contraste, modales restantes y dispositivos independientes. |
 | Despliegue | Ninguno autorizado ni ejecutado. | Roster real, proveedores, origen/TLS/proxy, backup/restauración y ensayo de migraciones sobre copia autorizada, validación definitiva y autorización expresa. |
 
+## Borradores de piezas y recorrido del editor
+
+PieceDetail registra cambios y espera de guardado en el kernel global; cinco pruebas nuevas pasan. La aceptación nativa de Atrás sigue pendiente: una salida real perdió el borrador sin aviso. No se declara protegida esa salida. El recorrido de empleado Objetivos → tarea → Reportes sí se verificó con datos PostgreSQL de prueba, incluida la tabla editorial anidada poblada a390px sin desbordamiento del documento. Nueve tablas permanecieron sin cambios y el fixture se eliminó correctamente. Ver GOAL_PIECE_DRAFT_QA.md para los límites de diálogos, regresión y pendientes. Este resultado reduce el pendiente de tabla anidada de la matriz anterior solo para el rol y fixture comprobados.
+
 ## Cohorte física renovada de Mi lista
 
 Se ejecutaron secuencialmente, con RENDER2_RUN_LOCAL_INTEGRATION=true y un clúster nuevo por archivo:
