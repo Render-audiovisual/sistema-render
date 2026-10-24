@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Creación de tareas con avisos por ID — corte228
+
+Defecto de destinatario incorrecto reproducido por HTTP/SQL en fixture: tarea91003, aviso91002 homónimo. Corregido POST /tareas mediante modo explícito created en persistidor existente, actor vigente retenido y destinatarios releídos en la transacción; ambos canales reciben contexto por ID solo posCOMMIT.5 físicas nuevas acreditan homónimos, autoexclusión del actor, alias líder, inactivos y DTO cerrado;5 de reasignación renovadas sin regresión. Fixtures eliminados.2174 backend/2770 frontend aprobadas,133 optativas omitidas;27 focales. Sin entrega externa ni concurrencia específica de creación acreditada físicamente, sin idempotencia/outbox. Otros creadores/avisos de estado siguen fuera del cierre. Detalle y logs en TASK_WORKFLOW_QA.md.
+
 ### Reasignación: revocación concurrente comprobada en el servicio — corte227
 
 PostgreSQL temporal con conexiones independientes y pg_blocking_pids: revocación previa por inactividad/epoch/rol rechaza401 sin DML; autorización retenida serializa la revocación detrás del commit. CAS vacío/rollback sin contexto ni cambios.6 físicas finales aprobadas,106 tablas observadas con cambios intencionales controlados, fixtures eliminados.2167 backend aprobadas/132 optativas omitidas;20 unitarias focales renovadas. Sin cambios de producto, frontend/build o proveedores. El pendiente226 de concurrencia se reduce a endpoint HTTP/ACL completo y otros límites; no confundir el servicio directo con ese recorrido. Detalle en TASK_WORKFLOW_QA.md.

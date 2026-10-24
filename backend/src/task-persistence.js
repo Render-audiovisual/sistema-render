@@ -4,8 +4,14 @@ import { captureAssignmentNotification, lockAssignmentNotificationActor, readAss
 // Task fields and ID relations form a single commit. A failed relation write
 // must not leave a successfully saved task with missing access permissions.
 export async function persistAssignedTask(pool, sql, values, assignment, afterSave = null, beforeSave = null, options = {}) {
-  const capture = assignment && options.assignmentNotificationActor !== undefined
+  if (options.assignmentNotificationMode !== undefined) {
+    if (options.assignmentNotificationMode !== 'created')
+      throw Object.assign(new Error('Modo de notificación inválido.'), { status:400 });
+    if (!assignment) throw Object.assign(new Error('La creación requiere una asignación resuelta.'), { status:400 });
+  }
+  const capture = assignment && (options.assignmentNotificationActor !== undefined || options.assignmentNotificationMode !== undefined)
     ? captureAssignmentNotification(options) : null;
+  const created = capture?.mode === 'created';
   if (capture) {
     assignment = structuredClone(assignment);
     values = structuredClone(values);
@@ -25,20 +31,22 @@ export async function persistAssignedTask(pool, sql, values, assignment, afterSa
         throw error;
       }
     }
-    let previous;
-    if (capture) {
+    let previous = created ? { ownerId:null, collaboratorIds:[] } : undefined;
+    if (capture && !created) {
       const locked = await db.query('SELECT id FROM tareas WHERE id=$1 FOR UPDATE', [capture.taskId]);
       if (locked.rows.length !== 1 || locked.rows[0].id !== capture.taskId) throw Object.assign(new Error('Tarea no encontrada.'), { status:404 });
       previous = await readAssignmentNotificationMembers(db, capture.taskId);
     }
     const result = await db.query(sql, values);
-    if (capture && (result.rows.length > 1 || (result.rows[0] && result.rows[0].id !== capture.taskId)))
+    if (created && (result.rows.length !== 1 || !Number.isSafeInteger(result.rows[0].id) || result.rows[0].id < 1 || result.rows[0].id > 2147483647))
+      throw Object.assign(new Error('La creación no devolvió una única tarea válida.'), { status:409 });
+    if (capture && !created && (result.rows.length > 1 || (result.rows[0] && result.rows[0].id !== capture.taskId)))
       throw Object.assign(new Error('La tarea actualizada no coincide con la reasignación.'), { status:409 });
     if (result.rows[0] && assignment) await replaceTaskAssignments(db, result.rows[0].id, assignment);
     if (result.rows[0] && afterSave) await afterSave(db, result.rows[0]);
     result.rows = await annotateTaskAssignments(db, result.rows);
     const notification = capture && result.rows[0]
-      ? buildAssignmentNotification(result.rows[0], previous, await readAssignmentNotificationMembers(db, capture.taskId), actor) : null;
+      ? buildAssignmentNotification(result.rows[0], previous, await readAssignmentNotificationMembers(db, result.rows[0].id), actor) : null;
     await db.query("COMMIT");
     if (notification) result.assignmentNotification = notification;
     return result;

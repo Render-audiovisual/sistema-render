@@ -1473,6 +1473,7 @@ router.get("/publicaciones/:id/tareas", async (req, res, next) => {
 
 router.post("/tareas", async (req, res, next) => {
   try {
+    const assignmentNotificationActor = Object.freeze({ id: req.auth.id, rol: req.auth.rol, session_version: req.auth.session_version });
     try { assertTaskBusinessInput(req.body); }
     catch (error) { return res.status(400).json({ error: error.message }); }
     const {
@@ -1586,19 +1587,21 @@ router.post("/tareas", async (req, res, next) => {
         aclaraciones || null,
         material_referencia || null,
         tarea_padre_id || null,
-      ], assignment, (db, task) => syncProductionVisitFromTask(db, task, req.auth.id),
+      ], assignment, (db, task) => syncProductionVisitFromTask(db, task, req.auth.id), null,
+      { assignmentNotificationActor, assignmentNotificationMode: 'created' },
     );
 
     const tareaCreada = result.rows[0];
     res.status(201).json(taskOperationalDto(tareaCreada, req.auth));
-    notificarAsignacionSinInterrumpir({
-      pool,
-      tarea: tareaCreada,
-      motivo: "creada",
-      actor: getTaskActor(req.auth),
-    });
+    if (result.assignmentNotification?.destinatarioIds.length) {
+      notificarAsignacionSinInterrumpir({
+        pool,
+        ...result.assignmentNotification,
+        motivo: "creada",
+      });
+    }
   } catch (error) {
-    if ([400, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
+    if ([400, 401, 403, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });

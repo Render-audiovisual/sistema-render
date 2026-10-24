@@ -6,9 +6,13 @@ const fail=(message,status=401)=>Object.assign(new Error(message),{status});
 // Capture before leasing a connection; later caller mutations cannot change
 // the authority or the row whose previous memberships we observe.
 export function captureAssignmentNotification(options) {
+  const mode=options.assignmentNotificationMode;
+  if (mode!==undefined&&mode!=='created') throw fail('Modo de notificación inválido.',400);
+  if (mode==='created'&&Object.hasOwn(options,'assignmentNotificationTaskId')) throw fail('La creación no admite una tarea previa.',400);
   const auth=options.assignmentNotificationActor;
   if (!positive(auth?.id)||!positive(auth.session_version)||!SYSTEM_USER_ROLES.includes(auth.rol))
     throw fail('Sesión de reasignación inválida.');
+  if (mode==='created') return Object.freeze({id:auth.id,rol:auth.rol,session_version:auth.session_version,mode});
   if (!positive(options.assignmentNotificationTaskId)) throw fail('Tarea de reasignación inválida.',400);
   return Object.freeze({id:auth.id,rol:auth.rol,session_version:auth.session_version,taskId:options.assignmentNotificationTaskId});
 }
