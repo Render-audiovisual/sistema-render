@@ -6,6 +6,9 @@ import {readRouteKey} from './location.js';
 import {createExplicitLogoutNavigation} from './explicitLogoutNavigation.js';
 import {createBrowserSessionState} from '../session/browser-session-state.js';
 import {loginHrefForDestination} from './login-destination.js';
+import {createRememberedViewOwner} from './rememberedViewOwner.js';
+import {saveRememberedView} from './rememberedViews.js';
+import {personalHomeNavigate} from '../../pages/personalHome.js';
 const source=readFileSync(new URL('../../App.jsx',import.meta.url),'utf8');
 const tree=ts.createSourceFile('App.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
 function declaration(name){let found;function visit(node){if(ts.isVariableDeclaration(node)&&node.name.getText(tree)===name)found=node;ts.forEachChild(node,visit);}visit(tree);assert.ok(found);return found;}
@@ -114,4 +117,82 @@ test('actual App stale A completion never navigates B or chooses neutral for B s
   resolve({revoked:true});await pending;assert.deepEqual(h.replacements,[]);
   h.store.withdrawObservation();h.gate(h.store.getSnapshot());
   assert.deepEqual(h.replacements,[loginHrefForDestination(readRouteKey(h.deps.window))]);
+});
+
+function homeFixture() {
+  const f=fixture(),store=createBrowserSessionState(),values=new Map();
+  const login=(id=7)=>store.acceptBootstrap(store.beginBootstrap(),{usuario:{id,usuario:'qa',nombre:'QA',rol:'diseno'},session_context:'a'.repeat(43),csrf_token:'b'.repeat(43)});
+  login();
+  const storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};
+  assert.equal(saveRememberedView(storage,7,'/workspace/tareas?view=clients&responsible=id%3A7&client=9'),true);
+  assert.equal(saveRememberedView(storage,7,'/producciones?tab=pending&cliente=9&mes=2026-10'),true);
+  f.win.location=new URL('https://render.test/inicio');
+  Object.assign(f.win,{addEventListener(){},removeEventListener(){},setTimeout,clearTimeout});
+  const owner=createRememberedViewOwner({session:store.getSession(),readSession:store.getSession,windowTarget:f.win,
+    documentTarget:{addEventListener(){},removeEventListener(){}},getStorage:()=>storage});
+  Object.assign(f.deps,{sessionSnapshot:store.getSnapshot(),getApplicationSessionSnapshot:store.getSnapshot,path:'/inicio'});
+  f.deps.rememberedViews.current=owner;
+  const callback=evaluate(declaration('navigateSidebar').initializer.arguments[0],f.deps);
+  let quickHome;
+  function visit(node){if(ts.isJsxSelfClosingElement(node)&&node.tagName.getText(tree)==='QuickHomePage')quickHome=node;ts.forEachChild(node,visit);}
+  visit(tree);assert.ok(quickHome);
+  assert.equal(quickHome.attributes.properties.find(attr=>attr.name?.getText(tree)==='onNavigate').initializer.expression.getText(tree),'navigateSidebar');
+  const js=ts.transpileModule(`const element=(${quickHome.getText(tree)});`,{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;
+  const element=Function('React','QuickHomePage','sesion','navigateSidebar',`${js};return element;`)(
+    {createElement:(type,props)=>({type,props})},()=>null,store.getSession(),callback);
+  return{...f,store,login,values,viewOwner:owner,home:element.props.onNavigate,element};
+}
+
+test('actual QuickHome JSX receives the guarded callback and restores bare destinations through the real owner/reader',async()=>{
+  const h=homeFixture();
+  assert.equal(h.element.props.sesion,h.store.getSession());
+  for(const [href,expected] of [
+    ['/workspace/tareas','/workspace/tareas?client=9&responsible=id%3A7&view=clients'],
+    ['/producciones','/producciones?cliente=9&mes=2026-10&tab=pending'],
+  ]){
+    assert.equal(await h.home(href),true);assert.equal(h.calls.at(-1).href,expected);
+    assert.equal(h.calls.at(-1).options.isCurrent(),true);
+    assert.equal(h.calls.at(-1).options.present,h.deps.navigationConfirmation.request);
+  }
+  h.viewOwner.dispose();
+});
+
+test('Home explicit query/hash links win over real remembered preferences without mutating storage',async()=>{
+  const h=homeFixture(),before=[...h.values];
+  for(const href of ['/workspace/tareas?view=list','/workspace/tareas?task=42&estado=en_revision#detail',
+    '/workspace/tareas#board','/workspace/tareas?','/producciones?visita=11111111-1111-4111-8111-111111111111',
+    '/producciones#agenda']){
+    assert.equal(await h.home(href),true);assert.equal(h.calls.at(-1).href,href);
+  }
+  assert.deepEqual([...h.values],before);h.viewOwner.dispose();
+});
+
+test('stale Home callback and held consent fail closed for session, lifetime, route and epoch changes',async()=>{
+  for(const change of [h=>h.login(8),h=>{h.owner.current={token:{}}},h=>{h.win.location=new URL('https://render.test/clientes')},h=>{h.epoch.current++}]){
+    const h=homeFixture();
+    await h.home('/workspace/tareas');const consent=h.calls[0].options.isCurrent;
+    change(h);assert.equal(consent(),false);
+    const count=h.calls.length;
+    if(h.epoch.current===0){assert.equal(await h.home('/workspace/tareas'),false);assert.equal(h.calls.length,count);}
+    h.viewOwner.dispose();
+  }
+});
+
+test('actual HomeLink keeps modifier/middle clicks native; plain click delegates once into guarded remembered navigation',async()=>{
+  const h=homeFixture(),homeSource=readFileSync(new URL('../../pages/QuickHome.jsx',import.meta.url),'utf8');
+  const file=ts.createSourceFile('QuickHome.jsx',homeSource,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
+  const link=file.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='HomeLink');assert.ok(link);
+  const js=ts.transpileModule(link.getText(file),{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;
+  const HomeLink=Function('React','personalHomeNavigate',`${js};return HomeLink;`)({createElement:(type,props)=>({type,props})},personalHomeNavigate);
+  let pending;
+  const element=HomeLink({href:'/workspace/tareas',onNavigate:href=>{pending=h.home(href);},children:'Tareas'});
+  assert.equal(element.type,'a');assert.equal(element.props.href,'/workspace/tareas');
+  for(const extra of [{button:1},{button:2},{ctrlKey:true},{metaKey:true},{shiftKey:true},{altKey:true},{defaultPrevented:true}]){
+    let prevented=0;
+    element.props.onClick({button:0,defaultPrevented:false,preventDefault(){prevented++;},...extra});
+    assert.equal(prevented,0);assert.equal(h.calls.length,0);
+  }
+  let prevented=0;element.props.onClick({button:0,defaultPrevented:false,preventDefault(){prevented++;}});await pending;
+  assert.equal(prevented,1);assert.equal(h.calls.length,1);assert.match(h.calls[0].href,/view=clients/);
+  h.viewOwner.dispose();
 });

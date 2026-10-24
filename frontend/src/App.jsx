@@ -191,7 +191,7 @@ export function App() {
       return <ProductionsPage sesion={sesion} />;
     }
     if (path === "/inicio") {
-      return <QuickHomePage sesion={sesion} onNavigate={navigate} />;
+      return <QuickHomePage sesion={sesion} onNavigate={navigateSidebar} />;
     }
     if (path === "/workspace/tareas") {
       return <WorkspaceReadOnlyPage path={path} sesion={sesion} />;

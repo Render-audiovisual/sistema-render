@@ -23,9 +23,9 @@ const observation = () => declarationFor((n) => ts.isCallExpression(n) && text(n
 const hasReturn = (node) => nodes(node, ts.isReturnStatement).length > 0;
 const compact = (node) => text(node).replace(/\s+/g, '');
 
-test('only Sidebar receives controlled navigation; Home/Calendar retain the synchronous legacy callback',()=>{
+test('Sidebar and Home receive controlled navigation; Calendar retains the synchronous legacy callback',()=>{
   assert.match(source,/<Sidebar\b[^>]*onNavigate=\{navigateSidebar\}/);
-  assert.match(source,/<QuickHomePage\b[^>]*onNavigate=\{navigate\}/);
+  assert.match(source,/<QuickHomePage\b[^>]*onNavigate=\{navigateSidebar\}/);
   assert.match(source,/<CalendarPage\b[^>]*onNavigate=\{navigate\}/);
   const legacy=nodes(app.body,n=>ts.isVariableDeclaration(n)&&text(n.name)==='navigate')[0];
   assert.ok(legacy);assert.equal(calls(legacy,'navigateWithinApp').length,1);
@@ -199,7 +199,7 @@ test('real helper keeps noncanonical production paths unmapped, including task c
 test('canonical home uses current session; workspace task context and shared navigation remain', () => {
   const homeBranch = nodes(app.body, ts.isIfStatement).find((n) => /path===["']\/inicio["']/.test(compact(n.expression)));
   assert.ok(homeBranch);
-  assert.match(compact(homeBranch.thenStatement), /<QuickHomePagesesion=\{sesion\}onNavigate=\{navigate\}/);
+  assert.match(compact(homeBranch.thenStatement), /<QuickHomePagesesion=\{sesion\}onNavigate=\{navigateSidebar\}/);
   assert.match(source, /<WorkspaceReadOnlyPage\s+path=\{path\}\s+sesion=\{sesion\}/);
   assert.match(source, /navigateWithinApp\(window,\s*href\)/);
   const home = read('../pages/QuickHome.jsx');

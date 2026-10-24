@@ -2,7 +2,7 @@
 
 ## Función integrada
 
-Tareas, Calendario, Producciones, Proyectos, Clientes, Reportes, Historias, Publicaciones y Feedback pueden recuperar la última vista y sus filtros admitidos al volver mediante la navegación interna de la barra lateral. Las preferencias se separan por ID estable de usuario y ruta. No contienen tareas, producciones, aprobaciones ni finanzas; el backend continúa como fuente de los datos operativos.
+Tareas, Calendario, Producciones, Proyectos, Clientes, Reportes, Historias, Publicaciones y Feedback pueden recuperar la última vista y sus filtros admitidos al volver mediante la navegación interna de la barra lateral. Desde205 también lo hacen los accesos genéricos de Inicio a destinos admitidos. Las preferencias se separan por ID estable de usuario y ruta. No contienen tareas, producciones, aprobaciones ni finanzas; el backend continúa como fuente de los datos operativos.
 
 El defecto anterior era transversal: las páginas leían su selección desde la URL, pero el Sidebar volvía a un enlace vacío. Atrás podía conservar el contexto por historial; salir y reentrar por Sidebar no equivalía a recuperar esa vista.
 
@@ -60,6 +60,22 @@ La primera corrida focal necesitó completar los campos públicos del DTO de ses
 
 ## Pendientes y límites
 
+### Accesos genéricos de Inicio integrados, corte205
+
+QuickHome recibía el callback simple `navigate`, por lo que sus accesos bare ignoraban las preferencias aunque Sidebar sí las recuperara. App ahora entrega a QuickHome el mismo `navigateSidebar` protegido; Calendar conserva su callback anterior. No se envuelven history ni todos los anchors del documento, no cambia el parser de preferencias y no se agrega otra lógica comercial.
+
+El destino recordado se resuelve antes del consentimiento existente y conserva snapshot, lifetime, epoch y ruta actuales. HomeLink/personalHomeNavigate no cambian: el href original permanece en el anchor y Ctrl/Cmd/Shift/Alt, clic central/secundario y eventos ya prevenidos no se interceptan. Los enlaces explícitos a Mis tareas, revisión o un recurso mantienen su contexto, sin mezclar filtros guardados. Esta prioridad no implica preservar literalmente un `?` vacío después de la normalización del navegador.
+
+Cuatro pruebas nuevas ejecutan el callback de App cableado desde el JSX real de QuickHome con owner/reader reales: destinos bare, query/hash explícitos, callbacks/consentimientos obsoletos y semántica de clic. El router se sustituye en esas pruebas: acreditan delegación y guardas, no commit de historial ni cancelación efectiva. El protocolo de cancelación conserva sus pruebas existentes; no se reprodujo un editor sucio de Inicio en este recorrido nativo.
+
+Regresión final: frontend2595 aprobadas, cero fallos u omisiones; backend2038 aprobadas,126 integraciones optativas omitidas, cero fallos. Build `index-CdLZjCjK.js`. Logs `/private/tmp/render2-goal205-frontend-final.log`, `/private/tmp/render2-goal205-backend.log`, `/private/tmp/render2-goal205-build.log`. La primera regresión frontend tuvo dos fallos en legacyRouteIntegration, que aún exigía el callback anterior para Home. Se actualizaron ambas aserciones al contrato nuevo, conservando Calendar sin cambios; no se retiraron pruebas. Diff-check correcto.
+
+Navegador real, una cuenta Edición91003, origen nuevo HTTP52820/PostgreSQL55858: dos tareas sintéticas creadas por API antes del baseline. A eligió Por responsable y prioridad alta; Inicio → acceso Tareas dentro de Accesos de trabajo recuperó `?priority=alta&view=responsibles` y solo su video. Inicio → Ver todas mis tareas abrió `?view=list&responsible=id%3A91003`, prioridad Todas, sin heredar el filtro alta. Inicio → enlace del video abrió exactamente `?task=1` y su detalle; se cerró sin editar. Tras volver a configurar Por responsable/alta, el acceso genérico funcionó también a390×844; clientWidth375 y scrollWidth375, sin overflow horizontal de página en ese estado. No es aceptación nativa de todos los accesos o modificadores.
+
+El script `/private/tmp/render2-goal205-native.mjs` comprobó identidad exacta y hashes invariantes de104 tablas completas, incluida usuarios, excluyendo solo familias auth/browser_session. No hubo logout ni excepción de contadores en esta ejecución. `DOMAIN_SNAPSHOT_UNCHANGED 104`; cleanup ENOENT de `/private/tmp/render2-local-4rTpua`, código0. Se cerró la pestaña y se restauró el viewport. Capturas reales `/private/tmp/render2-goal205-home-restored.png` y `/private/tmp/render2-goal205-home-mobile.png`; la primera inspeccionada visualmente. No hubo OAuth real ni credenciales comerciales.
+
+Erdos implementó la conexión y pruebas, Volta revisó el alcance y advirtió sobre el router simulado, y el coordinador ejecutó regresiones/build/navegador/PostgreSQL. Sin backend modificado, push o despliegue. Las otras siete vistas siguen pendientes de A/B/A nativo y no se declara aceptación global.
+
 ### Tareas pobladas: A/B/A, historial y móvil, corte204
 
 Se ejecutó el build203 sin modificar producto sobre un origen nuevo de QA, HTTP52819/PostgreSQL55857. El fixture verificó identidad exacta y creó mediante la API principal dos tareas sintéticas render_os: `QA204 video Luciano`, responsable91003 y prioridad alta, y `QA204 pieza Diseño`, responsable91004 y prioridad media, ambas pendientes con entrega2026-10-28. El baseline de integridad se tomó después de ese setup autorizado, no antes.
@@ -114,4 +130,4 @@ Los hashes antes/después de seis tablas (`cliente_objetivo_piezas`, `clientes`,
 
 Queda acreditado el recorrido descrito de Reportes, no las nueve secciones. Falta ejecutar A/B/A nativo en las demás vistas, el contexto diferido de Clientes con detalle abierto y más intercalados de sesión/historial. Volta revisó el delta documental en solo lectura y pidió precisar las métricas de ancho; no validó independientemente el recorrido. No hubo cambios de producto, nuevas suites globales ni despliegue en202.
 
-La recuperación está integrada en Sidebar para las nueve secciones indicadas. Enlaces genéricos de Inicio, clics modificados que abren otra pestaña y las demás áreas conservan su comportamiento explícito. Los aliases /calendario-estructura y /bloc-notas no comparten automáticamente estas preferencias; solo se integran las rutas canónicas. Las subvariables administrativas, el responsable histórico de seguimiento y los módulos restantes todavía necesitan su integración correspondiente. No se declara completo el requisito global de vistas guardadas. Sin push, despliegue ni cambios en datos reales.
+La recuperación está integrada en Sidebar para las nueve secciones indicadas y, desde205, en accesos genéricos de Inicio a destinos admitidos. Clics modificados que abren otra pestaña y las demás áreas conservan su comportamiento explícito. Los aliases /calendario-estructura y /bloc-notas no comparten automáticamente estas preferencias; solo se integran las rutas canónicas. Las subvariables administrativas, el responsable histórico de seguimiento y los módulos restantes todavía necesitan su integración correspondiente. No se declara completo el requisito global de vistas guardadas. Sin push, despliegue ni cambios en datos reales.
