@@ -28,9 +28,9 @@ test('scope withdrawn during DOM lookup cannot focus a replacement control',()=>
  const h=fixture();let calls=0;
  assert.equal(restoreProjectFormFocus({kind:'stage-edit',scope:{current:()=>++calls===1}},h.doc),false);assert.equal(h.doc.activeElement,null);
 });
-test('actual layout callback consumes cancellation only after editor removal and clears obsolete requests',()=>{
+test('actual passive callback consumes cancellation only after editor removal and clears obsolete requests',()=>{
  const source=readFileSync(new URL('./Projects.jsx',import.meta.url),'utf8'),file=ts.createSourceFile('Projects.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);let callback;
- function walk(n){if(ts.isCallExpression(n)&&n.expression.getText(file)==='useLayoutEffect'&&n.arguments[0]?.getText(file).includes('restoreProjectFormFocus(pending, document)'))callback=n.arguments[0];ts.forEachChild(n,walk);}walk(file);assert.ok(callback);
+ function walk(n){if(ts.isCallExpression(n)&&n.expression.getText(file)==='useEffect'&&n.arguments[0]?.getText(file).includes('restoreProjectFormFocus(pending, document)'))callback=n.arguments[0];ts.forEachChild(n,walk);}walk(file);assert.ok(callback);
  for(const form of [null,{kind:'stage-create'}]){
   const h=fixture(),pending={kind:'create',scope:{current:()=>true}},ref={current:pending};
   Function('form','formReturnFocus','restoreProjectFormFocus','document',`return (${callback.getText(file)})();`)(form,ref,restoreProjectFormFocus,h.doc);

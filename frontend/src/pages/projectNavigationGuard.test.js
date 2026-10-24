@@ -19,12 +19,29 @@ const popSource = section('    const navigate = () => {', '    window.addEventLi
 
 function state() {
   const formRef = { current: null }, mutationBusy = { current: false }, selectionRef = { current: { id: ID, invalid: false } };
+  const discardIntentRef={current:null},discardClosingRef={current:false};
   const win = { location: new URL(`https://render.test/proyectos?proyecto=${ID}`) };
   let current=true;
-  const status = new Function('formRef', 'mutationBusy', 'selectionRef', 'projectLocation', 'window', 'captureAction', `${statusSource}\nreturn navigationStatus;`)(formRef, mutationBusy, selectionRef, projectLocation, win,()=>({current:()=>current}));
-  return { formRef, mutationBusy, selectionRef, win, status,obsolete(){current=false} };
+  const status = new Function('formRef', 'mutationBusy', 'selectionRef', 'projectLocation', 'window', 'captureAction','discardIntentRef','discardClosingRef', `${statusSource}\nreturn navigationStatus;`)(formRef, mutationBusy, selectionRef, projectLocation, win,()=>({current:()=>current}),discardIntentRef,discardClosingRef);
+  return { formRef, mutationBusy, selectionRef,discardIntentRef,discardClosingRef, win, status,obsolete(){current=false} };
 }
-const dirtyForm = () => ({ draft: { titulo: 'Borrador' }, initial: { titulo: 'Original' }, busy: false, baseRevision: 3, conflict: true });
+const dirtyForm = () => ({ kind:'stage-edit',scope:{current:()=>true},draft: { titulo: 'Borrador' }, initial: { titulo: 'Original' }, busy: false, baseRevision: 3, conflict: true });
+function cancellation(h) {
+  const calls=[],intents=[],{discardIntentRef,discardClosingRef}=h,formReturnFocus={current:null};
+  const setDiscardIntent=value=>intents.push(value);
+  const controllers=new Function('formRef','mutationBusy','discardIntentRef','discardClosingRef','setDiscardIntent','setForm','formReturnFocus',
+    `${section('  function cancelForm()', '  function moveStage(')}\nreturn {cancelForm,closeProjectForm,keepProjectForm,discardProjectForm};`)(
+    h.formRef,h.mutationBusy,discardIntentRef,discardClosingRef,setDiscardIntent,value=>calls.push(value),formReturnFocus);
+  const effectStart=source.indexOf('  useEffect(() => {',source.indexOf('  const discardClosingRef'));
+  const effectEnd=source.indexOf('  const formReturnFocus',effectStart);
+  assert.ok(effectStart>=0&&effectEnd>effectStart);
+  return {...controllers,calls,intents,discardIntentRef,discardClosingRef,formReturnFocus,
+    commitClosed(){
+      assert.equal(discardIntentRef.current,null);assert.equal(intents.at(-1),null);
+      new Function('useEffect','discardClosingRef','discardIntentRef','setDiscardIntent','form','discardIntent',
+        source.slice(effectStart,effectEnd))(effect=>effect(),discardClosingRef,discardIntentRef,setDiscardIntent,h.formRef.current,null);
+    }};
+}
 
 test('Projects registers one shared hook and removes page-level confirmation/unload/rollback listeners', () => {
   assert.match(source, /import \{ useNavigationGuard \} from "\.\.\/shared\/navigation\/useNavigationGuard.js"/);
@@ -65,7 +82,7 @@ test('same-project URL context preserves draft, different/invalid project and un
 test('getter never confirms or mutates drafts; local canLeave confirms once and busy refuses silently', () => {
   const h = state(); let prompts = 0, accepted = false;
   h.win.confirm = () => { prompts += 1; return accepted; };
-  const canLeave = new Function('formRef', 'mutationBusy', 'window', `${leaveSource}\nreturn canLeave;`)(h.formRef, h.mutationBusy, h.win);
+  const canLeave = new Function('formRef', 'mutationBusy', 'window','discardIntentRef','discardClosingRef', `${leaveSource}\nreturn canLeave;`)(h.formRef, h.mutationBusy, h.win,h.discardIntentRef,h.discardClosingRef);
   h.formRef.current = dirtyForm();
   h.status({ type: 'traverse', to: '/inicio' });
   assert.equal(prompts, 0);
@@ -80,33 +97,65 @@ test('getter never confirms or mutates drafts; local canLeave confirms once and 
   assert.equal(prompts, 2);
 });
 
+test('open or closing discard dialog fences all navigation before same-project shortcuts without a second prompt',()=>{
+  const h=state(),c=cancellation(h),original=dirtyForm();h.formRef.current=original;
+  let prompts=0;h.win.confirm=()=>{prompts++;return true;};
+  const canLeave=new Function('formRef','mutationBusy','window','discardIntentRef','discardClosingRef',
+    `${leaveSource}\nreturn canLeave;`)(h.formRef,h.mutationBusy,h.win,h.discardIntentRef,h.discardClosingRef);
+  const contexts=[{type:'link',to:`/proyectos?proyecto=${ID}&tab=actividad`},
+    {type:'traverse',to:`/proyectos?proyecto=${ID}`},{type:'traverse',to:'/inicio'},{type:'unload'}];
+  c.cancelForm();const intent=c.discardIntentRef.current;
+  assert.equal(intent.form,original);
+  for(const phase of ['open','closing']){
+    if(phase==='closing')c.keepProjectForm(intent);
+    for(const context of contexts)assert.deepEqual(h.status(context),{dirty:true,busy:true},phase);
+    assert.equal(canLeave(),false,phase);assert.equal(prompts,0);
+    assert.equal(h.formRef.current,original);assert.equal(c.formReturnFocus.current,null);
+  }
+  c.commitClosed();
+  assert.deepEqual(h.status(contexts[0]),{dirty:false,busy:false});
+  assert.deepEqual(h.status({type:'traverse',to:'/inicio'}),{dirty:true,busy:false});
+  assert.equal(canLeave(),true);assert.equal(prompts,1);
+  h.discardClosingRef.current=true;h.obsolete();assert.deepEqual(h.status(contexts[0]),{dirty:false,busy:false});
+});
+
 test('local cancel preserves refusal and clears form/ref only after one accepted decision', () => {
-  const h = state(), calls = [];
-  const cancelSource = section('  function cancelForm()', '  function moveStage(');
-  let allowed = false, checks = 0;
-  const returnFocus = { current: null };
-  const cancel = new Function('canLeave', 'setForm', 'formRef', 'formReturnFocus', `${cancelSource}\nreturn cancelForm;`)(() => { checks += 1; return allowed; }, value => calls.push(value), h.formRef, returnFocus);
+  const h = state(), c=cancellation(h);
+  h.win.confirm=()=>assert.fail('Local cancellation must use the explicit dialog, not window.confirm');
   h.formRef.current = dirtyForm();
-  cancel();
-  assert.equal(checks, 1);
-  assert.deepEqual(calls, []);
-  assert.equal(returnFocus.current, null);
+  const original=h.formRef.current;
+  c.cancelForm();const first=c.discardIntentRef.current;
+  assert.deepEqual(first,{form:original,scope:original.scope});
+  c.cancelForm();assert.equal(c.discardIntentRef.current,first);assert.deepEqual(c.intents,[first]);
+  c.keepProjectForm(first);
+  assert.equal(c.discardIntentRef.current,null);
+  assert.deepEqual(c.calls, []);
+  assert.equal(c.formReturnFocus.current, null);
   assert.equal(h.formRef.current.draft.titulo, 'Borrador');
-  allowed = true; cancel();
-  assert.equal(checks, 2);
-  assert.deepEqual(calls, [null]);
+  assert.equal(c.discardClosingRef.current,true);
+  c.cancelForm();assert.equal(c.discardIntentRef.current,null,'No reopen before closed state commits');
+  assert.deepEqual(c.intents,[first,null]);
+  c.commitClosed();assert.equal(c.discardClosingRef.current,false);
+  c.cancelForm();const accepted=c.discardIntentRef.current;
+  assert.notEqual(accepted,first);
+  c.discardProjectForm(first);assert.equal(c.discardIntentRef.current,accepted);
+  c.discardProjectForm(accepted);
+  assert.equal(c.discardIntentRef.current,null);
+  assert.equal(c.discardClosingRef.current,true);
+  assert.deepEqual(c.calls, [null]);
   assert.equal(h.formRef.current, null);
-  assert.ok(returnFocus.current);
+  assert.deepEqual(c.formReturnFocus.current,{kind:original.kind,scope:original.scope});
+  c.discardProjectForm(accepted);assert.deepEqual(c.calls,[null]);
 });
 
 test('reentrant discard decision cannot cancel a replacement form or queue focus for it', () => {
-  const h = state(), calls = [], queued = { current: null }, replacement = dirtyForm();
+  const h = state(), c=cancellation(h), replacement = dirtyForm();
   h.formRef.current = dirtyForm();
-  const cancelSource = section('  function cancelForm()', '  function moveStage(');
-  const cancel = new Function('canLeave', 'setForm', 'formRef', 'formReturnFocus', `${cancelSource}\nreturn cancelForm;`)(
-    () => { h.formRef.current = replacement; return true; }, value => calls.push(value), h.formRef, queued);
-  cancel();
-  assert.equal(h.formRef.current, replacement); assert.deepEqual(calls, []); assert.equal(queued.current, null);
+  c.cancelForm();const intent=c.discardIntentRef.current;
+  h.formRef.current=replacement;
+  c.discardProjectForm(intent);
+  assert.equal(c.discardIntentRef.current,null);
+  assert.equal(h.formRef.current, replacement); assert.deepEqual(c.calls, []); assert.equal(c.formReturnFocus.current, null);
 });
 
 test('committed popstate restores project selection once, never asks again or rewrites history', () => {

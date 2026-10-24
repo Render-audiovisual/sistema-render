@@ -30,10 +30,12 @@ function fixture({ snapshot = project() } = {}) {
   let read = async () => ({ proyecto: project() }), write = async () => assert.fail('Unexpected mutation');
   const request = async (url, init = {}) => { calls.push({ url, init }); return init.method ? write(url, init) : read(url, init); };
   const detailStateRef = { current: { status: snapshot ? 'ready' : 'idle', data: snapshot, error: '' } }, formRef = { current: null };
-  const deps = { ...model, isSessionFailure, createCapturedRequest, sesion, getSesion: store.getSession, request, mounted, selectionRef, detailStateRef, formRef, formReturnFocus:{current:null},
+  const discardIntentRef={current:null};
+  const deps = { ...model, isSessionFailure, createCapturedRequest, sesion, getSesion: store.getSession, request, mounted, selectionRef, detailStateRef, formRef, formReturnFocus:{current:null},discardIntentRef,discardClosingRef:{current:false},
     admin: true, project: snapshot, detailReadGeneration: { current: 0 }, mutationBusy: { current: false }, formSequence: { current: 1 }, catalog: { status: 'ready' },
     crypto: { randomUUID: () => REQUEST }, window: { confirm: () => false },
     setDetail: value => paints.push(['detail', value]),
+    setDiscardIntent:value=>paints.push(['discardIntent',value]),
     setForm: value => { formRef.current = typeof value === 'function' ? value(formRef.current) : value; paints.push(['form', formRef.current]); },
     setCatalog: value => paints.push(['catalog', value]), setMessage: value => paints.push(['message', value]), setListRefresh: value => paints.push(['list', value]),
     selectProject: () => assert.fail('Refresh must not retarget project'), loadCatalog: () => assert.fail('Unexpected catalog read'),
@@ -42,10 +44,10 @@ function fixture({ snapshot = project() } = {}) {
   deps.captureAction = evaluate(captureNode.initializer.getText(ast), deps);
   const lifetime = createCapturedRequest({ session: sesion, readSession: store.getSession, request, isActive: () => mounted.current });
   deps.transport = model.createProjectsTransport(lifetime.request, { isCurrent: lifetime.current });
-  for (const name of ['publishDetail', 'canUseProjectObservation', 'canLeave', 'purgeProjectAccess', 'initialForm']) deps[name] = callback(name, deps);
+  for (const name of ['publishDetail', 'canUseProjectObservation', 'canLeave', 'purgeProjectAccess', 'initialForm','closeProjectForm','keepProjectForm','discardProjectForm']) deps[name] = callback(name, deps);
   formRef.current = { seq: 1, kind: 'stage-edit', projectId: PROJECT, childId: CHILD, baseRevision: 8, requestId: REQUEST, initial: { titulo: 'Stage', estado: 'pendiente' }, draft: { titulo: 'UNSAVED', estado: 'pendiente' }, busy: false, conflict: false, reviewed: false, scope: deps.captureAction() };
   deps.form = formRef.current;
-  const handlers = Object.fromEntries(['refreshDetail', 'submit', 'openForm', 'lookupTask', 'adoptRevision', 'change', 'cancelForm'].map(name => [name, callback(name, deps)]));
+  const handlers = Object.fromEntries(['refreshDetail', 'submit', 'openForm', 'lookupTask', 'adoptRevision', 'change', 'cancelForm','keepProjectForm','discardProjectForm'].map(name => [name, callback(name, deps)]));
   return { deps, handlers, calls, paints, formRef, detailStateRef, store,
     read: fn => { read = fn; }, write: fn => { write = fn; }, replace: () => publish(2), reobserve: () => publish(1),
     aba() { selectionRef.current = { id: CHILD }; selectionRef.current = { id: PROJECT }; },
@@ -72,6 +74,10 @@ test('failed refresh preserves editable local draft and dirty cancellation, neve
   const f = fixture(); f.read(async () => { throw Error('offline'); }); await f.handlers.refreshDetail();
   f.handlers.change('titulo', 'LOCAL AFTER ERROR'); assert.equal(f.formRef.current.draft.titulo, 'LOCAL AFTER ERROR');
   f.handlers.cancelForm(); assert.ok(f.formRef.current); assert.equal(mutations(f).length, 0);
+  const intent=f.deps.discardIntentRef.current;assert.equal(intent.form,f.formRef.current);
+  f.handlers.keepProjectForm(intent);assert.equal(f.deps.discardIntentRef.current,null);
+  assert.equal(f.deps.discardClosingRef.current,true);
+  assert.equal(f.formRef.current.draft.titulo,'LOCAL AFTER ERROR');
 });
 test('live authority fence independently stops an otherwise eligible frozen verification, adoption, form opening and task lookup', async () => {
   for (const phase of ['pending', 'error']) for (const action of ['verify', 'adopt', 'open', 'lookup']) {
@@ -127,11 +133,16 @@ test('cancel after a refreshed structural conflict preserves the remote observat
     assert.equal(conflicted.baseRevision, 8);
     assert.equal(observed.revision, 9);
     assert.equal(observed.etapas[0].titulo, 'REMOTE');
-    let decisions = 0;
-    f.deps.window.confirm = () => { decisions++; return accept; };
+    f.deps.window.confirm = () => assert.fail('Local cancel uses the explicit discard dialog');
     const beforeCalls = f.calls.length;
     f.handlers.cancelForm();
-    assert.equal(decisions, 1);
+    const intent=f.deps.discardIntentRef.current;
+    assert.deepEqual(intent,{form:conflicted,scope:conflicted.scope});
+    assert.equal(f.formRef.current,conflicted);
+    assert.equal(f.deps.formReturnFocus.current,null);
+    if(accept)f.handlers.discardProjectForm(intent);else f.handlers.keepProjectForm(intent);
+    assert.equal(f.deps.discardIntentRef.current,null);
+    assert.equal(f.deps.discardClosingRef.current,true);
     assert.equal(f.calls.length, beforeCalls, 'Cancellation must not read, save or retry');
     assert.equal(mutations(f).length, 1, 'Only the rejected stale mutation was attempted');
     assert.equal(f.detailStateRef.current.data, observed);
@@ -144,6 +155,9 @@ test('cancel after a refreshed structural conflict preserves the remote observat
       assert.equal(conflicted.baseRevision, 8);
       assert.equal(f.deps.formReturnFocus.current, null);
     }
+    f.handlers.discardProjectForm(intent);
+    assert.equal(f.calls.length,beforeCalls,'Consumed or kept intent cannot later retry or send');
+    assert.equal(f.formRef.current,accept?null:conflicted);
   }
 });
 test('successful retry updates authority only, retaining original CAS/UUID/draft/conflict until explicit allowed adoption', async () => {

@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FilterSelect } from '../components/FilterSelect.jsx';
+import { DiscardChangesDialog } from '../components/DiscardChangesDialog.jsx';
 import { restoreProjectFormFocus } from './projectFormReturnFocus.js';
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
@@ -194,8 +195,21 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   const [catalog, setCatalog] = useState({ status: "idle", clients: [], users: [], error: "" });
   const [form, setForm] = useState(null);
   const formRef = useRef(form); formRef.current = form;
+  const [discardIntent, setDiscardIntent] = useState(null);
+  const discardIntentRef = useRef(null);
+  const discardClosingRef = useRef(false);
+  useEffect(() => {
+    if (!discardIntent) discardClosingRef.current = false;
+    const pending = discardIntentRef.current;
+    if (pending && (pending.form !== form || !pending.scope.current())) {
+      discardClosingRef.current = true;
+      discardIntentRef.current = null; setDiscardIntent(null);
+    }
+  }, [form, discardIntent]);
   const formReturnFocus = useRef(null);
-  useLayoutEffect(() => {
+  // The shared modal closes in passive cleanup. Restore outside focus only
+  // after those cleanups, not while the old dialog is still in the top layer.
+  useEffect(() => {
     const pending = formReturnFocus.current;
     formReturnFocus.current = null;
     if (!form && pending) restoreProjectFormFocus(pending, document);
@@ -292,11 +306,12 @@ function ProjectsSession({ sesion, onNavigate, request }) {
 
   function canLeave() {
     const current = formRef.current;
-    if (current?.busy || mutationBusy.current) return false;
+    if (current?.busy || mutationBusy.current || discardIntentRef.current || discardClosingRef.current) return false;
     return !current || !current.uncertain&&JSON.stringify(current.draft) === JSON.stringify(current.initial) || window.confirm("Tenés cambios sin guardar o un envío sin confirmar. ¿Querés salir y perder la recuperación en memoria?");
   }
   function navigationStatus(context = {}) {
     if(!captureAction().current())return{dirty:false,busy:false};
+    if (discardIntentRef.current || discardClosingRef.current) return { dirty: true, busy: true };
     if (context.type !== "unload" && context.to) {
       const next = new URL(context.to, window.location.origin);
       const destination = next.origin === window.location.origin && next.pathname === "/proyectos" ? projectLocation(next.href) : null;
@@ -363,11 +378,32 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   }
   function cancelForm() {
     const current = formRef.current;
-    if (canLeave()) {
-      if (formRef.current !== current) return;
-      formReturnFocus.current = current ? {kind:current.kind, scope:current.scope} : null;
-      setForm(null); formRef.current = null;
+    if (!current || !current.scope.current() || current.busy || mutationBusy.current || discardClosingRef.current) return;
+    if (current.uncertain || JSON.stringify(current.draft) !== JSON.stringify(current.initial)) {
+      if (discardIntentRef.current) return;
+      const intent = { form: current, scope: current.scope };
+      discardIntentRef.current = intent; setDiscardIntent(intent); return;
     }
+    closeProjectForm(current);
+  }
+  function closeProjectForm(current) {
+    if (!current || formRef.current !== current || !current.scope.current() || current.busy || mutationBusy.current) return;
+    formReturnFocus.current = { kind: current.kind, scope: current.scope };
+    setForm(null); formRef.current = null;
+  }
+  function keepProjectForm(intent) {
+    if (!intent || discardIntentRef.current !== intent) return;
+    discardClosingRef.current = true;
+    discardIntentRef.current = null; setDiscardIntent(null);
+  }
+  function discardProjectForm(intent) {
+    if (!intent || discardIntentRef.current !== intent) return;
+    // Consume only this decision. A retained modal callback cannot discard a
+    // replacement form, act after session withdrawal, or close a busy writer.
+    discardClosingRef.current = true;
+    discardIntentRef.current = null; setDiscardIntent(null);
+    if (!intent.scope.current()) return;
+    closeProjectForm(intent.form);
   }
   function moveStage(index, offset) {
     const ids = [...form.draft.etapa_ids], target = index + offset;
@@ -436,6 +472,12 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   const shownList = list.context === filters ? list : { status: 'loading', data: null, error: '' };
   const clientLabel = filterClients.items.find(item => item.id === filters.clientId)?.nombre;
   return <main className="projects-page" aria-label="Proyectos de Render"><div className="pr-shell">
+    <DiscardChangesDialog open={Boolean(discardIntent && discardIntent.form === form && discardIntent.scope.current())}
+      busy={Boolean(form?.busy || mutationBusy.current)}
+      onKeepEditing={() => keepProjectForm(discardIntent)} onDiscard={() => discardProjectForm(discardIntent)}
+      description={discardIntent?.form.uncertain
+        ? 'No pudimos confirmar un envío. Descartar cierra la recuperación local, pero no cancela una operación que el servidor pudo haber guardado. Verificá el proyecto antes de volver a enviar.'
+        : undefined}/>
     <header className="pr-page-heading"><div><h1>Proyectos</h1><p>Etapas, entregas y tareas reales en un mismo lugar.</p></div><div className="pr-actions"><button type="button" disabled={form?.busy} onClick={() => { setListRefresh(version => version + 1); if (selection.id) void refreshDetail(); }}>Actualizar</button>{admin && <button type="button" className="pr-primary" disabled={form?.busy || !observationReady} onClick={() => openForm("create")}>Nuevo proyecto</button>}</div></header>
     {message && <p className="pr-notice" role="status">{message}</p>}
     <div className={`pr-layout${selection.id || form?.kind === "create" ? " has-detail" : ""}`}>
