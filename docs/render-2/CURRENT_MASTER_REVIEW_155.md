@@ -40,6 +40,8 @@ Actualización172: corregido el recorte móvil de filtros del calendario observa
 
 Actualización173: comprobado el gate concreto de orden nativo con PostgreSQL real: aplicación/cookie/API canónicas, arrastre1 antes de2 y al final, dos recibos, revisiones de orden2/3, recarga y lectura compartida desde nueva sesión HTTP. Tareas/asignaciones intactas, cero entidades editoriales en la cohorte. Ver BOARD_NATIVE_DROP_QA.md. El fixture terminó exit0 y cleanup absent:true. No se afirma un POST por gesto sin registro de red ni aceptación de todo drag/roles/móvil. Solo documentación de evidencia, sin cambios de producto ni despliegue; aceptación global abierta.
 
+Actualización174: comprobadas nativamente fotos por tipo/estado/enlace/observación y guion pendiente retomado en visita futura, con PostgreSQL READ ONLY verificando origen/linaje y cero tareas/publicaciones automáticas. Corregida la oferta de Retomar contra la misma visita mediante disabled/guarda local, servidor intacto. Ver PRODUCTION_PHOTOS_PENDING_QA.md. Pasaron136 focales,2363 frontend y build; segundo fixture conectado verificó botón deshabilitado en390px. Ambos fixtures terminaron exit0 y cleanup absent:true. Banco actual solo de guiones; fotos para repetir quedan en visita, transferencia de fotos/edición del mismo UUID no verificadas. No hubo cambios de bases existentes ni despliegue; aceptación global abierta.
+
 ## Matriz de requisitos: qué prueba la evidencia actual
 
 | Requisito maestro | Evidencia actual | Estado y evidencia todavía necesaria |

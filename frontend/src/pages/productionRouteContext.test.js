@@ -8,6 +8,31 @@ const base='https://render.test/producciones',id='11111111-1111-4111-8111-111111
 const source=readFileSync(new URL('./Productions.jsx',import.meta.url),'utf8');
 const file=ts.createSourceFile('Productions.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
 function callback(name,deps){let found;function walk(n){if(ts.isVariableDeclaration(n)&&n.name.getText(file)===name)found=n.initializer;ts.forEachChild(n,walk);}walk(file);assert.ok(found);return Function(...Object.keys(deps),`return (${found.getText(file)});`)(...Object.values(deps));}
+test('resume rejects the source visit locally while preserving valid other-visit writes',async()=>{
+  const video={id:'video-source',visita_id:id,cliente_id:7};
+  for(const selected of [null,{id,cliente_id:7},{id:'other',cliente_id:8},{id:'other',cliente_id:7}]){
+    const writes=[],notices=[];
+    const resume=callback('resume',{selected,setNotice:message=>notices.push(message),writeVisit:async(...args)=>writes.push(args)});
+    await resume(video);
+    const valid=selected?.id==='other'&&selected.cliente_id===7;
+    assert.equal(writes.length,valid?1:0);
+    if(valid)assert.deepEqual(writes[0],[selected,'/videos','POST',{video_origen_id:video.id}]);
+    else assert.equal(notices.length,1);
+    if(selected?.id===id)assert.match(notices[0],/ya está.*Elegí otra visita/);
+  }
+});
+test('pending resume button disables same visit, other client, missing destination and busy state',()=>{
+  let button;
+  function walk(node){if(ts.isJsxElement(node)&&node.openingElement.tagName.getText(file)==='button'&&node.children.some(child=>ts.isJsxText(child)&&child.text.trim()==='Retomar en la visita seleccionada'))button=node;ts.forEachChild(node,walk);}walk(file);assert.ok(button);
+  const attr=name=>button.openingElement.attributes.properties.find(n=>n.name?.text===name)?.initializer.expression.getText(file);
+  const disabled=Function('busy','selected','video',`return (${attr('disabled')});`),title=Function('selected','video',`return (${attr('title')});`);
+  const video={visita_id:id,cliente_id:7};
+  for(const selected of [null,{id,cliente_id:7},{id:'other',cliente_id:8}])assert.equal(disabled(false,selected,video),true);
+  assert.equal(disabled(true,{id:'other',cliente_id:7},video),true);
+  assert.equal(disabled(false,{id:'other',cliente_id:7},video),false);
+  assert.match(title({id,cliente_id:7},video),/Elegí otra visita/);
+  assert.equal(title({id:'other',cliente_id:7},video),undefined);
+});
 test('strict scalar client and month reject malformed context before reads',()=>{
   for(const query of ['cliente=0','cliente=-1','cliente=01','cliente=1.0','cliente=1e2','cliente=2147483648','cliente=','cliente=%201','cliente=1%0A','cliente=1&cliente=2','cliente[]=1','cliente[x]=1','mes=0000-01','mes=2026-13','mes=2026-01%0A','mes=2026-01&mes=2026-02','tab=no','visita=no']){
     assert.throws(()=>productionLocation(`${base}?${query}`),query);
