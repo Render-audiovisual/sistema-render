@@ -60,6 +60,26 @@ La primera corrida focal necesitó completar los campos públicos del DTO de ses
 
 ## Pendientes y límites
 
+### Calendario poblado: A/B/A, enlace explícito, recarga y móvil — corte242
+
+Objetivo: acreditar la memoria visual canónica por identidad real, sin convertir preferencias locales en persistencia de negocio. Supuesto de prueba: mismo navegador/origen con dos cuentas QA independientes; no dispositivos físicos. Plan y criterio: seleccionar controles reales, salir/reentrar, cambiar A/B/A, recargar y contrastar URL, selección y títulos servidos por API; después comprobar integridad y limpiar. Skills superpowers y verification orientaron contratos previos y separación entre fuente, navegador y PostgreSQL.
+
+Erdos preparó `/private/tmp/render2-goal242-calendar-native.mjs`; coordinador inspeccionó y ejecutó, Volta revisó fuentes y límites en solo lectura sin confirmar un defecto de separación de preferencias. Su recomendación de conteos asumía las tres tareas el mismo día; el fixture definitivo distribuye fechas26/27/28 y las observaciones siguientes corresponden a esa distribución, no a dicha hipótesis.
+
+Build canónico existente241 `index-BPLI3RjQ.js`, HTTP52838/PostgreSQL55883. Identidad exacta comprobada antes del setup. API creó tarea1 Luciano lunes26/10, tarea2 Luciano miércoles28/10, tarea3 Designer martes27/10, todas pendientes sin cliente ni colaboradores. Se esperaron las tres notificaciones privadas de creación por ID antes del baseline. No visitas ni piezas sembradas. El script mantiene el backend principal con sesión cookie, .env deshabilitado y fetch externo bloqueado en hijo; el frontend mostró control Google configurado, no se pulsó y no se acredita aislamiento externo de ese frontend.
+
+Luciano91003 entró desde `/login` neutral. Sidebar Calendario mostró Lo mío/Todos/hoy24: celdas26/28 con1evento y27 con0. Eligió Entregas de tareas y día28: agenda mostró exclusivamente tarea2, encabezado1de1 y enlace `/workspace/tareas?task=2`. Inicio→Sidebar recuperó `mes=2026-10&dia=2026-10-28&scope=mine&tipo=tarea&pagina=0`. Cerró sesión desde el menú real: `/login` sin next.
+
+Designer91004 entró sin corregir manualmente el login. Calendario mostró Lo mío/Todos/hoy24, no la selección de A: únicamente celda27 con1evento,26/28 con0. Eligió Equipo/Todos/día27: las tres fechas26/27/28 tuvieron1evento cada una; agenda27 mostró tarea3, no las de Luciano. Inicio→Sidebar conservó Equipo/Todos/día27. Cerró B de forma neutral y A volvió a entrar. Sidebar recuperó Lo mío/Entregas/día28 y tarea2. Recarga mantuvo esa selección y resultado.
+
+A390×844, controles reales, día28 seleccionado y agenda con tarea2 presentes en AX; Inicio→menú móvil→Calendario restauró lo mismo y cerró menú. DOM: innerWidth390, documentElement.clientWidth390, scrollWidth390 y body.scrollWidth390. Captura `/private/tmp/render2-goal242-calendar-mobile.png` inspeccionada: filtros verticales y grilla sin corte horizontal; agenda por debajo del pliegue, no visible en esa captura. No prueba todos los tamaños, zoom, lectores ni todo menú nativo.
+
+Enlace explícito del runner a Lo mío/Entregas/día26 ganó sobre28 y mostró tarea1. Atrás nativo recuperó28 y tarea2. Captura adicional `/private/tmp/render2-goal242-calendar-explicit-mobile.png`. No se abrieron/editaron tareas, no se inyectaron preferencias, respuestas o cookies en navegador. Un intento Playwright getByLabel no encontró el selector; se usó setValue del control AX observado, que sí actualizó selección y URL. Esto no demuestra falta de nombre accesible: AX sí mostraba Tipo.
+
+Exact PID10524 verificado antes de SIGTERM; sesión del runner terminó0. Log `/private/tmp/render2-goal242-calendar-native.log`: `CALENDAR_DOMAIN_HASHES_UNCHANGED 105 EXACT_LOGOUT_EPOCHS A1 B1`, `FIXTURE_CLEANUP_ENOENT /private/tmp/render2-local-hxhkm5`. Snapshot de105 tablas salvo familias auth/browser_session; usuarios incluye todos los campos excepto session_version/user_admin_version, verificados separadamente con incremento1 exacto para91003/91004 y0 para otros. No prueba secuencias ni ausencia de peticiones fallidas. Pestaña propia43 cerrada y viewport restablecido.
+
+Revisión final: recorrido descrito acreditado sin cambios de producto ni renovación de regresiones/build; no defecto nuevo encontrado. Reduce de siete a seis las rutas pendientes de A/B/A nativo: Producciones, Proyectos, Clientes, Historias, Publicaciones y Feedback. Calendario aún requiere filtro por cliente, otros tipos/miembros derivados, cambio de mes recordado, paginación poblada y más intercalados. No aceptación global ni despliegue; sin bases existentes, datos reales o proveedores autorizados.
+
 ### Accesos genéricos de Inicio integrados, corte205
 
 QuickHome recibía el callback simple `navigate`, por lo que sus accesos bare ignoraban las preferencias aunque Sidebar sí las recuperara. App ahora entrega a QuickHome el mismo `navigateSidebar` protegido; Calendar conserva su callback anterior. No se envuelven history ni todos los anchors del documento, no cambia el parser de preferencias y no se agrega otra lógica comercial.
