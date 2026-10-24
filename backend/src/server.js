@@ -2748,6 +2748,7 @@ router.get("/tareas/:id/subtareas", async (req, res, next) => {
 });
 
 router.get("/tareas/:id/comentarios", async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
   try {
     const esRenderOS = req.query.workspace === "render_os";
     const acceso = buildTaskReadAccessClause(req.auth, "t", "$2", esRenderOS ? "render_os" : "historical");

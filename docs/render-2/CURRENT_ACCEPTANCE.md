@@ -4,6 +4,8 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+Actualización212: detalle de tareas permite actualizar el listado de comentarios sin cerrar la tarea ni resetear borrador/formulario/intento; listar no confirma envíos inciertos.2728 frontend/2083 backend aprobadas,128 integraciones optativas omitidas, build correcto y revisión independiente;12 físicas de comentarios renovadas con Cache-Control no-store. Falta recorrido nativo del nuevo botón con dos integrantes. Ver TASK_WORKFLOW_QA.md.
+
 Actualización211: migrador real088→089 probado sobre datos sintéticos poblados en clúster descartable, sin API.104 tablas completas preservadas y ledger con única entrada089; columnas/restricciones/índices/triggers observados y secuencias conservados, con RI nuevos esperados. Rerun sin cambios, servicio de comentarios/recovery/replay válido y cleanup ENOENT. Una física compuesta aprobada; backend2083 aprobadas/128 optativas omitidas. Ver TASK_WORKFLOW_QA.md. No sustituye ensayo sobre copia comercial autorizada, CLI/hosting ni aceptación global.
 
 Actualización194: GOAL_DRAFT_LOST_ACK_NATIVE_QA.md verifica guardado real con respuesta200 descartada mediante transporte de QA en navegador: aviso incierto, recuperación sin reenvío y segundo Guardar humano409. PostgreSQL confirmó un único incremento de revisión, tarea/pieza coherentes y siete tablas restantes sin cambios. Fixture eliminado. Este corte cubre el ACK ocultado después de commit, no desmontaje durante petición pendiente, pérdida física de red ni aceptación global.

@@ -149,9 +149,10 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [comments, setComments] = useState([]);
   const [comment, setComment] = useState("");
   const [, renderCommentCreation] = useState(0);
+  const [, renderCommentRead] = useState(0);
   const commentDraftOwner = useRef(null);
   if (!commentDraftOwner.current || commentDraftOwner.current.taskId !== task?.id || commentDraftOwner.current.captureRequest !== captureRequest) {
-    const owner = { taskId: task?.id, captureRequest, generation: 0, readGeneration: 0, initialized: false, consumed: null, commentsRead: { items: [], confirmed: [] } };
+    const owner = { taskId: task?.id, captureRequest, generation: 0, readGeneration: 0, refresh: null, readError: '', initialized: false, consumed: null, commentsRead: { items: [], confirmed: [] } };
     commentDraftOwner.current = owner;
     owner.creation = createTaskCommentCreation({
       capture: () => {
@@ -246,6 +247,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     const controller = new AbortController();
     const guard = captureRequest(apiJson);
     const owner = commentDraftOwner.current, readGeneration = ++owner.readGeneration;
+    owner.refresh = null; owner.readError = '';
     const commentsRead = { items: [], confirmed: [...owner.commentsRead.confirmed] }; owner.commentsRead = commentsRead;
     const currentComments = () => guard.current() && !controller.signal.aborted
       && commentDraftOwner.current === owner && owner.readGeneration === readGeneration && owner.commentsRead === commentsRead;
@@ -270,7 +272,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         const merged = mergeTaskComments(items, commentsRead.confirmed, owner.taskId);
         commentsRead.items = merged; setComments(merged);
       })
-      .catch((reason) => { if (currentComments()) setCommentError(reason.message || "No se pudieron cargar los comentarios."); });
+      .catch((reason) => {
+        if (currentComments()) { owner.readError = reason.message || "No se pudieron cargar los comentarios."; renderCommentRead(value => value + 1); }
+      });
     onLoadSubtasks(task.id, { signal: controller.signal }).catch((reason) => {
       if (guard.current() && !controller.signal.aborted) setCommentError(reason.message || "No se pudieron cargar las subtareas.");
     });
@@ -515,6 +519,27 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     if (await owner.creation.verify()) acceptCommentCreation(owner);
   })(commentDraftOwner.current);
 
+  const refreshComments = (owner => async () => {
+    if (commentDraftOwner.current !== owner || owner.taskId !== task?.id || owner.captureRequest !== captureRequest || owner.refresh) return;
+    const guard = captureRequest(apiJson);
+    if (!guard.current()) return;
+    const commentsRead = owner.commentsRead, readGeneration = ++owner.readGeneration;
+    const lease = {}; owner.refresh = lease; owner.readError = '';
+    const current = () => guard.current() && commentDraftOwner.current === owner
+      && owner.readGeneration === readGeneration && owner.commentsRead === commentsRead && owner.refresh === lease;
+    renderCommentRead(value => value + 1);
+    try {
+      const items = await guard.request(`/api/tareas/${owner.taskId}/comentarios?workspace=render_os`, { method: 'GET', cache: 'no-store' });
+      if (!current()) return;
+      const merged = mergeTaskComments(items, commentsRead.confirmed, owner.taskId);
+      commentsRead.items = merged; setComments(merged);
+    } catch (reason) {
+      if (current()) owner.readError = reason.message || 'No se pudieron actualizar los comentarios.';
+    } finally {
+      if (current()) { owner.refresh = null; renderCommentRead(value => value + 1); }
+    }
+  })(commentDraftOwner.current);
+
   const changeTrashState = async () => {
     const guard = captureRequest();
     if (!guard.current()) return;
@@ -716,6 +741,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         </div>
         <section className="ros-task-comments-footer">
           <h3>Comentarios</h3>
+          <button type="button" disabled={Boolean(commentDraftOwner.current.refresh)} onClick={refreshComments}>{commentDraftOwner.current.refresh ? 'Actualizando…' : 'Actualizar comentarios'}</button>
+          {commentDraftOwner.current.readError && <div className="ros-inline-error">{commentDraftOwner.current.readError}</div>}
           {commentError && <div className="ros-inline-error">{commentError}</div>}
           {commentDraftOwner.current.creation.snapshot.locked && <p role="status">Salir no cancela ni revierte el envío. Este intento no sobrevive a una recarga. Verificá el envío antes de salir.</p>}
           {commentDraftOwner.current.creation.snapshot.canVerify && <button type="button" onClick={verifyCommentCreation}>Verificar envío</button>}

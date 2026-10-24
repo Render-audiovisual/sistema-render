@@ -1,5 +1,17 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Actualización explícita del listado compartido — corte212
+
+El detalle solo cargaba comentarios al abrirse. Ahora “Actualizar comentarios” solicita GET no-store sin reiniciar el efecto completo de apertura: mantiene listado anterior mientras espera, borrador/generación, edición del brief, controles de producción y modelo de envío. No hay polling ni sincronización en tiempo real. El servidor marca también GET de comentarios Cache-Control no-store.
+
+Handler captura owner/tarea/capture de render y usa lease síncrona para doble clic. Comparte readGeneration con el GET inicial: una respuesta inicial antigua no reemplaza la lectura nueva. Al resolver fusiona con los POST confirmados vigentes, incluidos ACK recibidos durante el GET; finally viejo no libera otra lease. Error/DTO inválido conserva la lista y usa error de lectura independiente del error de envío. No llama start/verify/discard: aunque el listado muestre A, el intento incierto continúa bloqueado hasta verificar su UUID.
+
+Erdos implementó TaskDetail y29 pruebas adicionales de lectura; coordinador añadió header API y comprobación HTTP física. Volta revisó fuente/pruebas sin bloqueantes, en solo lectura. La skill de trabajo estructurado orientó separar refresco de lectura, verificación del intento y reinicio del formulario, sin añadir operaciones de negocio paralelas.
+
+Frontend2728 aprobadas, cero fallos/omisiones (`/private/tmp/render2-goal212-frontend.log`); backend2083 aprobadas,128 integraciones optativas omitidas, cero fallos (`/private/tmp/render2-goal212-backend.log`). Focal reportado por Erdos158 aprobadas. Build `index-Bz8EzihW.js` (`/private/tmp/render2-goal212-build.log`). Tests de callbacks reales extraídos y transporte diferido cubren ambos órdenes GET/ACK, GET inicial tardío, doble admisión, borrador/formulario conservados, refresh con intento incierto, errores y task/session ABA/unmount. No equivalen a React montado ni dos navegadores conectados.
+
+Suite física render2-task-comment-receipts.integration.test.js renovada:12 aprobadas, cero fallos/omisiones, incluida cabecera no-store/listado real del comentario. Log `/private/tmp/render2-goal212-comment-http.log`, cleanup ENOENT `/private/tmp/render2-local-3ySpd8`, salida0. Esta suite no pulsa el nuevo botón: queda pendiente recorrido nativo de lectura compartida por dos integrantes, móvil y recarga. Evidencia nativa210 de recuperación no se extrapola a esta nueva acción. Sin base existente, proveedores, migración ni despliegue.
+
 ## Ensayo poblado de migración089 — corte211
 
 Verificado el migrador real sobre un clúster **nuevo, sintético y descartable** poblado hasta088; no sobre copia comercial ni base configurada. `render2-task-comment-migration.integration.test.js` usa PG55863, clusterOnly, identidad física exacta (directorio, database, usuario, loopback, puerto), status con único pendiente089 y planHash real. El harness admite deferTaskCommentReceiptsMigration solo booleano y en modo clusterOnly; no se altera la política de migración ni se levanta API.

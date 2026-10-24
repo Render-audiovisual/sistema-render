@@ -40,6 +40,9 @@ test('comment receipt: isolated principal HTTP, concurrency, recovery, tombstone
   const beforeRecovery=await counts(),beforeState=await state();assert.deepEqual(checked(await recover(key)),first);assert.deepEqual(await state(),beforeState);
   const response=await fetch(new URL(`/api${path(taskId)}/solicitudes/${key}?workspace=render_os`,f.base),{headers:{Authorization:`Bearer ${staff}`}});
   assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
+  const listing=await fetch(new URL(`/api${path(taskId)}?workspace=render_os`,f.base),{headers:{Authorization:`Bearer ${staff}`}});
+  assert.equal(listing.status,200);assert.equal(listing.headers.get('cache-control'),'no-store');
+  assert.ok((await listing.json()).some(row=>row.id===first.id&&row.contenido===first.contenido));
   checked(await post({...body,contenido:'Different intent'}),409);
   const anotherTask=await makeTask();checked(await post(body,staff,anotherTask),409);checked(await recover(key,staff,anotherTask),404);
   assert.deepEqual(await counts(),beforeRecovery);

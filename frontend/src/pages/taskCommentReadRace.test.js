@@ -32,7 +32,7 @@ function fixture() {
   const store = createBrowserSessionState(), reads = [], posts = [], effects = [];
   const accept = id => store.acceptBootstrap(store.beginBootstrap(), { usuario: { id, usuario: 'qa', nombre: 'QA', rol: 'diseno' }, session_context: 'a'.repeat(43), csrf_token: 'b'.repeat(43) });
   accept(7); let active = true;
-  const deps = { mergeTaskComments, createTaskCommentCreation, renderCommentCreation() {}, task: { id: 9, propiedades_extra: {} }, sesion: store.getSession(),
+  const deps = { mergeTaskComments, createTaskCommentCreation, renderCommentCreation() {}, renderCommentRead() {}, task: { id: 9, propiedades_extra: {} }, sesion: store.getSession(),
     commentDraftOwner: { current: null }, comment: '', commenting: false, comments: [], commentError: '',
     apiJson() {}, AbortController, getUnifiedTaskContent: () => '', getHoyLocalISO: () => '2026-10-24', onLoadSubtasks: async () => [] };
   function captureFor(session) {
@@ -48,7 +48,9 @@ function fixture() {
   renderOwner();
   deps.acceptCommentCreation = owner => evaluate(find(n => ts.isVariableDeclaration(n) && n.name.getText(file) === 'acceptCommentCreation').initializer, deps)(owner);
   const verify = find(n => ts.isVariableDeclaration(n) && n.name.getText(file) === 'verifyCommentCreation').initializer;
+  const refresh = find(n => ts.isVariableDeclaration(n) && n.name.getText(file) === 'refreshComments').initializer;
   return { deps, reads, posts, effects,
+    refresh: () => evaluate(refresh, deps)(), retainedRefresh: () => evaluate(refresh, deps),
     retainedSend: () => evaluate(submit, deps), retainedVerify: () => evaluate(verify, deps),
     verify: () => evaluate(verify, deps)(),
     read: () => evaluate(readEffect, deps)(), type: value => evaluate(change, deps)({ target: { value } }), send: () => evaluate(submit, deps)(),
@@ -85,7 +87,7 @@ for (const invalid of [null, {}, [row(0)], [row('21')], [row(21, { tarea_id: 10 
   test(`invalid/conflicting GET preserves confirmed comments and draft (${JSON.stringify(invalid)})`, async () => {
     const h = fixture(), cleanup = h.read(); h.type('A'); const sent = h.send(); h.type('B');
     h.posts[0].resolve(row()); await sent; h.reads[0].resolve(invalid); await flush();
-    assert.deepEqual(h.deps.comments, [row()]); assert.equal(h.deps.comment, 'B'); assert.match(h.deps.commentError, /verificar/); cleanup();
+    assert.deepEqual(h.deps.comments, [row()]); assert.equal(h.deps.comment, 'B'); assert.match(h.deps.commentDraftOwner.current.readError, /verificar/); cleanup();
   });
 }
 
@@ -200,6 +202,102 @@ test('actual UI only offers explicit verification and disables Comentar for unre
   assert.match(detail.getText(file), /snapshot.canVerify && <button type="button" onClick=\{verifyCommentCreation\}>Verificar envío/);
   assert.doesNotMatch(detail.getText(file), /creation\.discard\(/);
   assert.match(detail.getText(file), /Salir no cancela ni revierte el envío/);
+});
+
+test('manual refresh supersedes held initial GET without resetting form, editing, or draft', async () => {
+  const h = fixture(), cleanup = h.read();
+  h.deps.draft = { titulo: 'Unsaved form' }; h.deps.editing = true; h.type('B');
+  const owner = h.deps.commentDraftOwner.current, generation = owner.generation;
+  const before = h.effects.length, fresh = h.refresh();
+  await h.refresh(); assert.equal(h.reads.length, 2, 'Synchronous lease denies double click');
+  assert.ok(owner.refresh); assert.equal(h.reads[1].options.cache, 'no-store');
+  assert.equal(h.reads[1].options.method, 'GET'); assert.equal(h.reads[1].options.body, undefined);
+  h.reads[1].resolve([row(30)]); await fresh;
+  assert.equal(owner.refresh, null); assert.deepEqual(h.deps.comments, [row(30)]);
+  h.reads[0].resolve([]); await flush();
+  assert.deepEqual(h.deps.comments, [row(30)]);
+  assert.deepEqual(h.deps.draft, { titulo:'Unsaved form' }); assert.equal(h.deps.editing, true);
+  assert.equal(h.deps.comment, 'B'); assert.equal(owner.generation, generation);
+  assert.deepEqual(h.effects.slice(before).map(e => e[0]), ['Comments']); cleanup();
+});
+
+for (const order of ['ACK first','refresh first']) {
+  for (const edits of [[],['B'],['B','A'],['']]) {
+    test(`manual refresh + ${order} keeps one confirmed row and exact draft observation ${JSON.stringify(edits)}`, async () => {
+      const h = fixture(), cleanup = h.read(); h.type('A'); const sent = h.send(), fresh = h.refresh();
+      for (const value of edits) h.type(value);
+      if (order === 'ACK first') { h.posts[0].resolve(row()); await sent; h.reads[1].resolve([]); await fresh; }
+      else { h.reads[1].resolve([row()]); await fresh; h.posts[0].resolve(row()); await sent; }
+      assert.deepEqual(h.deps.comments, [row()]); assert.equal(h.deps.comment, edits.length ? edits.at(-1) : '');
+      h.reads[0].resolve([]); await flush(); assert.deepEqual(h.deps.comments, [row()]);
+      assert.equal(h.posts.length, 1); cleanup();
+    });
+  }
+}
+
+test('list containing A cannot verify uncertain UUID; refresh preserves attempt and write error', async () => {
+  const h = fixture(), cleanup = h.read(); h.type('A'); const sent = h.send(); h.posts[0].reject(new Error('Lost ACK')); await sent;
+  const owner = h.deps.commentDraftOwner.current, attempt = owner.creation.snapshot.attempt, error = h.deps.commentError;
+  h.type('B'); const fresh = h.refresh(); h.reads[1].resolve([row()]); await fresh;
+  assert.equal(owner.creation.snapshot.attempt, attempt); assert.equal(owner.creation.snapshot.locked, true);
+  assert.equal(h.deps.commentError, error); assert.equal(h.deps.comment, 'B');
+  assert.deepEqual(h.deps.comments, [row()]); await h.send(); assert.equal(h.posts.length, 1);
+  const failed = h.refresh(); h.reads[2].reject(new Error('Manual read failed')); await failed;
+  assert.equal(owner.readError, 'Manual read failed'); assert.equal(h.deps.commentError, error);
+  assert.equal(owner.creation.snapshot.attempt, attempt); assert.deepEqual(h.deps.comments, [row()]);
+  const retry = h.refresh(); assert.equal(owner.readError, ''); h.reads[3].resolve([row()]); await retry;
+  assert.equal(h.deps.commentError, error); assert.equal(owner.creation.snapshot.locked, true); cleanup();
+});
+
+for (const malformed of [null,{},[row(0)],[row(21,{ tarea_id:10 })],[row(21,{created_at:'bad'})],
+  [row(30),row(30,{contenido:'conflict'})],[row(21,{contenido:'conflicts with confirmed'})]]) {
+  test(`invalid manual DTO retains old rows and B, and releases only its read lease (${JSON.stringify(malformed)})`, async () => {
+    const h = fixture(), cleanup = h.read(); h.type('A'); const sent = h.send(); h.posts[0].resolve(row()); await sent;
+    h.type('B'); const owner = h.deps.commentDraftOwner.current, before = h.deps.comments;
+    const fresh = h.refresh(); h.reads[1].resolve(malformed); await fresh;
+    assert.equal(h.deps.comments, before); assert.equal(h.deps.comment, 'B'); assert.equal(owner.refresh, null);
+    assert.match(owner.readError, /verificar/); assert.equal(h.deps.commentError, ''); cleanup();
+  });
+}
+
+for (const transition of ['task','task ABA','session','session ABA','unmount']) {
+  for (const failure of [false,true]) {
+    test(`manual refresh late ${failure?'error':'GET'} and retained callback fenced after ${transition}`, async () => {
+      const h = fixture(); h.type('Old text'); const retained = h.retainedRefresh(), fresh = h.refresh();
+      if (transition.startsWith('task')) { h.switchTask(10); if (transition.endsWith('ABA')) h.switchTask(9); }
+      else if (transition.startsWith('session')) { h.switchSession(8); if (transition.endsWith('ABA')) h.switchSession(7); }
+      else h.unmount();
+      h.type('New owner draft'); const count = h.effects.length;
+      await retained(); assert.equal(h.reads.length, 1);
+      if (failure) h.reads[0].reject(new Error('Old failure')); else h.reads[0].resolve([row()]);
+      await fresh; assert.equal(h.effects.length, count); assert.equal(h.deps.comment, 'New owner draft');
+      assert.deepEqual(h.deps.comments, []);
+      if (transition !== 'unmount') {
+        const newer = h.refresh(); assert.ok(h.deps.commentDraftOwner.current.refresh);
+        h.reads[1].resolve([]); await newer; assert.equal(h.deps.commentDraftOwner.current.refresh, null);
+        assert.equal(h.deps.commentDraftOwner.current.readError, '');
+      }
+    });
+  }
+}
+
+test('new same-owner full read fences old manual finally without unlocking a newer manual lease', async () => {
+  const h = fixture(); const first = h.refresh(); h.read(); const second = h.refresh();
+  const owner = h.deps.commentDraftOwner.current, lease = owner.refresh;
+  h.reads[0].reject(new Error('Obsolete refresh')); await first;
+  assert.equal(owner.refresh, lease); assert.equal(owner.readError, '');
+  h.reads[2].resolve([row(30)]); await second; assert.equal(owner.refresh, null);
+  h.reads[1].resolve([]); await flush(); assert.deepEqual(h.deps.comments, [row(30)]);
+});
+
+test('actual refresh button is busy only for its manual lease and calls actual refresh handler', () => {
+  const button = find(n => ts.isJsxElement(n) && n.openingElement.tagName.getText(file) === 'button'
+    && n.openingElement.attributes.properties.some(a => a.name?.getText(file) === 'onClick' && a.initializer?.getText(file) === '{refreshComments}'));
+  const disabled = button.openingElement.attributes.properties.find(a => a.name?.getText(file) === 'disabled').initializer.expression;
+  for (const refresh of [null,{}]) assert.equal(evaluate(disabled,{ commentDraftOwner:{current:{refresh}} }), Boolean(refresh));
+  const handler = find(n => ts.isVariableDeclaration(n) && n.name.getText(file) === 'refreshComments').initializer.getText(file);
+  assert.doesNotMatch(handler, /setDraft|setEditing|setComment\(|setCommentError|creation\.(start|verify|discard)|setInterval|setTimeout/);
+  assert.match(button.getText(file), /Actualizar comentarios/);
 });
 
 for (const failure of [false, true]) {
