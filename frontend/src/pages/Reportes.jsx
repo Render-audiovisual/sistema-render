@@ -7,6 +7,7 @@ import { ReportTable, ReportCell } from '../components/ReportTable.jsx';
 import { ROL_LABELS } from '../constants.js';
 import { getReportPeriodRange } from '../shared/reports/report-utils.js';
 import { pushUrlContext, readUrlContext, replaceUrlContext } from '../shared/navigation/url-context.js';
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { buildEmployeeReport, buildHistoricalProductionReport, buildProductionRegistryReport, historicalUnassignedEditingCount, uniqueReportTasks, editorialRecords, summarizeEditorialRecords, clientQuotaReport, employeeTaskDetails, employeeFormatBreakdown, personalEditorialReport } from '../shared/reports/production-registry-report.js';
 import './ReportProductionRegistry.css';
 
@@ -59,7 +60,7 @@ function ReportesContent({ session }) {
   const context = JSON.stringify([period, today, range.desde, range.hasta]);
   // Do not render an old period's data during the render before effect cleanup.
   const data = observation?.context === context ? observation.data : null;
-  useEffect(() => { replaceUrlContext({ periodo: period }); }, [period]);
+  useEffect(() => { replaceUrlContext({ periodo: period }); notifyViewPreferenceChange(window); }, [period]);
   useEffect(() => {
     const restore = () => setPeriod(initialPeriod());
     window.addEventListener('popstate', restore);
@@ -103,7 +104,7 @@ function ReportesContent({ session }) {
   const quotaMonth = period === 'mes_pasado' ? range.desde.slice(0, 7) : today.slice(0, 7);
   return <main className="rpr-page" aria-label="Reportes del equipo"><div className="frame"><div className="content">
     <header className="rpr-heading"><span className="rpr-eyebrow">Reportes</span><h1>Trabajo y producción</h1><p>Registros del período, sin información económica ni objetivos estimados.</p></header>
-    <nav className="rpr-periods" aria-label="Período del reporte">{PERIODS.map(([id, label]) => <button key={id} type="button" aria-pressed={period === id} onClick={() => { pushUrlContext({ periodo: id }); setPeriod(id); }}>{label}</button>)}</nav>
+    <nav className="rpr-periods" aria-label="Período del reporte">{PERIODS.map(([id, label]) => <button key={id} type="button" aria-pressed={period === id} onClick={() => { pushUrlContext({ periodo: id }); notifyViewPreferenceChange(window); setPeriod(id); }}>{label}</button>)}</nav>
     <p className="rpr-muted">Desde {range.desde} hasta {range.hasta} (sin incluir ese día).</p>
     {error && <p className="rpr-error" role="alert">{error}</p>}
     {loading ? <p role="status">Cargando reportes…</p> : !data ? <p>No hay datos disponibles. Cambiá de período para volver a intentar.</p> : <>

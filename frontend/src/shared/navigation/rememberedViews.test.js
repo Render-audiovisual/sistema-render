@@ -18,6 +18,8 @@ const cases = [
   ['/producciones', 'mes=2024-02&dia=2024-02-29&cliente=9&tab=pending'],
   ['/calendario', 'mes=2024-02&dia=2024-02-29&scope=team&tipo=visita&cliente=9'],
   ['/proyectos', 'cliente=9&estado=en_curso&archivados=true'],
+  ['/clientes', 'cliente=9&periodo=2026-10'],
+  ['/reportes-historias', 'periodo=mes_pasado'],
 ];
 for (const [path, query] of cases) {
   test(`${path}: closed preferences round trip and are user/path isolated`, () => {
@@ -122,7 +124,7 @@ test('Gregorian month/day validation rejects overflow, nonleap and mismatched mo
 
 test('unsupported/external/noncanonical paths and malformed URLs cannot write or restore', () => {
   const s = storage();
-  for (const href of ['/clientes', '/sueldos', '/workspace/tareas/', '//evil.test/producciones', 'https://render.test/producciones', 'https://evil.test/producciones', 'producciones', '/x/../producciones', '/%70roducciones', '/producciones\\evil', '/producciones?tab=%ZZ', '/producciones?tab=%FF', '/producciones\n']) {
+  for (const href of ['/clientes/operacion', '/sueldos', '/workspace/tareas/', '//evil.test/producciones', 'https://render.test/producciones', 'https://evil.test/producciones', 'producciones', '/x/../producciones', '/%70roducciones', '/producciones\\evil', '/producciones?tab=%ZZ', '/producciones?tab=%FF', '/producciones\n']) {
     assert.equal(saveRememberedView(s, 7, href), false, href); assert.equal(readRememberedView(s, 7, href), href);
   }
   assert.equal(s.records.size, 0);
@@ -159,4 +161,26 @@ test('throwing/unavailable storage is harmless and never escapes', () => {
     assert.equal(saveRememberedView(s, 7, '/proyectos?estado=en_curso'), false);
     assert.equal(readRememberedView(s, 7, '/proyectos'), '/proyectos');
   }
+});
+test('client goal context excludes pieces, drafts, labels, operation resources and management mode',()=>{
+  const s=storage();
+  assert.equal(saveRememberedView(s,7,'/clientes?cliente=9&periodo=2026-10&borrador=77&pieza=88&nombre=PRIVATE&abono_mensual=999'),true);
+  const expected='/clientes?cliente=9&periodo=2026-10';assert.equal(readRememberedView(s,7,'/clientes'),expected);
+  const saved=s.records.get(key('/clientes'));
+  for(const suffix of ['?gestion=1','?gestion=0&cliente=10','?%67estion=1']){
+    assert.equal(saveRememberedView(s,7,'/clientes'+suffix),false);assert.equal(s.records.get(key('/clientes')),saved);
+    assert.equal(readRememberedView(s,7,'/clientes'+suffix),'/clientes'+suffix);
+  }
+  assert.equal(readRememberedView(s,7,'/clientes/operacion?cliente=10'),'/clientes/operacion?cliente=10');
+  assert.doesNotMatch(saved,/PRIVATE|borrador|pieza|abono|999/);
+});
+test('report periods are visual relative ranges only, not personnel detail or money',()=>{
+  const s=storage();
+  for(const periodo of ['mes_actual','mes_pasado','ultimos_30']){
+    assert.equal(saveRememberedView(s,7,`/reportes-historias?periodo=${periodo}&persona=91001&importe=100&token=PRIVATE`),true);
+    assert.equal(readRememberedView(s,7,'/reportes-historias'),`/reportes-historias?periodo=${periodo}`);
+    assert.doesNotMatch(s.records.get(key('/reportes-historias')),/persona|importe|PRIVATE|token/);
+  }
+  assert.equal(readRememberedView(s,8,'/reportes-historias'),'/reportes-historias');
+  assert.equal(readRememberedView(s,7,'/reportes-historias?periodo=mes_actual'),'/reportes-historias?periodo=mes_actual');
 });

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import ts from 'typescript';
 import { parseGoalClientId, goalClientLocationUrl, resolveGoalClient } from './clientGoalLocation.js';
 import { goalQuotaProgress, validGoalQuotaRevision } from './clientGoalQuota.js';
@@ -86,7 +87,7 @@ function navigationFixture() {
     addEventListener(type, fn) { handlers.set(type, fn); }, removeEventListener(type, fn) { assert.equal(handlers.get(type), fn); handlers.delete(type); },
     dispatchEvent(event) { events.push(['dispatch', event.type]); handlers.get(event.type)?.(event); return true; } };
   let current = true, allow = true;
-  const deps = { window, clients, selectedClientId: 7, period: '2026-10', modalOpen: { current: false },
+  const deps = { notifyViewPreferenceChange, window, clients, selectedClientId: 7, period: '2026-10', modalOpen: { current: false },
     preparing: false, loaded: { current: true }, deferred: { current: false }, pendingPeriod: { current: null },
     activeHref: { current: url.href }, goalId: n => Number.isSafeInteger(n) && n > 0 && n <= 2147483647,
     parseGoalClientId, goalClientLocationUrl, goalPeriod: evaluate(owner('goalPeriod'), { currentMonth: () => '2026-10' }),

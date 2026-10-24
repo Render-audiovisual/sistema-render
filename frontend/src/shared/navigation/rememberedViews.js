@@ -34,6 +34,8 @@ const validators = {
     cliente: numericId, estado: oneOf('planificado', 'en_curso', 'en_revision', 'pausado', 'finalizado', 'cancelado'),
     archivados: oneOf('true', 'false'),
   },
+  '/clientes': { periodo: month, cliente: numericId },
+  '/reportes-historias': { periodo: oneOf('mes_actual', 'mes_pasado', 'ultimos_30') },
 };
 const owns = (value, key) => Object.hasOwn(value, key);
 const size = value => new TextEncoder().encode(value).length;
@@ -69,6 +71,9 @@ export function saveRememberedView(storage, userId, href) {
   try {
     if (!positiveId(userId)) return false;
     const parsed = parseHref(href); if (!parsed) return false;
+    // Administrative client management shares a pathname, not a view. Never
+    // let that explicit mode replace the operational goals preference.
+    if (parsed.path === '/clientes' && new URLSearchParams(parsed.query).has('gestion')) return false;
     const query = sanitize(parsed.path, parsed.query, false); if (query === null) return false;
     const record = JSON.stringify({ version: 1, path: parsed.path, query });
     if (size(record) > 4096) return false;

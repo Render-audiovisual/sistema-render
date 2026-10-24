@@ -9,6 +9,7 @@ import { validateGoalQuota, goalQuotaProgress, goalQuotaReviewBody, validGoalQuo
 import './ClientesObjetivos.css';
 import { clientOperationHref } from './clientOperation.js';
 import { navigateWithinApp, requestAppNavigation } from '../shared/navigation/location.js';
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { parseGoalClientId, goalClientLocationUrl, resolveGoalClient } from './clientGoalLocation.js';
 import { useGoalDraftMemory } from '../components/GoalDraftMemoryProvider.jsx';
@@ -131,6 +132,7 @@ function GoalPage({ sesion }) {
     if (pendingPeriod.current) {
       const next = pendingPeriod.current; pendingPeriod.current = null;
       window.history.replaceState(window.history.state, '', next.href);
+      notifyViewPreferenceChange(window);
       activeHref.current = window.location.href;
       setPeriod(next.period); setSelectedClientId(next.clientId); setLocationError(next.error); setNotice('');
     }
@@ -144,6 +146,7 @@ function GoalPage({ sesion }) {
       if (modalOpen.current) {
         pendingPeriod.current = next;
         window.history.replaceState(window.history.state, '', activeHref.current);
+        notifyViewPreferenceChange(window);
         setNotice('El cambio de cliente o mes se aplicará al cerrar el detalle.'); return;
       }
       activeHref.current = next.href;
@@ -157,6 +160,7 @@ function GoalPage({ sesion }) {
     loaded.current = false; setLoading(true); setError(''); setData(null);
     if (locationError) { setError(locationError); setLoading(false); return () => controller.abort(); }
     window.history.replaceState(window.history.state, '', goalClientLocationUrl(window.location.href,{clientId:selectedClientId,period}));
+    notifyViewPreferenceChange(window);
     activeHref.current = window.location.href;
     scope.request(`/api/cliente-objetivos?periodo=${encodeURIComponent(period)}`, { signal: controller.signal })
       .then(value => { const result = goalOverview(value, period); if (!scope.current() || controller.signal.aborted || generation !== readGeneration.current) return; if (modalOpen.current) { deferred.current = true; return; } loaded.current = true; setData(result); setSelectedKey(key => result.clientes.some(client => client.clave === key) ? key : result.clientes[0]?.clave || ''); })
@@ -214,6 +218,7 @@ function GoalPage({ sesion }) {
     if (href===`${window.location.pathname}${window.location.search}${window.location.hash}`) return true;
     if (!requestAppNavigation(window,href) || modalOpen.current || !scope.current()) return false;
     window.history.pushState(window.history.state,'',href);
+    notifyViewPreferenceChange(window);
     window.dispatchEvent(new PopStateEvent('popstate',{state:window.history.state}));
     setNotice(''); return true;
   }

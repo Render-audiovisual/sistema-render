@@ -20,14 +20,24 @@ export function createRememberedViewOwner({session, readSession, windowTarget, d
     catch { return href; }
   };
   const visibility = () => { if (documentTarget.visibilityState === 'hidden') save(); };
+  // A separate task lets all native popstate listeners settle their context;
+  // microtasks may run between native listener callbacks. Coalesce rapid Back.
+  let restoreTimer = null;
+  const afterHistoryRestore = () => {
+    if (!current()) return;
+    if (restoreTimer !== null) windowTarget.clearTimeout(restoreTimer);
+    restoreTimer = windowTarget.setTimeout(() => { restoreTimer = null; save(); }, 0);
+  };
   const events = ['render:view-preference-change', 'render:before-navigation', 'popstate', 'pagehide', 'beforeunload'];
-  for (const event of events) windowTarget.addEventListener(event, save);
+  for (const event of events) windowTarget.addEventListener(event, event === 'popstate' ? afterHistoryRestore : save);
   documentTarget.addEventListener('visibilitychange', visibility);
   return {
     save, read,
     dispose() {
       disposed = true;
-      for (const event of events) windowTarget.removeEventListener(event, save);
+      if (restoreTimer !== null) windowTarget.clearTimeout(restoreTimer);
+      restoreTimer = null;
+      for (const event of events) windowTarget.removeEventListener(event, event === 'popstate' ? afterHistoryRestore : save);
       documentTarget.removeEventListener('visibilitychange', visibility);
     },
   };
