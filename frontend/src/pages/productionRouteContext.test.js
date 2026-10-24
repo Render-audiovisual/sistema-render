@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import {productionLocation, initialProductionContext, productionReadUrl, assertProductionClient, productionCalendarDay, validProductionDay} from './productionRouteContext.js';
 import {verifiedProductionDraftVisit} from './productionDraft.js';
+import {createProductionVisitObserver,newestProductionVisit,reconcileProductionVisitList} from './productionVisitObservation.js';
 const base='https://render.test/producciones',id='11111111-1111-4111-8111-111111111111';
 const source=readFileSync(new URL('./Productions.jsx',import.meta.url),'utf8');
 const file=ts.createSourceFile('Productions.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
@@ -50,6 +51,9 @@ test('reload/back preserves month, pending and visit; clearing client is explici
   assert.equal(productionReadUrl({month:'2026-11',clientId:'',tab:'calendar'}),'/api/producciones?mes=2026-11');
 });
 function harness(){const effects=[],deps={readEpoch:{current:0},openVersion:{current:0},refreshVersion:{current:0},clientId:'7',tab:'calendar',month:'2026-11',day:'2026-11-20',contextError:'',today:'2026-10-21',dirty:{current:new Set()},productionLocation,productionCalendarDay,validProductionDay,assertProductionClient,verifiedProductionDraftVisit,writeProductionLocation:v=>effects.push(['url',v]),mayLeave:()=>true};
+  Object.assign(deps,{newestProductionVisit,reconcileProductionVisitList});
+  const observer=createProductionVisitObserver(()=>deps.readEpoch.current);
+  deps.observeProductionVisit=value=>observer.observe(value);
   for(const key of ['ListAvailable','Loading','ContextError','Error','ClientId','Tab','Month','Day','DetailLoading','Selected','Creating','Reload','Notice'])deps[`set${key}`]=value=>effects.push([key,value]);
   return {effects,deps};}
 test('actual filter callback denies dirty/busy cancellation without state/history mutation',()=>{

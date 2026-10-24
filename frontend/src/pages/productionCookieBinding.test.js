@@ -6,6 +6,7 @@ import {createCapturedRequest} from '../shared/session/captured-request.js';
 import {createBrowserSessionState} from '../shared/session/browser-session-state.js';
 import {verifiedProductionDraftVisit} from './productionDraft.js';
 import {assertProductionClient} from './productionRouteContext.js';
+import {createProductionVisitObserver,newestProductionVisit,reconcileProductionVisitList} from './productionVisitObservation.js';
 
 const source=readFileSync(new URL('./Productions.jsx',import.meta.url),'utf8');
 const tree=ts.createSourceFile('Productions.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
@@ -25,8 +26,10 @@ function fixture(cookie=true){
   const deps={sesion:rendered,getSesion:()=>live,readEpoch:{current:0},openVersion:{current:0},refreshVersion:{current:0},writeLock:{current:false},batchDraft:{current:{busy:false}},
     apiRequest:async(url,options)=>{calls.push({url,options});return transport(url,options);},
     createCapturedRequest:options=>{captures.push(options);return createCapturedRequest(options);},
-    productionWrite,verifiedProductionDraftVisit,assertProductionClient,clientId:'7',positiveId:value=>Number.isSafeInteger(value)&&value>0,visitDTO:value=>value?.visita||value};
+    productionWrite,verifiedProductionDraftVisit,assertProductionClient,newestProductionVisit,reconcileProductionVisitList,month:'2026-10',clientId:'7',positiveId:value=>Number.isSafeInteger(value)&&value>0,visitDTO:value=>value?.visita||value};
   for(const name of ['Busy','Notice','Reload','Selected','Visits'])deps[`set${name}`]=value=>effects.push([name,value]);
+  const observer=createProductionVisitObserver(()=>deps.readEpoch.current);
+  deps.observeProductionVisit=value=>observer.observe(value);
   deps.refreshVisit=evaluate(callback('refreshVisit'),deps);
   const write=evaluate(callback('writeVisit'),deps);
   return{write,deps,calls,effects,captures,rendered,setTransport:value=>{transport=value;},switch(){live=cookie?accept(8):{token:'qa-replacement',usuario:{id:8,rol:'admin',activo:true}};},aba(){live=accept(8);live=accept(7);}};

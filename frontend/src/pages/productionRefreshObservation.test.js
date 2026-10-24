@@ -5,6 +5,7 @@ import ts from 'typescript';
 import { verifiedProductionDraftVisit } from './productionDraft.js';
 import { assertProductionClient } from './productionRouteContext.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
+import { createProductionVisitObserver, newestProductionVisit, reconcileProductionVisitList } from './productionVisitObservation.js';
 
 // Actual callbacks and DTO validator; controlled transport/setters, not mounted
 // React, native navigation, physical HTTP or persisted revision assertions.
@@ -27,13 +28,15 @@ function fixture() {
   const request = url => new Promise((resolve, reject) => { held.push({ url, resolve, reject }); });
   const deps = {
     readEpoch: { current: 0 }, openVersion: { current: 1 }, refreshVersion: { current: 0 },
-    clientId: '7', selected, verifiedProductionDraftVisit, assertProductionClient, apiRequest: request,
+    clientId: '7', month: '2026-10', selected, verifiedProductionDraftVisit, assertProductionClient, newestProductionVisit, reconcileProductionVisitList, apiRequest: request,
     setSelected(update) { selected = update(selected); paints.push(['selected', selected]); },
     setVisits(update) { visits = update(visits); paints.push(['visits', visits]); },
     setError(message) { errors.push(message); }, setReload() {},
     mayLeave() { assert.fail('Selected-detail retry must not replace the form or prompt'); },
     navigationRef: { current() { assert.fail('Selected-detail retry must not restore navigation'); } },
   };
+  const observer = createProductionVisitObserver(()=>deps.readEpoch.current);
+  deps.observeProductionVisit = value=>observer.observe(value);
   const refresh = callback('refreshVisit', deps);
   const retry = callback('retryProductionPage', { ...deps, refreshVisit: refresh });
   return { deps, held, paints, errors, refresh, retry, get selected() { return selected; }, get visits() { return visits; },

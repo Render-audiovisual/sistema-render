@@ -12,6 +12,7 @@ import { createProductionCreateIntent } from './productionCreateIntent.js';
 import { ProductionHistoryBatchReview } from '../components/ProductionHistoryBatchReview.jsx';
 import './Productions.css';
 import { productionLocation, initialProductionContext, productionReadUrl, assertProductionClient, productionCalendarDay, validProductionDay } from './productionRouteContext.js';
+import { createProductionVisitObserver, newestProductionVisit, reconcileProductionVisitList } from './productionVisitObservation.js';
 
 const VIDEO_STATES = { planificado:'Planificado', grabado:'Grabado', pendiente:'Pendiente', repetir:'Repetir' };
 const PHOTO_STATES = { realizada:'Realizada', pendiente:'Pendiente', repetir:'Repetir' };
@@ -397,6 +398,9 @@ export function ProductionsPage({sesion}) {
   const [clientId, setClientId] = useState(initial.clientId);
   const [listAvailable,setListAvailable] = useState(false);
   const readEpoch = useRef(0);
+  const visitObserver=useRef(null);
+  if(!visitObserver.current)visitObserver.current=createProductionVisitObserver(()=>readEpoch.current);
+  const observeProductionVisit=value=>visitObserver.current.observe(value);
   const [visits, setVisits] = useState([]);
   const [users, setUsers] = useState([]);
   const [clients, setClients] = useState([]);
@@ -430,13 +434,17 @@ export function ProductionsPage({sesion}) {
     Promise.all([apiRequest(productionReadUrl({month,clientId,tab:'calendar'}),{signal:controller.signal}),apiRequest('/api/usuarios',{signal:controller.signal}),apiRequest('/api/clientes',{signal:controller.signal}),tab==='pending' ? apiRequest(productionReadUrl({month,clientId,tab}),{signal:controller.signal}) : Promise.resolve(null)])
       .then(([data,people,brands,bank])=>{if(current()){
         if(!Array.isArray(data?.visitas) || (tab==='pending' && (!Array.isArray(bank?.videos) || !Array.isArray(bank?.fotos))))throw new Error('No se pudo verificar la lista de producciones.');
-        data.visitas.forEach(visit=>assertProductionClient(visit,clientId));bank?.videos.forEach(video=>assertProductionClient(video,clientId));bank?.fotos.forEach(photo=>assertProductionClient(photo,clientId));
-        setVisits(data.visitas);setPending(bank?.videos || []);setPendingPhotos(bank?.fotos || []);setUsers(people.filter(user=>user.activo === true && positiveId(user.id)));setClients(brands);setListAvailable(true);
+        const verifiedVisits=data.visitas.map(visit=>assertProductionClient(verifiedProductionDraftVisit(visit),clientId));
+        bank?.videos.forEach(video=>assertProductionClient(video,clientId));bank?.fotos.forEach(photo=>assertProductionClient(photo,clientId));
+        const observedVisits=verifiedVisits.map(observeProductionVisit);
+        setVisits(current=>reconcileProductionVisitList(current,observedVisits,{month,clientId}));
+        setSelected(current=>{const value=observedVisits.find(visit=>visit.id===current?.id);return value?newestProductionVisit(current,value):current;});
+        setPending(bank?.videos || []);setPendingPhotos(bank?.fotos || []);setUsers(people.filter(user=>user.activo === true && positiveId(user.id)));setClients(brands);setListAvailable(true);
       }})
       .catch(reason=>{if(current())setError(reason.message);}).finally(()=>{if(current())setLoading(false);});
     return()=>controller.abort();
   },[month,clientId,tab,contextError,reload]);
-  const refreshVisit = async (id, guard) => {
+  const refreshVisit = async (id, guard, options) => {
     guard?.assertCurrent();
     const epoch=readEpoch.current,version=openVersion.current,refresh=++refreshVersion.current;
     const assertCurrentRead=()=>{
@@ -447,28 +455,31 @@ export function ProductionsPage({sesion}) {
     assertCurrentRead();
     const url=`/api/producciones/${encodeURIComponent(id)}`;
     let response;
-    try { response=await (guard ? guard.request(url) : apiRequest(url)); }
+    try { response=await (guard ? guard.request(url,options) : apiRequest(url,options)); }
     catch(reason){assertCurrentRead();throw reason;}
     assertCurrentRead();
-    const value = verifiedProductionDraftVisit(response,id);
-    assertProductionClient(value,clientId);
-    setSelected(current=>current?.id === id ? value : current);
-    setVisits(current=>current.map(visit=>visit.id === id ? value : visit));
+    const verified=assertProductionClient(verifiedProductionDraftVisit(response,id),clientId);
+    const value=observeProductionVisit(verified);
+    setSelected(current=>current?.id === id ? newestProductionVisit(current,value) : current);
+    setVisits(current=>reconcileProductionVisitList(current,current.map(visit=>visit.id === id ? value : visit),{month,clientId}));
     return value;
   };
   const onBatchSaved=async(result,guard)=>{
     guard.assertCurrent();setNotice('Revisión guardada. Consultando la visita actual…');
-    try{const value=verifiedProductionDraftVisit(await guard.request(`/api/producciones/${encodeURIComponent(result.visita_id)}`,{cache:'no-store'}),result.visita_id);guard.assertCurrent();
-      setSelected(current=>current?.id===value.id?value:current);setVisits(current=>current.map(visit=>visit.id===value.id?value:visit));setNotice('Revisión guardada. Se muestra la visita actual.');
-    }catch{if(guard.current())setNotice('Revisión guardada; no pudimos actualizar la visita. Volvé a consultarla, sin repetir la revisión.');}
+    const epoch=readEpoch.current,version=openVersion.current;
+    const pending=refreshVisit(result.visita_id,guard,{cache:'no-store'}),refresh=refreshVersion.current;
+    const current=()=>guard.current()&&epoch===readEpoch.current&&version===openVersion.current&&refresh===refreshVersion.current;
+    try{await pending;if(current())setNotice('Revisión guardada. Se muestra la visita actual.');}
+    catch(reason){if(current()&&reason.code!=='production_read_obsolete')setNotice('Revisión guardada; no pudimos actualizar la visita. Volvé a consultarla, sin repetir la revisión.');}
   };
   const openVisit = async (id, {history = true, checkDirty = true, expectedClient = clientId} = {}) => {
     if(checkDirty && !mayLeave()) return;
     const version=++openVersion.current;setCreating(false);setSelected(null);setDetailLoading(true);setError('');
     try {
-      const value=verifiedProductionDraftVisit(await apiRequest(`/api/producciones/${encodeURIComponent(id)}`),id);
+      const verified=verifiedProductionDraftVisit(await apiRequest(`/api/producciones/${encodeURIComponent(id)}`),id);
       if(version===openVersion.current) {
-        assertProductionClient(value,expectedClient);
+        assertProductionClient(verified,expectedClient);
+        const value=observeProductionVisit(verified);
         if(!history) {
           // Restoration may still close over the previous filter/tab. Only the
           // current URL can supply the context for this verified-date repair.
