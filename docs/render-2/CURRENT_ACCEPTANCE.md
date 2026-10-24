@@ -4,6 +4,8 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+Actualización191: GOAL_DRAFT_CONFLICT_NATIVE_QA.md verifica en navegador y PostgreSQL la recuperación del borrador frente a edición concurrente y retirada/devolución de asignación. Guardar conserva el conflicto original, sin sobrescribir; nueve tablas no tuvieron cambios adicionales a las tres mutaciones intencionales del fixture. Entorno temporal eliminado. Sin cambios de producto, despliegue ni renovación de suites globales; permanecen pendientes ACK perdido nativo, rutas heredadas y aceptación integral.
+
 | Requisito | Evidencia vigente | Qué falta para aceptarlo globalmente |
 | --- | --- | --- |
 | Una aplicación y datos compartidos | Entry React/Vite, App, Express y PostgreSQL; revisión del grafo no monta DesignPreview/sandbox como negocio paralelo. MoodboardPreview usa API pese a su nombre. | Certificar todos los consumidores y la adopción coordinada sobre el destino autorizado. |
