@@ -1,5 +1,19 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Recuperación nativa de comentario confirmado — corte210
+
+Verificado en navegador conectado con cookies reales y PostgreSQL descartable. Build209b `index-DwP2PAyw.js`, usuario sintético qa_luciano91003. El runner `/private/tmp/render2-goal210-native.mjs`, preparado por Erdos y ejecutado por el coordinador, comprobó identidad exacta PG55862/HTTP52824 y creó tarea1 mediante API del fixture. No usó bases configuradas ni proveedores. Baseline posterior al setup:103 tablas públicas completas, excluyendo familias auth/browser_session y las dos tablas de comentario/recibo.
+
+Se añadió temporalmente qa210.js antes del módulo en el index generado: delegaba fetch original sin alterar cookies/headers/body; un control visible retenía una Response real y otro la descartaba lanzando TypeError. Mostraba códigos/contadores, sin cuerpos, headers ni credenciales. Es pérdida controlada de respuesta en JavaScript después del commit, **no corte físico de red**. Volta revisó el archivo real y señaló límites: match solo por pathname, sin restricción de origen/tarea/201 y armed leído tras await. El escenario observado estuvo aislado, secuencial, sobre tarea1, con un único POST y respuesta201; no se extrapola el instrumento a concurrencia.
+
+Recorrido: armar → enviar `QA210 comentario A confirmado` → Response201 retenida → escribir `QA210 borrador B sin enviar` → descartar ACK → aviso incierto, Comentar bloqueado y Verificar envío disponible. A390×844 se vació manualmente el compositor y se intentó cerrar: apareció el diálogo específico “Salir no cancela ni revierte el envío…”, se eligió Seguir editando y continuó la tarea. Se repuso B y se verificó: GET real200, POST=1/GET verificación=1; A apareció una sola vez y B permaneció exacto. El control QA aparece en la captura y no pertenece al producto.
+
+DOM comprobado: un article de comentarios, texto A y borrador B. Captura `/private/tmp/render2-goal210-recovered-mobile.png`, inspeccionada visualmente. Advertencia con compositor vacío: `/private/tmp/render2-goal210-empty-draft-warning-mobile.png`. Después se vació B manualmente, sin enviarlo, y se recargó: A siguió una vez y textarea vacío. Esto acredita persistencia de A, no supervivencia de B ni del intento tras recarga.
+
+Al finalizar, el runner verificó exactamente una fila tarea_comentarios, autor Luciano QA, contenido A, y exactamente un task_comment_create_receipts con actor91003/tarea1/comment_id correspondiente/UUIDv4/workspace render_os. Las otras103 tablas conservaron hashes completos: `EXACT_ONE_COMMENT_AND_RECEIPT; OTHER_TABLES_UNCHANGED 103`, salida0. Cleanup confirmado por ENOENT de `/private/tmp/render2-local-822hYY`. Se cerró la pestaña propia27, se restauró viewport y se retiró qa210.js/referencia del index. Sin cambios de producto, migraciones sobre datos existentes, push o despliegue.
+
+La skill de verificación orientó el cruce pantalla→HTTP→PostgreSQL→recarga; la revisión independiente distinguió instrumentación de fallo físico. No se repitieron suites globales209b ni se certificaron montaje StrictMode, dispositivos independientes, todas las carreras de permisos ni actualización089 sobre copia poblada. El objetivo completo de Render sigue abierto.
+
 ## Integración del cliente de comentarios — corte209b
 
 WorkspaceReadOnly/TaskDetail ya usa taskCommentCreation: cada acción admitida genera UUID, envía un único POST y exige recibo correlacionado antes de consumir confirmación. Ante resultado incierto conserva intento y ofrece **Verificar envío**, exclusivamente GET no-store.404 no desbloquea otra creación;401/403/409 mantienen intento no disponible. No hay reenvío automático ni botón para descartar el intento y volver a enviarlo dentro del detalle.
