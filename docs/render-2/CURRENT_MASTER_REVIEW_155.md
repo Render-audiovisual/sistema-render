@@ -44,6 +44,8 @@ Actualización174: comprobadas nativamente fotos por tipo/estado/enlace/observac
 
 Actualización175: revisión transversal por cuatro agentes y resumen vigente en CURRENT_ACCEPTANCE.md. Recibos087/persistencia/runtime cookie aprobaron26 pruebas físicas, tres fixtures nuevos con ENOENT; backend puro1969 aprobadas/119 omitidas. Reforzada identidad/limpieza de la suite087. Nuevo S175-01/P2: escritores personales distintos del alta no retienen actor durante DML; confirmado por fuente, carrera física todavía pendiente. Prioridad de integración: autoridad transaccional de esas familias antes del recorrido nativo de Proyectos. No se confirmó negocio exclusivamente local en el grafo canónico revisado. Sin cambio de producto, despliegue ni base existente; master abierto.
 
+Actualización176: S175-01 corregido en14 escritores de Mi lista con actor retenido en READ COMMITTED hasta commit; alta087 separada. Ver PERSONAL_LIST_WRITE_AUTHORITY_QA.md. Pasaron53 focales,1982 backend/120 omitidas,26 físicas de regresión y38 físicas de autoridad/MIA, con ENOENT de fixtures. Se corrigieron expectativas/bucket sintético del primer intento de la suite, sin debilitar throttle del producto. No frontend ni migración nueva; formatos/CAS conservados. Aceptación nativa de recuperación, Proyectos conectado y master global continúan abiertos; no despliegue.
+
 ## Matriz de requisitos: qué prueba la evidencia actual
 
 | Requisito maestro | Evidencia actual | Estado y evidencia todavía necesaria |

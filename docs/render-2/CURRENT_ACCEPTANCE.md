@@ -8,13 +8,13 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 | --- | --- | --- |
 | Una aplicación y datos compartidos | Entry React/Vite, App, Express y PostgreSQL; revisión del grafo no monta DesignPreview/sandbox como negocio paralelo. MoodboardPreview usa API pese a su nombre. | Certificar todos los consumidores y la adopción coordinada sobre el destino autorizado. |
 | Sin negocio exclusivamente en navegador | Revisión estática actual de sinks activos: preferencias, posición de Wilson y lectura de notificaciones. Los snapshots locales pertenecen al grafo no montado de preview. | Esta revisión no demuestra ausencia de cualquier sink dinámico posible. No borrar referencias heredadas. |
-| Identidades y permisos del servidor | Sesiones cookie/época, cuotas y dominios con contratos verificados; nueva cohorte cookie pasó10 pruebas físicas. | Hallazgo abierto S175-01 en escritores de Mi lista. Cuentas QA no acreditan cuentas reales independientes provisionadas. |
+| Identidades y permisos del servidor | Sesiones cookie/época, cuotas y dominios con contratos verificados; S175-01 corregido localmente con autoridad retenida en escritores de Mi lista. | Aceptación transversal restante. Cuentas QA no acreditan cuentas reales independientes provisionadas. |
 | Protección financiera | Pruebas previas con datos testigo y DTO; recorrido171 comprobó Reportes y dos rutas financieras con empleado. | Aceptación transversal por rutas/roles y condiciones reales de hosting; no extrapolar una lista de nombres de campos a todo el sistema. |
 | Trabajo distinto de publicación | Recorrido nativo conectado de tres videos: tres tareas finalizadas con cero eventos antes de confirmación explícita; después, tres eventos manuales y mismas cuotas/vínculos. | No es publicación ni verificación externa en redes. Ver NATIVE_THREE_VIDEO_PROGRESS.md. |
 | Producción individual y material | Tres tareas de edición por visita probadas; fotos por tipo/enlace/observación y guion retomado con origen comprobados en PostgreSQL. | Edición posterior del mismo UUID de foto, banco/traslado de fotos y proveedores no aceptados. Ver PRODUCTION_PHOTOS_PENDING_QA.md. |
 | Orden persistente y navegación | Dos arrastres nativos con SQL/recarga/otro lector; calendario, URL/Back y filtros móviles verificados por alcance. | No todos los movimientos de estado, tamaños, roles ni acciones. Ver BOARD_NATIVE_DROP_QA.md y CALENDAR_MOBILE_FILTERS_QA.md. |
 | Proyectos de Desarrollo | Fuente implementa proyecto, responsable, etapas, hitos, tareas existentes y entregables versionados; pruebas físicas y UI sintética anteriores. | Recorrido nativo conectado completo con responsable no-admin, aprobación invalidada por cambio y separación de cuotas. |
-| Mi lista | Recibos087, persistencia/CAS y runtime cookie renovados físicamente,26 comprobaciones aprobadas. | S175-01 y aceptación nativa de pérdida de ACK/cancelación/recuperación. No almacenamiento offline de negocio. |
+| Mi lista | Recibos087/persistencia/runtime cookie:26 físicas; autorización e interoperabilidad MIA:38 físicas. S175-01 corregido. | Aceptación nativa de pérdida de ACK/cancelación/recuperación y cobertura concurrente MIA/UI más amplia. No almacenamiento offline de negocio. |
 | Diseño y experiencia uniforme | Componentes/tokens comunes y recorridos específicos de escritorio/móvil. | Aceptación poblada de todas las áreas, teclado/zoom/contraste, modales restantes y dispositivos independientes. |
 | Despliegue | Ninguno autorizado ni ejecutado. | Roster real, proveedores, origen/TLS/proxy, backup/restauración y ensayo de migraciones sobre copia autorizada, validación definitiva y autorización expresa. |
 
@@ -30,10 +30,12 @@ Las tres ejecuciones tuvieron cero fallos/omitidas. Los hooks confirmaron elimin
 
 La regresión backend sin opt-in pasó1969 pruebas y omitió119 integraciones, cero fallos. Log `/private/tmp/render2-audit175-backend.log`. Esa cifra no equivale a ejecutar toda la regresión física. No se cambió producto ni se repitió el frontend/build en este corte.
 
-## S175 01 Autorización durante escrituras personales
+## S175 01 corregido en desarrollo local
+
+Estado vigente: corregido y verificado en PERSONAL_LIST_WRITE_AUTHORITY_QA.md. Las14 rutas restantes retienen actor FOR UPDATE en READ COMMITTED hasta commit; el alta087 conserva su servicio. Pasaron las barreras reales de revocación anterior y posterior, cuatro tipos de orden, rollback y regresión. Los puntos siguientes describen el hallazgo original de175, no un pendiente reabierto. La prueba no ejecutó el ataque sobre el producto previo.
 
 - Regla: autorización vigente del servidor durante la operación, vinculada a ID/rol/época; relacionada con REACT-AUTHZ-001, sin afirmar que el problema sea un control React.
-- Severidad: Medium/P2, pendiente de reproducción física.
+- Severidad original: Medium/P2; cierre local por implementación y barreras físicas del contrato corregido.
 - Ubicación: backend/src/personal-lists.js, PATCH/DELETE de páginas y bloques, y familias de escritores de plantillas/secciones/items/reordenamiento. El alta raíz usa personal-list-create-receipts.js y sí retiene al actor en transacción.
 - Evidencia: PATCH de página usa pool.query con dueño y CAS; DELETE y otras escrituras tampoco vuelven a validar/bloquear usuarios dentro de la operación. El middleware concluye su observación de identidad antes del handler. El reordenamiento tiene transacción de dominio, no actor retenido.
 - Impacto condicionado: una petición de un usuario previamente válido, sobre contenido propio, puede permanecer esperando DML mientras se confirma su revocación y luego escribir con la autorización anterior. No demuestra acceso anónimo, a listas ajenas ni a finanzas.
@@ -44,6 +46,6 @@ La regresión backend sin opt-in pasó1969 pruebas y omitió119 integraciones, c
 
 ## Siguiente integración y responsables
 
-Prioridad: resolver y probar S175-01 antes del recorrido conectado de Proyectos. Un solo integrador modifica personal-lists.js; el helper y sus pruebas pueden asignarse por archivos separados, con contrato común anterior a la adopción. No se requieren nuevas migraciones para retener la autoridad existente, salvo que la implementación demuestre otra necesidad.
+Siguiente bloque: recorrido conectado de Proyectos y aceptación nativa de recuperación de Mi lista. S175-01 ya tiene implementación y pruebas locales; no se reabre por los textos históricos anteriores. El cierre no certifica todos los permisos del sistema ni autoriza despliegue.
 
 Poincare revisó arquitectura/autoridad y propuso el contrato; Beauvoir examinó grafo y sinks; Hypatia contrastó el flujo de Desarrollo; Carver señaló la cohorte087 pendiente. Todos hicieron revisión de solo lectura. El coordinador reforzó la prueba087 y ejecutó las tres suites en clústeres descartables. Las skills de seguridad y trabajo estructurado orientaron la prioridad y los límites; la documentación permanece local. Se preservó el informe de seguridad raíz no versionado.

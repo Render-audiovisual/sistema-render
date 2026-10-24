@@ -3,14 +3,23 @@ import assert from 'node:assert/strict';
 import { createPersonalListsRouter } from '../src/personal-lists.js';
 
 // Execute actual registered handlers with injected SQL responses; not HTTP/PG tests.
-function fixture(query) {
-  const routes = new Map(), calls = [];
+function fixture(query, { commit } = {}) {
+  const routes = new Map(), calls = [], transactionCalls = [], responses = [];
   const router = Object.fromEntries(['get', 'post', 'patch', 'delete'].map(method => [method, (path, handler) => routes.set(`${method}:${path}`, handler)]));
-  createPersonalListsRouter({ express: { Router: () => router }, pool: { query: async (sql, params) => { calls.push({ sql, params }); return query(sql, params); } } });
-  return { calls, async patch(path, body) {
+  const client = { async query(sql, params) {
+    if (/^(?:BEGIN|COMMIT|ROLLBACK)/.test(sql)) { transactionCalls.push(sql); if(sql==='COMMIT')await commit?.(); return { rows: [] }; }
+    if (/SELECT id,rol,activo,session_version FROM usuarios/.test(sql)) {
+      transactionCalls.push(sql);
+      return { rows: [{ id: 7, rol: 'edicion', activo: true, session_version: 1 }] };
+    }
+    calls.push({ sql, params }); return query(sql, params);
+  }, release() { transactionCalls.push('release'); } };
+  createPersonalListsRouter({ express: { Router: () => router }, pool: { connect: async () => client,
+    query: () => { throw Error('Writer escaped its authorized transaction'); } } });
+  return { calls, transactionCalls, responses, async patch(path, body) {
     let status = 200, value;
-    const res = { status(code) { status = code; return this; }, json(data) { value = data; return this; } };
-    await routes.get(`patch:${path}`)({ auth: { id: 7 }, params: { id: '12' }, body }, res, error => { throw error; });
+    const res = { status(code) { status = code; return this; }, json(data) { value = data; responses.push({status,value}); return this; } };
+    await routes.get(`patch:${path}`)({ auth: { id: 7, rol: 'edicion', session_version: 1 }, params: { id: '12' }, body }, res, error => { throw error; });
     return { status, value };
   } };
 }
@@ -19,6 +28,17 @@ const cases = [
   { path: '/bloques/:id', body: { tipo: 'texto', contenido: { texto: 'Contenido' } }, table: 'lista_bloques', predicate: /AND b.version=\$5/, increment: /version=b.version\+1/ },
 ];
 for (const item of cases) {
+  test(`${item.path}: actual handler sends no success before COMMIT, and commit failure rolls back`,async()=>{
+    let entered,release;
+    const atCommit=new Promise(resolve=>{entered=resolve;}),held=new Promise(resolve=>{release=resolve;});
+    const f=fixture(()=>({rowCount:1,rows:[{id:12,version:3}]}),{commit:async()=>{entered();await held;}});
+    const pending=f.patch(item.path,{...item.body,expected_version:2});
+    await atCommit;assert.deepEqual(f.responses,[]);release();
+    assert.equal((await pending).value.version,3);assert.equal(f.responses.length,1);
+    const failed=fixture(()=>({rowCount:1,rows:[{id:12,version:3}]}),{commit:async()=>{throw Error('commit failed');}});
+    await assert.rejects(failed.patch(item.path,{...item.body,expected_version:2}),/commit failed/);
+    assert.deepEqual(failed.responses,[]);assert.deepEqual(failed.transactionCalls.slice(-2),['ROLLBACK','release']);
+  });
   test(`${item.path}: required canonical numeric positive PG version rejects before DB`, async () => {
     for (const version of [undefined, null, '1', '', 0, -1, 1.5, NaN, Infinity, 2147483648, true, {}, []]) {
       const f = fixture(() => { throw Error('Must not query'); });
@@ -34,6 +54,9 @@ for (const item of cases) {
       const body = { ...item.body, expected_version: version, usuario_id: 999 }, before = JSON.stringify(body);
       const response = await f.patch(item.path, body);
       assert.equal(response.status, 200); assert.equal(response.value.version, version + 1);
+      assert.match(f.transactionCalls[0], /^BEGIN ISOLATION LEVEL READ COMMITTED/);
+      assert.match(f.transactionCalls[1], /FOR UPDATE/);
+      assert.deepEqual(f.transactionCalls.slice(-2), ['COMMIT', 'release']);
       assert.equal(f.calls.length, 1); assert.match(f.calls[0].sql, item.predicate);
       assert.match(f.calls[0].sql, item.increment); assert.match(f.calls[0].sql, /usuario_id=\$4/);
       assert.deepEqual(f.calls[0].params.slice(2), ['12', 7, version]);
