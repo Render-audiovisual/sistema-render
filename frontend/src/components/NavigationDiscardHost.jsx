@@ -73,7 +73,7 @@ function NavigationDiscardModal({controller,request}){
     }}
     onKeyUpCapture={event=>{if(event.key==='Escape')event.stopPropagation();}}>
     <h2 id={titleId}>¿Descartar los cambios y salir?</h2>
-    <p id={descriptionId}>Hay cambios sin guardar. Si salís, perderás lo que editaste sin guardar.</p>
+    <p id={descriptionId}>Hay cambios sin guardar. Si salís, perderás lo que editaste sin guardar. Salir no cancela lo que ya se haya guardado.</p>
     <div className="render-navigation-discard-actions">
       <button ref={keepRef} type="button" autoFocus onClick={()=>finish(false)}>Seguir editando</button>
       <button ref={leaveRef} type="button" className="render-navigation-discard-leave" onClick={()=>finish(true)}>Descartar y salir</button>

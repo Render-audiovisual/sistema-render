@@ -110,3 +110,9 @@ test('dialog content is generic and styles use scoped light tokens, mobile bound
  for(const rule of css.match(/[^{}]+(?=\{)/g)||[]){if(rule.trim().startsWith('@'))continue;for(const selector of rule.split(','))assert.match(selector.trim(),/^\.render-navigation-discard/);}
  assert.doesNotMatch(css,/!important|@import|@font-face|:root|\bbody\s*\{/);
 });
+test('leaving warning never implies rollback of an already committed operation with a lost response',()=>{
+ const description=nodes(modal,node=>ts.isJsxElement(node)&&node.openingElement.tagName.getText(file)==='p')[0];
+ assert.ok(description);
+ assert.match(description.getText(file),/Salir no cancela lo que ya se haya guardado\./);
+ assert.doesNotMatch(description.getText(file),/se (?:cancelará|eliminará|deshará).*guardad/);
+});

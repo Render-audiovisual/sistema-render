@@ -118,7 +118,9 @@ export function App() {
   }
 
   if (!sesion) {
-    window.location.replace(loginHrefForDestination(route));
+    // Editors can update their query with replaceState without a popstate.
+    // Return to the actual current URL, still constrained by the login policy.
+    window.location.replace(loginHrefForDestination(readRouteKey(window)));
     return null;
   }
 

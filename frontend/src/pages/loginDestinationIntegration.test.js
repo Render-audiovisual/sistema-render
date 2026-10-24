@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import ts from 'typescript';
 import {loginHrefForDestination,readLoginDestination,resolveLoginDestination} from '../shared/navigation/login-destination.js';
 import {createLoginAttempts} from '../shared/session/login-attempt.js';
+import {readRouteKey} from '../shared/navigation/location.js';
 
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8');
 const appSource=read('../App.jsx'),loginSource=read('./Login.jsx');
@@ -17,11 +18,22 @@ function navigate(capturedDestination,window){
 }
 test('actual anonymous App gate preserves full route using the closed login destination policy',()=>{
  const gate=nodes(app,n=>ts.isIfStatement(n)&&text(n.expression,app)==='!sesion')[0];
- const replacements=[],window={location:{replace:value=>replacements.push(value)}};
+ const replacements=[],window={location:{pathname:'/workspace/tareas',search:'?task=42',hash:'',replace:value=>replacements.push(value)}};
  const route='/workspace/tareas?task=42';
- new Function('sesion','window','route','loginHrefForDestination',text(gate,app))(null,window,route,loginHrefForDestination);
+ new Function('sesion','window','route','loginHrefForDestination','readRouteKey',text(gate,app))(null,window,route,loginHrefForDestination,readRouteKey);
  assert.deepEqual(replacements,[loginHrefForDestination(route)]);
  assert.equal(readLoginDestination(new URL(replacements[0],'https://render.test').search),route);
+});
+test('anonymous gate uses live query/hash after editor replaceState instead of stale App route',()=>{
+ const gate=nodes(app,n=>ts.isIfStatement(n)&&text(n.expression,app)==='!sesion')[0];
+ for(const target of ['/lista?lista=3#bloque-2','/lista','/lista?lista=9007199254740993','/moodboards?cliente=7#referencias','/api/listas-personales']){
+  const parsed=new URL(target,'https://render.test'),replacements=[];
+  const window={location:{pathname:parsed.pathname,search:parsed.search,hash:parsed.hash,replace:value=>replacements.push(value)}};
+  const current=readRouteKey(window);
+  new Function('sesion','window','route','loginHrefForDestination','readRouteKey',text(gate,app))(null,window,'/lista?lista=1',loginHrefForDestination,readRouteKey);
+  assert.deepEqual(replacements,[loginHrefForDestination(current)]);
+  assert.notEqual(replacements[0],loginHrefForDestination('/lista?lista=1'));
+ }
 });
 test('actual authenticated login App branch resolves held destination against current role',()=>{
  const branch=nodes(app,n=>ts.isIfStatement(n)&&text(n.expression,app)==='sesion')[0];
