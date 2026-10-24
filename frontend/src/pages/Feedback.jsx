@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
 import { navigateWithinApp } from "../shared/navigation/location.js";
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { CATEGORIAS_NOTA } from "./BlocNotas.jsx";
 import { markFeedbackSeen } from "../features/render-os/utils/feedback-notifications.js";
 import { useSessionView } from "../shared/session/use-session-view.js";
@@ -150,13 +151,14 @@ function FeedbackContent({transport,view,sesion}) {
 
   function moveNotes(changes) {
     if (!selection) return;
-    try { navigateWithinApp(window,feedbackNotesLocationUrl(window.location.href,{...selection,...changes},null)); }
+    try { if (navigateWithinApp(window,feedbackNotesLocationUrl(window.location.href,{...selection,...changes},null))) notifyViewPreferenceChange(window); }
     catch(reason){setError(reason.message);}
   }
   function restartNotes(item = null, confirmed = null) {
     contextEpoch.current++;panelEpoch.current++;readerRef.current?.invalidate();
     const next={...(selection ?? {section:"clients",papelera:false,categoria:null,q:"",limit:50}),offset:0,expected_snapshot:null,note:item?.id??null};
     window.history.replaceState(window.history.state,"",feedbackNotesLocationUrl(window.location.href,next,next.note));
+    notifyViewPreferenceChange(window);
     linkedNoteId.current=next.note;
     const nextLocation={selection:next,error:""};
     preparedPage.current=confirmed?{location:nextLocation,data:confirmed}:null;
@@ -164,7 +166,10 @@ function FeedbackContent({transport,view,sesion}) {
   }
   function recordSelected(note) {
     panelEpoch.current++;
-    if(selection)window.history.replaceState(window.history.state,"",feedbackNotesLocationUrl(window.location.href,selection,note?.id??null));
+    if(selection) {
+      window.history.replaceState(window.history.state,"",feedbackNotesLocationUrl(window.location.href,selection,note?.id??null));
+      notifyViewPreferenceChange(window);
+    }
   }
 
   function canLeave() {

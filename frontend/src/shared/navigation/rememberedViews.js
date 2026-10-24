@@ -36,6 +36,24 @@ const validators = {
   },
   '/clientes': { periodo: month, cliente: numericId },
   '/reportes-historias': { periodo: oneOf('mes_actual', 'mes_pasado', 'ultimos_30') },
+  '/planificacion-historias': {
+    vista: oneOf('estructura','checklist','fechas','planilla','archivadas'),
+    mes: month, cliente: numericId, filtro: numericId,
+  },
+  '/planificacion-publicaciones': {
+    tab: oneOf('calendario','preparar','programadas','historial','lista','planilla','archivadas'),
+    mes: month, cliente: numericId,
+    cal_vista: oneOf('mes','semana'), cal_tipo: oneOf('todos','video','carrusel'),
+    seg_cliente: value => value === 'todos' || numericId(value),
+    seg_mes: value => value === 'todos' || month(value),
+    seg_estado: oneOf('todos','pendiente','en_diseño','en_edición','en_revision','lista','publicada','bloqueada'),
+    seg_tipo: oneOf('todos','video','carrusel'),
+    // seg_responsable is currently a legacy label, not an immutable user ID.
+  },
+  '/feedback': {
+    section: oneOf('clients','team','all'), mode: oneOf('trash'),
+    categoria: oneOf('general','diseno','web','reunion','contenido'),
+  },
 };
 const owns = (value, key) => Object.hasOwn(value, key);
 const size = value => new TextEncoder().encode(value).length;

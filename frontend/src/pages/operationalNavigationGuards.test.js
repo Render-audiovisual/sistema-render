@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { navigateWithinApp } from '../shared/navigation/location.js';
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { readFeedbackNotesLocation, feedbackNotesLocationUrl } from './feedbackNotesPagination.js';
 import { feedbackNotesMutationBody } from './feedbackNotesMutation.js';
 import { productionCalendarDay } from './productionRouteContext.js';
@@ -38,7 +39,7 @@ class FakeWindow extends EventTarget {
 function sectionHarness(win) {
   const state = { selected: { id: 7 }, draft: { titulo: 'No perder' }, baseline: 'original', section: 'clients' };
   const changes = [];
-  const bindings = { window: win, navigateWithinApp, selection:readFeedbackNotesLocation(win.location.search), section:'clients', feedbackNotesLocationUrl,
+  const bindings = { notifyViewPreferenceChange, window: win, navigateWithinApp, selection:readFeedbackNotesLocation(win.location.search), section:'clients', feedbackNotesLocationUrl,
     setError: error => { throw error; }, contextEpoch:{current:0}, panelEpoch:{current:0}, readerRef:{current:null}, linkedNoteId:{current:null},
     setQuery(){},setNotes(){},setPage(){},setConflict(){},setDuplicates(){},
     feedbackNotesLocation:()=>({selection:readFeedbackNotesLocation(win.location.search),error:''}) };
@@ -122,7 +123,7 @@ test('accepted section navigation asks protocol before clearing and commits exac
   panel.change('team');
   assert.equal(win.location.search, '?section=team&limit=50&offset=0'); assert.equal(panel.state.section, 'team');
   assert.equal(panel.state.draft, null); assert.equal(panel.state.selected, null); assert.equal(panel.state.baseline, '');
-  assert.deepEqual(win.trace, ['render:before-navigation', 'push', 'popstate', 'scroll']);
+  assert.deepEqual(win.trace, ['render:before-navigation', 'push', 'popstate', 'scroll', 'render:view-preference-change']);
 });
 
 test('same section exact URL no-op never discards the active draft', () => {

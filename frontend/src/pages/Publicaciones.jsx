@@ -9,7 +9,8 @@ import { COLUMNAS_PUBLICACION, DIAS_SEMANA, ESTADOS_PUBLICACION, MESES, TIPOS_PU
 import { Modal } from "../components/Modal.jsx";
 import { PageState } from "../components/PageState.jsx";
 import { PublicationComposer, PublicationPreviewQueue } from "../components/PublicationComposer.jsx";
-import { buildContextUrl, formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+import { buildContextUrl, formatMonthContext, pushUrlContext as pushRawUrlContext, readMonthContext, readUrlContext, replaceUrlContext as replaceRawUrlContext } from "../shared/navigation/url-context.js";
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { requestAppNavigation } from '../shared/navigation/location.js';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
@@ -22,6 +23,17 @@ import { EditorialArchivePanel } from '../components/EditorialArchivePanel.jsx';
 import { FilterSelect } from '../components/FilterSelect.jsx';
 import { normalizePublicationCalendarContext, readPublicationCalendarContext, publicationCalendarUrlChanges } from './publicationCalendarContext.js';
 import { normalizePublicationTrackingContext, readPublicationTrackingContext, publicationTrackingUrlChanges } from './publicationTrackingContext.js';
+
+function pushUrlContext(changes) {
+  const result = pushRawUrlContext(changes);
+  notifyViewPreferenceChange(window);
+  return result;
+}
+function replaceUrlContext(changes) {
+  const result = replaceRawUrlContext(changes);
+  notifyViewPreferenceChange(window);
+  return result;
+}
 
 function usePublicationSession(sesion, context = null) {
   const view = useSessionView(sesion || getSesion());

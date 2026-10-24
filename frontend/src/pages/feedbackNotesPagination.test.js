@@ -7,6 +7,7 @@ import {createBrowserSessionState} from '../shared/session/browser-session-state
 import {createFeedbackNotesMutation} from './feedbackNotesMutation.js';
 import {installUnsavedNavigation,registerNavigationGuard} from '../shared/navigation/unsaved.js';
 import {navigateWithinApp} from '../shared/navigation/location.js';
+import {notifyViewPreferenceChange} from '../shared/navigation/viewPreferenceEvent.js';
 const token='a'.repeat(64),other='b'.repeat(64);
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return{promise,resolve,reject}};
 const note=(id=620,extra={})=>({id,titulo:'Feedback',contenido:'Texto',categoria:'general',feedback:{cliente:'Cliente',responsables:['Ana'],origen:'manual'},creado_por:'Autor',modificado_por:'Editor',eliminado_at:null,created_at:'2026-10-20T10:00:00.123456Z',updated_at:'2026-10-20T10:00:01.654321Z',resolved_client:'Cliente',section:'clients',...extra});
@@ -70,7 +71,7 @@ const source=readFileSync(new URL('./Feedback.jsx',import.meta.url),'utf8'),file
 const nodes=(root,predicate)=>{const result=[];const visit=node=>{if(predicate(node))result.push(node);ts.forEachChild(node,visit)};visit(root);return result};
 const component=file.statements.find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='FeedbackContent');
 const evaluate=(node,deps)=>new Function(...Object.keys(deps),`return (${node.getText(file)});`)(...Object.values(deps));
-const handler=(name,deps)=>evaluate(nodes(component,node=>ts.isFunctionDeclaration(node)&&node.name?.text===name)[0],deps);
+const handler=(name,deps)=>evaluate(nodes(component,node=>ts.isFunctionDeclaration(node)&&node.name?.text===name)[0],{notifyViewPreferenceChange,...deps});
 test('canonical UI renders server items directly; no loaded-page classification, capped warning, or legacy GET',()=>{
   assert.equal(file.parseDiagnostics.length,0);assert.match(source,/const visible = notes;/);assert.doesNotMatch(source,/isClientFeedback|resolveFeedbackClient|normalizeFeedbackText|500 notas|request\(`\/api\/notas\?/);
   assert.match(source,/note\.resolved_client/);assert.match(source,/note\.section/);assert.match(source,/Páginas de notas/);assert.match(source,/key=\{view.key\}/);

@@ -8,7 +8,8 @@ import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { PageState } from "../components/PageState.jsx";
-import { buildContextUrl, formatMonthContext, pushUrlContext, readMonthContext, readUrlContext, replaceUrlContext } from "../shared/navigation/url-context.js";
+import { buildContextUrl, formatMonthContext, pushUrlContext as pushRawUrlContext, readMonthContext, readUrlContext, replaceUrlContext as replaceRawUrlContext } from "../shared/navigation/url-context.js";
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { requestAppNavigation } from '../shared/navigation/location.js';
 import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
@@ -16,6 +17,17 @@ import { createEditorialCreateIntent } from '../shared/editorial/editorial-creat
 import { EditorialArchiveControl } from '../components/EditorialArchiveControl.jsx';
 import { EditorialArchivePanel } from '../components/EditorialArchivePanel.jsx';
 import { createStoryCellDraft } from './storyCellDraft.js';
+
+function pushUrlContext(changes) {
+  const result = pushRawUrlContext(changes);
+  notifyViewPreferenceChange(window);
+  return result;
+}
+function replaceUrlContext(changes) {
+  const result = replaceRawUrlContext(changes);
+  notifyViewPreferenceChange(window);
+  return result;
+}
 
 function useStorySession(context = null) {
   const view = useSessionView(getSesion());

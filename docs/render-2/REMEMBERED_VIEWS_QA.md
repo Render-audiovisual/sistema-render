@@ -2,7 +2,7 @@
 
 ## Función integrada
 
-Tareas, Calendario, Producciones, Proyectos, Clientes y Reportes pueden recuperar la última vista y sus filtros al volver mediante la navegación interna de la barra lateral. Las preferencias se separan por ID estable de usuario y ruta. No contienen tareas, producciones, aprobaciones ni finanzas; el backend continúa como fuente de los datos operativos.
+Tareas, Calendario, Producciones, Proyectos, Clientes, Reportes, Historias, Publicaciones y Feedback pueden recuperar la última vista y sus filtros admitidos al volver mediante la navegación interna de la barra lateral. Las preferencias se separan por ID estable de usuario y ruta. No contienen tareas, producciones, aprobaciones ni finanzas; el backend continúa como fuente de los datos operativos.
 
 El defecto anterior era transversal: las páginas leían su selección desde la URL, pero el Sidebar volvía a un enlace vacío. Atrás podía conservar el contexto por historial; salir y reentrar por Sidebar no equivalía a recuperar esa vista.
 
@@ -10,7 +10,7 @@ El defecto anterior era transversal: las páginas leían su selección desde la 
 
 rememberedViews.js mantiene un esquema cerrado de parámetros visuales. Guarda JSON de versión1 bajo render:view:v1:<usuarioId>:<ruta>, con límite4KB e IDs int32. Admite vistas/estados conocidos, filtros por ID, mes y día gregorianos; excluye búsquedas libres, nombres, credenciales, paginación y recursos seleccionados como task, visita, proyecto o borrador. Los valores desconocidos no se convierten en contenido libre persistido.
 
-Una URL explícita con query o hash siempre prevalece. La lectura recordada solo transforma un destino canónico vacío de las seis rutas soportadas. Storage bloqueado, registro corrupto o versión desconocida mantienen el enlace original; no impiden trabajar ni cerrar sesión. No se importan automáticamente las preferencias de la previsualización.
+Una URL explícita con query o hash siempre prevalece. La lectura recordada solo transforma un destino canónico vacío de las nueve rutas soportadas. Storage bloqueado, registro corrupto o versión desconocida mantienen el enlace original; no impiden trabajar ni cerrar sesión. No se importan automáticamente las preferencias de la previsualización.
 
 Clientes guarda solo período mensual y el ID del filtro Elegir cliente; no una pieza ni un detalle de operación. Cualquier query gestion se excluye del guardado y no sobrescribe la preferencia operativa anterior. El enlace administrativo explícito sigue teniendo prioridad. Reportes guarda únicamente mes_actual, mes_pasado o ultimos_30, no fechas calculadas, personas desplegadas, filas o importes. La elección por ID sigue sujeta a los datos autorizados que devuelva el backend.
 
@@ -24,7 +24,7 @@ App instala el owner solo autenticado. La salida controlada por Sidebar resuelve
 
 Se guarda también al ocultar la pestaña, pagehide, beforeunload y before-navigation. Para popstate se programa una tarea posterior con setTimeout0, comprobando otra vez la sesión al ejecutar: los consumidores pueden terminar su restauración o rollback síncrono antes de leer la URL definitiva. Una microtarea no bastaba para separar todos los callbacks nativos. Se mantiene un solo timer ante varios Atrás y se cancela al retirar el owner. Las pruebas de esta ordenación usan reloj controlado, no un evento nativo del navegador.
 
-Los writers de las seis vistas emiten además render:view-preference-change después de actualizar correctamente su URL. Esto incluye la aplicación diferida al cerrar el detalle de Objetivos y la normalización del período de Reportes. Conserva la selección final antes de un Atrás posterior, incluso sin ocultar ni recargar la pestaña. No se envuelve history, no se agregan entradas ni se despacha otro popstate. Guardar preferencias durante una navegación que luego se cancela no confirma ni ejecuta esa navegación.
+Los writers de las nueve vistas emiten además render:view-preference-change después de actualizar correctamente su URL. Esto incluye la aplicación diferida al cerrar el detalle de Objetivos y la normalización del período de Reportes. Conserva la selección final antes de un Atrás posterior, incluso sin ocultar ni recargar la pestaña. No se envuelve history, no se agregan entradas ni se despacha otro popstate. Guardar preferencias durante una navegación que luego se cancela no confirma ni ejecuta esa navegación.
 
 ## Archivos y coordinación
 
@@ -33,6 +33,16 @@ Erdos implementó el helper de preferencias y sus pruebas; luego conectó los wr
 Los nuevos módulos están en frontend/src/shared/navigation: rememberedViews, rememberedViewOwner y viewPreferenceEvent, con sus tests. viewPreferenceWriters.test.js ejecuta los writers de producción y comprueba que notifican después del cambio de URL, sin duplicar navegación. Los fixtures de extracción existentes reciben el helper real en lugar de reducir sus aserciones.
 
 ## Verificación vigente
+
+Corte200: frontend2572 aprobadas, cero fallos u omisiones; backend2038 aprobadas,126 integraciones optativas omitidas, cero fallos. Build index-bKWi8tD_.js y diff-check correctos. Logs /private/tmp/render2-goal200-frontend.log, /private/tmp/render2-goal200-backend.log y /private/tmp/render2-goal200-build.log.
+
+Historias recuerda vista, mes, cliente y filtro de Planilla por ID. El cliente también conserva el destino manual predeterminado de Nueva historia, comportamiento existente; no se abre ni se envía una historia automáticamente. Publicaciones recuerda pestaña, mes, cliente y los filtros separados de calendario y seguimiento por IDs/enums. seg_responsable queda excluido porque todavía utiliza nombres históricos, sin convertirlos heurísticamente a identidades. Volver a Preparar monta su compositor vacío como parte de esa pestaña, no un borrador anterior.
+
+Feedback recuerda sección, categoría y papelera. Excluye búsqueda, nota abierta, contenido, límite, offset y expected_snapshot: reentra desde página cero con evidencia de lectura nueva. Sus preferencias se contrastan con readFeedbackNotesLocation; las de Publicaciones se contrastan con los parsers reales de calendario y seguimiento.
+
+Las12 pruebas nuevas cubren aislamiento por ruta/usuario, exclusiones de texto/nombres/recursos, acuerdo con esos parsers y notificaciones posteriores a los writers. Erdos implementó wrappers editoriales locales y avisos de Feedback, sin ampliar el helper global url-context; el coordinador amplió las allowlists y verificó las suites; Volta revisó contrato y delta sin hallazgos adicionales. No hubo servicios, migraciones ni escrituras PostgreSQL en200. Esta cobertura sigue siendo automatizada con kernels y callbacks, no recorrido nativo.
+
+## Verificación de Clientes y Reportes
 
 Corte199: frontend2560 aprobadas, cero fallos u omisiones; backend2038 aprobadas,126 integraciones optativas omitidas, cero fallos. Build index-ChZ6GzXw.js y diff-check correctos. Logs /private/tmp/render2-goal199-frontend.log, /private/tmp/render2-goal199-backend.log y /private/tmp/render2-goal199-build.log.
 
@@ -52,4 +62,4 @@ La primera corrida focal necesitó completar los campos públicos del DTO de ses
 
 Falta el recorrido nativo A configura → sale/vuelve → B no hereda → A recupera, incluida la navegación Atrás real. La pestaña con diálogo bloqueado del corte197 no se operó nuevamente en este corte. No se iniciaron servicios ni fixtures PostgreSQL para estas preferencias.
 
-La recuperación está integrada en Sidebar para las seis secciones indicadas. Enlaces genéricos de Inicio, clics modificados que abren otra pestaña y las demás áreas conservan su comportamiento explícito. Las subvariables administrativas y los módulos restantes todavía necesitan su integración correspondiente. No se declara completo el requisito global de vistas guardadas. Sin push, despliegue ni cambios en datos reales.
+La recuperación está integrada en Sidebar para las nueve secciones indicadas. Enlaces genéricos de Inicio, clics modificados que abren otra pestaña y las demás áreas conservan su comportamiento explícito. Los aliases /calendario-estructura y /bloc-notas no comparten automáticamente estas preferencias; solo se integran las rutas canónicas. Las subvariables administrativas, el responsable histórico de seguimiento y los módulos restantes todavía necesitan su integración correspondiente. No se declara completo el requisito global de vistas guardadas. Sin push, despliegue ni cambios en datos reales.

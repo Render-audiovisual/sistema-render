@@ -5,6 +5,9 @@ import { getTaskViewState } from '../../features/render-os/utils/task-view-state
 import { productionLocation } from '../../pages/productionRouteContext.js';
 import { readCalendarSelection } from '../../pages/calendarModel.js';
 import { projectListLocation } from '../../pages/projectsModel.js';
+import {readPublicationCalendarContext} from '../../pages/publicationCalendarContext.js';
+import {readPublicationTrackingContext} from '../../pages/publicationTrackingContext.js';
+import {readFeedbackNotesLocation} from '../../pages/feedbackNotesPagination.js';
 
 function storage() {
   const records = new Map(), calls = [];
@@ -20,6 +23,9 @@ const cases = [
   ['/proyectos', 'cliente=9&estado=en_curso&archivados=true'],
   ['/clientes', 'cliente=9&periodo=2026-10'],
   ['/reportes-historias', 'periodo=mes_pasado'],
+  ['/planificacion-historias', 'vista=planilla&mes=2026-10&cliente=9&filtro=7'],
+  ['/planificacion-publicaciones', 'tab=lista&mes=2026-10&cliente=9&cal_vista=semana&cal_tipo=video&seg_cliente=7&seg_mes=2026-09&seg_estado=en_revision&seg_tipo=carrusel'],
+  ['/feedback', 'section=team&mode=trash&categoria=reunion'],
 ];
 for (const [path, query] of cases) {
   test(`${path}: closed preferences round trip and are user/path isolated`, () => {
@@ -183,4 +189,22 @@ test('report periods are visual relative ranges only, not personnel detail or mo
   }
   assert.equal(readRememberedView(s,8,'/reportes-historias'),'/reportes-historias');
   assert.equal(readRememberedView(s,7,'/reportes-historias?periodo=mes_actual'),'/reportes-historias?periodo=mes_actual');
+});
+test('editorial preferences agree with real calendar/tracking parsers and omit legacy responsible labels',()=>{
+  const s=storage();
+  const href='/planificacion-publicaciones?tab=lista&cliente=9&mes=2026-10&cal_vista=semana&cal_tipo=video&seg_cliente=7&seg_mes=2026-09&seg_estado=en_edici%C3%B3n&seg_tipo=carrusel&seg_responsable=PRIVATE_NAME&pieza=77&copy=PRIVATE_COPY';
+  assert.equal(saveRememberedView(s,7,href),true);
+  const restored=readRememberedView(s,7,'/planificacion-publicaciones'),search=restored.split('?')[1];
+  assert.deepEqual(readPublicationCalendarContext(search),{view:'semana',type:'video'});
+  assert.deepEqual(readPublicationTrackingContext(search),{client:'7',month:'2026-09',state:'en_edición',type:'carrusel',responsible:'todos'});
+  assert.doesNotMatch(JSON.stringify([...s.records]),/PRIVATE|seg_responsable|pieza|copy/);
+});
+test('feedback restores consultation filters, never note, search, cursor or business draft',()=>{
+  const s=storage();saveRememberedView(s,7,'/feedback?section=team&mode=trash&categoria=reunion&note=99&q=PRIVATE&offset=50&limit=100&expected_snapshot=PRIVATE_SNAPSHOT&contenido=PRIVATE_BODY');
+  const restored=readRememberedView(s,7,'/feedback');
+  const selection=readFeedbackNotesLocation(restored.split('?')[1]);
+  assert.equal(selection.section,'team');assert.equal(selection.papelera,true);assert.equal(selection.categoria,'reunion');
+  assert.equal(selection.note,null);assert.equal(selection.q,'');assert.equal(selection.offset,0);assert.equal(selection.expected_snapshot,null);
+  assert.doesNotMatch(JSON.stringify([...s.records]),/PRIVATE|note|offset|limit|snapshot|contenido/);
+  assert.equal(readRememberedView(s,8,'/feedback'),'/feedback');
 });
