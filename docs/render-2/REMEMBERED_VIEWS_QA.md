@@ -60,6 +60,24 @@ La primera corrida focal necesitó completar los campos públicos del DTO de ses
 
 ## Pendientes y límites
 
-Falta el recorrido nativo A configura → sale/vuelve → B no hereda → A recupera, incluida la navegación Atrás real. La pestaña con diálogo bloqueado del corte197 no se operó nuevamente en este corte. No se iniciaron servicios ni fixtures PostgreSQL para estas preferencias.
+### Recorrido nativo de Reportes, corte202
+
+El 24 de octubre de2026 se ejecutó el build existente del corte200 contra Express y un PostgreSQL nuevo en55856, HTTP52818. El harness verificó base, usuario, dirección, puerto y directorio exactos. No se usó una base configurada. El script de esta ejecución quedó en `/private/tmp/render2-goal202-native.mjs`; no es una prueba automatizada del navegador.
+
+Mediante controles reales de la aplicación, en una misma pestaña y origen:
+
+1. `qa_luciano`, ID91003, inició sesión por contraseña sintética y obtuvo su inicio personal. En Reportes eligió Mes pasado: URL `periodo=mes_pasado` y control seleccionado coincidieron.
+2. Salió a Inicio y reentró mediante Sidebar: recuperó Mes pasado. Usó Atrás real a Inicio y volvió por Sidebar: conservó esa selección.
+3. Cerró sesión mediante su menú. La aplicación generó un login con `next` explícito al reporte anterior. Para distinguir preferencias de enlaces de retorno, esta prueba abrió deliberadamente `/login` sin `next` antes de cada cambio de cuenta; no acredita que ese retorno se neutralice automáticamente al cambiar de usuario.
+4. `qa_designer`, ID91004, entró desde ese login neutral. Sidebar → Reportes mostró Este mes, sin heredar Mes pasado. Eligió Últimos30días, salió a Inicio y volvió: conservó `periodo=ultimos_30`.
+5. Cerró sesión y volvió a entrar como Luciano desde login neutral. Sidebar → Reportes recuperó Mes pasado, no Últimos30días. Tras recargar, la identidad91003, URL y control seleccionado siguieron coincidiendo.
+6. La navegación directa a `?periodo=mes_actual` respetó el enlace explícito por encima de la preferencia anterior. Esto es prioridad de URL, no recuperación desde Sidebar.
+7. A390×844 volvió a elegir Mes pasado, salió a Inicio y reentró mediante el menú móvil. La selección se recuperó y el menú se cerró. Lectura DOM: innerWidth390, documentElement.scrollWidth375 y body.scrollWidth375; la captura no mostró contenido cortado horizontalmente en este estado vacío. No se midió clientWidth, por lo que no se certifica formalmente ausencia de todo overflow. No prueba tablas pobladas ni otros dispositivos físicos.
+
+Capturas reales: `/private/tmp/render2-goal202-account-b.png`, `/private/tmp/render2-goal202-account-a-restored.png` y `/private/tmp/render2-goal202-report-mobile.png`. Se inspeccionó visualmente la última. No se inyectaron preferencias, cookies ni respuestas en el navegador.
+
+Los hashes antes/después de seis tablas (`cliente_objetivo_piezas`, `clientes`, `listas_personales`, `produccion_videos`, `proyectos`, `tareas`) coincidieron. No es un snapshot de toda la base y excluye cambios esperados de autenticación. El fixture confirmó `DOMAIN_SNAPSHOT_UNCHANGED` y `FIXTURE_CLEANUP_ENOENT /private/tmp/render2-local-8El5VD`, terminando con código0. La pestaña temporal se cerró y el viewport se restauró. No se utilizó el login de Google; el build sí mostró su control configurado, por lo que esta prueba no acredita aislamiento de peticiones externas del frontend.
+
+Queda acreditado el recorrido descrito de Reportes, no las nueve secciones. Falta ejecutar A/B/A nativo en las demás vistas, el contexto diferido de Clientes con detalle abierto y más intercalados de sesión/historial. Volta revisó el delta documental en solo lectura y pidió precisar las métricas de ancho; no validó independientemente el recorrido. No hubo cambios de producto, nuevas suites globales ni despliegue en202.
 
 La recuperación está integrada en Sidebar para las nueve secciones indicadas. Enlaces genéricos de Inicio, clics modificados que abren otra pestaña y las demás áreas conservan su comportamiento explícito. Los aliases /calendario-estructura y /bloc-notas no comparten automáticamente estas preferencias; solo se integran las rutas canónicas. Las subvariables administrativas, el responsable histórico de seguimiento y los módulos restantes todavía necesitan su integración correspondiente. No se declara completo el requisito global de vistas guardadas. Sin push, despliegue ni cambios en datos reales.
