@@ -5,6 +5,22 @@ import {createProductionVisitObserver,newestProductionVisit, reconcileProduction
 const visit = (id, revision, overrides = {}) => ({id,revision,cliente_id:7,fecha:'2026-10-24',titulo:`Visit ${id}/${revision}`,videos:[],...overrides});
 const context = {month:'2026-10',clientId:'7'};
 
+test('opaque token changes on admitted content, not identical clones or rejected older snapshots',()=>{
+  const observer=createProductionVisitObserver(()=>1),empty=observer.token,current=visit('a',3);
+  observer.observe(current);const admitted=observer.token;assert.notEqual(admitted,empty);
+  observer.observe(structuredClone(current));assert.equal(observer.token,admitted);
+  observer.observe(visit('a',2));assert.equal(observer.token,admitted);
+  observer.observe(visit('a',3,{tarea_estado:'finalizada'}));assert.notEqual(observer.token,admitted);
+});
+
+test('reading the token invalidates a previous context even before another visit is observed',()=>{
+  let epoch=1;
+  const observer=createProductionVisitObserver(()=>epoch),first=observer.token;
+  epoch++;assert.notEqual(observer.token,first);
+  const next=observer.token;assert.equal(observer.token,next);
+  assert.equal(typeof next,'symbol');
+});
+
 test('context-bound observer retains the newest verified aggregate even before React publishes state',()=>{
   let epoch=1;
   const observer=createProductionVisitObserver(()=>epoch),fresh=visit('a',3),old=visit('a',2);

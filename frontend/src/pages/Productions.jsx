@@ -406,6 +406,8 @@ export function ProductionsPage({sesion}) {
   const [clients, setClients] = useState([]);
   const [pending, setPending] = useState([]);
   const [pendingPhotos, setPendingPhotos] = useState([]);
+  const [bankObservation,setBankObservation]=useState(null);
+  const pendingAvailable=bankObservation?.epoch===readEpoch.current&&bankObservation?.token===visitObserver.current.token;
   const [selected, setSelected] = useState(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -431,15 +433,20 @@ export function ProductionsPage({sesion}) {
     const controller = new AbortController(),epoch=readEpoch.current;setLoading(true);setListAvailable(false);setError('');
     if(contextError){setLoading(false);return;}
     const current=()=>!controller.signal.aborted && epoch===readEpoch.current;
-    Promise.all([apiRequest(productionReadUrl({month,clientId,tab:'calendar'}),{signal:controller.signal}),apiRequest('/api/usuarios',{signal:controller.signal}),apiRequest('/api/clientes',{signal:controller.signal}),tab==='pending' ? apiRequest(productionReadUrl({month,clientId,tab}),{signal:controller.signal}) : Promise.resolve(null)])
-      .then(([data,people,brands,bank])=>{if(current()){
-        if(!Array.isArray(data?.visitas) || (tab==='pending' && (!Array.isArray(bank?.videos) || !Array.isArray(bank?.fotos))))throw new Error('No se pudo verificar la lista de producciones.');
+    Promise.all([apiRequest(productionReadUrl({month,clientId,tab:'calendar'}),{signal:controller.signal}),apiRequest('/api/usuarios',{signal:controller.signal}),apiRequest('/api/clientes',{signal:controller.signal})])
+      .then(async([data,people,brands])=>{if(current()){
+        if(!Array.isArray(data?.visitas))throw new Error('No se pudo verificar la lista de producciones.');
         const verifiedVisits=data.visitas.map(visit=>assertProductionClient(verifiedProductionDraftVisit(visit),clientId));
-        bank?.videos.forEach(video=>assertProductionClient(video,clientId));bank?.fotos.forEach(photo=>assertProductionClient(photo,clientId));
         const observedVisits=verifiedVisits.map(observeProductionVisit);
+        const token=visitObserver.current.token;
+        const bank=tab==='pending'?await apiRequest(productionReadUrl({month,clientId,tab}),{signal:controller.signal}):null;
+        if(!current())return;
+        if(tab==='pending'&&token!==visitObserver.current.token)throw new Error('Las visitas cambiaron durante la consulta. Actualizá los pendientes para ver el material vigente.');
+        if(tab==='pending'&&(!Array.isArray(bank?.videos)||!Array.isArray(bank?.fotos)))throw new Error('No se pudo verificar la lista de producciones.');
+        bank?.videos.forEach(video=>assertProductionClient(video,clientId));bank?.fotos.forEach(photo=>assertProductionClient(photo,clientId));
         setVisits(current=>reconcileProductionVisitList(current,observedVisits,{month,clientId}));
         setSelected(current=>{const value=observedVisits.find(visit=>visit.id===current?.id);return value?newestProductionVisit(current,value):current;});
-        setPending(bank?.videos || []);setPendingPhotos(bank?.fotos || []);setUsers(people.filter(user=>user.activo === true && positiveId(user.id)));setClients(brands);setListAvailable(true);
+        setPending(bank?.videos || []);setPendingPhotos(bank?.fotos || []);setBankObservation(tab==='pending'?{epoch,token}:null);setUsers(people.filter(user=>user.activo === true && positiveId(user.id)));setClients(brands);setListAvailable(true);
       }})
       .catch(reason=>{if(current())setError(reason.message);}).finally(()=>{if(current())setLoading(false);});
     return()=>controller.abort();
@@ -529,6 +536,10 @@ export function ProductionsPage({sesion}) {
     }
     else void navigationRef.current();
   };
+  const retryPendingBank=()=>{
+    if(writeLock.current||batchDraft.current.busy)return;
+    setReload(value=>value+1);
+  };
   const writeVisit = async (visit,path,method,data) => {
     if(writeLock.current||batchDraft.current.busy) throw new Error('Hay otra operación en curso.');
     // Pin the rendered actor and visible context before dispatch, including
@@ -606,10 +617,10 @@ export function ProductionsPage({sesion}) {
   return <main className="productions-page"><header className="prod-page-heading"><div><h1>Producciones</h1><p>Visitas, guiones y material del equipo.</p></div><button className="prod-primary" type="button" disabled={busy} onClick={startCreateVisit}>Nueva visita</button></header>
     <nav className="prod-toolbar" aria-label="Vistas de producciones"><div className="prod-tabs">{[['calendar','Calendario'],['pending','Banco de pendientes']].map(([id,label])=><button type="button" key={id} aria-pressed={tab===id} onClick={()=>changeContext(clientId,id)}>{label}</button>)}</div><FilterSelect label="Cliente" value={clientId} onChange={e=>changeContext(e.target.value,tab)}><option value="">Todos los clientes</option>{clientId && !clients.some(client=>String(client.id)===clientId) && <option value={clientId}>Cliente #{clientId}</option>}{clients.map(client=><option key={client.id} value={client.id}>{client.nombre}{client.activo === false ? ' (inactivo)' : ''}</option>)}</FilterSelect><button type="button" disabled={busy} onClick={()=>changeContext('',tab)}>Quitar filtro de cliente</button><button type="button" disabled={busy} onClick={retryProductionPage}>Actualizar</button></nav>
     {clientId && <p className="prod-muted" role="status">Cliente: {clients.find(client=>String(client.id)===clientId)?.nombre || `#${clientId}`} · {month}</p>}
-    {notice && <p className="prod-notice" role="status">{notice}</p>}{error && <p className="prod-error" role="alert">{error} <button type="button" onClick={retryProductionPage}>Reintentar</button></p>}
+    {notice && <p className="prod-notice" role="status">{notice}</p>}{error && <p className="prod-error" role="alert">{error} <button type="button" disabled={busy||loading} onClick={tab==='pending'?retryPendingBank:retryProductionPage}>Reintentar</button></p>}
     <div className="prod-layout"><section className="prod-schedule" aria-label={tab==='calendar' ? 'Calendario de visitas' : 'Material pendiente'}>
       <header className="prod-month-nav"><button type="button" aria-label="Mes anterior" disabled={busy} onClick={()=>navigateMonth(-1)}>‹</button><h2>{monthLabel(month)}</h2><button type="button" aria-label="Mes siguiente" disabled={busy} onClick={()=>navigateMonth(1)}>›</button></header>
-      {loading ? <p className="prod-empty" role="status">Cargando producciones…</p> : !listAvailable || contextError ? <p className="prod-empty" role="status">Lista no disponible. Revisá el contexto y volvé a consultar.</p> : tab === 'calendar' ? <>
+      {loading ? <p className="prod-empty" role="status">Cargando producciones…</p> : !listAvailable || contextError ? <p className="prod-empty" role="status">Lista no disponible. Revisá el contexto y volvé a consultar. {tab==='pending'&&!contextError&&<button type="button" disabled={busy} onClick={retryPendingBank}>Actualizar pendientes</button>}</p> : tab==='pending'&&!pendingAvailable ? <div className="prod-empty" role="status"><p>Las visitas cambiaron. Actualizá los pendientes para consultar el material vigente.</p><button type="button" disabled={busy} onClick={retryPendingBank}>Actualizar pendientes</button></div> : tab === 'calendar' ? <>
         <div className="prod-month-grid"><div className="prod-weekdays" aria-hidden="true">{['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(name=><span key={name}>{name}</span>)}</div><div className="prod-days">{productionMonthDays(month).map((date,index)=>date ? <button type="button" key={date} aria-pressed={date===day} aria-current={date===today ? 'date' : undefined} aria-label={`${dateLabel(date)}, ${filtered.filter(v=>v.fecha===date).length} visitas`} onClick={()=>selectDay(date)}><time dateTime={date}>{Number(date.slice(-2))}</time>{filtered.filter(visit=>visit.fecha===date).slice(0,2).map(visit=><span key={visit.id}>{visit.cliente_nombre}</span>)}</button> : <span key={`blank-${index}`} aria-hidden="true"/>)}</div></div>
         <section className="prod-day-agenda"><h3>{dateLabel(day)}</h3>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día. Podés crear una nueva.</p>}</section>
         <section className="prod-mobile-agenda" aria-label="Agenda del mes"><label>Elegir día<input type="date" value={day} min={`${month}-01`} max={`${month}-${String(new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate()).padStart(2,'0')}`} onChange={e=>selectDay(e.target.value)}/></label>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día.</p>}</section>

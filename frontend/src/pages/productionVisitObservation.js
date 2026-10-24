@@ -8,11 +8,15 @@ export function newestProductionVisit(current, incoming) {
 }
 
 export function createProductionVisitObserver(readContext) {
-  let context=readContext(),known=new Map();
-  return Object.freeze({observe(incoming) {
+  let context=readContext(),known=new Map(),token=Symbol('production-visit-observation');
+  const synchronize=()=>{
     const nextContext=readContext();
-    if(nextContext!==context){context=nextContext;known=new Map();}
-    const latest=newestProductionVisit(known.get(incoming.id),incoming);
+    if(nextContext!==context){context=nextContext;known=new Map();token=Symbol('production-visit-observation');}
+  };
+  return Object.freeze({get token(){synchronize();return token;},observe(incoming) {
+    synchronize();
+    const previous=known.get(incoming.id),latest=newestProductionVisit(previous,incoming);
+    if(JSON.stringify(previous)!==JSON.stringify(latest))token=Symbol('production-visit-observation');
     known.set(incoming.id,latest);
     return latest;
   }});

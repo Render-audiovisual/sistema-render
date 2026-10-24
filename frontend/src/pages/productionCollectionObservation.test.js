@@ -45,6 +45,8 @@ function fixture(initial = [visit(1)]) {
       [`set${name}`, value => paints.push([name, value])])),
   };
   const observer = createProductionVisitObserver(() => deps.readEpoch.current);
+  deps.visitObserver = {current:observer};
+  deps.setBankObservation = value=>paints.push(['BankObservation',value]);
   deps.observeProductionVisit = value => observer.observe(value);
   return { deps, collection, paints, errors, run: () => evaluate(effect.arguments[0], deps)(),
     refresh: () => evaluate(refresh.initializer, deps)(id), get visits() { return visits; }, get selected() { return selected; } };

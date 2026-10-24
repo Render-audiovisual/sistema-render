@@ -53,6 +53,7 @@ test('reload/back preserves month, pending and visit; clearing client is explici
 function harness(){const effects=[],deps={readEpoch:{current:0},openVersion:{current:0},refreshVersion:{current:0},clientId:'7',tab:'calendar',month:'2026-11',day:'2026-11-20',contextError:'',today:'2026-10-21',dirty:{current:new Set()},productionLocation,productionCalendarDay,validProductionDay,assertProductionClient,verifiedProductionDraftVisit,writeProductionLocation:v=>effects.push(['url',v]),mayLeave:()=>true};
   Object.assign(deps,{newestProductionVisit,reconcileProductionVisitList});
   const observer=createProductionVisitObserver(()=>deps.readEpoch.current);
+  deps.visitObserver={current:observer};deps.setBankObservation=()=>{};
   deps.observeProductionVisit=value=>observer.observe(value);
   for(const key of ['ListAvailable','Loading','ContextError','Error','ClientId','Tab','Month','Day','DetailLoading','Selected','Creating','Reload','Notice'])deps[`set${key}`]=value=>effects.push([key,value]);
   return {effects,deps};}

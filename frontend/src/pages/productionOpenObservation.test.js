@@ -24,6 +24,7 @@ function fixture(){
     setVisits:value=>{visits=typeof value==='function'?value(visits):value;},
     setError:value=>errors.push(value),writeProductionLocation:value=>urls.push(value)};
   const observer=createProductionVisitObserver(()=>deps.readEpoch.current);
+  deps.visitObserver={current:observer};deps.setBankObservation=()=>{};
   deps.observeProductionVisit=value=>observer.observe(value);
   for(const name of ['Creating','DetailLoading','Month','Day','Loading','ListAvailable','Pending','PendingPhotos','Users','Clients'])deps[`set${name}`]=()=>{};
   const effect=nodes.find(n=>ts.isCallExpression(n)&&n.expression.getText(tree)==='useEffect'&&n.arguments[0]?.getText(tree).includes('Promise.all([apiRequest(productionReadUrl'));
