@@ -1,5 +1,29 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Continuidad del compositor de comentarios — corte206
+
+Corrección local del24 de octubre de2026, independiente de la prueba histórica de estados descrita abajo. El compositor de WorkspaceReadOnly vaciaba el texto incondicionalmente después del ACK: escribir B mientras se enviaba A perdía B aunque nunca hubiera sido enviado.
+
+Ahora cada edición incrementa una generación síncrona dentro de un owner ligado a tarea y captureRequest. El POST captura ese owner/generación; añade el comentario confirmado, pero solo vacía la observación enviada si no hubo otra edición. A→B→A tampoco se confunde con texto intacto. Reset de contexto invalida la generación, y errores/finally antiguos no repintan otro propietario. Backend, payload, permisos y almacenamiento no cambian; no se guardan borradores en Storage ni se reintenta automáticamente.
+
+Erdos implementó WorkspaceReadOnly y19 pruebas nuevas en taskCommentDraftObservation.test.js; el fixture existente workspace-session recibió el owner real requerido sin relajar aserciones. Volta revisó generación, errores, ABA y límites; el coordinador ejecutó regresión y dos recorridos nativos. Los tests ejecutan callback/handler reales y kernel cookie, no un React montado por sí mismos.
+
+Regresión final: frontend2614 aprobadas, cero fallos u omisiones; backend2038 aprobadas,126 integraciones optativas omitidas, cero fallos. Build `index-CKa36j8q.js` y diff-check correctos. Logs `/private/tmp/render2-goal206-frontend.log`, `/private/tmp/render2-goal206-backend.log`, `/private/tmp/render2-goal206-build.log`. Las integraciones omitidas no se dan por renovadas.
+
+### Reproducción anterior y corrección nativa
+
+El runner `/private/tmp/render2-goal206-native.mjs` usó clúster nuevo55859 y HTTP52821, verificó identidad exacta y creó por API una tarea sintética asignada a Luciano91003. Un script QA temporal se cargó antes del módulo en el index generado, sin modificar bundles ni fuentes de producto. Un botón visible armó una única retención: solo POST same-origin `/api/tareas/:id/comentarios`; tras recibir201 real, retuvo la Response hasta pulsar Liberar. No leyó cuerpos/cookies/credenciales y delegó el resto del transporte. Es demora inyectada del ACK, no pérdida física de red.
+
+1. Build205 anterior, escritorio: escribir `QA206 comentario A enviado`, armar retención y pulsar Comentar. Control confirmó POST1/servidor201. Escribir `QA206 borrador B sin enviar`, liberar: A apareció guardado y B desapareció. Reproducción del defecto, no un resultado aceptado de UX. Captura `/private/tmp/render2-goal206-before-loss.png`.
+2. Build206 corregido,390×844: repetir exactamente. A apareció en la lista, B conservó su valor exacto y Comentar volvió a habilitarse. Lectura DOM confirmó textarea editable con B. Captura `/private/tmp/render2-goal206-after-preserved-mobile.png`, inspeccionada visualmente; el control QA visible se superpone a parte del pie y no representa el diseño de producto.
+3. Tras restaurar escritorio, Cerrar tarea mostró el diálogo de descarte existente. Seguir editando conservó B. Para limpiar la prueba se vació B manualmente sin enviarlo; tras recarga A siguió visible y el compositor quedó vacío. No se afirma que B sobreviva a una recarga aceptada. Captura adicional `/private/tmp/render2-goal206-after-preserved-desktop.png`.
+
+En ambas bases se verificó exactamente una fila de comentario: tarea1, autor Luciano QA, contenido A. B nunca fue enviado. Las otras103 tablas completas comparadas quedaron invariantes; se excluyeron tarea_comentarios y las familias de autenticación del hash general. Cada runner terminó0 con `EXACT_ONE_COMMENT_A_ONLY; OTHER_TABLES_UNCHANGED 103` y cleanup ENOENT: anterior `/private/tmp/render2-local-6h7XGR`, corregido `/private/tmp/render2-local-5OuhCJ`. Se cerraron solo las pestañas propias, se restauró viewport y se retiraron qa206.js y su referencia del index generado. Sin bases existentes, proveedores, push ni despliegue.
+
+### Límites vigentes
+
+El fix no resuelve idempotencia ante ACK perdido, admisión síncrona de dos envíos antes del render ni el posible reemplazo de la lista por un GET anterior demorado. Estos intercalados necesitan su propio contrato/pruebas; no se declara completo el dominio de comentarios. No se modificó TareasTablero, cuyo montaje canónico no se confirmó. La prueba histórica de estados y sus cifras siguientes conservan su alcance original.
+
 Status: latest authorized isolated run with shared DB approval-invalidation guard completed: **10 passed, 0 failed, 0 skipped** (9 assertion groups plus parent). Owned files only: `backend/test/render2-task-workflow.integration.test.js` and this document. No application, schema, harness or older test edits.
 
 ## Isolation / execution

@@ -126,7 +126,7 @@ test('production 409 refresh is bound to original actor and never automatically 
 });
 test('comments late result cannot repaint, clear draft/error or busy state after detail unmount', async () => {
   const pending = deferred(), f = fixture({ transport: () => pending.promise }), effects = [];
-  const add = run(initializer('TaskDetail', 'addComment'), { captureRequest: f.captureRequest, comment: 'keep draft', commenting: false,
+  const add = run(initializer('TaskDetail', 'addComment'), { commentDraftOwner: { current: { taskId: task().id, captureRequest: f.captureRequest, generation: 0 } }, captureRequest: f.captureRequest, comment: 'keep draft', commenting: false,
     task: task(), sesion: f.session, setCommenting: value => effects.push(['busy', value]), setCommentError: value => effects.push(['error', value]),
     setComments: () => effects.push('comments'), setComment: () => effects.push('draft') });
   const result = add(); f.unmount(); pending.resolve({ id: 1 }); await result;

@@ -146,6 +146,10 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const draftSourceRef = useRef(task);
   const [comments, setComments] = useState([]);
   const [comment, setComment] = useState("");
+  const commentDraftOwner = useRef(null);
+  if (!commentDraftOwner.current || commentDraftOwner.current.taskId !== task?.id || commentDraftOwner.current.captureRequest !== captureRequest) {
+    commentDraftOwner.current = { taskId: task?.id, captureRequest, generation: 0 };
+  }
   const [commentError, setCommentError] = useState("");
   const [saving, setSaving] = useState(false);
   const [commenting, setCommenting] = useState(false);
@@ -228,6 +232,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     const guard = captureRequest(apiJson);
     setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task) });
     setEditing(false);
+    commentDraftOwner.current.generation++;
     setComment("");
     setCommentError("");
     setComments([]);
@@ -460,6 +465,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     if (!guard.current()) return;
     const content = comment.trim();
     if (!content || commenting) return;
+    const owner = commentDraftOwner.current, generation = owner.generation;
+    const current = () => guard.current() && commentDraftOwner.current === owner;
     setCommenting(true);
     setCommentError("");
     try {
@@ -469,12 +476,15 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         body: JSON.stringify({ autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER", contenido: content }),
       });
       guard.assertCurrent();
+      if (!current()) return;
       setComments((current) => [...current, created]);
-      setComment("");
+      // An ACK owns only the submitted draft observation, not later typing.
+      // Increment on every edit so A -> B -> A is not mistaken for untouched A.
+      if (owner.generation === generation) { owner.generation++; setComment(""); }
     } catch (reason) {
-      if (guard.current()) setCommentError(reason.message || "No se pudo guardar el comentario.");
+      if (current()) setCommentError(reason.message || "No se pudo guardar el comentario.");
     } finally {
-      if (guard.current()) setCommenting(false);
+      if (current()) setCommenting(false);
     }
   };
 
@@ -683,7 +693,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {teamComments.length > 0 && <div className="ros-comments">{teamComments.map((item) => <article key={item.id}><Avatar person={users.find((user) => user.nombre === item.autor)} name={item.autor}/><div className="ros-comment-body"><header><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></header><p>{renderizarTextoTarea(item.contenido)}</p></div></article>)}</div>}
           <div className="ros-comment-create">
             <Avatar person={users.find((user) => user.nombre === sesion?.usuario?.nombre)} name={sesion?.usuario?.nombre || sesion?.usuario?.usuario}/>
-            <textarea rows={2} value={comment} placeholder="Agregar un comentario…" aria-label="Agregar un comentario" onChange={(event) => setComment(event.target.value)}/>
+            <textarea rows={2} value={comment} placeholder="Agregar un comentario…" aria-label="Agregar un comentario" onChange={(event) => { commentDraftOwner.current.generation++; setComment(event.target.value); }}/>
             <button type="button" disabled={!comment.trim() || commenting} onClick={addComment}>{commenting ? "Enviando…" : "Comentar"}</button>
           </div>
         </section>
