@@ -10,6 +10,8 @@ El lector distingue cambios de título y copy frente al contenido observado, con
 
 ## Navegación pendiente de aceptación
 
+Actualización vigente: NATIVE_GOAL_DRAFT_TRAVERSAL_QA.md registra posteriormente una primera salida cancelable rechazada que conserva el borrador y una segunda salida no cancelable que lo pierde. La conservación global sigue pendiente, pero ya hay traza nativa del mecanismo. Los párrafos siguientes corresponden al intento inicial sin instrumentación.
+
 En el navegador integrado Chrome155 se escribió un copy distinto mediante entrada nativa. tab.back salió a Inicio sin advertencia y perdió ese borrador no guardado. La Navigation API existe, pero no se observaron las propiedades del evento de esa salida. El kernel solo cancela traversal same-document cancelable; no está probado si ese límite explica esta ejecución. No se incorporaron bucles de compensación de historial.
 
 El atajo de Atrás no produjo navegación observable y no cuenta como prueba. Cancelar edición sí invocó el confirm local, capturado por la herramienta; después el editor salió de edición. No se acreditó rechazo del descarte ni conservación nativa mediante ese diálogo. Quedan por verificar la cancelación nativa, la recarga con beforeunload y el origen exacto de la salida silenciosa. El botón de edición ofrecido sobre tareas ajenas continúa como pendiente UX independiente, sin cambio de ACL en este corte.
