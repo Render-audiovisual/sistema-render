@@ -22,7 +22,7 @@ function fixture(cookie=true){
   let live=cookie?accept():{token:'qa-original',usuario:{id:7,rol:'admin',activo:true}};
   const rendered=live,calls=[],effects=[],captures=[];
   let transport=async(url,options)=>options?.method?{visita:visit(2)}:visit(2);
-  const deps={sesion:rendered,getSesion:()=>live,readEpoch:{current:0},openVersion:{current:0},writeLock:{current:false},batchDraft:{current:{busy:false}},
+  const deps={sesion:rendered,getSesion:()=>live,readEpoch:{current:0},openVersion:{current:0},refreshVersion:{current:0},writeLock:{current:false},batchDraft:{current:{busy:false}},
     apiRequest:async(url,options)=>{calls.push({url,options});return transport(url,options);},
     createCapturedRequest:options=>{captures.push(options);return createCapturedRequest(options);},
     productionWrite,verifiedProductionDraftVisit,assertProductionClient,clientId:'7',positiveId:value=>Number.isSafeInteger(value)&&value>0,visitDTO:value=>value?.visita||value};

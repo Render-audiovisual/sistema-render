@@ -4,6 +4,18 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Producciones: arbitraje de actualizaciones del detalle — corte243
+
+Objetivo/plan con skill superpowers: conservar la observación vigente de una visita al pulsar Actualizar repetidamente, sin modificar datos comerciales, CAS ni permisos. Volta reprodujo dos refreshVisit del mismo UUID/contexto: respuesta3 seguida de antigua2 terminaba mostrando2 en detalle/listado. La reproducción es con callbacks y DTO reales extraídos por AST, transporte/setters controlados; no carrera HTTP física ni pérdida SQL demostrada.
+
+Coordinador modificó únicamente Productions.jsx: refreshVersion incrementa después de comprobar guard retenido, captura readEpoch/openVersion y vuelve a comprobar los tres antes de admitir respuesta o fallo. Una apertura ABA del mismo UUID invalida la lectura antigua. Retirada produce production_read_obsolete; el catch de Actualizar revalida otra vez al publicar error, cubriendo la ventana entre rechazo admitido y catch posterior. No se reenvía ninguna mutación ni se adopta automáticamente otra revisión para guardar un borrador. El guard de sesión sigue prevaleciendo; un callback retirado no puede invalidar una consulta vigente incrementando el contador.
+
+Volta añadió productionRefreshObservation.test.js:5 fallos/2 aprobadas antes del fix;9 aprobadas finales, incluyendo respuesta antigua, fallo antiguo, epoch, apertura ABA, fallo vigente visible, sesión retirada y carrera de microtarea al publicar error. Erdos añadió solo el nuevo ref a los fixtures existentes productionCookieBinding y productionRouteContext, con35 focales aprobadas y mismas aserciones. Primera cohorte de producción150 aprobadas; después se añadió el noveno caso. Build index-BeZdLQtG.js correcto. Logs /private/tmp/render2-goal243-refresh-red.log, refresh-green.log, production.log y build.log (mismo prefijo render2-goal243-); el green inicial contiene7 casos, no los9 finales.
+
+Límites/pendientes: arbitraje latest-start entre llamadas refreshVisit, no orden global por revisión ni coordinación exhaustiva de todos los publicadores. Colección conserva su propio efecto con abort/epoch y setVisits directo; onBatchSaved mantiene otro GET/publicador. Hace falta integrar/probar esas fronteras sin retener visitas fuera del mes/cliente o alterar campos derivados de edición. Volta señaló ese límite; no se afirma haber demostrado una carrera batch bajo sus locks. No se inició servidor/PG ni se ejecutó navegador en243; sin cambios backend/esquema, proveedores, bases configuradas o despliegue. Regresiones frontend/build no prueban por sí solas la carrera de red nativa. La aceptación global sigue pendiente.
+
+Regresión final243:2815 frontend aprobadas,0 fallos/omisiones en /private/tmp/render2-goal243-frontend-final.log. La anterior2814 de frontend.log precede el noveno caso, no constituye otra cohorte independiente.
+
 ### Calendario: preferencias A/B/A nativas — corte242
 
 Sobre build241, cuentas cookie91003/91004 y tres tareas creadas por API en26/27/28Oct. A recuperó Lo mío/Entregas/día28; B no heredó selección y guardó Equipo/Todos/día27; volver a A y recargar conservó su tarea y selección. A390px, Inicio→menú móvil restauró28 y cerró menú; DOM client/scroll/body390. Enlace explícito26 mostró su tarea1, Atrás recuperó28/tarea2.105 tablas de dominio invariantes y epochs de logout A1/B1 exactos; fixture eliminado. No cambios de producto ni build/regresiones nuevos. Erdos preparó runner, Volta revisión independiente y coordinador ejecutó. Detalles/límites en REMEMBERED_VIEWS_QA.md. Quedan seis rutas A/B/A nativas y subvariables de Calendario; no aceptación global.

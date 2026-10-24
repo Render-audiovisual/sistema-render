@@ -414,6 +414,7 @@ export function ProductionsPage({sesion}) {
   const [reload, setReload] = useState(0);
   const writeLock = useRef(false);
   const openVersion = useRef(0);
+  const refreshVersion = useRef(0);
   const navigationRef = useRef(null);
   const dirty = useRef(new Set());
   const productionObservation = useRef(Symbol('production-form-observation'));
@@ -436,11 +437,20 @@ export function ProductionsPage({sesion}) {
     return()=>controller.abort();
   },[month,clientId,tab,contextError,reload]);
   const refreshVisit = async (id, guard) => {
-    const epoch=readEpoch.current;
-    const url=`/api/producciones/${encodeURIComponent(id)}`;
-    const value = verifiedProductionDraftVisit(await (guard ? guard.request(url) : apiRequest(url)),id);
     guard?.assertCurrent();
-    if(epoch!==readEpoch.current)throw new Error('El contexto de producciones cambió.');
+    const epoch=readEpoch.current,version=openVersion.current,refresh=++refreshVersion.current;
+    const assertCurrentRead=()=>{
+      guard?.assertCurrent();
+      if(epoch!==readEpoch.current||version!==openVersion.current||refresh!==refreshVersion.current)
+        throw Object.assign(new Error('El contexto de lectura de la visita cambió.'),{code:'production_read_obsolete'});
+    };
+    assertCurrentRead();
+    const url=`/api/producciones/${encodeURIComponent(id)}`;
+    let response;
+    try { response=await (guard ? guard.request(url) : apiRequest(url)); }
+    catch(reason){assertCurrentRead();throw reason;}
+    assertCurrentRead();
+    const value = verifiedProductionDraftVisit(response,id);
     assertProductionClient(value,clientId);
     setSelected(current=>current?.id === id ? value : current);
     setVisits(current=>current.map(visit=>visit.id === id ? value : visit));
@@ -499,7 +509,13 @@ export function ProductionsPage({sesion}) {
   const retryProductionPage = () => {
     if(!selected && !mayLeave()) return;
     setReload(value=>value+1);
-    if(selected) void refreshVisit(selected.id).catch(reason=>setError(reason.message));
+    if(selected) {
+      const epoch=readEpoch.current,version=openVersion.current;
+      const pending=refreshVisit(selected.id),refresh=refreshVersion.current;
+      void pending.catch(reason=>{
+        if(epoch===readEpoch.current&&version===openVersion.current&&refresh===refreshVersion.current&&reason.code!=='production_read_obsolete')setError(reason.message);
+      });
+    }
     else void navigationRef.current();
   };
   const writeVisit = async (visit,path,method,data) => {
