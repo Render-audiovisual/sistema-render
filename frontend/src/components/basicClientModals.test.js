@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { createClientCreation, hasNoConfiguredMonthlyAgreement } from '../pages/clientCreate.js';
+import { isConfirmedPublication, isHistoricalPublication } from '../shared/editorial/publication-evidence.js';
 
 // Execute actual callbacks and SSR extracted JSX with injected hooks/effects.
 // These are not mounted browser or HTTP tests.
@@ -82,7 +83,7 @@ test('basic single flight, busy close and global navigation guard preserve draft
 });
 
 function renderComponent(name,props,stateOverrides={}){
-  let index=0;const deps={React,hasNoConfiguredMonthlyAgreement,useState:initial=>{const own=index++;return[Object.hasOwn(stateOverrides,own)?stateOverrides[own]:initial,()=>{}]},useRef:current=>({current}),useNavigationGuard:()=>{},
+  let index=0;const deps={React,hasNoConfiguredMonthlyAgreement,isConfirmedPublication,isHistoricalPublication,useState:initial=>{const own=index++;return[Object.hasOwn(stateOverrides,own)?stateOverrides[own]:initial,()=>{}]},useRef:current=>({current}),useNavigationGuard:()=>{},
     Modal:({children,title})=>React.createElement('section',{},title,children),getEstadoLabel:()=> 'Sin clasificación',getTipoPublicacionLabel:()=> 'Pieza',...props};
   const compiled=ts.transpileModule(owner(name).getText(ast),{compilerOptions:{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2022}}).outputText;
   return renderToStaticMarkup(Function(...Object.keys(deps),`${compiled};return ${name}(props);`)(...Object.values(deps),));

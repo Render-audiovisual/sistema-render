@@ -16,6 +16,7 @@ import { hasNoConfiguredMonthlyAgreement } from '../pages/clientCreate.js';
 import { clientOperationHref } from '../pages/clientOperation.js';
 import { navigateWithinApp } from '../shared/navigation/location.js';
 import { StartMonthlyAgreementModal } from './StartMonthlyAgreementModal.jsx';
+import { isConfirmedPublication, isHistoricalPublication } from '../shared/editorial/publication-evidence.js';
 
 const WEEKDAYS = [[1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"]];
 
@@ -486,23 +487,23 @@ function DetalleClienteSession({
       id: `historia-${h.id}`,
       pieza: h.metadata?.Idea || "Historia sin título",
       responsable: h.responsable,
-      estado: h.estado,
+      estado: isConfirmedPublication(h) ? 'Confirmada manualmente' : isHistoricalPublication(h) ? 'Histórica sin confirmación' : h.estado,
     })),
     ...publicaciones.map((p) => ({
       id: `publicacion-${p.id}`,
       pieza:
         p.metadata?.Idea || `${getTipoPublicacionLabel(p.tipo)} sin título`,
       responsable: p.responsable,
-      estado: p.estado,
+      estado: isConfirmedPublication(p) ? 'Confirmada manualmente' : isHistoricalPublication(p) ? 'Histórica sin confirmación' : p.estado,
     })),
   ];
   const reelsPublicados = publicaciones.filter(
     (publicacion) =>
-      publicacion.estado === "publicada" &&
+      isConfirmedPublication(publicacion) &&
       (publicacion.tipo === "reel" || publicacion.tipo === "video"),
   ).length;
   const carruselesPublicados = publicaciones.filter(
-    (publicacion) => publicacion.estado === "publicada" && publicacion.tipo === "carrusel",
+    (publicacion) => isConfirmedPublication(publicacion) && publicacion.tipo === "carrusel",
   ).length;
   const esFeedCompartido = Boolean(cliente.grupo_feed_id);
   const estadoTexto = {
@@ -538,23 +539,24 @@ function DetalleClienteSession({
             </div>
           </div>}
 
+          <p className="caption">Piezas programadas para {periodo}. La confirmación puede corresponder a otra fecha; no es verificación externa.</p>
           {!basicClient && <div className="cliente-detail-metrics">
             <div>
               <span>Historias</span>
               <strong>{cliente.historiasPublicadas || 0} <small>/ {cliente.cuotaHistorias || 0}</small></strong>
-              <small>{cliente.historiasMes || 0} planificadas este mes</small>
+              <small>confirmadas manualmente · {cliente.historiasMes || 0} programadas en {periodo}</small>
             </div>
             {esFeedCompartido ? (
               <>
                 <div>
                   <span>Reels compartidos</span>
                   <strong>{reelsPublicados} <small>/ {cliente.cuota_feed_reels ?? 0}</small></strong>
-                  <small>publicados este mes</small>
+                  <small>confirmados manualmente</small>
                 </div>
                 <div>
                   <span>Carruseles compartidos</span>
                   <strong>{carruselesPublicados} <small>/ {cliente.cuota_feed_carruseles ?? 0}</small></strong>
-                  <small>publicados este mes</small>
+                  <small>confirmados manualmente</small>
                 </div>
               </>
             ) : (
@@ -562,12 +564,12 @@ function DetalleClienteSession({
                 <div>
                   <span>Reels</span>
                   <strong>{reelsPublicados} <small>/ {cliente.cuota_reels ?? 0}</small></strong>
-                  <small>publicados este mes</small>
+                  <small>confirmados manualmente</small>
                 </div>
                 <div>
                   <span>Carruseles</span>
                   <strong>{carruselesPublicados} <small>/ {cliente.cuota_carruseles ?? 0}</small></strong>
-                  <small>publicados este mes</small>
+                  <small>confirmados manualmente</small>
                 </div>
               </>
             )}

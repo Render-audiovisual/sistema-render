@@ -8,6 +8,7 @@ import {blankMonthlyAgreementDraft,createMonthlyAgreementOperation,MONTHLY_AGREE
 import {createCapturedRequest} from '../shared/session/captured-request.js';
 import {registerNavigationGuard,installUnsavedNavigation} from '../shared/navigation/unsaved.js';
 import {hasNoConfiguredMonthlyAgreement} from '../pages/clientCreate.js';
+import {isConfirmedPublication,isHistoricalPublication} from '../shared/editorial/publication-evidence.js';
 
 const source=readFileSync(new URL('./StartMonthlyAgreementModal.jsx',import.meta.url),'utf8'),file=ts.createSourceFile('StartMonthlyAgreementModal.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
 const parentSource=readFileSync(new URL('./ClienteModals.jsx',import.meta.url),'utf8'),parentFile=ts.createSourceFile('ClienteModals.jsx',parentSource,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
@@ -101,7 +102,7 @@ test('actual October basic projection with a known future zero agreement has no 
  const future={...basic,fecha_inicio:'2026-11-01'};assert.equal(hasNoConfiguredMonthlyAgreement(future),true);
  const compiled=ts.transpileModule(owner('DetalleClienteSession',parentFile).getText(parentFile),{compilerOptions:{jsx:ts.JsxEmit.React,module:ts.ModuleKind.None}}).outputText;
  const actualHelper=name=>{const declaration=nodes(parentFile,n=>ts.isVariableDeclaration(n)&&n.name.getText(parentFile)===name)[0];return new Function(`return (${declaration.initializer.getText(parentFile)});`)();};
- const deps={React,hasNoConfiguredMonthlyAgreement,useRef:current=>({current}),useState:initial=>[initial,()=>{}],Modal:({children,title})=>React.createElement('section',null,title,children),getEstadoLabel:()=> 'Sin clasificación',getTipoPublicacionLabel:()=> 'Pieza',monthStart:actualHelper('monthStart'),validPeriod:actualHelper('validPeriod')};
+ const deps={React,hasNoConfiguredMonthlyAgreement,isConfirmedPublication,isHistoricalPublication,useRef:current=>({current}),useState:initial=>[initial,()=>{}],Modal:({children,title})=>React.createElement('section',null,title,children),getEstadoLabel:()=> 'Sin clasificación',getTipoPublicacionLabel:()=> 'Pieza',monthStart:actualHelper('monthStart'),validPeriod:actualHelper('validPeriod')};
  const Detail=new Function(...Object.keys(deps),`${compiled};return DetalleClienteSession;`)(...Object.values(deps));
  const detail=(cliente,canStartAgreement=true)=>renderToStaticMarkup(React.createElement(Detail,{cliente,canStartAgreement,periodo:'2026-10',capture:()=>({current:()=>true}),historias:[],publicaciones:[],onClose(){}}));
  const html=detail(future);assert.match(html,/Sin acuerdo mensual vigente en este período/);assert.match(html,/No hay cuotas ni abono mensual vigentes para 2026-10/);assert.match(html,/Inicio del acuerdo registrado: 2026-11-01/);assert.doesNotMatch(html,/Configurar acuerdo mensual|Sin acuerdo mensual configurado|No tiene cuotas|\$|Abono mensual<|cliente-detail-metrics/);
