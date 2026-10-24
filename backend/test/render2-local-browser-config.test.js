@@ -14,3 +14,12 @@ test('native browser fixture rejects unsafe or contradictory HTTP ports before c
     {browserSessions:true,browserPort:52767,clusterOnly:true},
   ])await assert.rejects(startLocalHarness(options),/Invalid browser HTTP fixture port/);
 });
+
+test('comment migration rehearsal rejects live HTTP mode and non-boolean options before creating a cluster', async () => {
+  for (const options of [
+    { deferTaskCommentReceiptsMigration: true },
+    { deferTaskCommentReceiptsMigration: true, browserSessions: true },
+    { deferTaskCommentReceiptsMigration: 'true', clusterOnly: true },
+    { deferTaskCommentReceiptsMigration: null, clusterOnly: true },
+  ]) await assert.rejects(startLocalHarness(options), /Comment migration rehearsal requires a cluster-only fixture/);
+});

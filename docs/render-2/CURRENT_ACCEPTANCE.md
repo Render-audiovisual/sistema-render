@@ -4,6 +4,8 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+Actualización211: migrador real088→089 probado sobre datos sintéticos poblados en clúster descartable, sin API.104 tablas completas preservadas y ledger con única entrada089; columnas/restricciones/índices/triggers observados y secuencias conservados, con RI nuevos esperados. Rerun sin cambios, servicio de comentarios/recovery/replay válido y cleanup ENOENT. Una física compuesta aprobada; backend2083 aprobadas/128 optativas omitidas. Ver TASK_WORKFLOW_QA.md. No sustituye ensayo sobre copia comercial autorizada, CLI/hosting ni aceptación global.
+
 Actualización194: GOAL_DRAFT_LOST_ACK_NATIVE_QA.md verifica guardado real con respuesta200 descartada mediante transporte de QA en navegador: aviso incierto, recuperación sin reenvío y segundo Guardar humano409. PostgreSQL confirmó un único incremento de revisión, tarea/pieza coherentes y siete tablas restantes sin cambios. Fixture eliminado. Este corte cubre el ACK ocultado después de commit, no desmontaje durante petición pendiente, pérdida física de red ni aceptación global.
 
 Actualización192–193: GOAL_DRAFT_LEGACY_BOUNDARY_QA.md documenta la corrección del desmontaje del provider durante aliases autenticados. Frontend2508 pruebas aprobadas y build correcto en192. En193, navegador conectado verificó texto exacto tras /luciano → Inicio → Retomar y ausencia de borrador tras logout/login de otra identidad. Entrada al alias mediante control temporal de historial de QA, retirado después; nueve tablas comerciales sin cambios y clúster eliminado. No acredita carreras de logout durante el render ni ACK perdido. Sin cambios de backend ni producción.
