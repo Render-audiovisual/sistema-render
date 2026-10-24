@@ -1,5 +1,17 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Preparación de guardado normal y aviso legible — corte220
+
+Autorización humana para liberar únicamente memoria compartida huérfana verificada. Inspección `ipcs -m -a` del24/10: segmentos65536 y327697, ambos NATTCH6. No se eliminó ningún segmento ni se alteraron servicios/bases. La autorización no habilita liberar segmentos activos.
+
+El aviso del brief conserva role=alert y su aspecto previo, añadiendo únicamente ros-brief-error:13px, interlínea1.5, padding12px y wrapping dentro del ancho disponible. Sin cambios de handlers o contratos. Skills apple-ui-design/frontend-design guiaron legibilidad y alcance del ajuste, no un rediseño global. Volta revisó ancestry/cascada y añadió una excepción CSS exacta con pruebas negativas; hashes legacy intactos. Main adaptó la aserción del alert y agregó prueba del estilo.
+
+36 pruebas focalizadas y2769 pruebas frontend completas aprobadas, cero fallos/omisiones. Build correcto: index-BeACkl6j.js; logs `/private/tmp/render2-goal220-focused.log`, `/private/tmp/render2-goal220-frontend.log`, `/private/tmp/render2-goal220-build.log`. git diff --check sin errores. Sin cambios de backend ni nueva ejecución de su suite.
+
+Erdos preparó `/private/tmp/render2-goal220-native.mjs` y verificó sintaxis. En la continuación se ejecutó con PostgreSQL55868/browser52830, identidad exacta de fixture comprobada. Franco QA cookie abrió la tarea sintética, adoptó el brief actual con Cancelar, escribió y guardó el texto esperado; tras recargar el enlace directo, el texto seguía presente. Captura inspeccionada `/private/tmp/render2-goal220-brief-reloaded.png`. SQL acreditó revision2, texto exacto, una única actividad legacy sin recibo UUID, demás columnas estables y metadata intacta o normalización vacía canónica exacta. Otras103 tablas completas invariantes, incluidas notificaciones y recibos. No hay instrumentación que pruebe conteo de solicitudes HTTP; la evidencia es persistencia y resultado SQL.
+
+Runner salida0 y `FIXTURE_CLEANUP_ENOENT /private/tmp/render2-local-opS2FU`; log `/private/tmp/render2-goal220-native.log`. Pestaña propia32 cerrada. Estilo calculado/captura móvil del aviso de conflicto y otras variantes concurrentes siguen pendientes. No se atribuye validación visual del error a la captura de guardado normal, ni se declara completado el objetivo maestro. Sin despliegue ni datos existentes modificados; migraciones solo en fixture nuevo desechable.
+
 ## Elegibilidad de avisos pendientes antes de entrega — corte219
 
 La revisión posterior a218 reprodujo S219-01: la verificación de un aviso ordinario devolvía true tras consultar solo cooldown, ignorando destinatario_usuario_id; el resolver del worker seguía la clave textual del mapa local. Diagnósticos ejecutados offline con funciones reales y DB/mapa sintéticos, sin mensajes externos. Esto acreditó ausencia de revalidación, no un envío explotado ni bypass de autenticación.

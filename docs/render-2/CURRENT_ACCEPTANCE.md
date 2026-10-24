@@ -6,6 +6,8 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ### Repriorización transversal215 — dos defectos abiertos
 
+Actualización220: guardado normal del brief acreditado en navegador cookie y PostgreSQL temporal: recarga mantiene texto, revision2, una actividad, cero recibos y103 tablas invariantes. Fixture eliminado. Aviso de conflicto ajustado localmente a13px con wrapping;2769 frontend aprobadas y build correcto. Falta comprobar ese aviso calculado/visual en móvil y variantes concurrentes adicionales; sin cierre global. Ver TASK_WORKFLOW_QA.md.
+
 Actualización219: guard común de elegibilidad para avisos con ID en preview/claim antes de LIMIT y verificación previa a entregar: activo/WhatsApp habilitado, propiedad actual de clave o alias sin colisión y, para comentarios/bloqueos, asignación/contexto actuales.31 físicas firmadas/2145 backend aprobadas,130 optativas omitidas,20 Python offline aprobadas; fixtures eliminados. Sin envío externo. Legacy sin ID, teléfono del mapa manual y revocación posterior a verificación siguen fuera de aceptación; sin outbox/exactly-once. Ver TASK_WORKFLOW_QA.md.
 
 Actualización218: OP215-02 corregido en el enqueue de comentarios: destinatarios y actor por ID capturados en transacción, ambos canales reciben contexto interno y DTO público intacto.5 físicas nuevas y13 de recibos/migración renovadas aprobadas;2098 backend/2767 frontend aprobadas,129 optativas omitidas. Fixtures eliminados. Otros eventos legacy y entrega posterior por destinatario_clave siguen pendientes, sin outbox/exactly-once ni entrega externa acreditada. El diagnóstico215 de nombres debajo es histórico para comentarios, no cierre global de notificaciones. Ver TASK_WORKFLOW_QA.md.

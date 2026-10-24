@@ -181,7 +181,7 @@ test('new-owner reset releases old UI busy; old finally cannot unlock a new pend
 });
 
 test('brief error is rendered unconditionally beside editor, not behind review capability',()=>{
-  assert.match(detail.getText(file),/\{briefError && <div className="ros-inline-error" role="alert">\{briefError\}<\/div>\}/);
+  assert.match(detail.getText(file),/\{briefError && <div className="ros-inline-error ros-brief-error" role="alert">\{briefError\}<\/div>\}/);
 });
 
 for(const status of [undefined,500,502,503]){

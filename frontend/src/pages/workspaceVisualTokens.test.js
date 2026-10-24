@@ -243,6 +243,50 @@ function reviewedTaskContinuationBaseline(root) {
   assert.equal(hash(records),'25b7e1d5e6aeaf3d40f233c57f9811d30e69b7a18cbe27b64d5063d3f735bd14');
   return copy;
 }
+// Integration220 changes only the brief alert's readable sizing/wrapping. Pin
+// its full record before removing it from either legacy layout or error guards.
+function reviewedBriefErrorBaseline(root) {
+  const copy = root.clone(), matches = [], records = [];
+  const selector = '.render-workspace .ros-task-workspace .ros-brief-error';
+  copy.walkRules(rule => {
+    if (!rule.selector.includes('.ros-brief-error')) return;
+    assert.equal(normalize(rule.selector), selector, 'Only the scoped brief alert may borrow this exception');
+    assert.equal(rule.parent.type, 'root', 'Brief alert cannot add a conditional wrapper');
+    records.push([normalize(rule.selector), null,
+      rule.nodes.map(node => [node.type, node.prop, node.value, !!node.important])]);
+    matches.push(rule);
+  });
+  assert.equal(matches.length, 1, 'Exactly one reviewed brief-alert rule');
+  assert.equal(hash(records), 'd2dc9c9e1b11f9e59f70dc32f44ed4375bcea2c97ab2eba58cdbd2c7e0236fc7',
+    'Exact reviewed declarations, order, values and important flags');
+  matches[0].remove();
+  return copy;
+}
+test('Integration220 exception pins just the brief alert and preserves all other error/layout rules', () => {
+  const original = roots.WorkspaceReadOnly.toString();
+  reviewedBriefErrorBaseline(roots.WorkspaceReadOnly);
+  assert.equal(roots.WorkspaceReadOnly.toString(), original, 'Only cloned roots are projected');
+  for (const mutate of [
+    rule => { rule.first.value = 'content-box'; },
+    rule => { rule.first.important = true; },
+    rule => { rule.selector += ', .ros-inline-error'; },
+    rule => { rule.append({ prop: 'position', value: 'fixed' }); },
+    rule => { rule.after(rule.clone()); },
+    rule => { const wrapper = postcss.atRule({ name: 'media', params: '(max-width:640px)' }); rule.replaceWith(wrapper); wrapper.append(rule); },
+  ]) {
+    const changed = roots.WorkspaceReadOnly.clone();
+    let target;
+    changed.walkRules('.render-workspace .ros-task-workspace .ros-brief-error', rule => { target = rule; });
+    assert.ok(target);
+    mutate(target);
+    assert.throws(() => reviewedBriefErrorBaseline(changed));
+  }
+  const unrelated = roots.WorkspaceReadOnly.clone();
+  unrelated.append({ selector: '.unrelated-error', nodes: [{ prop: 'padding', value: '99px' }] });
+  const projected = reviewedBriefErrorBaseline(unrelated);
+  assert.equal(projected.last.selector, '.unrelated-error');
+  assert.equal(projected.last.first.value, '99px', 'Other error declarations remain fingerprinted');
+});
 // Integration214: only the five reviewed comment-action rules may leave the
 // legacy fingerprint. Validate their complete records before removing anything.
 function reviewedCommentActionsBaseline(root) {
@@ -315,6 +359,7 @@ function reviewedMobileTemplateBaseline(root) {
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
     let baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
+    if(name==='WorkspaceReadOnly')baselineRoot=reviewedBriefErrorBaseline(baselineRoot);
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedCommentActionsBaseline(baselineRoot);
     if(name==='TaskDetailNotion')baselineRoot=reviewedMobileTemplateBaseline(baselineRoot);
     if(name==='TaskHeader')baselineRoot=reviewedTaskContinuationBaseline(baselineRoot);
@@ -323,7 +368,8 @@ for (const name of files) {
   });
   test(`${name}: purposeful area and status styling is unchanged`, () => {
     const rules = [];
-    roots[name].walkRules(rule => {
+    const identityRoot = name === 'WorkspaceReadOnly' ? reviewedBriefErrorBaseline(roots[name]) : roots[name];
+    identityRoot.walkRules(rule => {
       if (/area-badge|area-(?:carruseles|produccion|edicion|historias|planificacion|web|chatbots|carteleria)|warning|danger|error|urgent|approved|\.pending|\.done|\.red\b|\.amber\b|\.green\b|\.blue\b|\.gray\b|production-progress/.test(rule.selector)) rules.push(rule.toString());
     });
     assert.equal(hash(rules), identityBaseline[name]);

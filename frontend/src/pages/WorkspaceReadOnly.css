@@ -1641,6 +1641,15 @@
   width:32px;
 }
 .render-workspace .ros-comments{gap:0}
+.render-workspace .ros-task-workspace .ros-brief-error{
+  box-sizing:border-box;
+  font-size:13px;
+  line-height:1.5;
+  max-width:100%;
+  min-width:0;
+  overflow-wrap:anywhere;
+  padding:12px;
+}
 .render-workspace .ros-task-comments-footer .ros-comment-action{
   appearance:none;
   background:var(--render-surface-soft);

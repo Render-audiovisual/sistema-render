@@ -733,7 +733,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {isAdmin && <ProductionReconciliation taskId={task.id} sesion={sesion} users={users} available={isProductionVisit && registry.ready && !registry.vinculo}
             disabled={saving || commenting || archiving || registeringProduction || confirmingProduction || deliveryBusy || deliveryDirty || coordinationDraft.busy || coordinationDraft.dirty}
             onDraftStateChange={setReconciliationDraft} onSaved={() => setRegistryRetry(value => value + 1)}/>}
-        {briefError && <div className="ros-inline-error" role="alert">{briefError}</div>}
+        {briefError && <div className="ros-inline-error ros-brief-error" role="alert">{briefError}</div>}
         <TaskContentWorkspace task={task} metadata={metadata} editing={canEditTask || editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={null} onCancelEdit={cancelEditing} onSaveEdit={save} saving={saving} canSave={Boolean(canEditTask && draft.titulo?.trim())}/>
         {hasOperationalControls && <section className="ros-task-operations" aria-labelledby={`ros-task-operations-${task.id}`}>
           <div className="ros-block-heading ros-operations-heading"><div><h3 id={`ros-task-operations-${task.id}`}>Flujo de trabajo</h3></div><small>Acciones y avance de la tarea</small></div>
