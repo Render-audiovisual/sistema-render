@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Drive recupera lecturas fallidas desde la misma carpeta — corte235
+
+Reintentar carpeta usa load protegido, conserva búsqueda/carpeta y no repite escrituras. Error de lectura separado del de operaciones inciertas; caché y falso vacío ocultos después del fallo.2773 frontend aprobadas y build index-B8p0Dsp9.js. Prueba nativa con DrivePage real/API y sesión sintéticas: escritorio y390px recuperan503 por clic; búsqueda conservada,44px y sin overflow medido. Solo1 statusGET/4 filesGET, ninguna escritura Drive, fixture cerrado y viewport restaurado. Sin Google/PG real, backend nuevo ni deploy; statusretry y transiciones previas al debounce siguen fuera. Ver DRIVE_AUTHORITY_CONTRACT.md.
+
 ### Avisos de finalización sin publicación inventada — corte234
 
 Fallo offline reproducido y corregido en ambos renderers: finalizada ya no cae en nueva tarea y publicada legacy describe finalización, no publicación editorial. Solo copy, sin cambios de claves/destinatarios/estado o datos históricos.36 focales y2205 backend aprobadas,136 optativas omitidas. Sin proveedor, fixture, frontend/build ni despliegue. Sigue abierto el routing genérico por nombres:3 rojos offline reproducen inactivo/homónimo/actor homónimo; falta binding explícito de revisores por ID, no ampliación indiscriminada de receptores. Ver TASK_WORKFLOW_QA.md.

@@ -26,10 +26,11 @@ export function DrivePage({ sesion }) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [folderReadError, setFolderReadError] = useState(false);
   const isAdmin = view.role === "admin";
   const current = stack[stack.length - 1];
   const context = JSON.stringify([view.key, current?.id, query]); live.current = context;
-  const files = loadedContext === context ? loadedFiles : [];
+  const files = loadedContext === context && !folderReadError ? loadedFiles : [];
 
   const load = useCallback(async (parent = current?.id, search = query, uploadScope = null) => {
     if (!parent) return false;
@@ -41,11 +42,11 @@ export function DrivePage({ sesion }) {
       isActive: () => mounted.current && live.current === key && generation.current === observed && (!uploadScope || uploadScope.current()) });
     if (!guard.current()) return false;
     observed = ++generation.current;
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setFolderReadError(false);
     try {
       const items = await guard.request('/api/drive/files', uploadScope?.options());
       guard.assertCurrent(); setFiles(items); setLoadedContext(key); return true;
-    } catch { if (guard.current()) setError('No pudimos consultar esta carpeta. Volvé a intentarlo.'); return false; }
+    } catch { if (guard.current()) { setFolderReadError(true); setError('No pudimos consultar esta carpeta. Volvé a intentarlo.'); } return false; }
     finally { if (guard.current()) setLoading(false); }
   }, [current?.id, query, view]);
 
@@ -75,7 +76,7 @@ export function DrivePage({ sesion }) {
       const url = new URL(result.url);
       if (url.origin !== 'https://accounts.google.com' || !url.pathname.startsWith('/o/oauth2/')) throw new Error('Invalid provider URL');
       guard.assertCurrent(); window.location.href = url.href;
-    } catch { if (guard.current()) setError('No pudimos iniciar la conexión con Google Drive.'); }
+    } catch { if (guard.current()) { setFolderReadError(false); setError('No pudimos iniciar la conexión con Google Drive.'); } }
   };
   const trash = async (file) => {
     const guard = createCapturedRequest({ session: view.session, readSession: getSesion, request: driveRequest, isActive: () => mounted.current });
@@ -83,7 +84,7 @@ export function DrivePage({ sesion }) {
     try {
       await guard.request(`/api/drive/files/${encodeURIComponent(file.id)}`, { method: 'DELETE' });
       guard.assertCurrent(); await load(current?.id, query, guard);
-    } catch { if (guard.current()) setError('No pudimos confirmar el cambio. Verificá la carpeta antes de reintentar.'); }
+    } catch { if (guard.current()) { setFolderReadError(false); setError('No pudimos confirmar el cambio. Verificá la carpeta antes de reintentar.'); } }
   };
 
   return <main className="drive-page">
@@ -91,7 +92,10 @@ export function DrivePage({ sesion }) {
     <header className="drive-page-header"><div><span className="drive-kicker">ARCHIVOS DEL EQUIPO</span><h1>Drive</h1><p>Encontrá y cargá material sin salir de Render OS.</p></div>{status?.connected && <a href={`https://drive.google.com/drive/folders/${current?.id || status.roots.general}`} target="_blank" rel="noreferrer">Abrir en Google Drive ↗</a>}</header>
     {!status?.connected ? <section className="drive-connect"><span className="drive-logo">▰</span><h2>{status?.reconnectRequired ? "Volvé a conectar el Drive de Render" : "Conectá el Drive de Render"}</h2><p>{status?.reconnectRequired ? "La autorización anterior venció. Los archivos siguen intactos en Google Drive; solo hay que renovar el acceso." : "Los archivos seguirán guardados en Google Drive. Render OS solo simplifica la carga y el acceso."}</p>{isAdmin ? <button type="button" disabled={!status?.configured} onClick={connect}>{status?.reconnectRequired ? "Volver a conectar Google Drive" : "Conectar Google Drive"}</button> : <strong>Un líder debe realizar la conexión.</strong>}{status && !status.configured && <small>Falta configurar el acceso de Google en Hostinger.</small>}</section> : <>
       <section className="drive-toolbar"><div className="drive-roots">{Object.keys(ROOT_LABELS).map((key) => <button className={rootKey === key ? "active" : ""} type="button" key={key} onClick={() => selectRoot(key)}>{ROOT_LABELS[key]}</button>)}</div><label><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar en esta carpeta…"/></label></section>
-      <section className="drive-browser"><div className="drive-breadcrumbs">{stack.map((folder, index) => <button type="button" key={folder.id} onClick={() => setStack((items) => items.slice(0, index + 1))}>{folder.name}{index < stack.length - 1 ? " /" : ""}</button>)}</div><DriveUploader currentFolder={current} onUploaded={(_uploaded, scope) => load(current?.id, query, scope)}/>{error && <div className="drive-error-banner">{error}</div>}{loading ? <div className="drive-loading">Cargando archivos…</div> : files.length ? <div className="drive-grid">{files.map((file) => <article key={file.id} className={file.isFolder ? "folder" : "file"} onDoubleClick={() => file.isFolder && setStack((items) => [...items, { id: file.id, name: file.name }])}><button className="drive-file-main" type="button" onClick={() => file.isFolder ? setStack((items) => [...items, { id: file.id, name: file.name }]) : window.open(file.webViewLink, "_blank", "noopener,noreferrer")}><span>{file.isFolder ? "▰" : "▤"}</span><div><strong>{file.name}</strong><small>{file.isFolder ? "Carpeta" : fileSize(file.size)}</small></div></button>{isAdmin && !file.isFolder && <button className="drive-trash" type="button" aria-label={`Enviar ${file.name} a la papelera`} onClick={() => trash(file)}>⌫</button>}</article>)}</div> : <div className="drive-empty"><strong>No hay archivos para mostrar.</strong><span>{query ? "Probá otra búsqueda." : "Subí el primer archivo a esta carpeta."}</span></div>}</section>
+      <section className="drive-browser"><div className="drive-breadcrumbs">{stack.map((folder, index) => <button type="button" key={folder.id} onClick={() => setStack((items) => items.slice(0, index + 1))}>{folder.name}{index < stack.length - 1 ? " /" : ""}</button>)}</div><DriveUploader currentFolder={current} onUploaded={(_uploaded, scope) => load(current?.id, query, scope)}/>
+        {error && <div className="drive-error-banner drive-folder-recovery" role="alert"><span>{error}</span>{folderReadError && <button type="button" disabled={loading} onClick={() => load()}>Reintentar carpeta</button>}</div>}
+        {loading ? <div className="drive-loading" role="status">Cargando archivos…</div> : files.length ? <div className="drive-grid">{files.map((file) => <article key={file.id} className={file.isFolder ? "folder" : "file"} onDoubleClick={() => file.isFolder && setStack((items) => [...items, { id: file.id, name: file.name }])}><button className="drive-file-main" type="button" onClick={() => file.isFolder ? setStack((items) => [...items, { id: file.id, name: file.name }]) : window.open(file.webViewLink, "_blank", "noopener,noreferrer")}><span>{file.isFolder ? "▰" : "▤"}</span><div><strong>{file.name}</strong><small>{file.isFolder ? "Carpeta" : fileSize(file.size)}</small></div></button>{isAdmin && !file.isFolder && <button className="drive-trash" type="button" aria-label={`Enviar ${file.name} a la papelera`} onClick={() => trash(file)}>⌫</button>}</article>)}</div> : !error && <div className="drive-empty"><strong>No hay archivos para mostrar.</strong><span>{query ? "Probá otra búsqueda." : "Subí el primer archivo a esta carpeta."}</span></div>}
+      </section>
     </>}
   </main>;
 }
