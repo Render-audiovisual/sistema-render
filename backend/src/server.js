@@ -49,6 +49,7 @@ import { loadProductionTaskContext } from "./production-reporting.js";
 import { productionEditorialConflict } from "./production-link-errors.js";
 import { normalizeTaskState, taskTransitionError, isTaskFinalized } from "./workflow-contract.js";
 import { buildTaskAccessClause, buildTaskReadAccessClause, canEmployeePatchTask, getTaskActor } from "./task-access.js";
+import { createTaskComment, findTaskCommentCreation } from './task-comment-receipts.js';
 import { parseTaskPagination } from "./task-pagination.js";
 import { publishPieceLinkedToCompletedTask } from "./piece-task-linking.js";
 import { calculateSalaryDashboard } from "./salary-calculation.js";
@@ -2774,34 +2775,34 @@ router.get("/tareas/:id/comentarios", async (req, res, next) => {
   }
 });
 
-router.post("/tareas/:id/comentarios", async (req, res, next) => {
+router.get('/tareas/:id/comentarios/solicitudes/:requestId', async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
   try {
-    const esRenderOS = req.query.workspace === "render_os";
-    const autor = req.auth.rol === "admin"
-      ? String(req.body.autor || "").trim()
-      : getTaskActor(req.auth);
-    const contenido = String(req.body.contenido || "").trim();
-    if (!autor || !contenido) {
-      return res.status(400).json({ error: "Faltan autor o comentario." });
-    }
-    const acceso = buildTaskAccessClause(req.auth, "t", "$4");
-    const params = [req.params.id, autor, contenido];
-    if (acceso.value) params.push(acceso.value);
-    const result = await pool.query(
-      `INSERT INTO tarea_comentarios (tarea_id, autor, contenido)
-       SELECT t.id, $2, $3 FROM tareas AS t
-       WHERE t.id = $1
-         AND t.propiedades_extra->>'workspace' ${esRenderOS ? "= 'render_os'" : "IS DISTINCT FROM 'render_os'"}${acceso.sql}
-       RETURNING id, tarea_id, autor, contenido, created_at`,
-      params,
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Tarea no encontrada." });
-    }
-    const comentario = result.rows[0];
-    res.status(201).json(comentario);
+    if (!/^[1-9]\d*$/.test(req.params.id)) return res.status(400).json({ error: 'Tarea inválida.' });
+    const comment = await findTaskCommentCreation(pool, req.auth, {
+      taskId: Number(req.params.id), workspace: req.query.workspace === 'render_os' ? 'render_os' : 'historical',
+      requestId: req.params.requestId,
+    });
+    res.json(comment);
+  } catch (error) {
+    if ([400,401,403,404,409,428].includes(error.status)) return res.status(error.status).json({ error: error.message });
+    next(error);
+  }
+});
 
-    if (!contenido.startsWith("[Actividad]")) {
+router.post("/tareas/:id/comentarios", async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!/^[1-9]\d*$/.test(req.params.id)) return res.status(400).json({ error: 'Tarea inválida.' });
+    const result = await createTaskComment(pool, req.auth, {
+      taskId: Number(req.params.id), workspace: req.query.workspace === 'render_os' ? 'render_os' : 'historical',
+      requestId: req.body?.request_id, payload: { autor: req.body?.autor, contenido: req.body?.contenido },
+    });
+    const comentario = result.comment, { autor, contenido } = comentario;
+    res.status(result.replayed ? 200 : 201).json(result.requestId
+      ? { ...comentario, creation_request_id: result.requestId } : comentario);
+
+    if (!result.replayed && !contenido.startsWith("[Actividad]")) {
       void pool.query(
         `SELECT id, titulo, asignado_a, cliente_id, prioridad, propiedades_extra,
                 to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento
@@ -2822,6 +2823,7 @@ router.post("/tareas/:id/comentarios", async (req, res, next) => {
       });
     }
   } catch (error) {
+    if ([400,401,403,404,409,428].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });

@@ -135,7 +135,7 @@ test('readiness requires088 columns/types and enabled immutable trigger binding 
       if(sql.includes('current_schemas'))return{rows:[{schemas:['public']}]};
       if(sql.includes('information_schema'))return{rows:rows.flatMap(r=>r.table_name==='project_child_create_receipts'&&r.column_name==='payload_hash'?(mode==='missing'?[]:mode==='wrongtype'?[{...r,data_type:'jsonb'}]:[r]):[r])};
       assert.match(sql,/project_child_create_receipts'::regclass/);assert.match(sql,/t\.tgtype=27/);assert.equal(params[3],'project_child_create_receipt_immutable');
-      return{rows:[{ready:true,reference_ready:true,personal_list_receipt_ready:true,project_child_receipt_ready:mode!=='trigger'}]};
+      return{rows:[{ready:true,reference_ready:true,personal_list_receipt_ready:true,project_child_receipt_ready:mode!=='trigger',task_comment_receipt_ready:true}]};
     }};
     if(mode==='ok')await assertCoreSchemaReady(db);else await assert.rejects(assertCoreSchemaReady(db));
     assert.equal(writes(queries).length,0);

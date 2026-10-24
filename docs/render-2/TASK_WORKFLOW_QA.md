@@ -1,5 +1,33 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Recibos de creación de comentarios: base de servidor — corte208
+
+Implementado y verificado localmente el contrato PostgreSQL/API; **la interfaz todavía no envía request_id ni ofrece recuperación**, por lo que el riesgo de reintento desde la pantalla aún no se declara resuelto. No se creó otra implementación de tareas: todos los POST, con o sin UUID, pasan por task-comment-receipts.js.
+
+POST `/api/tareas/:id/comentarios?workspace=render_os` admite request_id UUID opcional. Cuando existe, comentario y recibo se confirman atómicamente. Mismo actor/UUID/payload normalizado devuelve la fila original con200; creación nueva201. Reutilizar UUID para otro contenido/tarea/workspace produce409. Añade creation_request_id al DTO solo cuando hay UUID. Sin UUID conserva201 y DTO plano, pero no adquiere garantía idempotente. Números/objetos antes convertidos con String ahora se rechazan400; los escritores legítimos de texto continúan compatibles.
+
+GET `/api/tareas/:id/comentarios/solicitudes/:request_id?workspace=render_os` recupera sin reenviar, con no-store. Comprueba actor, tarea, workspace y ACL de escritura vigentes; poseer UUID no autoriza acceso.404 no prueba ausencia definitiva de una petición aún en vuelo. Un recibo cuyo comentario desapareció devuelve409, sin recrearlo. Si falta la tarea, falla disponibilidad. Recibos no contienen copia del contenido ni credenciales y no se exponen hashes privados.
+
+El servicio captura actor/entrada antes del lease, utiliza READ COMMITTED y retiene usuario FOR SHARE, mutex transaccional actor/UUID y tarea FOR SHARE, en ese orden. La asignación se comprueba en una sentencia posterior al lock de tarea. IDs/rol/época/activo actuales deben coincidir; staff deriva autor de la fila del servidor. Su nombre no entra en el hash, pero sí el autor explícito de administración. Commit precede al ACK. Replay no entra en la rama de avisos; esta condición fue revisada en código, **no se comprobó físicamente una entrega externa de notificaciones**. Un crash entre commit y aviso aún puede perder ese aviso; no hay outbox exactamente una vez.
+
+### Esquema y coordinación
+
+089_task_comment_create_receipts.sql añade tabla actor/UUID, hash versionado, IDs de tarea/comentario, workspace y commit; sin backfill ni FK que elimine tombstones al borrar tarea/comentario. El FK actor RESTRICT impide borrar físicamente usuarios con recibos, intencional para auditoría; no cambia la baja lógica. Trigger rechaza UPDATE/DELETE de recibos. Startup exige columnas/tipos y binding habilitado del trigger, sin instalarlo ni repararlo; no certifica todo su cuerpo/PK/restricciones por inspección. La migración solo se ejecutó en bases descartables nuevas, no sobre una copia poblada ni sobre bases configuradas. La revisión/ensayo de actualización poblada queda pendiente antes del despliegue.
+
+Erdos implementó módulo,089 y43 unitarias; el coordinador integró rutas, startup y pruebas físicas; Volta revisó autoridad, DTO, compatibilidad y límites en solo lectura. Sin cambios de frontend ni dependencias. Las skills de seguridad y PostgreSQL orientaron captura de autoridad, orden de locks y transacciones cortas sin llamadas externas.
+
+### Verificación vigente
+
+Regresión backend2082 aprobadas,127 integraciones optativas omitidas, cero fallos; frontend2639 aprobadas, cero fallos u omisiones. Logs `/private/tmp/render2-goal208-backend.log` y `/private/tmp/render2-goal208-frontend.log`. No se regeneró el frontend/build, sin cambios desde207. Focal backend67 aprobadas. Diff-check correcto.
+
+La suite `backend/test/render2-task-comment-receipts.integration.test.js`, con RENDER2_RUN_LOCAL_INTEGRATION=true, aprobó12 comprobaciones contando el padre, sin fallos u omisiones. Log vigente `/private/tmp/render2-goal208-physical-accepted.log`. HTTP principal usa bearer real de cuentas sintéticas, no navegador/cookies/CSRF. PG55861 nuevo, identidad exacta comprobada en harness y pool de barreras. Cubrió cuatro envíos exactos concurrentes con una fila/un recibo; conflicto concurrente; intención igual con claves distintas; scope por actor; legacy; rename staff/autor admin; recuperación/replay con ACL retirada; tombstone inmutable; rollback entre INSERTs; asignación retirada mientras espera lock; revocación previa sin escritura y posterior esperando al commit autorizado (pg_blocking_pids comprobó bloqueo real); startup con trigger deshabilitado falla sin reparación.
+
+Las comparaciones de recuperación/rechazo revisan las filas de comentarios/recibos o sus conteos según cada caso, no toda la base. Hubo setup y mutaciones intencionales de identidades/asignaciones dentro del fixture. Cleanup ENOENT final `/private/tmp/render2-local-8mgfic`, código0. Intentos previos aceptados de9 y11 comprobaciones limpiaron `/private/tmp/render2-local-zJNFsQ` y `/private/tmp/render2-local-4xyuBq`; no se suman como pruebas distintas. Sin servicios activos propios, bases existentes, proveedores, push o despliegue.
+
+### Integración siguiente y riesgos abiertos
+
+Conectar intento inmutable y UUID por acción en WorkspaceReadOnly, verificar recibo/ACK antes de limpiar y ofrecer Verificar envío mediante GET, conservando206/207, B posterior, guardas e incertidumbre. No generar otra clave ni reintentar automáticamente al perder ACK. La prueba nativa de respuesta perdida y recuperación queda pendiente. Los escritores legacy sin clave aún pueden duplicar reintentos; tampoco se promete persistir el intento al recargar ni deduplicar por texto.089 y servidor requieren despliegue coordinado/revisión autorizada del destino; nada está publicado ni preparado globalmente para producción.
+
 ## Lectura tardía de comentarios — corte207
 
 Estado vigente del intercalado GET/POST: corregido localmente. La lectura inicial podía reemplazar toda la lista y ocultar un comentario confirmado mientras su respuesta estaba pendiente. No borraba la fila en PostgreSQL; la pérdida era de continuidad en pantalla.
@@ -22,7 +50,7 @@ Build207 corregido a390×844: repetir la secuencia → liberar GET → A continu
 
 Ambos runners confirmaron una fila exacta A, autor Luciano QA, tarea1;103 tablas completas restantes invariantes, excluyendo tarea_comentarios y familias auth/browser_session del hash general. Resultado `EXACT_ONE_COMMENT_A_ONLY; OTHER_TABLES_UNCHANGED 103`, código0 y cleanup ENOENT: anterior `/private/tmp/render2-local-ggCnGj`, corregido `/private/tmp/render2-local-sJLeLt`. Pestañas propias cerradas, viewport restaurado y qa207.js/referencia retirados con comprobación de ausencia. Sin base existente, proveedor, push o despliegue.
 
-Pendiente: recibo/idempotencia ante ACK perdido y reintento humano; concurrencia entre distintas leases/dispositivos y aceptación integral. Retirar una lease permite coexistencia de una escritura antigua ya enviada y otra nueva: no se promete cancelación remota ni deduplicación entre ambas. El pendiente histórico de GET tardío de206 queda cerrado solo bajo el contrato y recorrido207 descritos.
+En207 quedaban pendientes recibo/idempotencia ante ACK perdido y reintento humano, concurrencia entre leases/dispositivos y aceptación integral.208 incorpora la base de servidor descrita arriba, todavía no el cliente ni su recuperación nativa. Retirar una lease permite coexistencia de una escritura antigua ya enviada y otra nueva: no se promete cancelación remota ni deduplicación entre claves distintas. El pendiente histórico de GET tardío de206 queda cerrado solo bajo el contrato y recorrido207 descritos.
 
 ## Continuidad del compositor de comentarios — corte206
 
