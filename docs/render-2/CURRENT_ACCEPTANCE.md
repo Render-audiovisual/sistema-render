@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Retirada de visita del calendario personal verificada — corte225
+
+Ejecutado el runner224 corregido con ambos CAS sobre fixture nuevo55870/browser52832, raíz `/private/tmp/render2-local-asNBu6`, identidad exacta comprobada. Luciano QA cookie comenzó con una visita en Lo mío. La única señal de QA reasignó por API la tarea a Agustín91002 con colaboradores vacíos; confirmó una asignación responsable, participantes soloFranco, tarea origen nula, único vínculo de video preservado y ninguna publicación creada. Tarea incrementó una revisión y solo campos esperados; un aviso de reasignación quedó pendiente, sin proveedor. Las restantes tablas no cambiaron durante la mutación.
+
+Después, click Actualizar en navegador390×844 retiró la visita de Lo mío. El control nativo Ámbito→Equipo mostró una sola visita, y la recarga la conservó. Volver a Lo mío y recargar mantuvo0 eventos. Un intento de getByLabel para el select no encontró el nodo; se usó el control AX observado, sin fallback por inyección. Capturas inspeccionadas `/private/tmp/render2-goal225-mine-removed-mobile.png` y `/private/tmp/render2-goal225-team-retained-mobile.png`. No acredita todos los filtros ni lectores de pantalla, ni que retirar membresía quite lectura del tablero compartido.
+
+SQL final comparó hashes completos de105 tablas públicas salvo auth/browser_session con el baseline posterior al cambio autorizado: todas invariantes; visita/video y sus revisiones conservados. Log `/private/tmp/render2-goal225-native.log`, salida0, cleanup ENOENT. Pestaña propia37 cerrada y viewport restaurado. Sin cambios de producto ni nuevas suites/build; sin bases existentes o producción. Skill verification orientó cerrar el tramo fallido224 con UI→API→datos, sin borrar los intentos rechazados del historial.
+
+Repriorización225 (no corregida aún): Volta revisó el caller de reasignación en server.js y getAssignmentNotificationRecipients en private-task-notifications.js. Aunque las asignaciones se guardan por ID, el delta posterior compara etiquetas: cambiar de ownerID a otro homónimo puede producir0 destinatarios. Helper real reproducido offline por Volta; coordinador confirmó el caller en fuente, sin prueba del PATCH físico de homónimos todavía.218 cubre comentarios y219 avisos ya ligados a ID; este caller legacy sigue pendiente. Próximo contrato: capturar IDs previos/nuevos y actor bajo la escritura, calcular delta por ID y pasarlo a ambos canales; probar exactamente un enqueue para homónimo nuevo, retirada/sin cambio/actor/inactivo sin regresiones. No confundir con entrega externa ni permisos de lectura.
+
 ### Calendario personal por asignación de edición — corte224 parcial
 
 Dos fixtures nativos nuevos con PostgreSQL55870/browser52832, identidad exacta comprobada, build222 sin cambios de producto. Erdos preparó `/private/tmp/render2-goal224-native.mjs`; Volta revisó controles y vínculos. API creó una visita26/10 con Franco como único participante, un video grabado y tarea de edición1 para Luciano con entrega29/10, sin colaboradores ni tarea origen.
