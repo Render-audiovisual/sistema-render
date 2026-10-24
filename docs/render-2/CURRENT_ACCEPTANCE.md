@@ -29,6 +29,8 @@ Actualización191: GOAL_DRAFT_CONFLICT_NATIVE_QA.md verifica en navegador y Post
 
 ## Borradores de piezas y recorrido del editor
 
+Preparación209a de comentarios: modelo cliente aislado `taskCommentCreation.js`,43 unitarias específicas y2682 frontend totales aprobadas, revisión independiente sin bloqueantes. No está importado en WorkspaceReadOnly: no modifica la aceptación de Comentarios en la matriz anterior. Falta integrar y probar el recorrido nativo; ver TASK_WORKFLOW_QA.md.
+
 Recuperación temporal implementada y verificada localmente en GOAL_DRAFT_RECOVERY_QA.md. Objetivos conserva el formulario en memoria del documento, por sesión y recurso, y permite retomar tras navegación canónica sin guardado automático ni compensación de historial. Dos Atrás reales, recuperación móvil, descarte confirmado, warning de recarga cancelada y separación entre cuentas quedaron comprobados. No promete supervivencia tras recarga aceptada ni todas las rutas heredadas/otros formularios. La traza del defecto original sigue en NATIVE_GOAL_DRAFT_TRAVERSAL_QA.md.
 
 El intento inicial de proteger PieceDetail solo con el kernel perdió un borrador y motivó la recuperación temporal descrita arriba. Ese intento y sus pruebas están en GOAL_PIECE_DRAFT_QA.md, no como estado vigente de la recuperación. El recorrido de empleado Objetivos → tarea → Reportes también se verificó con PostgreSQL, incluida la tabla editorial anidada poblada a390px sin desbordamiento; nueve tablas permanecieron sin cambios y el fixture se eliminó. Ese resultado reduce el pendiente de tabla anidada de la matriz anterior solo para el rol y fixture comprobados.

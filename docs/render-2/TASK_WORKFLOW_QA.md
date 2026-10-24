@@ -1,5 +1,19 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Preparación del cliente de comentarios — corte209a
+
+Se añadió `frontend/src/pages/taskCommentCreation.js` como modelo comprobable de un intento, todavía **sin importarlo en WorkspaceReadOnly ni cambiar el botón Comentar**. El riesgo de duplicación desde la interfaz descrito en208 sigue abierto hasta la integración209b y su prueba nativa. No se considera este helper una funcionalidad conectada ni otra fuente de datos.
+
+El modelo captura guard/request, tarea, contenido normalizado, autor y generación antes del POST; genera UUID criptográfico sin fallback legacy y serializa el body una sola vez. Conserva intención separada del texto editable y ofrece recuperación mediante GET no-store, nunca un segundo POST automático.404 no demuestra ausencia definitiva. Verifica UUID/tarea/contenido y DTO mediante mergeTaskComments; permite renombre de staff y validación explícita del autor administrativo. Descarta campos extra del DTO. No usa Storage, temporizadores ni servicios externos.
+
+Erdos implementó exclusivamente modelo y unitarias. Volta revisó el contrato independientemente; señaló la necesidad de retener el intento aunque el compositor quede vacío, separar sus leases de lectura y no interpretar un booleano obsoleto como confirmación. La integración deberá consumir una confirmación una sola vez, fusionar207, limpiar solo la generación206 original y proteger salidas por intento no resuelto, además del texto. Descartar o desmontar no cancela ni revierte el servidor; no se promete recuperar el intento después de recargar.
+
+La revisión corrigió éxito obsoleto tras publicación reentrante: se revalida el intento, scope y comentario exactos después del observer.401/403/409 conservan intento bloqueado como unavailable, sin ofrecer consultas indefinidas ni permitir otra creación. Los demás errores/ACK inválidos permanecen inciertos; verificar404 conserva UUID y permite otra consulta. No se afirma que todo rechazo HTTP equivalga a fallo de commit.
+
+Verificación final:43 unitarias específicas y2682 pruebas totales frontend aprobadas, cero fallos/omitidas. Log `/private/tmp/render2-goal209a-frontend-accepted.log`. Prueban transporte modelado, no navegador/React montado ni PostgreSQL nuevo. Incluyen cambios de sesión/ABA, DTO/correlación erróneos, doble admisión, lectura404 seguida de recuperación, ausencia de UUID y reentrancias de descarte/sesión/nuevo intento al confirmar POST/GET. No se regeneró build porque el módulo aún no pertenece al grafo activo.
+
+Este corte no modifica rutas/API/esquema, no aplica migraciones ni renueva pruebas físicas de208. La skill de trabajo estructurado orientó la separación de responsabilidades y la referencia de seguridad frontend la validación de respuestas y ausencia de secretos/negocio en Storage. Sigue pendiente209b: integración real de interfaz, pruebas de callbacks/guardas y recorrido nativo de ACK perdido.
+
 ## Recibos de creación de comentarios: base de servidor — corte208
 
 Implementado y verificado localmente el contrato PostgreSQL/API; **la interfaz todavía no envía request_id ni ofrece recuperación**, por lo que el riesgo de reintento desde la pantalla aún no se declara resuelto. No se creó otra implementación de tareas: todos los POST, con o sin UUID, pasan por task-comment-receipts.js.
