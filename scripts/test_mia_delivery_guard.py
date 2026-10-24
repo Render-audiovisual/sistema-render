@@ -177,6 +177,41 @@ class DeliveryGuardTests(unittest.TestCase):
             self.assertEqual(worker.proactive_window(date),f"2026-10-03:{expected}" if expected else None)
         self.assertIsNone(worker.proactive_window(worker.datetime.fromisoformat("2026-10-04T09:00:00-03:00")))
 
+    def test_main_does_not_send_or_ack_when_server_revalidation_denies_or_fails(self):
+        for reply in ({"deliverable": False}, {}, RuntimeError("offline verification failed")):
+            with self.subTest(reply=type(reply).__name__):
+                calls = []
+
+                def backend(command):
+                    calls.append(command)
+                    if "events" in command:
+                        return {"events": []}
+                    if "group-digests" in command:
+                        return {"digests": []}
+                    if "private-notifications" in command:
+                        return {"notifications": [{"id": 101, "fingerprint": "a" * 64,
+                            "destinatario_clave": "test", "mensaje": "Synthetic private notice",
+                            "detalles": {"destinatario_usuario_id": 91003}}]}
+                    if "verify-private-notification" in command:
+                        if isinstance(reply, Exception):
+                            raise reply
+                        return reply
+                    self.fail("Unexpected offline backend operation")
+
+                arguments = ["mia_event_worker.py", "--send", "--max-events", "1",
+                    "--lock-file", str(pathlib.Path(self.tmp.name) / "worker.lock"),
+                    "--ledger-file", str(self.path)]
+                with patch.object(worker.sys, "argv", arguments), \
+                        patch.object(worker, "run_json", side_effect=backend), \
+                        patch.object(worker, "guarded_delivery") as guarded, \
+                        patch.object(worker, "deliver_event") as transport, patch("builtins.print"):
+                    result = worker.main()
+                self.assertEqual(result, 1 if isinstance(reply, Exception) else 0)
+                guarded.assert_not_called()
+                transport.assert_not_called()
+                self.assertFalse(any("ack-private-notification" in call for call in calls))
+                self.assertFalse(self.path.exists(), "Denied verification never creates a delivery intent")
+
 
 if __name__ == "__main__":
     unittest.main()

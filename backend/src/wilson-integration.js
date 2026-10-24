@@ -21,6 +21,7 @@ import { syncProductionVisitFromTask } from "./production-registry.js";
 import { lockProductionObjectiveLinks } from "./production-editorial.js";
 import { productionEditorialConflict } from "./production-link-errors.js";
 import { encolarNotificacionPrivadaTarea } from "./private-task-notifications.js";
+import { buildTaskNotificationEligibilityPredicate } from './task-notification-eligibility.js';
 import { canonicalTaskOperationIntent, taskOperationKey, taskOperationIntentHash, taskOperationConfirmationHash,
   TASK_RECEIPT_OPERATIONS, taskOperationReceiptDto, findTaskOperationReceipt, insertTaskOperationReceipt,
   consumeTaskOperationConfirmation, lockTaskOperationResources } from "./task-operation-receipts.js";
@@ -1727,15 +1728,17 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
     try {
       if (req.query.dry_run === "true") {
         const preview = await pool.query(`SELECT id,fingerprint,destinatario,destinatario_clave,tarea_id,feedback_id,motivo,mensaje,tarea_url,intentos,created_at
-          FROM mia_private_task_notifications WHERE cancelled_at IS NULL AND batch_parent_id IS NULL AND estado='pending'
-          AND (not_before IS NULL OR not_before<=NOW()) ORDER BY created_at,id LIMIT $1`, [limit]);
+          FROM mia_private_task_notifications n WHERE cancelled_at IS NULL AND batch_parent_id IS NULL AND estado='pending'
+          AND (not_before IS NULL OR not_before<=NOW()) AND ${buildTaskNotificationEligibilityPredicate('n')}
+          ORDER BY created_at,id LIMIT $1`, [limit]);
         return res.json({ notifications: preview.rows, dry_run: true });
       }
       await enqueueDuePersonalListReminders(pool, { limit });
       const result = await pool.query(
         `WITH candidates AS (
-           SELECT id FROM mia_private_task_notifications
+           SELECT id FROM mia_private_task_notifications n
            WHERE cancelled_at IS NULL AND batch_parent_id IS NULL AND (not_before IS NULL OR not_before<=NOW())
+             AND ${buildTaskNotificationEligibilityPredicate('n')}
              AND NOT EXISTS(SELECT 1 FROM mia_private_contact_limits l WHERE l.actor_hash=COALESCE(
                (SELECT actor_hash FROM mia_whatsapp_identities WHERE notification_key=destinatario_clave AND enabled IS TRUE),
                (SELECT whatsapp_id_hash FROM usuarios WHERE LOWER(usuario)=destinatario_clave LIMIT 1))

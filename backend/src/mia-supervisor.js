@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { annotateTaskAssignments } from './task-assignments.js';
+import { taskNotificationEligible } from './task-notification-eligibility.js';
 import { isTaskFinalized } from './workflow-contract.js';
 import { supervisorReasoning } from './mia-supervisor-reasoning.js';
 import {followupMessage,taskLabel,batchMessage,shortText,supervisorWindow,nextSupervisorWindow} from './mia-supervisor-messages.js';
@@ -282,6 +283,7 @@ export async function acknowledgeSupervisorDelivery(db, notification, now = new 
 
 export async function supervisorNotificationDeliverable(db, notification, { env = process.env, now = new Date(),ignoreContact=false } = {}) {
   if(!notification) return false;
+  if(!await taskNotificationEligible(db,notification)) return false;
   if(!ignoreContact && !await notificationContactAllowed(db,notification,now)) return false;
   if (!notification.detalles?.supervisor) return true;
   if (!enabled(env) || !isSupervisorWorkTime(now)) return false;
