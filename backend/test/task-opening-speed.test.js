@@ -89,7 +89,9 @@ test('cambio de sesión durante navegación aceptada impide selección, hint, hi
 
 test('el detalle conserva borradores, cancela consultas y no reenfoca con cada actualización', () => {
   assert.match(source,/const previousFocus = document.activeElement/);
-  assert.match(source,/controller.signal.aborted\) setComments/);
+  assert.match(source,/const currentComments = \(\) => guard.current\(\) && !controller.signal.aborted/);
+  assert.match(source,/commentDraftOwner.current === owner && owner.readGeneration === readGeneration && owner.commentsRead === commentsRead/);
+  assert.match(source,/if \(!currentComments\(\)\) return;\s*const merged = mergeTaskComments\(items, commentsRead.confirmed, owner.taskId\);\s*commentsRead.items = merged; setComments\(merged\);/);
   assert.match(source,/return \(\) => controller.abort\(\)/);
   assert.match(source,/setDraft\(current => editing \|\|/);
   assert.match(source,/if \(previousFocus\?\.isConnected\) previousFocus.focus\(\{ preventScroll: true \}\)/);

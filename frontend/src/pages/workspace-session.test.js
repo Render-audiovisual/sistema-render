@@ -6,6 +6,7 @@ import { createCapturedRequest, isSessionFailure } from '../shared/session/captu
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { canRetryTaskUpdate } from '../workspace-task-state.js';
 import { isTaskEditorialContext } from '../features/render-os/utils/task-editorial-context.js';
+import { mergeTaskComments } from './taskCommentCollection.js';
 
 // Extract actual callbacks from JSX; no React mount or live workflow claims.
 const source = readFileSync(new URL('./WorkspaceReadOnly.jsx', import.meta.url), 'utf8');
@@ -126,7 +127,7 @@ test('production 409 refresh is bound to original actor and never automatically 
 });
 test('comments late result cannot repaint, clear draft/error or busy state after detail unmount', async () => {
   const pending = deferred(), f = fixture({ transport: () => pending.promise }), effects = [];
-  const add = run(initializer('TaskDetail', 'addComment'), { commentDraftOwner: { current: { taskId: task().id, captureRequest: f.captureRequest, generation: 0 } }, captureRequest: f.captureRequest, comment: 'keep draft', commenting: false,
+  const add = run(initializer('TaskDetail', 'addComment'), { mergeTaskComments, commentDraftOwner: { current: { taskId: task().id, captureRequest: f.captureRequest, generation: 0 } }, captureRequest: f.captureRequest, comment: 'keep draft', commenting: false,
     task: task(), sesion: f.session, setCommenting: value => effects.push(['busy', value]), setCommentError: value => effects.push(['error', value]),
     setComments: () => effects.push('comments'), setComment: () => effects.push('draft') });
   const result = add(); f.unmount(); pending.resolve({ id: 1 }); await result;

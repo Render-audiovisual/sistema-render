@@ -1,5 +1,29 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Lectura tardía de comentarios — corte207
+
+Estado vigente del intercalado GET/POST: corregido localmente. La lectura inicial podía reemplazar toda la lista y ocultar un comentario confirmado mientras su respuesta estaba pendiente. No borraba la fila en PostgreSQL; la pérdida era de continuidad en pantalla.
+
+WorkspaceReadOnly mantiene ahora una observación de lectura ligada al owner de tarea/sesión. Solo fusiona el resultado de esa lectura con sus POST confirmados, por ID, en orden created_at/id. taskCommentCollection.js valida array, ID int32 positivo, tarea esperada, strings y timestamp parseable; duplicados conflictivos generan error sin reemplazar confirmados. La validación ocurre antes de publicar estado, fuera de updaters React. No es sincronización multiusuario continua ni validación más estricta de todo el DTO del servidor.
+
+Cada reset retira la observación de lectura y su lease UI, sin afirmar que cancele escrituras ya enviadas al servidor. Un token pendingComment separado bloquea doble admisión en la misma lease y permite que solo el intento actual libere busy. ACK/error anteriores no publican ni desbloquean un envío nuevo. Se conserva206: la generación de edición evita vaciar B al confirmar A, incluso ABA.
+
+Erdos implementó helper, integración y25 pruebas nuevas de intercalados/validación/owners; ajustó los fixtures anteriores al DTO completo y el contrato estático de task-opening-speed. Volta identificó el bloqueo de busy durante la revisión intermedia; se corrigió y probó antes de integrar. Coordinador ejecutó regresión, build y reproducciones nativas. Backend productivo y esquema permanecen sin cambios.
+
+Regresión final: frontend2639 aprobadas, cero fallos u omisiones; backend2038 aprobadas,126 integraciones optativas omitidas, cero fallos. Build `index-Cz_yId4p.js`. Logs `/private/tmp/render2-goal207-frontend.log`, `/private/tmp/render2-goal207-backend-final.log`, `/private/tmp/render2-goal207-build.log`. La primera regresión backend falló en una aserción estática que exigía el setComments anterior; el fixture conserva la verificación de abort/owner y exige el nuevo merge. No se retiraron pruebas ni se presentan integraciones omitidas como ejecutadas.
+
+### Evidencia nativa y datos
+
+El runner `/private/tmp/render2-goal207-native.mjs` creó y verificó clúster55860/HTTP52822, tarea sintética1 asignada a Luciano91003, y tomó baseline posterior al setup por API. El script temporal qa207.js se cargó antes del módulo en el index generado. Un botón visible retuvo una Response200 real del GET de comentarios sin leer su cuerpo; el POST continuó normal y el control solo mostró contadores/estados. No se inyectaron comentarios ni respuestas ficticias. Es demora controlada de lectura, no interrupción física de red.
+
+Build206 anterior: armar lectura → abrir tarea → GET vacío retenido → enviar `QA207 comentario A confirmado` →201 y A visible → liberar GET → A desapareció, conteo DOM0. Captura `/private/tmp/render2-goal207-before-hidden.png`. PostgreSQL conservó una fila A: la reproducción no prueba eliminación de datos.
+
+Build207 corregido a390×844: repetir la secuencia → liberar GET → A continuó visible, conteo DOM1. Tras recargar sin retener el nuevo GET, A siguió una sola vez, compositor vacío. Captura `/private/tmp/render2-goal207-after-visible-mobile.png`, inspeccionada visualmente. El control QA se superpone al pie y no forma parte del diseño publicado. No se probaron nativamente todas las variantes de reset/errores/ABA de las pruebas automatizadas.
+
+Ambos runners confirmaron una fila exacta A, autor Luciano QA, tarea1;103 tablas completas restantes invariantes, excluyendo tarea_comentarios y familias auth/browser_session del hash general. Resultado `EXACT_ONE_COMMENT_A_ONLY; OTHER_TABLES_UNCHANGED 103`, código0 y cleanup ENOENT: anterior `/private/tmp/render2-local-ggCnGj`, corregido `/private/tmp/render2-local-sJLeLt`. Pestañas propias cerradas, viewport restaurado y qa207.js/referencia retirados con comprobación de ausencia. Sin base existente, proveedor, push o despliegue.
+
+Pendiente: recibo/idempotencia ante ACK perdido y reintento humano; concurrencia entre distintas leases/dispositivos y aceptación integral. Retirar una lease permite coexistencia de una escritura antigua ya enviada y otra nueva: no se promete cancelación remota ni deduplicación entre ambas. El pendiente histórico de GET tardío de206 queda cerrado solo bajo el contrato y recorrido207 descritos.
+
 ## Continuidad del compositor de comentarios — corte206
 
 Corrección local del24 de octubre de2026, independiente de la prueba histórica de estados descrita abajo. El compositor de WorkspaceReadOnly vaciaba el texto incondicionalmente después del ACK: escribir B mientras se enviaba A perdía B aunque nunca hubiera sido enviado.
@@ -22,7 +46,7 @@ En ambas bases se verificó exactamente una fila de comentario: tarea1, autor Lu
 
 ### Límites vigentes
 
-El fix no resuelve idempotencia ante ACK perdido, admisión síncrona de dos envíos antes del render ni el posible reemplazo de la lista por un GET anterior demorado. Estos intercalados necesitan su propio contrato/pruebas; no se declara completo el dominio de comentarios. No se modificó TareasTablero, cuyo montaje canónico no se confirmó. La prueba histórica de estados y sus cifras siguientes conservan su alcance original.
+En206 no se resolvieron idempotencia ante ACK perdido, admisión síncrona de dos envíos antes del render ni reemplazo por GET anterior.207, documentado arriba, corrige GET tardío y admisión dentro de una lease; idempotencia y concurrencia entre leases siguen pendientes. No se declara completo el dominio de comentarios. No se modificó TareasTablero, cuyo montaje canónico no se confirmó. La prueba histórica de estados y sus cifras siguientes conservan su alcance original.
 
 Status: latest authorized isolated run with shared DB approval-invalidation guard completed: **10 passed, 0 failed, 0 skipped** (9 assertion groups plus parent). Owned files only: `backend/test/render2-task-workflow.integration.test.js` and this document. No application, schema, harness or older test edits.
 

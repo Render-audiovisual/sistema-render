@@ -35,6 +35,7 @@ import { refreshEditingTask } from "../components/editingTaskRefresh.js";
 import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
 import { navigateWithinApp, requestAppNavigation } from "../shared/navigation/location.js";
 import { isTaskDraftDirty, keepsTaskOpen } from "./taskNavigationGuard.js";
+import { mergeTaskComments } from './taskCommentCollection.js';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import "./WorkspaceReadOnly.css";
@@ -148,7 +149,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [comment, setComment] = useState("");
   const commentDraftOwner = useRef(null);
   if (!commentDraftOwner.current || commentDraftOwner.current.taskId !== task?.id || commentDraftOwner.current.captureRequest !== captureRequest) {
-    commentDraftOwner.current = { taskId: task?.id, captureRequest, generation: 0 };
+    commentDraftOwner.current = { taskId: task?.id, captureRequest, generation: 0, readGeneration: 0, pendingComment: null, commentsRead: { items: [], confirmed: [] } };
   }
   const [commentError, setCommentError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -230,6 +231,12 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     if (!task) return;
     const controller = new AbortController();
     const guard = captureRequest(apiJson);
+    const owner = commentDraftOwner.current, readGeneration = ++owner.readGeneration;
+    const commentsRead = { items: [], confirmed: [] }; owner.commentsRead = commentsRead;
+    // Retire only the old UI lease, not the already-dispatched server write.
+    owner.pendingComment = null; setCommenting(false);
+    const currentComments = () => guard.current() && !controller.signal.aborted
+      && commentDraftOwner.current === owner && owner.readGeneration === readGeneration && owner.commentsRead === commentsRead;
     setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task) });
     setEditing(false);
     commentDraftOwner.current.generation++;
@@ -243,8 +250,12 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     setProductionDriveLink(task.material_referencia || "");
     setPublicationResponsible(task.responsable_publicacion_id ?? task.propiedades_extra?.responsable_publicacion_id ?? null);
     guard.request(`/api/tareas/${task.id}/comentarios?workspace=render_os`, { signal: controller.signal })
-      .then(items => { if (guard.current() && !controller.signal.aborted) setComments(items); })
-      .catch((reason) => { if (guard.current() && !controller.signal.aborted) setCommentError(reason.message || "No se pudieron cargar los comentarios."); });
+      .then(items => {
+        if (!currentComments()) return;
+        const merged = mergeTaskComments(items, commentsRead.confirmed, owner.taskId);
+        commentsRead.items = merged; setComments(merged);
+      })
+      .catch((reason) => { if (currentComments()) setCommentError(reason.message || "No se pudieron cargar los comentarios."); });
     onLoadSubtasks(task.id, { signal: controller.signal }).catch((reason) => {
       if (guard.current() && !controller.signal.aborted) setCommentError(reason.message || "No se pudieron cargar las subtareas.");
     });
@@ -465,8 +476,10 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     if (!guard.current()) return;
     const content = comment.trim();
     if (!content || commenting) return;
-    const owner = commentDraftOwner.current, generation = owner.generation;
-    const current = () => guard.current() && commentDraftOwner.current === owner;
+    const owner = commentDraftOwner.current, generation = owner.generation, commentsRead = owner.commentsRead;
+    if (owner.pendingComment) return;
+    const pendingComment = {}; owner.pendingComment = pendingComment;
+    const current = () => guard.current() && commentDraftOwner.current === owner && owner.commentsRead === commentsRead;
     setCommenting(true);
     setCommentError("");
     try {
@@ -477,14 +490,18 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
       });
       guard.assertCurrent();
       if (!current()) return;
-      setComments((current) => [...current, created]);
+      const confirmed = mergeTaskComments(commentsRead.confirmed, [created], owner.taskId);
+      const merged = mergeTaskComments(commentsRead.items, confirmed, owner.taskId);
+      commentsRead.confirmed = confirmed; commentsRead.items = merged; setComments(merged);
       // An ACK owns only the submitted draft observation, not later typing.
       // Increment on every edit so A -> B -> A is not mistaken for untouched A.
       if (owner.generation === generation) { owner.generation++; setComment(""); }
     } catch (reason) {
       if (current()) setCommentError(reason.message || "No se pudo guardar el comentario.");
     } finally {
-      if (current()) setCommenting(false);
+      if (guard.current() && commentDraftOwner.current === owner && owner.pendingComment === pendingComment) {
+        owner.pendingComment = null; setCommenting(false);
+      }
     }
   };
 

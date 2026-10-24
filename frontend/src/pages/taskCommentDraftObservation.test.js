@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
+import { mergeTaskComments } from './taskCommentCollection.js';
 
 // Actual input handler, owner reset and submit callback; real cookie-session
 // observation kernel. Deferred transport only, no server or React mount claim.
@@ -27,7 +28,7 @@ function fixture() {
   const accept = id => store.acceptBootstrap(store.beginBootstrap(), { usuario: { id, usuario: 'qa', nombre: 'QA', rol: 'diseno' },
     session_context: 'a'.repeat(43), csrf_token: 'b'.repeat(43) });
   accept(7); let active = true;
-  const deps = { task: { id: 9 }, sesion: store.getSession(), comment: '', commenting: false,
+  const deps = { mergeTaskComments, task: { id: 9 }, sesion: store.getSession(), comment: '', commenting: false,
     comments: [], commentError: '', commentDraftOwner: { current: null } };
   function captureFor(session) {
     return () => createCapturedRequest({ session, readSession: store.getSession, isActive: () => active,
@@ -37,7 +38,7 @@ function fixture() {
   deps.setComment = value => { deps.comment = value; effects.push(['draft', value]); };
   deps.setCommenting = value => { deps.commenting = value; effects.push(['busy', value]); };
   deps.setCommentError = value => { deps.commentError = value; effects.push(['error', value]); };
-  deps.setComments = update => { deps.comments = update(deps.comments); effects.push(['comments', deps.comments]); };
+  deps.setComments = update => { deps.comments = typeof update === 'function' ? update(deps.comments) : update; effects.push(['comments', deps.comments]); };
   const renderOwner = () => Function(...Object.keys(deps), ownerReset.getText(file))(...Object.values(deps));
   renderOwner();
   return { deps, wait, calls, effects, renderOwner,
@@ -47,7 +48,7 @@ function fixture() {
     switchSession(id) { accept(id); deps.sesion = store.getSession(); deps.captureRequest = captureFor(deps.sesion); renderOwner(); },
     unmount() { active = false; } };
 }
-const created = { id: 21, contenido: 'A', autor: 'QA' };
+const created = { id: 21, tarea_id: 9, contenido: 'A', autor: 'QA', created_at: '2026-10-24T12:00:00.123Z' };
 
 test('untouched submitted comment clears on ACK; payload, task URL and cookie intent stay unchanged', async () => {
   const h = fixture(); h.type('  A  '); const pending = h.send();
