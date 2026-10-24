@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Proyectos: conflicto de etapa conectado y descarte parcial — cortes232–233
+
+Franco cookie conservó borrador/base2 al refrescar una edición remota de Agustín a revisión3; guardar mostró conflicto sin reemplazar el texto. Captura390×844 inspeccionada. SQL acreditó solo la edición remota prevista y luego105 tablas invariantes; fixture eliminado. No se capturó HTTP409 directamente: se infiere del estado específico de stage-edit. Confirm nativo abrió, pero su resolución no quedó comprobada por una limitación de herramienta; descarte, foco y recarga siguen pendientes. En233 inventario sin pestaña temporal y viewport restaurado. Regresión nueva de controladores prueba confirm false/true posconflicto sin reintentos ni cambios del detalle remoto:23 focales aprobadas. Sin producto/build/deploy nuevos. Ver PROJECT_REFRESH_RECOVERY_QA.md para alcance, comandos y logs.
+
 ### Publicador: retiro de permiso concurrente comprobado — corte231
 
 5 físicas con pg_blocking_pids: precheck obsoleto por inactivo/rol termina400 sin escritura; permiso retenido hace esperar la revocación de rol hasta commit. CAS vacío/rollback sin contexto, dueño sin cambio y106 tablas observadas con cambios intencionales controlados; fixture eliminado.2202 backend aprobadas/136 optativas omitidas. Servicio/guards directos, no endpoint HTTP, notifier ni proveedor; se reduce el pendiente230 a esos límites. Sin producto/GUI/build nuevos. Próximo gate: borrador estructural y descarte concurrente en Proyectos, no repetir altas ya acreditadas. Ver TASK_WORKFLOW_QA.md.

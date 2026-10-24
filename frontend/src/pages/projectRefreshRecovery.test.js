@@ -111,6 +111,41 @@ test('task lookup started while ready cannot publish an observed task after refr
   assert.equal(f.formRef.current.observedTask, null); assert.equal(f.formRef.current.lookupBusy, false);
   detailRead.reject(Error('offline')); await refreshing; assert.equal(mutations(f).length, 0);
 });
+test('cancel after a refreshed structural conflict preserves the remote observation and never retries the stale mutation', async () => {
+  for (const accept of [false, true]) {
+    const f = fixture();
+    const remote = project({ revision: 9, etapas: [{ id: CHILD, titulo: 'REMOTE', posicion: 0, estado: 'pendiente' }] });
+    f.read(async () => ({ proyecto: remote }));
+    await f.handlers.refreshDetail();
+    f.write(async (_url, init) => {
+      assert.equal(JSON.parse(init.body).expected_revision, 8);
+      throw Object.assign(Error('stale'), { status: 409 });
+    });
+    await f.handlers.submit(event());
+    const conflicted = f.formRef.current, observed = f.detailStateRef.current.data;
+    assert.equal(conflicted.conflict, true);
+    assert.equal(conflicted.baseRevision, 8);
+    assert.equal(observed.revision, 9);
+    assert.equal(observed.etapas[0].titulo, 'REMOTE');
+    let decisions = 0;
+    f.deps.window.confirm = () => { decisions++; return accept; };
+    const beforeCalls = f.calls.length;
+    f.handlers.cancelForm();
+    assert.equal(decisions, 1);
+    assert.equal(f.calls.length, beforeCalls, 'Cancellation must not read, save or retry');
+    assert.equal(mutations(f).length, 1, 'Only the rejected stale mutation was attempted');
+    assert.equal(f.detailStateRef.current.data, observed);
+    if (accept) {
+      assert.equal(f.formRef.current, null);
+      assert.deepEqual(f.deps.formReturnFocus.current, { kind: 'stage-edit', scope: conflicted.scope });
+    } else {
+      assert.equal(f.formRef.current, conflicted);
+      assert.equal(conflicted.draft.titulo, 'UNSAVED');
+      assert.equal(conflicted.baseRevision, 8);
+      assert.equal(f.deps.formReturnFocus.current, null);
+    }
+  }
+});
 test('successful retry updates authority only, retaining original CAS/UUID/draft/conflict until explicit allowed adoption', async () => {
   const f = fixture(), original = f.formRef.current; original.conflict = true;
   f.read(async () => ({ proyecto: project({ revision: 12 }) })); await f.handlers.refreshDetail(true);

@@ -1,5 +1,21 @@
 # Borradores de Proyectos ante errores de consulta
 
+## Actualización232–233: conflicto estructural conectado y límites del descarte
+
+Erdos preparó el runner temporal `/private/tmp/render2-goal232-project-native.mjs`; coordinador lo inspeccionó y ejecutó. Volta revisó los controles y el significado del estado de conflicto, sin editar producto. PostgreSQL nuevo55879, servidor52833 y sesión cookie de Franco QA; identidad exacta de base, usuario, loopback, puerto y data_directory comprobada. Sin bases existentes ni proveedores. Frontend canónico build222 `index-9wJXgZmG.js`, sin cambios de producto o build en estos cortes.
+
+La API creó un cliente, un proyecto web y una etapa, dejando revisión2. Franco abrió Editar etapa y escribió `QA232 borrador local`. La señal única de QA hizo que Agustín91002 cambiara por API el título de la misma etapa a `QA232 cambio remoto`, revisión3. Actualizar mostró el título remoto y conservó el borrador y Base observada2/Proyecto visible3. Guardar cambios mostró la advertencia de conflicto y el control Actualizar proyecto y revisar, con guardado deshabilitado. Para stage-edit ese control corresponde al flag activado por error.status409 en el handler; es inferencia apoyada en fuente, no captura directa del HTTP409. El botón deshabilitado por sí solo no prueba ese status.
+
+Captura móvil390×844 inspeccionada: `/private/tmp/render2-goal232-project-conflict-mobile.png`. Muestra borrador, revisiones y aviso legibles; no se midió overflow ni se certifican todos los dispositivos. Cancelar abrió el confirm nativo de cambios sin guardar. La herramienta no logró resolverlo de forma fiable: no se acredita ni aceptar ni rechazar el descarte en navegador, ni recarga posterior. No se modificó la aplicación para eludir esa limitación.
+
+SQL antes de la señal comprobó cero cambios comerciales. La única edición remota incrementó revisión2→3, cambió actualizado_por_id y updated_at del proyecto, solo el título de la etapa y exactamente una actividad editar_etapa de Agustín, preservando las actividades anteriores. Las otras102 tablas no cambiaron. Desde ese commit hasta el cierre, los hashes completos de105 tablas públicas salvo auth_/browser_session y las filas exactas de proyecto/etapa/actividad permanecieron idénticos. Esto acredita cero escrituras adicionales confirmadas, no ausencia de solicitudes fallidas, rollbacks o avances de secuencias.
+
+Log `/private/tmp/render2-goal232-project-native.log`: salida0 y cleanup ENOENT `/private/tmp/render2-local-s5PKZB`. En233 el inventario nativo mostró solo pestañas1–5 del usuario, ninguna pestaña temporal38, y viewport.reset terminó correctamente. No se cerraron pestañas del usuario. La inspección autorizada de memoria compartida mostró dos segmentos con6 conexiones cada uno; ninguno fue eliminado.
+
+En233 se añadió una regresión ejecutando los controladores reales extraídos de Projects.jsx: detalle remoto9, borrador base8, envío rechazado409 y Cancelar con confirm simulado false/true. Rechazar conserva el mismo formulario/borrador/base; aceptar solo lo cierra y prepara retorno de foco. Ambas decisiones conservan la observación remota y no hacen lecturas, reintentos o nuevas mutaciones. Es prueba de controladores con transporte/confirm simulados, no navegador ni PostgreSQL. Comando reproducible desde frontend: `node --test src/pages/projectNavigationGuard.test.js src/pages/projectRefreshRecovery.test.js`;23 aprobadas,0 fallos/omisiones. Las22 previas también se renovaron antes del agregado.
+
+La skill verification orientó separar UI, API, SQL y los límites de observación. Pendiente: aceptar/rechazar el confirm nativo, comprobar retorno de foco y recarga desde el descarte sobre un fixture nuevo. No se acepta globalmente Proyectos ni el sistema y no hay despliegue.
+
 Un fallo recuperable al actualizar un proyecto ya no oculta el editor ni el borrador. Se conserva la última observación del mismo proyecto y se distingue de una consulta vigente. Guardar, verificar una solicitud, abrir otro formulario, consultar una tarea o adoptar otra revisión permanece bloqueado hasta obtener una lectura válida. No se cambiaron contratos HTTP, permisos del servidor ni esquema.
 
 ## Contrato y controles
