@@ -17,7 +17,7 @@ const PHOTO_STATES = { realizada:'Realizada', pendiente:'Pendiente', repetir:'Re
 const TASK_STATES = { pendiente:'Pendiente', en_progreso:'En proceso', en_revision:'Para revisar', aprobada:'Aprobada', finalizada:'Finalizada', publicada:'Finalizada' };
 const positiveId = value => Number.isSafeInteger(value) && value > 0;
 function safeProductionUrl(value) {
-  try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) ? url.href : null; }
+  try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : null; }
   catch { return null; }
 }
 function productionMonthDays(month) {
@@ -33,6 +33,7 @@ function shiftProductionMonth(month, amount) {
 const monthLabel = month => new Intl.DateTimeFormat('es-AR', {month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${month}-01T12:00:00Z`));
 const dateLabel = date => new Intl.DateTimeFormat('es-AR', {weekday:'long',day:'numeric',month:'long',timeZone:'UTC'}).format(new Date(`${date}T12:00:00Z`));
 const visitDTO = data => data?.visita || data;
+
 function writeProductionLocation({id = null, month, day, clientId, tab, replace = false}) {
   const url = new URL(window.location.href);
   if (id) url.searchParams.set('visita',id); else url.searchParams.delete('visita');
@@ -66,6 +67,20 @@ async function productionWrite({ visit, path = '', method = 'PATCH', data, reque
 function SafeLink({url, children = 'Abrir Drive'}) {
   const href = safeProductionUrl(url);
   return href ? <a href={href} target="_blank" rel="noopener noreferrer">{children} ↗</a> : url ? <span className="prod-muted">Enlace no válido</span> : null;
+}
+function PendingProductionPhotos({photos, busy, onOpen}) {
+  return <section aria-label="Fotos pendientes" className="prod-pending-photos">
+    <h3>Fotos pendientes o para repetir</h3>
+    <p className="prod-muted">Revisá el material en su visita original. No se crea una copia.</p>
+    {photos.map(photo=><article className="prod-media" key={photo.id}>
+      <header><h4>{photo.tipo}</h4><span className="prod-status">{PHOTO_STATES[photo.estado] || photo.estado}</span></header>
+      <p className="prod-muted">{photo.cliente_nombre} · {photo.fecha}</p>
+      {photo.observaciones && <p className="prod-script">{photo.observaciones}</p>}
+      {safeProductionUrl(photo.drive_url) && <p><a href={safeProductionUrl(photo.drive_url)} target="_blank" rel="noopener noreferrer">Abrir material ↗</a></p>}
+      <button type="button" disabled={busy} onClick={()=>onOpen(photo.visita_id)}>Ver visita de origen</button>
+    </article>)}
+    {!photos.length && <p className="prod-empty">No hay fotos pendientes para este filtro.</p>}
+  </section>;
 }
 function Participants({users, selected, onChange, disabled}) {
   return <fieldset className="prod-participants" disabled={disabled}><legend>Participantes</legend>{users.map(user => <label key={user.id}><input type="checkbox" checked={selected.includes(user.id)} onChange={event => onChange(event.target.checked ? [...selected,user.id] : selected.filter(id => id !== user.id))}/><span>{user.nombre}<small>@{user.usuario || user.id} · #{user.id}</small></span></label>)}{!users.length && <p className="prod-muted">No hay usuarios activos disponibles.</p>}</fieldset>;
@@ -382,6 +397,7 @@ export function ProductionsPage({sesion}) {
   const [users, setUsers] = useState([]);
   const [clients, setClients] = useState([]);
   const [pending, setPending] = useState([]);
+  const [pendingPhotos, setPendingPhotos] = useState([]);
   const [selected, setSelected] = useState(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -408,9 +424,9 @@ export function ProductionsPage({sesion}) {
     const current=()=>!controller.signal.aborted && epoch===readEpoch.current;
     Promise.all([apiRequest(productionReadUrl({month,clientId,tab:'calendar'}),{signal:controller.signal}),apiRequest('/api/usuarios',{signal:controller.signal}),apiRequest('/api/clientes',{signal:controller.signal}),tab==='pending' ? apiRequest(productionReadUrl({month,clientId,tab}),{signal:controller.signal}) : Promise.resolve(null)])
       .then(([data,people,brands,bank])=>{if(current()){
-        if(!Array.isArray(data?.visitas) || (bank && !Array.isArray(bank.videos)))throw new Error('No se pudo verificar la lista de producciones.');
-        data.visitas.forEach(visit=>assertProductionClient(visit,clientId));bank?.videos.forEach(video=>assertProductionClient(video,clientId));
-        setVisits(data.visitas);setPending(bank?.videos || []);setUsers(people.filter(user=>user.activo === true && positiveId(user.id)));setClients(brands);setListAvailable(true);
+        if(!Array.isArray(data?.visitas) || (tab==='pending' && (!Array.isArray(bank?.videos) || !Array.isArray(bank?.fotos))))throw new Error('No se pudo verificar la lista de producciones.');
+        data.visitas.forEach(visit=>assertProductionClient(visit,clientId));bank?.videos.forEach(video=>assertProductionClient(video,clientId));bank?.fotos.forEach(photo=>assertProductionClient(photo,clientId));
+        setVisits(data.visitas);setPending(bank?.videos || []);setPendingPhotos(bank?.fotos || []);setUsers(people.filter(user=>user.activo === true && positiveId(user.id)));setClients(brands);setListAvailable(true);
       }})
       .catch(reason=>{if(current())setError(reason.message);}).finally(()=>{if(current())setLoading(false);});
     return()=>controller.abort();
@@ -560,13 +576,13 @@ export function ProductionsPage({sesion}) {
     <nav className="prod-toolbar" aria-label="Vistas de producciones"><div className="prod-tabs">{[['calendar','Calendario'],['pending','Banco de pendientes']].map(([id,label])=><button type="button" key={id} aria-pressed={tab===id} onClick={()=>changeContext(clientId,id)}>{label}</button>)}</div><FilterSelect label="Cliente" value={clientId} onChange={e=>changeContext(e.target.value,tab)}><option value="">Todos los clientes</option>{clientId && !clients.some(client=>String(client.id)===clientId) && <option value={clientId}>Cliente #{clientId}</option>}{clients.map(client=><option key={client.id} value={client.id}>{client.nombre}{client.activo === false ? ' (inactivo)' : ''}</option>)}</FilterSelect><button type="button" disabled={busy} onClick={()=>changeContext('',tab)}>Quitar filtro de cliente</button><button type="button" disabled={busy} onClick={retryProductionPage}>Actualizar</button></nav>
     {clientId && <p className="prod-muted" role="status">Cliente: {clients.find(client=>String(client.id)===clientId)?.nombre || `#${clientId}`} · {month}</p>}
     {notice && <p className="prod-notice" role="status">{notice}</p>}{error && <p className="prod-error" role="alert">{error} <button type="button" onClick={retryProductionPage}>Reintentar</button></p>}
-    <div className="prod-layout"><section className="prod-schedule" aria-label={tab==='calendar' ? 'Calendario de visitas' : 'Guiones pendientes'}>
+    <div className="prod-layout"><section className="prod-schedule" aria-label={tab==='calendar' ? 'Calendario de visitas' : 'Material pendiente'}>
       <header className="prod-month-nav"><button type="button" aria-label="Mes anterior" disabled={busy} onClick={()=>navigateMonth(-1)}>‹</button><h2>{monthLabel(month)}</h2><button type="button" aria-label="Mes siguiente" disabled={busy} onClick={()=>navigateMonth(1)}>›</button></header>
       {loading ? <p className="prod-empty" role="status">Cargando producciones…</p> : !listAvailable || contextError ? <p className="prod-empty" role="status">Lista no disponible. Revisá el contexto y volvé a consultar.</p> : tab === 'calendar' ? <>
         <div className="prod-month-grid"><div className="prod-weekdays" aria-hidden="true">{['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(name=><span key={name}>{name}</span>)}</div><div className="prod-days">{productionMonthDays(month).map((date,index)=>date ? <button type="button" key={date} aria-pressed={date===day} aria-current={date===today ? 'date' : undefined} aria-label={`${dateLabel(date)}, ${filtered.filter(v=>v.fecha===date).length} visitas`} onClick={()=>selectDay(date)}><time dateTime={date}>{Number(date.slice(-2))}</time>{filtered.filter(visit=>visit.fecha===date).slice(0,2).map(visit=><span key={visit.id}>{visit.cliente_nombre}</span>)}</button> : <span key={`blank-${index}`} aria-hidden="true"/>)}</div></div>
         <section className="prod-day-agenda"><h3>{dateLabel(day)}</h3>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día. Podés crear una nueva.</p>}</section>
         <section className="prod-mobile-agenda" aria-label="Agenda del mes"><label>Elegir día<input type="date" value={day} min={`${month}-01`} max={`${month}-${String(new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate()).padStart(2,'0')}`} onChange={e=>selectDay(e.target.value)}/></label>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día.</p>}</section>
-      </> : <div className="prod-pending"><p className="prod-muted">Guiones pendientes o para repetir. Retomarlos conserva la visita original.</p><FilterSelect label="Visita de destino" value={selected?.id || ''} disabled={busy} onChange={e=>{if(e.target.value)openVisit(e.target.value);}}><option value="">Elegí una visita del mes</option>{filtered.map(visit=><option key={visit.id} value={visit.id}>{visit.fecha} · {visit.cliente_nombre} · {visit.titulo}</option>)}</FilterSelect>{pending.map(video=><article className="prod-media" key={video.id}><header><h3>{video.titulo}</h3><span className="prod-status">{VIDEO_STATES[video.estado] || video.estado}</span></header><p className="prod-muted">{video.cliente_nombre} · {video.fecha}</p><p className="prod-script">{video.guion || 'Sin guion cargado'}</p><button type="button" disabled={busy || !selected || selected.id===video.visita_id || selected.cliente_id!==video.cliente_id} title={selected?.id===video.visita_id ? 'Este guion ya está en esta visita. Elegí otra visita de destino.' : undefined} onClick={()=>resume(video)}>Retomar en la visita seleccionada</button></article>)}{!pending.length && <p className="prod-empty">No hay guiones pendientes para este filtro.</p>}</div>}
+      </> : <div className="prod-pending"><h3>Guiones pendientes</h3><p className="prod-muted">Guiones pendientes o para repetir. Retomarlos conserva la visita original.</p><FilterSelect label="Visita de destino" value={selected?.id || ''} disabled={busy} onChange={e=>{if(e.target.value)openVisit(e.target.value);}}><option value="">Elegí una visita del mes</option>{filtered.map(visit=><option key={visit.id} value={visit.id}>{visit.fecha} · {visit.cliente_nombre} · {visit.titulo}</option>)}</FilterSelect>{pending.map(video=><article className="prod-media" key={video.id}><header><h3>{video.titulo}</h3><span className="prod-status">{VIDEO_STATES[video.estado] || video.estado}</span></header><p className="prod-muted">{video.cliente_nombre} · {video.fecha}</p><p className="prod-script">{video.guion || 'Sin guion cargado'}</p><button type="button" disabled={busy || !selected || selected.id===video.visita_id || selected.cliente_id!==video.cliente_id} title={selected?.id===video.visita_id ? 'Este guion ya está en esta visita. Elegí otra visita de destino.' : undefined} onClick={()=>resume(video)}>Retomar en la visita seleccionada</button></article>)}{!pending.length && <p className="prod-empty">No hay guiones pendientes para este filtro.</p>}<PendingProductionPhotos photos={pendingPhotos} busy={busy} onOpen={openVisit}/></div>}
     </section><div className="prod-detail-column">{creating ? <CreateVisit key="create" clients={clients} users={users} date={day} busy={busy} sesion={sesion} onCreate={createVisit} onCreated={createdVisit} onDirty={onDirty} onCancel={()=>{if(mayLeave())setCreating(false);}}/> : detailLoading ? <p role="status" className="prod-empty">Cargando visita…</p> : selected ? <VisitDetail key={selected.id} sesion={sesion} onBatchDraftStateChange={onBatchDraftStateChange} onBatchSaved={onBatchSaved} visit={selected} users={users} busy={busy} isAdmin={isAdmin} onWrite={writeVisit} onDirty={onDirty} onReload={refreshVisit}/> : <div className="prod-panel prod-empty"><h2>Elegí una visita</h2><p>Acá verás los videos, fotos y guiones del rodaje.</p></div>}</div></div>
   </main>;
 }

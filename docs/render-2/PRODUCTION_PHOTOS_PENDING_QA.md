@@ -1,5 +1,7 @@
 # Fotos y guiones pendientes en Producciones
 
+Actualización195: PRODUCTION_PENDING_PHOTOS_QA.md documenta el banco integrado de fotografías pendiente/repetir y la edición posterior del mismo UUID comprobada nativamente, con recarga, revisión agregada y conservación de origen. Los límites de banco y edición descritos abajo corresponden a la prueba histórica174; el traslado entre visitas y la integración real con Drive siguen pendientes.
+
 La aplicación canónica guardó tipos de fotografías, sus enlaces y observaciones, y permitió retomar un guion pendiente en otra visita sin borrar su origen ni generar edición automática. La prueba nativa detectó además una acción inválida: ofrecer Retomar cuando la visita elegida ya contiene ese video. Productions.jsx ahora deshabilita ese botón y el manejador rechaza el mismo caso antes de escribir. El servidor conserva su validación independiente.
 
 ## Registro conectado y conservación

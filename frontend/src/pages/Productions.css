@@ -69,6 +69,9 @@
 .prod-media-section{margin-top:24px}
 .prod-section-heading h3>span{color:var(--prod-muted);font-size:12px;margin-left:4px}
 .prod-media{border:1px solid var(--prod-line);border-radius:12px;padding:16px;margin-top:16px;overflow-wrap:anywhere}
+.prod-pending-photos{margin-top:24px;padding-top:16px;border-top:1px solid var(--prod-line)}
+.prod-pending-photos h4{margin:0;font-size:14px}
+.prod-pending-photos button,.prod-pending-photos a{min-height:44px;display:inline-flex;align-items:center}
 .prod-media>header{align-items:start;margin-bottom:8px;gap:8px}
 .prod-status{font-size:11px;background:var(--prod-soft);color:var(--prod-muted);border-radius:20px;padding:4px 8px;white-space:nowrap}
 .prod-status.is-grabado,.prod-status.is-realizada{background:#e8f3ec;color:#216340}

@@ -420,6 +420,46 @@ test('production registry: historical invariance and real per-video HTTP workflo
     assert.deepEqual(await fixture.query("SELECT id FROM tareas WHERE propiedades_extra->>'origen_visita_id'=$1", [String(sourceLink.taskId)]), []);
     assert.deepEqual(await snapshot(), before);
   });
+  await t.test('pending photos bank filters real states/client and orders by visit date, creation and UUID without writes', async () => {
+    const early = await createVisit('QA pending photos early', client.id, { fecha: '2026-10-18' });
+    const later = await createVisit('QA pending photos later', client.id, { fecha: '2026-10-19' });
+    const foreign = await createVisit('QA pending photos foreign', otherClient.id);
+    const ids = Array.from({ length: 6 }, (_, i) => `f1950000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`);
+    const seeds = [
+      [ids[0], early.id, 'pendiente', '2026-10-20T10:00:00Z'],
+      [ids[1], early.id, 'repetir', '2026-10-20T10:00:00Z'],
+      [ids[2], early.id, 'pendiente', '2026-10-20T11:00:00Z'],
+      [ids[3], later.id, 'repetir', '2026-10-19T09:00:00Z'],
+      [ids[4], early.id, 'realizada', '2026-10-20T09:00:00Z'],
+      [ids[5], foreign.id, 'pendiente', '2026-10-20T09:00:00Z'],
+    ];
+    for (const [id, visitaId, estado, createdAt] of seeds.reverse()) {
+      await fixture.query(`INSERT INTO produccion_fotos
+        (id,visita_id,tipo,estado,drive_url,observaciones,creado_por_id,actualizado_por_id,created_at)
+        VALUES ($1,$2,'QA producto',$3,'https://example.invalid/qa-photos','QA photo notes',91003,91003,$4)`,
+      [id, visitaId, estado, createdAt]);
+    }
+    const before = await snapshot();
+    const result = await api(`/producciones/pendientes?cliente_id=${client.id}`, { token: team });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.ok(Array.isArray(result.body.videos)); assert.ok(Array.isArray(result.body.fotos));
+    assert.deepEqual(result.body.fotos.filter(row => ids.includes(row.id)).map(row => row.id), ids.slice(0, 4));
+    for (const row of result.body.fotos) {
+      assert.equal(row.cliente_id, client.id); assert.ok(['pendiente', 'repetir'].includes(row.estado));
+      assert.match(row.fecha, /^\d{4}-\d{2}-\d{2}$/);
+      assert.deepEqual(Object.keys(row).sort(), ['id','visita_id','tipo','estado','drive_url','observaciones','fecha','cliente_id','cliente_nombre'].sort());
+    }
+    const other = await api(`/producciones/pendientes?cliente_id=${otherClient.id}`, { token: team });
+    assert.equal(other.status, 200); assert.ok(other.body.fotos.some(row => row.id === ids[5]));
+    assert.ok(other.body.fotos.every(row => row.cliente_id === otherClient.id));
+    const all = await api('/producciones/pendientes', { token: team });
+    assert.equal(all.status, 200);
+    assert.deepEqual(all.body.fotos.filter(row => ids.includes(row.id)).map(row => row.id), [...ids.slice(0, 4), ids[5]]);
+    const [emptyClient] = await fixture.query("INSERT INTO clientes(nombre) VALUES ('QA empty photo bank') RETURNING id");
+    const empty = await api(`/producciones/pendientes?cliente_id=${emptyClient.id}`, { token: team });
+    assert.equal(empty.status, 200); assert.deepEqual(empty.body, { videos: [], fotos: [] });
+    assert.deepEqual(await snapshot(), before, 'Reading the bank must not transfer, copy or modify production rows');
+  });
   await t.test('explicit pending reuse preserves source script/history, lineage and latest-only intake', async () => {
     let a = await createVisit('QA pending source A');
     a = await addVideo(a.id, { titulo: 'QA unresolved lineage', guion: 'QA source script preserved', estado: 'pendiente' });

@@ -95,7 +95,7 @@ test('actual collection effect: invalid initial context dispatches nothing',()=>
 });
 test('actual collection effect fences obsolete GET even if transport ignores AbortSignal',async()=>{
   for(const abort of [false,true]){const h=harness();let resolve;
-    Object.assign(h.deps,{AbortController,productionReadUrl,apiRequest:()=>new Promise(yes=>resolve=yes),setVisits:()=>assert.fail('stale list'),setPending:()=>assert.fail('stale pending'),setUsers:()=>assert.fail('stale users'),setClients:()=>assert.fail('stale clients')});
+    Object.assign(h.deps,{AbortController,productionReadUrl,apiRequest:()=>new Promise(yes=>resolve=yes),setVisits:()=>assert.fail('stale list'),setPending:()=>assert.fail('stale pending'),setPendingPhotos:()=>assert.fail('stale photos'),setUsers:()=>assert.fail('stale users'),setClients:()=>assert.fail('stale clients')});
     // Three GETs; resolving all through the same external array simulates an uncooperative transport.
     const resolvers=[];h.deps.apiRequest=()=>new Promise(yes=>resolvers.push(yes));
     const cleanup=collectionEffect(h.deps)();const before=h.effects.length;
@@ -109,6 +109,20 @@ test('actual collection effect failed read never claims zero rows or availabilit
   collectionEffect(h.deps)();await settle();
   assert.ok(h.effects.some(([key,value])=>key==='Error'&&value==='offline'));
   assert.ok(!h.effects.some(([key,value])=>key==='ListAvailable'&&value===true));
+});
+test('pending collection publishes both media kinds only after validating the client contract',async()=>{
+ for(const bank of [null,{videos:[],fotos:[{id:'photo',visita_id:id,cliente_id:7}]},{videos:[]},{videos:[],fotos:'bad'},{videos:[],fotos:[{cliente_id:8}]}]){
+  const h=harness();h.deps.tab='pending';let index=0;
+  const results=[{visitas:[]},[],[],bank];
+  Object.assign(h.deps,{AbortController,productionReadUrl,positiveId:n=>Number.isSafeInteger(n)&&n>0,apiRequest:async()=>results[index++]});
+  for(const key of ['Visits','Pending','PendingPhotos','Users','Clients'])h.deps[`set${key}`]=value=>h.effects.push([key,value]);
+  collectionEffect(h.deps)();await settle();
+  const valid=Array.isArray(bank?.fotos)&&bank.fotos.every(p=>p.cliente_id===7);
+  assert.equal(h.effects.some(([k,v])=>k==='ListAvailable'&&v===true),valid);
+  assert.equal(h.effects.some(([k])=>k==='PendingPhotos'),valid);
+  if(valid)assert.deepEqual(h.effects.find(([k])=>k==='PendingPhotos')[1],bank.fotos);
+  else assert.ok(h.effects.some(([k])=>k==='Error'));
+ }
 });
 test('actual create transport rejects foreign-client ACK before created callback',async()=>{
   const h=harness();Object.assign(h.deps,{writeLock:{current:false},setBusy:()=>{}});

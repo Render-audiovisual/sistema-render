@@ -204,7 +204,13 @@ export function createProductionRegistryRouter({ express, pool }) {
       JOIN produccion_visitas v ON v.id=pv.visita_id JOIN clientes c ON c.id=v.cliente_id
       WHERE pv.estado IN ('planificado','pendiente','repetir') AND NOT EXISTS(SELECT 1 FROM produccion_videos child WHERE child.video_origen_id=pv.id)
       ${filter ? 'AND v.cliente_id=$1' : ''} ORDER BY v.fecha,pv.created_at,pv.id`, filter ? [Number(filter)] : [])).rows;
-    return res.json({ videos: rows.map(videoDto) });
+    const photos = (await pool.query(`SELECT pf.id,pf.visita_id,pf.tipo,pf.estado,pf.drive_url,pf.observaciones,
+      to_char(v.fecha,'YYYY-MM-DD') fecha,v.cliente_id,c.nombre cliente_nombre
+      FROM produccion_fotos pf JOIN produccion_visitas v ON v.id=pf.visita_id JOIN clientes c ON c.id=v.cliente_id
+      WHERE pf.estado IN ('pendiente','repetir')
+      ${filter ? 'AND v.cliente_id=$1' : ''} ORDER BY v.fecha,pf.created_at,pf.id`, filter ? [Number(filter)] : [])).rows;
+    return res.json({ videos: rows.map(videoDto), fotos: photos.map(photo => scalarFields(photo,
+      ['id', 'visita_id', 'tipo', 'estado', 'drive_url', 'observaciones', 'fecha', 'cliente_id', 'cliente_nombre'])) });
   }));
   router.get('/:id', handle(async (req, res) => {
     const visit = (await readVisits(pool, 'WHERE v.id=$1', [routeId(req)]))[0];
