@@ -6,6 +6,8 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ### Repriorización transversal215 — dos defectos abiertos
 
+Actualización216: OP215-01 implementado y verificado localmente con35 regresiones de callbacks/cola;2767 frontend y2083 backend aprobadas,128 optativas omitidas, build correcto. Baseline original retenida y guardado estricto; conflicto con lectura transitoria ya no desmonta el editor. Falta prueba nativa/PostgreSQL del nuevo caso antes de cerrar su aceptación. OP215-02 continúa abierto. El diagnóstico215 debajo es histórico del defecto previo; ver TASK_WORKFLOW_QA.md.
+
 La revisión actual del código por coordinador/Erdos/Volta encontró dos fallos operativos corregibles localmente. No es una nueva certificación exhaustiva de todas las áreas ni una corrección ya implementada. La skill de trabajo estructurado orientó volver a requisitos de integridad/identidad después de las mejoras acotadas de comentarios.
 
 **OP215-01/P2, prioridad inmediata: revisión del borrador de brief sustituida silenciosamente.** WorkspaceReadOnly.jsx:284–293 conserva el borrador al recibir una tarea nueva; save:372–411 llama onUpdate sin revisión original; updateTask:1479 toma previous de tasksRef y envía su revisión actual como expected_revision. La actualización de tarea para revisión permite que esto ocurra mientras se edita. El backend valida el CAS recibido, pero no puede saber que el cliente sustituyó la observación sobre la que se escribió el borrador. Afecta potencialmente briefs/guiones y otros campos guardados en ese formulario.

@@ -143,8 +143,9 @@ test('full editor does not offer a new approval; defensive mixed approval save p
     availableTaskStatuses: STATUSES, isProductionVisit: false, productionProgress: { complete: true } });
   assert.equal(React.Children.toArray(selector.props.children).some(option => option.props.value === 'aprobada'), false);
   const calls = [], draft = { ...task, estado: 'aprobada', titulo: 'Unsaved title' };
+  const captureRequest = () => ({ current: () => true, assertCurrent() {} });
   const save = evaluate(initializer('TaskDetail', 'save'), {
-    captureRequest: () => ({ current: () => true, assertCurrent() {} }), setSaving: value => calls.push(['saving', value]),
+    captureRequest, briefDraftOwner: { current: { taskId: task.id, captureRequest, baseline: task, generation: 0, pending: null } }, saving: false, setBriefError() {}, setSaving: value => calls.push(['saving', value]),
     canEditTask: true, isLinkedProductionEditorialTask: () => false, draft, task, canEditVisitClient: true, canEditVisitDate: true,
     canonicalTaskState, metadata: task.propiedades_extra, tags: [], collaborators: [],
     getCanonicalTaskContentMetadata: value => value, isProductionVisit: false, legacyProductionEnabled: false,

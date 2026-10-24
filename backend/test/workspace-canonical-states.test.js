@@ -7,6 +7,7 @@ import { getProductionPhase } from "../../frontend/src/features/render-os/utils/
 import { getCanonicalTaskContentMetadata, isLinkedProductionEditorialTask } from "../../frontend/src/features/render-os/utils/task-content.js";
 import { createCapturedRequest, isSessionFailure } from '../../frontend/src/shared/session/captured-request.js';
 import { effectiveTaskFilterState } from '../../frontend/src/features/render-os/utils/task-view-state.js';
+import { workspaceBriefSave } from './helpers/workspace-brief-fixture.js';
 
 const source = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx", import.meta.url), "utf8");
 const admin = {id:1,rol:"admin"};
@@ -80,9 +81,8 @@ test("production badges and objective linking recognize canonical and historical
 });
 
 test("saving content on historical task does not emit a state change or mutate assignments", async () => {
-  const body = source.slice(source.indexOf("  const save = async"),source.indexOf("  const saveInlineField ="));
   for (const draftState of ["publicada","finalizada"]) {
-    const original = {...task,titulo:"Historical",estado:"publicada",propiedades_extra:{}};
+    const original = {...task,revision:7,titulo:"Historical",estado:"publicada",propiedades_extra:{}};
     let changes;
     const session={token:'synthetic-canonical',usuario:admin};
     const context = {task:original,draft:{...original,estado:draftState,aclaraciones:"Updated text"},
@@ -90,7 +90,7 @@ test("saving content on historical task does not emit a state change or mutate a
       metadata:{},tags:[],collaborators:[],canEditTask:true,canEditVisitClient:true,canEditVisitDate:true,isProductionVisit:false,productionProgress:{},
       getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask,canonicalTaskState,canUserMoveTaskToState,sesion:{usuario:admin},
       setSaving:()=>{},setEditing:()=>{},onUpdate:async(id,value)=>{changes=value;},onApprove:()=>assert.fail("no approval during content edit")};
-    const save = new Function(...Object.keys(context),`${body}\nreturn save;`)(...Object.values(context));
+    const save = workspaceBriefSave(source,context);
     await save();
     assert.deepEqual(changes,{aclaraciones:"Updated text"});
     assert.equal(original.estado,"publicada");

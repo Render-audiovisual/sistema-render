@@ -33,14 +33,14 @@ function fixture() {
   const accept = id => store.acceptBootstrap(store.beginBootstrap(), { usuario: { id, usuario: 'qa', nombre: 'QA', rol: 'diseno' }, session_context: 'a'.repeat(43), csrf_token: 'b'.repeat(43) });
   accept(7); let active = true;
   const deps = { mergeTaskComments, createTaskCommentCreation, renderCommentCreation() {}, renderCommentRead() {}, task: { id: 9, propiedades_extra: {} }, sesion: store.getSession(),
-    commentDraftOwner: { current: null }, comment: '', commenting: false, comments: [], commentError: '',
+    commentDraftOwner: { current: null }, briefDraftOwner: { current: { initialized: false } }, comment: '', commenting: false, comments: [], commentError: '',
     apiJson() {}, AbortController, getUnifiedTaskContent: () => '', getHoyLocalISO: () => '2026-10-24', onLoadSubtasks: async () => [] };
   function captureFor(session) {
     return () => createCapturedRequest({ session, readSession: store.getSession, isActive: () => active,
       request(url, options) { const held = { ...deferred(), url, options }; (options.method === 'POST' ? posts : reads).push(held); return held.promise; } });
   }
   deps.captureRequest = captureFor(deps.sesion);
-  for (const name of ['Draft', 'Editing', 'Comment', 'CommentError', 'Comments', 'Commenting', 'LinkCopied', 'ProductionAmount', 'ProductionDate', 'ProductionCorrections', 'ProductionDriveLink', 'PublicationResponsible']) {
+  for (const name of ['Draft', 'Saving', 'BriefError', 'Editing', 'Comment', 'CommentError', 'Comments', 'Commenting', 'LinkCopied', 'ProductionAmount', 'ProductionDate', 'ProductionCorrections', 'ProductionDriveLink', 'PublicationResponsible']) {
     const key = name[0].toLowerCase() + name.slice(1);
     deps[`set${name}`] = value => { deps[key] = typeof value === 'function' ? value(deps[key]) : value; effects.push([name, deps[key]]); };
   }

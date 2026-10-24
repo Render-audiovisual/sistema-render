@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
+import {observeWorkspaceBrief} from './helpers/workspace-brief-fixture.js';
 
 const source = readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
 function harness(tasks, allowNavigation = true) {
@@ -93,7 +94,12 @@ test('el detalle conserva borradores, cancela consultas y no reenfoca con cada a
   assert.match(source,/commentDraftOwner.current === owner && owner.readGeneration === readGeneration && owner.commentsRead === commentsRead/);
   assert.match(source,/if \(!currentComments\(\)\) return;\s*const merged = mergeTaskComments\(items, commentsRead.confirmed, owner.taskId\);\s*commentsRead.items = merged; setComments\(merged\);/);
   assert.match(source,/return \(\) => controller.abort\(\)/);
-  assert.match(source,/setDraft\(current => editing \|\|/);
+  const baseline = {id:1,revision:7,titulo:'Original',aclaraciones:'Original brief'};
+  const remote = {...baseline,revision:8,titulo:'Remote'};
+  const draft = {...baseline,aclaraciones:'Unsaved brief'};
+  assert.deepEqual(observeWorkspaceBrief(source,{task:remote,baseline,draft}),{baseline,writes:[]});
+  assert.deepEqual(observeWorkspaceBrief(source,{task:remote,baseline,draft:baseline,editing:true}),{baseline,writes:[]});
+  assert.deepEqual(observeWorkspaceBrief(source,{task:remote,baseline,draft:baseline,pending:{}}),{baseline,writes:[]});
   assert.match(source,/if \(previousFocus\?\.isConnected\) previousFocus.focus\(\{ preventScroll: true \}\)/);
   assert.match(source,/TaskDetail key=\{selected.id\}/);
 });

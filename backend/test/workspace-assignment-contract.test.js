@@ -6,6 +6,7 @@ import { getCanonicalTaskContentMetadata, isLinkedProductionEditorialTask } from
 import { canonicalTaskState } from "../../frontend/src/features/render-os/constants.js";
 import { isTaskEditorialContext } from '../../frontend/src/features/render-os/utils/task-editorial-context.js';
 import { createCapturedRequest, isSessionFailure } from '../../frontend/src/shared/session/captured-request.js';
+import { workspaceBriefSave } from './helpers/workspace-brief-fixture.js';
 const displaySession = {token:'synthetic-session',usuario:{id:7,rol:'admin',activo:true}};
 const currentGuard = () => createCapturedRequest({session:displaySession,readSession:()=>displaySession,request:()=>assert.fail('No request expected')});
 
@@ -49,13 +50,13 @@ test("creation suggestions resolve only unique labels; ambiguous labels require 
 });
 
 test("saving content preserves collaborators without resending assignments or display-name writes", async () => {
-  const body = section("  const save = async", "  const saveInlineField =");
-  const task = { id: 5, titulo: "Original", asignado_a_id: 1, colaborador_ids: [2], propiedades_extra: { colaboradores: ["Alex"], resumen: "Keep", etiquetas: ["tag"] } };
+  const task = { id: 5, revision: 7, titulo: "Original", asignado_a_id: 1, colaborador_ids: [2], propiedades_extra: { colaboradores: ["Alex"], resumen: "Keep", etiquetas: ["tag"] } };
   let changes;
   const noop = () => {};
-  const save = new Function("task", "draft", "metadata", "tags", "collaborators", "canEditTask", "isProductionVisit", "productionProgress", "getCanonicalTaskContentMetadata", "setSaving", "setEditing", "onUpdate", "canonicalTaskState", "canEditVisitClient", "canEditVisitDate", "isLinkedProductionEditorialTask", "captureRequest", `${body}\nreturn save;`)(
-    task, { ...task, aclaraciones: "New content" }, task.propiedades_extra, ["tag"], ["Alex"], true, false, {}, getCanonicalTaskContentMetadata, noop, noop, async (id, value) => { changes = value; }, canonicalTaskState, true, true, isLinkedProductionEditorialTask, currentGuard,
-  );
+  const save = workspaceBriefSave(source, { task, draft: { ...task, aclaraciones: "New content" }, metadata: task.propiedades_extra,
+    tags: ["tag"], collaborators: ["Alex"], canEditTask: true, isProductionVisit: false, productionProgress: {},
+    getCanonicalTaskContentMetadata, setSaving: noop, setEditing: noop, onUpdate: async (id, value) => { changes = value; },
+    canonicalTaskState, canEditVisitClient: true, canEditVisitDate: true, isLinkedProductionEditorialTask, captureRequest: currentGuard });
   await save();
   assert.equal(changes.aclaraciones, "New content");
   assert.equal(Object.hasOwn(changes, "asignado_a"), false);

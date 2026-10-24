@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { mergeRelatedTasks } from "../../frontend/src/features/render-os/utils/task-state.js";
 import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
+import {observeWorkspaceBrief} from './helpers/workspace-brief-fixture.js';
 
 const source = readFileSync(new URL("../../frontend/src/pages/WorkspaceReadOnly.jsx",import.meta.url),"utf8");
 const section = (start,end) => source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
@@ -152,7 +153,12 @@ test("correction prompt retains failed input for explicit resubmission",async()=
 
 test("editor protection tracks revisions even if timestamps share the same millisecond",()=>{
   assert.match(source,/\[task\?\.updated_at, task\?\.revision\]/);
-  assert.match(source,/editing \|\| \(previous && \(current.titulo !== previous.titulo/);
+  const baseline = {...task,titulo:'Original',aclaraciones:'Original brief'};
+  const remote = {...baseline,revision:3,titulo:'Remote'};
+  const draft = {...baseline,aclaraciones:'Unsaved brief'};
+  assert.deepEqual(observeWorkspaceBrief(source,{task:remote,baseline,draft}),{baseline,writes:[]});
+  assert.deepEqual(observeWorkspaceBrief(source,{task:remote,baseline,draft:baseline}),{baseline:remote,writes:[remote]});
+  assert.deepEqual(observeWorkspaceBrief(source,{task:baseline,baseline:remote,draft:remote}),{baseline:remote,writes:[]});
   assert.match(source,/<DiscardChangesDialog open=\{discardDialogOpen\} busy=\{taskWriteBusy\}/);
 });
 

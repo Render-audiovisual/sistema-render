@@ -5,10 +5,11 @@ import {getUnifiedTaskContent,getCanonicalTaskContentMetadata,isLinkedProduction
 import {getTaskContentPresentation} from '../../frontend/src/features/render-os/utils/task-content-presentation.js';
 import {canonicalTaskState} from '../../frontend/src/features/render-os/constants.js';
 import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
+import {workspaceBriefSave} from './helpers/workspace-brief-fixture.js';
 const session={token:'synthetic-editorial',usuario:{id:1,rol:'admin',activo:true}};
 
 const source=readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
-const task={id:10,publicacion_id:101,titulo:'Linked editing',estado:'pendiente',aclaraciones:'Brief',
+const task={id:10,revision:7,publicacion_id:101,titulo:'Linked editing',estado:'pendiente',aclaraciones:'Brief',
   propiedades_extra:{origen_produccion_video_id:'11111111-1111-4111-8111-111111111111',guiones:'Original script',copy_trabajo:'Editorial copy must survive'}};
 
 test('only positive actual publication ID and UUID video lineage enable editorial-copy separation',()=>{
@@ -32,7 +33,6 @@ test('canonical metadata option omits copy key altogether, even when explicitly 
   assert.equal(getCanonicalTaskContentMetadata(metadata).copy_trabajo,'');
 });
 
-const saveBody=source.slice(source.indexOf('  const save = async'),source.indexOf('  const saveInlineField ='));
 async function save(original,changes) {
   const writes=[];const draft={...original,aclaraciones:getUnifiedTaskContent(original),...changes};
   const context={task:original,draft,metadata:original.propiedades_extra || {},tags:[],collaborators:[],
@@ -40,7 +40,7 @@ async function save(original,changes) {
     canEditTask:true,canEditVisitClient:false,canEditVisitDate:true,isProductionVisit:false,productionProgress:{},
     isLinkedProductionEditorialTask,getCanonicalTaskContentMetadata,canonicalTaskState,
     setSaving:()=>{},setEditing:()=>{},onUpdate:async(id,payload)=>writes.push(payload)};
-  const run=new Function(...Object.keys(context),`${saveBody}\nreturn save;`)(...Object.values(context));
+  const run=workspaceBriefSave(source,context);
   await run();return writes;
 }
 test('real drawer save omits copy, clears old script, and preserves editorial copy under server merge',async()=>{

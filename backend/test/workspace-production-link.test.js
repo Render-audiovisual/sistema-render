@@ -7,6 +7,7 @@ import {getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask} from '.
 import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
 import {verifiedProductionDraftVisit} from '../../frontend/src/pages/productionDraft.js';
 import {productionLocation,productionCalendarDay,assertProductionClient} from '../../frontend/src/pages/productionRouteContext.js';
+import {workspaceBriefSave} from './helpers/workspace-brief-fixture.js';
 const session={token:'synthetic-production-link',usuario:{id:1,rol:'admin',activo:true}};
 const captureFor=request=>()=>createCapturedRequest({session,readSession:()=>session,request});
 const workspace=readFileSync(new URL('../../frontend/src/pages/WorkspaceReadOnly.jsx',import.meta.url),'utf8');
@@ -123,7 +124,7 @@ test('saving linked source text cannot rewrite registry date/client or legacy pr
     canEditTask:true,canEditVisitClient:false,canEditVisitDate:false,legacyProductionEnabled:false,isProductionVisit:true,productionProgress:{planned:3},
     metadata:original.propiedades_extra,tags:[],collaborators:[],canonicalTaskState,getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask,
     setSaving:()=>{},setEditing:()=>{},onUpdate:async(id,data)=>writes.push(data)};
-  const save=new Function(...Object.keys(context),`${extract(workspace,'  const save = async','  const saveInlineField =')}return save;`)(...Object.values(context));
+  const save=workspaceBriefSave(workspace,context);
   await save();
   assert.deepEqual(writes,[{aclaraciones:'New text'}]);
 });
@@ -137,7 +138,7 @@ test('linked editing task can save delivery date but never client changes',async
     canEditTask:true,canEditVisitClient:permissions.clientEditable,canEditVisitDate:permissions.dateEditable,
     legacyProductionEnabled:false,isProductionVisit:false,productionProgress:{},metadata:{},tags:[],collaborators:[],canonicalTaskState,getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask,
     setSaving:()=>{},setEditing:()=>{},onUpdate:async(id,data)=>writes.push(data)};
-  const save=new Function(...Object.keys(context),`${extract(workspace,'  const save = async','  const saveInlineField =')}return save;`)(...Object.values(context));
+  const save=workspaceBriefSave(workspace,context);
   await save();
   assert.deepEqual(writes,[{fecha_vencimiento:'2026-10-30'}]);
 });

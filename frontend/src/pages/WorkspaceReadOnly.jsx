@@ -144,8 +144,18 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [reviewRefreshing, setReviewRefreshing] = useState(false);
   const [reviewError, setReviewError] = useState('');
   useEffect(() => { setReviewAcknowledged(false); }, [task?.id, task?.revision, captureRequest, editingReview?.latestDelivery?.id, editingReview?.task?.revision]);
-  const [draft, setDraft] = useState(() => task ? { ...task, aclaraciones: getUnifiedTaskContent(task) } : {});
+  const [draft, setDraftState] = useState(() => task ? { ...task, aclaraciones: getUnifiedTaskContent(task) } : {});
   const draftSourceRef = useRef(task);
+  const briefDraftOwner = useRef(null);
+  if (!briefDraftOwner.current || briefDraftOwner.current.taskId !== task?.id || briefDraftOwner.current.captureRequest !== captureRequest) {
+    briefDraftOwner.current = { taskId: task?.id, captureRequest, baseline: task ? JSON.parse(JSON.stringify(task)) : null, generation: 0, pending: null, initialized: false };
+  }
+  const [briefError, setBriefError] = useState('');
+  const setDraft = (owner => update => {
+    if (briefDraftOwner.current !== owner) return;
+    owner.generation++;
+    setDraftState(update);
+  })(briefDraftOwner.current);
   const [comments, setComments] = useState([]);
   const [comment, setComment] = useState("");
   const [, renderCommentCreation] = useState(0);
@@ -251,8 +261,11 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     const commentsRead = { items: [], confirmed: [...owner.commentsRead.confirmed] }; owner.commentsRead = commentsRead;
     const currentComments = () => guard.current() && !controller.signal.aborted
       && commentDraftOwner.current === owner && owner.readGeneration === readGeneration && owner.commentsRead === commentsRead;
-    setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task) });
-    setEditing(false);
+    if (!briefDraftOwner.current.initialized) {
+      briefDraftOwner.current.initialized = true;
+      setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task) });
+      setEditing(false); setBriefError(''); setSaving(false);
+    }
     if (!owner.initialized) {
       owner.initialized = true; owner.generation++; setComment("");
     }
@@ -283,12 +296,13 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
 
   useEffect(() => {
     if (!task) return;
-    const previous = draftSourceRef.current;
     draftSourceRef.current = task;
-    // Una actualización en segundo plano no borra el texto que se está editando.
-    setDraft(current => editing || (previous && (current.titulo !== previous.titulo ||
-      String(current.aclaraciones || '').trim() !== getUnifiedTaskContent(previous).trim()))
-      ? current : { ...task, aclaraciones: getUnifiedTaskContent(task) });
+    const owner = briefDraftOwner.current;
+    // Remote reads may update the task, never the observation of a dirty brief.
+    if (owner.pending || editing || isTaskDraftDirty(owner.baseline, draft)) return;
+    if (task.revision < owner.baseline?.revision) return;
+    owner.baseline = JSON.parse(JSON.stringify(task));
+    setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task) });
   }, [task?.updated_at, task?.revision]);
 
   useEffect(() => {
@@ -369,19 +383,25 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     || (task.estado === "aprobada")
     || isProductionVisit;
 
-  const save = async () => {
+  const save = (owner => async () => {
     const guard = captureRequest();
-    if (!guard.current()) return;
+    const current = () => guard.current() && briefDraftOwner.current === owner && owner.taskId === task?.id && owner.captureRequest === captureRequest;
+    if (!current() || owner.pending || saving || !canEditTask) return;
+    const baseline = owner.baseline, generation = owner.generation;
+    if (!Number.isSafeInteger(baseline?.revision) || baseline.revision < 1) {
+      setBriefError('Falta la revisión original del borrador. Conservamos el texto; cancelá para cargar la versión actual antes de editar de nuevo.'); return;
+    }
+    const pending = {}; owner.pending = pending;
     setSaving(true);
-    if (!canEditTask) { setSaving(false); return; }
-    const preserveEditorialCopy = isLinkedProductionEditorialTask(task);
+    setBriefError('');
+    const preserveEditorialCopy = isLinkedProductionEditorialTask(baseline);
     const fields = ["titulo", "cliente_id", "estado", "fecha_vencimiento", "prioridad", "tipo_tarea", "subtipo", "aclaraciones", "material_referencia"];
     const nullable = ["cliente_id", "fecha_vencimiento", "tipo_tarea", "subtipo", "aclaraciones", "material_referencia"];
     const changes = Object.fromEntries(fields
       .filter((field) => (field !== "cliente_id" || canEditVisitClient) && (field !== "fecha_vencimiento" || canEditVisitDate))
       .filter((field) => field === "estado"
-        ? canonicalTaskState(draft.estado) !== canonicalTaskState(task.estado)
-        : String(draft[field] ?? "") !== String(task[field] ?? ""))
+        ? canonicalTaskState(draft.estado) !== canonicalTaskState(baseline.estado)
+        : String(draft[field] ?? "") !== String(baseline[field] ?? ""))
       .map((field) => [field, draft[field] === "" && nullable.includes(field) ? null : draft[field]]));
     const nextMetadata = getCanonicalTaskContentMetadata({
       resumen: String(draft.resumen ?? metadata.resumen ?? "").trim(),
@@ -402,15 +422,24 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         return; // Never approve implicitly or persist the rest of a mixed draft.
       }
       guard.assertCurrent();
-      if (Object.keys(changes).length) await onUpdate(task.id, changes, "editó los datos de la tarea");
+      const confirmed = Object.keys(changes).length
+        ? await onUpdate(task.id, JSON.parse(JSON.stringify(changes)), "editó los datos de la tarea", baseline.revision) : baseline;
       guard.assertCurrent();
-      setEditing(false);
-    } catch {
-      // El contenedor restaura los datos y muestra el error.
+      if (!current() || owner.pending !== pending) return;
+      if (confirmed?.id !== owner.taskId || !Number.isSafeInteger(confirmed.revision) || confirmed.revision < baseline.revision
+        || Object.keys(changes).length && confirmed.revision === baseline.revision) throw new Error('No se pudo verificar la versión guardada.');
+      owner.baseline = JSON.parse(JSON.stringify(confirmed));
+      if (owner.generation === generation) {
+        setDraft({ ...confirmed, aclaraciones: getUnifiedTaskContent(confirmed) }); setEditing(false);
+      }
+    } catch (reason) {
+      if (current()) setBriefError(reason?.status === 409
+        ? 'La tarea cambió desde que empezaste este borrador. Conservamos tu texto y su revisión original. Copiá lo que necesites antes de Cancelar para cargar la versión actual y volver a editar.'
+        : 'No se pudo confirmar el guardado del brief. Conservamos tu texto; revisá la tarea antes de volver a guardar.');
     } finally {
-      if (guard.current()) setSaving(false);
+      if (current() && owner.pending === pending) { owner.pending = null; setSaving(false); }
     }
-  };
+  })(briefDraftOwner.current);
 
   const saveInlineField = async (field, value, activity = "editó los datos de la tarea") => {
     const guard = captureRequest();
@@ -455,10 +484,12 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
     }
   };
 
-  const cancelEditing = () => {
+  const cancelEditing = (owner => () => {
+    if (briefDraftOwner.current !== owner || owner.taskId !== task?.id || owner.captureRequest !== captureRequest || !captureRequest().current() || owner.pending || saving) return;
+    owner.baseline = JSON.parse(JSON.stringify(task));
     setDraft({ ...task, aclaraciones: getUnifiedTaskContent(task) });
-    setEditing(false);
-  };
+    setEditing(false); setBriefError('');
+  })(briefDraftOwner.current);
 
   const insertContentTemplate = (template) => {
     const textarea = scriptEditorRef.current;
@@ -702,6 +733,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {isAdmin && <ProductionReconciliation taskId={task.id} sesion={sesion} users={users} available={isProductionVisit && registry.ready && !registry.vinculo}
             disabled={saving || commenting || archiving || registeringProduction || confirmingProduction || deliveryBusy || deliveryDirty || coordinationDraft.busy || coordinationDraft.dirty}
             onDraftStateChange={setReconciliationDraft} onSaved={() => setRegistryRetry(value => value + 1)}/>}
+        {briefError && <div className="ros-inline-error" role="alert">{briefError}</div>}
         <TaskContentWorkspace task={task} metadata={metadata} editing={canEditTask || editing} draft={draft} setDraft={setDraft} editorRef={scriptEditorRef} onInsertTemplate={insertContentTemplate} onEditContent={null} onCancelEdit={cancelEditing} onSaveEdit={save} saving={saving} canSave={Boolean(canEditTask && draft.titulo?.trim())}/>
         {hasOperationalControls && <section className="ros-task-operations" aria-labelledby={`ros-task-operations-${task.id}`}>
           <div className="ros-block-heading ros-operations-heading"><div><h3 id={`ros-task-operations-${task.id}`}>Flujo de trabajo</h3></div><small>Acciones y avance de la tarea</small></div>
@@ -1535,6 +1567,12 @@ export function WorkspaceReadOnlyPage({ sesion }) {
             if (currentTask) {
               tasksRef.current = tasksRef.current.map((task) => task.id === id ? currentTask : task);
               setTasks((current) => current.map((task) => task.id === id ? currentTask : task));
+            } else if (observedRevision !== null && ![401,403,404].includes(refreshError?.status)) {
+              // A failed conflict refresh is not proof that the task vanished.
+              // Keep the strict editor mounted on its original observation;
+              // never adopt another revision or retry this draft implicitly.
+              tasksRef.current = tasksRef.current.map((task) => task.id === id ? previous : task);
+              setTasks((current) => current.map((task) => task.id === id ? previous : task));
             } else {
               setTasks((current) => current.filter((task) => task.id !== id));
             }
