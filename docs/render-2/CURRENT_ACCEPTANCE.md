@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Aprobación hacia publicador sin confundir homónimos — corte230
+
+Defecto de aviso equivocado reproducido físicamente y corregido en aprobar-publicacion: publicador activo/admin-community revalidado en transacción; dueño canónico comprobado antes de COMMIT; aviso dirigido a ese ID aunque ya fuera dueño, con actor capturado.8 físicas finales incluyen homónimos, autoexclusión, dueño sin cambio, rechazos/CAS y entrega API real con revisión exacta;99 tablas ajenas invariantes y fixtures eliminados.2202 backend/2770 frontend aprobadas,135 optativas omitidas. Falta carrera específica de revocación del publicador; no outbox ni envío externo. Sin publicación automática o despliegue. Ver TASK_WORKFLOW_QA.md.
+
 ### Creación: barreras concurrentes verificadas en el servicio — corte229
 
 6 físicas sobre PostgreSQL nuevo acreditan inactividad/epoch/rol previos→401 sin alta; autoridad retenida serializa revocación después del commit; callback fallido revierte tarea y membresías.106 tablas observadas y fixture eliminado.2174 backend aprobadas/134 optativas omitidas. Sin producto o frontend/build nuevos. Se reduce el pendiente228 a HTTP concurrente/otros límites, no a falta de prueba física del servicio. Siguiente foco: handoff aprobado a publicador que todavía notifica por nombre pese a guardar ID; reproducción sintética, no física aún. Ver TASK_WORKFLOW_QA.md.

@@ -37,6 +37,7 @@ import { normalizeSelfProfileInput, SelfProfileInputError } from './self-profile
 import { USER_ADMIN_REVISION_SQL, UserAdministrationInputError, userAdministrationId, normalizeUserAdministrationPatch } from './user-admin-patch.js';
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { persistAssignedTask } from "./task-persistence.js";
+import { assertCurrentPublicationRecipient } from './publication-recipient-authority.js';
 import { correctProductionRecord } from "./production-record-updates.js";
 import { taskOperationalDto, editorialOperationalDto } from "./operational-dto.js";
 import { loadClientCatalogSnapshot } from './client-catalog.js';
@@ -1971,6 +1972,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
 
 router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
   try {
+    const assignmentNotificationActor = Object.freeze({ id: req.auth.id, rol: req.auth.rol, session_version: req.auth.session_version });
     const expectedEditingDelivery = normalizeExpectedEditingDelivery(req.body?.expected_entrega_id);
     if (!isTaskLeader(req.auth)) {
       return res.status(403).json({ error: "Solo Franco o Agustín pueden aprobar una tarea para publicación." });
@@ -2012,6 +2014,7 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
       [requestedPublisherId ?? null, requestedPublisher],
     );
     if (publisherResult.rows.length !== 1) return res.status(400).json({ error: "Elegí una persona de Community o un Líder para publicar." });
+    const publisherId = publisherResult.rows[0].id;
     const publisher = publisherResult.rows[0].nombre;
     const [previousAssignment] = await annotateTaskAssignments(pool, [tarea]);
     const approvedAssignment = await resolveTaskAssignments(pool, {
@@ -2039,22 +2042,34 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
         responsable_publicacion: publisher, responsable_publicacion_id: publisherResult.rows[0].id,
         colaboradores: approvedAssignment.collaboratorNames, workspace: "render_os" }), publisher, req.body.expected_revision], approvedAssignment,
       async (db, task) => {
+        const [assignedPublisher] = await annotateTaskAssignments(db, [task]);
+        if (assignedPublisher.asignado_a_id !== publisherId) {
+          throw Object.assign(new Error('El responsable de publicación cambió.'), { status:409 });
+        }
         const deliveryId = await assertEditingApprovalDelivery(db, task, expectedEditingDelivery);
-        if (deliveryId) await recordEditingApproval(db, task, req.auth, deliveryId);
-      }, db => assertCurrentEditingApprover(db, req.auth),
+        if (deliveryId) await recordEditingApproval(db, task, assignmentNotificationActor, deliveryId);
+      }, async db => {
+        await assertCurrentEditingApprover(db, assignmentNotificationActor);
+        await assertCurrentPublicationRecipient(db, publisherId);
+      }, { assignmentNotificationActor, assignmentNotificationTaskId: Number(req.params.id) },
     );
     if (!result.rows[0]) return res.status(409).json({ error: "La tarea ya fue aprobada o cambió de estado." });
     const aprobada = result.rows[0];
     res.json(taskOperationalDto(aprobada, req.auth));
-    notificarAsignacionSinInterrumpir({
-      pool,
-      tarea: aprobada,
-      motivo: "aprobada",
-      nombresDestinatarios: [publisher],
-      actor,
-      detalle: `${actor} aprobó el material. ${publisher} puede programarlo o publicarlo.`,
-    });
+    const notification = result.assignmentNotification;
+    if (notification) {
+      notificarAsignacionSinInterrumpir({
+        pool,
+        ...notification,
+        // Approval targets the current publisher even if they already owned
+        // the task. A reassignment delta cannot express this event.
+        destinatarioIds: [notification.tarea.asignado_a_id],
+        motivo: "aprobada",
+        detalle: `${notification.actor} aprobó el material. ${notification.tarea.asignado_a} puede programarlo o publicarlo.`,
+      });
+    }
   } catch (error) {
+    if ([400, 401, 403, 404, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });
