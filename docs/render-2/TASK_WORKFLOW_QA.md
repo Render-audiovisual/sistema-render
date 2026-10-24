@@ -1,5 +1,19 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Conflicto nativo de brief rev1→rev2 — corte217
+
+Verificado el caso principal de OP215-01 con build216 `index-Dww_HpVr.js`, navegador/cookie real de Franco91001 y edición concurrente de Agustín91002 mediante API bearer del fixture. No son dos dispositivos/navegadores ni dos sesiones cookie. Runner `/private/tmp/render2-goal217-native.mjs`, PG55865/HTTP52828, identidad física exacta; alta canónica por API de tarea1 edición/en_revision/rev1 con brief original y responsable91003. La notificación asíncrona de setup se asentó antes del baseline.
+
+Franco escribió `QA217 brief local sin guardar` sobre rev1. SIGUSR1 one-shot ejecutó PATCH real de Agustín con expected_revision1 y texto `QA217 brief remoto confirmado`:200/rev2. SQL comprobó que solo cambiaron aclaraciones/revision/updated_at y capturó esa fila completa. Desde UI, Actualizar tarea para revisar incorporó la revisión actual sin borrar el texto local. Guardar texto mostró el conflicto específico, mantuvo editor/texto y permitió seguir trabajando.
+
+A390×844 se comprobó DOM con el texto local exacto y alerta presente; captura `/private/tmp/render2-goal217-brief-conflict-mobile.png`, inspeccionada. Cancelar adoptó explícitamente el brief remoto y limpió el aviso, sin guardar el local; recarga mostró el remoto y mantuvo el detalle abierto. Esto no acredita guardado normal posterior ni persistencia de borradores después de recarga.
+
+Validación final: tarea completa idéntica al SQL remoto capturado, rev2, cero comentarios/recibos y104 tablas públicas completas restantes invariantes, excluyendo auth/browser_session y verificando tareas por separado. `EXACT_REMOTE_BRIEF_REVISION_ONLY; ZERO_COMMENTS_RECEIPTS; OTHER_TABLES_UNCHANGED 104`, salida0; log `/private/tmp/render2-goal217-native.log`. Cleanup ENOENT `/private/tmp/render2-local-P0EajP`; pestaña propia31 cerrada y viewport restaurado. Sin instrumentar fetch/dist, sin proveedor ni base existente.
+
+El conflicto observado es rechazo local en la cola ante una baseline ya obsoleta, **no un PATCH HTTP409 provocado**. SQL prueba que no hubo cambios persistidos adicionales, no contabiliza solicitudes UI. Las35 unitarias216 cubren por separado el409 y lectura transitoria fallida; ese transporte no se volvió a provocar nativamente. Erdos preparó el runner, coordinador ejecutó navegador/SQL y Volta revisó los límites del contrato QA. La skill de verificación distinguió estos alcances.
+
+Sin cambios de producto ni repetición de suites216. OP215-01 tiene evidencia nativa para preservación/adopción explícita de este caso; siguen pendientes guardado normal conectado, variantes concurrentes y aceptación integral. La captura detectó un pendiente UX: el aviso ros-inline-error heredado se ve demasiado pequeño en móvil; requiere ajuste acotado de legibilidad, no se certifica visualmente terminado. OP215-02 de avisos por nombre continúa abierto. Sin despliegue.
+
 ## Borrador de brief con observación original — corte216
 
 OP215-01 implementado en desarrollo y verificado con handlers/efectos reales extraídos, **todavía sin acreditar el conflicto en navegador/PostgreSQL**. TaskDetail mantiene owner de borrador por tarea/capture de sesión, baseline clonada, generación de edición y lease pending síncrona. Un refresco remoto conserva baseline/texto si existe edición dirty, modo edición o guardado pendiente; una observación pristine puede adoptar una revisión igual o superior. Cancelar adopta explícitamente la tarea actual; no hay rebase silencioso del texto dirty.

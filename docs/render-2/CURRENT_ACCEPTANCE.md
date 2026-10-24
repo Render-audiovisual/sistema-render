@@ -6,7 +6,7 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ### Repriorización transversal215 — dos defectos abiertos
 
-Actualización216: OP215-01 implementado y verificado localmente con35 regresiones de callbacks/cola;2767 frontend y2083 backend aprobadas,128 optativas omitidas, build correcto. Baseline original retenida y guardado estricto; conflicto con lectura transitoria ya no desmonta el editor. Falta prueba nativa/PostgreSQL del nuevo caso antes de cerrar su aceptación. OP215-02 continúa abierto. El diagnóstico215 debajo es histórico del defecto previo; ver TASK_WORKFLOW_QA.md.
+Actualización216–217: OP215-01 implementado con35 regresiones de callbacks/cola;2767 frontend y2083 backend aprobadas,128 optativas omitidas, build correcto.217 verifica Franco cookie/navegador con borrador rev1 → Agustín API confirma rev2 → refrescar/guardar rechaza localmente y conserva texto → Cancelar adopta explícitamente → recarga conserva remoto. SQL: fila remota exacta, cero comentarios/recibos y104 tablas invariantes; fixture eliminado. Falta guardado normal conectado, variantes concurrentes y legibilidad móvil del aviso; no se provocó HTTP409 nativo. OP215-02 continúa abierto. El diagnóstico215 debajo es histórico del defecto previo; ver TASK_WORKFLOW_QA.md.
 
 La revisión actual del código por coordinador/Erdos/Volta encontró dos fallos operativos corregibles localmente. No es una nueva certificación exhaustiva de todas las áreas ni una corrección ya implementada. La skill de trabajo estructurado orientó volver a requisitos de integridad/identidad después de las mejoras acotadas de comentarios.
 
