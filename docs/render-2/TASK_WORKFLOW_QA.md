@@ -1,5 +1,15 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Aviso de conflicto verificado en celular — corte221
+
+Se repitió el runner217 sobre el build220 sin instrumentación de transporte. PostgreSQL55865 y browser52828, raíz nueva `/private/tmp/render2-local-Ev3vHF`, identidad exacta comprobada. Franco QA cookie escribió un borrador rev1; Agustín QA API confirmó solo el brief remoto rev2. Actualizar tarea para revisar conservó el borrador; Guardar texto mostró el rechazo local sin sobrescribirlo.
+
+Viewport390×844: el alert real calculó font-size13px, line-height19.5px, ancho343px, clientWidth/scrollWidth341px. Captura inspeccionada `/private/tmp/render2-goal221-brief-conflict-mobile.png`: aviso completo, wrapping legible y borrador local intacto debajo. Cancelar adoptó explícitamente el remoto y la recarga conservó ese texto. Esto acredita ese ancho/motor y caso local; no prueba lectores de pantalla, todos los dispositivos ni HTTP409 nativo.
+
+SQL final: fila remota exacta capturada, cero comentarios/recibos y104 tablas completas invariantes. Salida0; log `/private/tmp/render2-goal221-native.log`, cleanup ENOENT de la raíz temporal. Viewport restaurado y pestaña propia33 cerrada. Skill verification orientó contrastar UI→API→datos→recarga; sin cambios de producto, nueva suite global, providers ni producción.
+
+Repriorización: Erdos contrastó production-registry.js, client-operation.js y ClientOperationPage.jsx. El banco real incluye fotos pendiente/repetir de cualquier mes, pero la proyección del cliente solo cuenta videos y usa la etiqueta genérica Banco pendiente. Coordinador confirmó esa discrepancia en fuente: falta integrar recuentos explícitos y acceso al banco del cliente, no transferir material ni crear tareas. Pendiente reproducir con fixture de fotos de mes anterior y probar paridad/ausencia de DML antes de declararlo corregido. Volta corrigió su recomendación inicial tras revisar NATIVE_THREE_VIDEO_PROGRESS.md: el circuito nativo de tres videos ya existe; el hueco distinto es Calendario Lo mío por asignación derivada, no repetir lo ya acreditado.
+
 ## Preparación de guardado normal y aviso legible — corte220
 
 Autorización humana para liberar únicamente memoria compartida huérfana verificada. Inspección `ipcs -m -a` del24/10: segmentos65536 y327697, ambos NATTCH6. No se eliminó ningún segmento ni se alteraron servicios/bases. La autorización no habilita liberar segmentos activos.
