@@ -133,7 +133,15 @@ export function App() {
     return null;
   }
 
-  if (legacyDestination) return <RouteLoading />;
+  // Alias replacement is a same-document route transition, not an identity
+  // boundary. Keep the exact provider type/key at the root during this render
+  // so React does not destroy an unsaved draft before the canonical popstate.
+  // Unknown/loading/error/login gates above deliberately do not retain it.
+  if (legacyDestination) return (
+    <GoalDraftMemoryProvider key={`draft-memory:${sessionRenderEpoch}`} session={sesion}>
+      <RouteLoading />
+    </GoalDraftMemoryProvider>
+  );
 
   const rutasCompartidas = esAdmin
     ? ["/inicio", "/calendario", "/calendario-estructura", "/planificacion-historias", "/planificacion-publicaciones", "/reportes-historias", "/sueldos", "/perfil", "/piezas", "/workspace/tareas", "/lista", "/bloc-notas", "/drive", "/moodboards"]

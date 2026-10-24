@@ -60,7 +60,7 @@ test('App imports the genuine hook and section classifier and calls it unconditi
 
 async function renderApp(route, { status = 'authenticated', session = { usuario: { id: 7, usuario: 'QA', rol: 'admin', activo: true } } } = {}) {
   const { sectionFocusKey } = await import('./section-focus.js');
-  const observed = [], redirects = [];
+  const observed = [], redirects = [], draftProviders = [];
   const parsed = new URL(route, 'https://render.test');
   const location = { pathname: parsed.pathname, search: parsed.search, hash: parsed.hash,
     get href() { return parsed.href; }, set href(value) { redirects.push(value); }, replace(value) { redirects.push(value); } };
@@ -79,15 +79,38 @@ async function renderApp(route, { status = 'authenticated', session = { usuario:
     cerrarSesion() { throw Error('SSR cannot log out'); }, getRolLabel: value => value, ROL_LABELS: {},
     navigateWithinApp() { throw Error('SSR cannot navigate'); }, navigateWithConfirmation() { throw Error('SSR cannot navigate'); },
     Sidebar: () => React.createElement('nav', { 'data-qa-sidebar': true }, 'Navegación'),
-    GoalDraftMemoryProvider: ({ children }) => React.createElement(React.Fragment, null, children),
+    GoalDraftMemoryProvider: ({ children, session }) => {
+      draftProviders.push(session);
+      return React.createElement(React.Fragment, null, children);
+    },
   };
   const pageNames = new Set(nodes(appFunction, n => ts.isJsxSelfClosingElement(n) && /Page$/.test(n.tagName.getText(app))).map(n => n.tagName.getText(app)));
   for (const name of pageNames) deps[name] = () => name === 'LoginPage'
     ? React.createElement('form', { 'data-qa-login': true })
     : React.createElement('main', { 'data-qa-page': name }, React.createElement('h1', null, name));
   const actual = exported(compile(app, ['RouteLoading', 'App']), deps).App;
-  return { html: renderToStaticMarkup(React.createElement(actual)), observed, redirects };
+  return { html: renderToStaticMarkup(React.createElement(actual)), observed, redirects, draftProviders };
 }
+
+test('alias loading retains the same root provider contract; session verification gates never expose recovery', async () => {
+  const returns = nodes(appFunction.body, ts.isReturnStatement);
+  const providerRoots = returns.map(n => n.expression).filter(Boolean).map(n =>
+    ts.isParenthesizedExpression(n) ? n.expression : n).filter(n => ts.isJsxElement(n)
+      && n.openingElement.tagName.getText(app) === 'GoalDraftMemoryProvider');
+  assert.equal(providerRoots.length, 2, 'Dashboard and alias return the provider at the same React root position');
+  assert.equal(providerRoots[0].openingElement.getText(app), providerRoots[1].openingElement.getText(app),
+    'Same element type, opaque observation key and session props: no alias-only reconciliation key');
+  for (const route of ['/agustin', '/franco', '/luciano?task=12', '/piezas', '/equipo', '/inicio']) {
+    const result = await renderApp(route);
+    assert.equal(result.draftProviders.length, 1, route);
+    assert.equal(result.draftProviders[0].usuario.id, 7);
+  }
+  for (const options of [{ status: 'unknown' }, { status: 'loading' }, { status: 'error' },
+    { status: 'anonymous', session: null }]) {
+    assert.equal((await renderApp('/agustin', options)).draftProviders.length, 0, options.status);
+  }
+  assert.equal((await renderApp('/login')).draftProviders.length, 0);
+});
 
 test('actual App gate disables loading/error/anonymous/login/root/legacy focus and renders controls only beside a dashboard', async () => {
   for (const [route, options, enabled, rendered] of [

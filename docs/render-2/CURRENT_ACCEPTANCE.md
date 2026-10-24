@@ -4,6 +4,8 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+Actualización192: GOAL_DRAFT_LEGACY_BOUNDARY_QA.md documenta la corrección del desmontaje del provider durante aliases autenticados. Frontend2508 pruebas aprobadas y build correcto. Contrato de raíz y gates verificado mediante AST/SSR; recorrido nativo del alias pendiente. Sin cambios de backend ni producción.
+
 Actualización191: GOAL_DRAFT_CONFLICT_NATIVE_QA.md verifica en navegador y PostgreSQL la recuperación del borrador frente a edición concurrente y retirada/devolución de asignación. Guardar conserva el conflicto original, sin sobrescribir; nueve tablas no tuvieron cambios adicionales a las tres mutaciones intencionales del fixture. Entorno temporal eliminado. Sin cambios de producto, despliegue ni renovación de suites globales; permanecen pendientes ACK perdido nativo, rutas heredadas y aceptación integral.
 
 | Requisito | Evidencia vigente | Qué falta para aceptarlo globalmente |
