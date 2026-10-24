@@ -1,7 +1,8 @@
 import React from "react";
 import { cerrarSesion, getRutaUsuario, getSesion } from "./utils.jsx";
 import { useApplicationSession } from './shared/session/use-application-session.js';
-import { getApplicationSessionSnapshot } from './shared/session/application-session-access.js';
+import { getApplicationSessionSnapshot, subscribeApplicationSession } from './shared/session/application-session-access.js';
+import { createExplicitLogoutNavigation } from './shared/navigation/explicitLogoutNavigation.js';
 import { useNavigationConfirmation } from './components/NavigationDiscardHost.jsx';
 import { sessionViewKey } from './shared/session/session-view.js';
 import { getRolLabel, ROL_LABELS } from "./constants.js";
@@ -57,6 +58,7 @@ export function App() {
   }
   const sessionRenderEpoch = renderIdentity.current.epoch;
   const rememberedViews = React.useRef(null);
+  const explicitLogout = React.useRef(null);
   // Opaque presentation lifetime: never put session keys/credentials in props.
   const navigationOwner = React.useRef(null);
   if (!navigationOwner.current || navigationOwner.current.snapshot !== sessionSnapshot
@@ -81,10 +83,15 @@ export function App() {
     return () => { owner.dispose(); if (rememberedViews.current === owner) rememberedViews.current = null; };
   }, [sessionSnapshot]);
   const logout = React.useCallback(() => {
-    if (getApplicationSessionSnapshot() !== sessionSnapshot) return;
-    rememberedViews.current?.save();
-    cerrarSesion();
+    if (!explicitLogout.current) explicitLogout.current = createExplicitLogoutNavigation({
+      readSnapshot: getApplicationSessionSnapshot, subscribe: subscribeApplicationSession,
+    });
+    return explicitLogout.current.run(sessionSnapshot, () => {
+      rememberedViews.current?.save();
+      return cerrarSesion();
+    });
   }, [sessionSnapshot]);
+  React.useEffect(() => () => explicitLogout.current?.clear(), []);
 
   React.useEffect(() => {
     const syncPath = () => {
@@ -131,6 +138,13 @@ export function App() {
       return null;
     }
     return <LoginPage key={route} sessionPending={sessionSnapshot.status === 'loading'} />;
+  }
+
+  if (!sesion && explicitLogout.current?.destination(sessionSnapshot) === '/login') {
+    // Explicit withdrawal is not expiration: never carry A's URL into B's login.
+    // The marker owns only this exact anonymous observation, not a user ID.
+    window.location.replace('/login');
+    return null;
   }
 
   if (!sesion) {
