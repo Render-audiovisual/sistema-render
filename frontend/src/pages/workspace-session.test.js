@@ -5,6 +5,7 @@ import ts from 'typescript';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { canRetryTaskUpdate } from '../workspace-task-state.js';
+import { isTaskEditorialContext } from '../features/render-os/utils/task-editorial-context.js';
 
 // Extract actual callbacks from JSX; no React mount or live workflow claims.
 const source = readFileSync(new URL('./WorkspaceReadOnly.jsx', import.meta.url), 'utf8');
@@ -25,7 +26,7 @@ function fixture({ cookie = false, transport = async () => task() } = {}) {
   const effects = [], requests = [], tasksRef = { current: items };
   const captureRequest = () => createCapturedRequest({ session, readSession: () => live, isActive: () => active,
     request: (url, options) => { requests.push({ url, options }); return transport(url, options); } });
-  const deps = { captureRequest, isSessionFailure, clients: [], users: [{ id: 9, nombre: 'Publisher', rol: 'community' }],
+  const deps = { captureRequest, isSessionFailure, isTaskEditorialContext, clients: [], users: [{ id: 9, nombre: 'Publisher', rol: 'community' }],
     sesion: session, tasksRef, updateQueuesRef: { current: new Map() }, canRetryTaskUpdate, reviewScopeRef: { current: '' },
     setTasks: update => { items = typeof update === 'function' ? update(items) : update; effects.push('tasks'); },
     setTotalTasks: update => { total = update(total); effects.push('total'); }, notify: () => effects.push('notify'),

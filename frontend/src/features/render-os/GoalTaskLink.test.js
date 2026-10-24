@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { createCapturedRequest, isSessionFailure } from '../../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../../shared/session/browser-session-state.js';
+import { isTaskEditorialContext } from './utils/task-editorial-context.js';
 
 // Execute actual JSX callbacks with injected effects. No React mount/API workflow claim.
 const source = readFileSync(new URL('./GoalTaskLink.jsx', import.meta.url), 'utf8');
@@ -26,7 +27,7 @@ function fixture({ cookie = false, request = async () => ({ linked: true }) } = 
   const task = { id: 5, cliente_id: 2 }, currentTask = { current: task.id }, parentMounted = { current: true }, mounted = { current: true };
   const requests = [], effects = [], submitLock = { current: false };
   const apiRequest = (url, options) => { requests.push({ url, options }); return request(url, options); };
-  const open = execute(callback('GoalTaskLink', 'openDialog'), { task, mounted: parentMounted, currentTask, getSesion: () => live,
+  const open = execute(callback('GoalTaskLink', 'openDialog'), { task, canManage:true, isTaskEditorialContext, mounted: parentMounted, currentTask, getSesion: () => live,
     createCapturedRequest, apiRequest, setOpen: value => { opened = value; } });
   open();
   const common = { task, scope: opened.scope, mounted, isSessionFailure, submitLock,
@@ -50,9 +51,16 @@ test('actual opener captures once from genuine runtime-backed reader; dialog rec
   assert.match(source, /scope=\{open.scope\}/);
   assert.match(source, /onClick=\{openDialog\}/);
   assert.doesNotMatch(text(component('LinkDialog')), /getSesion|\.token|Authorization|createCapturedRequest|localStorage|\.dispose\(/);
-  assert.match(source, /if \(!canManage \|\| !task.cliente_id \|\| task.historia_id \|\| task.tipo_tarea === 'produccion'\) return null/);
+  assert.match(source, /if \(!canManage \|\| !task.cliente_id \|\| task.historia_id \|\| task.tipo_tarea === 'produccion' \|\| !isTaskEditorialContext\(task\)\) return null/);
   assert.match(source, /expected_tarea_updated_at:data.tarea.updated_at, expected_pieza_updated_at:slot.updated_at/);
   assert.match(source, /isTaskCompleted\(data.tarea\)/);
+});
+test('actual opener cannot bypass editorial context or management permission to open monthly consultation',()=>{
+  for(const [task,canManage] of [[{id:5,cliente_id:2,tipo_tarea:'desarrollo'},true],[{id:5,cliente_id:2,subtipo:'chatbot'},true],[{id:5,cliente_id:2,tipo_tarea:'diseno'},false]]){
+    const open=execute(callback('GoalTaskLink','openDialog'),{task,canManage,isTaskEditorialContext,
+      getSesion:()=>assert.fail('No session/transport capture for excluded context'),setOpen:()=>assert.fail('No dialog')});
+    open();
+  }
 });
 test('exterior is a neutral consultation; authoritative dialog still distinguishes an existing link', () => {
   const exterior = text(component('GoalTaskLink'));

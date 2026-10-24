@@ -4,6 +4,7 @@ import test from "node:test";
 import { buildTaskAssignmentInput } from "../../frontend/src/shared/task-assignment-input.js";
 import { getCanonicalTaskContentMetadata, isLinkedProductionEditorialTask } from "../../frontend/src/features/render-os/utils/task-content.js";
 import { canonicalTaskState } from "../../frontend/src/features/render-os/constants.js";
+import { isTaskEditorialContext } from '../../frontend/src/features/render-os/utils/task-editorial-context.js';
 import { createCapturedRequest, isSessionFailure } from '../../frontend/src/shared/session/captured-request.js';
 const displaySession = {token:'synthetic-session',usuario:{id:7,rol:'admin',activo:true}};
 const currentGuard = () => createCapturedRequest({session:displaySession,readSession:()=>displaySession,request:()=>assert.fail('No request expected')});
@@ -98,8 +99,8 @@ test("approval sends selected publisher ID, keeps display label; generic approva
   const sesion = displaySession; let currentSession = sesion;
   const request = async (url, request) => { requests.push(JSON.parse(request.body)); return task; };
   const captureRequest = () => createCapturedRequest({session:sesion,readSession:()=>currentSession,request});
-  const approve = new Function("users", "apiRequest", "tasksRef", "setTasks", "logActivity", "notify", "updateTask", "sesion", "getSesion", "captureRequest", "isSessionFailure", "markReviewQueueStale", `${body}\nreturn approveTask;`)(
-    users, async (url, request) => { requests.push(JSON.parse(request.body)); return task; },
+  const approve = new Function("isTaskEditorialContext", "users", "apiRequest", "tasksRef", "setTasks", "logActivity", "notify", "updateTask", "sesion", "getSesion", "captureRequest", "isSessionFailure", "markReviewQueueStale", `${body}\nreturn approveTask;`)(
+    isTaskEditorialContext, users, async (url, request) => { requests.push(JSON.parse(request.body)); return task; },
     { current: [task] }, () => {}, async () => {}, (message) => notices.push(message), async (id, changes) => updates.push({id,changes}), sesion, () => currentSession, captureRequest, isSessionFailure,
     (guard,uncertain=false)=>{guard.assertCurrent();stale.push(uncertain);},
   );
@@ -115,6 +116,11 @@ test("approval sends selected publisher ID, keeps display label; generic approva
   }
   assert.equal(requests.length, 1);
   assert.equal(stale.filter(uncertain=>!uncertain).length,1,'Invalid publishers must not claim confirmed approval');
+  const development = { ...task, tipo_tarea: 'desarrollo' };
+  await assert.rejects(approve(development, 2), /sin responsable de publicación/);
+  assert.equal(requests.length, 1, 'A stale publisher selection cannot send a web task to editorial handoff');
+  await approve(development);
+  assert.deepEqual(updates.at(-1), { id: 5, changes: { estado: 'aprobada' } }, 'Development still supports ordinary task approval');
   const beforeSessionChange=[...stale];
   currentSession = {token:'different-synthetic-session'};
   await assert.rejects(approve(task, 2), /sesión cambió/);

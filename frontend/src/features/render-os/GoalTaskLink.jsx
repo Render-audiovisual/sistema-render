@@ -4,6 +4,7 @@ import { apiRequest } from './services/render-os-api.js';
 import { isTaskCompleted } from './constants.js';
 import { getSesion } from '../../utils.jsx';
 import { createCapturedRequest, isSessionFailure } from '../../shared/session/captured-request.js';
+import { isTaskEditorialContext } from './utils/task-editorial-context.js';
 import './GoalTaskLink.css';
 
 function LinkDialog({ task, scope, onClose }) {
@@ -108,13 +109,14 @@ export function GoalTaskLink({ task, canManage }) {
   currentTask.current = task.id;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const openDialog = () => {
+    if (!canManage || !isTaskEditorialContext(task)) return;
     const taskId = task.id;
     const scope = createCapturedRequest({ session: getSesion(), readSession: getSesion, request: apiRequest,
       isActive: () => mounted.current && currentTask.current === taskId });
     if (!scope.current()) return;
     setOpen({ taskId, scope });
   };
-  if (!canManage || !task.cliente_id || task.historia_id || task.tipo_tarea === 'produccion') return null;
+  if (!canManage || !task.cliente_id || task.historia_id || task.tipo_tarea === 'produccion' || !isTaskEditorialContext(task)) return null;
   return <section className="ros-goal-link"><div><strong>Objetivo del mes</strong><span>Consultá si esta pieza ya cuenta en un objetivo mensual.</span></div>
     <button type="button" onClick={openDialog}>Consultar vínculo mensual</button>
     {open?.taskId === task.id && <LinkDialog task={task} scope={open.scope} onClose={() => setOpen(null)}/>}</section>;

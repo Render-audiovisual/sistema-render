@@ -33,4 +33,24 @@ La vista de detalle a390×844 mostró el menú contraído y tarjetas legibles. d
 
 ## Pendientes de aceptación
 
-Falta completar como miembro la lectura y los rechazos de escrituras desde API, terminar y aprobar la tarea con el rol correspondiente, contrastar Inicio y Calendario, y repetir el flujo completo en móvil. La ausencia de botones administrativos no sustituye las pruebas de autorización del servidor. Tampoco se aceptan por este corte todos los módulos, proveedores ni condiciones de hosting.
+El corte siguiente cubrió lectura del miembro, denegaciones API, aprobación y finalización, Inicio y Calendario. Siguen pendientes los formularios completos móviles, dispositivos independientes, aceptación transversal de módulos y condiciones de hosting.
+
+## Cierre de tarea y contexto de Desarrollo
+
+Dos clústeres nuevos en55836 con HTTP52803 extendieron el recorrido. El cliente, proyecto, hito y tarea se prepararon mediante la API real, no mediante acciones nativas de creación. Con sesión cookie de Franco QA, Inicio mostró la tarea en la cola del equipo. La aprobación y finalización nativas dejaron la tarea en revisión5 y el proyecto Planificado en revisión3, con1/1 tareas finalizadas. La sesión nueva de Luciano QA pudo leer el proyecto sin controles estructurales, verlo en Mis proyectos y consultar su hito el28/10 en Lo mío. La tarea ajena no apareció como entrega personal. El calendario a390px no desbordó horizontalmente.
+
+La primera ejecución detectó una presentación incorrecta: Desarrollo ofrecía Objetivo del mes y Publica opcional. Se añadió un clasificador de presentación por tipo/subtipo explícitos, sin inferencias desde títulos ni personas. Oculta esas opciones en Desarrollo, Administración y formatos web/chatbot/mantenimiento/automatización; conserva casos editoriales, desconocidos compatibles y vínculos editoriales históricos explícitos. También impide el envío con publicador desde ambos callbacks de la interfaz. No cambia ACL, estados ni endpoints del backend y no es una barrera de seguridad del servidor.
+
+El segundo clúster sirvió el build corregido `index-CTgh19V3.js`. El navegador confirmó texto de aprobación neutro, ausencia de ambas opciones y botón de aprobación conservado. Desde390×844 se aprobó y finalizó la tarea; la recarga conservó Finalizada, cliente y entrega. Capturas: `/private/tmp/render2-project178-web-review.png`, `/private/tmp/render2-project178-web-review-mobile.png` y `/private/tmp/render2-project178-member-calendar.png`. Se restauró el viewport. Los atajos de guion del brief todavía no están especializados para Desarrollo; esa mejora de presentación queda pendiente.
+
+Los dos cierres nativos comprobaron cero historias, publicaciones, eventos de publicación, piezas/objetivos mensuales, configuraciones de acuerdo y pagos. Ambos terminaron con código0 y ENOENT de `/private/tmp/render2-local-po2EQ6` y `/private/tmp/render2-local-YWQpBj`. Solo se eliminaron datos sintéticos propios.
+
+## Regresión reproducible
+
+Carver añadió `backend/test/render2-project-workflow-journey.integration.test.js`: cliente sin acuerdo, proyecto web, etapa/hito, tarea, vínculo, denegaciones sin cambios, estados por rol y proyecciones personales tras nuevas sesiones. La primera ejecución detectó una expectativa de fixture incorrecta: las migraciones incluyen un grupo de feed histórico. La prueba final conserva y compara ese baseline; no elimina el grupo. Pasó5 pruebas con cero omitidas, y cleanup ENOENT de `/private/tmp/render2-local-1sSoAI` (el intento previo también limpió su clúster).
+
+La cohorte `render2-projects.integration.test.js` y `render2-calendar-projects.integration.test.js` pasó28 pruebas físicas con cero omitidas y limpieza verificada de `/private/tmp/render2-local-Le3m8P` y `/private/tmp/render2-local-rJLvuh`. En conjunto son33 pruebas físicas de este corte, no33 recorridos de navegador.
+
+Poincare implementó el clasificador y sus guards, con pruebas de JSX y callbacks reales extraídos. Hypatia revisó la cobertura por ID en modo de solo lectura. El coordinador integró las dependencias nuevas en los tests de sesión/asignación, corrió la regresión y repitió la comprobación nativa. Pasaron2372 pruebas frontend; `npm test` backend pasó1982 y omitió121 integraciones opt-in. Build y diff-check pasaron. Logs finales: `/private/tmp/render2-audit178-frontend-final.log`, `/private/tmp/render2-audit178-backend-canonical.log`, `/private/tmp/render2-audit178-build.log`.
+
+Un descubrimiento inicial demasiado amplio con `node --test` incluyó tests heredados de sandbox y scripts fuera del comando canónico; falló con EPERM en conexiones sandbox y se descartó como regresión válida. No se repitió con privilegios. El comando válido es `npm test` dentro de backend, acotado a `test/*.test.js`. Dos pruebas de callbacks necesitaron inyectar la nueva dependencia pura, sin relajar sus comprobaciones de sesión. No se modificó producto backend ni se desplegó.
