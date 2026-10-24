@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import * as model from './calendarModel.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 
@@ -147,7 +148,7 @@ test('actual UI callback resets page on filter/day/month changes but preserves c
   const change = nodes(owner, n => ts.isFunctionDeclaration(n) && n.name?.text === 'change')[0];
   for (const fields of [{ mes: '2026-11', dia: '2026-11-01' }, { dia: '2026-10-20' }, { dia: selection.dia }, { scope: 'mine' }, { cliente: '4' }, { tipo: 'visita' }, { pagina: 3 }]) {
     const calls = [], current = { ...selection, pagina: 2 };
-    evaluate(change, { selection: current, today: selection.dia, readCalendarSelection, calendarHref, window: { location: { origin: 'https://render.test' } }, navigateWithinApp: (win, href) => calls.push(href) })(fields);
+    evaluate(change, { notifyViewPreferenceChange, selection: current, today: selection.dia, readCalendarSelection, calendarHref, window: { location: { origin: 'https://render.test' } }, navigateWithinApp: (win, href) => calls.push(href) })(fields);
     const next = readCalendarSelection(params(calls[0]).toString()); assert.equal(next.pagina, Object.hasOwn(fields, 'pagina') ? 3 : 0);
     assert.equal(next.cliente, fields.cliente ?? current.cliente); assert.equal(next.scope, fields.scope ?? current.scope);
   }

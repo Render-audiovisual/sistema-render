@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import * as context from './productionRouteContext.js';
 import { verifiedProductionDraftVisit } from './productionDraft.js';
 
@@ -95,7 +96,7 @@ function fakeWindow(href) {
 }
 test('actual URL writer persists day using replace while preserving opaque history state, unrelated query and hash', () => {
   const h = fakeWindow('https://render.test/producciones?mes=2026-10&dia=2026-10-01&dia=2026-10-02&dia[]=bad&dia[x]=bad&cliente[]=bad&visita=old&task=71&extra=keep#detail');
-  const write = evaluate(writer(), { window: h.win });
+  const write = evaluate(writer(), { window: h.win, notifyViewPreferenceChange });
   write({ month: '2026-10', day: '2026-10-21', clientId: '37', tab: 'pending', replace: true });
   assert.equal(h.effects.length, 1); assert.equal(h.effects[0].method, 'replaceState');
   assert.equal(h.effects[0].state, h.historyState);
@@ -111,7 +112,7 @@ test('actual URL writer persists day using replace while preserving opaque histo
 
 test('writer without explicit day removes old dia and bracket forms rather than carrying it into a changed month', () => {
   const h = fakeWindow('https://render.test/producciones?mes=2026-10&dia=2026-10-31&dia=2026-10-30&dia[]=x&dia[a]=x&task=71#keep');
-  evaluate(writer(), { window: h.win })({ month: '2026-11', clientId: '', tab: 'calendar' });
+  evaluate(writer(), { window: h.win, notifyViewPreferenceChange })({ month: '2026-11', clientId: '', tab: 'calendar' });
   assert.equal(h.effects.length, 1); assert.equal(h.effects[0].method, 'pushState');
   assert.equal(h.effects[0].state, h.historyState); assert.equal(h.win.location.searchParams.get('mes'), '2026-11');
   assert.ok(![...h.win.location.searchParams.keys()].some(key => key === 'dia' || key.startsWith('dia[')));

@@ -1,4 +1,5 @@
 import { BOARD_COLUMNS } from '../constants.js';
+import { notifyViewPreferenceChange } from '../../../shared/navigation/viewPreferenceEvent.js';
 
 export function getTasksEmptyMessage({ hasFilters, query, totalTasks, archiveMode }) {
   if (query.trim() || hasFilters) return "No hay tareas con estos filtros.";
@@ -79,6 +80,13 @@ export function updateTaskViewUrl(currentUrl, state) {
     if (value == null) url.searchParams.delete(key);
     else url.searchParams.set(key, value);
   });
+  return url;
+}
+
+export function writeTaskViewUrl(win, state) {
+  const url = updateTaskViewUrl(win.location.href, state);
+  win.history.replaceState(win.history.state, '', url);
+  notifyViewPreferenceChange(win);
   return url;
 }
 

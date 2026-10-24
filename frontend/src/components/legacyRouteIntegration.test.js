@@ -41,7 +41,7 @@ function controlledSidebarFixture(){
   const current={snapshot,route:'/feedback?note=7',delegations:[]};
   const deps={window:{},sessionSnapshot:snapshot,path:'/feedback',route:current.route,navigationLifetime:token,
     navigationEpoch:{current:3},navigationOwner:{current:{token}},navigationConfirmation:{request:()=>{}},
-    getApplicationSessionSnapshot:()=>current.snapshot,readRouteKey:()=>current.route,
+    rememberedViews:{current:null},getApplicationSessionSnapshot:()=>current.snapshot,readRouteKey:()=>current.route,
     navigateWithConfirmation:(win,href,options)=>{current.delegations.push({win,href,options});return Promise.resolve(false);}};
   const run=Function(...Object.keys(deps),`return (${text(declaration.initializer.arguments[0])});`)(...Object.values(deps));
   return{run,current,deps};

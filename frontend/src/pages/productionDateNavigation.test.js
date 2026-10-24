@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 
 const source=readFileSync(new URL('./Productions.jsx',import.meta.url),'utf8');
 const tree=ts.createSourceFile('Productions.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
@@ -56,7 +57,7 @@ test('pending readback has no speculative movement; obsolete guard rejects late 
 });
 test('actual location writer replaces month while preserving unrelated query/hash and history state',()=>{
  const calls=[],window={location:{href:'https://render.test/producciones?mes=2026-10&cliente=7&visita=old&tab=pending&other=keep#detail'},history:{state:{held:true},replaceState(...args){calls.push(args)},pushState(){assert.fail('Reschedule must replace')}}};
- const writer=evaluate(find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='writeProductionLocation'),{window});
+ const writer=evaluate(find(node=>ts.isFunctionDeclaration(node)&&node.name?.text==='writeProductionLocation'),{window,notifyViewPreferenceChange});
  writer({id:original.id,month:'2026-11',clientId:'7',tab:'pending',replace:true});
  assert.equal(calls.length,1);assert.equal(calls[0][0],window.history.state);
  const url=calls[0][2];assert.equal(url.searchParams.get('other'),'keep');assert.equal(url.hash,'#detail');

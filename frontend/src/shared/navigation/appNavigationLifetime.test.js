@@ -11,12 +11,27 @@ function fixture(){
   const snapshot=Object.freeze({status:'authenticated',session:Object.freeze({usuario:Object.freeze({id:7,rol:'diseno'})})});
   let current=snapshot,throws=false;const token=Object.freeze({}),calls=[],epoch={current:0},owner={current:{token}};
   const win={location:new URL('https://render.test/moodboards?board=3')};
-  const deps={getApplicationSessionSnapshot:()=>{if(throws)throw Error('private session failure');return current;},sessionSnapshot:snapshot,
+  const deps={rememberedViews:{current:null},getApplicationSessionSnapshot:()=>{if(throws)throw Error('private session failure');return current;},sessionSnapshot:snapshot,
     navigationEpoch:epoch,navigationOwner:owner,navigationLifetime:token,route:readRouteKey(win),path:win.location.pathname,window:win,readRouteKey,
     navigationConfirmation:{request:()=>Promise.resolve(false)},navigateWithConfirmation:(window,href,options)=>{calls.push({window,href,options});return Promise.resolve(true);}};
   const navigate=evaluate(declaration('navigateSidebar').initializer.arguments[0],deps);
   return{snapshot,token,calls,epoch,owner,win,deps,navigate,setSnapshot:value=>{current=value},fail:()=>{throws=true}};
 }
+
+test('actual Sidebar restores a remembered bare destination through the same guarded request',async()=>{
+  const f=fixture(),reads=[];
+  f.deps.rememberedViews.current={read:href=>{reads.push(href);return '/calendario?scope=mine&tipo=hito';}};
+  assert.equal(await f.navigate('/calendario'),true);
+  assert.deepEqual(reads,['/calendario']);assert.equal(f.calls.length,1);assert.equal(f.calls[0].href,'/calendario?scope=mine&tipo=hito');
+  assert.equal(f.calls[0].options.isCurrent(),true);
+});
+
+test('actual logout saves current preferences before withdrawing identity but stale logout cannot touch another user',()=>{
+  const f=fixture(),calls=[];f.deps.cerrarSesion=()=>calls.push('logout');f.deps.rememberedViews.current={save:()=>calls.push('preferences')};
+  const logout=evaluate(declaration('logout').initializer.arguments[0],f.deps);
+  logout();assert.deepEqual(calls,['preferences','logout']);
+  f.setSnapshot({...f.snapshot});logout();assert.deepEqual(calls,['preferences','logout']);
+});
 
 test('actual Sidebar callback captures route/runtime identity and supplies one guarded controlled request',async()=>{
   const f=fixture();assert.equal(await f.navigate('/producciones'),true);assert.equal(f.calls.length,1);

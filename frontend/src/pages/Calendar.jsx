@@ -4,6 +4,7 @@ import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { getSesion } from '../utils.jsx';
 import { sessionViewKey } from '../shared/session/session-view.js';
 import { navigateWithinApp } from '../shared/navigation/location.js';
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { CALENDAR_KINDS, CALENDAR_PAGE_LIMIT, MAX_CALENDAR_PAGE, calendarEventLabel, calendarEventTitle, calendarGrid, calendarHref, calendarMilestoneState, calendarQuery, calendarTaskState, cordobaToday, createCalendarLoader, readCalendarSelection, shiftCalendarMonth } from './calendarModel.js';
 import './Calendar.css';
 
@@ -37,7 +38,10 @@ function CalendarContent({ sesion, onNavigate }) {
   }, []);
   useEffect(() => {
     const canonical = calendarHref(readCalendarSelection(window.location.search));
-    if (`${window.location.pathname}${window.location.search}` !== canonical) window.history.replaceState(window.history.state, '', canonical);
+    if (`${window.location.pathname}${window.location.search}` !== canonical) {
+      window.history.replaceState(window.history.state, '', canonical);
+      notifyViewPreferenceChange(window);
+    }
   }, [selectionKey]);
   useEffect(() => {
     const version = ++generation.current;
@@ -52,7 +56,7 @@ function CalendarContent({ sesion, onNavigate }) {
   function change(fields) {
     const changesContext = ['mes', 'dia', 'scope', 'tipo', 'cliente'].some(key => Object.hasOwn(fields, key));
     const next = readCalendarSelection(new URL(calendarHref({ ...selection, ...fields, ...(changesContext ? { pagina: 0 } : {}) }), window.location.origin).search, today);
-    navigateWithinApp(window, calendarHref(next));
+    if (navigateWithinApp(window, calendarHref(next))) notifyViewPreferenceChange(window);
   }
   function follow(event, href) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;

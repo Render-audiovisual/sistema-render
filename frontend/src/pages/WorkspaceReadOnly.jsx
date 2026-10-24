@@ -6,7 +6,7 @@ import { AREAS, BOARD_COLUMNS, STATUSES, TASK_TYPES, canonicalTaskState, isTaskC
 import { apiJson, apiRequest, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
 import { areaForTask, emojiForTaskCard, formatDate, formatDateTime, initials, personForTask, taskResponsibleLabels } from "../features/render-os/utils/task-formatters.js";
 import { canRetryTaskUpdate, canUserDeleteTask, canUserEditTask, canUserMoveTask, canUserMoveTaskToState, mergeRelatedTasks } from "../workspace-task-state.js";
-import { effectiveTaskFilterState, getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, taskMatchesReviewScope, taskQueryNotice, updateTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
+import { effectiveTaskFilterState, getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, taskMatchesReviewScope, taskQueryNotice, writeTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
 import { buildResponsibleOptions, resolveResponsibleFilter, taskMatchesResponsible } from "../features/render-os/utils/task-responsible-filter.js";
 import { groupTasksByResponsible, groupTasksByClient } from "../features/render-os/utils/task-groups.js";
 import { createTaskManualOrder, taskOrderArrowAnchor } from "../features/render-os/utils/task-manual-order.js";
@@ -1055,8 +1055,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   useEffect(() => {
-    const url = updateTaskViewUrl(window.location.href, { view, sort, archiveMode, responsible, client, sector, priority, area, query, calendarMonth, status:taskStatus, reviewScope, boardColumn:mobileBoardColumn });
-    window.history.replaceState(window.history.state, "", url);
+    writeTaskViewUrl(window, { view, sort, archiveMode, responsible, client, sector, priority, area, query, calendarMonth, status:taskStatus, reviewScope, boardColumn:mobileBoardColumn });
   }, [view, sort, archiveMode, responsible, client, sector, priority, area, query, calendarMonth, taskStatus, reviewScope, mobileBoardColumn]);
 
   const move = useCallback((task, status) => {

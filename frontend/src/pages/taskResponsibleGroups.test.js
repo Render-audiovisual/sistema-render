@@ -62,6 +62,6 @@ test('actual wiring preserves filtered input, pagination and existing guarded op
  assert.match(source,/<TasksByResponsible tasks=\{visible\} users=\{users\} onOpen=\{openTask\}/);
  assert.match(source,/<TasksByClient tasks=\{visible\} users=\{users\} onOpen=\{openTask\}/);
  assert.match(source,/key=\{group.key\}/);assert.doesNotMatch(declarations,/grouped\.has\(name\)/);
- assert.match(source,/setView\(next.view\)/);assert.match(source,/updateTaskViewUrl\(window.location.href, \{ view,/);
+ assert.match(source,/setView\(next.view\)/);assert.match(source,/writeTaskViewUrl\(window, \{ view,/);
  assert.match(source,/onClick=\{onLoadMore\}/);
 });

@@ -4,6 +4,7 @@ import { FilterSelect } from '../components/FilterSelect.jsx';
 import { getHoyLocalISO, getSesion } from '../utils.jsx';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { hasReviewedProductionContext, productionVisitEditInput } from './productionVisitEdit.js';
 import { createProductionDraft, productionMediaDraft, productionVisitDraft, verifiedProductionDraftVisit } from './productionDraft.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
@@ -42,7 +43,10 @@ function writeProductionLocation({id = null, month, day, clientId, tab, replace 
   for (const key of [...url.searchParams.keys()]) if (key.startsWith('cliente[') || key.startsWith('mes[') || key.startsWith('visita[') || key.startsWith('tab[') || key.startsWith('dia[')) url.searchParams.delete(key);
   if (clientId !== undefined) { if(clientId) url.searchParams.set('cliente',clientId); else url.searchParams.delete('cliente'); }
   if (tab) url.searchParams.set('tab',tab);
-  if (url.href !== window.location.href) window.history[replace ? 'replaceState' : 'pushState'](window.history.state,'',url);
+  if (url.href !== window.location.href) {
+    window.history[replace ? 'replaceState' : 'pushState'](window.history.state,'',url);
+    notifyViewPreferenceChange(window);
+  }
 }
 
 // CAS always uses the visit version supplied by the visible form, never a newer hidden ref.

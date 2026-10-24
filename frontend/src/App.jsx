@@ -1,5 +1,5 @@
 import React from "react";
-import { cerrarSesion, getRutaUsuario } from "./utils.jsx";
+import { cerrarSesion, getRutaUsuario, getSesion } from "./utils.jsx";
 import { useApplicationSession } from './shared/session/use-application-session.js';
 import { getApplicationSessionSnapshot } from './shared/session/application-session-access.js';
 import { useNavigationConfirmation } from './components/NavigationDiscardHost.jsx';
@@ -15,6 +15,7 @@ import { canUseSharedCalendarRole } from "./components/navigation.js";
 import { useSectionContentFocus } from './components/SectionContentFocus.jsx';
 import { sectionFocusKey } from './shared/navigation/section-focus.js';
 import { GoalDraftMemoryProvider } from './components/GoalDraftMemoryProvider.jsx';
+import { createRememberedViewOwner } from './shared/navigation/rememberedViewOwner.js';
 
 const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
 const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPage");
@@ -55,6 +56,7 @@ export function App() {
     renderIdentity.current = { observed: sessionKey, epoch: renderIdentity.current.epoch + 1 };
   }
   const sessionRenderEpoch = renderIdentity.current.epoch;
+  const rememberedViews = React.useRef(null);
   // Opaque presentation lifetime: never put session keys/credentials in props.
   const navigationOwner = React.useRef(null);
   if (!navigationOwner.current || navigationOwner.current.snapshot !== sessionSnapshot
@@ -71,6 +73,18 @@ export function App() {
     enabled: sessionSnapshot.status === 'authenticated' && Boolean(sesion)
       && path !== '/login' && path !== '/' && !legacyDestination,
   });
+
+  React.useEffect(() => {
+    if (sessionSnapshot.status !== 'authenticated' || !sesion) return;
+    const owner = createRememberedViewOwner({session:sesion, readSession:getSesion, windowTarget:window, documentTarget:document});
+    rememberedViews.current = owner;
+    return () => { owner.dispose(); if (rememberedViews.current === owner) rememberedViews.current = null; };
+  }, [sessionSnapshot]);
+  const logout = React.useCallback(() => {
+    if (getApplicationSessionSnapshot() !== sessionSnapshot) return;
+    rememberedViews.current?.save();
+    cerrarSesion();
+  }, [sessionSnapshot]);
 
   React.useEffect(() => {
     const syncPath = () => {
@@ -96,7 +110,8 @@ export function App() {
       const epoch = navigationEpoch.current, from = readRouteKey(window);
       if (observed !== sessionSnapshot || observed.status !== 'authenticated' || !observed.session
         || navigationOwner.current.token !== navigationLifetime || from.split(/[?#]/, 1)[0] !== path) return Promise.resolve(false);
-      return navigateWithConfirmation(window, href, { present: navigationConfirmation.request,
+      const destination = rememberedViews.current?.read(href) || href;
+      return navigateWithConfirmation(window, destination, { present: navigationConfirmation.request,
         isCurrent: () => navigationEpoch.current === epoch && readRouteKey(window) === from
           && navigationOwner.current.token === navigationLifetime && getApplicationSessionSnapshot() === observed });
     } catch { return Promise.resolve(false); }
@@ -223,7 +238,7 @@ export function App() {
   return (
     <GoalDraftMemoryProvider key={`draft-memory:${sessionRenderEpoch}`} session={sesion}>
       {contentFocus.skipLink}
-      <Sidebar key={`sidebar:${sessionRenderEpoch}`} path={path} search={window.location.search} sesion={sesion} onNavigate={navigateSidebar} onCerrarSesion={cerrarSesion} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
+      <Sidebar key={`sidebar:${sessionRenderEpoch}`} path={path} search={window.location.search} sesion={sesion} onNavigate={navigateSidebar} onCerrarSesion={logout} ROL_LABELS={ROL_LABELS} getRolLabel={getRolLabel} />
       {contentFocus.marker}
       {loadedDashboard}
       {navigationConfirmation.dialog}

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { BOARD_COLUMNS } from '../features/render-os/constants.js';
+import { writeTaskViewUrl } from '../features/render-os/utils/task-view-state.js';
 
 const source = readFileSync(new URL('./WorkspaceReadOnly.jsx', import.meta.url), 'utf8');
 const file = ts.createSourceFile('WorkspaceReadOnly.jsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
@@ -62,24 +63,24 @@ test('actual popstate restores task/view/calendar/column and removes its exact l
 });
 
 test('actual URL effect replaces same history state with column, retaining helper-owned query/task/hash context', () => {
-  const effect = effects().find(n => n.arguments[0].getText(file).includes('updateTaskViewUrl('));
+  const effect = effects().find(n => n.arguments[0].getText(file).includes('writeTaskViewUrl('));
   const dependencies = effect.arguments[1].elements.map(n => n.getText(file));
   assert.ok(dependencies.includes('mobileBoardColumn'));
   const href = 'https://render.example.test/workspace/tareas?task=72&q=brief&cliente=8#detail';
-  const state = { task: 72, opaque: 'preserved' }; let replaced = 0, pushes = 0, pops = 0;
+  const state = { task: 72, opaque: 'preserved' }; let replaced = 0, pushes = 0, pops = 0, notices = 0;
   const inputs = Object.fromEntries(dependencies.map(name => [name, name]));
   inputs.mobileBoardColumn = 'finalizadas';
+  inputs.query = 'brief';
   evaluate(effect.arguments[0], { ...inputs,
-    window: { location: { href }, dispatchEvent: () => pops++, history: { state, pushState: () => pushes++, replaceState(nextState, title, url) {
+    window: { location: { href }, CustomEvent: class { constructor(type) { this.type = type; } },
+      dispatchEvent: event => { assert.equal(replaced, 1, 'Notice follows actual history write'); if (event.type === 'popstate') pops++; else { assert.equal(event.type, 'render:view-preference-change'); notices++; } },
+      history: { state, pushState: () => pushes++, replaceState(nextState, title, url) {
       assert.equal(nextState, state); assert.equal(title, '');
       assert.equal(url.searchParams.get('task'), '72'); assert.equal(url.searchParams.get('q'), 'brief');
       assert.equal(url.hash, '#detail'); assert.equal(url.searchParams.get('board_column'), 'finalizadas'); replaced++;
     } } },
-    updateTaskViewUrl: (actualHref, options) => {
-      assert.equal(actualHref, href); assert.equal(options.boardColumn, 'finalizadas');
-      const url = new URL(actualHref); url.searchParams.set('board_column', options.boardColumn); return url;
-    },
+    writeTaskViewUrl,
   })();
   assert.equal(replaced, 1);
-  assert.equal(pushes, 0); assert.equal(pops, 0);
+  assert.equal(pushes, 0); assert.equal(pops, 0); assert.equal(notices, 1);
 });

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {notifyViewPreferenceChange} from '../../frontend/src/shared/navigation/viewPreferenceEvent.js';
 import {canonicalTaskState} from '../../frontend/src/features/render-os/constants.js';
 import {getCanonicalTaskContentMetadata,isLinkedProductionEditorialTask} from '../../frontend/src/features/render-os/utils/task-content.js';
 import {createCapturedRequest,isSessionFailure} from '../../frontend/src/shared/session/captured-request.js';
@@ -146,7 +147,7 @@ test('deep-link URL validates UUID and persists real visit/month query across re
   const events=[];
   const window={location:{href:'https://render.test/producciones?other=keep'},history:{state:{existing:1}}};
   for(const method of ['pushState','replaceState']) window.history[method]=(state,title,url)=>{events.push({method,url:String(url)});window.location.href=String(url);};
-  const h=new Function('window','productionLocation',`${locationFns}return {productionLocation,writeProductionLocation};`)(window,productionLocation);
+  const h=new Function('window','productionLocation','notifyViewPreferenceChange',`${locationFns}return {productionLocation,writeProductionLocation};`)(window,productionLocation,notifyViewPreferenceChange);
   h.writeProductionLocation({id,month:'2026-09',day:'2026-09-12'});
   assert.deepEqual(h.productionLocation(window.location.href),{id,month:'2026-09',day:'2026-09-12',clientId:'',tab:'calendar'});
   assert.equal(new URL(window.location.href).searchParams.get('other'),'keep');
@@ -164,7 +165,7 @@ function visitLoader(request, {href=`https://render.test/producciones?visita=${i
   const writes=[];const openVersion={current:0};
   const historyEvents=[],window={location:{href},history:{state:{existing:1}}};
   for(const method of ['pushState','replaceState'])window.history[method]=(saved,title,url)=>{historyEvents.push(method);window.location.href=String(url);};
-  const write=new Function('window',`${locationFns}return writeProductionLocation;`)(window);
+  const write=new Function('window','notifyViewPreferenceChange',`${locationFns}return writeProductionLocation;`)(window,notifyViewPreferenceChange);
   const context={mayLeave:()=>true,openVersion,assertProductionClient,productionLocation,window,clientId,tab,setCreating:()=>{},setSelected:value=>{state.selected=value;},setDetailLoading:value=>{state.busy=value;},setError:value=>{state.error=value;},
     setMonth:value=>{state.month=value;},setDay:value=>{state.day=value;},verifiedProductionDraftVisit,apiRequest:request,writeProductionLocation:value=>{writes.push(value);write(value);}};
   const open=new Function(...Object.keys(context),`${extract(productions,'  const openVisit =','  const restoreProductionLocation =')}return openVisit;`)(...Object.values(context));

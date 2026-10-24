@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { projectHref, projectLocation, projectLocationUrl, projectListLocation, projectListLocationUrl,
   projectsListUrl, parseProjectsPage, parseProject, buildProjectMutation, createProjectsTransport, projectError, isProjectChildCreation } from './projectsModel.js';
@@ -38,7 +39,7 @@ function fixture(href = `https://render.test/proyectos?cliente=11&proyecto=${ID}
   const win = { location: new URL(href, 'https://render.test'), history: { state: { origin: 'client-hub' }, pushState(state, _title, path) {
     effects.push(['push', path, state]); win.location = new URL(path, win.location);
   }, replaceState(state, _title, path) { effects.push(['replace', path, state]); win.location = new URL(path, win.location); } } };
-  const deps = { window: win, mounted, filtersRef, selectionRef, formRef, transport,
+  const deps = { notifyViewPreferenceChange, window: win, mounted, filtersRef, selectionRef, formRef, transport,
     projectListLocation, projectListLocationUrl, projectLocation, projectLocationUrl, projectsListUrl, parseProjectsPage, projectError,
     filterClients: { items: [{ id: 11, nombre: 'Same name' }, { id: 22, nombre: 'Same name' }] },
     setContextHref: value => effects.push(['context', value]), setFilters: value => effects.push(['filters', value]),

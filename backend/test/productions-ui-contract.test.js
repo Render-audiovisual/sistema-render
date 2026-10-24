@@ -4,12 +4,13 @@ import {readFileSync} from 'node:fs';
 import {createCapturedRequest} from '../../frontend/src/shared/session/captured-request.js';
 import {createProductionDraft,productionMediaDraft,verifiedProductionDraftVisit} from '../../frontend/src/pages/productionDraft.js';
 import {productionReadUrl,assertProductionClient} from '../../frontend/src/pages/productionRouteContext.js';
+import {notifyViewPreferenceChange} from '../../frontend/src/shared/navigation/viewPreferenceEvent.js';
 
 const source=readFileSync(new URL('../../frontend/src/pages/Productions.jsx',import.meta.url),'utf8');
 const css=readFileSync(new URL('../../frontend/src/pages/Productions.css',import.meta.url),'utf8');
 const section=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
 const pure=section('const VIDEO_STATES','function SafeLink');
-const helpers=new Function('apiRequest',`${pure}\nreturn {positiveId,safeProductionUrl,productionMonthDays,shiftProductionMonth,productionWrite};`)(()=>assert.fail('unexpected request'));
+const helpers=new Function('apiRequest','notifyViewPreferenceChange',`${pure}\nreturn {positiveId,safeProductionUrl,productionMonthDays,shiftProductionMonth,productionWrite};`)(()=>assert.fail('unexpected request'),notifyViewPreferenceChange);
 const visit=Object.freeze({id:'11111111-1111-4111-8111-111111111111',revision:7,cliente_id:1,
   cliente_nombre:'QA client',fecha:'2026-10-20',titulo:'QA visit',observaciones:'',participante_ids:[3],
   drive_url:'https://drive.google.com/folder',videos:[],fotos:[]});

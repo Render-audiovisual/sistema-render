@@ -4,6 +4,7 @@ import { restoreProjectFormFocus } from './projectFormReturnFocus.js';
 import { apiRequest } from "../features/render-os/services/render-os-api.js";
 import { useNavigationGuard } from "../shared/navigation/useNavigationGuard.js";
 import { navigateWithinApp } from "../shared/navigation/location.js";
+import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { getSesion } from '../utils.jsx';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
@@ -227,6 +228,7 @@ function ProjectsSession({ sesion, onNavigate, request }) {
     const next = { ...filtersRef.current, ...changes };
     const href = projectListLocationUrl(window.location.href, next);
     window.history.pushState(window.history.state, '', href);
+    notifyViewPreferenceChange(window);
     restoreListContext(href);
   }
   function chooseClient(value) {
@@ -309,6 +311,7 @@ function ProjectsSession({ sesion, onNavigate, request }) {
   function selectProject(id, replace = false) {
     const url = projectLocationUrl(window.location.href, id);
     window.history[replace ? "replaceState" : "pushState"](window.history.state, "", url);
+    notifyViewPreferenceChange(window);
     restoreListContext(url);
     const next = { id, invalid: false };
     setForm(null); formRef.current = null; setMessage(""); setSelection(next);
