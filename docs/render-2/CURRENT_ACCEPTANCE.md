@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Calendario personal por asignación de edición — corte224 parcial
+
+Dos fixtures nativos nuevos con PostgreSQL55870/browser52832, identidad exacta comprobada, build222 sin cambios de producto. Erdos preparó `/private/tmp/render2-goal224-native.mjs`; Volta revisó controles y vínculos. API creó una visita26/10 con Franco como único participante, un video grabado y tarea de edición1 para Luciano con entrega29/10, sin colaboradores ni tarea origen.
+
+Luciano cookie vio la visita en Inicio y una sola vez en Calendario Lo mío/tipoVisitas/día26/cliente1. Click Abrir visita → producción original → Edición abrió tarea1 con responsable91003, entrega29 y vínculo al mismo origen; dos Atrás restauraron calendario/contexto. La visita no cambió a fecha de entrega. A390×844 había una fila de agenda y document.scrollWidth375≤innerWidth390. Captura inspeccionada `/private/tmp/render2-goal224-mine-before-mobile.png`. No hubo cambios manuales en formularios, enlaces externos ni controles de envío a edición para staff. No equivale a permisos de solo lectura globales.
+
+La segunda mitad NO está aceptada: ambos intentos de reasignar devolvieron400 antes de su aserción de éxito. Logs `/private/tmp/render2-goal224-native.log` y `/private/tmp/render2-goal224-native-final.log`; ambos salida1 y cleanup ENOENT de `/private/tmp/render2-local-RvHGhr` y `/private/tmp/render2-local-WQmBWa`. No hay snapshot final aprobado de estos recorridos. La primera hipótesis (rol de Designer no permitido) se retiró: no acreditaba la causa del PATCH. Fuente server.js changesPeople exige expected_updated_at Y expected_revision; el runner omitía updated_at en ambos casos. Cambiar a Agustín no resolvía ese contrato.
+
+Runner temporal corregido para validar timestamp y enviar ambos CAS; node --check aprobado, sin tercer lanzamiento en224. Pendiente ejecutar la reasignación válida y comprobar Actualizar/recarga: Lo mío sin visita, Equipo con una visita, hashes y revisiones preservados salvo cambios esperados de tarea/asignaciones/aviso. Viewport restaurado, pestañas propias35/36 cerradas, ningún fixture sigue vivo. Sin nuevas suites globales ni cambios de permisos, backend, frontend o producción. Skill verification orientó detener aceptación al primer límite fallido; el parcial inicial no acredita la retirada de membresía.
+
 ### Banco del cliente verificado en navegador — corte223
 
 Recorrido nativo del cambio222 sobre build index-9wJXgZmG.js, Express/PostgreSQL temporales55869/browser52831. Erdos preparó `/private/tmp/render2-goal223-native.mjs`; coordinador inspeccionó y ejecutó. Creación mediante API de dos clientes y visitas de15/09, A con fotos pendiente/repetir/realizada, B con otra pendiente; sin videos ni cuotas. Identidad exacta del fixture comprobada. Volta revisó criterios y límites sin editar producto.
