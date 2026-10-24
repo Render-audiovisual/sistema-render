@@ -42,6 +42,8 @@ Actualización173: comprobado el gate concreto de orden nativo con PostgreSQL re
 
 Actualización174: comprobadas nativamente fotos por tipo/estado/enlace/observación y guion pendiente retomado en visita futura, con PostgreSQL READ ONLY verificando origen/linaje y cero tareas/publicaciones automáticas. Corregida la oferta de Retomar contra la misma visita mediante disabled/guarda local, servidor intacto. Ver PRODUCTION_PHOTOS_PENDING_QA.md. Pasaron136 focales,2363 frontend y build; segundo fixture conectado verificó botón deshabilitado en390px. Ambos fixtures terminaron exit0 y cleanup absent:true. Banco actual solo de guiones; fotos para repetir quedan en visita, transferencia de fotos/edición del mismo UUID no verificadas. No hubo cambios de bases existentes ni despliegue; aceptación global abierta.
 
+Actualización175: revisión transversal por cuatro agentes y resumen vigente en CURRENT_ACCEPTANCE.md. Recibos087/persistencia/runtime cookie aprobaron26 pruebas físicas, tres fixtures nuevos con ENOENT; backend puro1969 aprobadas/119 omitidas. Reforzada identidad/limpieza de la suite087. Nuevo S175-01/P2: escritores personales distintos del alta no retienen actor durante DML; confirmado por fuente, carrera física todavía pendiente. Prioridad de integración: autoridad transaccional de esas familias antes del recorrido nativo de Proyectos. No se confirmó negocio exclusivamente local en el grafo canónico revisado. Sin cambio de producto, despliegue ni base existente; master abierto.
+
 ## Matriz de requisitos: qué prueba la evidencia actual
 
 | Requisito maestro | Evidencia actual | Estado y evidencia todavía necesaria |

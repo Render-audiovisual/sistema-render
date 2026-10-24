@@ -1,5 +1,7 @@
 # Render 2.0: arquitectura y aceptación local
 
+Para el resumen vigente de cierres y pendientes, consultar [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md). Las secciones de integraciones numeradas que siguen son evidencia histórica y no deben volver a abrir hallazgos ya corregidos.
+
 Este documento es el punto de entrada para continuar el rescate. Describe el sistema conectado actual y distingue implementación de evidencia. No certifica la terminación del prompt maestro ni un despliegue. El historial detallado está en [STATUS.md](STATUS.md); sus primeras entradas describen etapas anteriores, no el estado actual completo.
 
 ## Entorno y arquitectura

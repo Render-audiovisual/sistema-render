@@ -1,16 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { startLocalHarness, request, fixturePassword } from '../scripts/render2-local-test.js';
+import { access } from 'node:fs/promises';
+import { startLocalHarness, request, fixturePassword, assertFixtureIdentity } from '../scripts/render2-local-test.js';
 
-// Author-only in Stage164: do not opt in while isolated PostgreSQL resources
-// are unavailable. No configured DATABASE_URL or external account is accepted.
+// Opt-in only: no configured DATABASE_URL or external account is accepted.
 test('personal page creation receipts: atomic actor-scoped retry, current recovery and serialized cap/order', {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 180000,
 }, async t => {
   const fixture = await startLocalHarness({ port: 55864 });
-  // Normal harness teardown applies only when this opt-in suite is executed.
-  t.after(async () => { await fixture.cleanup(); });
+  t.after(async () => {
+    await fixture.cleanup();
+    await assert.rejects(access(fixture.root), error => error.code === 'ENOENT');
+    t.diagnostic(`Own page-receipt fixture stopped and removed: ${fixture.root}`);
+  });
+  const [identity] = await fixture.query(`SELECT current_database() AS database,current_user AS username,
+    host(inet_server_addr()) AS address,inet_server_port() AS port,current_setting('data_directory') AS directory`);
+  assertFixtureIdentity({root:fixture.root,cwd:fixture.root,port:55864,
+    url:'postgresql://render2_fixture@127.0.0.1:55864/render2_local_test',identity});
   const api = (path, token, method = 'GET', body) => request(fixture.base, `/api${path}`, { token, method, body });
   const ok = (response, status = 200) => { assert.equal(response.status, status, JSON.stringify(response.body)); return response.body; };
   const login = async usuario => ok(await api('/login', null, 'POST', { usuario, password: fixturePassword })).token;
