@@ -1,5 +1,15 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Elegibilidad concurrente del publicador — corte231
+
+Nuevo render2-publication-recipient-authority.integration.test.js ejecuta persistAssignedTask y guards reales de actor/publicador en PostgreSQL55878 nuevo, clusterOnly e identidad exacta por conexión. Simula el precheck exterior permitido y después retiene/revoca al destinatario. pg_blocking_pids y query actual observada acreditan que el writer espera exactamente en SELECT del publicador FOR SHARE. Confirmar inactividad o rol inválido antes de ese guard rechaza400 sin cambios de dominio/contexto.
+
+En orden contrario, writer autorizado retiene SHARE del publicador mientras espera tarea; el UPDATE revocador de rol se observa bloqueado por el PID del writer hasta que este confirma. Se comprueban tarea/revisión/metadata/asignaciones exactas, otras tareas/membresías y otros usuarios invariantes. CAS vacío y callback fallido no publican contexto ni cambian tablas; dueño sin cambio produce delta vacío pero mantiene el dueño canónico disponible para el destino del aviso. No se ejecuta el caller HTTP ni notifier: la expresión de destino [ownerID] se acredita como dato, no como envío. La retirada posterior probada es de rol, no un caso adicional de inactividad.
+
+Erdos preparó suite; Volta revisó barreras/alcance sin bloqueantes; coordinador inspeccionó y ejecutó.5 aprobadas contando padre, cero fallos/omisiones;106 tablas públicas observadas con cambios intencionales comprobados y exclusiones específicas. Log `/private/tmp/render2-goal231-recipient-authority.log`, salida0 y cleanup ENOENT `/private/tmp/render2-local-lFNhJj`. Backend2202 aprobadas/136 optativas omitidas, cero fallos (`/private/tmp/render2-goal231-backend.log`). Guía PostgreSQL orientó barreras concretas y orden de locks. Sin producto editado, nueva regresión frontend/build, migraciones nuevas, proveedores ni bases existentes.
+
+Se acredita la carrera pendiente230 en el servicio/guards, no middleware/endpoint completo ni entregas de mensaje posteriores a revocación. Genéricos de estado siguen pendientes de contrato por ID y no se convierten automáticamente en avisos a asignados. Próximo foco local no-notifier: Proyectos, formulario estructural que conserva revisión base frente a Actualizar remoto y diálogo de descarte. La fuente actual refreshDetail conserva formulario, save trata409 y canLeave usa window.confirm; su recorrido nativo sigue pendiente, no defecto de datos demostrado.
+
 ## Handoff aprobado al publicador por ID — corte230
 
 Defecto previo reproducido por HTTP/SQL en fixture55876: aprobar-publicacion guardó dueño/publicador91004 pero el aviso aprobada apuntó a qa_agustin91002 homónimo. El runner `/private/tmp/render2-goal230-approval-repro.mjs` solo declaró éxito tras contrastar la cola real; log `/private/tmp/render2-goal230-approval-repro.log`, APPROVAL_WRONG_RECIPIENT_REPRODUCED, cleanup ENOENT `/private/tmp/render2-local-xHBlDh`. Salida0 de ese diagnóstico significa defecto probado sobre versión previa, no aceptación ni entrega externa; no reutilizarlo como test verde del código corregido.

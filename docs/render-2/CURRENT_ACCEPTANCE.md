@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Publicador: retiro de permiso concurrente comprobado — corte231
+
+5 físicas con pg_blocking_pids: precheck obsoleto por inactivo/rol termina400 sin escritura; permiso retenido hace esperar la revocación de rol hasta commit. CAS vacío/rollback sin contexto, dueño sin cambio y106 tablas observadas con cambios intencionales controlados; fixture eliminado.2202 backend aprobadas/136 optativas omitidas. Servicio/guards directos, no endpoint HTTP, notifier ni proveedor; se reduce el pendiente230 a esos límites. Sin producto/GUI/build nuevos. Próximo gate: borrador estructural y descarte concurrente en Proyectos, no repetir altas ya acreditadas. Ver TASK_WORKFLOW_QA.md.
+
 ### Aprobación hacia publicador sin confundir homónimos — corte230
 
 Defecto de aviso equivocado reproducido físicamente y corregido en aprobar-publicacion: publicador activo/admin-community revalidado en transacción; dueño canónico comprobado antes de COMMIT; aviso dirigido a ese ID aunque ya fuera dueño, con actor capturado.8 físicas finales incluyen homónimos, autoexclusión, dueño sin cambio, rechazos/CAS y entrega API real con revisión exacta;99 tablas ajenas invariantes y fixtures eliminados.2202 backend/2770 frontend aprobadas,135 optativas omitidas. Falta carrera específica de revocación del publicador; no outbox ni envío externo. Sin publicación automática o despliegue. Ver TASK_WORKFLOW_QA.md.
