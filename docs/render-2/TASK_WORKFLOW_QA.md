@@ -1,5 +1,17 @@
 # Canonical task workflow: isolated HTTP QA
 
+## Lectura compartida nativa sin perder borradores — corte213
+
+Build212 `index-Bz8EzihW.js`, sin instrumentar dist ni reemplazar fetch. Dos identidades reales del fixture: Franco91001 escribe mediante API bearer autenticada del runner; Luciano91003 lee en un navegador con cookie. **No son dos navegadores/dispositivos ni una sesión cookie de Franco.** Runner `/private/tmp/render2-goal213-native.mjs`, PG55864/HTTP52826, identidad física exacta comprobada y tarea1 creada por API.
+
+Luciano abrió la tarea sin comentarios y escribió `QA213 brief sin guardar` y `QA213 borrador B de Luciano sin enviar`. SIGUSR1 de un solo uso hizo POST real de Franco con UUID y texto `QA213 comentario compartido de Franco`. Actualizar comentarios trajo una sola fila de Franco, manteniendo ambos borradores exactos. A390×844 se repitió la actualización: una sola fila, borradores intactos. Captura definitiva `/private/tmp/render2-goal213-shared-refresh-final-mobile.png`, inspeccionada. Se vaciaron manualmente ambos borradores sin enviarlos y se recargó: persistió un comentario de Franco y los editores estaban vacíos. No se afirma persistencia de borradores.
+
+Primer intento: UI pasó, pero el hash de mia_private_task_notifications cambió, salida1. Cleanup ENOENT `/private/tmp/render2-local-4sQ8Cb`. No se declaró aceptación. Diagnóstico de server/private-task-notifications: un comentario nuevo del dueño encola un aviso asíncrono al responsable, posterior al201; no ocurría con el autor responsable comentándose a sí mismo. La expectativa original de invariancia de103 tablas era incorrecta para este recorrido.
+
+El runner corregido espera por condición y de forma acotada la notificación de setup antes del baseline, conserva todas las filas previas y exige exactamente un aviso nuevo derivado del código: destinatario Luciano, tarea1, motivo comentario, actor Franco, mensaje/URL/fingerprint/campos previstos, pendiente y sin entrega. No se excluyó la tabla sin verificarla. La corrida final confirmó comentario/recibo de actor91001 únicos, aviso nuevo exacto y102 tablas completas restantes invariantes: `EXACT_ONE_FRANCO_COMMENT_RECEIPT_AND_NOTIFICATION; OTHER_TABLES_UNCHANGED 102`, salida0. Log `/private/tmp/render2-goal213-native-final.log`; cleanup ENOENT `/private/tmp/render2-local-0a8VXr`. No acredita entrega de notificaciones externas ni exactly-once global.
+
+Erdos preparó y ajustó el runner; coordinador ejecutó navegador/SQL y diagnosticó la expectativa fallida; revisión de Volta distinguió enqueue esperado de envío externo. La skill de verificación obligó a contrastar las invariantes fallidas antes de aceptar el recorrido. Pestañas propias28/29 cerradas y viewport restaurado. Sin cambios de producto, suites globales repetidas, base existente, push ni despliegue. Se detectó un pendiente visual real en la captura: Actualizar comentarios conserva apariencia nativa sin el estilo compartido; no se presenta este sector como visualmente terminado.
+
 ## Actualización explícita del listado compartido — corte212
 
 El detalle solo cargaba comentarios al abrirse. Ahora “Actualizar comentarios” solicita GET no-store sin reiniciar el efecto completo de apertura: mantiene listado anterior mientras espera, borrador/generación, edición del brief, controles de producción y modelo de envío. No hay polling ni sincronización en tiempo real. El servidor marca también GET de comentarios Cache-Control no-store.

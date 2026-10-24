@@ -4,7 +4,7 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
-Actualización212: detalle de tareas permite actualizar el listado de comentarios sin cerrar la tarea ni resetear borrador/formulario/intento; listar no confirma envíos inciertos.2728 frontend/2083 backend aprobadas,128 integraciones optativas omitidas, build correcto y revisión independiente;12 físicas de comentarios renovadas con Cache-Control no-store. Falta recorrido nativo del nuevo botón con dos integrantes. Ver TASK_WORKFLOW_QA.md.
+Actualización212–213: detalle permite actualizar comentarios sin resetear borrador/formulario/intento; listar no confirma envíos inciertos.2728 frontend/2083 backend aprobadas,128 optativas omitidas y12 físicas renovadas en212.213 verifica Franco por API autenticada → Luciano cookie/navegador, escritorio/móvil390, dos borradores intactos y recarga con fila única. SQL exige comentario/recibo únicos, notificación nueva exacta y102 tablas invariantes; fixture eliminado. Primer intento falló por no contemplar el enqueue esperado y quedó documentado. No equivale a dos dispositivos; pendiente visual del nuevo botón. Ver TASK_WORKFLOW_QA.md.
 
 Actualización211: migrador real088→089 probado sobre datos sintéticos poblados en clúster descartable, sin API.104 tablas completas preservadas y ledger con única entrada089; columnas/restricciones/índices/triggers observados y secuencias conservados, con RI nuevos esperados. Rerun sin cambios, servicio de comentarios/recovery/replay válido y cleanup ENOENT. Una física compuesta aprobada; backend2083 aprobadas/128 optativas omitidas. Ver TASK_WORKFLOW_QA.md. No sustituye ensayo sobre copia comercial autorizada, CLI/hosting ni aceptación global.
 
