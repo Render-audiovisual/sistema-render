@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Creación: barreras concurrentes verificadas en el servicio — corte229
+
+6 físicas sobre PostgreSQL nuevo acreditan inactividad/epoch/rol previos→401 sin alta; autoridad retenida serializa revocación después del commit; callback fallido revierte tarea y membresías.106 tablas observadas y fixture eliminado.2174 backend aprobadas/134 optativas omitidas. Sin producto o frontend/build nuevos. Se reduce el pendiente228 a HTTP concurrente/otros límites, no a falta de prueba física del servicio. Siguiente foco: handoff aprobado a publicador que todavía notifica por nombre pese a guardar ID; reproducción sintética, no física aún. Ver TASK_WORKFLOW_QA.md.
+
 ### Creación de tareas con avisos por ID — corte228
 
 Defecto de destinatario incorrecto reproducido por HTTP/SQL en fixture: tarea91003, aviso91002 homónimo. Corregido POST /tareas mediante modo explícito created en persistidor existente, actor vigente retenido y destinatarios releídos en la transacción; ambos canales reciben contexto por ID solo posCOMMIT.5 físicas nuevas acreditan homónimos, autoexclusión del actor, alias líder, inactivos y DTO cerrado;5 de reasignación renovadas sin regresión. Fixtures eliminados.2174 backend/2770 frontend aprobadas,133 optativas omitidas;27 focales. Sin entrega externa ni concurrencia específica de creación acreditada físicamente, sin idempotencia/outbox. Otros creadores/avisos de estado siguen fuera del cierre. Detalle y logs en TASK_WORKFLOW_QA.md.
