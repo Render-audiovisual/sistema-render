@@ -17,6 +17,7 @@ import { useSectionContentFocus } from './components/SectionContentFocus.jsx';
 import { sectionFocusKey } from './shared/navigation/section-focus.js';
 import { GoalDraftMemoryProvider } from './components/GoalDraftMemoryProvider.jsx';
 import { createRememberedViewOwner } from './shared/navigation/rememberedViewOwner.js';
+import { SectionErrorBoundary } from './components/SectionErrorBoundary.jsx';
 
 const lazyNamed = (loader, name) => React.lazy(() => loader().then((module) => ({ default: module[name] })));
 const FeedbackPage = lazyNamed(() => import("./pages/Feedback.jsx"), "FeedbackPage");
@@ -247,7 +248,9 @@ export function App() {
     return null;
   }
 
-  const loadedDashboard = <React.Suspense key={`dashboard:${sessionRenderEpoch}`} fallback={<RouteLoading />}>{dashboard}</React.Suspense>;
+  const loadedDashboard = <SectionErrorBoundary key={`section:${sessionRenderEpoch}:${sectionFocusKey(path,route.slice(path.length).split('#',1)[0])}`}>
+    <React.Suspense key={`dashboard:${sessionRenderEpoch}`} fallback={<RouteLoading />}>{dashboard}</React.Suspense>
+  </SectionErrorBoundary>;
 
   return (
     <GoalDraftMemoryProvider key={`draft-memory:${sessionRenderEpoch}`} session={sesion}>

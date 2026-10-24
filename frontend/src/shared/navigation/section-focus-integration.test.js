@@ -13,6 +13,13 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const parse = (name, source) => ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JSX);
 const appSource = read('../../App.jsx'), app = parse('App.jsx', appSource);
 const hookSource = read('../../components/SectionContentFocus.jsx'), hook = parse('SectionContentFocus.jsx', hookSource);
+const boundarySource = read('../../components/SectionErrorBoundary.jsx');
+const boundaryTree = parse('SectionErrorBoundary.jsx', boundarySource);
+const boundaryClass = boundaryTree.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === 'SectionErrorBoundary');
+assert.ok(boundaryClass, 'Genuine section error boundary class');
+const boundaryCode = ts.transpileModule(boundaryClass.getText(boundaryTree), {
+  compilerOptions: { jsx: ts.JsxEmit.React, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
 function nodes(root, predicate) {
   const result = []; const visit = node => { if (predicate(node)) result.push(node); ts.forEachChild(node, visit); }; visit(root); return result;
 }
@@ -65,7 +72,9 @@ async function renderApp(route, { status = 'authenticated', session = { usuario:
   const location = { pathname: parsed.pathname, search: parsed.search, hash: parsed.hash,
     get href() { return parsed.href; }, set href(value) { redirects.push(value); }, replace(value) { redirects.push(value); } };
   const snapshot = { status, session };
-  const deps = { React, window: { location }, URLSearchParams,
+  const SectionErrorBoundary = exported(boundaryCode, { React, window: { location } }).SectionErrorBoundary;
+  assert.equal(typeof SectionErrorBoundary, 'function');
+  const deps = { React, SectionErrorBoundary, window: { location }, URLSearchParams,
     readRouteKey: () => `${location.pathname}${location.search}${location.hash}`,
     useApplicationSession: () => snapshot, sessionViewKey: value => value ? 'opaque-session' : null,
     getApplicationSessionSnapshot: () => snapshot, canonicalLegacyRoute, sectionFocusKey,
@@ -130,7 +139,7 @@ test('actual App gate disables loading/error/anonymous/login/root/legacy focus a
   }
 });
 
-test('transparent draft provider keeps skip, Sidebar, marker and Suspense as siblings without a DOM dashboard wrapper', async () => {
+test('transparent draft provider and healthy boundary keep skip, Sidebar, marker and Suspense DOM order without a dashboard wrapper', async () => {
   const returned = appFunction.body.statements.filter(ts.isReturnStatement).at(-1).expression;
   const fragment = ts.isParenthesizedExpression(returned) ? returned.expression : returned;
   assert.ok(ts.isJsxElement(fragment));

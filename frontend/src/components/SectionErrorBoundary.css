@@ -1,0 +1,7 @@
+.section-error{align-content:center;background:var(--render-canvas);color:var(--render-ink);display:grid;justify-items:center;margin-left:var(--render-sidebar-width);min-height:100dvh;padding:32px 24px;text-align:center}
+.section-error-content{max-width:42rem;min-width:0;overflow-wrap:anywhere}
+.section-error h1{font-size:clamp(20px,2.2vw,28px);line-height:1.25;margin:0 0 16px}
+.section-error p{font-size:14px;line-height:1.6;margin:12px 0;color:var(--render-muted)}
+.section-error button{min-height:44px;padding:10px 18px;margin-top:12px;border:1px solid var(--render-line);border-radius:8px;background:var(--render-canvas);color:var(--render-ink);font:inherit;cursor:pointer}
+.section-error button:focus-visible{outline:2px solid var(--render-accent);outline-offset:3px}
+@media(max-width:980px){.section-error{margin-left:0;padding:calc(var(--render-mobile-header-height) + 24px) 20px 24px}}
