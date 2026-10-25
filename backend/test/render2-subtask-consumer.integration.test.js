@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import {access} from 'node:fs/promises';
 import {startLocalHarness,assertFixtureIdentity,request,fixturePassword} from '../scripts/render2-local-test.js';
 import {apiSubtasks} from '../../frontend/src/features/render-os/services/render-os-api.js';
+import {mergeRelatedTasks} from '../../frontend/src/workspace-task-state.js';
+import {resolveTaskSubtasks} from '../../frontend/src/pages/taskSubtaskObservation.js';
 
-test('actual frontend subtask reader accepts genuine role-safe PostgreSQL task hierarchy without writes',{
+test('actual frontend subtask reader validates PostgreSQL hierarchy and retains a newer confirmed revision',{
   skip:process.env.RENDER2_RUN_LOCAL_INTEGRATION!=='true',timeout:120000,
 },async t=>{
   const port=55957,f=await startLocalHarness({port}),directFetch=globalThis.fetch;
@@ -42,5 +44,45 @@ test('actual frontend subtask reader accepts genuine role-safe PostgreSQL task h
   await t.test('genuine empty collection is accepted without borrowing another parent',async()=>{
     assert.deepEqual(await apiSubtasks(emptyParent.id,{method:'GET',headers:{authorization:`Bearer ${tokens.qa_luciano}`}}),[]);
     assert.equal(calls,3);assert.deepEqual(await snapshot(),before);
+  });
+  await t.test('delayed genuine GET cannot roll back a newer API-confirmed child revision',async()=>{
+    let release,readReady;
+    const ready=new Promise(resolve=>{readReady=resolve;});
+    const barrier=new Promise(resolve=>{release=resolve;});
+    globalThis.fetch=async(url,options)=>{
+      if(typeof url!=='string'||!url.startsWith('/api/tareas/'))return directFetch(url,options);
+      assert.equal(options.method,'GET');
+      const response=await directFetch(new URL(url,f.base),options);
+      // Consume bytes before the mutation: no open query/transaction or
+      // fabricated task DTO. Only delivery of this real response is delayed.
+      const body=await response.text();
+      readReady();await barrier;
+      return new Response(body,{status:response.status,headers:response.headers});
+    };
+    const pending=apiSubtasks(parent.id,{method:'GET',headers:{authorization:`Bearer ${tokens.qa_luciano}`}});
+    try {
+      await Promise.race([ready,pending.then(()=>{throw new Error('Delayed read completed before release');})]);
+      const updated=await request(f.base,`/api/tareas/${child.id}?workspace=render_os`,{
+        token:tokens.qa_franco,method:'PATCH',body:{expected_revision:1,titulo:'QA358 confirmed newer child'},
+      });
+      assert.equal(updated.status,200,JSON.stringify(updated.body));
+      assert.equal(updated.body.revision,2);
+      const afterUpdate=await snapshot();
+      release();
+      const oldRows=await pending;
+      assert.equal(oldRows.find(row=>row.id===child.id).revision,1);
+      const cache=mergeRelatedTasks([updated.body],oldRows);
+      assert.equal(cache.find(row=>row.id===child.id),updated.body);
+      const visible=resolveTaskSubtasks(oldRows,cache,parent.id);
+      assert.equal(visible.find(row=>row.id===child.id).titulo,'QA358 confirmed newer child');
+      assert.equal(visible.find(row=>row.id===child.id).revision,2);
+      const reloaded=await request(f.base,`/api/tareas/${child.id}?workspace=render_os`,{token:tokens.qa_luciano});
+      assert.equal(reloaded.status,200);
+      assert.equal(reloaded.body.revision,2);
+      assert.equal(reloaded.body.titulo,'QA358 confirmed newer child');
+      assert.deepEqual(await snapshot(),afterUpdate,'Delivery/merge performs no additional database writes');
+    } finally {
+      release();await pending;globalThis.fetch=directFetch;
+    }
   });
 });
