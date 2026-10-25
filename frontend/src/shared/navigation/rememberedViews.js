@@ -38,7 +38,7 @@ const validators = {
   '/reportes-historias': { periodo: oneOf('mes_actual', 'mes_pasado', 'ultimos_30') },
   '/planificacion-historias': {
     vista: oneOf('estructura','checklist','fechas','planilla','archivadas'),
-    mes: month, cliente: numericId, filtro: numericId,
+    mes: month, cliente: numericId, filtro: value => value === 'all' || numericId(value),
   },
   '/planificacion-publicaciones': {
     tab: oneOf('calendario','preparar','programadas','historial','lista','planilla','archivadas'),

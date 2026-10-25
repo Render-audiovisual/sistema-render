@@ -17,6 +17,7 @@ import { createEditorialCreateIntent } from '../shared/editorial/editorial-creat
 import { EditorialArchiveControl } from '../components/EditorialArchiveControl.jsx';
 import { EditorialArchivePanel } from '../components/EditorialArchivePanel.jsx';
 import { createStoryCellDraft } from './storyCellDraft.js';
+import { readStoryPlanillaFilter, storyPlanillaFilterQuery } from './storyPlanillaContext.js';
 
 function pushUrlContext(changes) {
   const result = pushRawUrlContext(changes);
@@ -1343,7 +1344,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   // "+ Nueva historia" en otras pestañas) para no cambiar ese comportamiento
   // existente. Vacío = "Hoja general" (todos los clientes), como hoy.
   const [filtroClientePlanilla, setFiltroClientePlanilla] = useState(
-    initialContext.filtro || (initialContext.vista === "planilla" ? initialContext.cliente : "") || "",
+    readStoryPlanillaFilter(window.location.search, initialContext.vista),
   );
   const [errorClientes, setErrorClientes] = useState(null);
   const [refrescarKey, setRefrescarKey] = useState(0);
@@ -1390,7 +1391,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
   };
 
   useEffect(() => {
-    replaceUrlContext({ vista, cliente: clienteSeleccionado, filtro: filtroClientePlanilla, mes: formatMonthContext(year, month) });
+    replaceUrlContext({ vista, cliente: clienteSeleccionado, filtro: storyPlanillaFilterQuery(filtroClientePlanilla), mes: formatMonthContext(year, month) });
   }, [vista, clienteSeleccionado, filtroClientePlanilla, year, month]);
 
   useEffect(() => {
@@ -1399,7 +1400,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
       const date = readMonthContext(context.mes, hoyDate.getFullYear(), hoyDate.getMonth());
       setVista(["estructura", "checklist", "fechas", "planilla", "archivadas"].includes(context.vista) ? context.vista : "estructura");
       setClienteSeleccionado(Number(context.cliente) || null);
-      setFiltroClientePlanilla(context.filtro || "");
+      setFiltroClientePlanilla(readStoryPlanillaFilter(window.location.search, context.vista));
       setYear(date.year);
       setMonth(date.month);
     };
@@ -1778,8 +1779,8 @@ export function HistoriasPage({ initialTab = "estructura" }) {
                         className="h-toolbar-client-select"
                         value={filtroClientePlanilla}
                         onChange={(e) => {
-                          if (!approveContextChange({ filtro: e.target.value })) return;
-                          pushUrlContext({ filtro: e.target.value });
+                          if (!approveContextChange({ filtro: storyPlanillaFilterQuery(e.target.value) })) return;
+                          pushUrlContext({ filtro: storyPlanillaFilterQuery(e.target.value) });
                           setFiltroClientePlanilla(e.target.value);
                         }}
                         aria-label="Filtrar planilla por cliente"

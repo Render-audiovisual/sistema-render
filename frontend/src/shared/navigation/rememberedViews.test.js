@@ -27,6 +27,15 @@ const cases = [
   ['/planificacion-publicaciones', 'tab=lista&mes=2026-10&cliente=9&cal_vista=semana&cal_tipo=video&seg_cliente=7&seg_mes=2026-09&seg_estado=en_revision&seg_tipo=carrusel'],
   ['/feedback', 'section=team&mode=trash&categoria=reunion'],
 ];
+test('Historias retains explicit all independently of the creation client and user identity',()=>{
+  const s=storage(),path='/planificacion-historias';
+  assert.equal(saveRememberedView(s,7,path+'?vista=planilla&cliente=2&filtro=all&mes=2026-10'),true);
+  const restored=new URL(readRememberedView(s,7,path),'https://render.test');
+  assert.equal(restored.searchParams.get('filtro'),'all');
+  assert.equal(restored.searchParams.get('cliente'),'2');
+  assert.equal(readRememberedView(s,8,path),path);
+  assert.equal(readRememberedView(s,7,path+'?cliente=3'),path+'?cliente=3');
+});
 for (const [path, query] of cases) {
   test(`${path}: closed preferences round trip and are user/path isolated`, () => {
     const s = storage(); assert.equal(saveRememberedView(s, 7, `${path}?${query}`), true);

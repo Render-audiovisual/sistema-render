@@ -1,5 +1,13 @@
 # Preferencias de vistas por usuario
 
+## Historias: Todos explícito y coherente — corte259
+
+Erdos reprodujo tres fallos focales por mount/popstate/writer: elegir Todos eliminaba filtro pero mantenía cliente destino, por lo que reload heredaba de nuevo ese cliente. Historias ahora interpreta filtro=all como UIvacía explícita, usa el mismo helper para mount/popstate, conserva cliente para altas y enlaces antiguos sin filtro/initialTab. El writer y selector nunca borran la intención Todos. Coordinador amplió el kernel cerrado de preferencias y test por usuario/enlaceexplícito: rojo→verde; no nuevo almacenamiento de negocio. Volta revisión independiente61focalesPASS sin bloqueantes.
+
+Frontend2920PASS, build index-DrRTCwlo.js, logs /private/tmp/render2-goal259-frontend.log y build.log. Native canónico App/cookies/API/PostgreSQL55896/HTTP52845 con dos clientes/dos historias sintéticas: entrada B muestra1; Todos URLfiltroall muestra2; reload; salidaProyectos y reentradaSidebar restauraTodos/dosfilas; seleccionarA y Atrás vuelveTodos/dosfilas. Reload móvil390 selectorDOMvalue vacío/textoTodos y tabla3rows incluyendo encabezado. Captura /private/tmp/render2-goal259-historias-mobile.png inspeccionada. No se afirma aceptación de toda tabla ancha/móvil ni creación de historias por ese gesto.
+
+Runner /private/tmp/render2-goal259-native.mjs comprobó105 tablas dominio invariantes (familiasauth/browser_session excluidas), exit0 y cleanup ENOENT FVdK3j; log native.log. Pestaña52 cerrada y viewport restaurado. No logout ni cambio deusuarioA/B/A: este corte no cierra aquel pendiente general de Historias ni demuestra sincronización entre dispositivos, fallos de transporte o invalidez completa dequery. No backend/migración/proveedor/deploy. Superpowers y Verification orientaron contrato, revisión y SQL aislado; frontend-design mantuvo diseño existente sin cambios de estilo.
+
 ## Función integrada
 
 Tareas, Calendario, Producciones, Proyectos, Clientes, Reportes, Historias, Publicaciones y Feedback pueden recuperar la última vista y sus filtros admitidos al volver mediante la navegación interna de la barra lateral. Desde205 también lo hacen los accesos genéricos de Inicio a destinos admitidos. Las preferencias se separan por ID estable de usuario y ruta. No contienen tareas, producciones, aprobaciones ni finanzas; el backend continúa como fuente de los datos operativos.

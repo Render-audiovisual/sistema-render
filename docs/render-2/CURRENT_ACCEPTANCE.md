@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Historias: Todos conserva su significado tras recarga — corte259
+
+Erdos reprodujo que vaciar filtro conservando cliente2 mostrabaTodos, pero mount heredaba cliente2 y popstate interpretaba otra cosa. Nuevo helper compartido mount/restore y writers usa filtro=all para selección vacía explícita, manteniendo cliente de altas independiente y enlaces antiguos/initialTab. Kernel de preferencias admite all solo para filtroHistorias. Erdos producto/pruebas, coordinador kernel/integración/native y Volta revisión61focalesPASS. Sin backend/permisos/datos comerciales modificados.
+
+Frontend2920PASS y build index-DrRTCwlo.js. Native App/cookies/API/PostgreSQL55896/52845: dos clientes/dos historias, entradaB→Todos→reload→Proyectos→SidebarHistorias restauraTodos→clienteA→AtrásTodos→reload móvil390 conservaTodos y2filas. Captura /private/tmp/render2-goal259-historias-mobile.png inspeccionada.105 tablas dominio invariantes, rootFVdK3j cleanup ENOENT/exit0; pestaña cerrada/viewportrestaurado. Ver REMEMBERED_VIEWS_QA.md. No A/B/A deusuarios, invalidURLs/fallos/red, otrosdispositivos o aceptación global. Revisión adicional detectó doble cableado click/dblclick de carpetaDrive; pendiente reproducir antes de corregir, no prueba de proveedor. Sin deploy.
+
 ### Feedback: recorrido nativo y catálogos independientes — corte258
 
 Revisión Erdos detectó Promise.all acoplando usuarios a clientes: un fallo de clientes impedía elegir personas incluso en Equipo. Corregido con cargas/errores independientes y scope capturado de sesión/contexto/montaje/ruta; etiqueta distingue carga de error. Labels largos ahora pueden contraerse y cortar palabras. Pruebas de efecto real incluyen fallos independientes, DTO inválido, respuestas tardías y ABA. Frontend2915PASS; build index-BjPK0kTt.js. No altera reglas de responsables ni acceso compartido.

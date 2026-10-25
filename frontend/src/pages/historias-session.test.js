@@ -8,6 +8,7 @@ import { createSessionView, sessionViewInputs } from '../shared/session/session-
 import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
 import { createEditorialCreateIntent } from '../shared/editorial/editorial-create-intent.js';
 import { createStoryCellDraft } from './storyCellDraft.js';
+import { readStoryPlanillaFilter } from './storyPlanillaContext.js';
 
 // Actual hook logic/callbacks with injected effects, not a mounted React/HTTP claim.
 const source = readFileSync(new URL('./Historias.jsx', import.meta.url), 'utf8');
@@ -417,7 +418,7 @@ test('planilla has a secondary admin entry/return, exactly three primary tabs an
   assert.equal(run(initial, { useState: value => value, initialContext: { vista: 'planilla' } }), 'planilla');
   const restore = init(page, 'restoreContext');
   const values = [];
-  run(restore, { readUrlContext: () => ({ vista: 'planilla', cliente: '2', filtro: '2' }), readMonthContext: () => ({ year: 2026, month: 9 }),
+  run(restore, { readStoryPlanillaFilter, readUrlContext: () => ({ vista: 'planilla', cliente: '2', filtro: '2' }), readMonthContext: () => ({ year: 2026, month: 9 }),
     window: { location: { search: '?vista=planilla' } }, hoyDate: new Date('2026-10-20T12:00:00Z'),
     setVista: value => values.push(value), setClienteSeleccionado: () => {}, setFiltroClientePlanilla: () => {}, setYear: () => {}, setMonth: () => {} })();
   assert.deepEqual(values, ['planilla']);
