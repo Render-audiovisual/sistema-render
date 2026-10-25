@@ -16,9 +16,9 @@ function fixture(saved=async()=>{}) {
   const snapshot={status:'confirmed',busy:false,locked:false};
   const deps={pending,active,visit:{id:'visit-a'},heldScope:{current:scope},model:{current:{snapshot}},
     callbacks:{current:{onSaved:async(id,captured)=>{events.push(['read',id,captured]);await saved();},onState:state=>events.push(['state',state])}},
-    setWorking:value=>events.push(['working',value]),setReadbackError:value=>events.push(['error',value])};
+    setWorking:value=>events.push(['working',value]),setState:value=>events.push(['local-state',value]),setReadbackError:value=>events.push(['error',value])};
   const callback=Function(...Object.keys(deps),`return (${run.getText(tree)});`)(...Object.values(deps));
-  return {callback,pending,active,scope,events,retire(){current=false;}};
+  return {callback,pending,active,scope,events,snapshot,retire(){current=false;}};
 }
 test('actual result callback retains synchronous latch through ACK and readback with exact captured scope',async()=>{
   const read=deferred(),f=fixture(()=>read.promise); let writes=0;
@@ -36,6 +36,12 @@ test('retired scope cannot perform readback and saved-but-unread outcome remains
   const f=fixture();f.retire();await f.callback(async()=>true);
   assert.equal(f.events.some(row=>row[0]==='read'),false);
   assert.ok(f.events.some(row=>row[0]==='error'&&row[1].includes('está registrado')));
+});
+test('a retired model snapshot replaces stale local writing state after orchestration ends',async()=>{
+  const f=fixture();Object.assign(f.snapshot,{status:'blocked',busy:false,locked:true});
+  await f.callback(async()=>false);
+  assert.deepEqual(f.events.find(row=>row[0]==='local-state'),['local-state',f.snapshot]);
+  assert.equal(f.events.find(row=>row[0]==='local-state')[1].status,'blocked');
 });
 test('unmounted callback does not read or publish a late accepted result',async()=>{
   const ack=deferred(),f=fixture();const pending=f.callback(()=>ack.promise);

@@ -37,7 +37,7 @@ export function ProductionResultRegister({visit, capture, onState, onSaved, disa
       }
     } finally {
       pending.current = false;
-      if (active.current) { setWorking(false); callbacks.current.onState(model.current.snapshot); }
+      if (active.current) { setWorking(false); setState(model.current.snapshot); callbacks.current.onState(model.current.snapshot); }
     }
   };
   const alreadyCurrent = state.accepted?.revision_resultante >= visit.revision;

@@ -17,7 +17,7 @@ export function ProductionResultHistory({visit, sesion, onObservation}) {
   const observer = useRef(onObservation); observer.current = onObservation;
   session.current = sesion;
   const load = async (generation, cursor = null, previous = null) => {
-    if (flight.current) return;
+    if (owner.current !== generation || flight.current) return;
     flight.current = true; setBusy(true); setError('');
     try {
       const scope = createCapturedRequest({session: session.current, readSession: getSesion,
@@ -30,7 +30,7 @@ export function ProductionResultHistory({visit, sesion, onObservation}) {
       }
       if (previous && next.resultados.some(row => row.visita_revision >= cursor
         || previous.resultados.some(old => old.id === row.id))) throw new Error('overlap');
-      setPage({...next, resultados: [...(previous?.resultados || []), ...next.resultados]});
+      setPage({...next, generation, resultados: [...(previous?.resultados || []), ...next.resultados]});
       if (!previous) observer.current?.({visitId:visit.id, revision:next.revision,
         registered:next.resultados.some(row => row.revision_resultante === next.revision)});
     } catch {
@@ -59,7 +59,7 @@ export function ProductionResultHistory({visit, sesion, onObservation}) {
         <Material url={row.resumen.visita.drive_url}/>
       </details>
     </article>)}
-    {page?.next_before_revision && !error && <button type="button" disabled={busy} onClick={() => load(owner.current, page.next_before_revision, page)}>Ver resultados anteriores</button>}
+    {page?.next_before_revision && !error && <button type="button" disabled={busy} onClick={() => load(page.generation, page.next_before_revision, page)}>Ver resultados anteriores</button>}
     <button type="button" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Consultar historial</button>
   </details>;
 }
