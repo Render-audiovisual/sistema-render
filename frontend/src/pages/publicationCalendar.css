@@ -14,3 +14,20 @@
 }
 .publicaciones-viewport .cal-day-open:disabled { opacity:1; cursor:default; }
 .publicaciones-viewport .cal-day-open:focus-visible { outline:2px solid var(--accent,#0071e3); outline-offset:2px; }
+
+.publicaciones-viewport .publication-month-scroll {
+  min-width:0;
+  width:100%;
+  max-width:100%;
+  overflow-x:auto;
+  overscroll-behavior-inline:contain;
+  scrollbar-width:none;
+}
+.publicaciones-viewport .publication-month-scroll::-webkit-scrollbar { display:none; }
+.publicaciones-viewport .publication-month-scroll:focus-visible { outline:2px solid var(--accent,#0071e3); outline-offset:2px; }
+.publicaciones-viewport .publication-month-scroll-hint { display:none; margin:0 0 8px; color:var(--muted,#667085); font-size:12px; line-height:1.5; }
+.publicaciones-viewport .publication-month-scroll[hidden],
+.publicaciones-viewport .publication-month-scroll-hint[hidden] { display:none; }
+@media (max-width:760px) {
+  .publicaciones-viewport .publication-month-scroll-hint:not([hidden]) { display:block; }
+}

@@ -365,6 +365,9 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
         </section>)}
       </div>}
 
+      <p id="publication-calendar-scroll-hint" className="publication-month-scroll-hint" hidden={vista === "semana"}>Deslizá el calendario hacia los lados para ver toda la semana. Con teclado, usá las flechas dentro del calendario.</p>
+      <div className="publication-month-scroll" role="region" aria-label="Calendario mensual de publicaciones"
+        aria-describedby="publication-calendar-scroll-hint" tabIndex={0} hidden={vista === "semana"}>
       <div className={`cal-grid ${vista === "semana" ? "is-hidden" : ""}`}>
         {DIAS_SEMANA.map((dia) => (
           <div className="cal-dow" key={dia}>
@@ -427,6 +430,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
         )}
       </div>
 
+      </div>
       <div className="caption">
         Tocá una publicación para ver su detalle o cambiar la fecha. Las fechas que movés manualmente quedan protegidas de futuras actualizaciones automáticas.
       </div>

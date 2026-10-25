@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Publicaciones: columnas móviles alcanzables y foco confirmado — corte281
+
+Se confirmó recorte real: grid760 dentro de frame349 overflowhidden, no overflowroot. Nueva región mensual acotada con desplazamiento horizontal nativo, foco/indicación y ocultamiento en semana; conserva columnas/datos, no es mes comprimido. Chrome real/App281/OJAdpaMU/backend278:390 y320 sin overflowraíz, flechas alcanzan domingo, Enter→Escape devuelve botón28visible44×44; antes se validó también Espacio con build280, cerrando su pendiente estable. Escritorio883px sin scroll; semana oculta región/hint. Captura principal /private/tmp/render2-goal281-calendar-mobile.png inspeccionada. Ver EDITORIAL_DIALOGS_QA.md para mediciones y límites.
+
+Coordinador producto/pruebas/navegador, Harvey revisión.2tests nuevos rojos→verdes,42focales y2975frontendPASS/1SKIP/0FAIL; build/diffcheck correctos. Ambos fixtures propios antes/después terminaron salida0/105hashes+counters/index invariantes y cleanup ENOENT vQ1HxF/LUanZV, pestañas cerradas/viewport restaurado. Sin writes UI, backend de producto/migración/proveedor/bases reales/despliegue. Superpowers/Verification/Apple UI/Frontend Design guiaron evidencia y conservación de contenido. Pendiente swipe real/zoom/otrosroles/contexto y aceptación global.
+
 ### Publicaciones: stack nativo comprobado y día enfocable — corte280
 
 Chrome/App279/backend278/PG55909HTTP52854: día→pieza→registro con3:modal, Tab interior/límites y Escape3→2→1 devolviendo foco al invocador; captura móvil390 inspeccionada sin overflow del registro. Escape del último día terminó en BODY: defecto físico corregido con botón nativo, invocador explícito y keyISO (también “más”).4tests nuevos,60focales y2973frontendPASS/1SKIP/0FAIL, build final BYJ2pogN. Detalles/logs/límites en EDITORIAL_DIALOGS_QA.md.
