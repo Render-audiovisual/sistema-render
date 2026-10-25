@@ -1,5 +1,11 @@
 # Revisión 156: autoridad y snapshot de catálogos editoriales
 
+## Historias: filtro de cliente ausente explícito — corte263
+
+Erdos reprodujo el caso en selectorPlanillaHistorias: filtro2/catálogo1 mantenía filtrado2 y cero filas, pero no había option seleccionada. Añadida optiondisabled «Cliente no disponible (ID)» para filtro no vacío ausente. No adopta otrocliente, limpia filtro ni reescribe datos; la acción humanaTodos conserva filtro=all y cliente de creación separado. Calendar/Producciones ya ofrecen fallbackCliente#ID y SeguimientoPublicaciones ya conserva opción ausente; no se modificaron esas rutas.
+
+JSX real/ReactSSR dosrojos→4PASS, con expresión de filtrado real ID2 y callback/veto: mantener identidad ausente, catálogo vacío, cliente disponible sin duplicado, Todos explícito. Volta revisión independiente8PASS sin bloqueantes; no catálogo revocado real ni DOMmontado del nuevofallback. Frontend2945PASS/0FAIL/0SKIP, build index-C1LD_S0l.js; logs /private/tmp/render2-goal263-frontend.log y build.log. El nativePublicaciones263 usa build262, no acredita este cambioHistorias. Sin CSS/backend/migración/proveedor/deploy; frontend-design orientó claridad sin rediseño.
+
 ## Presentación de cliente seleccionado no disponible — corte262
 
 Volta detectó value=clienteID sin option correspondiente en PlanillaPublicaciones cuando el catálogo no contiene eseID; datos y URL seguían filtrados a esecliente. Añadida option disabled con value exacto y texto «Cliente no disponible (ID)». No modifica selección, carga, catálogo, writers/handlers, permisos o draft. Clienteactual ausente sigue sin montar Planilla; seleccionar una opción disponible requiere acción explícita.

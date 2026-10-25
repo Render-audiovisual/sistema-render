@@ -1786,6 +1786,7 @@ export function HistoriasPage({ initialTab = "estructura" }) {
                         aria-label="Filtrar planilla por cliente"
                       >
                         <option value="">Todos los clientes</option>
+                        {filtroClientePlanilla && !clientes.some(cliente => String(cliente.id) === filtroClientePlanilla) && <option disabled value={filtroClientePlanilla}>Cliente no disponible ({filtroClientePlanilla})</option>}
                         {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                       </select>
                     </label>
