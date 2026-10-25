@@ -33,7 +33,7 @@ function harness({ busy = false, batchBusy = false, allow = true } = {}) {
   const state = { day: '2026-10-20', selected: { id: 'original' }, creating: true, detailLoading: true };
   let permissionCalls = 0, prompts = 0;
   const actualMayLeave = evaluate(expression('mayLeave'), {
-    dirty, writeLock: { current: busy }, batchDraft: { current: { busy: batchBusy } },
+    dirty, writeLock: { current: busy }, batchDraft: { current: { busy: batchBusy } }, resultDraft: { current: {busy:false,locked:false} },
     window: { confirm() { prompts++; return allow; } },
   });
   const deps = { month: '2026-10', day: state.day, clientId: '37', tab: 'pending', openVersion,

@@ -23,7 +23,7 @@ function fixture(cookie=true){
   let live=cookie?accept():{token:'qa-original',usuario:{id:7,rol:'admin',activo:true}};
   const rendered=live,calls=[],effects=[],captures=[];
   let transport=async(url,options)=>options?.method?{visita:visit(2)}:visit(2);
-  const deps={sesion:rendered,getSesion:()=>live,readEpoch:{current:0},openVersion:{current:0},refreshVersion:{current:0},writeLock:{current:false},batchDraft:{current:{busy:false}},
+  const deps={sesion:rendered,getSesion:()=>live,readEpoch:{current:0},openVersion:{current:0},refreshVersion:{current:0},writeLock:{current:false},batchDraft:{current:{busy:false}},resultDraft:{current:{busy:false,locked:false}},
     apiRequest:async(url,options)=>{calls.push({url,options});return transport(url,options);},
     createCapturedRequest:options=>{captures.push(options);return createCapturedRequest(options);},
     productionWrite,verifiedProductionDraftVisit,assertProductionClient,newestProductionVisit,reconcileProductionVisitList,month:'2026-10',clientId:'7',positiveId:value=>Number.isSafeInteger(value)&&value>0,visitDTO:value=>value?.visita||value};
@@ -94,4 +94,10 @@ test('double click and batch busy deny before capturing or dispatching',async()=
   const pending=f.write(visit(),'','PATCH',{});await assert.rejects(f.write(visit(),'','PATCH',{}),/otra operación/);
   assert.equal(f.captures.length,1);held.reject(Error('offline'));await assert.rejects(pending,/offline/);
   f.deps.batchDraft.current.busy=true;await assert.rejects(f.write(visit(),'','PATCH',{}),/otra operación/);assert.equal(f.captures.length,1);
+});
+for(const state of [{busy:true,locked:false},{busy:false,locked:true}])test(`result busy=${state.busy} locked=${state.locked} fences actual writeVisit before session capture`,async()=>{
+  const f=fixture();f.deps.resultDraft.current=state;
+  await assert.rejects(f.write(visit(),'/videos','POST',{}),/otra operación/);
+  assert.equal(f.captures.length,0);assert.equal(f.calls.length,0);assert.deepEqual(f.effects,[]);
+  assert.equal(f.deps.writeLock.current,false);assert.deepEqual(f.deps.resultDraft.current,state);
 });

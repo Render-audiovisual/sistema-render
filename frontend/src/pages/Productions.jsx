@@ -10,6 +10,8 @@ import { createProductionDraft, productionMediaDraft, productionVisitDraft, veri
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { createProductionCreateIntent } from './productionCreateIntent.js';
 import { ProductionHistoryBatchReview } from '../components/ProductionHistoryBatchReview.jsx';
+import { ProductionResultHistory } from './ProductionResultHistory.jsx';
+import { ProductionResultRegister } from './ProductionResultRegister.jsx';
 import './Productions.css';
 import { productionLocation, initialProductionContext, productionReadUrl, assertProductionClient, productionCalendarDay, validProductionDay } from './productionRouteContext.js';
 import { createProductionVisitObserver, newestProductionVisit, reconcileProductionVisitList } from './productionVisitObservation.js';
@@ -354,8 +356,10 @@ function EditorialAssociation({visit,video,busy,onWrite,onDirty}) {
     </form>}
   </details>;
 }
-function VisitDetail({visit, users, busy, isAdmin, sesion, onBatchDraftStateChange, onBatchSaved, onWrite, onDirty, onReload}) {
+function VisitDetail({visit, users, busy, isAdmin, sesion, onBatchDraftStateChange, onBatchSaved, onWrite, onDirty, onReload, resultControls}) {
   const [adding, setAdding] = useState({});
+  const [resultObservation,setResultObservation] = useState(null);
+  const resultKnown=resultObservation?.visitId===visit.id&&resultObservation?.revision===visit.revision;
   const mediaFocusTargets = useRef({videos:{current:null},fotos:{current:null}});
   const mediaFocusOwner = useRef(false);
   useLayoutEffect(()=>{mediaFocusOwner.current=true;return()=>{mediaFocusOwner.current=false;};},[]);
@@ -369,6 +373,8 @@ function VisitDetail({visit, users, busy, isAdmin, sesion, onBatchDraftStateChan
     {visit.observaciones && <p className="prod-notes">{visit.observaciones}</p>}<p className="prod-muted">Participantes: {(visit.participante_ids || []).map(id=>users.find(user=>user.id===id)?.nombre || `Usuario #${id}`).join(', ') || 'Sin participantes'}</p>
     {visit.tarea_origen_id && <a href={`/workspace/tareas?task=${visit.tarea_origen_id}`}>Ver tarea de origen ↗</a>}
     {isAdmin&&visit.tarea_origen_id&&<ProductionHistoryBatchReview sourceId={visit.tarea_origen_id} sesion={sesion} users={users} disabled={busy} onDraftStateChange={onBatchDraftStateChange} onSaved={onBatchSaved}/>}
+    <ProductionResultHistory visit={visit} sesion={sesion} onObservation={setResultObservation}/>
+    <ProductionResultRegister visit={visit} {...resultControls} disabled={!resultKnown} registered={resultKnown&&resultObservation.registered}/>
     <VisitEditor visit={visit} users={users} busy={busy} onWrite={onWrite} onDirty={onDirty} onReload={onReload}/>
     {['videos','fotos'].map(kind=><section key={kind} className="prod-media-section"><header className="prod-section-heading"><h3>{kind === 'videos' ? 'Videos' : 'Fotos'} <span>{visit[kind]?.length || 0}</span></h3><button ref={mediaFocusTargets.current[kind]} disabled={busy} type="button" onClick={()=>setAdding(current=>({...current,[kind]:true}))}>+ {kind === 'videos' ? 'Video' : 'Fotos'}</button></header>
       {(visit[kind] || []).map(item=><article className="prod-media" key={item.id}><header><h4>{item.titulo || item.tipo}</h4><span className={`prod-status is-${item.estado}`}>{(kind === 'videos' ? VIDEO_STATES : PHOTO_STATES)[item.estado] || item.estado}</span></header><SafeLink url={item.material_url || item.drive_url}/>
@@ -414,7 +420,8 @@ export function ProductionsPage({sesion}) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [pageBusy, setBusy] = useState(false);
   const [batchBusy,setBatchBusy]=useState(false),batchDraft=useRef({dirty:false,busy:false});
-  const busy=pageBusy||batchBusy;
+  const [resultBusy,setResultBusy]=useState(false),resultDraft=useRef({busy:false,locked:false});
+  const busy=pageBusy||batchBusy||resultBusy;
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [reload, setReload] = useState(0);
@@ -424,11 +431,18 @@ export function ProductionsPage({sesion}) {
   const navigationRef = useRef(null);
   const dirty = useRef(new Set());
   const productionObservation = useRef(Symbol('production-form-observation'));
-  useNavigationGuard(() => ({ dirty: dirty.current.size > 0, busy: writeLock.current||batchDraft.current.busy }),()=>productionObservation.current);
+  useNavigationGuard(() => ({ dirty: dirty.current.size > 0, busy: writeLock.current||batchDraft.current.busy||resultDraft.current.busy }),()=>productionObservation.current);
   const isAdmin = positiveId(sesion?.usuario?.id) && sesion.usuario.rol === 'admin';
   const onDirty = useCallback((key,value)=>{productionObservation.current=Symbol('production-form-observation');if(value) dirty.current.add(key); else dirty.current.delete(key);},[]);
   const onBatchDraftStateChange=useCallback(next=>{batchDraft.current=next;setBatchBusy(next.busy);onDirty('history-batch',next.dirty);},[onDirty]);
-  const mayLeave = () => { if (writeLock.current||batchDraft.current.busy) return false; if (dirty.current.size && !window.confirm('Hay cambios sin guardar. ¿Querés descartarlos?')) return false; dirty.current.clear(); return true; };
+  const onResultState=useCallback(next=>{resultDraft.current=next;setResultBusy(next.busy||next.locked);onDirty('visit-result',next.locked);},[onDirty]);
+  const captureResult=()=>{
+    if(writeLock.current||batchDraft.current.busy||dirty.current.size)throw new Error('Guardá los cambios antes de registrar el resultado.');
+    const epoch=readEpoch.current,version=openVersion.current;
+    const scope=createCapturedRequest({session:sesion,readSession:getSesion,request:apiRequest,isActive:()=>readEpoch.current===epoch&&openVersion.current===version});
+    return {...scope,actorId:sesion?.usuario?.id};
+  };
+  const mayLeave = () => { if (writeLock.current||batchDraft.current.busy||resultDraft.current.busy) return false; if (dirty.current.size && !window.confirm('Hay cambios sin guardar. ¿Querés descartarlos?')) return false; dirty.current.clear(); return true; };
   useEffect(()=>{
     const controller = new AbortController(),epoch=readEpoch.current;setLoading(true);setListAvailable(false);setError('');
     if(contextError){setLoading(false);return;}
@@ -541,7 +555,7 @@ export function ProductionsPage({sesion}) {
     setReload(value=>value+1);
   };
   const writeVisit = async (visit,path,method,data) => {
-    if(writeLock.current||batchDraft.current.busy) throw new Error('Hay otra operación en curso.');
+    if(writeLock.current||batchDraft.current.busy||resultDraft.current.busy||resultDraft.current.locked) throw new Error('Hay otra operación en curso.');
     // Pin the rendered actor and visible context before dispatch, including
     // conflict recovery/readback. Never recapture a later cookie account.
     const epoch=readEpoch.current,version=openVersion.current;
@@ -609,6 +623,7 @@ export function ProductionsPage({sesion}) {
   };
   const filtered = visits.filter(visit=>!clientId || visit.cliente_id === Number(clientId));
   const selectedDayVisits = filtered.filter(visit=>visit.fecha === day);
+  const resultControls={capture:captureResult,onState:onResultState,onSaved:async(id,scope)=>{await refreshVisit(id,scope);scope.assertCurrent();setReload(value=>value+1);}};
   const resume = async video => {
     if(selected?.id === video.visita_id){setNotice('Este guion ya está en la visita seleccionada. Elegí otra visita para retomarlo.');return;}
     if(!selected || selected.cliente_id !== video.cliente_id){setNotice('Elegí una visita del mismo cliente antes de retomar este guion.');return;}
@@ -625,6 +640,6 @@ export function ProductionsPage({sesion}) {
         <section className="prod-day-agenda"><h3>{dateLabel(day)}</h3>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día. Podés crear una nueva.</p>}</section>
         <section className="prod-mobile-agenda" aria-label="Agenda del mes"><label>Elegir día<input type="date" value={day} min={`${month}-01`} max={`${month}-${String(new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate()).padStart(2,'0')}`} onChange={e=>selectDay(e.target.value)}/></label>{selectedDayVisits.map(visit=><VisitAgendaItem key={visit.id} visit={visit} selected={selected?.id===visit.id} onOpen={openVisit}/>)}{!selectedDayVisits.length && <p className="prod-empty">No hay visitas este día.</p>}</section>
       </> : <div className="prod-pending"><h3>Guiones pendientes</h3><p className="prod-muted">Guiones pendientes o para repetir. Retomarlos conserva la visita original.</p><FilterSelect label="Visita de destino" value={selected?.id || ''} disabled={busy} onChange={e=>{if(e.target.value)openVisit(e.target.value);}}><option value="">Elegí una visita del mes</option>{filtered.map(visit=><option key={visit.id} value={visit.id}>{visit.fecha} · {visit.cliente_nombre} · {visit.titulo}</option>)}</FilterSelect>{pending.map(video=><article className="prod-media" key={video.id}><header><h3>{video.titulo}</h3><span className="prod-status">{VIDEO_STATES[video.estado] || video.estado}</span></header><p className="prod-muted">{video.cliente_nombre} · {video.fecha}</p><p className="prod-script">{video.guion || 'Sin guion cargado'}</p><button type="button" disabled={busy || !selected || selected.id===video.visita_id || selected.cliente_id!==video.cliente_id} title={selected?.id===video.visita_id ? 'Este guion ya está en esta visita. Elegí otra visita de destino.' : undefined} onClick={()=>resume(video)}>Retomar en la visita seleccionada</button></article>)}{!pending.length && <p className="prod-empty">No hay guiones pendientes para este filtro.</p>}<PendingProductionPhotos photos={pendingPhotos} busy={busy} onOpen={openVisit}/></div>}
-    </section><div className="prod-detail-column">{creating ? <CreateVisit key="create" clients={clients} users={users} date={day} busy={busy} sesion={sesion} onCreate={createVisit} onCreated={createdVisit} onDirty={onDirty} onCancel={()=>{if(mayLeave())setCreating(false);}}/> : detailLoading ? <p role="status" className="prod-empty">Cargando visita…</p> : selected ? <VisitDetail key={selected.id} sesion={sesion} onBatchDraftStateChange={onBatchDraftStateChange} onBatchSaved={onBatchSaved} visit={selected} users={users} busy={busy} isAdmin={isAdmin} onWrite={writeVisit} onDirty={onDirty} onReload={refreshVisit}/> : <div className="prod-panel prod-empty"><h2>Elegí una visita</h2><p>Acá verás los videos, fotos y guiones del rodaje.</p></div>}</div></div>
+    </section><div className="prod-detail-column">{creating ? <CreateVisit key="create" clients={clients} users={users} date={day} busy={busy} sesion={sesion} onCreate={createVisit} onCreated={createdVisit} onDirty={onDirty} onCancel={()=>{if(mayLeave())setCreating(false);}}/> : detailLoading ? <p role="status" className="prod-empty">Cargando visita…</p> : selected ? <VisitDetail key={selected.id} resultControls={resultControls} sesion={sesion} onBatchDraftStateChange={onBatchDraftStateChange} onBatchSaved={onBatchSaved} visit={selected} users={users} busy={busy} isAdmin={isAdmin} onWrite={writeVisit} onDirty={onDirty} onReload={refreshVisit}/> : <div className="prod-panel prod-empty"><h2>Elegí una visita</h2><p>Acá verás los videos, fotos y guiones del rodaje.</p></div>}</div></div>
   </main>;
 }

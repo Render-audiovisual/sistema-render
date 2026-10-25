@@ -70,12 +70,17 @@ test('both pages register live dirty/busy getters and remove duplicate unload/cu
 test('production getter reads mutable set/write lock at navigation time without clearing either', () => {
   const expression = productionGuards[0].arguments[0].getText(productionTree);
   const dirty = { current: new Set() }, writeLock = { current: false }, batchDraft = { current: {busy:false} };
-  const getter = Function('dirty', 'writeLock', 'batchDraft', `return ${expression};`)(dirty, writeLock, batchDraft);
+  const resultDraft = {current:{busy:false,locked:false}};
+  const getter = Function('dirty', 'writeLock', 'batchDraft', 'resultDraft', `return ${expression};`)(dirty, writeLock, batchDraft, resultDraft);
   assert.deepEqual(getter(), { dirty: false, busy: false }); dirty.current.add('video'); writeLock.current = true;
   assert.deepEqual(getter(), { dirty: true, busy: true }); assert.equal(dirty.current.size, 1);
   writeLock.current = false; assert.deepEqual(getter(), { dirty: true, busy: false });
   batchDraft.current.busy = true; assert.deepEqual(getter(), { dirty: true, busy: true });
   assert.equal(dirty.current.size,1); assert.equal(writeLock.current,false);
+  batchDraft.current.busy=false;resultDraft.current.busy=true;
+  assert.deepEqual(getter(),{dirty:true,busy:true});
+  resultDraft.current.busy=false;resultDraft.current.locked=true;dirty.current.add('visit-result');
+  assert.deepEqual(getter(),{dirty:true,busy:false});assert.equal(dirty.current.has('visit-result'),true);
 });
 
 test('production explicit provider reads the current opaque observation without mutating guard state',()=>{
@@ -184,11 +189,17 @@ test('production committed popstate restoration does not prompt or roll back the
 test('production local controls retain one explicit confirmation and busy denies without discard', () => {
   const source = /  const mayLeave = ([^\n]+);/.exec(production)[1];
   const dirty = { current: new Set(['draft']) }, writeLock = { current: false }, batchDraft = { current: {busy:false} }; let asks = 0, answer = false;
-  const mayLeave = Function('window', 'dirty', 'writeLock', 'batchDraft', `return ${source};`)({ confirm() { asks++; return answer; } }, dirty, writeLock, batchDraft);
+  const resultDraft = {current:{busy:false,locked:false}};
+  const mayLeave = Function('window', 'dirty', 'writeLock', 'batchDraft', 'resultDraft', `return ${source};`)({ confirm() { asks++; return answer; } }, dirty, writeLock, batchDraft, resultDraft);
   assert.equal(mayLeave(), false); assert.equal(dirty.current.size, 1); assert.equal(asks, 1);
   writeLock.current = true; assert.equal(mayLeave(), false); assert.equal(asks, 1); assert.equal(dirty.current.size, 1);
   writeLock.current = false; batchDraft.current.busy=true; assert.equal(mayLeave(),false);assert.equal(asks,1);assert.equal(dirty.current.size,1);
   batchDraft.current.busy=false; answer = true; assert.equal(mayLeave(), true); assert.equal(dirty.current.size, 0); assert.equal(asks, 2);
+  dirty.current.add('visit-result');resultDraft.current.busy=true;
+  assert.equal(mayLeave(),false);assert.equal(asks,2);assert.equal(dirty.current.size,1);
+  resultDraft.current.busy=false;resultDraft.current.locked=true;answer=false;
+  assert.equal(mayLeave(),false);assert.equal(asks,3);assert.equal(dirty.current.size,1);
+  answer=true;assert.equal(mayLeave(),true);assert.equal(asks,4);assert.equal(dirty.current.size,0);
   assert.match(production, /if\(!selected && !mayLeave\(\)\) return;/);
 });
 

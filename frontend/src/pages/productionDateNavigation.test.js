@@ -15,7 +15,7 @@ function harness({date='2026-11-03',failWrite,failRead,read}={}){
  const events=[],fresh={...original,revision:2,fecha:date};let active=true;
  const guard={current:()=>active,assertCurrent(){if(!active)throw new Error('obsolete');},request(){assert.fail('Injected productionWrite owns transport');}};
  const deps={sesion:{},getSesion:()=>({}),apiRequest:()=>assert.fail('No raw transport'),
-  readEpoch:{current:0},openVersion:{current:0},writeLock:{current:false},batchDraft:{current:{busy:false}},
+  readEpoch:{current:0},openVersion:{current:0},writeLock:{current:false},batchDraft:{current:{busy:false}},resultDraft:{current:{busy:false,locked:false}},
   createCapturedRequest:()=>guard,clientId:'7',tab:'calendar',positiveId:value=>Number.isSafeInteger(value)&&value>0,visitDTO:value=>value?.visita||value,
   productionWrite:async()=>{events.push(['write']);if(failWrite)throw failWrite;return{visita:fresh}},
   refreshVisit:async(id,observed)=>{assert.equal(id,original.id);assert.equal(observed,guard);events.push(['read']);if(failRead)throw new Error('read unavailable');return read?await read:fresh},

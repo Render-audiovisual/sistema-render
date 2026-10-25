@@ -134,7 +134,7 @@ test('actual writeVisit distinguishes saved ACK from readback and never falls ba
   for(const confirmed of [true,false]){
     let sends=0;
     const sesion={token:'qa-production124',usuario:{id:7,rol:'admin',activo:true}};
-    const write=evaluate(declaration.initializer,{writeLock:{current:false},batchDraft:{current:{dirty:false,busy:false}},setBusy(){},setNotice(){},setReload(){},
+    const write=evaluate(declaration.initializer,{writeLock:{current:false},batchDraft:{current:{dirty:false,busy:false}},resultDraft:{current:{busy:false,locked:false}},setBusy(){},setNotice(){},setReload(){},
       readEpoch:{current:0},openVersion:{current:0},createCapturedRequest,sesion,getSesion:()=>sesion,apiRequest:()=>assert.fail('stubbed productionWrite owns dispatch'),
       productionWrite:async()=>{sends++;return confirmed?{visita:aggregate(2)}:{id:'video-only'}},
       refreshVisit:async()=>{throw new Error('readback unavailable')},positiveId:Number.isSafeInteger,visitDTO:value=>value?.visita||value});
