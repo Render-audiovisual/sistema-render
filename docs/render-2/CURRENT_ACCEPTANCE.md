@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Moodboards: selector paginado conectado a referencias — corte302
+
+ReferencePanel usa `MoodboardTaskPicker` y `moodboardTaskPager`: parte del array legacy150, botón explícito Cargar más tareas consulta contrato301 por GET, mantiene páginas por ID, latch síncrono evita clic duplicado y valida DTO/cursor/IDs int32. Error conserva opciones y permite retry manual en el mismo offset. Página terminal vacía es válida cuando el lote inicial era exactamente150. Unión con tareas del DTO autorizado de la referencia conserva vínculos fuera de página, sin inferir desvinculación. `isLinked/toggle` y writer/recovery no cambian.
+
+Holder por board/tasks-observation y montaje invalida respuestas antiguas síncronamente; captura ya contiene identidad/origen. No reinicia por una función capture equivalente recreada al pintar busy. Cleanup cancela lectura; no se usa localStorage. Botón/filas con targets44px y estilo acotado al panel existente; Apple UI/Frontend Design guiaron compactación y foco visible, no un diseño paralelo.
+
+7focales PASS: alcance152, doble carga/una petición, error+retry/cursor inválido, cancelación/contexto retirado y unión fuera de página; SSR del componente real confirma checkbox vinculado y disabled. SSR no certifica lifecycle de React montado. El primer harness SSR falló al incluir export en expresión extraída; se corrigió el harness, sin cambiar producto para hacerlo pasar. Frontend3028PASS/1SKIP/0FAIL, salida0; build index-jjm3iYm5 correcto. Logs `/private/tmp/render2-goal302-{focal-final2,frontend-final2,build-final}.log`. Coordinador implementó/ejecutó, Harvey revisó sin bloqueantes.
+
+Pendientes explícitos: navegador con selección de tarea152→vínculo→recarga y contexto/unmount montados; Composer/initialTask de creación contextual aún usa legacy150. OFFSET no es snapshot estable ante cambios concurrentes de orden/visibilidad. Sin backend nuevo/migraciones/DB/proveedores/despliegue en este corte; no aceptación global.
+
 ### Moodboards: contrato paginado del catálogo de tareas — corte301
 
 Se confirmó cap150 silencioso en `/boards/:id/tasks`; la UI actual solo usa ese array. Nueva lectura en `backend/src/moodboard-task-pages.js`: petición sin query conserva array150; query explícita limit/offset devuelve `{version:1,items,limit,offset,next_offset}`. Limit1–150, offset0–1000000, cadenas decimales canónicas; args desconocidos/duplicados/formas inválidas rechazan400. Consulta usa el mismo predicado por ID y pertenencia board/cliente, parámetros enlazados, orden título/ID y limit+1 para detectar continuación. No-store. Si una continuación superaría el offset permitido, rechaza422 en vez de emitir cursor inválido. No cambia writer/vínculos.
