@@ -155,6 +155,55 @@ test('Wilson signed review batch retains current WhatsApp actor before consuming
       }
     });
   }
+  for (const change of ['inactive', 'role', 'mapping']) {
+    await t.test(`signed preview ${change} withdrawal under actor and task locks cannot mint or invalidate confirmations`, async () => {
+      await restore();
+      if (change === 'role') await f.query("UPDATE usuarios SET rol='admin' WHERE id=$1", [userId]);
+      // A genuine prior signed preview leaves an unused batch token. Rejecting
+      // the next preview must preserve it, not merely avoid a new INSERT.
+      const batch = await prepare(change === 'role' ? 91003 : userId);
+      await unused(batch.token);
+      let blocker, monitor, pending;
+      const noticeCount = notices.length;
+      try {
+        blocker = await auxiliary(); monitor = await auxiliary(); await blocker.query('BEGIN');
+        await blocker.query('SELECT id FROM usuarios WHERE id=$1 FOR UPDATE', [userId]);
+        await blocker.query('SELECT id FROM tareas WHERE id=$1 FOR UPDATE', [batch.ids[0]]);
+        if (change === 'inactive') await blocker.query('UPDATE usuarios SET activo=false WHERE id=$1', [userId]);
+        if (change === 'role') await blocker.query("UPDATE usuarios SET rol='edicion' WHERE id=$1", [userId]);
+        if (change === 'mapping') await blocker.query('UPDATE mia_whatsapp_identities SET enabled=false WHERE actor_hash=$1', [actorHash]);
+        const before = await snapshot(blocker);
+        const promise = signed('/lotes/revision/previsualizar', {task_ids: batch.ids}); operations.add(promise);
+        pending = {promise, settled: false}; promise.then(() => {pending.settled = true;}, () => {pending.settled = true;});
+        const actorQuery = 'SELECT id,usuario,nombre,rol,activo,whatsapp_id_hash,whatsapp_habilitado FROM usuarios WHERE id=$1 FOR SHARE';
+        const deadline = Date.now() + 7000;
+        let waitStage = null;
+        do {
+          assert.equal(pending.settled, false, 'Preview ended before the actual actor-or-task PostgreSQL wait');
+          const {rows} = await monitor.query(`SELECT a.pid,CASE
+            WHEN regexp_replace(a.query,'[[:space:]]+',' ','g')=$3 THEN 'actor'
+            WHEN regexp_replace(a.query,'[[:space:]]+',' ','g') LIKE
+              'SELECT t.id,t.revision,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,%FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id%FOR UPDATE OF t'
+              THEN 'task' ELSE NULL END stage
+            FROM pg_stat_activity a WHERE a.datname=current_database()
+              AND $1::int=ANY(pg_blocking_pids(a.pid)) AND a.pid<>ALL($2::int[]) AND a.state='active'`,
+          [blocker.pid, [...connections].map(db => db.pid), actorQuery]);
+          if (rows.length) {assert.equal(rows.length, 1); assert.ok(rows[0].stage); waitStage = rows[0].stage; break;}
+          await new Promise(resolve => setTimeout(resolve, 10));
+        } while (Date.now() < deadline);
+        assert.ok(waitStage, 'No real actor-or-preview-task wait observed');
+        await blocker.query('COMMIT');
+        const response = await promise;
+        assert.equal(response.status, 403, `Revoked preview must reject; actual HTTP${response.status} after ${waitStage} wait`);
+        assert.equal(waitStage, 'actor', 'Retained actor must precede the preview task locks');
+        await unused(batch.token); assert.deepEqual(await snapshot(), before); assert.equal(notices.length, noticeCount);
+      } finally {
+        if (blocker) await blocker.query('ROLLBACK').catch(() => {});
+        if (pending) await Promise.allSettled([pending.promise]);
+        try {await dispose(blocker);} finally {try {await dispose(monitor);} finally {await restore();}}
+      }
+    });
+  }
   for (const hidden of ['workspace', 'archived', 'trash', 'mixed']) {
     await t.test(`scope ${hidden} changed after signed preview with unchanged updated_at rejects whole batch without consumption`, async () => {
       await restore(); const batch = await prepare();

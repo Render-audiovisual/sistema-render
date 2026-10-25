@@ -1296,16 +1296,25 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
     } catch (error) { return next(error); }
   });
 
-  router.post("/lotes/revision/previsualizar", async (req, res, next) => {
+  router.post("/lotes/revision/previsualizar", async (request, res, next) => {
+    // Preparing a token is a write too. Retain the captured transport subject
+    // and its current database authority before task locks or token replacement.
+    const req = { wilson: Object.freeze({ ...request.wilson }) };
     if (req.wilson.channel !== "whatsapp") return res.status(400).json({ error: "Esta función se confirma desde WhatsApp." });
-    const rawIds = Array.isArray(req.body?.task_ids) ? req.body.task_ids : [];
+    const rawIds = Array.isArray(request.body?.task_ids) ? request.body.task_ids : [];
     const ids = normalizeReviewBatchIds(rawIds);
     if (!ids.length || ids.length !== rawIds.length) {
       return res.status(400).json({ error: `El listado debe contener entre 1 y ${REVIEW_BATCH_MAX_TASKS} tareas válidas y sin duplicados.` });
     }
-    const client = await pool.connect();
+    let client, discard;
     try {
-      await client.query("BEGIN");
+      client = await pool.connect();
+      await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+      const actor = await lockFeedbackActor(client, req.wilson, {
+        telegramUserId: telegramWilsonUserId(env, req.wilson.actorId),
+      });
+      req.wilson = Object.freeze({ ...req.wilson, actorName: actor.nombre,
+        actorRole: actor.rol, confirmedBy: actor.nombre, isLeader: actor.rol === 'admin' });
       const result = await client.query(
         `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.estado,t.tipo_tarea,t.subtipo,
           t.material_referencia,t.propiedades_extra,t.updated_at,
@@ -1367,9 +1376,9 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
         text: `Entendí que terminaste:\n${lines.join("\n")}\n\nVoy a pasar ${ids.length === 1 ? "esta tarea" : `estas ${ids.length} tareas`} a Revisar. ¿Confirmás?`,
       });
     } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
+      if (client) try { await client.query("ROLLBACK"); } catch (rollbackError) { discard = rollbackError; }
       return next(error);
-    } finally { client.release(); }
+    } finally { client?.release(discard); }
   });
 
   router.post("/lotes/revision/confirmar", async (request, res, next) => {
