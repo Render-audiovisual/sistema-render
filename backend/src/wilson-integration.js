@@ -732,7 +732,8 @@ const MIA_EVENT_DESTINATIONS = Object.freeze({
 const MIA_STATE_EVENT_LABELS = Object.freeze({
   tarea_iniciada: "Tarea iniciada",
   tarea_en_revision: "Lista para revisar",
-  tarea_publicada: "Contenido publicado",
+  // Historical task completion marker, not evidence of editorial publication.
+  tarea_publicada: "Tarea finalizada",
   tarea_finalizada: "Tarea finalizada",
   tarea_aprobada: "Tarea aprobada",
 });

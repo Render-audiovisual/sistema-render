@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { getStateNotification } from '../src/task-workflow.js';
 import { crearContenidoCorreo } from '../src/email-notifications.js';
 import { crearMensajePrivadoTarea } from '../src/private-task-notifications.js';
+import { buildMiaPendingEvent } from '../src/wilson-integration.js';
 
 // Real workflow -> both real renderers, offline. No recipient resolution,
 // queue, SMTP or database claim. Legacy event keys must remain compatible.
@@ -31,3 +32,18 @@ test('creation retains its assignment message in both channels', () => {
   assert.match(crearContenidoCorreo({ tarea, destinatario: { nombre: 'QA' } }).subject, /Tenés una nueva tarea/);
   assert.match(crearMensajePrivadoTarea({ tarea }).text, /Tenés una nueva tarea/);
 });
+
+for (const tipo of ['tarea_publicada', 'tarea_finalizada']) {
+  test(`MIA ${tipo}: historical task markers do not assert editorial publication`, () => {
+    const task = { id: 42, titulo: 'Edición QA', propiedades_extra: {
+      mia_notificacion_pendiente: { tipo, destino: 'edicion', creado_en: '2026-10-25T12:00:00Z' },
+    } };
+    const before = JSON.stringify(task);
+    const event = buildMiaPendingEvent(task);
+    assert.equal(event.text, 'Tarea finalizada: Edición QA');
+    assert.equal(event.type, tipo);
+    assert.equal(event.id, `42:2026-10-25T12:00:00Z:${tipo}`);
+    assert.equal(event.destination, 'edicion');
+    assert.equal(JSON.stringify(task), before);
+  });
+}
