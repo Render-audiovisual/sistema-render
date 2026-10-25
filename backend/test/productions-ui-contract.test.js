@@ -179,7 +179,7 @@ test('confirmed ACK plus failed readback reports saved recovery and blocks dupli
   const body=section('  const writeVisit = async', '  const createVisit = async');
   let writes=0;const messages=[];const busy=[];
   const sesion={token:'qa-production124',usuario:{id:7,rol:'admin',activo:true}};
-  const context={writeLock:{current:false},batchDraft:{current:{dirty:false,busy:false}},setBusy:value=>busy.push(value),setNotice:value=>messages.push(value),
+  const context={writeLock:{current:false},batchDraft:{current:{dirty:false,busy:false}},resultDraft:{current:{busy:false,locked:false}},setBusy:value=>busy.push(value),setNotice:value=>messages.push(value),
     readEpoch:{current:0},openVersion:{current:0},createCapturedRequest,sesion,getSesion:()=>sesion,apiRequest:()=>assert.fail('stubbed productionWrite owns dispatch'),
     productionWrite:async()=>{writes++;return {visita:{...visit,revision:8}};},refreshVisit:async()=>{throw Error('offline');},setReload:()=>{},
     visitDTO:value=>value?.visita||value,positiveId:helpers.positiveId};
@@ -195,6 +195,18 @@ test('confirmed ACK plus failed readback reports saved recovery and blocks dupli
   assert.throws(()=>model.begin(visit),{status:409});assert.equal(writes,1,'second click cannot dispatch');
   assert.match(messages.at(-1),/se guardó/);
   assert.deepEqual(busy,[true,false]);
+});
+
+for(const resultState of [{busy:true,locked:false},{busy:false,locked:true}])
+test(`result busy=${resultState.busy} locked=${resultState.locked} blocks actual visit writer before capture or dispatch`,async()=>{
+  const body=section('  const writeVisit = async','  const createVisit = async');
+  const context={writeLock:{current:false},batchDraft:{current:{dirty:false,busy:false}},resultDraft:{current:resultState},
+    createCapturedRequest:()=>assert.fail('Result guard must precede session capture'),
+    productionWrite:()=>assert.fail('Result guard must precede transport'),
+    setBusy:()=>assert.fail('Denied writer must not publish busy'),setNotice:()=>assert.fail('Denied writer must not publish notice')};
+  const write=new Function(...Object.keys(context),`${body}\nreturn writeVisit;`)(...Object.values(context));
+  await assert.rejects(write(visit,'/videos','POST',{}),/otra operación/);
+  assert.equal(context.writeLock.current,false);assert.deepEqual(context.resultDraft.current,resultState);
 });
 
 test('conflict refresh does not key forms by revision or silently discard unsaved input',()=>{

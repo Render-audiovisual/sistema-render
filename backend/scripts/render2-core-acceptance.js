@@ -17,6 +17,8 @@ export const coreAcceptanceFiles = Object.freeze([
   'test/render2-finance-snapshot.integration.test.js',
   'test/render2-task-create-http.integration.test.js',
   'test/render2-production-empty-registry-boundary.integration.test.js',
+  'test/render2-production-results.integration.test.js',
+  'test/render2-production-results-upgrade.integration.test.js',
 ]);
 
 export function coreAcceptancePlan(args = []) {

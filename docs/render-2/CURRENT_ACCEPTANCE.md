@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Núcleo ampliado reproducible y regresión backend — integración324
+
+El comando `npm run qa:core:local` ahora incluye14 archivos fijos (antes12): agrega `render2-production-results.integration.test.js` y `render2-production-results-upgrade.integration.test.js`. Mantiene ejecución serial, entorno cerrado sin DATABASE_URL heredada, rechazo de argumentos/targets, fixtures propios y cleanup. Prueba del coordinador exige los nuevos archivos y tamaño/argumentos exactos. Esto incorpora al gate habitual resultados parciales, recuperación/idempotencia, historial, rollback y upgrade091 real sobre fixture poblado; no cambia reglas de producto.
+
+Renovación final ampliada:141PASS/0FAIL/0SKIP (`/private/tmp/render2-goal324-expanded-core.log`, exit0). El corte previo sin ampliar dio119PASS (`/private/tmp/render2-goal324-core.log`). Backend completo final2394PASS/0FAIL/160opt-inSKIP de2554 (`/private/tmp/render2-goal324-final-backend.log`, exit0). La ejecución inicial encontró1FAIL en harness AST backend que no suministraba `resultDraft`; Harvey añadió dependencia y2 casos busy/locked que exigen rechazo antes de captura/efectos/transporte, manteniendo assertions anteriores.15 focales del contrato UI y3 del coordinador pasan; no se retiró ninguna guarda de producto. Sin cambios frontend/build nuevos en324, sin proveedores ni bases existentes/despliegue. La aceptación general y revisión global de funciones faltantes continúan abiertas.
+
 ### Revisión de ciclos de vida y claridad de cierre — correcciones323
 
 Regresión final posterior a las tres nuevas pruebas:3094PASS/0FAIL/1SKIP de3095 (`/private/tmp/render2-goal323-final-frontend.log`), proceso exit0. Diff-check limpio. No se usa esta suite como sustituto de la aceptación global.
