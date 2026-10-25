@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Avisos de integración y renovación del núcleo — cortes284–286
+
+En `0a1f8f1`, el marcador histórico MIA `tarea_publicada` conserva su clave, ID y destino pero muestra «Tarea finalizada», no una publicación efectiva. Dos casos nuevos verifican también que renderizar no reescriba registros. En `6f782f6`, los callbacks reales de revisión por lote y confirmación de grabación propagan `req.wilson.userId` como `actorId`; no cambian la selección de destinatarios. Coordinador implementó y ejecutó; Harvey creó pruebas del callback de revisión y revisó los cambios. Las pruebas reprodujeron las omisiones antes de corregirlas.
+
+Regresión backend285: 2342 PASS, 151 opt-in SKIP, 0 FAIL, salida0; 44 focales PASS. Renovación286 sobre HEAD6f782f6: `npm run qa:core:local`, 99 PASS, 0 FAIL/SKIP/canceladas, salida0, 23332ms. Son diez archivos con clústeres generados exclusivamente en loopback y limpieza propia; no una prueba visual de 99 recorridos. Logs `/private/tmp/render2-goal285-backend.log` y `/private/tmp/render2-goal286-core.log`. Sin migraciones sobre bases configuradas, proveedores, datos reales ni despliegue. No se renovó el build frontend.
+
+Pendientes: destinatarios de revisión vinculados por IDs y política aprobada, roster real independiente y aceptación visual integral actual. Propagar el ID del autor no resuelve esos pendientes ni revalida por sí solo la identidad en el instante de entrega. La aceptación global continúa incompleta.
+
+Revisión independiente286 de fuente identifica próximos trabajos locales: Publicaciones guarda en blur sin comparar el draft con un baseline confirmado (`Publicaciones.jsx`, `guardarEnServidor`), y el aside de administración de Empleados sigue declarando modalidad sin usar el Modal nativo. Aún no se reprodujeron físicamente ni corrigieron en este corte. Priorizar evitar escrituras intactas, con pruebas de CAS, colas y resultado incierto antes de modificar el guardado.
+
 ### Núcleo renovado con tres editores empleados — corte282
 
 Harvey amplió solo la suite audiovisual; coordinador revisó/ejecutó. Mantiene casos anteriores bearer/cookie y agrega cookie PG55913 con3editores empleados independientes91003/91005/91006, owners separados, denegación de autoaprobación/entrega por otro editor, seis entregas/seis decisiones exactas, retries, reprogramación y proyecciones Inicio/Calendario/Reportes sin inventar publicación. Nuevos usuarios solo dentro del fixture, no roster real. Ver PRODUCTION_EMPLOYEE_JOURNEY_QA.md.
