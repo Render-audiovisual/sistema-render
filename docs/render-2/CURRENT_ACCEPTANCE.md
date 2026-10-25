@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Feedback: recorrido nativo y catálogos independientes — corte258
+
+Revisión Erdos detectó Promise.all acoplando usuarios a clientes: un fallo de clientes impedía elegir personas incluso en Equipo. Corregido con cargas/errores independientes y scope capturado de sesión/contexto/montaje/ruta; etiqueta distingue carga de error. Labels largos ahora pueden contraerse y cortar palabras. Pruebas de efecto real incluyen fallos independientes, DTO inválido, respuestas tardías y ABA. Frontend2915PASS; build index-BjPK0kTt.js. No altera reglas de responsables ni acceso compartido.
+
+Coordinador ejecutó App/cookies/API/PostgreSQL reales con build final en55895/52844: creación desktop eligiendo solo Luciano entre dos homónimos, recarga, editor móvil390 conserva checkbox exacto, edición texto, recarga conserva detalle/ID. Capturas inspeccionadas; documento ancho/scroll390. Runner final verificó1nota/2recibos y tablas ajenas invariantes entre106 públicas; cleanup OfTDrS/exit0. Primer runner FljJUg completó UI/SQL directo pero falló al consultar ORDER BY id inexistente en recibos; limpiado y repetido con recorded_at, sin alterar esquema para ocultar fallo. Evidencia en FEEDBACK_RECEIPTS_QA.md. No aceptación global, proveedor o deploy; no prueba nativa de catálogo503 ni usuario largo extremo.
+
 ### Feedback: selección explícita de responsables por ID — corte257
 
 Interfaz canónica, escritores browser/Wilson, intención/recibos, DTOs y notificador aceptan responsable_ids opcional. Nuevos drafts seleccionan personas por ID con nombre/login/ID para homónimos. Ausencia histórica no se convierte en []; no se infieren identidades desde nombres. Selección nueva/cambiada exige usuarios activos bloqueados FOR SHARE; servidor deriva etiquetas. IDs sin cambios y etiquetas históricas se conservan aun tras inactividad; etiquetas cambiadas sin IDs en nota vinculada rechazan409. No cambia acceso compartido ni autenticación. Volta backend/Wilson/física y revisión independiente, Erdos UI/pruebas y coordinador integración/verificación.

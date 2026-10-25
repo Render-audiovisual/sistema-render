@@ -32,13 +32,13 @@ export function feedbackBusinessInput(value = {}) {
   );
 }
 
-function FeedbackResponsiblePicker({feedback,users,ready,onToggle}){
+function FeedbackResponsiblePicker({feedback,users,ready,loading=false,onToggle}){
   const ids=feedbackResponsibleIds(feedback),selected=ids??[];
   const choices=users.filter(user=>user.activo===true||selected.includes(user.id));
   const missing=selected.filter(id=>!users.some(user=>user.id===id));
   return <fieldset className="rf-people rf-wide"><legend>Responsables <small>Elegí al menos uno</small></legend>
     {ids===null&&<p>Responsables anteriores: {feedbackLegacyResponsibleLabels(feedback).join(', ')||'Sin asignar'}. Elegí las personas para cambiar la asignación.</p>}
-    {!ready&&<p role="status">No está disponible el catálogo de personas. Conservamos la selección actual.</p>}
+    {!ready&&<p role="status">{loading?'Cargando personas…':'No está disponible el catálogo de personas. Conservamos la selección actual.'}</p>}
     <div>{choices.map(user=><label key={user.id} className={selected.includes(user.id)?'selected':''}>
       <input type="checkbox" checked={selected.includes(user.id)} disabled={!selected.includes(user.id)&&!ready}
         onChange={()=>onToggle(user.id)}/><span>{feedbackResponsibleLabel(user.id,users)}</span></label>)}
@@ -84,6 +84,7 @@ function FeedbackContent({transport,view,sesion}) {
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
   const [usersStatus,setUsersStatus]=useState('loading');
+  const [catalogErrors,setCatalogErrors]=useState({clients:'',users:''});
   const [query, setQuery] = useState(selection?.q ?? "");
   const [selected, setSelected] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -161,10 +162,24 @@ function FeedbackContent({transport,view,sesion}) {
 
   useEffect(() => {
     let active = true;
-    setUsersStatus('loading');setUsers([]);
-    Promise.all([request("/api/clientes"), request("/api/usuarios")]).then(([clientRows, userRows]) => {
-      if (active) { const catalog=feedbackResponsibleCatalog(userRows);setClients(clientRows);setUsers(catalog);setUsersStatus('ready'); }
-    }).catch((reason) => { if (active && reason.code !== "session_binding_obsolete") {setUsersStatus('error');setMessage("No pudimos cargar el catálogo de personas. Conservamos los responsables actuales; volvé a abrir la sección para consultar el catálogo.");} });
+    const epoch=contextEpoch.current;
+    const scope=createCapturedRequest({session:view.session,readSession:getSesion,request:transport,
+      isActive:()=>active&&mounted.current&&contextEpoch.current===epoch&&["/feedback","/bloc-notas"].includes(window.location.pathname)});
+    setUsersStatus('loading');setUsers([]);setClients([]);setCatalogErrors({clients:'',users:''});
+    scope.request("/api/clientes").then(clientRows=>{
+      if(scope.current())setClients(clientRows);
+    }).catch(reason=>{
+      if(scope.current()&&reason.code!=="session_binding_obsolete")setCatalogErrors(current=>({...current,clients:'No pudimos cargar los clientes. Volvé a abrir la sección para consultar el catálogo.'}));
+    });
+    scope.request("/api/usuarios").then(userRows=>{
+      if(!scope.current())return;
+      const catalog=feedbackResponsibleCatalog(userRows);
+      setUsers(catalog);setUsersStatus('ready');
+    }).catch(reason=>{
+      if(scope.current()&&reason.code!=="session_binding_obsolete"){
+        setUsersStatus('error');setCatalogErrors(current=>({...current,users:'No pudimos cargar el catálogo de personas. Conservamos los responsables actuales; volvé a abrir la sección para consultar el catálogo.'}));
+      }
+    });
     return () => { active = false; };
   }, [request, location]);
 
@@ -414,6 +429,7 @@ function FeedbackContent({transport,view,sesion}) {
     {(location.error || page?.error) && <div className="rf-error" role="alert">{location.error || page.error}<button type="button" disabled={busy} onClick={()=>{if(canLeave())restartNotes(selected)}}>{page?.status==="stale"?"El listado cambió · Reiniciar desde la primera página":"Reiniciar listado"}</button></div>}
     {error && <div className="rf-error" role="alert">{error}{!panelOpen && <button disabled={busy||mutation.locked} onClick={() => restartNotes(selected)}>Reintentar</button>}</div>}
     {message && <p className="rf-message" role="status">{message}</p>}
+    {Object.entries(catalogErrors).filter(([,text])=>text).map(([key,text])=><p key={key} className="rf-error" role="alert">{text}</p>)}
     {!panelOpen&&mutation.locked&&recoveryControls}
 
     {loading ? <div className="rf-loading" role="status"><span/><span/><span/></div> : <div className="rf-grid">
@@ -436,7 +452,7 @@ function FeedbackContent({transport,view,sesion}) {
               {panelSection === "clients" && <label className="rf-wide">Cliente<input ref={!draft.id ? titleRef : undefined} required list="rf-clients" maxLength={200} value={draft.feedback.cliente} onChange={(event) => changeMeta("cliente", event.target.value)}/><datalist id="rf-clients">{clientOptions.map((name) => <option key={name} value={name}/>)}</datalist></label>}
               <label className="rf-wide">Título<input ref={panelSection === "team" || draft.id ? titleRef : undefined} required value={draft.titulo} placeholder={panelSection === "team" ? "Ej.: Reunión semanal de comunicación" : "Ej.: Corrección de campaña de septiembre"} onChange={(event) => change("titulo", event.target.value)}/></label>
               <label className="rf-wide">Detalle<textarea required rows={9} value={draft.contenido} placeholder="Escribí el feedback completo…" onChange={(event) => change("contenido", event.target.value)}/></label>
-              <FeedbackResponsiblePicker feedback={draft.feedback} users={users} ready={usersStatus==='ready'} onToggle={toggleResponsible}/>
+              <FeedbackResponsiblePicker feedback={draft.feedback} users={users} ready={usersStatus==='ready'} loading={usersStatus==='loading'} onToggle={toggleResponsible}/>
               <label>Categoría<select value={draft.categoria} onChange={(event) => change("categoria", event.target.value)}>{EDITABLE_CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
               <label>Vigencia<select value={draft.feedback.vigencia || "puntual"} onChange={(event) => changeMeta("vigencia", event.target.value)}><option value="puntual">Puntual</option><option value="permanente">Permanente</option></select></label>
               <label>Estado<select value={draft.feedback.estado || "pendiente"} onChange={(event) => changeMeta("estado", event.target.value)}><option value="pendiente">Pendiente</option><option value="resuelto">Resuelto</option></select></label>

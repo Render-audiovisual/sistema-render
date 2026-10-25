@@ -10,7 +10,7 @@ Unchanged stored IDs may survive unrelated edits after an account becomes inacti
 
 Canonical UI selects numeric IDs, distinguishing homonyms by name/login/ID. Historical text never infers checked identities. Missing/inactive selections remain visible/removable; unavailable catalogues do not erase them. New drafts require an ID, while unchanged legacy edits remain possible. Shared-note permissions, provenance and creation-only notifications remain unchanged. Explicit active IDs drive new notices; legacy absent IDs retain the unique-active-label resolver below.
 
-This extends the older metadata/DTO boundary below to include optional responsable_ids. No migration, notice lifecycle policy or provider guarantee is implied. Physical Wilson explicit-ID and native desktop/mobile checks remain separate acceptance work.
+This extends the older metadata/DTO boundary below to include optional responsable_ids. No migration, notice lifecycle policy or provider guarantee is implied. Cut258 verifies the explicit-ID Wilson flow with signed local HTTP/PostgreSQL and native desktop/mobile create/edit/reload for the canonical picker; evidence and remaining limits are recorded in FEEDBACK_RECEIPTS_QA.md.
 
 ## New notification identity and browser atomicity — cut256 (historical, extended above)
 

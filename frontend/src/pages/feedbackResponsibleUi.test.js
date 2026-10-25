@@ -21,6 +21,14 @@ const business=evaluate(nodeFor('feedbackBusinessInput'));
 const Picker=evaluate(nodeFor('FeedbackResponsiblePicker'),{React,...responsible});
 const users=[{id:12,nombre:'Same Name',usuario:'first',activo:true},{id:13,nombre:'Same Name',usuario:'second',activo:true},
   {id:14,nombre:'Former',usuario:'inactive',activo:false}];
+test('real picker distinguishes loading from unavailable catalog without clearing held IDs',()=>{
+  const props={feedback:{responsable_ids:[13]},users:[],ready:false,onToggle(){}};
+  const loading=renderToStaticMarkup(Picker({...props,loading:true}));
+  assert.match(loading,/Cargando personas…/);assert.doesNotMatch(loading,/No está disponible el catálogo/);
+  assert.match(loading,/Usuario #13/);assert.match(loading,/checked/);
+  const failed=renderToStaticMarkup(Picker({...props,loading:false}));
+  assert.match(failed,/No está disponible el catálogo/);assert.doesNotMatch(failed,/Cargando personas/);
+});
 function childrenOf(node,type){const found=[];function walk(value){if(!value||typeof value!=='object')return;
   if(value.type===type)found.push(value);React.Children.forEach(value.props?.children,walk);}
   walk(node);return found;}
