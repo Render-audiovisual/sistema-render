@@ -41,14 +41,19 @@ export function isDriveReconnectError(error) {
 async function findFolder(client, parentId, name) {
   const result = await client.listChildren(parentId, { query: name, foldersOnly: true });
   const normalized = normalizeDriveName(name);
-  return result.files?.find((item) => normalizeDriveName(item.name) === normalized) || null;
+  // A partial listing cannot establish uniqueness. Never choose an arbitrary
+  // first match when Drive allows duplicate names within the same parent.
+  if (!Array.isArray(result?.files) || result.nextPageToken || result.incompleteSearch === true || !normalized) return null;
+  const matches = result.files.filter(item => item && normalizeDriveName(item.name) === normalized);
+  if (matches.length !== 1 || !driveId(matches[0].id) || matches[0].mimeType !== 'application/vnd.google-apps.folder') return null;
+  return matches[0];
 }
 
-async function resolveTaskFolder(client, task) {
+export async function resolveTaskFolder(client, task) {
   const root = resolveDriveRoot(task);
   if (root.child) {
     const child = await findFolder(client, root.id, root.child);
-    if (!child) return { status: "manual", root, reason: `No encontramos la carpeta ${root.child}.` };
+    if (!child) return { status: "manual", root, reason: `No encontramos una carpeta inequívoca llamada ${root.child}. Elegí el destino manualmente.` };
     return { status: "resolved", root, folder: child, breadcrumb: `${root.label} / ${child.name}` };
   }
   if (!task.cliente_nombre) return { status: "manual", root, reason: "La tarea no tiene un cliente definido." };

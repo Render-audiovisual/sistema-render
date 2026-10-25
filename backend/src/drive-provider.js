@@ -54,7 +54,7 @@ export async function defaultDriveProvider({ signal, credentials }) {
       const terms = [`'${escape(parentId)}' in parents`, 'trashed = false'];
       if (query) terms.push(`name contains '${escape(query)}'`);
       if (foldersOnly) terms.push("mimeType = 'application/vnd.google-apps.folder'");
-      const params = new URLSearchParams({ q: terms.join(' and '), pageSize: String(Math.min(100, Math.max(1, Number(limit) || 100))), orderBy: 'folder,name_natural', fields: 'files(id,name,mimeType,size,modifiedTime,webViewLink,iconLink,thumbnailLink,parents)' });
+      const params = new URLSearchParams({ q: terms.join(' and '), pageSize: String(Math.min(100, Math.max(1, Number(limit) || 100))), orderBy: 'folder,name_natural', fields: 'nextPageToken,incompleteSearch,files(id,name,mimeType,size,modifiedTime,webViewLink,iconLink,thumbnailLink,parents)' });
       return json(`https://www.googleapis.com/drive/v3/files?${params}`);
     },
     startUpload: async ({ name, mimeType, size, parentId }) => {

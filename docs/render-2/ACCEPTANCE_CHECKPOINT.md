@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado384
+# Render 2.0 — corte de aceptación local372, actualizado385
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -73,6 +73,8 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - Integración383: confirmación de mensaje retiene el mismo destinatario activo por ID antes del claim;26 unitarias dentro de40 focales, física12PASS con desactivación durante espera real, core31archivos311PASS/0FAIL/0SKIP y backend2496PASS/170SKIP/0FAIL. Solo mensajes internos de fixture; sin proveedor, navegador ni política nueva de destinatarios. Mi lista tiene duplicación pendiente tras ACK perdido en Agregar bloque.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
+
+Integración385: Drive no elige automáticamente la primera carpeta si hay duplicados normalizados o listado parcial. Exige ID/MIME válidos y coincidencia única; proveedor conserva metadatos de completitud.53 focalesPASS,24 físicas DrivePASS (nueva5 renovada/109 tablas invariantes) y backend2534PASS/173SKIP/0FAIL. Sin red a Google, sin nuevas UI/migración/build/core; límites en CURRENT_ACCEPTANCE. La integración real del proveedor sigue pendiente de autorización y no se declara certificada.
 
 ## Prioridad372 corregida373: proyección de aprobación en Reportes
 
