@@ -438,6 +438,31 @@ function reviewedMobileViewSelectorBaseline(root) {
   });
   assert.equal(defaults,1);assert.equal(groups,1);return copy;
 }
+function reviewedInlineErrorBaseline(root) {
+  const copy=root.clone(),seen=[];
+  copy.walkRules(rule=>{
+    if(rule.selector!=='.ros-inline-error')return;
+    assert.equal(rule.parent.type,'root');
+    assert.deepEqual(rule.nodes.map(n=>[n.prop,n.value,!!n.important]),[
+      ['background','#fae9e7',false],['border','1px solid #efcbc7',false],['border-radius','7px',false],
+      ['box-sizing','border-box',false],['color','#98453f',false],['font-size','max(13px,var(--render-type-label,13px))',false],
+      ['line-height','1.5',false],['max-width','100%',false],['min-width','0',false],['overflow-wrap','anywhere',false],['padding','7px 9px',false],
+    ]);
+    rule.nodes.filter(n=>['box-sizing','max-width','min-width','overflow-wrap'].includes(n.prop)).forEach(n=>n.remove());
+    rule.nodes.find(n=>n.prop==='font-size').value='7px';seen.push(rule.selector);
+  });
+  assert.deepEqual(seen,['.ros-inline-error']);return copy;
+}
+test('inline error exception validates only the reviewed rule and preserves other visual fingerprints',()=>{
+  const original=roots.WorkspaceReadOnly.toString();reviewedInlineErrorBaseline(roots.WorkspaceReadOnly);
+  assert.equal(roots.WorkspaceReadOnly.toString(),original);
+  for(const mutate of [rule=>rule.nodes.find(n=>n.prop==='font-size').value='7px',rule=>rule.first.important=true,
+    rule=>rule.append({prop:'height',value:'20px'}),rule=>rule.selector+=', .unrelated']){
+    const changed=roots.WorkspaceReadOnly.clone();let found;
+    changed.walkRules(rule=>{if(rule.selector==='.ros-inline-error')found=rule;});mutate(found);
+    assert.throws(()=>reviewedInlineErrorBaseline(changed));
+  }
+});
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
     let baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
@@ -445,6 +470,7 @@ for (const name of files) {
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedCommentActionsBaseline(baselineRoot);
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedDaySummaryScrollBaseline(baselineRoot);
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedMobileCalendarBaseline(baselineRoot);
+    if(name==='WorkspaceReadOnly')baselineRoot=reviewedInlineErrorBaseline(baselineRoot);
     if(name==='TaskDetailNotion')baselineRoot=reviewedProductionClosureBaseline(reviewedMobileTemplateBaseline(baselineRoot));
     if(name==='TaskHeader')baselineRoot=reviewedTaskContinuationBaseline(baselineRoot);
     if(name==='TaskHeader')baselineRoot=reviewedMobileViewSelectorBaseline(baselineRoot);
@@ -453,7 +479,7 @@ for (const name of files) {
   });
   test(`${name}: purposeful area and status styling is unchanged`, () => {
     const rules = [];
-    const identityRoot = name === 'WorkspaceReadOnly' ? reviewedBriefErrorBaseline(roots[name]) : roots[name];
+    const identityRoot = name === 'WorkspaceReadOnly' ? reviewedInlineErrorBaseline(reviewedBriefErrorBaseline(roots[name])) : roots[name];
     identityRoot.walkRules(rule => {
       if (/area-badge|area-(?:carruseles|produccion|edicion|historias|planificacion|web|chatbots|carteleria)|warning|danger|error|urgent|approved|\.pending|\.done|\.red\b|\.amber\b|\.green\b|\.blue\b|\.gray\b|production-progress/.test(rule.selector)) rules.push(rule.toString());
     });

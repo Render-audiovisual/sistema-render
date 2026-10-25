@@ -858,8 +858,8 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         <section className="ros-task-comments-footer">
           <h3>Comentarios</h3>
           <button type="button" className="ros-comment-action" disabled={Boolean(commentDraftOwner.current.refresh)} onClick={refreshComments}>{commentDraftOwner.current.refresh ? 'Actualizando…' : 'Actualizar comentarios'}</button>
-          {commentDraftOwner.current.readError && <div className="ros-inline-error">{commentDraftOwner.current.readError}</div>}
-          {commentError && <div className="ros-inline-error">{commentError}</div>}
+          {commentDraftOwner.current.readError && <div className="ros-inline-error" role="alert">{commentDraftOwner.current.readError}</div>}
+          {commentError && <div className="ros-inline-error" role="alert">{commentError}</div>}
           {commentDraftOwner.current.creation.snapshot.locked && <p role="status">Salir no cancela ni revierte el envío. Este intento no sobrevive a una recarga. Verificá el envío antes de salir.</p>}
           {commentDraftOwner.current.creation.snapshot.canVerify && <button type="button" className="ros-comment-action" onClick={verifyCommentCreation}>Verificar envío</button>}
           {teamComments.length > 0 && <div className="ros-comments">{teamComments.map((item) => <article key={item.id}><Avatar person={taskCommentActorPerson(item, users)} name={item.autor}/><div className="ros-comment-body"><header><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></header><p>{renderizarTextoTarea(item.contenido)}</p></div></article>)}</div>}
