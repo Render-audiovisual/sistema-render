@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Inicio: descarte de conexión incierta y coherencia de lecturas — integración375
+
+Main detectó cuatro lectores en personal-home.js que ocultaban un fallo de ROLLBACK y liberaban el cliente sin error. readPersonalHome/readHomeEscalations/readHomeTeamWorkload/readHomeProductionPage ahora pasan el error de rollback a release, conservan el error primario y no cambian SQL, DTO, permisos ni identidad. El driver instalado pg-pool descarta clientes liberados con error. Regresión inyectada:12 fallos/4PASS antes del cambio;56 focales PASS después, incluyendo BEGIN/consulta/COMMIT fallidos y rollback correcto. Harvey revisó ambos archivos sin bloqueantes. La inyección no acredita una caída de red física.
+
+Cuatro suites físicas de Inicio:23PASS/0FAIL/0SKIP, fixtures desechables retirados, sin bases configuradas (/private/tmp/render2-goal375-home-physical.log). Hilbert amplió exclusivamente render2-report-approval-projection.integration.test.js: mismos seis históricos sintéticos, ambos actores cookie, Reportes/modelos + Calendario + operación de Cliente + detalle de Proyecto, proyecto creado antes del baseline. Booleantrue se proyecta aprobado; stringtrue/false/ausencia siguen en revisión; publicada cruda se conserva en DTO operativos y Reportes normaliza su presentación. Hashes JSON/xmin/ctid de las108 tablas invariantes después de las lecturas; cero piezas/eventos/decisiones fabricadas. No es prueba de todas las secciones ni cuentas reales.
+
+Prioridad pendiente confirmada por fuente y reproducción controlada de Harvey: production-registry.js VIDEOS y production-reporting.js loadProductionReport aún seleccionan t.estado crudo para tarea_estado; Productions.jsx lo muestra como «Para revisar» aunque la aprobación histórica booleantrue sea efectiva. No se corrigió en375 ni se reescribieron históricos. Hilbert también señala buildEmployeeSnapshot de wilson-chat.js como consumidor crudo candidato; requiere reproducción propia antes de afirmar defecto validado. La decisión humana sobre destinatarios de revisión sigue pendiente y no se infiere por nombre.
+
+Backend final2461PASS/169SKIP opt-in/0FAIL de2630 (/private/tmp/render2-goal375-final-backend.log). Core fijo30archivos:293PASS/0FAIL/0SKIP,61.43s, terminal0 (/private/tmp/render2-goal375-core.log), incluida la física ampliada y cleanup ENOENT. Focales56PASS (/private/tmp/render2-goal375-home-focal.log). No hay cambios frontend, build nuevo, recorrido nativo nuevo, proveedor certificado ni despliegue en375. No reutilizar estos resultados como aceptación global o pruebas físicas de fallo de rollback.
+
 ### Calendario: «más» con siete tareas, teclado y apertura correcta — verificación374
 
 La revisión de Main/Harvey confirmó que TaskCalendar ya usa el Modal nativo compartido desde335 y que336 acreditó el caso básico. No se reabrió ni reimplementó ese cierre. Se probó el gate que336 dejaba explícitamente abierto: más de tres tareas en un día y el invocador «+4 más». Guía Web Interface Guidelines aplicada a foco, teclado, nombres y scroll contenido (https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md); esto no equivale a una auditoría de todos los criterios/archivos ni lectores de pantalla.

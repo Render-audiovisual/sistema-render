@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado373
+# Render 2.0 — corte de aceptación local372, actualizado375
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -11,7 +11,7 @@ Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la a
 | 2. Unificación | Un grafo comercial React/Vite → Express → PostgreSQL; tareas, clientes/cuotas, proyectos, registro audiovisual por video y editorial conectados; proyección de aprobación de Reportes corregida373 | Proveedor Drive real no certificado; aceptación transversal todavía parcial. |
 | 3. Diseño | Tokens y componentes compartidos, rutas reales, sidebar agrupada, modo claro; recorridos nativos concretos de escritorio/móvil | No hay aceptación poblada transversal de todas las secciones/roles, lectores de pantalla, zoom, teclado y dispositivos físicos independientes. |
 | 4. Funciones y experiencia | Persistencia, versiones, recibos, filtros, comentarios, protección de borradores y recuperación implementados por módulos | Reconciliar consumidores históricos restantes; avisos de revisión aún dependen de etiquetas. No afirmar que todo error de conexión/concurrencia esté cubierto. |
-| 5. Punta a punta | Cohorte fija29 archivos; recorridos A–F parcialmente acreditados con alcances explícitos abajo | Pruebas sintéticas/API y un navegador no equivalen a múltiples dispositivos, cuentas reales, proveedores ni aceptación completa. |
+| 5. Punta a punta | Cohorte fija30 archivos; recorridos A–F parcialmente acreditados con alcances explícitos abajo | Pruebas sintéticas/API y un navegador no equivalen a múltiples dispositivos, cuentas reales, proveedores ni aceptación completa. |
 
 ## Aplicación y fuente de datos
 
@@ -62,6 +62,7 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - Backend372:2442PASS/168SKIP opt-in/0FAIL de2610, terminal0; `/private/tmp/render2-goal372-final-backend.log`. Las omitidas no se cuentan como pruebas físicas ejecutadas.
 - Actualización373: core30archivos291PASS/0FAIL/0SKIP; físicas suplementarias8PASS; frontend3225PASS y backend2445PASS/169SKIP opt-in/0FAIL. Regresión de aprobación histórica y navegador1280/390 acotados,108 tablas nativas invariantes. Logs `render2-goal373-*` en `/private/tmp`; detalle de alcances en CURRENT_ACCEPTANCE.md.
 - Verificación374: calendario de siete tareas, «+4 más», Tab/Escape/retorno, apertura task7, día vacío y Nueva tarea limpia comprobados nativamente1280/390,108 tablas invariantes y cleanup.34 focales aprobadas; sin nuevo producto ni renovación global. Cierra el caso «más» pendiente336, no toda la accesibilidad del sistema.
+- Integración375: cuatro lectores de Inicio descartan la conexión si falla el rollback, sin ocultar el error original.56 focales,23 físicas adicionales de Inicio y core30archivos293PASS/0FAIL/0SKIP; backend2461PASS/169SKIP/0FAIL. La física de estados amplía Reportes a Calendario/Cliente/Proyecto, ambos actores cookie y108 tablas invariantes. Sin nueva UI/build ni prueba física de caída de red. Logs render2-goal375-*; detalle en CURRENT_ACCEPTANCE.md.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
 
@@ -72,6 +73,8 @@ Hallazgo de Harvey y reproducción del coordinador sobre funciones reales sin DB
 Corrección373: métricas y detalle reutilizan `effectiveTaskFilterState`; el detalle conserva `estado_almacenado` separado. Booleantrue cambia solo lectura a aprobada; stringtrue/false/ausencia no lo hacen. No reescribe históricos ni suma aprobadas a finalizadas o confirmaciones editoriales. Modelos/SSR, PostgreSQL con cookies admin/editor y navegador1280/390 verifican los casos acotados;108 tablas del fixture nativo quedan invariantes. El defecto está corregido localmente, **sin declarar fase2/5 cerrada**. Resultados completos de373 en CURRENT_ACCEPTANCE.md.
 
 ## Decisiones y gates externos
+
+Pendiente local confirmado375: Producciones aún proyecta tarea_estado crudo en production-registry.js y production-reporting.js, por lo que una aprobación histórica booleantrue puede mostrarse «Para revisar». Debe alinearse la lectura, no migrar históricos ni inventar publicaciones. Wilson es otro consumidor candidato señalado por fuente, todavía sin reproducción propia. Estos pendientes impiden afirmar coherencia universal de estados.
 
 1. Definir destinatarios extra de revisión de carruseles: pregunta humana pendiente371. El binding de transporte por ID no decide quién revisa. No inferir cuentas por nombre ni conceder autoridad para resolverlo.
 2. Verificar/provisionar roster real y cuentas independientes autorizadas; cuentas QA demuestran capacidad del servidor, no existencia de las cuentas reales del equipo.

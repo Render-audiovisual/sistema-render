@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { access } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { startLocalHarness, fixturePassword, assertFixtureIdentity } from '../scripts/render2-local-test.js';
 import { loginProductionCookieSession, productionCookieRequest } from './helpers/production-cookie-session.js';
 import { buildEmployeeReport, employeeTaskDetails, employeeFormatBreakdown } from '../../frontend/src/shared/reports/production-registry-report.js';
@@ -41,11 +42,12 @@ test('report approval projection preserves strict historical booleans and stored
     { label: 'explicit approval', stored: 'aprobada', extra: {}, effective: 'aprobada' },
     { label: 'legacy completion', stored: 'publicada', extra: {}, effective: 'finalizada' },
   ];
+  const [client] = await f.query("INSERT INTO clientes(nombre,activo) VALUES('QA375 shared effective-state client',true) RETURNING id");
   for (const item of cases) {
     const [task] = await f.query(`INSERT INTO tareas
-      (titulo,asignado_a,estado,tipo_tarea,subtipo,fecha_vencimiento,propiedades_extra)
-      VALUES($1,'QA373 label is not identity',$2,'edicion','video','2026-10-20',$3::jsonb) RETURNING id`,
-    [`QA373 ${item.label}`, item.stored, JSON.stringify({ workspace: 'render_os', ...item.extra })]);
+      (titulo,asignado_a,estado,tipo_tarea,subtipo,fecha_vencimiento,propiedades_extra,cliente_id)
+      VALUES($1,'QA373 label is not identity',$2,'edicion','video','2026-10-20',$3::jsonb,$4) RETURNING id`,
+    [`QA373 ${item.label}`, item.stored, JSON.stringify({ workspace: 'render_os', ...item.extra }), client.id]);
     item.id = task.id;
     await f.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES($1,91003,'responsable')", [item.id]);
   }
@@ -58,7 +60,20 @@ test('report approval projection preserves strict historical booleans and stored
     assert.equal(actor.session.user.id, actor.id); assert.equal(actor.session.user.rol, actor.role);
   }
   assert.notEqual(actors[0].session.cookie, actors[1].session.cookie, 'Independent cookie sessions');
+  // Setup-only principal POST, before ALL read-only baselines. Project links
+  // are synthetic SQL relationships, not an approval or publication workflow.
+  const created = await productionCookieRequest(f.base, '/api/proyectos', {
+    session: actors[0].session, method: 'POST', body: {
+      request_id: randomUUID(), titulo: 'QA375 effective task-state project', cliente_id: client.id,
+      responsable_id: 91003, miembro_ids: [], tipo: 'web', descripcion: 'Historical read-projection fixture',
+      fecha_inicio: null, fecha_entrega: null,
+    },
+  });
+  assert.equal(created.status, 201, 'Setup project must commit before read-only baseline');
+  const projectId = created.body.proyecto.id;
+  assert.match(projectId, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i);
   const ids = cases.map(item => item.id);
+  await f.query('INSERT INTO proyecto_tareas(proyecto_id,tarea_id) SELECT $1,unnest($2::integer[])', [projectId, ids]);
   // Independent SQL oracle: JSON boolean equality, never ->> text coercion.
   const oracle = await f.query(`SELECT id,estado AS stored,
     CASE WHEN estado='en_revision' AND propiedades_extra->'revision_aprobada'='true'::jsonb
@@ -66,6 +81,13 @@ test('report approval projection preserves strict historical booleans and stored
     FROM tareas WHERE id=ANY($1::integer[]) ORDER BY id`, [ids]);
   assert.deepEqual(oracle, cases.map(item => ({ id: item.id, stored: item.stored,
     effective: item.stored === 'publicada' ? 'publicada' : item.effective })));
+  // Calendar/client/project read DTOs retain the legacy publicada value;
+  // employee report models intentionally normalize only its presentation.
+  const expectedStates = oracle.map(row => ({ id: row.id, estado: row.effective }));
+  const expectedCounts = { pendiente: 0, en_progreso: 0, en_revision: 3, aprobada: 2, finalizada: 1, otros: 0 };
+  const rawTasks = () => f.query(`SELECT id,estado,propiedades_extra,revision,xmin::text AS xmin,ctid::text AS ctid
+    FROM tareas WHERE id=ANY($1::integer[]) ORDER BY id`, [ids]);
+  const rawBefore = await rawTasks();
 
   // Baseline only AFTER fixture setup and both logins. Hash ALL public tables,
   // including auth, events and deliveries; return opaque digests, not financial
@@ -127,7 +149,48 @@ test('report approval projection preserves strict historical booleans and stored
     assert.deepEqual(data, original, 'Real report models preserve the deeply frozen HTTP DTO');
     assert.deepEqual(await snapshot(), before, 'Report HTTP/model reads preserve every stored row and physical tuple');
   });
+  const sortedStates = rows => rows.map(row => ({ id: row.id, estado: row.estado })).sort((a, b) => a.id - b.id);
+  for (const actor of actors) await t.test(`${actor.role}: Calendar, client operation and project detail agree on the same six stored tasks`, async () => {
+    const get = async path => {
+      const result = await productionCookieRequest(f.base, path, { session: actor.session });
+      assert.equal(result.status, 200, 'Expected operational read success without printing credentials/body');
+      return result.body;
+    };
+    const query = new URLSearchParams({ ...range, scope: 'team', kind: 'all', cliente_id: String(client.id) });
+    const calendar = await get(`/api/calendario?${query}`);
+    assert.deepEqual(calendar.range, range); assert.equal(calendar.truncated, false);
+    assert.equal(calendar.events.length, cases.length, 'No fabricated visit/milestone/editorial events');
+    assert.deepEqual(sortedStates(calendar.events.map(event => ({ id: event.source_id, estado: event.estado }))), expectedStates);
+    for (const event of calendar.events) {
+      assert.equal(event.kind, 'tarea'); assert.equal(event.source, 'tarea');
+      assert.equal(event.evidence, null); assert.equal(event.date, '2026-10-20');
+      assert.equal(event.cliente_id, client.id); assert.deepEqual(event.responsable_ids, [91003]);
+      assert.equal(event.href, `/workspace/tareas?task=${event.source_id}`);
+    }
+    assert.deepEqual(await snapshot(), before, 'Calendar reads do not rewrite stored approval');
+    const operation = await get(`/api/clientes/${client.id}/operacion?periodo=2026-10`);
+    assert.equal(operation.cliente.id, client.id); assert.equal(operation.tareas.total, 6);
+    assert.equal(operation.tareas.has_more, false);
+    assert.deepEqual(operation.tareas.counts, expectedCounts, 'Only boolean true leaves review; legacy publicada counts as finalized');
+    assert.deepEqual(sortedStates(operation.tareas.items), expectedStates);
+    for (const item of operation.tareas.items) assert.equal(item.href, `/workspace/tareas?task=${item.id}`);
+    assert.deepEqual(await snapshot(), before, 'Client-operation summaries remain read-only');
+    const { proyecto: project } = await get(`/api/proyectos/${projectId}`);
+    assert.equal(project.id, projectId); assert.equal(project.cliente.id, client.id);
+    assert.equal(project.tareas_no_disponibles, 0);
+    assert.deepEqual(project.counts, { tareas: 6, finalizadas: 1, hitos: 0, entregables: 0 });
+    assert.deepEqual(sortedStates(project.tareas), expectedStates);
+    for (const item of project.tareas) {
+      assert.equal(item.fecha_vencimiento, '2026-10-20');
+      assert.equal(item.href, `/workspace/tareas?task=${item.id}`);
+    }
+    assert.deepEqual(await rawTasks(), rawBefore, 'Operational consumers preserve raw state/metadata/revision/xmin/ctid');
+    assert.deepEqual(await snapshot(), before, 'Project detail preserves every public table');
+  });
   for(const table of ['historias','publicaciones','editorial_publicacion_eventos','task_editing_deliveries','task_editing_reviews'])
     assert.equal((await f.query(`SELECT count(*)::int n FROM ${table}`))[0].n,0,
       'Read-only approval projection cannot manufacture editorial pieces, publication evidence or artifact decisions');
+  assert.deepEqual(await rawTasks(), rawBefore);
+  assert.deepEqual(await snapshot(), before);
+  t.diagnostic(`QA375 all ${tables.length} public-table JSON/xmin/ctid hashes unchanged after both cookie actors and all readers`);
 });

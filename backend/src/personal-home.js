@@ -58,7 +58,7 @@ async function verifiedHomeUser(db, auth) {
 export async function readHomeEscalations(pool, auth, query = {}) {
   if (!Number.isSafeInteger(auth?.id) || auth.id < 1) throw fail('Necesitás una identidad verificada.', 403);
   const { offset, limit } = parseEscalationPage(query);
-  const db = await pool.connect();
+  const db = await pool.connect(); let releaseError;
   try {
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const user = await verifiedHomeUser(db, auth);
@@ -68,9 +68,9 @@ export async function readHomeEscalations(pool, auth, query = {}) {
     await db.query('COMMIT');
     return result.rows[0].queue;
   } catch (error) {
-    await db.query('ROLLBACK').catch(() => {});
+    try { await db.query('ROLLBACK'); } catch (rollbackError) { releaseError = rollbackError; }
     throw error;
-  } finally { db.release(); }
+  } finally { db.release(releaseError); }
 }
 
 // Team workload is a closed operational projection. Assignment membership is
@@ -126,7 +126,7 @@ SELECT jsonb_build_object('version',1,'today',to_char(day.today,'YYYY-MM-DD'),
 export async function readHomeTeamWorkload(pool, auth, query = {}) {
   if (!Number.isSafeInteger(auth?.id) || auth.id < 1) throw fail('Necesitás una identidad verificada.', 403);
   const { offset, limit } = parseEscalationPage(query);
-  const db = await pool.connect();
+  const db = await pool.connect(); let releaseError;
   try {
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const user = await verifiedHomeUser(db, auth);
@@ -136,9 +136,9 @@ export async function readHomeTeamWorkload(pool, auth, query = {}) {
     await db.query('COMMIT');
     return result.rows[0].workload;
   } catch (error) {
-    await db.query('ROLLBACK').catch(() => {});
+    try { await db.query('ROLLBACK'); } catch (rollbackError) { releaseError = rollbackError; }
     throw error;
-  } finally { db.release(); }
+  } finally { db.release(releaseError); }
 }
 
 // Shared task membership/visibility, monthly date fallback and production groups
@@ -289,7 +289,7 @@ export async function readHomeProductionPage(pool, auth, query = {}) {
   const { period, offset, limit } = parseHomeProductionPage(query);
   if (!Number.isSafeInteger(auth?.id) || auth.id < 1 || auth.id > 2147483647
     || !Number.isSafeInteger(auth.session_version)) throw fail('Necesitás una sesión verificada.', 401);
-  const db = await pool.connect();
+  const db = await pool.connect(); let releaseError;
   try {
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const user = await verifiedHomeUser(db, auth);
@@ -298,14 +298,14 @@ export async function readHomeProductionPage(pool, auth, query = {}) {
     await db.query('COMMIT');
     return result.rows[0].production_page;
   } catch (error) {
-    await db.query('ROLLBACK').catch(() => {});
+    try { await db.query('ROLLBACK'); } catch (rollbackError) { releaseError = rollbackError; }
     throw error;
-  } finally { db.release(); }
+  } finally { db.release(releaseError); }
 }
 
 export async function readPersonalHome(pool, auth) {
   if (!Number.isSafeInteger(auth?.id) || auth.id < 1) throw fail('Necesitás una identidad verificada.', 403);
-  const db = await pool.connect();
+  const db = await pool.connect(); let releaseError;
   try {
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const user = await verifiedHomeUser(db, auth);
@@ -315,9 +315,9 @@ export async function readPersonalHome(pool, auth) {
     await db.query('COMMIT');
     return home;
   } catch (error) {
-    await db.query('ROLLBACK').catch(() => {});
+    try { await db.query('ROLLBACK'); } catch (rollbackError) { releaseError = rollbackError; }
     throw error;
-  } finally { db.release(); }
+  } finally { db.release(releaseError); }
 }
 
 export function createPersonalHomeRouter({ express, pool }) {
