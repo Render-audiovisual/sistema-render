@@ -63,7 +63,7 @@
 .drive-duplicate button { background: var(--render-surface, #fff); border: 1px solid var(--render-line, #e5e7eb); border-radius: 8px; color: var(--render-ink, #202124); min-height: 44px; padding: 8px 12px; }
 .drive-duplicate .danger { background: var(--render-danger, #a23b35); color: #fff; }
 .drive-picker-backdrop { align-items: center; background: #0008; display: flex; inset: 0; justify-content: center; position: fixed; z-index: 3000; }
-.drive-folder-picker { background: var(--render-surface, #fff); border-radius: var(--render-radius-card, 12px); box-shadow: var(--render-shadow-raised, 0 20px 60px #0004); box-sizing: border-box; max-height: 75dvh; max-width: 560px; overflow: auto; padding: 20px; width: calc(100% - 32px); }
+.drive-folder-picker { background: var(--render-surface, #fff); border-radius: var(--render-radius-card, 12px); box-shadow: var(--render-shadow-raised, 0 20px 60px #0004); box-sizing: border-box; max-height: 75dvh; max-width: 560px; overflow: auto; overscroll-behavior: contain; padding: 20px; width: calc(100% - 32px); }
 .drive-folder-picker header, .drive-folder-picker footer { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
 .drive-folder-picker header div { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
 .drive-folder-picker header small { color: var(--render-muted, #667085); }

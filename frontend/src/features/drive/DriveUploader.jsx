@@ -4,9 +4,11 @@ import { getSesion } from '../../utils.jsx';
 import { createCapturedRequest } from '../../shared/session/captured-request.js';
 import { useSessionView } from '../../shared/session/use-session-view.js';
 import { createUploadRecovery } from './upload-recovery.js';
+import { Modal } from '../../components/Modal.jsx';
 import './DriveUploader.css';
 
-function FolderPicker({ root, onSelect, onClose, session, readSession, isActive }) {
+function FolderPicker({ root, onSelect, onClose, session, readSession, isActive, returnFocusRef }) {
+  const closeRef = useRef(null);
   const [stack, setStack] = useState([{ id: root.id, name: root.label }]);
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,13 +25,13 @@ function FolderPicker({ root, onSelect, onClose, session, readSession, isActive 
       .finally(() => { if (scope.current()) setLoading(false); });
     return () => { active = false; controller.abort(); };
   }, [current.id, session, readSession, isActive]);
-  return <div className="drive-folder-picker">
-    <header><div><strong>Elegir carpeta</strong><small>{stack.map((item) => item.name).join(" / ")}</small></div><button type="button" onClick={onClose}>×</button></header>
+  return <Modal native chrome={false} overlayClassName="drive-picker-backdrop" overlayAriaLabel="Elegir carpeta" onClose={onClose} initialFocusRef={closeRef} returnFocusRef={returnFocusRef}><div className="drive-folder-picker">
+    <header><div><strong>Elegir carpeta</strong><small>{stack.map((item) => item.name).join(" / ")}</small></div><button ref={closeRef} type="button" aria-label="Cerrar selector de carpetas" onClick={onClose}>×</button></header>
     {stack.length > 1 && <button className="drive-folder-back" type="button" onClick={() => setStack((items) => items.slice(0, -1))}>← Volver</button>}
-    <div className="drive-folder-list">{loading ? <p>Cargando carpetas…</p> : folders.map((folder) => <button type="button" key={folder.id} onClick={() => setStack((items) => [...items, folder])}><span>▰</span><strong>{folder.name}</strong><b>›</b></button>)}</div>
+    <div className="drive-folder-list">{loading ? <p role="status">Cargando carpetas…</p> : folders.map((folder) => <button type="button" key={folder.id} onClick={() => setStack((items) => [...items, folder])}><span aria-hidden="true">▰</span><strong>{folder.name}</strong><b aria-hidden="true">›</b></button>)}</div>
     {error && <p role="alert">{error}</p>}
     <footer><button type="button" onClick={onClose}>Cancelar</button><button className="primary" type="button" onClick={() => onSelect(current)}>Usar esta carpeta</button></footer>
-  </div>;
+  </div></Modal>;
 }
 
 export function DriveUploader({ task, currentFolder, canReplace, onUploaded }) {
@@ -42,6 +44,7 @@ export function DriveUploader({ task, currentFolder, canReplace, onUploaded }) {
 
 function UploadScope({ task, currentFolder, canReplace, onUploaded, session, context, live }) {
   const inputRef = useRef(null);
+  const pickerButtonRef = useRef(null);
   const recovery=useRef(null),uploadScope=useRef(null);
   const [recoveryState,setRecoveryState]=useState({blocked:false,confirmed:[]}),[refreshFailed,setRefreshFailed]=useState(false);
   const mounted = useRef(true), generation = useRef(0), operation = useRef(null), pending = useRef(false);
@@ -123,16 +126,16 @@ function UploadScope({ task, currentFolder, canReplace, onUploaded, session, con
 
   return <div className="drive-uploader">
     <input ref={inputRef} type="file" onChange={choose} disabled={uploading||recoveryState.blocked||refreshFailed}/>
-    {!file ? <button className="drive-upload-trigger" type="button" disabled={uploading||recoveryState.blocked||refreshFailed} onClick={() => inputRef.current?.click()}><span>＋</span><div><strong>Subir archivo</strong><small>{task ? "Lo vincularemos automáticamente con esta tarea." : "Seleccioná cualquier tipo de archivo."}</small></div></button> : <div className="drive-upload-ready"><div><strong>{file.name}</strong><small>{destination?.breadcrumb || destination?.reason || "Buscando la carpeta correcta…"}</small></div>{destination?.status === "resolved" ? <button type="button" disabled={uploading||recoveryState.blocked||refreshFailed} onClick={() => upload()}>{uploading ? `${progress}%` : "Subir"}</button> : <button type="button" onClick={() => setPickerRoot(destination?.root)}>Elegir carpeta</button>}</div>}
+    {!file ? <button className="drive-upload-trigger" type="button" disabled={uploading||recoveryState.blocked||refreshFailed} onClick={() => inputRef.current?.click()}><span>＋</span><div><strong>Subir archivo</strong><small>{task ? "Lo vincularemos automáticamente con esta tarea." : "Seleccioná cualquier tipo de archivo."}</small></div></button> : <div className="drive-upload-ready"><div><strong>{file.name}</strong><small>{destination?.breadcrumb || destination?.reason || "Buscando la carpeta correcta…"}</small></div>{destination?.status === "resolved" ? <button ref={pickerButtonRef} type="button" disabled={uploading||recoveryState.blocked||refreshFailed} onClick={() => upload()}>{uploading ? `${progress}%` : "Subir"}</button> : <button ref={pickerButtonRef} type="button" onClick={() => setPickerRoot(destination?.root)}>Elegir carpeta</button>}</div>}
     {uploading && <div className="drive-progress"><i style={{ width: `${progress}%` }}/></div>}
     {duplicate && <div className="drive-duplicate"><strong>Ya existe “{duplicate.name}”.</strong><span>¿Qué querés hacer?</span><div><button type="button" onClick={() => { setDuplicate(null); setFile(null); }}>Cancelar</button><button type="button" onClick={() => upload("keep")}>Conservar ambos</button>{mayReplace && <button className="danger" type="button" onClick={() => upload("replace")}>Reemplazar</button>}</div></div>}
     {error && <p className="drive-error" role="alert">{error}</p>}
     {recoveryState.blocked&&<p className="drive-error" role="status">La carga puede haberse completado total o parcialmente. No se volverá a enviar. <a href="/drive">Revisar Drive manualmente</a>. Buscar por nombre no confirma el resultado. Al salir se pierde esta recuperación en memoria.</p>}
     {refreshFailed&&<button type="button" disabled={uploading} onClick={()=>void retryRefresh()}>Actualizar vista sin volver a subir</button>}
-    {pickerRoot && <div className="drive-picker-backdrop"><FolderPicker root={pickerRoot} session={session} readSession={getSesion} isActive={isActive} onClose={() => setPickerRoot(null)} onSelect={(folder) => {
+    {pickerRoot && <FolderPicker root={pickerRoot} session={session} readSession={getSesion} isActive={isActive} returnFocusRef={pickerButtonRef} onClose={() => setPickerRoot(null)} onSelect={(folder) => {
       const scope = createCapturedRequest({ session, readSession: getSesion, isActive });
       if (!scope.current()) return;
       setDestination({ status: "resolved", folder, breadcrumb: folder.name }); setPickerRoot(null);
-    }}/></div>}
+    }}/>}
   </div>;
 }
