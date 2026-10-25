@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Control compartido de actualización de revisión — integración365
+
+El botón Actualizar tarea para revisar en TaskDetail no tenía clase de control ni selector específico que le diera el estilo de los demás botones. Ahora reutiliza btn: tokens compartidos, altura mínima44px y movimiento reducido sin CSS adicional. No cambia permiso, handler, texto, ni disabled por actualización/aprobación/entrega. Prueba AST nueva localiza el botón real por su handler y verifica contrato y clase. Guías Apple UI/frontend orientaron reutilización y contención, sin introducir tipografía/paleta paralelas.
+
+Focal inlineApproval8PASS (/private/tmp/render2-goal365-inline.log); conjunto frontend conectado3075PASS y todos los archivos src/**/*.test.js encontrados por rg3221PASS/0FAIL (/private/tmp/render2-goal365-frontend.log y render2-goal365-all-frontend.log). Estos comandos no incluyen extensiones distintas de .test.js. Build index-CPNnyY9G correcto (/private/tmp/render2-goal365-build.log). Harvey revisó diff sin bloqueantes y detectó otro candidato de fuente: Reintentar vínculo, todavía sin corregir ni medir visualmente. Sin nueva sesión de navegador ni certificación visual móvil; backend/esquema sin delta y resultados físicos364 no renovados aquí. No despliegue.
+
 ### Sesiones audiovisuales, concurrencia y descarte de conexiones — integración364
 
 Main corrigió editing-deliveries/editing-reviews: si ROLLBACK falla, release recibe ese error para retirar la conexión del pool, conservando la respuesta/error primario. Ocho pruebas de handlers reales cubren GET/POST, rollback válido/fallido y ambas rutas; cuatro fallaban antes. Esta inyección no demuestra un fallo físico de ROLLBACK.

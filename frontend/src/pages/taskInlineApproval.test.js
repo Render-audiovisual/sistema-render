@@ -21,6 +21,16 @@ function evaluate(node, deps) {
 }
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const deliveryId = '10000000-0000-4000-8000-000000000001';
+test('review refresh shares the canonical control without changing its action or busy guards',()=>{
+  const button=find(owner('TaskDetail'),node=>ts.isJsxElement(node)&&ts.isIdentifier(node.openingElement.tagName)
+    &&node.openingElement.tagName.text==='button'&&node.openingElement.attributes.properties.some(attribute=>
+      ts.isJsxAttribute(attribute)&&attribute.name.getText(file)==='onClick'&&attribute.initializer?.getText(file)==='{refreshReviewTask}'));
+  const attributes=button.openingElement.attributes.properties;
+  const value=name=>attributes.find(attribute=>ts.isJsxAttribute(attribute)&&attribute.name.getText(file)===name)?.initializer?.getText(file);
+  assert.equal(value('className'),'"btn"');assert.equal(value('type'),'"button"');
+  assert.equal(value('disabled'),'{reviewRefreshing || approving || deliveryBusy}');
+  assert.match(button.getText(file),/Actualizando…/);assert.match(button.getText(file),/Actualizar tarea para revisar/);
+});
 function fixture({ acknowledged = true, historyRevision = 7, historyStatus = 'ready', role = 'admin', saving = false, deliveryBusy = false,
   deliveryDirty = false, approving = false, reviewRefreshing = false, transport } = {}) {
   const task = { id: 5, revision: 7, updated_at: '2026-10-23T12:00:00.000Z', estado: 'en_revision',
