@@ -21,3 +21,4 @@
   .rpr-page .rpr-person-detail{min-width:0;overflow-wrap:anywhere}
   .rpr-page .rpr-person-detail .rpr-metrics{grid-template-columns:minmax(0,1fr)}
 }
+.rpr-page .rpr-production-link{display:inline-flex;align-items:center;min-height:44px;max-width:100%;overflow-wrap:anywhere;color:var(--rpr-blue);text-underline-offset:3px}

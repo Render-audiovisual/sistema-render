@@ -8,6 +8,8 @@ import { ROL_LABELS } from '../constants.js';
 import { getReportPeriodRange } from '../shared/reports/report-utils.js';
 import { pushUrlContext, readUrlContext, replaceUrlContext } from '../shared/navigation/url-context.js';
 import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
+import { navigateWithinApp } from '../shared/navigation/location.js';
+import { productionReportVisitHref } from '../shared/reports/production-report-links.js';
 import { buildEmployeeReport, buildHistoricalProductionReport, buildProductionRegistryReport, historicalUnassignedEditingCount, uniqueReportTasks, editorialRecords, summarizeEditorialRecords, clientQuotaReport, employeeTaskDetails, employeeFormatBreakdown, personalEditorialReport } from '../shared/reports/production-registry-report.js';
 import './ReportProductionRegistry.css';
 
@@ -25,6 +27,13 @@ const QUOTA_COLUMNS = ['Cliente / feed', 'Cuota mensual de carruseles', 'Cuota m
 const PERSON_COLUMNS = ['Persona', 'Tareas', 'Para revisar', 'Aprobadas', 'Finalizadas', 'No finalizadas', 'Vencidas'];
 function Metric({ value, label }) {
   return <div className="rpr-metric"><strong>{value}</strong><span>{label}</span></div>;
+}
+function ProductionVisitLink({href}) {
+  if(!href)return null;
+  return <a className="rpr-production-link" href={href} onClick={event=>{
+    if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+    event.preventDefault();navigateWithinApp(window,href);
+  }}>Abrir registro en Producciones ↗</a>;
 }
 function EditorialTable({ rows }) {
   return <ReportTable caption="Programación y confirmaciones manuales por formato" columns={EDITORIAL_COLUMNS}>{rows.map(row => <tr key={row.formato} role="row"><th scope="row" role="rowheader">{FORMAT_LABELS[row.formato]}</th><ReportCell label={EDITORIAL_COLUMNS[1]}>{row.programadas}</ReportCell><ReportCell label={EDITORIAL_COLUMNS[2]}>{row.publicadas}</ReportCell><ReportCell label={EDITORIAL_COLUMNS[3]}>{row.historicalFechadas}</ReportCell><ReportCell label={EDITORIAL_COLUMNS[4]}>{row.legacy}</ReportCell><ReportCell label={EDITORIAL_COLUMNS[5]}>{row.legacySinFecha}</ReportCell><ReportCell label={EDITORIAL_COLUMNS[6]} wide>{row.estados.map(state => state.estado + ': ' + state.total).join(' · ') || 'Sin registros fechados'}</ReportCell></tr>)}</ReportTable>;
@@ -125,6 +134,7 @@ function ReportesContent({ session }) {
           {!production.clients.length && <p className="rpr-muted">No hay visitas registradas en este período.</p>}
           {production.clients.map(client => <section className="rpr-client" key={client.id}><h3>{client.nombre}</h3>{client.visits.map(visit => <details className="rpr-visit" key={visit.id}><summary><span><time dateTime={visit.fecha}>{visit.fecha}</time> · {visit.titulo || 'Visita'}</span><span>{visit.videos.length} videos · {visit.fotos.length} registros de fotos</span></summary>
             <p className="rpr-muted">{visit.resultado_estado.label}</p>
+            <ProductionVisitLink href={productionReportVisitHref(visit)}/>
             <p className="rpr-muted">Participantes: {visit.participants.map(person => person.nombre + ' · #' + person.id).join(', ') || 'Sin participantes registrados'}</p>
             <ul className="rpr-media">{visit.videos.map(video => <li key={'video:' + video.id}><span>Video · {video.titulo || 'Sin título'}</span><span>{VIDEO_STATES[video.estado] || 'Estado sin reconocer'}</span></li>)}{visit.fotos.map(photo => <li key={'photo:' + photo.id}><span>Fotos · {photo.tipo || 'Sin tipo'}</span><span>{PHOTO_STATES[photo.estado] || 'Estado sin reconocer'}</span></li>)}</ul>
             {!visit.videos.length && !visit.fotos.length && <p className="rpr-muted">Sin material registrado.</p>}

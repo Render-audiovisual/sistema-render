@@ -4,6 +4,18 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Navegación desde Reportes a la visita exacta — integración330
+
+Cada visita normalizada de Reportes ofrece **Abrir registro en Producciones**. Helper cerrado `productionReportVisitHref` reconstruye exclusivamente visita UUID/mes/día reales, ignora href/cliente/filtros arbitrarios del payload y no crea enlaces para datos inválidos. Click simple usa `navigateWithinApp` y su veto compartido; Ctrl/Cmd/Shift/Alt y botones secundarios conservan semántica nativa del anchor. No escribe negocio ni concede permisos. Superpowers acotó contrato/pruebas; Apple UI influyó en la única regla scoped para área táctil44px con color/foco existente y wrap, sin nueva capa visual.
+
+Harvey entregó8 pruebas del helper y componente real extraído por AST, roundtrip con productionLocation, inyecciones/fechas, navegador modificado y commit/veto del navegador compartido real. Main integró UI/estilo.8 focales PASS (`/private/tmp/render2-goal330-links.log`); frontend final3113PASS/1SKIP/0FAIL de3114 (`/private/tmp/render2-goal330-final-frontend.log`); build index-B7kGyTkM (`/private/tmp/render2-goal330-final-build.log`), diff-check limpio. No backend nuevo ni suite backend renovada en330. Recorrido nativo Reportes→registro→Atrás/recarga y medida44px en dispositivo todavía pendientes; tests AST no equivalen a navegador. Sin producción/base existente/proveedores/despliegue.
+
+### Reportes: resultado desactualizado visible por empleado — recorrido329
+
+Fixture `/private/tmp/render2-goal329-native.mjs`, PG55945/HTTP52878, cuenta cookie ficticia `qa_luciano` (edición, sin admin). Build328 index-DCoeAb-F: login→Reportes, producción compartida1visita/6videos/4grabados/2tiposfotos/1realizado; expandir visita muestra **Resultado desactualizado**, videos pendientes y foto para repetir. Menú no ofrece Finanzas; ausencia visual no sustituye la prueba API de privacidad328. Tras recarga y nueva expansión conserva etiqueta exacta.390×844 DOM width390/scroll375, captura inspeccionada `/private/tmp/render2-goal329-report-mobile.png`; no overflow horizontal observado. Participante sin nombre disponible muestra ID repetido en fallback (`Usuario #91001 · #91001`): detalle visual pendiente, no identidad resuelta por nombre ni nueva exposición de datos.
+
+Coordinador73014/HTTP73038 cerrados con exit0; SQL confirma journal único `afb3fc46-6de7-48fd-9b77-e7e7b1b107ea` revisión10 y visita11,107 tablas de dominio intactas desde setup, counters/index/entry intactos; cleanup ENOENT de `/private/tmp/render2-local-kFKLIW`. El mensaje heredado de hashes104 no representa el loop107. Viewport restaurado, pestaña cerrada. No código/build nuevo ni suites globales renovadas en329; no proveedor/base existente/despliegue. No acredita todos los roles/dispositivos ni aceptación general.
+
 ### Resultado de producción en Reportes sin ampliar finanzas — integración328
 
 Main incorporó revisión y `ultimo_resultado` al DTO de producción no-admin, únicamente mediante seis campos públicos y descriptors propios; resumen crudo, recibo, actor y propiedades económicas no se copian. Evidencia inválida/ausente se omite (unknown), null explícito conserva ausencia registrada. Roles existentes no se amplían y la lectura de Reportes mantiene su snapshot autorizado. Harvey integró `resultado_estado` label/tone en el modelo frontend; Reportes muestra etiqueta por visita sin cambiar conteos/dedupe/histórico. Security Best Practices orientó allowlist servidor y render JSX, no nuevos permisos ni cambios de sesión.
