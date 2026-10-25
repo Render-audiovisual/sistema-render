@@ -80,6 +80,21 @@ test("encola una vez por destinatario, excluye al actor y tolera reintentos", as
   assert.equal(inserts.length, 1);
   assert.equal(inserts[0][1], "Germán");
   assert.equal(inserts[0][2], "german");
+  assert.deepEqual(JSON.parse(inserts[0][7]), { cliente: 'Bohle', actor: 'Oriana', destinatario_usuario_id: 2 });
+});
+
+test('unique legacy recipient persists stable ID and only an explicitly supplied actor ID', async () => {
+  for (const actorId of [undefined, 7]) {
+    const inserts=[];
+    const pool={async query(sql,params){
+      if(sql.startsWith('SELECT id, usuario, nombre'))return {rows:[{id:12,usuario:'unique',nombre:'Unique QA'}]};
+      if(sql.includes('INSERT INTO mia_private_task_notifications')){inserts.push(params);return {rows:[{id:1,fingerprint:params[0]}]};}
+      assert.fail('Unexpected query');
+    }};
+    await encolarNotificacionPrivadaTarea({pool,tarea:{id:42,titulo:'QA'},nombresDestinatarios:['Unique QA'],actor:'Author QA',actorId});
+    assert.equal(inserts.length,1);
+    assert.deepEqual(JSON.parse(inserts[0][7]),{cliente:null,actor:'Author QA',destinatario_usuario_id:12,...(actorId===undefined?{}:{actor_usuario_id:7})});
+  }
 });
 
 test("receipt notifications bind recipient/actor IDs despite homonyms and leader aliases", async () => {

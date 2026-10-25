@@ -68,7 +68,7 @@ test('legacy recipient ambiguity uses real PG identities before channel eligibil
     assert.equal(row.destinatario,chosen.nombre);assert.equal(row.destinatario_clave,chosen.usuario.toLowerCase());
     assert.equal(row.motivo,'revision');assert.equal(row.estado,'pending');assert.equal(row.intentos,0);
     assert.equal(row.mensaje,notification.text);assert.equal(row.tarea_url,notification.url);
-    assert.deepEqual(row.detalles,{cliente:null,actor:'QA261 distinct actor'});
+    assert.deepEqual(row.detalles,{cliente:null,actor:'QA261 distinct actor',destinatario_usuario_id:91003,actor_usuario_id:91001});
     assert.equal(row.claimed_at,null);assert.equal(row.delivered_at,null);assert.ok(Number.isFinite(Date.parse(row.created_at)));
     sameHashes(await hashes(['mia_private_task_notifications']),baseline);
   });

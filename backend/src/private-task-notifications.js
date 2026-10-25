@@ -72,8 +72,9 @@ export async function encolarNotificacionPrivadaTarea({
     throw Object.assign(new Error("Destinatarios de notificación inválidos."), { status: 400 });
   }
   const nombres = Array.isArray(nombresDestinatarios) ? nombresDestinatarios : responsablesNotificables(tarea);
-  // Receipt-backed operations select real IDs; legacy callers keep their old
-  // label behavior. A name/leader alias cannot redirect this new enqueue path.
+  // Compatibility labels still require a unique active account. Once resolved,
+  // retain that account ID so delivery can revalidate it after rename/revocation.
+  // This never infers identities for historical queued notices.
   const candidatos = byId
     ? (await pool.query("SELECT id,usuario,nombre FROM usuarios WHERE id=ANY($1::integer[]) AND activo IS TRUE ORDER BY id", [[...new Set(destinatarioIds)]])).rows
     : await resolverUsuarios(pool, nombres);
@@ -115,7 +116,8 @@ export async function encolarNotificacionPrivadaTarea({
        RETURNING id,fingerprint`,
       [fingerprint, destinatario.nombre, destinatarioClave, tarea.id, motivo, mensaje.text, mensaje.url,
         JSON.stringify({ cliente: clienteNombre, actor: actor || null,
-          ...(byId ? { destinatario_usuario_id: destinatario.id, actor_usuario_id: actorId } : {}) })],
+          destinatario_usuario_id: destinatario.id,
+          ...(actorById ? { actor_usuario_id: actorId } : {}) })],
     );
     if (result.rows[0]) entregas.push(result.rows[0]);
   }

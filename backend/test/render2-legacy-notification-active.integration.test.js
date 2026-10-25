@@ -82,7 +82,7 @@ test('legacy notification lookups omit inactive accounts before enqueue or SMTP 
     const notice=rows[0].row;
     assert.equal(Number(notice.tarea_id),task.id);assert.equal(notice.motivo,'revision');
     assert.equal(notice.destinatario,'Agustín');assert.equal(notice.destinatario_clave,'lider');assert.equal(notice.estado,'pending');
-    assert.deepEqual(notice.detalles,{cliente:null,actor:'QA237 actor distinto'});
+    assert.deepEqual(notice.detalles,{cliente:null,actor:'QA237 actor distinto',destinatario_usuario_id:91002});
     assert.match(notice.fingerprint,/^[a-f0-9]{64}$/);
     const mail=await notificarAsignacionTarea({...notify('QA237 active positive'),transporter});
     assert.equal(mail.enviado,true);assert.deepEqual(mail.destinatarios,['qa237-leader@example.invalid']);

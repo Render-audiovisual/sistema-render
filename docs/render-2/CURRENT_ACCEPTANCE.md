@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Avisos de tareas: identidad retenida tras resolver nombres — corte278
+
+Los avisos nuevos de compatibilidad ahora guardan destinatario_usuario_id y actor_usuario_id solo si fue aportado; se activa revalidación existente de cuenta/WhatsApp/propiedad de clave. Resolución única, exclusión de actor y fingerprint/replay conservados. Históricos sin ID no se backfillean ni quedan protegidos retroactivamente. Login con acentos sin binding propio aprobado queda intencionalmente retenido; alias propio habilitado permite elegibilidad, ajeno/deshabilitado no. Sin inferir rutas ni normalización SQL nueva. Ver NOTIFICATION_RECIPIENT_BINDING_QA.md.
+
+Harvey física/revisión y coordinador producto/integración/ejecución. Reproducción roja de ID ausente y revocación; tras parche95focales,2333backendPASS/150opt-inSKIP/0FAIL y14físicas PASS en tres clusters generados con cleanup ENOENT.106tablas por fixture observadas con cambios de prueba explícitos; no invariancia global sin exclusiones. Logs goal278 en /private/tmp. Security-best-practices/Express y Superpowers guiaron aislamiento/límites. Sin frontend/build/migración/proveedor/bases configuradas/despliegue. Gate histórico sin ID y aceptación global continúan abiertos.
+
 ### Perfil: límite compartido entre procesos reales — corte277
 
 Harvey suite física, coordinador revisión/ejecución. PG55907 temporal clusterOnly +dos entrypoints server reales:20intentos alternando formularios/sesiones/procesos→10x401/10x429, bucketúnico10, sin cambios en105tablas de dominio/usuarios completos ni budgets de login. Denegación conserva timestamps/xmin/ctid y candidato expirado. Tras terminar ambos procesos y arrancar reemplazo en la misma base, sigue429 y GET válido; otro actor independiente.4PASS (padre+3), salida0/cleanup ENOENT UgSYiC; log `/private/tmp/render2-goal277-physical-final.log`.21focales y backend2332PASS/149opt-inSKIP/0FAIL; sin producto/migración/frontend/build nuevos. Ver PROFILE_COOKIE_QA.md: no prueba reinicio de PostgreSQL, cookie multiproceso, TLS/infraestructura ni aceptación global. Security-best-practices/Express y Superpowers orientaron aislamiento y límites; sin bases configuradas ni despliegue.

@@ -35,7 +35,8 @@ for(const channel of ['email','private']){
     assert.ok(f.queries.some(({sql})=>/SELECT\s+id\s*,\s*usuario\s*,\s*nombre/.test(sql)), 'Legacy lookup projects the DB identity');
     if(channel==='private'){
       const details=JSON.parse(f.deliveries[0].params[7]);
-      assert.equal(Object.hasOwn(details,'destinatario_usuario_id'),false,'Actor-ID exclusion must not silently switch legacy recipient policy');
+      assert.equal(details.destinatario_usuario_id,12,'Unique label lookup now retains its resolved identity for delivery validation');
+      assert.equal(details.actor_usuario_id,11);
       assert.equal(details.actor,'Franco');
     }
   });
