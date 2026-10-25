@@ -13,6 +13,7 @@ import { createFeedbackNotesMutation } from "./feedbackNotesMutation.js";
 import {feedbackResponsibleCatalog,feedbackResponsibleIds,feedbackResponsibleLabel,feedbackResponsibleDisplay,feedbackLegacyResponsibleLabels,toggleFeedbackResponsibleId} from './feedbackResponsibleSelection.js';
 import "./Feedback.css";
 import { FeedbackTaskInventory } from './FeedbackTaskInventory.jsx';
+import { Modal } from '../components/Modal.jsx';
 
 const EDITABLE_CATEGORIES = CATEGORIAS_NOTA.filter((category) => category.id !== "todas");
 const CATEGORY_LABELS = Object.fromEntries(EDITABLE_CATEGORIES.map((category) => [category.id, category.label]));
@@ -441,9 +442,11 @@ function FeedbackContent({transport,view,sesion}) {
       {!visible.length && !error && !page?.error && !location.error && <div className="rf-empty"><span>▤</span><strong>{selection?.q ? "No encontramos resultados" : trash ? "La Papelera está vacía" : `Todavía no hay feedback de ${section === "clients" ? "clientes" : "equipo"}`}</strong><p>{selection?.q ? "Probá con otra búsqueda." : "Creá una nota para guardar la información importante."}</p></div>}
     </div>}
 
-    {panelOpen && <div className="rf-panel-backdrop" role="presentation" onMouseDown={closePanel}>
-      <section className={`rf-panel ${draft ? "is-editing" : ""}`} role="dialog" aria-modal="true" aria-label={draft ? (draft.id ? "Editar feedback" : "Nuevo feedback") : selected?.titulo} onMouseDown={(event) => event.stopPropagation()}>
-        <header className="rf-panel-header"><div><span>{panelSection === "clients" ? "CLIENTE" : "EQUIPO"}</span><strong>{draft ? (draft.id ? "Editar feedback" : "Nuevo feedback") : selected?.titulo}</strong></div><button type="button" aria-label="Cerrar" onClick={closePanel}>×</button></header>
+    {panelOpen && <Modal native onClose={closePanel} closeDisabled={busy} closeOnBackdropClick
+      initialFocusRef={titleRef} overlayClassName="rf-panel-backdrop" headerClassName="rf-panel-header"
+      className={`rf-panel ${draft ? "is-editing" : ""}`}
+      overlayAriaLabel={draft ? (draft.id ? "Editar feedback" : "Nuevo feedback") : selected?.titulo}
+      title={<div><span>{panelSection === "clients" ? "CLIENTE" : "EQUIPO"}</span><strong>{draft ? (draft.id ? "Editar feedback" : "Nuevo feedback") : selected?.titulo}</strong></div>}>
 
         {recoveryControls}
         {draft ? <form className="rf-editor" onSubmit={save}>
@@ -469,8 +472,7 @@ function FeedbackContent({transport,view,sesion}) {
           <dl className="rf-detail-meta"><div><dt>Responsables</dt><dd>{feedbackResponsibleDisplay(selected.feedback,users).join(", ") || "Sin asignar"}</dd></div><div><dt>Estado</dt><dd>{selected.feedback?.estado === "resuelto" ? "Resuelto" : "Pendiente"}</dd></div><div><dt>Vigencia</dt><dd>{selected.feedback?.vigencia === "permanente" ? "Permanente" : "Puntual"}</dd></div><div><dt>Categoría</dt><dd>{CATEGORY_LABELS[selected.categoria] || "General"}</dd></div><div><dt>Creado por</dt><dd>{selected.creado_por}</dd></div></dl>
           <footer className="rf-detail-actions">{trash ? <button className="rf-primary" disabled={busy||mutation.locked} onClick={() => trashAction(selected)}>Restaurar feedback</button> : <><button className="rf-danger" disabled={busy||mutation.locked} onClick={() => trashAction(selected)}>Mover a Papelera</button><button disabled={busy||mutation.locked} onClick={() => toggleStatus(selected)}>{selected.feedback?.estado === "resuelto" ? "Marcar pendiente" : "Marcar resuelto"}</button><button className="rf-primary" disabled={busy||mutation.locked} onClick={() => editNote(selected)}>Editar feedback</button></>}</footer>
         </div>}
-      </section>
-    </div>}
+    </Modal>}
 
     {page?.data && <nav className="rf-pagination" aria-label="Páginas de notas">
       <p role="status">Página {Math.floor(page.data.offset/page.data.limit)+1} · {page.data.total} notas en total</p>

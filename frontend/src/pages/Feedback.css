@@ -90,3 +90,5 @@
   .rf-note-card{padding:14px 12px}
   .rf-note-icon{height:38px;width:38px}
 }
+.modal-overlay.rf-panel-backdrop{padding:0;align-items:stretch;justify-content:flex-end}
+.modal.rf-panel{border:0;border-radius:0;max-width:720px}

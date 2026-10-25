@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Feedback: modal nativo compartido — corte269
+
+Tras interrupción268 se revalidó worktree limpio de cambios de producto y agente previo no disponible. Fuente Feedback declaraba aria-modal en section sin contención de foco/Escape/retorno; ahora usa Modal native compartido, manteniendo closePanel/canLeave, bloqueo busy y foco de formulario. Modal añade únicamente clases opcionales de overlay/header, por defecto vacías; estilos Feedback conservan panel lateral sin padding/borde exterior. No se modificaron lectores/escritores, IDs, recibos ni persistencia.
+
+Tres pruebas nuevas ejecutan el componente Modal real con efectos/refs controlados y comprueban apertura showModal/foco/retorno, cancel preventDefault con cierre protegido y montaje Feedback. No equivalen a DOM nativo ni recorrido real de Tab.154 focales Feedback previas y2948 frontend totales PASS,0fallos/omitidas; build index-9RnqStIW.js correcto. Logs /private/tmp/render2-goal269-feedback.log, frontend.log y build.log. No prueba roja previa conservada ni revisión independiente de agente en269; no afirmar TDD o aceptación visual. Frontend-design/Apple orientaron conservar escala/tokens/panel y Superpowers el alcance. Pendiente teclado real/móvil/Escape con borrador e intento incierto, lector de pantalla y validación visual poblada. Sin backend/DB/proveedor/despliegue.
+
 ### Visita nativa con tres tareas y fotos; precisión de aceptación histórica — corte267
 
 UI App263/backend261/cookies/PostgreSQL55902/52851 creó una visita, tres videos Grabado y fotos de producto Realizada; tres envíos manuales originan tareas1/2/3 con responsables91001/2/3 y entregas29/30/31octubre, distintas de visita28. Reload escritorio/390 mantiene todo. Nueva sesión de editor91003 ve una tarea en Inicio, visita28/entrega31 en Calendario Lo mío y tarea3 con guion/material correctos; Reportes muestra1visita/3videos/1registrofotos y una tarea personal, sin inventar publicaciones. Detalles en NATIVE_THREE_VIDEO_PROGRESS.md.

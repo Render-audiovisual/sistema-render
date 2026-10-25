@@ -19,6 +19,8 @@ export function Modal({
   closeDisabled = false,
   initialFocusRef,
   returnFocusRef,
+  overlayClassName = "",
+  headerClassName = "",
 }) {
   const closeButtonRef = useRef(null);
   const previousFocusRef = useRef(null);
@@ -74,7 +76,7 @@ export function Modal({
   return (
     <Overlay
       ref={dialogRef}
-      className={`modal-overlay open${native ? ' render-native-dialog' : ''}`}
+      className={`modal-overlay open${native ? ' render-native-dialog' : ''}${overlayClassName ? ` ${overlayClassName}` : ''}`}
       role="dialog"
       aria-modal="true"
       aria-label={overlayAriaLabel}
@@ -85,7 +87,7 @@ export function Modal({
       onKeyDown={native ? handleNativeKeyDown : undefined}
     >
       <div className={`modal${className ? ` ${className}` : ""}`} style={style}>
-        <div className="modal-header">
+        <div className={`modal-header${headerClassName ? ` ${headerClassName}` : ''}`}>
           {title}
           <button
             ref={closeButtonRef}
