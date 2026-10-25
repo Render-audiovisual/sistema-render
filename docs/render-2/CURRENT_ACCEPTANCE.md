@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Planilla: confirmación tardía corregida en navegador real — corte295
+
+App294/index-DhhYmESL, backend285, Chrome y fixture PG55918/HTTP52862. El mismo retraso controlado de transporte de294 retuvo el ACK real de copyA después del commit. Tab→material intacto→volver a copyB ya no produjo otro PATCH. Al liberar ACKA por señal IPC del runner verificado, copyB siguió visible/dirty, recovery pasó de disabled a enabled y no apareció alerta de error. Captura `/private/tmp/render2-goal295-draft-after-ack.png` inspeccionada. Volver manualmente a copyA confirmado y blur limpió el aviso sin otro envío; recarga recuperó copyA.
+
+Conteo en el HTTP fixture (no sustitución del backend) acreditó exactamente1PATCHpublicaciones1. Asserts finales: pieza1 solo copy/updated_at, revisión1/current_event_idnull, otras103tablas de dominio y todos los contadores usuarios invariantes, index/entry intactos; salida0. Runner/log `/private/tmp/render2-goal295-native.*`; PID6778/hijo6803 propios verificados antes de TERM, cleanup ENOENT O6H5ef. Viewport restaurado/tab cerrada. Cierra la renovación física pendiente de294 para esta secuencia, no todas las combinaciones de concurrencia.
+
+Coordinador realizó la comprobación usando Verification. Sin nuevos cambios de producto/build, migraciones, bases reales, proveedor ni despliegue. No acredita ACK perdido, navegación cancelada ni GET nuevo mientras B sigue dirty. La aceptación global del prompt maestro continúa incompleta.
+
 ### Planilla: ACK retrasado revela blur intacto encolado — corte294
 
 Chrome real/App292/BmE46sRf, backend285 y fixture PG55917/HTTP52861. Wrapper HTTP propio retiene únicamente `res.end` del primer PATCHpublicaciones1 exitoso después de ejecutar app/transacción reales; no modifica API/DB ni sustituye ACK. Se guardó copyA, Tab llevó a material vacío, volver a copy para escribir B provocó blur intacto de material. Tras liberar ACKA por IPC del runner verificado, B se conservó pero apareció409: material null→vacío había sido encolado con revisión0. La captura `/private/tmp/render2-goal294-draft-after-ack.png` fue inspeccionada y **muestra el fallo**, no éxito limpio del recorrido. Se detuvo esta verificación al encontrarlo.
