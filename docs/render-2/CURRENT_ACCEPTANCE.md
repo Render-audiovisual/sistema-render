@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Moodboards: preparación tardía no descarta el editor ni la imagen pendiente — integración381
+
+Main corrigió prepareBoards de MoodboardPreview.jsx: no inicia sobre recovery/borrador pendiente, captura observación de tablero y de formularios y revalida ambas y owners antes de publicar catálogo o error. Los invocadores de nueva referencia/categorías/panel rotan la observación sincrónicamente, incluso al abrir prístinos. Se preservan scopes de sesión/montaje, navegación y consentimiento existentes. Editar→revertir o una operación terminada durante la espera también invalida la respuesta; no se reinicia automáticamente ni se afirma que el POST anterior haya sido revertido. Se conserva la activación normal en contexto limpio, sin añadir otro catálogo operativo ni cambiar applyLocation globalmente.
+
+Hilbert detectó una segunda ventana en FileReader: seleccionar JPG sin que terminara la lectura aún no marcaba borrador. Main añadió imageReading al criterio de dirty/recovery, independientemente del valor del formulario. La lectura pendiente sobrevive a editar→revertir baseline; callbacks validan scope e identidad del reader antes de limpiar. onload conserva contenido; error/throw restauran dirty según los valores reales; cleanup aborta/libera. No se sube archivo automáticamente ni se reenvía escritura incierta. Revisión independiente final sin bloqueantes dentro del alcance.
+
+Harvey creó moodboardInitializationDraft.test.js con callbacks/invocadores reales extraídos por AST, no una implementación alternativa del controlador. Main capturó RED2PASS/17FAIL (/private/tmp/render2-goal381-red.log);19PASS iniciales después del fence. Final26PASS renovadas por Main (/private/tmp/render2-goal381-final-focal.log): aperturas prístinas, dirty/busy/recovery, ABA de borrador/tablero, cierre cancelado/aprobado, scopes retirados, FileReader diferido en ambos órdenes, error/throw y editar→revertir mientras lee. Las pruebas no equivalen a DOM React nativo, carga de archivo del navegador ni persistencia PostgreSQL.
+
+Frontend3251PASS/0FAIL/0SKIP (/private/tmp/render2-goal381-final-frontend.log), backend2492PASS/170SKIP opt-in/0FAIL de2662 (/private/tmp/render2-goal381-final-backend.log) y build index-CWnRw1Ja, terminal0 (/private/tmp/render2-goal381-final-build.log). No cambios backend, CSS, contratos comerciales, migraciones ni despliegue. No nueva cohorte física ni recorrido nativo381; comprobación navegador de esta carrera pendiente. El navegador solo se documentó, sin abrir una pestaña ni actuar sobre datos. No se declara objetivo maestro completado.
+
 ### Confirmaciones: vencimiento real después de esperar locks — integración380
 
 Main reprodujo el límite379 con HTTP/cookie/PostgreSQL: vencimiento futuro establecido antes del request, transacción iniciada antes de vencer, waiter exacto observado con pg_blocking_pids y reloj PostgreSQL posterior al vencimiento mientras seguía bloqueado. El código anterior aceptó200 en vez de409. RED físico5PASS/2FAIL incluyendo padre (/private/tmp/render2-goal380-red-physical.log), cleanup propio; no fue una fecha de vencimiento retroactiva que NOW también rechazara.
