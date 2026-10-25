@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado383
+# Render 2.0 — corte de aceptación local372, actualizado384
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -11,7 +11,7 @@ Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la a
 | 2. Unificación | Un grafo comercial React/Vite → Express → PostgreSQL; tareas, clientes/cuotas, proyectos, registro audiovisual por video y editorial conectados; proyección de aprobación de Reportes corregida373 | Proveedor Drive real no certificado; aceptación transversal todavía parcial. |
 | 3. Diseño | Tokens y componentes compartidos, rutas reales, sidebar agrupada, modo claro; recorridos nativos concretos de escritorio/móvil | No hay aceptación poblada transversal de todas las secciones/roles, lectores de pantalla, zoom, teclado y dispositivos físicos independientes. |
 | 4. Funciones y experiencia | Persistencia, versiones, recibos, filtros, comentarios, protección de borradores y recuperación implementados por módulos | Reconciliar consumidores históricos restantes; avisos de revisión aún dependen de etiquetas. No afirmar que todo error de conexión/concurrencia esté cubierto. |
-| 5. Punta a punta | Cohorte fija31 archivos; recorridos A–F parcialmente acreditados con alcances explícitos abajo | Pruebas sintéticas/API y un navegador no equivalen a múltiples dispositivos, cuentas reales, proveedores ni aceptación completa. |
+| 5. Punta a punta | Cohorte fija33 archivos; recorridos A–F parcialmente acreditados con alcances explícitos abajo | Pruebas sintéticas/API y un navegador no equivalen a múltiples dispositivos, cuentas reales, proveedores ni aceptación completa. |
 
 ## Aplicación y fuente de datos
 
@@ -82,7 +82,7 @@ Corrección373: métricas y detalle reutilizan `effectiveTaskFilterState`; el de
 
 ## Decisiones y gates externos
 
-Pendiente local383: Agregar bloque en Mi lista puede duplicar tras ACK perdido; callbacks reales con servidor simulado y fuente de POST sin recibo, todavía sin parche/prueba PostgreSQL. No confundir con Crear página, que ya conserva su intento. La nueva corrección de destinatario activo en confirmaciones no cierra este pendiente de persistencia.
+Corrección local384: Agregar bloque en Mi lista incorpora UUID/recibo093, verificación GET, retry explícito del mismo intento y tombstone. Cookies/PostgreSQL/modelos reales y upgrade pre093 preservan privados e históricos. Core renovado33archivos323PASS/0FAIL/0SKIP; frontend3272PASS, backend2514PASS/172SKIP opt-in y build válido. Se conservan en CURRENT_ACCEPTANCE los intentos fallidos y la limpieza autorizada de31 segmentos IPC huérfanos; servicio activo intacto. Detalle en PERSONAL_BLOCK_CREATION_CONTRACT.md y CURRENT_ACCEPTANCE.md. Falta aceptación nativa de esta recuperación y de la carrera Moodboards382; no atribuir estas pruebas a dispositivos/proveedores o consumidores externos no actualizados.
 
 Corrección379: confirmación web legacy retiene actor y revalida workspace/membresía después del lock, en READ COMMITTED. Corrección380: vencimiento mediante reloj actual y claim condicional justo antes de ejecutar acción; cookie/PostgreSQL prueban token que vence mientras espera tarea y mientras espera token, ambas409 sin consumo ni cambios en108 tablas. No implica certificar TTL de todos los transportes o COMMIT previo al vencimiento. Corrección381 de Moodboards: fence de observaciones/owners y protección de FileReader pendiente evita que preparar clientes descarte editores modificados/abiertos durante la espera;26 callbacks AST aprobados, pendiente navegador nativo de la carrera. Detalle y límites en CURRENT_ACCEPTANCE.md. No confundir estos pendientes con decisiones externas.
 

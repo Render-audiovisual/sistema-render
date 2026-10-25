@@ -55,7 +55,7 @@ test('actual creation effect cleanup/setup fences late old work without clearing
 test('actual synchronous navigation getter sees unresolved/busy model before any creation-state repaint', async () => {
   const delayed = pending(), f = fixture(() => delayed.promise), cleanup = f.setup();
   const guard = nodes(page, ts.isCallExpression).find(n => n.expression.getText(ast) === 'useNavigationGuard').arguments[0];
-  const read = evaluate(guard, { ...f.deps, keepsPersonalListDrafts, pendingSaves: { current: 0 },
+  const read = evaluate(guard, { ...f.deps, blockCreation:{current:null}, keepsPersonalListDrafts, pendingSaves: { current: 0 },
     queue: { current: { snapshot: () => ({ dirty: false, busy: false }) } }, statusRef: { current: 'saved' } });
   const work = f.creation.current.start({ titulo: 'Nueva', emoji: '📝', bloques: [] });
   for (const context of [{ type: 'link', to: '/lista?lista=3' }, { type: 'link', to: '/inicio' }, { type: 'unload' }]) {
@@ -96,5 +96,5 @@ test('recovery does not become an extra grid child and unresolved creation canno
   assert.equal(full.children.some(n => ts.isJsxExpression(n) && n.expression?.getText(ast) === '!templateOpen&&creationRecovery'), false);
   const status = declarations('effectiveStatus');
   assert.equal(evaluate(status, { saveState: { status: 'saved', busy: false, dirty: false }, status: 'saved', structuralBusy: false,
-    creationState: { busy: false, unresolved: true }, itemDrafts: { current: createPersonalItemDrafts() } }), 'pending');
+    creationState: { busy: false, unresolved: true }, blockCreationState:{phase:'idle',busy:false,unresolved:false}, itemDrafts: { current: createPersonalItemDrafts() } }), 'pending');
 });

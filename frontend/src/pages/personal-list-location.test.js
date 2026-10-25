@@ -62,7 +62,7 @@ test('actual guard exempts internal queue state but never structural busy, exter
   const hook = nodes(page, n => ts.isCallExpression(n) && text(n.expression) === 'useNavigationGuard')[0];
   for (const current of [true, false]) for (const pending of [0, 1]) {
     const deps = { ...helpers, currentSession: () => current, window: { location: { href: 'https://render.test/lista?lista=1' } },
-      creation:{current:null},pendingSaves: { current: pending }, queue: { current: { snapshot: () => ({ dirty: true, busy: true }) } }, statusRef: { current: 'error' } };
+      creation:{current:null},blockCreation:{current:null},pendingSaves: { current: pending }, queue: { current: { snapshot: () => ({ dirty: true, busy: true }) } }, statusRef: { current: 'error' } };
     const guard = evaluate(hook.arguments[0], deps);
     assert.deepEqual(guard({ type: 'link', to: '/lista?lista=2' }), { dirty: !current, busy: Boolean(pending || !current) });
     for (const context of [null, { type: 'refresh', to: '/lista?lista=2' }, { type: 'unload', to: null }, { type: 'link', to: '/inicio' }]) assert.deepEqual(guard(context), { dirty: true, busy: true });
@@ -72,7 +72,7 @@ test('unsubmitted item participates in external and reload guards but survives i
   const hook = nodes(page, n => ts.isCallExpression(n) && text(n.expression) === 'useNavigationGuard')[0];
   const model = createPersonalItemDrafts(); model.set('1', '2', 'Do not lose this');
   const guard = evaluate(hook.arguments[0], { ...helpers, itemDrafts: { current: model }, currentSession: () => true,
-    window: { location: { href: 'https://render.test/lista?lista=1' } }, creation: { current: null }, pendingSaves: { current: 0 },
+    window: { location: { href: 'https://render.test/lista?lista=1' } }, creation: { current: null }, blockCreation:{current:null}, pendingSaves: { current: 0 },
     queue: { current: { snapshot: () => ({ dirty: false, busy: false }) } }, statusRef: { current: 'saved' } });
   assert.deepEqual(guard({ type: 'link', to: '/lista?lista=3' }), { dirty: false, busy: false });
   for (const context of [null, { type: 'unload' }, { type: 'refresh' }, { type: 'link', to: '/inicio' }]) {

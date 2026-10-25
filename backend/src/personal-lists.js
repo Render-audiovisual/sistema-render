@@ -1,10 +1,10 @@
 import { normalizeBlockContent, normalizeBlocks, normalizeBlockType } from "./personal-list-blocks.js";
 import { withPersonalListWrite } from './personal-list-write-authority.js';
 import { createPersonalListWithReceipt, findPersonalListCreation, personalListCreationRequestId } from './personal-list-create-receipts.js';
+import { createPersonalListBlockWithReceipt, findPersonalListBlockCreation } from './personal-list-block-create-receipts.js';
 
 const MAX_SECTIONS_PER_LIST = 100;
 const MAX_ITEMS_PER_SECTION = 500;
-const MAX_BLOCKS_PER_LIST = 80;
 const MAX_TEMPLATES_PER_USER = 30;
 
 export function normalizePersonalListCreateInput(body) {
@@ -296,21 +296,18 @@ export function createPersonalListsRouter({ express, pool }) {
   }));
 
   router.post("/:listId/bloques", handler(async (req, res) => {
-    const userId = Number(req.auth.id);
+    const body=req.body;
+    if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(key=>!['request_id','tipo','contenido'].includes(key)))throw httpError(400,'Los campos de creación del bloque no son válidos.');
+    const requestId=personalListCreationRequestId(body.request_id);
     const type = normalizeBlockType(req.body?.tipo);
     const content = normalizeBlockContent(type, req.body?.contenido);
-    const response = await withPersonalListWrite(pool, req.auth, { userId, type, content, listId: req.params.listId }, async (db, input, actor) => {
-      const { userId, type, content, listId } = input;
-      await requireOwnedList(db, listId, userId);
-      const count = await db.query("SELECT COUNT(*)::int total FROM lista_bloques WHERE lista_id=$1", [listId]);
-      if (count.rows[0].total >= MAX_BLOCKS_PER_LIST) throw httpError(409, "Esta página ya tiene demasiados bloques.");
-      const result = await db.query(`INSERT INTO lista_bloques(lista_id,tipo,contenido,posicion)
-        VALUES($1,$2,$3::jsonb,(SELECT COALESCE(MAX(posicion),-1)+1 FROM lista_bloques WHERE lista_id=$1))
-        RETURNING id,lista_id,tipo,contenido,posicion,version,created_at,updated_at`,
-      [listId, type, JSON.stringify(content)]);
-      return result.rows[0];
-    });
-    res.status(201).json(response);
+    const result=await createPersonalListBlockWithReceipt(pool,req.auth,{requestId,listId:req.params.listId,payload:{tipo:type,contenido:content}});
+    res.status(result.replayed?200:201).json(result.block);
+  }));
+
+  router.get('/:listId/bloques/creaciones/:requestId',handler(async(req,res)=>{
+    res.set('Cache-Control','no-store');
+    res.json(await findPersonalListBlockCreation(pool,req.auth,req.params.listId,req.params.requestId));
   }));
 
   router.patch("/bloques/:id", handler(async (req, res) => {

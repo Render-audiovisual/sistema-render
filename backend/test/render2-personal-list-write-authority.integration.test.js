@@ -105,7 +105,7 @@ test('personal-list writers retain current actor authority until commit across e
     { name: 'item create', method: 'POST', path: `/listas-personales/secciones/${section.id}/items`, body: () => ({ texto: 'Never insert item' }) },
     { name: 'item PATCH', method: 'PATCH', path: `/listas-personales/items/${item.id}`, body: () => ({ texto: 'Never overwrite item', completado: true }) },
     { name: 'item delete', method: 'DELETE', path: `/listas-personales/items/${item.id}` },
-    { name: 'block create', method: 'POST', path: `/listas-personales/${page.id}/bloques`, body: () => ({ tipo: 'texto', contenido: { texto: 'Never insert block' } }) },
+    { name: 'block create', method: 'POST', path: `/listas-personales/${page.id}/bloques`, body: () => ({ request_id:randomUUID(), tipo: 'texto', contenido: { texto: 'Never insert block' } }) },
     { name: 'block PATCH', method: 'PATCH', path: `/listas-personales/bloques/${textBlock.id}`, body: fresh => ({ tipo: 'texto', contenido: { texto: 'Never overwrite block' }, expected_version: fresh.bloques.find(row => row.id === textBlock.id).version }) },
     { name: 'block delete', method: 'DELETE', path: `/listas-personales/bloques/${checklist.id}` },
     { name: 'reorder', method: 'PATCH', path: '/listas-personales/orden/reordenar', body: fresh => ({ tipo: 'bloques', parent_id: page.id, ids: fresh.bloques.map(row => row.id).reverse() }) },

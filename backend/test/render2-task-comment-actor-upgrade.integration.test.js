@@ -59,5 +59,5 @@ test('pre092 populated comment history upgrades without inferring authors or rew
   }finally{await db.query('ROLLBACK');}
   await assertCoreSchemaReady(db);assert.deepEqual(await snapshot(),before);
   const after=JSON.parse((await cli(['status'])).stdout);assert.deepEqual(after.status.pending,[]);
-  assert.deepEqual(after.status.applied,[...approved.status.applied,'092_task_comment_actor.sql']);
+  assert.deepEqual(after.status.applied,[...approved.status.applied,'092_task_comment_actor.sql'].sort());
 });

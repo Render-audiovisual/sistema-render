@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { CORE_SCHEMA_COLUMNS, assertCoreSchemaReady } from '../src/startup-schema.js';
 const complete = () => Object.entries(CORE_SCHEMA_COLUMNS).flatMap(([table_name, columns]) =>
   Object.entries(columns).map(([column_name, data_type]) => ({ table_name, column_name, data_type })));
-const response = (sql, rows) => ({ rows: sql.includes('current_schemas') ? [{ schemas: ['public'] }] : sql.includes('pg_trigger') ? [{ready:true,reference_ready:true,personal_list_receipt_ready:true,project_child_receipt_ready:true,task_comment_receipt_ready:true}] : sql.includes('pg_constraint') ? [{comment_actor_ready:true}] : rows });
+const response = (sql, rows) => ({ rows: sql.includes('current_schemas') ? [{ schemas: ['public'] }] : sql.includes('pg_trigger') ? [{ready:true,reference_ready:true,personal_list_receipt_ready:true,project_child_receipt_ready:true,task_comment_receipt_ready:true,block_receipt_ready:true}] : sql.includes('pg_constraint') ? [{comment_actor_ready:true}] : rows });
 
 test('principal compatibility inspection uses a parameterized SELECT only', async () => {
   const calls = [];
@@ -15,7 +15,18 @@ test('principal compatibility inspection uses a parameterized SELECT only', asyn
     assert.doesNotMatch(call.sql, /CREATE|ALTER|INSERT|UPDATE|DELETE|TRUNCATE/);
   }
   assert.deepEqual(calls[1].values, [Object.keys(CORE_SCHEMA_COLUMNS)]);
-  assert.deepEqual(calls[2].values, ['feedback_notes_monotonic_version','moodboard_reference_advance_revision','personal_list_create_receipt_immutable','project_child_create_receipt_immutable','task_comment_create_receipt_immutable']);
+  assert.deepEqual(calls[2].values, ['feedback_notes_monotonic_version','moodboard_reference_advance_revision','personal_list_create_receipt_immutable','project_child_create_receipt_immutable','task_comment_create_receipt_immutable','personal_list_block_create_receipt_immutable']);
+});
+
+test('block creation receipt shape and immutable binding are required without repair',async()=>{
+  await assert.rejects(assertCoreSchemaReady({query:async sql=>response(sql,complete().filter(row=>row.table_name!=='personal_list_block_create_receipts'))}),/Principal schema is not compatible/);
+  for(const ready of [false,null,undefined,'true',1]){
+    const calls=[];
+    await assert.rejects(assertCoreSchemaReady({query:async(sql,values)=>{
+      calls.push({sql,values});const result=response(sql,complete());if(sql.includes('pg_trigger'))result.rows[0].block_receipt_ready=ready;return result;
+    }}),/personal-list block receipt guard is not compatible/);
+    assert.ok(calls.every(call=>call.sql.trim().startsWith('SELECT ')));
+  }
 });
 
 test('comment receipt relation and enabled immutable guard are required without automatic repair', async () => {

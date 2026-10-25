@@ -2,7 +2,7 @@
 
 ## Fixed core acceptance cohort (integration368)
 
-From backend run `npm run qa:core:local`. The fixed coordinator executes31 principal-system integration files serially with a clean child environment (expanded379 with Wilson web production authority). It accepts no flags, database URLs or fixture overrides. Each file owns a disposable PostgreSQL cluster and verifies its cleanup; never substitute a configured development/production database.
+From backend run `npm run qa:core:local`. The fixed coordinator executes33 principal-system integration files serially with a clean child environment (expanded384 with personal-block creation receipts and the populated093 upgrade rehearsal). It accepts no flags, database URLs or fixture overrides. Each file owns a disposable PostgreSQL cluster and verifies its cleanup; never substitute a configured development/production database.
 
 In addition to the cross-sector, audiovisual, identity/finance, project, task and personal-list journeys, the cohort includes editorial control/detail/adoption and editing deliveries/reviews/approval. Editorial confirmation was already required. Adoption verifies evidence propagation into ordinary lists/reports, stable-ID/feed quotas and no implicit publication from task completion; its bearer/SQL fixtures and eight-table value snapshots do not prove browser behavior, all-table immutability or physical rollback failure. Keep those claims separate from cookie/native suites and injected pool-discard tests.
 

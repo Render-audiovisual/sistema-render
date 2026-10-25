@@ -11,7 +11,7 @@ const text = value => typeof value === 'string';
 const date = value => text(value) && value.length > 0 && Number.isFinite(Date.parse(value));
 const unique = rows => rows.every(object) && new Set(rows.map(row => String(row.id))).size === rows.length;
 const localRows = rows => Array.isArray(rows) && rows.every(row => object(row) && text(row.id) && row.id.length > 0) && unique(rows);
-function contentValid(type, content) {
+export function personalListBlockContentValid(type, content) {
   if (!object(content)) return false;
   if (type === 'texto') return text(content.texto);
   if (type === 'listado' || type === 'checklist') return text(content.titulo) && localRows(content.items)
@@ -24,6 +24,11 @@ function contentValid(type, content) {
   }));
 }
 
+export function personalListBlockRowValid(block, listId) {
+  return object(block) && id(block.id) && id(block.lista_id) === id(listId) && version(block.version)
+    && position(block.posicion) && personalListBlockContentValid(block.tipo, block.contenido);
+}
+
 // A receipt lookup returns CURRENT data, not necessarily the original title or
 // blocks. Validate the identity/receipt and renderable schema, never old fields.
 export function validatePersonalListCreation(value, requestId) {
@@ -33,8 +38,7 @@ export function validatePersonalListCreation(value, requestId) {
     || !Array.isArray(value.bloques) || !Array.isArray(value.secciones)
     || !unique(value.bloques) || !unique(value.secciones)) throw new Error('No se pudo verificar la página creada.');
   for (const block of value.bloques) {
-    if (!object(block) || !id(block.id) || id(block.lista_id) !== id(value.id) || !version(block.version)
-      || !position(block.posicion) || !contentValid(block.tipo, block.contenido)) throw new Error('No se pudo verificar la página creada.');
+    if (!personalListBlockRowValid(block, value.id)) throw new Error('No se pudo verificar la página creada.');
   }
   for (const section of value.secciones) {
     if (!object(section) || !id(section.id) || id(section.lista_id) !== id(value.id) || !text(section.titulo)
