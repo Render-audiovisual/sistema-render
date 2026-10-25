@@ -89,7 +89,7 @@ export function createEditorialPublicationRouter({ express, pool }) {
   const router = express.Router();
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   const handler = action => async (req, res, next) => {
-    let db;
+    let db, discard;
     try {
       const identity = editorialPieceIdentity(req.params.dominio, req.params.id);
       if (Object.keys(req.query ?? {}).length) throw fail('No se permiten parámetros adicionales.');
@@ -138,11 +138,11 @@ export function createEditorialPublicationRouter({ express, pool }) {
       await db.query('COMMIT');
       res.status(status).json(body);
     } catch (error) {
-      if (db) { try { await db.query('ROLLBACK'); } catch { /* preserve original failure */ } }
+      if (db) { try { await db.query('ROLLBACK'); } catch (rollbackError) { discard = rollbackError; } }
       if (error.status) res.status(error.status).json({ error: error.message });
       else if (editorialPublicationDomainConflict(error)) res.status(409).json({ error: 'La evidencia editorial cambió o no es compatible.' });
       else next(error);
-    } finally { db?.release(); }
+    } finally { db?.release(discard); }
   };
   router.get('/:dominio/:id', handler(null));
   router.post('/:dominio/:id/confirmar', handler('confirmar'));

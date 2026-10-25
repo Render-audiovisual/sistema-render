@@ -91,7 +91,7 @@ function closeItem(row) {
 
 export async function readEditorialControl(pool, auth, query = {}) {
   const filters = normalizeEditorialControlQuery(query);
-  let db;
+  let db, discard;
   try {
     db = await pool.connect();
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
@@ -118,9 +118,9 @@ export async function readEditorialControl(pool, auth, query = {}) {
     await db.query('COMMIT');
     return result;
   } catch (error) {
-    if (db) await db.query('ROLLBACK').catch(() => {});
+    if (db) await db.query('ROLLBACK').catch(rollbackError => { discard = rollbackError; });
     throw error;
-  } finally { db?.release(); }
+  } finally { db?.release(discard); }
 }
 
 export async function readEditorialPieceDetail(pool, auth, domain, rawId, query = {}) {
@@ -131,7 +131,7 @@ export async function readEditorialPieceDetail(pool, auth, domain, rawId, query 
   if (!query || typeof query !== 'object' || Array.isArray(query) || Object.keys(query).length) {
     throw fail('El detalle editorial no admite filtros.');
   }
-  let db;
+  let db, discard;
   try {
     db = await pool.connect();
     await db.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
@@ -160,9 +160,9 @@ export async function readEditorialPieceDetail(pool, auth, domain, rawId, query 
     await db.query('COMMIT');
     return result;
   } catch (error) {
-    if (db) await db.query('ROLLBACK').catch(() => {});
+    if (db) await db.query('ROLLBACK').catch(rollbackError => { discard = rollbackError; });
     throw error;
-  } finally { db?.release(); }
+  } finally { db?.release(discard); }
 }
 
 export function createEditorialControlRouter({ express, pool }) {

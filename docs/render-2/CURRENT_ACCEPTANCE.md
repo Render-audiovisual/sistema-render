@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Conexiones editoriales retiradas tras rollback fallido — integración366
+
+La revisión del plan maestro y grafo activo por Main/Harvey no confirmó una nueva función central ausente; no se reabren límites históricos como fallos nuevos. Sí confirmó el mismo defecto de pool364 en readEditorialControl, readEditorialPieceDetail y GET/confirmar/retirar de editorial-publication: ROLLBACK fallido se silenciaba y release devolvía conexión sin descarte. Ahora los tres handlers conservan error/respuesta primaria y pasan el error de rollback a release solo si este falla. No cambia SQL comercial, aislamiento, permisos, confirmación, retirada ni DTO. Nueva matriz diez casos (cinco caminos × rollback válido/fallido), con cinco fallos reproducidos antes del parche; diez pasan después. Focal con suites existentes36PASS (/private/tmp/render2-goal366-focal.log); reproducción /private/tmp/render2-goal366-repro.log.
+
+Físicas editorial-control, editorial-piece-detail y editorial-confirmation28PASS/0FAIL en PostgreSQL/HTTP propios: permisos actuales, contenido, evidencia auténtica vs histórica, confirmación/retirada/replay/CAS y rollback de INSERT. Las tres limpiezas propias constan en /private/tmp/render2-goal366-physical.log. Regresión backend2435PASS/168SKIP opt-in/0FAIL de2603 (/private/tmp/render2-goal366-backend.log). Harvey revisó sin bloqueantes; la inyección falla en primera consulta después de BEGIN y acredita descarte, no una caída física durante rollback ni atomicidad tras DML. Esos alcances no se confunden con las físicas normales. Sin frontend/build/navegador nuevos, migraciones, datos configurados ni despliegue. El objetivo maestro sigue sin aceptación global.
+
 ### Control compartido de actualización de revisión — integración365
 
 El botón Actualizar tarea para revisar en TaskDetail no tenía clase de control ni selector específico que le diera el estilo de los demás botones. Ahora reutiliza btn: tokens compartidos, altura mínima44px y movimiento reducido sin CSS adicional. No cambia permiso, handler, texto, ni disabled por actualización/aprobación/entrega. Prueba AST nueva localiza el botón real por su handler y verifica contrato y clase. Guías Apple UI/frontend orientaron reutilización y contención, sin introducir tipografía/paleta paralelas.
