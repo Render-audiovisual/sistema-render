@@ -143,7 +143,8 @@ const actor = { userId: 11, actorRole: "edicion", actorName: "Franco", actorId: 
 test("batch confirmation rechecks ID membership after task row locks, before any task update", async () => {
   const calls = [];
   const actorHash = crypto.createHash('sha256').update(actor.actorId).digest('hex');
-  const task = { id: 100, titulo: "Carrusel", asignado_a: "Franco", estado: "pendiente", updated_at: "2026-10-19T12:00:00Z" };
+  const task = { id: 100, titulo: "Carrusel", asignado_a: "Franco", estado: "pendiente", updated_at: "2026-10-19T12:00:00Z",
+    propiedades_extra: { workspace: 'render_os' } };
   const client = { release() {}, async query(sql, params = []) {
     calls.push(sql);
     const compact = sql.replace(/\s+/g, ' ').trim();

@@ -1411,6 +1411,12 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
           cliente_id,fecha_vencimiento,prioridad,propiedades_extra,updated_at
          FROM tareas WHERE id=ANY($1::int[]) FOR UPDATE`, [ids],
       ) : { rows: [] };
+      // A preview is not ongoing authority over a task. Check current scope
+      // under the retained row locks, even when a legacy writer kept updated_at.
+      // Reject the entire batch before consuming its token or writing audits.
+      if (currentResult.rows.some(task => task.propiedades_extra?.workspace !== 'render_os' || taskOperationHidden(task))) {
+        throw Object.assign(new Error('Una o más tareas ya no están disponibles. Prepará un listado nuevo.'), { status: 404 });
+      }
       currentResult.rows = await annotateTaskAssignments(client, currentResult.rows);
       if (!isWilsonLeader(req) && currentResult.rows.some(task => !reviewTaskOwnedBy(task, req.wilson.userId))) {
         await client.query("ROLLBACK");

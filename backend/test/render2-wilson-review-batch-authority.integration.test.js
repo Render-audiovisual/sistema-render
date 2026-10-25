@@ -155,6 +155,36 @@ test('Wilson signed review batch retains current WhatsApp actor before consuming
       }
     });
   }
+  for (const hidden of ['workspace', 'archived', 'trash', 'mixed']) {
+    await t.test(`scope ${hidden} changed after signed preview with unchanged updated_at rejects whole batch without consumption`, async () => {
+      await restore(); const batch = await prepare();
+      const original = await f.query('SELECT id,estado,asignado_a,updated_at,revision FROM tareas WHERE id=ANY($1::int[]) ORDER BY id', [batch.ids]);
+      const ids = hidden === 'mixed' ? [batch.ids[0]] : batch.ids;
+      const changes = hidden === 'workspace' ? {workspace: 'qa388_other_workspace'}
+        : hidden === 'trash' ? {papelera_render_os: true} : {archivada_render_os: true};
+      // Real legacy SQL update shape: no timestamp rewrite and no trigger or
+      // revision bypass. The batch's old updated_at comparison alone misses it.
+      await f.query(`UPDATE tareas SET propiedades_extra=propiedades_extra||$2::jsonb
+        WHERE id=ANY($1::int[])`, [ids, JSON.stringify(changes)]);
+      const current = await f.query('SELECT id,estado,asignado_a,updated_at,revision,propiedades_extra FROM tareas WHERE id=ANY($1::int[]) ORDER BY id', [batch.ids]);
+      for (const [index, task] of current.entries()) {
+        assert.equal(task.updated_at, original[index].updated_at, 'Scope mutation deliberately preserves the observed timestamp');
+        assert.equal(task.estado, original[index].estado); assert.equal(task.asignado_a, original[index].asignado_a);
+        assert.equal(task.revision, original[index].revision + (ids.includes(task.id) ? 1 : 0));
+      }
+      if (hidden === 'mixed') {
+        assert.equal(current[0].propiedades_extra.archivada_render_os, true);
+        assert.equal(current[1].propiedades_extra.workspace, 'render_os');
+        assert.equal(Object.hasOwn(current[1].propiedades_extra, 'archivada_render_os'), false);
+        assert.equal(Object.hasOwn(current[1].propiedades_extra, 'papelera_render_os'), false);
+      }
+      const before = await snapshot(), noticeCount = notices.length;
+      const result = await confirm(batch.token);
+      assert.ok([404, 409].includes(result.status), `Hidden ${hidden} batch must be rejected, actual HTTP${result.status}`);
+      await unused(batch.token); assert.deepEqual(await snapshot(), before);
+      assert.equal(notices.length, noticeCount, 'No notice for hidden task or valid sibling in an atomically rejected batch');
+    });
+  }
   for (const resource of ['actor', 'token', 'task']) {
     await t.test(`future TTL expires during observed ${resource} lock wait; old transaction time cannot consume batch`, async () => {
       await restore(); const batch = await prepare();

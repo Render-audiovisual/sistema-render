@@ -7,7 +7,7 @@ const external='qa386-external',group='qa386-group',key='qa386-confirmation';
 const hash=createHash('sha256').update(external).digest('hex');
 const actorSql='SELECT id,usuario,nombre,rol,activo,whatsapp_id_hash,whatsapp_habilitado FROM usuarios WHERE id=$1 FOR SHARE';
 function fixture({change=()=>{},mutateSubject=false,failure,rollbackFails=false,reporter=external,assigned=7,
-  branch='success',claimEmpty=false,clockSelect=false}={}) {
+  branch='success',claimEmpty=false,clockSelect=false,scopeProperties,mixed=false}={}) {
   const calls=[],notifications=[],errors=[],audits=[];
   const live={id:7,usuario:'qa386',nombre:'QA386 current name',rol:'admin',activo:true,
     whatsapp_id_hash:null,whatsapp_habilitado:true};
@@ -18,6 +18,7 @@ function fixture({change=()=>{},mutateSubject=false,failure,rollbackFails=false,
     asignado_a:'QA386 assigned',material_referencia:'https://example.invalid/qa386',cliente_id:1,
     updated_at:'2026-10-25T12:00:00.000Z',propiedades_extra:{workspace:'render_os'}};
   const {id,titulo,asignado_a,estado,updated_at}=task;
+  const ids=mixed?[101,102]:[101];
   const client={release(error){releaseArg=error;calls.push({sql:'RELEASE'});},async query(raw,params=[]){
     const sql=raw.replace(/\s+/g,' ').trim();calls.push({sql,params:structuredClone(params)});
     if(/^BEGIN(?: ISOLATION LEVEL READ COMMITTED)?$/.test(sql)){pending=structuredClone(state);return {rows:[]};}
@@ -34,16 +35,17 @@ function fixture({change=()=>{},mutateSubject=false,failure,rollbackFails=false,
       assert.deepEqual(params,[key,group],'Token/group must retain original subject');
       if(clockSelect)assert.match(sql,/expires_at\s*>\s*clock_timestamp\(\)/);
       return {rows:[{token:key,informante_actor_id:reporter,informante_actor_nombre:'Original reporter',
-        payload:{tasks:[{id,titulo,asignado_a,estado,updated_at}]}}]};
+        payload:{tasks:ids.map(id=>({id,titulo,asignado_a,estado,updated_at}))}}]};
     }
     if(sql.includes('FROM tareas WHERE id=ANY')){
-      assert.deepEqual(params,[[101]]);const current=structuredClone(task);
+      assert.deepEqual(params,[ids]);const current=structuredClone(task);
       if(branch==='conflict')current.updated_at='2026-10-25T13:00:00.000Z';
       if(branch==='validation')Object.assign(current,{tipo_tarea:'produccion',subtipo:'visita',
         propiedades_extra:{workspace:'render_os',videos_planificados:2}});
-      return {rows:[current]};
+      if(scopeProperties!==undefined)current.propiedades_extra=structuredClone(scopeProperties);
+      return {rows:mixed?[structuredClone(task),{...current,id:102}]:[current]};
     }
-    if(sql.includes('SELECT tarea_id, usuario_id, tipo'))return {rows:[{tarea_id:101,usuario_id:assigned,tipo:'responsable'}]};
+    if(sql.includes('SELECT tarea_id, usuario_id, tipo'))return {rows:ids.map(tarea_id=>({tarea_id,usuario_id:assigned,tipo:'responsable'}))};
     if(sql.startsWith("UPDATE tareas SET estado='en_revision'")){
       if(failure==='write')throw primary;pending.written=true;return {rows:[]};
     }
@@ -89,6 +91,32 @@ function fixture({change=()=>{},mutateSubject=false,failure,rollbackFails=false,
       await handler(req,res,error=>errors.push(error));return res;
     }};
 }
+
+for(const [label,scopeProperties] of [
+  ['other workspace',{workspace:'another_workspace'}],['missing workspace',{}],
+  ['boolean archived',{workspace:'render_os',archivada_render_os:true}],
+  ['legacy string archived',{workspace:'render_os',archivada_render_os:'true'}],
+  ['boolean trashed',{workspace:'render_os',papelera_render_os:true}],
+  ['legacy string trashed',{workspace:'render_os',papelera_render_os:'true'}],
+])test(`current locked ${label} rejects404 before claim even with unchanged preview timestamp`,async()=>{
+  const f=fixture({scopeProperties}),res=await f.run();
+  assert.equal(f.errors[0]?.status??res.statusCode,404);assert.deepEqual(dml(f),[]);
+  assert.deepEqual(f.state,{written:false,used:false});assert.deepEqual(f.audits,[]);assert.deepEqual(f.notifications,[]);
+  assert.deepEqual(f.calls.slice(-2).map(c=>c.sql),['ROLLBACK','RELEASE']);
+  assert.ok(f.calls.some(c=>c.sql.includes('FROM tareas WHERE id=ANY')&&c.sql.endsWith('FOR UPDATE')));
+});
+test('one hidden current row rejects an entire mixed batch atomically before token claim',async()=>{
+  const f=fixture({mixed:true,scopeProperties:{workspace:'render_os',papelera_render_os:true}}),res=await f.run();
+  assert.equal(f.errors[0]?.status??res.statusCode,404);assert.deepEqual(dml(f),[]);
+  assert.deepEqual(f.state,{written:false,used:false});assert.deepEqual(f.audits,[]);assert.deepEqual(f.notifications,[]);
+  assert.deepEqual(f.calls.find(c=>c.sql.includes('FROM tareas WHERE id=ANY')).params,[[101,102]]);
+  assert.deepEqual(f.calls.slice(-2).map(c=>c.sql),['ROLLBACK','RELEASE']);
+});
+for(const value of [false,'false'])test(`explicit hidden flags ${JSON.stringify(value)} allow a valid current workspace`,async()=>{
+  const f=fixture({scopeProperties:{workspace:'render_os',archivada_render_os:value,papelera_render_os:value}}),res=await f.run();
+  assert.deepEqual(f.errors,[]);assert.equal(res.statusCode,200);assert.equal(res.body.updated,true);
+  assert.deepEqual(f.state,{written:true,used:true});assert.equal(f.notifications.length,1);
+});
 const dml=f=>f.calls.filter(c=>/^(UPDATE|INSERT|DELETE) /.test(c.sql));
 function denied(f,res){
   const status=f.errors[0]?.status??res.statusCode;assert.equal(status,403);

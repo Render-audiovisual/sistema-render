@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado387
+# Render 2.0 — corte de aceptación local372, actualizado388
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -73,6 +73,8 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - Integración383: confirmación de mensaje retiene el mismo destinatario activo por ID antes del claim;26 unitarias dentro de40 focales, física12PASS con desactivación durante espera real, core31archivos311PASS/0FAIL/0SKIP y backend2496PASS/170SKIP/0FAIL. Solo mensajes internos de fixture; sin proveedor, navegador ni política nueva de destinatarios. Mi lista tiene duplicación pendiente tras ACK perdido en Agregar bloque.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
+
+Integración388: confirmación del lote Wilson valida scope actual bajo lock incluso si updated_at no cambió; workspace ajeno/ausente y archivo/papelera true o stringtrue rechazan404 todo el lote antes del claim.32 unidades/85 focalesPASS, física13PASS/109 tablas invariantes, backend2566PASS/174SKIP/0FAIL. Core34archivos336PASS/0FAIL/0SKIP, terminal0. Identidad y TTL386/387 conservados; preview no recibe una nueva garantía transaccional por este guard. Sin UI, migraciones, proveedores ni despliegue.
 
 Integración387: TTL del lote firmado Wilson usa reloj real y consumo condicional inmediatamente antes de la primera escritura en las tres ramas.23 unidades/76 focalesPASS, física9PASS con vencimientos futuros durante esperas actor/token/tarea y109 tablas invariantes; casos386 conservados. Revisiones independientes sin bloqueantes. Vigencia al claim, no necesariamente al COMMIT. Backend2557PASS/174SKIP/0FAIL; core34archivos332PASS/0FAIL/0SKIP, terminal0. Scope/ocultamiento de tareas y preview siguen pendientes; no proveedores, UI, migración ni despliegue.
 
