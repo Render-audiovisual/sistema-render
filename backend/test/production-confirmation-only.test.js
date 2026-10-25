@@ -10,7 +10,7 @@ function fixture({external=false,failSave=false}={}) {
   let task=structuredClone(original),before;
   const db={release(){calls.push('release');},async query(sql,args){
     calls.push(sql);
-    if(sql==='BEGIN'){before=structuredClone(task);return{rows:[]};}
+    if(sql==='BEGIN ISOLATION LEVEL READ COMMITTED'){before=structuredClone(task);return{rows:[]};}
     if(sql==='ROLLBACK'){task=before;return{rows:[]};}
     if(sql==='COMMIT')return{rows:[]};
     if(sql.includes('SELECT id,revision'))return{rows:[structuredClone(task)]};
@@ -22,9 +22,13 @@ function fixture({external=false,failSave=false}={}) {
   }};
   const forbidden=()=>{throw Error('No implicit editing, assignment or notification allowed');};
   const context={pool:{connect:async()=>db},isProductionVisitTask:()=>true,rejectMixedProductionRecording:async()=>{},validateProductionHandoff:()=>null,
+    captureLegacyProductionActor:auth=>Object.freeze({...auth}),
+    retainLegacyProductionActor:async()=>({id:7,nombre:'Owner',rol:'admin'}),
+    retainIntegrationProductionLeader:async()=>({id:7,nombre:'Owner',rol:'admin'}),
+    getTaskActor:auth=>auth.nombre,
     annotateTaskAssignments:async(_db,rows)=>rows,crearTareaEdicionDesdeVisita:forbidden,notificarAsignacionSinInterrumpir:forbidden};
   const confirm=new Function(...Object.keys(context),`${fn};return confirmProductionVisit;`)(...Object.values(context));
-  return {calls,original,get task(){return task;},run:(revision=3)=>confirm(10,'Owner',{expectedRevision:revision,actorId:7,...(external?{db}:{})})};
+  return {calls,original,get task(){return task;},run:(revision=3)=>confirm(10,'Owner',{expectedRevision:revision,actorId:7,...(external?{db}:{auth:{id:7,rol:'admin',session_version:1}})})};
 }
 test('actual confirmation callback records filming without any task creation, inferred editor or delivery date',async()=>{
   for(const external of [false,true]) {

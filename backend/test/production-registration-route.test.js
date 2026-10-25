@@ -6,21 +6,25 @@ import { buildTaskAccessClause, getTaskActor } from '../src/task-access.js';
 import crypto from 'node:crypto';
 import { taskOperationalDto } from '../src/operational-dto.js';
 import { rejectMixedProductionRecording } from '../src/production-registry-compatibility.js';
+import {captureLegacyProductionActor,retainLegacyProductionActor,assertLegacyProductionTaskAccess} from '../src/legacy-production-authority.js';
 
 const source = readFileSync(new URL('../src/server.js', import.meta.url), 'utf8');
 const routeSource = source.slice(source.indexOf('router.post("/tareas/:id/produccion/registros"'), source.indexOf('\nasync function confirmProductionVisit'));
 async function register(body, metadata = {}, auth = { id: 7, nombre: 'Germán', rol: 'produccion' }, normalized = false) {
   body = { expected_revision: 1, ...body };
+  auth = {session_version:1,...auth};
   let handler; let updated = null;
   const task = { id: 1753, revision: 1, titulo: 'Moketa | Visita producción', tipo_tarea: 'produccion', asignado_a: 'Germán', updated_at: '2026-09-16T10:00:00Z', propiedades_extra: metadata };
   const client = { release() {}, async query(sql, args) {
+    if (sql.includes('FROM usuarios')) return {rows:[{...auth,activo:true}]};
     if (sql.includes('FROM produccion_visitas')) return { rows: normalized ? [{id:'normalized-visit'}] : [] };
     if (sql.includes('SELECT')) return { rows: [task] };
     if (sql.includes('UPDATE tareas')) { updated = { ...task, estado: args[2], propiedades_extra: { ...metadata, ...JSON.parse(args[1]) } }; return { rows: [updated] }; }
     return { rows: [] };
   }};
   const bindings = { router: { post(_path, fn) { handler = fn; } }, pool: { async connect() { return client; } }, ...production, buildTaskAccessClause, getTaskActor, crypto,
-    annotateTaskAssignments: async (_db, rows) => rows, taskOperationalDto, rejectMixedProductionRecording };
+    annotateTaskAssignments: async (_db, rows) => rows, taskOperationalDto, rejectMixedProductionRecording,
+    captureLegacyProductionActor,retainLegacyProductionActor,assertLegacyProductionTaskAccess };
   new Function(...Object.keys(bindings), routeSource)(...Object.values(bindings));
   const response = { code: 200, status(value) { this.code = value; return this; }, json(value) { this.body = value; return this; } };
   await handler({ body, auth, params: { id: '1753' } }, response, error => { throw error; });

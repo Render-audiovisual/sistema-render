@@ -90,6 +90,7 @@ import { canRecordProduction, getProductionProgress, isProductionComplete, getPr
 import { assertProductionTaskFinalization, normalizeExpectedProductionVisit } from './production-task-finalization.js';
 import { assertCurrentTaskWriteActor } from './task-state-authority.js';
 import { applyTaskBulkAction } from './task-bulk-actions.js';
+import { captureLegacyProductionActor, retainLegacyProductionActor, retainIntegrationProductionLeader, assertLegacyProductionTaskAccess } from './legacy-production-authority.js';
 import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { loadReportSnapshot } from "./report-snapshot.js";
@@ -1982,6 +1983,7 @@ router.post("/tareas/:id/aprobar-publicacion", async (req, res, next) => {
 });
 
 router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
+  const capturedActor = captureLegacyProductionActor(req.auth);
   if (!canRecordProduction(req.auth)) {
     return res.status(403).json({ error: "Necesitás una cuenta activa verificada para registrar una visita." });
   }
@@ -2000,21 +2002,21 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
 
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+    const actor = await retainLegacyProductionActor(client, capturedActor);
     const params = [req.params.id];
-    const access = buildTaskAccessClause(req.auth, "t", "$2");
-    if (access.value) params.push(access.value);
     const currentResult = await client.query(
       `SELECT t.id, t.revision, t.titulo, t.asignado_a, t.cliente_id, t.estado, t.requiere_aprobacion,
               t.propiedades_extra, to_char(t.fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
               t.historia_id, t.publicacion_id, t.tipo_tarea, t.subtipo, t.prioridad,
               t.aclaraciones, t.material_referencia, t.tarea_padre_id, t.created_at, t.updated_at
        FROM tareas AS t
-       WHERE t.id = $1 AND t.propiedades_extra->>'workspace' = 'render_os'${access.sql}
+       WHERE t.id = $1 AND t.propiedades_extra->>'workspace' = 'render_os'
        FOR UPDATE`,
       params,
     );
     const task = currentResult.rows[0];
+    if (task) await assertLegacyProductionTaskAccess(client, actor, task.id);
     if (!task) {
       await client.query("ROLLBACK");
       return res.status(404).json({ error: "Visita no encontrada o no asignada a este usuario." });
@@ -2045,8 +2047,8 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
       id: crypto.randomUUID(),
       cantidad: amount,
       fecha: date,
-      usuario: getTaskActor(req.auth),
-      usuario_id: req.auth.id,
+      usuario: getTaskActor(actor),
+      usuario_id: actor.id,
       created_at: new Date().toISOString(),
       periodo_objetivo: date.slice(0, 7),
     };
@@ -2061,7 +2063,7 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
     const nextState = getProductionTaskState({ planned: progress.planned, recorded: progress.recorded + amount, finished });
     const workflowProperties = completed ? {
       produccion_finalizada_at: new Date().toISOString(),
-      produccion_finalizada_por: getTaskActor(req.auth),
+      produccion_finalizada_por: getTaskActor(actor),
       produccion_esperando_confirmacion: true,
       produccion_confirmada_at: null,
       produccion_confirmada_por: null,
@@ -2099,14 +2101,20 @@ router.post("/tareas/:id/produccion/registros", async (req, res, next) => {
   }
 });
 
-async function confirmProductionVisit(taskId, actor, { db = null, expectedRevision, actorId } = {}) {
+async function confirmProductionVisit(taskId, actor, { db = null, expectedRevision, actorId, auth } = {}) {
+  const capturedActor = auth ? captureLegacyProductionActor(auth) : null;
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
     throw Object.assign(new Error("Recargá la visita: falta su revisión actual para confirmar."), { status: 400 });
   }
   const ownsTransaction = !db;
   const client = db || await pool.connect();
   try {
-    if (ownsTransaction) await client.query("BEGIN");
+    if (ownsTransaction) await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+    if (ownsTransaction && !capturedActor) throw Object.assign(new Error('Sesión de confirmación inválida.'), {status:401});
+    const verifiedActor = capturedActor
+      ? await retainLegacyProductionActor(client, capturedActor, {leader:true})
+      : await retainIntegrationProductionLeader(client, actorId);
+    actor = getTaskActor(verifiedActor); actorId = verifiedActor.id;
     const current = await client.query(
       `SELECT id,revision,titulo,asignado_a,cliente_id,estado,propiedades_extra,
         to_char(fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,tipo_tarea,subtipo,
@@ -2159,7 +2167,7 @@ router.post("/tareas/:id/produccion/confirmar", async (req, res, next) => {
   if (req.query.workspace !== "render_os") return res.status(400).json({ error: "Esta acción solo está disponible en RENDER OS." });
   try {
     const confirmed = await confirmProductionVisit(req.params.id, getTaskActor(req.auth), {
-      expectedRevision: req.body.expected_revision, actorId: req.auth.id,
+      expectedRevision: req.body.expected_revision, actorId: req.auth.id, auth: req.auth,
     });
     return res.json({ ...confirmed, task: taskOperationalDto(confirmed.task, req.auth),
       editing_task: confirmed.editing_task ? taskOperationalDto(confirmed.editing_task, req.auth) : null });
@@ -2170,6 +2178,7 @@ router.post("/tareas/:id/produccion/confirmar", async (req, res, next) => {
 });
 
 router.patch("/tareas/:id/produccion/registros/:recordId", async (req, res, next) => {
+  const capturedActor = captureLegacyProductionActor(req.auth);
   if (!canRecordProduction(req.auth)) return res.status(403).json({ error: "Necesitás una cuenta activa verificada para corregir una visita." });
   if (req.query.workspace !== "render_os") return res.status(400).json({ error: "Esta acción solo está disponible en RENDER OS." });
   if (!Number.isSafeInteger(req.body.expected_revision) || req.body.expected_revision < 1) {
@@ -2179,25 +2188,25 @@ router.patch("/tareas/:id/produccion/registros/:recordId", async (req, res, next
   if (!Number.isSafeInteger(amount) || amount <= 0) return res.status(400).json({ error: "La cantidad debe ser un entero mayor que cero." });
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    const access = buildTaskAccessClause(req.auth, "t", "$2");
+    await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+    const actor = await retainLegacyProductionActor(client, capturedActor);
     const params = [req.params.id];
-    if (access.value) params.push(access.value);
     const current = await client.query(
       `SELECT t.id,t.revision,t.titulo,t.asignado_a,t.cliente_id,t.estado,t.tipo_tarea,t.subtipo,t.propiedades_extra,t.updated_at
-       FROM tareas t WHERE t.id=$1 AND t.propiedades_extra->>'workspace'='render_os'${access.sql} FOR UPDATE`, params,
+       FROM tareas t WHERE t.id=$1 AND t.propiedades_extra->>'workspace'='render_os' FOR UPDATE`, params,
     );
     const task = current.rows[0];
     if (!task || !isProductionVisitTask(task)) throw Object.assign(new Error("Visita no encontrada o no asignada a tu cuenta."), { status: 404 });
+    await assertLegacyProductionTaskAccess(client, actor, task.id);
     if (task.revision !== req.body.expected_revision) throw Object.assign(new Error("La visita cambió. Revisá sus registros antes de corregir."), { status: 409 });
     await rejectMixedProductionRecording(client, task.id);
     const { records: corrected, previous } = correctProductionRecord(task, {
-      recordId: req.params.recordId, amount, actorName: getTaskActor(req.auth), actorId: req.auth.id, now: new Date(),
+      recordId: req.params.recordId, amount, actorName: getTaskActor(actor), actorId: actor.id, now: new Date(),
     });
     const planned = getProductionProgress(task).planned;
     const recorded = getProductionProgress({ propiedades_extra: { produccion_registros: corrected } }).recorded;
     const nextState = getProductionTaskState({ planned, recorded });
-    const transition = taskTransitionError(task, nextState, req.auth);
+    const transition = taskTransitionError(task, nextState, actor);
     if (transition) throw Object.assign(new Error(transition.error), { status: transition.status });
     const properties = {
       ...task.propiedades_extra,
