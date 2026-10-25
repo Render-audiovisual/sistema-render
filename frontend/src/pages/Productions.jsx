@@ -3,6 +3,7 @@ import { productionResultStatus } from './productionResultStatus.js';
 import { captureProductionMediaFocus } from './productionMediaFocus.js';
 import { FilterSelect } from '../components/FilterSelect.jsx';
 import { Modal } from '../components/Modal.jsx';
+import { restoreProductionDraftRecoveryFocus } from './productionDraftRecoveryFocus.js';
 import { getHoyLocalISO, getSesion } from '../utils.jsx';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
@@ -161,8 +162,8 @@ function useProductionDraft({visit, source, key, onDirty, onReload}) {
   const performReload = async () => {
     if(!mounted.current||!draftModel.beginReload(()=>true))return;
     report();publish();
-    try{const fresh=await onReload(visit.id);if(mounted.current)complete(fresh);}
-    catch(reason){if(mounted.current)fail(reason);}
+    try{const fresh=await onReload(visit.id);if(mounted.current){complete(fresh);return true;}}
+    catch(reason){if(mounted.current){fail(reason);return false;}}
   };
   const reloadObservation=()=>JSON.stringify({state:draftModel.snapshot,visit:latest.current?.visit});
   const reload = () => {
@@ -179,13 +180,23 @@ function useProductionDraft({visit, source, key, onDirty, onReload}) {
 }
 function DraftRecovery({form,busy}) {
   const keepRef=useRef(null),invokerRef=useRef(null);
+  const [focusRequest,setFocusRequest]=useState(null);
+  useEffect(()=>{
+    if(!focusRequest)return;
+    restoreProductionDraftRecoveryFocus(focusRequest.result,focusRequest.scope);setFocusRequest(null);
+  },[focusRequest]);
+  const confirmReload=async()=>{
+    const invoker=invokerRef.current,scope={form:invoker?.closest('form'),invoker};
+    const result=await form.confirmReload(form.reloadPrompt);
+    if(typeof result==='boolean')setFocusRequest({result,scope});
+  };
   if(!form.dirty && !form.blocked)return null;
   return <div className="prod-wide">
     {form.blocked && <p role="alert">{form.saved ? 'El cambio se guardó. No repitas el envío: cargá la versión guardada para verificarlo.' : form.uncertain ? 'No se pudo confirmar el envío. No lo repitas: revisá los registros guardados.' : 'La visita cambió. Tus campos se conservan, pero no se pueden guardar sobre otra revisión.'}</p>}
     <button ref={invokerRef} type="button" disabled={busy || form.pending} onClick={()=>void form.reload()}>Descartar campos y cargar versión guardada</button>
     {form.reloadPrompt && <Modal native className="prod-discard-modal" overlayAriaLabel="Cargar versión guardada" title={<h2>¿Cargar la versión guardada?</h2>} onClose={form.cancelReload} initialFocusRef={keepRef} returnFocusRef={invokerRef}>
       <div className="modal-body"><p>Se descartarán estos campos sin guardar. Si un envío fue incierto, revisá los registros guardados antes de crear otro. Esta consulta no repite el envío.</p>
-        <div className="modal-actions"><button ref={keepRef} type="button" onClick={form.cancelReload}>Seguir editando</button><button type="button" disabled={busy || form.pending} onClick={()=>void form.confirmReload(form.reloadPrompt)}>Descartar campos y consultar</button></div>
+        <div className="modal-actions"><button ref={keepRef} type="button" onClick={form.cancelReload}>Seguir editando</button><button type="button" disabled={busy || form.pending} onClick={()=>void confirmReload()}>Descartar campos y consultar</button></div>
       </div>
     </Modal>}
   </div>;

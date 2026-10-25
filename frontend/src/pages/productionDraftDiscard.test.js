@@ -45,7 +45,7 @@ test('edit, newer visit, unmount and an obsolete prompt cannot reuse discard con
 test('failed read preserves the draft and an unmounted consumer cannot adopt a late result',async()=>{
   const f=fixture({read:async()=>{throw new Error('offline');}});let form=f.render();form.reload();form=f.render();await form.confirmReload(form.reloadPrompt);
   assert.equal(f.calls,1);assert.equal(f.model.snapshot.draft.titulo,'Borrador');assert.equal(f.model.snapshot.blocked,true);
-  let release;const wait=new Promise(resolve=>{release=resolve;}),g=fixture({read:()=>wait});form=g.render();form.reload();form=g.render();const pending=form.confirmReload(form.reloadPrompt);g.unmount();release(visit(2));await pending;
+  let release;const wait=new Promise(resolve=>{release=resolve;}),g=fixture({read:()=>wait});form=g.render();form.reload();form=g.render();const pending=form.confirmReload(form.reloadPrompt);g.unmount();release(visit(2));assert.equal(await pending,undefined);
   assert.equal(g.model.snapshot.visit.revision,1);assert.equal(g.model.snapshot.draft.titulo,'Borrador');
 });
 test('recovery uses shared native dialog with safe focus defaults instead of browser confirm',()=>{

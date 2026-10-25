@@ -1,5 +1,11 @@
 # Principal backend: isolated local HTTP QA
 
+## Browser build identity and post-login snapshots (integration361)
+
+Build before starting the owned HTTP fixture. The principal SPA fallback captures index.html at server startup; rebuilding frontend/dist and reloading a deep link does not replace that in-memory manifest. The root static route may behave differently. Verify the actual module script hash in the browser DOM against the build log before attributing native results to a change. If it differs, close/verify cleanup of only the owned fixture and start a fresh one after the build. Do not restart or migrate a configured database or production server for this check.
+
+For read-only UI journeys, take the immutable database baseline once after the explicit QA login has completed. Login legitimately changes auth_login_buckets. Do not silently exclude this table, reset the baseline after interactions, or declare a pre-login full-table comparison successful. Keep failed attempts and cleanup evidence separate from the final run. These rules do not turn a UI snapshot into proof of all authentication/provider/device behavior.
+
 ## Existing model binding adoption QA (integration69)
 
 ```sh
