@@ -4,6 +4,18 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Cierre de tarea origen basado en videos canónicos — corte315
+
+Coordinador y Harvey confirmaron por fuente que PATCH finalizar consultaba solo metadata agregada: una visita canónica con tres videos grabados seguía recibiendo «faltan3», y312 impide extender ese agregado. `production-task-finalization.js` ahora valida dentro del afterSave de persistAssignedTask, después del UPDATE que bloquea la tarea y antes de COMMIT/sync. Toma visita FOR UPDATE; writers individuales usan tarea→visita, por lo que la comprobación lee evidencia efectiva serializada. Se elimina el precheck legacy mediante pool fuera de transacción.
+
+Con vínculo canónico exige al menos un video, todos grabados y alcanzar cantidad prevista cuando exista. No suma agregado histórico, no cuenta fotos como videos, no confirma grabación ni crea edición/publicación. Sin vínculo mantiene la regla agregada anterior. El cierre sigue siendo una acción explícita con autoridad y CAS de tarea existentes, no automático. No implementa cierre parcial con pendientes ni deduce que una visita haya terminado a partir de tener algún material.
+
+La revisión independiente detectó y corrigió un bypass de paridad: no se puede borrar la clasificación de visita renombrando/reclasificando en el mismo PATCH de cierre ni bajar su cantidad prevista para evitar el déficit. La fuente original incluye revisión y el hook exige que coincida con expected_revision; CAS del UPDATE y rollback protegen esa observación. Legacy valida el progreso original; canónico toma el mayor objetivo entre original/propuesto para impedir eludirlo al bajar o subir en el cierre. Unitario y HTTP negativos conservan snapshot completo.
+
+Coordinador implementó helper/ruta/unitarios; Harvey escribió cohorte física y revisó locks.19 focales PASS; físicas nuevas más compatibilidad CAS/legacy/Home29PASS/0FAIL/0SKIP, salida0 y cleanup ENOENT. Nueva cohorte en PG55932 prueba productor asignado, tres videos, negativos vacía/planificado/pendiente/repetir/déficit/fotos, CAS obsoleto, no miembro, ausencia de cantidad prevista y legado sin vínculo; snapshots negativos incluyen xmin/ctid. Positivos preservan tablas fuera de tareas/notificaciones y no crean negocio adicional. Aceptación integrada final119PASS/0FAIL/0SKIP; regresión backend2378PASS/156opt-inSKIP/0FAIL. El nuevo opt-in pasó por separado en la cohorte física. Logs finales `/private/tmp/render2-goal315-{focal-final,core-verified,physical-verified,backend-verified}.log`.
+
+**Integración incompleta:** frontend task-state/TaskDetail siguen consultando progreso legacy para ofrecer finalizar; falta proyectar capacidad canónica y vincular revisión observada de visita al intento. Este corte solo acredita API→PostgreSQL→respuesta/recarga por lectura, no navegador ni revisión de visita observada por el usuario ni carrera física de edición de video. Sin schema/migraciones/bases configuradas/proveedores/despliegue. Superpowers ordenó diagnóstico/contrato/revisión; Verification obliga a mantener explícita la frontera UI pendiente.
+
 ### Aceptación integrada ampliada y revisión IPC — corte314
 
 El runner fijo incorpora las cohortes HTTP de creación recuperable y de visita canónica vacía, conservando los diez recorridos anteriores, ejecución serial y entorno aislado sin destinos configurables. Sus tres pruebas de contrato pasan. La aceptación integrada ampliada termina con119PASS/0FAIL/0SKIP; regresión backend2375PASS/155opt-inSKIP/0FAIL. Logs `/private/tmp/render2-goal314-{runner,core-expanded,backend}.log`. Harvey revisó el cambio sin bloqueantes. No es aceptación global ni validación de proveedores o producción.

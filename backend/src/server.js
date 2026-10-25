@@ -87,6 +87,7 @@ import { legacyPieceSelection, readLegacyEditorialPiece, writeEditorialPiece } f
 import { createEditorialPiece } from './editorial-piece-create.js';
 import { createEditorialArchiveRouter } from './editorial-archive.js';
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
+import { assertProductionTaskFinalization } from './production-task-finalization.js';
 import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { loadReportSnapshot } from "./report-snapshot.js";
@@ -1646,7 +1647,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
       Object.prototype.hasOwnProperty.call(body.propiedades_extra || {}, "colaboradores")
     ) {
       const tareaAnterior = await pool.query(
-        `SELECT id, titulo, asignado_a, cliente_id, estado, propiedades_extra,
+        `SELECT id, revision, titulo, asignado_a, cliente_id, estado, propiedades_extra,
                 to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento,
                 tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia,
                 tarea_padre_id, updated_at
@@ -1696,22 +1697,6 @@ router.patch("/tareas/:id", async (req, res, next) => {
     }
     const produccionPuedeCompletarPropia = req.auth.rol === "produccion"
       && tareaAnteriorCompleta?.tipo_tarea === "produccion";
-    if (esRenderOS && body.estado === "finalizada") {
-      const visita = await pool.query(
-        `SELECT titulo, subtipo, tipo_tarea, propiedades_extra
-         FROM tareas
-         WHERE id = $1 AND propiedades_extra->>'workspace' = 'render_os'`,
-        [id],
-      );
-      if (visita.rows[0] && isProductionVisitTask(visita.rows[0])) {
-        const progress = getProductionProgress(visita.rows[0]);
-        if (!isProductionComplete(visita.rows[0])) {
-          return res.status(400).json({ error: progress.planned === 0
-            ? "Indicá cuántos videos tiene la visita antes de finalizarla."
-            : `Todavía faltan ${progress.remaining} videos para finalizar esta visita.` });
-        }
-      }
-    }
     if (esRenderOS && Object.prototype.hasOwnProperty.call(body, "tarea_padre_id") && body.tarea_padre_id) {
       const padreRenderOS = await pool.query(
         `SELECT id FROM tareas
@@ -1823,6 +1808,10 @@ router.patch("/tareas/:id", async (req, res, next) => {
        WHERE ${where}
        RETURNING id, revision, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
       valores, assignment, async (db, task) => {
+        if (esRenderOS && body.estado === 'finalizada') {
+          if (tareaAnteriorCompleta?.revision !== body.expected_revision) throw Object.assign(new Error('La tarea cambió. Recargá antes de finalizarla.'), { status: 409 });
+          await assertProductionTaskFinalization(db, task, tareaAnteriorCompleta);
+        }
         if (body.estado === 'aprobada' && estadoAnterior !== 'aprobada') {
           const deliveryId = await assertEditingApprovalDelivery(db, task, expectedEditingDelivery);
           if (deliveryId) await recordEditingApproval(db, task, req.auth, deliveryId);
