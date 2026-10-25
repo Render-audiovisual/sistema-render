@@ -55,6 +55,8 @@
 .prod-date-context{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px}
 .prod-date-context p{flex:1 1 180px;min-width:0;margin:0}
 .prod-date-context button{min-height:44px}
+.productions-page .prod-discard-modal{max-width:480px}
+.productions-page .prod-discard-modal .modal-actions button{min-height:44px}
 .prod-error{background:#fff1f0;color:#9c2525;border:1px solid #f2cccc}
 .prod-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}
 .prod-wide{grid-column:1/-1}

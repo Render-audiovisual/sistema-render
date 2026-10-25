@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { productionResultStatus } from './productionResultStatus.js';
 import { captureProductionMediaFocus } from './productionMediaFocus.js';
 import { FilterSelect } from '../components/FilterSelect.jsx';
+import { Modal } from '../components/Modal.jsx';
 import { getHoyLocalISO, getSesion } from '../utils.jsx';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
@@ -132,38 +133,62 @@ function CreateVisit({clients, users, date, busy, sesion, onCreate, onCreated, o
 
 function useProductionDraft({visit, source, key, onDirty, onReload}) {
   const [draftModel] = useState(()=>createProductionDraft(visit,source(visit)));
+  const [reloadPrompt,setReloadPrompt]=useState(null);
+  const reloadIntent=useRef(null);
   const latest = useRef(null), mounted = useRef(false);
   const [,render] = useState(0);
   const state = draftModel.snapshot;
   const publish = () => { if (mounted.current) render(value=>value+1); };
   const report = () => {if(mounted.current){const next=draftModel.snapshot;onDirty(key,next.dirty || next.blocked || next.pending);}};
-  useLayoutEffect(()=>{mounted.current=true;return()=>{mounted.current=false;onDirty(key,false);}},[key,onDirty]);
+  useLayoutEffect(()=>{mounted.current=true;return()=>{mounted.current=false;reloadIntent.current=null;onDirty(key,false);}},[key,onDirty]);
   // Do not mutate the model on speculative React renders. begin() independently
   // rejects a changed latest prop even before this layout effect can execute.
   useLayoutEffect(()=>{latest.current={visit,source};});
   const sourceKey=JSON.stringify(visit);
+  const cancelReload=()=>{reloadIntent.current=null;setReloadPrompt(null);};
   useLayoutEffect(()=>{
+    cancelReload();
     try{draftModel.observe(visit,source(visit));}catch(reason){draftModel.fail(reason);}
     report();publish();
   },[sourceKey]);
-  const edit = value => {draftModel.edit(value);report();publish();};
-  const begin = () => {try{return draftModel.begin(visit);}finally{report();publish();}};
+  const edit = value => {cancelReload();draftModel.edit(value);report();publish();};
+  const begin = () => {cancelReload();try{return draftModel.begin(visit);}finally{report();publish();}};
   const complete = result => {
     const fresh=verifiedProductionDraftVisit(result,visit.id);
     draftModel.complete(fresh,latest.current.source(fresh));report();publish();
   };
   const fail = reason => {draftModel.fail(reason);report();publish();};
-  const reload = async () => {
-    if(!draftModel.beginReload(()=>window.confirm('¿Descartar estos campos y cargar la versión guardada? Si el envío fue incierto, revisá los registros antes de crear otro.')))return;
+  const performReload = async () => {
+    if(!mounted.current||!draftModel.beginReload(()=>true))return;
     report();publish();
-    try{complete(await onReload(visit.id));}
-    catch(reason){fail(reason);}
+    try{const fresh=await onReload(visit.id);if(mounted.current)complete(fresh);}
+    catch(reason){if(mounted.current)fail(reason);}
   };
-  return {...state,edit,begin,complete,fail,reload};
+  const reloadObservation=()=>JSON.stringify({state:draftModel.snapshot,visit:latest.current?.visit});
+  const reload = () => {
+    if(!mounted.current||draftModel.snapshot.pending||reloadIntent.current)return;
+    if(!draftModel.snapshot.dirty&&!draftModel.snapshot.uncertain)return performReload();
+    const intent={observation:reloadObservation()};reloadIntent.current=intent;setReloadPrompt(intent);
+  };
+  const confirmReload = intent => {
+    if(!mounted.current||!intent||reloadIntent.current!==intent)return;
+    const current=intent.observation===reloadObservation();cancelReload();
+    if(current)return performReload();
+  };
+  return {...state,edit,begin,complete,fail,reload,reloadPrompt,cancelReload,confirmReload};
 }
 function DraftRecovery({form,busy}) {
+  const keepRef=useRef(null),invokerRef=useRef(null);
   if(!form.dirty && !form.blocked)return null;
-  return <div className="prod-wide">{form.blocked && <p role="alert">{form.saved ? 'El cambio se guardó. No repitas el envío: cargá la versión guardada para verificarlo.' : form.uncertain ? 'No se pudo confirmar el envío. No lo repitas: revisá los registros guardados.' : 'La visita cambió. Tus campos se conservan, pero no se pueden guardar sobre otra revisión.'}</p>}<button type="button" disabled={busy || form.pending} onClick={()=>void form.reload()}>Descartar campos y cargar versión guardada</button></div>;
+  return <div className="prod-wide">
+    {form.blocked && <p role="alert">{form.saved ? 'El cambio se guardó. No repitas el envío: cargá la versión guardada para verificarlo.' : form.uncertain ? 'No se pudo confirmar el envío. No lo repitas: revisá los registros guardados.' : 'La visita cambió. Tus campos se conservan, pero no se pueden guardar sobre otra revisión.'}</p>}
+    <button ref={invokerRef} type="button" disabled={busy || form.pending} onClick={()=>void form.reload()}>Descartar campos y cargar versión guardada</button>
+    {form.reloadPrompt && <Modal native className="prod-discard-modal" overlayAriaLabel="Cargar versión guardada" title={<h2>¿Cargar la versión guardada?</h2>} onClose={form.cancelReload} initialFocusRef={keepRef} returnFocusRef={invokerRef}>
+      <div className="modal-body"><p>Se descartarán estos campos sin guardar. Si un envío fue incierto, revisá los registros guardados antes de crear otro. Esta consulta no repite el envío.</p>
+        <div className="modal-actions"><button ref={keepRef} type="button" onClick={form.cancelReload}>Seguir editando</button><button type="button" disabled={busy || form.pending} onClick={()=>void form.confirmReload(form.reloadPrompt)}>Descartar campos y consultar</button></div>
+      </div>
+    </Modal>}
+  </div>;
 }
 function MediaForm({visit, item, kind, busy, onWrite, onDirty, onCreated, onReload, focusReturnTarget, focusReturnCurrent}) {
   const video = kind === 'videos';

@@ -118,14 +118,15 @@ test('hook mutates latest/observations only in commit effects, reports dirty/pen
   const render=visit=>{refIndex=0;stateIndex=0;effects.length=0;latestArgs={visit,source:productionVisitDraft,key:'visit:visit-a',onDirty:(_key,value)=>reports.push(value),onReload:async()=>aggregate(3)};return hook(latestArgs)};
   let form=render(aggregate());for(const effect of [...effects])effect();
   form.edit({...form.draft,titulo:'dirty'});assert.equal(reports.at(-1),true,'no passive-effect gap after edit');
-  const before=JSON.stringify(states[0].snapshot),pointer=refs[0].current;
+  const before=JSON.stringify(states[0].snapshot),pointer=refs[1].current;
   form=render(aggregate(2));assert.equal(JSON.stringify(states[0].snapshot),before,'speculative render cannot rebase/block');
-  assert.equal(refs[0].current,pointer,'latest pointer remains committed');
+  assert.equal(refs[1].current,pointer,'latest pointer remains committed');
   assert.throws(()=>form.begin(),{status:409},'submit before effect independently checks rendered revision');
   assert.equal(reports.at(-1),true);
   for(const effect of [...effects])effect();
   assert.equal(states[0].snapshot.blocked,true);
-  await form.reload();assert.equal(states[0].snapshot.visit.revision,3);
+  await form.reload();assert.equal(states[0].snapshot.visit.revision,1,'opening confirmation is not permission to discard');
+  form=render(aggregate(2));await form.confirmReload(form.reloadPrompt);assert.equal(states[0].snapshot.visit.revision,3);
   assert.equal(reports.at(-1),false,'clear only after verified reload accepted');
 });
 
