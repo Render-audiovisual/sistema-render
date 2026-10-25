@@ -13,6 +13,7 @@ export const coreAcceptanceFiles = Object.freeze([
   'test/render2-editorial-control.integration.test.js',
   'test/render2-editorial-piece-detail.integration.test.js',
   'test/render2-editorial-adoption.integration.test.js',
+  'test/render2-report-approval-projection.integration.test.js',
   'test/render2-editing-deliveries.integration.test.js',
   'test/render2-editing-reviews.integration.test.js',
   'test/render2-editing-approval.integration.test.js',

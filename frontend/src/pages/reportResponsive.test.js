@@ -5,6 +5,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
 import postcss from 'postcss';
+import {employeeTaskDetails,employeeFormatBreakdown} from '../shared/reports/production-registry-report.js';
 
 // Actual JSX declarations, real React SSR, injected observations/calculators.
 // No effects, browser layout, HTTP or screen-reader behavior are simulated.
@@ -29,7 +30,7 @@ const quotaLabels = ['Cliente / feed', 'Cuota mensual de carruseles', 'Cuota men
 const personLabels = ['Persona', 'Tareas', 'Para revisar', 'Aprobadas', 'Finalizadas', 'No finalizadas', 'Vencidas'];
 const range = { desde: '2026-10-01', hasta: '2026-11-01' };
 const summary = [{ formato: 'reels', programadas: 0, publicadas: 2, historicalFechadas: 3, legacy: 4, legacySinFecha: 5, estados: [{ estado: 'lista', total: 6 }] }];
-function harness(personId = null) {
+function harness(personId = null,calculators = {}) {
   const updates = [], data = { usuarios: [], historias: [], publicaciones: [] };
   const states = ['mes_actual', { context: JSON.stringify(['mes_actual', '2026-10-24', range.desde, range.hasta]), data }, false, '', '2026-10-24', personId];
   let index = 0;
@@ -45,7 +46,8 @@ function harness(personId = null) {
     employeeTaskDetails: () => [{ id: 41, titulo: 'Tarea real', formato: 'reels', estado: 'finalizada', href: '/workspace/tareas?task=41', fecha_entrega: '2026-10-23', finalizada: '2026-10-24', actualizada: '2026-10-24' }],
     employeeFormatBreakdown: () => [], personalEditorialReport: () => ({ available: false, missing: 0 }),
   };
-  const api = Function(...Object.keys(bindings), `${compiled}; return {ReportesContent,EditorialTable};`)(...Object.values(bindings));
+  Object.assign(bindings,calculators);
+  const api = Function(...Object.keys(bindings), `${compiled}; return {ReportesContent,EditorialTable,PersonDetails};`)(...Object.values(bindings));
   return { ...api, updates, page: () => api.ReportesContent({ session: {} }) };
 }
 function expand(node) {
@@ -55,6 +57,22 @@ function expand(node) {
   if (node.type === React.Fragment) return expand(node.props.children);
   return [{ type: node.type, props: node.props, children: expand(node.props.children) }];
 }
+
+test('real report detail displays effective approval without rewriting its stored historical state',()=>{
+  const {PersonDetails}=harness(null,{employeeTaskDetails,employeeFormatBreakdown});
+  for(const flag of [true,'true',false,undefined]){
+    const tasks=[{id:41,titulo:'Observed approval',estado:'en_revision',tipo_tarea:'edicion',subtipo:'video',
+      asignado_a_id:17,colaborador_ids:[],fecha_vencimiento:'2026-10-23',
+      propiedades_extra:{workspace:'render_os',revision_aprobada:flag}}];
+    const before=structuredClone(tasks);
+    const html=renderToStaticMarkup(React.createElement(PersonDetails,{person:{id:17,nombre:'QA'},tasks,
+      data:{historias:[],publicaciones:[]},range}));
+    assert.match(html,/estado almacenado: en_revision/);
+    assert.match(html,flag===true?/Reels · Aprobada/:/Reels · Para revisar/);
+    assert.match(html,flag===true?/0 finalizadas de 1 tareas · 0 para revisar · 1 aprobadas/:/0 finalizadas de 1 tareas · 1 para revisar · 0 aprobadas/);
+    assert.deepEqual(tasks,before);
+  }
+});
 function find(nodes, predicate) { return nodes.flatMap(n => typeof n === 'object' ? [...(predicate(n) ? [n] : []), ...find(n.children, predicate)] : []); }
 const text = node => node.children.map(child => typeof child === 'object' ? text(child) : String(child)).join('');
 const values = table => find(table.children, n => n.props.className === 'rpr-cell-value').map(text);

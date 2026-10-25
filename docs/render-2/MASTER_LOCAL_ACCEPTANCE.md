@@ -1,6 +1,6 @@
 # Render 2.0: arquitectura y aceptación local
 
-Para el contraste compacto del prompt maestro, fases,15 secciones, recorridos A–F y gates abiertos, consultar [ACCEPTANCE_CHECKPOINT.md](ACCEPTANCE_CHECKPOINT.md), corte372. Ese corte detecta una inconsistencia vigente de aprobación en Reportes; no declara aceptación global.
+Para el contraste compacto del prompt maestro, fases,15 secciones, recorridos A–F y gates abiertos, consultar [ACCEPTANCE_CHECKPOINT.md](ACCEPTANCE_CHECKPOINT.md), corte372 actualizado373. La inconsistencia de aprobación en Reportes detectada allí se corrigió373; no declara aceptación global.
 
 Para el resumen vigente de cierres y pendientes, consultar [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md). Las secciones de integraciones numeradas que siguen son evidencia histórica y no deben volver a abrir hallazgos ya corregidos.
 

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { buildEmployeeReport, buildHistoricalProductionReport, buildProductionRegistryReport, historicalUnassignedEditingCount, inReportRange, reportTaskPeople, uniqueReportTasks, employeeTaskDetails, employeeFormatBreakdown, editorialRecords, summarizeEditorialRecords, personalEditorialReport, clientQuotaReport } from '../../frontend/src/shared/reports/production-registry-report.js';
+import { effectiveTaskFilterState } from '../../frontend/src/features/render-os/utils/task-view-state.js';
 
 const range = { desde: '2026-10-01', hasta: '2026-11-01' };
 const users = [{ id: 1, nombre: 'Alex', rol: 'produccion' }, { id: 2, nombre: 'Alex', rol: 'edicion' }];
@@ -36,6 +37,69 @@ test('review, approval, finalization aliases and overdue are distinct; no invent
   const result = buildEmployeeReport(users, tasks, range, '2026-10-19');
   assert.deepEqual(result.rows[0], { id: 1, nombre: 'Alex', rol: 'produccion', total: 5, enRevision: 1, aprobadas: 1, finalizadas: 2, pendientes: 3, vencidas: 3 });
   assert.equal(result.rows[1].total, 0);
+});
+
+test('historical boolean approval is effective approval in employee totals, details and formats without finalizing work', () => {
+  const tasks = [task(41, {titulo: 'Editar reel histórico', tipo_tarea: 'edicion', asignado_a_id: 1,
+    colaborador_ids: [2], revision: 7, estado: 'en_revision', publicacion_id: 90,
+    propiedades_extra: {workspace: 'render_os', revision_aprobada: true}})];
+  const before = structuredClone(tasks);
+  Object.freeze(tasks[0].propiedades_extra); Object.freeze(tasks[0].colaborador_ids);
+  Object.freeze(tasks[0]); Object.freeze(tasks);
+  assert.equal(effectiveTaskFilterState(tasks[0]), 'aprobada');
+  const report = buildEmployeeReport(users, tasks, range, '2026-10-19');
+  assert.equal(report.uniqueTasks, 1); assert.equal(report.unattributed, 0);
+  for (const person of report.rows) {
+    assert.equal(person.total, 1); assert.equal(person.enRevision, 0); assert.equal(person.aprobadas, 1);
+    assert.equal(person.finalizadas, 0); assert.equal(person.pendientes, 1);
+    const [detail] = employeeTaskDetails(tasks, person.id, range);
+    assert.equal(detail.id, 41); assert.equal(detail.estado, 'aprobada');
+    assert.equal(detail.estado_almacenado, 'en_revision'); assert.equal(detail.finalizada, '');
+    assert.equal(detail.href, '/workspace/tareas?task=41');
+    const reel = employeeFormatBreakdown(tasks, person.id, range).find(row => row.formato === 'reels');
+    assert.deepEqual(reel, {formato: 'reels', total: 1, finalizadas: 0, enRevision: 0, aprobadas: 1});
+  }
+  assert.deepEqual(tasks, before, 'Read projection must not rewrite historical state, metadata, assignments or revision');
+});
+
+test('string/false/missing approval is not effective approval in any report projection', () => {
+  for (const metadata of [{revision_aprobada: 'true'}, {revision_aprobada: false}, {revision_aprobada: 'false'},
+    {}, {revision_aprobada: null}, {revision_aprobada: 1}]) {
+    const tasks = [task(42, {titulo: 'Carrusel histórico', asignado_a_id: 1, estado: 'en_revision',
+      propiedades_extra: {workspace: 'render_os', ...metadata}})];
+    const before = structuredClone(tasks);
+    assert.equal(effectiveTaskFilterState(tasks[0]), 'en_revision');
+    const person = buildEmployeeReport(users, tasks, range, '2026-10-19').rows[0];
+    assert.equal(person.enRevision, 1); assert.equal(person.aprobadas, 0); assert.equal(person.finalizadas, 0);
+    assert.equal(person.total, 1); assert.equal(person.pendientes, 1);
+    const [detail] = employeeTaskDetails(tasks, 1, range);
+    assert.equal(detail.estado, 'en_revision'); assert.equal(detail.estado_almacenado, 'en_revision');
+    const carousel = employeeFormatBreakdown(tasks, 1, range).find(row => row.formato === 'carruseles');
+    assert.deepEqual(carousel, {formato: 'carruseles', total: 1, finalizadas: 0, enRevision: 1, aprobadas: 0});
+    assert.deepEqual(tasks, before);
+  }
+});
+
+test('effective approval and finalized task aliases never fabricate editorial confirmation or rewrite stored aliases', () => {
+  const tasks = ['en_revision', 'finalizada', 'publicada'].map((estado, index) => task(50 + index, {
+    titulo: 'Reel vinculado', tipo_tarea: 'edicion', asignado_a_id: 1, estado, publicacion_id: 90 + index,
+    propiedades_extra: {workspace: 'render_os', revision_aprobada: true},
+  }));
+  const publications = tasks.map(row => ({id: row.publicacion_id, cliente_id: 4, tipo: 'video',
+    estado: 'publicada', fecha_programada: '2026-10-10', 'fecha_publicación_real': '2026-10-10'}));
+  const before = structuredClone({tasks, publications});
+  const person = buildEmployeeReport(users, tasks, range, '2026-10-19').rows[0];
+  assert.equal(person.total, 3); assert.equal(person.enRevision, 0); assert.equal(person.aprobadas, 1);
+  assert.equal(person.finalizadas, 2); assert.equal(person.pendientes, 1);
+  const details = employeeTaskDetails(tasks, 1, range);
+  assert.deepEqual(details.map(row => row.estado), ['aprobada', 'finalizada', 'finalizada']);
+  assert.deepEqual(details.map(row => row.estado_almacenado), ['en_revision', 'finalizada', 'publicada']);
+  assert.equal(employeeFormatBreakdown(tasks, 1, range).find(row => row.formato === 'reels').finalizadas, 2);
+  const editorial = personalEditorialReport(tasks, 1, [], publications, range);
+  assert.equal(editorial.available, true); assert.equal(editorial.linked, 3); assert.equal(editorial.missing, 0);
+  assert.equal(editorial.rows.reduce((sum, row) => sum + row.publicadas, 0), 0);
+  assert.equal(summarizeEditorialRecords(editorialRecords([], publications), range).reduce((sum, row) => sum + row.publicadas, 0), 0);
+  assert.deepEqual({tasks, publications}, before);
 });
 
 test('date scope is inclusive/exclusive and archived work does not enter employee rows', () => {

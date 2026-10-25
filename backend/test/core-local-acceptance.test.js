@@ -9,8 +9,8 @@ test('core QA uses the fixed principal journeys, serially, with an isolated chil
   assert.equal(plan.command, process.execPath);
   assert.equal(plan.options.shell, false);
   assert.equal(plan.options.stdio, 'inherit');
-  assert.equal(coreAcceptanceFiles.length, 29);
-  assert.equal(new Set(coreAcceptanceFiles).size, 29);
+  assert.equal(coreAcceptanceFiles.length, 30);
+  assert.equal(new Set(coreAcceptanceFiles).size, 30);
   assert.ok(coreAcceptanceFiles.includes('test/render2-task-create-http.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-production-empty-registry-boundary.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-production-results.integration.test.js'));
@@ -24,6 +24,7 @@ test('core QA uses the fixed principal journeys, serially, with an isolated chil
   assert.ok(coreAcceptanceFiles.includes('test/render2-task-delete-authority.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-subtask-consumer.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-audiovisual-cookie-concurrency.integration.test.js'));
+  assert.ok(coreAcceptanceFiles.includes('test/render2-report-approval-projection.integration.test.js'));
   for(const file of ['editorial-control','editorial-piece-detail','editorial-adoption',
     'editing-deliveries','editing-reviews','editing-approval'])
     assert.ok(coreAcceptanceFiles.includes(`test/render2-${file}.integration.test.js`));
@@ -45,7 +46,7 @@ test('core QA uses the fixed principal journeys, serially, with an isolated chil
   plan.options.env.DATABASE_URL = 'synthetic-not-a-real-target';
   plan.args.length = 0;
   assert.equal(Object.hasOwn(coreAcceptancePlan().options.env, 'DATABASE_URL'), false);
-  assert.equal(coreAcceptancePlan().args.length, 31);
+  assert.equal(coreAcceptancePlan().args.length, 32);
 });
 
 test('core QA refuses flags, URLs and fixture overrides instead of choosing a configured target', () => {

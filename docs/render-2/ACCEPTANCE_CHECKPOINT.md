@@ -1,6 +1,6 @@
-# Render 2.0 — corte de aceptación local372
+# Render 2.0 — corte de aceptación local372, actualizado373
 
-Fecha: 2026-10-25. Código revisado: `5ec8f11` más el ajuste de diagnóstico de CLI372. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
+Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
 ## Resultado de las fases
 
@@ -8,7 +8,7 @@ Fecha: 2026-10-25. Código revisado: `5ec8f11` más el ajuste de diagnóstico de
 |---|---|---|
 | 0. Preparación segura | Worktree aislado; cambios ajenos preservados; harness con entorno limpio e identidad PostgreSQL propia; arranque separado de migraciones | No se ha aceptado un destino real ni ensayo sobre copia comercial autorizada. No usar esa ausencia como permiso para probar otra base. |
 | 1. Seguridad y negocio | Identidad/rol/actividad/época del servidor, cookies/contexto/CSRF; DTO operativo sin dinero para todos en Reportes; Finanzas independientes; trabajo distinto de publicación | Roster real no sustituido por cuentas QA. La política de destinatarios de revisión sigue pendiente de decisión humana. |
-| 2. Unificación | Un grafo comercial React/Vite → Express → PostgreSQL; tareas, clientes/cuotas, proyectos, registro audiovisual por video y editorial conectados | Proveedor Drive real no certificado. Un defecto de proyección de aprobación en Reportes está reproducido abajo. |
+| 2. Unificación | Un grafo comercial React/Vite → Express → PostgreSQL; tareas, clientes/cuotas, proyectos, registro audiovisual por video y editorial conectados; proyección de aprobación de Reportes corregida373 | Proveedor Drive real no certificado; aceptación transversal todavía parcial. |
 | 3. Diseño | Tokens y componentes compartidos, rutas reales, sidebar agrupada, modo claro; recorridos nativos concretos de escritorio/móvil | No hay aceptación poblada transversal de todas las secciones/roles, lectores de pantalla, zoom, teclado y dispositivos físicos independientes. |
 | 4. Funciones y experiencia | Persistencia, versiones, recibos, filtros, comentarios, protección de borradores y recuperación implementados por módulos | Reconciliar consumidores históricos restantes; avisos de revisión aún dependen de etiquetas. No afirmar que todo error de conexión/concurrencia esté cubierto. |
 | 5. Punta a punta | Cohorte fija29 archivos; recorridos A–F parcialmente acreditados con alcances explícitos abajo | Pruebas sintéticas/API y un navegador no equivalen a múltiples dispositivos, cuentas reales, proveedores ni aceptación completa. |
@@ -60,14 +60,15 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - Frontend370:3224 pruebas `.test.js` aprobadas y build `index-qQy7YpX0`; navegador1280/390 de Reportes con108 tablas invariantes. Sin renovación universal del navegador372.
 - CLI372: diagnóstico redactado y17 pruebas aprobadas; conserva timeout5000 y entorno PATH. Diferencia `error.code` y señal sin publicar argumentos, stdout, stderr o mensaje privado del hijo. No explica retroactivamente la causa de la terminación indeterminada371.
 - Backend372:2442PASS/168SKIP opt-in/0FAIL de2610, terminal0; `/private/tmp/render2-goal372-final-backend.log`. Las omitidas no se cuentan como pruebas físicas ejecutadas.
+- Actualización373: core30archivos291PASS/0FAIL/0SKIP; físicas suplementarias8PASS; frontend3225PASS y backend2445PASS/169SKIP opt-in/0FAIL. Regresión de aprobación histórica y navegador1280/390 acotados,108 tablas nativas invariantes. Logs `render2-goal373-*` en `/private/tmp`; detalle de alcances en CURRENT_ACCEPTANCE.md.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
 
-## Prioridad local reproducida: proyección de aprobación en Reportes
+## Prioridad372 corregida373: proyección de aprobación en Reportes
 
 Hallazgo de Harvey y reproducción del coordinador sobre funciones reales sin DB: tarea con `estado='en_revision'` y `propiedades_extra.revision_aprobada === true` se proyecta como aprobada por `effectiveTaskFilterState`, pero `buildEmployeeReport` la cuenta en revisión1/aprobadas0 y `employeeTaskDetails` conserva solo el estado crudo. Fuentes: `frontend/src/shared/reports/production-registry-report.js:37`, `:133`, `:143`; contrato compartido `features/render-os/utils/task-view-state.js:17` y `backend/src/task-review-query.js:19`.
 
-Próximo cambio: reutilizar la proyección canónica en métricas y etiqueta efectiva, conservar explícitamente el estado almacenado y no reescribir históricos. Probar booleantrue frente a stringtrue/false/ausencia; aprobada no suma finalizadas ni confirmaciones editoriales. **Defecto abierto; no declarar fase2/5 cerrada.**
+Corrección373: métricas y detalle reutilizan `effectiveTaskFilterState`; el detalle conserva `estado_almacenado` separado. Booleantrue cambia solo lectura a aprobada; stringtrue/false/ausencia no lo hacen. No reescribe históricos ni suma aprobadas a finalizadas o confirmaciones editoriales. Modelos/SSR, PostgreSQL con cookies admin/editor y navegador1280/390 verifican los casos acotados;108 tablas del fixture nativo quedan invariantes. El defecto está corregido localmente, **sin declarar fase2/5 cerrada**. Resultados completos de373 en CURRENT_ACCEPTANCE.md.
 
 ## Decisiones y gates externos
 

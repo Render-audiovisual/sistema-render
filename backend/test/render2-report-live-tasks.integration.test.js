@@ -71,21 +71,23 @@ test('principal report HTTP excludes RenderOS trash and retains canonical comple
     assert.equal(dto.tareasRenderOs[0].propiedades_extra.finalizada_at,completion);
     assert.deepEqual(dto.resumenRenderOsPorDia[clock.today].ediciones,{total:1,publicadas:1},
       'Legacy publicadas aggregate describes completed work, never editorial publication');
-    if(role==='employee'){
+    {
       const serialized=JSON.stringify(dto);
       assert.ok(!serialized.includes(canary));assert.ok(!serialized.includes(String(amount)));
       assert.ok(!serialized.includes('private_finance'));
-      assert.deepEqual(dto.usuarios.map(row=>row.id),[91003]);
+      assert.deepEqual(dto.usuarios.map(row=>row.id),[91001,91002,91003,91004], 'Report identity catalog is team-wide, not the personal Home scope');
     }
     same(await snapshot(),before);
   });
   await t.test('actual frontend projections consume employee DTO date and count live/historical separately',async()=>{
     const dto=reports.employee;assert.ok(dto,'Employee HTTP observation is required');
     const live=buildEmployeeReport(dto.usuarios,dto.tareasRenderOs,range,clock.today);
-    assert.equal(live.uniqueTasks,1);assert.equal(live.rows[0].total,1);assert.equal(live.rows[0].finalizadas,1);
+    const editorLive=live.rows.find(row=>row.id===91003);
+    assert.equal(live.uniqueTasks,1);assert.equal(editorLive.total,1);assert.equal(editorLive.finalizadas,1);
     const tasks=uniqueReportTasks(dto.tareas,dto.tareasRenderOs);
     const combined=buildEmployeeReport(dto.usuarios,tasks,range,clock.today);
-    assert.equal(combined.uniqueTasks,2);assert.equal(combined.rows[0].total,2);assert.equal(combined.rows[0].finalizadas,2);
+    const editorCombined=combined.rows.find(row=>row.id===91003);
+    assert.equal(combined.uniqueTasks,2);assert.equal(editorCombined.total,2);assert.equal(editorCombined.finalizadas,2);
     const details=employeeTaskDetails(tasks,91003,range);
     assert.deepEqual(details.map(row=>row.id).sort((a,b)=>a-b),[ids.live,ids.historical].sort((a,b)=>a-b));
     assert.ok(details.every(row=>row.finalizada===completion),'Real detail helper must not produce Sin fecha registrada');

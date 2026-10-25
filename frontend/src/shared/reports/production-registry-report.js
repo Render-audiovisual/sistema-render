@@ -1,5 +1,6 @@
 import { isConfirmedPublication, isHistoricalPublication, confirmationDate, historicalPublicationDate } from '../editorial/publication-evidence.js';
 import { productionResultStatus } from '../../pages/productionResultStatus.js';
+import { effectiveTaskFilterState } from '../../features/render-os/utils/task-view-state.js';
 
 // Report-only projections. Never resolve identities from names or inspect finance metadata.
 const personId = value => Number.isSafeInteger(value) && value > 0;
@@ -40,8 +41,8 @@ export function buildEmployeeReport(users, tasks, range, today) {
   const rows = [...people.values()].map(user => {
     const own = scoped.filter(task => reportTaskPeople(task).includes(user.id));
     return { id: user.id, nombre: text(user.nombre) || `Usuario #${user.id}`, rol: text(user.rol),
-      total: own.length, enRevision: own.filter(task => task.estado === 'en_revision').length,
-      aprobadas: own.filter(task => task.estado === 'aprobada').length,
+      total: own.length, enRevision: own.filter(task => effectiveTaskFilterState(task) === 'en_revision').length,
+      aprobadas: own.filter(task => effectiveTaskFilterState(task) === 'aprobada').length,
       finalizadas: own.filter(finalized).length,
       pendientes: own.filter(task => !finalized(task)).length,
       vencidas: own.filter(task => !finalized(task) && task.fecha_vencimiento && task.fecha_vencimiento < today).length };
@@ -133,7 +134,8 @@ export function reportTaskFormat(task) {
 export function employeeTaskDetails(tasks, userId, range) {
   if (!personId(userId)) return [];
   return scopedReportTasks(tasks, range).filter(task => reportTaskPeople(task).includes(userId)).map(task => ({
-    id: task.id, titulo: text(task.titulo) || `Tarea #${task.id}`, estado: text(task.estado), formato: reportTaskFormat(task),
+    id: task.id, titulo: text(task.titulo) || `Tarea #${task.id}`, estado: text(effectiveTaskFilterState(task)),
+    estado_almacenado: text(task.estado), formato: reportTaskFormat(task),
     fecha_entrega: text(task.fecha_vencimiento), actualizada: text(task.updated_at),
     finalizada: text(task.propiedades_extra?.finalizada_at),
     href: task.propiedades_extra?.workspace === 'render_os' ? `/workspace/tareas?task=${task.id}` : null,
