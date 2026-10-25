@@ -365,23 +365,28 @@ export function createWilsonChatRouter({ express, pool }) {
       const actor = await retainLegacyProductionActor(client, capturedActor);
       // Discover the target without locking its token: task deletion owns the
       // parent before cascading tokens. Recheck the intent after both locks.
-      const observed = (await client.query(`SELECT accion,tarea_id FROM wilson_acciones_pendientes WHERE token=$1 AND usuario_id=$2 AND confirmed_at IS NULL AND expires_at>NOW()`, [token, actor.id])).rows[0];
+      const observed = (await client.query(`SELECT accion,tarea_id FROM wilson_acciones_pendientes WHERE token=$1 AND usuario_id=$2 AND confirmed_at IS NULL AND expires_at>clock_timestamp()`, [token, actor.id])).rows[0];
       if (!observed) { await client.query("ROLLBACK"); return res.status(409).json({ error: "La confirmación venció o ya fue utilizada." }); }
       if (!['registrar_produccion', 'enviar_mensaje_empleado'].includes(observed.accion)) {
         await client.query("ROLLBACK"); return res.status(409).json({ error: "Esta confirmación no está disponible." });
       }
       const task = observed.accion === 'registrar_produccion'
         ? (await client.query(`SELECT * FROM tareas WHERE id=$1 FOR UPDATE`, [observed.tarea_id])).rows[0] : null;
-      const pending = await client.query(`SELECT * FROM wilson_acciones_pendientes WHERE token=$1 AND usuario_id=$2 AND confirmed_at IS NULL AND expires_at>NOW() FOR UPDATE`, [token, actor.id]);
+      const pending = await client.query(`SELECT * FROM wilson_acciones_pendientes WHERE token=$1 AND usuario_id=$2 AND confirmed_at IS NULL AND expires_at>clock_timestamp() FOR UPDATE`, [token, actor.id]);
       const action = pending.rows[0];
       if (!action || action.accion !== observed.accion || action.tarea_id !== observed.tarea_id) { await client.query("ROLLBACK"); return res.status(409).json({ error: "La confirmación venció o cambió. Volvé a prepararla." }); }
+      // Row selection can itself wait. Authorize execution at this atomic
+      // wall-clock claim, not at BEGIN; a later failure rolls it back as well.
+      const claimConfirmation = async () => (await client.query(`UPDATE wilson_acciones_pendientes SET confirmed_at=clock_timestamp()
+        WHERE token=$1 AND usuario_id=$2 AND confirmed_at IS NULL AND expires_at>clock_timestamp()
+        RETURNING 1 AS claimed`, [token, actor.id])).rows.length === 1;
       if (action.accion === "enviar_mensaje_empleado") {
         if (actor.rol !== "admin") { await client.query("ROLLBACK"); return res.status(403).json({ error: "Solo un Líder puede enviar avisos a otra persona." }); }
         const target = await client.query(`SELECT id,nombre FROM usuarios WHERE id=$1`, [action.payload.target_user_id]);
         if (!target.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La persona destinataria ya no está disponible." }); }
+        if (!await claimConfirmation()) { await client.query("ROLLBACK"); return res.status(409).json({ error: "La confirmación venció. Volvé a prepararla." }); }
         const targetConversation = await conversation(client, target.rows[0].id);
         await append(client, targetConversation.id, "wilson", action.payload.message, "mensaje_lider", { ordered_by: actor.id, ordered_by_name: getTaskActor(actor) });
-        await client.query(`UPDATE wilson_acciones_pendientes SET confirmed_at=NOW() WHERE token=$1`, [action.token]);
         await client.query(`INSERT INTO integracion_auditoria(integracion,canal,actor_id,actor_nombre,accion,detalles) VALUES('wilson','web',$1,$2,'enviar_mensaje_empleado',$3::jsonb)`, [String(actor.id), getTaskActor(actor), JSON.stringify({ target_user_id: target.rows[0].id, target_name: target.rows[0].nombre, message: action.payload.message })]);
         const message = await append(client, action.conversacion_id, "wilson", `Listo. Le envié el mensaje a ${target.rows[0].nombre}.`, "accion_confirmada", { target_user: target.rows[0] });
         await client.query("COMMIT");
@@ -391,12 +396,12 @@ export function createWilsonChatRouter({ express, pool }) {
       if (!task || !isProductionVisitTask(task)) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La visita ya no está disponible." }); }
       await assertLegacyProductionTaskAccess(client, actor, task.id);
       await rejectMixedProductionRecording(client, task.id);
+      if (!await claimConfirmation()) { await client.query("ROLLBACK"); return res.status(409).json({ error: "La confirmación venció. Volvé a prepararla." }); }
       const progress = getProductionProgress(task); const amount = Number(action.payload.cantidad); const date = action.payload.fecha;
       const record = { id: crypto.randomUUID(), cantidad: amount, fecha: date, usuario: getTaskActor(actor), created_at: new Date().toISOString(), periodo_objetivo: date.slice(0, 7) };
       const regular = progress.planned > 0 ? Math.min(amount, progress.remaining) : amount; if (amount > regular) Object.assign(record, { cantidad_mes_actual: regular, cantidad_adelanto: amount - regular, periodo_adelanto: nextProductionPeriod(date) });
       const records = Array.isArray(task.propiedades_extra?.produccion_registros) ? task.propiedades_extra.produccion_registros : [];
       await client.query(`UPDATE tareas SET propiedades_extra=propiedades_extra||$2::jsonb,updated_at=NOW() WHERE id=$1`, [task.id, JSON.stringify({ produccion_registros: [...records, record], wilson_ultimo_registro: record, workspace: "render_os" })]);
-      await client.query(`UPDATE wilson_acciones_pendientes SET confirmed_at=NOW() WHERE token=$1`, [action.token]);
       await client.query(`INSERT INTO integracion_auditoria(integracion,canal,actor_id,actor_nombre,accion,tarea_id,detalles) VALUES('wilson','web',$1,$2,'registrar_produccion',$3,$4::jsonb)`, [String(actor.id), getTaskActor(actor), task.id, JSON.stringify(record)]);
       const message = await client.query(`INSERT INTO wilson_mensajes(conversacion_id,remitente,contenido,tipo,metadata) VALUES($1,'wilson',$2,'accion_confirmada',$3::jsonb) RETURNING *`, [action.conversacion_id, `Listo: registré ${amount} videos en “${task.titulo}”. Cuando termines la visita, pasá la tarea a Revisar.`, JSON.stringify({ task_id: task.id, record_id: record.id })]);
       await client.query("COMMIT"); return res.json({ message: message.rows[0], task_id: task.id });

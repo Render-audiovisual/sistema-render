@@ -12,7 +12,7 @@ function fixture(options = {}) {
   const task = { id: 10, titulo: 'Visita QA authority', tipo_tarea: 'produccion', estado: 'pendiente',
     propiedades_extra: { workspace: options.workspace ?? 'render_os', produccion_registros: [] } };
   const initial = { task: structuredClone(task), tokenUsed: false, audits: [], messages: [], conversations: [] };
-  let stored = structuredClone(initial), transaction;
+  let stored = structuredClone(initial), transaction, expired = false;
   const calls = [], releases = [];
   const writeFailure = new Error('Synthetic write failure'), rollbackFailure = new Error('Synthetic rollback failure');
   const client = {
@@ -37,15 +37,21 @@ function fixture(options = {}) {
         assert.deepEqual(params, [7]); return { rows: [{ nombre: current.nombre, usuario: current.usuario }] };
       }
       if (sql === 'SELECT id,nombre FROM usuarios WHERE id=$1') {
+        if (options.expiry === 'before-message-claim') expired = true;
         assert.deepEqual(params, [8]); return { rows: [{ id: 8, nombre: 'QA message recipient' }] };
       }
       if (sql.includes('FROM wilson_acciones_pendientes')) {
         assert.deepEqual(params, ['qa-owned-token', 7], 'Token remains scoped to the captured actor');
         assert.match(sql, /usuario_id=\$2/); assert.match(sql, /confirmed_at IS NULL/);
-        assert.match(sql, /expires_at>NOW\(\)/);
+        assert.match(sql, /expires_at\s*>\s*clock_timestamp\(\)/i, 'Hint and token lock must use a fresh wall-clock TTL');
+        assert.doesNotMatch(sql, /\bNOW\(\)|CURRENT_TIMESTAMP/i);
         const locked = sql.includes('FOR UPDATE');
         if (!locked) assert.doesNotMatch(sql, /FOR (SHARE|NO KEY UPDATE|KEY SHARE)/, 'Hint must not acquire a token row lock');
         if (locked && options.tokenDisappears) return { rows: [] };
+        if (locked && expired) return { rows: [] };
+        // A SELECT predicate can pass before a token-lock wait. Model expiry
+        // during that wait AFTER selection, requiring a fresh atomic claim.
+        if (locked && options.expiry === 'after-token-wait') expired = true;
         return { rows: [{ token: 'qa-owned-token', usuario_id: 7,
           tarea_id: locked && options.changedTask ? 11 : options.action === 'enviar_mensaje_empleado' ? null : 10, conversacion_id: 1,
           accion: locked && options.changedAction ? 'enviar_mensaje_empleado' : options.action ?? 'registrar_produccion',
@@ -53,6 +59,7 @@ function fixture(options = {}) {
             ? { target_user_id: 8, message: 'QA explicitly confirmed message' } : { cantidad: 2, fecha: '2026-10-20' } }] };
       }
       if (sql.includes('FROM tareas') && sql.includes('FOR UPDATE')) {
+        if (options.expiry === 'after-task-wait') expired = true;
         assert.deepEqual(params, [10]); return { rows: [structuredClone(stored.task)] };
       }
       if (sql.includes('FROM tareas t') && sql.includes('tarea_asignaciones')) {
@@ -61,25 +68,38 @@ function fixture(options = {}) {
         return { rows: options.membership === false || stored.task.propiedades_extra.workspace !== 'render_os' ? [] : [{ id: 10 }] };
       }
       if (sql.includes('FROM produccion_visitas')) {
+        if (options.expiry === 'after-mixed-guard') expired = true;
         assert.deepEqual(params, [10]); return { rows: [] };
       }
       if (sql.startsWith('UPDATE tareas')) {
         assert.ok(transaction); assert.equal(params[0], 10);
+        assert.equal(transaction.tokenUsed, true, 'Production write follows a successful atomic claim');
         if (options.writeFails) throw writeFailure;
         transaction.task.propiedades_extra = { ...transaction.task.propiedades_extra, ...JSON.parse(params[1]) };
         return { rows: [] };
       }
       if (sql.startsWith('UPDATE wilson_acciones_pendientes')) {
-        assert.deepEqual(params, ['qa-owned-token']); transaction.tokenUsed = true; return { rows: [] };
+        assert.deepEqual(params, ['qa-owned-token', 7]);
+        assert.match(sql, /SET confirmed_at\s*=\s*clock_timestamp\(\)/i);
+        assert.match(sql, /token\s*=\s*\$1/); assert.match(sql, /usuario_id\s*=\s*\$2/);
+        assert.match(sql, /confirmed_at IS NULL/); assert.match(sql, /expires_at\s*>\s*clock_timestamp\(\)/i);
+        assert.match(sql, /RETURNING\s+1\s+AS\s+claimed/i);
+        assert.doesNotMatch(sql, /\bNOW\(\)|RETURNING\s+token/i);
+        assert.ok(transaction); assert.equal(transaction.tokenUsed, false, 'Exactly one atomic claim per intent');
+        if (expired || options.expiryFalse) return { rows: [], rowCount: 0 };
+        transaction.tokenUsed = true; return { rows: [{ claimed: 1 }], rowCount: 1 };
       }
       if (sql.startsWith('INSERT INTO integracion_auditoria')) {
+        assert.equal(transaction.tokenUsed, true);
         transaction.audits.push(structuredClone(params)); return { rows: [] };
       }
       if (sql.startsWith('INSERT INTO wilson_conversaciones')) {
+        assert.equal(transaction.tokenUsed, true, 'Message conversation write follows a successful atomic claim');
         assert.equal(params[0], 8); transaction.conversations.push(structuredClone(params));
         return { rows: [{ id: 2, usuario_id: 8, periodo: params[1] }] };
       }
       if (sql.startsWith('INSERT INTO wilson_mensajes')) {
+        assert.equal(transaction.tokenUsed, true);
         transaction.messages.push(structuredClone(params)); return { rows: [{ id: 1 }] };
       }
       assert.fail(`Unexpected SQL in bounded production authority fixture: ${sql}`);
@@ -116,6 +136,28 @@ function assertNoMutation(f) {
   assert.equal(f.releases.length, 1);
 }
 function status(f) { return f.errors[0]?.status ?? f.response.statusCode; }
+
+function assertExpiredNoDomainMutation(f) {
+  assert.equal(status(f), 409); assert.deepEqual(f.errors, []);
+  assert.deepEqual(f.stored, f.initial, 'Expired claim cannot commit domain rows or consume token');
+  const domainWrites = f.calls.filter(({ sql }) => /^(UPDATE|INSERT INTO|DELETE)/.test(sql)
+    && !sql.startsWith('UPDATE wilson_acciones_pendientes'));
+  assert.deepEqual(domainWrites, [], 'A zero-row conditional claim is allowed; no domain DML is allowed');
+  assert.equal(f.calls.some(({ sql }) => sql === 'COMMIT'), false);
+  assert.ok(f.calls.some(({ sql }) => sql === 'ROLLBACK')); assert.deepEqual(f.releases, [undefined]);
+}
+
+for (const [name, options, claims] of [
+  ['production expires during task-lock wait', { expiry: 'after-task-wait' }, 0],
+  ['production expires during token-lock wait', { expiry: 'after-token-wait' }, 1],
+  ['production expires after fresh ACL and mixed-registry guard', { expiry: 'after-mixed-guard' }, 1],
+  ['message expires during token-lock wait', { action: 'enviar_mensaje_empleado', requestRole: 'admin', expiry: 'after-token-wait' }, 1],
+  ['message expires after target read before conversation write', { action: 'enviar_mensaje_empleado', requestRole: 'admin', expiry: 'before-message-claim' }, 1],
+  ['otherwise valid production atomic claim returns no rows', { expiryFalse: true }, 1],
+]) test(`fresh TTL gate: ${name}`, async () => {
+  const f = fixture(options); await f.run(); assertExpiredNoDomainMutation(f);
+  assert.equal(f.calls.filter(({ sql }) => sql.startsWith('UPDATE wilson_acciones_pendientes')).length, claims);
+});
 
 test('legacy production authority exports are the existing canonical helpers', () => {
   for (const name of ['captureLegacyProductionActor', 'retainLegacyProductionActor', 'assertLegacyProductionTaskAccess'])
@@ -183,8 +225,13 @@ test('authorized current member commits one legacy recording with actor retentio
   const lock = f.calls.findIndex(({ sql }) => sql.includes('FROM tareas') && sql.includes('FOR UPDATE'));
   const acl = f.calls.findIndex(({ sql }) => sql.includes('tarea_asignaciones'));
   const update = f.calls.findIndex(({ sql }) => sql.startsWith('UPDATE tareas'));
+  const claim = f.calls.findIndex(({ sql }) => sql.startsWith('UPDATE wilson_acciones_pendientes'));
+  const mixed = f.calls.findIndex(({ sql }) => sql.includes('FROM produccion_visitas'));
   assert.ok(begin >= 0 && actor > begin && hint > actor && lock > hint && token > lock && acl > lock && update > token && update > acl,
     'BEGIN -> retained actor -> unlocked hint -> task lock -> token lock; fresh ACL after task lock and before write');
+  assert.ok(claim > acl && claim > mixed && claim > token && update === claim + 1,
+    'Successful claim follows authority/mixed guards and immediately precedes first production write');
+  assert.equal(f.calls.filter(({ sql }) => sql.startsWith('UPDATE wilson_acciones_pendientes')).length, 1);
   assert.equal(f.calls.filter(({ sql }) => sql === 'COMMIT').length, 1);
   assert.deepEqual(f.releases, [undefined]);
 });
@@ -213,6 +260,12 @@ test('retained current admin confirms employee message without any production ta
   const hint = f.calls.findIndex(({ sql }) => sql.includes('FROM wilson_acciones_pendientes') && !sql.includes('FOR UPDATE'));
   const token = f.calls.findIndex(({ sql }) => sql.includes('FROM wilson_acciones_pendientes') && sql.includes('FOR UPDATE'));
   assert.ok(actor >= 0 && hint > actor && token > hint);
+  const target = f.calls.findIndex(({ sql }) => sql === 'SELECT id,nombre FROM usuarios WHERE id=$1');
+  const claim = f.calls.findIndex(({ sql }) => sql.startsWith('UPDATE wilson_acciones_pendientes'));
+  const conversation = f.calls.findIndex(({ sql }) => sql.startsWith('INSERT INTO wilson_conversaciones'));
+  assert.ok(target > token && claim > target && conversation === claim + 1,
+    'Message claim follows target read and immediately precedes conversation mutation');
+  assert.equal(f.calls.filter(({ sql }) => sql.startsWith('UPDATE wilson_acciones_pendientes')).length, 1);
   assert.equal(f.calls.filter(({ sql }) => sql === 'COMMIT').length, 1);
   assert.deepEqual(f.releases, [undefined]);
 });
@@ -223,6 +276,8 @@ test('failed recording rolls back task/token/audit/message without claiming succ
   assert.equal(f.response.body, undefined); assert.ok(f.calls.some(({ sql }) => sql === 'ROLLBACK'));
   assert.equal(f.calls.some(({ sql }) => sql === 'COMMIT'), false);
   assert.deepEqual(f.releases, [undefined]);
+  assert.equal(f.calls.filter(({ sql }) => sql.startsWith('UPDATE wilson_acciones_pendientes')).length, 1,
+    'Claim succeeded in the transaction but write failure must roll it back');
 });
 
 test('rollback failure discards the leased connection while preserving the original recording error', async () => {

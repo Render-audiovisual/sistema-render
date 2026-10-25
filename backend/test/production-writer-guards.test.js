@@ -44,7 +44,11 @@ function mockDb({ linkedDate = null, mixed = false, owner = 7, selectedDate = '2
       if (sql.startsWith('UPDATE tareas')) pending.taskWrites++;
       if (sql.startsWith('INSERT INTO mia_supervisor_conversations')) pending.conversationWrites++;
       if (sql.startsWith('UPDATE mia_supervisor_proposals')) pending.proposalAccepted = true;
-      if (sql.startsWith('UPDATE wilson_acciones_pendientes')) pending.tokenUsed = true;
+      if (sql.startsWith('UPDATE wilson_acciones_pendientes')) {
+        assert.deepEqual(params, ['qa', 7]);
+        assert.match(sql, /expires_at>clock_timestamp\(\)/);
+        pending.tokenUsed = true; return { rows: [{ claimed: 1 }] };
+      }
       return { rows: [] };
     },
   };

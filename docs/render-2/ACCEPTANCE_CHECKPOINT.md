@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado379
+# Render 2.0 — corte de aceptación local372, actualizado380
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -67,6 +67,7 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - Integración377: resumen de trabajo de Wilson reutiliza aprobación canónica sin mutar tareas;57 focales, física11PASS y core30archivos299PASS/0FAIL/0SKIP; backend2467PASS/169SKIP/0FAIL.108 tablas invariantes, ninguna llamada de mensajería/proveedor. La física evalúa modelos reales sobre DTO HTTP, no POST conversacional ni su autorización.
 - Integración378: prioridad, digest y contexto rápido de Mía alinean aprobación histórica sin escrituras ni envío de avisos.49 focales, física11PASS, core30archivos299PASS/0FAIL/0SKIP y backend2470PASS/169SKIP/0FAIL.108 tablas invariantes. La revisión transversal detecta confirmación legacy sin revalidar membresía y pérdida potencial de borrador Moodboards, pendientes abajo.
 - Integración379: confirmación web legacy revalida autoridad y membresía vigente, con orden actor→tarea→token y ACL posterior bajo READ COMMITTED.16 unitarias,6 físicas (incluida retirada de asignación durante espera comprobada por pg_blocking_pids), core31archivos305PASS/0FAIL/0SKIP; backend2486PASS/170SKIP/0FAIL. Rechazos sin consumo ni DML; positivo conserva registro/audit/mensaje/replay. No aceptación de proveedor/navegador ni TTL durante espera.
+- Integración380: reloj actual y consumo condicional por actor/token/vigencia antes de ejecutar,22 unitarias dentro de36 focales; física8PASS, dos vencimientos durante espera real (tarea/token) con108 tablas invariantes; core31archivos307PASS/0FAIL/0SKIP; backend2492PASS/170SKIP/0FAIL. Se autoriza vigencia al claim, no se exige COMMIT previo a expires_at. Sin proveedores/navegador/migraciones ni despliegue.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
 
@@ -78,7 +79,7 @@ Corrección373: métricas y detalle reutilizan `effectiveTaskFilterState`; el de
 
 ## Decisiones y gates externos
 
-Corrección379: confirmación web legacy retiene actor y revalida workspace/membresía después del lock, en READ COMMITTED; física cookie con retirada secuencial y mientras espera el lock, token no consumido, replay íntegro. Pendiente temporal distinto: NOW() fija hora inicial, no hay rechazo acreditado si el token vence durante la espera. También sigue el fallo de borrador de Moodboards: preparar clientes puede resolver tarde y cerrar Composer sucio (repro callbacks AST; pendiente navegador/fix). Detalle y límites en CURRENT_ACCEPTANCE.md. No confundir estos pendientes con decisiones externas.
+Corrección379: confirmación web legacy retiene actor y revalida workspace/membresía después del lock, en READ COMMITTED. Corrección380: vencimiento mediante reloj actual y claim condicional justo antes de ejecutar acción; cookie/PostgreSQL prueban token que vence mientras espera tarea y mientras espera token, ambas409 sin consumo ni cambios en108 tablas. No implica certificar TTL de todos los transportes o COMMIT previo al vencimiento. Sigue el fallo de borrador de Moodboards: preparar clientes puede resolver tarde y cerrar Composer sucio (repro callbacks AST; pendiente navegador/fix). Detalle y límites en CURRENT_ACCEPTANCE.md. No confundir estos pendientes con decisiones externas.
 
 Corrección local376: Producciones reutiliza la proyección canónica de tarea_estado en registro y reporte, con booleantrue estricto, publicada y NULL preservados.63 focales y física11PASS, ambos cookies/108 tablas invariantes. Corrección377: buildEmployeeSnapshot de Wilson reutiliza isTaskApproved para no clasificar la aprobación histórica también en revisión;57 focales y física11PASS sobre DTO real congelado,108 tablas invariantes. No se enviaron mensajes ni se acredita el endpoint conversacional, otros contextos de Wilson, aceptación visual renovada o coherencia universal. Detalle en CURRENT_ACCEPTANCE.md.
 

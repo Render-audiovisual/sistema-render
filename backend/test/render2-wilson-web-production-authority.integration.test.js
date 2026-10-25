@@ -150,6 +150,64 @@ test('Wilson web production confirmation rechecks retained identity and current 
       try {await dispose(blocker);} finally {await dispose(monitor);}
     }
   });
+  for (const resource of ['task', 'token']) {
+  await t.test(`token expires by PostgreSQL wall clock while confirmation waits on ${resource}; transaction-start time cannot authorize it`, async () => {
+    const row = await prepared();
+    let blocker, monitor, request;
+    try {
+      blocker = await auxiliary(); monitor = await auxiliary();
+      await blocker.query('BEGIN');
+      if (resource === 'task') await blocker.query('SELECT id FROM tareas WHERE id=$1 FOR UPDATE', [row.id]);
+      // This is a future deadline set BEFORE the real HTTP transaction starts,
+      // not a retroactive expiry that NOW() could also reject.
+      await monitor.query(`UPDATE wilson_acciones_pendientes
+        SET expires_at=clock_timestamp()+interval '2 seconds' WHERE token=$1`, [row.token]);
+      // Set the deadline before retaining the token row: the monitor's UPDATE
+      // must not wait on our own blocker. This lock does not change row data.
+      if (resource === 'token') await blocker.query('SELECT token FROM wilson_acciones_pendientes WHERE token=$1 FOR UPDATE', [row.token]);
+      const before = await snapshot();
+      let settled = false;
+      request = api(`/confirmaciones/${row.token}`, 'POST', {});
+      request.then(() => {settled = true;}, () => {settled = true;});
+      const deadline = Date.now() + 4000;
+      let writer = null, expiredUnderLock = false;
+      do {
+        assert.equal(settled, false, 'Confirmation ended before the required expiry-under-lock observation');
+        const {rows} = await monitor.query(`SELECT a.pid,
+          a.xact_start<p.expires_at AS began_before_expiry,
+          clock_timestamp()>p.expires_at AS expired
+          FROM pg_stat_activity a CROSS JOIN wilson_acciones_pendientes p
+          WHERE p.token=$1 AND a.datname=current_database()
+          AND $2::int=ANY(pg_blocking_pids(a.pid)) AND a.pid<>ALL($3::int[])
+          AND a.state='active'
+          AND a.query ~ $4`,
+        [row.token, blocker.pid, [...connections].map(db => db.pid), resource === 'task'
+          ? '^SELECT \\* FROM tareas WHERE id=\\$1 FOR UPDATE[;[:space:]]*$'
+          : '^SELECT \\* FROM wilson_acciones_pendientes WHERE token=\\$1 AND usuario_id=\\$2 AND confirmed_at IS NULL AND expires_at>clock_timestamp\\(\\) FOR UPDATE[;[:space:]]*$']);
+        if (rows.length) {
+          assert.equal(rows.length, 1, `Exactly one real HTTP confirmation waits on the owned ${resource}`);
+          assert.equal(rows[0].began_before_expiry, true, 'Fixture deadline must follow HTTP transaction start');
+          if (writer !== null) assert.equal(rows[0].pid, writer, 'Same HTTP transaction remains blocked');
+          writer = rows[0].pid;
+          if (rows[0].expired) {expiredUnderLock = true; break;}
+        }
+        // Only pacing: both expiry and lock ownership are proved by PostgreSQL.
+        await new Promise(resolve => setTimeout(resolve, 10));
+      } while (Date.now() < deadline);
+      assert.ok(writer, `Real principal HTTP ${resource}-lock waiter was not observed`);
+      assert.equal(expiredUnderLock, true, 'PostgreSQL clock must pass expiry while the same transaction is blocked');
+      await blocker.query('COMMIT');
+      const response = await request;
+      assert.equal(response.status, 409); assert.deepEqual(Object.keys(response.body), ['error']);
+      assert.equal((await pending(row)).confirmed_at, null);
+      assert.deepEqual(await snapshot(), before);
+    } finally {
+      if (blocker) await blocker.query('ROLLBACK').catch(() => {});
+      if (request) await Promise.allSettled([request]);
+      try {await dispose(blocker);} finally {await dispose(monitor);}
+    }
+  });
+  }
   await t.test('authorized confirmation writes exactly one record, audit and message; reuse409 is read-only', async () => {
     const row = await prepared();
     const changed = ['tareas', 'wilson_acciones_pendientes', 'integracion_auditoria', 'wilson_mensajes'];
