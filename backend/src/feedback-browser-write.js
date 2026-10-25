@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { feedbackVersionIso } from './feedback-receipts.js';
 import { normalizeFeedback, assertFeedbackBusinessInput } from './feedback-fields.js';
 import { getTaskActor } from './task-access.js';
+import { encolarNotificacionPrivadaFeedback } from './private-feedback-notifications.js';
 import { FEEDBACK_NOTE_SQL_PROJECTION, readFeedbackNoteFromClient, feedbackNoteMetadataDto } from './feedback-notes-read.js';
 
 const fail=(status,message,code)=>Object.assign(new Error(message),{status,...(code?{code}:{})});
@@ -114,6 +115,11 @@ export async function applyFeedbackBrowserOperation(pool,auth,body,query={}){
     if(input.action==='purge'?note!==null:note===null)throw fail(500,'No se pudo verificar el resultado de la operación.');
     if(input.action!=='create'&&input.action!=='purge'&&receiptVersion(note.updated_at)<=input.expected_updated_at)throw fail(500,'No se pudo verificar la revisión guardada.');
     version=note?.updated_at??version;
+    if(input.action==='create'&&note.feedback?.flujo==='feedback'){
+      // The outbox and note/receipt commit together. Replays return above and
+      // cannot enqueue again; failed inserts roll back the entire operation.
+      await encolarNotificacionPrivadaFeedback({pool:db,nota:note,actor:label,actorId:actor.id});
+    }
     await db.query('INSERT INTO feedback_browser_operations(actor_user_id,request_id,action,payload_hash,note_id,note_updated_at) VALUES($1,$2,$3,$4,$5,$6::timestamptz)',[observed.id,input.request_id,input.action,hash,id,version]);
     const result={status:input.action==='create'?201:200,body:{version:1,note,operation:operationDto(input,id,version,false)}};
     await db.query('COMMIT');return result;

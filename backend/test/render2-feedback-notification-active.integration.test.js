@@ -51,7 +51,7 @@ test('private Feedback notification resolver excludes inactive accounts before e
   let expectedQueue=await queued();assert.deepEqual(expectedQueue,[]);
   const actor='QA255 distinct actor',env=Object.freeze({APP_URL:'https://example.invalid'});
   const times=['2026-10-01T12:00:00.000Z','2026-10-02T12:00:00.000Z','2026-10-03T12:00:00.000Z'];
-  const fingerprint=time=>feedbackFingerprint(['feedback',Number(note.id),'qa_luciano',time]);
+  const fingerprint=time=>feedbackFingerprint(['feedback-recipient-id-v1',Number(note.id),91003,time]);
   assert.equal(new Set(times.map(fingerprint)).size,3,'Distinct attempts cannot be mistaken for queue deduplication');
   // Distinct synthetic incoming event observations, same persisted note ID.
   // No SQL note edit is made; this is resolver/enqueue QA, not a write-route test.
@@ -86,7 +86,7 @@ test('private Feedback notification resolver excludes inactive accounts before e
     assert.equal(notice.fingerprint,fingerprint(times[1]));assert.equal(notice.destinatario_clave,'qa_luciano');
     assert.equal(notice.destinatario,'Luciano QA');assert.equal(Number(notice.feedback_id),Number(note.id));
     assert.equal(notice.tarea_id,null);assert.equal(notice.motivo,'feedback');assert.equal(notice.estado,'pending');
-    assert.deepEqual(notice.detalles,{cliente:null,actor});
+    assert.deepEqual(notice.detalles,{cliente:null,actor,destinatario_usuario_id:91003});
     assert.equal(notice.tarea_url,`https://example.invalid/feedback?section=team&note=${note.id}`);
     assert.match(notice.mensaje,/QA255 private Feedback activity/);
     // pg returns BIGSERIAL as a string; to_jsonb's id is parsed as a number.

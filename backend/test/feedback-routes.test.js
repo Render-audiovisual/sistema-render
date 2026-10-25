@@ -38,7 +38,7 @@ test('actual registered aliases delegate actor/pool/validated input through one 
     assert.equal(res.code,action==='create'?201:200);assert.equal(res.body.operation.action,action);
     assert.equal(calls.at(-1).auth,auth);assert.equal(calls.at(-1).body.request_id,request_id);assert.deepEqual(calls.at(-1).query,{});
   }
-  assert.equal(notifications.length,1,'only first create ACK may schedule a notification');
+  assert.equal(notifications.length,0,'The service owns atomic enqueue; routes must never schedule a second post-response notification');
 });
 test('editing another author carries exact version and has no author restriction in alias',()=>{
   const actual=validate('edit',{request_id:randomUUID(),contenido:'Actualizado',expected_updated_at:version});

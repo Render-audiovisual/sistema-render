@@ -1225,7 +1225,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
       );
       await writeWilsonAudit(client, req, { action: "crear_feedback", details: { feedback_id: inserted.rows[0].id } });
       const saved=inserted.rows[0];
-      await encolarNotificacionPrivadaFeedback({pool:client,nota:saved,actor:actor.nombre,env});
+      await encolarNotificacionPrivadaFeedback({pool:client,nota:saved,actor:actor.nombre,actorId:actor.id,env});
       const receipt=await insertFeedbackReceipt(client,{userId:actor.id,operation:intent.operation,key,payloadHash,note:saved});
       await client.query("COMMIT");
       return res.status(201).json({ created: true,idempotent: false,feedback_id:saved.id,receipt,feedback:feedbackNoteDto(saved),text: `Listo. Guardé “${saved.titulo}” en Feedback.` });

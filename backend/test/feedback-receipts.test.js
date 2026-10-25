@@ -144,7 +144,7 @@ function fixture(options={}) {
     if(sql.startsWith('INSERT INTO notas_compartidas')){note={...note,titulo:params[0],contenido:params[1],categoria:params[2],creado_por:params[3],modificado_por:params[3],feedback:JSON.parse(params[4])};return{rows:[note]};}
     if(sql.startsWith('UPDATE notas_compartidas SET titulo=')){note={...note,titulo:params[0],contenido:params[1],categoria:params[2],feedback:JSON.parse(params[3]),modificado_por:params[4]};return{rows:[note]};}
     if(sql.startsWith('INSERT INTO integracion_auditoria')){audits++;return{rows:[]};}
-    if(sql==='SELECT usuario, nombre FROM usuarios WHERE activo IS TRUE')return{rows:[{usuario:'recipient',nombre:'Destinatario'}]};
+    if(sql==='SELECT id, usuario, nombre FROM usuarios WHERE activo IS TRUE')return{rows:[{id:9,usuario:'recipient',nombre:'Destinatario'}]};
     if(sql.includes('INSERT INTO mia_private_task_notifications')){notifications++;if(options.failQueue)throw Error('Injected outbox failure');return{rows:[{id:1,fingerprint:'one-notification'}]};}
     if(sql.startsWith('INSERT INTO feedback_operation_receipts')) {
       const receipt={actor_user_id:params[0],operation:params[1],idempotency_key:params[2],payload_hash:params[3],note_id:params[4],note_updated_at:params[5],committed_at:version};receipts.push(receipt);
@@ -193,6 +193,9 @@ test('both channels issue exact feedback tokens and atomically create one note/a
     assert.equal(saved.statusCode,201);assert.equal(saved.body.feedback.feedback.confirmado_por_id,7);assert.equal(saved.body.feedback.feedback.confirmado_por,'Current verified actor');
     assert.equal(saved.body.feedback.feedback.origen,channel==='whatsapp'?'mia_whatsapp':'wilson_telegram');
     assert.equal(f.audits,1);assert.equal(f.notifications,1);assert.equal(f.receipts.length,1);assert.equal(f.confirmation.used,true);
+    const notice=f.calls.find(call=>call.sql.includes('INSERT INTO mia_private_task_notifications'));
+    assert.equal(JSON.parse(notice.params[6]).destinatario_usuario_id,9);
+    assert.equal(JSON.parse(notice.params[6]).actor_usuario_id,7);
     assert.ok(!Object.hasOwn(f.note.feedback,'wilson_idempotency_key'));
     f.note.contenido='Later browser edit';const before=f.calls.length;
     const replay=await f.run('post','/feedback',create,settings);assert.equal(replay.statusCode,200);assert.equal(replay.body.idempotent,true);assert.equal(replay.body.result_current,true);

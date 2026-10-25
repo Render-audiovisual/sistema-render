@@ -12,8 +12,8 @@ test("builds a short private feedback message", () => {
 test("queues once per responsible and excludes the author", async () => {
   const inserts = [];
   const pool = { query: async (sql, params = []) => {
-    if (sql.includes("SELECT usuario, nombre FROM usuarios")) return { rows: [
-      { usuario: "oriana", nombre: "Oriana" }, { usuario: "ana", nombre: "Ana Mayerro" },
+    if (sql === "SELECT id, usuario, nombre FROM usuarios WHERE activo IS TRUE") return { rows: [
+      { id:7, usuario: "oriana", nombre: "Oriana" }, { id:9, usuario: "ana", nombre: "Ana Mayerro" },
     ] };
     if (sql.includes("INSERT INTO mia_private_task_notifications")) { inserts.push(params); return { rows: [{ id: inserts.length }] }; }
     throw new Error(`Unexpected query: ${sql}`);
@@ -25,4 +25,5 @@ test("queues once per responsible and excludes the author", async () => {
   assert.equal(result.encolado, true);
   assert.equal(inserts.length, 1);
   assert.equal(inserts[0][1], "Ana Mayerro");
+  assert.deepEqual(JSON.parse(inserts[0][6]),{cliente:'Cristal',actor:'Oriana',destinatario_usuario_id:9});
 });

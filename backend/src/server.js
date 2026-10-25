@@ -395,10 +395,6 @@ function handleFeedbackBrowserWrite(aliasAction = null) {
       const input = aliasAction ? feedbackBrowserAliasInput(aliasAction, req) : req.body;
       const result = await applyFeedbackBrowserOperation(pool, req.auth, input, aliasAction ? {} : req.query);
       res.status(result.status).json(aliasAction ? feedbackBrowserAliasBody(result) : result.body);
-      const { note, operation } = result.body;
-      if (operation.action === 'create' && !operation.replayed && note?.feedback?.flujo === 'feedback') {
-        notificarFeedbackSinInterrumpir({ pool, nota: note, actor: note.creado_por });
-      }
     } catch (error) {
       if ([400,401,403,404,409,413,422,428].includes(error.status)) {
         return res.status(error.status).json({ error: error.message, ...(error.code ? { code: error.code } : {}) });

@@ -12,8 +12,8 @@ const note=()=>({id:1,titulo:'Original',contenido:' Original exact\n ',categoria
 const create=(fields={titulo:'New',contenido:'Exact\n text ',feedback:{cliente:'Acme'}})=>({request_id:key,action:'create',fields});
 const mutation=(action='edit',fields={contenido:'Changed'},version=stamp,request_id=key)=>({request_id,action,note_id:1,expected_updated_at:version,...(action==='edit'?{fields}:{})});
 const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return{promise,resolve};};
-function fixture({notes=[note()],current={id:7,rol:'custom_role',session_version:3,activo:true,nombre:'Current DB actor',usuario:'current'},failAt,rollbackFails=false,leaseGate,commitGate,noVersionAdvance=false}={}){
-  const calls=[],failure=Error('synthetic failure'),rollbackError=Error('rollback failed');let state={notes:structuredClone(notes),receipts:[]},staged,leases=0;
+function fixture({notes=[note()],current={id:7,rol:'custom_role',session_version:3,activo:true,nombre:'Current DB actor',usuario:'current'},recipients=[{id:9,usuario:'owner_login',nombre:'Owner'}],failAt,rollbackFails=false,leaseGate,commitGate,noVersionAdvance=false}={}){
+  const calls=[],failure=Error('synthetic failure'),rollbackError=Error('rollback failed');let state={notes:structuredClone(notes),receipts:[],notifications:[]},staged,leases=0;
   const db={async query(sql,params=[]){
     const compact=sql.replace(/\s+/g,' ').trim();calls.push({sql:compact,params:structuredClone(params)});
     if(compact.startsWith('BEGIN')){staged=structuredClone(state);return{rows:[]};}
@@ -22,6 +22,13 @@ function fixture({notes=[note()],current={id:7,rol:'custom_role',session_version
     if(compact==='COMMIT'){if(commitGate)await commitGate.promise;state=staged;staged=null;return{rows:[]};}
     if(compact.startsWith('SELECT pg_advisory'))return{rows:[]};
     if(compact.startsWith('SELECT id,rol,activo,session_version'))return{rows:current?[structuredClone(current)]:[]};
+    if(compact==='SELECT id, usuario, nombre FROM usuarios WHERE activo IS TRUE')return{rows:structuredClone(recipients)};
+    if(compact.startsWith('INSERT INTO mia_private_task_notifications')){
+      assert.match(compact,/ON CONFLICT\(fingerprint\) DO NOTHING/);
+      if(staged.notifications.some(row=>row.fingerprint===params[0]))return{rows:[]};
+      const row={id:staged.notifications.length+1,fingerprint:params[0],feedback_id:params[3],details:JSON.parse(params[6])};
+      staged.notifications.push(row);return{rows:[{id:row.id,fingerprint:row.fingerprint}]};
+    }
     if(compact.includes('FROM feedback_browser_operations'))return{rows:staged.receipts.filter(receipt=>receipt.actor_user_id===params[0]&&receipt.request_id===params[1]).map(receipt=>({...receipt,note_id:String(receipt.note_id)}))};
     if(compact.startsWith('SELECT id FROM notas_compartidas'))return{rows:staged.notes.filter(row=>row.id===params[0]).map(({id})=>({id}))};
     if(compact.startsWith('SELECT id,titulo,contenido')){
@@ -131,10 +138,56 @@ test('failed receipt/readback/version check rolls back note writes, rollback fai
   const commitGate=deferred(),f=fixture({commitGate});let settled=false;const pending=applyFeedbackBrowserOperation(f.pool,auth(),mutation()).then(value=>{settled=true;return value;});for(let i=0;i<100;i++)await Promise.resolve();assert.equal(f.calls.at(-1).sql,'COMMIT');assert.equal(settled,false);commitGate.resolve();await pending;
 });
 
-test('strict query and int32 detail ID fail before lease; DTO119 remains shared, no postcommit read/notifications',async()=>{
+test('strict query and int32 detail ID fail before lease; DTO119 remains shared and no pool escape',async()=>{
   const f=fixture();await assert.rejects(applyFeedbackBrowserOperation(f.pool,auth(),create(),{unknown:'x'}),error=>error.status===400);
   await assert.rejects(readFeedbackNoteDetail(f.pool,auth(),'2147483648'),error=>error.status===400);assert.equal(f.leases,0);
-  const source=readFileSync(new URL('../src/feedback-browser-write.js',import.meta.url),'utf8');assert.match(source,/feedbackVersionIso/);assert.match(source,/readFeedbackNoteFromClient/);assert.doesNotMatch(source,/pool\.query|Promise\.all|notificar|canonicalFeedbackIntent|feedbackIntentHash/);
+  const source=readFileSync(new URL('../src/feedback-browser-write.js',import.meta.url),'utf8');assert.match(source,/feedbackVersionIso/);assert.match(source,/readFeedbackNoteFromClient/);assert.doesNotMatch(source,/pool\.query|Promise\.all|canonicalFeedbackIntent|feedbackIntentHash/);
+});
+
+const notificationCreate=()=>create({titulo:'Feedback create',contenido:'Held body',feedback:{cliente:'Acme',responsables:['Owner'],flujo:'feedback'}});
+test('browser feedback creation atomically enqueues on the same leased client before receipt/commit using the locked actor ID',async()=>{
+  const f=fixture({notes:[]}),result=await applyFeedbackBrowserOperation(f.pool,auth(),notificationCreate());
+  assert.equal(result.status,201);assert.equal(f.state.notes.length,1);assert.equal(f.state.receipts.length,1);assert.equal(f.state.notifications.length,1);
+  assert.equal(f.state.notifications[0].feedback_id,result.body.note.id);
+  assert.deepEqual(f.state.notifications[0].details,{cliente:'Acme',actor:'Current DB actor',destinatario_usuario_id:9,actor_usuario_id:7});
+  const sql=f.calls.map(call=>call.sql),queue=sql.findIndex(value=>value.startsWith('INSERT INTO mia_private_task_notifications')),
+    receipt=sql.findIndex(value=>value.startsWith('INSERT INTO feedback_browser_operations'));
+  assert.ok(queue>sql.findIndex(value=>value.startsWith('INSERT INTO notas_compartidas')));
+  assert.ok(queue<receipt&&receipt<sql.indexOf('COMMIT'));
+  assert.equal(f.leases,1);assert.deepEqual(sql.slice(-2),['COMMIT','RELEASE']);
+  assert.doesNotMatch(JSON.stringify(result.body.note.feedback),/destinatario_usuario_id|actor_usuario_id/,'Internal delivery IDs do not redefine note metadata/permissions');
+  const start=f.calls.length,replay=await applyFeedbackBrowserOperation(f.pool,auth(),notificationCreate());
+  assert.equal(replay.status,200);assert.equal(replay.body.operation.replayed,true);
+  assert.equal(f.state.notes.length,1);assert.equal(f.state.receipts.length,1);assert.equal(f.state.notifications.length,1);
+  assert.equal(f.calls.slice(start).some(call=>call.sql.startsWith('INSERT INTO')||call.sql==='SELECT id, usuario, nombre FROM usuarios WHERE activo IS TRUE'),false);
+});
+for(const failAt of ['INSERT INTO mia_private_task_notifications','INSERT INTO feedback_browser_operations','COMMIT']){
+  test(`create failure at ${failAt} rolls back note, notification and receipt together`,async()=>{
+    const f=fixture({notes:[],failAt});
+    await assert.rejects(applyFeedbackBrowserOperation(f.pool,auth(),notificationCreate()),error=>error===f.failure);
+    assert.deepEqual(f.state,{notes:[],receipts:[],notifications:[]});
+    assert.deepEqual(f.calls.slice(-2).map(call=>call.sql),['ROLLBACK','RELEASE']);
+    if(failAt!=='COMMIT')assert.equal(f.calls.some(call=>call.sql==='COMMIT'),false);
+  });
+}
+test('queue error with failed rollback still preserves the original error and discards its connection',async()=>{
+  const f=fixture({notes:[],failAt:'INSERT INTO mia_private_task_notifications',rollbackFails:true});
+  await assert.rejects(applyFeedbackBrowserOperation(f.pool,auth(),notificationCreate()),error=>error===f.failure);
+  assert.deepEqual(f.state,{notes:[],receipts:[],notifications:[]});assert.equal(f.calls.at(-1).error,f.rollbackError);
+});
+test('plain note creation and edits/state changes never enqueue Feedback creation notices',async()=>{
+  const plain=fixture({notes:[]});await applyFeedbackBrowserOperation(plain.pool,auth(),create());assert.deepEqual(plain.state.notifications,[]);
+  for(const action of ['edit','trash','restore','purge']){
+    const f=fixture({notes:[{...note(),...(action==='restore'||action==='purge'?{eliminado_at:'2026-10-21T11:00:00.000000Z'}:{})}]});
+    await applyFeedbackBrowserOperation(f.pool,auth(),mutation(action));assert.deepEqual(f.state.notifications,[]);
+    assert.equal(f.calls.some(call=>call.sql.startsWith('INSERT INTO mia_private_task_notifications')),false);
+  }
+});
+test('unresolvable or ambiguous recipient labels do not roll back an otherwise valid shared note',async()=>{
+  for(const recipients of [[],[{id:9,usuario:'one',nombre:'Owner'},{id:10,usuario:'two',nombre:'Owner'}]]){
+    const f=fixture({notes:[],recipients}),result=await applyFeedbackBrowserOperation(f.pool,auth(),notificationCreate());
+    assert.equal(result.status,201);assert.equal(f.state.notes.length,1);assert.equal(f.state.receipts.length,1);assert.deepEqual(f.state.notifications,[]);
+  }
 });
 
 test('085 validates enabled established061 before additive immutable receipts, no note FK/counter/history rewrite',()=>{

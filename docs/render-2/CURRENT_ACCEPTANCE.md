@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Feedback: avisos nuevos ID-bound y transacción única — corte256
+
+Notifier admite solo una cuenta activa inequívoca por etiqueta; homónimos/collisions se omiten sin fan-out ni rechazar notas válidas. Avisos nuevos persisten destinatario_usuario_id, actor_usuario_id verificado y fingerprintIDv1. Browser create feedback encola dentro de la misma transacción que nota/recibo, sin callback postrespuesta; Wilson conserva su transacción con actorID. Sin cambio de DTO público, permisos de notas o migración de avisos históricos. La UI sigue seleccionando textos: no resuelve elección de homónimos.
+
+Erdos unitarias/fixtures y revisión, Volta física, coordinador producto/integración/ejecución.67 focales PASS. Nueva física HTTP/PostgreSQL55892:6PASS padre+5subtests, ID-binding/replay/ambigüedad/actor homónimo, predicate de entrega ante inactividad/canal/reuso de clave y rollback atómico por fallo de cola seguido de retry único.106 tablas/deltas exactos,102 ajenas invariantes; cleanupYmQLGJ. Renovadas activo/inactivo4PASS y browser/Wilson37PASS, todas las raíces eliminadas. Backend2281PASS/143optativasSKIP y frontend2873PASS; logs /private/tmp/render2-goal256-*.log. No navegador/build/proveedor/worker real ni deploy. Persisten UI IDs, avisos legacy/lifecycle y revocación después del último check; no dedupe retroactivo legacy/v1 ni aceptación global. Contrato/evidencia en FEEDBACK_RECEIPTS_CONTRACT.md y FEEDBACK_RECEIPTS_QA.md.
+
 ### Feedback: no seleccionar cuentas inactivas para avisos nuevos — corte255
 
 Corregido el pendiente de selección detectado254: el resolver privado de Feedback exige activo IS TRUE. Solo selección de candidatos nuevos; no cambia permisos, destinatarios por nombres, fingerprint/detalles o recibos.3 unitarias nuevas rojas→verdes y24 focales PASS. Nueva física PostgreSQL55891:4PASS padre+3subtests, inactivo→activo→inactivo, timestamp/fingerprint negativo distinto para evitar falso positivo de dedupe; un aviso exacto conservado y106 tablas observadas con solo cambios de prueba previstos. Raíces Xy53ok/1ZiJX4 cleanup ENOENT; primer fallo rojo acredita enqueue indebido, posteriores en cascada no son reproducciones independientes.
