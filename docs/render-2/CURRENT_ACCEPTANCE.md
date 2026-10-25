@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Feedback: teclado nativo, verificación parcial — corte273
+
+App/build272 (CpvXNIhb), backend271, Chrome real y fixture propio PG55905/HTTP52852. En 1280×800, detalle de nota: `:modal` verdadero, Shift+Tab desde Cerrar llega a Editar feedback y Tab desde este último vuelve a Cerrar, siempre dentro del dialog. Entrar en edición enfoca Título. Escribir título sintético y Escape abrió confirmación nativa; el comando de tecla agotó su espera, pero `getJsDialog()` confirmó tipo confirm. El cierre limpio anterior dejó foco en la card original. No se acredita cancelación de confirmación, descarte aceptado, backdrop ni responsive: la conexión se interrumpió durante el siguiente comando de cancelar/medir/capturar; resultados y captura no confirmados.
+
+Harvey revisó fuente de forma independiente, sin regresión estática concreta; señaló comprobar físicamente retorno de foco tras detalle→editar y guardas de borrador. No cambios de producto, suites o build nuevos. Runner `/private/tmp/render2-goal273-native.mjs`, log homónimo `.log`: salida0, 105 hashes de dominio y contadores de usuario invariantes, index/entry intactos, `FIXTURE_CLEANUP_ENOENT /private/tmp/render2-local-e6qYNn`. Solo se terminó padre88360 tras verificarlo junto a hijo88385; no bases configuradas ni servicios ajenos. Cierre de pestaña y restauración del viewport no confirmados por pérdida de conexión. La evidencia no es aceptación global ni despliegue. Superpowers/Verification guiaron aislamiento y límites de aceptación.
+
 ### Perfil: mensajes definitivos y presupuesto cookie/bearer — corte272
 
 Dos códigos conocidos de rechazo previo al write muestran espera/verificación no disponible y «No se cambió tu cuenta», sin extrapolarlo a errores inciertos/red.62focales/2962frontendPASS/0fallos/omitidas, build CpvXNIhb. Harvey revisó sin bloqueantes y preparó integracióncookie ejecutada por coordinador en PG55904:4PASS, veinte solicitudes mixtas→10verificaciones/10denegaciones, auth/contexto/CSRF sin consumo, GET/cookies/usuarios/budgetsLoginconservados. Cleanup/ENOENT confirmado. Detalles/logs/límites en PROFILE_COOKIE_QA.md. No navegador nativo, varios procesos, nuevo backend/migración o despliegue.
