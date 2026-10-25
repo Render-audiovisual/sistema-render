@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Moodboards: creación contextual y vínculo152 persistidos desde navegador — corte305
+
+Chrome/App304/index-C4MOVMYS, backend304 y fixture PostgreSQL55923/HTTP52866. Usuario sintético qa_luciano91003 inició sesión desde `/moodboards?board=1&cliente=1&task=152`; Composer se abrió automáticamente aunque el catálogo inicial solo incluye150. UI eligió Pegar enlace, categoría previamente preparada y enlace Pinterest sin abrirlo; guardó título «QA305 Referencia contextual» y nota «QA305 idea para tarea 152». Guardar cerró el formulario y retiró solo task de la URL. Recarga completa recuperó título/nota y reapertura mostró152 checked sin cargar otra página.
+
+Viewport390×844: raíz/scroll390,152 marcada, captura `/private/tmp/render2-goal305-context-linked-mobile.png` inspeccionada. Consola sin errores capturados. SQL final valida exactamente una referencia con board/categoría/título/nota/enlace/autor91003/revisión0 esperados, un recibo create con UUID y revisión0 y una pareja referencia→152. Otras102tablas de dominio, contadores de todos los usuarios e index/entry intactos. No se contó HTTP ni se afirma atomicidad entre creación y vínculo, que son commits separados.
+
+Coordinador ejecutó con Verification; Harvey verificó read-only el delta de tres tablas y clasificación real de enlaces Pinterest. Preparación inicial tenía expectativa de URL incompatible con tipoPinterest; se cerró sin interacción UI, cleanup ENOENT79G0Zp y exit1 por esperar la referencia todavía inexistente. No fue fallo del producto. Fixture corregida arrancó antes del recorrido; PID18343/hijo18367 verificados antes de TERM, sesión91471 exit0, cleanup ENOENT `/private/tmp/render2-local-pbYPDa`. Runner/log `/private/tmp/render2-goal305-native.*`, preparación `/private/tmp/render2-goal305-preparation.log`. Tab cerrada y viewport restaurado.
+
+Sin nuevo código de producto/build, bases comerciales, proveedores ni despliegue. Cierra recorrido estable task152→crear→vínculo→recarga304. Siguen pendientes identidad/task cambiados con formulario montado, fallos/ACK perdidos físicos y aceptación integral del prompt maestro; este resultado no certifica todas las funciones de Moodboards ni del sistema.
+
 ### Moodboards: contexto de creación independiente del primer lote — corte304
 
 Se confirmó que `moodboardTaskIntent` solo encontraba IDs del array legacy150; enlaces task posteriores no abrían Composer. Nueva lectura puntual `GET /api/moodboards/boards/:id/tasks/:taskId`, sin query, DTO `{version:1,item:{id,titulo}}`, no-store. Consulta parametrizada conserva predicado de autorización por ID y pertenencia board/cliente. No disponible/privada/otro cliente devuelven el mismo404; IDs/query inválidos400 y anónimo401. No DML ni migración.
