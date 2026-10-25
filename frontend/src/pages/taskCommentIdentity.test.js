@@ -33,3 +33,9 @@ test('actual comment JSX uses identity resolver and retains textual author; no n
   assert.match(source,/<Avatar person=\{taskCommentActorPerson\(item, users\)\} name=\{item.autor\}/);
   assert.doesNotMatch(source,/users\.find\([^\n]*user\.nombre === item\.autor/);
 });
+test('comment composer uses the verified session profile, never a same-name roster entry',()=>{
+  const source=readFileSync(new URL('./WorkspaceReadOnly.jsx',import.meta.url),'utf8');
+  const composer=source.slice(source.indexOf('<div className="ros-comment-create">'),source.indexOf('</section>',source.indexOf('<div className="ros-comment-create">')));
+  assert.match(composer,/<Avatar person=\{sesion\?\.usuario\} name=\{sesion\?\.usuario\?\.nombre \|\| sesion\?\.usuario\?\.usuario\}/);
+  assert.doesNotMatch(composer,/users\.find|user\.nombre\s*===/);
+});

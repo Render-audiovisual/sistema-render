@@ -862,7 +862,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {commentDraftOwner.current.creation.snapshot.canVerify && <button type="button" className="ros-comment-action" onClick={verifyCommentCreation}>Verificar envío</button>}
           {teamComments.length > 0 && <div className="ros-comments">{teamComments.map((item) => <article key={item.id}><Avatar person={taskCommentActorPerson(item, users)} name={item.autor}/><div className="ros-comment-body"><header><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></header><p>{renderizarTextoTarea(item.contenido)}</p></div></article>)}</div>}
           <div className="ros-comment-create">
-            <Avatar person={users.find((user) => user.nombre === sesion?.usuario?.nombre)} name={sesion?.usuario?.nombre || sesion?.usuario?.usuario}/>
+            <Avatar person={sesion?.usuario} name={sesion?.usuario?.nombre || sesion?.usuario?.usuario}/>
             <textarea rows={2} value={comment} placeholder="Agregar un comentario…" aria-label="Agregar un comentario" onChange={(event) => { commentDraftOwner.current.generation++; setComment(event.target.value); }}/>
             <button type="button" disabled={!comment.trim() || commenting || commentDraftOwner.current.creation.snapshot.locked} onClick={addComment}>{commenting ? "Enviando…" : "Comentar"}</button>
           </div>
