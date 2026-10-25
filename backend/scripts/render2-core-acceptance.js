@@ -21,6 +21,7 @@ export const coreAcceptanceFiles = Object.freeze([
   'test/render2-production-results-upgrade.integration.test.js',
   'test/render2-production-result-edit-race.integration.test.js',
   'test/render2-user-administration.integration.test.js',
+  'test/render2-task-bulk-authority.integration.test.js',
 ]);
 
 export function coreAcceptancePlan(args = []) {
