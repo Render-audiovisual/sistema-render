@@ -74,6 +74,39 @@ test('report approval projection preserves strict historical booleans and stored
   assert.match(projectId, /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i);
   const ids = cases.map(item => item.id);
   await f.query('INSERT INTO proyecto_tareas(proyecto_id,tarea_id) SELECT $1,unnest($2::integer[])', [projectId, ids]);
+  // Separate VALID domain cohort: project tasks cannot also belong to a
+  // production video. Never disable guards or claim these are the same IDs.
+  const [productionClient] = await f.query("INSERT INTO clientes(nombre,activo) VALUES('QA376 production approval projection',true) RETURNING id");
+  const visitId = randomUUID();
+  await f.query(`INSERT INTO produccion_visitas(id,cliente_id,fecha,titulo,creado_por_id,actualizado_por_id)
+    VALUES($1,$2,'2026-10-20','QA376 synthetic historical visit',91001,91001)`, [visitId, productionClient.id]);
+  await f.query('INSERT INTO produccion_visita_participantes(visita_id,usuario_id) VALUES($1,91003)', [visitId]);
+  const productionCases = [];
+  for (const original of cases) {
+    const [task] = await f.query(`INSERT INTO tareas
+      (titulo,asignado_a,estado,tipo_tarea,subtipo,fecha_vencimiento,propiedades_extra,cliente_id)
+      VALUES($1,'QA376 label is not identity',$2,'edicion','video','2026-10-20',$3::jsonb,$4) RETURNING id`,
+    [`QA376 ${original.label}`, original.stored, JSON.stringify({ workspace: 'render_os', ...original.extra }), productionClient.id]);
+    await f.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES($1,91003,'responsable')", [task.id]);
+    const videoId = randomUUID();
+    await f.query(`INSERT INTO produccion_videos
+      (id,visita_id,titulo,estado,tarea_edicion_id,editor_id,fecha_entrega,creado_por_id,actualizado_por_id)
+      VALUES($1,$2,$3,'grabado',$4,91003,'2026-10-20',91001,91001)`,
+    [videoId, visitId, `QA376 video ${original.label}`, task.id]);
+    productionCases.push({ ...original, id: task.id, videoId });
+  }
+  const unlinkedVideoId = randomUUID();
+  await f.query(`INSERT INTO produccion_videos(id,visita_id,titulo,estado,creado_por_id,actualizado_por_id)
+    VALUES($1,$2,'QA376 unlinked LEFT JOIN remains null','planificado',91001,91001)`, [unlinkedVideoId, visitId]);
+  const productionIds = productionCases.map(item => item.id), allIds = [...ids, ...productionIds];
+  assert.equal(new Set(allIds).size, 12, 'Two disjoint six-task cohorts with no domain-guard bypass');
+  assert.deepEqual(await f.query('SELECT tarea_id FROM proyecto_tareas WHERE tarea_id=ANY($1::integer[])', [productionIds]), []);
+  const productionOracle = await f.query(`SELECT id,estado AS stored,
+    CASE WHEN estado='en_revision' AND propiedades_extra->'revision_aprobada'='true'::jsonb
+      THEN 'aprobada' ELSE estado END AS effective
+    FROM tareas WHERE id=ANY($1::integer[]) ORDER BY id`, [productionIds]);
+  assert.deepEqual(productionOracle, productionCases.map(item => ({ id: item.id, stored: item.stored,
+    effective: item.stored === 'publicada' ? 'publicada' : item.effective })));
   // Independent SQL oracle: JSON boolean equality, never ->> text coercion.
   const oracle = await f.query(`SELECT id,estado AS stored,
     CASE WHEN estado='en_revision' AND propiedades_extra->'revision_aprobada'='true'::jsonb
@@ -86,7 +119,7 @@ test('report approval projection preserves strict historical booleans and stored
   const expectedStates = oracle.map(row => ({ id: row.id, estado: row.effective }));
   const expectedCounts = { pendiente: 0, en_progreso: 0, en_revision: 3, aprobada: 2, finalizada: 1, otros: 0 };
   const rawTasks = () => f.query(`SELECT id,estado,propiedades_extra,revision,xmin::text AS xmin,ctid::text AS ctid
-    FROM tareas WHERE id=ANY($1::integer[]) ORDER BY id`, [ids]);
+    FROM tareas WHERE id=ANY($1::integer[]) ORDER BY id`, [allIds]);
   const rawBefore = await rawTasks();
 
   // Baseline only AFTER fixture setup and both logins. Hash ALL public tables,
@@ -113,7 +146,23 @@ test('report approval projection preserves strict historical booleans and stored
     assert.equal(response.status, 200, 'Expected report HTTP success without printing session/body');
     const data = response.body, original = structuredClone(data);
     freezeTree(data);
-    const tasks = [...data.tareas, ...data.tareasRenderOs].filter(task => ids.includes(task.id));
+    const allTasks = [...data.tareas, ...data.tareasRenderOs];
+    assert.deepEqual(allTasks.map(task => task.id).sort((a, b) => a - b), [...allIds].sort((a, b) => a - b));
+    const wholeEditor = buildEmployeeReport(data.usuarios, allTasks, range, '2026-10-25').rows.find(row => row.id === 91003);
+    assert.deepEqual({ total: wholeEditor.total, enRevision: wholeEditor.enRevision, aprobadas: wholeEditor.aprobadas,
+      finalizadas: wholeEditor.finalizadas, pendientes: wholeEditor.pendientes },
+    { total: 12, enRevision: 6, aprobadas: 4, finalizadas: 2, pendientes: 10 });
+    const productionTasks = allTasks.filter(task => productionIds.includes(task.id));
+    assert.equal(productionTasks.length, 6);
+    for (const item of productionCases) {
+      const task = productionTasks.find(row => row.id === item.id);
+      assert.equal(task.estado, item.stored, 'Raw Reportes task DTO remains historical');
+      assert.deepEqual(task.propiedades_extra, { workspace: 'render_os', ...item.extra });
+    }
+    assert.deepEqual(employeeTaskDetails(productionTasks, 91003, range).map(row => ({ id: row.id,
+      estado: row.estado, estado_almacenado: row.estado_almacenado })).sort((a, b) => a.id - b.id),
+    productionCases.map(item => ({ id: item.id, estado: item.effective, estado_almacenado: item.stored })));
+    const tasks = allTasks.filter(task => ids.includes(task.id));
     assert.equal(tasks.length, cases.length);
     for (const item of cases) {
       const task = tasks.find(row => row.id === item.id);
@@ -149,6 +198,37 @@ test('report approval projection preserves strict historical booleans and stored
     assert.deepEqual(data, original, 'Real report models preserve the deeply frozen HTTP DTO');
     assert.deepEqual(await snapshot(), before, 'Report HTTP/model reads preserve every stored row and physical tuple');
   });
+  const expectedVideos = productionCases.map((item, index) => ({ id: item.videoId, tarea_edicion_id: item.id,
+    tarea_estado: productionOracle[index].effective, editor_actual_id: 91003, fecha_entrega_actual: '2026-10-20', estado: 'grabado' }))
+    .sort((a, b) => a.tarea_edicion_id - b.tarea_edicion_id);
+  for (const actor of actors) for (const consumer of ['registry detail', 'registry list', 'Reportes producciones'])
+    await t.test(`${actor.role}: ${consumer} projects production editing task approval without rewriting raw history`, async () => {
+      const path = consumer === 'registry detail' ? `/api/producciones/${visitId}`
+        : consumer === 'registry list' ? `/api/producciones?mes=2026-10&cliente_id=${productionClient.id}` : reportPath;
+      const result = await productionCookieRequest(f.base, path, { session: actor.session });
+      assert.equal(result.status, 200, 'Expected production read success without printing cookie/body');
+      const visits = consumer === 'registry detail' ? [result.body.visita]
+        : consumer === 'registry list' ? result.body.visitas : result.body.producciones.visitas;
+      assert.equal(visits.length, 1);
+      const visit = visits[0];
+      assert.equal(visit.id, visitId); assert.equal(visit.cliente_id, productionClient.id);
+      assert.equal(visit.fecha, '2026-10-20'); assert.equal(visit.tarea_origen_id, null);
+      assert.deepEqual(visit.participante_ids, [91003]); assert.deepEqual(visit.fotos, []);
+      assert.equal(visit.videos.length, 7);
+      const unlinked = visit.videos.find(video => video.id === unlinkedVideoId);
+      assert.ok(unlinked, 'Seventh video has no editing-task binding');
+      assert.equal(unlinked.tarea_edicion_id, null); assert.equal(unlinked.tarea_estado, null);
+      assert.equal(unlinked.editor_actual_id, null); assert.equal(unlinked.fecha_entrega_actual, null);
+      assert.equal(unlinked.estado, 'planificado');
+      const actualVideos = visit.videos.filter(video => video.id !== unlinkedVideoId).map(video => Object.fromEntries(
+        ['id', 'tarea_edicion_id', 'tarea_estado', 'editor_actual_id', 'fecha_entrega_actual', 'estado'].map(key => [key, video[key]])))
+        .sort((a, b) => a.tarea_edicion_id - b.tarea_edicion_id);
+      // Read projections must preserve all raw historical tuples, including
+      // the unlinked video's NULL task state from the LEFT JOIN.
+      assert.deepEqual(await rawTasks(), rawBefore);
+      assert.deepEqual(await snapshot(), before);
+      assert.deepEqual(actualVideos, expectedVideos, 'Only boolean true projects approved; string true stays review and legacy publicada stays publicada');
+    });
   const sortedStates = rows => rows.map(row => ({ id: row.id, estado: row.estado })).sort((a, b) => a.id - b.id);
   for (const actor of actors) await t.test(`${actor.role}: Calendar, client operation and project detail agree on the same six stored tasks`, async () => {
     const get = async path => {

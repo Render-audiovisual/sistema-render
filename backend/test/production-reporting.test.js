@@ -43,6 +43,8 @@ test('report joins visit/media by stable IDs and never passes raw metadata or mo
   const result = await loadProductionReport(db, { desde: '2026-10-01', hasta: '2026-11-01' });
   assert.equal(calls.length, 3);
   assert.deepEqual(calls[1].values, [['visit']]);
+  assert.match(calls[1].sql, /CASE WHEN t\.estado='en_revision' AND t\.propiedades_extra->'revision_aprobada'='true'::jsonb THEN 'aprobada' ELSE t\.estado END AS tarea_estado/,
+    'Read-only SQL must use strict JSON boolean approval, not text coercion or an unbounded metadata DTO');
   assert.deepEqual(result.visitas[0].participante_ids, [4, 5]);
   assert.equal(result.visitas[0].videos.length, 1);
   assert.equal(result.visitas[0].videos[0].tarea_estado, 'finalizada');

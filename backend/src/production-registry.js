@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { effectiveTaskStateSql } from './task-review-query.js';
 import { productionResultProjectionSql, productionResultProjection } from './production-result-projection.js';
 import { withProductionReadSnapshot } from './production-read-snapshot.js';
 import { withProductionAuthority as transaction } from './production-authority.js';
@@ -86,7 +87,7 @@ const VISITS = `SELECT v.id,v.tarea_origen_id,v.cliente_id,c.nombre cliente_nomb
   FROM produccion_visitas v JOIN clientes c ON c.id=v.cliente_id`;
 const VIDEOS = `SELECT pv.id,pv.visita_id,pv.video_origen_id,pv.titulo,pv.guion,pv.estado,pv.material_url,pv.observaciones,
   pv.publicacion_id,pv.tarea_entrega_id,pv.cliente_editorial_id,
-  pv.tarea_edicion_id,pv.editor_id,to_char(pv.fecha_entrega,'YYYY-MM-DD') fecha_entrega,t.estado tarea_estado,
+  pv.tarea_edicion_id,pv.editor_id,to_char(pv.fecha_entrega,'YYYY-MM-DD') fecha_entrega,${effectiveTaskStateSql('t')} AS tarea_estado,
   (SELECT a.usuario_id FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.tipo='responsable' LIMIT 1) editor_actual_id,
   to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_entrega_actual,t.cliente_id tarea_cliente_id
   FROM produccion_videos pv LEFT JOIN tareas t ON t.id=pv.tarea_edicion_id`;

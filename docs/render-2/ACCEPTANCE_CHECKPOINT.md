@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado375
+# Render 2.0 — corte de aceptación local372, actualizado376
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -63,6 +63,7 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - Actualización373: core30archivos291PASS/0FAIL/0SKIP; físicas suplementarias8PASS; frontend3225PASS y backend2445PASS/169SKIP opt-in/0FAIL. Regresión de aprobación histórica y navegador1280/390 acotados,108 tablas nativas invariantes. Logs `render2-goal373-*` en `/private/tmp`; detalle de alcances en CURRENT_ACCEPTANCE.md.
 - Verificación374: calendario de siete tareas, «+4 más», Tab/Escape/retorno, apertura task7, día vacío y Nueva tarea limpia comprobados nativamente1280/390,108 tablas invariantes y cleanup.34 focales aprobadas; sin nuevo producto ni renovación global. Cierra el caso «más» pendiente336, no toda la accesibilidad del sistema.
 - Integración375: cuatro lectores de Inicio descartan la conexión si falla el rollback, sin ocultar el error original.56 focales,23 físicas adicionales de Inicio y core30archivos293PASS/0FAIL/0SKIP; backend2461PASS/169SKIP/0FAIL. La física de estados amplía Reportes a Calendario/Cliente/Proyecto, ambos actores cookie y108 tablas invariantes. Sin nueva UI/build ni prueba física de caída de red. Logs render2-goal375-*; detalle en CURRENT_ACCEPTANCE.md.
+- Integración376: registro y reporte de Producciones proyectan aprobación efectiva.63 focales; física ampliada11PASS y core30archivos299PASS/0FAIL/0SKIP; backend2461PASS/169SKIP/0FAIL. Seis tareas audiovisuales separadas de las seis de proyecto y video sin vínculo NULL,108 tablas invariantes. No nueva observación visual ni publicación real.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
 
@@ -74,7 +75,7 @@ Corrección373: métricas y detalle reutilizan `effectiveTaskFilterState`; el de
 
 ## Decisiones y gates externos
 
-Pendiente local confirmado375: Producciones aún proyecta tarea_estado crudo en production-registry.js y production-reporting.js, por lo que una aprobación histórica booleantrue puede mostrarse «Para revisar». Debe alinearse la lectura, no migrar históricos ni inventar publicaciones. Wilson es otro consumidor candidato señalado por fuente, todavía sin reproducción propia. Estos pendientes impiden afirmar coherencia universal de estados.
+Corrección local376: Producciones reutiliza la proyección canónica de tarea_estado en registro y reporte, con booleantrue estricto, publicada y NULL preservados.63 focales y física11PASS, ambos cookies/108 tablas invariantes; detalle en CURRENT_ACCEPTANCE.md. No implica aceptación visual renovada. Pendiente distinto confirmado offline376 por Main: buildEmployeeSnapshot de wilson-chat.js sigue clasificando en_revision/booleantrue como revisión1/aprobadas0. Requiere corrección y regresión sin migrar históricos ni inventar publicaciones; no hay coherencia universal acreditada.
 
 1. Definir destinatarios extra de revisión de carruseles: pregunta humana pendiente371. El binding de transporte por ID no decide quién revisa. No inferir cuentas por nombre ni conceder autoridad para resolverlo.
 2. Verificar/provisionar roster real y cuentas independientes autorizadas; cuentas QA demuestran capacidad del servidor, no existencia de las cuentas reales del equipo.

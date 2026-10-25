@@ -85,7 +85,9 @@ test('all verified members can read, unbound and inactive identities fail closed
   for(const auth of [{rol:'admin'},{id:'11',rol:'admin'},{id:11,activo:false}])assert.equal((await fixture().run('get','/:id',{},auth)).statusCode,403);
 });
 test('read DTO exposes only scalar operational fields, complete guion and current editing state',async()=>{
-  const res=await fixture().run('get','/:id');
+  const f=fixture();const res=await f.run('get','/:id');
+  assert.match(f.calls.find(call=>call.sql.includes('FROM produccion_videos pv LEFT JOIN tareas')).sql,
+    /CASE WHEN t\.estado='en_revision' AND t\.propiedades_extra->'revision_aprobada'='true'::jsonb THEN 'aprobada' ELSE t\.estado END AS tarea_estado/);
   assert.equal(res.body.visita.contexto_historico_revisado,false);
   assert.equal(JSON.stringify(res.body).includes('PRIVATE'),false);
   assert.equal(res.body.visita.videos[0].guion,'Guion completo');

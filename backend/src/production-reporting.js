@@ -1,6 +1,7 @@
 import { isValidProductionDate, getProductionProgress } from './production-visits.js';
 import { productionFinalizationReadiness } from './production-task-finalization.js';
 import { productionResultProjectionSql, productionResultProjection } from './production-result-projection.js';
+import { effectiveTaskStateSql } from './task-review-query.js';
 
 const fail = message => Object.assign(new Error(message), { status: 400 });
 const positive = value => Number.isSafeInteger(value) && value > 0;
@@ -30,7 +31,7 @@ export async function loadProductionReport(db, range) {
     WHERE v.fecha >= $1::date AND v.fecha < $2::date ORDER BY v.fecha,v.id`, [range.desde, range.hasta])).rows;
   if (!visits.length) return { ...range, visitas: [] };
   const ids = visits.map(visit => visit.id);
-  const videos = await db.query(`SELECT pv.id,pv.visita_id,pv.titulo,pv.estado,pv.tarea_edicion_id,t.estado tarea_estado,
+  const videos = await db.query(`SELECT pv.id,pv.visita_id,pv.titulo,pv.estado,pv.tarea_edicion_id,${effectiveTaskStateSql('t')} AS tarea_estado,
       (SELECT a.usuario_id FROM tarea_asignaciones a WHERE a.tarea_id=t.id AND a.tipo='responsable' ORDER BY a.usuario_id LIMIT 1) editor_actual_id,
       to_char(t.fecha_vencimiento,'YYYY-MM-DD') fecha_entrega_actual
       FROM produccion_videos pv LEFT JOIN tareas t ON t.id=pv.tarea_edicion_id

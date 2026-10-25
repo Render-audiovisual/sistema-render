@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Producciones: estado efectivo de edición sin cambiar históricos — integración376
+
+Main corrigió las dos proyecciones crudas de tarea_estado en production-registry.js (VIDEOS) y production-reporting.js (loadProductionReport), reutilizando effectiveTaskStateSql('t'). Únicamente en_revision con revision_aprobada booleantrue se muestra aprobada; stringtrue/false/ausencia no cambian. Se preserva publicada histórica y NULL del LEFT JOIN. No se cambia esquema, DTO, autorización, editor, vencimiento, estado del video, aprobaciones de artefacto ni evidencia de publicación. Harvey revisó que Productions.jsx usa este campo solo como texto del enlace, no como permiso ni disparador de acciones.
+
+Regresión de consultas:29PASS/2FAIL antes del cambio (/private/tmp/render2-goal376-red-unit.log),63 focales PASS después (/private/tmp/render2-goal376-focal.log). Los asserts de SQL prueban conexión al helper, no evaluación PostgreSQL. Hilbert amplió la física existente con dos grupos válidos de seis tareas en IDs distintos (Proyecto y Producción); no se desactivó la guarda que impide mezclar dominios. Séptimo video sin tarea permanece planificado y con campos de edición NULL. Ambos actores cookie consultan detalle/listado del registro y Reportes producciones; también siguen las lecturas previas Calendario/Cliente/Proyecto y los modelos reales de Reportes.11PASS/0FAIL/0SKIP,108 tablas JSON/xmin/ctid invariantes y cleanup ENOENT UIJ6T8 (/private/tmp/render2-goal376-green-physical.log). No hubo ejecución física roja: no atribuirle la reproducción unitaria.
+
+Backend2461PASS/169SKIP opt-in/0FAIL de2630 (/private/tmp/render2-goal376-backend.log). Cohorte principal fija30archivos renovada:299PASS/0FAIL/0SKIP,58.17s, terminal0 y limpieza propia (/private/tmp/render2-goal376-core.log). Sin cambio frontend, build ni recorrido nativo nuevo; la comprobación de etiquetas es lectura de código, no observación visual renovada.
+
+Pendiente distinto confirmado por Main con función real buildEmployeeSnapshot de wilson-chat.js y tarea congelada en_revision/booleantrue: review1,approved0,completed0, estado almacenado intacto. No se corrige en376 ni se extiende esa reproducción offline a autorización/transporte del asistente. La política de destinatarios de revisión permanece pendiente de decisión humana. No hay despliegue ni aceptación global.
+
 ### Inicio: descarte de conexión incierta y coherencia de lecturas — integración375
 
 Main detectó cuatro lectores en personal-home.js que ocultaban un fallo de ROLLBACK y liberaban el cliente sin error. readPersonalHome/readHomeEscalations/readHomeTeamWorkload/readHomeProductionPage ahora pasan el error de rollback a release, conservan el error primario y no cambian SQL, DTO, permisos ni identidad. El driver instalado pg-pool descarta clientes liberados con error. Regresión inyectada:12 fallos/4PASS antes del cambio;56 focales PASS después, incluyendo BEGIN/consulta/COMMIT fallidos y rollback correcto. Harvey revisó ambos archivos sin bloqueantes. La inyección no acredita una caída de red física.
