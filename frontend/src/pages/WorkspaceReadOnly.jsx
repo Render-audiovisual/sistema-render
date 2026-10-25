@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Modal } from '../components/Modal.jsx';
+import { taskCommentActorPerson } from './taskCommentIdentity.js';
 import { productionResultStatus } from './productionResultStatus.js';
 import { FilterSelect } from '../components/FilterSelect.jsx';
 import { getRolLabel } from "../constants.js";
@@ -859,7 +860,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
           {commentError && <div className="ros-inline-error">{commentError}</div>}
           {commentDraftOwner.current.creation.snapshot.locked && <p role="status">Salir no cancela ni revierte el envío. Este intento no sobrevive a una recarga. Verificá el envío antes de salir.</p>}
           {commentDraftOwner.current.creation.snapshot.canVerify && <button type="button" className="ros-comment-action" onClick={verifyCommentCreation}>Verificar envío</button>}
-          {teamComments.length > 0 && <div className="ros-comments">{teamComments.map((item) => <article key={item.id}><Avatar person={users.find((user) => user.nombre === item.autor)} name={item.autor}/><div className="ros-comment-body"><header><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></header><p>{renderizarTextoTarea(item.contenido)}</p></div></article>)}</div>}
+          {teamComments.length > 0 && <div className="ros-comments">{teamComments.map((item) => <article key={item.id}><Avatar person={taskCommentActorPerson(item, users)} name={item.autor}/><div className="ros-comment-body"><header><strong>{item.autor}</strong><time>{formatDateTime(item.created_at)}</time></header><p>{renderizarTextoTarea(item.contenido)}</p></div></article>)}</div>}
           <div className="ros-comment-create">
             <Avatar person={users.find((user) => user.nombre === sesion?.usuario?.nombre)} name={sesion?.usuario?.nombre || sesion?.usuario?.usuario}/>
             <textarea rows={2} value={comment} placeholder="Agregar un comentario…" aria-label="Agregar un comentario" onChange={(event) => { commentDraftOwner.current.generation++; setComment(event.target.value); }}/>

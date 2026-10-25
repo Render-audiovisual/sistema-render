@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Comentarios: retirar asociación por nombre y definir procedencia durable — integración344 parcial
+
+Main y Harvey revisaron todos los writers operativos de tarea_comentarios: helper humano task-comment-receipts y comment de mia-supervisor; Wilson lee, sin INSERT directo localizado. Comentario humano con UUID conserva actor en recibo089, no en fila; actividad sin UUID no guarda recibo. GET/replay seleccionan cinco campos y modelos frontend descartan extras. Autor textual puede diferir del ejecutor (admin libre) o ser sistema. No se infiere vulnerabilidad de autorización: helper humano ya retiene actor y ACL.
+
+Main eliminó `users.find(user.nombre===item.autor)` del Avatar de comentarios; helper `taskCommentActorPerson` acepta únicamente actor_usuario_id numérico válido, coincidencia única por ID y usuario no marcado inactivo. Sin ID/desconocido/ambiguo muestra iniciales del texto sin vincular @usuario de un homónimo. Avatar actual es iniciales/tooltip, no fotografía; no se añadió búsqueda/catálogo ni acceso privado. API/modelos actuales aún no proveen el campo, por lo que este paso no acredita procedencia durable. El check `activo !== false` confía en catálogo ya filtrado; no es autoridad de acceso.
+
+Cinco pruebas focales PASS: nombre único y homónimos no identifican, ID tras renombre, inválido/inactivo/ambiguo falla cerrado, inmutabilidad y JSX real cableado. Frontend3146PASS/1SKIP/0FAIL de3147 (`/private/tmp/render2-goal344-frontend.log`), build index-BfohvFxT (`/private/tmp/render2-goal344-build.log`), focal `/private/tmp/render2-goal344-focal.log`. Harvey revisó delta sin bloqueantes; sin navegador/backend/DB nuevos ni migración aplicada.
+
+Contrato de próxima integración: nueva columna nullable actor_usuario_id INTEGER positiva FK usuarios ON DELETE RESTRICT, sin backfill/default de identidad; writer humano escribe ID retenido en comentarios con y sin UUID, autor queda independiente; sistema e histórico null. GET/POST/recovery y allowlist operativo exponen solo ID/null; modelos lo preservan/contrastan sin resolver nombres. Startup debe validar columna/FK y rechazar esquema antiguo sin migrar automáticamente. Pruebas físicas: upgrade conserva texto/filas, actividad/UUID, replay, autor libre distinto, homónimos/renombre/desactivación y rollback comentario+recibo. No usar receipt-join como identidad general:089 carece de unicidad comment_id y no cubre actividad/sistema. Rollback a writer antiguo nullable puede volver a producir null; no afirmar obligatoriedad universal. Objetivo global sigue activo, sin despliegue/producción.
+
 ### Cambio móvil de estado conectado; arrastre entre estados no acreditado — verificación343
 
 Revalidación de evidencia corrigió premisa inicial: BOARD_NATIVE_DROP_QA.md ya cierra en173 orden nativo antes de tarjeta/al final con PostgreSQL/recarga/otro lector. No se reabrió como bug. Harvey revisó contrato activo: iniciar sobre botón título/select cancela drag deliberadamente; handle/fondo sí admiten. Cambiar estado no requiere Manual; aprobar edición abre revisión explícita. No halló nuevo defecto demostrado.
