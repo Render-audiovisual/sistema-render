@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Administración de usuarios: comprobación nativa de escritorio y móvil — corte289
+
+Chrome real, App288/index-BKjRJE7w, backend285, fixture PostgreSQL55914/HTTP52858. En1280×800: dialog`:modal` verdadero, panel derecho560×800 en x720/y0, foco inicial LucianoQA; Shift+Tab desde X alcanza Dar de baja, Tab vuelve a X, Escape cierra y devuelve foco al Administrar de la card LucianoQA. Sin activar la baja ni guardar formularios.
+
+En390×844: raíz client/scroll375/375, panel375×793 en y50.6, cierre44×44; Shift+Tab alcanza Dar de baja visible entre y768–812 y scrollTop625. Captura `/private/tmp/render2-goal289-users-mobile.png` inspeccionada. No se acredita swipe real: PageDown medido inmediatamente no mostró desplazamiento; la prueba positiva de scroll es el acceso por teclado a la última acción.
+
+Runner `/private/tmp/render2-goal289-native.mjs` y log homónimo; guarda infraestructura/setup del runner281B, por eso la etiqueta `scope` impresa aún menciona publicaciones, no el recorrido realizado. Coordinador observó UI; fixture verificó invariantes. PID3397/hijo3421 propios verificados antes de TERM; salida0,105hashes de dominio y todos los contadores de usuarios invariantes, index/entry intactos, cleanup ENOENT KKS2pu. Tab cerrada y viewport restaurado. Sin código nuevo de producto, cuentas reales, logout, proveedor o despliegue.
+
+Esto cierra el pendiente estable de modalidad/foco/layout de288, no los casos de recovery, descarte cancelado, busy, invocador desmontado ni validación visual completa de la aplicación. La skill Verification orientó trazado y límites; aceptación global incompleta.
+
 ### Administración de usuarios: modal nativo compartido — corte288
 
 El editor antes implementado como backdrop+aside usa ahora `Modal native`, conservando key por epoch/usuario, panel derecho, identidad en header, formularios y recovery fuera del fieldset bloqueado. Mantiene `cerrarAdministracion/allowDiscard`, backdrop habilitado y bloqueo de cierre por mutationBusy. Se elimina el listener global Escape duplicado; foco inicial explícito en nombre y retorno mediante el invocador capturado por el Modal. CSS específico conserva panel560px y breakpoint móvil640px, sin modificar reglas de permisos o requests. Apple UI/Frontend Design orientaron mantener jerarquía y escala, no un rediseño del formulario.
