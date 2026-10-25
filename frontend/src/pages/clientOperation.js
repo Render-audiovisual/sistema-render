@@ -1,3 +1,4 @@
+import { productionResultStatus } from './productionResultStatus.js';
 const invalidLocation = () => { throw new Error('El enlace de operación del cliente no es válido. Revisá el cliente y el período.'); };
 const pgId = value => Number.isInteger(value) && value > 0 && value <= 2147483647;
 export const validClientOperationPeriod = value => typeof value === 'string' && value.length === 7 && /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(value);
@@ -61,7 +62,7 @@ export function parseClientOperation(value, {clientId,period}) {
   const proyectos=section(value.proyectos,'compartidos_no_archivados_todos_los_periodos',['no_archivados'], row=>({id:uuid(row?.id),titulo:str(row.titulo),tipo:str(row.tipo,80),estado:str(row.estado,80),revision:id(row.revision),fecha_inicio:nullableDate(row.fecha_inicio),fecha_entrega:nullableDate(row.fecha_entrega),responsable:account(row.responsable),counts:numbers(row.counts,['tareas','finalizadas','hitos','entregables']),href:`/proyectos?proyecto=${uuid(row.id)}&cliente=${clientId}`}),row=>row.id);
   const producciones=section(value.producciones,'visitas_mes_y_banco_pendiente_global',['visitas','videos_registrados','videos_reutilizados','registros_fotos','pendientes_banco_todos_los_periodos','fotos_pendientes_banco_todos_los_periodos'],row=>{
     const fecha=date(row?.fecha); if(!fecha.startsWith(period)) invalid();
-    return {id:uuid(row.id),titulo:str(row.titulo),revision:id(row.revision),fecha,videos_registrados:count(row.videos_registrados),registros_fotos:count(row.registros_fotos),href:`/producciones?visita=${uuid(row.id)}&mes=${period}&cliente=${clientId}`};
+    return {id:uuid(row.id),titulo:str(row.titulo),revision:id(row.revision),fecha,videos_registrados:count(row.videos_registrados),registros_fotos:count(row.registros_fotos),resultado_estado:productionResultStatus(row.ultimo_resultado,row.revision),href:`/producciones?visita=${uuid(row.id)}&mes=${period}&cliente=${clientId}`};
   },row=>row.id);
   const classifications=['confirmada_manualmente','historica_sin_confirmacion','no_publicada'];
   const editorial=section(value.editorial,'cohorte_mes_programado_visible',classifications,row=>{

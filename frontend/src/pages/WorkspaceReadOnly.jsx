@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { productionResultStatus } from './productionResultStatus.js';
 import { FilterSelect } from '../components/FilterSelect.jsx';
 import { getRolLabel } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea, getSesion } from "../utils.jsx";
@@ -792,6 +793,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         {!registry.ready && registryLookup.status !== "error" && <p role="status">Buscando visita de producción… Los controles de producción quedan bloqueados hasta verificar el vínculo.</p>}
         {!registry.ready && registryLookup.status === "error" && <div className="ros-warning-banner" role="alert">No se pudo verificar el vínculo de producción: {registryLookup.error}. No se habilitarán registros históricos sin verificarlo. <button type="button" onClick={() => setRegistryRetry(value => value + 1)}>Reintentar vínculo</button></div>}
         {registry.vinculo && <section className="ros-work-block"><h3>Visita vinculada</h3><p>{registry.vinculo.videos_grabados} de {registry.vinculo.videos_total} videos grabados · {registry.vinculo.fotos_total} registros de fotos</p><a href={`/producciones?visita=${encodeURIComponent(registry.vinculo.id)}`}>Abrir visita en Producciones ↗</a>{registry.vinculo.tipo === "origen" && <p>La fecha y el cliente de esta tarea se editan desde la visita.</p>}{registry.vinculo.tipo === "edicion" && <p>El cliente de esta tarea viene de la visita. La fecha de entrega de edición se puede editar en esta tarea.</p>}{registry.usesIndividual && <p>El registro individual de videos y fotos se administra en Producciones. El flujo agregado histórico queda solo como historial.</p>}</section>}
+        {registry.vinculo && <p className="prod-muted">{productionResultStatus(registry.vinculo.ultimo_resultado,registry.vinculo.revision).label}</p>}
         {isProductionVisit && registry.vinculo?.tipo === 'origen' && <section className="ros-work-block ros-production-closure" aria-label="Cierre de tarea de producción">
           <h3>{productionClosure.finished ? 'Tarea finalizada' : 'Finalizar tarea'}</h3>
           {!productionClosure.finished && <p>{!productionClosure.observed ? 'Actualizá el registro para verificar los videos de esta visita.'

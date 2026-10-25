@@ -1,5 +1,6 @@
 import { isValidProductionDate, getProductionProgress } from './production-visits.js';
 import { productionFinalizationReadiness } from './production-task-finalization.js';
+import { productionResultProjectionSql, productionResultProjection } from './production-result-projection.js';
 
 const fail = message => Object.assign(new Error(message), { status: 400 });
 const positive = value => Number.isSafeInteger(value) && value > 0;
@@ -22,7 +23,7 @@ export function productionReportRange(query, defaultMonth) {
 
 /** Explicit operational fields only: no scripts, raw JSON, payroll or finance. */
 export async function loadProductionReport(db, range) {
-  const visits = (await db.query(`SELECT v.id,v.tarea_origen_id,v.cliente_id,c.nombre cliente_nombre,
+  const visits = (await db.query(`SELECT v.id,v.tarea_origen_id,v.cliente_id,c.nombre cliente_nombre,v.revision,${productionResultProjectionSql},
     to_char(v.fecha,'YYYY-MM-DD') fecha,v.titulo,
     ARRAY(SELECT p.usuario_id FROM produccion_visita_participantes p WHERE p.visita_id=v.id ORDER BY p.usuario_id) participante_ids
     FROM produccion_visitas v JOIN clientes c ON c.id=v.cliente_id
@@ -38,6 +39,7 @@ export async function loadProductionReport(db, range) {
   return { ...range, visitas: visits.map(visit => ({
     id: visit.id, tarea_origen_id: visit.tarea_origen_id, cliente_id: visit.cliente_id,
     cliente_nombre: visit.cliente_nombre, fecha: visit.fecha, titulo: visit.titulo,
+    revision: visit.revision, ultimo_resultado: productionResultProjection(visit.ultimo_resultado,visit.revision),
     participante_ids: (visit.participante_ids || []).filter(positive),
     videos: videos.rows.filter(video => video.visita_id === visit.id).map(video => ({
       id: video.id, titulo: video.titulo, estado: video.estado, tarea_edicion_id: video.tarea_edicion_id,
@@ -49,7 +51,7 @@ export async function loadProductionReport(db, range) {
 
 export async function loadProductionTaskContext(db, taskId) {
   if (!positive(taskId)) throw fail('Tarea inválida.');
-  const result = await db.query(`SELECT v.id,to_char(v.fecha,'YYYY-MM-DD') fecha,v.revision,
+  const result = await db.query(`SELECT v.id,to_char(v.fecha,'YYYY-MM-DD') fecha,v.revision,${productionResultProjectionSql},
     source.revision AS task_revision,source.propiedades_extra->'produccion_videos_previstos' AS previstos_raw,
     CASE WHEN v.tarea_origen_id=$1 THEN 'origen' ELSE 'edicion' END tipo,
     (SELECT count(*)::int FROM produccion_videos pv WHERE pv.visita_id=v.id) videos_total,
@@ -61,6 +63,7 @@ export async function loadProductionTaskContext(db, taskId) {
   const visit = result.rows[0];
   if (!visit) return { vinculo: null };
   return { vinculo: { id: visit.id, fecha: visit.fecha, revision: visit.revision, tipo: visit.tipo,
+    ultimo_resultado: productionResultProjection(visit.ultimo_resultado,visit.revision),
     videos_total: visit.videos_total, videos_grabados: visit.videos_grabados, fotos_total: visit.fotos_total,
     usa_registro_individual: visit.videos_total > 0 || visit.fotos_total > 0,
     ...(visit.tipo === 'origen' ? { finalizacion: productionFinalizationReadiness(visit.task_revision,

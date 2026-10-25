@@ -59,7 +59,7 @@ test('task context provides only a verified registry link and counts, not raw ta
     return { rows: [{ id: 'visit', fecha: '2026-10-12', revision: 5, tipo: 'origen', task_revision: 7, previstos_raw: 3, videos_total: 3, videos_grabados: 2, fotos_total: 1, importe: 99999 }] };
   } };
   assert.deepEqual(await loadProductionTaskContext(db, 12), { vinculo: {
-    id: 'visit', fecha: '2026-10-12', revision: 5, tipo: 'origen', videos_total: 3, videos_grabados: 2, fotos_total: 1, usa_registro_individual: true,
+    id: 'visit', fecha: '2026-10-12', revision: 5, tipo: 'origen', ultimo_resultado: null, videos_total: 3, videos_grabados: 2, fotos_total: 1, usa_registro_individual: true,
     finalizacion: { task_revision: 7, previstos: 3, grabados: 2, total: 3, habilitada: false },
   } });
 });

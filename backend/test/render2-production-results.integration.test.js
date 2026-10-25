@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { access } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { startLocalHarness, assertFixtureIdentity, fixturePassword, request } from '../scripts/render2-local-test.js';
+import { loadProductionReport } from '../src/production-reporting.js';
 
 test('production result journal preserves partial evidence without completing tasks or consuming pending media', {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 300000,
@@ -103,6 +104,21 @@ test('production result journal preserves partial evidence without completing ta
     frozenRow = await journalRaw(saved.id);
   });
 
+  await t.test('shared visit, task, client and report projections expose only the same current result evidence', async () => {
+    const before=await snapshot();
+    const expected=pick(saved,['id','visita_revision','revision_resultante','registrado_at','vigente']);
+    expected.parcial=true;
+    const detail=await api(`/producciones/${mixed.id}`,'GET',undefined,91003);
+    assert.equal(detail.status,200);assert.deepEqual(detail.body.visita.ultimo_resultado,expected);
+    const task=await api(`/producciones/tareas/${mixed.tarea_origen_id}`,'GET',undefined,91003);
+    assert.equal(task.status,200);assert.deepEqual(task.body.vinculo.ultimo_resultado,expected);
+    const hub=await api(`/clientes/${client.id}/operacion?periodo=2026-10`,'GET',undefined,91003);
+    assert.equal(hub.status,200);assert.deepEqual(hub.body.producciones.items.find(row=>row.id===mixed.id).ultimo_resultado,expected);
+    const report=await loadProductionReport({query:async(sql,values)=>({rows:await f.query(sql,values)})},{desde:'2026-10-01',hasta:'2026-11-01'});
+    assert.deepEqual(report.visitas.find(row=>row.id===mixed.id).ultimo_resultado,expected);
+    assert.deepEqual(await snapshot(),before);
+  });
+
   await t.test('same UUID replays, recovery is actor-owned, stale/new UUID and changed intent do not write', async () => {
     assert.ok(saved); const before = await snapshot();
     const replay = await save(mixed, requestId); assert.equal(replay.status, 200);
@@ -134,6 +150,7 @@ test('production result journal preserves partial evidence without completing ta
       expected_revision: saved.revision_resultante, guion: 'QA319 corrected script', estado: 'repetir',
     });
     assert.equal(changed.status, 200); const current = changed.body.visita;
+    assert.equal(current.ultimo_resultado.id,saved.id);assert.equal(current.ultimo_resultado.vigente,false);
     const before = await snapshot(['produccion_resultados', 'produccion_visitas']);
     const correction = await save(current); assert.equal(correction.status, 201);
     assert.notEqual(correction.body.resultado.id, saved.id); assert.equal(correction.body.resultado.vigente, true);

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { productionResultProjectionSql, productionResultProjection } from './production-result-projection.js';
 import { withProductionReadSnapshot } from './production-read-snapshot.js';
 import { withProductionAuthority as transaction } from './production-authority.js';
 import { extractProductionCreateRequest, withProductionCreateReceipt } from './production-create-receipts.js';
@@ -77,7 +78,7 @@ export function validateProductionItem(body, kind, { partial = false, reuse = fa
   return partial ? result : { estado: kind === 'videos' ? 'planificado' : 'realizada', observaciones: '', ...(kind === 'videos' ? { guion: '', material_url: '' } : { drive_url: '' }), ...result };
 }
 
-const VISITS = `SELECT v.id,v.tarea_origen_id,v.cliente_id,c.nombre cliente_nombre,
+const VISITS = `SELECT v.id,v.tarea_origen_id,v.cliente_id,c.nombre cliente_nombre,${productionResultProjectionSql},
   to_char(v.fecha,'YYYY-MM-DD') fecha,v.titulo,v.observaciones,v.drive_url,v.revision,
   (EXISTS(SELECT 1 FROM produccion_reconciliaciones r WHERE r.visita_id=v.id)
     OR EXISTS(SELECT 1 FROM produccion_revision_lotes b WHERE b.visita_id=v.id)) contexto_historico_revisado,
@@ -97,6 +98,7 @@ const videoDto = row => ({...scalarFields(row, ['id', 'visita_id', 'video_origen
   fecha_entrega_handoff: date(row.fecha_entrega) ? row.fecha_entrega : null });
 function visitDto(row, videos, photos) {
   return { ...scalarFields(row, ['id', 'tarea_origen_id', 'cliente_id', 'cliente_nombre', 'fecha', 'titulo', 'observaciones', 'drive_url', 'revision']),
+    ultimo_resultado: productionResultProjection(row.ultimo_resultado,row.revision),
     contexto_historico_revisado: row.contexto_historico_revisado === true,
     participante_ids: (row.participante_ids || []).filter(positive),
     videos: videos.filter(video => video.visita_id === row.id).map(videoDto),

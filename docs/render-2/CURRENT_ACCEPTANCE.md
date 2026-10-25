@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Evidencia del resultado compartida entre sectores — integración325
+
+`production-result-projection.js` centraliza `ultimo_resultado`: null o ID/revisión fuente/revisión resultante/fecha/parcial/vigente; columnas explícitas, sin resumen crudo/recibo/actor/finanzas. Subconsulta correlacionada limitada al último resultado por revisión, en el mismo statement que lee `v.revision`; aprovecha índice único visita/revisión091 sin migración nueva. Registry de visitas, contexto de tareas, informe operativo de producción y resumen del cliente usan esta proyección. Leerla no registra nada ni finaliza/publica trabajo.
+
+Harvey entregó helper de presentación `productionResultStatus.js` con7 pruebas. Main lo conectó a agenda, detalle de tarea y preview del cliente, cuyo parser solo conserva etiqueta/tone saneados. Distingue sin resultado, parcial vigente, registrado, desactualizado y sin verificar ante contrato inválido; no se usa como autoridad de cierre.51 focales backend y20 focales frontend pasan. PostgreSQL temporal55938:18PASS/0FAIL/SKIP, incluida lectura por empleado de visita/tarea/cliente y reporte directo con evidencia idéntica, tablas invariantes, resultado anterior obsoleto tras editar y cleanup (`/private/tmp/render2-goal325-physical.log`). Suite frontend3101PASS/1SKIP/0FAIL de3102 (`/private/tmp/render2-goal325-frontend.log`); backend2397PASS/160opt-inSKIP/0FAIL de2557 (`/private/tmp/render2-goal325-backend.log`); build pasa (`/private/tmp/render2-goal325-build.log`). Los parsers de respuesta se prueban separadamente; el reporte directo no acredita que todas las pantallas de Reportes muestren esta nueva etiqueta. Revisión visual nativa de estas etiquetas y core14 ampliado tras325 pendientes. Sin despliegue ni bases existentes.
+
 ### Núcleo ampliado reproducible y regresión backend — integración324
 
 El comando `npm run qa:core:local` ahora incluye14 archivos fijos (antes12): agrega `render2-production-results.integration.test.js` y `render2-production-results-upgrade.integration.test.js`. Mantiene ejecución serial, entorno cerrado sin DATABASE_URL heredada, rechazo de argumentos/targets, fixtures propios y cleanup. Prueba del coordinador exige los nuevos archivos y tamaño/argumentos exactos. Esto incorpora al gate habitual resultados parciales, recuperación/idempotencia, historial, rollback y upgrade091 real sobre fixture poblado; no cambia reglas de producto.

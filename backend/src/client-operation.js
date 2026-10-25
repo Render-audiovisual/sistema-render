@@ -1,4 +1,5 @@
 import { SYSTEM_USER_ROLES } from './user-roles.js';
+import { productionResultProjectionSql, productionResultProjection } from './production-result-projection.js';
 import { effectiveTaskStateSql } from './task-review-query.js';
 import { readProjectList } from './projects.js';
 import { annotateEditorialEvidence } from './editorial-evidence-read.js';
@@ -71,12 +72,13 @@ async function productionSection(db,id,period) {
       WHERE v.cliente_id=$1 AND pf.estado IN ('pendiente','repetir')) AS fotos_pendientes_banco_todos_los_periodos`,values)).rows[0];
   if (!stats) throw new Error('Missing client production counts');
   const counts=Object.fromEntries(['visitas','videos_registrados','videos_reutilizados','registros_fotos','pendientes_banco_todos_los_periodos','fotos_pendientes_banco_todos_los_periodos'].map(key=>[key,count(stats[key])]));
-  const rows=(await db.query(`SELECT v.id,v.titulo,v.revision,to_char(v.fecha,'YYYY-MM-DD') AS fecha,
+  const rows=(await db.query(`SELECT v.id,v.titulo,v.revision,to_char(v.fecha,'YYYY-MM-DD') AS fecha,${productionResultProjectionSql},
     (SELECT count(*)::int FROM produccion_videos pv WHERE pv.visita_id=v.id) AS videos_registrados,
     (SELECT count(*)::int FROM produccion_fotos p WHERE p.visita_id=v.id) AS registros_fotos
     FROM produccion_visitas v WHERE v.cliente_id=$1 AND v.fecha>=$2::date AND v.fecha<$2::date+INTERVAL '1 month'
     ORDER BY v.fecha DESC,v.id DESC LIMIT 6`,values)).rows;
   const items=rows.map(row=>({id:row.id,titulo:text(row.titulo),revision:row.revision,fecha:row.fecha,
+    ultimo_resultado:productionResultProjection(row.ultimo_resultado,row.revision),
     videos_registrados:count(row.videos_registrados),registros_fotos:count(row.registros_fotos),href:`/producciones?visita=${row.id}&cliente=${id}&mes=${row.fecha.slice(0,7)}`}));
   return section('visitas_mes_y_banco_pendiente_global',counts.visitas,counts,items,`/producciones?cliente=${id}&mes=${period}`);
 }
