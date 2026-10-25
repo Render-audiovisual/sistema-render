@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Cambio móvil de estado conectado; arrastre entre estados no acreditado — verificación343
+
+Revalidación de evidencia corrigió premisa inicial: BOARD_NATIVE_DROP_QA.md ya cierra en173 orden nativo antes de tarjeta/al final con PostgreSQL/recarga/otro lector. No se reabrió como bug. Harvey revisó contrato activo: iniciar sobre botón título/select cancela drag deliberadamente; handle/fondo sí admiten. Cambiar estado no requiere Manual; aprobar edición abre revisión explícita. No halló nuevo defecto demostrado.
+
+Main creó runner temporal `/private/tmp/render2-goal343-native.mjs`, PG55951/browser52882, root render2-local-vPoFmI, PID94722; dos tareas sintéticas desarrollo/pendiente/revisión1 con asignación91001, identidad exacta. Intento de control nativo abrió ventana Drive ajena; no se actuó allí. Inventario de ventanas fue rechazado por riesgo de exponer contenido privado. Se respetó rechazo: controles CDP limitados a pestaña local tampoco estuvieron disponibles (documento pausado), dos comprobaciones del mismo handle. No se inyectaron eventos JS ni se afirma un drag exitoso o fallo del producto. Este gate concreto sigue pendiente; no justifica ampliar acceso a ventanas privadas ni bloquear todo el objetivo.
+
+Alternativa móvil existente probada por CUA en390×844: selector de tarjeta QA343 Mover desarrollo→En proceso; conteos1/1, selección de columna En proceso y recarga conserva tarjeta/estado y URL `?board_column=en_progreso`. Al cerrar runner, SQL confirma tarea1 en_progreso/revisión2 y tarea2 pendiente/revisión1, comentario único `[Actividad] movió la tarea de Pendientes a En proceso`,104 tablas restantes idénticas y cero notificaciones. Login independiente qa_designer obtiene GET200 con el mismo estado/revisión. Esto no sustituye el gesto entre columnas. El esquema actual del comentario guarda autor textual, no actor ID; esta cohorte no acredita identidad persistente del autor por ID.
+
+Exit0 y cleanup ENOENT; viewport restaurado/pestaña cerrada. Captura inspeccionada `/private/tmp/render2-goal343-mobile-state-reloaded.png` quedó reducida con margen gris y tarjeta fuera de encuadre: acredita parcialmente conteos, no escala móvil completa; DOM/SQL son evidencia del resultado. Sin cambios de producto, build ni suites globales nuevos; sin producción/base existente/proveedores. Objetivo global activo.
+
 ### Selector compacto de vistas de Tareas en móvil — integración342
 
 Main añadió FilterSelect controlado «Vista de tareas» con las cinco opciones existentes y el mismo setView/URL;≤700px sustituye visualmente pestañas, conserva Feedback separado con contador/handler y no quita filtros/Papelera/creación. Escritorio conserva cinco pestañas y oculta selector. CSS en TaskHeader existente, sin otra hoja ni nuevo estado de negocio; guard visual valida exactamente bloque700px/default y mantiene baseline restante. Apple UI/frontend-design orientaron reducción de altura y control compartido44px. Harvey creó tres pruebas AST/callback real y cascade Workspace→TaskHeader; main leyó archivo completo. Guard de siete filtros se amplió para reconocer el selector separado sin cambiar sus siete contratos AST.
