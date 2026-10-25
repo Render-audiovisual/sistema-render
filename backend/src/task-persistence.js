@@ -5,12 +5,15 @@ import {captureTaskCreateReceipt,beginTaskCreateReceipt,readTaskCreateReceiptTas
 // Task fields and ID relations form a single commit. A failed relation write
 // must not leave a successfully saved task with missing access permissions.
 export async function persistAssignedTask(pool, sql, values, assignment, afterSave = null, beforeSave = null, options = {}) {
+  const prepareCreate=options.prepareCreate;
+  if(prepareCreate!==undefined&&(typeof prepareCreate!=='function'||options.createReceipt===undefined||options.assignmentNotificationMode!=='created'))
+    throw Object.assign(new Error('Preparación de creación inválida.'),{status:400});
   if (options.assignmentNotificationMode !== undefined) {
     if (options.assignmentNotificationMode !== 'created')
       throw Object.assign(new Error('Modo de notificación inválido.'), { status:400 });
-    if (!assignment) throw Object.assign(new Error('La creación requiere una asignación resuelta.'), { status:400 });
+    if (!assignment&&!prepareCreate) throw Object.assign(new Error('La creación requiere una asignación resuelta.'), { status:400 });
   }
-  const capture = assignment && (options.assignmentNotificationActor !== undefined || options.assignmentNotificationMode !== undefined)
+  const capture = (assignment||prepareCreate) && (options.assignmentNotificationActor !== undefined || options.assignmentNotificationMode !== undefined)
     ? captureAssignmentNotification(options) : null;
   const created = capture?.mode === 'created';
   const receipt=options.createReceipt===undefined?null:captureTaskCreateReceipt(options.createReceipt);
@@ -31,6 +34,12 @@ export async function persistAssignedTask(pool, sql, values, assignment, afterSa
         await db.query('COMMIT');
         return {rows,creationReplayed:true};
       }
+    }
+    if(prepareCreate){
+      const prepared=await prepareCreate(db);
+      if(!prepared||typeof prepared.sql!=='string'||!Array.isArray(prepared.values)||!prepared.assignment)
+        throw Object.assign(new Error('No se pudo preparar la creación.'),{status:400});
+      sql=prepared.sql;values=structuredClone(prepared.values);assignment=structuredClone(prepared.assignment);
     }
     if (beforeSave) await beforeSave(db);
     if (assignment) {

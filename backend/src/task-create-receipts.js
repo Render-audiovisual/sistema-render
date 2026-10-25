@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const positive=value=>Number.isSafeInteger(value)&&value>0&&value<=2147483647;
 const uuid=value=>typeof value==='string'&&value.length===36&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
+export function taskCreateRequestId(value){if(!uuid(value))throw fail('El identificador del intento no es válido.');return value.toLowerCase();}
 // Internal input is the complete validated create contract, not derived labels,
 // timestamps or raw HTTP. Preserve array order: the caller must normalize sets.
 function canonical(value,depth=0){
@@ -23,7 +24,7 @@ export function captureTaskCreateReceipt(input){
     ||Object.getPrototypeOf(input.intent)!==Object.prototype||input.intent.workspace!=='render_os')throw fail('El intento de creación no es válido.');
   const json=canonical(input.intent);
   if(Buffer.byteLength(json)>200000)throw fail('El intento de creación es demasiado grande.');
-  return Object.freeze({requestId:input.requestId.toLowerCase(),
+  return Object.freeze({requestId:taskCreateRequestId(input.requestId),
     payloadHash:createHash('sha256').update('render-task-create-v1\n'+json).digest('hex')});
 }
 // Caller owns transaction and retains current actor authority before this lock.

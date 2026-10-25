@@ -132,7 +132,9 @@ test("todo el equipo puede abrir el formulario y crear únicamente tareas RENDER
   const serverSource = readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
 
   assert.doesNotMatch(serverSource, /router\.post\("\/tareas", requireRole\("admin"\)/);
-  assert.match(serverSource, /req\.auth\?\.rol !== "admin" && workspace !== "render_os"/);
+  const taskCreateSource=readFileSync(new URL('../src/task-create-input.js',import.meta.url),'utf8');
+  assert.match(taskCreateSource, /actor\?\.rol !== "admin" && workspace !== "render_os"/);
+  assert.match(serverSource,/prepareTaskCreation\(db,input,assignmentNotificationActor,policy\)/);
   assert.match(workspaceSource, /const guard = captureRequest\(apiJson\)/);
   assert.match(workspaceSource, /Promise\.all\(\[guard.request\("\/api\/clientes"\), guard.request\("\/api\/usuarios"\)\]\)/);
   assert.doesNotMatch(workspaceSource, /\{isAdmin && <button className="ros-primary-button"/);

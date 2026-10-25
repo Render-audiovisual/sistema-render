@@ -37,6 +37,8 @@ import { normalizeSelfProfileInput, SelfProfileInputError } from './self-profile
 import { USER_ADMIN_REVISION_SQL, UserAdministrationInputError, userAdministrationId, normalizeUserAdministrationPatch } from './user-admin-patch.js';
 import { resolveTaskAssignments, annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { persistAssignedTask } from "./task-persistence.js";
+import {extractTaskCreateAttempt,prepareTaskCreation} from './task-create-input.js';
+import {readTaskCreationAttempt} from './task-create-recovery.js';
 import { assertCurrentPublicationRecipient } from './publication-recipient-authority.js';
 import { correctProductionRecord } from "./production-record-updates.js";
 import { taskOperationalDto, editorialOperationalDto } from "./operational-dto.js";
@@ -1482,137 +1484,35 @@ router.get("/publicaciones/:id/tareas", async (req, res, next) => {
   }
 });
 
+router.get('/tareas/creaciones/:requestId',async(req,res,next)=>{
+  res.set('Cache-Control','no-store');
+  try{
+    const {task,requestId}=await readTaskCreationAttempt(pool,req.auth,req.params.requestId,req.query);
+    res.json({version:1,task:taskOperationalDto(task,req.auth),operation:{request_id:requestId,task_id:task.id,replayed:true}});
+  }catch(error){if([400,401,403,404,409].includes(error.status))return res.status(error.status).json({error:error.message});next(error);}
+});
+
 router.post("/tareas", async (req, res, next) => {
   try {
     const assignmentNotificationActor = Object.freeze({ id: req.auth.id, rol: req.auth.rol, session_version: req.auth.session_version });
-    try { assertTaskBusinessInput(req.body); }
-    catch (error) { return res.status(400).json({ error: error.message }); }
-    const {
-      titulo,
-      asignado_a,
-      cliente_id,
-      estado,
-      requiere_aprobacion,
-      escalada_a,
-      motivo,
-      fecha_vencimiento,
-      historia_id,
-      publicacion_id,
-      tipo_tarea,
-      subtipo,
-      prioridad,
-      aclaraciones,
-      material_referencia,
-      tarea_padre_id,
-      resumen,
-      etiquetas,
-      colaboradores,
-      workspace,
-      produccion_videos_previstos,
-    } = req.body;
-
-    if (req.auth?.rol !== "admin" && workspace !== "render_os") {
-      return res.status(403).json({ error: "Solo podés crear tareas dentro de RENDER OS." });
-    }
-
-    if (!titulo || (!asignado_a && !req.body.asignado_a_id)) {
-      return res.status(400).json({ error: "Faltan título o asignado_a." });
-    }
-    const assignment = await resolveTaskAssignments(pool, {
-      ...req.body, colaboradores,
-    });
-    if (tipo_tarea && !TIPOS_TAREA_VALIDOS.includes(tipo_tarea)) {
-      return res.status(400).json({ error: "Sector (tipo_tarea) inválido." });
-    }
-    if (prioridad && !PRIORIDADES_TAREA_VALIDAS.includes(prioridad)) {
-      return res.status(400).json({ error: "Prioridad inválida." });
-    }
-
-    const estadoFinal = ESTADOS_TAREA_VALIDOS.includes(normalizeTaskState(estado))
-      ? normalizeTaskState(estado)
-      : "pendiente";
-    if (workspace === "render_os" && estado === "programada") {
-      return res.status(400).json({ error: "El estado Programada ya no forma parte del flujo de tareas." });
-    }
-    if (["aprobada", "finalizada"].includes(estadoFinal)) {
-      return res.status(400).json({ error: "Creá la tarea pendiente; la aprobación y finalización requieren su recorrido de trabajo." });
-    }
-
-    if (workspace === "render_os" && tarea_padre_id) {
-      const padreRenderOS = await pool.query(
-        `SELECT id FROM tareas
-         WHERE id = $1
-           AND propiedades_extra->>'workspace' = 'render_os'`,
-        [tarea_padre_id],
-      );
-      if (padreRenderOS.rows.length === 0) {
-        return res.status(404).json({ error: "Tarea padre no encontrada." });
-      }
-    }
-
-    const propiedadesExtra = { Origen: "Cargada desde la plataforma" };
-    if (escalada_a) {
-      propiedadesExtra.escalada_a = escalada_a;
-    }
-    if (motivo) {
-      propiedadesExtra.motivo = motivo;
-    }
-    if (resumen) {
-      propiedadesExtra.resumen = String(resumen).trim();
-    }
-    if (Array.isArray(etiquetas)) {
-      propiedadesExtra.etiquetas = etiquetas.map(String).map((item) => item.trim()).filter(Boolean);
-    }
-    propiedadesExtra.colaboradores = assignment.collaboratorNames;
-    if (workspace === "render_os") {
-      propiedadesExtra.workspace = "render_os";
-      if (estadoFinal === "publicada") propiedadesExtra.finalizada_at = new Date().toISOString();
-    }
-    const nuevaTarea = { titulo, subtipo, tipo_tarea, propiedades_extra: propiedadesExtra };
-    if (isProductionVisitTask(nuevaTarea)) {
-      const planned = Number(produccion_videos_previstos);
-      if (produccion_videos_previstos != null && produccion_videos_previstos !== "" && (!Number.isInteger(planned) || planned <= 0)) {
-        return res.status(400).json({ error: "Los videos previstos deben ser un entero mayor que cero, o dejarse sin definir." });
-      }
-      if (planned > 0) propiedadesExtra.produccion_videos_previstos = planned;
-      propiedadesExtra.produccion_registros = [];
-    }
-
-    const result = await persistAssignedTask(pool,
-      `INSERT INTO tareas (titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-       RETURNING id, revision, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
-      [
-        titulo,
-        assignment.ownerName,
-        cliente_id || null,
-        estadoFinal,
-        Boolean(requiere_aprobacion),
-        JSON.stringify(propiedadesExtra),
-        fecha_vencimiento || null,
-        historia_id || null,
-        publicacion_id || null,
-        tipo_tarea || null,
-        subtipo || null,
-        prioridad || "media",
-        aclaraciones || null,
-        material_referencia || null,
-        tarea_padre_id || null,
-      ], assignment, (db, task) => syncProductionVisitFromTask(db, task, req.auth.id), null,
-      { assignmentNotificationActor, assignmentNotificationMode: 'created' },
-    );
-
+    const policy={states:ESTADOS_TAREA_VALIDOS,types:TIPOS_TAREA_VALIDOS,priorities:PRIORIDADES_TAREA_VALIDAS};
+    const attempt=extractTaskCreateAttempt(req.body,policy);
+    const input=attempt?.input??structuredClone(req.body);
+    const prepare=db=>prepareTaskCreation(db,input,assignmentNotificationActor,policy);
+    const prepared=attempt?null:await prepare(pool);
+    const result=await persistAssignedTask(pool,prepared?.sql,prepared?.values,prepared?.assignment,
+      (db,task)=>syncProductionVisitFromTask(db,task,assignmentNotificationActor.id),null,
+      {assignmentNotificationActor,assignmentNotificationMode:'created',
+        ...(attempt?{createReceipt:attempt.receipt,prepareCreate:prepare}:{})});
     const tareaCreada = result.rows[0];
-    res.status(201).json(taskOperationalDto(tareaCreada, req.auth));
+    if(attempt)res.set('Cache-Control','no-store').status(result.creationReplayed?200:201).json({version:1,task:taskOperationalDto(tareaCreada,req.auth),
+      operation:{request_id:attempt.receipt.requestId,task_id:tareaCreada.id,replayed:result.creationReplayed}});
+    else res.status(201).json(taskOperationalDto(tareaCreada, req.auth));
     if (result.assignmentNotification?.destinatarioIds.length) {
-      notificarAsignacionSinInterrumpir({
-        pool,
-        ...result.assignmentNotification,
-        motivo: "creada",
-      });
+      notificarAsignacionSinInterrumpir({pool,...result.assignmentNotification,motivo:"creada"});
     }
   } catch (error) {
-    if ([400, 401, 403, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
+    if ([400, 401, 403, 404, 409].includes(error.status)) return res.status(error.status).json({ error: error.message });
     next(error);
   }
 });
