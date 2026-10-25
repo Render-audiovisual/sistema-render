@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Calendario: «más» con siete tareas, teclado y apertura correcta — verificación374
+
+La revisión de Main/Harvey confirmó que TaskCalendar ya usa el Modal nativo compartido desde335 y que336 acreditó el caso básico. No se reabrió ni reimplementó ese cierre. Se probó el gate que336 dejaba explícitamente abierto: más de tres tareas en un día y el invocador «+4 más». Guía Web Interface Guidelines aplicada a foco, teclado, nombres y scroll contenido (https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md); esto no equivale a una auditoría de todos los criterios/archivos ni lectores de pantalla.
+
+Fixture propioPG55967/HTTP52894, siete tareas creadas por HTTP y una de título largo, sesión cookie de Luciano QA y build index-CqumaYb4 verificado.1280×900: «+4 más» abre7filas en un único dialog:modal, foco inicial Cerrar resumen; ShiftTab llega al último ítem y Tab vuelve al cierre sin salir del modal. Escape retira el diálogo y devuelve foco exactamente a «+4 más». Contenido620px y overscroll-behavior:contain comprobados.
+
+390×844: abrir día25 muestra hoja inferior de390×581, lista desplazable7filas, cierre44×44 y sin overflow horizontal. Abrir la fila de título largo lleva a task=7 y al título íntegro; el resumen desaparece y queda un solo diálogo de tarea. Volver conserva view=calendar/month sin task. Abrir día25 y Escape devuelve foco a Ver resumen del25. Nueva tarea limpia: un único modal nativo, cierre44×44/tinta visible, ShiftTab→Cancelar, Tab→cierre, Escape→Nueva tarea. No se pulsa Crear/Guardar ni se prueba descarte sucio en esta ejecución. Recarga conserva7tareas; día26 muestra0 con mensaje vacío y Escape vuelve al día26.
+
+34 focales TaskCalendarNativeDialog/Responsive/Modal PASS (/private/tmp/render2-goal374-focal.log).108tablas públicas JSON/xmin/ctid invariantes desde baseline postlogin, siete tareas intactas; runner terminal0/cleanup ENOENT hwKu6Q (/private/tmp/render2-goal374-native.log). Captura móvil /private/tmp/render2-goal374-calendar-mobile.png inspeccionada; viewport restaurado y pestaña cerrada. Sin cambios de código, build nuevo, suites globales renovadas, servicios configurados ni despliegue. La evidencia acotada no acredita todas las fechas/roles/listas grandes/teclados/zoom/dispositivos.
+
 ### Aprobación histórica efectiva en métricas y detalle de Reportes — integración373
 
 Se cierra el defecto reproducido372. Main reutilizó effectiveTaskFilterState en buildEmployeeReport y employeeTaskDetails: el booleantrue histórico sobre estado en_revision se lee aprobada; stringtrue/false/ausencia siguen revisión. Alias histórica publicada se lee finalizada como en el tablero, pero detalle conserva explícitamente estado_almacenado y lo muestra sin reescribir filas. employeeFormatBreakdown consume esa proyección. No cambia finalización, evidencia editorial, ACL, escritor, esquema ni CSS. El contador «No finalizadas» conserva aprobadas hasta finalizar; no se inventan timestamps o artefactos.

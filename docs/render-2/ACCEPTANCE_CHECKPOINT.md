@@ -61,6 +61,7 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - CLI372: diagnóstico redactado y17 pruebas aprobadas; conserva timeout5000 y entorno PATH. Diferencia `error.code` y señal sin publicar argumentos, stdout, stderr o mensaje privado del hijo. No explica retroactivamente la causa de la terminación indeterminada371.
 - Backend372:2442PASS/168SKIP opt-in/0FAIL de2610, terminal0; `/private/tmp/render2-goal372-final-backend.log`. Las omitidas no se cuentan como pruebas físicas ejecutadas.
 - Actualización373: core30archivos291PASS/0FAIL/0SKIP; físicas suplementarias8PASS; frontend3225PASS y backend2445PASS/169SKIP opt-in/0FAIL. Regresión de aprobación histórica y navegador1280/390 acotados,108 tablas nativas invariantes. Logs `render2-goal373-*` en `/private/tmp`; detalle de alcances en CURRENT_ACCEPTANCE.md.
+- Verificación374: calendario de siete tareas, «+4 más», Tab/Escape/retorno, apertura task7, día vacío y Nueva tarea limpia comprobados nativamente1280/390,108 tablas invariantes y cleanup.34 focales aprobadas; sin nuevo producto ni renovación global. Cierra el caso «más» pendiente336, no toda la accesibilidad del sistema.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
 
