@@ -18,7 +18,10 @@ export async function apiRequest(url, options) {
 }
 
 export function apiJson(url, options) {
-  return apiRequest(url, options).then((body) => Array.isArray(body) ? body : []);
+  return apiRequest(url, options).then((body) => {
+    if (!Array.isArray(body)) throw new Error('No pudimos verificar la lista recibida. Volvé a consultarla.');
+    return body;
+  });
 }
 
 export function buildTaskPageUrl(options = {}) {
