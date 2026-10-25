@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import {createProductionContextGate} from './productionContextGate.js';
 
 // Execute the actual callback extracted from canonical JSX. This is not a
 // mounted React test or a claim about native dialog/browser behavior.
@@ -22,26 +23,37 @@ assert.ok(ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer
 function callback(bindings) {
   return Function(...Object.keys(bindings), `return (${initializer.getText(tree)});`)(...Object.values(bindings));
 }
-function harness({ creating, dirty = false, uncertain = false, busy = false, allow = true }) {
+function harness({ creating, dirty = false, uncertain = false, busy = false, allow = true, deferred = false }) {
   const draft = { titulo: 'Borrador conservado', cliente_id: '37', observaciones: 'Sin enviar' };
   const pendingIntent = uncertain ? { request_id: '11111111-1111-4111-8111-111111111111', body: JSON.stringify(draft) } : null;
   const state = { creating, detailLoading: true, selected: { id: 'observed-visit' }, dirty: new Set(dirty ? ['create'] : []), draft, pendingIntent, busy };
   const effects = [], openVersion = { current: 19 };
-  let asks = 0;
+  let asks = 0, settle;
+  const gate = createProductionContextGate(); gate.activate();
+  const mayLeaveDeclaration = find(page, node => ts.isVariableDeclaration(node) && node.name.getText(tree) === 'mayLeave');
+  assert.equal(mayLeaveDeclaration.length, 1);
+  const bindings = {
+    contextGate: {current: gate}, createCapturedRequest: () => ({current: () => true}),
+    sesion: {}, getSesion() {}, apiRequest() {},
+    dirty: {current: state.dirty}, writeLock: {current: busy}, batchDraft: {current: {busy: false}},
+    resultDraft: {current: {busy: false, locked: false}}, productionObservation: {current: {}},
+    readEpoch: {current: 1}, openVersion, visitObserver: {current: {token: {}}},
+    window: {location: {href: 'https://render.test/producciones'}}, calendarHeadingRef: {current: null},
+    contextConfirmation: {request: () => deferred ? new Promise(resolve => {settle = resolve;}) : Promise.resolve(allow)},
+  };
+  const actualMayLeave = Function(...Object.keys(bindings), `return (${mayLeaveDeclaration[0].initializer.getText(tree)});`)(...Object.values(bindings));
   const deps = {
     creating, openVersion,
-    mayLeave() {
+    mayLeave(action) {
       asks++;
       effects.push(['mayLeave']);
-      if (busy || !allow) return false;
-      state.dirty.clear();
-      return true;
+      return actualMayLeave(action);
     },
     setDetailLoading(value) { effects.push(['detailLoading', value, openVersion.current]); state.detailLoading = value; },
     setSelected(value) { effects.push(['selected', value]); state.selected = value; },
     setCreating(value) { effects.push(['creating', value]); state.creating = value; },
   };
-  return { state, effects, openVersion, deps, asks: () => asks };
+  return { state, effects, openVersion, deps, asks: () => asks, settle: value => settle(value), gate };
 }
 
 for (const [name, flags] of [
@@ -64,10 +76,10 @@ for (const [name, flags] of [
 }
 
 for (const [name, flags] of [['discard refused', { allow: false }], ['operation busy', { busy: true }]]) {
-  test(`initial create denied (${name}) preserves all observations`, () => {
+  test(`initial create denied (${name}) preserves all observations`, async () => {
     const h = harness({ creating: false, dirty: true, uncertain: true, ...flags });
     const before = structuredClone(h.state);
-    callback(h.deps)();
+    await callback(h.deps)();
     assert.equal(h.asks(), 1);
     assert.deepEqual(h.effects, [['mayLeave']]);
     assert.equal(h.openVersion.current, 19);
@@ -75,9 +87,9 @@ for (const [name, flags] of [['discard refused', { allow: false }], ['operation 
   });
 }
 
-test('accepted initial entry fences the old detail and opens exactly once; next creating observation is no-op', () => {
+test('accepted initial entry fences the old detail and opens exactly once; next creating observation is no-op', async () => {
   const h = harness({ creating: false, dirty: true });
-  callback(h.deps)();
+  await callback(h.deps)();
   assert.equal(h.asks(), 1);
   assert.equal(h.openVersion.current, 20);
   assert.deepEqual(h.effects, [['mayLeave'], ['detailLoading', false, 20], ['selected', null], ['creating', true]]);
@@ -90,6 +102,17 @@ test('accepted initial entry fences the old detail and opens exactly once; next 
   assert.equal(h.asks(), 1);
   assert.equal(h.openVersion.current, 20);
   assert.equal(h.effects.length, 4);
+});
+
+test('a deferred create decision retains draft and receipt until explicit consent; denial has no navigation effects', async () => {
+  const h = harness({creating: false, dirty: true, uncertain: true, deferred: true});
+  const before = structuredClone(h.state), draft = h.state.draft, receipt = h.state.pendingIntent;
+  const pending = callback(h.deps)();
+  assert.equal(h.asks(), 1); assert.equal(h.openVersion.current, 19);
+  assert.deepEqual(h.effects, [['mayLeave']]); assert.deepEqual(h.state, before);
+  h.settle(false); assert.equal(await pending, false);
+  assert.deepEqual(h.state, before); assert.equal(h.state.draft, draft); assert.equal(h.state.pendingIntent, receipt);
+  assert.equal(h.openVersion.current, 19); assert.deepEqual(h.effects, [['mayLeave']]);
 });
 
 test('the actual Nueva visita button delegates to the named callback and keeps native busy disabling', () => {

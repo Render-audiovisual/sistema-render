@@ -6,6 +6,7 @@ import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceE
 import { readFeedbackNotesLocation, feedbackNotesLocationUrl } from './feedbackNotesPagination.js';
 import { feedbackNotesMutationBody } from './feedbackNotesMutation.js';
 import { productionCalendarDay } from './productionRouteContext.js';
+import { createProductionContextGate } from './productionContextGate.js';
 import ts from 'typescript';
 
 // Extract real non-JSX handlers. These are protocol/source tests, not mounted
@@ -71,7 +72,8 @@ test('production getter reads mutable set/write lock at navigation time without 
   const expression = productionGuards[0].arguments[0].getText(productionTree);
   const dirty = { current: new Set() }, writeLock = { current: false }, batchDraft = { current: {busy:false} };
   const resultDraft = {current:{busy:false,locked:false}};
-  const getter = Function('dirty', 'writeLock', 'batchDraft', 'resultDraft', `return ${expression};`)(dirty, writeLock, batchDraft, resultDraft);
+  const contextGate={current:{pending:false}};
+  const getter = Function('dirty', 'writeLock', 'batchDraft', 'resultDraft', 'contextGate', `return ${expression};`)(dirty, writeLock, batchDraft, resultDraft,contextGate);
   assert.deepEqual(getter(), { dirty: false, busy: false }); dirty.current.add('video'); writeLock.current = true;
   assert.deepEqual(getter(), { dirty: true, busy: true }); assert.equal(dirty.current.size, 1);
   writeLock.current = false; assert.deepEqual(getter(), { dirty: true, busy: false });
@@ -81,6 +83,7 @@ test('production getter reads mutable set/write lock at navigation time without 
   assert.deepEqual(getter(),{dirty:true,busy:true});
   resultDraft.current.busy=false;resultDraft.current.locked=true;dirty.current.add('visit-result');
   assert.deepEqual(getter(),{dirty:true,busy:false});assert.equal(dirty.current.has('visit-result'),true);
+  contextGate.current.pending=true;assert.deepEqual(getter(),{dirty:true,busy:true},'an internal decision prevents a second navigation dialog');
 });
 
 test('production explicit provider reads the current opaque observation without mutating guard state',()=>{
@@ -175,6 +178,7 @@ test('production committed popstate restoration does not prompt or roll back the
   assert.doesNotMatch(handlerSource, /mayLeave|writeProductionLocation|window.confirm|replaceState/);
   const dirty = { current: new Set(['draft']) }, openVersion = { current: 0 }, updates = [];
   const bindings = { window: { location: { href: 'https://render.test/producciones?mes=2026-11' } },
+    contextGate:{current:{invalidate(){}}},
     readEpoch:{current:0},setListAvailable:()=>{},setContextError:()=>{},setClientId:()=>{},setTab:()=>{},setReload:()=>{},
     productionLocation: () => ({ id: null, month: '2026-11' }), productionCalendarDay, dirty, openVersion, today: '2026-10-19',
     openVisit: async () => { throw new Error('not expected'); } };
@@ -186,21 +190,27 @@ test('production committed popstate restoration does not prompt or roll back the
   assert.match(production, /discardDrafts:event\?\.type === 'popstate'/);
 });
 
-test('production local controls retain one explicit confirmation and busy denies without discard', () => {
-  const source = /  const mayLeave = ([^\n]+);/.exec(production)[1];
+test('production local controls retain one explicit shared confirmation and busy denies without discard', async () => {
+  const source = nodes(productionTree,node=>ts.isVariableDeclaration(node)&&node.name.getText(productionTree)==='mayLeave')[0].initializer.getText(productionTree);
   const dirty = { current: new Set(['draft']) }, writeLock = { current: false }, batchDraft = { current: {busy:false} }; let asks = 0, answer = false;
   const resultDraft = {current:{busy:false,locked:false}};
-  const mayLeave = Function('window', 'dirty', 'writeLock', 'batchDraft', 'resultDraft', `return ${source};`)({ confirm() { asks++; return answer; } }, dirty, writeLock, batchDraft, resultDraft);
-  assert.equal(mayLeave(), false); assert.equal(dirty.current.size, 1); assert.equal(asks, 1);
-  writeLock.current = true; assert.equal(mayLeave(), false); assert.equal(asks, 1); assert.equal(dirty.current.size, 1);
-  writeLock.current = false; batchDraft.current.busy=true; assert.equal(mayLeave(),false);assert.equal(asks,1);assert.equal(dirty.current.size,1);
-  batchDraft.current.busy=false; answer = true; assert.equal(mayLeave(), true); assert.equal(dirty.current.size, 0); assert.equal(asks, 2);
+  const gate=createProductionContextGate();gate.activate();const actions=[];
+  const bindings={window:{location:{href:'https://render.test/producciones'}},dirty,writeLock,batchDraft,resultDraft,
+    contextGate:{current:gate},createCapturedRequest:()=>({current:()=>true}),sesion:{},getSesion(){},apiRequest(){},
+    productionObservation:{current:{}},readEpoch:{current:0},openVersion:{current:0},visitObserver:{current:{token:{}}},calendarHeadingRef:{current:null},
+    contextConfirmation:{request(){asks++;return Promise.resolve(answer);}}};
+  const mayLeave=Function(...Object.keys(bindings),`return (${source});`)(...Object.values(bindings));
+  const action=()=>{actions.push('move');return true;};
+  assert.equal(await mayLeave(action), false); assert.equal(dirty.current.size, 1); assert.equal(asks, 1);assert.deepEqual(actions,[]);
+  writeLock.current = true; assert.equal(await mayLeave(action), false); assert.equal(asks, 1); assert.equal(dirty.current.size, 1);
+  writeLock.current = false; batchDraft.current.busy=true; assert.equal(await mayLeave(action),false);assert.equal(asks,1);assert.equal(dirty.current.size,1);
+  batchDraft.current.busy=false; answer = true; assert.equal(await mayLeave(action), true); assert.equal(dirty.current.size, 0); assert.equal(asks, 2);
   dirty.current.add('visit-result');resultDraft.current.busy=true;
-  assert.equal(mayLeave(),false);assert.equal(asks,2);assert.equal(dirty.current.size,1);
+  assert.equal(await mayLeave(action),false);assert.equal(asks,2);assert.equal(dirty.current.size,1);
   resultDraft.current.busy=false;resultDraft.current.locked=true;answer=false;
-  assert.equal(mayLeave(),false);assert.equal(asks,3);assert.equal(dirty.current.size,1);
-  answer=true;assert.equal(mayLeave(),true);assert.equal(asks,4);assert.equal(dirty.current.size,0);
-  assert.match(production, /if\(!selected && !mayLeave\(\)\) return;/);
+  assert.equal(await mayLeave(action),false);assert.equal(asks,3);assert.equal(dirty.current.size,1);
+  answer=true;assert.equal(await mayLeave(action),true);assert.equal(asks,4);assert.equal(dirty.current.size,0);assert.equal(actions.length,2);
+  assert.match(production, /if\(!selected\)return mayLeave\(/);assert.doesNotMatch(production,/window\.confirm/);
 });
 
 test('feedback local panel close retains draft on refused discard and permits deliberate accepted close', () => {

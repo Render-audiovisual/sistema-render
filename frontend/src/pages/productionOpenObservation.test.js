@@ -19,13 +19,14 @@ function fixture(){
   const held=[],urls=[],errors=[];
   const deps={readEpoch:{current:0},openVersion:{current:0},refreshVersion:{current:0},month:'2026-10',clientId:'7',tab:'calendar',contextError:'',
     AbortController,productionReadUrl,verifiedProductionDraftVisit,assertProductionClient,newestProductionVisit,reconcileProductionVisitList,
-    mayLeave:()=>true,apiRequest:(url,options)=>new Promise((resolve,reject)=>held.push({url,options,resolve,reject})),
+    mayLeave:action=>action(),apiRequest:(url,options)=>new Promise((resolve,reject)=>held.push({url,options,resolve,reject})),
     setSelected:value=>{selected=typeof value==='function'?value(selected):value;},
     setVisits:value=>{visits=typeof value==='function'?value(visits):value;},
     setError:value=>errors.push(value),writeProductionLocation:value=>urls.push(value)};
   const observer=createProductionVisitObserver(()=>deps.readEpoch.current);
   deps.visitObserver={current:observer};deps.setBankObservation=()=>{};
   deps.observeProductionVisit=value=>observer.observe(value);
+  deps.openVisit=(...args)=>callback('openVisit',deps)(...args);
   for(const name of ['Creating','DetailLoading','Month','Day','Loading','ListAvailable','Pending','PendingPhotos','Users','Clients'])deps[`set${name}`]=()=>{};
   const effect=nodes.find(n=>ts.isCallExpression(n)&&n.expression.getText(tree)==='useEffect'&&n.arguments[0]?.getText(tree).includes('Promise.all([apiRequest(productionReadUrl'));
   return{deps,held,urls,errors,open:callback('openVisit',deps),refresh:callback('refreshVisit',deps),

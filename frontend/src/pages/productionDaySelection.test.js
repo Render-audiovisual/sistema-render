@@ -5,6 +5,7 @@ import ts from 'typescript';
 import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import * as context from './productionRouteContext.js';
 import { verifiedProductionDraftVisit } from './productionDraft.js';
+import { createProductionContextGate } from './productionContextGate.js';
 
 // Execute canonical callbacks/URL writer extracted through AST. No mounted
 // React, browser navigation, native dialogs, HTTP or persistence claims.
@@ -28,23 +29,30 @@ function validator() {
   if (local) return evaluate(local.getText(tree), {});
   return evaluate(expression('validProductionDay'), {});
 }
-function harness({ busy = false, batchBusy = false, allow = true } = {}) {
+function harness({ busy = false, batchBusy = false, allow = true, deferred = false } = {}) {
   const effects = [], openVersion = { current: 9 }, dirty = { current: new Set(['visit:original', 'videos:new']) };
   const state = { day: '2026-10-20', selected: { id: 'original' }, creating: true, detailLoading: true };
-  let permissionCalls = 0, prompts = 0;
+  let permissionCalls = 0, prompts = 0, settle;
+  const gate = createProductionContextGate(); gate.activate();
+  const scope = { current: () => true };
+  const readEpoch = {current: 1}, productionObservation = {current: {}}, visitObserver = {current: {token: {}}};
   const actualMayLeave = evaluate(expression('mayLeave'), {
+    contextGate: {current: gate}, createCapturedRequest: () => scope, sesion: {}, getSesion() {}, apiRequest() {},
+    readEpoch, productionObservation, visitObserver, openVersion,
+    calendarHeadingRef: {current: null},
+    contextConfirmation: {request() { prompts++; return deferred ? new Promise(resolve => {settle = resolve;}) : Promise.resolve(allow); }},
     dirty, writeLock: { current: busy }, batchDraft: { current: { busy: batchBusy } }, resultDraft: { current: {busy:false,locked:false} },
-    window: { confirm() { prompts++; return allow; } },
+    window: {location: {href: 'https://render.test/producciones?mes=2026-10&dia=2026-10-20'}},
   });
   const deps = { month: '2026-10', day: state.day, clientId: '37', tab: 'pending', openVersion,
     validProductionDay: validator(),
-    mayLeave() { permissionCalls++; return actualMayLeave(); },
+    mayLeave(action) { permissionCalls++; return actualMayLeave(action); },
     writeProductionLocation(value) { effects.push(['url', value]); },
   };
   for (const [name, key] of [['setDay', 'day'], ['setSelected', 'selected'], ['setCreating', 'creating'], ['setDetailLoading', 'detailLoading']]) {
     deps[name] = value => { effects.push([key, value, openVersion.current]); state[key] = value; };
   }
-  return { deps, state, effects, dirty, openVersion, permissionCalls: () => permissionCalls, prompts: () => prompts };
+  return { deps, state, effects, dirty, openVersion, gate, settle: value => settle(value), permissionCalls: () => permissionCalls, prompts: () => prompts };
 }
 
 test('invalid, out-of-month and same day return before discard or any effects', () => {
@@ -60,9 +68,9 @@ test('invalid, out-of-month and same day return before discard or any effects', 
 });
 
 for (const [name, flags] of [['cancel', { allow: false }], ['write busy', { busy: true }], ['history batch busy', { batchBusy: true }]]) {
-  test(`day selection denied by actual mayLeave (${name}) retains draft registration and detail`, () => {
+  test(`day selection denied by actual mayLeave (${name}) retains draft registration and detail`, async () => {
     const h = harness(flags), before = structuredClone(h.state);
-    evaluate(expression('selectDay'), h.deps)('2026-10-21');
+    await evaluate(expression('selectDay'), h.deps)('2026-10-21');
     assert.equal(h.permissionCalls(), 1);
     assert.equal(h.prompts(), name === 'cancel' ? 1 : 0);
     assert.equal(h.openVersion.current, 9); assert.deepEqual(h.effects, []);
@@ -70,15 +78,24 @@ for (const [name, flags] of [['cancel', { allow: false }], ['write busy', { busy
   });
 }
 
-test('accepted day selection fences old opens, closes detail/create and replaces the same context once', () => {
+test('accepted day selection fences old opens, closes detail/create and replaces the same context once', async () => {
   const h = harness();
-  evaluate(expression('selectDay'), h.deps)('2026-10-21');
+  await evaluate(expression('selectDay'), h.deps)('2026-10-21');
   assert.equal(h.permissionCalls(), 1); assert.equal(h.prompts(), 1);
   assert.equal(h.openVersion.current, 10); assert.equal(h.dirty.current.size, 0);
   assert.deepEqual(h.effects, [
     ['day', '2026-10-21', 10], ['selected', null, 10], ['creating', false, 10], ['detailLoading', false, 10],
     ['url', { month: '2026-10', day: '2026-10-21', clientId: '37', tab: 'pending', replace: true }],
   ]);
+});
+
+test('a deferred day decision changes nothing until approval and denial preserves the full context', async () => {
+  const h = harness({deferred: true}), before = structuredClone(h.state);
+  const pending = evaluate(expression('selectDay'), h.deps)('2026-10-21');
+  assert.equal(h.prompts(), 1); assert.equal(h.openVersion.current, 9);
+  assert.deepEqual(h.effects, []); assert.deepEqual(h.state, before); assert.equal(h.dirty.current.size, 2);
+  h.settle(false); assert.equal(await pending, false);
+  assert.deepEqual(h.effects, []); assert.deepEqual(h.state, before); assert.equal(h.dirty.current.size, 2);
 });
 
 function writer() {
@@ -128,7 +145,9 @@ for (const outcome of ['success', 'failure']) {
       assertProductionClient: context.assertProductionClient, productionLocation: context.productionLocation,
       setError: value => h.effects.push(['error', value]), setMonth: value => h.effects.push(['month', value]),
     };
-    const opening = evaluate(expression('openVisit'), deps)('11111111-1111-4111-8111-111111111111');
+    // The named callback recursively re-enters only after real gate admission.
+    const realOpen = Function(...Object.keys(deps), `let openVisit; openVisit=(${expression('openVisit')});return openVisit;`)(...Object.values(deps));
+    const opening = realOpen('11111111-1111-4111-8111-111111111111');
     assert.equal(h.openVersion.current, 10);
     evaluate(expression('selectDay'), deps)('2026-10-21');
     assert.equal(h.openVersion.current, 11);

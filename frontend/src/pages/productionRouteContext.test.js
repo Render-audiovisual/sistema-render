@@ -50,11 +50,12 @@ test('reload/back preserves month, pending and visit; clearing client is explici
   assert.equal(productionReadUrl({month:'2026-11',clientId:'7',tab:'pending'}),'/api/producciones/pendientes?cliente_id=7');
   assert.equal(productionReadUrl({month:'2026-11',clientId:'',tab:'calendar'}),'/api/producciones?mes=2026-11');
 });
-function harness(){const effects=[],deps={readEpoch:{current:0},openVersion:{current:0},refreshVersion:{current:0},clientId:'7',tab:'calendar',month:'2026-11',day:'2026-11-20',contextError:'',today:'2026-10-21',dirty:{current:new Set()},productionLocation,productionCalendarDay,validProductionDay,assertProductionClient,verifiedProductionDraftVisit,writeProductionLocation:v=>effects.push(['url',v]),mayLeave:()=>true};
+function harness(){const effects=[],deps={readEpoch:{current:0},openVersion:{current:0},refreshVersion:{current:0},clientId:'7',tab:'calendar',month:'2026-11',day:'2026-11-20',contextError:'',today:'2026-10-21',dirty:{current:new Set()},contextGate:{current:{invalidate(){}}},productionLocation,productionCalendarDay,validProductionDay,assertProductionClient,verifiedProductionDraftVisit,writeProductionLocation:v=>effects.push(['url',v]),mayLeave:action=>action()};
   Object.assign(deps,{newestProductionVisit,reconcileProductionVisitList});
   const observer=createProductionVisitObserver(()=>deps.readEpoch.current);
   deps.visitObserver={current:observer};deps.setBankObservation=()=>{};
   deps.observeProductionVisit=value=>observer.observe(value);
+  deps.openVisit=(...args)=>callback('openVisit',deps)(...args);
   for(const key of ['ListAvailable','Loading','ContextError','Error','ClientId','Tab','Month','Day','DetailLoading','Selected','Creating','Reload','Notice'])deps[`set${key}`]=value=>effects.push([key,value]);
   return {effects,deps};}
 test('actual filter callback denies dirty/busy cancellation without state/history mutation',()=>{

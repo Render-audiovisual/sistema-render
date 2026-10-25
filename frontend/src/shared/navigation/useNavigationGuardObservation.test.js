@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import ts from 'typescript';
+import {createProductionContextGate} from '../../pages/productionContextGate.js';
 const hookSource=readFileSync(new URL('./useNavigationGuard.js',import.meta.url),'utf8');
 const hookTree=ts.createSourceFile('hook.js',hookSource,ts.ScriptTarget.Latest,true);
 const hook=hookTree.statements.find(node=>ts.isFunctionDeclaration(node));
@@ -43,15 +44,18 @@ test('actual Moodboard child draft callback advances the explicit token when Rea
   assert.deepEqual(f.records[0].getStatus(),{dirty:true,busy:false});
 });
 
-test('actual production child and batch callbacks invalidate an already-dirty observation without a parent render',()=>{
+test('actual production child and batch callbacks invalidate an already-dirty observation without a parent render',async()=>{
   const source=readFileSync(new URL('../../pages/Productions.jsx',import.meta.url),'utf8');
   const tree=ts.createSourceFile('Productions.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
   const declarations=new Map();function visit(node){if(ts.isVariableDeclaration(node))declarations.set(node.name.getText(tree),node);ts.forEachChild(node,visit);}visit(tree);
   const dirty={current:new Set(['visit:1'])},productionObservation={current:Symbol('initial')},batchDraft={current:{dirty:true,busy:false}},busy=[];
-  const onDirty=Function('dirty','productionObservation','return ('+declarations.get('onDirty').initializer.arguments[0].getText(tree)+');')(dirty,productionObservation);
+  const gate=createProductionContextGate();gate.activate();let prompt,resolve;
+  const pending=gate.run(()=>assert.fail('changed draft cannot consume consent'),{capture:()=>({current:()=>true}),readState:()=>({dirty:true,busy:false,observation:productionObservation.current}),confirm:intent=>{prompt=intent;return new Promise(yes=>{resolve=yes;});},onDiscard:()=>assert.fail('must retain fields')});
+  const onDirty=Function('dirty','productionObservation','contextGate','return ('+declarations.get('onDirty').initializer.arguments[0].getText(tree)+');')(dirty,productionObservation,{current:gate});
   const onBatch=Function('batchDraft','setBatchBusy','onDirty','return ('+declarations.get('onBatchDraftStateChange').initializer.arguments[0].getText(tree)+');')(batchDraft,value=>busy.push(value),onDirty);
   const f=setup();f.use(()=>({dirty:dirty.current.size>0,busy:batchDraft.current.busy}),()=>productionObservation.current);
   const before=f.read();onDirty('visit:1',true);assert.notEqual(f.read(),before);assert.equal(dirty.current.size,1);
+  assert.equal(prompt.signal.aborted,true);resolve(true);assert.equal(await pending,false);
   const updated=f.read();onBatch({dirty:true,busy:false});assert.notEqual(f.read(),updated);assert.deepEqual(busy,[false]);
   assert.deepEqual(f.records[0].getStatus(),{dirty:true,busy:false});
 });
