@@ -197,6 +197,29 @@ function productionInput() {
   }] };
 }
 
+test('operational result evidence remains shared but nested financial and receipt fields never escape',()=>{
+  const evidence={id:videoId,visita_revision:7,revision_resultante:8,registrado_at:'2026-10-25T12:00:00Z',parcial:true,vigente:true};
+  for(const rol of ['diseno','edicion','community','produccion','programacion']) {
+    const source=productionInput();Object.assign(source.visitas[0],{revision:8,ultimo_resultado:{...evidence,
+      sueldo:'FINANCE_SENTINEL',request_id:'FINANCE_SENTINEL',resumen:{abono:'FINANCE_SENTINEL'}}});
+    const row=filterReportDataForUser({producciones:source},{id:7,rol}).producciones.visitas[0];
+    assert.equal(row.revision,8);assert.deepEqual(row.ultimo_resultado,{...evidence,registrado_at:'2026-10-25T12:00:00.000Z'});
+    assert.doesNotMatch(JSON.stringify(row),/FINANCE_SENTINEL|request_id|resumen/);
+  }
+});
+
+test('malformed or accessor result evidence is unavailable rather than absent or current',()=>{
+  for(const raw of [{revision_resultante:999},
+    {id:videoId,visita_revision:7,revision_resultante:8,registrado_at:'2026-02-30T12:00:00Z',parcial:false,vigente:true},
+    Object.defineProperty({},'id',{get(){assert.fail('Do not invoke nested getters');}})]) {
+    const source=productionInput();Object.assign(source.visitas[0],{revision:8,ultimo_resultado:raw});
+    const row=filterReportDataForUser({producciones:source},{id:7,rol:'edicion'}).producciones.visitas[0];
+    assert.equal(row.revision,8);assert.equal(Object.hasOwn(row,'ultimo_resultado'),false);
+  }
+  const source=productionInput();Object.assign(source.visitas[0],{revision:8,ultimo_resultado:null});
+  assert.equal(filterReportDataForUser({producciones:source},{id:7,rol:'edicion'}).producciones.visitas[0].ultimo_resultado,null);
+});
+
 test('normalized registry remains shared for known operational identities with closed nested DTOs', () => {
   const input = { ...data, producciones: productionInput() };
   const before = structuredClone(input);

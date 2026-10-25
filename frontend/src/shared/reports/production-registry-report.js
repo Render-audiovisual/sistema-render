@@ -1,4 +1,5 @@
 import { isConfirmedPublication, isHistoricalPublication, confirmationDate, historicalPublicationDate } from '../editorial/publication-evidence.js';
+import { productionResultStatus } from '../../pages/productionResultStatus.js';
 
 // Report-only projections. Never resolve identities from names or inspect finance metadata.
 const personId = value => Number.isSafeInteger(value) && value > 0;
@@ -63,6 +64,7 @@ export function buildProductionRegistryReport(payload, users, range) {
       seen.add(item.id); return true;
     }).map(item => Object.fromEntries(fields.map(field => [field, item[field]])));
     clients.get(clientKey).visits.push({ id: visit.id, fecha: visit.fecha, titulo: text(visit.titulo),
+      resultado_estado: productionResultStatus(visit.ultimo_resultado, visit.revision),
       participants: [...new Set(array(visit.participante_ids).filter(personId))].map(id => ({ id, nombre: names.get(id) || `Usuario #${id}` })),
       videos: media(visit.videos, seenVideos, ['id', 'titulo', 'estado']),
       fotos: media(visit.fotos, seenPhotos, ['id', 'tipo', 'estado']) });

@@ -1,4 +1,5 @@
 import { editorialEvidenceDto, editorialOperationalDto } from './operational-dto.js';
+import { productionResultProjection } from './production-result-projection.js';
 
 function normalize(value = "") {
   return String(value)
@@ -109,10 +110,23 @@ function registryRow(row, scalars, uuidFields, idFields, enums = {}) {
   }
   return result;
 }
+function productionResultEvidenceDto(visit) {
+  const revision=ownValue(visit,'revision'), raw=ownValue(visit,'ultimo_resultado');
+  if(!positiveId(revision)||revision>2147483647)return {};
+  const result={revision};
+  if(raw===undefined)return result;
+  try {
+    const closed=raw===null ? null : Object.fromEntries(['id','visita_revision','revision_resultante','registrado_at','parcial','vigente']
+      .map(key=>[key,ownValue(raw,key)]));
+    result.ultimo_resultado=productionResultProjection(closed,revision);
+  } catch { /* Invalid evidence is unavailable, never a claim of no recording. */ }
+  return result;
+}
 function productionReportDto(source) {
   const result = pickScalars(source, ['desde', 'hasta']);
   result.visitas = rowsOf(source, 'visitas').map(visit => ({
     ...registryRow(visit, ['cliente_nombre', 'fecha', 'titulo'], ['id'], ['tarea_origen_id', 'cliente_id']),
+    ...productionResultEvidenceDto(visit),
     participante_ids: idList(ownValue(visit, 'participante_ids')),
     videos: rowsOf(visit, 'videos').map(video => registryRow(video, ['titulo', 'fecha_entrega_actual'], ['id'],
       ['tarea_edicion_id', 'editor_actual_id'], { estado: ['planificado', 'grabado', 'pendiente', 'repetir'],

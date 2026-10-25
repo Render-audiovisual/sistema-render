@@ -11,7 +11,9 @@ test('projection is explicit, detached and distinguishes current and obsolete ev
 });
 test('projection rejects revision contradictions and malformed journal evidence',()=>{
   for(const patch of [{revision_resultante:9},{vigente:false},{visita_revision:0},{parcial:1},
-    {registrado_at:'not-a-date'},{id:'not-a-uuid'}])assert.throws(()=>dto({...evidence(),...patch},8));
+    {registrado_at:'not-a-date'},{registrado_at:'2026-02-30T12:00:00Z'},
+    {registrado_at:'2026-10-25T24:00:00Z'},{registrado_at:'2026-10-25T12:00:00Z\n'},
+    {id:'not-a-uuid'}])assert.throws(()=>dto({...evidence(),...patch},8));
   assert.throws(()=>dto(evidence(),7));
 });
 test('last result is a bounded correlated lookup in the visit statement, never raw JSON',()=>{

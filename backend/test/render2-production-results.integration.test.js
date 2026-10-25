@@ -116,6 +116,11 @@ test('production result journal preserves partial evidence without completing ta
     assert.equal(hub.status,200);assert.deepEqual(hub.body.producciones.items.find(row=>row.id===mixed.id).ultimo_resultado,expected);
     const report=await loadProductionReport({query:async(sql,values)=>({rows:await f.query(sql,values)})},{desde:'2026-10-01',hasta:'2026-11-01'});
     assert.deepEqual(report.visitas.find(row=>row.id===mixed.id).ultimo_resultado,expected);
+    const sharedReport=await api('/reportes/datos?mes_configuracion=2026-10&desde=2026-10-01&hasta=2026-11-01','GET',undefined,91003);
+    assert.equal(sharedReport.status,200);
+    const sharedVisit=sharedReport.body.producciones.visitas.find(row=>row.id===mixed.id);
+    assert.equal(sharedVisit.revision,saved.revision_resultante);assert.deepEqual(sharedVisit.ultimo_resultado,expected);
+    assert.deepEqual(Object.keys(sharedVisit.ultimo_resultado).sort(),Object.keys(expected).sort());
     assert.deepEqual(await snapshot(),before);
   });
 

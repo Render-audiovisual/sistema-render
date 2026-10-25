@@ -124,6 +124,7 @@ function ReportesContent({ session }) {
           <p className="rpr-muted">Cada ID de video se cuenta una vez. Son registros de visita, no piezas editoriales únicas, cuotas ni publicaciones.</p>
           {!production.clients.length && <p className="rpr-muted">No hay visitas registradas en este período.</p>}
           {production.clients.map(client => <section className="rpr-client" key={client.id}><h3>{client.nombre}</h3>{client.visits.map(visit => <details className="rpr-visit" key={visit.id}><summary><span><time dateTime={visit.fecha}>{visit.fecha}</time> · {visit.titulo || 'Visita'}</span><span>{visit.videos.length} videos · {visit.fotos.length} registros de fotos</span></summary>
+            <p className="rpr-muted">{visit.resultado_estado.label}</p>
             <p className="rpr-muted">Participantes: {visit.participants.map(person => person.nombre + ' · #' + person.id).join(', ') || 'Sin participantes registrados'}</p>
             <ul className="rpr-media">{visit.videos.map(video => <li key={'video:' + video.id}><span>Video · {video.titulo || 'Sin título'}</span><span>{VIDEO_STATES[video.estado] || 'Estado sin reconocer'}</span></li>)}{visit.fotos.map(photo => <li key={'photo:' + photo.id}><span>Fotos · {photo.tipo || 'Sin tipo'}</span><span>{PHOTO_STATES[photo.estado] || 'Estado sin reconocer'}</span></li>)}</ul>
             {!visit.videos.length && !visit.fotos.length && <p className="rpr-muted">Sin material registrado.</p>}
