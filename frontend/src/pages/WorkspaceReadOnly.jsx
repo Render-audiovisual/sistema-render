@@ -37,6 +37,7 @@ import { navigateWithinApp, requestAppNavigation } from "../shared/navigation/lo
 import { isTaskDraftDirty, keepsTaskOpen } from "./taskNavigationGuard.js";
 import { mergeTaskComments } from './taskCommentCollection.js';
 import { createTaskCommentCreation } from './taskCommentCreation.js';
+import {createTaskCreationAttempt,parseTaskCreationAck} from './taskCreationAttempt.js';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import "./WorkspaceReadOnly.css";
@@ -820,44 +821,35 @@ function NewTaskModal({ users, clients, sesion, initialStatus = "pendiente", onC
   const [suggestionMessage, setSuggestionMessage] = useState("");
   const manuallyEdited = useRef(new Set());
   const completedRef = useRef(false);
-  useNavigationGuard(() => ({ dirty: !completedRef.current && isNewTaskDraftDirty(draft), busy: !completedRef.current && saving }));
+  const createCallback=useRef(onCreate);createCallback.current=onCreate;
+  const [,renderCreation]=useState(0);
+  const [creation]=useState(()=>createTaskCreationAttempt({capture:captureRequest,
+    send:(body,options)=>createCallback.current(body,options),onState:state=>{setSaving(state.busy);renderCreation(n=>n+1)}}));
+  const creationState=creation.snapshot;
+  useNavigationGuard(() => ({ dirty: !completedRef.current && (isNewTaskDraftDirty(draft)||creation.snapshot.locked), busy: !completedRef.current && creation.snapshot.busy }));
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = previous; };
   }, []);
-  const submit = async (event) => {
-    event.preventDefault();
+  const runCreation = async (action) => {
     const guard = captureRequest();
-    if (!guard.current()) return;
-    if (saving || !Number.isSafeInteger(draft.asignado_a_id) || draft.asignado_a_id <= 0) return;
-    setSaving(true);
-    try {
-      const created = await onCreate({
-        ...draft,
-        ...buildTaskAssignmentInput({ ownerId: draft.asignado_a_id, collaboratorIds: draft.colaborador_ids || [] }),
-        cliente_id: draft.cliente_id ? Number(draft.cliente_id) : null,
-        fecha_vencimiento: draft.fecha_vencimiento || null,
-        tipo_tarea: draft.tipo_tarea || null,
-        subtipo: draft.subtipo || null,
-        aclaraciones: draft.aclaraciones || null,
-        material_referencia: draft.material_referencia || null,
-        resumen: draft.resumen.trim() || null,
-        etiquetas: draft.etiquetas.split(",").map((item) => item.trim()).filter(Boolean),
-        produccion_videos_previstos: isProductionVisitTask(draft) && draft.produccion_videos_previstos !== "" ? Number(draft.produccion_videos_previstos) : undefined,
-      });
-      guard.assertCurrent();
-      completedRef.current = true;
-      onCreated(created);
-    } catch {
-      // El modal permanece abierto y el contenedor muestra el error.
-    } finally {
-      if (guard.current()) setSaving(false);
-    }
+    if (!guard.current()||completedRef.current) return;
+    const confirmed=await action();
+    if(!confirmed||!guard.current()||completedRef.current)return;
+    completedRef.current=true;onCreated(creation.snapshot.accepted.task);
+  };
+  const submit = (event) => {
+    event.preventDefault();
+    if(creation.snapshot.locked||creation.snapshot.busy)return;
+    const input={...draft,produccion_videos_previstos:isProductionVisitTask(draft)?draft.produccion_videos_previstos:undefined};
+    void runCreation(()=>creation.start(input));
   };
   const closeModal = () => {
-    if (saving) return;
-    if (isNewTaskDraftDirty(draft) && !window.confirm("La tarea todavía no fue creada. ¿Querés descartarla?")) return;
+    if (creation.snapshot.busy) return;
+    if ((isNewTaskDraftDirty(draft)||creation.snapshot.locked) && !window.confirm(creation.snapshot.locked
+      ?'El resultado puede estar guardado. Salir no cancela la creación y este intento no sobrevive a una recarga. ¿Querés salir sin verificarlo?'
+      :'¿Querés descartar este borrador de tarea?')) return;
     onClose();
   };
   const applySuggestions = (current, { title = current.titulo, clientId = current.cliente_id, clientWasSelected = false } = {}) => {
@@ -883,15 +875,17 @@ function NewTaskModal({ users, clients, sesion, initialStatus = "pendiente", onC
     setSuggestionMessage(suggestion.message);
     return next;
   };
-  return <div className="ros-drawer-backdrop ros-modal-backdrop" onClick={closeModal}><section className="ros-modal ros-quick-task-modal" onClick={(event) => event.stopPropagation()}><header><div><div className="ros-eyebrow">NUEVA TAREA</div><h2>¿Qué hay que hacer?</h2><p>Cargá lo esencial ahora. Los detalles se pueden completar después.</p></div><button type="button" aria-label="Cerrar" onClick={closeModal}>×</button></header><form onSubmit={submit}>
+  return <div className="ros-drawer-backdrop ros-modal-backdrop" onClick={closeModal}><section className="ros-modal ros-quick-task-modal" onClick={(event) => event.stopPropagation()}><header><div><div className="ros-eyebrow">NUEVA TAREA</div><h2>¿Qué hay que hacer?</h2><p>Cargá lo esencial ahora. Los detalles se pueden completar después.</p></div><button type="button" aria-label="Cerrar" onClick={closeModal}>×</button></header><form onSubmit={submit}><fieldset disabled={creationState.locked||saving} style={{display:"contents",border:0,padding:0,margin:0,minWidth:0}}>
     <label className="wide ros-quick-title"><span>Tarea *</span><input autoFocus required placeholder="Ej.: iPhone Shop | Editar reel de lanzamiento" value={draft.titulo} onChange={(event) => setDraft((current) => applySuggestions(current, { title: event.target.value }))}/></label>
     {suggestionMessage && <div className="wide ros-auto-suggestion"><span>✓</span><div><strong>{suggestionMessage}</strong><small>Es una sugerencia automática: podés cambiar cualquier dato.</small></div></div>}
-    <TaskPeoplePicker users={users} primaryId={draft.asignado_a_id} collaboratorIds={draft.colaborador_ids || []} disabled={saving} onChange={({ primary, collaborators, ownerId, collaboratorIds }) => { manuallyEdited.current.add("people"); setDraft({ ...draft, asignado_a: primary, colaboradores: collaborators, ...buildTaskAssignmentInput({ ownerId, collaboratorIds }) }); }}/>
+    <TaskPeoplePicker users={users} primaryId={draft.asignado_a_id} collaboratorIds={draft.colaborador_ids || []} disabled={creationState.locked||saving} onChange={({ primary, collaborators, ownerId, collaboratorIds }) => { manuallyEdited.current.add("people"); setDraft({ ...draft, asignado_a: primary, colaboradores: collaborators, ...buildTaskAssignmentInput({ ownerId, collaboratorIds }) }); }}/>
     <div className="wide ros-quick-grid"><label><span>Cliente</span><select value={draft.cliente_id} onChange={(event) => { manuallyEdited.current.add("client"); setDraft((current) => applySuggestions({ ...current, cliente_id: event.target.value }, { clientId: event.target.value, clientWasSelected: true })); }}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label><label><span>Fecha</span><input type="date" value={draft.fecha_vencimiento} onChange={(event) => setDraft({ ...draft, fecha_vencimiento: event.target.value })}/></label><label><span>Prioridad</span><select value={draft.prioridad} onChange={(event) => setDraft({ ...draft, prioridad: event.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select></label></div>
     {isProductionVisitTask(draft) && !showDetails && <label className="wide ros-visit-planned-field"><span>Videos previstos (opcional)</span><input type="number" min="1" step="1" value={draft.produccion_videos_previstos} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}
     <button className="wide ros-more-details" type="button" aria-expanded={showDetails} onClick={() => setShowDetails((current) => !current)}><span>{showDetails ? "−" : "+"}</span>{showDetails ? "Ocultar detalles" : "Agregar indicaciones, material o más detalles"}</button>
     {showDetails && <div className="wide ros-optional-fields"><label><span>Sector</span><select value={draft.tipo_tarea} onChange={(event) => { manuallyEdited.current.add("classification"); setDraft({ ...draft, tipo_tarea: event.target.value }); }}><option value="">Sin sector</option>{TASK_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span>Tipo de pieza</span><input placeholder="Reel, carrusel, visita…" value={draft.subtipo} onChange={(event) => { manuallyEdited.current.add("classification"); setDraft({ ...draft, subtipo: event.target.value }); }}/></label>{isProductionVisitTask(draft) && <label className="wide ros-visit-planned-field"><span>Videos previstos (opcional)</span><input type="number" min="1" step="1" value={draft.produccion_videos_previstos} onChange={(event) => setDraft({ ...draft, produccion_videos_previstos: event.target.value })}/></label>}<label className="wide"><span>Resumen corto</span><input value={draft.resumen} placeholder="Resultado esperado" onChange={(event) => setDraft({ ...draft, resumen: event.target.value })}/></label><label className="wide"><span>Indicaciones</span><textarea rows={3} placeholder="Datos necesarios para poder resolverla" value={draft.aclaraciones} onChange={(event) => setDraft({ ...draft, aclaraciones: event.target.value })}/></label><label className="wide"><span>Material o enlace</span><input placeholder="https://…" value={draft.material_referencia} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/></label><label className="wide"><span>Etiquetas</span><input placeholder="Urgente, web, corrección" value={draft.etiquetas} onChange={(event) => setDraft({ ...draft, etiquetas: event.target.value })}/></label></div>}
-    <footer><button type="button" onClick={closeModal}>Cancelar</button><button className="primary" type="submit" disabled={saving || !draft.titulo.trim() || !draft.asignado_a_id}>{saving ? "Creando…" : "Crear tarea"}</button></footer>
+    </fieldset>{creationState.error&&<div className="wide" role="alert">{creationState.error}</div>}
+    {creationState.locked&&<div className="wide"><p>Conservamos el mismo intento. Verificar no crea otra tarea.</p><p>El intento no sobrevive a una recarga. Verificá antes de salir.</p>{creationState.canVerify&&<button type="button" onClick={()=>void runCreation(()=>creation.verify())}>Verificar creación</button>}{creationState.canRetry&&<button type="button" onClick={()=>void runCreation(()=>creation.retry())}>Reintentar el mismo intento</button>}</div>}
+    <footer><button type="button" disabled={saving} onClick={closeModal}>Cancelar</button>{!creationState.locked&&<button className="primary" type="submit" disabled={saving || !draft.titulo.trim() || !draft.asignado_a_id}>{saving ? "Creando…" : "Crear tarea"}</button>}</footer>
   </form></section></div>;
 }
 
@@ -1224,7 +1218,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
 
   return <><section className="ros-page">
     <div className="ros-title-row"><div className="ros-title-copy"><span className="ros-page-emoji" aria-hidden="true">📋</span><div><h1>Tareas</h1><p>Organizá y priorizá el trabajo del equipo.</p></div></div><div className="ros-title-actions"><input className="ros-top-search" aria-label="Buscar tareas" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar tarea, cliente o responsable…"/><button className="ros-primary-button" type="button" onClick={() => setCreatingStatus("pendiente")}><TaskViewIcon name="plus"/>Nueva tarea</button></div></div>
-    <div className="ros-controls"><div className="ros-primary-navigation" aria-label="Vistas de tareas"><div className="ros-view-tabs"><button aria-pressed={view === "board"} className={view === "board" ? "active" : ""} onClick={() => setView("board")}><TaskViewIcon name="board"/>Tablero</button><button aria-pressed={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")}><TaskViewIcon name="list"/>Lista</button><button aria-pressed={view === "calendar"} className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}><TaskViewIcon name="calendar"/>Calendario</button><button aria-pressed={view === "clients"} className={view === "clients" ? "active" : ""} onClick={() => setView("clients")}><TaskViewIcon name="clients"/>Por cliente</button><button aria-pressed={view === "responsibles"} className={view === "responsibles" ? "active" : ""} onClick={() => setView("responsibles")}><TaskViewIcon name="clients"/>Por responsable</button></div><button className={`ros-feedback-link ${newFeedbackCount ? "has-new" : ""}`} type="button" onClick={openFeedback}><TaskViewIcon name="feedback"/>Feedback{newFeedbackCount > 0 && <b aria-label={`${newFeedbackCount} feedbacks nuevos`}>{newFeedbackCount > 99 ? "99+" : newFeedbackCount}</b>}</button></div><div className="ros-controls-meta"><span>Cargadas {visible.length} de {totalTasks}</span>{archiveMode !== "active" && <button className="ros-archive-link" type="button" onClick={() => changeArchiveMode("active")}>← Volver a tareas activas</button>}{archiveMode !== "trash" && <button className="ros-archive-link" type="button" onClick={() => changeArchiveMode("trash")}>Papelera</button>}</div></div>
+    <div className="ros-controls"><div className="ros-primary-navigation" aria-label="Vistas de tareas"><div className="ros-view-tabs"><button aria-pressed={view === "board"} className={view === "board" ? "active" : ""} onClick={() => setView("board")}><TaskViewIcon name="board"/>Tablero</button><button aria-pressed={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")}><TaskViewIcon name="list"/>Lista</button><button aria-pressed={view === "calendar"} className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}><TaskViewIcon name="calendar"/>Calendario</button><button aria-pressed={view === "clients"} className={view === "clients" ? "active" : ""} onClick={() => setView("clients")}><TaskViewIcon name="clients"/>Por cliente</button><button aria-pressed={view === "responsibles"} className={view === "responsibles" ? "active" : ""} onClick={() => setView("responsibles")}><TaskViewIcon name="clients"/>Por responsable</button></div><button className={`ros-feedback-link ${newFeedbackCount ? "has-new" : ""}`} type="button" onClick={openFeedback}><TaskViewIcon name="feedback"/>Feedback{newFeedbackCount > 0 && <b aria-label={`${newFeedbackCount} feedbacks nuevos`}>{newFeedbackCount > 99 ? "99+" : newFeedbackCount}</b>}</button></div><div className="ros-controls-meta"><span>{pagingBlocked?`Cargadas ${visible.length} · total por actualizar`:`Cargadas ${visible.length} de ${totalTasks}`}</span>{archiveMode !== "active" && <button className="ros-archive-link" type="button" onClick={() => changeArchiveMode("active")}>← Volver a tareas activas</button>}{archiveMode !== "trash" && <button className="ros-archive-link" type="button" onClick={() => changeArchiveMode("trash")}>Papelera</button>}</div></div>
     {reviewScope && <section className="ros-warning-banner ros-review-queue" aria-label="Cola de revisión"><strong>{reviewScope === 'team' ? 'Revisión del equipo' : reviewScope === 'personal' ? 'Tu trabajo en revisión' : 'Cola de revisión no válida'}</strong><p>Mostrando {visible.length} de {totalTasks}. Tareas que esperan revisión; las aprobadas no se incluyen. Los demás filtros también se aplican. Al recargar se vuelve al principio.</p>{orderMessage && <p role="status">{orderMessage}</p>}<button type="button" disabled={loadingMore || orderState.busy || Boolean(queryNotice)} onClick={onRefreshReview}>Actualizar cola desde el principio</button>{view !== "list" && <button type="button" onClick={() => setView("list")}>Ver toda la cola en lista</button>}<button type="button" disabled={orderState.busy} onClick={exitReviewQueue}>Salir de la cola</button></section>}
     {queryNotice && <p className="ros-warning-banner" role="alert">{queryNotice}</p>}
     <div className="ros-order-toolbar"><FilterSelect label="Orden" aria-label="Orden de tareas" value={sort} disabled={orderState.busy} onChange={event=>setSort(event.target.value)}><option value="date">Fecha</option><option value="manual" disabled={Boolean(reviewScope)}>Manual</option></FilterSelect>{sort === 'manual' && view === 'board' && archiveMode === 'active' && <details className="ros-order-help"><summary>Orden compartido</summary><p>Soltá sobre una tarjeta para ubicar antes, o sobre la columna para mover al final. Las flechas usan tareas cargadas; «Al final» usa la columna completa.</p></details>}</div>
@@ -1304,6 +1298,8 @@ export function WorkspaceReadOnlyPage({ sesion }) {
   const manualReady = !reviewScope && !queryNotice && effectiveSort === 'manual' && orderPage?.observation === orderObservation && !orderState.locked && !pagingBlocked;
   useNavigationGuard(() => captureRequest().current() ? {dirty:orderModel.snapshot.locked,busy:orderModel.snapshot.busy} : {dirty:false,busy:false});
   const tasksRef = useRef(tasks);
+  const createdAdmissions=useRef({capture:captureRequest,ids:new Set()});
+  if(createdAdmissions.current.capture!==captureRequest)createdAdmissions.current={capture:captureRequest,ids:new Set()};
   const updateQueuesRef = useRef(new Map());
   const taskQueryGenerationRef = useRef(0);
   const markReviewQueueStale = (guard, uncertain = false) => {
@@ -1591,17 +1587,30 @@ export function WorkspaceReadOnlyPage({ sesion }) {
     void queued.finally(() => { if (updateQueuesRef.current.get(id) === queued) updateQueuesRef.current.delete(id); }).catch(() => {});
     return queued;
   };
-  const createTask = async (draft) => {
-    const guard = captureRequest();
+  const createTask = async (draft, {scope,method='POST'} = {}) => {
+    const guard = scope||captureRequest();
     try {
-      const created = await guard.request("/api/tareas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...draft, workspace: "render_os" }) });
       guard.assertCurrent();
-      markReviewQueueStale(guard);
+      if(!draft?.request_id||!['POST','GET'].includes(method))throw new Error('Falta el intento de creación verificable.');
+      const value=await guard.request(method==='GET'?`/api/tareas/creaciones/${draft.request_id}`:'/api/tareas',
+        method==='GET'?{method:'GET',cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(draft)});
+      guard.assertCurrent();
+      const ack=parseTaskCreationAck(value,draft.request_id),created=ack.task;
+      if(createdAdmissions.current.ids.has(created.id))return{...ack,task:tasksRef.current.find(task=>task.id===created.id)||created};
       const client = clients.find((item) => String(item.id) === String(created.cliente_id));
-      const complete = { ...created, cliente_nombre: client?.nombre || null, ...(reviewScopeRef.current ? {__renderOsDirectOnly:true} : {}) };
-      setTasks((current) => [complete, ...current]);
-      if (!reviewScopeRef.current) setTotalTasks((current) => current + 1);
-      try {
+      const existing=tasksRef.current.find(task=>task.id===created.id);
+      const complete = { ...created, cliente_nombre: client?.nombre || null, __renderOsDirectOnly:existing?existing.__renderOsDirectOnly===true:true };
+      const first=!createdAdmissions.current.ids.has(created.id);
+      if(first){
+        createdAdmissions.current.ids.add(created.id);markReviewQueueStale(guard);
+        if(!reviewScopeRef.current){
+          taskQueryGenerationRef.current++;setLoadingMore(false);setPagingBlocked(true);
+          setOrderMessage('La tarea está guardada. Recargá la primera página para actualizar el total y continuar la consulta.');
+        }
+      }
+      tasksRef.current=[complete,...tasksRef.current.filter(task=>task.id!==created.id)];
+      setTasks((current) => [complete,...current.filter(task=>task.id!==created.id)]);
+      if(first&&!ack.operation.replayed&&method==='POST')try {
         await logActivity(created.id, draft.tarea_padre_id ? `creó esta subtarea dentro de la tarea #${draft.tarea_padre_id}` : "creó y asignó la tarea desde RENDER OS", guard);
         guard.assertCurrent();
         notify(draft.tarea_padre_id ? "Subtarea creada." : "Tarea creada y asignada.");
@@ -1609,7 +1618,7 @@ export function WorkspaceReadOnlyPage({ sesion }) {
         if (!guard.current() || isSessionFailure(historyError)) throw historyError;
         notify("Tarea creada, pero no se pudo registrar la actividad.", "error");
       }
-      return complete;
+      return {...ack,task:complete};
     } catch (reason) {
       if (!guard.current() || isSessionFailure(reason)) throw reason;
       if (![400,401,403].includes(reason?.status)) markReviewQueueStale(guard, true);

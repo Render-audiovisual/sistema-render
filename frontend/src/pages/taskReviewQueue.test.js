@@ -16,6 +16,8 @@ import { taskVisibleWindow } from '../features/render-os/utils/task-visible-wind
 import { taskMatchesResponsible } from '../features/render-os/utils/task-responsible-filter.js';
 import { keepsTaskOpen, isTaskDraftDirty } from './taskNavigationGuard.js';
 import { registerNavigationGuard, installUnsavedNavigation } from '../shared/navigation/unsaved.js';
+import {parseTaskCreationAck} from './taskCreationAttempt.js';
+const creationId='12345678-1234-4234-8234-123456789abc';
 
 const snapshot='a'.repeat(64), task=(id,extra={})=>({id,revision:1,titulo:`Task ${id}`,estado:'en_revision',asignado_a_id:7,colaborador_ids:[],propiedades_extra:{},...extra});
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return{promise,resolve,reject}};
@@ -141,11 +143,11 @@ test('actual queue JSX renders scope and explicit recovery; manual option is dis
  const css=readFileSync(new URL('./TaskHeader.css',import.meta.url),'utf8');assert.match(css,/\.render-workspace \.ros-review-queue \{[^}]*flex-wrap: wrap;/);assert.match(css,/\.ros-review-queue button \{[^}]*min-height: 44px;/);assert.match(css,/\.ros-review-queue button:focus-visible/);
 });
 
-function mutationFixture(reviewScope='personal',write=async(_url,options)=>options.method==='POST'?task(99,{estado:'pendiente'}):task(1,{estado:'aprobada',revision:2})){
+function mutationFixture(reviewScope='personal',write=async(url,options)=>url==='/api/tareas'?{version:1,task:task(99,{estado:'pendiente',propiedades_extra:{workspace:'render_os'}}),operation:{request_id:JSON.parse(options.body).request_id,task_id:99,replayed:false}}:task(1,{estado:'aprobada',revision:2})){
  const f=fixture(async()=>assert.fail('No queue GET after a local mutation')),writes=[],session={token:'synthetic',usuario:{id:7,rol:'admin',activo:true}};
  const guard=createCapturedRequest({session,readSession:()=>session,request:async(url,options)=>{writes.push({url,options});return write(url,options)}});
  Object.assign(f.deps,{captureRequest:()=>guard,reviewScope,reviewScopeRef:{current:reviewScope},clients:[],users:[],sesion:session,updateQueuesRef:{current:new Map()},canRetryTaskUpdate,logActivity:async()=>{},notify:()=>{},
-  markReviewQueueStale:null});
+  markReviewQueueStale:null,parseTaskCreationAck,createdAdmissions:{current:{ids:new Set()}}});
  f.deps.markReviewQueueStale=callback('WorkspaceReadOnlyPage','markReviewQueueStale',f.deps);
  f.deps.updateTask=callback('WorkspaceReadOnlyPage','updateTask',f.deps);
  f.deps.productionTaskSnapshot=callback('WorkspaceReadOnlyPage','productionTaskSnapshot',f.deps);
@@ -161,12 +163,48 @@ test('actual approve callback removes a row from effective queue and invalidates
  assert.deepEqual(visible,[]);await f.more();assert.equal(f.state.requests.length,0);assert.equal(f.writes.length,1);
 });
 
-test('actual pending create in a queue is direct-only, no count increment/implicit GET; normal creation still increments',async()=>{
+test('actual create admits one direct-only row and marks observed total stale instead of fabricating counts',async()=>{
  for(const scope of ['personal','']){
-  const f=mutationFixture(scope),created=await callback('WorkspaceReadOnlyPage','createTask',f.deps)({titulo:'New task',estado:'pendiente'});
-  assert.equal(f.writes.length,1);assert.equal(f.state.total,scope?2:3);assert.equal(Boolean(created.__renderOsDirectOnly),Boolean(scope));assert.equal(f.state.requests.length,0);
+  const f=mutationFixture(scope),created=await callback('WorkspaceReadOnlyPage','createTask',f.deps)({titulo:'New task',estado:'pendiente',request_id:creationId});
+  assert.equal(f.writes.length,1);assert.equal(f.state.total,2);assert.equal(created.task.__renderOsDirectOnly,true);assert.equal(f.state.requests.length,0);
+  assert.ok(f.state.effects.some(value=>value[0]==='PagingBlocked'&&value[1]===true));
   if(scope){assert.equal(f.deps.reviewPageRef.current,null);await f.more();assert.equal(f.state.requests.length,0)}
  }
+});
+
+test('actual parent admits POST and repeated GET confirmation once by ID without repeated activity or total changes',async()=>{
+ const row=task(99,{estado:'pendiente',propiedades_extra:{workspace:'render_os'}});
+ const f=mutationFixture('',async(_url,options)=>({version:1,task:row,operation:{request_id:creationId,task_id:99,replayed:options.method==='GET'}}));
+ let activities=0;f.deps.logActivity=async()=>{activities++;};
+ const create=callback('WorkspaceReadOnlyPage','createTask',f.deps),input={titulo:'Task99',request_id:creationId};
+ await create(input);await create(input,{method:'GET'});await create(input,{method:'GET'});
+ assert.equal(f.state.tasks.filter(item=>item.id===99).length,1);assert.equal(f.deps.tasksRef.current.filter(item=>item.id===99).length,1);
+ assert.equal(activities,1);assert.equal(f.state.total,2);assert.equal(f.writes.filter(item=>item.options.method==='POST').length,1);
+ assert.equal(f.writes.filter(item=>item.options.method==='GET').length,2);
+});
+
+test('actual parent recovery after hidden ACK admits one row but does not replay creation activity',async()=>{
+ const row=task(99,{estado:'pendiente',propiedades_extra:{workspace:'render_os'}});
+ const f=mutationFixture('',async(_url,options)=>{
+  if(options.method==='POST')throw new TypeError('Synthetic hidden ACK');
+  return{version:1,task:row,operation:{request_id:creationId,task_id:99,replayed:true}};
+ });
+ f.deps.logActivity=()=>assert.fail('Recovery does not create activity');
+ const create=callback('WorkspaceReadOnlyPage','createTask',f.deps),input={titulo:'Task99',request_id:creationId};
+ await assert.rejects(create(input));assert.equal(f.state.tasks.some(item=>item.id===99),false);
+ await create(input,{method:'GET'});assert.equal(f.state.tasks.filter(item=>item.id===99).length,1);assert.equal(f.state.total,2);
+});
+
+test('repeated confirmation after refreshed inventory cannot hide or overwrite its newer server row',async()=>{
+ const row=task(99,{estado:'pendiente',propiedades_extra:{workspace:'render_os'}});
+ const f=mutationFixture('',async(_url,options)=>({version:1,task:row,operation:{request_id:creationId,task_id:99,replayed:options.method==='GET'}}));
+ const create=callback('WorkspaceReadOnlyPage','createTask',f.deps),input={titulo:'Task99',request_id:creationId};await create(input);
+ const refreshed={...row,revision:3,titulo:'Newer server title'};
+ f.state.tasks=[refreshed];f.deps.tasksRef.current=f.state.tasks;
+ const effects=f.state.effects.length;
+ const result=await create(input,{method:'GET'});
+ assert.equal(f.state.tasks[0],refreshed);assert.equal(f.state.tasks[0].__renderOsDirectOnly,undefined);
+ assert.equal(result.task,refreshed);assert.equal(f.state.effects.length,effects);
 });
 
 test('legacy approval has no manual controls/drop anchor and ordinary arrows skip it, without state writes',()=>{
@@ -228,7 +266,7 @@ test('actual list SSR keeps all review rows reachable and ordinary rows continue
 
 for(const method of ['updateTask','createTask','approveTask','registerProduction','confirmProduction','correctProduction','bulkTaskAction'])for(const status of [undefined,503])test(`unknown ${method} ${status??'network'} blocks queue continuation without count fabrication or queue GET`,async()=>{
  const wait=deferred(),f=mutationFixture('personal',()=>wait.promise),observed=f.deps.reviewPageRef.current;
- const args={updateTask:[1,{titulo:'Edit'},null],createTask:[{titulo:'New',estado:'pendiente'}],approveTask:[task(1)],registerProduction:[task(1),1,'2026-10-21'],confirmProduction:[task(1)],correctProduction:[task(1),{id:1,cantidad:1},2],bulkTaskAction:[[1],'papelera']}[method];
+ const args={updateTask:[1,{titulo:'Edit'},null],createTask:[{titulo:'New',estado:'pendiente',request_id:creationId}],approveTask:[task(1)],registerProduction:[task(1),1,'2026-10-21'],confirmProduction:[task(1)],correctProduction:[task(1),{id:1,cantidad:1},2],bulkTaskAction:[[1],'papelera']}[method];
  const pending=callback('WorkspaceReadOnlyPage',method,f.deps)(...args);const rejection=assert.rejects(pending);await settle();assert.equal(f.writes.length,1);
  wait.reject(Object.assign(new TypeError('Synthetic unknown commit'),status===undefined?{}:{status}));await rejection;
  assert.equal(f.state.total,2);assert.equal(f.deps.reviewPageRef.current,null);assert.notEqual(observed,null);

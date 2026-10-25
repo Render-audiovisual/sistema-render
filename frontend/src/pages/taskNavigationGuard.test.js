@@ -52,8 +52,8 @@ test('task switches gate before selection/history and feedback gates before hist
   assert.match(source, /navigateWithinApp\(window, `\/moodboards\?/);
 });
 test('new task clears guard only after creation success, before post-create navigation', () => {
-  assert.match(source, /const created = await onCreate\(/);
-  assert.match(source, /completedRef.current = true;\s+onCreated\(created\)/);
-  assert.match(source, /busy: !completedRef.current && saving/);
-  assert.match(source, /const closeModal = \(\) => \{\s+if \(saving\) return;/);
+  assert.match(source, /const confirmed=await action\(\)/);
+  assert.match(source, /if\(!confirmed\|\|!guard.current\(\)\|\|completedRef.current\)return;\s+completedRef.current=true;onCreated\(creation.snapshot.accepted.task\)/);
+  assert.match(source, /busy: !completedRef.current && creation.snapshot.busy/);
+  assert.match(source, /const closeModal = \(\) => \{\s+if \(creation.snapshot.busy\) return;/);
 });

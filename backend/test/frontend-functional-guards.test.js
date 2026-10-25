@@ -138,7 +138,10 @@ test("todo el equipo puede abrir el formulario y crear únicamente tareas RENDER
   assert.match(workspaceSource, /const guard = captureRequest\(apiJson\)/);
   assert.match(workspaceSource, /Promise\.all\(\[guard.request\("\/api\/clientes"\), guard.request\("\/api\/usuarios"\)\]\)/);
   assert.doesNotMatch(workspaceSource, /\{isAdmin && <button className="ros-primary-button"/);
-  assert.match(workspaceSource, /body: JSON\.stringify\(\{ \.\.\.draft, workspace: "render_os" \}\)/);
+  assert.match(workspaceSource, /body:JSON.stringify\(draft\)/);
+  const taskCreationSource=readFileSync(new URL('../../frontend/src/pages/taskCreationAttempt.js',import.meta.url),'utf8');
+  assert.match(taskCreationSource,/request_id:requestId.toLowerCase\(\),workspace:'render_os'/);
+  assert.match(workspaceSource,/creation.start\(input\)/);
 });
 
 test("las acciones masivas no aparecen en el tablero y la Papelera individual sigue disponible", () => {

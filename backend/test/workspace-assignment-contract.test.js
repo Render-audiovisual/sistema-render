@@ -86,7 +86,10 @@ test("source contract: stable IDs, explicit history warning, admin leadership an
   assert.match(source, /El nombre histórico no concede acceso/);
   assert.match(source, /body: JSON.stringify\(\{ responsable_publicacion_id, expected_revision: review\?\.revision \?\? task.revision, \.\.\.deliveryPrecondition \}\)/);
   assert.match(source, /value=\{user.id\}/);
-  assert.match(source, /buildTaskAssignmentInput\(\{ ownerId: draft.asignado_a_id, collaboratorIds: draft.colaborador_ids \|\| \[\] \}\)/);
+  const creationSource=readFileSync(new URL('../../frontend/src/pages/taskCreationAttempt.js',import.meta.url),'utf8');
+  assert.match(creationSource,/asignado_a_id:draft.asignado_a_id,colaborador_ids:/);
+  assert.match(creationSource,/collaborators.some\(id=>!positive\(id\)\)/);
+  assert.match(source,/creation.start\(input\)/);
 });
 
 test("approval sends selected publisher ID, keeps display label; generic approval needs no publisher", async () => {
@@ -130,7 +133,7 @@ test("approval sends selected publisher ID, keeps display label; generic approva
 });
 
 test("source contract: existing unsaved, keyboard, focus and mobile behavior remains", () => {
-  assert.match(source, /isNewTaskDraftDirty\(draft\) && !window.confirm/);
+  assert.match(source, /\(isNewTaskDraftDirty\(draft\)\|\|creation.snapshot.locked\) && !window.confirm/);
   assert.match(source, /<DiscardChangesDialog open=\{discardDialogOpen\} busy=\{taskWriteBusy\}/);
   assert.match(source, /previousFocus\?\.isConnected/);
   assert.match(source, /event.key === "Escape"/);

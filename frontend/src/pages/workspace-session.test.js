@@ -8,6 +8,8 @@ import { canRetryTaskUpdate } from '../workspace-task-state.js';
 import { isTaskEditorialContext } from '../features/render-os/utils/task-editorial-context.js';
 import { mergeTaskComments } from './taskCommentCollection.js';
 import { createTaskCommentCreation } from './taskCommentCreation.js';
+import {parseTaskCreationAck} from './taskCreationAttempt.js';
+const creationId='12345678-1234-4234-8234-123456789abc';
 
 // Extract actual callbacks from JSX; no React mount or live workflow claims.
 const source = readFileSync(new URL('./WorkspaceReadOnly.jsx', import.meta.url), 'utf8');
@@ -29,7 +31,9 @@ function fixture({ cookie = false, transport = async () => task() } = {}) {
   const captureRequest = () => createCapturedRequest({ session, readSession: () => live, isActive: () => active,
     request: (url, options) => { requests.push({ url, options }); return transport(url, options); } });
   const deps = { captureRequest, isSessionFailure, isTaskEditorialContext, clients: [], users: [{ id: 9, nombre: 'Publisher', rol: 'community' }],
-    sesion: session, tasksRef, updateQueuesRef: { current: new Map() }, canRetryTaskUpdate, reviewScopeRef: { current: '' },
+    sesion: session, tasksRef, createdAdmissions:{current:{ids:new Set()}},parseTaskCreationAck,
+    taskQueryGenerationRef:{current:0},setLoadingMore:()=>{},setPagingBlocked:()=>{},setOrderMessage:()=>{},
+    updateQueuesRef: { current: new Map() }, canRetryTaskUpdate, reviewScopeRef: { current: '' },
     setTasks: update => { items = typeof update === 'function' ? update(items) : update; effects.push('tasks'); },
     setTotalTasks: update => { total = update(total); effects.push('total'); }, notify: () => effects.push('notify'),
     mergeRelatedTasks: (current, additions) => [...current, ...additions] };
@@ -89,7 +93,7 @@ test('late success/error from task write never refreshes, rolls back, logs or no
 });
 test('same cookie context reobserved generation is obsolete even when ID/role remain equal', async () => {
   const pending = deferred(), f = fixture({ cookie: true, transport: () => pending.promise });
-  const result = f.deps.createTask({ titulo: 'A' }); f.reobserve(); pending.resolve(task());
+  const result = f.deps.createTask({ titulo: 'A',request_id:creationId }); f.reobserve(); pending.resolve(task());
   await assert.rejects(result); assert.deepEqual(f.effects, []);
 });
 test('session errors never enter retry/refetch/rollback or notify even with a still-current local DTO', async () => {
@@ -114,7 +118,7 @@ test('ordinary safe 409 retry preserves eligibility and refreshed CAS, never app
 test('creation, approval, production and bulk actions suppress every late effect after identity replacement', async () => {
   for (const name of ['createTask', 'approveTask', 'registerProduction', 'confirmProduction', 'correctProduction', 'bulkTaskAction']) {
     const pending = deferred(), f = fixture({ cookie: true, transport: () => pending.promise });
-    const args = { createTask: [{ titulo: 'A' }], approveTask: [task(), 9], registerProduction: [task(), 2, '2026-10-20'],
+    const args = { createTask: [{ titulo: 'A',request_id:creationId }], approveTask: [task(), 9], registerProduction: [task(), 2, '2026-10-20'],
       confirmProduction: [task()], correctProduction: [task(), { id: 'record', cantidad: 1 }, 2], bulkTaskAction: [[5], 'papelera'] };
     const result = f.deps[name](...args[name]); f.switch(); pending.resolve({ ...task(), task: task(), ids: [5] });
     await assert.rejects(result); assert.equal(f.requests.length, 1, name); assert.deepEqual(f.effects, [], name);

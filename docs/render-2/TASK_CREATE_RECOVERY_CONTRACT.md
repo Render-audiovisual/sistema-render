@@ -2,7 +2,7 @@
 
 ## Estado y alcance
 
-Hallazgo306 reproducido en desarrollo local; **todavía no corregido en UI**. Corte307 incorpora base interna opt-in en task-persistence, módulo task-create-receipts y migración090 con pruebas de concurrencia/rollback/replay. Corte308 conecta POST con UUID al contrato por IDs y añade GET autenticado `/tareas/creaciones/:requestId`; legacy conserva DTO plano. Frontend aún no adopta UUID/recuperación. Prioridad transversal para recorridos maestros Tareas y Audiovisual. No afecta la separación trabajo/publicación ya implementada, ni demuestra acceso no autorizado. No autoriza despliegue.
+Hallazgo306 reproducido en desarrollo local; **implementación API+UI en307–309, pendiente aceptación nativa de ACK perdido**. Corte307 incorpora base interna opt-in en task-persistence, módulo task-create-receipts y migración090 con pruebas de concurrencia/rollback/replay. Corte308 conecta POST con UUID al contrato por IDs y añade GET autenticado `/tareas/creaciones/:requestId`; legacy conserva DTO plano. Corte309 conecta formulario, incertidumbre/GET/reintento exacto y admisión única por ID, con pruebas de modelo/callbacks y regresión; no acredita aún navegador montado. Prioridad transversal para recorridos maestros Tareas y Audiovisual. No afecta la separación trabajo/publicación ya implementada, ni demuestra acceso no autorizado. No autoriza despliegue.
 
 Coordinador inspeccionó el flujo actual y ejecutó el diagnóstico; Harvey identificó la brecha y revisó el contrato sin escribir código ni ejecutar servicios. Superpowers orientó priorizar un fallo operativo reproducible sobre seguir renovando pruebas visuales de módulos ya comprobados.
 
@@ -50,4 +50,4 @@ No se promete outbox/exactly-once de proveedores: un crash entre COMMIT y notifi
 - UI montada: doble envío, borrador posterior, sesión ABA, desmontaje, recuperación sin segundo alta y cierre con texto honesto; escritorio/móvil y recarga del registro compartido.
 - Mantener pruebas de autoridad, DTO, notificaciones por ID y trabajo distinto de publicación. Migración repetible, sin reinterpretar tareas históricas.
 
-Backend HTTP opt-in implementado/verificado por308 (ver CURRENT_ACCEPTANCE); conexión del formulario y aceptación nativa con ACK perdido siguen pendientes. Las garantías físicas del contrato HTTP no certifican su uso por el frontend actual.
+Backend HTTP opt-in implementado/verificado por308 y formulario conectado por309 (ver CURRENT_ACCEPTANCE); aceptación nativa con ACK perdido sigue pendiente. Las garantías físicas HTTP y pruebas del modelo/callback no certifican por sí solas todo el recorrido del navegador.
