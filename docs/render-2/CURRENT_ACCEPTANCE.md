@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Moodboards: vínculo posterior a150 verificado desde navegador — corte303
+
+Chrome/App302/index-jjm3iYm5 y backend301, PostgreSQL desechable55922/HTTP52865. Usuario sintético empleado qa_luciano, board1/cliente1 y referencia1;152 tareas compartidas preparadas antes del baseline. Panel inicial mostró150 checkboxes y tarea152 ausente. Cargar más tareas mostró151/152; marcar152 realizó el vínculo. La herramienta check informó transitoriamente que no cambió el estado; observación posterior mostró152 checked, sin errores de consola. No se repitió el click: no se interpreta ese error de observación como un fallo persistente del producto.
+
+Después del ACK/refresh quedó visible152 checked junto al primer lote150 (151 opciones), sin obligar a cargar otra vez. Recarga completa y reapertura de la referencia conservaron152 checked. Viewport móvil390×844: ancho raíz/scroll390 y vínculo marcado. Captura `/private/tmp/render2-goal303-linked-mobile.png` inspeccionada, muestra152 y Cargar más tareas con foco; no prueba lifecycle de cambio de identidad/unmount ni todos los tamaños de pantalla.
+
+Runner/log `/private/tmp/render2-goal303-native.*`: SQL final `QA303_EXACT_LAST_TASK_LINK_PERSISTED`; exactamente relación referencia1→tarea152, otras104 tablas de dominio, contadores de usuarios e index/entry sin cambios. Writer legacy de vínculos no incrementa revision de referencia ni crea recibo/auditoría: Harvey verificó ese contrato de forma independiente y read-only. No se instrumentó un contador HTTP, por lo que una sola fila final no demuestra exactamente un POST físico.
+
+Coordinador ejecutó recorrido con Verification; Harvey revisó delta esperado. PID15313/hijo15343 y PostgreSQL15326 verificados antes de TERM solo al coordinador; sesión18485 terminó0, cleanup ENOENT `/private/tmp/render2-local-MFCh0V`. Pestaña cerrada y viewport restaurado. Sin cambios de producto/build nuevos, datos comerciales, proveedores ni despliegue. Cierra pendiente estable de vínculo152→recarga302; Composer/initialTask contextual, concurrencia OFFSET y aceptación global siguen pendientes.
+
 ### Moodboards: selector paginado conectado a referencias — corte302
 
 ReferencePanel usa `MoodboardTaskPicker` y `moodboardTaskPager`: parte del array legacy150, botón explícito Cargar más tareas consulta contrato301 por GET, mantiene páginas por ID, latch síncrono evita clic duplicado y valida DTO/cursor/IDs int32. Error conserva opciones y permite retry manual en el mismo offset. Página terminal vacía es válida cuando el lote inicial era exactamente150. Unión con tareas del DTO autorizado de la referencia conserva vínculos fuera de página, sin inferir desvinculación. `isLinked/toggle` y writer/recovery no cambian.
@@ -12,7 +22,7 @@ Holder por board/tasks-observation y montaje invalida respuestas antiguas síncr
 
 7focales PASS: alcance152, doble carga/una petición, error+retry/cursor inválido, cancelación/contexto retirado y unión fuera de página; SSR del componente real confirma checkbox vinculado y disabled. SSR no certifica lifecycle de React montado. El primer harness SSR falló al incluir export en expresión extraída; se corrigió el harness, sin cambiar producto para hacerlo pasar. Frontend3028PASS/1SKIP/0FAIL, salida0; build index-jjm3iYm5 correcto. Logs `/private/tmp/render2-goal302-{focal-final2,frontend-final2,build-final}.log`. Coordinador implementó/ejecutó, Harvey revisó sin bloqueantes.
 
-Pendientes explícitos: navegador con selección de tarea152→vínculo→recarga y contexto/unmount montados; Composer/initialTask de creación contextual aún usa legacy150. OFFSET no es snapshot estable ante cambios concurrentes de orden/visibilidad. Sin backend nuevo/migraciones/DB/proveedores/despliegue en este corte; no aceptación global.
+Pendientes al cerrar302: navegador con selección de tarea152→vínculo→recarga (cerrado por303) y contexto/unmount montados; Composer/initialTask de creación contextual aún usa legacy150. OFFSET no es snapshot estable ante cambios concurrentes de orden/visibilidad. Sin backend nuevo/migraciones/DB/proveedores/despliegue en este corte; no aceptación global.
 
 ### Moodboards: contrato paginado del catálogo de tareas — corte301
 
