@@ -2,6 +2,7 @@ import { SYSTEM_USER_ROLES } from './user-roles.js';
 import { annotateEditorialEvidence } from './editorial-evidence-read.js';
 import { productionVisitMembersSql } from './production-visit-membership.js';
 import { readCalendarPage } from './calendar-pagination.js';
+import { effectiveTaskStateSql } from './task-review-query.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 export const CALENDAR_TIMEZONE = 'America/Argentina/Cordoba';
@@ -59,7 +60,7 @@ const visibleTask = alias => `${alias}.propiedades_extra->>'workspace'='render_o
 const assigned = alias => `EXISTS(SELECT 1 FROM tarea_asignaciones mine WHERE mine.tarea_id=${alias}.id AND mine.usuario_id=$4)`;
 const visitMembers = productionVisitMembersSql('v', visibleTask);
 
-export const CALENDAR_TASK_SQL = `SELECT t.id,t.titulo,t.estado,t.cliente_id,c.nombre AS cliente_nombre,
+export const CALENDAR_TASK_SQL = `SELECT t.id,t.titulo,${effectiveTaskStateSql('t')} AS estado,t.cliente_id,c.nombre AS cliente_nombre,
  to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS date,
  ARRAY(SELECT a.usuario_id FROM tarea_asignaciones a WHERE a.tarea_id=t.id ORDER BY a.usuario_id) AS responsable_ids
  FROM tareas t LEFT JOIN clientes c ON c.id=t.cliente_id

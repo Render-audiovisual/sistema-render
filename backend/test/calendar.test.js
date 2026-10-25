@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { effectiveTaskStateSql } from '../src/task-review-query.js';
 import { normalizeCalendarQuery, buildCalendarEvents, calendarEditorialSql, CALENDAR_TASK_SQL,
   CALENDAR_VISIT_SQL, CALENDAR_MILESTONE_SQL, readCalendar, createCalendarRouter } from '../src/calendar.js';
 
@@ -15,6 +16,16 @@ const piece = (extra = {}) => ({ id: 1, cliente_id: 7, cliente_nombre: 'Cliente'
 const proof = () => ({ classification: 'confirmada_manualmente', revision: 3,
   confirmation: { id: UUID, actor_id: 9, occurred_at: TIME, recorded_at: TIME, source: 'manual' } });
 const build = (data, query = QUERY) => buildCalendarEvents(data, normalizeCalendarQuery(query));
+
+test('calendar task reads use the same effective approval state as the review queues', () => {
+  assert.ok(CALENDAR_TASK_SQL.includes(`${effectiveTaskStateSql('t')} AS estado`));
+  assert.doesNotMatch(CALENDAR_TASK_SQL, /SELECT t\.id,t\.titulo,t\.estado/);
+  // The projection remains closed: no approval metadata is added to the DTO.
+  const event = build({ tasks: [task({ estado: 'aprobada' })] })[0];
+  assert.equal(event.estado, 'aprobada');
+  assert.equal(event.kind, 'tarea');
+  assert.equal(event.evidence, null);
+});
 
 test('strict closed filters default mine/all and use half-open 1..62 day range', () => {
   assert.deepEqual(normalizeCalendarQuery(QUERY), { ...QUERY, scope: 'mine', kind: 'all', cliente_id: null });

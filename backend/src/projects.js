@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { SYSTEM_USER_ROLES } from './user-roles.js';
+import { effectiveTaskStateSql } from './task-review-query.js';
 import { projectDomainConflict } from './project-errors.js';
 import { approveProjectDeliverable, PROJECT_DELIVERABLE_READ_SQL, projectDeliverableDto } from './project-deliverable-approvals.js';
 
@@ -157,7 +158,7 @@ export async function readProjectDetail(db, id, user) {
   const etapas = await query('SELECT id,titulo,posicion,estado FROM proyecto_etapas WHERE proyecto_id=$1 ORDER BY posicion,id LIMIT 100', ['id', 'titulo', 'posicion', 'estado']);
   const hitos = await query("SELECT id,etapa_id,titulo,to_char(fecha,'YYYY-MM-DD') AS fecha,estado FROM proyecto_hitos WHERE proyecto_id=$1 ORDER BY fecha NULLS LAST,id LIMIT 200", ['id', 'etapa_id', 'titulo', 'fecha', 'estado']);
   const entregables = (await db.query(`${PROJECT_DELIVERABLE_READ_SQL} WHERE d.proyecto_id=$1 ORDER BY d.id LIMIT 200`,[id])).rows.map(projectDeliverableDto);
-  const tareas = (await query(`SELECT t.id,t.titulo,t.estado,t.prioridad,t.revision,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,x.etapa_id
+  const tareas = (await query(`SELECT t.id,t.titulo,${effectiveTaskStateSql('t')} AS estado,t.prioridad,t.revision,to_char(t.fecha_vencimiento,'YYYY-MM-DD') AS fecha_vencimiento,x.etapa_id
     FROM proyecto_tareas x JOIN tareas t ON t.id=x.tarea_id WHERE x.proyecto_id=$1 AND ${VISIBLE} ORDER BY t.id LIMIT 200`, ['id', 'titulo', 'estado', 'prioridad', 'revision', 'fecha_vencimiento', 'etapa_id'])).map(t => ({ ...t, href: `/workspace/tareas?task=${t.id}` }));
   const actividad = await query('SELECT id,actor_id,accion,created_at,recurso_id,tarea_id,estado_anterior,estado_nuevo FROM proyecto_actividad WHERE proyecto_id=$1 ORDER BY id DESC LIMIT 20', ['id', 'actor_id', 'accion', 'created_at', 'recurso_id', 'tarea_id', 'estado_anterior', 'estado_nuevo']);
   return { ...projectSummaryDto(row), descripcion: row.descripcion, miembro_ids, etapas, hitos, entregables, tareas,

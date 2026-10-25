@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Estados de aprobación coherentes en Calendario y Proyectos — corte252
+
+Regresión completa backend:2242 PASS,140 integraciones optativas SKIP,0 fallos; frontend2873 PASS,0 fallos/omisiones. Las4 físicas nuevas se ejecutaron aparte con opt-in; no equivalen a todas las integraciones omitidas.
+
+Volta confirmó que ambas lecturas mostraban estado crudo para una tarea histórica en_revision con revision_aprobada booleantrue, mientras Inicio/Tareas aplicaban aprobada. Erdos implementó la física asignada; coordinador reprodujo el fallo y reutilizó effectiveTaskStateSql('t') en calendar.js y readProjectDetail de projects.js. Cambian solo las proyecciones de lectura; sin migración, escritores, permisos, DTO ampliados ni reinterpretación de publicación. Stringtrue/false no aprueban y Proyecto conserva2 finalizadas, sin sumar aprobadas.
+
+Unit nueva roja→verde y63 focales aprobadas. Física principal bearer sobre PostgreSQL55888: antes4 FAIL (padre+3 subtests) por el estado incorrecto; después4 PASS en fixture nuevo. Mine/team conservan IDs/fecha/enlace, calendario legacy y páginas limit2 completas más parser UI real limit200; Inicio y Proyecto coinciden.106 tablas públicas y estados/metadata/revisiones raw invariantes; ambas raícesFaKMb1/DL2E5Q cleanup ENOENT. Logs /private/tmp/render2-goal252-physical-red.log y /private/tmp/render2-goal252-physical.log. Frontend2873 PASS en /private/tmp/render2-goal252-frontend.log; regresión backend en /private/tmp/render2-goal252-backend.log. Sin frontend/build nuevo ni navegador/cookies/transición de aprobación nueva: datos históricos sintéticos SQL, no prueba de que el writer actual genere esa combinación. No se probó físicamente el rechazo de un snapshot previo al cambio ni flag ausente. Detalles en CALENDAR_QA.md; sin bases configuradas, proveedores o despliegue, aceptación global pendiente.
+
 ### Cuenta secundaria: navegación histórica conectada — corte251
 
 Sobre build250 index-B6WnmFKf.js, Volta preparó /private/tmp/render2-goal251-client-context-native.mjs; coordinador inspeccionó/ejecutó runner y CUA; Erdos revisó contratos y límites sin otro defecto confirmado. PostgreSQL55887/HTTP52842, raíz /private/tmp/render2-local-wAZyMR, identidad física antes/después de importar app, cookies reales y ningún transporte interceptado. Feed sintético con cuentas A1/B2, objetivo septiembre de1 reel y octubre de2, tres tareas/piezas vinculadas aB. Setup histórico SQL deliberado, no preparación histórica mediante API ni datos comerciales.

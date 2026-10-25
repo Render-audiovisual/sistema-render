@@ -1,5 +1,17 @@
 # Principal calendar — independent QA
 
+## Effective task approval across modules — cut252
+
+Final regressions: backend2242 PASS/140 opt-in SKIP/0 failures and frontend2873 PASS/0 failures/skips, logs /private/tmp/render2-goal252-backend.log and /private/tmp/render2-goal252-frontend.log. The new four physical test results below ran separately; skipped integrations are not asserted passing. No frontend source change or new build.
+
+Calendar and linked Project tasks selected raw `t.estado`, unlike Home and the task board's effective-state rule. A supported historical row (`en_revision` plus JSON boolean `revision_aprobada=true`) therefore appeared approved in Home but in review in Calendar/Projects. Current approval writes already store `aprobada`; this is not a claim that new approvals generate the historical combination.
+
+Both readers now reuse `effectiveTaskStateSql('t') AS estado`. Only the read projection changes: IDs, membership, dates, ordering, filters, revisions, counts, DTO shape and writers remain intact. String `"true"` and false do not approve work. Approval does not increment finalized counts or generate publication events. No historical migration occurs. Paginated Calendar reuses the same source SQL; its existing snapshot fingerprint observes projected raw state and can correctly reject an affected old token, but that token transition was not physically exercised here.
+
+Unit regression was red before the change;63 focal unit tests pass afterward. New `backend/test/render2-calendar-approved-state.integration.test.js` uses guarded fresh PostgreSQL55888 and principal bearer HTTP. Before the fix its three subtests failed on `en_revision` versus `aprobada`; own rootFaKMb1 was removed. After the fix:4 PASS (one parent/three subtests), rootDL2E5Q cleanup ENOENT. Cases include historical boolean true, string true, false, canonical approved, finalized and legacy finalized alias; another assigned ID distinguishes mine/team. Both scopes exercise legacy Calendar, every limit2 page with real snapshot metadata, and the actual frontend limit200 parser. Home tasks/review totals and Project task DTOs are compared by exact ID/date/link; Project retains exactly2 finalizations.106 public-table hashes and explicit raw task states/metadata/revisions are unchanged after setup/read groups.
+
+Logs: /private/tmp/render2-goal252-calendar-red.log, /private/tmp/render2-goal252-unit.log, /private/tmp/render2-goal252-physical-red.log, /private/tmp/render2-goal252-physical.log. Erdos implemented the assigned physical test; Volta independently reviewed source, pagination and final diff; coordinator reproduced/fixed/integrated. Superpowers, verification and PostgreSQL guidance kept the correction read-only and separated helper/HTTP evidence from browser acceptance. No native browser, cookie journey, new approval transition, absent-flag physical control, live provider or configured database in this cut. Not global acceptance or deployment.
+
 ## Final coordinator execution — 2026-10-19
 
 This final execution supersedes pending gates in the author's earlier handoff below. Full backend:1065 passed,26 opt-in skipped,0 failed. All nineteen opted-in real principal HTTP/PostgreSQL suites:229 passed,0 skipped/failed (`/private/tmp/render2-calendar-regression.log`). Final frontend:259 passed,0 failed/skipped; production build123 modules passed. Diff check passed.
