@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado382
+# Render 2.0 — corte de aceptación local372, actualizado383
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -70,6 +70,7 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - Integración380: reloj actual y consumo condicional por actor/token/vigencia antes de ejecutar,22 unitarias dentro de36 focales; física8PASS, dos vencimientos durante espera real (tarea/token) con108 tablas invariantes; core31archivos307PASS/0FAIL/0SKIP; backend2492PASS/170SKIP/0FAIL. Se autoriza vigencia al claim, no se exige COMMIT previo a expires_at. Sin proveedores/navegador/migraciones ni despliegue.
 - Integración381: Moodboards protege formulario/recuperación e imagen en lectura frente a preparación tardía.26 callbacks AST, frontend3251PASS y backend2492PASS/170SKIP/0FAIL; build index-CWnRw1Ja. Sin nuevo core/fixture físico/navegador; no confundir callbacks con aceptación nativa de la carrera.
 - Verificación382 parcial: navegador1280/PG propio, advisory lock y waiter reales; statement_timeout15000 ocurrió antes de liberar. Borrador/textos se conservaron y108 tablas quedaron invariantes, cleanup terminal0/ENOENT. No prueba éxito demorado ni móvil/FileReader. Control de Chrome se interrumpió en confirm de descarte; pestaña/viewport pendientes de restaurar, usuario avisado. Detalle en CURRENT_ACCEPTANCE.md.
+- Integración383: confirmación de mensaje retiene el mismo destinatario activo por ID antes del claim;26 unitarias dentro de40 focales, física12PASS con desactivación durante espera real, core31archivos311PASS/0FAIL/0SKIP y backend2496PASS/170SKIP/0FAIL. Solo mensajes internos de fixture; sin proveedor, navegador ni política nueva de destinatarios. Mi lista tiene duplicación pendiente tras ACK perdido en Agregar bloque.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
 
@@ -80,6 +81,8 @@ Hallazgo de Harvey y reproducción del coordinador sobre funciones reales sin DB
 Corrección373: métricas y detalle reutilizan `effectiveTaskFilterState`; el detalle conserva `estado_almacenado` separado. Booleantrue cambia solo lectura a aprobada; stringtrue/false/ausencia no lo hacen. No reescribe históricos ni suma aprobadas a finalizadas o confirmaciones editoriales. Modelos/SSR, PostgreSQL con cookies admin/editor y navegador1280/390 verifican los casos acotados;108 tablas del fixture nativo quedan invariantes. El defecto está corregido localmente, **sin declarar fase2/5 cerrada**. Resultados completos de373 en CURRENT_ACCEPTANCE.md.
 
 ## Decisiones y gates externos
+
+Pendiente local383: Agregar bloque en Mi lista puede duplicar tras ACK perdido; callbacks reales con servidor simulado y fuente de POST sin recibo, todavía sin parche/prueba PostgreSQL. No confundir con Crear página, que ya conserva su intento. La nueva corrección de destinatario activo en confirmaciones no cierra este pendiente de persistencia.
 
 Corrección379: confirmación web legacy retiene actor y revalida workspace/membresía después del lock, en READ COMMITTED. Corrección380: vencimiento mediante reloj actual y claim condicional justo antes de ejecutar acción; cookie/PostgreSQL prueban token que vence mientras espera tarea y mientras espera token, ambas409 sin consumo ni cambios en108 tablas. No implica certificar TTL de todos los transportes o COMMIT previo al vencimiento. Corrección381 de Moodboards: fence de observaciones/owners y protección de FileReader pendiente evita que preparar clientes descarte editores modificados/abiertos durante la espera;26 callbacks AST aprobados, pendiente navegador nativo de la carrera. Detalle y límites en CURRENT_ACCEPTANCE.md. No confundir estos pendientes con decisiones externas.
 

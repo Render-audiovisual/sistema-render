@@ -4,6 +4,8 @@ import express from 'express';
 import { createWilsonChatRouter } from '../src/wilson-chat.js';
 import * as authority from '../src/legacy-production-authority.js';
 
+const retainedTargetSql = 'SELECT id,nombre FROM usuarios WHERE id=$1 AND activo IS TRUE FOR SHARE';
+
 // Actual registered callback, memory-only transaction/rows. No HTTP listener,
 // PostgreSQL, browser authentication claim, notification or external provider.
 function fixture(options = {}) {
@@ -29,16 +31,19 @@ function fixture(options = {}) {
         return { rows: [] };
       }
       if (sql === 'COMMIT') { assert.ok(transaction); stored = transaction; transaction = undefined; return { rows: [] }; }
-      if (sql.includes('FROM usuarios WHERE id=$1') && sql.includes('FOR SHARE')) {
+      if (sql === 'SELECT id,rol,activo,session_version FROM usuarios WHERE id=$1 FOR SHARE') {
         assert.deepEqual(params, [7], 'Current authority uses the captured account ID');
         return { rows: options.missingActor ? [] : [structuredClone(current)] };
       }
       if (sql === 'SELECT nombre,usuario FROM usuarios WHERE id=$1') {
         assert.deepEqual(params, [7]); return { rows: [{ nombre: current.nombre, usuario: current.usuario }] };
       }
-      if (sql === 'SELECT id,nombre FROM usuarios WHERE id=$1') {
+      if (sql.startsWith('SELECT id,nombre FROM usuarios WHERE id=$1')) {
+        assert.equal(sql, retainedTargetSql, 'Message recipient must be the current active ID retained through COMMIT');
         if (options.expiry === 'before-message-claim') expired = true;
-        assert.deepEqual(params, [8]); return { rows: [{ id: 8, nombre: 'QA message recipient' }] };
+        assert.deepEqual(params, [8]);
+        return { rows: options.targetMissing || options.targetActive === false ? []
+          : [{ id: 8, nombre: options.targetName ?? 'QA message recipient' }] };
       }
       if (sql.includes('FROM wilson_acciones_pendientes')) {
         assert.deepEqual(params, ['qa-owned-token', 7], 'Token remains scoped to the captured actor');
@@ -100,6 +105,7 @@ function fixture(options = {}) {
       }
       if (sql.startsWith('INSERT INTO wilson_mensajes')) {
         assert.equal(transaction.tokenUsed, true);
+        if (options.messageWriteFails) throw writeFailure;
         transaction.messages.push(structuredClone(params)); return { rows: [{ id: 1 }] };
       }
       assert.fail(`Unexpected SQL in bounded production authority fixture: ${sql}`);
@@ -260,13 +266,53 @@ test('retained current admin confirms employee message without any production ta
   const hint = f.calls.findIndex(({ sql }) => sql.includes('FROM wilson_acciones_pendientes') && !sql.includes('FOR UPDATE'));
   const token = f.calls.findIndex(({ sql }) => sql.includes('FROM wilson_acciones_pendientes') && sql.includes('FOR UPDATE'));
   assert.ok(actor >= 0 && hint > actor && token > hint);
-  const target = f.calls.findIndex(({ sql }) => sql === 'SELECT id,nombre FROM usuarios WHERE id=$1');
+  const target = f.calls.findIndex(({ sql }) => sql === retainedTargetSql);
   const claim = f.calls.findIndex(({ sql }) => sql.startsWith('UPDATE wilson_acciones_pendientes'));
   const conversation = f.calls.findIndex(({ sql }) => sql.startsWith('INSERT INTO wilson_conversaciones'));
   assert.ok(target > token && claim > target && conversation === claim + 1,
     'Message claim follows target read and immediately precedes conversation mutation');
   assert.equal(f.calls.filter(({ sql }) => sql.startsWith('UPDATE wilson_acciones_pendientes')).length, 1);
   assert.equal(f.calls.filter(({ sql }) => sql === 'COMMIT').length, 1);
+  assert.deepEqual(f.releases, [undefined]);
+});
+
+for (const [name, options] of [
+  ['inactive recipient', { targetActive: false }],
+  ['missing recipient', { targetMissing: true }],
+]) test(`employee message rejects ${name} before claim or domain writes`, async () => {
+  const f = fixture({ action: 'enviar_mensaje_empleado', requestRole: 'admin', ...options }); await f.run();
+  assert.equal(status(f), 404); assert.deepEqual(f.errors, []); assertNoMutation(f);
+  const target = f.calls.find(({ sql }) => sql === retainedTargetSql);
+  assert.ok(target); assert.deepEqual(target.params, [8]);
+  assert.equal(f.calls.some(({ sql }) => /\b(tareas|tarea_asignaciones|produccion_visitas)\b/.test(sql)), false);
+});
+
+test('active renamed employee receives by the same target ID and audit uses the retained current label', async () => {
+  const f = fixture({ action: 'enviar_mensaje_empleado', requestRole: 'admin', targetName: 'QA renamed recipient' }); await f.run();
+  assert.deepEqual(f.errors, []); assert.equal(f.response.statusCode, 200);
+  assert.equal(f.response.body.target_user_id, 8); assert.equal(f.stored.tokenUsed, true);
+  assert.equal(f.stored.conversations.length, 1); assert.equal(f.stored.conversations[0][0], 8);
+  assert.equal(f.stored.messages.length, 2);
+  assert.match(f.stored.messages[1][2], /QA renamed recipient/);
+  assert.deepEqual(JSON.parse(f.stored.audits[0][2]), {
+    target_user_id: 8, target_name: 'QA renamed recipient', message: 'QA explicitly confirmed message',
+  });
+  const target = f.calls.findIndex(({ sql }) => sql === retainedTargetSql);
+  const claim = f.calls.findIndex(({ sql }) => sql.startsWith('UPDATE wilson_acciones_pendientes'));
+  const commit = f.calls.findIndex(({ sql }) => sql === 'COMMIT');
+  assert.ok(target >= 0 && claim > target && commit > claim);
+  assert.deepEqual(f.releases, [undefined]);
+});
+
+test('message failure after atomic claim and conversation mutation rolls back everything', async () => {
+  const f = fixture({ action: 'enviar_mensaje_empleado', requestRole: 'admin', messageWriteFails: true }); await f.run();
+  assert.equal(f.errors[0], f.writeFailure); assert.deepEqual(f.stored, f.initial);
+  assert.equal(f.response.body, undefined); assert.ok(f.calls.some(({ sql }) => sql === 'ROLLBACK'));
+  assert.equal(f.calls.some(({ sql }) => sql === 'COMMIT'), false);
+  assert.equal(f.calls.filter(({ sql }) => sql.startsWith('UPDATE wilson_acciones_pendientes')).length, 1);
+  assert.equal(f.calls.filter(({ sql }) => sql.startsWith('INSERT INTO wilson_conversaciones')).length, 1);
+  assert.equal(f.calls.filter(({ sql }) => sql.startsWith('INSERT INTO wilson_mensajes')).length, 1);
+  assert.equal(f.calls.some(({ sql }) => sql.startsWith('INSERT INTO integracion_auditoria')), false);
   assert.deepEqual(f.releases, [undefined]);
 });
 

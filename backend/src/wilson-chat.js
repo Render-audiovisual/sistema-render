@@ -382,7 +382,7 @@ export function createWilsonChatRouter({ express, pool }) {
         RETURNING 1 AS claimed`, [token, actor.id])).rows.length === 1;
       if (action.accion === "enviar_mensaje_empleado") {
         if (actor.rol !== "admin") { await client.query("ROLLBACK"); return res.status(403).json({ error: "Solo un Líder puede enviar avisos a otra persona." }); }
-        const target = await client.query(`SELECT id,nombre FROM usuarios WHERE id=$1`, [action.payload.target_user_id]);
+        const target = await client.query(`SELECT id,nombre FROM usuarios WHERE id=$1 AND activo IS TRUE FOR SHARE`, [action.payload.target_user_id]);
         if (!target.rows[0]) { await client.query("ROLLBACK"); return res.status(404).json({ error: "La persona destinataria ya no está disponible." }); }
         if (!await claimConfirmation()) { await client.query("ROLLBACK"); return res.status(409).json({ error: "La confirmación venció. Volvé a prepararla." }); }
         const targetConversation = await conversation(client, target.rows[0].id);
