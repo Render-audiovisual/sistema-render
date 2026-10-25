@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Publicaciones: capas nativas y aislamiento de Tab en portales — corte279
+
+Registro editorial compartido ahora usa Modal native en portalbody, foco de título/retorno a opener y cierre bloqueado busy; se retira trap capture global y refoco por cambios busy. Día/pieza del calendario Publicaciones también nativos y etiquetados, tras resolver el hijo portal. Modal detiene Tab para que el padre React no intente enfocar su DOM inerte. Caso nuevo rojo→verde con handlers/DOM simulados; no gesto físico. No cambios de negocio: sentencias no-foco/load/save/footer conservados por hashes y modelos existentes.
+
+Coordinador implementación/ejecución, Harvey revisión sin bloqueantes.45focales,2969frontendPASS/1SKIP,2333backendPASS/150opt-inSKIP/0FAIL; build _84jHvWk y diffcheck correctos. Ver EDITORIAL_DIALOGS_QA.md para logs/alcance. Apple UI/Frontend Design/Superpowers orientaron dependencia y conservación visual. Falta stack físico conectado, foco/scroll móvil/inert y busy reales; no aceptación visual/global. Sin backend de producto/migración/DB/proveedor/despliegue.
+
 ### Avisos de tareas: identidad retenida tras resolver nombres — corte278
 
 Los avisos nuevos de compatibilidad ahora guardan destinatario_usuario_id y actor_usuario_id solo si fue aportado; se activa revalidación existente de cuenta/WhatsApp/propiedad de clave. Resolución única, exclusión de actor y fingerprint/replay conservados. Históricos sin ID no se backfillean ni quedan protegidos retroactivamente. Login con acentos sin binding propio aprobado queda intencionalmente retenido; alias propio habilitado permite elegibilidad, ajeno/deshabilitado no. Sin inferir rutas ni normalización SQL nueva. Ver NOTIFICATION_RECIPIENT_BINDING_QA.md.

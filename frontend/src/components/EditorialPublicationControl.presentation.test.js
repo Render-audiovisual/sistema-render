@@ -68,18 +68,18 @@ test('record description visibly disambiguates domain, piece ID and client ID wi
   assert.doesNotMatch(text(paragraph), /metadata|titulo|nombre|Pieza #/);
 });
 
-test('existing load, mutations, evidence checks, session guards and remaining dialog markup are byte-for-byte retained', () => {
-  // Captured from the actual source before this presentation-only change.
-  // Exclude only the newly introduced optional callback lifecycle statement.
+test('business logic and footer actions stay byte-for-byte intact when modal chrome is shared', () => {
+  // Baseline from pre-migration source, excluding only the old keyboard/focus
+  // effect and presentation reporting. The new invoker ref is presentation.
   const reporting = new Set(openEffects().map(call => call.parent));
   const existingLogic = internal.body.statements.filter(statement => !ts.isReturnStatement(statement)
-    && !reporting.has(statement)).map(text).join('\n');
-  assert.equal(hash(existingLogic), 'afd2a77a9a8b8ccb9a28c123bb42f1a6c15bdd7aeba625f55c6d0e2d7b1cea00',
-    'Existing read/write/session/evidence logic must not change for presentation props');
+    && !reporting.has(statement) && !text(statement).startsWith('const opener = useRef(')).map(text).join('\n');
+  assert.equal(hash(existingLogic), 'd5e8c86baa45aa878d92015ae5a7a2fd5008b7ba0420da21bb337c4d885a408e',
+    'All non-focus business statements stay unchanged');
   const portals = calls(internal, 'createPortal'); assert.equal(portals.length, 1);
-  const existingDialog = text(portals[0]).replace(
-    "{dominio === 'historia' ? 'Historia' : 'Publicación'} #{pieza.id} · Cliente #{pieza.cliente_id}.",
-    'Pieza #{pieza.id}.');
-  assert.equal(hash(existingDialog), '5839026d2e4eb90bece68f1b5993b8f11b44c3f4085ee5efa1741d03356d1040',
-    'Only record identity text changes; actions, disabled guards and portal remain unchanged');
+  const footer = nodes(portals[0], ts.isJsxElement).find(node => text(node.openingElement.tagName) === 'footer');
+  assert.equal(hash(text(footer)), 'faeacd4005ac19dbc832fc990a235c5db3173101fe3a83bc973f350f5a1c3841',
+    'Existing footer actions, acknowledgement and retry guards remain unchanged');
+  assert.equal(hash(text(internal.body.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === 'load'))), 'fc9c26ccff2434f765dec6ded19de46c81d42b6ef97336ac20fd776d4515884e');
+  assert.equal(hash(text(internal.body.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === 'save'))), '56fbdd2a19d4b112182298a79b5d3f6848b67277ca691d6933483bad7de7f8b5');
 });

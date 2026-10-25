@@ -151,10 +151,26 @@ function tabFixture() {
   const tab = (active, shiftKey = false, defaultPrevented = false) => {
     f.document.activeElement = active;
     const e = { ...event('Tab'), shiftKey, defaultPrevented };
+    e.stopPropagation = () => { e.stopped = true; };
     f.tree.props.onKeyDown(e); return e;
   };
   return { ...f, control, tab, setControls: value => { controls = value; } };
 }
+test('native portal child contains intermediate Tab propagation instead of letting its React parent steal focus', () => {
+  const parent = tabFixture(), child = tabFixture();
+  const parentFirst = parent.control('parent-first'), parentLast = parent.control('parent-last');
+  parent.setControls([parentFirst, parentLast]);
+  const first = child.control('child-first'), middle = child.control('child-middle'), last = child.control('child-last');
+  child.setControls([first, middle, last]);
+  for (const shift of [false, true]) {
+    parent.document.activeElement = middle;
+    const e = child.tab(middle, shift);
+    if (!e.stopped) parent.tree.props.onKeyDown(e); // React portals preserve React ancestry, not DOM ancestry.
+    assert.equal(e.stopped, true);
+    assert.deepEqual(e.calls, [], 'UA owns intermediate movement; neither dialog prevents it');
+    assert.deepEqual(parent.events, [], 'Parent must not try to focus its now inert controls');
+  }
+});
 test('actual native Tab handler wraps first ShiftTab and last forward, but leaves interior movement to UA', () => {
   const f = tabFixture(), first = f.control('first-close'), middle = f.control('middle'), last = f.control('last');
   f.setControls([first, middle, last]);
@@ -201,7 +217,7 @@ test('retained native handler uses current dialog ref and freshly queries contro
   const replacement = { querySelectorAll: () => { queries++; return [currentControl]; }, contains: active => active === currentControl };
   f.refs[2].current = replacement; f.document.activeElement = f.invoker;
   f.render({ closeDisabled: true }); const e = { ...event('Tab'), shiftKey: false }; handler(e);
-  assert.deepEqual(e.calls, ['prevent']); assert.equal(queries, 1); assert.equal(f.document.activeElement, currentControl);
+  assert.deepEqual(e.calls, ['stop', 'prevent']); assert.equal(queries, 1); assert.equal(f.document.activeElement, currentControl);
   assert.deepEqual(f.events, ['replacement']);
-  f.refs[2].current = null; const absent = event('Tab'); assert.doesNotThrow(() => handler(absent)); assert.deepEqual(absent.calls, []);
+  f.refs[2].current = null; const absent = event('Tab'); assert.doesNotThrow(() => handler(absent)); assert.deepEqual(absent.calls, ['stop']);
 });

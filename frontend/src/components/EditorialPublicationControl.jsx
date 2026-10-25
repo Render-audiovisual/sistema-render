@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Modal } from './Modal.jsx';
 import { getSesion } from '../utils.jsx';
 import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { evidenceFromStatus, isConfirmedPublication, isHistoricalPublication } from '../shared/editorial/publication-evidence.js';
@@ -17,6 +18,7 @@ function PublicationControl({ dominio, pieza, sesion, onSaved, hideSummary = fal
   const [ack, setAck] = useState(false), [busy, setBusy] = useState(false), [loading, setLoading] = useState(false);
   const [error, setError] = useState(''), [conflict, setConflict] = useState(false), [uncertain, setUncertain] = useState(null);
   const dialog = useRef(null), alive = useRef(true), read = useRef(null), readGeneration = useRef(0);
+  const opener = useRef(null);
   const writer = useRef(null);
   const sessionGuard = useRef(null);
   useEffect(() => {
@@ -44,22 +46,6 @@ function PublicationControl({ dominio, pieza, sesion, onSaved, hideSummary = fal
     } catch { if (alive.current && sessionGuard.current.isCurrent() && generation === readGeneration.current) { setStatus(null); setError('No se pudo validar el registro o cambió de cliente. Reintentá la consulta o recargá la lista.'); } }
     finally { if (alive.current && sessionGuard.current.isCurrent() && generation === readGeneration.current) setLoading(false); }
   }
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.activeElement;
-    dialog.current?.focus();
-    const key = event => {
-      if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); if (!busy) setOpen(false); }
-      if (event.key === 'Tab') {
-        const nodes = [...dialog.current.querySelectorAll('button:not(:disabled),input:not(:disabled)')];
-        const first = nodes[0], last = nodes[nodes.length - 1];
-        if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog.current)) { event.preventDefault(); last?.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-      }
-    };
-    document.addEventListener('keydown', key, true);
-    return () => { document.removeEventListener('keydown', key, true); previous?.focus?.(); };
-  }, [open, busy]);
   async function save() {
     if (!sessionGuard.current.isCurrent()) return;
     if (busy || !status || !admin || conflict || loading) return;
@@ -84,9 +70,11 @@ function PublicationControl({ dominio, pieza, sesion, onSaved, hideSummary = fal
   }
   const label = isConfirmedPublication(pieza) ? 'Confirmada manualmente' : isHistoricalPublication(pieza) ? 'Histórica · sin confirmación' : 'Sin confirmación';
   return <span className="ep-control" onClick={event => event.stopPropagation()}>
-    {!hideSummary && <span>{label}</span>}<button type="button" onClick={() => { setOpen(true); if (!uncertain) load(); }}>{openLabel}</button>
-    {open && createPortal(<div className="ep-overlay"><section className="ep-dialog" role="dialog" aria-modal="true" aria-label="Registro de publicación" tabIndex={-1} ref={dialog}>
-      <h2>Registro de publicación</h2><p>Registro manual; no es una verificación externa. {dominio === 'historia' ? 'Historia' : 'Publicación'} #{pieza.id} · Cliente #{pieza.cliente_id}.</p>
+    {!hideSummary && <span>{label}</span>}<button ref={opener} type="button" onClick={() => { setOpen(true); if (!uncertain) load(); }}>{openLabel}</button>
+    {open && createPortal(<Modal native className="ep-dialog" overlayClassName="ep-overlay" overlayAriaLabel="Registro de publicación"
+      closeLabel="Cerrar registro de publicación" closeDisabled={busy} initialFocusRef={dialog} returnFocusRef={opener}
+      onClose={() => setOpen(false)} title={<h2 ref={dialog} tabIndex={-1}>Registro de publicación</h2>}>
+      <p>Registro manual; no es una verificación externa. {dominio === 'historia' ? 'Historia' : 'Publicación'} #{pieza.id} · Cliente #{pieza.cliente_id}.</p>
       {loading && <p role="status">Consultando registro…</p>}{error && <p role="alert">{error}</p>}
       {status && <><p>{status.classification === 'confirmada_manualmente' ? 'Confirmada manualmente' : status.classification === 'historica_sin_confirmacion' ? 'Histórica sin confirmación' : 'Sin publicación confirmada'} · Versión {status.piece.revision}</p>
         {status.current_confirmation && <p>Actor #{status.current_confirmation.actor_id} · {new Date(status.current_confirmation.occurred_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Cordoba' })} (Córdoba)</p>}
@@ -97,6 +85,6 @@ function PublicationControl({ dominio, pieza, sesion, onSaved, hideSummary = fal
         {!uncertain && <button type="button" disabled={busy || loading} onClick={load}>{conflict ? 'Consultar nueva revisión' : 'Actualizar registro'}</button>}
         {admin && (status?.can_confirm || status?.current_confirmation) && <button type="button" disabled={busy || loading || conflict || (!uncertain && (!ack || (!status.current_confirmation && !date)))} onClick={save}>{busy ? 'Guardando…' : uncertain ? 'Reintentar mismo intento' : status.current_confirmation ? 'Retirar confirmación' : 'Confirmar publicación'}</button>}
       </footer>
-    </section></div>, document.body)}
+    </Modal>, document.body)}
   </span>;
 }

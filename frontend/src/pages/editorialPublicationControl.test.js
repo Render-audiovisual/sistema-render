@@ -198,6 +198,7 @@ test('principal pages wire per-piece control and helper, no direct publication a
 test('dialog has explicit date/ack, readonly role gate, Escape cleanup and no storage', () => {
   const text = source('../components/EditorialPublicationControl.jsx');
   assert.match(text, /datetime-local/); assert.match(text, /efectivamente se publicó/); assert.match(text, /rol === 'admin'/);
-  assert.match(text, /removeEventListener\('keydown'/); assert.match(text, /writer.current.cancel\(\)/);
+  assert.match(text, /<Modal native/); assert.match(text, /closeDisabled=\{busy\}/);
+  assert.doesNotMatch(text, /document.addEventListener\('keydown'/); assert.match(text, /writer.current.cancel\(\)/);
   assert.doesNotMatch(text, /localStorage|sessionStorage/);
 });

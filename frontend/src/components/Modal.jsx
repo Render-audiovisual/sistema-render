@@ -61,7 +61,11 @@ export function Modal({
 
   const handleNativeKeyDown = event => {
     if (event.key === 'Escape') { event.stopPropagation(); return; }
-    if (event.key !== 'Tab' || event.defaultPrevented) return;
+    if (event.key !== 'Tab') return;
+    // Portals retain React ancestry: never let an outer dialog redirect an
+    // interior Tab from a child whose DOM lives elsewhere in the top layer.
+    event.stopPropagation();
+    if (event.defaultPrevented) return;
     const dialog = dialogRef.current;
     if (!dialog) return;
     const controls = [...dialog.querySelectorAll('button, input, select, textarea, a[href], [tabindex]')]

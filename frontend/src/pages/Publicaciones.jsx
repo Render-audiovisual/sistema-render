@@ -428,6 +428,8 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
 
       {diaSel && (
         <Modal
+          native
+          overlayAriaLabel={`Publicaciones del ${diaSel.fecha}`}
           onClose={() => setDiaSel(null)}
           title={<span>Publicaciones del {diaSel.fecha}</span>}
           className="day-modal"
@@ -457,6 +459,8 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
 
       {piezaSel && (
         <Modal
+          native
+          overlayAriaLabel="Detalle de publicación"
           onClose={() => setPiezaSel(null)}
           title={
             <span>
