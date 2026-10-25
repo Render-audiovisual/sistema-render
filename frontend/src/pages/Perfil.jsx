@@ -175,6 +175,11 @@ export function PerfilPage() {
       return;
     }
 
+    // Successful credential changes revoke this view. Never discard the
+    // sibling form silently; cancellation/failure leaves both drafts intact.
+    if ((actual || nueva || confirmar) && !window.confirm("Al guardar el usuario se cerrará tu sesión y se descartará el borrador de contraseña. ¿Querés continuar?")) return;
+    if (!guard.current() || operationPending.current) return;
+
     operationPending.current = true;
     setEnviandoUsuario(true);
     guard.request(fetch, "/api/usuarios/perfil", {
@@ -224,6 +229,9 @@ export function PerfilPage() {
       setError("La nueva contraseña y su confirmación no coinciden.");
       return;
     }
+
+    if ((usuarioNuevo !== (perfilUsuario?.usuario || '') || passwordUsuario) && !window.confirm("Al guardar la contraseña se cerrará tu sesión y se descartarán los cambios de usuario sin guardar. ¿Querés continuar?")) return;
+    if (!guard.current() || operationPending.current) return;
 
     operationPending.current = true;
     setEnviando(true);

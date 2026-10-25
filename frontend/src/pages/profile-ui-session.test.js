@@ -102,7 +102,7 @@ const settle = async () => { for (let count = 0; count < 15; count += 1) await P
 function passwordForm(nueva, { confirmar = nueva, request = async () => ({ ok:true,json:async()=>({ok:true}) }) } = {}) {
   const events = [], calls = [], operationPending = {current:false}; let current = true;
   const guard = { current:()=>current, request:(transport,url,options)=>{calls.push({url,options});return request(url,options);}, requireReauthentication:()=>events.push(['reauth']) };
-  const bindings = { operationPending, capture:()=>guard, nueva, confirmar, actual:'old', perfilUsuario:{usuario:'qa_synthetic'},fetch:()=>{throw Error('Never direct fetch');},
+  const bindings = { operationPending, capture:()=>guard, nueva, confirmar, actual:'old', usuarioNuevo:'qa_synthetic',passwordUsuario:'',perfilUsuario:{usuario:'qa_synthetic'},fetch:()=>{throw Error('Never direct fetch');},
     ...Object.fromEntries(['Mensaje','Error','Enviando','Actual','Nueva','Confirmar'].map(name=>[`set${name}`,value=>events.push([name,value])])) };
   const submit=callback('handleSubmit',bindings);
   return {events,calls,operationPending,submit:()=>submit({preventDefault(){}}),stale:()=>{current=false;}};
@@ -161,7 +161,7 @@ test('password requires literal successful ACK before clearing secrets or reques
 function usernameForm(responseBody, { request, profile = {id:7,usuario:'qa_synthetic',rol:'diseno'} } = {}) {
   const events=[],calls=[],operationPending={current:false};let current=true;
   const guard={current:()=>current,request:(transport,url,options)=>{calls.push({url,options});return request?request(url,options):Promise.resolve({ok:true,json:async()=>responseBody});},requireReauthentication:()=>events.push(['reauth'])};
-  const run=callback('handleCambiarUsuario',{operationPending,capture:()=>guard,usuarioNuevo:'  nuevo_qa  ',perfilUsuario:profile,passwordUsuario:'old',fetch:()=>{throw Error('Never direct fetch');},
+  const run=callback('handleCambiarUsuario',{operationPending,capture:()=>guard,usuarioNuevo:'  nuevo_qa  ',perfilUsuario:profile,passwordUsuario:'old',actual:'',nueva:'',confirmar:'',fetch:()=>{throw Error('Never direct fetch');},
     ...Object.fromEntries(['MensajeUsuario','ErrorUsuario','EnviandoUsuario'].map(name=>[`set${name}`,value=>events.push([name,value])]))});
   return{events,calls,operationPending,submit:()=>run({preventDefault(){}}),stale:()=>{current=false;}};
 }

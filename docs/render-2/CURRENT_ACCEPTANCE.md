@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Perfil: impedir descarte silencioso del formulario hermano — corte270
+
+Guardar usuario o contraseña ahora advierte que se cerrará sesión si hay borrador en el otro formulario. Cancelar no envía ni borra campos; aceptar revalida el mismo guard/lock antes de request. Validación, ACK y reautenticación existentes conservados; ningún secreto persistido. Harvey revisó diff sin bloqueantes.13pruebas nuevas (seis fallos iniciales reproducidos),2961frontendPASS/0fallos/omitidas y build index-gTrZSLcs.js. Ver PROFILE_COOKIE_QA.md para contratos/logs/límites. Sin prueba nativa ni cambios de backend/DB/cuentas reales/despliegue. La limitación de intentos de contraseña actual en endpoints Perfil sigue siendo hallazgo separado por abordar, no resuelto por este guard visual.
+
 ### Feedback: modal nativo compartido — corte269
 
 Tras interrupción268 se revalidó worktree limpio de cambios de producto y agente previo no disponible. Fuente Feedback declaraba aria-modal en section sin contención de foco/Escape/retorno; ahora usa Modal native compartido, manteniendo closePanel/canLeave, bloqueo busy y foco de formulario. Modal añade únicamente clases opcionales de overlay/header, por defecto vacías; estilos Feedback conservan panel lateral sin padding/borde exterior. No se modificaron lectores/escritores, IDs, recibos ni persistencia.

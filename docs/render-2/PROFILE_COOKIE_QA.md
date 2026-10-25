@@ -1,5 +1,13 @@
 # Integration 73 — captured Profile operations and verified photo refresh
 
+## Borradores hermanos antes de reautenticar — corte270
+
+Perfil permitía modificar usuario y contraseña simultáneamente; guardar uno con éxito reautenticaba y perdía el otro sin advertencia. Ahora ambos handlers validan su formulario, advierten solo si el hermano tiene campos pendientes y permiten cancelar sin request/pending ni limpieza de campos. Aceptar no vacía el hermano: fallo conserva ambos; éxito mantiene la reautenticación existente. Tras confirmación se revalida el mismo guard capturado y operationPending, nunca una identidad nueva. No se almacenan secretos ni se modifica backend/política de recuperación.
+
+Ocho pruebas iniciales de callbacks reales extraídos del JSX:2PASS/6FAIL antes,8PASS después. Cinco casos adicionales cubren cada campo hermano aislado, incluido username con espacios sin trim.13nuevasPASS,56focales de PerfilPASS antes de esos cinco adicionales, y2961frontendPASS/0fallos/omitidas en regresión final. Los fixtures existentes incorporan los campos hermanos vacíos, sin eliminar sus asserts de ACK/identidad/validación. Build index-gTrZSLcs.js correcto. Logs /private/tmp/render2-goal270-red.log, focal.log, new.log, frontend-final.log y build.log.
+
+Harvey revisión independiente de fuente/diff sin bloqueantes, coordinador pruebas/implementación. Los nuevos tests controlan callbacks/guard, no montan React ni navegador; validación y éxito/reauth pertenecen a pruebas existentes, no al stub nuevo. No se ensayaron credenciales reales ni recorrido nativo nuevo; cancel conserva campos pero limpia mensajes anteriores como ya hacía el handler. Superpowers orientó reproducción/alcance. Sin DB/migración/proveedores/despliegue.
+
 Local development only. Prior turn was progress (`d0826d9`); the full Render 2.0 objective remains active. No cookie cutover, production deployment or real-account changes.
 
 ## Ownership and behavior
