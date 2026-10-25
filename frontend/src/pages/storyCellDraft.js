@@ -24,6 +24,10 @@ export function createStoryCellDraft() {
     get snapshot() { return Object.freeze({ dirty: edits.size > 0 || blocked.size > 0, busy: pending.size > 0, blocked: blocked.size > 0 }); },
     has,
     isEdited(id, fields) { return keysFor(id, fields).some(key => edits.get(id)?.has(key)); },
+    isPending(id, fields) {
+      const keys = keysFor(id, fields);
+      return [...pending.values()].some(intent => intent.id === id && keys.some(key => intent.versions.has(key)));
+    },
     edit(id, fields) {
       const keys = keysFor(id, fields), current = edits.get(id) || new Map();
       for (const key of keys) current.set(key, Object.freeze({}));

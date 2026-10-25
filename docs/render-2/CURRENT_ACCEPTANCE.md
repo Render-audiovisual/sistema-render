@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Planilla: ACK retrasado revela blur intacto encolado — corte294
+
+Chrome real/App292/BmE46sRf, backend285 y fixture PG55917/HTTP52861. Wrapper HTTP propio retiene únicamente `res.end` del primer PATCHpublicaciones1 exitoso después de ejecutar app/transacción reales; no modifica API/DB ni sustituye ACK. Se guardó copyA, Tab llevó a material vacío, volver a copy para escribir B provocó blur intacto de material. Tras liberar ACKA por IPC del runner verificado, B se conservó pero apareció409: material null→vacío había sido encolado con revisión0. La captura `/private/tmp/render2-goal294-draft-after-ack.png` fue inspeccionada y **muestra el fallo**, no éxito limpio del recorrido. Se detuvo esta verificación al encontrarlo.
+
+Regresión de callback reprodujo2PATCHvs1. Fix en Planilla: con cola para el mismo ID y revisión observada válida, omite campos iguales no editados ni pendientes; equivalencia nullable acotada. Retorna sin begin/succeed, baseline ni generación. Modelo compartido añade lookup no mutante `isPending` para no perder un intent cuyo marcador editado fue limpiado por ACK anterior. No cambia CAS ni omite campos verdaderamente editados. Coordinador implementó/ejecutó, Harvey revisó sin bloqueantes.
+
+89focales PASS; frontend2994PASS/1SKIP/0FAIL, salida0; build index-DhhYmESL correcto. Logs `/private/tmp/render2-goal294-{red,focal-final,frontend-final,build}.log`. Renovación nativa post-fix pendiente. Antes de corregir, runner5849/hijo5873 propios verificados y cerrados: salida0, copyA persistido/revisión1/current_event_idnull, otras103tablas y contadores intactos, index/entry intactos, cleanup ENOENT atOMc2; viewport restaurado/tab cerrada. Wrapper `/private/tmp/render2-goal294-native.mjs`, log homónimo.
+
+Sin backend de producto/migraciones/datos reales/proveedores/despliegue. La ausencia de segunda mutación no prueba ausencia del segundo PATCH rechazado; la UI409 y regresión documentan esa diferencia. Aceptación global incompleta.
+
 ### Planilla: edición real, ACK y persistencia tras recarga — corte293
 
 Chrome/App292/index-BmE46sRf, backend285, PostgreSQL desechable55916/HTTP52860. En enlace directo Planilla/cliente1/octubre, usuario sintético qa_franco cambió copy de pieza1 a «QA293 copy editado». Antes de blur apareció aviso dirty; Tab produjo aviso pendiente con recovery deshabilitado; tras ACK statusCount0 sin errores de consola observados. Recarga recuperó el copy editado; segundo blur intacto no produjo otra revisión persistida. Viewport DOM1280×800, client/scroll1265/1265. Captura `/private/tmp/render2-goal293-planilla-saved.png` inspeccionada.

@@ -4,6 +4,19 @@ import { createStoryCellDraft } from './storyCellDraft.js';
 
 // Pure model contracts only. No React batching simulation, HTTP, Storage or DB.
 const state = model => ({ ...model.snapshot });
+
+test('pending-field lookup remains exact after an earlier ACK clears shared edit generations', () => {
+  const model = createStoryCellDraft();
+  const first = model.begin(1, { copy: 'A' }), second = model.begin(1, { copy: 'B' });
+  model.succeed(first);
+  assert.equal(model.isEdited(1, { copy: 'B' }), false);
+  const observation = model.observation;
+  assert.equal(model.isPending(1, { copy: 'B' }), true);
+  assert.equal(model.isPending(1, { material_referencia: '' }), false);
+  assert.equal(model.isPending(2, { copy: 'B' }), false);
+  assert.equal(model.observation, observation, 'A lookup must not acknowledge or alter intentions');
+  model.succeed(second); assert.equal(model.isPending(1, { copy: 'B' }), false);
+});
 const row = (id, revision, extra = {}) => ({ id, revision, idea: `Idea ${id}`, metadata: { copy: `Copy ${id}` }, ...extra });
 function frozenRows(...rows) {
   for (const value of rows) { if (value.metadata) Object.freeze(value.metadata); Object.freeze(value); }

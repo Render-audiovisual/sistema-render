@@ -847,6 +847,14 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     if (!Object.keys(campos).length) return;
     const observed = publicaciones.find(p => p.id === id);
     const draft = cellDraft.current.model;
+    // Focusing another cell can blur an untouched field while this row saves.
+    // Do not enqueue a stale PATCH for it, nor acknowledge any draft generation.
+    if (writeQueues.current.has(id) && observed?.id === id
+      && Number.isSafeInteger(observed.publicacion_evidencia?.revision) && observed.publicacion_evidencia.revision >= 0
+      && !draft.isEdited(id, campos) && !draft.isPending(id, campos)
+      && Object.entries(campos).every(([key, value]) => observed[key] === value
+        || (['fecha_programada', 'idea', 'copy', 'material_referencia', 'aclaraciones', 'responsable'].includes(key)
+          && observed[key] == null && value === ''))) return;
     const confirmed = confirmedRows.current.get(id);
     // Never compare against the optimistic draft, or skip an intent behind an
     // intervening write. An uncertain attempt invalidates its baseline below.

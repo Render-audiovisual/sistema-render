@@ -180,6 +180,26 @@ test('render replacement of task attempt/capture fences held GET before passive 
     await settle(); assert.deepEqual(f.effects, before); assert.equal(f.requests.length, 1); cleanup();
   }
 });
+test('sheet unchanged unrelated blur during a pending write never queues a stale patch', async () => {
+  const held = deferred();
+  const row = { id: 5, copy: 'Original', material_referencia: null, publicacion_evidencia: { revision: 0 } };
+  const f = sheetFixture(async (_url, options) => {
+    const fields = JSON.parse(options.body);
+    if (Object.hasOwn(fields, 'material_referencia')) throw Object.assign(Error('Stale unchanged field'), { status: 409 });
+    await held.promise; return { ...row, copy: 'First draft', publicacion_evidencia: { revision: 1 } };
+  });
+  f.deps.publicaciones = [row];
+  f.deps.guardarEnServidor = callback(sheet, 'guardarEnServidor', f.deps);
+  const first = f.deps.guardarEnServidor(5, { copy: 'First draft' }); await settle();
+  const untouchedBlur = f.deps.guardarEnServidor(5, { material_referencia: '' });
+  callback(sheet, 'actualizarLocal', f.deps)(5, { copy: 'Later draft' });
+  held.resolve(); await Promise.all([first, untouchedBlur]);
+  assert.equal(f.requests.length, 1, 'Untouched other field must not create a second PATCH');
+  assert.equal(f.deps.cellDraft.current.model.snapshot.blocked, false);
+  assert.equal(f.deps.cellDraft.current.model.snapshot.dirty, true);
+  assert.equal(f.deps.cellDraft.current.model.snapshot.busy, false);
+});
+
 for (const missing of [false, true]) test(`sheet fresh read preserves dirty row and original CAS (missing ${missing})`, async () => {
   const row = { id: 5, cliente_id: 2, copy: 'Original', publicacion_evidencia: { revision: 0 } };
   let reads = 0;
