@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Prioridad transversal: duplicación en alta tras resultado incierto — corte306
+
+Revisión actual coordinador/Harvey identificó POST `/tareas` sin recibo e intento de UI sin UUID/recuperación. Diagnóstico HTTP+PG desechable55924 confirmó que ocultar al caller el primer201 ya persistido y repetir el mismo JSON/UUID crea IDs distintos para tarea normal1/2, subtarea3/4 y visita5/6; dos visitas derivadas. No fue fallo físico de red ni navegador montado. Otras101tablas de dominio intactas. Log `/private/tmp/render2-goal306-create-repro.log`, salida0 acredita el defecto, cleanup ENOENT QCNjas. Primera ejecución corrigió solo nombre de tabla en allowlist del fixture; cleanup GVJu39.
+
+**No corregido aún.** Próxima prioridad es recibo actor+UUID dentro de la transacción existente y propietario de intento en UI. Replay debe preceder nueva resolución de asignaciones y no repetir afterSave/avisos. Contrato, riesgos, reparto y gates en TASK_CREATE_RECOVERY_CONTRACT.md. Sin nuevo producto/build/migración/despliegue ni escritura en bases configuradas. Este hallazgo impide aceptar globalmente resiliencia de creación y los recorridos maestros; no invalida los cierres acotados previos.
+
 ### Moodboards: creación contextual y vínculo152 persistidos desde navegador — corte305
 
 Chrome/App304/index-C4MOVMYS, backend304 y fixture PostgreSQL55923/HTTP52866. Usuario sintético qa_luciano91003 inició sesión desde `/moodboards?board=1&cliente=1&task=152`; Composer se abrió automáticamente aunque el catálogo inicial solo incluye150. UI eligió Pegar enlace, categoría previamente preparada y enlace Pinterest sin abrirlo; guardó título «QA305 Referencia contextual» y nota «QA305 idea para tarea 152». Guardar cerró el formulario y retiró solo task de la URL. Recarga completa recuperó título/nota y reapertura mostró152 checked sin cargar otra página.
