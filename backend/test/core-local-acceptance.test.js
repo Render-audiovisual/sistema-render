@@ -9,8 +9,8 @@ test('core QA uses the fixed principal journeys, serially, with an isolated chil
   assert.equal(plan.command, process.execPath);
   assert.equal(plan.options.shell, false);
   assert.equal(plan.options.stdio, 'inherit');
-  assert.equal(coreAcceptanceFiles.length, 30);
-  assert.equal(new Set(coreAcceptanceFiles).size, 30);
+  assert.equal(coreAcceptanceFiles.length, 31);
+  assert.equal(new Set(coreAcceptanceFiles).size, 31);
   assert.ok(coreAcceptanceFiles.includes('test/render2-task-create-http.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-production-empty-registry-boundary.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-production-results.integration.test.js'));
@@ -19,6 +19,7 @@ test('core QA uses the fixed principal journeys, serially, with an isolated chil
   assert.ok(coreAcceptanceFiles.includes('test/render2-user-administration.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-task-bulk-authority.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-legacy-production-authority.integration.test.js'));
+  assert.ok(coreAcceptanceFiles.includes('test/render2-wilson-web-production-authority.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-task-comment-actor.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-task-comment-actor-upgrade.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-task-delete-authority.integration.test.js'));
@@ -46,7 +47,7 @@ test('core QA uses the fixed principal journeys, serially, with an isolated chil
   plan.options.env.DATABASE_URL = 'synthetic-not-a-real-target';
   plan.args.length = 0;
   assert.equal(Object.hasOwn(coreAcceptancePlan().options.env, 'DATABASE_URL'), false);
-  assert.equal(coreAcceptancePlan().args.length, 32);
+  assert.equal(coreAcceptancePlan().args.length, 33);
 });
 
 test('core QA refuses flags, URLs and fixture overrides instead of choosing a configured target', () => {

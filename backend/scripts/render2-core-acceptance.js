@@ -30,6 +30,7 @@ export const coreAcceptanceFiles = Object.freeze([
   'test/render2-user-administration.integration.test.js',
   'test/render2-task-bulk-authority.integration.test.js',
   'test/render2-legacy-production-authority.integration.test.js',
+  'test/render2-wilson-web-production-authority.integration.test.js',
   'test/render2-task-comment-actor.integration.test.js',
   'test/render2-task-comment-actor-upgrade.integration.test.js',
   'test/render2-task-delete-authority.integration.test.js',

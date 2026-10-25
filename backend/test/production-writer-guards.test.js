@@ -8,7 +8,7 @@ import { proposalSnapshot } from '../src/mia-supervisor-policy.js';
 const now = new Date('2026-10-19T13:00:00Z');
 const env = { MIA_SUPERVISOR_ENABLED: 'true' };
 const actor = { privateChat: true, userId: 7, actorId: 'qa-number' };
-const user = { id: 7, nombre: 'Editor', usuario: 'editor', rol: 'produccion', activo: true };
+const user = { id: 7, nombre: 'Editor', usuario: 'editor', rol: 'produccion', activo: true, session_version: 1 };
 const task = { id: 10, titulo: 'Visita QA', tipo_tarea: 'produccion', estado: 'pendiente',
   fecha_vencimiento: '2026-10-19', asignado_a_id: 7, colaborador_ids: [],
   propiedades_extra: { workspace: 'render_os' } };
@@ -23,13 +23,17 @@ function mockDb({ linkedDate = null, mixed = false, owner = 7, selectedDate = '2
     get stored() { return stored; },
     async query(sql, params = []) {
       calls.push({ sql, params });
-      if (sql === 'BEGIN') { pending = structuredClone(stored); return { rows: [] }; }
+      if (sql === 'BEGIN' || sql === 'BEGIN ISOLATION LEVEL READ COMMITTED') { pending = structuredClone(stored); return { rows: [] }; }
       if (sql === 'ROLLBACK') { pending = undefined; return { rows: [] }; }
       if (sql === 'COMMIT') { stored = pending; pending = undefined; return { rows: [] }; }
       if (sql.includes('FROM wilson_acciones_pendientes')) return { rows: [{ token: 'qa', tarea_id: 10,
         conversacion_id: 1, accion: 'registrar_produccion', payload: { cantidad: 2, fecha: '2026-10-19' } }] };
       if (sql.includes('FROM usuarios WHERE id=$1')) return { rows: [user] };
       if (sql.includes('FROM mia_supervisor_replies WHERE actor_hash=')) return { rows: [] };
+      if (sql.includes('FROM tareas t WHERE t.id=$1') && sql.includes('tarea_asignaciones')) {
+        assert.deepEqual(params, [10, 7]);
+        return { rows: owner === 7 ? [{ id: 10 }] : [] };
+      }
       if (sql.includes('FROM tareas')) return { rows: [task] };
       if (sql.includes('FROM tarea_asignaciones')) return { rows: [{ tarea_id: 10, usuario_id: owner, tipo: 'responsable' }] };
       if (sql.includes('FROM mia_supervisor_proposals WHERE id=')) return { rows: [{ id: proposalId,
