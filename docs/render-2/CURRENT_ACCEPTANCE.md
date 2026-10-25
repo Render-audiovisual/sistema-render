@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Ediciones comunes de tareas retienen autoridad — corte318
+
+R2-SEC318 por fuente:317 validaba dentro de transacción los PATCH con estado RenderOS, pero una edición de título/brief/fecha sin estado ni reasignación seguía sin retener al actor. El beforeSave de PATCH `/tareas/:id` ahora valida al actor en todos sus guardados, independientemente de query/workspace/tipo de cambio; nueva aprobación mantiene el guard administrativo existente. No se cambian campos permitidos, acceso por ID/rol, reglas de aprobación, evidencia de producción ni CAS. `assertCurrentTaskWriteActor` usa la implementación de identidad ya probada; `assertCurrentTaskStateActor` queda como alias de la misma función, no una segunda lógica.
+
+Coordinador implementó integración/alias/unitario y negativos de administrador; Harvey amplió matriz física de texto y revisó sin bloqueantes.15 focales PASS.23 físicas conjuntas PASS/0FAIL/0SKIP, salida0 y cleanup ENOENT: matriz anterior preservada, más texto × inactivo/época/rol→actor espera revoker→401 sin DML, y actor primero→revoker espera escritor→200 con título/aclaraciones/copy/fecha exactos, estado intacto y cero notificaciones nuevas. Dos negativos admin texto sin query/con workspace histórico demuestran que omitir o cambiar contexto no evita el guard. Se usaron tokens renovados de cuentas sintéticas, snapshots íntegros incl xmin/ctid y comparación de usuarios sin revelar credenciales. Regresión física de reasignación y edición/cierre también renovadas. Solo clústeres55936/55872/55937 generados por harness.
+
+119 integradas PASS/0FAIL/0SKIP; backend2387PASS/158opt-inSKIP/0FAIL, salida0. Los opt-in indicados sí pasaron por separado en la cohorte física. Logs `/private/tmp/render2-goal318-{focal,physical,core,backend-final}.log`. Guardado autorizado de texto cambia solo los campos solicitados; revocación posterior no deshace retroactivamente un commit válido. Source-only previo al fix, no RED físico anterior. Primer apply_patch con ancla de título de prueba desactualizada falló sin aplicar cambios; se releyó el archivo entregado y se integró con anclas actuales.
+
+Superpowers ordenó integración/pruebas independientes; guías de seguridad/PostgreSQL conservaron actor→dominio sin proveedores en transacción. Sin frontend/build nuevo, schema/migraciones, bases configuradas, cuentas reales, servicios ajenos ni despliegue. No se certifican todos los writers o modos de revocación cookie. Siguiente frente propuesto por revisión: cierre operativo parcial explícito de visita, conservando pendientes/origen y separándolo de «todo grabado»; no relajar readiness ni inventar cuotas/publicaciones. Aceptación global pendiente.
+
 ### Autoridad transaccional en estados y carrera edición/cierre — corte317
 
 Hallazgo R2-SEC317 por fuente: requireCurrentIdentity relee usuario sin lock (`auth.js`); PATCH estado sin reasignación no activaba captura de actor en persistAssignedTask, y su beforeSave solo validaba aprobación. La evidencia316 protegía tarea/visita, no vigencia de identidad hasta COMMIT. No hubo reproducción física anterior al fix y no se afirma un exploit ejecutado sobre el código antiguo.

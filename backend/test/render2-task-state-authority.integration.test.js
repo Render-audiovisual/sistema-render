@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { startLocalHarness, assertFixtureIdentity, fixturePassword, request } from '../scripts/render2-local-test.js';
 
-test('actual state-only HTTP writer serializes current actor authority before generic task and canonical closure locks', {
+test('actual task HTTP writers serialize current actor authority before state, text and canonical closure locks', {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 300000,
 }, async t => {
   const port = 55936, f = await startLocalHarness({ port });
@@ -83,10 +83,10 @@ test('actual state-only HTTP writer serializes current actor authority before ge
   assert.equal(login.status, 200); assert.equal(login.body.usuario.id, 91005);
   assert.equal(typeof login.body.token, 'string');
   const token = login.body.token;
-  async function http(route, method = 'GET', body) {
+  async function http(route, method = 'GET', body, requestToken = token) {
     const response = await fetch(new URL('/api' + route, f.base), {
       method, redirect: 'error', signal: AbortSignal.timeout(20000),
-      headers: { authorization: `Bearer ${token}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      headers: { authorization: `Bearer ${requestToken}`, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     return { status: response.status, body: await response.json() };
@@ -104,20 +104,24 @@ test('actual state-only HTTP writer serializes current actor authority before ge
     }
     return hashes;
   }
-  const privateActorHash = async () => (await f.query(`SELECT md5((to_jsonb(u)-'activo'-'rol'-'session_version'-'user_admin_version')::text) AS hash
-    FROM usuarios u WHERE id=91005`))[0].hash;
-  const otherUsersHash = async () => (await f.query(`SELECT md5(coalesce(jsonb_agg(
+  const privateActorHash = async (id=91005) => (await f.query(`SELECT md5((to_jsonb(u)-'activo'-'rol'-'session_version'-'user_admin_version')::text) AS hash
+    FROM usuarios u WHERE id=$1`,[id]))[0].hash;
+  const otherUsersHash = async (id=91005) => (await f.query(`SELECT md5(coalesce(jsonb_agg(
     jsonb_build_array(to_jsonb(u),u.xmin::text,u.ctid::text) ORDER BY u.id)::text,'[]')) AS hash
-    FROM usuarios u WHERE id<>91005`))[0].hash;
+    FROM usuarios u WHERE id<>$1`,[id]))[0].hash;
   const resetActor = () => f.query("UPDATE usuarios SET activo=true,rol='produccion',session_version=1 WHERE id=91005");
   let serial = 0;
   async function scenario(kind) {
-    if (kind === 'generic') {
+    if (kind === 'generic' || kind === 'text') {
       const [task] = await f.query(`INSERT INTO tareas(titulo,asignado_a,cliente_id,estado,tipo_tarea,propiedades_extra)
         VALUES($1,'QA317 Producer',$2,'pendiente','desarrollo','{"workspace":"render_os"}'::jsonb) RETURNING id,revision`,
       [`QA317 generic ${++serial}`, client.id]);
       await f.query("INSERT INTO tarea_asignaciones(tarea_id,usuario_id,tipo) VALUES($1,91005,'responsable')", [task.id]);
-      return { task, body: { estado: 'en_progreso', expected_revision: task.revision } };
+      return { task, body: kind === 'text' ? {
+        titulo: `QA318 revised text ${serial}`, aclaraciones: 'QA318 revised instructions',
+        fecha_vencimiento: '2026-10-30', propiedades_extra: { copy_trabajo: 'QA318 revised copy' },
+        expected_revision: task.revision,
+      } : { estado: 'en_progreso', expected_revision: task.revision } };
     }
     const created = await http('/tareas', 'POST', { request_id: randomUUID(), workspace: 'render_os',
       titulo: `QA317 Visita ${++serial}`, asignado_a_id: 91005, colaborador_ids: [], cliente_id: client.id,
@@ -141,7 +145,7 @@ test('actual state-only HTTP writer serializes current actor authority before ge
     { name: 'session', sql: 'UPDATE usuarios SET session_version=2 WHERE id=91005', field: 'session_version', value: 2 },
     { name: 'role', sql: "UPDATE usuarios SET rol='diseno' WHERE id=91005", field: 'rol', value: 'diseno' },
   ];
-  for (const kind of ['generic', 'canonical']) for (const change of changes) {
+  for (const kind of ['generic', 'canonical', 'text']) for (const change of changes) {
     await t.test(`${kind}: committed ${change.name} revocation wins before actor SHARE and denies401 without business writes`, async () => {
       await resetActor(); const { task, body } = await scenario(kind);
       const before = await snapshot(['usuarios']), actorHash = await privateActorHash(), othersHash = await otherUsersHash();
@@ -169,10 +173,11 @@ test('actual state-only HTTP writer serializes current actor authority before ge
       }
     });
   }
-  for (const kind of ['generic', 'canonical']) {
+  for (const kind of ['generic', 'canonical', 'text']) {
     await t.test(`${kind}: actor SHARE retained before task lock makes revocation wait through authorized commit`, async () => {
       await resetActor(); const { task, body } = await scenario(kind);
-      const before = await snapshot(['usuarios', 'tareas', 'mia_private_task_notifications']);
+      const exclusions = kind === 'text' ? ['usuarios', 'tareas'] : ['usuarios', 'tareas', 'mia_private_task_notifications'];
+      const before = await snapshot(exclusions);
       const actorHash = await privateActorHash(), othersHash = await otherUsersHash();
       const beforeTask = (await f.query('SELECT to_jsonb(t) AS row FROM tareas t WHERE id=$1', [task.id]))[0].row;
       const otherTasks = await f.query("SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY id)::text,'[]')) AS hash FROM tareas t WHERE id<>$1", [task.id]);
@@ -186,12 +191,19 @@ test('actual state-only HTTP writer serializes current actor authority before ge
         await blocked(revoker.pid, writerPid, revoke);
         await stopper.query('COMMIT');
         const result = await pending.promise; assert.equal(result.status, 200);
-        assert.equal(result.body.id, task.id); assert.equal(result.body.estado, body.estado);
+        assert.equal(result.body.id, task.id); assert.equal(result.body.estado, kind === 'text' ? beforeTask.estado : body.estado);
         assert.equal(result.body.revision, task.revision + 1);
         await revoke.promise; await revoker.query('COMMIT');
         const afterTask = (await f.query('SELECT to_jsonb(t) AS row FROM tareas t WHERE id=$1', [task.id]))[0].row;
+        if (kind === 'text') {
+          assert.deepEqual(afterTask, { ...beforeTask,
+            titulo: body.titulo, aclaraciones: body.aclaraciones, fecha_vencimiento: body.fecha_vencimiento,
+            propiedades_extra: { ...beforeTask.propiedades_extra, ...body.propiedades_extra },
+            revision: beforeTask.revision + 1, updated_at: afterTask.updated_at,
+          });
+        }
         assert.deepEqual(afterTask.propiedades_extra.produccion_registros, beforeTask.propiedades_extra.produccion_registros);
-        assert.deepEqual(await snapshot(['usuarios', 'tareas', 'mia_private_task_notifications']), before);
+        assert.deepEqual(await snapshot(exclusions), before);
         assert.deepEqual(await f.query("SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY id)::text,'[]')) AS hash FROM tareas t WHERE id<>$1", [task.id]), otherTasks);
         assert.equal(await privateActorHash(), actorHash); assert.equal(await otherUsersHash(), othersHash);
         assert.equal((await f.query('SELECT session_version FROM usuarios WHERE id=91005'))[0].session_version, 2);
@@ -212,5 +224,28 @@ test('actual state-only HTTP writer serializes current actor authority before ge
     assert.equal(result.status,403);assert.deepEqual(Object.keys(result.body),['error']);
     assert.deepEqual(await snapshot(),before);
   });
+  for(const suffix of ['', '?workspace=historical']) {
+    await t.test(`admin text PATCH ${suffix || 'without query'} cannot bypass the actor guard`,async()=>{
+      const adminLogin=await request(f.base,'/api/login',{method:'POST',body:{usuario:'qa_franco',password:fixturePassword}});
+      assert.equal(adminLogin.status,200);assert.equal(adminLogin.body.usuario.id,91001);
+      const {task,body}=await scenario('text');
+      const before=await snapshot(['usuarios']), actorHash=await privateActorHash(91001), othersHash=await otherUsersHash(91001);
+      const revoker=await auxiliary();let pending;
+      try {
+        await revoker.query('BEGIN');
+        await revoker.query('UPDATE usuarios SET session_version=session_version+1 WHERE id=91001');
+        pending=observe(http(`/tareas/${task.id}${suffix}`,'PATCH',body,adminLogin.body.token));
+        await waiterBehind(revoker.pid,pending,'actor_guard');
+        await revoker.query('COMMIT');
+        assert.equal((await pending.promise).status,401);
+        assert.deepEqual(await snapshot(['usuarios']),before);
+        assert.equal(await privateActorHash(91001),actorHash);assert.equal(await otherUsersHash(91001),othersHash);
+      } finally {
+        await revoker.query('ROLLBACK').catch(()=>{});
+        if(pending)await Promise.allSettled([pending.promise]);
+        await dispose(revoker);
+      }
+    });
+  }
   assert.deepEqual((await f.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).map(row => row.tablename), tables);
 });

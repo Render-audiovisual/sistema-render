@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertCurrentTaskStateActor } from '../src/task-state-authority.js';
+import { assertCurrentTaskStateActor, assertCurrentTaskWriteActor } from '../src/task-state-authority.js';
 import { persistAssignedTask } from '../src/task-persistence.js';
 const actor = { id:7,rol:'produccion',session_version:2 };
+test('text and state callers share one actor validation implementation',()=>{
+  assert.equal(assertCurrentTaskStateActor,assertCurrentTaskWriteActor);
+});
 test('state writes require the same active persisted ID, role and session epoch, never a name or stale role', async () => {
   for(const patch of [null,{id:8},{activo:false},{session_version:3},{rol:'diseno'}]) {
     const db={query:async(sql,values)=>{
