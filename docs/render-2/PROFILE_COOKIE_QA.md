@@ -1,5 +1,11 @@
 # Integration 73 — captured Profile operations and verified photo refresh
 
+## Avisos de verificación y presupuesto entre transportes — corte272
+
+Perfil traduce PROFILE_RATE_LIMITED y PROFILE_VERIFICATION_UNAVAILABLE a mensajes constantes de espera/verificación no disponible, aclarando que esa solicitud no cambió la cuenta. No extiende esa garantía a fallos de red o posteriores a escritura, que conservan aviso incierto. No muestra datos arbitrarios del servidor, countdown inventado ni reintento automático. Esperar15min es conservador frente al Retry-After restante. Un caso nuevo falló antes de implementar;62focales y2962frontendPASS/0fallos/omitidas, build index-CpvXNIhb.js. Logs /private/tmp/render2-goal272-red.log, focal.log, frontend.log y build.log.
+
+Suite independiente de Harvey inspeccionada/ejecutada por coordinador: render2-profile-abuse-cookie.integration.test.js, PG55904/browserSessions.4PASS padre+3grupos: auth ausente/contexto cruzado/CSRF inválido sin consumir buckets; veinte solicitudes concurrentes cookie+bearer alternando ambos endpoints→10contraseña inválida/10rate-limited y contador10; denegación sin Set-Cookie/DMLdebuckets, sesionesGETvigentes, fingerprints completos deusuarios y budgetsLoginintactos. No prueba invariancia global de dominio, cookies en navegador nativo, TLS ni varios procesos. Cleanup/ENOENT comprobado, salida0; log /private/tmp/render2-goal272-cookie.log. No modifica backend ni añade migración; npmtestbackend no renovado272 (suite271 vigente). Harvey revisión de mensajes sin bloqueantes; Superpowers orientó contratos/evidencia. Sin proveedores/cuentasreales/despliegue.
+
 ## Borradores hermanos antes de reautenticar — corte270
 
 Perfil permitía modificar usuario y contraseña simultáneamente; guardar uno con éxito reautenticaba y perdía el otro sin advertencia. Ahora ambos handlers validan su formulario, advierten solo si el hermano tiene campos pendientes y permiten cancelar sin request/pending ni limpieza de campos. Aceptar no vacía el hermano: fallo conserva ambos; éxito mantiene la reautenticación existente. Tras confirmación se revalida el mismo guard capturado y operationPending, nunca una identidad nueva. No se almacenan secretos ni se modifica backend/política de recuperación.

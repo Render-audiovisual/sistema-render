@@ -3,6 +3,8 @@ import { captureSessionBinding, sessionBindingMatches, sessionRequestOptions } f
 import { PASSWORD_POLICY_MESSAGE } from '../../../../shared/password-policy.mjs';
 
 export function profileFailureMessage(error) {
+  if (error?.code === 'PROFILE_RATE_LIMITED') return 'Demasiados intentos de contraseña actual. Esperá 15 minutos antes de volver a intentar. No se cambió tu cuenta.';
+  if (error?.code === 'PROFILE_VERIFICATION_UNAVAILABLE') return 'No está disponible la verificación de credenciales. Intentá más tarde. No se cambió tu cuenta.';
   if (error?.code === 'LOGIN_IDENTIFIER_UNAVAILABLE') return 'Ese usuario o email de acceso no está disponible. Elegí otro.';
   if (error?.code === 'current_password_invalid') return 'La contraseña actual es incorrecta.';
   if (error?.code === 'NEW_PASSWORD_INVALID') return PASSWORD_POLICY_MESSAGE;

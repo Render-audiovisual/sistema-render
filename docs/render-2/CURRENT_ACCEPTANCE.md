@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Perfil: mensajes definitivos y presupuesto cookie/bearer — corte272
+
+Dos códigos conocidos de rechazo previo al write muestran espera/verificación no disponible y «No se cambió tu cuenta», sin extrapolarlo a errores inciertos/red.62focales/2962frontendPASS/0fallos/omitidas, build CpvXNIhb. Harvey revisó sin bloqueantes y preparó integracióncookie ejecutada por coordinador en PG55904:4PASS, veinte solicitudes mixtas→10verificaciones/10denegaciones, auth/contexto/CSRF sin consumo, GET/cookies/usuarios/budgetsLoginconservados. Cleanup/ENOENT confirmado. Detalles/logs/límites en PROFILE_COOKIE_QA.md. No navegador nativo, varios procesos, nuevo backend/migración o despliegue.
+
 ### Perfil: presupuesto de verificación actual en PostgreSQL — corte271
 
 Ambas rutas de credenciales comparten10verificaciones/15min por ID estable/HMAC separado, antes de bcrypt; no se elude alternando endpoint/sesión ni consume presupuesto de login/otrosusuarios. Denegación429+Retry-After es sin DML/prune; fallos503 sanitizados. Cuenta/CAS/GET/foto/login intactos. Ver LOGIN_ABUSE_CONTRACT.md. Harvey revisó contrato/diff y creó suite física; coordinador inspeccionó/ejecutó en PG55903:6PASS (padre+5),20solicitudes concurrentes alternadas→10contraseña incorrecta/10rechazos, contador10exacto, actorindependiente, expiración, usuarios completos invariantes y sesionesGETválidas. Cleanup/ENOENT comprobado; log /private/tmp/render2-goal271-physical.log. No proveedor/cuentasreales/migración nueva/DBconfigurada/despliegue.

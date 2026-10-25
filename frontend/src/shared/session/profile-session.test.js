@@ -6,6 +6,10 @@ import { captureProfileSession, createProfileSessionGuard, profileFailureMessage
 import { PASSWORD_POLICY_MESSAGE } from '../../../../shared/password-policy.mjs';
 
 const session = () => ({ token: 'captured-token', usuario: { id: 7, usuario: 'designer', nombre: 'Diseñador', rol: 'diseno', activo: true, foto_perfil: '' } });
+test('profile rate denials explain waiting without uncertain-write copy or response baggage',()=>{
+  assert.equal(profileFailureMessage({code:'PROFILE_RATE_LIMITED',message:'untrusted-response'}),'Demasiados intentos de contraseña actual. Esperá 15 minutos antes de volver a intentar. No se cambió tu cuenta.');
+  assert.equal(profileFailureMessage({code:'PROFILE_VERIFICATION_UNAVAILABLE',message:'private-driver-error'}),'No está disponible la verificación de credenciales. Intentá más tarde. No se cambió tu cuenta.');
+});
 test('profile validation codes expose fixed actionable text rather than arbitrary response details',()=>{
   assert.equal(profileFailureMessage({code:'LOGIN_IDENTIFIER_UNAVAILABLE',message:'private-identity@example.test'}),'Ese usuario o email de acceso no está disponible. Elegí otro.');
   assert.equal(profileFailureMessage({code:'NEW_PASSWORD_INVALID',message:'private-diagnostic'}),PASSWORD_POLICY_MESSAGE);
