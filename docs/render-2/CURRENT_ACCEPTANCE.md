@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Visita nativa con tres tareas y fotos; precisión de aceptación histórica — corte267
+
+UI App263/backend261/cookies/PostgreSQL55902/52851 creó una visita, tres videos Grabado y fotos de producto Realizada; tres envíos manuales originan tareas1/2/3 con responsables91001/2/3 y entregas29/30/31octubre, distintas de visita28. Reload escritorio/390 mantiene todo. Nueva sesión de editor91003 ve una tarea en Inicio, visita28/entrega31 en Calendario Lo mío y tarea3 con guion/material correctos; Reportes muestra1visita/3videos/1registrofotos y una tarea personal, sin inventar publicaciones. Detalles en NATIVE_THREE_VIDEO_PROGRESS.md.
+
+Coordinador ejecutó; Volta runner; Erdos revisión/verificador.19tablas verificadas con manifest explícito: siete cambiadas/doce vacías;86restantes/proyecciónusuarios invariantes, contadores exactos91001+1/resto0. Runnerexit0/cleanup ENOENT qe1oZW, index/entry intactos. Captura móvil completa inspeccionada; captura adicional y cierre explícito de pestaña/viewport no acreditados por pérdida de transporte del navegador. Servicios/base propios sí eliminados. Sin producto/suites/build/deploy nuevos.
+
+Corrección de resúmenes266 y del plan histórico: NATIVE_THREE_VIDEO_PROGRESS.md ya documenta recorrido íntegro169–171 (build168), con snapshots170/171 todavía disponibles. No se debe declarar nunca probado. Sigue sin renovación íntegra sobre código267 ni aceptación global;267 solo renueva alta/handoff/fotos/proyecciones y266 un ciclo individual. Próximas prioridades deben derivarse de gates realmente abiertos, no repetir automáticamente los ya acreditados.
+
 ### Entrega, corrección, aprobación y publicación desde UI — corte266
 
 Native App263/backend261, cookies/API/PostgreSQL55901/52850: tarea1/pieza1 sintéticas; editor91003 entregaV1→revisor91002 pide correcciónV1→editor91003 consulta corrección/entregaV2→dueño91001 apruebaV2/finaliza, con logouts reales. Recargas conservan entrega1 y finalización. Checkpoint SQL posterior a finalizar: revisión7,2entregas/2decisiones; pieza lista/fecha realNULL/ceroeventos. Confirmación manual posterior mediante diálogo editorial crea un único evento por91001 yfecha Córdoba2026-10-24T10:00. Reloadmóvil390 conserva confirmación/actor/hora y no desborda. Detalles/UUID/scope en TASK_WORKFLOW_QA.md.

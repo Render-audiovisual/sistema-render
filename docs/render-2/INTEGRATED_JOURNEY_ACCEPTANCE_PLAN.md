@@ -1,5 +1,7 @@
 # Gate siguiente: aceptación intersectorial en un fixture único
 
+Actualización267: este es un plan histórico. El gateAPI se ejecutó158 y el recorridoUI íntegro se documentó169–171 en NATIVE_THREE_VIDEO_PROGRESS.md, sobre build168. La cohorteAPI se renovó265;266 renovó un ciclo nativo individual y267 alta/handoff de tres videos más fotos/proyecciones. Las menciones siguientes a «sigue pendiente» describen el estado previo a169, no ausencia de toda evidencia actual. Una nueva ejecución completa sería renovación sobre código vigente, no primera aceptación. No se acredita por ello producción ni aceptación global.
+
 El gate de API se ejecutó satisfactoriamente en158 y se amplió con Reportes y privacidad del empleado. Ver UNIFIED_THREE_VIDEO_JOURNEY_QA.md para el resultado, fixtures y límites. El recorrido nativo completo por UI sigue pendiente. La secuencia siguiente conserva el plan de aceptación; no autoriza fabricar ledger/evidencia ni reemplazar lógica de negocio en las pruebas.
 
 1. Fixture nuevo propio con identidad PostgreSQL verificada, cookie sessions independientes y cleanup ENOENT. Reutilizar backend/test/helpers/production-cookie-session.js. Reservar puerto no usado por otros fixtures. No usar DATABASE_URL configurada ni cuentas reales.
