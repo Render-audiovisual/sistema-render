@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Publicaciones: stack nativo comprobado y día enfocable — corte280
+
+Chrome/App279/backend278/PG55909HTTP52854: día→pieza→registro con3:modal, Tab interior/límites y Escape3→2→1 devolviendo foco al invocador; captura móvil390 inspeccionada sin overflow del registro. Escape del último día terminó en BODY: defecto físico corregido con botón nativo, invocador explícito y keyISO (también “más”).4tests nuevos,60focales y2973frontendPASS/1SKIP/0FAIL, build final BYJ2pogN. Detalles/logs/límites en EDITORIAL_DIALOGS_QA.md.
+
+Harvey revisión y coordinador producto/ejecución. Ambos fixtures280/280B propios terminaron salida0/105hashes dominio+counters invariantes/index intactos/cleanup ENOENT KcfOHt y ktTFlp; solo setup antes del baseline, sin UI saves/logout. FixtureB listo pero navegador interrumpido antes de observar post-fix: el retorno final al día corregido no está físicamente aceptado. Resta layout calendario móvil (min-width760 previo), contexto/ref, busy e intentos inciertos. Superpowers/Verification/Apple UI/Frontend Design orientaron alcance. Sin backend de producto/migración/proveedor/producción/despliegue ni aceptación global.
+
 ### Publicaciones: capas nativas y aislamiento de Tab en portales — corte279
 
 Registro editorial compartido ahora usa Modal native en portalbody, foco de título/retorno a opener y cierre bloqueado busy; se retira trap capture global y refoco por cambios busy. Día/pieza del calendario Publicaciones también nativos y etiquetados, tras resolver el hijo portal. Modal detiene Tab para que el padre React no intente enfocar su DOM inerte. Caso nuevo rojo→verde con handlers/DOM simulados; no gesto físico. No cambios de negocio: sentencias no-foco/load/save/footer conservados por hashes y modelos existentes.

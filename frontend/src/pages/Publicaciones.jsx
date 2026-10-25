@@ -7,6 +7,7 @@ import { getSesion } from '../utils.jsx';
 import { etiquetaCortaPublicacion, fechaISODesde, getCheckPublicacionLabel, getEstadoHistoriaLabel, getGrillaMes, getHoyLocalISO, getTipoPublicacionLabel, payloadColumnaPublicacion } from "../utils.jsx";
 import { COLUMNAS_PUBLICACION, DIAS_SEMANA, ESTADOS_PUBLICACION, MESES, TIPOS_PUBLICACION } from "../constants.js";
 import { Modal } from "../components/Modal.jsx";
+import './publicationCalendar.css';
 import { PageState } from "../components/PageState.jsx";
 import { PublicationComposer, PublicationPreviewQueue } from "../components/PublicationComposer.jsx";
 import { buildContextUrl, formatMonthContext, pushUrlContext as pushRawUrlContext, readMonthContext, readUrlContext, replaceUrlContext as replaceRawUrlContext } from "../shared/navigation/url-context.js";
@@ -63,6 +64,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
   const [actualizando, setActualizando] = useState(false);
   const [piezaSel, setPiezaSel] = useState(null);
   const [diaSel, setDiaSel] = useState(null);
+  const dayInvoker = useRef(null);
   const [guardandoId, setGuardandoId] = useState(null);
   const [tareasLectura, setTareasLectura] = useState(null);
   const [tareasRetry, setTareasRetry] = useState(0);
@@ -283,8 +285,9 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
     onPublicationSaved?.(dto);
   }, [capture, onPublicationSaved]);
 
-  const abrirDia = useCallback((fecha, items) => {
+  const abrirDia = useCallback((fecha, items, invoker) => {
     if (!items.length) return;
+    dayInvoker.current = invoker;
     setDiaSel({ fecha, items });
   }, []);
 
@@ -383,10 +386,11 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
               <div
                 className={`cal-cell ${iso === hoyISO ? "today" : ""} ${items.length ? "has-items" : ""}`}
                 key={`${si}-${di}`}
-                onClick={() => abrirDia(iso, items)}
+                onClick={(event) => abrirDia(iso, items, event.currentTarget.querySelector('.cal-day-open'))}
               >
                 <div className="cal-cell-head">
-                  <span className="cal-daynum">{dia}</span>
+                  <button key={iso} type="button" className="cal-daynum cal-day-open" aria-label={`Ver publicaciones del ${iso}`} disabled={!items.length}
+                    onClick={(event) => { event.stopPropagation(); abrirDia(iso, items, event.currentTarget); }}>{dia}</button>
                   {items.length > 0 && <span className="cal-count">{items.length}</span>}
                 </div>
                 <div className="cal-chip-stack">
@@ -405,11 +409,12 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
                   ))}
                   {ocultos > 0 && (
                     <button
+                      key={iso}
                       className="cal-more"
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        abrirDia(iso, items);
+                        abrirDia(iso, items, event.currentTarget);
                       }}
                     >
                       +{ocultos} más
@@ -430,6 +435,7 @@ export function PublicacionesCalendarioTab({ onIrAPlanilla, contextYear, context
         <Modal
           native
           overlayAriaLabel={`Publicaciones del ${diaSel.fecha}`}
+          returnFocusRef={dayInvoker}
           onClose={() => setDiaSel(null)}
           title={<span>Publicaciones del {diaSel.fecha}</span>}
           className="day-modal"

@@ -1,0 +1,16 @@
+.publicaciones-viewport .cal-day-open {
+  display:inline-grid;
+  place-items:center;
+  flex:0 0 44px;
+  min-width:44px;
+  min-height:44px;
+  padding:0;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:var(--muted,#667085);
+  font:600 12px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  cursor:pointer;
+}
+.publicaciones-viewport .cal-day-open:disabled { opacity:1; cursor:default; }
+.publicaciones-viewport .cal-day-open:focus-visible { outline:2px solid var(--accent,#0071e3); outline-offset:2px; }
