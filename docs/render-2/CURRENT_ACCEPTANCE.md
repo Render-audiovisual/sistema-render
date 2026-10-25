@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Núcleo renovado con tres editores empleados — corte282
+
+Harvey amplió solo la suite audiovisual; coordinador revisó/ejecutó. Mantiene casos anteriores bearer/cookie y agrega cookie PG55913 con3editores empleados independientes91003/91005/91006, owners separados, denegación de autoaprobación/entrega por otro editor, seis entregas/seis decisiones exactas, retries, reprogramación y proyecciones Inicio/Calendario/Reportes sin inventar publicación. Nuevos usuarios solo dentro del fixture, no roster real. Ver PRODUCTION_EMPLOYEE_JOURNEY_QA.md.
+
+qa:core:local99PASS/0FAIL/SKIP (10archivos/12fixtures),60físicas suplementarias PASS,backend2333PASS/151opt-inSKIP/0FAIL,coordinador3PASS y grafoApp/Vite4PASS. Todos salida0 y hooks cleanup/ENOENT aprobados; logs goal282 en /private/tmp. Superpowers/Verification orientaron contratos/límites. Sin producto/migración/frontend/build nuevos, cuentas reales, proveedores o deploy. Cookieshelper/HTTP/PG no equivalen a navegador/dispositivo. Revisión independiente señala bindings de revisores/roster aprobado y recorrido UI multirol actual como gates de mayor impacto; no aceptación global.
+
 ### Publicaciones: columnas móviles alcanzables y foco confirmado — corte281
 
 Se confirmó recorte real: grid760 dentro de frame349 overflowhidden, no overflowroot. Nueva región mensual acotada con desplazamiento horizontal nativo, foco/indicación y ocultamiento en semana; conserva columnas/datos, no es mes comprimido. Chrome real/App281/OJAdpaMU/backend278:390 y320 sin overflowraíz, flechas alcanzan domingo, Enter→Escape devuelve botón28visible44×44; antes se validó también Espacio con build280, cerrando su pendiente estable. Escritorio883px sin scroll; semana oculta región/hint. Captura principal /private/tmp/render2-goal281-calendar-mobile.png inspeccionada. Ver EDITORIAL_DIALOGS_QA.md para mediciones y límites.

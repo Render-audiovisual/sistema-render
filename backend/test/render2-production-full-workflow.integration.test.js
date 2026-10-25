@@ -10,10 +10,14 @@ const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 
 // Opt-in only; principal HTTP and fresh physical PG. No service imports,
 // simulated writers, ledger fixture INSERTs or configured database connection.
-for (const transport of ['bearer', 'cookie']) test(`${transport}: three-video production journey persists exact deliveries/corrections/approvals across registry, Home, calendar and reports`, {
+for (const cohort of [
+  { transport: 'bearer', port: 55677, employeeOnly: false },
+  { transport: 'cookie', port: 55784, employeeOnly: false },
+  { transport: 'cookie', port: 55913, employeeOnly: true },
+]) test(`${cohort.employeeOnly ? 'cookie employee-only editors' : cohort.transport}: three-video production journey persists exact deliveries/corrections/approvals across registry, Home, calendar and reports`, {
   skip: process.env.RENDER2_RUN_LOCAL_INTEGRATION !== 'true', timeout: 240000,
 }, async t => {
-  const port = transport === 'cookie' ? 55784 : 55677;
+  const { transport, port, employeeOnly } = cohort;
   const fixture = await startLocalHarness({ port, browserSessions: transport === 'cookie' });
   t.after(async () => {
     await fixture.cleanup(); await assert.rejects(access(fixture.root), error => error.code === 'ENOENT');
@@ -37,7 +41,25 @@ for (const transport of ['bearer', 'cookie']) test(`${transport}: three-video pr
     { id: 91002, usuario: 'qa_agustin', role: 'admin' },
     { id: 91003, usuario: 'qa_luciano', role: 'edicion' },
   ];
-  for (const actor of actors) actor.token = await login(actor.usuario);
+  const extraEditors = employeeOnly ? [
+    { id: 91005, usuario: 'qa_editora', role: 'edicion' },
+    { id: 91006, usuario: 'qa_editorb', role: 'edicion' },
+  ] : [];
+  for (const editor of extraEditors) {
+    // Generated fixture identity was checked above. Copy only its known
+    // synthetic login hash in SQL; never read/log a credential or real user.
+    const created = await fixture.query(`INSERT INTO usuarios(id,usuario,nombre,rol,password_hash,activo,session_version)
+      SELECT $1,$2,$3,'edicion',password_hash,true,1 FROM usuarios WHERE id=91003
+      RETURNING id,usuario,rol`, [editor.id, editor.usuario, `QA independent editor ${editor.id}`]);
+    assert.deepEqual(created, [{ id: editor.id, usuario: editor.usuario, rol: 'edicion' }]);
+  }
+  const employees = [actors[2], ...extraEditors];
+  const sessionActors = [...actors, ...extraEditors];
+  for (const actor of sessionActors) actor.token = await login(actor.usuario);
+  if (employeeOnly) {
+    assert.equal(employees.length, 3); assert.equal(new Set(employees.map(actor => actor.id)).size, 3);
+    for (const actor of employees) { assert.equal(actor.role, 'edicion'); assert.equal(actor.token.user.rol, 'edicion'); }
+  }
   const [clock] = await fixture.query(`SELECT to_char(clock_timestamp() AT TIME ZONE 'America/Argentina/Cordoba','YYYY-MM-DD') AS today`);
   const month = clock.today.slice(0, 7), start = `${month}-01`;
   const shiftMonth = n => {
@@ -46,7 +68,7 @@ for (const transport of ['bearer', 'cookie']) test(`${transport}: three-video pr
   };
   const next = shiftMonth(1), afterNext = shiftMonth(2), movedDate = `${next.slice(0, 7)}-03`;
   const [client] = await fixture.query("INSERT INTO clientes(nombre,activo) VALUES ('QA full production workflow client',true) RETURNING id,nombre");
-  const records = actors.map((actor, index) => ({ actor, reviewer: actors[index === 0 ? 1 : 0],
+  const records = (employeeOnly ? employees : actors).map((actor, index) => ({ actor, reviewer: actors[index === 0 ? 1 : 0],
     title: `QA explicit full-workflow video ${index + 1}`, script: `Literal script for independent video ${index + 1}\nSecond line preserved.`,
     due: `${month}-${20 + index}`, state: 'pendiente', videoId: null, taskId: null, artifacts: [], decisions: [] }));
   const businessTables = ['tareas', 'tarea_asignaciones', 'tarea_comentarios', 'produccion_visitas', 'produccion_visita_participantes',
@@ -157,12 +179,13 @@ for (const transport of ['bearer', 'cookie']) test(`${transport}: three-video pr
     }), 201).visita;
     visitId = current.id; assert.match(visitId, uuid);
     for (const record of records) {
-      let saved = checked(await api(`/producciones/${visitId}/videos`, record.actor.token, 'POST', {
+      const recordingActor = employeeOnly ? actors[0] : record.actor;
+      let saved = checked(await api(`/producciones/${visitId}/videos`, recordingActor.token, 'POST', {
         expected_revision: (await visit()).revision, titulo: record.title, guion: record.script, estado: 'planificado',
       }), 201).visita;
       record.videoId = exactlyOne(saved.videos, row => row.titulo === record.title, 'Explicit video identity').id;
       assert.match(record.videoId, uuid);
-      saved = checked(await api(`/producciones/${visitId}/videos/${record.videoId}`, record.actor.token, 'PATCH', {
+      saved = checked(await api(`/producciones/${visitId}/videos/${record.videoId}`, recordingActor.token, 'PATCH', {
         expected_revision: saved.revision, estado: 'grabado', material_url: `https://example.invalid/full-workflow-raw-${record.actor.id}`,
       })).visita;
       assert.equal(saved.videos.find(row => row.id === record.videoId).guion, record.script);
@@ -227,11 +250,15 @@ for (const transport of ['bearer', 'cookie']) test(`${transport}: three-video pr
       expected_revision: (await task(record)).revision, estado: state, ...extra,
     }));
     await patch('en_progreso'); record.state = 'en_progreso'; await assertViews();
-    if (record.actor.id !== 91003) {
+    if (employeeOnly || record.actor.id !== 91003) {
       const before = await snapshot();
-      checked(await api(`/tareas-edicion/${record.taskId}/entregas`, actors[2].token, 'POST', {
+      const unrelatedEditor = employeeOnly ? employees.find(actor => actor.id !== record.actor.id) : actors[2];
+      assert.ok(unrelatedEditor); assert.notEqual(unrelatedEditor.id, record.actor.id);
+      checked(await api(`/tareas-edicion/${record.taskId}/entregas`, unrelatedEditor.token, 'POST', {
         request_id: randomUUID(), expected_revision: (await task(record)).revision,
-        url: 'https://example.invalid/not-this-editors-video', notes: 'Unrelated editor cannot write an admin-owned task',
+        url: 'https://example.invalid/not-this-editors-video', notes: employeeOnly
+          ? 'Another employee cannot deliver this independently assigned video'
+          : 'Unrelated editor cannot write an admin-owned task',
       }), 403); assert.deepEqual(await snapshot(), before);
     }
     const deliver = async ordinal => {
@@ -249,6 +276,13 @@ for (const transport of ['bearer', 'cookie']) test(`${transport}: three-video pr
       record.state = 'en_revision'; await assertViews(); return saved.delivery_id;
     };
     const first = await deliver(1);
+    if (employeeOnly) {
+      const before = await snapshot();
+      checked(await api(`/tareas/${record.taskId}?workspace=render_os`, record.actor.token, 'PATCH', {
+        expected_revision: (await task(record)).revision, estado: 'aprobada', expected_entrega_id: first,
+      }), 403);
+      assert.deepEqual(await snapshot(), before, 'Employee self-approval of the exact current delivery must not write');
+    }
     const correctionBody = { request_id: randomUUID(), expected_revision: (await task(record)).revision,
       expected_entrega_id: first, notes: `Correct only the ending of video ${record.videoId}, version one.` };
     const correction = checked(await api(`/tareas-edicion/${record.taskId}/correcciones`, record.reviewer.token, 'POST', correctionBody), 201);
@@ -277,7 +311,7 @@ for (const transport of ['bearer', 'cookie']) test(`${transport}: three-video pr
   });
 
   await t.test('fresh sessions recover all versions/decisions and cross-module dates; late exact retries cannot reset completed work', async () => {
-    for (const actor of actors) actor.token = await login(actor.usuario);
+    for (const actor of sessionActors) actor.token = await login(actor.usuario);
     // Refresh the reviewer references through the same actor objects above.
     const before = await snapshot();
     for (const record of records) {
