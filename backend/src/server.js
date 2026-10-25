@@ -88,6 +88,7 @@ import { createEditorialPiece } from './editorial-piece-create.js';
 import { createEditorialArchiveRouter } from './editorial-archive.js';
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { assertProductionTaskFinalization, normalizeExpectedProductionVisit } from './production-task-finalization.js';
+import { assertCurrentTaskStateActor } from './task-state-authority.js';
 import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { loadReportSnapshot } from "./report-snapshot.js";
@@ -1821,7 +1822,8 @@ router.patch("/tareas/:id", async (req, res, next) => {
           if (deliveryId) await recordEditingApproval(db, task, req.auth, deliveryId);
         }
         await syncProductionVisitFromTask(db, task, req.auth.id);
-      }, body.estado === 'aprobada' && estadoAnterior !== 'aprobada' ? db => assertCurrentEditingApprover(db, req.auth) : null,
+      }, body.estado === 'aprobada' && estadoAnterior !== 'aprobada' ? db => assertCurrentEditingApprover(db, assignmentNotificationActor)
+        : esRenderOS && Object.hasOwn(body, 'estado') ? db => assertCurrentTaskStateActor(db, assignmentNotificationActor) : null,
       assignment ? { assignmentNotificationActor, assignmentNotificationTaskId: Number(id) } : {},
     );
 
