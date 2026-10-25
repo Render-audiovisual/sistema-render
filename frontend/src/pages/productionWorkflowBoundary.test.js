@@ -39,4 +39,15 @@ test('linked aggregate history remains readable without correction or completion
  const html=renderToStaticMarkup(React.createElement(History));
  assert.match(html,/Registro histórico de grabación/);assert.match(html,/4/);assert.match(html,/2026-09-20/);assert.match(html,/Equipo histórico/);assert.match(html,/Corregido por Franco/);
  assert.doesNotMatch(html,/<button|Guardar avance|Confirmar grabación/);assert.equal(JSON.stringify(metadata),before);
+ assert.match(html,/display:grid;gap:4px;padding-block:8px;overflow-wrap:anywhere/);
+});
+
+test('empty canonical visit has no empty workflow container, but legacy and historical records retain theirs',()=>{
+ const node=nodes.find(n=>ts.isVariableDeclaration(n)&&n.name.getText(file)==='hasOperationalControls');
+ const gate=Function('task','registry','metadata','esperandoMaterial','areaForTask','canChangeTaskState','canApproveForOriana','isProductionVisit',`return (${node.initializer.getText(file)})`);
+ const show=(registry,records=[])=>gate({estado:'pendiente'},registry,{produccion_registros:records},()=>false,()=> 'produccion',false,false,true);
+ assert.equal(show({ready:true,usesIndividual:true}),false);
+ assert.equal(show({ready:false,usesIndividual:false}),false);
+ assert.equal(show({ready:true,usesIndividual:false}),true);
+ assert.equal(show({ready:true,usesIndividual:true},[{cantidad:4}]),true);
 });

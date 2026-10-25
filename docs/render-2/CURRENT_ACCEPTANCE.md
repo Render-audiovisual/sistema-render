@@ -4,6 +4,18 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Producción: tres fronteras comprobadas en navegador y presentación final — corte313
+
+Primer recorrido Chrome/App312/index-CSXIWVu4, backend312, PG55930/HTTP52869: tres casos sintéticos preparados antes del baseline (vacía vinculada, agregado histórico vinculado y agregado sin vínculo). Visita vacía muestra vínculo/fecha y cero botones Guardar avance/Terminar/Corregir. Histórico vinculado conserva +4videos,20sept,autor y corrector al abrir Ver registros históricos, sin registrar/corregir/confirmar agregado. Histórico sin vínculo conserva controles habilitados de registro/finalización/corrección. No se pulsaron escritores. Escritorio1280×900/móvil390×844: raíz/scroll coinciden con ancho y ramas de UI esperadas. Historial ligado es un fixture representativo por SQL, no prueba de migración/reconciliación de datos reales.
+
+La revisión visual detectó contenedor Flujo de trabajo vacío en visita nueva y texto cantidad/fecha pegado en histórico. Ajuste mínimo: hasOperationalControls ya no fuerza contenedor para visita canónica vacía; conserva material pendiente/edición/aprobación/estado aprobado e historial existente. Registros históricos read-only usan grid, gap4px, padding-block8px y wrapping. Frontend Design/Apple UI orientaron reducir información vacía y separar lectura, sin cambiar identidad global, tamaños o autoridad.
+
+Segundo recorrido Chrome/App313/index-ajcNAa8Z, PG55931/HTTP52870, comprobó el postfix real: visita vacía sin heading Flujo de trabajo ni agregado; histórico móvil con estilo calculado grid/gap4/padding8/wrapanywhere y raíz/scroll390. Captura final `/private/tmp/render2-goal313b-history-mobile.png` inspeccionada. Capturas previas `/private/tmp/render2-goal313-{empty-desktop,history-mobile,unbound-mobile}.png` corresponden al primer build, no al postfix.
+
+Ambos runners `/private/tmp/render2-goal313-native.*` y `/private/tmp/render2-goal313b-native.*`:106hashes de dominio, todos los contadores usuarios e index/entry intactos. Coordinadores/hijos32236/32261 y32691/32716 verificados antes de TERM; sesiones16619/35100 exit0; cleanup ENOENT Vy8llU/V8eoAX. Tabs cerradas y viewport restaurado. No comparar esas106 tablas con auth/browser_session, excluidas del baseline de negocio. Sin escritores UI ni proveedores.
+
+Coordinador implementó/verificó; Harvey revisó ambas condiciones/estilo sin bloqueantes.23 focales PASS (gate/SSR+contratos anteriores); frontend3057PASS/1SKIP/0FAIL, backend2375PASS/155opt-inSKIP/0FAIL, build correcto. Logs `/private/tmp/render2-goal313-{focal,frontend,backend,build}.log`. Sin backend product/schema/migraciones/bases configuradas/despliegue en este corte. Cierra pendiente nativo estable312 para estos fixtures/dimensiones; no prueba todos los roles, zoom/lectores, concurrencia ni aceptación global.
+
 ### Producción: vínculo canónico vacío ya impide segundo flujo agregado — corte312
 
 Revisión coordinador/Harvey confirmó brecha por fuente: guard backend y TaskDetail habilitaban agregado mientras visita vinculada no tuviera videos/fotos. Una visita nueva podía ganar metadata histórica y exigir reconciliación innecesaria después. `rejectMixedProductionRecording` ahora rechaza cualquier vínculo de origen, bajo el lock de tarea existente; no depende de cantidad de artefactos. POST devuelve409 con mensaje específico del error etiquetado tras rollback, sin ampliar exposición de otros errores. PATCH/corrección/confirmación y Wilson comparten ese guard. No cambia el flag de reporting `usa_registro_individual`, sus cuotas ni sus conteos.
