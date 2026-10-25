@@ -6,6 +6,11 @@ const personId = value => Number.isSafeInteger(value) && value > 0;
 const recordId = value => (typeof value === 'string' && value.trim()) || personId(value);
 const array = value => Array.isArray(value) ? value : [];
 const text = value => typeof value === 'string' ? value : '';
+export function reportParticipantLabel(person) {
+  if(!personId(person?.id)||person.id>2147483647)return 'Sin identidad verificable';
+  const fallback=`Usuario #${person.id}`, name=text(person.nombre).trim();
+  return !name||name===fallback ? fallback : `${name} · #${person.id}`;
+}
 const quantity = value => Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : 0;
 const finalized = task => ['finalizada', 'publicada'].includes(task.estado);
 const hiddenReportTask = task => task.propiedades_extra?.archivada_render_os === true

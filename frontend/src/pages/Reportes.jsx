@@ -10,7 +10,7 @@ import { pushUrlContext, readUrlContext, replaceUrlContext } from '../shared/nav
 import { notifyViewPreferenceChange } from '../shared/navigation/viewPreferenceEvent.js';
 import { navigateWithinApp } from '../shared/navigation/location.js';
 import { productionReportVisitHref } from '../shared/reports/production-report-links.js';
-import { buildEmployeeReport, buildHistoricalProductionReport, buildProductionRegistryReport, historicalUnassignedEditingCount, uniqueReportTasks, editorialRecords, summarizeEditorialRecords, clientQuotaReport, employeeTaskDetails, employeeFormatBreakdown, personalEditorialReport } from '../shared/reports/production-registry-report.js';
+import { reportParticipantLabel, buildEmployeeReport, buildHistoricalProductionReport, buildProductionRegistryReport, historicalUnassignedEditingCount, uniqueReportTasks, editorialRecords, summarizeEditorialRecords, clientQuotaReport, employeeTaskDetails, employeeFormatBreakdown, personalEditorialReport } from '../shared/reports/production-registry-report.js';
 import './ReportProductionRegistry.css';
 
 const PERIODS = [['mes_actual', 'Este mes'], ['mes_pasado', 'Mes pasado'], ['ultimos_30', 'Últimos 30 días']];
@@ -135,7 +135,7 @@ function ReportesContent({ session }) {
           {production.clients.map(client => <section className="rpr-client" key={client.id}><h3>{client.nombre}</h3>{client.visits.map(visit => <details className="rpr-visit" key={visit.id}><summary><span><time dateTime={visit.fecha}>{visit.fecha}</time> · {visit.titulo || 'Visita'}</span><span>{visit.videos.length} videos · {visit.fotos.length} registros de fotos</span></summary>
             <p className="rpr-muted">{visit.resultado_estado.label}</p>
             <ProductionVisitLink href={productionReportVisitHref(visit)}/>
-            <p className="rpr-muted">Participantes: {visit.participants.map(person => person.nombre + ' · #' + person.id).join(', ') || 'Sin participantes registrados'}</p>
+            <p className="rpr-muted">Participantes: {visit.participants.map(reportParticipantLabel).join(', ') || 'Sin participantes registrados'}</p>
             <ul className="rpr-media">{visit.videos.map(video => <li key={'video:' + video.id}><span>Video · {video.titulo || 'Sin título'}</span><span>{VIDEO_STATES[video.estado] || 'Estado sin reconocer'}</span></li>)}{visit.fotos.map(photo => <li key={'photo:' + photo.id}><span>Fotos · {photo.tipo || 'Sin tipo'}</span><span>{PHOTO_STATES[photo.estado] || 'Estado sin reconocer'}</span></li>)}</ul>
             {!visit.videos.length && !visit.fotos.length && <p className="rpr-muted">Sin material registrado.</p>}
           </details>)}</section>)}

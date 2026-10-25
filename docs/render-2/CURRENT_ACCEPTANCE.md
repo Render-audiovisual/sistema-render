@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Etiqueta de participante sin ID duplicado, sin ampliar Reportes — corrección333
+
+Revisión independiente de Harvey confirmó separación actual: catálogo público activo de identidades para asignaciones no incluye contactos privados; `usuarios` de Reportes se limita al actor y alimenta métricas personales. No se amplió esa colección para resolver etiquetas. Main añadió `reportParticipantLabel`: nombre conocido→Nombre · #ID, fallback ya construido→Usuario #ID una sola vez; ID inválido→Sin identidad verificable. No resuelve por nombre, no consulta directorios, no cambia evidencia/atribución/ACL/estadísticas. Corrige duplicación observada en329/331.
+
+9 focales PASS (`/private/tmp/render2-goal333-label-tests.log`); frontend3115PASS/1SKIP/0FAIL de3116 (`/private/tmp/render2-goal333-frontend.log`); build index-CLHOhW2Z (`/private/tmp/render2-goal333-build.log`), diff-check limpio. Sin backend/DB/recorrido nativo nuevos; visual del fallback corregido pendiente. Se preguntó al usuario de forma asíncrona si Reportes de empleados debe cubrir todo el equipo sin finanzas o solo trabajo propio más visitas compartidas; no se modificará ese alcance por inferencia mientras falta respuesta. Hay otras tareas independientes: no implica bloqueo del objetivo global, ni permiso de despliegue.
+
 ### Alta de dueños independiente y seed heredado inerte — integración332
 
 Revisión de fuente confirmó que `seed-usuarios.js` todavía creaba cuenta compartida Líder/admin, aceptaba contraseña común y cargaba destino de entorno sin la autoridad de administración. Se reemplazó únicamente ese entrypoint por rechazo inerte, sin imports/lectura de entorno/conexión/DML; npm conserva comando y error explícito con orientación a Usuarios y equipo. No ejecuta altas ni transforma/baja/promueve cuentas actuales. Dos pruebas con DATABASE_URL host inválido, contraseña canario y flags force/apply acreditan salida1 sin secretos ni conexión; también se comprueba ausencia de escapes de código. DEPLOY documenta administrador previo requerido y bootstrap cero-admin pendiente; no se declara reemplazo de instalación vacía.
