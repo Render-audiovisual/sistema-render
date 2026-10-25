@@ -41,7 +41,10 @@ test("Feedback presenta resúmenes compactos y abre el contenido en un panel", (
   assert.match(feedbackSource, /className="rf-note-card"/);
   assert.match(feedbackSource, /onClick=\{\(\) => openNote\(note\)\}/);
   assert.match(feedbackSource, /className="rf-detail-content"/);
-  assert.match(feedbackSource, /role="dialog" aria-modal="true"/);
+  assert.match(feedbackSource, /<Modal native onClose=\{closePanel\}/);
+  const modalSource = readFileSync(new URL('../../frontend/src/components/Modal.jsx', import.meta.url), 'utf8');
+  assert.match(modalSource, /role="dialog"/);
+  assert.match(modalSource, /aria-modal="true"/);
   assert.match(feedbackSource, /aria-label="Buscar feedback"/);
   assert.doesNotMatch(feedbackSource, /Filtrar por cliente|rf-client-filter/);
 });
