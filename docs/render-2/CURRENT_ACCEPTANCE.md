@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Mi lista: Enter, ACK y recarga con un solo elemento — corte300
+
+Chrome/App299/index-Cd7dHSp6, backend285, fixture PG55920/HTTP52864. En móvil390×844 se escribió «QA300 elemento persistido», Enter lo incorporó y limpió Agregar elemento; segundo Enter secuencial sobre input vacío no duplicó. Se esperó Guardado por estado visible, luego recarga recuperó el texto y un elemento. No prueba dos eventos físicos simultáneos ni callback viejo: esos casos conservan evidencia de modelo/callback299.
+
+En la UI actual se comprobaron ambos nombres accesibles del selector móvil Mostrar/Ocultar páginas y expandedtrue al abrir, cerrando el pendiente estable de etiqueta298. DOM raíz390/scroll390/main390×844. Captura `/private/tmp/render2-goal300-list-saved-mobile.png` inspeccionada: el proveedor entregó JPEG390×380 pese a la extensión png y viewport DOM844alto; es una representación reducida, no evidencia de captura completa del viewport.
+
+SQL final valida exactamente un elemento de checklist, ID no vacío, texto exacto y completadofalse, incremento de versión del bloque1 solo una vez; restantes campos del bloque/otro bloque intactos. Otras104tablas de dominio, contadores usuarios e index/entry intactos. Runner/log `/private/tmp/render2-goal300-native.*`, PID10363/hijo10387 propios verificados antes de TERM, salida0, cleanup ENOENT Ti0SBA; tab cerrada/viewport restaurado. Setup de dos páginas sintéticas precede al baseline, única escritura UI admitida es ese elemento.
+
+Coordinador ejecutó el recorrido con Verification. Sin producto/build nuevos, migraciones sobre bases reales, proveedores o despliegue. Pendientes de aceptación global: fallos/ACK perdidos/recuperación físicos y demás gates del prompt maestro; no se confunde admisión local con este resultado persistido verificado.
+
 ### Mi lista: admisión de elementos por identidad del borrador — corte299
 
 Revisión de callback retenido encontró que la inserción anterior generaba ID/programaba contenido capturado antes de verificar consumo del draft. No prueba que dos Enter físicos siempre lo disparen (React procesa eventos discretos), pero no debía admitirse dos veces el mismo intento. `personalItemDrafts` crea un token opaco por edición y claim síncrono por bloque. Writer rechazado/throw libera claim conservando texto; admisión consume solo el objeto exacto, preservando incluso un draft nuevo de igual texto (ABA).
