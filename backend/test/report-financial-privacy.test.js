@@ -33,8 +33,8 @@ function fixture() {
   };
 }
 
-for (const rol of ["community", "diseno", "produccion", "edicion", "programacion", "unknown", undefined]) {
-  test(`non-admin ${rol}: safe DTOs remove financial data without changing row visibility`, () => {
+for (const rol of ["admin","community", "diseno", "produccion", "edicion", "programacion", "unknown", undefined]) {
+  test(`report role ${rol}: safe DTOs remove financial data without changing row visibility`, () => {
     const input = fixture();
     const before = structuredClone(input);
     const result = filterReportDataForUser(input, { id: 6, rol, nombre: "Augusto" });
@@ -45,13 +45,13 @@ for (const rol of ["community", "diseno", "produccion", "edicion", "programacion
       assert.deepEqual(input, before);
       return;
     }
-    assert.deepEqual(result.tareas.map((item) => item.id), [1]);
+    assert.deepEqual(result.tareas.map((item) => item.id), [1,2]);
     assert.deepEqual(result.usuarios.map((item) => item.id), [6]);
-    assert.deepEqual(result.tareasRenderOs.map((item) => item.id), rol === "community" ? [] : [1]);
-    assert.deepEqual(result.historias.map((item) => item.id), rol === "community" ? [3] : []);
+    assert.deepEqual(result.tareasRenderOs.map((item) => item.id), [1]);
+    assert.deepEqual(result.historias.map((item) => item.id), [3]);
     assert.deepEqual(result.publicaciones.map((item) => item.id), [4]);
-    assert.deepEqual(result.clientes.map((item) => item.id), rol === "diseno" ? [5] : []);
-    assert.deepEqual(result.entregasEdicion.map((item) => item.id), [7]);
+    assert.deepEqual(result.clientes.map((item) => item.id), [5]);
+    assert.deepEqual(result.entregasEdicion.map((item) => item.id), [7,8]);
     assert.equal(result.entregasEdicion[0].categoria, "facil");
     assert.equal(Object.hasOwn(result.entregasEdicion[0], "importe"), false);
     assert.deepEqual(result.tareas[0].propiedades_extra, {
@@ -59,21 +59,19 @@ for (const rol of ["community", "diseno", "produccion", "edicion", "programacion
       colaboradores: ["Augusto"], produccion_videos_previstos: 4,
       produccion_registros: [{ cantidad: 3, fecha: "2026-10-19" }],
     });
-    assert.deepEqual(result.resumenRenderOsPorDia, rol === 'community' ? {} : { "2026-10-19": { carruseles: { total: 1, publicadas: 1 } } });
+    assert.deepEqual(result.resumenRenderOsPorDia, { "2026-10-19": { carruseles: { total: 1, publicadas: 1 } } });
     assert.deepEqual(input, before);
     result.tareas[0].propiedades_extra.produccion_registros[0].cantidad = 99;
     assert.deepEqual(input, before);
   });
 }
 
-test("admin retains authorized financial fields, nested JSON and all rows", () => {
+test("owner report shares operational rows without private fields or raw nested JSON", () => {
   const input = fixture();
-  const result = filterReportDataForUser(input, { rol: "admin" });
-  for (const key of Object.keys(input).filter((key) => key !== "resumenRenderOsPorDia")) {
-    assert.deepEqual(result[key], input[key]);
-  }
-  assert.equal(result.entregasEdicion[0].importe, secret);
-  assert.equal(result.tareas[0].propiedades_extra.sueldo_base, secret);
+  const result = filterReportDataForUser(input, { id:6,rol: "admin" });
+  assert.equal(JSON.stringify(result).includes(secret),false);
+  assert.deepEqual(result.tareas.map(row=>row.id),[1,2]);
+  assert.equal(result.entregasEdicion.length,2);
 });
 
 test("missing identity does not gain personal rows or financial fields", () => {

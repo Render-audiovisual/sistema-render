@@ -31,38 +31,82 @@ const data = {
   entregasEdicion: [{ id: 9, editor_clave: "luciano", editor_id: 3 }],
 };
 
-test("el reporte de un diseñador contiene solo sus carruseles", () => {
+// Integration369: the human-approved team report supersedes own-only record
+// selection. Stable ID validation and financial allowlists remain mandatory;
+// this reporting contract does not authorize direct task access or mutations.
+test("diseño recibe tareas y piezas de todo el equipo, no solo sus carruseles", () => {
   const result = filterReportDataForUser(data, { id: 1, nombre: "Augusto Aguirre", rol: "diseno" });
-  assert.deepEqual(result.tareas.map((item) => item.id), [1]);
-  assert.deepEqual(result.publicaciones.map((item) => item.id), [7]);
-  assert.deepEqual(result.historias, []);
-  assert.deepEqual(result.tareasRenderOs.map((item) => item.id), [4]);
-  assert.deepEqual(result.usuarios.map((item) => item.id), [1]);
+  assert.deepEqual(result.tareas.map((item) => item.id), [1, 2]);
+  assert.deepEqual(result.publicaciones.map((item) => item.id), [6, 7, 8]);
+  assert.deepEqual(result.historias.map((item) => item.id), [5]);
+  assert.deepEqual(result.tareasRenderOs.map((item) => item.id), [3, 4]);
+  assert.deepEqual(result.usuarios.map((item) => item.id), [1, 2]);
 });
 
-test("producción recibe únicamente sus tareas RENDER OS", () => {
+test("producción recibe tareas y contenido compartido de todos los clientes", () => {
   const result = filterReportDataForUser(data, { id: 2, nombre: "Germán Beltzer", rol: "produccion" });
-  assert.deepEqual(result.tareasRenderOs.map((item) => item.id), [3]);
-  assert.deepEqual(result.publicaciones, []);
-  assert.deepEqual(result.historias, []);
+  assert.deepEqual(result.tareasRenderOs.map((item) => item.id), [3, 4]);
+  assert.deepEqual(result.publicaciones.map((item) => item.id), [6, 7, 8]);
+  assert.deepEqual(result.historias.map((item) => item.id), [5]);
+  assert.deepEqual(result.clientes.map(item => item.id), [10, 11]);
 });
 
-test("community conserva métricas globales de publicación sin usuarios ajenos", () => {
+test("community conserva métricas globales e identidades operativas de todo el equipo", () => {
   const result = filterReportDataForUser(data, { id: 4, nombre: "Oriana", rol: "community" });
   assert.deepEqual(result.historias.map((item) => item.id), [5]);
   assert.deepEqual(result.publicaciones.map((item) => item.id), [6, 7, 8]);
-  assert.deepEqual(result.usuarios, []);
-  assert.deepEqual(result.tareasRenderOs, []);
+  assert.deepEqual(result.usuarios.map(item => item.id), [1, 2]);
+  assert.deepEqual(result.tareasRenderOs.map(item => item.id), [3, 4]);
 });
 
-test("el administrador conserva el reporte completo", () => {
-  const result = filterReportDataForUser(data, { rol: "admin" });
-  assert.deepEqual(result.tareasRenderOs, data.tareasRenderOs);
+test("el administrador identificado conserva todas las filas operativas por el mismo DTO cerrado", () => {
+  const result = filterReportDataForUser(data, { id: 1, rol: "admin" });
+  assert.deepEqual(result.tareasRenderOs.map(row => row.id), [3, 4]);
+  assert.deepEqual(result.usuarios.map(row => row.id), [1, 2]);
 });
 
-test("edición recibe únicamente su registro confirmado", () => {
+test("edición conserva registros con identidad explícita y ve todos los clientes", () => {
   const result = filterReportDataForUser(data, { id: 3, nombre: "Luciano", rol: "edicion" });
   assert.deepEqual(result.entregasEdicion.map((item) => item.id), [9]);
+  assert.deepEqual(result.clientes.map(item => item.id), [10, 11]);
+});
+
+test('all five operational roles and admin receive the same team/client IDs without assignments, through financial allowlists', () => {
+  const secret = { importe: 'FINANCE_SENTINEL', sueldo: 'FINANCE_SENTINEL',
+    password_hash: 'FINANCE_SENTINEL', finanzas: { abono: 'FINANCE_SENTINEL' } };
+  const input = structuredClone(data);
+  Object.assign(input, secret);
+  for (const key of ['tareas', 'tareasRenderOs', 'historias', 'publicaciones', 'clientes', 'usuarios', 'entregasEdicion']) {
+    input[key] = input[key].map(row => ({...row, ...secret}));
+  }
+  input.usuarios = [
+    {id: 1, usuario: 'qa_team_a', nombre: 'Same Name', rol: 'diseno', ...secret},
+    {id: 2, usuario: 'qa_team_b', nombre: 'Same Name', rol: 'produccion', ...secret},
+  ];
+  input.tareas.push({id: 90, titulo: 'Historical unassigned', asignado_a: 'Same Name',
+    propiedades_extra: {...secret}, ...secret});
+  input.entregasEdicion.push({id: 91, editor_clave: 'Same Name', cliente_etiqueta: 'Historical record', ...secret});
+  input.producciones = productionInput();
+  const before = structuredClone(input);
+  const ids = {tareas: [1, 2, 90], tareasRenderOs: [3, 4], historias: [5], publicaciones: [6, 7, 8],
+    clientes: [10, 11], usuarios: [1, 2], entregasEdicion: [9, 91]};
+  for (const rol of ['diseno', 'edicion', 'produccion', 'programacion', 'community', 'admin']) {
+    for (const viewer of [{id: 1, nombre: 'Renamed'}, {id: 999, nombre: 'Same Name'}]) {
+      const result = filterReportDataForUser(input, {...viewer, rol, activo: true});
+      for (const [key, expected] of Object.entries(ids))
+        assert.deepEqual(result[key].map(row => row.id), expected, `${rol}: ${key} must not depend on viewer membership/name`);
+      assert.deepEqual(result.usuarios.map(row => [row.id, row.usuario, row.nombre, row.rol]), [
+        [1, 'qa_team_a', 'Same Name', 'diseno'], [2, 'qa_team_b', 'Same Name', 'produccion'],
+      ]);
+      const unassigned = result.tareas.find(row => row.id === 90);
+      assert.equal(unassigned.asignado_a_id, null); assert.deepEqual(unassigned.colaborador_ids, []);
+      assert.equal(Object.hasOwn(result.entregasEdicion.find(row => row.id === 91), 'editor_id'), false);
+      assert.equal(result.producciones.visitas.length, 1);
+      assert.doesNotMatch(JSON.stringify(result), /FINANCE_SENTINEL/);
+      for (const key of Object.keys(secret)) assert.equal(Object.hasOwn(result, key), false);
+    }
+  }
+  assert.deepEqual(input, before, 'Shared reporting sanitizes a copy, never rewrites source identities or assignments');
 });
 
 test("el endpoint del reporte está disponible tras la autenticación compartida", () => {
@@ -98,7 +142,7 @@ test("el reporte obtiene la cuota compartida desde grupos_feed", () => {
   assert.doesNotMatch(snapshotSource, /SELECT id,nombre,cuota_carruseles,cuota_feed_carruseles,grupo_feed_id FROM clientes/);
 });
 
-test('task/user identity survives rename and rejects homonyms, display aliases and historical labels', () => {
+test('team report preserves exact assignment IDs across renames/homonyms without inferring historical labels', () => {
   const input = { ...data, tareas: [
     { id: 1, asignado_a: 'Same Name', asignado_a_id: 8, colaborador_ids: [] },
     { id: 2, asignado_a: 'Renamed', asignado_a_id: 7, colaborador_ids: [] },
@@ -107,60 +151,73 @@ test('task/user identity survives rename and rejects homonyms, display aliases a
   ], usuarios: [{ id: 7, nombre: 'Renamed' }, { id: 8, nombre: 'Same Name' }] };
   for (const nombre of ['Same Name', 'Renamed', 'Mariano', 'Augusto']) {
     const result = filterReportDataForUser(input, { id: 7, nombre, rol: 'edicion' });
-    assert.deepEqual(result.tareas.map(row => row.id), [2, 3]);
-    assert.deepEqual(result.usuarios.map(row => row.id), [7]);
-    assert.equal(result.tareas[0].asignado_a_id, 7);
-    assert.deepEqual(result.tareas[1].colaborador_ids, [7]);
+    assert.deepEqual(result.tareas.map(row => row.id), [1, 2, 3, 4]);
+    assert.deepEqual(result.usuarios.map(row => row.id), [7, 8]);
+    assert.equal(result.tareas[0].asignado_a_id, 8);
+    assert.equal(result.tareas[1].asignado_a_id, 7);
+    assert.deepEqual(result.tareas[2].colaborador_ids, [7]);
+    assert.equal(result.tareas[3].asignado_a_id, null);
+    assert.deepEqual(result.tareas[3].colaborador_ids, []);
   }
 });
 
-test('revoked or malformed numeric task identities never fall back to names', () => {
+test('malformed assignment IDs remain unverified in shared rows and never fall back to names', () => {
   for (const asignado_a_id of [null, '7', 0, -1, 7.1, Infinity, {}, true]) {
     const result = filterReportDataForUser({ ...data, tareas: [{ id: 1, asignado_a: 'Alex', asignado_a_id,
       colaborador_ids: ['7', null, {}, 0, -1, 7.1] }] }, { id: 7, nombre: 'Alex', rol: 'edicion' });
-    assert.deepEqual(result.tareas, []);
+    assert.equal(result.tareas.length, 1);
+    assert.equal(result.tareas[0].asignado_a_id, null);
+    assert.deepEqual(result.tareas[0].colaborador_ids, []);
   }
   const result = filterReportDataForUser({ ...data, tareas: [{ id: 1, asignado_a_id: 8, colaborador_ids: [7, '8', {}, -1], cliente_id: '11' }] }, { id: 7, rol: 'diseno' });
   assert.deepEqual(result.tareas[0].colaborador_ids, [7]);
   assert.equal(result.tareas[0].cliente_id, undefined);
 });
 
-test('designer publications require exact editorial links on current-member tasks, never just matching clients', () => {
+test('team editorial rows no longer require viewer membership or links to the viewer tasks', () => {
   const input = { ...data, tareas: [{ id: 1, asignado_a_id: 7, cliente_id: 10, publicacion_id: 6 }],
     tareasRenderOs: [{ id: 2, asignado_a_id: 8, colaborador_ids: [7], cliente_id: 11, publicacion_id: 7 },
       { id: 3, asignado_a: 'Mariano', asignado_a_id: 8, cliente_id: 12 }],
     clientes: [...data.clientes, { id: 12, nombre: 'Luzin' }],
     publicaciones: [...data.publicaciones, { id: 9, cliente_id: 12, tipo: 'carrusel' }, { id: 10, cliente_id: 10, tipo: 'carrusel' }] };
   const result = filterReportDataForUser(input, { id: 7, nombre: 'Unknown Designer', rol: 'diseno' });
-  assert.deepEqual(result.publicaciones.map(row => row.id), [6, 7]);
-  const revoked = filterReportDataForUser({ ...input, tareas: [], tareasRenderOs: [] }, { id: 7, nombre: 'Augusto', rol: 'diseno' });
-  assert.deepEqual(revoked.publicaciones, []);
+  assert.deepEqual(result.publicaciones.map(row => row.id), [6, 7, 8, 9, 10]);
+  const withoutMembership = filterReportDataForUser({ ...input, tareas: [], tareasRenderOs: [] }, { id: 7, nombre: 'Augusto', rol: 'diseno' });
+  assert.deepEqual(withoutMembership.publicaciones.map(row => row.id), [6, 7, 8, 9, 10]);
 });
 
-test('legacy editing delivery labels are never authority; only explicit editor_id authorizes own rows', () => {
+test('legacy delivery labels never invent editor identity; attributed and unassigned history remain visible', () => {
   const input = { ...data, entregasEdicion: [
     { id: 1, editor_clave: 'Alex' }, { id: 2, editor_id: 7, editor_clave: 'Old label' },
     { id: 3, editor_id: 8, editor_clave: 'Alex' }, { id: 4, editor_id: '7', editor_clave: 'Alex' },
   ] };
   const result = filterReportDataForUser(input, { id: 7, nombre: 'Alex', rol: 'edicion' });
-  assert.deepEqual(result.entregasEdicion.map(row => row.id), [2]);
-  assert.deepEqual(filterReportDataForUser(input, { id: 7, rol: 'community' }).entregasEdicion.map(row => row.id), [2]);
-  assert.equal(filterReportDataForUser(input, { rol: 'admin' }).entregasEdicion.length, 4);
+  assert.deepEqual(result.entregasEdicion.map(row => row.id), [1, 2, 3, 4]);
+  assert.deepEqual(result.entregasEdicion.map(row => row.editor_id), [undefined, 7, 8, undefined]);
+  assert.equal(Object.hasOwn(result.entregasEdicion[0], 'editor_id'), false);
+  assert.equal(Object.hasOwn(result.entregasEdicion[3], 'editor_id'), false);
+  assert.deepEqual(filterReportDataForUser(input, { id: 7, rol: 'community' }).entregasEdicion.map(row => row.id), [1, 2, 3, 4]);
+  assert.equal(filterReportDataForUser(input, { id: 1, rol: 'admin' }).entregasEdicion.length, 4);
 });
 
-test('every non-admin role excludes other editors attributed delivery sentinels', () => {
+test('every operational role shares attributed and unassigned deliveries but retains financial redaction', () => {
   const input = { ...data, entregasEdicion: [
-    { id: 1, editor_id: 7, editor_clave: 'Renamed', cliente_etiqueta: 'Own delivery' },
-    { id: 2, editor_id: 8, editor_clave: 'Same name', cliente_etiqueta: 'OTHER_EDITOR_SENTINEL' },
-    { id: 3, editor_clave: 'Same name', cliente_etiqueta: 'UNATTRIBUTED_SENTINEL' },
+    { id: 1, editor_id: 7, editor_clave: 'Renamed', cliente_etiqueta: 'Own delivery', importe: 'FINANCE_SENTINEL' },
+    { id: 2, editor_id: 8, editor_clave: 'Same name', cliente_etiqueta: 'OTHER_EDITOR_SENTINEL', importe: 'FINANCE_SENTINEL' },
+    { id: 3, editor_clave: 'Same name', cliente_etiqueta: 'UNATTRIBUTED_SENTINEL', importe: 'FINANCE_SENTINEL' },
   ] };
   for (const rol of ['community', 'diseno', 'produccion', 'edicion', 'programacion']) {
     const result = filterReportDataForUser(input, { id: 7, nombre: 'Same name', rol });
-    assert.deepEqual(result.entregasEdicion.map(row => row.id), [1]);
-    assert.doesNotMatch(JSON.stringify(result.entregasEdicion), /OTHER_EDITOR_SENTINEL|UNATTRIBUTED_SENTINEL/);
-    assert.deepEqual(filterReportDataForUser(input, { id: 9, rol }).entregasEdicion, []);
+    assert.deepEqual(result.entregasEdicion.map(row => row.id), [1, 2, 3]);
+    assert.doesNotMatch(JSON.stringify(result.entregasEdicion), /FINANCE_SENTINEL/);
+    assert.equal(result.entregasEdicion[2].cliente_etiqueta, 'UNATTRIBUTED_SENTINEL');
+    assert.equal(Object.hasOwn(result.entregasEdicion[2], 'editor_id'), false);
+    assert.equal(Object.hasOwn(result.entregasEdicion[1], 'importe'), false);
+    assert.deepEqual(filterReportDataForUser(input, { id: 9, rol }).entregasEdicion.map(row => row.id), [1, 2, 3]);
   }
-  assert.equal(filterReportDataForUser(input, { rol: 'admin' }).entregasEdicion, input.entregasEdicion);
+  const admin = filterReportDataForUser(input, { id: 1, rol: 'admin' });
+  assert.deepEqual(admin.entregasEdicion.map(row => row.id), [1, 2, 3]);
+  assert.doesNotMatch(JSON.stringify(admin), /FINANCE_SENTINEL/);
 });
 
 test('editorial report preserves actual publication timestamp with exact Unicode field, never objects', () => {
@@ -234,7 +291,8 @@ test('normalized registry remains shared for known operational identities with c
     }] });
   }
   assert.deepEqual(input, before);
-  assert.equal(filterReportDataForUser(input, { rol: 'admin' }).producciones, input.producciones);
+  assert.deepEqual(filterReportDataForUser(input, { id: 1, rol: 'admin' }).producciones,
+    filterReportDataForUser(input, { id: 7, rol: 'produccion' }).producciones);
 });
 
 test('registry schemas reject financial objects under allowed keys, malformed IDs and unknown states', () => {
@@ -253,7 +311,8 @@ test('registry schemas reject financial objects under allowed keys, malformed ID
 
 test('disabled or invalid identities fail closed including shared production and summaries', () => {
   for (const auth of [{ id: '7', rol: 'community' },
-    { id: 0, rol: 'diseno' }, { id: 7, rol: 'edicion', activo: false }, { rol: 'produccion' }, {}]) {
+    { id: 0, rol: 'diseno' }, { id: 7, rol: 'edicion', activo: false }, { rol: 'produccion' },
+    {rol: 'admin'}, {id: '7', rol: 'admin'}, {id: 7, rol: 'admin', activo: false}, {}]) {
     const result = filterReportDataForUser({ ...data, producciones: productionInput() }, auth);
     for (const [key, value] of Object.entries(result)) {
       assert.deepEqual(value, key === 'resumenRenderOsPorDia' ? {} : key === 'producciones' ? { visitas: [] } : []);
@@ -293,27 +352,33 @@ test('report reel quotas preserve actual SQL numeric values without financial fi
   }
 });
 
-test('identity and client scope cannot be obtained from inherited task fields or auth claims', () => {
+test('shared rows cannot obtain identity or client attribution from inherited fields or inherited auth', () => {
   const inherited = Object.create({ asignado_a_id: 7, colaborador_ids: [7], cliente_id: 11 });
   inherited.id = 55;
   const result = filterReportDataForUser({ ...data, tareas: [inherited], tareasRenderOs: [] }, { id: 7, rol: 'diseno' });
-  assert.deepEqual(result.tareas, []);
-  assert.deepEqual(result.publicaciones, []);
+  assert.equal(result.tareas.length, 1); assert.equal(result.tareas[0].id, 55);
+  assert.equal(result.tareas[0].asignado_a_id, null);
+  assert.deepEqual(result.tareas[0].colaborador_ids, []);
+  assert.equal(Object.hasOwn(result.tareas[0], 'cliente_id'), false);
+  assert.deepEqual(result.publicaciones.map(row => row.id), [6, 7, 8]);
   assert.deepEqual(filterReportDataForUser(data, Object.create({ id: 1, rol: 'admin' })).tareas, []);
 });
 
-test('daily aggregate is computed only after role and task-ID scope; empty own rows reveal no activity', () => {
+test('daily aggregate includes all sanitized team tasks regardless of the viewer assignments', () => {
   const input = { ...data, tareasRenderOs: [
     { id: 1, asignado_a_id: 8, titulo: 'Other carousel', subtipo: 'carrusel', estado: 'finalizada', fecha_vencimiento: '2026-10-19' },
     { id: 2, asignado_a_id: 7, titulo: 'Own carousel', subtipo: 'carrusel', estado: 'pendiente', fecha_vencimiento: '2026-10-20' },
   ] };
-  for (const rol of ['diseno', 'produccion', 'edicion', 'programacion']) {
+  const expected = {
+    '2026-10-19': { carruseles: { total: 1, publicadas: 1 } },
+    '2026-10-20': { carruseles: { total: 1, publicadas: 0 } },
+  };
+  for (const rol of ['diseno', 'produccion', 'edicion', 'programacion', 'community']) {
     const result = filterReportDataForUser(input, { id: 7, rol });
-    assert.deepEqual(result.resumenRenderOsPorDia, { '2026-10-20': { carruseles: { total: 1, publicadas: 0 } } });
-    assert.deepEqual(filterReportDataForUser(input, { id: 99, rol }).resumenRenderOsPorDia, {});
+    assert.deepEqual(result.resumenRenderOsPorDia, expected);
+    assert.deepEqual(filterReportDataForUser(input, { id: 99, rol }).resumenRenderOsPorDia, expected);
   }
-  assert.deepEqual(filterReportDataForUser(input, { id: 7, rol: 'community' }).resumenRenderOsPorDia, {});
-  assert.equal(Object.keys(filterReportDataForUser(input, { rol: 'admin' }).resumenRenderOsPorDia).length, 2);
+  assert.equal(Object.keys(filterReportDataForUser(input, { id: 1, rol: 'admin' }).resumenRenderOsPorDia).length, 2);
 });
 
 test('production registry dedupe evidence survives only as an explicit boolean independent of date range', () => {
@@ -328,30 +393,30 @@ test('production registry dedupe evidence survives only as an explicit boolean i
   }
 });
 
-test('personal editorial scope uses exact story/publication IDs on current membership in both task sources', () => {
+test('team editorial scope preserves link IDs but does not require viewer membership in either task source', () => {
   const input = { ...data, tareas: [{ id: 1, asignado_a_id: 7, historia_id: 5, publicacion_id: 6 }],
     tareasRenderOs: [{ id: 2, asignado_a_id: 8, colaborador_ids: [7], publicacion_id: 7 }],
     historias: [{ id: 5, estado: 'publicada' }, { id: 50, cliente_id: 10, estado: 'publicada' }],
   };
-  for (const rol of ['diseno', 'edicion', 'produccion', 'programacion']) {
+  for (const rol of ['diseno', 'edicion', 'produccion', 'programacion', 'community']) {
     const result = filterReportDataForUser(input, { id: 7, rol });
-    assert.deepEqual(result.historias.map(row => row.id), [5]);
-    assert.deepEqual(result.publicaciones.map(row => row.id), [6, 7]);
+    assert.deepEqual(result.historias.map(row => row.id), [5, 50]);
+    assert.deepEqual(result.publicaciones.map(row => row.id), [6, 7, 8]);
     assert.equal(result.tareas[0].historia_id, 5);
     assert.equal(result.tareas[0].publicacion_id, 6);
-    assert.deepEqual(filterReportDataForUser(input, { id: 99, rol }).publicaciones, []);
+    assert.deepEqual(filterReportDataForUser(input, { id: 99, rol }).publicaciones.map(row => row.id), [6, 7, 8]);
   }
   const community = filterReportDataForUser(input, { id: 99, rol: 'community' });
   assert.deepEqual(community.historias.map(row => row.id), [5, 50]);
   assert.deepEqual(community.publicaciones.map(row => row.id), [6, 7, 8]);
 });
 
-test('historical editing credit and malformed task links cannot authorize editorial records', () => {
+test('shared editorial visibility never manufactures valid link IDs or assignments from historical credit', () => {
   for (const id of [null, '5', 0, -1, 1.5, {}, Infinity]) {
     const input = { ...data, tareas: [{ id: 1, asignado_a_id: 7, historia_id: id, publicacion_id: id }], tareasRenderOs: [] };
     const result = filterReportDataForUser(input, { id: 7, rol: 'edicion' });
-    assert.deepEqual(result.historias, []);
-    assert.deepEqual(result.publicaciones, []);
+    assert.deepEqual(result.historias.map(row => row.id), [5]);
+    assert.deepEqual(result.publicaciones.map(row => row.id), [6, 7, 8]);
     assert.equal(Object.hasOwn(result.tareas[0], 'historia_id'), id === null);
     assert.equal(Object.hasOwn(result.tareas[0], 'publicacion_id'), id === null);
   }
@@ -359,6 +424,9 @@ test('historical editing credit and malformed task links cannot authorize editor
     propiedades_extra: { edicion_responsable_id: 7 } }], tareasRenderOs: [] };
   const result = filterReportDataForUser(input, { id: 7, rol: 'edicion' });
   assert.equal(result.tareas.length, 1, 'stable historical work credit remains visible');
-  assert.deepEqual(result.historias, []);
-  assert.deepEqual(result.publicaciones, []);
+  assert.deepEqual(result.historias.map(row => row.id), [5]);
+  assert.deepEqual(result.publicaciones.map(row => row.id), [6, 7, 8]);
+  assert.equal(result.tareas[0].asignado_a_id, 8);
+  assert.deepEqual(result.tareas[0].colaborador_ids, []);
+  assert.equal(result.tareas[0].propiedades_extra.edicion_responsable_id, 7);
 });

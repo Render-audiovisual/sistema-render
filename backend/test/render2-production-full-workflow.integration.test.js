@@ -149,7 +149,7 @@ for (const cohort of [
       const mine = await calendar(record.actor.token, start, next, 'mine');
       assert.deepEqual(mine.events.filter(row => row.source === 'tarea').map(row => row.source_id), [record.taskId]);
       const body = await report(record.actor.token, start, next);
-      const expectedTasks = record.actor.role === 'admin' ? records : [record];
+      const expectedTasks = records; // Team reports; personal Home/calendar assertions above remain unchanged.
       assert.deepEqual(body.tareasRenderOs.filter(row => taskIds.includes(row.id)).map(row => row.id).sort((a, b) => a - b),
         expectedTasks.map(row => row.taskId).sort((a, b) => a - b));
       for (const own of expectedTasks) {

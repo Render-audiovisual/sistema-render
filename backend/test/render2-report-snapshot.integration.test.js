@@ -88,10 +88,17 @@ test('QA117 report HTTP and real PostgreSQL snapshot annotations', {
     return { status: response.status, body: await response.json(), cache: response.headers.get('cache-control') };
   };
 
-  await t.test('HTTP real evidence, linked domain identities and ID memberships; reads leave every table unchanged', async () => {
+  await t.test('HTTP team-wide reports preserve evidence and privacy without expanding personal home or direct ACLs', async () => {
     const before = await snapshot();
     const response = await report(admin), data = ok(response);
     assert.equal(response.cache, 'no-store');
+    for (const privateValue of [marker, '817293.46'])
+      assert.equal(JSON.stringify(data).includes(privateValue), false, 'Admin reports also use the closed money-free DTO');
+    assert.ok(data.tareas.some(row => row.id === tasks[0]));
+    assert.ok(data.tareas.some(row => row.id === nameOnly.id));
+    assert.ok(data.tareasRenderOs.some(row => row.id === tasks[1]));
+    assert.ok(data.clientes.some(row => row.id === client.id));
+    for (const actor of actors) assert.ok(data.usuarios.some(row => row.id === actor.id));
     for (const key of ['historias', 'publicaciones']) {
       const piece = data[key].find(row => row.id === pieceId);
       assert.equal(piece.publicacion_evidencia.classification, 'confirmada_manualmente');
@@ -101,13 +108,25 @@ test('QA117 report HTTP and real PostgreSQL snapshot annotations', {
       const result = await report(actor.token), body = ok(result);
       assert.equal(result.cache, 'no-store');
       assert.ok(body.tareas.some(row => row.id === tasks[0]));
-      assert.equal(body.tareas.some(row => row.id === nameOnly.id), false);
-      assert.equal(body.tareasRenderOs.some(row => row.id === tasks[1]), actor.role !== 'community');
+      assert.ok(body.tareas.some(row => row.id === nameOnly.id), 'Report role grants team reads, not matching display names');
+      assert.ok(body.tareasRenderOs.some(row => row.id === tasks[1]));
       assert.equal(JSON.stringify(body).includes(marker), false);
       assert.equal(JSON.stringify(body).includes('817293.46'), false);
-      assert.deepEqual(body.usuarios.map(row => row.id), [actor.id]);
+      assert.deepEqual(body.usuarios.map(row => row.id).sort((a, b) => a - b), data.usuarios.map(row => row.id).sort((a, b) => a - b));
+      assert.deepEqual(body.clientes.map(row => row.id).sort((a, b) => a - b), data.clientes.map(row => row.id).sort((a, b) => a - b));
       assert.ok(body.historias.some(row => row.id === pieceId));
       assert.ok(body.publicaciones.some(row => row.id === pieceId));
+      for (const key of ['tareas', 'tareasRenderOs', 'historias', 'publicaciones', 'entregasEdicion'])
+        assert.deepEqual(body[key].map(row => row.id).sort((a, b) => a - b),
+          data[key].map(row => row.id).sort((a, b) => a - b), `${key}: same team rows for admin and operational roles`);
+      const home = ok(await api('/inicio', actor.token));
+      assert.equal(home.user.id, actor.id);
+      assert.equal(home.review.scope, 'personal');
+      for (const rows of [home.tasks, home.review.items, home.activity])
+        assert.equal(rows.some(row => (row.task_id ?? row.id) === nameOnly.id), false, 'A shared name cannot grant personal home membership');
+      ok(await api('/inicio/equipo', actor.token), 403);
+      const directTasks = ok(await api('/tareas', actor.token));
+      assert.equal(directTasks.some(row => row.id === nameOnly.id), false, 'Historical direct task reads still require ID membership');
     }
     assert.deepEqual(await snapshot(), before);
   });
@@ -126,6 +145,7 @@ test('QA117 report HTTP and real PostgreSQL snapshot annotations', {
     assert.equal(body.producciones.desde, query.desde); assert.equal(body.producciones.hasta, query.hasta);
     assert.deepEqual(body.producciones.visitas, [{ id: visitId, tarea_origen_id: null, cliente_id: client.id,
       cliente_nombre: 'QA117 report client', fecha: '2026-10-20', titulo: 'QA117 shared production', participante_ids: [],
+      revision: 1, ultimo_resultado: null,
       videos: [{ id: videoId, titulo: 'QA117 shared video', estado: 'planificado', tarea_edicion_id: null,
         tarea_estado: null, editor_actual_id: null, fecha_entrega_actual: null }],
       fotos: [{ id: photoId, tipo: 'QA117 shared photo', estado: 'realizada' }] }]);

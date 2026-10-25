@@ -1,5 +1,7 @@
 # Permisos financieros con sesiones cookie
 
+Actualización369: por decisión humana, Reportes es compartido para todo el equipo y todos los clientes, sin dinero incluso para los dueños. La matriz actualizada comprueba usuarios/clientes/entregas de equipo, DTO cerrado en ambos administradores, Inicio personal, Finanzas de empleados403 y revocación de Reportes. Las referencias posteriores a reporte propio o importe administrativo en Reportes son históricas. Otros endpoints financieros autorizados siguen conservando sus controles positivos. Ver REPORT_TEAM_SCOPE_CONTRACT.md y CURRENT_ACCEPTANCE.md para resultados vigentes.
+
 ## Resultado
 
 La matriz local verificó las respuestas del servidor para Diseño, Edición, Producción, Community y Programación mediante cookies emitidas por el backend. Los cinco roles consultaron datos operativos sin los campos ni importes privados comprobados y recibieron403 en las rutas financieras y administrativas incluidas. Ambos administradores QA recibieron los importes reales del fixture. No se encontró un bypass en este alcance ni se modificó producto.

@@ -299,8 +299,8 @@ test('cookie: one agreement → three goal tasks → one three-video visit → e
     const report = checked(await api(`/reportes/datos?${new URLSearchParams({
       mes_configuracion: period, desde: start, hasta: next,
     })}`, actor));
-    if (actor.id === 91003) noFinance(report);
-    const reported = actor.id === 91003 ? [ownRecord] : records;
+    noFinance(report);
+    const reported = records; // Report access is team-wide, not personal task membership.
     assert.deepEqual(report.tareasRenderOs.map(row => row.id).sort((a, b) => a - b),
       reported.map(record => record.taskId).sort((a, b) => a - b));
     const reportedVisit = one(report.producciones.visitas, row => row.id === visitId);

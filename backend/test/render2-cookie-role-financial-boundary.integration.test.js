@@ -153,14 +153,17 @@ test('cookie financial boundary: five operational roles and two admins with curr
     for (const marker of [...Object.values(amounts), ...markers]) assert.equal(text.includes(marker), false, 'Private financial canary leaked');
   }
   const reportPath = '/reportes/datos?mes_configuracion=2026-10&desde=2026-10-01&hasta=2026-10-31';
-  await t.test('both cookie admins see real financial canaries and compensation calculations', async () => {
+  await t.test('both cookie admins retain finance access outside money-free team reports', async () => {
     const before = await snapshot();
     for (const jar of admins) {
       assert.equal(Number(checked(await call(jar, '/clientes?periodo=2026-10')).find(row => row.id === client.id).abono_mensual), Number(amounts.fee));
       assert.equal(checked(await call(jar, '/usuarios')).find(row => row.id === 91001).email_notificaciones, markers[3]);
       assert.equal(Number(checked(await call(jar, '/contratos')).find(row => row.id === contract.id).importe_mensual), Number(amounts.contract));
       const report = checked(await call(jar, reportPath));
-      assert.equal(Number(report.entregasEdicion.find(row => row.id === delivery.id).importe), Number(amounts.delivery));
+      const reportDelivery = report.entregasEdicion.find(row => row.id === delivery.id);
+      assert.ok(reportDelivery);
+      assert.equal(Object.hasOwn(reportDelivery, 'importe'), false);
+      noPrivateData(report);
       const payroll = checked(await call(jar, '/sueldos?periodo=2026-10'));
       assert.equal(payroll.finance.ingresos.find(row => row.nombre === markers[0]).importeMensual, Number(amounts.contract));
       assert.equal(payroll.finance.gastos.find(row => row.nombre === markers[1]).importe, Number(amounts.expense));
@@ -176,7 +179,10 @@ test('cookie financial boundary: five operational roles and two admins with curr
   for (const actor of actors) await t.test(`${actor.rol}: useful cookie operational DTOs exclude private finance`, async () => {
     const before = await snapshot(), jar = actor.jar;
     const report = checked(await call(jar, reportPath)); noPrivateData(report);
-    assert.deepEqual(report.usuarios.map(row => row.id), [actor.id]);
+    for (const teammate of actors) assert.ok(report.usuarios.some(row => row.id === teammate.id && row.rol === teammate.rol));
+    assert.ok(report.usuarios.some(row => row.id === 91001));
+    for (const expected of [client, eligibleClient]) assert.ok(report.clientes.some(row => row.id === expected.id));
+    assert.ok(report.entregasEdicion.some(row => row.id === delivery.id), 'Team delivery visible regardless of viewer/editor identity');
     const clients = checked(await call(jar, '/clientes?periodo=2026-10')); noPrivateData(clients);
     const visible = clients.find(row => row.id === client.id); assert.ok(visible);
     assert.equal(visible.cuota_reels, 3); assert.equal(visible.cuota_carruseles, 2);
@@ -185,6 +191,8 @@ test('cookie financial boundary: five operational roles and two admins with curr
     assert.ok(users.some(row => row.id === actor.id && row.rol === actor.rol));
     assert.ok(users.some(row => row.id === 91001 && row.nombre === 'Franco QA'));
     const home = checked(await call(jar, '/inicio')); noPrivateData(home); assert.equal(home.user.id, actor.id);
+    assert.equal(home.review.scope, 'personal');
+    checked(await call(jar, '/inicio/equipo'), 403);
     assert.deepEqual(await snapshot(), before);
   });
   const deniedRoutes = () => [
@@ -234,7 +242,7 @@ test('cookie financial boundary: five operational roles and two admins with curr
     for (const jar of [actors[0].jar, admins[1]]) {
       await f.query('UPDATE usuarios SET session_version=session_version+1 WHERE id=$1', [jar.session.usuario.id]);
       const before = await snapshot();
-      for (const path of ['/sesion', '/inicio', '/contratos']) {
+      for (const path of ['/sesion', '/inicio', reportPath, '/contratos']) {
         const response = await call(jar, path); checked(response, 401); noPrivateData(response.body);
       }
       assert.deepEqual(await snapshot(), before);

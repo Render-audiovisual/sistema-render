@@ -1,5 +1,7 @@
 # Permisos financieros por rol
 
+Actualización369: Reportes ahora comparte operación de todo el equipo/clientes, sin importes para ningún rol. La matriz bearer actualizada conserva positivos de Finanzas para dueños, negativos para empleados y privacidad del reporte de ambos grupos. Inicio y permisos de escritura no se amplían. Las referencias de esta evidencia histórica a reportes propios o importes en Reportes de administradores quedan sustituidas por REPORT_TEAM_SCOPE_CONTRACT.md; ejecuciones actuales en CURRENT_ACCEPTANCE.md.
+
 Actualización196: COOKIE_ROLE_FINANCIAL_BOUNDARY_QA.md agrega la matriz física por cookie, sueldo/tarifas, acuerdo mensual y revocación, con53 comprobaciones físicas vigentes de su alcance. La matriz bearer y sus resultados históricos descritos debajo no se convierten en pruebas de navegador ni se suman como nuevas ejecuciones.
 
 La matriz local verificó que Diseño, Edición, Producción, Community y Programación pueden consultar los datos operativos probados sin recibir importes financieros privados. Los cinco roles tienen denegadas las rutas financieras y administrativas incluidas en la prueba. Franco QA y Agustín QA conservan acceso a importes genuinos de la base de prueba. No se encontró una fuga nueva en este alcance ni se modificó código del producto.

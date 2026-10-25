@@ -6,6 +6,7 @@ import { getProductionVisitProgress, groupProductionByClient } from '../../front
 import { getEditingResponsible, summarizeTaskDeliveries } from '../../frontend/src/shared/reports/report-utils.js';
 import { filterReportDataForUser } from '../src/report-access.js';
 import { canEmployeePatchTask } from '../src/task-access.js';
+import { reportTaskPeople } from '../../frontend/src/shared/reports/production-registry-report.js';
 
 const visit = (metadata = {}) => ({ titulo: 'Moketa | Visita producción | 16/09', tipo_tarea: 'produccion', cliente_nombre: 'Moketa', material_referencia: 'https://drive.google.com/drive/folders/example', propiedades_extra: metadata });
 test('a visit with no plan can be finished with its actual recorded count', () => {
@@ -32,12 +33,14 @@ test('handing publication to another person retains editing credit without marki
   const credited = filterReportDataForUser(data, { id: 7, rol: 'edicion', nombre: 'Luciano' });
   assert.equal(credited.tareasRenderOs.length, 1);
   assert.equal(credited.tareasRenderOs[0].propiedades_extra.edicion_responsable_id, 7);
-  assert.equal(filterReportDataForUser(data, { id: 8, rol: 'edicion', nombre: 'Luciano' }).tareasRenderOs.length, 0);
+  const shared=filterReportDataForUser(data, { id: 8, rol: 'edicion', nombre: 'Luciano' }).tareasRenderOs;
+  assert.equal(shared.length, 1);assert.equal(reportTaskPeople(shared[0]).includes(8),false);
   assert.equal(filterReportDataForUser(data, { id: 7, rol: 'edicion', nombre: 'Editor renombrado' }).tareasRenderOs.length, 1);
-  assert.equal(filterReportDataForUser(data, { id: 7, rol: 'diseno', nombre: 'Luciano' }).tareasRenderOs.length, 0);
+  assert.equal(filterReportDataForUser(data, { id: 7, rol: 'diseno', nombre: 'Luciano' }).tareasRenderOs.length, 1);
   for (const id of [undefined, null, '7', 0, -1, 7.1, {}, true]) {
     const legacy = { ...data, tareasRenderOs: [{ ...task, propiedades_extra: { ...task.propiedades_extra, edicion_responsable_id: id } }] };
-    assert.equal(filterReportDataForUser(legacy, { id: 7, rol: 'edicion', nombre: 'Luciano' }).tareasRenderOs.length, 0);
+    const rows=filterReportDataForUser(legacy, { id: 7, rol: 'edicion', nombre: 'Luciano' }).tareasRenderOs;
+    assert.equal(rows.length,1);assert.equal(reportTaskPeople(rows[0]).includes(7),false);
   }
   assert.equal(task.estado, 'en_revision');
 });

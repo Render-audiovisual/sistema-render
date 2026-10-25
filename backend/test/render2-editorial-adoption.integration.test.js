@@ -43,7 +43,7 @@ test('editorial adoption: ordinary principal DTOs/reporting use current immutabl
     [clientId, state, planned, actual, JSON.stringify({ importe: 783456.91, arbitrary_money: { marker: sentinel },
       ...(forged ? { publicacion_evidencia: fake, revision_aprobada: true, publicada: true, confirmation: fake.confirmation } : {}) })]);
     const piece = { domain, id: row.id, clientId };
-    // Existing report ACL grants editorial reads by actual task membership IDs.
+    // Membership grants task writes/personal home; Reportes independently grants team reads by role.
     const [task] = await fixture.query(`INSERT INTO tareas(titulo,asignado_a,cliente_id,historia_id,publicacion_id,tipo_tarea,subtipo,estado,propiedades_extra)
       VALUES ($1,'QA adoption homonym',$2,$3,$4,'edicion','video','pendiente','{"workspace":"render_os"}') RETURNING id`,
     [`QA adoption task ${++serial}`, clientId, domain === 'historia' ? row.id : null, domain === 'publicacion' ? row.id : null]);
@@ -100,6 +100,9 @@ test('editorial adoption: ordinary principal DTOs/reporting use current immutabl
     const row = (await list(piece.domain, token)).find(row => row.id === piece.id);
     const reportRow = (await report(token))[domains[piece.domain]].find(row => row.id === piece.id);
     await validate(row, piece); await validate(reportRow, piece);
+    assert.equal(JSON.stringify(reportRow).includes(sentinel), false, 'Reports omit financial metadata even for admins');
+    assert.equal(JSON.stringify(reportRow).includes('783456.91'), false);
+    assert.equal(Object.hasOwn(reportRow, 'metadata'), false, 'Report editorial DTO is closed');
     if (token !== admin) for (const item of [row, reportRow]) {
       assert.ok(!JSON.stringify(item).includes(sentinel), 'Employee editorial DTO must omit arbitrary financial metadata');
       assert.ok(!JSON.stringify(item).includes('783456.91'));
@@ -140,10 +143,25 @@ test('editorial adoption: ordinary principal DTOs/reporting use current immutabl
     assert.deepEqual(await fixture.query('SELECT * FROM tareas WHERE id=$1', [piece.taskId]), taskBefore);
     assert.equal((await fixture.query('SELECT count(*)::int AS n FROM editorial_publicacion_eventos WHERE dominio=$1 AND pieza_id=$2', [domain, piece.id]))[0].n, 2);
   });
-  await t.test('current ID report scope never grants a same-name impostor evidence or editorial rows', async () => {
+  await t.test('same-name nonmember reads team reports by role without gaining personal scope or editorial write authority', async () => {
+    const before = await snapshot();
     const data = await report(impostor);
-    for (const domain of Object.keys(domains)) for (const piece of pieces.filter(p => p.domain === domain))
-      assert.equal(data[domains[domain]].some(row => row.id === piece.id), false);
+    const home = checked(await api('/inicio', impostor));
+    assert.equal(home.user.id, 107002);
+    assert.equal(home.review.scope, 'personal');
+    for (const domain of Object.keys(domains)) for (const piece of pieces.filter(p => p.domain === domain)) {
+      const row = data[domains[domain]].find(row => row.id === piece.id);
+      await validate(row, piece);
+      assert.equal(JSON.stringify(row).includes(sentinel), false);
+      assert.equal(JSON.stringify(row).includes('783456.91'), false);
+      for (const rows of [home.tasks, home.review.items, home.activity])
+        assert.equal(rows.some(row => (row.task_id ?? row.id) === piece.taskId), false);
+      checked(await api(`/editorial-publicacion/${domain}/${piece.id}/confirmar`, impostor, 'POST', {
+        request_id: randomUUID(), expected_revision: (await status(piece)).piece.revision,
+        occurred_at: '2026-08-01T02:30:00Z',
+      }), 403);
+    }
+    assert.deepEqual(await snapshot(), before);
   });
   await t.test('Córdoba actual-month counts differ from planned cohort and remain independently SQL-verifiable', async () => {
     const edge = [];

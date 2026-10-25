@@ -57,7 +57,7 @@ test('all original base/assignment/evidence/production reads use one leased RR r
   assert.deepEqual(Object.keys(result).sort(),['clientes','entregasEdicion','historias','producciones','publicaciones','resumenRenderOsPorDia','tareas','tareasRenderOs','usuarios'].sort());
   assert.equal(result.tareas[0].asignado_a_id,7);assert.equal(result.tareasRenderOs[0].asignado_a_id,7);
   assert.equal(result.historias[0].publicacion_evidencia.revision,0);assert.equal(result.publicaciones[0].publicacion_evidencia.classification,'no_publicada');
-  assert.equal(result.entregasEdicion[0].importe,'999.99','existing admin legacy delivery projection is retained');
+  assert.equal(result.entregasEdicion[0].importe,undefined,'Owner reports are operational, not financial');
   assert.equal(result.producciones.visitas.length,1);
   assert.ok(f.calls.some(call=>call.sql.startsWith('SELECT tarea_id, usuario_id')));
   assert.equal(f.calls.filter(call=>call.sql.startsWith('SELECT p.id AS piece_id')).length,2);
@@ -66,14 +66,13 @@ test('all original base/assignment/evidence/production reads use one leased RR r
   assert.equal(f.calls.some(call=>/^(INSERT|UPDATE|DELETE|ALTER|CREATE|DROP)|FOR (UPDATE|SHARE)/.test(call.sql)),false);
 });
 
-test('all six actual roles retain their existing report policy; nonadmin DTO strips financial/raw bags',async()=>{
+test('operational roles share team reports while nonadmin DTO strips financial/raw bags',async()=>{
   for(const rol of SYSTEM_USER_ROLES){
     const f=fixture({actor:{...auth(),rol,activo:true}}),result=await loadReportSnapshot(f.pool,{...auth(),rol},selectors);
-    if(rol==='admin')continue;
     assert.doesNotMatch(JSON.stringify(result),/finance_secret|999\.99|"importe"/);
-    assert.deepEqual(result.usuarios.map(user=>user.id),[7]);
-    if(rol==='diseno')assert.equal(result.tareasRenderOs.length,1);
-    if(rol==='community'){assert.deepEqual(result.tareasRenderOs,[]);assert.deepEqual(result.clientes,[]);}
+    assert.deepEqual(result.usuarios.map(user=>user.id),[7,8]);
+    assert.equal(result.tareasRenderOs.length,1);assert.equal(result.clientes.length,1);
+    assert.equal(result.entregasEdicion.length,1);assert.equal(result.entregasEdicion[0].editor_id,undefined);
   }
 });
 

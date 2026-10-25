@@ -141,7 +141,8 @@ test('five operational roles cannot read or write private finance; both current 
       const contracts = ok(await api('/contratos', token));
       assert.equal(Number(contracts.find(row => row.id === contract.id).importe_mensual), Number(amounts.contract));
       const report = ok(await api('/reportes/datos?mes_configuracion=2026-10&desde=2026-10-01&hasta=2026-10-31', token));
-      assert.equal(Number(report.entregasEdicion.find(row => row.id === legacyDelivery.id).importe), Number(amounts.delivery));
+      assert.ok(report.entregasEdicion.some(row=>row.id===legacyDelivery.id));
+      noPrivateData(report);
       // The isolated harness blocks external fetch; this exercises real local
       // payroll projections, not a live exchange-rate/provider integration.
       const payroll = ok(await api('/sueldos?periodo=2026-10', token));
@@ -160,7 +161,8 @@ test('five operational roles cannot read or write private finance; both current 
     const before = await snapshot();
     const report = ok(await api('/reportes/datos?mes_configuracion=2026-10&desde=2026-10-01&hasta=2026-10-31', actor.token));
     noPrivateData(report);
-    assert.deepEqual(report.usuarios.map(row => row.id), [actor.id], 'Report identities are self-scoped');
+    assert.ok(report.usuarios.some(row=>row.id===actor.id));
+    assert.ok(report.usuarios.some(row=>row.id===91001),'Operational reports include the team, without private user fields');
     const clients = ok(await api('/clientes?periodo=2026-10', actor.token));
     noPrivateData(clients);
     const visibleClient = clients.find(row => row.id === client.id);

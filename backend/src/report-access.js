@@ -1,4 +1,4 @@
-import { editorialEvidenceDto, editorialOperationalDto } from './operational-dto.js';
+import { editorialEvidenceDto } from './operational-dto.js';
 import { productionResultProjection } from './production-result-projection.js';
 
 function normalize(value = "") {
@@ -137,7 +137,7 @@ function productionReportDto(source) {
   return result;
 }
 
-function nonAdminReportDto(data) {
+function operationalReportDto(data) {
   const rows = (key, dto) => rowsOf(data, key).map(dto);
   const editorial = (item, fields) => {
     const result = pickScalars(item, fields);
@@ -160,67 +160,25 @@ function nonAdminReportDto(data) {
     }),
     usuarios: rows("usuarios", (item) => pickScalars(item, ["id", "usuario", "nombre", "rol"])),
     entregasEdicion: rows("entregasEdicion", (item) => ({ ...pickScalars(item, ["id", "editor_clave", "fecha_entrega", "cliente_etiqueta", "categoria", "fuente", "fuente_item", "confirmado_por"]),
-      ...(positiveId(ownValue(item, 'editor_id')) ? { editor_id: ownValue(item, 'editor_id') } : {}) })).filter(item => positiveId(item.editor_id)),
+      ...(positiveId(ownValue(item, 'editor_id')) ? { editor_id: ownValue(item, 'editor_id') } : {}) })),
     ...(ownValue(data, 'producciones') !== undefined ? { producciones: productionReportDto(ownValue(data, 'producciones')) } : {}),
   };
 }
 
 export function filterReportDataForUser(data, auth = {}) {
-  if (ownValue(auth, 'rol') === "admin") return { ...data,
-    ...(Array.isArray(ownValue(data, 'historias')) ? { historias: data.historias.map(item => editorialOperationalDto(item, auth)) } : {}),
-    ...(Array.isArray(ownValue(data, 'publicaciones')) ? { publicaciones: data.publicaciones.map(item => editorialOperationalDto(item, auth)) } : {}),
-    resumenRenderOsPorDia: summarizeRenderOsByDay(data.tareasRenderOs) };
   const role = ownValue(auth, 'rol'), userId = ownValue(auth, 'id');
   if (!positiveId(userId) || ownValue(auth, 'activo') === false) {
-    return { ...nonAdminReportDto(ownValue(data, 'producciones') !== undefined ? { producciones: {} } : {}), resumenRenderOsPorDia: {} };
+    return { ...operationalReportDto(ownValue(data, 'producciones') !== undefined ? { producciones: {} } : {}), resumenRenderOsPorDia: {} };
   }
-  data = nonAdminReportDto(data);
-  if (!['community', 'diseno', 'produccion', 'edicion', 'programacion'].includes(role)) {
-    return { ...nonAdminReportDto({}),
+  data = operationalReportDto(data);
+  if (!['admin','community', 'diseno', 'produccion', 'edicion', 'programacion'].includes(role)) {
+    return { ...operationalReportDto({}),
       usuarios: data.usuarios.filter(user => positiveId(user.id) && user.id === userId),
       ...(data.producciones ? { producciones: data.producciones } : {}), resumenRenderOsPorDia: {} };
   }
-  // Aggregation must follow authorization, never expose other users' activity.
-  const reportData = data;
-  const scopedReport = selected => ({ ...selected, resumenRenderOsPorDia: summarizeRenderOsByDay(selected.tareasRenderOs) });
-  const currentMember = task => task.asignado_a_id === userId || task.colaborador_ids.includes(userId);
-  const ownTask = task => currentMember(task)
-    || (role === 'edicion' && task.propiedades_extra.edicion_responsable_id === userId);
-  // Historical editing credit does not grant access to linked editorial rows.
-  const linkedTasks = [...data.tareas, ...data.tareasRenderOs].filter(currentMember);
-  const storyIds = new Set(linkedTasks.map(task => task.historia_id).filter(positiveId));
-  const publicationIds = new Set(linkedTasks.map(task => task.publicacion_id).filter(positiveId));
-  const ownStories = data.historias.filter(item => positiveId(item.id) && storyIds.has(item.id));
-  const ownPublications = data.publicaciones.filter(item => positiveId(item.id) && publicationIds.has(item.id));
-  const ownUsers = data.usuarios.filter(user => positiveId(user.id) && user.id === userId);
-  const ownEditingDeliveries = data.entregasEdicion.filter(item => item.editor_id === userId);
-
-  if (role === "community") {
-    return scopedReport({ ...reportData, tareas: data.tareas.filter(ownTask), tareasRenderOs: [], clientes: [], usuarios: ownUsers, entregasEdicion: ownEditingDeliveries });
-  }
-  if (role === "diseno") {
-    return scopedReport({
-      ...reportData,
-      tareas: data.tareas.filter(ownTask),
-      tareasRenderOs: data.tareasRenderOs.filter(ownTask),
-      historias: ownStories,
-      publicaciones: ownPublications.filter(item => item.tipo === 'carrusel'),
-      usuarios: ownUsers,
-      entregasEdicion: ownEditingDeliveries,
-    });
-  }
-  if (role === "produccion") {
-    return scopedReport({
-      ...reportData,
-      tareas: data.tareas.filter(ownTask),
-      tareasRenderOs: data.tareasRenderOs.filter(ownTask),
-      historias: ownStories, publicaciones: ownPublications, clientes: [], usuarios: ownUsers, entregasEdicion: ownEditingDeliveries,
-    });
-  }
-  return scopedReport({
-    ...reportData,
-    tareas: data.tareas.filter(ownTask),
-    tareasRenderOs: data.tareasRenderOs.filter(ownTask), entregasEdicion: ownEditingDeliveries,
-    historias: ownStories, publicaciones: ownPublications, clientes: [], usuarios: ownUsers,
-  });
+  // Reports are explicitly team-wide for operational roles. This grants no
+  // task mutation, user administration or finance access: every row has already
+  // crossed the closed operational DTO above, including owners. Home retains
+  // its separate own scope; authorized amounts remain in the finance APIs.
+  return { ...data, resumenRenderOsPorDia: summarizeRenderOsByDay(data.tareasRenderOs) };
 }

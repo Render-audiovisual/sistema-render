@@ -89,7 +89,7 @@ export async function loadReportSnapshot(pool, auth, query = {}) {
           AND t.propiedades_extra->>'archivada_render_os' IS DISTINCT FROM 'true'
           AND t.propiedades_extra->>'papelera_render_os' IS DISTINCT FROM 'true'`);
     const entregasEdicion = await db.query(`SELECT id,editor_clave,to_char(fecha_entrega,'YYYY-MM-DD') AS fecha_entrega,
-        cliente_etiqueta,categoria,importe,fuente,fuente_item,confirmado_por
+        cliente_etiqueta,categoria,fuente,fuente_item,confirmado_por
         FROM entregas_edicion ORDER BY fecha_entrega,fuente_item`);
     const assignedTasks = await annotateTaskAssignments(db, tareas.rows);
     const assignedWorkspaceTasks = await annotateTaskAssignments(db, tareasRenderOs.rows);
