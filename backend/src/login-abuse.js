@@ -112,10 +112,27 @@ RETURNING attempts`;
  * No raw identity/address, auth result, credential or token enters SQL/storage.
  */
 export async function reserveLoginAttempt(pool, input, secret) {
+  return reserveAttempts(pool, () => loginAttemptBuckets(input, secret));
+}
+
+export const PROFILE_CREDENTIAL_LIMIT = 10;
+export function profileCredentialBucketKey(actorId, secret) {
+  assertSecret(secret);
+  if (!Number.isInteger(actorId) || actorId < 1 || actorId > 2147483647) throw unavailable();
+  return createHmac('sha256', secret).update(JSON.stringify(['auth-profile-credentials-v1', actorId])).digest('hex');
+}
+
+// Independent of login, address, endpoint and session epoch: reconnecting or
+// alternating credential forms cannot reset an authenticated actor's budget.
+export async function reserveProfileCredentialAttempt(pool, actorId, secret) {
+  return reserveAttempts(pool, () => [{key: profileCredentialBucketKey(actorId, secret), limit: PROFILE_CREDENTIAL_LIMIT}], true);
+}
+
+async function reserveAttempts(pool, plan, readOnlyDenial = false) {
   let db;
   let failed = false;
   try {
-    const buckets = loginAttemptBuckets(input, secret), keys = buckets.map(b => b.key);
+    const buckets = plan(), keys = buckets.map(b => b.key);
     db = await acquire(pool);
     await query(db, 'BEGIN ISOLATION LEVEL READ COMMITTED');
     await query(db, "SET LOCAL lock_timeout='1000ms'");
@@ -124,6 +141,17 @@ export async function reserveLoginAttempt(pool, input, secret) {
     // uses try-only advisory acquisition before SKIP LOCKED row acquisition,
     // so it cannot delete a bucket another reservation will later need.
     for (const key of keys) await query(db, "SELECT pg_advisory_xact_lock(hashtext('auth-login-bucket'),hashtext($1))", [key]);
+    if (readOnlyDenial) {
+      const exhausted = await query(db, `SELECT attempts,
+        GREATEST(1,ceil(extract(epoch FROM (expires_at-clock_timestamp()))))::int AS retry_after
+        FROM auth_login_buckets WHERE bucket_key=$1 AND expires_at>clock_timestamp()`, [keys[0]]);
+      if (exhausted.rows.length && exhausted.rows[0].attempts >= buckets[0].limit) {
+        const retryAfter = exhausted.rows[0].retry_after;
+        if (!Number.isSafeInteger(retryAfter) || retryAfter < 1) throw unavailable();
+        await query(db, 'COMMIT');
+        return {allowed:false,retryAfter};
+      }
+    }
     await query(db, LOGIN_PRUNE_SQL, [keys]);
     for (const bucket of buckets) {
       // Separate statement: database clock in the upsert is captured only AFTER

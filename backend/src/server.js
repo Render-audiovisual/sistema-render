@@ -28,7 +28,7 @@ import { encolarNotificacionPrivadaFeedback } from "./private-feedback-notificat
 import { requireRole, issueUserToken } from "./auth.js";
 import { configuredBrowserSessions, createPrincipalAuthentication } from './browser-session-config.js';
 import { createLoginHandlers, loginUserDto } from './login-handlers.js';
-import { reserveLoginAttempt } from "./login-abuse.js";
+import { reserveLoginAttempt, reserveProfileCredentialAttempt } from "./login-abuse.js";
 import { administerUser, withUserAdministration, withSelfIdentityChange, UserAdministrationAuthorityError } from "./user-administration.js";
 import { assertUserLoginIdentifierAvailable } from './user-login-namespace.js';
 import { normalizeUserCreateInput } from './user-create-input.js';
@@ -202,6 +202,18 @@ async function allowLoginAttempt(req, res, identifier) {
     // Rate storage/configuration failure must not silently permit unlimited
     // verification or expose driver details through the global error logger.
     res.status(503).json({ error: 'No se pudo verificar el acceso. Volvé a intentar más tarde.' });
+  }
+  return false;
+}
+
+async function allowProfileCredentialAttempt(req, res) {
+  try {
+    const result = await reserveProfileCredentialAttempt(pool, req.auth.id, process.env.JWT_SECRET);
+    if (result.allowed) return true;
+    res.set('Retry-After', String(result.retryAfter));
+    res.status(429).json({code:'PROFILE_RATE_LIMITED',error:'Demasiados intentos de contraseña actual. Esperá unos minutos y volvé a intentar.'});
+  } catch {
+    res.status(503).json({code:'PROFILE_VERIFICATION_UNAVAILABLE',error:'No se pudo verificar el cambio. Volvé a intentar más tarde.'});
   }
   return false;
 }
@@ -807,6 +819,7 @@ router.patch("/usuarios/perfil", async (req, res, next) => {
     }
 
     const usuarioDB = found.rows[0];
+    if (!await allowProfileCredentialAttempt(req, res)) return;
     const passwordValida = await bcrypt.compare(
       password_actual,
       usuarioDB.password_hash,
@@ -890,6 +903,7 @@ router.patch("/usuarios/password", async (req, res, next) => {
       return res.status(401).json({ error: "La sesión cambió. Volvé a iniciar sesión." });
     }
 
+    if (!await allowProfileCredentialAttempt(req, res)) return;
     const passwordValida = await bcrypt.compare(
       password_actual,
       found.rows[0].password_hash,

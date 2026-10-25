@@ -6,9 +6,9 @@ import { assertUserLoginIdentifierAvailable } from '../src/user-login-namespace.
 import { withSelfIdentityChange } from '../src/user-administration.js';
 
 const source=readFileSync(new URL('../src/server.js',import.meta.url),'utf8');
-function fixture({route='foto',lostRead=false,lostWrite=false,duplicate=false,uniqueConflict=false,validPassword=true}={}){
+function fixture({route='foto',lostRead=false,lostWrite=false,duplicate=false,uniqueConflict=false,validPassword=true,allowCredential=true}={}){
   const start=source.indexOf(`router.patch("/usuarios/${route}"`),end=source.indexOf('\nrouter.',start+1);
-  const code=source.slice(start,end),calls=[];let handler;
+  const code=source.slice(start,end),calls=[],checks=[];let handler;
   const user={id:7,usuario:'current',nombre:'Actual',rol:'edicion',activo:true,session_version:3,google_email:null,foto_perfil:null,password_hash:'injected-hash'};
   const pool={async query(sql,args){calls.push({sql,args});
     if(sql.startsWith('BEGIN')||sql==='COMMIT'||sql==='ROLLBACK'||sql.includes('pg_advisory_xact_lock'))return{rows:[]};
@@ -21,11 +21,18 @@ function fixture({route='foto',lostRead=false,lostWrite=false,duplicate=false,un
     throw Error('Unexpected SQL');
   }};
   pool.connect=async()=>({query:pool.query,release(){calls.push({sql:'release',args:[]});}});
-  new Function('router','pool','bcrypt','normalizeSelfProfileInput','assertUserLoginIdentifierAvailable','withSelfIdentityChange',code)({patch(_path,fn){handler=fn;}},pool,{compare:async()=>validPassword,hash:async()=>'injected-new-hash'},normalizeSelfProfileInput,assertUserLoginIdentifierAvailable,withSelfIdentityChange);
-  return{calls,async run(body){const res={statusCode:200,status(n){this.statusCode=n;return this;},json(body){this.body=body;return this;}};
+  new Function('router','pool','bcrypt','normalizeSelfProfileInput','assertUserLoginIdentifierAvailable','withSelfIdentityChange','allowProfileCredentialAttempt',code)({patch(_path,fn){handler=fn;}},pool,{compare:async()=>{checks.push('compare');return validPassword;},hash:async()=>{checks.push('hash');return 'injected-new-hash';}},normalizeSelfProfileInput,assertUserLoginIdentifierAvailable,withSelfIdentityChange,async(_req,res)=>{checks.push('gate');if(!allowCredential)res.status(429).json({code:'PROFILE_RATE_LIMITED'});return allowCredential;});
+  return{calls,checks,async run(body){const res={statusCode:200,status(n){this.statusCode=n;return this;},json(body){this.body=body;return this;}};
     await handler({auth:{id:7,usuario:'current',session_version:3},body},res,e=>{throw e;});return res;}};
 }
 const inputs={foto:{usuario:'current',foto_perfil:'data:image/png;base64,QA'},perfil:{usuario_actual:'current',password_actual:'qa',usuario_nuevo:'updated'},password:{usuario:'current',password_actual:'qa',password_nueva:'Synthetic-new-password87!'}};
+test('exhausted credential budget returns before bcrypt or any account write in both real handlers',async()=>{
+  for(const route of ['perfil','password']){
+    const f=fixture({route,allowCredential:false});assert.equal((await f.run(inputs[route])).statusCode,429);
+    assert.deepEqual(f.checks,['gate']);assert.ok(f.calls.every(({sql})=>sql.startsWith('SELECT')));
+  }
+  const photo=fixture({route:'foto',allowCredential:false});assert.equal((await photo.run(inputs.foto)).statusCode,200);assert.deepEqual(photo.checks,[]);
+});
 for(const route of ['foto','perfil','password']){
   test(`${route}: actual handler selects actor by immutable ID and CAS, never chooses a write target from name`,async()=>{
     const f=fixture({route}),result=await f.run(inputs[route]);assert.equal(result.statusCode,200);

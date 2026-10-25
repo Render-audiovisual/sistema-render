@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Perfil: presupuesto de verificación actual en PostgreSQL — corte271
+
+Ambas rutas de credenciales comparten10verificaciones/15min por ID estable/HMAC separado, antes de bcrypt; no se elude alternando endpoint/sesión ni consume presupuesto de login/otrosusuarios. Denegación429+Retry-After es sin DML/prune; fallos503 sanitizados. Cuenta/CAS/GET/foto/login intactos. Ver LOGIN_ABUSE_CONTRACT.md. Harvey revisó contrato/diff y creó suite física; coordinador inspeccionó/ejecutó en PG55903:6PASS (padre+5),20solicitudes concurrentes alternadas→10contraseña incorrecta/10rechazos, contador10exacto, actorindependiente, expiración, usuarios completos invariantes y sesionesGETválidas. Cleanup/ENOENT comprobado; log /private/tmp/render2-goal271-physical.log. No proveedor/cuentasreales/migración nueva/DBconfigurada/despliegue.
+
+MotorLogin conserva rama anterior; se amplió con planinterno Perfil y rechazo sin escritura. Pruebas focales iniciales34PASS; pruebas de rutas verifican cero compare/hash/escritura al denegar, foto fuera del presupuesto y fallos del SELECT/COMMIT con rollback/release(true). La primera regresión descubrió assert obsoleto de Feedback tras269; se corrigió en commit separado61542e6 para comprobar montajeModalnative más contratoARIA del componente,6PASS. Regresiónbackend final2332PASS/147integraciones optativas omitidas,0fallos; log /private/tmp/render2-goal271-backend-complete.log, salida0. No cuenta las6físicas como ejecutadas por npmtest. Security-best-practices/Express y Superpowers guiaron aislamiento/errores. No nuevofrontend/build; pendiente UIorientación429, cookieespecífico/concurrencia entre procesos y aceptación global.
+
 ### Perfil: impedir descarte silencioso del formulario hermano — corte270
 
 Guardar usuario o contraseña ahora advierte que se cerrará sesión si hay borrador en el otro formulario. Cancelar no envía ni borra campos; aceptar revalida el mismo guard/lock antes de request. Validación, ACK y reautenticación existentes conservados; ningún secreto persistido. Harvey revisó diff sin bloqueantes.13pruebas nuevas (seis fallos iniciales reproducidos),2961frontendPASS/0fallos/omitidas y build index-gTrZSLcs.js. Ver PROFILE_COOKIE_QA.md para contratos/logs/límites. Sin prueba nativa ni cambios de backend/DB/cuentas reales/despliegue. La limitación de intentos de contraseña actual en endpoints Perfil sigue siendo hallazgo separado por abordar, no resuelto por este guard visual.
