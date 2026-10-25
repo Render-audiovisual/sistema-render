@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Avisos de estado: autoexclusión por identidad — corte254
+
+Corregido caso de empleado y revisor distintos llamados Franco: server pasa actorId y notifiers email/privado excluyen al autor por ID, aunque los destinos de estado aún sean legacy por nombres. Identificador proporcionado inválido se rechaza antes de consultar; candidato sinID no recurre al nombre. Sin cambio de lista de revisores, permisos, fingerprint/detalles legacy o estados. Erdos implementó14 unitarias, Volta física y coordinador integró producto/fixtures y verificó.39 focales PASS; nueva física3PASS padre+2subtests sobre PostgreSQL55890, dos cambios exactos de tarea/tres avisos permitidos y105 tablas observadas; cleanup gbEtkC. Rojo inicial reprodujo1aviso frente a2; primer post-fix falló por expectativa incompleta de metadata del fixture, corregida estrictamente. Ver TASK_WORKFLOW_QA.md.
+
+Renovada física de lookup activo/inactivo4PASS con SMTP simulado/cleanup d6B3Vv. Backend2256PASS/141optativasSKIP, frontend2873PASS; logs goal254-backend/ frontend/physical-final/legacy-active en /private/tmp. No navegador/build/proveedor/deploy nuevo. Destinatarios homónimos ambiguos, aliases, binding del revisor extra y revocación posterior siguen pendientes. Nuevo pendiente independiente: resolver Feedback no filtra activos y conserva avisos sin ID; reproducción controlada confirma enqueue, no entrega externa. No se declara identidad de destinatarios globalmente resuelta.
+
 ### Proyectos/Clientes: vistas separadas A/B/A nativas — corte253
 
 Volta preparó runner temporal, Erdos revisó contrato y coordinador ejecutó App/API/cookies reales con PostgreSQL55889/HTTP52843, build250/backend252. Luciano guardó Proyectos2/Pausado y Clientes2/noviembre. Designer entró sin heredar selección; guardó1/En curso y1/octubre, con reentrada por Sidebar. Logout neutral de ambos y regreso a Luciano restauraron sus dos vistas; recargas y menú móvil390 conservaron selección/resultados. Enlace explícito Proyectoscliente1 no heredóPausado; Atrás volvió2/Pausado. Capturas móviles de ambas inspeccionadas; documento client/scroll390.

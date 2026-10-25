@@ -48,7 +48,7 @@ export function destinatariosNuevosDeAsignacion({
 }
 
 async function resolverUsuarios(pool, nombres) {
-  const { rows } = await pool.query("SELECT usuario, nombre FROM usuarios WHERE activo IS TRUE");
+  const { rows } = await pool.query("SELECT id, usuario, nombre FROM usuarios WHERE activo IS TRUE");
   return nombres.map((nombre) => {
     const buscado = normalizarNombre(nombre);
     const usuarioEsperado = USUARIO_POR_RESPONSABLE.get(buscado);
@@ -76,8 +76,10 @@ export async function encolarNotificacionPrivadaTarea({
   destinatarioIds, actorId,
 }) {
   const byId = destinatarioIds !== undefined;
+  const actorById = actorId !== undefined;
   const positive = value => Number.isSafeInteger(value) && value > 0;
-  if (byId && (!Array.isArray(destinatarioIds) || destinatarioIds.some(id => !positive(id)) || !positive(actorId))) {
+  if (actorById && !positive(actorId)
+    || byId && (!Array.isArray(destinatarioIds) || destinatarioIds.some(id => !positive(id)) || !positive(actorId))) {
     throw Object.assign(new Error("Destinatarios de notificación inválidos."), { status: 400 });
   }
   const nombres = Array.isArray(nombresDestinatarios) ? nombresDestinatarios : responsablesNotificables(tarea);
@@ -90,8 +92,11 @@ export async function encolarNotificacionPrivadaTarea({
   const destinatarios = candidatos.filter((candidate, index, items) => {
     if (!candidate) return false;
     if (byId) return candidate.id !== actorId && items.findIndex(item => item?.id === candidate.id) === index;
+    if (actorById && !positive(candidate.id)) return false;
     const clave = normalizarNombre(candidate.usuario);
-    const esActor = actorNormalizado && [candidate.nombre, candidate.usuario]
+    // A verified actor ID can accompany legacy recipient labels. A homonym is
+    // not the author, and a renamed author must still exclude their own ID.
+    const esActor = actorById ? candidate.id === actorId : actorNormalizado && [candidate.nombre, candidate.usuario]
       .some((value) => normalizarNombre(value) === actorNormalizado);
     return !esActor && items.findIndex((item) => item && normalizarNombre(item.usuario) === clave) === index;
   });

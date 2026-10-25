@@ -16,7 +16,7 @@ test('legacy email resolution excludes inactive accounts in the database query',
 test('legacy private notification does not enqueue when no active account matches', async () => {
   let reads = 0;
   const pool = { async query(sql) {
-    assert.match(sql, /^SELECT usuario, nombre FROM usuarios WHERE activo IS TRUE$/);
+    assert.match(sql, /^SELECT id, usuario, nombre FROM usuarios WHERE activo IS TRUE$/);
     reads++; return { rows: [] };
   } };
   const result = await encolarNotificacionPrivadaTarea({ pool, tarea: { id: 1, titulo: 'QA' },

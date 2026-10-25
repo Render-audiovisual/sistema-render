@@ -52,7 +52,7 @@ test("encola una vez por destinatario, excluye al actor y tolera reintentos", as
   const inserts = [];
   const pool = {
     async query(sql, params = []) {
-      if (sql.includes("SELECT usuario, nombre FROM usuarios")) return { rows: [
+      if (sql.includes("SELECT id, usuario, nombre FROM usuarios")) return { rows: [
         { usuario: "German", nombre: "Germán" },
         { usuario: "Oriana", nombre: "Oriana" },
       ] };
@@ -98,7 +98,7 @@ test("receipt notifications bind recipient/actor IDs despite homonyms and leader
   assert.equal(inserts[0].params[2], 'qa_other');
   assert.equal(JSON.parse(inserts[0].params[7]).destinatario_usuario_id, 12);
   assert.equal(JSON.parse(inserts[0].params[7]).actor_usuario_id, 11);
-  assert.ok(!calls.some(call => call.sql === 'SELECT usuario, nombre FROM usuarios'));
+  assert.ok(!calls.some(call => call.sql === 'SELECT id, usuario, nombre FROM usuarios WHERE activo IS TRUE'));
 });
 
 test("receipt notifications reject malformed identity selections before querying and propagate queue faults", async () => {

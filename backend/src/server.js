@@ -1962,6 +1962,7 @@ router.patch("/tareas/:id", async (req, res, next) => {
         motivo: eventoEstado.motivo,
         nombresDestinatarios: eventoEstado.recipients,
         actor,
+        actorId: req.auth.id,
       });
     }
   } catch (error) {

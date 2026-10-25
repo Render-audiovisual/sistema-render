@@ -39,7 +39,7 @@ export async function buscarDestinatario(pool, asignadoA) {
   const responsable = normalizarNombre(asignadoA);
   const usuarioEsperado = USUARIO_POR_RESPONSABLE.get(responsable);
   const { rows } = await pool.query(
-    `SELECT usuario, nombre, email_notificaciones
+    `SELECT id, usuario, nombre, email_notificaciones
      FROM usuarios
      WHERE email_notificaciones IS NOT NULL AND activo IS TRUE`,
   );
@@ -184,8 +184,10 @@ export async function notificarAsignacionTarea({
   actorId,
 }) {
   const byId = destinatarioIds !== undefined;
+  const actorById = actorId !== undefined;
   const positive = value => Number.isSafeInteger(value) && value > 0;
-  if (byId && (!Array.isArray(destinatarioIds) || destinatarioIds.some(id => !positive(id)) || !positive(actorId))) {
+  if (actorById && !positive(actorId)
+    || byId && (!Array.isArray(destinatarioIds) || destinatarioIds.some(id => !positive(id)) || !positive(actorId))) {
     throw Object.assign(new Error("Destinatarios de correo inválidos."), { status: 400 });
   }
   if (!configuracionCorreoDisponible(env)) {
@@ -199,7 +201,8 @@ export async function notificarAsignacionTarea({
   const actorNormalizado = normalizarNombre(actor);
   const destinatarios = candidatos.filter((candidate, index, items) => {
     if (!candidate?.email_notificaciones) return false;
-    const esActor = byId ? candidate.id === actorId
+    if (actorById && !positive(candidate.id)) return false;
+    const esActor = actorById ? candidate.id === actorId
       : actorNormalizado && [candidate.nombre, candidate.usuario].some((value) => normalizarNombre(value) === actorNormalizado);
     return !esActor && items.findIndex((item) => item?.email_notificaciones === candidate.email_notificaciones) === index;
   });
