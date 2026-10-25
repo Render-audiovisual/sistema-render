@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Resumen del día de Tareas: diálogo compartido — integración335
+
+Main migró TaskCalendar al Modal nativo chrome=false: nombre con fecha, foco en cierre44px compartido y retorno explícito al botón exacto de día o «más». Eliminó listener Escape global y semántica de diálogo duplicada; mantiene listado, apertura por ID, cierre previo al detalle y navegación mensual. Añadió solo overscroll-behavior:contain al listado; el guard visual normaliza exclusivamente esa declaración raíz validada, conservando hashes previos del resto de estructura/identidad. Web Design Guidelines orientó foco, semántica y scroll. Sin cambios de negocio, fechas, API o permisos.
+
+Harvey creó seis pruebas AST y del componente real con hooks simulados: ambos invocadores, refs, cierre, apertura de tarea y cambio de mes. Focal25PASS (`/private/tmp/render2-goal335-focal.log`); frontend completo3133PASS/1SKIP/0FAIL de3134 (`/private/tmp/render2-goal335-final-frontend.log`); build PASS (`/private/tmp/render2-goal335-build.log`). El primer guard CSS falló por el cambio intencional; se añadió excepción cerrada, no actualización del hash global. Pruebas no acreditan top layer/foco/layout en navegador: pendiente recorrido nativo conjunto con Nueva tarea334 en escritorio/móvil. Sin servicios, DB ni producción nuevos; objetivo global activo.
+
 ### Nueva tarea: aislamiento nativo y foco compartido — integración334
 
 Main migró únicamente NewTaskModal al kernel Modal nativo existente. La opción aditiva chrome=false conserva sección/formulario propios sin duplicar cabecera ni cierre; el valor predeterminado no cambia. El diálogo tiene nombre, foco inicial en su cierre, aislamiento de fondo, contención de Tab y retorno de foco. Se conserva closeModal con guards síncronos de busy/dirty/intento incierto, el modelo UUID, los borradores y la recuperación. No se cambian permisos, persistencia ni reglas de creación. Web Design Guidelines orientó la prioridad de teclado/foco, sin rediseño general.

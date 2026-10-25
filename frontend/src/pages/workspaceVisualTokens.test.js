@@ -381,11 +381,27 @@ function reviewedProductionClosureBaseline(root) {
     '.render-workspace .ros-production-closure button:focus-visible']);
   return copy;
 }
+function reviewedDaySummaryScrollBaseline(root) {
+  const copy = root.clone(), reviewed = [];
+  copy.walkRules(rule => {
+    if (rule.selector !== '.render-workspace .ros-day-preview-list' || rule.parent.type !== 'root') return;
+    const declarations = rule.nodes.filter(node => node.prop === 'overscroll-behavior');
+    assert.equal(declarations.length, 1);
+    assert.equal(declarations[0].value, 'contain');
+    assert.ok(!declarations[0].important);
+    assert.equal(rule.parent.type, 'root');
+    declarations[0].remove();
+    reviewed.push(rule.selector);
+  });
+  assert.deepEqual(reviewed, ['.render-workspace .ros-day-preview-list']);
+  return copy;
+}
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
     let baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedBriefErrorBaseline(baselineRoot);
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedCommentActionsBaseline(baselineRoot);
+    if(name==='WorkspaceReadOnly')baselineRoot=reviewedDaySummaryScrollBaseline(baselineRoot);
     if(name==='TaskDetailNotion')baselineRoot=reviewedProductionClosureBaseline(reviewedMobileTemplateBaseline(baselineRoot));
     if(name==='TaskHeader')baselineRoot=reviewedTaskContinuationBaseline(baselineRoot);
     if (['WorkspaceReadOnly', 'TaskHeader', 'RenderApplePolish'].includes(name)) baselineRoot = reviewedFilterPresentationBaseline(baselineRoot);

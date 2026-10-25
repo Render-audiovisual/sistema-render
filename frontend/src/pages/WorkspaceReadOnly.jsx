@@ -1009,6 +1009,8 @@ const TaskCard = React.memo(function TaskCard({ task, users, user, today, onOpen
 });
 
 function TaskCalendar({ tasks, users = [], onOpen, monthValue, onMonthChange }) {
+  const dayCloseRef = useRef(null);
+  const dayInvokerRef = useRef(null);
   const [cursor, setCursor] = useState(() => {
     if (monthValue) { const [year, month] = monthValue.split("-").map(Number); return new Date(year, month - 1, 1); }
     const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1030,12 +1032,7 @@ function TaskCalendar({ tasks, users = [], onOpen, monthValue, onMonthChange }) 
   const moveMonth = (delta) => { const next = new Date(year, month + delta, 1); setSelectedDate(""); setCursor(next); onMonthChange(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`); };
   const selectedTasks = selectedDate ? byDate.get(selectedDate) || [] : [];
   const selectedDateLabel = selectedDate ? new Date(`${selectedDate}T12:00:00`).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" }) : "";
-  useEffect(() => {
-    if (!selectedDate) return undefined;
-    const closeOnEscape = (event) => { if (event.key === "Escape") setSelectedDate(""); };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [selectedDate]);
+  const openDay = (event, date) => { dayInvokerRef.current = event.currentTarget; setSelectedDate(date); };
   const openFromSummary = (taskId) => { setSelectedDate(""); onOpen(taskId); };
   return <>
     <section className="ros-calendar">
@@ -1046,18 +1043,18 @@ function TaskCalendar({ tasks, users = [], onOpen, monthValue, onMonthChange }) 
         const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const items = byDate.get(key) || [];
         return <div className={`ros-calendar-day ${key === today ? "today" : ""}`} key={key}>
-          <button className="ros-calendar-day-number" type="button" aria-label={`Ver resumen del ${day}`} onClick={() => setSelectedDate(key)}>{day}</button>
-          <div className="ros-calendar-day-tasks">{items.slice(0, 3).map((task) => <button className={`ros-calendar-task area-${areaForTask(task)}`} title={`${task.titulo} · ${task.cliente_nombre || "Sin cliente"}`} type="button" key={task.id} onClick={() => onOpen(task.id)}><strong>{task.titulo}</strong><small>{task.cliente_nombre || "Sin cliente"}</small></button>)}{items.length > 3 && <button className="ros-calendar-more" type="button" onClick={() => setSelectedDate(key)}>+{items.length - 3} más</button>}</div>
+          <button className="ros-calendar-day-number" type="button" aria-label={`Ver resumen del ${day}`} onClick={(event) => openDay(event, key)}>{day}</button>
+          <div className="ros-calendar-day-tasks">{items.slice(0, 3).map((task) => <button className={`ros-calendar-task area-${areaForTask(task)}`} title={`${task.titulo} · ${task.cliente_nombre || "Sin cliente"}`} type="button" key={task.id} onClick={() => onOpen(task.id)}><strong>{task.titulo}</strong><small>{task.cliente_nombre || "Sin cliente"}</small></button>)}{items.length > 3 && <button className="ros-calendar-more" type="button" onClick={(event) => openDay(event, key)}>+{items.length - 3} más</button>}</div>
         </div>;
       })}</div>
       {tasks.some((task) => !task.fecha_vencimiento) && <p className="ros-calendar-note">{tasks.filter((task) => !task.fecha_vencimiento).length} tareas sin fecha no aparecen en el calendario.</p>}
     </section>
-    {selectedDate && <div className="ros-day-preview-backdrop" role="presentation" onMouseDown={() => setSelectedDate("")}>
-      <section className="ros-day-preview" role="dialog" aria-modal="true" aria-labelledby="ros-day-preview-title" onMouseDown={(event) => event.stopPropagation()}>
-        <header><div><small>Resumen del día</small><h2 id="ros-day-preview-title">{selectedDateLabel}</h2><span>{selectedTasks.length} {selectedTasks.length === 1 ? "tarea" : "tareas"}</span></div><button type="button" aria-label="Cerrar resumen" onClick={() => setSelectedDate("")}>×</button></header>
+    {selectedDate && <Modal native chrome={false} overlayClassName="ros-day-preview-backdrop" overlayAriaLabel={`Resumen del día: ${selectedDateLabel}`} closeOnBackdropClick onClose={() => setSelectedDate("")} initialFocusRef={dayCloseRef} returnFocusRef={dayInvokerRef}>
+      <section className="ros-day-preview">
+        <header><div><small>Resumen del día</small><h2 id="ros-day-preview-title">{selectedDateLabel}</h2><span>{selectedTasks.length} {selectedTasks.length === 1 ? "tarea" : "tareas"}</span></div><button ref={dayCloseRef} className="modal-close" type="button" aria-label="Cerrar resumen" onClick={() => setSelectedDate("")}>×</button></header>
         <div className="ros-day-preview-list">{selectedTasks.map((task) => { const state = STATUSES.find((item) => item.id === effectiveTaskFilterState(task)); return <button type="button" key={task.id} onClick={() => openFromSummary(task.id)}><i style={{ background: state?.color || "#8d9095" }}/><div><strong>{task.titulo}</strong><span>{task.cliente_nombre || "Sin cliente"} · {taskResponsiblesLabel(task, users)}</span></div><b>{state?.label || task.estado}</b><em>›</em></button>; })}{selectedTasks.length === 0 && <div className="ros-day-preview-empty"><span>○</span><strong>No hay tareas para este día</strong><small>Podés elegir otra fecha o cerrar el resumen.</small></div>}</div>
       </section>
-    </div>}
+    </Modal>}
   </>;
 }
 
