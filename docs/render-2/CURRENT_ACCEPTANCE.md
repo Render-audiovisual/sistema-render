@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Aceptación integrada ampliada y revisión IPC — corte314
+
+El runner fijo incorpora las cohortes HTTP de creación recuperable y de visita canónica vacía, conservando los diez recorridos anteriores, ejecución serial y entorno aislado sin destinos configurables. Sus tres pruebas de contrato pasan. La aceptación integrada ampliada termina con119PASS/0FAIL/0SKIP; regresión backend2375PASS/155opt-inSKIP/0FAIL. Logs `/private/tmp/render2-goal314-{runner,core-expanded,backend}.log`. Harvey revisó el cambio sin bloqueantes. No es aceptación global ni validación de proveedores o producción.
+
+Con autorización explícita para liberar solo huérfanos verificados, se inspeccionó IPC con privilegios de lectura: único segmento65536, NATTCH6, CPID/LPID865, correspondiente al PostgreSQL Homebrew activo. No hay huérfanos verificados y no se eliminó ningún segmento ni se detuvo ningún servicio. Las pruebas aisladas pudieron completarse sin limpieza IPC. Pendiente verificar el cierre de tareas origen contra evidencia canónica individual antes de decidir cualquier cambio adicional.
+
 ### Producción: tres fronteras comprobadas en navegador y presentación final — corte313
 
 Primer recorrido Chrome/App312/index-CSXIWVu4, backend312, PG55930/HTTP52869: tres casos sintéticos preparados antes del baseline (vacía vinculada, agregado histórico vinculado y agregado sin vínculo). Visita vacía muestra vínculo/fecha y cero botones Guardar avance/Terminar/Corregir. Histórico vinculado conserva +4videos,20sept,autor y corrector al abrir Ver registros históricos, sin registrar/corregir/confirmar agregado. Histórico sin vínculo conserva controles habilitados de registro/finalización/corrección. No se pulsaron escritores. Escritorio1280×900/móvil390×844: raíz/scroll coinciden con ancho y ramas de UI esperadas. Historial ligado es un fixture representativo por SQL, no prueba de migración/reconciliación de datos reales.
