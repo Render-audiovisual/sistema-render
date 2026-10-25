@@ -49,3 +49,61 @@ test("Wilson prepara para Germán un pedido específico de producción", () => {
   assert.match(reminder, /en qué clientes/i);
   assert.match(reminder, /reporte en el sistema/i);
 });
+
+for (const role of ["edicion", "diseno", "community", "admin", "produccion", "personal"]) {
+  test(`Wilson distingue aprobación booleana de revisión sin completar ni mutar tareas: ${role}`, () => {
+    const user = Object.freeze({ id: 77, nombre: "Persona QA", usuario: "qa_persona", rol: role });
+    const type = role === "produccion" ? "produccion" : role === "diseno" ? "diseno" : "edicion";
+    const states = [
+      ["en_revision", { revision_aprobada: true }],
+      ["en_revision", { revision_aprobada: "true" }],
+      ["en_revision", { revision_aprobada: false }],
+      ["en_revision", {}],
+      ["en_revision", { revision_aprobada: "false" }],
+      ["aprobada", {}],
+      ["finalizada", { revision_aprobada: true }],
+      ["publicada", { revision_aprobada: true }],
+      ["pendiente", { revision_aprobada: true }],
+    ];
+    const tasks = Object.freeze(states.map(([estado, metadata], index) => Object.freeze({
+      id: index + 1, revision: 4, titulo: `${role === "produccion" ? "Visita" : "Carrusel"} QA ${index + 1}`, tipo_tarea: type,
+      estado, fecha_vencimiento: "2026-08-12", cliente_id: 88, cliente_nombre: "Cliente QA",
+      propiedades_extra: Object.freeze({ workspace: "render_os", ...metadata }),
+    })));
+    const before = JSON.stringify({ tasks, user });
+    const snapshot = buildEmployeeSnapshot(tasks, user, "2026-08");
+    assert.strictEqual(snapshot.user, user);
+    assert.deepEqual(snapshot.review.map(task => task.id), [2, 3, 4, 5]);
+    assert.deepEqual(snapshot.approved.map(task => task.id), [1, 6]);
+    assert.deepEqual(snapshot.completed.map(task => task.id), [7, 8]);
+    assert.deepEqual(snapshot.pending.map(task => task.id), role === "community" ? [] : [9]);
+    for (const collection of [snapshot.tasks, snapshot.review, snapshot.approved, snapshot.completed, snapshot.pending]) {
+      for (const task of collection) assert.strictEqual(task, tasks[task.id - 1]);
+    }
+    assert.equal(snapshot.videosRecorded, 0);
+    assert.deepEqual(snapshot.productionRecords, []);
+
+    const reply = buildEmployeeStatusReply(snapshot, "¿Cómo viene?");
+    if (role === "community") assert.match(reply.text, /6 tareas para revisar o finalizar y 2 finalizadas/);
+    else {
+      assert.match(reply.text, /4 (?:siguen )?en revisión/);
+      assert.match(reply.text, /2 aprobad[ao]s/);
+      if (role === "produccion") assert.match(reply.text, /0 videos registrados/);
+      else assert.match(reply.text, /2 finalizad[ao]s/);
+      if (role === "edicion") assert.match(reply.text, /8 entregadas/);
+    }
+    const expectedReplyIds = role === "produccion" ? [9]
+      : role === "diseno" ? [2, 3, 4, 5, 9]
+        : role === "community" ? [2, 3, 4, 5, 1, 6] : [2, 3, 4, 5, 1, 6, 9];
+    assert.deepEqual(reply.tasks.map(task => task.id), expectedReplyIds);
+    assert.equal(new Set(reply.tasks.map(task => task.id)).size, reply.tasks.length,
+      "La misma aprobación histórica no debe figurar también en revisión");
+    for (const task of reply.tasks) assert.strictEqual(task, tasks[task.id - 1]);
+
+    const approvedOnly = buildEmployeeSnapshot(Object.freeze([tasks[0]]), user, "2026-08");
+    assert.deepEqual(approvedOnly.completed, []);
+    assert.equal(approvedOnly.videosRecorded, 0);
+    assert.deepEqual(approvedOnly.productionRecords, []);
+    assert.equal(JSON.stringify({ tasks, user }), before);
+  });
+}

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { isTaskApproved } from "./workflow-contract.js";
 import { buildTaskAccessClause, getTaskActor } from "./task-access.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { canRecordProduction, getProductionProgress, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
@@ -153,8 +154,8 @@ export function buildEmployeeSnapshot(tasks = [], user = {}, period = wilsonPeri
     productionRecords,
     videosRecorded: productionRecords.reduce((total, record) => total + (Number(record.cantidad) || 0), 0),
     pending: relevant.filter((task) => ["pendiente", "en_progreso"].includes(task.estado)),
-    review: relevant.filter((task) => task.estado === "en_revision"),
-    approved: relevant.filter((task) => task.estado === "aprobada"),
+    review: relevant.filter((task) => task.estado === "en_revision" && !isTaskApproved(task)),
+    approved: relevant.filter(isTaskApproved),
     completed: relevant.filter(taskComplete),
   };
 }

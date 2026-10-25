@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { startLocalHarness, fixturePassword, assertFixtureIdentity } from '../scripts/render2-local-test.js';
 import { loginProductionCookieSession, productionCookieRequest } from './helpers/production-cookie-session.js';
 import { buildEmployeeReport, employeeTaskDetails, employeeFormatBreakdown } from '../../frontend/src/shared/reports/production-registry-report.js';
+import { buildEmployeeSnapshot, buildEmployeeStatusReply } from '../src/wilson-chat.js';
 
 function freezeTree(value) {
   if (value && typeof value === 'object') {
@@ -152,6 +153,18 @@ test('report approval projection preserves strict historical booleans and stored
     assert.deepEqual({ total: wholeEditor.total, enRevision: wholeEditor.enRevision, aprobadas: wholeEditor.aprobadas,
       finalizadas: wholeEditor.finalizadas, pendientes: wholeEditor.pendientes },
     { total: 12, enRevision: 6, aprobadas: 4, finalizadas: 2, pendientes: 10 });
+    // Evaluate the actual Wilson read model on the frozen principal HTTP DTO.
+    // Never POST a chat message or invoke notification/provider transports.
+    const wilson = buildEmployeeSnapshot(allTasks, data.usuarios.find(user => user.id === 91003), '2026-10');
+    assert.deepEqual({ tasks: wilson.tasks.length, review: wilson.review.length,
+      approved: wilson.approved.length, completed: wilson.completed.length },
+    { tasks: 12, review: 6, approved: 4, completed: 2 });
+    assert.deepEqual(wilson.approved.map(task => task.id).sort((a, b) => a - b),
+      [...cases, ...productionCases].filter(item => item.effective === 'aprobada').map(item => item.id).sort((a, b) => a - b));
+    for (const task of wilson.tasks) assert.ok(allTasks.includes(task), 'Wilson preserves original task objects and stored states');
+    const reply = buildEmployeeStatusReply(wilson, 'Estado del trabajo');
+    assert.match(reply.text, /6 siguen en revisión, 4 aprobadas y 2 finalizadas/);
+    assert.equal(new Set(reply.tasks.map(task => task.id)).size, reply.tasks.length);
     const productionTasks = allTasks.filter(task => productionIds.includes(task.id));
     assert.equal(productionTasks.length, 6);
     for (const item of productionCases) {
