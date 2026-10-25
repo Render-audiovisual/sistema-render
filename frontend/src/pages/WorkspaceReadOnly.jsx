@@ -606,7 +606,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const addComment = (owner => async () => {
     if (commentDraftOwner.current !== owner || owner.taskId !== task?.id || owner.captureRequest !== captureRequest) return;
     if (!comment.trim() || owner.creation.snapshot.locked || owner.creation.snapshot.busy) return;
-    const accepted = await owner.creation.start({ taskId: owner.taskId,
+    const accepted = await owner.creation.start({ taskId: owner.taskId, actorId: sesion?.usuario?.id,
       autor: sesion?.usuario?.nombre || sesion?.usuario?.usuario || "Equipo RENDER",
       contenido: comment, generation: owner.generation, validateAuthor: sesion?.usuario?.rol === 'admin' });
     if (accepted) acceptCommentCreation(owner);

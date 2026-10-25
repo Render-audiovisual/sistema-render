@@ -107,7 +107,7 @@ test('actual CLI upgrades populated pre091 production history without inferring 
     assert.equal(result.code, 0); assert.equal(result.signal, null);
     const after = await status();
     assert.deepEqual(after.status.pending, []); assert.deepEqual(after.status.unknownApplied, []);
-    assert.deepEqual(after.status.applied, [...approved.status.applied, migration]);
+    assert.deepEqual(after.status.applied, [...approved.status.applied, migration].sort());
     assert.deepEqual(await tableNames(), [...oldTables, 'produccion_resultados'].sort());
     assert.deepEqual(await snapshot(), before);
     assert.deepEqual(await f.query('SELECT id FROM produccion_resultados'), []);

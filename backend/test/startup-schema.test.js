@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { CORE_SCHEMA_COLUMNS, assertCoreSchemaReady } from '../src/startup-schema.js';
 const complete = () => Object.entries(CORE_SCHEMA_COLUMNS).flatMap(([table_name, columns]) =>
   Object.entries(columns).map(([column_name, data_type]) => ({ table_name, column_name, data_type })));
-const response = (sql, rows) => ({ rows: sql.includes('current_schemas') ? [{ schemas: ['public'] }] : sql.includes('pg_trigger') ? [{ready:true,reference_ready:true,personal_list_receipt_ready:true,project_child_receipt_ready:true,task_comment_receipt_ready:true}] : rows });
+const response = (sql, rows) => ({ rows: sql.includes('current_schemas') ? [{ schemas: ['public'] }] : sql.includes('pg_trigger') ? [{ready:true,reference_ready:true,personal_list_receipt_ready:true,project_child_receipt_ready:true,task_comment_receipt_ready:true}] : sql.includes('pg_constraint') ? [{comment_actor_ready:true}] : rows });
 
 test('principal compatibility inspection uses a parameterized SELECT only', async () => {
   const calls = [];
   await assertCoreSchemaReady({ async query(sql, values) { calls.push({ sql, values }); return response(sql, complete()); } });
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 4);
   assert.match(calls[0].sql, /current_schemas\(false\)::text\[\]/);
   for (const call of calls) {
     assert.match(call.sql.trim(), /^SELECT /);
@@ -26,6 +26,18 @@ test('comment receipt relation and enabled immutable guard are required without 
       calls.push(sql);const value=response(sql,complete());if(sql.includes('pg_trigger'))value.rows[0].task_comment_receipt_ready=ready;return value;
     }}),/task-comment receipt guard is not compatible.*No repair/);
     assert.ok(calls.every(sql=>sql.trim().startsWith('SELECT ')));
+  }
+});
+
+test('durable comment actor requires its column and validated nondeferrable RESTRICT FK without repair',async()=>{
+  await assert.rejects(assertCoreSchemaReady({query:async sql=>response(sql,complete().filter(row=>!(row.table_name==='tarea_comentarios'&&row.column_name==='actor_usuario_id')))}),/schema is not compatible/);
+  for(const ready of [false,null,undefined,1,'true']){
+    const calls=[];
+    await assert.rejects(assertCoreSchemaReady({query:async sql=>{calls.push(sql);return sql.includes('pg_constraint')?{rows:[{comment_actor_ready:ready}]}:response(sql,complete());}}),/comment actor is not compatible/);
+    assert.ok(calls.every(sql=>sql.trim().startsWith('SELECT ')));
+    assert.match(calls.at(-1),/c\.confdeltype='r' AND NOT c\.condeferrable/);
+    assert.match(calls.at(-1),/NOT a\.attnotnull AND NOT EXISTS/);
+    assert.match(calls.at(-1),/pg_attrdef d WHERE d\.adrelid=a\.attrelid AND d\.adnum=a\.attnum/);
   }
 });
 

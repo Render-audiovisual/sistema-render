@@ -119,7 +119,7 @@ const taskSchema = {
   dynamic_priority: nullableString, dynamic_priority_label: nullableString, priority_label: nullableString,
   priority_reasons: strings, razones: strings, propiedades_extra: taskProperties,
   adjuntos: attachments, attachments, uploads: attachments,
-  comentarios: array(object(fields('id tarea_id contenido usuario usuario_id autor autor_id created_at updated_at'))),
+  comentarios: array(object({...fields('id tarea_id contenido usuario usuario_id autor autor_id created_at updated_at'),actor_usuario_id:value=>value===null?null:Number.isSafeInteger(value)&&value>0&&value<=2147483647?value:OMIT})),
   ediciones_vinculadas: array(object(fields('id titulo estado revision tarea_padre_id'))),
 };
 const publicationEvidence = object({

@@ -52,7 +52,7 @@ function fixture({ actor = { ...auth(), activo: true, nombre: 'Current DB actor'
       if (sql.includes('FROM tarea_comentarios')) return { rows: comments.filter(r => r.id === params[0] && r.tarea_id === params[1]) };
       if (sql.startsWith('INSERT INTO tarea_comentarios')) {
         if (commentGate) await commentGate.promise;
-        const row = { id: ++nextId, tarea_id: params[0], autor: params[1], contenido: params[2], created_at: '2026-10-24T12:00:00.123Z' };
+        const row = { id: ++nextId, tarea_id: params[0], autor: params[1], contenido: params[2], actor_usuario_id:params[3], created_at: '2026-10-24T12:00:00.123Z' };
         pendingComments.push(row); return { rows: [{ ...row, private_finance: 'Not a DTO field' }] };
       }
       if (sql.startsWith('INSERT INTO task_comment_create_receipts')) {
@@ -114,7 +114,8 @@ for (const workspace of ['render_os','historical']) {
       assert.deepEqual(result.notification.tarea,taskSnapshot());
       assert.equal(f.calls.filter(c=>c.sql.startsWith('SELECT usuario_id FROM tarea_asignaciones')).length,1);
       assert.deepEqual(Object.keys(result).sort(),['comment','notification','replayed','requestId']);
-      assert.deepEqual(Object.keys(result.comment).sort(),['id','tarea_id','autor','contenido','created_at'].sort());
+      assert.deepEqual(Object.keys(result.comment).sort(),['id','tarea_id','autor','contenido','created_at','actor_usuario_id'].sort());
+      assert.equal(result.comment.actor_usuario_id,7);
       assert.deepEqual(Object.keys(result.notification).sort(),['actor','actorId','destinatarioIds','tarea'].sort());
     });
   }

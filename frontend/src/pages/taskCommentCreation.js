@@ -35,8 +35,10 @@ export function createTaskCommentCreation({ capture, randomUUID = () => globalTh
       || value.creation_request_id !== held.input.requestId || value.tarea_id !== held.input.taskId
       || value.contenido !== held.input.contenido
       || held.input.validateAuthor && value.autor !== held.input.autor) throw invalid();
+    if(held.input.actorId!==undefined&&value.actor_usuario_id!==held.input.actorId)throw invalid();
     const comment = Object.freeze(Object.fromEntries(
-      ['id', 'tarea_id', 'autor', 'contenido', 'created_at', 'creation_request_id'].map(key => [key, value[key]])));
+      ['id', 'tarea_id', 'autor', 'contenido', 'created_at', 'creation_request_id',
+        ...(Object.hasOwn(value,'actor_usuario_id')?['actor_usuario_id']:[])].map(key => [key, value[key]])));
     mergeTaskComments([], [comment], held.input.taskId);
     return comment;
   }
@@ -77,8 +79,9 @@ export function createTaskCommentCreation({ capture, randomUUID = () => globalTh
       if (disposed || busy || attempt && phase !== 'confirmed') return Promise.resolve(false);
       let held;
       try {
-        const { taskId, autor, contenido, generation, validateAuthor = false } = input ?? {};
+        const { taskId, autor, contenido, generation, validateAuthor = false, actorId } = input ?? {};
         if (!positive(taskId) || !Number.isSafeInteger(generation) || generation < 0 || typeof validateAuthor !== 'boolean') throw invalid();
+        if(actorId!==undefined&&!positive(actorId))throw invalid();
         const content = text(contenido), author = autor === undefined && !validateAuthor ? '' : text(autor);
         if (!content || validateAuthor && !author) throw invalid();
         const guard = capture();
@@ -87,7 +90,8 @@ export function createTaskCommentCreation({ capture, randomUUID = () => globalTh
         if (current() !== true) { retire(); return Promise.resolve(false); }
         const key = randomUUID(); if (!uuid(key)) throw invalid();
         const requestId = key.toLowerCase();
-        const observed = Object.freeze({ taskId, autor: author, contenido: content, generation, validateAuthor, requestId });
+        const observed = Object.freeze({ taskId, autor: author, contenido: content, generation, validateAuthor, requestId,
+          ...(actorId!==undefined?{actorId}:{}) });
         const postUrl = `/api/tareas/${taskId}/comentarios?workspace=render_os`;
         held = Object.freeze({ epoch: ++epoch, input: observed, current, request, postUrl,
           readUrl: `/api/tareas/${taskId}/comentarios/solicitudes/${requestId}?workspace=render_os`,

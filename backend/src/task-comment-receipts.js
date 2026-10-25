@@ -28,7 +28,7 @@ function text(value) {
   if (typeof value !== 'string' || value.includes('\u0000') || !value.trim()) throw fail(400, 'Faltan autor o comentario válidos.');
   return value.trim();
 }
-const commentDto = row => Object.fromEntries(['id', 'tarea_id', 'autor', 'contenido', 'created_at'].map(key => [key, row[key]]));
+const commentDto = row => Object.fromEntries(['id', 'tarea_id', 'autor', 'contenido', 'created_at', 'actor_usuario_id'].map(key => [key, row[key] ?? null]));
 const frozenCopy = value => Array.isArray(value) ? Object.freeze(value.map(frozenCopy))
   : value && typeof value === 'object' ? Object.freeze(Object.fromEntries(Object.entries(value).map(([key, item]) => [key, frozenCopy(item)]))) : value;
 
@@ -68,7 +68,7 @@ async function receipt(db, actorId, key) {
     WHERE actor_user_id=$1 AND request_id=$2`, [actorId, key])).rows[0];
 }
 async function retainedComment(db, previous) {
-  const row = (await db.query(`SELECT id,tarea_id,autor,contenido,created_at FROM tarea_comentarios
+  const row = (await db.query(`SELECT id,tarea_id,autor,contenido,created_at,actor_usuario_id FROM tarea_comentarios
     WHERE id=$1 AND tarea_id=$2 FOR SHARE`, [previous.comment_id, previous.tarea_id])).rows[0];
   if (!row) throw fail(409, 'El comentario creado ya no está disponible. No se volvió a crear.');
   return commentDto(row);
@@ -105,8 +105,8 @@ export async function createTaskComment(pool, auth, { taskId, workspace, request
       actorId: actor.id,
       actor: (typeof actor.nombre === 'string' ? actor.nombre.trim() : '') || (typeof actor.usuario === 'string' ? actor.usuario.trim() : ''),
     });
-    const created = (await db.query(`INSERT INTO tarea_comentarios(tarea_id,autor,contenido) VALUES($1,$2,$3)
-      RETURNING id,tarea_id,autor,contenido,created_at`, [input.taskId, name, contenido])).rows[0];
+    const created = (await db.query(`INSERT INTO tarea_comentarios(tarea_id,autor,contenido,actor_usuario_id) VALUES($1,$2,$3,$4)
+      RETURNING id,tarea_id,autor,contenido,created_at,actor_usuario_id`, [input.taskId, name, contenido, actor.id])).rows[0];
     if (!created) throw new Error('No se pudo verificar el comentario creado.');
     if (key !== null) await db.query(`INSERT INTO task_comment_create_receipts(actor_user_id,request_id,payload_hash,tarea_id,comment_id,workspace)
       VALUES($1,$2,$3,$4,$5,$6)`, [observed.id, key, hash, input.taskId, created.id, input.workspace]);

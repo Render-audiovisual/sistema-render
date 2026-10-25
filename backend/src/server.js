@@ -2655,7 +2655,7 @@ router.get("/tareas/:id/comentarios", async (req, res, next) => {
       return res.status(404).json({ error: "Tarea no encontrada." });
     }
     const result = await pool.query(
-      `SELECT id, tarea_id, autor, contenido, created_at
+      `SELECT id, tarea_id, autor, contenido, created_at, actor_usuario_id
        FROM tarea_comentarios
        WHERE tarea_id = $1
        ORDER BY created_at ASC, id ASC`,

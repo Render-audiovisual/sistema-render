@@ -23,6 +23,8 @@ export const coreAcceptanceFiles = Object.freeze([
   'test/render2-user-administration.integration.test.js',
   'test/render2-task-bulk-authority.integration.test.js',
   'test/render2-legacy-production-authority.integration.test.js',
+  'test/render2-task-comment-actor.integration.test.js',
+  'test/render2-task-comment-actor-upgrade.integration.test.js',
 ]);
 
 export function coreAcceptancePlan(args = []) {

@@ -27,7 +27,7 @@ const change = input.attributes.properties.find(a => a.name?.getText(file) === '
 const evaluate = (n, deps) => Function(...Object.keys(deps), `return (${n.getText(file)});`)(...Object.values(deps));
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 const flush = () => new Promise(resolve => setImmediate(resolve));
-const row = (id = 21, extra = {}) => ({ id, tarea_id: 9, autor: 'QA', contenido: 'A', created_at: '2026-10-24T12:00:00.123Z', creation_request_id: requestId, ...extra });
+const row = (id = 21, extra = {}) => ({ id, tarea_id: 9, autor: 'QA', contenido: 'A', actor_usuario_id:7, created_at: '2026-10-24T12:00:00.123Z', creation_request_id: requestId, ...extra });
 function fixture() {
   const store = createBrowserSessionState(), reads = [], posts = [], effects = [];
   const accept = id => store.acceptBootstrap(store.beginBootstrap(), { usuario: { id, usuario: 'qa', nombre: 'QA', rol: 'diseno' }, session_context: 'a'.repeat(43), csrf_token: 'b'.repeat(43) });

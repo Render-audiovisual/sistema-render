@@ -5,6 +5,7 @@ export const CORE_SCHEMA_COLUMNS = Object.freeze({
   auth_login_buckets: { bucket_key: 'text', attempts: 'integer', window_started_at: 'timestamp with time zone', expires_at: 'timestamp with time zone' },
   clientes: { id: 'integer', activo: 'boolean', cuota_reels: 'integer', cuota_carruseles: 'integer' },
   tareas: { id: 'integer', revision: 'integer', estado: 'text', propiedades_extra: 'jsonb', publicacion_id: 'integer' },
+  tarea_comentarios: { id:'integer', tarea_id:'integer', autor:'text', contenido:'text', created_at:'timestamp with time zone', actor_usuario_id:'integer' },
   tarea_asignaciones: { tarea_id: 'integer', usuario_id: 'integer', tipo: 'text' },
   publicaciones: { id: 'integer', cliente_id: 'integer', estado: 'text', fecha_programada: 'date', 'fecha_publicación_real': 'timestamp with time zone' },
   historias: { id: 'integer', cliente_id: 'integer', estado: 'text', fecha_programada: 'date', 'fecha_publicación_real': 'timestamp with time zone' },
@@ -108,4 +109,18 @@ export async function assertCoreSchemaReady(db) {
   if (personalListReceipt !== true) throw new Error('Principal personal-list receipt guard is not compatible. No repair was attempted.');
   if (projectChildReceipt !== true) throw new Error('Principal project-child receipt guard is not compatible. No repair was attempted.');
   if (taskCommentReceipt !== true) throw new Error('Principal task-comment receipt guard is not compatible. No repair was attempted.');
+  let commentActor;
+  try {
+    commentActor=(await db.query(`SELECT EXISTS (
+      SELECT 1 FROM pg_constraint c
+      JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attname='actor_usuario_id' AND NOT a.attisdropped
+      JOIN pg_attribute u ON u.attrelid=c.confrelid AND u.attname='id' AND NOT u.attisdropped
+      WHERE c.conrelid='public.tarea_comentarios'::regclass AND c.confrelid='public.usuarios'::regclass
+        AND c.contype='f' AND c.convalidated AND c.confdeltype='r' AND NOT c.condeferrable
+        AND NOT a.attnotnull AND NOT EXISTS (
+          SELECT 1 FROM pg_attrdef d WHERE d.adrelid=a.attrelid AND d.adnum=a.attnum)
+        AND c.conkey=ARRAY[a.attnum]::smallint[] AND c.confkey=ARRAY[u.attnum]::smallint[]
+    ) AS comment_actor_ready`)).rows?.[0]?.comment_actor_ready;
+  } catch { throw new Error('Cannot inspect principal comment actor.'); }
+  if(commentActor!==true)throw new Error('Principal comment actor is not compatible. No repair was attempted.');
 }

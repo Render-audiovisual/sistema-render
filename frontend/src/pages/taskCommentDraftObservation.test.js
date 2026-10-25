@@ -52,7 +52,7 @@ function fixture() {
     switchSession(id) { accept(id); deps.sesion = store.getSession(); deps.captureRequest = captureFor(deps.sesion); renderOwner(); },
     unmount() { active = false; } };
 }
-const created = { id: 21, tarea_id: 9, contenido: 'A', autor: 'QA', created_at: '2026-10-24T12:00:00.123Z', creation_request_id: requestId };
+const created = { id: 21, tarea_id: 9, contenido: 'A', autor: 'QA', actor_usuario_id:7, created_at: '2026-10-24T12:00:00.123Z', creation_request_id: requestId };
 
 test('untouched submitted comment clears on ACK; payload, task URL and cookie intent stay unchanged', async () => {
   const h = fixture(); h.type('  A  '); const pending = h.send();

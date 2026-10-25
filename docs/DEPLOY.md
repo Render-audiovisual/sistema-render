@@ -8,6 +8,8 @@ El comando heredado `npm run seed:usuarios` está deshabilitado y no conecta a P
 
 El backend sirve /api y el frontend compilado desde un mismo proceso. El build no autoriza cambios de datos. `npm start`, `npm run start:hostinger` y `npm run dev:backend` no deben ejecutar migraciones, seeds ni jobs implícitos.
 
+La migración092 añade procedencia de comentarios (`actor_usuario_id` nullable, FK restrictiva e índice) sin atribuir por nombre los comentarios históricos o automáticos. Writer humano, DTO, recuperación y frontend deben desplegarse coordinadamente después del ensayo/backup y autorización del destino. El arranque comprueba columna y FK, no repara ni aplica SQL. Una reversión a código anterior puede volver a escribir NULL: la compatibilidad de una columna nullable no garantiza trazabilidad universal. No convertir autores antiguos por nombres o recibos ni eliminar usuarios para sortear la FK. Hasta aquí092 solo fue aplicada en fixtures descartables, no en una base existente ni producción.
+
 - Instalar dependencias y compilar en una fase separada.
 - Configurar explícitamente DATABASE_URL (PostgreSQL) y RENDER_DB_ENVIRONMENT: development, sandbox, test o production. No se aceptan destinos heredados de PGHOST/PGDATABASE ni entornos desconocidos.
 - Mantener SETUP_DEMO_DATA=false, RENDER_BACKGROUND_JOBS vacío y RENDER_ALLOW_BACKGROUND_WRITES=false.
