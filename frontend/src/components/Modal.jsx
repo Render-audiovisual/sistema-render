@@ -21,6 +21,7 @@ export function Modal({
   returnFocusRef,
   overlayClassName = "",
   headerClassName = "",
+  chrome = true,
 }) {
   const closeButtonRef = useRef(null);
   const previousFocusRef = useRef(null);
@@ -90,7 +91,7 @@ export function Modal({
       onCancel={native ? event => { event.preventDefault(); event.stopPropagation(); requestClose(); } : undefined}
       onKeyDown={native ? handleNativeKeyDown : undefined}
     >
-      <div className={`modal${className ? ` ${className}` : ""}`} style={style}>
+      {chrome ? <div className={`modal${className ? ` ${className}` : ""}`} style={style}>
         <div className={`modal-header${headerClassName ? ` ${headerClassName}` : ''}`}>
           {title}
           <button
@@ -105,7 +106,7 @@ export function Modal({
           </button>
         </div>
         {children}
-      </div>
+      </div> : children}
     </Overlay>
   );
 }

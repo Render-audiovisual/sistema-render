@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Modal } from '../components/Modal.jsx';
 import { productionResultStatus } from './productionResultStatus.js';
 import { FilterSelect } from '../components/FilterSelect.jsx';
 import { getRolLabel } from "../constants.js";
@@ -893,6 +894,9 @@ function TaskPeoplePicker({ users, primaryId, collaboratorIds, onChange, compact
 }
 
 function NewTaskModal({ users, clients, sesion, initialStatus = "pendiente", onClose, onCreate, onCreated }) {
+  // Shared native-dialog kernel owns focus and top-layer isolation; the
+  // creation attempt and guarded close remain owned by this form.
+  const newTaskCloseRef = useRef(null);
   const captureRequest = useWorkspaceCapture(sesion);
   const [draft, setDraft] = useState({ titulo: "", asignado_a: "", asignado_a_id: null, colaborador_ids: [], cliente_id: "", estado: ["pendiente", "en_progreso", "en_revision"].includes(initialStatus) ? initialStatus : "pendiente", tipo_tarea: "", subtipo: "", prioridad: "media", fecha_vencimiento: "", aclaraciones: "", material_referencia: "", resumen: "", etiquetas: "", colaboradores: [], produccion_videos_previstos: "" });
   const [saving, setSaving] = useState(false);
@@ -954,8 +958,8 @@ function NewTaskModal({ users, clients, sesion, initialStatus = "pendiente", onC
     setSuggestionMessage(suggestion.message);
     return next;
   };
-  return <div className="ros-drawer-backdrop ros-modal-backdrop" onClick={closeModal}><section className="ros-modal ros-quick-task-modal" onClick={(event) => event.stopPropagation()}><header><div><div className="ros-eyebrow">NUEVA TAREA</div><h2>¿Qué hay que hacer?</h2><p>Cargá lo esencial ahora. Los detalles se pueden completar después.</p></div><button type="button" aria-label="Cerrar" onClick={closeModal}>×</button></header><form onSubmit={submit}><fieldset disabled={creationState.locked||saving} style={{display:"contents",border:0,padding:0,margin:0,minWidth:0}}>
-    <label className="wide ros-quick-title"><span>Tarea *</span><input autoFocus required placeholder="Ej.: iPhone Shop | Editar reel de lanzamiento" value={draft.titulo} onChange={(event) => setDraft((current) => applySuggestions(current, { title: event.target.value }))}/></label>
+  return <Modal native chrome={false} overlayClassName="ros-drawer-backdrop ros-modal-backdrop" overlayAriaLabel="Nueva tarea" closeDisabled={saving} closeOnBackdropClick initialFocusRef={newTaskCloseRef} onClose={closeModal}><section className="ros-modal ros-quick-task-modal" onClick={(event) => event.stopPropagation()}><header><div><div className="ros-eyebrow">NUEVA TAREA</div><h2>¿Qué hay que hacer?</h2><p>Cargá lo esencial ahora. Los detalles se pueden completar después.</p></div><button ref={newTaskCloseRef} type="button" aria-label="Cerrar nueva tarea" onClick={closeModal}>×</button></header><form onSubmit={submit}><fieldset disabled={creationState.locked||saving} style={{display:"contents",border:0,padding:0,margin:0,minWidth:0}}>
+    <label className="wide ros-quick-title"><span>Tarea *</span><input required placeholder="Ej.: iPhone Shop | Editar reel de lanzamiento" value={draft.titulo} onChange={(event) => setDraft((current) => applySuggestions(current, { title: event.target.value }))}/></label>
     {suggestionMessage && <div className="wide ros-auto-suggestion"><span>✓</span><div><strong>{suggestionMessage}</strong><small>Es una sugerencia automática: podés cambiar cualquier dato.</small></div></div>}
     <TaskPeoplePicker users={users} primaryId={draft.asignado_a_id} collaboratorIds={draft.colaborador_ids || []} disabled={creationState.locked||saving} onChange={({ primary, collaborators, ownerId, collaboratorIds }) => { manuallyEdited.current.add("people"); setDraft({ ...draft, asignado_a: primary, colaboradores: collaborators, ...buildTaskAssignmentInput({ ownerId, collaboratorIds }) }); }}/>
     <div className="wide ros-quick-grid"><label><span>Cliente</span><select value={draft.cliente_id} onChange={(event) => { manuallyEdited.current.add("client"); setDraft((current) => applySuggestions({ ...current, cliente_id: event.target.value }, { clientId: event.target.value, clientWasSelected: true })); }}><option value="">Sin cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.nombre}</option>)}</select></label><label><span>Fecha</span><input type="date" value={draft.fecha_vencimiento} onChange={(event) => setDraft({ ...draft, fecha_vencimiento: event.target.value })}/></label><label><span>Prioridad</span><select value={draft.prioridad} onChange={(event) => setDraft({ ...draft, prioridad: event.target.value })}><option value="baja">Baja</option><option value="media">Media</option><option value="alta">Alta</option></select></label></div>
@@ -965,7 +969,7 @@ function NewTaskModal({ users, clients, sesion, initialStatus = "pendiente", onC
     </fieldset>{creationState.error&&<div className="wide" role="alert">{creationState.error}</div>}
     {creationState.locked&&<div className="wide"><p>Conservamos el mismo intento. Verificar no crea otra tarea.</p><p>El intento no sobrevive a una recarga. Verificá antes de salir.</p>{creationState.canVerify&&<button type="button" onClick={()=>void runCreation(()=>creation.verify())}>Verificar creación</button>}{creationState.canRetry&&<button type="button" onClick={()=>void runCreation(()=>creation.retry())}>Reintentar el mismo intento</button>}</div>}
     <footer><button type="button" disabled={saving} onClick={closeModal}>Cancelar</button>{!creationState.locked&&<button className="primary" type="submit" disabled={saving || !draft.titulo.trim() || !draft.asignado_a_id}>{saving ? "Creando…" : "Crear tarea"}</button>}</footer>
-  </form></section></div>;
+  </form></section></Modal>;
 }
 
 const TaskCard = React.memo(function TaskCard({ task, users, user, today, onOpen, onMove, canMove, onOrderDrop, manualControls, moveBlocked = false }) {

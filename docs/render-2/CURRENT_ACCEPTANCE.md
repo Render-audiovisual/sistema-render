@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Nueva tarea: aislamiento nativo y foco compartido — integración334
+
+Main migró únicamente NewTaskModal al kernel Modal nativo existente. La opción aditiva chrome=false conserva sección/formulario propios sin duplicar cabecera ni cierre; el valor predeterminado no cambia. El diálogo tiene nombre, foco inicial en su cierre, aislamiento de fondo, contención de Tab y retorno de foco. Se conserva closeModal con guards síncronos de busy/dirty/intento incierto, el modelo UUID, los borradores y la recuperación. No se cambian permisos, persistencia ni reglas de creación. Web Design Guidelines orientó la prioridad de teclado/foco, sin rediseño general.
+
+Harvey añadió cinco pruebas del kernel y siete de integración AST/callbacks reales: estructura chrome-free, refs, lifecycle simulado, busy, cierre incierto y conservación del intento. Frontend completo:3127PASS/1SKIP/0FAIL de3128 (`/private/tmp/render2-goal334-final-frontend.log`). Build PASS (`/private/tmp/render2-goal334-build.log`). No nueva prueba nativa de navegador ni de base de datos en334: foco/escala móvil en navegador permanecen pendientes. La revisión también detectó el diálogo propio de día seleccionado de TaskCalendar, pendiente de aislamiento equivalente; no se cambia el default del kernel para corregir callers heredados desconectados.
+
+La autorización recibida para liberar exclusivamente memoria compartida huérfana no amplía el alcance a segmentos activos. La inspección previa no encontró huérfanos: segmento65536 con seis conexiones y PID865 activo; no se liberó memoria ni se intervino ese servicio. Todo sigue local, sin despliegue ni aceptación global.
+
 ### Etiqueta de participante sin ID duplicado, sin ampliar Reportes — corrección333
 
 Revisión independiente de Harvey confirmó separación actual: catálogo público activo de identidades para asignaciones no incluye contactos privados; `usuarios` de Reportes se limita al actor y alimenta métricas personales. No se amplió esa colección para resolver etiquetas. Main añadió `reportParticipantLabel`: nombre conocido→Nombre · #ID, fallback ya construido→Usuario #ID una sola vez; ID inválido→Sin identidad verificable. No resuelve por nombre, no consulta directorios, no cambia evidencia/atribución/ACL/estadísticas. Corrige duplicación observada en329/331.

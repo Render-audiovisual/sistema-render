@@ -221,3 +221,59 @@ test('retained native handler uses current dialog ref and freshly queries contro
   assert.deepEqual(f.events, ['replacement']);
   f.refs[2].current = null; const absent = event('Tab'); assert.doesNotThrow(() => handler(absent)); assert.deepEqual(absent.calls, ['stop']);
 });
+
+test('chrome=false SSR renders direct native children without generated wrapper, header or close button', () => {
+  const html = renderToStaticMarkup(React.createElement(SSRModal, { native:true, chrome:false,
+    title:React.createElement('h2',null,'Ignored chrome title'), className:'unused-wrapper', overlayAriaLabel:'Custom dialog',
+    overlayClassName:'custom-overlay', closeDisabled:true },
+  React.createElement('section',{className:'custom-section'},React.createElement('button',{type:'button','aria-label':'Custom close'},'Close'))));
+  assert.match(html,/^<dialog[^>]*aria-label="Custom dialog"[^>]*><section class="custom-section">/);
+  assert.match(html,/class="modal-overlay open render-native-dialog custom-overlay"/);
+  assert.match(html,/aria-busy="true"/);
+  assert.equal((html.match(/<dialog\b/g)||[]).length,1);assert.equal((html.match(/<button\b/g)||[]).length,1);
+  assert.doesNotMatch(html,/class="modal(?: |")|modal-header|modal-close|unused-wrapper|Ignored chrome title|aria-label="Cerrar"/);
+});
+
+test('chrome=false is additive for legacy overlays too, while default chrome remains unchanged',()=>{
+  const html=markup({chrome:false,overlayAriaLabel:'Custom legacy'});
+  assert.match(html,/^<div[^>]*role="dialog"[^>]*><p>Body<\/p><\/div>$/);
+  assert.doesNotMatch(html,/modal-header|modal-close|<dialog/);
+  assert.match(markup({native:true}),/modal-header/);assert.match(markup({}),/aria-label="Cerrar"/);
+});
+
+test('chrome=false native lifecycle still promotes, focuses custom ref and restores explicit invoker after cleanup',()=>{
+  const events=[],initialFocusRef={current:{focus:()=>events.push('custom-close')}},
+    returnFocusRef={current:{isConnected:true,disabled:false,matches:()=>false,closest:()=>null,focus:()=>events.push('explicit-invoker')}};
+  const child=React.createElement('section',null,'Unchanged body');
+  const f=fixture({native:true,chrome:false,initialFocusRef,returnFocusRef,children:child});
+  assert.equal(f.tree.props.children,child);
+  const cleanup=f.mount();assert.deepEqual(f.events,['show']);assert.deepEqual(events,['custom-close']);assert.equal(f.listeners.size,0);
+  cleanup();assert.deepEqual(f.events,['show','dialog-close']);assert.deepEqual(events,['custom-close','explicit-invoker']);
+  const cleanupAgain=f.mount();assert.equal(f.dialog.open,true);cleanupAgain();assert.equal(f.dialog.open,false);
+  assert.deepEqual(events,['custom-close','explicit-invoker','custom-close','explicit-invoker']);
+});
+
+test('chrome=false cancel/backdrop retains latest busy guard without requiring a generated close button',()=>{
+  const f=fixture({native:true,chrome:false,closeOnBackdropClick:true});
+  const cleanup=f.mount(),cancel=f.tree.props.onCancel,backdrop=f.tree.props.onMouseDown,target={};
+  const first=event();cancel(first);assert.deepEqual(first.calls,['prevent','stop']);
+  assert.equal(f.events.filter(value=>value==='close').length,1);
+  f.render({closeDisabled:true,onClose:()=>f.events.push('latest-close')});
+  cancel(event());backdrop({target,currentTarget:target});assert.equal(f.events.includes('latest-close'),false);
+  assert.equal(f.tree.props['aria-busy'],true);
+  f.render({closeDisabled:false});backdrop({target:{},currentTarget:target});assert.equal(f.events.includes('latest-close'),false);
+  backdrop({target,currentTarget:target});assert.equal(f.events.filter(value=>value==='latest-close').length,1);cleanup();
+});
+
+test('chrome=false Tab trap uses custom first/last controls and excludes disabled controls even while close is busy',()=>{
+  const f=fixture({native:true,chrome:false,closeDisabled:true});
+  const control=(name,disabled=false)=>({tabIndex:0,matches:()=>disabled,closest:()=>null,getClientRects:()=>[{}],
+    focus(){f.events.push(name);f.document.activeElement=this;}});
+  const first=control('custom-close'),last=control('custom-submit'),disabled=control('disabled',true);
+  f.dialog.querySelectorAll=()=>[disabled,first,last,disabled];f.dialog.contains=value=>[first,last,disabled].includes(value);
+  f.document.activeElement=first;const reverse={...event('Tab'),shiftKey:true};f.tree.props.onKeyDown(reverse);
+  assert.deepEqual(reverse.calls,['stop','prevent']);assert.equal(f.document.activeElement,last);
+  const forward={...event('Tab'),shiftKey:false};f.tree.props.onKeyDown(forward);
+  assert.deepEqual(forward.calls,['stop','prevent']);assert.equal(f.document.activeElement,first);
+  assert.deepEqual(f.events,['custom-submit','custom-close']);assert.equal(f.listeners.size,0);
+});
