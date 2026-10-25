@@ -4,6 +4,7 @@ import { getSesion } from '../../utils.jsx';
 import { createCapturedRequest } from '../../shared/session/captured-request.js';
 import { useSessionView } from '../../shared/session/use-session-view.js';
 import { createUploadRecovery } from './upload-recovery.js';
+import './DriveUploader.css';
 
 function FolderPicker({ root, onSelect, onClose, session, readSession, isActive }) {
   const [stack, setStack] = useState([{ id: root.id, name: root.label }]);

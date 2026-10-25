@@ -1,0 +1,83 @@
+/* Shared by task detail and Drive. Never depend on visiting the Drive route. */
+.drive-uploader { margin-bottom: 22px; min-width: 0; }
+.drive-uploader > input { display: none; }
+.drive-upload-trigger {
+  align-items: center;
+  background: var(--render-surface, #fff);
+  border: 1px solid var(--render-line, #e5e7eb);
+  border-radius: var(--render-radius-card, 12px);
+  box-sizing: border-box;
+  color: var(--render-ink, #202124);
+  display: flex;
+  gap: 12px;
+  min-height: 68px;
+  padding: 14px 16px;
+  text-align: left;
+  width: 100%;
+}
+.drive-upload-trigger > span {
+  align-items: center;
+  background: var(--render-surface-muted, #f3f4f6);
+  border-radius: 8px;
+  display: flex;
+  flex: 0 0 auto;
+  font-size: 24px;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
+}
+.drive-upload-trigger > div, .drive-upload-ready > div { display: grid; gap: 4px; min-width: 0; }
+.drive-upload-trigger strong, .drive-upload-ready strong { font-size: var(--render-type-label, 13px); font-weight: 600; }
+.drive-upload-trigger small, .drive-upload-ready small {
+  color: var(--render-muted, #667085);
+  font-size: var(--render-type-caption, 12px);
+  line-height: 1.5;
+}
+.drive-upload-trigger div, .drive-upload-ready div { overflow-wrap: anywhere; }
+.drive-upload-ready {
+  align-items: center;
+  background: var(--render-surface, #fff);
+  border: 1px solid var(--render-line, #e5e7eb);
+  border-radius: var(--render-radius-card, 12px);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+.drive-upload-ready button, .drive-folder-picker .primary {
+  background: var(--render-accent, #2563eb);
+  border: 0;
+  border-radius: var(--render-radius-control, 8px);
+  color: var(--render-accent-ink, #fff);
+  flex-shrink: 0;
+  font: inherit;
+  font-weight: 600;
+  min-height: 44px;
+  padding: 10px 16px;
+}
+.drive-progress { background: var(--render-surface-muted, #f3f4f6); border-radius: 99px; height: 7px; margin-top: 8px; overflow: hidden; }
+.drive-progress i { background: var(--render-accent, #2563eb); display: block; height: 100%; transition: width .2s; }
+.drive-error { color: var(--render-danger, #a23b35); font-weight: 600; overflow-wrap: anywhere; }
+.drive-duplicate { background: var(--render-surface-soft, #f8fafc); border: 1px solid var(--render-line, #e5e7eb); border-radius: 12px; display: grid; gap: 6px; margin-top: 10px; padding: 14px; overflow-wrap: anywhere; }
+.drive-duplicate div { display: flex; flex-wrap: wrap; gap: 8px; }
+.drive-duplicate button { background: var(--render-surface, #fff); border: 1px solid var(--render-line, #e5e7eb); border-radius: 8px; color: var(--render-ink, #202124); min-height: 44px; padding: 8px 12px; }
+.drive-duplicate .danger { background: var(--render-danger, #a23b35); color: #fff; }
+.drive-picker-backdrop { align-items: center; background: #0008; display: flex; inset: 0; justify-content: center; position: fixed; z-index: 3000; }
+.drive-folder-picker { background: var(--render-surface, #fff); border-radius: var(--render-radius-card, 12px); box-shadow: var(--render-shadow-raised, 0 20px 60px #0004); box-sizing: border-box; max-height: 75dvh; max-width: 560px; overflow: auto; padding: 20px; width: calc(100% - 32px); }
+.drive-folder-picker header, .drive-folder-picker footer { align-items: center; display: flex; gap: 8px; justify-content: space-between; }
+.drive-folder-picker header div { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.drive-folder-picker header small { color: var(--render-muted, #667085); }
+.drive-folder-picker header button { background: none; border: 0; color: inherit; flex-shrink: 0; font-size: 24px; min-height: 44px; min-width: 44px; }
+.drive-folder-list { display: grid; gap: 6px; margin: 16px 0; }
+.drive-folder-list > button { align-items: center; background: var(--render-surface-soft, #f8fafc); border: 1px solid var(--render-line, #e5e7eb); border-radius: 8px; color: inherit; display: flex; gap: 10px; min-height: 44px; padding: 12px; text-align: left; }
+.drive-folder-list > button strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.drive-folder-back { background: none; border: 0; color: var(--render-accent, #2563eb); font-weight: 600; margin-top: 14px; min-height: 44px; }
+.drive-folder-picker footer { border-top: 1px solid var(--render-line, #e5e7eb); flex-wrap: wrap; padding-top: 14px; }
+.drive-folder-picker footer button { border: 0; border-radius: 8px; min-height: 44px; padding: 11px 16px; }
+.drive-uploader button:focus-visible { outline: 2px solid var(--render-accent, #2563eb); outline-offset: 3px; }
+@media (max-width: 980px) {
+  .drive-upload-ready { align-items: flex-start; flex-direction: column; gap: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drive-progress i { transition: none; }
+}
