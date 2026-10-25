@@ -6,7 +6,7 @@ import { FilterSelect } from '../components/FilterSelect.jsx';
 import { getRolLabel } from "../constants.js";
 import { esperandoMaterial, extraerUrlsTarea, getTipoPublicacionLabel, obtenerInfoLinkTarea, renderizarTextoTarea, getSesion } from "../utils.jsx";
 import { AREAS, BOARD_COLUMNS, STATUSES, TASK_TYPES, canonicalTaskState, isTaskCompleted } from "../features/render-os/constants.js";
-import { apiJson, apiRequest, apiTaskById, apiTaskPage } from "../features/render-os/services/render-os-api.js";
+import { apiJson, apiRequest, apiTaskById, apiTaskPage, apiSubtasks } from "../features/render-os/services/render-os-api.js";
 import { areaForTask, emojiForTaskCard, formatDate, formatDateTime, initials, personForTask, taskResponsibleLabels } from "../features/render-os/utils/task-formatters.js";
 import { canRetryTaskUpdate, canUserDeleteTask, canUserEditTask, canUserMoveTask, canUserMoveTaskToState, mergeRelatedTasks } from "../workspace-task-state.js";
 import { effectiveTaskFilterState, getTasksEmptyMessage, getTaskViewState, isNewTaskDraftDirty, taskMatchesReviewScope, taskQueryNotice, writeTaskViewUrl } from "../features/render-os/utils/task-view-state.js";
@@ -1193,7 +1193,7 @@ function TasksView({ tasks, totalTasks, loadingMore, onLoadMore, users, clients,
     window.dispatchEvent(new CustomEvent("render-os:related-tasks", { detail: items }));
   }, [captureRequest]);
   const loadSubtasks = useCallback(async (id, options) => {
-    const guard = captureRequest(apiJson);
+    const guard = captureRequest((_url, requestOptions) => apiSubtasks(id,requestOptions));
     const items = await guard.request(`/api/tareas/${id}/subtareas?workspace=render_os`, options);
     guard.assertCurrent();
     if (!options?.signal?.aborted) incorporateRelatedTasks(items);

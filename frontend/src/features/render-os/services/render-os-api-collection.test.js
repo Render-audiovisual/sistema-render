@@ -23,7 +23,7 @@ const json=(body,status=200)=>({ok:status>=200&&status<300,status,json:async()=>
 
 for(const reader of readers){
   test(`${reader.name} returns the exact successful array, including intentional empty collection`,async()=>{
-    for(const rows of [[],[{id:7,titulo:'QA collection',actor_usuario_id:null}]]){
+    for(const rows of [[],[{id:8,revision:1,tarea_padre_id:7,titulo:'QA collection',estado:'pendiente',actor_usuario_id:null}]]){
       await fixture(reader,json(rows),async read=>{assert.equal(await read(),rows);});
     }
   });

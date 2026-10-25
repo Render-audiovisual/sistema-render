@@ -2,6 +2,7 @@ import { responsibleFilterId } from '../utils/task-responsible-filter.js';
 import { isSessionFailure } from '../../../shared/session/captured-request.js';
 import { validTaskOrderRevision, validTaskOrderSnapshot } from '../utils/task-manual-order.js';
 import { taskQueryNotice } from '../utils/task-view-state.js';
+import { requireTaskSubtaskParentId, verifyTaskSubtasks } from './task-subtask-collection.js';
 const WORKSPACE_QUERY = "workspace=render_os";
 
 export async function apiRequest(url, options) {
@@ -102,6 +103,7 @@ export function apiTaskById(id, options) {
   return apiRequest(`/api/tareas/${id}?${WORKSPACE_QUERY}`, options);
 }
 
-export function apiSubtasks(id, options) {
-  return apiJson(`/api/tareas/${id}/subtareas?${WORKSPACE_QUERY}`, options);
+export async function apiSubtasks(id, options) {
+  requireTaskSubtaskParentId(id);
+  return verifyTaskSubtasks(await apiJson(`/api/tareas/${id}/subtareas?${WORKSPACE_QUERY}`, options),id);
 }
