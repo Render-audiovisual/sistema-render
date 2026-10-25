@@ -421,6 +421,23 @@ function reviewedMobileCalendarBaseline(root) {
   assert.deepEqual(seen,['root-count','.render-workspace .ros-calendar',...Array.from(added.keys()).slice(0,2),'.render-workspace .ros-calendar-day',...Array.from(added.keys()).slice(2)]);
   return copy;
 }
+function reviewedMobileViewSelectorBaseline(root) {
+  const copy=root.clone();let defaults=0,groups=0;
+  copy.walkRules(rule=>{
+    if(rule.parent.type!=='root'||rule.selector!=='.render-workspace .ros-mobile-view-select')return;
+    assert.deepEqual(rule.nodes.map(n=>[n.prop,n.value,!!n.important]),[['display','none',false]]);defaults++;rule.remove();
+  });
+  copy.walkAtRules('media',media=>{
+    if(media.params!=='(max-width: 700px)')return;
+    assert.deepEqual(media.nodes.map(rule=>[rule.selector,rule.nodes.map(n=>[n.prop,n.value,!!n.important])]),[
+      ['.render-workspace .ros-controls > div.ros-primary-navigation:first-child',[['grid-template-columns','minmax(0,1fr) auto',false],['align-items','end',false]]],
+      ['.render-workspace .ros-controls .ros-view-tabs',[['display','none',false]]],
+      ['.render-workspace .ros-controls .ros-mobile-view-select',[['display','grid',false],['gap','4px',false]]],
+      ['.render-workspace .ros-controls .ros-feedback-link',[['grid-column','auto',false],['width','auto',false],['white-space','nowrap',false],['align-self','end',false]]],
+    ]);groups++;media.remove();
+  });
+  assert.equal(defaults,1);assert.equal(groups,1);return copy;
+}
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
     let baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
@@ -430,6 +447,7 @@ for (const name of files) {
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedMobileCalendarBaseline(baselineRoot);
     if(name==='TaskDetailNotion')baselineRoot=reviewedProductionClosureBaseline(reviewedMobileTemplateBaseline(baselineRoot));
     if(name==='TaskHeader')baselineRoot=reviewedTaskContinuationBaseline(baselineRoot);
+    if(name==='TaskHeader')baselineRoot=reviewedMobileViewSelectorBaseline(baselineRoot);
     if (['WorkspaceReadOnly', 'TaskHeader', 'RenderApplePolish'].includes(name)) baselineRoot = reviewedFilterPresentationBaseline(baselineRoot);
     assert.equal(hash(structure(baselineRoot)), layoutBaseline[name]);
   });

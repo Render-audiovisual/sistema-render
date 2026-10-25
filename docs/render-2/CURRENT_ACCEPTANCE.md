@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Selector compacto de vistas de Tareas en móvil — integración342
+
+Main añadió FilterSelect controlado «Vista de tareas» con las cinco opciones existentes y el mismo setView/URL;≤700px sustituye visualmente pestañas, conserva Feedback separado con contador/handler y no quita filtros/Papelera/creación. Escritorio conserva cinco pestañas y oculta selector. CSS en TaskHeader existente, sin otra hoja ni nuevo estado de negocio; guard visual valida exactamente bloque700px/default y mantiene baseline restante. Apple UI/frontend-design orientaron reducción de altura y control compartido44px. Harvey creó tres pruebas AST/callback real y cascade Workspace→TaskHeader; main leyó archivo completo. Guard de siete filtros se amplió para reconocer el selector separado sin cambiar sus siete contratos AST.
+
+Frontend3141PASS/1SKIP/0FAIL de3142 (`/private/tmp/render2-goal342-final-frontend.log`), build index-Ba5Y2I_o (`/private/tmp/render2-goal342-final-build.log`); focal posterior incluye aserción alineación final (`/private/tmp/render2-goal342-focal.log`). Sin backend/core nuevos. Primer pase detectó Feedback alineado arriba18px y un guard de filtros obsoleto; main corrigió align-self:end y lista esperada, no relajó contratos de filtros existentes.
+
+Native runner331 dos bases nuevas: render2-local-BJ0JRn coordinador93617/HTTP93678 y render2-local-bTusEX94324/94350. Primer recorrido: cambio Calendario→recarga conserva selección/URL; Por responsable muestra agrupación, Lista→Feedback→Atrás vuelve Lista; escritorio1280 cinco tabs visibles/selector oculto. Segundo build final390×844: selector44px, bottoms selector/Feedback322.09 iguales, calendario top487.09 frente622.09 en341 (135px antes); página375≤390. A320 página305 y Feedback right280≤320. Captura `/private/tmp/render2-goal342-final-mobile.png` inspeccionada. No se abrió menú nativo con teclado ni se validó físicamente cada opción/contador de novedades>0; pruebas de callback cubren esos contratos. Viewport restaurado/pestañas cerradas; ambos fixtures exit0,107 tablas/contadores/index-entry intactos y cleanup ENOENT. Sin producción/despliegue ni aceptación global.
+
 ### Calendario de Tareas compacto en móvil — integración341
 
 Main sustituyó solo en≤700px la grilla900px horizontal por siete columnas minmax(0,1fr), celdas compactas y botón de día con contador numérico/aria-description de tareas cargadas. Tarjetas internas se ocultan solo en móvil; se conserva acceso a todas desde resumen nativo, apertura por ID, filtros, mes/URL y fechas. Escritorio mantiene tarjetas/«más» y oculta contador;701–900 conserva contrato horizontal previo. Apple UI/frontend-design orientaron claridad y tokens existentes, sin nueva capa CSS ni cambios comerciales. Guard visual valida exactamente reglas nuevas/restauradas y conserva hashes del resto, sin actualizar baseline global.

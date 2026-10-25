@@ -61,8 +61,8 @@ const shared=find(tree,node=>ts.isJsxElement(node)&&node.openingElement.tagName.
 const expected=(tag,attrs,children)=>find(parse(`<${tag} ${attrs}>${children}</${tag}>`),ts.isJsxElement)[0];
 const byLabel=label=>{const rows=shared.filter(node=>attr(node,'label')?.initializer?.text===label);assert.equal(rows.length,1,label);return rows[0];};
 
-test('exactly seven task filters adopt shared presentation with unchanged native attributes, callbacks and complete options',()=>{
-  assert.deepEqual(shared.map(node=>attr(node,'label')?.initializer?.text),filters.map(([label])=>label));
+test('seven unchanged task filters coexist with the separately tested mobile view selector',()=>{
+  assert.deepEqual(shared.map(node=>attr(node,'label')?.initializer?.text),['Vista de tareas',...filters.map(([label])=>label)]);
   for(const [label,attrs,children] of filters){
     const actual=byLabel(label),baseline=expected('FilterSelect',`label=${JSON.stringify(label)} ${attrs}`,children);
     assert.deepEqual(signature(actual),signature(baseline),`${label}: AST baseline including all guards/handlers/options`);
