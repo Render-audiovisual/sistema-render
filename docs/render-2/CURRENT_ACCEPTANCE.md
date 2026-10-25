@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Lecturas relacionadas tardías no retroceden revisiones confirmadas — integración357
+
+Main reprodujo con dos pruebas fallidas que mergeRelatedTasks sobrescribía rev2 con una respuesta rev1 tardía, incluyendo título, estado y padre. El evento activo render-os:related-tasks usa ese merge sobre el estado React actual. Ahora, cuando ambas revisiones son enteros positivos int32 válidos y la entrante es menor, conserva la fila existente íntegra y por referencia. No cambia membresía/orden, altas directOnly ni enriquecimiento de igual/mayor revisión. No redefine DTOs parciales sin revisión ni resuelve contradicciones de igual revisión; no es protección universal de todos los lectores.
+
+Nueva taskRelatedRevision.test.js aporta tres comprobaciones: promesa de lectura resuelta después de actualización confirmada, referencias/inmutabilidad/contexto y ejecución del callback activo extraído del JSX, incluida sesión retirada. Harvey revisó independientemente el delta y sus compatibilidades, sin bloqueantes ni ediciones. Frontend3202PASS/1SKIP/0FAIL de3203 (/private/tmp/render2-goal357-final-frontend.log); build index-Bm6BVBw8 (/private/tmp/render2-goal357-build.log); diff-check limpio. Skill de trabajo estructurado guio reproducción antes de corrección y revisión separada. Sin cambios visuales, API, esquema, permisos ni migraciones; backend/core/navegador no renovados en este corte. Sin servidores nuevos, bases existentes, proveedores ni producción. Consolidación maestra sigue activa.
+
 ### Membresía de subtareas según lectura verificada — integración356
 
 TaskDetail conserva una observación ligada a tarea y sesión/capture: una lectura exitosa reemplaza la membresía, incluso con []; un fallo conserva la última observación. resolveTaskSubtasks solo actualiza IDs observados con revisiones globales válidas iguales/mayores del mismo padre; un cambio de padre estrictamente más nuevo retira la fila local. Ausencia en el caché global paginado no implica borrado. No elimina registros del tablero ni incorpora hijos no observados. Actualizar subtareas es explícito, no una promesa de sincronización en vivo. Un único botón conserva foco; aria-disabled comunica carga y el latch síncrono bloquea reintentos simultáneos.

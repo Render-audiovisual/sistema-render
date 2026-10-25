@@ -5,7 +5,14 @@ export function mergeRelatedTasks(current, incoming) {
   const merged = [...current];
   for (const item of incoming) {
     const index = merged.findIndex((task) => task.id === item.id);
-    if (index >= 0) merged[index] = { ...merged[index], ...item };
+    if (index >= 0) {
+      const observed = merged[index];
+      // A related GET can finish after a confirmed update. Never roll that
+      // row back to an older, valid server revision (including its parent).
+      const validRevision = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
+      if (validRevision(observed.revision) && validRevision(item.revision) && item.revision < observed.revision) continue;
+      merged[index] = { ...observed, ...item };
+    }
     else merged.push({ ...item, __renderOsDirectOnly: true });
   }
   return merged;
