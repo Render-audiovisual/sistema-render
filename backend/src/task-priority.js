@@ -1,3 +1,5 @@
+import { isTaskApproved } from './workflow-contract.js';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function dateOnly(value) {
@@ -61,12 +63,12 @@ export function scoreTaskPriority(task, { today }) {
     score += Math.min(20, createdDays * 3);
     reasons.push(`Lleva ${createdDays} días pendiente`);
   }
-  if (staleDays >= 3 && task.estado !== "en_revision") {
+  const waitingReview = task.estado === "en_revision" && !isTaskApproved(task);
+  if (staleDays >= 3 && !waitingReview) {
     score += Math.min(15, staleDays * 2);
     reasons.push(`Sin movimiento hace ${staleDays} días`);
   }
 
-  const waitingReview = task.estado === "en_revision";
   if (waitingReview) {
     score = Math.max(0, score - 30);
     reasons.unshift("Está esperando revisión");

@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado377
+# Render 2.0 — corte de aceptación local372, actualizado378
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -65,6 +65,7 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - Integración375: cuatro lectores de Inicio descartan la conexión si falla el rollback, sin ocultar el error original.56 focales,23 físicas adicionales de Inicio y core30archivos293PASS/0FAIL/0SKIP; backend2461PASS/169SKIP/0FAIL. La física de estados amplía Reportes a Calendario/Cliente/Proyecto, ambos actores cookie y108 tablas invariantes. Sin nueva UI/build ni prueba física de caída de red. Logs render2-goal375-*; detalle en CURRENT_ACCEPTANCE.md.
 - Integración376: registro y reporte de Producciones proyectan aprobación efectiva.63 focales; física ampliada11PASS y core30archivos299PASS/0FAIL/0SKIP; backend2461PASS/169SKIP/0FAIL. Seis tareas audiovisuales separadas de las seis de proyecto y video sin vínculo NULL,108 tablas invariantes. No nueva observación visual ni publicación real.
 - Integración377: resumen de trabajo de Wilson reutiliza aprobación canónica sin mutar tareas;57 focales, física11PASS y core30archivos299PASS/0FAIL/0SKIP; backend2467PASS/169SKIP/0FAIL.108 tablas invariantes, ninguna llamada de mensajería/proveedor. La física evalúa modelos reales sobre DTO HTTP, no POST conversacional ni su autorización.
+- Integración378: prioridad, digest y contexto rápido de Mía alinean aprobación histórica sin escrituras ni envío de avisos.49 focales, física11PASS, core30archivos299PASS/0FAIL/0SKIP y backend2470PASS/169SKIP/0FAIL.108 tablas invariantes. La revisión transversal detecta confirmación legacy sin revalidar membresía y pérdida potencial de borrador Moodboards, pendientes abajo.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
 
@@ -75,6 +76,8 @@ Hallazgo de Harvey y reproducción del coordinador sobre funciones reales sin DB
 Corrección373: métricas y detalle reutilizan `effectiveTaskFilterState`; el detalle conserva `estado_almacenado` separado. Booleantrue cambia solo lectura a aprobada; stringtrue/false/ausencia no lo hacen. No reescribe históricos ni suma aprobadas a finalizadas o confirmaciones editoriales. Modelos/SSR, PostgreSQL con cookies admin/editor y navegador1280/390 verifican los casos acotados;108 tablas del fixture nativo quedan invariantes. El defecto está corregido localmente, **sin declarar fase2/5 cerrada**. Resultados completos de373 en CURRENT_ACCEPTANCE.md.
 
 ## Decisiones y gates externos
+
+Pendientes locales detectados378: la confirmación legacy de grabación en wilson-chat.js no revalida la membresía después de preparar token (repro de handler con DB simulada; pendiente PostgreSQL/fix). Priorizar seguridad antes del fallo de borrador de Moodboards: preparar clientes puede resolver tarde y cerrar Composer sucio (repro callbacks AST; pendiente navegador/fix). Detalle y límites en CURRENT_ACCEPTANCE.md. No confundir estos pendientes con decisiones externas.
 
 Corrección local376: Producciones reutiliza la proyección canónica de tarea_estado en registro y reporte, con booleantrue estricto, publicada y NULL preservados.63 focales y física11PASS, ambos cookies/108 tablas invariantes. Corrección377: buildEmployeeSnapshot de Wilson reutiliza isTaskApproved para no clasificar la aprobación histórica también en revisión;57 focales y física11PASS sobre DTO real congelado,108 tablas invariantes. No se enviaron mensajes ni se acredita el endpoint conversacional, otros contextos de Wilson, aceptación visual renovada o coherencia universal. Detalle en CURRENT_ACCEPTANCE.md.
 

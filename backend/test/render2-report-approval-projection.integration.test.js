@@ -6,6 +6,9 @@ import { startLocalHarness, fixturePassword, assertFixtureIdentity } from '../sc
 import { loginProductionCookieSession, productionCookieRequest } from './helpers/production-cookie-session.js';
 import { buildEmployeeReport, employeeTaskDetails, employeeFormatBreakdown } from '../../frontend/src/shared/reports/production-registry-report.js';
 import { buildEmployeeSnapshot, buildEmployeeStatusReply } from '../src/wilson-chat.js';
+import { rankTaskPriorities } from '../src/task-priority.js';
+import { buildMiaDigest } from '../src/mia-task-digest.js';
+import { buildMiaFastContext } from '../src/wilson-integration.js';
 
 function freezeTree(value) {
   if (value && typeof value === 'object') {
@@ -165,6 +168,21 @@ test('report approval projection preserves strict historical booleans and stored
     const reply = buildEmployeeStatusReply(wilson, 'Estado del trabajo');
     assert.match(reply.text, /6 siguen en revisión, 4 aprobadas y 2 finalizadas/);
     assert.equal(new Set(reply.tasks.map(task => task.id)).size, reply.tasks.length);
+    // A fixed pre-deadline day isolates state categories from overdue urgency.
+    // Pure readers only: no digest enqueue, event marker or chat/provider call.
+    const today = '2026-10-01';
+    const priorities = rankTaskPriorities(allTasks, { today, limit: 20 });
+    assert.equal(priorities.summary.total, 10);
+    assert.equal(priorities.summary.waiting_review, 6);
+    const digest = buildMiaDigest(allTasks, { today, maxItems: 20 });
+    const approvedIds = wilson.approved.map(task => task.id).sort((a, b) => a - b);
+    const reviewIds = wilson.review.map(task => task.id).sort((a, b) => a - b);
+    assert.deepEqual(digest.items.filter(task => task.category === 'Aprobadas').map(task => task.id).sort((a, b) => a - b), approvedIds);
+    assert.deepEqual(digest.items.filter(task => task.category === 'Para revisar').map(task => task.id).sort((a, b) => a - b), reviewIds);
+    const fast = buildMiaFastContext(allTasks, { name: 'QA editor', role: 'edicion' }, { today, limit: 20 });
+    assert.equal(fast.resumen.waiting_review, 6); assert.equal(fast.resumen.en_revision, 6);
+    assert.equal(fast.resumen.total, 10); assert.equal(fast.resumen.finalizadas_mes, 2);
+    assert.deepEqual(fast.hacer_ahora.filter(task => task.estado === 'aprobada').map(task => task.id).sort((a, b) => a - b), approvedIds);
     const productionTasks = allTasks.filter(task => productionIds.includes(task.id));
     assert.equal(productionTasks.length, 6);
     for (const item of productionCases) {

@@ -17,7 +17,7 @@ import { getStateNotification, validateProductionHandoff } from "./task-workflow
 import { createMiaPersonalListsRouter, enqueueDuePersonalListReminders } from "./mia-personal-lists.js";
 import { createMiaSupervisorRouter, acknowledgeSupervisorDelivery, supervisorNotificationDeliverable } from "./mia-supervisor.js";
 import { annotateTaskAssignments, replaceTaskAssignments, resolveTaskAssignments } from "./task-assignments.js";
-import { isTaskFinalized } from "./workflow-contract.js";
+import { isTaskFinalized, isTaskApproved } from "./workflow-contract.js";
 import { taskOperationalDto, clientOperationalDto } from "./operational-dto.js";
 import { syncProductionVisitFromTask } from "./production-registry.js";
 import { lockProductionObjectiveLinks } from "./production-editorial.js";
@@ -260,7 +260,7 @@ export function buildMiaFastContext(tasks = [], person = {}, { today = argentina
   const activeRoleTasks = roleTasks.filter((task) => !isTaskFinalized(task));
   const metrics = {
     abiertas: activeRoleTasks.filter((task) => ["pendiente", "en_progreso"].includes(task.estado)).length,
-    en_revision: activeRoleTasks.filter((task) => task.estado === "en_revision").length,
+    en_revision: activeRoleTasks.filter((task) => task.estado === "en_revision" && !isTaskApproved(task)).length,
     finalizadas_mes: roleTasks.filter((task) => isTaskFinalized(task)
       && String(task.fecha_vencimiento || task.updated_at || "").slice(0, 7) === today.slice(0, 7)).length,
   };
@@ -280,7 +280,7 @@ export function buildMiaFastContext(tasks = [], person = {}, { today = argentina
   }
   const compactTask = (task) => ({
     id: Number(task.id), titulo: task.titulo, cliente: task.cliente_nombre || null,
-    estado: task.estado, prioridad: task.dynamic_priority_label,
+    estado: isTaskApproved(task) ? 'aprobada' : task.estado, prioridad: task.dynamic_priority_label,
     entrega: task.fecha_vencimiento || null, motivo: task.priority_reasons?.[0] || null,
     url: `https://sistema.rendercorrientes.com/workspace/tareas?task=${task.id}`,
   });

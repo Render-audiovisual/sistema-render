@@ -1,3 +1,5 @@
+import { isTaskApproved } from './workflow-contract.js';
+
 const ACTIVE_STATES = new Set(["pendiente", "en_proceso", "en_progreso", "en_revision", "aprobada", "programada"]);
 
 function dateKey(value) {
@@ -27,8 +29,8 @@ export function classifyMiaTask(task, today = new Date().toISOString().slice(0, 
   if (distance !== null && distance < 0) return { rank: 0, category: "Vencidas" };
   if (String(task.prioridad).toLowerCase() === "alta" || task.espera_material === true) return { rank: 1, category: "Prioridad alta" };
   if (distance === 0) return { rank: 2, category: "Para hoy" };
+  if (isTaskApproved(task)) return { rank: 4, category: "Aprobadas" };
   if (task.estado === "en_revision") return { rank: 3, category: "Para revisar" };
-  if (task.estado === "aprobada") return { rank: 4, category: "Aprobadas" };
   if (task.estado === "programada") return { rank: 4, category: "Programadas" };
   if (distance !== null && distance <= 3) return { rank: 5, category: "Próximas" };
   return null;
