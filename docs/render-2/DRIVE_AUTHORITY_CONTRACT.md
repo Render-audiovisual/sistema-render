@@ -2,6 +2,16 @@
 
 Integration104 is implemented and tested locally in the scope recorded in `STATUS.md`, not deployed or accepted against real Google Drive. No real Google request, credential update, upload or replacement is authorized by its tests.
 
+## Folder activation and DOM QA — integration260
+
+Folder entry is now one native button action. Remove the article double-click writer. `openFolder` validates a folder/stringID, excludes current/ancestor duplicates and requires the observed parent at functional update time. Captured account/context/mount checks run both before admission and inside the updater, so queued actions cannot publish after replacement. No file transport, server authority or credential change is introduced.
+
+Actual JSX reproduction before correction: click/click/dblclick produced root,A,A,A.17 extracted-handler/JSX tests now cover repeated and queued activation, nested entry, breadcrumb reentry, stale root/query/account/ABA/unmount, invalid folders and unchanged external-file behavior. The first mounted React native test revealed a second failure: rapid DOM replacement lets the second pointer click hit childB, yielding root,A,B. Folder clickCount/detail>1 is now ignored; keyboard detail0 and separate click1 remain allowed. Regression executes handlers across renders (A1→B2 rejected, freshB1 allowed, keyboard0 allowed).
+
+Volta prepared /private/tmp/render2-goal260-drive-native.mjs; coordinator inspected/executed twice. Real React/Drive.jsx, only API/session/uploader dependency doubles, root→A→B synthetic tree, read-only loopback52846 and CSP connect-src none. No backend, actual cookies, PostgreSQL or Google. Final native dblclickA leaves root,A once; EnterB opens root,A,B; breadcrumbRender returns root; simple mobile activation at390px opensA, document clientWidth/scrollWidth390. Screenshot /private/tmp/render2-goal260-drive-mobile.png inspected. First temporary rootS3NvHO and finalA512Df cleaned ENOENT with exit0, both agent tabs closed and viewport reset. Logs /private/tmp/render2-goal260-native.log and native-final.log. Runner is disposable and not a second operational application. This does not prove provider integration, touch hardware, upload/delete flows, full shell theme or durable folder URL state. Superpowers and Verification guided reproduction/fix/native review; no deployment.
+
+Final regression: frontend2937PASS/0FAIL/0SKIP, build index-DjzGrKFz.js. Independent final review Volta34 focusedPASS, no blockers. Logs /private/tmp/render2-goal260-frontend.log and build.log. No backend delta or renewed backend suite in260; previous backend evidence is not recertified here.
+
 ## Connection-query recovery — integration236
 
 DrivePage now separates loading, failed status consultation and a successfully observed provider status. Loading announces Consultando Drive; a failed GET offers Reintentar consulta without saying the account is disconnected or its authorization expired. Only ready renders the existing connected/disconnected/configuration branches. Ready means a successful status query, not necessarily a connected provider. This does not change OAuth, backend authorization, files or stored credentials.

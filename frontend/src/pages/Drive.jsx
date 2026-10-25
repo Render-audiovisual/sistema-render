@@ -87,6 +87,18 @@ export function DrivePage({ sesion }) {
   }, [current?.id, status?.connected, query, load]);
 
   const selectRoot = (key) => { setRootKey(key); setQuery(""); setStack([{ id: status.roots[key], name: ROOT_LABELS[key] }]); };
+  const openFolder = (file, clickCount = 0) => {
+    // A fast render can place a child under the second click of a double-click.
+    // Keyboard activation has detail=0; a separate pointer activation has1.
+    if (clickCount > 1 || !file?.isFolder || typeof file.id !== 'string' || !file.id || file.id === current?.id) return;
+    const guard = createCapturedRequest({ session: view.session, readSession: getSesion,
+      isActive: () => mounted.current && live.current === context });
+    if (!guard.current()) return;
+    // Two clicks may share a render. Only the stack observed by this card may
+    // advance; a repeat or a callback from a replaced folder cannot append.
+    setStack(items => guard.current() && items[items.length - 1]?.id === current?.id && !items.some(item => item.id === file.id)
+      ? [...items, { id: file.id, name: file.name }] : items);
+  };
   const connect = async () => {
     const guard = createCapturedRequest({ session: view.session, readSession: getSesion, request: driveRequest, isActive: () => mounted.current });
     try {
@@ -112,7 +124,7 @@ export function DrivePage({ sesion }) {
       <section className="drive-toolbar"><div className="drive-roots">{Object.keys(ROOT_LABELS).map((key) => <button className={rootKey === key ? "active" : ""} type="button" key={key} onClick={() => selectRoot(key)}>{ROOT_LABELS[key]}</button>)}</div><label><span aria-hidden="true">⌕</span><input type="search" name="drive-search" autoComplete="off" aria-label="Buscar archivos en esta carpeta" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar en esta carpeta…"/></label></section>
       <section className="drive-browser"><div className="drive-breadcrumbs">{stack.map((folder, index) => <button type="button" key={folder.id} onClick={() => setStack((items) => items.slice(0, index + 1))}>{folder.name}{index < stack.length - 1 ? " /" : ""}</button>)}</div><DriveUploader currentFolder={current} onUploaded={(_uploaded, scope) => load(current?.id, query, scope)}/>
         {error && <div className="drive-error-banner drive-folder-recovery" role="alert"><span>{error}</span>{folderReadError && <button type="button" disabled={loading} onClick={() => load()}>Reintentar carpeta</button>}</div>}
-        {loading ? <div className="drive-loading" role="status">Cargando archivos…</div> : files.length ? <div className="drive-grid">{files.map((file) => <article key={file.id} className={file.isFolder ? "folder" : "file"} onDoubleClick={() => file.isFolder && setStack((items) => [...items, { id: file.id, name: file.name }])}><button className="drive-file-main" type="button" onClick={() => file.isFolder ? setStack((items) => [...items, { id: file.id, name: file.name }]) : window.open(file.webViewLink, "_blank", "noopener,noreferrer")}><span>{file.isFolder ? "▰" : "▤"}</span><div><strong>{file.name}</strong><small>{file.isFolder ? "Carpeta" : fileSize(file.size)}</small></div></button>{isAdmin && !file.isFolder && <button className="drive-trash" type="button" aria-label={`Enviar ${file.name} a la papelera`} onClick={() => trash(file)}>⌫</button>}</article>)}</div> : !error && <div className="drive-empty"><strong>No hay archivos para mostrar.</strong><span>{query ? "Probá otra búsqueda." : "Subí el primer archivo a esta carpeta."}</span></div>}
+        {loading ? <div className="drive-loading" role="status">Cargando archivos…</div> : files.length ? <div className="drive-grid">{files.map((file) => <article key={file.id} className={file.isFolder ? "folder" : "file"}><button className="drive-file-main" type="button" onClick={(event) => file.isFolder ? openFolder(file, event?.detail) : window.open(file.webViewLink, "_blank", "noopener,noreferrer")}><span>{file.isFolder ? "▰" : "▤"}</span><div><strong>{file.name}</strong><small>{file.isFolder ? "Carpeta" : fileSize(file.size)}</small></div></button>{isAdmin && !file.isFolder && <button className="drive-trash" type="button" aria-label={`Enviar ${file.name} a la papelera`} onClick={() => trash(file)}>⌫</button>}</article>)}</div> : !error && <div className="drive-empty"><strong>No hay archivos para mostrar.</strong><span>{query ? "Probá otra búsqueda." : "Subí el primer archivo a esta carpeta."}</span></div>}
       </section>
     </>}
   </main>;

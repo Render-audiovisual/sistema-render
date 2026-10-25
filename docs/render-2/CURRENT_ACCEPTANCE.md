@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Drive: apertura única de carpetas — corte260
+
+Repro del coordinador con expresiones JSX reales: click/click/dblclick agregaba root,A,A,A. Drive ahora usa una sola acción; callback y updater verifican sesión/contexto/montaje, padre observado e IDs no repetidos. Primera prueba React nativa detectó además saltoA→B por segundo clic sobre el nuevo DOM; click detail>1 ya no abre carpetas, manteniendo teclado detail0/activación simple. Erdos17pruebas reales extraídas, Volta runner/revisión y coordinador producto/native/integración.
+
+Native DOM-only con React/Drive.jsx real y dependencias sintéticas, loopback52846/CSP sin conexiones externas: dobleclicA quedaA; EnterB abreB, breadcrumbRender retorna raíz; móvil390 abreA con ancho/scroll390. Captura /private/tmp/render2-goal260-drive-mobile.png inspeccionada. Ambos runners terminaron0/cleanupENOENT, pestañas53/54 cerradas y viewport restaurado. No backend/cookies/PostgreSQL/Google, uploads/deletes ni persistencia nueva acreditados. Ver DRIVE_AUTHORITY_CONTRACT.md para evidencia y límites. Sin cambio de diseño o proveedores; master activo/no deploy.
+
 ### Historias: Todos conserva su significado tras recarga — corte259
 
 Erdos reprodujo que vaciar filtro conservando cliente2 mostrabaTodos, pero mount heredaba cliente2 y popstate interpretaba otra cosa. Nuevo helper compartido mount/restore y writers usa filtro=all para selección vacía explícita, manteniendo cliente de altas independiente y enlaces antiguos/initialTab. Kernel de preferencias admite all solo para filtroHistorias. Erdos producto/pruebas, coordinador kernel/integración/native y Volta revisión61focalesPASS. Sin backend/permisos/datos comerciales modificados.
