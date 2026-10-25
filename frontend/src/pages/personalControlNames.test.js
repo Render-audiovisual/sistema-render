@@ -30,6 +30,16 @@ const find = (element, predicate) => {
 const deps = { completionLabel, useState: initial => [initial, () => {}], useRef: () => ({ current: null }), useEffect: () => {},
   ItemActions: component('ItemActions'), TableActions: component('TableActions') };
 
+for (const accepted of [false, true]) test(`unsubmitted item clears only after writer admission (${accepted})`, () => {
+  const changes = [], consumed = [];
+  const tree = component('ItemsBlock', { ...deps, uid: () => 'synthetic-id' })({ type: 'checklist', content: { items: [] },
+    draft: ' New item ', onDraftChange() {}, onDraftSubmitted: value => consumed.push(value),
+    onChange: value => { changes.push(value); return accepted; } });
+  find(tree, node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  assert.deepEqual(changes[0].items, [{ id: 'synthetic-id', texto: 'New item', completado: false }]);
+  assert.deepEqual(consumed, accepted ? [' New item '] : []);
+});
+
 test('checklist names identify each item, empty text and state; callback still addresses the original ID', () => {
   const content = { titulo: 'QA', items: [{ id: 'one', texto: 'Revisar guion', completado: false }, { id: 'two', texto: '', completado: true }] };
   const before = JSON.stringify(content), changes = [];

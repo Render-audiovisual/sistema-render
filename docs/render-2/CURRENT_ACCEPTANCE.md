@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Mi lista: elementos todavía no agregados protegidos — corte297
+
+Revisión amplia con Harvey encontró un input `ItemsBlock` cuyo useState se perdía al cambiar página y no participaba en guard/status. Ahora `PersonalListsPage` posee `createPersonalItemDrafts`, mapa en memoria por listId/blockId, transmitido como props controladas por BlockEditor. No se guarda en storage ni se crea un elemento sin Enter. Cambio interno de página conserva el mapa; salir/refresh/unload lo considera dirty y el indicador muestra pendiente, con instrucción para agregarlo. Denegación de sesión/unmount lo limpia. No es persistencia tras cerrar navegador.
+
+Enter consume solo el texto exacto si el writer admite la operación. `changeBlock` comprueba `schedule===true` antes de reemplazar contenido optimista; rechazo conserva input y bloque. Admisión posterior fallida continúa bajo la cola recuperable existente, no se declara guardado. Recarga explícita incluye estos drafts en confirmación de descarte; borrados advierten sobre elementos sin agregar y limpian solo después del éxito del registro correspondiente.
+
+Coordinador implementó/ejecutó, Harvey identificó y revisó sin bloqueantes. Ocho nuevos casos modelo/callbacks/JSX: aislamiento, consumo exacto, limpieza acotada, admisión/rechazo de input/writer y guard externo vs selección interna.33focales PASS; frontend3013PASS/1SKIP/0FAIL, salida0; build index-CT31cf7K correcto. Fixtures de extracción de callbacks se actualizaron con nueva dependencia sin retirar aserciones de creación/sesión/rutas. Logs `/private/tmp/render2-goal297-{focal-final3,frontend-final2,build-final}.log`.
+
+Sin backend/migraciones/servidores/DB/proveedores/despliegue. No navegador montado ni prueba física página→otra→volver, descarte cancelado o fallo después de agregar en esta cohorte. No certifica persistencia por admitir schedule; aceptación global incompleta. Superpowers guio la revisión de pérdida de datos antes de ampliar funcionalidad.
+
 ### Build canónico: barrera contra entrypoints paralelos — corte296
 
 Vite incorpora `canonicalBundleGuard` (`frontend/scripts/canonical-bundle.js`) únicamente en build. Inspecciona módulos de todos los chunks emitidos, también lazy, y rechaza cinco rutas exactas: DesignPreview, SandboxWorkspace, PreviewCommentsProposal, PreviewLocalProfileContext y LocalDesignShell. Normaliza root/separadores/query/hash. No borra referencias ni impide código compartido compatible; MoodboardPreview sigue siendo canónico. No toca proxy API, autenticación, rutas operativas ni datos.

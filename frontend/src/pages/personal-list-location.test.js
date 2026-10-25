@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { personalListId, readPersonalListId, personalListUrl, keepsPersonalListDrafts } from './personalListLocation.js';
 import { createPersonalListCreation, reconcilePersonalListCreation } from './personalListCreation.js';
+import { createPersonalItemDrafts } from './personalItemDrafts.js';
 
 // Pure helpers and actual extracted callbacks; no browser/HTTP persistence claim.
 const source = readFileSync(new URL('./PersonalLists.jsx', import.meta.url), 'utf8');
@@ -15,7 +16,8 @@ const evaluate = (n, deps) => new Function(...Object.keys(deps), `return (${text
 const init = name => nodes(page, n => ts.isVariableDeclaration(n) && text(n.name) === name)[0].initializer;
 const callback = (name, deps) => evaluate(init(name), deps);
 const effects = () => nodes(page, n => ts.isCallExpression(n) && text(n.expression) === 'useEffect');
-const helpers = { personalListId, readPersonalListId, personalListUrl, keepsPersonalListDrafts };
+const helpers = { personalListId, readPersonalListId, personalListUrl, keepsPersonalListDrafts,
+  itemDrafts: { current: createPersonalItemDrafts() }, renderItemDrafts() {} };
 function locationFixture(search = '?lista=2&other=keep') {
   const writes = [], location = { href: `https://render.test/lista${search}#section` };
   Object.defineProperty(location, 'search', { get: () => new URL(location.href).search });
@@ -66,6 +68,19 @@ test('actual guard exempts internal queue state but never structural busy, exter
     for (const context of [null, { type: 'refresh', to: '/lista?lista=2' }, { type: 'unload', to: null }, { type: 'link', to: '/inicio' }]) assert.deepEqual(guard(context), { dirty: true, busy: true });
   }
 });
+test('unsubmitted item participates in external and reload guards but survives internal list selection', () => {
+  const hook = nodes(page, n => ts.isCallExpression(n) && text(n.expression) === 'useNavigationGuard')[0];
+  const model = createPersonalItemDrafts(); model.set('1', '2', 'Do not lose this');
+  const guard = evaluate(hook.arguments[0], { ...helpers, itemDrafts: { current: model }, currentSession: () => true,
+    window: { location: { href: 'https://render.test/lista?lista=1' } }, creation: { current: null }, pendingSaves: { current: 0 },
+    queue: { current: { snapshot: () => ({ dirty: false, busy: false }) } }, statusRef: { current: 'saved' } });
+  assert.deepEqual(guard({ type: 'link', to: '/lista?lista=3' }), { dirty: false, busy: false });
+  for (const context of [null, { type: 'unload' }, { type: 'refresh' }, { type: 'link', to: '/inicio' }]) {
+    assert.deepEqual(guard(context), { dirty: true, busy: false });
+    assert.equal(model.get('1', '2'), 'Do not lose this');
+  }
+});
+
 test('actual popstate restores only selection/UI, rotates observation, cleans listener and never flushes/discards/fetches', () => {
   const effect = effects().find(n => text(n.arguments[0]).includes("addEventListener('popstate'"));
   const f = locationFixture(), listeners = new Map(), calls = [], selection = { current: { id: '2' } }; let current = true;
@@ -119,6 +134,16 @@ test('actual create ACK selects only original selection observation; late/ABA/se
     cleanup();
   }
 });
+for (const accepted of [false, true]) test(`actual block writer updates optimistic content only after admission (${accepted})`, () => {
+  const block = { id: '9', tipo: 'checklist', version: 1, contenido: { items: [] } }, updates = [];
+  const result = callback('changeBlock', { activeList: { id: '2' }, pendingSaves: { current: 0 }, currentSession: () => true,
+    listsRef: { current: [{ id: '2', bloques: [block] }] }, queue: { current: { schedule: () => accepted } },
+    replaceBlock: (listId, blockId, transform) => updates.push({ listId, blockId, row: transform(block) })
+  })(block, { items: [{ id: 'item', texto: 'Keep me' }] });
+  assert.equal(result, accepted); assert.equal(updates.length, accepted ? 1 : 0);
+  assert.deepEqual(block.contenido.items, []);
+});
+
 test('actual delete ACK clears only deleted URL selection; other selection/query/hash survive', async () => {
   for (const mode of ['same', 'other', 'stale']) {
     const f = locationFixture(), calls = []; let release, current = true;

@@ -9,6 +9,7 @@ import { personalListId, readPersonalListId, personalListUrl, keepsPersonalListD
 import { PageState } from '../components/PageState.jsx';
 import { Modal } from '../components/Modal.jsx';
 import { createPersonalListCreation, reconcilePersonalListCreation } from './personalListCreation.js';
+import { createPersonalItemDrafts } from './personalItemDrafts.js';
 import "./PersonalLists.css";
 
 const EMOJI_OPTIONS = [
@@ -104,18 +105,17 @@ function ItemActions({ index, count, onMove, onRemove }) {
   return <><div className="personal-row-actions">{controls}</div><details className="personal-row-actions-mobile" name="personal-row-actions" onClickCapture={(event) => { if (event.target.closest("button") && !event.target.disabled) event.currentTarget.removeAttribute("open"); }}><summary aria-label="Opciones del elemento">•••</summary><div>{controls}</div></details></>;
 }
 
-function ItemsBlock({ type, content, onChange }) {
-  const [draft, setDraft] = useState("");
+function ItemsBlock({ type, content, onChange, draft, onDraftChange, onDraftSubmitted }) {
   const withChecks = type === "checklist";
   const items = content.items || [];
   const updateItem = (id, changes) => onChange({ ...content, items: items.map((item) => item.id === id ? { ...item, ...changes } : item) });
   const removeItem = (id) => onChange({ ...content, items: items.filter((item) => item.id !== id) });
   const moveItem = (index, direction) => { const target = index + direction; if (target < 0 || target >= items.length) return; const next = [...items]; [next[index], next[target]] = [next[target], next[index]]; onChange({ ...content, items: next }); };
-  const addItem = (event) => { event.preventDefault(); if (!draft.trim()) return; onChange({ ...content, items: [...items, { id: uid("item"), texto: draft.trim(), ...(withChecks ? { completado: false } : {}) }] }); setDraft(""); };
+  const addItem = (event) => { event.preventDefault(); if (!draft.trim()) return; if (onChange({ ...content, items: [...items, { id: uid("item"), texto: draft.trim(), ...(withChecks ? { completado: false } : {}) }] }) === true) onDraftSubmitted(draft); };
   return <div className="personal-items-block">
     <input className="personal-block-title" value={content.titulo || ""} onChange={(event) => onChange({ ...content, titulo: event.target.value })} aria-label="Título del bloque"/>
     <div className="personal-block-items">{items.map((item, index) => <div className={`personal-block-item ${item.completado ? "complete" : ""}`} key={item.id}>{withChecks ? <label className="personal-checkbox"><input type="checkbox" aria-label={completionLabel(`elemento ${index + 1}`, item.texto)} checked={Boolean(item.completado)} onChange={(event) => updateItem(item.id, { completado: event.target.checked })}/><span aria-hidden="true">✓</span></label> : <span className="personal-list-bullet" aria-hidden="true">•</span>}<input value={item.texto} onChange={(event) => updateItem(item.id, { texto: event.target.value })} aria-label={`Texto del elemento ${index + 1}`}/><ItemActions index={index} count={items.length} onMove={moveItem} onRemove={() => removeItem(item.id)}/></div>)}</div>
-    <form className="personal-add-row" onSubmit={addItem}><span>+</span><input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={withChecks ? "Agregar pendiente" : "Agregar elemento"} aria-label="Agregar elemento"/></form>
+    <form className="personal-add-row" onSubmit={addItem}><span>+</span><input value={draft} onChange={(event) => onDraftChange(event.target.value)} placeholder={withChecks ? "Agregar pendiente" : "Agregar elemento"} aria-label="Agregar elemento"/></form>
   </div>;
 }
 
@@ -169,8 +169,8 @@ function TableBlock({ content, onChange }) {
   </div>;
 }
 
-function BlockEditor({ block, index, count, onChange, onMove, onDelete }) {
-  return <section className="personal-editor-block"><BlockActions block={block} index={index} count={count} onMove={onMove} onDelete={onDelete}/>{block.tipo === "texto" && <TextBlock content={block.contenido} onChange={onChange}/>} {(block.tipo === "listado" || block.tipo === "checklist") && <ItemsBlock type={block.tipo} content={block.contenido} onChange={onChange}/>} {block.tipo === "tabla" && <TableBlock content={block.contenido} onChange={onChange}/>}</section>;
+function BlockEditor({ block, index, count, onChange, onMove, onDelete, draft, onDraftChange, onDraftSubmitted }) {
+  return <section className="personal-editor-block"><BlockActions block={block} index={index} count={count} onMove={onMove} onDelete={onDelete}/>{block.tipo === "texto" && <TextBlock content={block.contenido} onChange={onChange}/>} {(block.tipo === "listado" || block.tipo === "checklist") && <ItemsBlock type={block.tipo} content={block.contenido} onChange={onChange} {...{draft,onDraftChange,onDraftSubmitted}}/>} {block.tipo === "tabla" && <TableBlock content={block.contenido} onChange={onChange}/>}</section>;
 }
 
 function AddBlockMenu({ onAdd }) {
@@ -193,6 +193,8 @@ export function PersonalListsPage() {
   const [saveState,setSaveState] = useState({status:'saved',dirty:false,busy:false,error:'',conflict:false,pending:0});
   const [structuralBusy,setStructuralBusy] = useState(false);
   const queue = useRef(null);
+  const itemDrafts = useRef(createPersonalItemDrafts());
+  const [, renderItemDrafts] = useState(0);
   const mounted = useRef(false);
   const listsRef = useRef([]);
   const controllers = useRef(new Set());
@@ -231,13 +233,13 @@ export function PersonalListsPage() {
     mounted.current=true;
     queue.current=createPersonalListSaveQueue({session:captured.current,readSession:getSesion,request:scopedRequest,
       onState:value=>{if(mounted.current)setSaveState(value);},
-      onDenied:()=>{if(mounted.current){updateLists(()=>[]);setTemplates([]);setActiveId(null);setError('La sesión cambió. Volvé a iniciar sesión.');}},
+      onDenied:()=>{if(mounted.current){itemDrafts.current.clear();updateLists(()=>[]);setTemplates([]);setActiveId(null);setError('La sesión cambió. Volvé a iniciar sesión.');}},
       onSaved:({meta,row,hasNewer})=>{
         if(!currentSession())return;
         const apply=value=>hasNewer?{...value,version:row.version,updated_at:row.updated_at}:{...value,...row};
         if(meta.blockId)replaceBlock(meta.listId,meta.blockId,apply);else replaceList(meta.listId,apply);
       }});
-    return()=>{mounted.current=false;queue.current?.dispose();for(const controller of controllers.current)controller.abort();controllers.current.clear();};
+    return()=>{mounted.current=false;itemDrafts.current.clear();queue.current?.dispose();for(const controller of controllers.current)controller.abort();controllers.current.clear();};
   },[currentSession,replaceBlock,replaceList,scopedRequest,updateLists]);
   useEffect(()=>{
     const model=createPersonalListCreation({request:scopedRequest,
@@ -265,7 +267,7 @@ export function PersonalListsPage() {
   useNavigationGuard(context=>{
     const internal = currentSession() && keepsPersonalListDrafts(window.location.href, context);
     const creatingNow=currentSession()?creation.current?.snapshot():null;
-    return {dirty:Boolean(creatingNow?.unresolved)||(!internal && Boolean(queue.current?.snapshot().dirty||statusRef.current==='error')),
+    return {dirty:Boolean(creatingNow?.unresolved)||(!internal && Boolean(itemDrafts.current.dirty||queue.current?.snapshot().dirty||statusRef.current==='error')),
       busy:Boolean(pendingSaves.current||creatingNow?.busy||(!internal && queue.current?.snapshot().busy))};
   });
 
@@ -291,6 +293,14 @@ export function PersonalListsPage() {
   const selectList = id => {
     if (!currentSession() || pendingSaves.current || !personalListId(id)) return;
     if (navigateWithinApp(window, personalListUrl(window.location.href, id)) && globalThis.matchMedia?.('(max-width: 980px)').matches) setRailOpen(false);
+  };
+  const changeItemDraft = (listId, blockId, text) => {
+    if (!currentSession() || pendingSaves.current || !listsRef.current.some(list=>String(list.id)===String(listId)&&list.bloques?.some(block=>String(block.id)===String(blockId)))) return;
+    itemDrafts.current.set(listId,blockId,text);renderItemDrafts(value=>value+1);
+  };
+  const submitItemDraft = (listId, blockId, text) => {
+    if (!currentSession()) return;
+    if(itemDrafts.current.consume(listId,blockId,text))renderItemDrafts(value=>value+1);
   };
 
   const load = useCallback(async () => {
@@ -318,8 +328,8 @@ export function PersonalListsPage() {
   },[currentSession]);
   const reload = async()=>{
     if(pendingSaves.current||queue.current?.snapshot().busy)return;
-    if((queue.current?.snapshot().dirty||status==='error')&&!window.confirm('Hay cambios locales sin guardar. ¿Descartarlos y recargar desde el servidor?'))return;
-    queue.current?.discard();await load();
+    if((itemDrafts.current.dirty||queue.current?.snapshot().dirty||status==='error')&&!window.confirm('Hay cambios locales sin guardar. ¿Descartarlos y recargar desde el servidor?'))return;
+    itemDrafts.current.clear();renderItemDrafts(value=>value+1);queue.current?.discard();await load();
   };
 
   const createList = async (template) => {
@@ -354,9 +364,10 @@ export function PersonalListsPage() {
     queue.current?.schedule({key:`list-${listId}`,url:`/api/listas-personales/${listId}`,version:current.version,payload:clean,merge:true,meta:{listId,recordId:listId}});
   };
   const deleteList = async () => {
-    if (!activeList || !window.confirm(`¿Eliminar “${activeList.titulo}” y todo su contenido? Esta acción no se puede deshacer.`)) return; const listId = activeList.id;
+    if (!activeList || !window.confirm(`¿Eliminar “${activeList.titulo}” y todo su contenido, incluidos los elementos sin agregar? Esta acción no se puede deshacer.`)) return; const listId = activeList.id;
     try { await runSaving(() => scopedRequest(`/api/listas-personales/${listId}`, { method: "DELETE" })); if (!currentSession()) return;
       updateLists(current=>current.filter(list=>String(list.id)!==String(listId)));
+      itemDrafts.current.removeList(listId);renderItemDrafts(value=>value+1);
       if (readPersonalListId(window.location.search) === personalListId(listId)) { window.history.replaceState(window.history.state, '', personalListUrl(window.location.href, null)); setActiveId(null); }
     } catch { /* El error queda visible. */ }
   };
@@ -365,16 +376,17 @@ export function PersonalListsPage() {
     try { const block = await runSaving(() => scopedRequest(`/api/listas-personales/${listId}/bloques`, jsonOptions("POST", newBlock(type)))); replaceList(listId, (list) => ({ ...list, bloques: [...(list.bloques || []), block] })); } catch { /* El error queda visible. */ }
   };
   const changeBlock = (block, content) => {
-    if(!activeList||pendingSaves.current||!currentSession())return;
+    if(!activeList||pendingSaves.current||!currentSession())return false;
     const listId=activeList.id,current=listsRef.current.find(list=>list.id===listId)?.bloques?.find(row=>row.id===block.id);
-    if(!current)return;
-    replaceBlock(listId,block.id,value=>({...value,contenido:content}));
-    queue.current?.schedule({key:`block-${block.id}`,url:`/api/listas-personales/bloques/${block.id}`,version:current.version,
+    if(!current)return false;
+    const accepted=queue.current?.schedule({key:`block-${block.id}`,url:`/api/listas-personales/bloques/${block.id}`,version:current.version,
       payload:{tipo:block.tipo,contenido:content},meta:{listId,blockId:block.id,recordId:block.id}});
+    if(accepted!==true)return false;
+    replaceBlock(listId,block.id,value=>({...value,contenido:content}));return true;
   };
   const deleteBlock = async (block) => {
-    if (!window.confirm(`¿Eliminar este bloque de ${BLOCK_LABELS[block.tipo].toLowerCase()}?`)) return; const listId = activeList.id;
-    try { await runSaving(() => scopedRequest(`/api/listas-personales/bloques/${block.id}`, { method: "DELETE" })); replaceList(listId, (list) => ({ ...list, bloques: list.bloques.filter((current) => current.id !== block.id) })); } catch { /* El error queda visible. */ }
+    if (!window.confirm(`¿Eliminar este bloque de ${BLOCK_LABELS[block.tipo].toLowerCase()} y descartar cualquier elemento sin agregar?`)) return; const listId = activeList.id;
+    try { await runSaving(() => scopedRequest(`/api/listas-personales/bloques/${block.id}`, { method: "DELETE" })); replaceList(listId, (list) => ({ ...list, bloques: list.bloques.filter((current) => current.id !== block.id) })); itemDrafts.current.removeBlock(listId,block.id);renderItemDrafts(value=>value+1); } catch { /* El error queda visible. */ }
   };
   const moveBlock = (index, direction) => {
     if(pendingSaves.current)return;
@@ -391,7 +403,7 @@ export function PersonalListsPage() {
     if (!window.confirm(`¿Eliminar la plantilla “${template.titulo}”?`)) return;
     try { await runSaving(() => scopedRequest(`/api/listas-personales/plantillas/${template.id}`, { method: "DELETE" })); setTemplates((current) => current.filter((item) => item.id !== template.id)); } catch { /* El error queda visible. */ }
   };
-  const effectiveStatus=saveState.status==='error'||status==='error'?'error':structuralBusy||saveState.busy||creationState.busy?'saving':saveState.dirty||creationState.unresolved?'pending':'saved';
+  const effectiveStatus=saveState.status==='error'||status==='error'?'error':structuralBusy||saveState.busy||creationState.busy?'saving':itemDrafts.current.dirty||saveState.dirty||creationState.unresolved?'pending':'saved';
   const visibleError=saveState.error||error;
   const creationBlocked=creationState.unresolved||creationState.phase==='rejected'||creationState.phase==='denied';
   const creationRecovery=creationState.phase!=='idle'&&creationState.phase!=='confirmed'&&<section className="personal-list-error" aria-label="Recuperar creación de página" role="status">
@@ -412,11 +424,12 @@ export function PersonalListsPage() {
     <aside id="personal-list-pages" className="personal-list-rail" aria-label="Mis páginas" aria-hidden={!railOpen} inert={!railOpen ? true : undefined}><div className="personal-list-rail-heading"><span>Mis páginas</span><div><button type="button" disabled={structuralBusy} onClick={() => setTemplateOpen(true)} aria-label="Crear página">+</button><button className="personal-list-rail-close" type="button" onClick={() => setRailOpen(false)} aria-label="Cerrar panel de páginas">‹</button></div></div><div className="personal-list-tabs">{lists.map((list) => <button key={list.id} disabled={structuralBusy} className={String(list.id) === String(activeList?.id) ? "active" : ""} type="button" onClick={() => selectList(list.id)}><span>{list.emoji}</span><strong>{list.titulo}</strong></button>)}</div><p>Privado · solo vos podés verlo</p></aside>
     {activeList ? <article className="personal-list-document">
       {!templateOpen&&creationRecovery}
+      {itemDrafts.current.dirty && <p role="status">Hay elementos sin agregar. Volvé a su página y presioná Enter para incorporarlos.</p>}
       <div className="personal-list-toolbar"><div className="personal-list-toolbar-start"><button className="personal-list-rail-toggle" type="button" onClick={() => setRailOpen((current) => !current)} aria-expanded={railOpen} aria-controls="personal-list-pages"><span aria-hidden="true">{railOpen ? "‹" : "☰"}</span><strong>{railOpen ? "Ocultar" : "Páginas"}</strong></button><span>Página personal</span></div><div><SavingStatus status={effectiveStatus}/><button type="button" disabled={structuralBusy||saveState.busy||!saveState.dirty||Boolean(saveState.error)} onClick={()=>{void queue.current?.flush();}}>Guardar ahora</button><button type="button" disabled={structuralBusy} onClick={() => setSaveTemplateOpen(true)}>Guardar plantilla</button><button className="danger personal-list-delete" type="button" disabled={structuralBusy} onClick={deleteList} aria-label="Eliminar página"><span aria-hidden="true">×</span><strong>Eliminar página</strong></button></div></div>
       {visibleError && <div className="personal-list-error" role="alert"><span>{visibleError} Tus cambios locales se conservan hasta que elijas descartarlos.</span>{saveState.error&&!saveState.conflict&&<button type="button" disabled={saveState.busy||structuralBusy} onClick={()=>{void queue.current?.retry();}}>Reintentar guardado</button>}<button type="button" disabled={saveState.busy||structuralBusy} onClick={reload}>Actualizar desde servidor</button></div>}
       <div className="personal-list-cover"/><fieldset className="personal-editor-lock" disabled={structuralBusy}><div className="personal-list-content"><div className="personal-emoji-wrap"><button className="personal-list-emoji" type="button" onClick={() => setEmojiOpen((current) => !current)} aria-label="Cambiar emoji">{activeList.emoji}</button>{emojiOpen && <EmojiPicker value={activeList.emoji} onClose={() => setEmojiOpen(false)} onSelect={(emoji) => { setEmojiOpen(false); saveListMeta({ emoji }); }}/>}</div>
         <input className="personal-list-title" maxLength={120} value={activeList.titulo} aria-label="Título de la página" onChange={(event) => saveListMeta({ titulo: event.target.value })}/><p className="personal-list-hint">Combiná bloques y ordenalos como te resulte más cómodo. Los cambios se guardan automáticamente; revisá el estado antes de salir.</p>
-        <div className="personal-editor-blocks">{(activeList.bloques || []).map((block, index) => <BlockEditor key={block.id} block={block} index={index} count={activeList.bloques.length} onChange={(content) => changeBlock(block, content)} onMove={moveBlock} onDelete={deleteBlock}/>)}{!activeList.bloques?.length && <div className="personal-page-empty"><span>Una página en blanco.</span><small>Agregá el primer bloque para empezar.</small></div>}</div><AddBlockMenu onAdd={addBlock}/>
+        <div className="personal-editor-blocks">{(activeList.bloques || []).map((block, index) => <BlockEditor key={block.id} block={block} index={index} count={activeList.bloques.length} onChange={(content) => changeBlock(block, content)} onMove={moveBlock} onDelete={deleteBlock} draft={itemDrafts.current.get(activeList.id,block.id)} onDraftChange={text=>changeItemDraft(activeList.id,block.id,text)} onDraftSubmitted={text=>submitItemDraft(activeList.id,block.id,text)}/>)}{!activeList.bloques?.length && <div className="personal-page-empty"><span>Una página en blanco.</span><small>Agregá el primer bloque para empezar.</small></div>}</div><AddBlockMenu onAdd={addBlock}/>
       </div></fieldset>
     </article> : <section className="personal-list-document"><div className="personal-list-content">{!templateOpen&&creationRecovery}<button className="btn" type="button" onClick={() => setRailOpen(true)}>Elegir una página</button><PageState type="error" title="Esta página no está disponible." description="El enlace no es válido, la página fue eliminada o no pertenece a tu espacio. Elegí otra página para continuar." onRetry={reload} /></div></section>}
     {templateOpen && <TemplateDialog {...templateDialogProps}/>}

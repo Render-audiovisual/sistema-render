@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { createPersonalListCreation, reconcilePersonalListCreation } from './personalListCreation.js';
 import { personalListId, personalListUrl, keepsPersonalListDrafts } from './personalListLocation.js';
+import { createPersonalItemDrafts } from './personalItemDrafts.js';
 
 // Actual effect/callback extraction with the real model. This does not mount
 // React or certify native navigation/focus, HTTP persistence or PostgreSQL.
@@ -25,6 +26,7 @@ function fixture(request) {
   const window = { location: { href: 'https://render.test/lista?lista=2#section' },
     history: { state: { keep: 1 }, replaceState(state, title, url) { writes.push({ state, url }); } } };
   const deps = { creation, creationOrigin, listSelection: selection, mounted: { current: true }, currentSession: () => current,
+    itemDrafts: { current: createPersonalItemDrafts() }, renderItemDrafts() {},
     scopedRequest: async (...args) => { calls.push(args); return request(...args); },
     createPersonalListCreation: options => createPersonalListCreation({ ...options, createRequestId: () => key }),
     reconcilePersonalListCreation, personalListId, personalListUrl, window,
@@ -94,5 +96,5 @@ test('recovery does not become an extra grid child and unresolved creation canno
   assert.equal(full.children.some(n => ts.isJsxExpression(n) && n.expression?.getText(ast) === '!templateOpen&&creationRecovery'), false);
   const status = declarations('effectiveStatus');
   assert.equal(evaluate(status, { saveState: { status: 'saved', busy: false, dirty: false }, status: 'saved', structuralBusy: false,
-    creationState: { busy: false, unresolved: true } }), 'pending');
+    creationState: { busy: false, unresolved: true }, itemDrafts: { current: createPersonalItemDrafts() } }), 'pending');
 });
