@@ -1,0 +1,21 @@
+/* Keep the existing right-hand editor in the shared native top layer. */
+.modal-overlay.usuarios-modal-backdrop {
+  padding: 0;
+  background: rgba(20, 25, 31, 0.56);
+}
+.modal.usuarios-panel {
+  box-sizing: border-box;
+  padding: 0;
+  max-width: 100%;
+  width: min(560px, 100vw);
+  overflow-y: auto;
+}
+.usuarios-panel .modal-header.usuarios-panel-header {
+  align-items: flex-start;
+  gap: 16px;
+}
+.usuarios-panel .usuarios-panel-identity { min-width: 0; }
+.usuarios-panel .usuarios-panel-identity h3 { overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .modal.usuarios-panel { width: 100%; max-height: 94dvh; }
+}

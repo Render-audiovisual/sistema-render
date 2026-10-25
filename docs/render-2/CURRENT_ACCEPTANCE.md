@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Administración de usuarios: modal nativo compartido — corte288
+
+El editor antes implementado como backdrop+aside usa ahora `Modal native`, conservando key por epoch/usuario, panel derecho, identidad en header, formularios y recovery fuera del fieldset bloqueado. Mantiene `cerrarAdministracion/allowDiscard`, backdrop habilitado y bloqueo de cierre por mutationBusy. Se elimina el listener global Escape duplicado; foco inicial explícito en nombre y retorno mediante el invocador capturado por el Modal. CSS específico conserva panel560px y breakpoint móvil640px, sin modificar reglas de permisos o requests. Apple UI/Frontend Design orientaron mantener jerarquía y escala, no un rediseño del formulario.
+
+Coordinador implementó/ejecutó y Harvey revisó estilos/guardas; detectó discrepancia760/640 corregida antes de cierre.47focales PASS antes del nuevo test de cableado; frontend2981PASS/1SKIP/0FAIL, salida0; build index-D7OuiM2h correcto antes del ajuste final de breakpoint. Logs `/private/tmp/render2-goal288-{focal,frontend,build}.log`. Sin backend/migraciones/servidores/DB/proveedores/despliegue.
+
+Build final tras ajustar breakpoint: index-BKjRJE7w, salida0 (`/private/tmp/render2-goal288-build-final.log`). No aceptación nativa todavía: top-layer, Tab/recovery, confirmación de descarte cancelada, scroll móvil y retorno al botón Administrar cuando sigue conectado/habilitado requieren navegador real. No se afirma recuperación de foco si refresh elimina el invocador. Sigue incompleta la aceptación global.
+
 ### Planilla de publicaciones: omisión de escrituras intactas — corte287
 
 `PublicacionesPlanillaTab` mantiene un baseline por ID separado del draft, instalado solo por lectura vigente o ACK válido. Omite campos equivalentes únicamente con capture/revisión válidos coincidentes y sin cola. Vacío/null se equipara solo para los inputs explícitos que representan null como vacío, sin trim nuevo. El enqueue invalida lecturas previas; GET no promueve baseline de filas pendientes; intento/fallo invalida su confianza y el fallo invalida GET pendientes. Conserva CAS capturado, dedupe adyacente y retorno A→B→A; no rebasa writes para evitar409.

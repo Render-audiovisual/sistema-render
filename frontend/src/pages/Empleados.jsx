@@ -4,6 +4,7 @@ import { useScopedRequest } from '../shared/session/use-scoped-request.js';
 import { isSessionFailure } from '../shared/session/captured-request.js';
 import { useNavigationGuard } from '../shared/navigation/useNavigationGuard.js';
 import { Modal } from "../components/Modal.jsx";
+import './employeeAdminDialog.css';
 import { getRolLabel, ROL_LABELS } from "../constants.js";
 
 const employeeId = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
@@ -81,6 +82,7 @@ function EmpleadosContent({ sesion }) {
   const { capture: captureRoster } = useScopedRequest(sesion,'employee-roster');
   const pending = useRef(false), listGeneration = useRef(0);
   const createButtonRef = useRef(null), createNameRef = useRef(null);
+  const managedHeadingRef = useRef(null);
   const [mutationBusy,setMutationBusy] = useState(false);
   const editObservations = useRef({}), blockedTargetsRef = useRef(new Set());
   const [blockedTargets,setBlockedTargets] = useState({});
@@ -168,12 +170,6 @@ function EmpleadosContent({ sesion }) {
     setWhatsappEdicion(''); setEditandoWhatsapp(false); setEditandoCorreo(false); setEditandoGoogleEmail(false); setEditandoDatos(false);
     setFormError(null); setMensaje(null);
   };
-  const closeRef = useRef(cerrarAdministracion); closeRef.current = cerrarAdministracion;
-  useEffect(() => {
-    if (!usuarioAdministrado) return;
-    const escape = event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeRef.current(); } };
-    window.addEventListener('keydown',escape); return () => window.removeEventListener('keydown',escape);
-  }, [Boolean(usuarioAdministrado)]);
 
   const mergeLocal = (row, guard) => {
     guard.assertCurrent();
@@ -585,23 +581,17 @@ function EmpleadosContent({ sesion }) {
       )}
 
       {usuarioAdministrado && (
-        <div key={`${epoch}:${usuarioAdministrado.id}`} className="usuarios-modal-backdrop" role="presentation" onMouseDown={cerrarAdministracion}>
-          <aside
+        <Modal key={`${epoch}:${usuarioAdministrado.id}`}
+            native
             className="usuarios-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="administrar-usuario-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="usuarios-panel-header">
-              <button
-                className="usuarios-close"
-                type="button"
-                onClick={cerrarAdministracion}
-                aria-label="Cerrar"
-              >
-                ×
-              </button>
+            overlayClassName="usuarios-modal-backdrop"
+            headerClassName="usuarios-panel-header"
+            overlayAriaLabel={`Administrar usuario: ${usuarioAdministrado.nombre}`}
+            onClose={cerrarAdministracion}
+            closeDisabled={mutationBusy}
+            closeOnBackdropClick
+            initialFocusRef={managedHeadingRef}
+            title={
               <div className="usuarios-panel-identity">
                 <div className="usuarios-avatar is-large">
                   {usuarioAdministrado.foto_perfil ? (
@@ -612,13 +602,14 @@ function EmpleadosContent({ sesion }) {
                 </div>
                 <div>
                   <span className="usuarios-eyebrow">Cuenta del equipo</span>
-                  <h3 id="administrar-usuario-title">{usuarioAdministrado.nombre}</h3>
+                  <h3 ref={managedHeadingRef} tabIndex={-1} id="administrar-usuario-title">{usuarioAdministrado.nombre}</h3>
                   <div className={`usuarios-role role-${usuarioAdministrado.rol}`}>
                     {getRolLabel(usuarioAdministrado.rol)}
                   </div>
                 </div>
               </div>
-            </div>
+            }
+          >
 
             {blockedTargets[usuarioAdministrado.id] && <div className="usuarios-alert" role="status">
               {recoveryRequested ? <>
@@ -929,8 +920,7 @@ function EmpleadosContent({ sesion }) {
                 </button>
               </section>
             </fieldset>
-          </aside>
-        </div>
+        </Modal>
       )}
     </main>
   );

@@ -8,6 +8,22 @@ const source=readFileSync(new URL('./Empleados.jsx',import.meta.url),'utf8');
 const file=ts.createSourceFile('Empleados.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
 const all=[];function visit(node){all.push(node);ts.forEachChild(node,visit)}visit(file);
 const declaration=all.find(node=>ts.isVariableDeclaration(node)&&node.name.getText(file)==='employeeNavigationStatus');
+
+test('managed account uses shared native modality without a competing global Escape handler',()=>{
+ const modal=all.find(node=>ts.isJsxOpeningElement(node)&&node.tagName.getText(file)==='Modal'
+   &&node.attributes.properties.some(prop=>prop.name?.getText(file)==='className'&&prop.initializer?.text==='usuarios-panel'));
+ assert.ok(modal);
+ const attrs=new Map(modal.attributes.properties.map(prop=>[prop.name?.getText(file),prop.initializer?.getText(file)]));
+ assert.equal(attrs.get('native'),undefined);assert.ok(attrs.has('native'));
+ assert.equal(attrs.get('onClose'),'{cerrarAdministracion}');
+ assert.equal(attrs.get('closeDisabled'),'{mutationBusy}');
+ assert.equal(attrs.get('initialFocusRef'),'{managedHeadingRef}');
+ assert.ok(attrs.has('closeOnBackdropClick'));
+ assert.equal(attrs.get('headerClassName'),'"usuarios-panel-header"');
+ assert.doesNotMatch(source,/window\.addEventListener\('keydown',escape\)/);
+ assert.doesNotMatch(source,/<aside\b/);
+ assert.match(source,/ref=\{managedHeadingRef\} tabIndex=\{-1\}/);
+});
 // Execute the actual getter, not a substitute policy or mounted React tree.
 function fixture(){
  const state={current:true,modalAltaAbierto:false,altaDirty:false,usuarioAdministrado:null,adminDirty:false,pending:{current:false}};
