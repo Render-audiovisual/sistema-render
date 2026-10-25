@@ -4,7 +4,8 @@ import { feedbackFingerprint } from "./feedback-workflow.js";
 const APP_URL_POR_DEFECTO = "https://sistema.rendercorrientes.com";
 
 async function resolverUsuarios(pool, nombres) {
-  const { rows } = await pool.query("SELECT usuario, nombre FROM usuarios");
+  // Disabled accounts must not be selected for a fresh Feedback notification.
+  const { rows } = await pool.query("SELECT usuario, nombre FROM usuarios WHERE activo IS TRUE");
   return nombres.map((nombre) => {
     const buscado = normalizarNombre(nombre);
     return rows.find((usuario) => normalizarNombre(usuario.usuario) === buscado

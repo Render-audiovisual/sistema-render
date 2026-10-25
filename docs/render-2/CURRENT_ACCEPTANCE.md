@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Feedback: no seleccionar cuentas inactivas para avisos nuevos — corte255
+
+Corregido el pendiente de selección detectado254: el resolver privado de Feedback exige activo IS TRUE. Solo selección de candidatos nuevos; no cambia permisos, destinatarios por nombres, fingerprint/detalles o recibos.3 unitarias nuevas rojas→verdes y24 focales PASS. Nueva física PostgreSQL55891:4PASS padre+3subtests, inactivo→activo→inactivo, timestamp/fingerprint negativo distinto para evitar falso positivo de dedupe; un aviso exacto conservado y106 tablas observadas con solo cambios de prueba previstos. Raíces Xy53ok/1ZiJX4 cleanup ENOENT; primer fallo rojo acredita enqueue indebido, posteriores en cascada no son reproducciones independientes.
+
+HTTP de recibos renovado16PASS, backend2259PASS/142optativasSKIP/0fallos. Logs /private/tmp/render2-goal255-physical.log, feedback-receipts.log y backend.log. Volta física, Erdos unitarias/revisión y coordinador producto/integración/ejecución. Sin frontend/build nuevo, SMTP/worker/proveedor, bases configuradas o deploy. No resuelve retiro de avisos existentes, revocación después del SELECT, nombres ambiguos ni destinatarios por ID; esos pendientes continúan. Ver FEEDBACK_RECEIPTS_QA.md.
+
 ### Avisos de estado: autoexclusión por identidad — corte254
 
 Corregido caso de empleado y revisor distintos llamados Franco: server pasa actorId y notifiers email/privado excluyen al autor por ID, aunque los destinos de estado aún sean legacy por nombres. Identificador proporcionado inválido se rechaza antes de consultar; candidato sinID no recurre al nombre. Sin cambio de lista de revisores, permisos, fingerprint/detalles legacy o estados. Erdos implementó14 unitarias, Volta física y coordinador integró producto/fixtures y verificó.39 focales PASS; nueva física3PASS padre+2subtests sobre PostgreSQL55890, dos cambios exactos de tarea/tres avisos permitidos y105 tablas observadas; cleanup gbEtkC. Rojo inicial reprodujo1aviso frente a2; primer post-fix falló por expectativa incompleta de metadata del fixture, corregida estrictamente. Ver TASK_WORKFLOW_QA.md.

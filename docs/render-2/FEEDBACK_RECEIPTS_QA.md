@@ -1,5 +1,17 @@
 # Feedback receipts: independent principal HTTP QA
 
+## Candidatos activos para avisos nuevos — corte255
+
+private-feedback-notifications.js ahora exige activo IS TRUE en el SELECT de destinatarios. Antes, una cuenta inactiva podía encolar un aviso. Cambia solo la selección para nuevos enqueues: responsables por nombres, exclusión del autor, mensajes, fingerprints, detalles, recibos y permisos de notas quedan intactos. El fixture unitario de recibos se actualizó a la consulta exacta, sin relajar sus aserciones.
+
+Erdos escribió3 unitarias nuevas, coordinador reprodujo3FAIL antes del cambio y24 focales PASS después. Volta preparó la física nueva render2-feedback-notification-active.integration.test.js; coordinador inspeccionó/ejecutó, Erdos revisó producto/alcance sin bloqueantes. PostgreSQL descartable55891 clusterOnly, pool dedicado e identidad física verificada: inactivo inicial no encola ni cambia tablas; activar permite una fila pending exacta; desactivar impide un intento con fingerprint distinto y conserva la fila anterior.106 tablas observadas, únicamente dos cambios de actividad/trigger074 y una notificación permitidos después del baseline; nota, otros usuarios y resto de tablas intactos.4PASS contando padre+3subtests, cleanup ENOENT /private/tmp/render2-local-1ZiJX4. Rojo Xy53ok: el primer negativo encoló indebidamente; fallos posteriores en cascada no son cuatro reproducciones independientes. Ambas raíces eliminadas. Logs /private/tmp/render2-goal255-unit-red.log, unit.log, physical-red.log y physical.log.
+
+Renovada la integración HTTP de recibos existente:16PASS,0fallos/omisiones, log /private/tmp/render2-goal255-feedback-receipts.log con cleanup propio. Backend2259PASS/142optativasSKIP/0fallos, /private/tmp/render2-goal255-backend.log. No regresión frontend/build nuevo: este corte no modifica frontend. Superpowers, seguridad Express y guía PostgreSQL orientaron el filtro de servidor y las pruebas aisladas. No SMTP, proveedor, bases configuradas ni deploy.
+
+Límite: la física nueva prueba resolver/servicio sobre PostgreSQL, no una ruta HTTP nueva ni worker. La integración HTTP renovada comprueba compatibilidad de recibos, no entrega a una cuenta inactiva. El filtro no revoca avisos existentes, no retiene actividad después del SELECT y no resuelve homónimos/reutilización de claves o binding por ID. La elegibilidad legacy de avisos ya encolados sigue pendiente. No aceptación global de notificaciones ni del objetivo maestro.
+
+## Evidencia histórica inicial
+
 Status: **PASS — final coordinator execution; files frozen**. Contract `FEEDBACK_RECEIPTS_CONTRACT.md` read completely. QA author owned only `backend/test/render2-feedback-receipts.integration.test.js` and this document; application integration and executions belong to the coordinator.
 
 Final evidence: coordinator ran **16/16** feedback HTTP tests after the user-deletion guard and token lock/clock fixes, including two real PostgreSQL barriers (note lock and unchanged token-row lock). Each HTTP transaction demonstrably began and waited before expiry, then returned409 after expiry with unused token and identical persistence snapshots. Fixture `/private/tmp/render2-local-6HgXyU` stopped/removed with absence asserted. All ten suites then ran together: **116 passed, zero failures/skips**. Final backend pure regression **796 passed / 17 opt-in skipped**, frontend page regression **152 passed**, final frontend build passed.

@@ -144,7 +144,7 @@ function fixture(options={}) {
     if(sql.startsWith('INSERT INTO notas_compartidas')){note={...note,titulo:params[0],contenido:params[1],categoria:params[2],creado_por:params[3],modificado_por:params[3],feedback:JSON.parse(params[4])};return{rows:[note]};}
     if(sql.startsWith('UPDATE notas_compartidas SET titulo=')){note={...note,titulo:params[0],contenido:params[1],categoria:params[2],feedback:JSON.parse(params[3]),modificado_por:params[4]};return{rows:[note]};}
     if(sql.startsWith('INSERT INTO integracion_auditoria')){audits++;return{rows:[]};}
-    if(sql==='SELECT usuario, nombre FROM usuarios')return{rows:[{usuario:'recipient',nombre:'Destinatario'}]};
+    if(sql==='SELECT usuario, nombre FROM usuarios WHERE activo IS TRUE')return{rows:[{usuario:'recipient',nombre:'Destinatario'}]};
     if(sql.includes('INSERT INTO mia_private_task_notifications')){notifications++;if(options.failQueue)throw Error('Injected outbox failure');return{rows:[{id:1,fingerprint:'one-notification'}]};}
     if(sql.startsWith('INSERT INTO feedback_operation_receipts')) {
       const receipt={actor_user_id:params[0],operation:params[1],idempotency_key:params[2],payload_hash:params[3],note_id:params[4],note_updated_at:params[5],committed_at:version};receipts.push(receipt);
