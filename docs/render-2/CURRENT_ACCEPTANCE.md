@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Planilla: blur intacto en navegador real — corte290
+
+App288/index-BKjRJE7w incluye el fix287, backend285, Chrome1280×800 y PostgreSQL propio55915/HTTP52859. Login sintético conserva enlace directo `planificacion-publicaciones?tab=planilla&cliente=1&mes=2026-10`. Se enfocó y tabuló fecha, idea, copy, material y notas sin editar; textos/estado se mantuvieron, y recarga recuperó el copy original. Captura `/private/tmp/render2-goal290-planilla-desktop.png` inspeccionada: teclado desplaza horizontalmente la grilla hasta el responsable. No aceptación móvil en este corte.
+
+Runner `/private/tmp/render2-goal290-native.mjs` y log homónimo. PID3972/hijo3996 propios verificados antes de TERM; salida0,105hashes de dominio (incluyen filas/revisiones editoriales) y contadores de usuarios invariantes, index/entry intactos, cleanup ENOENT hKtOaO. Viewport restaurado/tab cerrada. No instrumentación de requests: se prueba ausencia de mutaciones persistidas, **no conteo físico de cero PATCH**. El runner conserva una etiqueta scope heredada de publicaciones/calendario; el recorrido realizado es el descrito aquí.
+
+No nuevos cambios de producto/build. Verificación adicional recomendada por Harvey; coordinador realizó navegador y cleanup. Pendientes: edición real con ACK/recarga en UI, respuestas inciertas, draft posterior y GET que cruza edición; este último sigue señalado por fuente, no reproducido ni corregido aquí. Sin producción/proveedores/datos reales; aceptación global incompleta.
+
 ### Administración de usuarios: comprobación nativa de escritorio y móvil — corte289
 
 Chrome real, App288/index-BKjRJE7w, backend285, fixture PostgreSQL55914/HTTP52858. En1280×800: dialog`:modal` verdadero, panel derecho560×800 en x720/y0, foco inicial LucianoQA; Shift+Tab desde X alcanza Dar de baja, Tab vuelve a X, Escape cierra y devuelve foco al Administrar de la card LucianoQA. Sin activar la baja ni guardar formularios.
