@@ -187,7 +187,8 @@ test('shared production reporting and task context: stable IDs, privacy and rang
   await t.test('source/editing context is a small relation DTO, not task metadata or financial data', async () => {
     for (const user of users) for (const [id, tipo] of [[sourceId, 'origen'], [editingId, 'edicion']]) {
       const relation = await context(id, user.token);
-      exactKeys(relation, ['id', 'fecha', 'revision', 'tipo', 'videos_total', 'videos_grabados', 'fotos_total', 'usa_registro_individual']);
+      exactKeys(relation, ['id', 'fecha', 'revision', 'tipo', 'videos_total', 'videos_grabados', 'fotos_total', 'usa_registro_individual',
+        ...(tipo === 'origen' ? ['finalizacion'] : [])]);
       assert.equal(relation.id, visitId);
       assert.equal(relation.tipo, tipo);
       assert.equal(relation.fecha, '2026-10-20');
@@ -196,6 +197,12 @@ test('shared production reporting and task context: stable IDs, privacy and rang
       assert.equal(relation.videos_grabados, 2);
       assert.equal(relation.fotos_total, 1);
       assert.equal(relation.usa_registro_individual, true);
+      if (tipo === 'origen') {
+        exactKeys(relation.finalizacion, ['task_revision', 'previstos', 'grabados', 'total', 'habilitada']);
+        assert.ok(Number.isSafeInteger(relation.finalizacion.task_revision));
+        assert.equal(relation.finalizacion.total, 3); assert.equal(relation.finalizacion.grabados, 2);
+        assert.equal(relation.finalizacion.habilitada, false);
+      } else assert.equal(Object.hasOwn(relation, 'finalizacion'), false);
     }
     assert.equal(await context(unlinked.id, users[1].token), null, 'Spoofed JSON cannot manufacture a registry relation');
     assert.equal(await context(2147483646, users[3].token), null);

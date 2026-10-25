@@ -30,7 +30,7 @@ export function buildTaskReadAccessClause(auth, alias, placeholder, workspace) {
 export function canEmployeePatchTask(body = {}, { workspace, role } = {}) {
   const keys = Object.keys(body);
   if (workspace === "render_os") {
-    const allowedFields = ["titulo", "asignado_a", "asignado_a_id", "colaborador_ids", "cliente_id", "fecha_vencimiento", "tipo_tarea", "subtipo", "prioridad", "estado", "aclaraciones", "material_referencia", "propiedades_extra", "expected_updated_at", "expected_revision"];
+    const allowedFields = ["titulo", "asignado_a", "asignado_a_id", "colaborador_ids", "cliente_id", "fecha_vencimiento", "tipo_tarea", "subtipo", "prioridad", "estado", "aclaraciones", "material_referencia", "propiedades_extra", "expected_updated_at", "expected_revision", "expected_production_visit"];
     const allowedMetadata = ["resumen", "etiquetas", "colaboradores", "guiones", "copy_trabajo", "produccion_videos_previstos",
       ...(role === "produccion" ? ["horario", "coordinada"] : [])];
     return keys.every((key) => allowedFields.includes(key))

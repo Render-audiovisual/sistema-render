@@ -87,7 +87,7 @@ import { legacyPieceSelection, readLegacyEditorialPiece, writeEditorialPiece } f
 import { createEditorialPiece } from './editorial-piece-create.js';
 import { createEditorialArchiveRouter } from './editorial-archive.js';
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
-import { assertProductionTaskFinalization } from './production-task-finalization.js';
+import { assertProductionTaskFinalization, normalizeExpectedProductionVisit } from './production-task-finalization.js';
 import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { loadReportSnapshot } from "./report-snapshot.js";
@@ -321,6 +321,7 @@ router.patch("/usuarios/:id/acceso", requireRole("admin"), async (req, res, next
 });
 router.use("/cliente-objetivos", createClientGoalsRouter({ pool }));
 router.get("/producciones/tareas/:id", async (req, res, next) => {
+  res.set('Cache-Control', 'no-store');
   try {
     if (!/^[1-9]\d*$/.test(req.params.id)) return res.status(400).json({ error: "Tarea inválida." });
     res.json(await loadProductionTaskContext(pool, Number(req.params.id)));
@@ -1563,9 +1564,12 @@ router.patch("/tareas/:id", async (req, res, next) => {
     catch (error) { return res.status(400).json({ error: error.message }); }
     const { id } = req.params;
     const body = req.body;
+    const expectedProductionVisit = normalizeExpectedProductionVisit(body.expected_production_visit);
+    if (Object.hasOwn(body, 'expected_production_visit') && body.estado !== 'finalizada')
+      return res.status(400).json({ error: 'La observación de visita solo corresponde a finalizar la tarea.' });
     const expectedEditingDelivery = normalizeExpectedEditingDelivery(body.expected_entrega_id);
     if (expectedEditingDelivery && body.estado !== 'aprobada') return res.status(400).json({ error: "La entrega observada solo se usa al aprobar." });
-    const stateOnlyRequest = Object.keys(body).every((key) => ["estado", "expected_updated_at", "expected_revision", "expected_entrega_id"].includes(key));
+    const stateOnlyRequest = Object.keys(body).every((key) => ["estado", "expected_updated_at", "expected_revision", "expected_entrega_id", "expected_production_visit"].includes(key));
     let estadoAnterior = null;
     let tareaAnteriorCompleta = null;
     let esRenderOS = req.query.workspace === "render_os";
@@ -1808,9 +1812,9 @@ router.patch("/tareas/:id", async (req, res, next) => {
        WHERE ${where}
        RETURNING id, revision, titulo, asignado_a, cliente_id, estado, requiere_aprobacion, propiedades_extra, to_char(fecha_vencimiento, 'YYYY-MM-DD') AS fecha_vencimiento, historia_id, publicacion_id, tipo_tarea, subtipo, prioridad, aclaraciones, material_referencia, tarea_padre_id, created_at, updated_at`,
       valores, assignment, async (db, task) => {
-        if (esRenderOS && body.estado === 'finalizada') {
+        if ((esRenderOS || expectedProductionVisit) && body.estado === 'finalizada') {
           if (tareaAnteriorCompleta?.revision !== body.expected_revision) throw Object.assign(new Error('La tarea cambió. Recargá antes de finalizarla.'), { status: 409 });
-          await assertProductionTaskFinalization(db, task, tareaAnteriorCompleta);
+          await assertProductionTaskFinalization(db, task, tareaAnteriorCompleta, expectedProductionVisit ?? undefined);
         }
         if (body.estado === 'aprobada' && estadoAnterior !== 'aprobada') {
           const deliveryId = await assertEditingApprovalDelivery(db, task, expectedEditingDelivery);

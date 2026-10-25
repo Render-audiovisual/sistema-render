@@ -356,12 +356,37 @@ function reviewedMobileTemplateBaseline(root) {
   assert.deepEqual(reviewed, ['.render-workspace .ros-content-tools', '.render-workspace .ros-content-tools button']);
   return copy;
 }
+function reviewedProductionClosureBaseline(root) {
+  const copy = root.clone(), selectors = [];
+  copy.walkRules(rule => {
+    if (!rule.selector.startsWith('.render-workspace .ros-production-closure button')) return;
+    selectors.push(rule.selector);
+    const values = Object.fromEntries(rule.nodes.map(node => [node.prop,node.value]));
+    if(rule.selector === '.render-workspace .ros-production-closure button') {
+      assert.equal(values['min-height'],'44px'); assert.equal(values['border-radius'],'8px');
+      assert.equal(values['max-width'],'100%'); assert.equal(values['white-space'],'normal');
+    } else if(rule.selector.endsWith('.primary')) {
+      assert.equal(values.background,'var(--render-ink,#1d1d1f)'); assert.equal(values.color,'var(--render-surface,#fff)');
+    } else if(rule.selector.endsWith(':disabled')) {
+      assert.equal(values.cursor,'not-allowed'); assert.equal(values.opacity,'.5');
+    } else {
+      assert.equal(rule.selector,'.render-workspace .ros-production-closure button:focus-visible');
+      assert.equal(values.outline,'2px solid var(--render-accent)'); assert.equal(values['outline-offset'],'3px');
+    }
+    assert.ok(rule.nodes.every(node => !node.important));
+    rule.remove();
+  });
+  assert.deepEqual(selectors, ['.render-workspace .ros-production-closure button',
+    '.render-workspace .ros-production-closure button.primary', '.render-workspace .ros-production-closure button:disabled',
+    '.render-workspace .ros-production-closure button:focus-visible']);
+  return copy;
+}
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
     let baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedBriefErrorBaseline(baselineRoot);
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedCommentActionsBaseline(baselineRoot);
-    if(name==='TaskDetailNotion')baselineRoot=reviewedMobileTemplateBaseline(baselineRoot);
+    if(name==='TaskDetailNotion')baselineRoot=reviewedProductionClosureBaseline(reviewedMobileTemplateBaseline(baselineRoot));
     if(name==='TaskHeader')baselineRoot=reviewedTaskContinuationBaseline(baselineRoot);
     if (['WorkspaceReadOnly', 'TaskHeader', 'RenderApplePolish'].includes(name)) baselineRoot = reviewedFilterPresentationBaseline(baselineRoot);
     assert.equal(hash(structure(baselineRoot)), layoutBaseline[name]);

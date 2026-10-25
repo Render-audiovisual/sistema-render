@@ -1,4 +1,5 @@
-import { isValidProductionDate } from './production-visits.js';
+import { isValidProductionDate, getProductionProgress } from './production-visits.js';
+import { productionFinalizationReadiness } from './production-task-finalization.js';
 
 const fail = message => Object.assign(new Error(message), { status: 400 });
 const positive = value => Number.isSafeInteger(value) && value > 0;
@@ -49,16 +50,20 @@ export async function loadProductionReport(db, range) {
 export async function loadProductionTaskContext(db, taskId) {
   if (!positive(taskId)) throw fail('Tarea inválida.');
   const result = await db.query(`SELECT v.id,to_char(v.fecha,'YYYY-MM-DD') fecha,v.revision,
+    source.revision AS task_revision,source.propiedades_extra->'produccion_videos_previstos' AS previstos_raw,
     CASE WHEN v.tarea_origen_id=$1 THEN 'origen' ELSE 'edicion' END tipo,
     (SELECT count(*)::int FROM produccion_videos pv WHERE pv.visita_id=v.id) videos_total,
     (SELECT count(*)::int FROM produccion_videos pv WHERE pv.visita_id=v.id AND pv.estado='grabado') videos_grabados,
     (SELECT count(*)::int FROM produccion_fotos pf WHERE pf.visita_id=v.id) fotos_total
-    FROM produccion_visitas v WHERE v.tarea_origen_id=$1
+    FROM produccion_visitas v LEFT JOIN tareas source ON source.id=v.tarea_origen_id WHERE v.tarea_origen_id=$1
       OR EXISTS(SELECT 1 FROM produccion_videos pv WHERE pv.visita_id=v.id AND pv.tarea_edicion_id=$1)
     ORDER BY v.id LIMIT 1`, [taskId]);
   const visit = result.rows[0];
   if (!visit) return { vinculo: null };
   return { vinculo: { id: visit.id, fecha: visit.fecha, revision: visit.revision, tipo: visit.tipo,
     videos_total: visit.videos_total, videos_grabados: visit.videos_grabados, fotos_total: visit.fotos_total,
-    usa_registro_individual: visit.videos_total > 0 || visit.fotos_total > 0 } };
+    usa_registro_individual: visit.videos_total > 0 || visit.fotos_total > 0,
+    ...(visit.tipo === 'origen' ? { finalizacion: productionFinalizationReadiness(visit.task_revision,
+      getProductionProgress({ propiedades_extra: { produccion_videos_previstos: visit.previstos_raw } }).planned,
+      visit.videos_total, visit.videos_grabados) } : {}) } };
 }

@@ -55,10 +55,12 @@ test('task context provides only a verified registry link and counts, not raw ta
     assert.deepEqual(values, [12]);
     assert.match(sql, /v.tarea_origen_id=\$1/);
     assert.match(sql, /pv.tarea_edicion_id=\$1/);
-    return { rows: [{ id: 'visit', fecha: '2026-10-12', revision: 5, tipo: 'origen', videos_total: 3, videos_grabados: 2, fotos_total: 1, importe: 99999 }] };
+    assert.match(sql, /source.revision AS task_revision/);
+    return { rows: [{ id: 'visit', fecha: '2026-10-12', revision: 5, tipo: 'origen', task_revision: 7, previstos_raw: 3, videos_total: 3, videos_grabados: 2, fotos_total: 1, importe: 99999 }] };
   } };
   assert.deepEqual(await loadProductionTaskContext(db, 12), { vinculo: {
     id: 'visit', fecha: '2026-10-12', revision: 5, tipo: 'origen', videos_total: 3, videos_grabados: 2, fotos_total: 1, usa_registro_individual: true,
+    finalizacion: { task_revision: 7, previstos: 3, grabados: 2, total: 3, habilitada: false },
   } });
 });
 
@@ -66,6 +68,21 @@ test('task context rejects non IDs and does not invent a link for legacy or abse
   const db = { query: async () => ({ rows: [] }) };
   for (const id of [null, 0, -1, '12', 1.5, Infinity]) await assert.rejects(loadProductionTaskContext(db, id), error => error.status === 400);
   assert.deepEqual(await loadProductionTaskContext(db, 12), { vinculo: null });
+});
+
+test('source readiness uses one SQL observation and editing links never project finalization', async () => {
+  for (const [total, grabados, previstos, habilitada] of [[0,0,0,false],[3,2,3,false],[2,2,3,false],[3,3,3,true],[1,1,null,true]]) {
+    let calls = 0;
+    const result = await loadProductionTaskContext({ query: async () => {
+      calls++; return { rows: [{ id: 'visit', tipo: 'origen', task_revision: 8, previstos_raw: previstos,
+        videos_total: total, videos_grabados: grabados, fotos_total: 4 }] };
+    } }, 12);
+    assert.equal(calls, 1);
+    assert.deepEqual(result.vinculo.finalizacion, { task_revision: 8, previstos: previstos ?? 0, grabados, total, habilitada });
+  }
+  const editing = await loadProductionTaskContext({ query: async () => ({ rows: [{ id: 'visit', tipo: 'edicion',
+    task_revision: 8, previstos_raw: 3, videos_total: 3, videos_grabados: 3, fotos_total: 0 }] }) }, 12);
+  assert.equal(Object.hasOwn(editing.vinculo, 'finalizacion'), false);
 });
 
 test('editorial summaries separate confirmed actual Córdoba period from dated and undated historical coverage', () => {

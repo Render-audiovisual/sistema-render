@@ -38,6 +38,7 @@ import { isTaskDraftDirty, keepsTaskOpen } from "./taskNavigationGuard.js";
 import { mergeTaskComments } from './taskCommentCollection.js';
 import { createTaskCommentCreation } from './taskCommentCreation.js';
 import {createTaskCreationAttempt,parseTaskCreationAck} from './taskCreationAttempt.js';
+import { productionTaskClosure, adoptProductionTaskObservation } from './productionTaskClosure.js';
 import { createCapturedRequest, isSessionFailure } from '../shared/session/captured-request.js';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import "./WorkspaceReadOnly.css";
@@ -198,13 +199,18 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [registryLookup, setRegistryLookup] = useState({ status: "loading", key: null, vinculo: null });
   const [registryRetry, setRegistryRetry] = useState(0);
+  const [closingProduction, setClosingProduction] = useState(false);
+  const [productionCloseError, setProductionCloseError] = useState('');
+  const productionClosingRef = useRef(false);
+  const productionClosureTaskRef = useRef(task?.id);
+  productionClosureTaskRef.current = task?.id;
   const [linkCopied, setLinkCopied] = useState(false);
   const archivePendingRef = useRef(false);
   const closeApprovedRef = useRef(false);
   const taskDraftDirty = isTaskDraftDirty(task, draft) || Boolean(comment.trim()) || deliveryDirty || coordinationDraft.dirty || reconciliationDraft.dirty
     || (isProductionVisitTask(task || {}) && productionDriveLink.trim() !== String(task?.material_referencia || '').trim())
     || commentDraftOwner.current.creation.snapshot.locked;
-  const taskWriteBusy = saving || commenting || archiving || registeringProduction || savingProductionDrive || approving || confirmingProduction || deliveryBusy || coordinationDraft.busy || reconciliationDraft.busy;
+  const taskWriteBusy = saving || commenting || archiving || registeringProduction || savingProductionDrive || approving || confirmingProduction || deliveryBusy || coordinationDraft.busy || reconciliationDraft.busy || closingProduction;
   useNavigationGuard(({ to, type }) => discardDialogOpen ? { dirty: taskDraftDirty, busy: true } : type !== 'refresh' && (closeApprovedRef.current || keepsTaskOpen(to, task?.id))
     ? { dirty: false, busy: false }
     : { dirty: taskDraftDirty || commentDraftOwner.current.creation.snapshot.locked, busy: taskWriteBusy || commentDraftOwner.current.creation.snapshot.busy || archivePendingRef.current || discardDialogOpen });
@@ -346,12 +352,14 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   const driveFiles = Array.isArray(metadata.drive_archivos) ? metadata.drive_archivos : [];
   const isProductionVisit = isProductionVisitTask(task);
   const registry = taskProductionRegistryState(task, registryLookup);
+  const productionClosure = productionTaskClosure(task, registry, sesion?.usuario);
   const legacyProductionEnabled = registry.legacyEnabled;
   const canEditVisitClient = registry.clientEditable;
   const canEditVisitDate = registry.dateEditable;
   const isLeader = isAdmin;
   const canChangeTaskState = canUserMoveTask(task, sesion?.usuario);
-  const availableTaskStatuses = STATUSES.filter((item) => item.id === canonicalTaskState(task.estado) || canUserMoveTaskToState(task, sesion?.usuario, item.id));
+  const availableTaskStatuses = STATUSES.filter((item) => item.id === canonicalTaskState(task.estado)
+    || (!(isProductionVisit && item.id === 'finalizada') || registry.legacyEnabled) && canUserMoveTaskToState(task, sesion?.usuario, item.id));
   const canApproveForOriana = isLeader && task.estado === "en_revision";
   const editorialContext = isTaskEditorialContext(task);
   const usesEditingReview = task.tipo_tarea === 'edicion' && metadata.workspace === 'render_os';
@@ -466,6 +474,57 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
       if (guard.current()) setDraft((current) => ({ ...current, [field]: task[field] ?? "" }));
     } finally {
       if (guard.current()) setSaving(false);
+    }
+  };
+
+  const closeRecordedProduction = async () => {
+    const guard = captureRequest();
+    const current = () => guard.current() && productionClosureTaskRef.current === task.id;
+    if (!guard.current() || productionClosingRef.current || taskWriteBusy || taskDraftDirty
+      || !productionClosure.complete || !productionClosure.authorized || productionClosure.finished) return;
+    // Capture once before waiting on the shared task queue. Never substitute a
+    // newer visit observation or automatically retry this reviewed operation.
+    const expected = { ...productionClosure.expected }, observedRevision = task.revision;
+    const owner = briefDraftOwner.current, generation = owner.generation;
+    productionClosingRef.current = true; setClosingProduction(true); setProductionCloseError('');
+    try {
+      const confirmed = await onUpdate(task.id, { estado: 'finalizada', expected_production_visit: expected }, 'finalizó la visita de producción', observedRevision);
+      if (!current()) return;
+      if (canonicalTaskState(confirmed?.estado) !== 'finalizada') throw new Error('No se pudo confirmar el cierre.');
+      adoptProductionTaskObservation(confirmed, {taskId:task.id,minRevision:observedRevision+1,owner,generation,currentOwner:briefDraftOwner.current}, fresh => {
+        setDraft({...fresh,aclaraciones:getUnifiedTaskContent(fresh)}); setEditing(false);
+      });
+    } catch (reason) {
+      if (current()) setProductionCloseError(reason?.status === 409
+        ? 'La visita o la tarea cambió. Actualizá el registro y revisalo antes de finalizar.'
+        : 'No pudimos confirmar el cierre. Actualizá el registro para comprobar el estado antes de volver a intentar.');
+    } finally {
+      productionClosingRef.current = false;
+      if (current()) setClosingProduction(false);
+    }
+  };
+
+  const refreshProductionClosure = async () => {
+    const guard = captureRequest();
+    const current = () => guard.current() && productionClosureTaskRef.current === task.id;
+    if (!guard.current() || productionClosingRef.current || taskWriteBusy || taskDraftDirty) return;
+    const owner = briefDraftOwner.current, generation = owner.generation;
+    productionClosingRef.current = true; setClosingProduction(true);
+    try {
+      const refreshed = await apiTaskById(task.id, guard.options());
+      if (!current()) return;
+      if (refreshed?.id !== task.id || !Number.isSafeInteger(refreshed.revision) || refreshed.revision < task.revision) throw new Error('No se pudo verificar la tarea actualizada.');
+      adoptProductionTaskObservation(refreshed, {taskId:task.id,minRevision:task.revision,owner,generation,currentOwner:briefDraftOwner.current}, fresh => {
+        setDraft({...fresh,aclaraciones:getUnifiedTaskContent(fresh)}); setEditing(false);
+      });
+      window.dispatchEvent(new CustomEvent('render-os:related-tasks', { detail: [refreshed] }));
+      setRegistryLookup({status:'loading',key:null,vinculo:null});
+      setRegistryRetry(value => value + 1); setProductionCloseError('');
+    } catch {
+      if (current()) setProductionCloseError('No se pudo actualizar el registro. No se envió ningún cierre.');
+    } finally {
+      productionClosingRef.current = false;
+      if (current()) setClosingProduction(false);
     }
   };
 
@@ -733,6 +792,18 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         {!registry.ready && registryLookup.status !== "error" && <p role="status">Buscando visita de producción… Los controles de producción quedan bloqueados hasta verificar el vínculo.</p>}
         {!registry.ready && registryLookup.status === "error" && <div className="ros-warning-banner" role="alert">No se pudo verificar el vínculo de producción: {registryLookup.error}. No se habilitarán registros históricos sin verificarlo. <button type="button" onClick={() => setRegistryRetry(value => value + 1)}>Reintentar vínculo</button></div>}
         {registry.vinculo && <section className="ros-work-block"><h3>Visita vinculada</h3><p>{registry.vinculo.videos_grabados} de {registry.vinculo.videos_total} videos grabados · {registry.vinculo.fotos_total} registros de fotos</p><a href={`/producciones?visita=${encodeURIComponent(registry.vinculo.id)}`}>Abrir visita en Producciones ↗</a>{registry.vinculo.tipo === "origen" && <p>La fecha y el cliente de esta tarea se editan desde la visita.</p>}{registry.vinculo.tipo === "edicion" && <p>El cliente de esta tarea viene de la visita. La fecha de entrega de edición se puede editar en esta tarea.</p>}{registry.usesIndividual && <p>El registro individual de videos y fotos se administra en Producciones. El flujo agregado histórico queda solo como historial.</p>}</section>}
+        {isProductionVisit && registry.vinculo?.tipo === 'origen' && <section className="ros-work-block ros-production-closure" aria-label="Cierre de visita">
+          <h3>{productionClosure.finished ? 'Visita finalizada' : 'Finalizar visita'}</h3>
+          {!productionClosure.finished && <p>{!productionClosure.observed ? 'Actualizá el registro para verificar los videos de esta visita.'
+            : productionClosure.complete ? 'Todos los videos previstos están grabados. Podés finalizar esta tarea.'
+            : 'Revisá los videos pendientes, por repetir o sin registrar antes de finalizar.'}</p>}
+          {productionCloseError && <p role="alert">{productionCloseError}</p>}
+          {!productionClosure.finished && productionClosure.authorized && <button type="button" className="primary"
+            disabled={taskWriteBusy || taskDraftDirty || !productionClosure.complete} onClick={closeRecordedProduction}>
+            {closingProduction ? 'Verificando…' : 'Finalizar visita'}</button>}
+          <button type="button" disabled={taskWriteBusy || taskDraftDirty} onClick={refreshProductionClosure}>Actualizar registro</button>
+          {taskDraftDirty && <p>Guardá o descartá tus cambios antes de finalizar o actualizar.</p>}
+        </section>}
           <TaskRecordedContext task={task}/>
           <TaskCoordination task={task} sesion={sesion} onUpdate={onUpdate} onDraftStateChange={setCoordinationDraft}/>
           {isAdmin && <ProductionReconciliation taskId={task.id} sesion={sesion} users={users} available={isProductionVisit && registry.ready && !registry.vinculo}

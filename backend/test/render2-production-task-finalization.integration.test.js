@@ -43,9 +43,15 @@ test('canonical production origin task closes explicitly from individual evidenc
     return hashes;
   }
   const raw = async id => (await f.query('SELECT to_jsonb(t) AS row FROM tareas t WHERE id=$1', [id]))[0].row;
-  const finish = (id, revision, actor = 91005) => api(`/tareas/${id}?workspace=render_os`, {
-    actor, method: 'PATCH', body: { estado: 'finalizada', expected_revision: revision },
-  });
+  const finish = async (id, revision, actor = 91005) => {
+    const context = await api(`/producciones/tareas/${id}`, { actor });
+    assert.equal(context.status, 200);
+    const visit = context.body.vinculo;
+    return api(`/tareas/${id}?workspace=render_os`, { actor, method: 'PATCH', body: {
+      estado: 'finalizada', expected_revision: revision,
+      ...(visit?.tipo === 'origen' ? { expected_production_visit: { id: visit.id, revision: visit.revision } } : {}),
+    } });
+  };
   let serial = 0;
   async function canonical({ planned = 3, states = [] } = {}) {
     const body = { request_id: randomUUID(), workspace: 'render_os', titulo: `QA315 Visita ${++serial}`,
@@ -113,6 +119,43 @@ test('canonical production origin task closes explicitly from individual evidenc
     assert.deepEqual(await snapshot(), before);
   });
 
+  await t.test('canonical closure requires the exact observed visit, including after a still-recorded video edit', async () => {
+    const { task, visit } = await canonical({ states: ['grabado', 'grabado', 'grabado'] });
+    const context = await api(`/producciones/tareas/${task.id}`);
+    assert.equal(context.status, 200);
+    assert.deepEqual(context.body.vinculo.finalizacion, {
+      task_revision: task.revision, previstos: 3, grabados: 3, total: 3, habilitada: true,
+    });
+    const observed = { id: visit.id, revision: visit.revision }, before = await snapshot();
+    const patch = extra => api(`/tareas/${task.id}?workspace=render_os`, { method: 'PATCH',
+      body: { estado: 'finalizada', expected_revision: task.revision, ...extra } });
+    for (const [extra, status] of [[{}, 400],
+      [{ expected_production_visit: { ...observed, revision: observed.revision - 1 } }, 409],
+      [{ expected_production_visit: { ...observed, id: randomUUID() } }, 409],
+      ...[null, {}, { ...observed, extra: true }, { ...observed, revision: '4' }]
+        .map(expected_production_visit => [{ expected_production_visit }, 400])]) {
+      assert.equal((await patch(extra)).status, status);
+      assert.deepEqual(await snapshot(), before);
+    }
+    assert.equal((await api(`/tareas/${task.id}?workspace=render_os`, { method: 'PATCH', body: {
+      estado: 'en_progreso', expected_revision: task.revision, expected_production_visit: observed,
+    } })).status, 400);
+    assert.deepEqual(await snapshot(), before);
+    const video = visit.videos[0];
+    const edited = await api(`/producciones/${visit.id}/videos/${video.id}`, { method: 'PATCH', body: {
+      expected_revision: observed.revision, guion: 'QA316 updated observation',
+    } });
+    assert.equal(edited.status, 200);
+    assert.equal(edited.body.visita.revision, observed.revision + 1);
+    assert.ok(edited.body.visita.videos.every(item => item.estado === 'grabado'));
+    const afterEdit = await snapshot();
+    assert.equal((await patch({ expected_production_visit: observed })).status, 409);
+    assert.deepEqual(await snapshot(), afterEdit, 'Stale visit observation must roll back even if readiness is still true');
+    const refreshed = await api(`/producciones/tareas/${task.id}`);
+    assert.equal(refreshed.body.vinculo.revision, observed.revision + 1);
+    assert.equal(refreshed.body.vinculo.finalizacion.habilitada, true);
+  });
+
   await t.test('stale task CAS and nonmember authority cannot close even complete canonical evidence', async () => {
     const { task } = await canonical({ states: ['grabado', 'grabado', 'grabado'] });
     const [changed] = await f.query("UPDATE tareas SET aclaraciones='QA315 concurrent note' WHERE id=$1 RETURNING revision", [task.id]);
@@ -144,6 +187,11 @@ test('canonical production origin task closes explicitly from individual evidenc
     };
     const incomplete = await seed(false), beforeDenied = await snapshot();
     assert.equal((await finish(incomplete.id, incomplete.revision)).status, 400);
+    assert.deepEqual(await snapshot(), beforeDenied);
+    assert.equal((await api(`/tareas/${incomplete.id}?workspace=render_os`, { actor: 91001, method: 'PATCH', body: {
+      estado: 'finalizada', expected_revision: incomplete.revision,
+      expected_production_visit: { id: randomUUID(), revision: 1 },
+    } })).status, 409);
     assert.deepEqual(await snapshot(), beforeDenied);
     const reclassified = await api(`/tareas/${incomplete.id}?workspace=render_os`, {
       actor: 91001, method: 'PATCH', body: { expected_revision: incomplete.revision,
