@@ -1,5 +1,17 @@
 import { buildMoodboardTaskReadPredicate, moodboardTaskId } from './moodboard-task-access.js';
 
+export async function readMoodboardTaskContext(pool, auth, rawBoardId, rawTaskId, query = {}) {
+  const boardId = moodboardTaskId(rawBoardId), taskId = moodboardTaskId(rawTaskId);
+  if (!query || typeof query !== 'object' || Array.isArray(query) || Object.keys(query).length) throw invalid();
+  const predicate = buildMoodboardTaskReadPredicate(auth, 't', '$3');
+  const values = predicate.value === null ? [boardId, taskId] : [boardId, taskId, predicate.value];
+  const { rows } = await pool.query(`SELECT DISTINCT t.id, t.titulo FROM tareas t
+    JOIN moodboard_board_clients bc ON bc.cliente_id = t.cliente_id
+    WHERE bc.board_id = $1 AND t.id = $2 AND ${predicate.sql}`, values);
+  if (rows.length !== 1) throw Object.assign(new Error('La tarea solicitada no está disponible en este moodboard.'), { status: 404 });
+  return { version: 1, item: rows[0] };
+}
+
 const invalid = () => Object.assign(new Error('Paginación de tareas inválida.'), { status: 400 });
 export function moodboardTaskPageQuery(query = {}) {
   if (!query || typeof query !== 'object' || Array.isArray(query)

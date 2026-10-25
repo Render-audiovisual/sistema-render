@@ -112,7 +112,7 @@ test('actual pending run registers synchronously; controlled board selection and
  // No other dependencies supplied: any mutation/navigation beyond the busy guard would fail.
  initializer('MoodboardContent','chooseBoard',{operationOwners})(8);
  initializer('MoodboardContent','activateBoard',{operationOwners})(8);
- initializer('MoodboardContent','applyLocation',{operationOwners,catalog:{current:[]}})({selection:{boardId:8}});
+ initializer('MoodboardContent','applyLocation',{operationOwners,locationRef:{current:{selection:null}},catalog:{current:[]}})({selection:{boardId:8}});
  const newer=Symbol('newer');signal(newer,true);d.resolve();await request;
  assert.equal(operationOwners.current.has(newer),true);assert.equal(operationOwners.current.has(owner.current),false);assert.equal(recoveryOwners.current.has(owner.current),true);
  const beforeNotification=operationObservation.current;
@@ -121,7 +121,7 @@ test('actual pending run registers synchronously; controlled board selection and
 });
 test('blocked controlled location never compensates, overwrites or traverses browser history',()=>{
  const operationOwners={current:new Set([Symbol()])};
- const apply=initializer('MoodboardContent','applyLocation',{operationOwners,catalog:{current:[]},window:{history:new Proxy({},{get(){throw new Error('History compensation is forbidden')}})}});
+ const apply=initializer('MoodboardContent','applyLocation',{operationOwners,locationRef:{current:{selection:null}},catalog:{current:[]},window:{history:new Proxy({},{get(){throw new Error('History compensation is forbidden')}})}});
  apply({selection:{boardId:8}});
  assert.doesNotMatch(source,/heldOperationUrl|history\.(?:go|back|forward)\s*\(/);
  const fn=ast.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name.text==='MoodboardContent');let declaration;
@@ -141,7 +141,7 @@ test('actual noncancelable pop follows new URL while pending and invalidates old
  const scope=createCapturedRequest({session:sesion,readSession:()=>sesion,isActive:()=>boardObservation.current===oldOrigin,request:()=>d.promise});
  const pending=scope.request('/api/moodboards/boards/7/references',{method:'POST'});
  const deps={operationOwners,boardObservation,boardLoader:{current:{cancel(){}}},loadGeneration:{current:1}};
- for(const key of ['Refs','Categories','Tasks','Selected','Composer','CategoryEditor','Status','Category','Query','BoardId','BoardEpoch','Loading'])deps[`set${key}`]=value=>effects.push([key,value]);
+ for(const key of ['Refs','Categories','Tasks','ContextTask','Selected','Composer','CategoryEditor','Status','Category','Query','BoardId','BoardEpoch','Loading'])deps[`set${key}`]=value=>effects.push([key,value]);
  const activateBoard=initializer('MoodboardContent','activateBoard',deps),catalog={current:[{id:7},{id:8}]},locationRef={current:{selection:{boardId:7}}};
  const window={location:{href:'https://render.test/moodboards?board=8&other=keep#note'},history:{state:{},replaceState(_state,_title,url){assert.equal(url,'/moodboards?board=8&other=keep#note')}}};
  const applyLocation=initializer('MoodboardContent','applyLocation',{operationOwners,catalog,locationRef,setLocation:()=>{},activateBoard,setError:()=>{},setLoading:()=>{},resolveMoodboardBoard,moodboardBoardUrl,window});
@@ -196,8 +196,8 @@ test('actual finish consumes only task query preserving board/client/hash and do
 test('actual parent load returns coherent recovery snapshot and propagates only requested failures',async()=>{
  for(const shouldThrow of [false,true]){
   const session={token:'A',usuario:{id:1,rol:'diseno'}},failure=error(503),effects=[];
-  const deps={sesion:session,getSesion:()=>session,mounted:{current:true},boardObservation:{current:{id:7}},boardLoader:{current:null},loadGeneration:{current:0},catalog:{current:[]},createCapturedRequest,createMoodboardBoardLoader,api:async()=>{throw failure},moodboardTaskIntent:()=>null};
-  for(const name of ['Loading','Refs','Categories','Tasks','Error','Selected','Composer','Boards'])deps[`set${name}`]=value=>effects.push([name,value]);
+  const deps={sesion:session,getSesion:()=>session,mounted:{current:true},boardObservation:{current:{id:7}},boardLoader:{current:null},loadGeneration:{current:0},locationRef:{current:{selection:null}},catalog:{current:[]},createCapturedRequest,createMoodboardBoardLoader,api:async()=>{throw failure},moodboardTaskIntent:()=>null};
+  for(const name of ['Loading','Refs','Categories','Tasks','ContextTask','Error','Selected','Composer','Boards'])deps[`set${name}`]=value=>effects.push([name,value]);
   const load=initializer('MoodboardContent','load',deps),pending=load(7,deps.boardObservation.current,false,{throwOnError:shouldThrow});
   if(shouldThrow)await assert.rejects(pending,e=>e===failure);else assert.equal(await pending,undefined);
   assert.ok(effects.some(([name])=>name==='Error'));assert.deepEqual(effects.at(-1),['Loading',false]);
@@ -208,8 +208,8 @@ test('actual parent load returns coherent recovery snapshot and propagates only 
 test('actual parent load board ABA/session/unmount suppresses late data, errors and callbacks',async()=>{
  for(const boundary of ['boardABA','session','unmount'])for(const reject of [false,true]){
   const session={token:'A',usuario:{id:1,rol:'admin'}},calls=[],effects=[];
-  const deps={sesion:session,getSesion:()=>session,mounted:{current:true},boardObservation:{current:{id:7}},boardLoader:{current:null},loadGeneration:{current:0},catalog:{current:[]},createCapturedRequest,createMoodboardBoardLoader,api:()=>{const d=deferred();calls.push(d);return d.promise},moodboardTaskIntent:()=>null};
-  for(const name of ['Loading','Refs','Categories','Tasks','Error','Selected','Composer','Boards'])deps[`set${name}`]=value=>effects.push([name,value]);
+  const deps={sesion:session,getSesion:()=>session,mounted:{current:true},boardObservation:{current:{id:7}},boardLoader:{current:null},loadGeneration:{current:0},locationRef:{current:{selection:null}},catalog:{current:[]},createCapturedRequest,createMoodboardBoardLoader,api:()=>{const d=deferred();calls.push(d);return d.promise},moodboardTaskIntent:()=>null};
+  for(const name of ['Loading','Refs','Categories','Tasks','ContextTask','Error','Selected','Composer','Boards'])deps[`set${name}`]=value=>effects.push([name,value]);
   const pending=initializer('MoodboardContent','load',deps)(7),count=effects.length;
   if(boundary==='boardABA')deps.boardObservation.current={id:7};else if(boundary==='session')session.token='B';else deps.mounted.current=false;
   calls.forEach(d=>reject?d.reject(error(500)):d.resolve([]));await pending;assert.equal(effects.length,count);
@@ -218,10 +218,10 @@ test('actual parent load board ABA/session/unmount suppresses late data, errors 
 test('actual full-board load updates rail/catalog 0→1→0, preserving IDs, clients and other boards independently of gallery filters',async()=>{
  const session={token:'A',usuario:{id:1,rol:'diseno'}},clients=[{id:2,nombre:'Client'}],other={id:8,nombre:'Other',clientes:[],total_referencias:42};
  let boards=[{id:7,nombre:'Selected',clientes:clients,total_referencias:0},other],references=[];
- const deps={sesion:session,getSesion:()=>session,mounted:{current:true},boardObservation:{current:{id:7}},boardLoader:{current:null},loadGeneration:{current:0},catalog:{current:boards},createCapturedRequest,createMoodboardBoardLoader,
+ const deps={sesion:session,getSesion:()=>session,mounted:{current:true},boardObservation:{current:{id:7}},boardLoader:{current:null},loadGeneration:{current:0},locationRef:{current:{selection:null}},catalog:{current:boards},createCapturedRequest,createMoodboardBoardLoader,
    api:async url=>url.endsWith('/references')?references:[],moodboardTaskIntent:()=>null,status:'aprobada',query:'does-not-match',
    setBoards:update=>{boards=update(boards)}};
- for(const name of ['Loading','Refs','Categories','Tasks','Error','Selected','Composer'])deps[`set${name}`]=()=>{};
+ for(const name of ['Loading','Refs','Categories','Tasks','ContextTask','Error','Selected','Composer'])deps[`set${name}`]=()=>{};
  const load=initializer('MoodboardContent','load',deps);
  await load(7);assert.equal(boards[0].total_referencias,0);
  references=[{...row(),estado:'descartada'}];await load(7);assert.equal(boards[0].total_referencias,1,'Count comes from the full response, not the approved/search-filtered gallery');
@@ -231,9 +231,9 @@ test('actual full-board load updates rail/catalog 0→1→0, preserving IDs, cli
 test('held old-board/account/generation result and deferred rail updater cannot overwrite current counts',async()=>{
  for(const boundary of ['boardABA','session','unmount','generation'])for(const deferredUpdater of [false,true]){
    const session={token:'A',usuario:{id:1,rol:'diseno'}},gates=[],initial=[{id:7,total_referencias:0},{id:8,total_referencias:5}];let update=null,updates=0;
-   const deps={sesion:{token:'A',usuario:{id:1,rol:'diseno'}},getSesion:()=>session,mounted:{current:true},boardObservation:{current:{id:7}},boardLoader:{current:null},loadGeneration:{current:0},catalog:{current:initial},createCapturedRequest,createMoodboardBoardLoader,moodboardTaskIntent:()=>null,
+   const deps={sesion:{token:'A',usuario:{id:1,rol:'diseno'}},getSesion:()=>session,mounted:{current:true},boardObservation:{current:{id:7}},boardLoader:{current:null},loadGeneration:{current:0},locationRef:{current:{selection:null}},catalog:{current:initial},createCapturedRequest,createMoodboardBoardLoader,moodboardTaskIntent:()=>null,
      api:()=>{const gate=deferred();gates.push(gate);return gate.promise},setBoards:value=>{update=value;updates++}};
-   for(const name of ['Loading','Refs','Categories','Tasks','Error','Selected','Composer'])deps[`set${name}`]=()=>{};
+   for(const name of ['Loading','Refs','Categories','Tasks','ContextTask','Error','Selected','Composer'])deps[`set${name}`]=()=>{};
    const pending=initializer('MoodboardContent','load',deps)(7);
    const invalidate=()=>{if(boundary==='boardABA')deps.boardObservation.current={id:7};else if(boundary==='session')session.token='B';else if(boundary==='unmount')deps.mounted.current=false;else deps.loadGeneration.current++;};
    if(!deferredUpdater)invalidate();gates[0].resolve([row()]);gates[1].resolve([]);gates[2].resolve([]);await pending;

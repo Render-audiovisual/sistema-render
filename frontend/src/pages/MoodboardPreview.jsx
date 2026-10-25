@@ -49,7 +49,7 @@ function MoodboardContent({sesion}){
     if(operationOwners.current.size&&!allowEscape)return;
     boardLoader.current?.cancel();loadGeneration.current++;
     boardObservation.current={id,generation:boardObservation.current.generation+1};
-    setRefs([]);setCategories([]);setTasks([]);setSelected(null);setComposer(false);setCategoryEditor(false);setStatus("all");setCategory("all");setQuery("");
+    setRefs([]);setCategories([]);setTasks([]);setContextTask(null);setSelected(null);setComposer(false);setCategoryEditor(false);setStatus("all");setCategory("all");setQuery("");
     setBoardId(id);setBoardEpoch(boardObservation.current.generation);setLoading(Boolean(id));
   };
   const applyLocation=(next,items=catalog.current,allowEscape=false)=>{
@@ -80,6 +80,7 @@ function MoodboardContent({sesion}){
     catch(reason){if(operation.current()&&origin===boardObservation.current)setError(reason.message)}
     finally{initializingRef.current=false;if(operation.current())setInitializing(false)}
   };
+  const [contextTask,setContextTask]=useState(null);
   const [boards,setBoards]=useState([]),[boardId,setBoardId]=useState(null),[refs,setRefs]=useState([]),[categories,setCategories]=useState([]),[tasks,setTasks]=useState([]),[status,setStatus]=useState("all"),[category,setCategory]=useState("all"),[query,setQuery]=useState(""),[selected,setSelected]=useState(null),[composer,setComposer]=useState(false),[categoryEditor,setCategoryEditor]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState("");
   // A canceled native traverse emits no popstate. An actual escape must follow
   // its URL and invalidate the old scope, even though memory recovery is lost.
@@ -91,13 +92,15 @@ function MoodboardContent({sesion}){
     const scope=options.scope||createCapturedRequest({session:sesion,readSession:getSesion,request:api,isActive:()=>mounted.current&&boardObservation.current===observation});
     const own=createMoodboardBoardLoader({request:scope.request,isCurrent:scope.current});boardLoader.current=own;
     if(!scope.current())return;setLoading(true);
-    try{const result=await own.load(id);if(!result||!scope.current()||generation!==loadGeneration.current){if(options.throwOnError){scope.assertCurrent();throw new Error('La lectura fue reemplazada. Actualizá el moodboard para revisar.')}return;}
-      setRefs(result.references);setCategories(result.categories);setTasks(result.tasks);setError("");
+    try{const selection=locationRef.current.selection,currentBoard=catalog.current?.find(item=>item.id===id);
+      if(selection?.taskId&&selection.clientId!==null&&!currentBoard?.clientes.some(client=>client.id===selection.clientId))throw new Error('La tarea solicitada no corresponde al cliente de este moodboard.');
+      const result=await own.load(id,selection?.taskId??null);if(!result||!scope.current()||generation!==loadGeneration.current){if(options.throwOnError){scope.assertCurrent();throw new Error('La lectura fue reemplazada. Actualizá el moodboard para revisar.')}return;}
+      setRefs(result.references);setCategories(result.categories);setTasks(result.tasks);setContextTask(result.contextTask??null);setError("");
       const counted=items=>items.map(item=>item.id===id?{...item,total_referencias:result.references.length}:item);
       if(Array.isArray(catalog.current))catalog.current=counted(catalog.current);
       setBoards(items=>scope.current()&&generation===loadGeneration.current&&observation===boardObservation.current?counted(items):items);
       setSelected(current=>scope.current()&&generation===loadGeneration.current?(result.references.find(item=>item.id===current?.id)||(options.preserveSelection?current:null)):current);
-      if(openTask&&moodboardTaskIntent(locationRef.current.selection,catalog.current?.find(item=>item.id===id),result.tasks))setComposer(true);
+      if(openTask&&moodboardTaskIntent(selection,currentBoard,result.contextTask?[...result.tasks,result.contextTask]:result.tasks))setComposer(true);
       return result;
     }catch(reason){if(scope.current()&&generation===loadGeneration.current)setError(reason.message);if(options.throwOnError)throw reason;}
     finally{if(scope.current()&&generation===loadGeneration.current)setLoading(false)}
@@ -121,17 +124,19 @@ function MoodboardContent({sesion}){
     locationRef.current=next;setLocation(next);setComposer(false);
   };
   const board=boards.find(b=>b.id===boardId),counts=refs.reduce((a,r)=>({...a,[r.estado]:(a[r.estado]||0)+1}),{}),visible=useMemo(()=>refs.filter(r=>status==="all"?r.estado!=="descartada":r.estado===status).filter(r=>category==="all"||String(r.category_id)===String(category)).filter(r=>`${r.titulo} ${r.nota} ${(r.etiquetas||[]).join(" ")}`.toLowerCase().includes(query.toLowerCase())),[refs,status,category,query]);
+  const initialTask=moodboardTaskIntent(location.selection,board,contextTask?[...tasks,contextTask]:tasks);
+  const taskContextBlocked=Boolean(location.selection?.taskId&&!initialTask);
   if(loading&&!boards.length)return <main className="moodboard-loading-page"><span>✦</span><strong>Preparando los moodboards…</strong></main>;
   return <main className="moodboard-preview-shell">
     <aside className="moodboard-brand-rail"><div className="moodboard-rail-heading"><span>Moodboards</span><small>Todos los clientes activos</small></div><nav aria-label="Marcas">{boards.map(b=><button key={b.id} disabled={operationBusy} className={b.id===boardId?"active":""} onClick={()=>chooseBoard(b.id)}><span className="moodboard-brand-avatar">{b.nombre.charAt(0)}</span><span><strong>{b.nombre}</strong><small>{b.clientes.length>1?`${b.clientes.length} cuentas compartidas`:`${b.total_referencias} referencias`}</small></span></button>)}</nav></aside>
     <section className="moodboard-workspace"><header className="moodboard-header">
-      <div className="moodboard-title-row"><div><span className="moodboard-eyebrow">Criterio visual de marca</span><h1>{board?.nombre||"Moodboard"}</h1><p>{board?.clientes?.length>1?`Compartido entre ${board.clientes.map(c=>c.nombre).join(" y ")}.`:"Referencias para mantener una dirección visual coherente."}</p></div><button className="moodboard-add-primary" disabled={!board||operationBusy} onClick={()=>{if(!operationOwners.current.size)setComposer(true)}}><span>＋</span>Nueva referencia</button></div>
+      <div className="moodboard-title-row"><div><span className="moodboard-eyebrow">Criterio visual de marca</span><h1>{board?.nombre||"Moodboard"}</h1><p>{board?.clientes?.length>1?`Compartido entre ${board.clientes.map(c=>c.nombre).join(" y ")}.`:"Referencias para mantener una dirección visual coherente."}</p></div><button className="moodboard-add-primary" disabled={!board||operationBusy||loading||taskContextBlocked} onClick={()=>{if(!operationOwners.current.size&&!loading&&!taskContextBlocked)setComposer(true)}}><span>＋</span>Nueva referencia</button></div>
       <div className="moodboard-tools"><label className="moodboard-search"><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar por idea o etiqueta…"/></label><div className="moodboard-status-tabs"><Filter value="all" current={status} set={setStatus} label="Todo" count={(counts.aprobada||0)+(counts.libre||0)}/><Filter value="aprobada" current={status} set={setStatus} label="Aprobadas" count={counts.aprobada||0}/><Filter value="libre" current={status} set={setStatus} label="Libres" count={counts.libre||0}/><Filter value="descartada" current={status} set={setStatus} label="Descartadas" count={counts.descartada||0}/></div><label className="moodboard-category-filter">Categoría<select value={category} onChange={e=>setCategory(e.target.value)}><option value="all">Todas</option>{categories.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label><button className="moodboard-category-edit" disabled={!board||operationBusy} onClick={()=>{if(!operationOwners.current.size)setCategoryEditor(true)}}>Editar categorías</button></div>
     </header>
       <div className="moodboard-initialize"><button type="button" onClick={prepareBoards} disabled={initializing||operationBusy}>{initializing?'Preparando…':'Preparar clientes nuevos'}</button>{!board&&<span>Prepará los clientes para agregar referencias reales.</span>}</div>
       {error&&<div className="moodboard-error">{error}</div>}<div className="moodboard-gallery-label"><span>{visible.length} referencias</span><small>Las aprobadas aparecen primero</small></div>{loading?<Empty loading/>:visible.length?<div className="moodboard-masonry">{visible.map(item=><Card key={item.id} item={item} open={()=>{if(!operationOwners.current.size)setSelected(item)}}/>)}</div>:<Empty/>}
     </section>
-    {selected&&<ReferencePanel key={`${boardEpoch}:${selected.id}`} boardId={origin.id} item={selected} tasks={tasks} capture={captureOperation} onBusy={onOperationBusy} close={()=>{if(originCurrent())setSelected(null)}} reload={reloadOperation}/>} {composer&&board&&<Composer key={`${boardEpoch}:composer`} board={board} categories={categories} initialTask={moodboardTaskIntent(location.selection,board,tasks)} capture={captureOperation} onBusy={onOperationBusy} reload={reloadOperation} close={()=>{if(originCurrent())setComposer(false)}} saved={finishReference}/>} {categoryEditor&&board&&<CategoryEditor key={`${boardEpoch}:categories`} boardId={boardId} categories={categories} capture={captureOperation} onBusy={onOperationBusy} reload={reloadOperation} close={()=>{if(originCurrent())setCategoryEditor(false)}} saved={scope=>{scope.assertCurrent();if(originCurrent())setCategoryEditor(false)}}/>}
+    {selected&&<ReferencePanel key={`${boardEpoch}:${selected.id}`} boardId={origin.id} item={selected} tasks={tasks} capture={captureOperation} onBusy={onOperationBusy} close={()=>{if(originCurrent())setSelected(null)}} reload={reloadOperation}/>} {composer&&board&&!taskContextBlocked&&<Composer key={`${boardEpoch}:composer`} board={board} categories={categories} initialTask={initialTask} capture={captureOperation} onBusy={onOperationBusy} reload={reloadOperation} close={()=>{if(originCurrent())setComposer(false)}} saved={finishReference}/>} {categoryEditor&&board&&<CategoryEditor key={`${boardEpoch}:categories`} boardId={boardId} categories={categories} capture={captureOperation} onBusy={onOperationBusy} reload={reloadOperation} close={()=>{if(originCurrent())setCategoryEditor(false)}} saved={scope=>{scope.assertCurrent();if(originCurrent())setCategoryEditor(false)}}/>}
   </main>
 }
 function Filter({value,current,set,label,count}){return <button className={current===value?"active":""} onClick={()=>set(value)}>{label} <b>{count}</b></button>}

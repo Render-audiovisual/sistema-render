@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import express from "express";
 import { mutateMoodboardTaskLink } from './moodboard-task-access.js';
-import { readMoodboardTaskPage } from './moodboard-task-pages.js';
+import { readMoodboardTaskPage, readMoodboardTaskContext } from './moodboard-task-pages.js';
 import { createMoodboardCategoriesRouter } from './moodboard-categories.js';
 import {applyMoodboardReferenceOperation,readMoodboardReferences,readMoodboardReference} from './moodboard-reference-write.js';
 import {moodboardReferenceAliasInput,moodboardReferenceAliasBody} from './moodboard-reference-compat.js';
@@ -112,6 +112,12 @@ export function createMoodboardsRouter({ pool }) {
   router.get("/boards/:id/categories", async (req, res, next) => {
     try { const { rows } = await pool.query("SELECT id, nombre, orden FROM moodboard_categories WHERE board_id = $1 ORDER BY orden, nombre", [req.params.id]); res.json(rows); }
     catch (error) { next(error); }
+  });
+
+  router.get("/boards/:id/tasks/:taskId", async (req, res, next) => {
+    res.set('Cache-Control','no-store');
+    try { res.json(await readMoodboardTaskContext(pool,req.auth,req.params.id,req.params.taskId,req.query)); }
+    catch (error) { if(error.status)return res.status(error.status).json({error:error.message});next(error); }
   });
 
   router.get("/boards/:id/tasks", async (req, res, next) => {

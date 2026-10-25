@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { moodboardTaskPageQuery, readMoodboardTaskPage } from '../src/moodboard-task-pages.js';
+import { moodboardTaskPageQuery, readMoodboardTaskPage, readMoodboardTaskContext } from '../src/moodboard-task-pages.js';
+
+for (const rol of ['admin','edicion']) test(`${rol}: exact contextual task retains board and ID authorization without pagination`, async () => {
+  const calls=[], item={id:152,titulo:'Last task'};
+  const result=await readMoodboardTaskContext({query:async(sql,values)=>{calls.push({sql,values});return{rows:[item]};}},
+    {id:7,rol,activo:true},'9','152',{});
+  assert.deepEqual(result,{version:1,item});
+  assert.deepEqual(calls[0].values,rol==='admin'?[9,152]:[9,152,7]);
+  assert.match(calls[0].sql,/bc.board_id = \$1 AND t.id = \$2/);
+  if(rol!=='admin')assert.match(calls[0].sql,/tarea_asignaciones/);
+  assert.doesNotMatch(calls[0].sql,/\b(?:INSERT|UPDATE|DELETE|OFFSET|LIMIT)\b/);
+});
+test('unavailable exact task is generic404 and invalid context rejects before DB', async () => {
+  await assert.rejects(readMoodboardTaskContext({query:async()=>({rows:[]})},{id:7,rol:'admin',activo:true},9,152,{}),{status:404});
+  const pool={query:()=>assert.fail('Invalid input cannot query')};
+  for(const taskId of ['01','0','2147483648','1\n'])await assert.rejects(readMoodboardTaskContext(pool,{},9,taskId,{}),{status:400});
+  await assert.rejects(readMoodboardTaskContext(pool,{},9,152,{limit:'1'}),{status:400});
+});
 
 test('page query is bounded and canonical; omitted pagination preserves legacy array contract', () => {
   assert.deepEqual(moodboardTaskPageQuery({}), { paginated: false, limit: 150, offset: 0 });

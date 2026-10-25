@@ -41,19 +41,37 @@ const source=readFileSync(new URL('./MoodboardPreview.jsx',import.meta.url),'utf
 const file=ts.createSourceFile('MoodboardPreview.jsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
 function nodes(root,predicate){const found=[];function visit(n){if(predicate(n))found.push(n);ts.forEachChild(n,visit)}visit(root);return found}
 function callback(name,deps){const node=nodes(file,n=>ts.isVariableDeclaration(n)&&n.name.getText(file)===name)[0].initializer;return new Function(...Object.keys(deps),`return (${node.getText(file)});`)(...Object.values(deps))}
+test('actual parent opens contextual task152 only after exact authorized response; failures never open an unlinked composer',async()=>{
+  for(const outcome of ['authorized','unavailable','wrong-client']){
+    const effects=[],calls=[],session={token:'A',usuario:{id:1,rol:'diseno'}};
+    const selection=readMoodboardLocation(`?board=1&cliente=${outcome==='wrong-client'?20:10}&task=152`);
+    const deps={sesion:session,getSesion:()=>session,mounted:{current:true},boardObservation:{current:{id:1}},boardLoader:{current:null},loadGeneration:{current:0},catalog:{current:boards},locationRef:{current:{selection}},createCapturedRequest,createMoodboardBoardLoader,moodboardTaskIntent,
+      api:async url=>{calls.push(url);if(url.endsWith('/tasks/152')){if(outcome==='unavailable')throw Object.assign(new Error('Unavailable'),{status:404});return{version:1,item:{id:152,titulo:'Task152'}};}return[];}};
+    for(const key of ['Loading','Refs','Categories','Tasks','ContextTask','Error','Selected','Composer','Boards'])deps[`set${key}`]=value=>effects.push([key,value]);
+    await callback('load',deps)(1,deps.boardObservation.current,true);
+    assert.equal(effects.some(([name,value])=>name==='Composer'&&value===true),outcome==='authorized');
+    if(outcome==='authorized'){
+      assert.ok(effects.some(([name,value])=>name==='ContextTask'&&value.id===152));
+      assert.ok(effects.some(([name,value])=>name==='Tasks'&&value.length===0),'Context never changes paging baseline');
+      assert.equal(calls.length,4);
+    }else assert.ok(effects.some(([name])=>name==='Error'));
+    if(outcome==='wrong-client')assert.equal(calls.length,0);
+  }
+});
 test('actual activation clears collections, overlays and filters synchronously, including ABA',()=>{
   const effects=[],deps={operationOwners:{current:new Set()},boardLoader:{current:{cancel(){effects.push('cancel')}}},loadGeneration:{current:0},boardObservation:{current:{id:1,generation:0}}};
-  for(const key of ['Refs','Categories','Tasks','Selected','Composer','CategoryEditor','Status','Category','Query','BoardId','BoardEpoch','Loading'])deps[`set${key}`]=value=>effects.push([key,value]);
+  for(const key of ['Refs','Categories','Tasks','ContextTask','Selected','Composer','CategoryEditor','Status','Category','Query','BoardId','BoardEpoch','Loading'])deps[`set${key}`]=value=>effects.push([key,value]);
   const activate=callback('activateBoard',deps),old=deps.boardObservation.current;
   activate(2);activate(1);assert.notEqual(deps.boardObservation.current,old);assert.equal(deps.boardObservation.current.generation,2);
   for(const key of ['Refs','Categories','Tasks'])assert.ok(effects.some(([name,value])=>name===key&&Array.isArray(value)&&!value.length));
+  assert.ok(effects.some(([name,value])=>name==='ContextTask'&&value===null));
   assert.ok(effects.some(([name,value])=>name==='Selected'&&value===null));
   assert.ok(effects.some(([name,value])=>name==='Composer'&&value===false));
 });
 test('actual load fences late success/error/finally on board ABA, session change and unmount',async()=>{
   for(const change of ['board','session','unmount'])for(const fail of [false,true]){
     const calls=[],effects=[],session={token:'original',usuario:{id:1,rol:'admin',activo:true}},deps={sesion:structuredClone(session),mounted:{current:true},boardObservation:{current:{id:1,generation:1}},boardLoader:{current:null},loadGeneration:{current:0},getSesion:()=>session,api:()=>new Promise((resolve,reject)=>calls.push({resolve,reject})),createCapturedRequest,createMoodboardBoardLoader,moodboardTaskIntent,locationRef:{current:{selection:readMoodboardLocation('')}},catalog:{current:boards}};
-    for(const key of ['Loading','Refs','Categories','Tasks','Error','Composer','Boards'])deps[`set${key}`]=value=>effects.push([key,value]);
+    for(const key of ['Loading','Refs','Categories','Tasks','ContextTask','Error','Composer','Boards'])deps[`set${key}`]=value=>effects.push([key,value]);
     const pending=callback('load',deps)(1);assert.equal(calls.length,3);const count=effects.length;
     if(change==='board')deps.boardObservation.current={id:1,generation:3};
     if(change==='session')session.token='new';
@@ -67,7 +85,9 @@ test('source wires popstate, genuine reads, keyed overlays and origin-only write
   assert.match(source,/addEventListener\('popstate',pop\)/);
   assert.match(source,/pushState\(window.history.state,"",href\)/);
   assert.doesNotMatch(source,/heldURL|heldUrl|history\.(?:go|back|forward)\(/);
-  assert.match(source,/initialTask=\{moodboardTaskIntent\(location.selection,board,tasks\)\}/);
+  assert.match(source,/const initialTask=moodboardTaskIntent\(location.selection,board,contextTask\?\[\.\.\.tasks,contextTask\]:tasks\)/);
+  assert.match(source,/initialTask=\{initialTask\}/);
+  assert.match(source,/composer&&board&&!taskContextBlocked/);
   assert.doesNotMatch(source,/initialTask=\{requestedTask\}/);
   assert.match(source,/key=\{`\$\{boardEpoch\}:composer`\}/);
   const composer=nodes(file,n=>ts.isJsxSelfClosingElement(n)&&n.tagName.getText(file)==='Composer')[0];
@@ -80,7 +100,7 @@ test('actual same-board reload refreshes selected DTO by ID and closes removed r
     let selected={id:7,tareas:[]};const fresh={id:7,tareas:[{id:9}]};
     const session={token:'original',usuario:{id:1,rol:'admin',activo:true}};
     const deps={sesion:structuredClone(session),mounted:{current:true},boardObservation:{current:{id:1,generation:1}},boardLoader:{current:null},loadGeneration:{current:0},getSesion:()=>session,api:async url=>url.endsWith('/references')?(missing?[]:[fresh]):[],createCapturedRequest,createMoodboardBoardLoader,moodboardTaskIntent,locationRef:{current:{selection:readMoodboardLocation('')}},catalog:{current:boards},setSelected:update=>{selected=update(selected)}};
-    for(const key of ['Loading','Refs','Categories','Tasks','Error','Composer','Boards'])deps[`set${key}`]=()=>{};
+    for(const key of ['Loading','Refs','Categories','Tasks','ContextTask','Error','Composer','Boards'])deps[`set${key}`]=()=>{};
     await callback('load',deps)(1);assert.equal(selected,missing?null:fresh);
   }
 });
@@ -159,7 +179,7 @@ test('actual escaped pop passes allowEscape and busy activation invalidates old 
   callback('pop',{currentMoodboardLocation:()=>selection,applyLocation:(...args)=>effects.push(args)})();
   assert.deepEqual(effects,[[selection,undefined,true]]);
   const deps={operationOwners:{current:new Set(['pending-write'])},boardLoader:{current:{cancel(){effects.push('cancel')}}},loadGeneration:{current:0},boardObservation:{current:{id:1,generation:0}}};
-  for(const key of ['Refs','Categories','Tasks','Selected','Composer','CategoryEditor','Status','Category','Query','BoardId','BoardEpoch','Loading'])deps[`set${key}`]=value=>effects.push([key,value]);
+  for(const key of ['Refs','Categories','Tasks','ContextTask','Selected','Composer','CategoryEditor','Status','Category','Query','BoardId','BoardEpoch','Loading'])deps[`set${key}`]=value=>effects.push([key,value]);
   const rendered={token:'original',usuario:{id:1,rol:'admin'}},old=deps.boardObservation.current;
   const scope=createCapturedRequest({session:rendered,readSession:()=>rendered,request:()=>assert.fail('no request'),isActive:()=>deps.boardObservation.current===old});
   const activate=callback('activateBoard',deps);

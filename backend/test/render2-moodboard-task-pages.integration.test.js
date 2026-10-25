@@ -84,6 +84,64 @@ test('moodboard task pages reach all authorized IDs while legacy reads remain bo
     assert.deepEqual(result.body.items, items);
   };
 
+  const getContext = async (taskId, { boardId = board.id, query = '', authenticated = true } = {}) => {
+    const response = await fetch(new URL(`/api/moodboards/boards/${boardId}/tasks/${taskId}${query}`, f.base), {
+      redirect: 'error', signal: AbortSignal.timeout(10000),
+      headers: authenticated ? { authorization: `Bearer ${token}` } : {},
+    });
+    return { status: response.status, body: await response.json(), cache: response.headers.get('cache-control') };
+  };
+
+  await t.test('point lookup resolves authorized historical task152 without expanding the legacy catalog', async () => {
+    const result = await getContext(last.id);
+    assert.equal(result.status, 200);
+    assert.equal(result.cache, 'no-store');
+    assert.deepEqual(result.body, { version: 1, item: { id: last.id, titulo: last.titulo } });
+    const sharedResult = await getContext(shared[0].id);
+    assert.equal(sharedResult.status, 200);
+    assert.equal(sharedResult.cache, 'no-store');
+    assert.deepEqual(sharedResult.body, { version: 1, item: { id: shared[0].id, titulo: shared[0].titulo } });
+    assert.deepEqual(await snapshot(), baseline);
+  });
+
+  await t.test('point lookup hides private, outside-client and missing tasks behind the same generic404', async () => {
+    const [missing] = await f.query('SELECT NOT EXISTS(SELECT 1 FROM tareas WHERE id=2147483647) AS absent');
+    assert.equal(missing.absent, true, 'Missing task sentinel must not collide with fixture data');
+    const denied = { error: 'La tarea solicitada no está disponible en este moodboard.' };
+    for (const taskId of [hidden.id, outside.id, 2147483647]) {
+      const result = await getContext(taskId);
+      assert.equal(result.status, 404);
+      assert.equal(result.cache, 'no-store');
+      assert.deepEqual(result.body, denied, 'Unavailable lookup must expose only the fixed generic error');
+      const serialized = JSON.stringify(result.body);
+      for (const secret of [privateCanary, outsideCanary, String(taskId)])
+        assert.equal(serialized.includes(secret), false, 'Denied lookup must not echo task identity');
+    }
+    assert.deepEqual(await snapshot(), baseline);
+  });
+
+  await t.test('point lookup rejects noncanonical IDs and every query argument without writes', async () => {
+    const invalidIds = ['0', '01', '-1', '1.0', '1e2', '2147483648', 'abc', '1%0A', '%201'];
+    for (const value of invalidIds) {
+      for (const result of [await getContext(value), await getContext(last.id, { boardId: value })]) {
+        assert.equal(result.status, 400);
+        assert.equal(result.cache, 'no-store');
+        assert.deepEqual(Object.keys(result.body), ['error']);
+        assert.equal(typeof result.body.error, 'string');
+      }
+    }
+    for (const query of ['?limit=150', '?offset=0', '?q=private', '?task=1&task=2', '?limit%5B%5D=1', '?unexpected=']) {
+      const result = await getContext(last.id, { query });
+      assert.equal(result.status, 400);
+      assert.equal(result.cache, 'no-store');
+      assert.deepEqual(Object.keys(result.body), ['error']);
+      assert.equal(typeof result.body.error, 'string');
+    }
+    assert.equal((await getContext(last.id, { authenticated: false })).status, 401);
+    assert.deepEqual(await snapshot(), baseline);
+    assert.deepEqual((await f.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).map(row => row.tablename), tables);
+  });
+
   await t.test('legacy no-query array remains first150 while explicit pages reach the final authorized ID', async () => {
     const legacy = await get();
     assert.equal(legacy.status, 200); assert.equal(legacy.cache, 'no-store'); noLeaks(legacy.body);

@@ -14,6 +14,30 @@ function deferred() {
 const settle = async () => { for (let i = 0; i < 16; i++) await Promise.resolve(); };
 const collection = label => [[{ id: `${label}-reference` }], [{ id: `${label}-category` }], [{ id: `${label}-task` }]];
 const expected = values => ({ references: values[0], categories: values[1], tasks: values[2] });
+
+test('contextual task beyond the first page is verified separately without expanding the legacy task catalog', async () => {
+  const calls=[], item={id:152,titulo:'Task152'};
+  const loader=createMoodboardBoardLoader({request:async(url,options)=>{
+    calls.push({url,options});return url.endsWith('/tasks/152')?{version:1,item}:[];
+  }});
+  assert.deepEqual(await loader.load(7,152),{references:[],categories:[],tasks:[],contextTask:item});
+  assert.equal(calls.length,4);assert.equal(calls[3].url,'/api/moodboards/boards/7/tasks/152');
+  assert.ok(calls.every(call=>call.options.signal===calls[0].options.signal));
+});
+test('wrong or malformed contextual task fails closed; explicit context is never silently dropped', async () => {
+  for(const context of [null,{version:1,item:{id:151,titulo:'Other'}},{version:2,item:{id:152,titulo:'Wrong version'}},{version:1,item:{id:152}}]){
+    const loader=createMoodboardBoardLoader({request:async url=>url.endsWith('/tasks/152')?context:[]});
+    await assert.rejects(loader.load(7,152),/No se pudo verificar la tarea/);
+  }
+  const loader=createMoodboardBoardLoader({request:async url=>{if(url.endsWith('/tasks/152'))throw Object.assign(new Error('Unavailable'),{status:404});return[];}});
+  await assert.rejects(loader.load(7,152),{status:404});
+});
+test('canceled contextual response cannot paint after board replacement even if transport ignores abort', async () => {
+  let resolve;
+  const loader=createMoodboardBoardLoader({request:async url=>url.endsWith('/tasks/152')?new Promise(yes=>{resolve=yes;}):[]});
+  const old=loader.load(7,152);await loader.load(8);
+  resolve({version:1,item:{id:152,titulo:'Old private context'}});assert.equal(await old,null);
+});
 function fixture({ defaultCurrent = false } = {}) {
   const calls = []; let active = true;
   const request = (url, options) => { const item = deferred(); calls.push({ url, options, ...item }); return item.promise; };
