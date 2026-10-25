@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Guardia principal editorial y de revisión consolidada — integración368
+
+Core pasa de23 a29 archivos/31 argumentos: añade editorial-control, editorial-piece-detail, editorial-adoption y editing-deliveries/reviews/approval; confirmación editorial ya estaba incluida. Conserva serialización, entorno limpio, lista congelada y rechazo de flags/URLs/overrides. Test del coordinador verifica cantidad, unicidad e inclusión explícita de las seis suites, además de aislamiento y objetos nuevos por invocación. No se modifica negocio para hacer pasar pruebas.
+
+Main integró y ejecutó; Harvey revisó suite de adopción y diff sin bloqueantes. Adopción verifica propagación de evidencia real a listados/reportes, cuotas de feed e IDs sin duplicación, homónimos sin permiso y finalización sin publicación, ambos dominios. Sus fixtures bearer/SQL y snapshots de ocho tablas por valor no prueban navegador/cookies/invariancia física de todas las tablas; invalidaciones SQL deliberadas no se atribuyen a escritores HTTP. Tampoco acredita rollback físicamente fallido (inyección366 separada).
+
+`npm run qa:core:local`:288PASS/0FAIL/0SKIP, terminal0,58.45s (/private/tmp/render2-goal368-core.log), con limpiezas propias exigidas por cada suite. Contrato coordinador3PASS (/private/tmp/render2-goal368-core-contract.log). Regresión backend2435PASS/168SKIP opt-in/0FAIL de2603 (/private/tmp/render2-goal368-backend.log). LOCAL_TESTING explica el único comando y sus límites. Sin frontend/build/navegador nuevos ni cambios de esquema, datos configurados o despliegue. La aceptación global del prompt maestro sigue pendiente.
+
 ### Revisión visual conectada y centrado compartido — integración367
 
 La comprobación nativa del cambio365 encontró un defecto que su test de lógica no cubría: btn era inline-flex sin align-items:center y la ayuda de revisión fluía al lado del botón. Capturas iniciales1280×900/390×844 acreditan label arriba y ayuda partida. Se añade centrado solo a la primitiva .btn en styles.css; las demás primitivas no se amplían. ros-review-refresh organiza botón/ayuda en columna con gap8, ancho máximo y wrapping, sin altura fija nueva ni cambios del handler/permisos. Apple UI orientó reutilización, legibilidad y mínimo44, no una nueva capa de diseño.

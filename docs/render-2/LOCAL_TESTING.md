@@ -1,5 +1,13 @@
 # Principal backend: isolated local HTTP QA
 
+## Fixed core acceptance cohort (integration368)
+
+From backend run `npm run qa:core:local`. The fixed coordinator executes29 principal-system integration files serially with a clean child environment. It accepts no flags, database URLs or fixture overrides. Each file owns a disposable PostgreSQL cluster and verifies its cleanup; never substitute a configured development/production database.
+
+In addition to the cross-sector, audiovisual, identity/finance, project, task and personal-list journeys, the cohort includes editorial control/detail/adoption and editing deliveries/reviews/approval. Editorial confirmation was already required. Adoption verifies evidence propagation into ordinary lists/reports, stable-ID/feed quotas and no implicit publication from task completion; its bearer/SQL fixtures and eight-table value snapshots do not prove browser behavior, all-table immutability or physical rollback failure. Keep those claims separate from cookie/native suites and injected pool-discard tests.
+
+Passing this command is a local regression gate, not global acceptance, deployment readiness or publication to hosting. See CURRENT_ACCEPTANCE.md for current results and external gates.
+
 ## Browser build identity and post-login snapshots (integration361)
 
 Build before starting the owned HTTP fixture. The principal SPA fallback captures index.html at server startup; rebuilding frontend/dist and reloading a deep link does not replace that in-memory manifest. The root static route may behave differently. Verify the actual module script hash in the browser DOM against the build log before attributing native results to a change. If it differs, close/verify cleanup of only the owned fixture and start a fresh one after the build. Do not restart or migrate a configured database or production server for this check.
