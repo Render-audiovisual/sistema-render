@@ -152,8 +152,11 @@ test("las acciones masivas no aparecen en el tablero y la Papelera individual si
   assert.match(serverSource, /router\.post\("\/tareas\/acciones-masivas", async/);
   assert.match(serverSource, /\["papelera", "restaurar"\]/);
   assert.doesNotMatch(serverSource, /router\.post\("\/tareas\/acciones-masivas", requireRole/);
-  assert.match(serverSource, /buildTaskAccessClause\(req\.auth, "t", "\$3"\)/);
-  assert.match(serverSource, /Solo podés eliminar o restaurar tareas propias o donde colaborás/);
+  const bulkSource = readFileSync(new URL('../src/task-bulk-actions.js', import.meta.url), 'utf8');
+  assert.match(serverSource, /await applyTaskBulkAction\(pool, \{ auth: req.auth, ids, action \}\)/);
+  assert.match(bulkSource, /await assertCurrentTaskWriteActor\(db, captured\)/);
+  assert.match(bulkSource, /buildTaskAccessClause\(actor, 't', '\$2'\)/);
+  assert.match(bulkSource, /Solo podés eliminar o restaurar tareas propias o donde colaborás/);
   assert.match(workspaceSource, /canDeleteTask && <details/);
   assert.match(serverSource, /papelera_render_os/);
 });

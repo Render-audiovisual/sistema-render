@@ -89,6 +89,7 @@ import { createEditorialArchiveRouter } from './editorial-archive.js';
 import { canRecordProduction, getProductionProgress, isProductionComplete, getProductionTaskState, isProductionVisitTask, isValidProductionDate, nextProductionPeriod } from "./production-visits.js";
 import { assertProductionTaskFinalization, normalizeExpectedProductionVisit } from './production-task-finalization.js';
 import { assertCurrentTaskWriteActor } from './task-state-authority.js';
+import { applyTaskBulkAction } from './task-bulk-actions.js';
 import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
 import { loadReportSnapshot } from "./report-snapshot.js";
@@ -2265,34 +2266,7 @@ router.post("/tareas/acciones-masivas", async (req, res, next) => {
     if (!["papelera", "restaurar"].includes(action)) {
       return res.status(400).json({ error: "Acción masiva inválida." });
     }
-    const actor = getTaskActor(req.auth) || "Equipo RENDER";
-    const access = buildTaskAccessClause(req.auth, "t", "$3");
-    const metadata = action === "papelera"
-        ? { archivada_render_os: true, papelera_render_os: true, papelera_por: actor, papelera_at: new Date().toISOString() }
-        : { archivada_render_os: false, papelera_render_os: false, restaurada_por: actor, restaurada_at: new Date().toISOString() };
-    const params = [ids, JSON.stringify(metadata)];
-    if (access.value) params.push(access.value);
-    const result = await pool.query(
-      `WITH accesibles AS (
-         SELECT t.id
-         FROM tareas AS t
-         WHERE t.id = ANY($1::bigint[])
-           AND t.propiedades_extra->>'workspace' = 'render_os'${access.sql}
-       ), autorizadas AS (
-         SELECT id FROM accesibles
-         WHERE (SELECT count(*) FROM accesibles) = cardinality($1::bigint[])
-       )
-       UPDATE tareas AS t
-       SET propiedades_extra = t.propiedades_extra || $2::jsonb, updated_at = now()
-       FROM autorizadas AS a
-       WHERE t.id = a.id
-       RETURNING t.id`,
-      params,
-    );
-    if (result.rowCount !== ids.length) {
-      return res.status(403).json({ error: "Solo podés eliminar o restaurar tareas propias o donde colaborás." });
-    }
-    return res.json({ ok: true, accion: action, ids: result.rows.map((row) => Number(row.id)), cantidad: result.rowCount });
+    return res.json(await applyTaskBulkAction(pool, { auth: req.auth, ids, action }));
   } catch (error) {
     return next(error);
   }
