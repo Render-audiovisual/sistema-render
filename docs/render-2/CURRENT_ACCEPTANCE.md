@@ -4,6 +4,10 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Perfil: límite compartido entre procesos reales — corte277
+
+Harvey suite física, coordinador revisión/ejecución. PG55907 temporal clusterOnly +dos entrypoints server reales:20intentos alternando formularios/sesiones/procesos→10x401/10x429, bucketúnico10, sin cambios en105tablas de dominio/usuarios completos ni budgets de login. Denegación conserva timestamps/xmin/ctid y candidato expirado. Tras terminar ambos procesos y arrancar reemplazo en la misma base, sigue429 y GET válido; otro actor independiente.4PASS (padre+3), salida0/cleanup ENOENT UgSYiC; log `/private/tmp/render2-goal277-physical-final.log`.21focales y backend2332PASS/149opt-inSKIP/0FAIL; sin producto/migración/frontend/build nuevos. Ver PROFILE_COOKIE_QA.md: no prueba reinicio de PostgreSQL, cookie multiproceso, TLS/infraestructura ni aceptación global. Security-best-practices/Express y Superpowers orientaron aislamiento y límites; sin bases configuradas ni despliegue.
+
 ### Usuarios: modalidad y captura móvil físicas — corte276
 
 App/build275 BQx0lbcl/backend271, Chrome real, fixture propio PG55906/HTTP52853 con cookie qa_franco91001. Alta sin submit: Nombre inicialmente activo, dialog cumple :modal, Shift+Tab desde Cerrar llega a Crear usuario y Tab desde este último vuelve a Cerrar, siempre dentro; Escape limpio cierra y devuelve foco a Agregar usuario. Viewport390×844: innerWidth390/document.scrollWidth375/dialog375/cierre44, sin overflow horizontal. Captura `/private/tmp/render2-goal276-users-mobile.png` guardada e inspeccionada: formulario visible, pie de acciones próximo al texto auxiliar del correo; queda revisar scroll/foco con contenido largo, no aceptación visual completa.
