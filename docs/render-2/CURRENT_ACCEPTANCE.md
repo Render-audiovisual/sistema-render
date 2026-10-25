@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Planilla: modelo compartido de protección de borradores — corte292
+
+Publicaciones reutiliza `createStoryCellDraft` de Historias: generaciones por campo e intenciones solo en memoria, sin textos persistidos/localStorage ni nueva fuente comercial. El modelo se renueva por capture y un layout effect limpia filas/baseline al cambiar contexto. GET conserva fila completa/CAS de ediciones/pending/bloqueos, incluso si no aparece en la respuesta; no instala baseline remoto de filas protegidas. Navegación incorpora dirty/busy/observation. Archivo se bloquea para fila protegida. Recovery explícita recarga el documento, con texto que aclara descarte local y que no revierte un write incierto.
+
+Save utiliza begin/canDispatch/follow/succeed/fail: confirma solo generaciones exactas; conserva cambios escritos después; incertidumbre bloquea siguientes envíos hasta recuperación. No-op con baseline confiable/sin cola limpia únicamente sus campos. CAS sigue capturado, sin rebase ni dedupe A→B→A. `publicationSaved` preserva filas protegidas, invalida baseline y muestra aviso; overview recibe la confirmación real del servidor separadamente.
+
+Coordinador implementó/ejecutó y Harvey revisó contratos y detectó la fusión de confirmación remota corregida antes de cierre. Siete nuevos casos: GET nuevo con fila presente/ausente, ACK con edición posterior, navegación y confirmación dirty/pending/blocked.66focales PASS; frontend2992PASS/1SKIP/0FAIL, salida0; build index-BmE46sRf correcto. Logs `/private/tmp/render2-goal292-{initial,focal-final2,frontend-final,build-final}.log`. Mocks anteriores de cola que devolvían ACK inválido `{}` se cambiaron por ACK válido para probar dispatch; no acreditan persistencia CAS real. Retry después de fallo ahora se prueba como bloqueado; el test de overview simula recuperación con nuevo modelo, no recarga UI real.
+
+Sin backend/migración/DB/proveedores/despliegue. Pruebas de callbacks/dependencias inyectadas, no React montado ni aceptación nativa de descarte/recuperación/refresh con borrador. Necesita validación física antes de aceptar globalmente el flujo; el resto del prompt maestro continúa abierto.
+
 ### Planilla: lectura anterior no reemplaza edición posterior — corte291
 
 Se reprodujo con callbacks reales el cruce GET iniciado→edición local→respuesta: el éxito reemplazaba draft y revisión CAS; el error publicaba un error de lectura ya obsoleta. Cuatro casos nuevos cookie/bearer y éxito/error fallaron antes de corregir. `actualizarLocal` ahora invalida la generación de lecturas al admitir campos editables, antes de modificar estado; la propiedad separada del loading permite terminar el spinner sin aceptar datos ni errores viejos. No hay guardado/reintento automático ni rebase de revisión.

@@ -18,6 +18,7 @@ import { apiRequest } from '../features/render-os/services/render-os-api.js';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { useSessionView } from '../shared/session/use-session-view.js';
 import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
+import { createStoryCellDraft } from './storyCellDraft.js';
 import { createEditorialCreateIntent } from '../shared/editorial/editorial-create-intent.js';
 import { EditorialArchiveControl } from '../components/EditorialArchiveControl.jsx';
 import { EditorialArchivePanel } from '../components/EditorialArchivePanel.jsx';
@@ -732,6 +733,11 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
   const writeQueues = useRef(new Map());
   const latestWrites = useRef(new Map());
   const confirmedRows = useRef(new Map());
+  const cellDraft = useRef(null);
+  if (!cellDraft.current || cellDraft.current.capture !== capture) cellDraft.current = { capture, model: createStoryCellDraft() };
+  const [, renderCellDraft] = useState(0);
+  const cellState = cellDraft.current.model.snapshot;
+  useLayoutEffect(() => { confirmedRows.current.clear(); setPublicaciones([]); }, [capture]);
   const creating = useRef(false);
   const creation = useRef(null);
   const [, renderCreation] = useState(0);
@@ -740,7 +746,8 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
   const [responsableNuevoId, setResponsableNuevoId] = useState('');
   if (!creation.current || creation.current.capture !== capture) creation.current = { capture, model: createEditorialCreateIntent({ capture }) };
   const creationState = creation.current.model.snapshot;
-  useNavigationGuard(() => ({ dirty: creation.current.model.snapshot.locked, busy: creating.current || creation.current.model.snapshot.busy }));
+  useNavigationGuard(() => ({ dirty: creation.current.model.snapshot.locked || cellDraft.current.model.snapshot.dirty,
+    busy: creating.current || creation.current.model.snapshot.busy || cellDraft.current.model.snapshot.busy }), () => cellDraft.current.model.observation);
 
   useEffect(() => {
     const scope = capture(), controller = new AbortController();
@@ -765,9 +772,9 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
       .then((data) => {
         if (!current()) return;
         const rows = data.filter((p) => p.cliente_id === clienteId);
-        confirmedRows.current = new Map(rows.filter(row => !writeQueues.current.has(row.id))
+        confirmedRows.current = new Map(rows.filter(row => !writeQueues.current.has(row.id) && !cellDraft.current.model.has(row.id))
           .map(row => [row.id, { capture, row: { ...row } }]));
-        setPublicaciones(rows);
+        setPublicaciones(prev => cellDraft.current.model.preserve(rows, prev));
         onSnapshotLoaded?.(data);
         setError(null);
         return true;
@@ -791,7 +798,12 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     const scope = capture();
     if (!scope.current()) return;
     ++listGeneration.current;
-    setPublicaciones(prev => prev.map(row => row.id === dto.piece.id ? mergeEditorialStatus(row, dto) : row));
+    if (cellDraft.current.model.has(dto.piece.id)) {
+      confirmedRows.current.delete(dto.piece.id);
+      setError('La publicación cambió en el servidor. Conservamos tu borrador; recargá para revisar los cambios.');
+    } else {
+      setPublicaciones(prev => prev.map(row => row.id === dto.piece.id ? mergeEditorialStatus(row, dto) : row));
+    }
     onPublicationSaved?.(dto);
   }, [capture, onPublicationSaved]);
 
@@ -819,6 +831,9 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     if (!scope.current()) return;
     campos = editorialFields(publicaciones.find(p => p.id === id), campos, view.role === 'admin');
     if (!Object.keys(campos).length) return;
+    const observed = publicaciones.find(row => row.id === id);
+    if (!observed || !Object.entries(campos).some(([key, value]) => !Object.is(observed[key], value))) return;
+    cellDraft.current.model.edit(id, campos);
     // A response observed before typing cannot replace this newer local intent
     // or advance its CAS observation. Loading ownership still settles normally.
     ++listGeneration.current;
@@ -831,6 +846,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     campos = editorialFields(publicaciones.find(p => p.id === id), campos, view.role === 'admin');
     if (!Object.keys(campos).length) return;
     const observed = publicaciones.find(p => p.id === id);
+    const draft = cellDraft.current.model;
     const confirmed = confirmedRows.current.get(id);
     // Never compare against the optimistic draft, or skip an intent behind an
     // intervening write. An uncertain attempt invalidates its baseline below.
@@ -840,20 +856,33 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
       && confirmed.row.publicacion_evidencia.revision >= 0
       && Object.entries(campos).every(([key, value]) => confirmed.row[key] === value
         || (['fecha_programada', 'idea', 'copy', 'material_referencia', 'aclaraciones', 'responsable'].includes(key)
-          && confirmed.row[key] == null && value === ''))) return;
+          && confirmed.row[key] == null && value === ''))) {
+      // A verified no-op can clear just these field generations, not other edits.
+      try { const intent = draft.begin(id, campos); draft.succeed(intent); renderCellDraft(value => value + 1); }
+      catch (err) { if (scope.current()) setError(err.message); }
+      return;
+    }
     let body;
     try { body = editorialPatchBody(observed, campos); }
     catch (err) { if (scope.current()) setError(editorialPatchError(err)); return; }
     const previous = writeQueues.current.get(id) || Promise.resolve();
     // Deduplicate only the latest adjacent intent, never an older pending A
     // that must be sent again after an intervening B.
-    if (writeQueues.current.has(id) && latestWrites.current.get(id) === body) return previous;
-    latestWrites.current.set(id, body);
+    const latest = latestWrites.current.get(id);
+    if (writeQueues.current.has(id) && latest?.body === body && latest.draft === draft && draft.follow(latest.intent, campos)) {
+      renderCellDraft(value => value + 1); return previous;
+    }
+    let intent;
+    try { intent = draft.begin(id, campos); }
+    catch (err) { if (scope.current()) setError(err.message); return; }
+    renderCellDraft(value => value + 1);
+    latestWrites.current.set(id, { body, draft, intent });
     // A list read begun before this intent cannot establish a trusted baseline.
     ++listGeneration.current;
     const run = async () => {
       try {
         scope.assertCurrent();
+        if (!draft.canDispatch(intent)) throw new Error('Hay un guardado sin confirmar. Recargá para verificar antes de guardar de nuevo.');
         confirmedRows.current.delete(id);
         const saved = editorialPatchAck(observed, await scope.request(`/api/publicaciones/${id}`, {
           method: "PATCH",
@@ -861,17 +890,19 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
           body,
         }));
         scope.assertCurrent();
+        draft.succeed(intent);
         confirmedRows.current.set(id, { capture, row: { ...saved } });
         ++listGeneration.current;
         onCommittedChange?.({ row: saved });
         setPublicaciones(prev => prev.map(row => row.id === id ? mergeEditorialPatchEvidence(row, saved) : row));
       } catch (err) {
+        draft.fail(intent);
         if (scope.current()) {
           ++listGeneration.current;
           confirmedRows.current.delete(id);
           setError(editorialPatchError(err));
         }
-      }
+      } finally { if (scope.current()) renderCellDraft(value => value + 1); }
     };
     const queued = previous.catch(() => {}).then(run);
     writeQueues.current.set(id, queued);
@@ -922,7 +953,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     } finally { creating.current = false; if (scope.current()) renderCreation(value => value + 1); }
   };
 
-  const canArchivePublication = row => view.role === 'admin' && capture().current() && Number.isSafeInteger(row?.id) && !writeQueues.current.has(row.id)
+  const canArchivePublication = row => view.role === 'admin' && capture().current() && Number.isSafeInteger(row?.id) && !cellDraft.current.model.has(row.id) && !writeQueues.current.has(row.id)
     && ![...pendingWrites.current].some(key => String(key).startsWith('archive:') && key !== `archive:${row.id}`);
   const archivePublicationLock = (id, locked) => { const key = `archive:${id}`; if (locked) pendingWrites.current.add(key); else pendingWrites.current.delete(key); };
   const archivePublicationSaved = async (dto, scope) => {
@@ -1019,6 +1050,10 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
       {error && (
         <div className="alert is-error">{error}</div>
       )}
+      {(cellState.dirty || cellState.blocked) && <div role="status">
+        <p>Conservamos tus ediciones locales. Recargar las descarta y consulta lo guardado; no revierte un cambio que pudo completarse.</p>
+        <button type="button" disabled={cellState.busy} onClick={() => window.location.reload()}>Descartar borrador y recargar</button>
+      </div>}
 
       {cargando ? (
         <div className="state-empty">Cargando planilla…</div>

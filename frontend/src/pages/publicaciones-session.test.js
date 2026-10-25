@@ -5,10 +5,11 @@ import ts from 'typescript';
 import { createCapturedRequest } from '../shared/session/captured-request.js';
 import { createBrowserSessionState } from '../shared/session/browser-session-state.js';
 import { createSessionView, sessionViewInputs } from '../shared/session/session-view.js';
-import { editorialFields } from '../components/EditorialPublicationControl.model.js';
+import { editorialFields, mergeEditorialStatus } from '../components/EditorialPublicationControl.model.js';
 import { isConfirmedPublication } from '../shared/editorial/publication-evidence.js';
 import { editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError } from '../shared/editorial/editorial-patch.js';
 import { createEditorialCreateIntent } from '../shared/editorial/editorial-create-intent.js';
+import { createStoryCellDraft } from './storyCellDraft.js';
 
 // Actual callbacks/hook logic with injected effects; no mounted React/browser claim.
 const source = readFileSync(new URL('./Publicaciones.jsx', import.meta.url), 'utf8');
@@ -40,6 +41,8 @@ function sessionFixture(request, cookie = true) {
 function sheetFixture(request, cookie = true) {
   const f = sessionFixture(request, cookie), effects = []; let rows = [];
   const deps = { capture: f.capture, view: f.view, clienteId: 2, publicaciones: [{ id: 5, estado: 'pendiente', publicacion_evidencia: { revision: 0 } }], editorialFields,
+    cellDraft: { current: { model: createStoryCellDraft() } },
+    renderCellDraft() {},
     onSnapshotLoaded: undefined, onCommittedChange: undefined, overviewGeneration: { current: 0 },
     editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError,
     creation: { current: { model: createEditorialCreateIntent({ capture: f.capture, randomUUID: () => '11111111-1111-4111-8111-111111111111' }) } }, renderCreation() {},
@@ -177,6 +180,62 @@ test('render replacement of task attempt/capture fences held GET before passive 
     await settle(); assert.deepEqual(f.effects, before); assert.equal(f.requests.length, 1); cleanup();
   }
 });
+for (const missing of [false, true]) test(`sheet fresh read preserves dirty row and original CAS (missing ${missing})`, async () => {
+  const row = { id: 5, cliente_id: 2, copy: 'Original', publicacion_evidencia: { revision: 0 } };
+  let reads = 0;
+  const f = sheetFixture(async () => ++reads === 1 ? [row] : missing ? [] : [{ ...row, copy: 'Remote', publicacion_evidencia: { revision: 7 } }]);
+  await f.deps.cargar(); f.deps.publicaciones = [row];
+  callback(sheet, 'actualizarLocal', f.deps)(5, { copy: 'My draft' });
+  await f.deps.cargar();
+  assert.equal(f.rows.length, 1); assert.equal(f.rows[0].copy, 'My draft');
+  assert.equal(f.rows[0].publicacion_evidencia.revision, 0);
+  assert.equal(f.deps.confirmedRows.current.has(5), false);
+  assert.equal(f.deps.cellDraft.current.model.snapshot.dirty, true);
+  assert.equal(f.deps.canArchivePublication(row), false);
+});
+
+test('sheet exact ACK retains later field generation while confirmed no-op clears only its own field', async () => {
+  const held = deferred(), row = { id: 5, cliente_id: 2, copy: 'Original', idea: 'Idea', publicacion_evidencia: { revision: 0 } };
+  const f = sheetFixture(async (_url, options) => options.method ? held.promise : [row]);
+  await f.deps.cargar(); f.deps.publicaciones = [row];
+  const update = callback(sheet, 'actualizarLocal', f.deps);
+  update(5, { copy: 'First draft' });
+  const save = f.deps.guardarEnServidor(5, { copy: 'First draft' }); await settle();
+  update(5, { copy: 'Later draft' });
+  held.resolve({ ...row, copy: 'First draft', publicacion_evidencia: { revision: 1 } }); await save;
+  assert.equal(f.rows[0].copy, 'Later draft');
+  assert.equal(f.deps.cellDraft.current.model.snapshot.dirty, true);
+  assert.equal(f.deps.cellDraft.current.model.snapshot.busy, false);
+  f.deps.publicaciones = f.rows; f.deps.guardarEnServidor = callback(sheet, 'guardarEnServidor', f.deps);
+  await f.deps.guardarEnServidor(5, { idea: 'Idea' });
+  assert.equal(f.deps.cellDraft.current.model.isEdited(5, { copy: 'Later draft' }), true);
+  assert.equal(f.requests.length, 2, 'Unchanged other field does not dispatch or acknowledge later copy');
+});
+
+test('sheet navigation guard includes cell draft dirty/busy and its changing observation', () => {
+  const guard = nodes(owner(sheet), n => ts.isCallExpression(n) && text(n.expression) === 'useNavigationGuard')[0];
+  const model = createStoryCellDraft();
+  const deps = { creation: { current: { model: { snapshot: { locked: false, busy: false } } } }, creating: { current: false }, cellDraft: { current: { model } } };
+  const status = evaluate(guard.arguments[0], deps), observation = evaluate(guard.arguments[1], deps);
+  assert.deepEqual(status(), { dirty: false, busy: false }); const before = observation();
+  model.edit(5, { copy: 'local' }); assert.equal(status().dirty, true); assert.notEqual(observation(), before);
+  const intent = model.begin(5, { copy: 'local' }); assert.equal(status().busy, true);
+  model.fail(intent); assert.deepEqual(status(), { dirty: true, busy: false });
+});
+
+for (const state of ['dirty', 'pending', 'blocked']) test(`sheet editorial confirmation preserves ${state} local row but informs overview`, async () => {
+  const row = { id: 5, cliente_id: 2, copy: 'Local text', fecha_programada: '2026-10-20', publicacion_evidencia: { revision: 0 } };
+  const f = sheetFixture(async () => [row]); await f.deps.cargar();
+  const model = f.deps.cellDraft.current.model; model.edit(5, { fecha_programada: '2026-10-21' });
+  if (state !== 'dirty') { const intent = model.begin(5, { fecha_programada: '2026-10-21' }); if (state === 'blocked') model.fail(intent); }
+  let notified;
+  const dto = { piece: { id: 5, fecha_programada: '2026-11-20', revision: 7 } };
+  callback(sheet, 'publicationSaved', { ...f.deps, mergeEditorialStatus, onPublicationSaved: value => { notified = value; } })(dto);
+  assert.deepEqual(f.rows, [row], 'No local field or CAS evidence is replaced');
+  assert.equal(notified, dto); assert.equal(f.deps.confirmedRows.current.has(5), false);
+  assert.match(f.effects.findLast(effect => effect[0] === 'error')[1], /Conservamos tu borrador/);
+});
+
 for (const cookie of [false, true]) for (const fail of [false, true]) {
   test(`sheet older read cannot replace a later local draft or report its failure (cookie ${cookie}, error ${fail})`, async () => {
     const held = deferred(); let reads = 0;
@@ -214,7 +273,8 @@ test('sheet skips intact confirmed fields, not an optimistic draft or an uncerta
     await f.deps.guardarEnServidor(5, { idea: 'Draft' });
     assert.equal(f.requests.length, 2, 'Optimistic equality never suppresses a real edit');
     await f.deps.guardarEnServidor(5, { idea: 'Original' });
-    assert.equal(f.requests.length, 3, 'Unknown result cannot use the pre-write baseline');
+    assert.equal(f.requests.length, 2, 'Unknown result blocks another write until explicit recovery');
+    assert.equal(f.deps.cellDraft.current.model.snapshot.blocked, true);
   }
 });
 
@@ -266,7 +326,7 @@ test('sheet accepted ACK skips subsequent untouched blur without overwriting a l
 test('sheet captures cookie/bearer body before queue and serializes slow-first then latest, without duplicate adjacent dispatch', async () => {
   for (const cookie of [false, true]) {
     const first = deferred(), persisted = [];
-    const f = sheetFixture(async (_url, options) => { const body = JSON.parse(options.body); if (!persisted.length) { persisted.push('started-A'); await first.promise; } persisted.push(body.copy); return {}; }, cookie);
+    const f = sheetFixture(async (_url, options) => { const body = JSON.parse(options.body); if (!persisted.length) { persisted.push('started-A'); await first.promise; } persisted.push(body.copy); return { id: 5, copy: body.copy, publicacion_evidencia: { revision: 1 } }; }, cookie);
     const body = { copy: 'A' }, a = f.deps.guardarEnServidor(5, body); body.copy = 'mutated'; await settle();
     const b = f.deps.guardarEnServidor(5, { copy: 'B' }), duplicate = f.deps.guardarEnServidor(5, { copy: 'B' });
     await settle(); assert.equal(f.requests.length, 1); first.resolve(); await Promise.all([a, b, duplicate]);
@@ -278,7 +338,7 @@ test('sheet captures cookie/bearer body before queue and serializes slow-first t
 });
 test('sheet A→B→A pending queue preserves final A rather than deduplicating against old pending A', async () => {
   const first = deferred(); let number = 0; const persisted = [];
-  const f = sheetFixture(async (_url, options) => { if (++number === 1) await first.promise; persisted.push(JSON.parse(options.body).idea); return {}; });
+  const f = sheetFixture(async (_url, options) => { if (++number === 1) await first.promise; const idea = JSON.parse(options.body).idea; persisted.push(idea); return { id: 5, idea, publicacion_evidencia: { revision: 1 } }; });
   const a = f.deps.guardarEnServidor(5, { idea: 'A' }); await settle();
   const b = f.deps.guardarEnServidor(5, { idea: 'B' }), finalA = f.deps.guardarEnServidor(5, { idea: 'A' });
   first.resolve(); await Promise.all([a, b, finalA]); assert.deepEqual(persisted, ['A', 'B', 'A']);
@@ -496,7 +556,10 @@ test('overview receives only confirmed PATCH/archive; a failed PATCH and local d
   const local = callback(sheet, 'actualizarLocal', f.deps);
   local(5, { fecha_programada: '2026-11-20' }); assert.deepEqual(overview.rows, [original]);
   await f.deps.guardarEnServidor(5, { fecha_programada: '2026-11-20' }); assert.deepEqual(overview.rows, [original]);
-  fail = false; await f.deps.guardarEnServidor(5, { fecha_programada: '2026-11-20' }); await settle();
+  fail = false;
+  // Explicit recovery starts a fresh draft lifetime; ordinary retry stays blocked.
+  f.deps.cellDraft.current.model = createStoryCellDraft();
+  await f.deps.guardarEnServidor(5, { fecha_programada: '2026-11-20' }); await settle();
   assert.deepEqual(overview.rows, [saved]);
   assert.equal(overview.rows.filter(row => row.fecha_programada.startsWith('2026-10')).length, 0);
   await f.deps.archivePublicationSaved({ piece: { id: 5, dominio: 'publicacion', archived: true } }, f.capture()); assert.deepEqual(overview.rows, []);
