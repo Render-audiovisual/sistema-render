@@ -52,10 +52,13 @@ test("encola una vez por destinatario, excluye al actor y tolera reintentos", as
   const inserts = [];
   const pool = {
     async query(sql, params = []) {
-      if (sql.includes("SELECT id, usuario, nombre FROM usuarios")) return { rows: [
-        { usuario: "German", nombre: "Germán" },
-        { usuario: "Oriana", nombre: "Oriana" },
-      ] };
+      if (sql.includes("SELECT id, usuario, nombre FROM usuarios")) {
+        assert.match(sql, /activo IS TRUE/);
+        return { rows: [
+          { id: 2, usuario: "German", nombre: "Germán" },
+          { id: 4, usuario: "Oriana", nombre: "Oriana" },
+        ] };
+      }
       if (sql.includes("SELECT nombre FROM clientes")) return { rows: [{ nombre: "Bohle" }] };
       if (sql.includes("INSERT INTO mia_private_task_notifications")) {
         inserts.push(params);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {access} from 'node:fs/promises';
 import {startLocalHarness,assertFixtureIdentity,request,fixturePassword} from '../scripts/render2-local-test.js';
 
-test('state notification self-exclusion uses actor identity, not a distinct reviewer homonym',{
+test('state notification HTTP omits an ambiguous reviewer label without using actor exclusion to disambiguate',{
   skip:process.env.RENDER2_RUN_LOCAL_INTEGRATION!=='true',timeout:180000,
 },async t=>{
   const port=55890,f=await startLocalHarness({port});
@@ -26,13 +26,12 @@ test('state notification self-exclusion uses actor identity, not a distinct revi
   assert.equal(employee.usuario.id,91003);assert.equal(admin.usuario.id,91001);
   assert.equal(employee.usuario.nombre,'Franco');assert.equal(admin.usuario.nombre,'Franco');
   const api=(path,token,method='GET',body)=>request(f.base,`/api${path}`,{token,method,body});
-  // The unchanged legacy resolver picks the first name/login match. Establish
-  // that this controlled fixture resolves the EXISTING Franco target to the
-  // administrator, not to the actor; do not silently test a different policy.
+  // Two active identities match Franco. Neither row order nor excluding the
+  // actor may turn this ambiguous legacy label into a verified recipient.
   const catalog=await f.query('SELECT id,usuario,nombre FROM usuarios WHERE activo IS TRUE');
   const normalize=value=>value.normalize('NFD').replace(/\p{Diacritic}/gu,'').trim().toLowerCase();
-  const resolved=catalog.find(row=>[row.usuario,row.nombre].some(value=>normalize(value)==='franco'));
-  assert.equal(resolved?.id,91001,'Fixture precondition: existing legacy Franco recipient resolves to admin, not employee');
+  const matched=catalog.filter(row=>[row.usuario,row.nombre].some(value=>normalize(value)==='franco'));
+  assert.deepEqual(matched.map(row=>row.id).sort((a,b)=>a-b),[91001,91003]);
   const tasks=[];
   for(const ownerId of [91003,91001]){
     const [row]=await f.query(`INSERT INTO tareas(titulo,asignado_a,estado,tipo_tarea,propiedades_extra)
@@ -96,15 +95,15 @@ test('state notification self-exclusion uses actor identity, not a distinct revi
     assert.deepEqual(await notices(),expectedNotices);assert.deepEqual(await rawTasks(),expectedTasks);
     assert.deepEqual(await stableHashes(),baseline);
   }
-  await t.test('assigned employee Franco does not suppress the distinct existing Franco reviewer',async()=>{
-    await transition(tasks[0],employee.token,['lider','qa_franco']);
+  await t.test('employee transition omits both ambiguous Franco candidates, retaining the unique leader alias',async()=>{
+    await transition(tasks[0],employee.token,['lider']);
   });
-  await t.test('same real Franco reviewer acting on his own task is still excluded by ID',async()=>{
+  await t.test('administrator transition cannot disambiguate Franco by removing its own actor ID',async()=>{
     await transition(tasks[1],admin.token,['lider']);
   });
-  await boundedUnchanged(expectedNotices);assert.equal(expectedNotices.length,3);
+  await boundedUnchanged(expectedNotices);assert.equal(expectedNotices.length,2);
   assert.deepEqual(await stableHashes(),baseline);assert.deepEqual(await rawTasks(),expectedTasks);
   assert.deepEqual((await f.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename"))
     .map(row=>row.tablename).filter(name=>!/^auth_|^browser_session/.test(name)),tables);
-  t.diagnostic(`${tables.length} domain tables observed; only two exact state/revision updates and three legacy-recipient notices allowed; bearer HTTP, no SMTP/provider/worker or reviewer-policy claim`);
+  t.diagnostic(`${tables.length} domain tables observed; only two exact state/revision updates and two unique legacy-recipient notices allowed; bearer HTTP, no SMTP/provider/worker or reviewer-policy claim`);
 });

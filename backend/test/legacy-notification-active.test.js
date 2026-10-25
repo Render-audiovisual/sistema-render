@@ -7,8 +7,8 @@ import { encolarNotificacionPrivadaTarea } from '../src/private-task-notificatio
 test('legacy email resolution excludes inactive accounts in the database query', async () => {
   const pool = { async query(sql) {
     assert.match(sql, /activo IS TRUE/);
-    assert.match(sql, /email_notificaciones IS NOT NULL/);
-    return { rows: [{ usuario: 'qa_active', nombre: 'QA', email_notificaciones: 'qa@example.invalid' }] };
+    assert.doesNotMatch(sql, /email_notificaciones IS NOT NULL/);
+    return { rows: [{ id: 12, usuario: 'qa_active', nombre: 'QA', email_notificaciones: 'qa@example.invalid' }] };
   } };
   assert.equal((await buscarDestinatario(pool, 'QA')).usuario, 'qa_active');
 });

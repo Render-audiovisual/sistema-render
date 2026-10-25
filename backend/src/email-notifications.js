@@ -35,25 +35,27 @@ export function configuracionCorreoDisponible(env = process.env) {
   );
 }
 
-export async function buscarDestinatario(pool, asignadoA) {
+export function destinatarioUnicoPorNombre(rows, asignadoA) {
   const responsable = normalizarNombre(asignadoA);
+  if (!responsable) return null;
   const usuarioEsperado = USUARIO_POR_RESPONSABLE.get(responsable);
+  const candidates = rows.filter(usuario => usuarioEsperado
+    ? normalizarNombre(usuario.usuario) === usuarioEsperado
+    : [usuario.usuario, usuario.nombre].some(value => normalizarNombre(value) === responsable));
+  // Labels are compatibility hints, not identity. Never select an arbitrary
+  // first homonym or use channel eligibility to disambiguate two people.
+  if (candidates.some(row => !Number.isSafeInteger(row.id) || row.id < 1 || row.id > 2147483647)) return null;
+  return new Set(candidates.map(row => row.id)).size === 1 ? candidates[0] : null;
+}
+
+export async function buscarDestinatario(pool, asignadoA) {
   const { rows } = await pool.query(
     `SELECT id, usuario, nombre, email_notificaciones
      FROM usuarios
-     WHERE email_notificaciones IS NOT NULL AND activo IS TRUE`,
+     WHERE activo IS TRUE`,
   );
-
-  return (
-    rows.find((usuario) => {
-      const usuarioNormalizado = normalizarNombre(usuario.usuario);
-      if (usuarioEsperado) return usuarioNormalizado === usuarioEsperado;
-      return (
-        usuarioNormalizado === responsable ||
-        normalizarNombre(usuario.nombre) === responsable
-      );
-    }) || null
-  );
+  const candidate = destinatarioUnicoPorNombre(rows, asignadoA);
+  return candidate?.email_notificaciones ? candidate : null;
 }
 
 export function responsablesNotificables(tarea) {

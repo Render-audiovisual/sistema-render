@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Avisos legacy: omitir destinatarios ambiguos — corte261
+
+Email/private ahora resuelven etiquetas solo cuando existe unID activo único; no primera fila ni fan-out. Correo evalúa identidad contra catálogo activo completo antes de exigir email, sin ocultar homónimos sincorreo. Aliases/revisores/ACL/actor/fingerprints se conservan; caminos explícitosID intactos. Erdos unitarias/física, Volta fixtures/revisión y coordinador producto/integración/ejecución.26nuevas20rojas→26PASS;65focalesPASS. Física nueva4PASS PG55897 y regresión HTTP estados/actividad7PASS, tres raíces eliminadas; ver TASK_WORKFLOW_QA.md.
+
+Omisión ambigua reduce envíos indebidos; no finaliza el contrato de revisores por IDs/roles ni entrega/lifecycle de avisos. Sin frontend/build/migración/deploy ni bases configuradas. La física254 renovada ya no legitima elegir primerFranco: espera únicamente el alias inequívoco lider en ambas transiciones, preservando CAS y tablas ajenas. No aceptación global.
+
 ### Drive: apertura única de carpetas — corte260
 
 Repro del coordinador con expresiones JSX reales: click/click/dblclick agregaba root,A,A,A. Drive ahora usa una sola acción; callback y updater verifican sesión/contexto/montaje, padre observado e IDs no repetidos. Primera prueba React nativa detectó además saltoA→B por segundo clic sobre el nuevo DOM; click detail>1 ya no abre carpetas, manteniendo teclado detail0/activación simple. Erdos17pruebas reales extraídas, Volta runner/revisión y coordinador producto/native/integración.

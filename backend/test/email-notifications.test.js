@@ -13,16 +13,19 @@ import {
 
 const usuarios = [
   {
+    id: 1,
     usuario: "lider",
     nombre: "Líder",
     email_notificaciones: "lider@example.com",
   },
   {
+    id: 2,
     usuario: "German",
     nombre: "Germán",
     email_notificaciones: "german@example.com",
   },
   {
+    id: 3,
     usuario: "Franco",
     nombre: "Franco Romero",
     email_notificaciones: "franco@example.com",
@@ -30,7 +33,10 @@ const usuarios = [
 ];
 
 const pool = {
-  async query() {
+  async query(sql) {
+    assert.match(sql, /FROM usuarios/);
+    assert.match(sql, /activo IS TRUE/);
+    assert.doesNotMatch(sql, /email_notificaciones IS NOT NULL/);
     return { rows: usuarios };
   },
 };

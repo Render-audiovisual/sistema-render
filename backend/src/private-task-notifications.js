@@ -1,12 +1,7 @@
 import crypto from "node:crypto";
-import { normalizarNombre, responsablesNotificables } from "./email-notifications.js";
+import { normalizarNombre, responsablesNotificables, destinatarioUnicoPorNombre } from "./email-notifications.js";
 
 const APP_URL_POR_DEFECTO = "https://sistema.rendercorrientes.com";
-const USUARIO_POR_RESPONSABLE = new Map([
-  ["agus", "lider"],
-  ["agustin", "lider"],
-  ["lider", "lider"],
-]);
 
 const TITULOS = Object.freeze({
   creada: "Tenés una nueva tarea",
@@ -49,13 +44,7 @@ export function destinatariosNuevosDeAsignacion({
 
 async function resolverUsuarios(pool, nombres) {
   const { rows } = await pool.query("SELECT id, usuario, nombre FROM usuarios WHERE activo IS TRUE");
-  return nombres.map((nombre) => {
-    const buscado = normalizarNombre(nombre);
-    const usuarioEsperado = USUARIO_POR_RESPONSABLE.get(buscado);
-    return rows.find((usuario) => usuarioEsperado
-      ? normalizarNombre(usuario.usuario) === usuarioEsperado
-      : normalizarNombre(usuario.usuario) === buscado || normalizarNombre(usuario.nombre) === buscado) || null;
-  });
+  return nombres.map(nombre => destinatarioUnicoPorNombre(rows, nombre));
 }
 
 export function crearMensajePrivadoTarea({ tarea, clienteNombre, motivo = "creada", detalle = "", appUrl = APP_URL_POR_DEFECTO }) {
