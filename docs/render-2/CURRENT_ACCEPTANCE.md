@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Usuarios: modalidad y captura móvil físicas — corte276
+
+App/build275 BQx0lbcl/backend271, Chrome real, fixture propio PG55906/HTTP52853 con cookie qa_franco91001. Alta sin submit: Nombre inicialmente activo, dialog cumple :modal, Shift+Tab desde Cerrar llega a Crear usuario y Tab desde este último vuelve a Cerrar, siempre dentro; Escape limpio cierra y devuelve foco a Agregar usuario. Viewport390×844: innerWidth390/document.scrollWidth375/dialog375/cierre44, sin overflow horizontal. Captura `/private/tmp/render2-goal276-users-mobile.png` guardada e inspeccionada: formulario visible, pie de acciones próximo al texto auxiliar del correo; queda revisar scroll/foco con contenido largo, no aceptación visual completa.
+
+Solo se escribió Nombre sintético; Cancelar abrió confirm nativo (comando click agotó espera, getJsDialog confirmó confirm). dismiss agotó espera y perdió conexión; rebind del mismo tab1976878922 también expiró. No acreditar cancelación, conservación/descarte del borrador, backdrop, busy ni alta exitosa. Alternativa nativa mostró otra ventana de Drive, no se actuó allí; API de inventario de ventanas no disponible. Cierre de tab y reset de viewport no confirmados. Tab anterior273 ya no figuraba antes del nuevo fixture; esto no demuestra su reset anterior.
+
+Runner `/private/tmp/render2-goal276-native.mjs`, log homónimo: PID90027/hijo90051 verificados antes de TERM; salida0,105 hashes de dominio/contadores de todos los usuarios invariantes, index/entry intactos y cleanup ENOENT QWq9lT. Setup API de clientes/visitas/notas precedió al baseline; no UI saves, cuentas nuevas ni logout. No se repitió servidor tras timeouts. Sin producto/suites/build nuevos ni despliegue. Harvey revisó riesgo de foco al cerrar tras submit: no bug demostrado, requiere ACK+refresh con React montado. Superpowers/Verification guiaron aislamiento y límites. Feedback273 y Objetivos274 conservan pendientes nativos; aceptación global incompleta.
+
 ### Usuarios: alta con modal nativo y foco explícito — corte275
 
 El Modal de alta en Empleados usa native/closeDisabled=mutationBusy. Nombre recibe initialFocusRef=createNameRef en lugar de autoFocus; returnFocusRef=createButtonRef apunta al botón Agregar usuario. Conservados cerrarAlta/allowDiscard, pending inmediato, backdrop habilitado, fieldset, submit, roles y aislamiento de sesión. No se cambió el aside legacy de administración. Apple UI/Frontend Design orientaron conservar estilos/tamaños y foco explícito; Superpowers ordenó alcance y pruebas. Harvey revisó antes/después sin bloqueantes, identificando el riesgo de invocador deshabilitado al cleanup tras alta exitosa: ese retorno no está demostrado.
