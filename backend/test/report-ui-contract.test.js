@@ -191,13 +191,13 @@ test('explicit client/feed quota dedup preserves zero, missing and conflicting v
   assert.equal(clientQuotaReport([clients[0], { ...clients[1], cuota_feed_carruseles: 9 }], [], range)[0].carruseles, null);
 });
 
-test('quota publication cells explicitly describe partial visible scope, including zero', () => {
+test('quota publication cells describe shared manual confirmations in the real range, including zero', () => {
   const source = readFileSync(new URL('../../frontend/src/pages/Reportes.jsx', import.meta.url), 'utf8');
   assert.match(source, /Carruseles confirmados en el período real/);
   assert.match(source, /Reels confirmados en el período real/);
-  assert.match(source, /Solo incluye piezas visibles según tus permisos; no mide el cumplimiento global de la cuota\./);
-  assert.match(source, /formato === 'carruseles'\)\.publicadas\} visibles/);
-  assert.match(source, /formato === 'reels'\)\.publicadas\} visibles/);
+  assert.match(source, /Confirmaciones manuales de todo el equipo en el rango real\. No incluye registros archivados\./);
+  assert.match(source, /formato === 'carruseles'\)\.publicadas\} confirmadas/);
+  assert.match(source, /formato === 'reels'\)\.publicadas\} confirmadas/);
   const rows = clientQuotaReport([{ id: 1, cuota_carruseles: 8, cuota_reels: 4 }], [], range);
   assert.equal(rows[0].metrics[0].publicadas, 0);
   assert.equal(rows[0].metrics[1].publicadas, 0);

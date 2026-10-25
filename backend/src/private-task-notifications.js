@@ -13,7 +13,7 @@ const TITULOS = Object.freeze({
   finalizada: "La tarea fue finalizada",
   // Preserve the legacy event key without asserting an effective publication.
   publicada: "La tarea fue finalizada",
-  aprobada: "La tarea está lista para publicar",
+  aprobada: "La tarea fue aprobada",
 });
 
 export function destinatariosNuevosDeAsignacion({

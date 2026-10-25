@@ -33,6 +33,21 @@ test('creation retains its assignment message in both channels', () => {
   assert.match(crearMensajePrivadoTarea({ tarea }).text, /Tenés una nueva tarea/);
 });
 
+for(const tipo_tarea of ['desarrollo','edicion','diseno','produccion']){
+  test(`${tipo_tarea}: task approval never promises publication in either channel`,()=>{
+    const tarea={id:42,titulo:'QA approval',tipo_tarea,estado:'aprobada',propiedades_extra:{workspace:'render_os'}};
+    const before=structuredClone(tarea);
+    const mail=crearContenidoCorreo({tarea,destinatario:{nombre:'QA'},motivo:'aprobada'});
+    const privateMessage=crearMensajePrivadoTarea({tarea,motivo:'aprobada'});
+    for(const value of [mail.subject,mail.text,mail.html,privateMessage.text]){
+      assert.match(value,/La tarea fue aprobada/);
+      assert.doesNotMatch(value,/lista para publicar|publicaci[oó]n realizada|tarea fue publicada/i);
+    }
+    assert.match(privateMessage.url,/workspace\/tareas\?task=42/);
+    assert.deepEqual(tarea,before);
+  });
+}
+
 for (const tipo of ['tarea_publicada', 'tarea_finalizada']) {
   test(`MIA ${tipo}: historical task markers do not assert editorial publication`, () => {
     const task = { id: 42, titulo: 'Edición QA', propiedades_extra: {

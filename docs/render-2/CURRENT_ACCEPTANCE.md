@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Aviso de aprobación sin promesa de publicación — integración371
+
+La revisión actual de avisos confirmó que getStateNotification aún resuelve destinatarios de revisión por etiquetas Agustín/Franco y añade Oriana en carruseles. Transportes por ID existen, pero no un roster de revisores explícito. Se preguntó al usuario si avisar a la community del cliente, solo a líderes o a un revisor elegido por tarea; sin respuesta no se cambia esa política ni se inventan IDs/roles destinatarios. Hilbert revisó esta limitación y la separación entre bindings de transporte y decisión de revisión.
+
+Independientemente, Main reprodujo cinco fallos de texto: motivo aprobada prometía «lista para publicar» en ambos renderers genéricos, incluso para Desarrollo. Solo se reemplaza por «La tarea fue aprobada», sin cambiar clave de evento, destinatarios, fingerprints, permisos, estados ni encolado. Cuatro pruebas sectoriales cubren subject/text/html/privado, prohíben promesa de publicación y exigen tarea inmutable.39 focales PASS (/private/tmp/render2-goal371-focal.log); rojo previo19PASS/5FAIL (/private/tmp/render2-goal371-repro.log). Superpowers orientó limitar el cambio al contrato comprobado; Hilbert revisó diff sin bloqueantes.
+
+La primera regresión completa encontró un contrato backend de UI todavía anterior al scope369/370 y una terminación PythonCLI sin status normal (warningconfstr, causa indeterminada). Se actualizó la expectativa exacta de copy Reportes sin relajar métricas0 ni filtros; CLI se repitió sin cambiar código ni timeout.35 focales ReportUI/CLI PASS (/private/tmp/render2-goal371-recheck.log). Regresión final2441PASS/168SKIP opt-in/0FAIL de2609, terminal0 (/private/tmp/render2-goal371-final-backend.log). El primer fallo y su log permanecen documentados; el pase posterior no explica su causa. Sin SMTP/WhatsApp externos ni nuevas pruebas físicas de encolado, frontend/build/navegador/migración o despliegue. Política de revisión por ID y objetivo maestro siguen pendientes.
+
 ### Reportes compartidos en navegador: escritorio, celular e Inicio propio — integración370
 
 Main comprobó el contrato369 con sesión cookie real de Luciano QA, dos clientes, dos tareas Luciano/Agustín, una visita/video y una entrega histórica sin ID con importe canario987654.32. Navegador1280×900 mostró ambas personas/clientes y abrió la tarea de Agustín por su ID, no por la sesión. La captura reveló copy obsoleto de alcance limitado y «Mis piezas asignadas» dentro del detalle ajeno. Se cambian solo esas etiquetas: confirmaciones manuales de todo el equipo en rango real, caption/count «confirmadas» y «Piezas vinculadas a esta persona». No cambia cálculo, permisos, filtros o atribución. Harvey revisó copy/SQL/evidencia sin bloqueantes; Apple UI orientó legibilidad y contención, sin CSS adicional.

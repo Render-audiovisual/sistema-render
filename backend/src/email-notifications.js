@@ -84,7 +84,7 @@ export function crearContenidoCorreo({
     finalizada: "La tarea fue finalizada",
     // Historical task event, not evidence of an editorial publication.
     publicada: "La tarea fue finalizada",
-    aprobada: "Una tarea aprobada está lista para publicar",
+    aprobada: "La tarea fue aprobada",
   })[motivo] || "Tenés una nueva tarea";
   const esRenderOS = tarea.propiedades_extra?.workspace === "render_os";
   const rutaTarea = esRenderOS
