@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Entrega, corrección, aprobación y publicación desde UI — corte266
+
+Native App263/backend261, cookies/API/PostgreSQL55901/52850: tarea1/pieza1 sintéticas; editor91003 entregaV1→revisor91002 pide correcciónV1→editor91003 consulta corrección/entregaV2→dueño91001 apruebaV2/finaliza, con logouts reales. Recargas conservan entrega1 y finalización. Checkpoint SQL posterior a finalizar: revisión7,2entregas/2decisiones; pieza lista/fecha realNULL/ceroeventos. Confirmación manual posterior mediante diálogo editorial crea un único evento por91001 yfecha Córdoba2026-10-24T10:00. Reloadmóvil390 conserva confirmación/actor/hora y no desborda. Detalles/UUID/scope en TASK_WORKFLOW_QA.md.
+
+Volta runner, Erdos revisión y coordinador ejecución.95 tablas ajenas a la allowlist de10 invariantes; las diez restantes y contadores se verificaron separadamente con script offline leído/ejecutado por coordinador: campos/hashes/actores/transiciones exactos, contadores0/1/2/0 para91001–91004. No equivalencia entre exit0 del runner y circuito aprobado. Index/entry intactos; runnerexit0/cleanup ENOENT sLkF5e, pestaña/viewport cerrados/restaurados. Sin producto/suites/build nuevos ni despliegue. Sigue pendiente el recorrido nativo único de tres videos desde acuerdo/visita y proyecciones nuevas Inicio/Reportes/Calendario; no se sustituye por este tramo de un video. Proveedores externos, infraestructura y aceptación global continúan pendientes.
+
 ### Núcleo integrado y persistencia adicional renovados — corte265
 
 Coordinador ejecutó `npm run qa:core:local` desde backend sobre dfaed91:90PASS,0fallos/canceladas/omitidas, salida0,21930ms; log /private/tmp/render2-goal265-core.log. Son los diez archivos fijos del coordinador, con once fixtures propios (Producción bearer/cookie), no90 recorridos independientes. Todos los hooks de cleanup/ENOENT pasaron; nueve raíces se imprimen y dos se verifican sin imprimir. Se renueva la evidencia HTTP/PostgreSQL de tareas→correcciones→aprobación→finalización sin publicación, visita→tres videos→tres tareas con entregas independientes/replay, acuerdo/cuota/piezas/publicación manual explícita, límites financieros, proyectos, Mi lista, orden y destinos de login. El alcance exacto por recorrido sigue siendo la tabla de238, ahora ejecutada sobre código265.
