@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Usuarios: alta con modal nativo y foco explícito — corte275
+
+El Modal de alta en Empleados usa native/closeDisabled=mutationBusy. Nombre recibe initialFocusRef=createNameRef en lugar de autoFocus; returnFocusRef=createButtonRef apunta al botón Agregar usuario. Conservados cerrarAlta/allowDiscard, pending inmediato, backdrop habilitado, fieldset, submit, roles y aislamiento de sesión. No se cambió el aside legacy de administración. Apple UI/Frontend Design orientaron conservar estilos/tamaños y foco explícito; Superpowers ordenó alcance y pruebas. Harvey revisó antes/después sin bloqueantes, identificando el riesgo de invocador deshabilitado al cleanup tras alta exitosa: ese retorno no está demostrado.
+
+Una prueba nueva de cableado JSX falló antes del cambio (24PASS/1FAIL) y pasa después.49focales de Usuarios/navegación/Modal PASS; frontend completo2966PASS/1SKIP explícito de servidor canónico opt-in/0FAIL, salida0. Build index-BQx0lbcl.js y diffcheck correctos. Logs `/private/tmp/render2-goal275-{red,focal,frontend,build}.log`. No pruebas nativas ni aceptación de scroll móvil, Tab/Shift+Tab/select, Escape/backdrop cancelados, transición administración→alta o retorno tras submit. No creación de cuentas, permisos modificados, SMTP, backend, migración, servidores/DB ni despliegue. La protección financiera/identidades y aceptación global conservan sus límites anteriores.
+
 ### Objetivos: diálogos nativos compartidos — corte274
 
 PrepareGoal y PieceDetail en ClientesObjetivos usan Modal native y closeDisabled=busy; mantienen closeSafely, guardas de sesión/pending, confirmaciones de borrador y flujo de cuota/contenido. El hook local ahora solo bloquea/restaura overflow: se eliminó el listener global Tab duplicado, cuya lista de controles difería del componente compartido. Sin backdrop dismiss nuevo, portal, CSS, requests, backend o migraciones. Apple UI/Frontend Design orientaron conservar escala/estilos; Superpowers ordenó alcance y pruebas. Harvey revisó fuente/diff sin bloqueantes; el retorno de foco cuando refresh desmonta el invocador continúa pendiente.

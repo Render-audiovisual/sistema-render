@@ -80,6 +80,7 @@ function EmpleadosContent({ sesion }) {
   const { view, capture, captureLifetime, epoch } = useScopedRequest(sesion,modalAltaAbierto ? 'create' : `user:${usuarioAdministrado?.id || 'list'}`);
   const { capture: captureRoster } = useScopedRequest(sesion,'employee-roster');
   const pending = useRef(false), listGeneration = useRef(0);
+  const createButtonRef = useRef(null), createNameRef = useRef(null);
   const [mutationBusy,setMutationBusy] = useState(false);
   const editObservations = useRef({}), blockedTargetsRef = useRef(new Set());
   const [blockedTargets,setBlockedTargets] = useState({});
@@ -356,7 +357,7 @@ function EmpleadosContent({ sesion }) {
               <h2>Usuarios y accesos</h2>
               <p>Revisá quién puede ingresar, su rol y cómo recibe el acceso.</p>
             </div>
-            <button className="btn primary usuarios-add" type="button" disabled={mutationBusy} onClick={abrirAlta}>
+            <button ref={createButtonRef} className="btn primary usuarios-add" type="button" disabled={mutationBusy} onClick={abrirAlta}>
               + Agregar usuario
             </button>
           </div>
@@ -473,6 +474,10 @@ function EmpleadosContent({ sesion }) {
       {modalAltaAbierto && (
         <Modal
           key={`${epoch}:create`}
+          native
+          closeDisabled={mutationBusy}
+          initialFocusRef={createNameRef}
+          returnFocusRef={createButtonRef}
           onClose={cerrarAlta}
           overlayAriaLabel="Agregar usuario"
           closeOnBackdropClick
@@ -492,7 +497,7 @@ function EmpleadosContent({ sesion }) {
               <div className="form-grid cols-2 usuarios-form-grid">
                 <label className="form-field">
                   <span>Nombre y apellido *</span>
-                  <input type="text" value={nombre} onChange={handleNombreChange} maxLength={200} required autoFocus />
+                  <input ref={createNameRef} type="text" value={nombre} onChange={handleNombreChange} maxLength={200} required />
                 </label>
                 <label className="form-field">
                   <span>Categoría laboral *</span>

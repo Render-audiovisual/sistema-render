@@ -21,6 +21,20 @@ const employeeRevision=evaluate(owner('employeeRevision'),{employeeId});
 const mergeEmployeeAck=evaluate(owner('mergeEmployeeAck'),{employeeId,employeeRevision});
 const employeeRoster=evaluate(owner('employeeRoster'),{mergeEmployeeAck});
 const generateEmployeePassword=evaluate(owner('generateEmployeePassword'),{});
+test('create-account dialog uses shared native modality, busy close and explicit focus ownership',()=>{
+  const [modal]=nodes(owner('EmpleadosContent'),n=>ts.isJsxOpeningElement(n)&&text(n.tagName)==='Modal');
+  const attribute=(node,name)=>node.attributes.properties.find(prop=>prop.name?.getText(file)===name);
+  assert.ok(attribute(modal,'native'));assert.equal(attribute(modal,'native').initializer,undefined);
+  assert.equal(attribute(modal,'closeDisabled')?.initializer?.expression?.getText(file),'mutationBusy');
+  assert.equal(attribute(modal,'onClose')?.initializer?.expression?.getText(file),'cerrarAlta');
+  assert.equal(attribute(modal,'initialFocusRef')?.initializer?.expression?.getText(file),'createNameRef');
+  assert.equal(attribute(modal,'returnFocusRef')?.initializer?.expression?.getText(file),'createButtonRef');
+  const [nameInput]=nodes(owner('EmpleadosContent'),n=>ts.isJsxSelfClosingElement(n)&&text(n.tagName)==='input'&&attribute(n,'value')?.initializer?.expression?.getText(file)==='nombre');
+  assert.equal(attribute(nameInput,'ref')?.initializer?.expression?.getText(file),'createNameRef');
+  assert.equal(attribute(nameInput,'autoFocus'),undefined);
+  const [invoker]=nodes(owner('EmpleadosContent'),n=>ts.isJsxOpeningElement(n)&&text(n.tagName)==='button'&&attribute(n,'onClick')?.initializer?.expression?.getText(file)==='abrirAlta');
+  assert.equal(attribute(invoker,'ref')?.initializer?.expression?.getText(file),'createButtonRef');
+});
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};};
 const baseUser={id:9,nombre:'Empleado QA',usuario:'empleado_qa',rol:'diseno',activo:true,email_notificaciones:'avisos@example.test',google_email:'google@example.test',whatsapp_vinculado:true,foto_perfil:null,admin_revision:'ua1:9:1'};
 function fixture(request,cookie=true){
