@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Verificación nativa de diálogos y cierre móvil — integración336
+
+Main reutilizó el runner aislado331 sin modificarlo: dos bases frescas, puertos PG55946/HTTP52879, identidad comprobada por harness. Primera ejecución coordinador80352/HTTP80378, root render2-local-KqtSyN, build335: Nueva tarea :modal real, foco inicial cierre, ShiftTab→Cancelar, Tab→cierre, Escape→invocador. Calendario29: :modal, foco cierre44×44, ambos extremos Tab dentro, Escape→Ver resumen del29. En390×844 resumen ancho375 sin overflow de página y apertura de tarea desde fila correcta; captura `/private/tmp/render2-goal336-calendar-mobile.png` inspeccionada. No se prueba «más» con más de tres tareas en este fixture (esa evidencia sigue siendo test simulado335).
+
+La vista móvil detectó cierre de Nueva tarea35×36.5 con icono blanco poco visible. Main añadió clase modal-close existente y solo estilos locales color de tinta/fondo transparente/borde0; sin cambio global de CSS ni guardas. Harvey revisó cascade, sin bloqueantes. Nueva ejecución coordinador80789/HTTP80813, root render2-local-rILzIg, build index-8b7mGhpX: cierre44×44, color rgb29/29/31, foco correcto, viewport/scroll390. Se repitieron extremos Tab y Escape/retorno; captura corregida `/private/tmp/render2-goal336-fixed-new-task-mobile.png` inspeccionada. Tamaño del glifo aún sujeto a estilos específicos, no se afirma auditoría de contraste/lectores completa.
+
+Frontend3133PASS/1SKIP/0FAIL de3134 (`/private/tmp/render2-goal336-frontend.log`), build PASS (`/private/tmp/render2-goal336-build.log`). Ambos coordinadores cerrados por PID exacto:107 hashes de dominio, contadores de usuarios e index/entry intactos; resultados/tarea de setup sin cambios y cleanup ENOENT de ambas raíces. El log heredado dice104 pero el loop verificado cubre107. Viewport restaurado y pestañas cerradas. Sin altas desde formulario, prueba de dirty-discard nativa ni guardado incierto nuevos; esas reglas conservan evidencia separada. No producción/despliegue/servicios existentes.
+
 ### Resumen del día de Tareas: diálogo compartido — integración335
 
 Main migró TaskCalendar al Modal nativo chrome=false: nombre con fecha, foco en cierre44px compartido y retorno explícito al botón exacto de día o «más». Eliminó listener Escape global y semántica de diálogo duplicada; mantiene listado, apertura por ID, cierre previo al detalle y navegación mensual. Añadió solo overscroll-behavior:contain al listado; el guard visual normaliza exclusivamente esa declaración raíz validada, conservando hashes previos del resto de estructura/identidad. Web Design Guidelines orientó foco, semántica y scroll. Sin cambios de negocio, fechas, API o permisos.

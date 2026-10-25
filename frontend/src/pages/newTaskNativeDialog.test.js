@@ -37,6 +37,9 @@ test('unchanged custom section/form owns one explicit close control, no competin
   const buttons=nodes(owner,node=>ts.isJsxOpeningElement(node)&&node.tagName.getText(tree)==='button');
   const close=buttons.filter(node=>expression(node,'ref')==='newTaskCloseRef');assert.equal(close.length,1);
   assert.equal(attr(close[0],'aria-label').initializer.text,'Cerrar nueva tarea');
+  assert.equal(attr(close[0],'className').initializer.text,'modal-close');
+  assert.deepEqual(evaluate(attr(close[0],'style').initializer.expression,{}),
+    {color:'var(--render-ink)',background:'transparent',border:0});
   assert.equal(attr(close[0],'type').initializer.text,'button');assert.equal(expression(close[0],'onClick'),'closeModal');
   assert.equal(nodes(owner,node=>ts.isJsxAttribute(node)&&node.name.getText(tree)==='autoFocus').length,0);
   const sections=nodes(owner,node=>ts.isJsxOpeningElement(node)&&node.tagName.getText(tree)==='section');
