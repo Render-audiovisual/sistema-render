@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Membresía de subtareas según lectura verificada — integración356
+
+TaskDetail conserva una observación ligada a tarea y sesión/capture: una lectura exitosa reemplaza la membresía, incluso con []; un fallo conserva la última observación. resolveTaskSubtasks solo actualiza IDs observados con revisiones globales válidas iguales/mayores del mismo padre; un cambio de padre estrictamente más nuevo retira la fila local. Ausencia en el caché global paginado no implica borrado. No elimina registros del tablero ni incorpora hijos no observados. Actualizar subtareas es explícito, no una promesa de sincronización en vivo. Un único botón conserva foco; aria-disabled comunica carga y el latch síncrono bloquea reintentos simultáneos.
+
+Harvey añadió/revisó pruebas de membresía, revisión, inmutabilidad, sesión, respuestas vacías y fallos sin pérdida del formulario; revisión independiente sin bloqueantes. Frontend3199PASS/1SKIP/0FAIL de3200 (/private/tmp/render2-goal356-final-frontend.log); build index-CFhudgC6 (/private/tmp/render2-goal356-build.log). Backend/core no renovados: sin cambios de servidor, esquema ni permisos.
+
+Navegador con TaskDetail, apiSubtasks y mergeRelatedTasks reales sobre transporte GET sintético: [A]→[] retira la fila del detalle manteniendo caché1,2, comentario y borrador; otra lectura[A] restaura una sola fila. Foco permanece en Actualizar subtareas. Captura390×844 inspeccionada /private/tmp/render2-goal356-subtasks-empty-mobile.png. No prueba persistencia PostgreSQL ni integración de proveedor. Proceso temporal24451 ausente y directorio /private/tmp/render2-qa350-vite-HXvGgz eliminado verificados al retomar; salida final del runner no recuperable, no se atribuye exit0 adicional. Sin filechooser, Google, bases existentes ni producción. Objetivo maestro permanece activo.
+
 ### Colección de subtareas validada antes de incorporarse al tablero — integración355
 
 Main confirmó que TasksView incorporaba cualquier array de subtareas al conjunto global. Nuevo task-subtask-collection verifica padre/id/revisión int32 positivos, IDs únicos, sin auto-parentesco, tarea_padre_id idéntico al padre solicitado y titulo/estado de tipo string. Rechaza la colección completa antes de publicar filas; no filtra parcialmente, coerciona, ordena, copia ni modifica objetos. Permite strings vacíos/estados futuros para no reinterpretar historia: la base exige título no-null, no título no-vacío, y revisión positiva desde057. apiSubtasks valida parent antes de fetch y respuesta después; el caller activo usa ese adaptador capturado y conserva guard/abort antes del merge. No se cambió backend, schema, permisos ni algoritmo de tareas.
