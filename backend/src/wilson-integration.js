@@ -1464,6 +1464,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
             motivo: event.motivo,
             nombresDestinatarios: event.recipients,
             actor: req.wilson.actorName,
+            actorId: req.wilson.userId,
           });
         }
       }
@@ -1973,7 +1974,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
     // token, production work and audit have committed on this same client.
     if (result?.created && result.editing_task) {
       try {
-        await notifyAssignment?.({ pool, tarea: result.editing_task, motivo: "creada", actor: req.wilson.actorName });
+        await notifyAssignment?.({ pool, tarea: result.editing_task, motivo: "creada", actor: req.wilson.actorName, actorId: req.wilson.userId });
       } catch { /* Notification failure cannot undo an already committed task. */ }
     }
     return res.json({ ...result,

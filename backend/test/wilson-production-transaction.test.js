@@ -100,7 +100,7 @@ test("token, callback task writes and audit share one client/commit; notify afte
   assert.equal(f.connects, 1);
   assert.equal(f.callbackCount, 1);
   assert.deepEqual(f.calls.filter(call => ["BEGIN", "COMMIT", "ROLLBACK", "RELEASE"].includes(call.sql)).map(call => call.sql), ["BEGIN", "COMMIT", "RELEASE"]);
-  assert.deepEqual(f.notifications, [{ pool: f.pool, tarea: f.result.editing_task, motivo: "creada", actor: "Admin renombrado" }]);
+  assert.deepEqual(f.notifications, [{ pool: f.pool, tarea: f.result.editing_task, motivo: "creada", actor: "Admin renombrado", actorId: 11 }]);
   assert.deepEqual(f.errors, []);
 });
 
