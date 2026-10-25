@@ -1,5 +1,6 @@
 import { normalizarNombre } from "./email-notifications.js";
 import { feedbackFingerprint } from "./feedback-workflow.js";
+import { normalizeFeedbackResponsibleIds } from '../../shared/feedback-responsibles.mjs';
 
 const APP_URL_POR_DEFECTO = "https://sistema.rendercorrientes.com";
 const positiveId = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
@@ -31,9 +32,13 @@ export async function encolarNotificacionPrivadaFeedback({ pool, nota, actor = "
   const actorById = actorId !== undefined;
   if (actorById && !positiveId(actorId)) throw Object.assign(new Error("Actor de notificación inválido."), {status:400});
   const nombres = Array.isArray(nota.feedback?.responsables) ? nota.feedback.responsables : [];
-  const usuarios = await resolverUsuarios(pool, nombres);
+  const explicit = Object.hasOwn(nota.feedback ?? {},'responsable_ids');
+  const ids = explicit ? normalizeFeedbackResponsibleIds(nota.feedback.responsable_ids) : null;
+  const usuarios = explicit ? ids.length ? (await pool.query(
+    'SELECT id,usuario,nombre FROM usuarios WHERE id=ANY($1::integer[]) AND activo IS TRUE ORDER BY id',[ids]
+  )).rows.filter(row => ids.includes(row.id)) : [] : await resolverUsuarios(pool, nombres);
   const actorNormalizado = normalizarNombre(actor);
-  const destinatarios = usuarios.filter((usuario, index, items) => usuario
+  const destinatarios = usuarios.filter((usuario, index, items) => usuario && positiveId(usuario.id)
     && !(actorById ? usuario.id === actorId : [usuario.nombre, usuario.usuario].some((value) => normalizarNombre(value) === actorNormalizado))
     && items.findIndex((item) => item?.id === usuario.id) === index);
   if (!destinatarios.length) return { encolado: false, razon: "responsable_sin_usuario" };

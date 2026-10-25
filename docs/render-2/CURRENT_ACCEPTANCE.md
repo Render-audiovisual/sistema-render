@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Feedback: selección explícita de responsables por ID — corte257
+
+Interfaz canónica, escritores browser/Wilson, intención/recibos, DTOs y notificador aceptan responsable_ids opcional. Nuevos drafts seleccionan personas por ID con nombre/login/ID para homónimos. Ausencia histórica no se convierte en []; no se infieren identidades desde nombres. Selección nueva/cambiada exige usuarios activos bloqueados FOR SHARE; servidor deriva etiquetas. IDs sin cambios y etiquetas históricas se conservan aun tras inactividad; etiquetas cambiadas sin IDs en nota vinculada rechazan409. No cambia acceso compartido ni autenticación. Volta backend/Wilson/física y revisión independiente, Erdos UI/pruebas y coordinador integración/verificación.
+
+La revisión halló deduplicación de nombres homónimos en normalización Wilson: prueba ampliada reprodujo dos fallos; corregida preservando labels duplicados solo cuando hay IDs, sin alterar legacy. UI guard/retry/DTOs cubiertos por tests de funciones/controladores/componentes; no equivalen a navegador nativo. Compilación index-CrZk5Jk5.js y frontend2897PASS. Evidencia final backend y físicas en FEEDBACK_RECEIPTS_QA.md. Pendientes: recorrido nativo desktop/móvil del selector, Wilson IDs explícitos sobre HTTP/PostgreSQL, lifecycle de avisos y aceptación global. Sin bases configuradas ni deploy.
+
 ### Feedback: avisos nuevos ID-bound y transacción única — corte256
 
 Notifier admite solo una cuenta activa inequívoca por etiqueta; homónimos/collisions se omiten sin fan-out ni rechazar notas válidas. Avisos nuevos persisten destinatario_usuario_id, actor_usuario_id verificado y fingerprintIDv1. Browser create feedback encola dentro de la misma transacción que nota/recibo, sin callback postrespuesta; Wilson conserva su transacción con actorID. Sin cambio de DTO público, permisos de notas o migración de avisos históricos. La UI sigue seleccionando textos: no resuelve elección de homónimos.

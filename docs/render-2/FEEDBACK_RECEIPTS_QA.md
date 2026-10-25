@@ -1,5 +1,15 @@
 # Feedback receipts: independent principal HTTP QA
 
+## Selección explícita por ID — corte257
+
+Volta implementó contratos Wilson/recibos y nueva física; Erdos interfaz/ayudantes/DTO/retry/pruebas; coordinador resolver transaccional, browser writer, normalizador compartido/notificador e integración. Revisión independiente Volta reprodujo pérdida de labels duplicados en edición Wilson de homónimos: tests de PATCH real con fixture/router, texto-only e IDs echo, dieron2FAIL; normalizador ahora conserva etiquetas duplicadas cuando hayIDs y no añade el alias singular.42 focales PASS después. No se relajó dedupe legacy.
+
+Nueva física render2-feedback-responsible-ids.integration.test.js, PostgreSQL55893:6PASS padre+5subtests. HTTP bearer principal crea un feedback con ID91003 entre dos homónimos, reemplaza nombres falsificados por catálogo y encola un único destinatario ID-bound. Reload/text-only conservan selección. Nota histórica sigue sin IDs; entradas inválidas/[] no mutan; cambio a inactivo rechaza; replay exacto no reinterpreta catálogo; selección original ahora inactiva conserva IDs/labels al editar contenido o repetirIDs.106 tablas observadas con deltas exactos y ajenas invariantes. Fixture inicial q5wwH6 cleanup ENOENT; log /private/tmp/render2-goal257-ids-physical.log.
+
+Frontend2897PASS, build index-CrZk5Jk5.js. Se adaptaron dos fixtures de creación a IDs y el extractor de feedbackBusinessInput para no incluir JSX del nuevo picker; controles originales de fencing/provenance se mantienen. Logs frontend/build/homonym-red/homonym-green en /private/tmp/render2-goal257-*.log. Native desktop/móvil, cookies del nuevo selector y Wilson IDs explícitos físicamente no probados en este corte; Wilson sí cuenta con router/fixtures unitarios para los nuevos casos. No proveedor/worker, migración, base configurada o despliegue. No aceptación global.
+
+Verificación final tras corregir homónimos: backend2299PASS/144integraciones optativasSKIP/0FAIL. Física secuencial43PASS: browser writes21, recibos Wilson legacy16 y IDs explícitos browser6. Limpieza verificada bRjOaz/55770, S7Gw2a/55604 y oLv1Bj/55893. Logs /private/tmp/render2-goal257-backend.log y final-physical.log. Las integraciones omitidas no se declaran ejecutadas; los16 casos Wilson físicos renovados no prueban el nuevo selector de IDs. Revisión Volta final35PASS sin bloqueantes nuevos.
+
 ## Avisos nuevos por ID y creación browser atómica — corte256
 
 Reproducción previa del coordinador con el notifier real y catálogo controlado de dos cuentas homónimas: encolado=true/1INSERT en lugar de omitir la etiqueta ambigua. Erdos añadió15 unitarias de identidad (reportó15 rojas antes del producto) y adaptó contratos/fixtures:67 focales PASS confirmadas por coordinador. Se exige un único ID activo por etiqueta, sin prioridad username/nombre; aliases de la misma cuenta deduplican, homónimos/collisions no eligen primera fila, actor ID homónimo distinto recibe y el propio ID renombrado queda excluido. Metadata/fingerprint v1 internos, sin redefinir DTO ni permisos de notas.

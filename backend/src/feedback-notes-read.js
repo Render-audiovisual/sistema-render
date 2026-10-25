@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { normalizeFeedbackResponsibleIds } from '../../shared/feedback-responsibles.mjs';
 import { normalizeFeedbackText, resolveFeedbackClient, isClientFeedback } from '../../shared/feedback-client.mjs';
 
 const fail=(status,message,code)=>Object.assign(new Error(message),{status,...(code?{code}:{})});
@@ -50,6 +51,10 @@ export function feedbackNoteMetadataDto(value){
   const feedback={};
   if(value!==null&&value!==undefined&&(typeof value!=='object'||Array.isArray(value)))throw fail(500,'No se pudo verificar el feedback.');
   const source=value??{};
+  if(Object.hasOwn(source,'responsable_ids')){
+    try{feedback.responsable_ids=normalizeFeedbackResponsibleIds(source.responsable_ids);}
+    catch{throw fail(500,'No se pudo verificar la selección de responsables.');}
+  }
   for(const key of ['cliente','responsable','referencia','estado','vigencia','flujo','origen','confirmado_por','confirmado_at']){
     if(!Object.hasOwn(source,key))continue;
     if(source[key]!==null&&typeof source[key]!=='string')throw fail(500,'No se pudo verificar el feedback.');

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { canonicalFeedbackIntent, feedbackVersionIso, feedbackIdempotencyKey, feedbackIntentHash,
   feedbackConfirmationHash, lockFeedbackActor, findFeedbackReceipt, feedbackReplayResponse,
-  insertFeedbackReceipt } from '../src/feedback-receipts.js';
+  insertFeedbackReceipt, feedbackNoteDto } from '../src/feedback-receipts.js';
 import { createWilsonRouter, consumeFeedbackConfirmation } from '../src/wilson-integration.js';
 
 const version='2026-10-20T12:00:00.123Z';
@@ -115,6 +115,7 @@ function fixture(options={}) {
   let user={id:7,usuario:'actor',nombre:'Current verified actor',rol:'diseno',activo:true,whatsapp_id_hash:actorHash,whatsapp_habilitado:true,...options.user};
   let note={id:8,titulo:'Tema real',contenido:'Original',categoria:'reunion',feedback:{cliente:'',responsables:['Destinatario'],responsable:'Destinatario',vigencia:'puntual',estado:'pendiente',referencia:'',flujo:'feedback'},creado_por:'Other author',modificado_por:'Other author',updated_at:version,created_at:version,eliminado_at:null};
   let receipts=[],confirmation=null,audits=0,notifications=0;let snapshot;
+  const recipients=options.recipients??[{id:9,usuario:'recipient',nombre:'Destinatario',rol:'edicion',activo:true}];
   const calls=[];
   const db={release(){},async query(sql,params=[]) {
     calls.push({sql,params});
@@ -127,7 +128,11 @@ function fixture(options={}) {
     if(sql.includes('pg_advisory_xact_lock'))return{rows:[]};
     if(sql.includes('FROM feedback_operation_receipts WHERE'))return{rows:receipts.filter(row=>row.actor_user_id===params[0]&&row.operation===params[1]&&row.idempotency_key===params[2])};
     if(sql==='SELECT id,nombre FROM clientes WHERE activo IS TRUE ORDER BY nombre')return{rows:[{id:1,nombre:'Current Client'}]};
-    if(sql==='SELECT id,usuario,nombre,rol FROM usuarios WHERE activo IS TRUE ORDER BY nombre')return{rows:[{id:7,usuario:'actor',nombre:user.nombre,rol:user.rol},{id:9,usuario:'recipient',nombre:'Destinatario',rol:'edicion'}]};
+    if(sql==='SELECT id,usuario,nombre,rol FROM usuarios WHERE activo IS TRUE ORDER BY nombre')return{rows:[user,...recipients].filter(row=>row.activo!==false)};
+    if(sql.startsWith('SELECT id,nombre,usuario FROM usuarios')){
+      assert.match(sql,/ORDER BY id FOR SHARE/);
+      return{rows:[user,...recipients].filter(row=>row.activo!==false&&params[0].includes(row.id)).sort((a,b)=>a.id-b.id)};
+    }
     if(sql.startsWith('SELECT id,titulo,contenido,feedback,updated_at FROM notas_compartidas'))return{rows:[]};
     if(sql.includes('date_trunc(\'milliseconds\',updated_at)')) {
       assert.deepEqual(params,[8,version]);return{rows:options.missingNote?[]:[{...note,version_matches:!options.stale}]};
@@ -144,7 +149,8 @@ function fixture(options={}) {
     if(sql.startsWith('INSERT INTO notas_compartidas')){note={...note,titulo:params[0],contenido:params[1],categoria:params[2],creado_por:params[3],modificado_por:params[3],feedback:JSON.parse(params[4])};return{rows:[note]};}
     if(sql.startsWith('UPDATE notas_compartidas SET titulo=')){note={...note,titulo:params[0],contenido:params[1],categoria:params[2],feedback:JSON.parse(params[3]),modificado_por:params[4]};return{rows:[note]};}
     if(sql.startsWith('INSERT INTO integracion_auditoria')){audits++;return{rows:[]};}
-    if(sql==='SELECT id, usuario, nombre FROM usuarios WHERE activo IS TRUE')return{rows:[{id:9,usuario:'recipient',nombre:'Destinatario'}]};
+    if(sql==='SELECT id, usuario, nombre FROM usuarios WHERE activo IS TRUE')return{rows:[user,...recipients].filter(row=>row.activo!==false)};
+    if(sql.startsWith('SELECT id,usuario,nombre FROM usuarios WHERE id=ANY'))return{rows:[user,...recipients].filter(row=>row.activo!==false&&params[0].includes(row.id)).sort((a,b)=>a.id-b.id)};
     if(sql.includes('INSERT INTO mia_private_task_notifications')){notifications++;if(options.failQueue)throw Error('Injected outbox failure');return{rows:[{id:1,fingerprint:'one-notification'}]};}
     if(sql.startsWith('INSERT INTO feedback_operation_receipts')) {
       const receipt={actor_user_id:params[0],operation:params[1],idempotency_key:params[2],payload_hash:params[3],note_id:params[4],note_updated_at:params[5],committed_at:version};receipts.push(receipt);
@@ -155,7 +161,7 @@ function fixture(options={}) {
   }};
   const pool={query:db.query.bind(db),connect:async()=>db};
   const router=createWilsonRouter({pool,env:{NODE_ENV:'test',WILSON_TELEGRAM_USER_BINDINGS:JSON.stringify({[actorId]:7})}});
-  return {db,calls,get note(){return note;},set note(value){note=value;},get user(){return user;},get receipts(){return receipts;},get audits(){return audits;},get notifications(){return notifications;},get confirmation(){return confirmation;},
+  return {db,calls,recipients,get note(){return note;},set note(value){note=value;},get user(){return user;},get receipts(){return receipts;},get audits(){return audits;},get notifications(){return notifications;},get confirmation(){return confirmation;},
     async run(method,path,body,settings={}) {
       const req={body,headers:settings.headers??{},params:{id:'8'},wilson:{userId:7,actorRole:'diseno',actorId,actorName:'Untrusted label',confirmedBy:'Untrusted label',channel:'whatsapp',groupId:'',...settings.wilson}};
       const res={statusCode:200,status(code){this.statusCode=code;return this;},json(value){this.body=value;return this;}};
@@ -248,4 +254,88 @@ test('replay still rejects current role/mapping loss before looking up committed
   const f=fixture();const issued=await f.confirm();await f.run('post','/feedback',{...create,confirmacion_token:issued.body.confirmacion_token});
   f.user.activo=false;const start=f.calls.length;assert.equal((await f.run('post','/feedback',create)).statusCode,403);
   assert.ok(!f.calls.slice(start).some(call=>call.sql.includes('FROM feedback_operation_receipts')));
+});
+
+test('optional responsible IDs are sorted, cloned and bind both intent and confirmation without legacy defaults',()=>{
+  const ids=[10,9],a=intent({...create,responsable_ids:ids}),b=intent({...create,responsable_ids:[9,10]});
+  assert.deepEqual(a.business.responsable_ids,[9,10]);assert.deepEqual(ids,[10,9]);ids[0]=11;
+  assert.deepEqual(a,b);assert.equal(feedbackIntentHash(a),feedbackIntentHash(b));
+  const nested=intent({...create,responsable_ids:[10,9],feedback:{responsable_ids:[9,10]}});assert.deepEqual(nested,b);
+  assert.notEqual(feedbackIntentHash(a),feedbackIntentHash(intent({...create,responsable_ids:[9]})));
+  assert.notEqual(feedbackConfirmationHash({intent:a,userId:7,key:'k'}),feedbackConfirmationHash({intent:intent({...create,responsable_ids:[9]}),userId:7,key:'k'}));
+  assert.equal(Object.hasOwn(intent().business,'responsable_ids'),false);
+  assert.equal(Object.hasOwn(intent(edit,true).business,'responsable_ids'),false);
+  assert.deepEqual(intent({...edit,responsable_ids:[]},true).business,{contenido:'Detalle actualizado',responsable_ids:[]});
+});
+
+test('invalid or contradictory explicit responsible IDs never disappear into name fallback',()=>{
+  for(const value of [null,undefined,'9',[9,9],['9'],[0],[-1],[1.5],[2147483648],Array.from({length:21},(_,n)=>n+1)]){
+    assert.throws(()=>intent({...create,responsable_ids:value}),{status:400});
+    assert.throws(()=>intent({...create,feedback:{responsable_ids:value}}),{status:400});
+  }
+  assert.throws(()=>intent({...create,responsable_ids:[9],feedback:{responsable_ids:[10]}}),{status:400});
+});
+
+test('receipt/current-note DTO preserves optional historical IDs detached, but corrupt persisted IDs fail500',()=>{
+  const row=fixture().note;row.feedback.responsable_ids=[10,9];
+  const dto=feedbackNoteDto(row);assert.deepEqual(dto.feedback.responsable_ids,[9,10]);
+  dto.feedback.responsable_ids.push(11);assert.deepEqual(row.feedback.responsable_ids,[10,9]);
+  delete row.feedback.responsable_ids;assert.equal(Object.hasOwn(feedbackNoteDto(row).feedback,'responsable_ids'),false);
+  for(const value of [null,'9',[9,9],['9'],[2147483648]]){row.feedback.responsable_ids=value;assert.throws(()=>feedbackNoteDto(row),{status:500});}
+});
+
+test('actual Wilson create hydrates explicit IDs and labels on its locked client; replay skips changed catalogue',async()=>{
+  const f=fixture(),payload={...create,responsable_ids:[9],responsables:['Client forged label']};
+  const issued=await f.confirm(payload);assert.equal(issued.statusCode,201);
+  const saved=await f.run('post','/feedback',{...payload,confirmacion_token:issued.body.confirmacion_token});
+  assert.equal(saved.statusCode,201);assert.deepEqual(saved.body.feedback.feedback.responsable_ids,[9]);
+  assert.deepEqual(saved.body.feedback.feedback.responsables,['Destinatario']);
+  const locked=f.calls.find(call=>call.sql.startsWith('SELECT id,nombre,usuario FROM usuarios'));
+  assert.deepEqual(locked.params,[[9]]);assert.match(locked.sql,/FOR SHARE/);
+  assert.equal(f.notifications,1);assert.equal(f.receipts.length,1);
+  f.recipients[0].activo=false;const start=f.calls.length;
+  const replay=await f.run('post','/feedback',payload);assert.equal(replay.body.idempotent,true);
+  assert.deepEqual(replay.body.feedback.feedback.responsable_ids,[9]);assert.equal(f.notifications,1);
+  assert.equal(f.calls.slice(start).some(call=>call.sql.startsWith('SELECT id,nombre,usuario FROM usuarios')),false);
+});
+
+test('explicit empty IDs do not fall back to valid legacy labels or consume confirmation',async()=>{
+  const f=fixture(),payload={...create,responsable_ids:[]};const issued=await f.confirm(payload);
+  const response=await f.run('post','/feedback',{...payload,confirmacion_token:issued.body.confirmacion_token});
+  assert.equal(response.statusCode,422);assert.equal(f.confirmation.used,false);assert.equal(f.receipts.length,0);assert.equal(f.notifications,0);
+});
+
+test('recipient retired after confirmation rejects the actual new selection before any mutation',async()=>{
+  const f=fixture(),payload={...create,responsable_ids:[9]};const issued=await f.confirm(payload);
+  f.recipients[0].activo=false;
+  const response=await f.run('post','/feedback',{...payload,confirmacion_token:issued.body.confirmacion_token});
+  assert.equal(response.statusCode,422);assert.equal(f.confirmation.used,false);assert.equal(f.audits,0);assert.equal(f.notifications,0);assert.equal(f.receipts.length,0);
+});
+
+for(const echoIds of [false,true])test(`Wilson unrelated edit preserves ID-bound inactive historical labels (ID echo ${echoIds})`,async()=>{
+  const f=fixture();f.note.feedback={...f.note.feedback,responsable_ids:[9,10],responsables:['Historical retired label','Historical retired label'],responsable:'Historical retired label'};
+  f.recipients[0].activo=false;
+  const payload={...edit,...(echoIds?{responsable_ids:[9,10],responsables:['Untrusted replacement label']}:{})};
+  const issued=await f.confirm(payload,true);const start=f.calls.length;
+  const response=await f.run('patch','/feedback/:id',{...payload,confirmacion_token:issued.body.confirmacion_token});
+  assert.equal(response.statusCode,200);assert.equal(f.note.contenido,'Detalle actualizado');
+  assert.deepEqual(response.body.feedback.feedback.responsable_ids,[9,10]);assert.deepEqual(f.note.feedback.responsables,['Historical retired label','Historical retired label']);
+  assert.equal(f.calls.slice(start).some(call=>call.sql.startsWith('SELECT id,nombre,usuario FROM usuarios')),false);
+  assert.equal(f.receipts.length,1);assert.equal(f.notifications,0);
+});
+
+test('legacy changed responsible text on an ID-bound note rejects409 without silently retaining stale IDs',async()=>{
+  const f=fixture();f.note.feedback.responsable_ids=[9];
+  const payload={...edit,responsables:['Different label']},issued=await f.confirm(payload,true),before=structuredClone(f.note);
+  const response=await f.run('patch','/feedback/:id',{...payload,confirmacion_token:issued.body.confirmacion_token});
+  assert.equal(response.statusCode,409);assert.deepEqual(f.note,before);assert.equal(f.confirmation.used,false);assert.equal(f.receipts.length,0);
+});
+
+test('Wilson ID reassignment uses canonical new labels and changed IDs cannot replay an old intent',async()=>{
+  const f=fixture({recipients:[{id:9,usuario:'recipient',nombre:'Same',rol:'edicion',activo:true},{id:10,usuario:'other',nombre:'Same',rol:'edicion',activo:true}]});
+  f.note.feedback={...f.note.feedback,responsable_ids:[9],responsables:['Original'],responsable:'Original'};
+  const payload={...edit,responsable_ids:[10]},issued=await f.confirm(payload,true);
+  const response=await f.run('patch','/feedback/:id',{...payload,confirmacion_token:issued.body.confirmacion_token});
+  assert.equal(response.statusCode,200);assert.deepEqual(f.note.feedback.responsable_ids,[10]);assert.deepEqual(f.note.feedback.responsables,['Same']);
+  const replay=await f.run('patch','/feedback/:id',{...payload,responsable_ids:[9]});assert.equal(replay.statusCode,409);assert.equal(f.receipts.length,1);
 });

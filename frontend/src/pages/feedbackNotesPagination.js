@@ -1,4 +1,5 @@
 import { createCapturedRequest } from '../shared/session/captured-request.js';
+import {normalizeFeedbackResponsibleIds} from '../../../shared/feedback-responsibles.mjs';
 
 const count = value => Number.isSafeInteger(value) && value >= 0;
 const positive = value => count(value) && value > 0 && value <= 2147483647;
@@ -43,11 +44,12 @@ export function parseFeedbackNote(item, papelera) {
     || !(item.eliminado_at === null || typeof item.eliminado_at==='string'&&Number.isFinite(Date.parse(item.eliminado_at))) || (item.eliminado_at!==null) !== papelera) invalid();
   const stringFields=['cliente','responsable','referencia','estado','vigencia','flujo','origen','confirmado_por','confirmado_at'];
   const numericFields=['confirmado_por_id','provenance_version'];
-  if(Object.keys(item.feedback).some(key=>![...stringFields,...numericFields,'responsables'].includes(key))
+  if(Object.keys(item.feedback).some(key=>![...stringFields,...numericFields,'responsables','responsable_ids'].includes(key))
     || stringFields.some(key=>Object.hasOwn(item.feedback,key)&&item.feedback[key]!==null&&typeof item.feedback[key]!=='string')
     || numericFields.some(key=>Object.hasOwn(item.feedback,key)&&item.feedback[key]!==null&&!positive(item.feedback[key]))
     || Object.hasOwn(item.feedback,'responsables')&&(!Array.isArray(item.feedback.responsables)||item.feedback.responsables.some(value=>typeof value!=='string')))invalid();
-  return {...item,feedback:{...item.feedback,...(item.feedback.responsables?{responsables:[...item.feedback.responsables]}:{})}};
+  const ids=Object.hasOwn(item.feedback,'responsable_ids')?normalizeFeedbackResponsibleIds(item.feedback.responsable_ids):undefined;
+  return {...item,feedback:{...item.feedback,...(item.feedback.responsables?{responsables:[...item.feedback.responsables]}:{}),...(ids!==undefined?{responsable_ids:ids}:{})}};
 }
 export function parseFeedbackNotesPage(value, selection) {
   const s=normalizeFeedbackNotesSelection(selection);

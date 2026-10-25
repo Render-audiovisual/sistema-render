@@ -5,7 +5,7 @@ import { feedbackNotesMutationBody } from '../../frontend/src/pages/feedbackNote
 
 const source = readFileSync(new URL("../../frontend/src/pages/Feedback.jsx", import.meta.url), "utf8");
 const bloc = readFileSync(new URL("../../frontend/src/pages/BlocNotas.jsx", import.meta.url), "utf8");
-const helper = source.slice(source.indexOf("export function feedbackBusinessInput"), source.indexOf("function feedbackResponsibles"));
+const helper = source.slice(source.indexOf("export function feedbackBusinessInput"), source.indexOf("function FeedbackResponsiblePicker"));
 const project = new Function(`${helper.replace("export ", "")} return feedbackBusinessInput;`)();
 const business = { cliente: "Cliente", responsable: "Ana", responsables: ["Ana", "Luis"], referencia: "https://example.com", estado: "pendiente", vigencia: "permanente", flujo: "feedback" };
 const provenance = { origen: "mia_whatsapp", confirmado_por: "Histórico", confirmado_por_id: 9, confirmado_at: "2026-10-19", provenance_version: 1, wilson_idempotency_key: "legacy" };
@@ -29,6 +29,7 @@ function handler(start, end, context) {
 for (const editing of [false, true]) test(`real persistDraft ${editing ? "edit" : "create"} sends only business fields through canonical model`, async () => {
   const calls = [];
   const draft = editing ? structuredClone(note) : { ...structuredClone(note), id: undefined };
+  if(!editing)draft.feedback.responsable_ids=[9];
   const noop = () => {};
   const save = handler("async function persistDraft", "  function save(", {
     draft, section: "clients", feedbackBusinessInput: project,
@@ -44,7 +45,7 @@ for (const editing of [false, true]) test(`real persistDraft ${editing ? "edit" 
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].body, {
     request_id:requestId,action:editing?'edit':'create',
-    fields:{titulo: note.titulo, contenido: note.contenido, categoria: note.categoria,feedback: business},
+    fields:{titulo: note.titulo, contenido: note.contenido, categoria: note.categoria,feedback: {...business,...(!editing?{responsable_ids:[9]}:{})}},
     ...(editing ? {note_id:note.id,expected_updated_at:note.updated_at} : {}),
   });
   assert.equal(calls[0].options.checkDuplicates,false);

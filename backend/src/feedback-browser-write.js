@@ -3,6 +3,7 @@ import { feedbackVersionIso } from './feedback-receipts.js';
 import { normalizeFeedback, assertFeedbackBusinessInput } from './feedback-fields.js';
 import { getTaskActor } from './task-access.js';
 import { encolarNotificacionPrivadaFeedback } from './private-feedback-notifications.js';
+import { resolveFeedbackResponsibleSelection } from './feedback-responsibles.js';
 import { FEEDBACK_NOTE_SQL_PROJECTION, readFeedbackNoteFromClient, feedbackNoteMetadataDto } from './feedback-notes-read.js';
 
 const fail=(status,message,code)=>Object.assign(new Error(message),{status,...(code?{code}:{})});
@@ -11,7 +12,7 @@ const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const has=(value,key)=>Object.hasOwn(value,key);
 const actions=new Set(['create','edit','trash','restore','purge']);
 const categorySet=new Set(['general','diseno','web','reunion','contenido']);
-const businessKeys=['cliente','responsable','responsables','referencia','estado','vigencia','flujo'];
+const businessKeys=['cliente','responsable','responsables','responsable_ids','referencia','estado','vigencia','flujo'];
 const stable=value=>Array.isArray(value)?'['+value.map(stable).join(',')+']':object(value)?'{'+Object.keys(value).sort().map(key=>JSON.stringify(key)+':'+stable(value[key])).join(',')+'}':JSON.stringify(value);
 function actorObservation(auth){
   if(!positive(auth?.id)||!positive(auth?.session_version)||typeof auth?.rol!=='string'||!auth.rol.trim())throw fail(401,'La sesión cambió. Volvé a iniciar sesión.');
@@ -26,6 +27,7 @@ function feedbackPatch(value,create){
   const patch={};
   for(const key of ['cliente','referencia','estado','vigencia','flujo'])if(has(value,key))patch[key]=normalized[key];
   if(has(value,'responsable')||has(value,'responsables')){patch.responsable=normalized.responsable;patch.responsables=normalized.responsables;}
+  if(has(value,'responsable_ids'))patch.responsable_ids=normalized.responsable_ids;
   return patch;
 }
 export function normalizeFeedbackBrowserOperation(body){
@@ -51,7 +53,7 @@ export function normalizeFeedbackBrowserOperation(body){
     }
     if(create||has(body.fields,'feedback')){
       const patch=feedbackPatch(body.fields.feedback??(create&&!has(body.fields,'feedback')?{}:null),create);
-      if(Object.keys(patch).length)fields.feedback=Object.freeze({...patch,...(patch.responsables?{responsables:Object.freeze([...patch.responsables])}:{})});
+      if(Object.keys(patch).length)fields.feedback=Object.freeze({...patch,...(patch.responsables?{responsables:Object.freeze([...patch.responsables])}:{}),...(patch.responsable_ids?{responsable_ids:Object.freeze([...patch.responsable_ids])}:{})});
     }
     if(!Object.keys(fields).length)throw fail(400,'No se enviaron cambios.');
     input.fields=Object.freeze(fields);
@@ -60,6 +62,10 @@ export function normalizeFeedbackBrowserOperation(body){
 }
 function effectiveFeedback(current,patch){
   const value={...feedbackNoteMetadataDto(current),...(patch??{})};
+  if(has(value,'responsable_ids')){
+    if(value.flujo==='feedback'&&!value.responsable_ids.length)throw fail(422,'Elegí al menos una persona responsable.');
+    return;
+  }
   const responsables=[...(Array.isArray(value.responsables)?value.responsables:[]),value.responsable];
   if(value.flujo==='feedback'&&!responsables.some(name=>typeof name==='string'&&name.trim()))throw fail(422,'Elegí al menos una persona responsable.');
 }
@@ -90,9 +96,10 @@ export async function applyFeedbackBrowserOperation(pool,auth,body,query={}){
     }
     const label=getTaskActor(actor);let id=input.note_id,version;
     if(input.action==='create'){
-      effectiveFeedback({},input.fields.feedback);
+      const feedback=await resolveFeedbackResponsibleSelection(db,input.fields.feedback);
+      effectiveFeedback({},feedback);
       const saved=(await db.query(`INSERT INTO notas_compartidas(titulo,contenido,categoria,feedback,creado_por,modificado_por)
-        VALUES($1,$2,$3,$4::jsonb,$5,$5) RETURNING id`,[input.fields.titulo,input.fields.contenido,input.fields.categoria,JSON.stringify(input.fields.feedback),label])).rows[0];
+        VALUES($1,$2,$3,$4::jsonb,$5,$5) RETURNING id`,[input.fields.titulo,input.fields.contenido,input.fields.categoria,JSON.stringify(feedback),label])).rows[0];
       id=saved?.id;if(!positive(id))throw fail(500,'No se pudo verificar la nota creada.');
     }else{
       const row=(await db.query(`SELECT ${FEEDBACK_NOTE_SQL_PROJECTION} FROM notas_compartidas WHERE id=$1 FOR UPDATE`,[id])).rows[0];
@@ -102,10 +109,11 @@ export async function applyFeedbackBrowserOperation(pool,auth,body,query={}){
       if((input.action==='edit'||input.action==='trash')?trashed:!trashed)throw fail(409,'La nota cambió de colección. Volvé a revisarla.','FEEDBACK_NOTE_STATE_CONFLICT');
       version=row.updated_at;
       if(input.action==='edit'){
-        effectiveFeedback(row.feedback,input.fields.feedback);
+        const feedback=input.fields.feedback ? await resolveFeedbackResponsibleSelection(db,input.fields.feedback,row.feedback) : undefined;
+        effectiveFeedback(row.feedback,feedback);
         const params=[],sets=[];
         for(const key of ['titulo','contenido','categoria'])if(has(input.fields,key)){params.push(input.fields[key]);sets.push(`${key}=$${params.length}`);}
-        if(input.fields.feedback){params.push(JSON.stringify(input.fields.feedback));sets.push(`feedback=COALESCE(feedback,'{}'::jsonb)||$${params.length}::jsonb`);}
+        if(feedback){params.push(JSON.stringify(feedback));sets.push(`feedback=COALESCE(feedback,'{}'::jsonb)||$${params.length}::jsonb`);}
         params.push(label);sets.push(`modificado_por=$${params.length}`);params.push(id);
         await db.query(`UPDATE notas_compartidas SET ${sets.join(',')} WHERE id=$${params.length}`,params);
       }else if(input.action==='purge')await db.query('DELETE FROM notas_compartidas WHERE id=$1',[id]);

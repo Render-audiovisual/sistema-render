@@ -2,7 +2,17 @@
 
 Approved implementation contract for this local block, not evidence of completed verification. Preserve shared-team notes; do not introduce creator-only access or change purge authorization.
 
-## New notification identity and browser atomicity — cut256
+## Explicit operational responsible IDs — cut257
+
+Optional `responsable_ids` is a shared browser/Wilson business field, not an ACL or authentication mechanism. Omission retains historical label-only metadata; an explicit array never falls back to names. Accept at most20 distinct positive int32 numeric IDs, sorted/copied without coercion. New or changed selections require active catalogue rows locked FOR SHARE in the writer transaction. Server derives display labels; caller names cannot select identities. Feedback requires at least one ID when present.
+
+Unchanged stored IDs may survive unrelated edits after an account becomes inactive/unavailable, preserving stored labels, without authorizing new delivery. Changed labels without IDs on an ID-bound note reject409. Legacy notes are not backfilled. Closed DTOs retain optional IDs and reject malformed stored IDs. Captured requests/retries clone arrays and preserve presence; Wilson hashes IDs only when supplied, leaving historical omission hashes unchanged.
+
+Canonical UI selects numeric IDs, distinguishing homonyms by name/login/ID. Historical text never infers checked identities. Missing/inactive selections remain visible/removable; unavailable catalogues do not erase them. New drafts require an ID, while unchanged legacy edits remain possible. Shared-note permissions, provenance and creation-only notifications remain unchanged. Explicit active IDs drive new notices; legacy absent IDs retain the unique-active-label resolver below.
+
+This extends the older metadata/DTO boundary below to include optional responsable_ids. No migration, notice lifecycle policy or provider guarantee is implied. Physical Wilson explicit-ID and native desktop/mobile checks remain separate acceptance work.
+
+## New notification identity and browser atomicity — cut256 (historical, extended above)
 
 Operational responsible fields remain display text, not ACLs. For new notices, resolve each normalized label against active users' username/name with no precedence. Deduplicate matches by positive int32 ID; admit only one distinct ID per label. Unknown/ambiguous labels omit that destination without rejecting the shared note or fanning out. Multiple labels for one account produce one destination. This compatibility boundary does not let the UI select between homonyms; that requires a later explicit-ID business contract.
 

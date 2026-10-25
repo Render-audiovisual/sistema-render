@@ -4,6 +4,8 @@ import fs from "node:fs";
 import { buildMiaGroupDigests, buildMiaWeeklyCarruselDigest, miaGroupDigestWindow } from "./mia-group-digest.js";
 import { destinatariosNuevosDeAsignacion } from "./private-task-notifications.js";
 import { normalizeFeedback, withServerFeedbackProvenance } from "./feedback-fields.js";
+import { normalizeFeedbackResponsibleIds } from '../../shared/feedback-responsibles.mjs';
+import { resolveFeedbackResponsibleSelection } from './feedback-responsibles.js';
 import { encolarNotificacionPrivadaFeedback } from "./private-feedback-notifications.js";
 import { SYSTEM_USER_ROLES } from "./user-roles.js";
 import { canonicalFeedbackIntent, feedbackIdempotencyKey, feedbackIntentHash, feedbackConfirmationHash,
@@ -543,7 +545,7 @@ function buildWilsonTaskFields(input, clients, assignees) {
   };
 }
 
-export function buildWilsonFeedback(input, { clients, users }) {
+export function buildWilsonFeedback(input, { clients, users }, resolvedSelection = null) {
   const section = String(input.seccion || input.tipo || "cliente").trim().toLowerCase();
   const internal = ["equipo", "interno", "reunion", "reunión"].includes(section);
   const client = internal ? null : (input.cliente_id
@@ -552,12 +554,23 @@ export function buildWilsonFeedback(input, { clients, users }) {
   const requested = Array.isArray(input.responsables)
     ? input.responsables
     : [input.responsable].filter(Boolean);
+  const explicitIds=Object.hasOwn(input,'responsable_ids')?normalizeFeedbackResponsibleIds(input.responsable_ids):null;
   const responsables = [];
   const unknown = [];
-  for (const value of requested) {
-    const matched = exactWilsonUser(users, value);
-    if (!matched) { unknown.push(String(value || "").trim()); continue; }
-    if (!responsables.some((name) => canonicalWilsonPerson(name) === canonicalWilsonPerson(matched.nombre))) responsables.push(matched.nombre);
+  if(explicitIds!==null){
+    if(resolvedSelection!==null){
+      // Only validateWilsonFeedback supplies this server-resolved selection.
+      // It may retain historical labels for an unchanged, now-inactive ID.
+      responsables.push(...(resolvedSelection.responsables||[]));
+    }else for(const id of explicitIds){
+      const matched=users.find(user=>user.id===id);
+      if(!matched){unknown.push(String(id));continue;}
+      responsables.push(matched.nombre||matched.usuario);
+    }
+  }else for (const value of requested) {
+      const matched = exactWilsonUser(users, value);
+      if (!matched) { unknown.push(String(value || "").trim()); continue; }
+      if (!responsables.some((name) => canonicalWilsonPerson(name) === canonicalWilsonPerson(matched.nombre))) responsables.push(matched.nombre);
   }
   const titulo = String(input.titulo || "").trim();
   const contenido = String(input.detalle || input.contenido || "").trim();
@@ -567,7 +580,7 @@ export function buildWilsonFeedback(input, { clients, users }) {
   if (!internal && !client) errors.push("El cliente no coincide con un cliente del sistema.");
   if (!titulo) errors.push("Falta el título corto del feedback.");
   if (!contenido) errors.push("Falta el detalle del feedback.");
-  if (!responsables.length) errors.push("Elegí al menos una persona responsable.");
+  if (explicitIds!==null?!explicitIds.length:!responsables.length) errors.push("Elegí al menos una persona responsable.");
   if (unknown.length) errors.push(`Estas personas no coinciden con usuarios del sistema: ${unknown.join(", ")}.`);
   if (!["puntual", "permanente"].includes(vigencia)) errors.push("La vigencia debe ser puntual o permanente.");
   if (!["pendiente", "resuelto"].includes(estado)) errors.push("El estado debe ser pendiente o resuelto.");
@@ -580,6 +593,7 @@ export function buildWilsonFeedback(input, { clients, users }) {
       feedback: normalizeFeedback({
         cliente: client?.nombre || "",
         responsables,
+        ...(explicitIds!==null?{responsable_ids:explicitIds}:{}),
         referencia: String(input.referencia || "").trim(),
         vigencia,
         estado,
@@ -589,8 +603,11 @@ export function buildWilsonFeedback(input, { clients, users }) {
   };
 }
 
-async function validateWilsonFeedback(db, body) {
-  const normalized = buildWilsonFeedback(body, await loadCatalog(db));
+async function validateWilsonFeedback(db, body, {patch=body,current={}} = {}) {
+  const selection=await resolveFeedbackResponsibleSelection(db,patch,current);
+  const resolved={...body,...selection};
+  const normalized = buildWilsonFeedback(resolved, await loadCatalog(db),
+    Object.hasOwn(resolved,'responsable_ids')?resolved:null);
   if (normalized.errors.length) return { ...normalized, duplicates: [] };
   const existing = await db.query(
     `SELECT id,titulo,contenido,feedback,updated_at FROM notas_compartidas
@@ -1168,7 +1185,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
       if(Object.hasOwn(intent.business,'cliente_id'))delete merged.cliente;
       if((Object.hasOwn(intent.business,'cliente_id')||Object.hasOwn(intent.business,'cliente')) && !Object.hasOwn(intent.business,'seccion'))merged.seccion='cliente';
       if(merged.seccion==='equipo') {merged.cliente='';delete merged.cliente_id;}
-      const validation = await validateWilsonFeedback(client, merged);
+      const validation = await validateWilsonFeedback(client, merged,{patch:intent.business,current:current.rows[0].feedback??{}});
       const duplicates = validation.duplicates.filter((item) => Number(item.id) !== id);
       if (validation.errors.length) { await client.query("ROLLBACK"); return res.status(422).json(validation); }
       if (duplicates.length && !intent.permitir_duplicado) {

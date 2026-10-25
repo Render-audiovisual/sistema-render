@@ -1,12 +1,13 @@
 import crypto from 'node:crypto';
 import { assertFeedbackBusinessInput } from './feedback-fields.js';
 import { SYSTEM_USER_ROLES } from './user-roles.js';
+import { normalizeFeedbackResponsibleIds } from '../../shared/feedback-responsibles.mjs';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const positive = value => Number.isSafeInteger(value) && value > 0;
 const own = (value,key) => Object.hasOwn(value,key);
 const operations = ['crear_feedback','editar_feedback'];
-const businessKeys = ['seccion','tipo','cliente','cliente_id','titulo','contenido','detalle','responsable','responsables','referencia','vigencia','estado','flujo'];
+const businessKeys = ['seccion','tipo','cliente','cliente_id','titulo','contenido','detalle','responsable','responsables','responsable_ids','referencia','vigencia','estado','flujo'];
 const transportKeys = ['confirmacion_token','confirmado','confirmado_en','idempotency_key','telegram_user_id'];
 const stableJson = value => Array.isArray(value) ? `[${value.map(stableJson).join(',')}]`
   : value && typeof value === 'object' ? `{${Object.keys(value).sort().map(key=>JSON.stringify(key)+':'+stableJson(value[key])).join(',')}}` : JSON.stringify(value);
@@ -45,9 +46,10 @@ export function canonicalFeedbackIntent(input, { operation, targetId = null } = 
   if(Object.keys(input).some(key=>!allowed.includes(key))) throw fail('Campos de feedback no permitidos.');
   const source={...input};delete source.feedback;
   if(own(input,'feedback')) {
-    if(Object.keys(input.feedback).some(key=>!['cliente','responsable','responsables','referencia','estado','vigencia','flujo'].includes(key))) throw fail('Campos de feedback no permitidos.');
+    if(Object.keys(input.feedback).some(key=>!['cliente','responsable','responsables','responsable_ids','referencia','estado','vigencia','flujo'].includes(key))) throw fail('Campos de feedback no permitidos.');
     for(const [key,value] of Object.entries(input.feedback)) {
       const comparable = candidate => {
+        if(key==='responsable_ids')return normalizeFeedbackResponsibleIds(candidate);
         if(key==='responsables') {
           if(!Array.isArray(candidate))throw fail('Responsables inválidos.');
           return [...new Set(candidate.map(item=>cleanText(item,200)))];
@@ -91,6 +93,9 @@ export function canonicalFeedbackIntent(input, { operation, targetId = null } = 
     if(own(business,'responsables') && (business.responsables[0]??'')!==value)throw fail('Aliases de responsables contradictorios.');
     if(!own(business,'responsables'))business.responsables=value?[value]:[];
   }
+  // Omission is historical intent, not an empty explicit ID selection. Never
+  // consult a mutable catalogue while hashing the client's confirmed intent.
+  if(own(source,'responsable_ids'))business.responsable_ids=normalizeFeedbackResponsibleIds(source.responsable_ids);
   for(const [key,values] of [['estado',['pendiente','resuelto']],['vigencia',['puntual','permanente']],['flujo',['feedback']]]) if(own(business,key)) {
     business[key]=business[key].toLowerCase();if(!values.includes(business[key]))throw fail(`El campo ${key} es inválido.`);
   }
@@ -157,6 +162,10 @@ export function feedbackNoteDto(row) {
   const metadata=row.feedback??{};
   for(const key of ['cliente','responsable','referencia','estado','vigencia','flujo','origen','confirmado_por','confirmado_por_id','confirmado_at','provenance_version'])if(metadata[key]===null || ['string','number'].includes(typeof metadata[key]))result.feedback[key]=metadata[key];
   if(Array.isArray(metadata.responsables))result.feedback.responsables=metadata.responsables.filter(value=>typeof value==='string');
+  if(own(metadata,'responsable_ids')){
+    try{result.feedback.responsable_ids=normalizeFeedbackResponsibleIds(metadata.responsable_ids);}
+    catch{throw fail('No se pudieron verificar los responsables almacenados del feedback.',500);}
+  }
   return result;
 }
 

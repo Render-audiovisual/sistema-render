@@ -100,7 +100,7 @@ test('actual duplicate jump outside page reads exact target version, preserving 
   assert.equal(draft.id,620);assert.equal(draft.updated_at,note().updated_at);assert.equal(draft.titulo,'My draft');assert.equal(draft.feedback.cliente,'Mine');assert.equal(Object.hasOwn(draft,'origen'),false);
 });
 test('actual chained save cannot dispatch POST after context or account changes during similarity request',async()=>{
-  for(const change of ['switch','context']){const gate=deferred(),f=scopedFixture(async()=>gate.promise),errors=[],draft={titulo:'Title',contenido:'Body',categoria:'general',feedback:{cliente:'Cliente',responsables:['Ana']}};
+  for(const change of ['switch','context']){const gate=deferred(),f=scopedFixture(async()=>gate.promise),errors=[],draft={titulo:'Title',contenido:'Body',categoria:'general',feedback:{cliente:'Cliente',responsables:['Ana'],responsable_ids:[12]}};
     const model=createFeedbackNotesMutation({capture:()=>({current:()=>true,assertCurrent(){},request:f.request.capture()}),refresh:()=>assert.fail('No read after obsolete preflight'),randomUUID:()=> '00000000-0000-4000-8000-000000000001'});
     const mutationRef={current:{active:true,scope:{current:()=>true},model}},lock={current:false};
     const runMutation=handler('runMutation',{mutationRef,lock,setBusy(){},setError:value=>errors.push(value),setDuplicates(){},setConflict(){},acceptMutation:()=>assert.fail('Obsolete preflight cannot publish ACK')});

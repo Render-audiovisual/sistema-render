@@ -1,3 +1,5 @@
+import { normalizeFeedbackResponsibleIds } from '../../shared/feedback-responsibles.mjs';
+
 const SERVER_FEEDBACK_FIELDS = new Set([
   'origen', 'confirmado_por', 'confirmado_por_id', 'confirmado_at',
   'provenance_version', 'wilson_idempotency_key',
@@ -45,7 +47,10 @@ export function normalizeFeedback(value) {
   if (value.responsables != null && !Array.isArray(value.responsables)) {
     throw Object.assign(new Error('El campo responsables debe ser una lista.'), { status: 400 });
   }
-  const responsables = [...(value.responsables || []), result.responsable]
+  const explicitIds=Object.hasOwn(value,'responsable_ids');
+  // With IDs, equal labels can describe different people. The singular field
+  // is an alias, not an additional recipient; legacy text keeps its old dedupe.
+  const responsables = (explicitIds ? (value.responsables || [result.responsable]) : [...(value.responsables || []), result.responsable])
     .map((item) => {
       if (typeof item !== 'string') throw Object.assign(new Error('Cada responsable debe ser texto.'), { status: 400 });
       const nombre = item.trim();
@@ -53,10 +58,11 @@ export function normalizeFeedback(value) {
       return nombre;
     })
     .filter(Boolean)
-    .filter((item, index, items) => items.findIndex((candidate) => candidate.toLocaleLowerCase('es') === item.toLocaleLowerCase('es')) === index);
+    .filter((item, index, items) => explicitIds || items.findIndex((candidate) => candidate.toLocaleLowerCase('es') === item.toLocaleLowerCase('es')) === index);
   if (responsables.length > 20) throw Object.assign(new Error('No se pueden asignar más de 20 responsables.'), { status: 400 });
   result.responsables = responsables;
   result.responsable = responsables[0] || '';
+  if (Object.hasOwn(value,'responsable_ids')) result.responsable_ids = normalizeFeedbackResponsibleIds(value.responsable_ids);
   result.estado = value.estado === 'resuelto' ? 'resuelto' : 'pendiente';
   result.vigencia = value.vigencia === 'permanente' ? 'permanente' : 'puntual';
   result.flujo = value.flujo === 'feedback' ? 'feedback' : '';

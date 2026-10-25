@@ -1,12 +1,13 @@
 import {isSessionFailure} from '../shared/session/captured-request.js';
 import {parseFeedbackNote} from './feedbackNotesPagination.js';
+import {normalizeFeedbackResponsibleIds} from '../../../shared/feedback-responsibles.mjs';
 
 const positive=value=>Number.isSafeInteger(value)&&value>0&&value<=2147483647;
 const uuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
 const instant=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{3})?Z$/.test(value)&&Number.isFinite(Date.parse(value));
 const closed=(value,keys)=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===keys.length&&keys.every(key=>Object.hasOwn(value,key));
 const invalid=()=>new Error('No se pudo verificar el intento de nota. Conservá el texto y revisá la operación.');
-const business=['cliente','responsable','responsables','referencia','estado','vigencia','flujo'];
+const business=['cliente','responsable','responsables','responsable_ids','referencia','estado','vigencia','flujo'];
 export function feedbackNotesMutationBody(input,requestId) {
   if(!uuid(requestId)||!input||!['create','edit','trash','restore','purge'].includes(input.action))throw invalid();
   const body={request_id:requestId,action:input.action};
@@ -23,9 +24,11 @@ export function feedbackNotesMutationBody(input,requestId) {
     if(Object.hasOwn(fields,'feedback')){
       const value=fields.feedback;
       if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!business.includes(key))
-        ||Object.keys(value).some(key=>value[key]!==null&&(key==='responsables'?(!Array.isArray(value[key])||value[key].some(name=>typeof name!=='string')):typeof value[key]!=='string')))throw invalid();
+        ||Object.keys(value).some(key=>key!=='responsable_ids'&&value[key]!==null&&(key==='responsables'?(!Array.isArray(value[key])||value[key].some(name=>typeof name!=='string')):typeof value[key]!=='string')))throw invalid();
+      if(Object.hasOwn(value,'responsable_ids'))normalizeFeedbackResponsibleIds(value.responsable_ids);
     }
     body.fields=JSON.parse(JSON.stringify(fields));
+    if(Object.hasOwn(body.fields.feedback??{},'responsable_ids'))body.fields.feedback.responsable_ids=normalizeFeedbackResponsibleIds(body.fields.feedback.responsable_ids);
   }else if(input.fields!==undefined)throw invalid();
   return body;
 }

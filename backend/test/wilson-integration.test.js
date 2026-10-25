@@ -98,6 +98,17 @@ test("Mía prepara feedback con responsables iguales y datos completos", () => {
   assert.equal(result.feedback.feedback.vigencia, "permanente");
 });
 
+test('Wilson Feedback explicit ID selection bypasses homonymous or forged client labels',()=>{
+  const people={clients:[],users:[{id:21,usuario:'one',nombre:'Same',rol:'edicion'},{id:22,usuario:'two',nombre:'Same',rol:'diseno'}]};
+  const base={seccion:'equipo',titulo:'Real title',contenido:'Real body',responsables:['Forged']};
+  const selected=buildWilsonFeedback({...base,responsable_ids:[22]},people);
+  assert.deepEqual(selected.errors,[]);assert.deepEqual(selected.feedback.feedback.responsable_ids,[22]);assert.deepEqual(selected.feedback.feedback.responsables,['Same']);
+  const both=buildWilsonFeedback({...base,responsable_ids:[22,21]},people);assert.deepEqual(both.feedback.feedback.responsable_ids,[21,22]);
+  assert.equal(buildWilsonFeedback({...base,responsable_ids:[]},people).feedback,null);
+  assert.equal(buildWilsonFeedback({...base,responsable_ids:[23]},people).feedback,null);
+  assert.throws(()=>buildWilsonFeedback({...base,responsable_ids:['22']},people),{status:400});
+});
+
 test("Wilson normaliza una tarea confirmable sin inventar valores", () => {
   const result = buildWilsonTask({
     titulo: "Bunker | Edición reel | Rutina de piernas | Entrega 07/08",
