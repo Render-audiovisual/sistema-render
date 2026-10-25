@@ -1401,6 +1401,7 @@ export function PublicacionesPage({ tabInicial = "calendario", sesion }) {
                         onChange={(event) => irAPlanillaDeCliente(Number(event.target.value))}
                         aria-label="Elegir cliente para planificar publicaciones"
                       >
+                        {clienteSeleccionado && !clientes.some(cliente => cliente.id === clienteSeleccionado) && <option disabled value={clienteSeleccionado}>Cliente no disponible ({clienteSeleccionado})</option>}
                         {clientes.map((cliente) => <option key={cliente.id} value={cliente.id}>{cliente.nombre}</option>)}
                       </select>
                     </label>

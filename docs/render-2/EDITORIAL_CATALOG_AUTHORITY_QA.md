@@ -1,5 +1,11 @@
 # Revisión 156: autoridad y snapshot de catálogos editoriales
 
+## Presentación de cliente seleccionado no disponible — corte262
+
+Volta detectó value=clienteID sin option correspondiente en PlanillaPublicaciones cuando el catálogo no contiene eseID; datos y URL seguían filtrados a esecliente. Añadida option disabled con value exacto y texto «Cliente no disponible (ID)». No modifica selección, carga, catálogo, writers/handlers, permisos o draft. Clienteactual ausente sigue sin montar Planilla; seleccionar una opción disponible requiere acción explícita.
+
+Pruebas JSX real/ReactSSR2FAIL antes→4PASS después: missingID seleccionado, opción existente sin duplicado, catálogo vacío/noselection y callbacknumérico intacto. Erdos corroboró rojo/verde independiente sin bloqueantes; no DOMmontado/nativo ni catálogo revocado físicamente. Suitefrontend2941PASS/0FAIL/0SKIP y build index-BkcX3WrL.js, logs /private/tmp/render2-goal262-frontend.log y build.log. El nativeHistorias de262 utilizó build260 previo: no valida esta option ni debe confundirse con él. No backend/migración/proveedor/deploy. Frontend-design orientó vocabulario claro y conservación del estilo, sin nueva paleta o capasCSS.
+
 ## Corrección local de S155-01
 
 GET `/api/historias` y `/api/publicaciones` usan `backend/src/editorial-catalog.js`. Captura ID/rol/versión de sesión antes de esperar el lease; abre REPEATABLE READ READ ONLY; lee y valida actor activo; obtiene piezas, evidencia editorial y DTO con ese mismo cliente/snapshot; confirma antes de devolver. Un cambio de ID/rol/epoch/actividad observado al primer SELECT devuelve401 antes de consultar piezas/evidencia. Las rutas añaden Cache-Control no-store.
