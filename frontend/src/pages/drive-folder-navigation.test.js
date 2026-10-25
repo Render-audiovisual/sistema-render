@@ -27,13 +27,13 @@ function fixture({deferUpdates=false}={}){
   const setStack=value=>{if(deferUpdates)queued.push(value);else apply(value);};
   function render(file=folder()){
     const current=stack.at(-1),context=JSON.stringify([view.key,current?.id,query]);live.current=context;
-    const deps={current,context,query,view,mounted,live,createCapturedRequest,getSesion:()=>store.getSession(),setStack,
+    const deps={current,context,query,view,mounted,live,createCapturedRequest,getSesion:()=>store.getSession(),setStack,requestDriveFolderChange:()=>true,
       window:{open:(...args)=>requests.push(args)}};
     const openFolder=variable('openFolder')?evaluate(variable('openFolder'),deps):undefined;
     const onClick=evaluate(attribute(button,'onClick'),{...deps,file,openFolder});
     return{open:openFolder,click:(event={detail:1})=>onClick(event),
       double:attribute(card,'onDoubleClick')?evaluate(attribute(card,'onDoubleClick'),{...deps,file,openFolder}):()=>{},
-      breadcrumb:index=>evaluate(attribute(crumb,'onClick'),{setStack,index})()};
+      breadcrumb:index=>evaluate(attribute(crumb,'onClick'),{...deps,setStack,index})()};
   }
   return{render,accept,store,mounted,live,requests,updates,queued,flush(){while(queued.length)apply(queued.shift());},get stack(){return stack;},
     query(value){query=value;},root(){stack=[{id:'other-root',name:'Other'}];},

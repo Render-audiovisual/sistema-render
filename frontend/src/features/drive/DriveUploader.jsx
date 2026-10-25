@@ -1,10 +1,12 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { driveFiles, driveUploadPlan, uploadFileToDrive } from "./drive-api.js";
 import { getSesion } from '../../utils.jsx';
 import { createCapturedRequest } from '../../shared/session/captured-request.js';
 import { useSessionView } from '../../shared/session/use-session-view.js';
 import { createUploadRecovery } from './upload-recovery.js';
 import { Modal } from '../../components/Modal.jsx';
+import { useNavigationGuard } from '../../shared/navigation/useNavigationGuard.js';
+import { uploadNavigationState } from './upload-navigation.js';
 import './DriveUploader.css';
 
 function FolderPicker({ root, onSelect, onClose, session, readSession, isActive, returnFocusRef }) {
@@ -34,15 +36,15 @@ function FolderPicker({ root, onSelect, onClose, session, readSession, isActive,
   </div></Modal>;
 }
 
-export function DriveUploader({ task, currentFolder, canReplace, onUploaded }) {
+export function DriveUploader({ task, currentFolder, canReplace, onUploaded, onDirty, onBusy }) {
   const view = useSessionView(getSesion());
   const context = `${view.key}:${task?.id ?? ''}:${currentFolder?.id ?? ''}`;
   const live = useRef(context); live.current = context;
-  return <UploadScope key={context} task={task} currentFolder={currentFolder} canReplace={canReplace} onUploaded={onUploaded}
+  return <UploadScope key={context} task={task} currentFolder={currentFolder} canReplace={canReplace} onUploaded={onUploaded} onDirty={onDirty} onBusy={onBusy}
     session={view.session} context={context} live={live}/>;
 }
 
-function UploadScope({ task, currentFolder, canReplace, onUploaded, session, context, live }) {
+function UploadScope({ task, currentFolder, canReplace, onUploaded, onDirty, onBusy, session, context, live }) {
   const inputRef = useRef(null);
   const pickerButtonRef = useRef(null);
   const recovery=useRef(null),uploadScope=useRef(null);
@@ -59,6 +61,10 @@ function UploadScope({ task, currentFolder, canReplace, onUploaded, session, con
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [duplicate, setDuplicate] = useState(null);
+  const navigation = uploadNavigationState({hasFile:Boolean(file),uploading,blocked:recoveryState.blocked,refreshFailed});
+  useNavigationGuard(() => isActive() ? {...navigation,busy:navigation.busy || pending.current} : {dirty:false,busy:false});
+  useLayoutEffect(() => { onDirty?.(navigation.dirty); return () => onDirty?.(false); }, [navigation.dirty,onDirty]);
+  useLayoutEffect(() => { onBusy?.(navigation.busy); return () => onBusy?.(false); }, [navigation.busy,onBusy]);
 
   useEffect(() => {
     if (currentFolder) setDestination({ status: "resolved", folder: currentFolder, breadcrumb: currentFolder.name });

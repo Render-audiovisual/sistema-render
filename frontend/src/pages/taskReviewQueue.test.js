@@ -220,17 +220,17 @@ test('legacy approval has no manual controls/drop anchor and ordinary arrows ski
 test('actual TaskDetail guard receives refresh context and blocks dirty draft/comment or saving despite same task URL',()=>{
  const guardNode=nodes(owner('TaskDetail'),n=>ts.isCallExpression(n)&&n.expression.getText(ast)==='useNavigationGuard')[0].arguments[0];
  const dirtyNode=nodes(owner('TaskDetail'),n=>ts.isVariableDeclaration(n)&&n.name.getText(ast)==='taskDraftDirty')[0].initializer;
- for(const state of ['draft','comment','saving','clean']){
+ for(const state of ['draft','comment','upload','uploading','saving','clean']){
   const f=fixture(async()=>assert.fail('No implicit GET')),listeners=new Map();let confirmations=0;
   const win={location:new URL('https://render.test/workspace/tareas?review_scope=personal&task=1'),addEventListener:(type,fn)=>listeners.set(type,fn),removeEventListener:type=>listeners.delete(type),confirm:()=>{confirmations++;return false},
     dispatchEvent:event=>{listeners.get(event.type)?.(event);return !event.defaultPrevented}};
   const installed=installUnsavedNavigation(win),original=task(1);
-  const dirty=evaluate(dirtyNode,{task:original,draft:state==='draft'?{...original,titulo:'Unsaved'}:original,comment:state==='comment'?'Unsaved comment':'',commentDraftOwner:{current:{creation:{snapshot:{locked:false,busy:false}}}},isTaskDraftDirty,deliveryDirty:false,coordinationDraft:{dirty:false},reconciliationDraft:{dirty:false},isProductionVisitTask:()=>false});
-  const getStatus=evaluate(guardNode,{discardDialogOpen:false,taskDraftDirty:dirty,taskWriteBusy:state==='saving',commentDraftOwner:{current:{creation:{snapshot:{locked:false,busy:false}}}},archivePendingRef:{current:false},closeApprovedRef:{current:false},keepsTaskOpen,task:original});
+  const dirty=evaluate(dirtyNode,{task:original,draft:state==='draft'?{...original,titulo:'Unsaved'}:original,comment:state==='comment'?'Unsaved comment':'',commentDraftOwner:{current:{creation:{snapshot:{locked:false,busy:false}}}},isTaskDraftDirty,deliveryDirty:false,uploadDirty:state==='upload',coordinationDraft:{dirty:false},reconciliationDraft:{dirty:false},isProductionVisitTask:()=>false});
+  const getStatus=evaluate(guardNode,{discardDialogOpen:false,taskDraftDirty:dirty,taskWriteBusy:state==='saving'||state==='uploading',commentDraftOwner:{current:{creation:{snapshot:{locked:false,busy:false}}}},archivePendingRef:{current:false},closeApprovedRef:{current:false},keepsTaskOpen,task:original});
   assert.deepEqual(getStatus({to:win.location.href,type:'link'}),{dirty:false,busy:false});
   const unregister=registerNavigationGuard(win,getStatus);f.deps.window=win;f.deps.CustomEvent=class{constructor(type,options){this.type=type;Object.assign(this,options);this.defaultPrevented=false}preventDefault(){this.defaultPrevented=true}};
   callback('WorkspaceReadOnlyPage','refreshReviewQueue',f.deps)();
-  assert.equal(f.deps.reviewPageRef.current===null,state==='clean');assert.equal(confirmations,state==='draft'||state==='comment'?1:0);
+  assert.equal(f.deps.reviewPageRef.current===null,state==='clean');assert.equal(confirmations,['draft','comment','upload'].includes(state)?1:0);
   unregister();installed.dispose();
  }
 });
