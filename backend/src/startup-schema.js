@@ -20,6 +20,7 @@ export const CORE_SCHEMA_COLUMNS = Object.freeze({
   cliente_objetivos_mensuales: { id: 'integer', periodo: 'date' },
   cliente_objetivo_piezas: { id: 'integer', objetivo_id: 'integer', tarea_id: 'integer', publicacion_id: 'integer' },
   produccion_visitas: { id: 'uuid', fecha: 'date', revision: 'integer' },
+  produccion_resultados: { id:'uuid', visita_id:'uuid', visita_revision:'integer', revision_resultante:'integer', registrado_por_id:'integer', request_id:'uuid', payload_hash:'text', registrado_at:'timestamp with time zone', resumen:'jsonb' },
   produccion_videos: { id: 'uuid', visita_id: 'uuid', publicacion_id: 'integer', tarea_entrega_id: 'integer' },
   produccion_fotos: { id: 'uuid', visita_id: 'uuid', estado: 'text' },
   notas_compartidas: { id: 'integer', feedback: 'jsonb', updated_at: 'timestamp with time zone' },

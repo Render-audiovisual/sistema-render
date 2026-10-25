@@ -58,7 +58,7 @@ export function fixtureWilsonEnvironment(config = {}) {
   return result;
 }
 
-export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, browserPort, deferProductionCreateReceiptsMigration = false, deferTaskBoardOrderMigration = false, deferGoalQuotaReviewMigration = false, deferProductionHistoryBatchMigration = false, deferProjectDeliverableApprovalMigration = false, deferMoodboardReferenceMigration = false, deferTaskCommentReceiptsMigration = false, wilson = {} } = {}) {
+export async function startLocalHarness({ port = 55594, deferUserAdminMigration = false, deferGoalMigration = false, deferAssignmentMigration = false, deferTaskStateMigration = false, deferProductionRegistryMigration = false, deferProductionEditorialMigration = false, deferFeedbackReceiptsMigration = false, deferTaskReceiptsMigration = false, deferProjectsMigration = false, deferEditorialConfirmationMigration = false, deferEditingDeliveriesMigration = false, deferEditingApprovalMigration = false, deferLoginAbuseMigration = false, deferEditingReviewsMigration = false, clusterOnly = false, supervisorEnabled = false, browserSessions = false, browserPort, deferProductionCreateReceiptsMigration = false, deferTaskBoardOrderMigration = false, deferGoalQuotaReviewMigration = false, deferProductionHistoryBatchMigration = false, deferProjectDeliverableApprovalMigration = false, deferMoodboardReferenceMigration = false, deferTaskCommentReceiptsMigration = false, wilson = {}, deferProductionResultsMigration = false } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid port');
   if (typeof deferUserAdminMigration !== 'boolean') throw new Error('Invalid account observation migration fixture option');
   if (typeof deferProductionCreateReceiptsMigration !== 'boolean') throw new Error('Invalid production creation receipt migration fixture option');
@@ -68,6 +68,7 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
   if (typeof deferProjectDeliverableApprovalMigration !== 'boolean') throw new Error('Invalid project deliverable approval migration fixture option');
   if (typeof supervisorEnabled !== 'boolean') throw new Error('Invalid supervisor fixture option');
   if (typeof clusterOnly !== 'boolean') throw new Error('Invalid cluster-only fixture option');
+  if (typeof deferProductionResultsMigration !== 'boolean' || (deferProductionResultsMigration && !clusterOnly)) throw new Error('Production result upgrade rehearsal requires a cluster-only fixture');
   if (typeof deferMoodboardReferenceMigration !== 'boolean') throw new Error('Invalid reference migration fixture option');
   if (typeof deferTaskCommentReceiptsMigration !== 'boolean' || (deferTaskCommentReceiptsMigration && !clusterOnly)) throw new Error('Comment migration rehearsal requires a cluster-only fixture');
   if (typeof browserSessions !== 'boolean') throw new Error('Invalid browser-session fixture option');
@@ -144,6 +145,7 @@ export async function startLocalHarness({ port = 55594, deferUserAdminMigration 
         RENDER2_DEFER_LOGIN_ABUSE_MIGRATION: String(deferLoginAbuseMigration),
         RENDER2_DEFER_EDITING_REVIEWS_MIGRATION: String(deferEditingReviewsMigration),
         RENDER2_FIXTURE_CLUSTER_ONLY: String(clusterOnly),
+        RENDER2_DEFER_PRODUCTION_RESULTS_MIGRATION: String(deferProductionResultsMigration),
         RENDER2_DEFER_MOODBOARD_REFERENCE_MIGRATION: String(deferMoodboardReferenceMigration),
         RENDER2_DEFER_TASK_COMMENT_RECEIPTS_MIGRATION: String(deferTaskCommentReceiptsMigration),
         PGOPTIONS: '-c statement_timeout=15000' }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
@@ -250,6 +252,7 @@ async function fixtureChild() {
   // the test snapshots populated rows and applies the actual forward SQL.
   // No migration ledger entry is forged; all other baseline files run normally.
   const deferredMigrations = [
+    ...(['RENDER2_DEFER_PRODUCTION_REGISTRY_MIGRATION','RENDER2_DEFER_PRODUCTION_RESULTS_MIGRATION'].some(key => process.env[key] === 'true') ? ['091_production_visit_results.sql'] : []),
     ...(process.env.RENDER2_DEFER_TASK_COMMENT_RECEIPTS_MIGRATION === 'true' ? ['089_task_comment_create_receipts.sql'] : []),
     // 088 references063. Keep historical project/related upgrades additive;
     // their owning tests apply the forward receipt SQL after preservation.

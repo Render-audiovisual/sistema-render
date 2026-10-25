@@ -8,6 +8,7 @@ import { taskOperationalDto } from './operational-dto.js';
 import { productionEditorialConflict } from './production-link-errors.js';
 import { registerProductionReconciliationRoutes } from './production-reconciliation.js';
 import { findProductionAdoptedEditingTasks } from './production-editing-adoption.js';
+import { registerProductionVisitResultRoutes } from './production-visit-results.js';
 import { registerProductionEditorialRoutes, lockProductionEditorialContext, lockProductionObjectiveLinks, rejectLegacyProductionSource, hasLegacyProductionSource, assertProductionLineageAvailable } from './production-editorial.js';
 
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
@@ -190,6 +191,7 @@ export function createProductionRegistryRouter({ express, pool }) {
   };
   const routeId = req => { if (!uuid(req.params.id)) throw fail('Visita inválida.'); return req.params.id; };
   registerProductionReconciliationRoutes(router,{pool,handle});
+  registerProductionVisitResultRoutes(router,{pool,handle,lockVisit,checkRevision,bump,sourceTask});
   registerProductionEditorialRoutes(router,{pool,handle,transaction,readVisits,bump,lockVisit,activeClient});
   router.get('/', handle(async (req, res) => {
     if (typeof req.query.mes !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.mes)) throw fail('Elegí un mes YYYY-MM válido.');
