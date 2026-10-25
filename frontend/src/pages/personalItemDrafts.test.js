@@ -24,3 +24,23 @@ test('confirmed removal and explicit discard clear only their intended scope', (
   drafts.set(1, 2, ' '); assert.equal(drafts.dirty, true);
   drafts.set(1, 2, ''); assert.equal(drafts.dirty, false);
 });
+
+test('same retained submit admits one writer; retyping the same text cannot reuse an old token', () => {
+  const drafts=createPersonalItemDrafts();let writes=0;
+  drafts.set(1,2,'A');const first=drafts.token(1,2),write=()=>{writes++;return true;};
+  assert.equal(drafts.submit(1,2,first,write),true);assert.equal(drafts.submit(1,2,first,write),false);
+  drafts.set(1,2,'B');drafts.set(1,2,'A');assert.equal(drafts.submit(1,2,first,write),false);
+  assert.equal(writes,1);assert.equal(drafts.get(1,2),'A');
+});
+test('rejection or throw releases claim, while admission preserves a newer draft even with identical text', () => {
+  const drafts=createPersonalItemDrafts();drafts.set(1,2,'A');const token=drafts.token(1,2);
+  assert.equal(drafts.submit(1,2,token,()=>false),false);assert.equal(drafts.get(1,2),'A');
+  assert.throws(()=>drafts.submit(1,2,token,()=>{throw Error('writer unavailable');}));
+  assert.equal(drafts.submit(1,2,token,()=>{drafts.set(1,2,'A');return true;}),true);
+  assert.equal(drafts.get(1,2),'A');assert.notEqual(drafts.token(1,2),token);
+});
+test('a reentrant writer cannot admit another submission for the same block', () => {
+  const drafts=createPersonalItemDrafts();drafts.set(1,2,'A');const token=drafts.token(1,2);let calls=0;
+  assert.equal(drafts.submit(1,2,token,()=>{calls++;assert.equal(drafts.submit(1,2,token,()=>{calls++;return true;}),false);return true;}),true);
+  assert.equal(calls,1);assert.equal(drafts.dirty,false);
+});

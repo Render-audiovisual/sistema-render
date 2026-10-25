@@ -105,13 +105,13 @@ function ItemActions({ index, count, onMove, onRemove }) {
   return <><div className="personal-row-actions">{controls}</div><details className="personal-row-actions-mobile" name="personal-row-actions" onClickCapture={(event) => { if (event.target.closest("button") && !event.target.disabled) event.currentTarget.removeAttribute("open"); }}><summary aria-label="Opciones del elemento">•••</summary><div>{controls}</div></details></>;
 }
 
-function ItemsBlock({ type, content, onChange, draft, onDraftChange, onDraftSubmitted }) {
+function ItemsBlock({ type, content, onChange, draft, draftToken, onDraftChange, onDraftSubmitted }) {
   const withChecks = type === "checklist";
   const items = content.items || [];
   const updateItem = (id, changes) => onChange({ ...content, items: items.map((item) => item.id === id ? { ...item, ...changes } : item) });
   const removeItem = (id) => onChange({ ...content, items: items.filter((item) => item.id !== id) });
   const moveItem = (index, direction) => { const target = index + direction; if (target < 0 || target >= items.length) return; const next = [...items]; [next[index], next[target]] = [next[target], next[index]]; onChange({ ...content, items: next }); };
-  const addItem = (event) => { event.preventDefault(); if (!draft.trim()) return; if (onChange({ ...content, items: [...items, { id: uid("item"), texto: draft.trim(), ...(withChecks ? { completado: false } : {}) }] }) === true) onDraftSubmitted(draft); };
+  const addItem = (event) => { event.preventDefault(); if (draft.trim()) onDraftSubmitted(draft, draftToken); };
   return <div className="personal-items-block">
     <input className="personal-block-title" value={content.titulo || ""} onChange={(event) => onChange({ ...content, titulo: event.target.value })} aria-label="Título del bloque"/>
     <div className="personal-block-items">{items.map((item, index) => <div className={`personal-block-item ${item.completado ? "complete" : ""}`} key={item.id}>{withChecks ? <label className="personal-checkbox"><input type="checkbox" aria-label={completionLabel(`elemento ${index + 1}`, item.texto)} checked={Boolean(item.completado)} onChange={(event) => updateItem(item.id, { completado: event.target.checked })}/><span aria-hidden="true">✓</span></label> : <span className="personal-list-bullet" aria-hidden="true">•</span>}<input value={item.texto} onChange={(event) => updateItem(item.id, { texto: event.target.value })} aria-label={`Texto del elemento ${index + 1}`}/><ItemActions index={index} count={items.length} onMove={moveItem} onRemove={() => removeItem(item.id)}/></div>)}</div>
@@ -169,8 +169,8 @@ function TableBlock({ content, onChange }) {
   </div>;
 }
 
-function BlockEditor({ block, index, count, onChange, onMove, onDelete, draft, onDraftChange, onDraftSubmitted }) {
-  return <section className="personal-editor-block"><BlockActions block={block} index={index} count={count} onMove={onMove} onDelete={onDelete}/>{block.tipo === "texto" && <TextBlock content={block.contenido} onChange={onChange}/>} {(block.tipo === "listado" || block.tipo === "checklist") && <ItemsBlock type={block.tipo} content={block.contenido} onChange={onChange} {...{draft,onDraftChange,onDraftSubmitted}}/>} {block.tipo === "tabla" && <TableBlock content={block.contenido} onChange={onChange}/>}</section>;
+function BlockEditor({ block, index, count, onChange, onMove, onDelete, draft, draftToken, onDraftChange, onDraftSubmitted }) {
+  return <section className="personal-editor-block"><BlockActions block={block} index={index} count={count} onMove={onMove} onDelete={onDelete}/>{block.tipo === "texto" && <TextBlock content={block.contenido} onChange={onChange}/>} {(block.tipo === "listado" || block.tipo === "checklist") && <ItemsBlock type={block.tipo} content={block.contenido} onChange={onChange} {...{draft,draftToken,onDraftChange,onDraftSubmitted}}/>} {block.tipo === "tabla" && <TableBlock content={block.contenido} onChange={onChange}/>}</section>;
 }
 
 function AddBlockMenu({ onAdd }) {
@@ -213,6 +213,7 @@ export function PersonalListsPage() {
   const activeList = useMemo(() => activeId === null ? lists[0] || null : lists.find((list) => personalListId(list.id) === activeId) || null, [lists, activeId]);
   const listSelection = useRef({ id: activeId });
   if (listSelection.current.id !== activeId) listSelection.current = { id: activeId };
+  const itemDraftSelection = listSelection.current;
 
   const currentSession = useCallback(() => {
     try {return mounted.current && sessionBindingMatches(binding.current, getSesion());}catch{return false;}
@@ -295,12 +296,21 @@ export function PersonalListsPage() {
     if (navigateWithinApp(window, personalListUrl(window.location.href, id)) && globalThis.matchMedia?.('(max-width: 980px)').matches) setRailOpen(false);
   };
   const changeItemDraft = (listId, blockId, text) => {
-    if (!currentSession() || pendingSaves.current || !listsRef.current.some(list=>String(list.id)===String(listId)&&list.bloques?.some(block=>String(block.id)===String(blockId)))) return;
+    if (!currentSession() || listSelection.current!==itemDraftSelection || pendingSaves.current || !listsRef.current.some(list=>String(list.id)===String(listId)&&list.bloques?.some(block=>String(block.id)===String(blockId)))) return;
     itemDrafts.current.set(listId,blockId,text);renderItemDrafts(value=>value+1);
   };
-  const submitItemDraft = (listId, blockId, text) => {
-    if (!currentSession()) return;
-    if(itemDrafts.current.consume(listId,blockId,text))renderItemDrafts(value=>value+1);
+  const submitItemDraft = (listId, blockId, text, token) => {
+    if (!currentSession() || listSelection.current!==itemDraftSelection || pendingSaves.current || String(activeList?.id)!==String(listId)
+      || itemDrafts.current.get(listId,blockId)!==text) return false;
+    try {
+      return itemDrafts.current.submit(listId,blockId,token,value=>{
+        const block=listsRef.current.find(list=>String(list.id)===String(listId))?.bloques?.find(row=>String(row.id)===String(blockId));
+        if(!block||!['checklist','listado'].includes(block.tipo))return false;
+        const content=block.contenido;
+        return changeBlock(block,{...content,items:[...(content.items||[]),{id:uid('item'),texto:value.trim(),...(block.tipo==='checklist'?{completado:false}:{})}]});
+      });
+    } catch { if(currentSession())setError('No se pudo agregar el elemento. Conservamos el texto para reintentarlo.');return false; }
+    finally { if(currentSession())renderItemDrafts(value=>value+1); }
   };
 
   const load = useCallback(async () => {
@@ -429,7 +439,7 @@ export function PersonalListsPage() {
       {visibleError && <div className="personal-list-error" role="alert"><span>{visibleError} Tus cambios locales se conservan hasta que elijas descartarlos.</span>{saveState.error&&!saveState.conflict&&<button type="button" disabled={saveState.busy||structuralBusy} onClick={()=>{void queue.current?.retry();}}>Reintentar guardado</button>}<button type="button" disabled={saveState.busy||structuralBusy} onClick={reload}>Actualizar desde servidor</button></div>}
       <div className="personal-list-cover"/><fieldset className="personal-editor-lock" disabled={structuralBusy}><div className="personal-list-content"><div className="personal-emoji-wrap"><button className="personal-list-emoji" type="button" onClick={() => setEmojiOpen((current) => !current)} aria-label="Cambiar emoji">{activeList.emoji}</button>{emojiOpen && <EmojiPicker value={activeList.emoji} onClose={() => setEmojiOpen(false)} onSelect={(emoji) => { setEmojiOpen(false); saveListMeta({ emoji }); }}/>}</div>
         <input className="personal-list-title" maxLength={120} value={activeList.titulo} aria-label="Título de la página" onChange={(event) => saveListMeta({ titulo: event.target.value })}/><p className="personal-list-hint">Combiná bloques y ordenalos como te resulte más cómodo. Los cambios se guardan automáticamente; revisá el estado antes de salir.</p>
-        <div className="personal-editor-blocks">{(activeList.bloques || []).map((block, index) => <BlockEditor key={block.id} block={block} index={index} count={activeList.bloques.length} onChange={(content) => changeBlock(block, content)} onMove={moveBlock} onDelete={deleteBlock} draft={itemDrafts.current.get(activeList.id,block.id)} onDraftChange={text=>changeItemDraft(activeList.id,block.id,text)} onDraftSubmitted={text=>submitItemDraft(activeList.id,block.id,text)}/>)}{!activeList.bloques?.length && <div className="personal-page-empty"><span>Una página en blanco.</span><small>Agregá el primer bloque para empezar.</small></div>}</div><AddBlockMenu onAdd={addBlock}/>
+        <div className="personal-editor-blocks">{(activeList.bloques || []).map((block, index) => <BlockEditor key={block.id} block={block} index={index} count={activeList.bloques.length} onChange={(content) => changeBlock(block, content)} onMove={moveBlock} onDelete={deleteBlock} draft={itemDrafts.current.get(activeList.id,block.id)} draftToken={itemDrafts.current.token(activeList.id,block.id)} onDraftChange={text=>changeItemDraft(activeList.id,block.id,text)} onDraftSubmitted={(text,token)=>submitItemDraft(activeList.id,block.id,text,token)}/>)}{!activeList.bloques?.length && <div className="personal-page-empty"><span>Una página en blanco.</span><small>Agregá el primer bloque para empezar.</small></div>}</div><AddBlockMenu onAdd={addBlock}/>
       </div></fieldset>
     </article> : <section className="personal-list-document"><div className="personal-list-content">{!templateOpen&&creationRecovery}<button className="btn" type="button" onClick={() => setRailOpen(true)}>Elegir una página</button><PageState type="error" title="Esta página no está disponible." description="El enlace no es válido, la página fue eliminada o no pertenece a tu espacio. Elegí otra página para continuar." onRetry={reload} /></div></section>}
     {templateOpen && <TemplateDialog {...templateDialogProps}/>}

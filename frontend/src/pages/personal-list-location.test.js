@@ -134,6 +134,38 @@ test('actual create ACK selects only original selection observation; late/ABA/se
     cleanup();
   }
 });
+test('actual draft submit reads latest block and admits a retained callback only once', () => {
+  const model=createPersonalItemDrafts(),writes=[];let identities=0;
+  const itemDraftSelection={id:'2'},listSelection={current:itemDraftSelection};
+  model.set('2','9',' New item ');const token=model.token('2','9');
+  const latest={id:'9',tipo:'checklist',contenido:{titulo:'Latest title',items:[{id:'existing',texto:'Existing item'}]}};
+  const submit=callback('submitItemDraft',{currentSession:()=>true,listSelection,itemDraftSelection,pendingSaves:{current:0},activeList:{id:'2'},
+    itemDrafts:{current:model},listsRef:{current:[{id:'2',bloques:[latest]}]},uid:()=>`item-${++identities}`,
+    changeBlock:(block,content)=>{writes.push({block,content});return true;},renderItemDrafts(){},setError:()=>assert.fail('No error on admitted item')});
+  assert.equal(submit('2','9',' New item ',token),true);
+  assert.equal(submit('2','9',' New item ',token),false);
+  assert.equal(writes.length,1);assert.equal(identities,1);assert.equal(writes[0].block,latest);
+  assert.deepEqual(writes[0].content.items,[{id:'existing',texto:'Existing item'},{id:'item-1',texto:'New item',completado:false}]);
+});
+for (const mode of ['retired','other-page','rejected']) test(`actual draft admission retains text after ${mode}`,()=>{
+  const model=createPersonalItemDrafts();model.set('2','9','Keep');const token=model.token('2','9');let writes=0;
+  const itemDraftSelection={id:'2'},listSelection={current:itemDraftSelection};
+  const submit=callback('submitItemDraft',{currentSession:()=>mode!=='retired',listSelection,itemDraftSelection,pendingSaves:{current:0},activeList:{id:mode==='other-page'?'3':'2'},
+    itemDrafts:{current:model},listsRef:{current:[{id:'2',bloques:[{id:'9',tipo:'listado',contenido:{items:[]}}]}]},uid:()=> 'unused',
+    changeBlock:()=>{writes++;return false;},renderItemDrafts(){},setError(){}});
+  assert.equal(submit('2','9','Keep',token),false);assert.equal(model.get('2','9'),'Keep');
+  assert.equal(writes,mode==='rejected'?1:0);
+});
+test('retained page A submit is permanently fenced by selection A→B→A',()=>{
+  const model=createPersonalItemDrafts();model.set('2','9','Keep');const token=model.token('2','9');
+  const itemDraftSelection={id:'2'},listSelection={current:itemDraftSelection};
+  const submit=callback('submitItemDraft',{currentSession:()=>true,listSelection,itemDraftSelection,pendingSaves:{current:0},activeList:{id:'2'},
+    itemDrafts:{current:model},listsRef:{current:[]},uid:()=>assert.fail('No allocation for old selection'),changeBlock:()=>assert.fail('No old writer'),renderItemDrafts(){},setError(){}});
+  listSelection.current={id:'3'};assert.equal(submit('2','9','Keep',token),false);
+  listSelection.current={id:'2'};assert.equal(submit('2','9','Keep',token),false);
+  assert.equal(model.get('2','9'),'Keep');
+});
+
 for (const accepted of [false, true]) test(`actual block writer updates optimistic content only after admission (${accepted})`, () => {
   const block = { id: '9', tipo: 'checklist', version: 1, contenido: { items: [] } }, updates = [];
   const result = callback('changeBlock', { activeList: { id: '2' }, pendingSaves: { current: 0 }, currentSession: () => true,

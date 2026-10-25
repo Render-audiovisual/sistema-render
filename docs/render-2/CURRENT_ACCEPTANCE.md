@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Mi lista: admisión de elementos por identidad del borrador — corte299
+
+Revisión de callback retenido encontró que la inserción anterior generaba ID/programaba contenido capturado antes de verificar consumo del draft. No prueba que dos Enter físicos siempre lo disparen (React procesa eventos discretos), pero no debía admitirse dos veces el mismo intento. `personalItemDrafts` crea un token opaco por edición y claim síncrono por bloque. Writer rechazado/throw libera claim conservando texto; admisión consume solo el objeto exacto, preservando incluso un draft nuevo de igual texto (ABA).
+
+ItemsBlock delega texto/token; el propietario valida sesión, operación estructural, identidad viva de selección y listId antes de claim. Dentro del claim lee bloque/items actuales de listsRef, genera un solo ID y utiliza changeBlock/cola existentes. No crea otro backend/persistencia. `itemDraftSelection` invalida callbacks de páginas abandonadas y A→B→A; la revisión de Harvey identificó/corrigió el gate antes de cerrar.
+
+32focales PASS; frontend3021PASS/1SKIP/0FAIL, salida0; build index-Cd7dHSp6 correcto. Nuevos casos modelo/owner: mismo intento una admisión, reescritura del mismo texto, reentrada, rechazo/throw, draft nuevo durante writer, última versión de items, sesión/página retirada y selección ABA. Prueba JSX anterior de construcción se sustituyó por delegación, manteniendo admisión/rechazo en el callback real del propietario. Logs `/private/tmp/render2-goal299-{focal-final2,frontend-final,build-final}.log`.
+
+Coordinador implementó/ejecutó, Harvey revisó. Sin backend/migraciones/servidores/DB/proveedores/despliegue. Pruebas de callbacks/modelo, no React montado ni doble Enter/ACK/fallo físico. Admisión no equivale a persistencia: la cola existente sigue siendo responsable del ACK/recuperación. Aceptación global incompleta.
+
 ### Mi lista: borrador conservado entre páginas en escritorio/móvil — corte298
 
 Chrome/App297/index-CT31cf7K, backend285 y fixture PG55919/HTTP52863. Setup creó dos páginas privadas checklist para qa_franco antes del baseline. Se escribió «QA298 pendiente sin Enter» en A; navegación interna A→B dejó inputBvacío, B→A recuperó el texto original con estado Sin guardar e instrucción. Mismo recorrido en390×844 conservó A, raíz client/scroll390/390 sin overflow horizontal. Capturas `/private/tmp/render2-goal298-list-draft-{return,mobile}.png` inspeccionadas. No se presionó Enter; limpiar manualmente el input al finalizar tampoco agregó un registro.
