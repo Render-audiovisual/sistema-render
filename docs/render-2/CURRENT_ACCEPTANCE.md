@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Moodboards: contrato paginado del catálogo de tareas — corte301
+
+Se confirmó cap150 silencioso en `/boards/:id/tasks`; la UI actual solo usa ese array. Nueva lectura en `backend/src/moodboard-task-pages.js`: petición sin query conserva array150; query explícita limit/offset devuelve `{version:1,items,limit,offset,next_offset}`. Limit1–150, offset0–1000000, cadenas decimales canónicas; args desconocidos/duplicados/formas inválidas rechazan400. Consulta usa el mismo predicado por ID y pertenencia board/cliente, parámetros enlazados, orden título/ID y limit+1 para detectar continuación. No-store. Si una continuación superaría el offset permitido, rechaza422 en vez de emitir cursor inválido. No cambia writer/vínculos.
+
+Harvey creó test físico PG55921 con152autorizadas (151compartidas+1histórica asignada por ID), canario privado homónimo y otro cliente. API real llega a la última en segunda página, no expone canarios, rechaza anónimo/queries inválidas y conserva snapshots de todas las tablas incluidas versiones de tupla xmin/ctid. Coordinador revisó/ejecutó y corrigió cursor límite señalado en revisión. Sospecha de newline no se reprodujo (unit/Node/HTTP rechazaban400); se dejó match completo explícito, sin afirmar vulnerabilidad demostrada.
+
+38focales PASS; backend2348PASS/152opt-inSKIP/0FAIL, salida0; cohorte física renovada5PASS/0FAIL/SKIP, salida0 y cleanup+ENOENT. Logs `/private/tmp/render2-goal301-{focal-final2,backend-final3,physical-final}.log`. Prueba anterior de permisos se actualizó solo para parámetros de límite/offset, conservando predicados y membresía.
+
+**Integración incompleta:** selector canónico aún consume legacy150. Próximo paso conectar carga paginada que alcance tareas posteriores y conserve vínculos seleccionados fuera de la página. No se afirma arreglado el selector ni validado vínculo de tarea152 desde UI. Sin frontend/build nuevos, migraciones/bases comerciales/proveedores/despliegue; aceptación global pendiente.
+
 ### Mi lista: Enter, ACK y recarga con un solo elemento — corte300
 
 Chrome/App299/index-Cd7dHSp6, backend285, fixture PG55920/HTTP52864. En móvil390×844 se escribió «QA300 elemento persistido», Enter lo incorporó y limpió Agregar elemento; segundo Enter secuencial sobre input vacío no duplicó. Se esperó Guardado por estado visible, luego recarga recuperó el texto y un elemento. No prueba dos eventos físicos simultáneos ni callback viejo: esos casos conservan evidencia de modelo/callback299.

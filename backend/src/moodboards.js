@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import express from "express";
-import { buildMoodboardTaskReadPredicate, moodboardTaskId, mutateMoodboardTaskLink } from './moodboard-task-access.js';
+import { mutateMoodboardTaskLink } from './moodboard-task-access.js';
+import { readMoodboardTaskPage } from './moodboard-task-pages.js';
 import { createMoodboardCategoriesRouter } from './moodboard-categories.js';
 import {applyMoodboardReferenceOperation,readMoodboardReferences,readMoodboardReference} from './moodboard-reference-write.js';
 import {moodboardReferenceAliasInput,moodboardReferenceAliasBody} from './moodboard-reference-compat.js';
@@ -114,14 +115,9 @@ export function createMoodboardsRouter({ pool }) {
   });
 
   router.get("/boards/:id/tasks", async (req, res, next) => {
+    res.set('Cache-Control','no-store');
     try {
-      const boardId = moodboardTaskId(req.params.id);
-      const predicate = buildMoodboardTaskReadPredicate(req.auth, 't', '$2');
-      const { rows } = await pool.query(`SELECT DISTINCT t.id, t.titulo FROM tareas t
-        JOIN moodboard_board_clients bc ON bc.cliente_id = t.cliente_id
-        WHERE bc.board_id = $1 AND ${predicate.sql}
-        ORDER BY t.titulo,t.id LIMIT 150`, predicate.value === null ? [boardId] : [boardId,predicate.value]);
-      res.json(rows);
+      res.json(await readMoodboardTaskPage(pool,req.auth,req.params.id,req.query));
     } catch (error) { if(error.status)return res.status(error.status).json({error:error.message});next(error); }
   });
 

@@ -180,7 +180,8 @@ test('actual board-task and linked-task read SQL share predicate + board/client 
         predicate=buildMoodboardTaskReadPredicate(actor);
       assert.ok(query);
       assert.ok(query.sql.includes(predicate.sql));
-      assert.deepEqual(query.values,predicate.value===null?[90]:[90,7]);
+      const expected=predicate.value===null?[90]:[90,7];
+      assert.deepEqual(query.values,path.endsWith('/tasks')?[...expected,150,0]:expected);
       if(path.endsWith('/references')){
         assert.match(query.sql,/JOIN tareas t ON t.id\s*=\s*rt.tarea_id AND/);
         assert.match(query.sql,/bc.board_id=r.board_id AND bc.cliente_id=t.cliente_id/);
