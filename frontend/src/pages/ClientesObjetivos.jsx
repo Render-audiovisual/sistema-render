@@ -88,19 +88,11 @@ function GoalLoading() {
   return <div className="cg-loading" role="status"><span className="cg-loading-label"><GoalIcon name="refresh" />Cargando objetivos del mes…</span><div className="cg-skeleton-layout" aria-hidden="true"><div className="cg-skeleton-clients">{[1, 2, 3].map(key => <span key={key} />)}</div><div className="cg-skeleton-board"><span className="cg-skeleton-title" /><span className="cg-skeleton-progress" /><div className="cg-skeleton-pieces">{[1, 2, 3, 4].map(key => <span key={key} />)}</div></div></div></div>;
 }
 
-function useGoalModalFocus() {
+function useGoalModalScrollLock() {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const trap = event => {
-      if (event.key !== 'Tab') return;
-      const controls = [...document.querySelectorAll('.cg-modal button:not(:disabled),.cg-modal a[href],.cg-modal input:not(:disabled),.cg-modal textarea:not(:disabled)')].filter(node => node.getClientRects().length);
-      const first = controls[0], last = controls.at(-1);
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-    };
-    document.addEventListener('keydown', trap);
-    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', trap); };
+    return () => { document.body.style.overflow = previousOverflow; };
   }, []);
 }
 
@@ -290,7 +282,7 @@ function GoalPage({ sesion }) {
 }
 
 function PrepareGoal({ sesion, client, period, mode = 'prepare', close, saved }) {
-  useGoalModalFocus();
+  useGoalModalScrollLock();
   const { view, capture, captureLifetime } = useGoalSession(sesion, `${period}:${client.clave}:${mode}`);
   const pending = useRef(false);
   const reviewBlocked = useRef(false);
@@ -340,7 +332,7 @@ function PrepareGoal({ sesion, client, period, mode = 'prepare', close, saved })
     } }
     finally { pending.current = false; if (lifetime.current()) setBusy(false); }
   };
-  return <Modal title={reconciling ? 'Revisar cuota mensual' : client.preparado ? 'Actualizar responsables y completar objetivo' : 'Preparar objetivo del mes'} overlayAriaLabel={reconciling ? 'Revisar cuota mensual' : 'Preparar objetivo mensual'} onClose={closeSafely} className="cg-modal"><form className={`cg-modal-body${shared ? ' cg-shared-responsables' : ''}`} onSubmit={submit}>
+  return <Modal native closeDisabled={busy} title={reconciling ? 'Revisar cuota mensual' : client.preparado ? 'Actualizar responsables y completar objetivo' : 'Preparar objetivo del mes'} overlayAriaLabel={reconciling ? 'Revisar cuota mensual' : 'Preparar objetivo mensual'} onClose={closeSafely} className="cg-modal"><form className={`cg-modal-body${shared ? ' cg-shared-responsables' : ''}`} onSubmit={submit}>
     <h2>{client.nombre}</h2><section className="cg-preparation-observation" aria-label="Preparación observada"><p>Mes de trabajo: <strong>{monthLabel(period)}</strong></p><p>Cuota: <strong>{quota?.reels} reels · {quota?.carruseles} carruseles</strong></p><p>Cuentas incluidas:</p><ul>{client.cuentas.map(account=><li key={account.id}>{account.nombre} · #{account.id}</li>)}</ul></section><p>Los responsables seleccionados se guardan para futuras preparaciones. Las tareas existentes mantienen sus responsables. Esta acción también vincula o crea las tareas faltantes del mes seleccionado; no es sólo un cambio de asignaciones.</p>
     {reconciling && <section className="cg-quota-review" aria-label="Comparación de cuota mensual"><p>Mes de trabajo: <strong>{monthLabel(period)}</strong></p><dl><div><dt>Formato</dt><dd>Preparada → Vigente</dd></div><div><dt>Reels</dt><dd>{client.reels} → {quota?.reels ?? 'No disponible'}</dd></div><div><dt>Carruseles</dt><dd>{client.carruseles} → {quota?.carruseles ?? 'No disponible'}</dd></div></dl><p>Se crean o vinculan sólo las tareas faltantes. Si la cuota baja, lo que exceda queda como contenido adicional, fuera del avance de cuota. No se borran ni dividen tareas, entregas o correcciones.</p></section>}
     {shared && <p className="cg-muted">{quota?.carruseles ?? client.carruseles} carruseles compartidos entre las cuentas, no por cuenta. Cada tarea nueva usa los responsables de su cuenta; los reels mantienen una asignación común.</p>}
@@ -355,7 +347,7 @@ function PrepareGoal({ sesion, client, period, mode = 'prepare', close, saved })
 }
 
 function PieceDetail({ sesion, piece, client, period, draftClientId, canManage, close, saved }) {
-  useGoalModalFocus();
+  useGoalModalScrollLock();
   const draftMemory = useGoalDraftMemory();
   const { capture, captureLifetime } = useGoalSession(sesion, `${client.clave}:${piece.id}:${piece.tarea_id}`);
   const pending = useRef(false);
@@ -447,7 +439,7 @@ function PieceDetail({ sesion, piece, client, period, draftClientId, canManage, 
     } catch (reason) { if (scope.current() && !isSessionFailure(reason)) setError(reason.message); }
     finally { pending.current = false; if (lifetime.current()) setBusy(false); }
   };
-  return <Modal title={<span className="cg-detail-breadcrumb"><GoalIcon name={piece.tipo === 'video' ? 'video' : 'carousel'} />{client?.nombre} <span aria-hidden="true">/</span> {piece.tipo === 'video' ? 'Reel' : 'Carrusel'}</span>} overlayAriaLabel="Detalle de la pieza" onClose={closeSafely} className="cg-modal"><div className="cg-modal-body"><span className={`cg-detail-state${done(piece) ? ' is-done' : ''}`}>{done(piece) && <GoalIcon name="check" />}{STATES[piece.estado] || piece.estado}</span><h2>{pieceLabel(piece)}</h2><div className="cg-detail-responsables"><GoalIcon name="clients" /><div><span>Responsables</span><p>{piece.responsables.join(' · ') || 'Sin responsables registrados'}</p></div></div><div className="cg-copy-heading"><h3>Copy de la publicación</h3>{piece.copy && <button className="cg-button" onClick={async () => { const scope = capture(); if (!scope.current()) return; try { await navigator.clipboard.writeText(piece.copy); if (scope.current()) setCopied(true); } catch { if (scope.current()) setError('No se pudo copiar. Podés seleccionar el texto manualmente.'); } }}><GoalIcon name={copied ? 'check' : 'copy'} />{copied ? 'Copiado' : 'Copiar texto'}</button>}</div><div className={`cg-copy${!piece.copy ? ' is-empty' : ''}`}>{piece.copy || 'Todavía no hay un copy guardado para esta pieza. Podés cargarlo en la tarea vinculada.'}</div>
+  return <Modal native closeDisabled={busy} title={<span className="cg-detail-breadcrumb"><GoalIcon name={piece.tipo === 'video' ? 'video' : 'carousel'} />{client?.nombre} <span aria-hidden="true">/</span> {piece.tipo === 'video' ? 'Reel' : 'Carrusel'}</span>} overlayAriaLabel="Detalle de la pieza" onClose={closeSafely} className="cg-modal"><div className="cg-modal-body"><span className={`cg-detail-state${done(piece) ? ' is-done' : ''}`}>{done(piece) && <GoalIcon name="check" />}{STATES[piece.estado] || piece.estado}</span><h2>{pieceLabel(piece)}</h2><div className="cg-detail-responsables"><GoalIcon name="clients" /><div><span>Responsables</span><p>{piece.responsables.join(' · ') || 'Sin responsables registrados'}</p></div></div><div className="cg-copy-heading"><h3>Copy de la publicación</h3>{piece.copy && <button className="cg-button" onClick={async () => { const scope = capture(); if (!scope.current()) return; try { await navigator.clipboard.writeText(piece.copy); if (scope.current()) setCopied(true); } catch { if (scope.current()) setError('No se pudo copiar. Podés seleccionar el texto manualmente.'); } }}><GoalIcon name={copied ? 'check' : 'copy'} />{copied ? 'Copiado' : 'Copiar texto'}</button>}</div><div className={`cg-copy${!piece.copy ? ' is-empty' : ''}`}>{piece.copy || 'Todavía no hay un copy guardado para esta pieza. Podés cargarlo en la tarea vinculada.'}</div>
     {editing && <div className="cg-content-editor"><label>Título<input maxLength={500} value={title} disabled={busy} onChange={event => {if(rememberContent(event.target.value,copy))setTitle(event.target.value)}} /></label><label>Copy<textarea maxLength={20000} value={copy} disabled={busy} onChange={event => {if(rememberContent(title,event.target.value))setCopy(event.target.value)}} rows={6} /></label><p>Se guarda también en la tarea. Si ya estaba aprobada, los cambios requieren otra revisión.</p></div>}
     {piece.completada_at && <p className="cg-muted cg-completion-date"><GoalIcon name="check" />Completada el {new Date(piece.completada_at).toLocaleDateString('es-AR')}</p>}{!piece.tarea_id && <p className="cg-muted">La tarea ya no está disponible. El resultado mensual y su contenido se conservaron.</p>}{error && <p className="cg-error" role="alert">{error}</p>}<footer>{editing ? <><button className="cg-button" disabled={busy} onClick={cancelEdit}>Cancelar edición</button><button className="cg-button cg-primary" disabled={busy || !title.trim()} onClick={saveContent}>{busy ? 'Guardando…' : 'Guardar contenido'}</button></> : <>{piece.tarea_id && <><a className="cg-button" href={`/workspace/tareas?task=${piece.tarea_id}`}>Abrir tarea<GoalIcon name="external" /></a>{canEditContent && <button className="cg-button" disabled={busy} onClick={beginEdit}>Editar contenido</button>}</>}{canManage && piece.tarea_id && <button className={`cg-button${done(piece) ? '' : ' cg-primary'}`} disabled={busy || !finalizable} onClick={finish}>{busy ? 'Guardando…' : done(piece) ? 'Reabrir tarea' : finalizable ? 'Finalizar tarea' : 'Requiere aprobación'}</button>}</>}</footer></div></Modal>;
 }

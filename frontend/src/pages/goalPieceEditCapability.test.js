@@ -32,7 +32,7 @@ const compiled = ts.transpileModule(owner.getText(file), {
 function render(piece, canManage) {
   const deps = {
     React, useState, useRef, goalId, useEffect: harmless, useGoalDraftMemory: () => null,
-    useGoalModalFocus: harmless, useNavigationGuard: harmless,
+    useGoalModalScrollLock: harmless, useNavigationGuard: harmless,
     useGoalSession: () => ({ capture: () => ({ current: () => true }), captureLifetime: () => ({ current: () => true }) }),
     Modal: ({ children }) => React.createElement('section', null, children),
     GoalIcon: () => null, STATES: {}, done: () => false, pieceLabel: p => p.titulo,

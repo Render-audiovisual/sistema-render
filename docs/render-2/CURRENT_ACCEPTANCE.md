@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Objetivos: diálogos nativos compartidos — corte274
+
+PrepareGoal y PieceDetail en ClientesObjetivos usan Modal native y closeDisabled=busy; mantienen closeSafely, guardas de sesión/pending, confirmaciones de borrador y flujo de cuota/contenido. El hook local ahora solo bloquea/restaura overflow: se eliminó el listener global Tab duplicado, cuya lista de controles difería del componente compartido. Sin backdrop dismiss nuevo, portal, CSS, requests, backend o migraciones. Apple UI/Frontend Design orientaron conservar escala/estilos; Superpowers ordenó alcance y pruebas. Harvey revisó fuente/diff sin bloqueantes; el retorno de foco cuando refresh desmonta el invocador continúa pendiente.
+
+Tres pruebas nuevas:3FAIL antes del cambio y3PASS después;19focales de cableado JSX, scroll, sesión/guards y Modal compartido PASS. Primera regresión falló por dos fixtures que inyectaban el hook con nombre antiguo; se actualizaron sin quitar aserciones de negocio. Regresión final `node --test` desde frontend:2965PASS/1SKIP explícito (servidor canónico opt-in),0FAIL/canceladas, salida0. Build index-CF_j-hGv.js y diffcheck correctos. Logs `/private/tmp/render2-goal274-{red,focal,frontend,frontend-final,build}.log`. Las pruebas de cableado/efectos no equivalen a DOM nativo; teclado, descarte cancelado, cierre durante pending y visual móvil de estos dos diálogos siguen sin aceptación física.
+
+No se inició servidor ni PostgreSQL274, ni se tocó producción. Recuperada observación de Chrome: pestaña QA273 aún presente y sin JS confirm pendiente. Intento de reset viewport/cierre no confirmado por timeout, no se relanzó el fixture ya terminado. Esto no renueva aceptación móvil de273 ni prueba descarte. Integración global y despliegue siguen pendientes.
+
 ### Feedback: teclado nativo, verificación parcial — corte273
 
 App/build272 (CpvXNIhb), backend271, Chrome real y fixture propio PG55905/HTTP52852. En 1280×800, detalle de nota: `:modal` verdadero, Shift+Tab desde Cerrar llega a Editar feedback y Tab desde este último vuelve a Cerrar, siempre dentro del dialog. Entrar en edición enfoca Título. Escribir título sintético y Escape abrió confirmación nativa; el comando de tecla agotó su espera, pero `getJsDialog()` confirmó tipo confirm. El cierre limpio anterior dejó foco en la card original. No se acredita cancelación de confirmación, descarte aceptado, backdrop ni responsive: la conexión se interrumpió durante el siguiente comando de cancelar/medir/capturar; resultados y captura no confirmados.
