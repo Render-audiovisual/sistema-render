@@ -463,6 +463,58 @@ test('inline error exception validates only the reviewed rule and preserves othe
     assert.throws(()=>reviewedInlineErrorBaseline(changed));
   }
 });
+function reviewedReviewRefreshBaseline(root) {
+  const copy=root.clone(),seen=[];
+  const rules=new Map([
+    ['.render-workspace .ros-review-refresh',[
+      ['display','flex'],['flex-direction','column'],['align-items','flex-start'],['gap','8px'],['min-width','0'],
+    ]],
+    ['.render-workspace .ros-review-refresh>.btn',[
+      ['max-width','100%'],['white-space','normal'],['line-height','1.4'],
+    ]],
+    ['.render-workspace .ros-review-refresh>small',[
+      ['display','block'],['overflow-wrap','anywhere'],
+    ]],
+  ]);
+  copy.walkRules(rule=>{
+    if(!rule.selector.includes('ros-review-refresh'))return;
+    assert.ok(rules.has(rule.selector),'Only the exact reviewed refresh selectors may leave the fingerprint');
+    assert.equal(rule.parent.type,'root','Refresh exception cannot hide a media or nested wrapper');
+    assert.ok(rule.nodes.every(node=>node.type==='decl'));
+    assert.deepEqual(rule.nodes.map(node=>[node.prop,node.value,!!node.important]),
+      rules.get(rule.selector).map(([prop,value])=>[prop,value,false]));
+    seen.push(rule.selector);rule.remove();
+  });
+  assert.deepEqual(seen,[...rules.keys()],'Exactly three reviewed rules in their original order');
+  return copy;
+}
+test('review refresh exception pins selectors, declarations and root scope without changing global hashes',()=>{
+  const original=roots.WorkspaceReadOnly.toString();
+  const projected=reviewedReviewRefreshBaseline(roots.WorkspaceReadOnly);
+  assert.equal(roots.WorkspaceReadOnly.toString(),original,'Normalization never mutates source');
+  for(const mutate of [
+    rule=>{rule.selector+=', .unrelated';},
+    rule=>{rule.selector='.ros-review-refresh';},
+    rule=>{rule.first.value='grid';},
+    rule=>{rule.first.important=true;},
+    rule=>{rule.append({prop:'height',value:'44px'});},
+    rule=>{rule.last.remove();},
+    rule=>{rule.cloneAfter();},
+    rule=>{rule.remove();},
+    (rule,root)=>{const media=postcss.atRule({name:'media',params:'(max-width:700px)'});root.append(media);media.append(rule);},
+  ]){
+    const changed=roots.WorkspaceReadOnly.clone();let target;
+    changed.walkRules(rule=>{if(rule.selector==='.render-workspace .ros-review-refresh')target=rule;});
+    assert.ok(target);mutate(target,changed);
+    assert.throws(()=>reviewedReviewRefreshBaseline(changed));
+  }
+  // A valid exception must not erase another rule or paint/layout mutation.
+  const unrelated=roots.WorkspaceReadOnly.clone();
+  unrelated.append(postcss.rule({selector:'.unrelated'}).append({prop:'position',value:'fixed'}));
+  const retained=reviewedReviewRefreshBaseline(unrelated);
+  assert.equal(retained.last.selector,'.unrelated');
+  assert.notEqual(hash(structure(retained)),hash(structure(projected)));
+});
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
     let baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
@@ -471,6 +523,7 @@ for (const name of files) {
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedDaySummaryScrollBaseline(baselineRoot);
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedMobileCalendarBaseline(baselineRoot);
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedInlineErrorBaseline(baselineRoot);
+    if(name==='WorkspaceReadOnly')baselineRoot=reviewedReviewRefreshBaseline(baselineRoot);
     if(name==='TaskDetailNotion')baselineRoot=reviewedProductionClosureBaseline(reviewedMobileTemplateBaseline(baselineRoot));
     if(name==='TaskHeader')baselineRoot=reviewedTaskContinuationBaseline(baselineRoot);
     if(name==='TaskHeader')baselineRoot=reviewedMobileViewSelectorBaseline(baselineRoot);

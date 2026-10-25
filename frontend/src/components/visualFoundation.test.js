@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import postcss from 'postcss';
 const design = readFileSync(new URL('../design-system.css', import.meta.url), 'utf8');
 const legacy = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
@@ -12,6 +13,18 @@ const luminance = hex => {
   return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];
 };
 const contrast = (a,b) => { const pair=[luminance(a),luminance(b)].sort((x,y)=>y-x);return(pair[0]+.05)/(pair[1]+.05); };
+test('shared button primitive centers its label while retaining the shared touch target',()=>{
+  const declarations=[];
+  postcss.parse(legacy).walkRules(rule=>{if(rule.selector==='.btn'&&rule.parent.type==='root')
+    declarations.push(...rule.nodes.filter(node=>node.type==='decl').map(node=>[node.prop,node.value]));});
+  const effective=new Map(declarations);
+  assert.equal(effective.get('display'),'inline-flex');assert.equal(effective.get('align-items'),'center');
+  assert.equal(effective.get('justify-content'),'center');
+  let controlHeight;
+  postcss.parse(design).walkRules(rule=>{if(rule.parent.type==='root'&&rule.selector.split(',').map(value=>value.trim()).includes('.btn'))
+    rule.walkDecls('min-height',node=>{controlHeight=node.value;});});
+  assert.equal(controlHeight,'44px');
+});
 test('one shared foundation owns neutral light surfaces and system font without downloaded fonts', () => {
   assert.equal(tokens.get('--render-canvas'), '#f5f5f7');
   assert.equal(tokens.get('--render-surface'), '#ffffff');

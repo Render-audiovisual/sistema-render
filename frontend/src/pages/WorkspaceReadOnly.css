@@ -1566,6 +1566,9 @@
   border-bottom-color:var(--render-line);
   padding:20px 0;
 }
+.render-workspace .ros-review-refresh{display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-width:0}
+.render-workspace .ros-review-refresh>.btn{max-width:100%;white-space:normal;line-height:1.4}
+.render-workspace .ros-review-refresh>small{display:block;overflow-wrap:anywhere}
 .render-workspace .ros-block-heading{margin-bottom:12px}
 .render-workspace .ros-block-heading h3,
 .render-workspace .ros-work-block>h3{

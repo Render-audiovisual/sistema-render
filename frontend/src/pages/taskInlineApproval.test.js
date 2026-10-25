@@ -31,6 +31,15 @@ test('review refresh shares the canonical control without changing its action or
   assert.equal(value('disabled'),'{reviewRefreshing || approving || deliveryBusy}');
   assert.match(button.getText(file),/Actualizando…/);assert.match(button.getText(file),/Actualizar tarea para revisar/);
 });
+test('review refresh places its hint below the shared vertically centered control',()=>{
+  const source=readFileSync(new URL('./WorkspaceReadOnly.jsx',import.meta.url),'utf8');
+  const css=readFileSync(new URL('./WorkspaceReadOnly.css',import.meta.url),'utf8');
+  const shared=readFileSync(new URL('../styles.css',import.meta.url),'utf8');
+  assert.match(source,/className="ros-work-block ros-review-refresh"><button className="btn"/);
+  assert.match(css,/\.ros-review-refresh\{[^}]*flex-direction:column;[^}]*gap:8px/);
+  assert.match(css,/\.ros-review-refresh>\.btn\{[^}]*max-width:100%;[^}]*white-space:normal/);
+  assert.match(shared,/\.btn \{\s*align-items: center;/);
+});
 function fixture({ acknowledged = true, historyRevision = 7, historyStatus = 'ready', role = 'admin', saving = false, deliveryBusy = false,
   deliveryDirty = false, approving = false, reviewRefreshing = false, transport } = {}) {
   const task = { id: 5, revision: 7, updated_at: '2026-10-23T12:00:00.000Z', estado: 'en_revision',
