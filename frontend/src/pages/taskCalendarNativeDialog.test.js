@@ -18,11 +18,13 @@ const compiled=ts.transpileModule(owner.getText(tree),{compilerOptions:{jsx:ts.J
 
 // Actual function/JSX, injected hook scheduling only. No DOM, UA focus/top layer,
 // HTTP, providers, database or replacement implementation of its callbacks.
-function fixture() {
+function fixture({dayCount=4,extraDays=false}={}) {
   const states=[],refs=[],events=[];let stateIndex=0,refIndex=0,current;
-  const tasks=Array.from({length:4},(_,index)=>({id:index+21,titulo:`QA task ${index}`,cliente_nombre:'QA client',
+  const tasks=Array.from({length:dayCount},(_,index)=>({id:index+21,titulo:`QA task ${index}`,cliente_nombre:'QA client',
     fecha_vencimiento:'2026-10-29',estado:'pendiente'}));
-  tasks.push({id:30,titulo:'Undated QA',estado:'pendiente',fecha_vencimiento:null});
+  tasks.push({id:900,titulo:'Undated QA',estado:'pendiente',fecha_vencimiento:null});
+  if(extraDays)tasks.push({id:901,titulo:'Other day QA',estado:'pendiente',fecha_vencimiento:'2026-10-28'},
+    {id:902,titulo:'Other month QA',estado:'pendiente',fecha_vencimiento:'2026-11-29'});
   const before=structuredClone(tasks),users=[{id:7,nombre:'QA'}];
   function Modal(){return null;}
   const deps={React,Modal,
@@ -43,7 +45,7 @@ function fixture() {
   };
   return{tasks,before,refs,states,events,Modal,render,find,
     dialog:()=>find(element=>element.type===Modal)[0],
-    day:()=>find(element=>element.type==='button'&&element.props.className==='ros-calendar-day-number'&&element.props.children===29)[0],
+    day:()=>find(element=>element.type==='button'&&element.props.className==='ros-calendar-day-number'&&element.props['aria-label']==='Ver resumen del 29')[0],
     more:()=>find(element=>element.type==='button'&&element.props.className==='ros-calendar-more')[0]};
 }
 
@@ -118,4 +120,39 @@ test('TaskCalendar has no competing global Escape listener, manual dialog lifecy
     &&['ros-calendar-day-number','ros-calendar-more'].includes(attr(node,'className')?.initializer?.text));
   assert.equal(invokers.length,2);
   for(const invoker of invokers)assert.equal(expression(invoker,'onClick'),'(event) => openDay(event, key)');
+});
+
+test('actual day button keeps its numeric day and reports the full loaded count, not the three desktop cards',()=>{
+  for(const count of [0,1,4,12]){
+    const f=fixture({dayCount:count,extraDays:true}),button=f.day();
+    assert.equal(button.props['aria-label'],'Ver resumen del 29');
+    assert.equal(button.props['aria-description'],`${count} ${count===1?'tarea cargada':'tareas cargadas'}`);
+    assert.equal(React.Children.toArray(button.props.children)[0],29);
+    const badges=f.find(element=>element.type==='span'&&element.props.className==='ros-calendar-day-count');
+    const badge=React.Children.toArray(button.props.children).find(element=>React.isValidElement(element));
+    if(count===0)assert.equal(badge,undefined);
+    else{assert.equal(badge.props.className,'ros-calendar-day-count');assert.equal(badge.props.children,count);assert.equal(badge.props['aria-hidden'],'true');}
+    assert.equal(badges.length,(count>0?1:0)+1,'Only the current month dated days receive a badge');
+    assert.deepEqual(f.tasks,f.before);
+  }
+});
+
+test('actual day summary includes every task beyond three, excludes undated/other days and opens the last exact ID',()=>{
+  for(const count of [0,1,4,12]){
+    const f=fixture({dayCount:count,extraDays:true});f.day().props.onClick({currentTarget:{kind:'day'}});f.render();
+    const list=f.find(element=>element.props.className==='ros-day-preview-list')[0];
+    const rows=[list.props.children].flat(Infinity).filter(element=>React.isValidElement(element)&&element.type==='button');
+    assert.deepEqual(rows.map(element=>element.key),Array.from({length:count},(_,index)=>String(index+21)));
+    if(count){f.events.length=0;rows.at(-1).props.onClick();assert.deepEqual(f.events,[['state',1,''],['open',count+20]]);}
+    else assert.equal(f.find(element=>element.props.className==='ros-day-preview-empty').length,1);
+    assert.deepEqual(f.tasks,f.before);
+  }
+});
+
+test('desktop direct task cards still open unchanged IDs without selecting the day or using the summary',()=>{
+  const f=fixture({dayCount:12});
+  const cards=f.find(element=>element.type==='button'&&element.props.className?.startsWith('ros-calendar-task '));
+  assert.equal(cards.length,3);assert.equal(f.dialog(),undefined);
+  f.events.length=0;cards[2].props.onClick();assert.deepEqual(f.events,[['open',23]]);
+  f.render();assert.equal(f.dialog(),undefined);assert.deepEqual(f.tasks,f.before);
 });

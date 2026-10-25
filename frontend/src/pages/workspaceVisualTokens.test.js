@@ -396,12 +396,38 @@ function reviewedDaySummaryScrollBaseline(root) {
   assert.deepEqual(reviewed, ['.render-workspace .ros-day-preview-list']);
   return copy;
 }
+function reviewedMobileCalendarBaseline(root) {
+  const copy=root.clone(),seen=[];
+  const added=new Map([
+    ['.render-workspace .ros-calendar>header,.render-workspace .ros-calendar-week,.render-workspace .ros-calendar-grid', [['min-width','0']]],
+    ['.render-workspace .ros-calendar-week,.render-workspace .ros-calendar-grid', [['grid-template-columns','repeat(7,minmax(0,1fr))']]],
+    ['.render-workspace .ros-calendar-day-number', [['display','flex'],['flex-direction','column'],['justify-content','center'],['gap','4px'],['width','100%'],['height','auto'],['min-height','64px'],['min-width','0'],['border-radius','8px'],['font-size','14px']]],
+    ['.render-workspace .ros-calendar-day-count', [['display','block'],['max-width','100%'],['overflow','hidden'],['text-overflow','ellipsis'],['border-radius','4px'],['background','var(--render-accent-soft)'],['color','var(--render-accent)'],['font-size','11px'],['line-height','16px'],['padding','0 4px']]],
+    ['.render-workspace .ros-calendar-day-tasks', [['display','none']]],
+  ]);
+  const check=(rule,entries)=>assert.deepEqual(rule.nodes.map(node=>[node.prop,node.value,!!node.important]),entries.map(([key,value])=>[key,value,false]));
+  copy.walkRules(rule=>{
+    if(rule.parent.type==='root'&&rule.selector==='.render-workspace .ros-calendar-day-count') {
+      check(rule,[['display','none']]);seen.push('root-count');rule.remove();return;
+    }
+    if(rule.parent.type!=='atrule'||rule.parent.name!=='media'||rule.parent.params!=='(max-width:700px)')return;
+    if(rule.selector==='.render-workspace .ros-calendar') {
+      check(rule,[['border-radius','12px'],['overflow-x','visible']]);rule.nodes.at(-1).remove();seen.push(rule.selector);
+    } else if(rule.selector==='.render-workspace .ros-calendar-day') {
+      check(rule,[['min-height','72px'],['min-width','0'],['padding','0']]);
+      rule.removeAll();rule.append({prop:'min-height',value:'150px'},{prop:'padding',value:'8px'});seen.push(rule.selector);
+    } else if(added.has(rule.selector)) {check(rule,added.get(rule.selector));seen.push(rule.selector);rule.remove();}
+  });
+  assert.deepEqual(seen,['root-count','.render-workspace .ros-calendar',...Array.from(added.keys()).slice(0,2),'.render-workspace .ros-calendar-day',...Array.from(added.keys()).slice(2)]);
+  return copy;
+}
 for (const name of files) {
   test(`${name}: no appended layer, layout/motion change or new important declaration`, () => {
     let baselineRoot = name === 'WorkspaceReadOnly' ? reviewedTabletStateBaseline(roots[name]) : roots[name];
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedBriefErrorBaseline(baselineRoot);
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedCommentActionsBaseline(baselineRoot);
     if(name==='WorkspaceReadOnly')baselineRoot=reviewedDaySummaryScrollBaseline(baselineRoot);
+    if(name==='WorkspaceReadOnly')baselineRoot=reviewedMobileCalendarBaseline(baselineRoot);
     if(name==='TaskDetailNotion')baselineRoot=reviewedProductionClosureBaseline(reviewedMobileTemplateBaseline(baselineRoot));
     if(name==='TaskHeader')baselineRoot=reviewedTaskContinuationBaseline(baselineRoot);
     if (['WorkspaceReadOnly', 'TaskHeader', 'RenderApplePolish'].includes(name)) baselineRoot = reviewedFilterPresentationBaseline(baselineRoot);

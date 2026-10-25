@@ -1043,7 +1043,7 @@ function TaskCalendar({ tasks, users = [], onOpen, monthValue, onMonthChange }) 
         const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         const items = byDate.get(key) || [];
         return <div className={`ros-calendar-day ${key === today ? "today" : ""}`} key={key}>
-          <button className="ros-calendar-day-number" type="button" aria-label={`Ver resumen del ${day}`} onClick={(event) => openDay(event, key)}>{day}</button>
+          <button className="ros-calendar-day-number" type="button" aria-label={`Ver resumen del ${day}`} aria-description={`${items.length} ${items.length === 1 ? "tarea cargada" : "tareas cargadas"}`} onClick={(event) => openDay(event, key)}>{day}{items.length > 0 && <span className="ros-calendar-day-count" aria-hidden="true">{items.length}</span>}</button>
           <div className="ros-calendar-day-tasks">{items.slice(0, 3).map((task) => <button className={`ros-calendar-task area-${areaForTask(task)}`} title={`${task.titulo} · ${task.cliente_nombre || "Sin cliente"}`} type="button" key={task.id} onClick={() => onOpen(task.id)}><strong>{task.titulo}</strong><small>{task.cliente_nombre || "Sin cliente"}</small></button>)}{items.length > 3 && <button className="ros-calendar-more" type="button" onClick={(event) => openDay(event, key)}>+{items.length - 3} más</button>}</div>
         </div>;
       })}</div>

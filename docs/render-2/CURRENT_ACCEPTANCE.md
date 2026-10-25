@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Calendario de Tareas compacto en móvil — integración341
+
+Main sustituyó solo en≤700px la grilla900px horizontal por siete columnas minmax(0,1fr), celdas compactas y botón de día con contador numérico/aria-description de tareas cargadas. Tarjetas internas se ocultan solo en móvil; se conserva acceso a todas desde resumen nativo, apertura por ID, filtros, mes/URL y fechas. Escritorio mantiene tarjetas/«más» y oculta contador;701–900 conserva contrato horizontal previo. Apple UI/frontend-design orientaron claridad y tokens existentes, sin nueva capa CSS ni cambios comerciales. Guard visual valida exactamente reglas nuevas/restauradas y conserva hashes del resto, sin actualizar baseline global.
+
+Harvey adaptó fixture real con hooks simulados y agregó conteos0/1/4/12, exclusión sin fecha/otro mes/día, resumen completo más allá de tres y apertura desktop; nuevo contrato CSS responsive. Main leyó ambas pruebas y diff. Frontend final3138PASS/1SKIP/0FAIL de3139 (`/private/tmp/render2-goal341-final-frontend.log`), build index-CqrWHiA8 (`/private/tmp/render2-goal341-final-build.log`). No backend/core renovados.
+
+Dos recorridos nativos con runner331 sin cambios, cuentas sintéticas: primera root render2-local-m4YZnZ coordinador92379/HTTP92403; detectó ancho táctil40.57 a390px, por padding2. Main corrigió padding0 y recompiló después de limpiar fixture. Segunda root render2-local-Gr4tR7 coordinador93100/HTTP93126:390×844 grilla319px/7columnas, botón44.57×64 y foco de regreso exacto al29; viewport390/scroll375. A320×740 grilla249/scroll249, página305≤320 y botón34.57×64: no afirmar44px de ancho en todos los tamaños. Mes siguiente/atrás y recarga conservan `/workspace/tareas?view=calendar&month=2026-10`, contador1 y listado exacto. Escritorio1280 de primera compilación muestra tarjeta1/contador0, no overflow; segunda solo cambió padding móvil. Captura final inspeccionada `/private/tmp/render2-goal341-final-mobile.png`. La cabecera móvil de Tareas aún ocupa mucha altura; pendiente de simplificación aparte.
+
+Ambos fixtures exit0,107 tablas de dominio, contadores e index/entry intactos; cleanup ENOENT, viewport restaurado y pestañas cerradas. Log heredado104 no representa loop107. No prueba móvil física/dispositivo independiente/lectores ni grilla poblada de12 tareas en navegador (esa cobertura es simulada). Sin producción/despliegue; objetivo global activo.
+
 ### Autoridad de registros históricos y confirmación — integración340
 
 Main añadió `legacy-production-authority.js` y adaptó POST/PATCH registros en server.js: captura ID/rol/época antes de conexión, READ COMMITTED explícito, helper canónico actor FOR SHARE antes de tarea, ACL fresca separada después del bloqueo. Nombres/IDs de registro y corrección provienen de identidad retenida de DB; corrección evalúa transición con ese actor. Conserva CAS, cantidades/adelantos, historia, invalidación de aprobación y rechazo de mezcla canónica; no crea visitas ni edición agregada ni publicación. Confirmación HTTP propia exige sesión capturada/admin actual. Transacción prestada de Wilson conserva autenticación de transporte distinta y retiene su admin activo mapeado por ID, sin inventar epoch JWT ni aceptar nombre como autoridad; no hace commit/release interno.

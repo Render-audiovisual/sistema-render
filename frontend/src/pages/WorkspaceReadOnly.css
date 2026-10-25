@@ -1215,6 +1215,7 @@
 }
 .render-workspace .ros-calendar-more:hover{background:var(--render-surface-muted);color:var(--render-ink)}
 .render-workspace .ros-calendar-note{background:var(--render-surface-soft);border-top:1px solid var(--render-line);color:var(--render-muted);margin:0;padding:12px 15px;text-align:left}
+.render-workspace .ros-calendar-day-count{display:none}
 .render-workspace .ros-day-preview-backdrop{align-items:center;background:#171a136b;display:flex;inset:0;justify-content:center;padding:18px;position:fixed;z-index:110}
 .render-workspace .ros-day-preview{background:var(--render-surface-muted);border:1px solid var(--render-line);border-radius:16px;box-shadow:0 24px 70px #171a1340;max-height:min(680px,90vh);overflow:hidden;width:min(620px,100%)}
 .render-workspace .ros-day-preview>header{align-items:flex-start;background:var(--render-surface);color:var(--render-ink);display:flex;justify-content:space-between;padding:20px 22px}
@@ -1242,8 +1243,13 @@
   .render-workspace .ros-calendar>header,.render-workspace .ros-calendar-week,.render-workspace .ros-calendar-grid{min-width:900px}
 }
 @media(max-width:700px){
-  .render-workspace .ros-calendar{border-radius:12px}
-  .render-workspace .ros-calendar-day{min-height:150px;padding:8px}
+  .render-workspace .ros-calendar{border-radius:12px;overflow-x:visible}
+  .render-workspace .ros-calendar>header,.render-workspace .ros-calendar-week,.render-workspace .ros-calendar-grid{min-width:0}
+  .render-workspace .ros-calendar-week,.render-workspace .ros-calendar-grid{grid-template-columns:repeat(7,minmax(0,1fr))}
+  .render-workspace .ros-calendar-day{min-height:72px;min-width:0;padding:0}
+  .render-workspace .ros-calendar-day-number{display:flex;flex-direction:column;justify-content:center;gap:4px;width:100%;height:auto;min-height:64px;min-width:0;border-radius:8px;font-size:14px}
+  .render-workspace .ros-calendar-day-count{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;border-radius:4px;background:var(--render-accent-soft);color:var(--render-accent);font-size:11px;line-height:16px;padding:0 4px}
+  .render-workspace .ros-calendar-day-tasks{display:none}
   .render-workspace .ros-calendar>header{min-height:56px}
   .render-workspace .ros-day-preview-backdrop{align-items:flex-end;padding:0}
   .render-workspace .ros-day-preview{border-radius:18px 18px 0 0;max-height:84vh;width:100%}
