@@ -177,6 +177,28 @@ test('render replacement of task attempt/capture fences held GET before passive 
     await settle(); assert.deepEqual(f.effects, before); assert.equal(f.requests.length, 1); cleanup();
   }
 });
+for (const cookie of [false, true]) for (const fail of [false, true]) {
+  test(`sheet older read cannot replace a later local draft or report its failure (cookie ${cookie}, error ${fail})`, async () => {
+    const held = deferred(); let reads = 0;
+    const original = { id: 5, cliente_id: 2, copy: 'Original', publicacion_evidencia: { revision: 0 } };
+    const f = sheetFixture(async () => ++reads === 1 ? [original] : held.promise, cookie);
+    await f.deps.cargar();
+    f.deps.publicaciones = [original];
+    const update = callback(sheet, 'actualizarLocal', f.deps);
+    const loading = f.deps.cargar();
+    update(5, { copy: 'Draft typed after read started' });
+    const before = [...f.effects];
+    if (fail) held.reject(Error('Old read error'));
+    else held.resolve([{ ...original, copy: 'Remote old text', publicacion_evidencia: { revision: 7 } }]);
+    await loading;
+    assert.equal(f.rows[0].copy, 'Draft typed after read started');
+    assert.equal(f.rows[0].publicacion_evidencia.revision, 0, 'No silent CAS rebase');
+    assert.deepEqual(f.effects.slice(before.length), [['loading', false]], 'Only the owned loading state may settle');
+    assert.equal(f.deps.confirmedRows.current.get(5).row.copy, 'Original');
+    assert.equal(f.requests.length, 2, 'Editing never creates a retry or automatic save');
+  });
+}
+
 test('sheet skips intact confirmed fields, not an optimistic draft or an uncertain attempt', async () => {
   for (const cookie of [false, true]) {
     const row = { id: 5, cliente_id: 2, copy: null, idea: 'Original', fecha_programada: '2026-10-20', publicacion_evidencia: { revision: 0 } };

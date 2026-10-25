@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Planilla: lectura anterior no reemplaza edición posterior — corte291
+
+Se reprodujo con callbacks reales el cruce GET iniciado→edición local→respuesta: el éxito reemplazaba draft y revisión CAS; el error publicaba un error de lectura ya obsoleta. Cuatro casos nuevos cookie/bearer y éxito/error fallaron antes de corregir. `actualizarLocal` ahora invalida la generación de lecturas al admitir campos editables, antes de modificar estado; la propiedad separada del loading permite terminar el spinner sin aceptar datos ni errores viejos. No hay guardado/reintento automático ni rebase de revisión.
+
+59focales PASS; frontend2985PASS/1SKIP/0FAIL, salida0; build index-bfeEMdUS correcto. Logs `/private/tmp/render2-goal291-{red,focal,frontend,build}.log`. Coordinador implementó/ejecutó. Sin backend/migración/DB/proveedor/despliegue.
+
+Alcance preciso: protege respuestas de lecturas iniciadas **antes** de editar. Una lectura nueva iniciada después de existir un borrador necesita política explícita de reconciliación/protección; no queda resuelta por este parche. Pruebas con callbacks/dependencias inyectadas, no navegador montado; aceptación global incompleta.
+
 ### Planilla: blur intacto en navegador real — corte290
 
 App288/index-BKjRJE7w incluye el fix287, backend285, Chrome1280×800 y PostgreSQL propio55915/HTTP52859. Login sintético conserva enlace directo `planificacion-publicaciones?tab=planilla&cliente=1&mes=2026-10`. Se enfocó y tabuló fecha, idea, copy, material y notas sin editar; textos/estado se mantuvieron, y recarga recuperó el copy original. Captura `/private/tmp/render2-goal290-planilla-desktop.png` inspeccionada: teclado desplaza horizontalmente la grilla hasta el responsable. No aceptación móvil en este corte.

@@ -818,6 +818,10 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
   const actualizarLocal = (id, campos, scope = capture()) => {
     if (!scope.current()) return;
     campos = editorialFields(publicaciones.find(p => p.id === id), campos, view.role === 'admin');
+    if (!Object.keys(campos).length) return;
+    // A response observed before typing cannot replace this newer local intent
+    // or advance its CAS observation. Loading ownership still settles normally.
+    ++listGeneration.current;
     setPublicaciones((prev) => prev.map((p) => (p.id === id ? { ...p, ...campos } : p)));
   };
 
