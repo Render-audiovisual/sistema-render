@@ -30,6 +30,15 @@ const find = (element, predicate) => {
 const deps = { completionLabel, useState: initial => [initial, () => {}], useRef: () => ({ current: null }), useEffect: () => {},
   ItemActions: component('ItemActions'), TableActions: component('TableActions') };
 
+test('mobile pages toggle retains an explicit accessible name when its visible word is hidden', () => {
+  const button = nodes.find(node => ts.isJsxOpeningElement(node) && node.tagName.getText(ast) === 'button'
+    && node.attributes.properties.some(prop => prop.name?.getText(ast) === 'aria-controls' && prop.initializer?.text === 'personal-list-pages'));
+  const label = button.attributes.properties.find(prop => prop.name?.getText(ast) === 'aria-label');
+  assert.ok(label?.initializer?.expression);
+  const resolve = railOpen => new Function('railOpen', `return (${label.initializer.expression.getText(ast)});`)(railOpen);
+  assert.equal(resolve(false), 'Mostrar páginas'); assert.equal(resolve(true), 'Ocultar páginas');
+});
+
 for (const accepted of [false, true]) test(`unsubmitted item clears only after writer admission (${accepted})`, () => {
   const changes = [], consumed = [];
   const tree = component('ItemsBlock', { ...deps, uid: () => 'synthetic-id' })({ type: 'checklist', content: { items: [] },

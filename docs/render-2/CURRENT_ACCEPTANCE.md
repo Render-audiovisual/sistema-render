@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Mi lista: borrador conservado entre páginas en escritorio/móvil — corte298
+
+Chrome/App297/index-CT31cf7K, backend285 y fixture PG55919/HTTP52863. Setup creó dos páginas privadas checklist para qa_franco antes del baseline. Se escribió «QA298 pendiente sin Enter» en A; navegación interna A→B dejó inputBvacío, B→A recuperó el texto original con estado Sin guardar e instrucción. Mismo recorrido en390×844 conservó A, raíz client/scroll390/390 sin overflow horizontal. Capturas `/private/tmp/render2-goal298-list-draft-{return,mobile}.png` inspeccionadas. No se presionó Enter; limpiar manualmente el input al finalizar tampoco agregó un registro.
+
+Runner/log `/private/tmp/render2-goal298-native.*`: PID8951/hijo8975 propios verificados antes de TERM; salida0,105hashes de dominio y todos los contadores usuarios intactos, index/entry intactos, cleanup ENOENT v0GPJV. Tab cerrada/viewport restaurado. Prueba memoria y navegación, no persistencia tras cerrar navegador ni advertencia cancelada/descarte físico.
+
+La inspección móvil encontró botón de páginas sin nombre accesible al ocultarse el strong por CSS. Se agregó aria-label dinámico Mostrar/Ocultar páginas, manteniendo handler/expanded/controls y geometría. Nuevo test evalúa ambas expresiones reales;22focales PASS, frontend3014PASS/1SKIP/0FAIL, salida0; build index-B5ilDjOy correcto. Logs `/private/tmp/render2-goal298-{focal,frontend,build}.log`. La comprobación nativa anterior no certifica la etiqueta post-fix. Coordinador realizó UI/corrección/pruebas; Harvey revisó sin bloqueantes.
+
+Sin backend de producto/migraciones/bases reales/proveedores/despliegue. Verification orientó separar borrador visible de registro PostgreSQL. Aceptación global incompleta.
+
 ### Mi lista: elementos todavía no agregados protegidos — corte297
 
 Revisión amplia con Harvey encontró un input `ItemsBlock` cuyo useState se perdía al cambiar página y no participaba en guard/status. Ahora `PersonalListsPage` posee `createPersonalItemDrafts`, mapa en memoria por listId/blockId, transmitido como props controladas por BlockEditor. No se guarda en storage ni se crea un elemento sin Enter. Cambio interno de página conserva el mapa; salir/refresh/unload lo considera dirty y el indicador muestra pendiente, con instrucción para agregarlo. Denegación de sesión/unmount lo limpia. No es persistencia tras cerrar navegador.
