@@ -1,8 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { canonicalBundleGuard } from './scripts/canonical-bundle.js';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), canonicalBundleGuard()],
   server: {
     proxy: {
       "/api": {

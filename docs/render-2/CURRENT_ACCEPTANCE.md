@@ -4,6 +4,16 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Build canónico: barrera contra entrypoints paralelos — corte296
+
+Vite incorpora `canonicalBundleGuard` (`frontend/scripts/canonical-bundle.js`) únicamente en build. Inspecciona módulos de todos los chunks emitidos, también lazy, y rechaza cinco rutas exactas: DesignPreview, SandboxWorkspace, PreviewCommentsProposal, PreviewLocalProfileContext y LocalDesignShell. Normaliza root/separadores/query/hash. No borra referencias ni impide código compartido compatible; MoodboardPreview sigue siendo canónico. No toca proxy API, autenticación, rutas operativas ni datos.
+
+Prueba con build real/config real/writefalse confirma main/App/Publicaciones/MoodboardPreview presentes y chunks dinámicos. Diez negativos (cinco rutas × import estático/lazy) retienen módulos sintéticos en esas rutas y exigen error del plugin + ruta específica: no se confunde un fallo ajeno del build con rechazo correcto. Coordinador implementó/ejecutó y Harvey propuso/revisó sin bloqueantes.
+
+15focales PASS (11build+4entry); frontend3005PASS/1SKIP/0FAIL, salida0; `npm run build` correcto, index-DhhYmESL sin cambio de identidad del bundle operativo. Logs `/private/tmp/render2-goal296-{bundle,focal,frontend,build}.log`. Sin servidores, DB/migraciones/proveedores/despliegue.
+
+Alcance: excluye esos IDs resueltos del grafo JS generado; no detecta código copiado, aliases virtuales arbitrarios, assets públicos ni toda persistencia local posible. No es un gate de despliegue ni aceptación global del prompt maestro.
+
 ### Planilla: confirmación tardía corregida en navegador real — corte295
 
 App294/index-DhhYmESL, backend285, Chrome y fixture PG55918/HTTP52862. El mismo retraso controlado de transporte de294 retuvo el ACK real de copyA después del commit. Tab→material intacto→volver a copyB ya no produjo otro PATCH. Al liberar ACKA por señal IPC del runner verificado, copyB siguió visible/dirty, recovery pasó de disabled a enabled y no apareció alerta de error. Captura `/private/tmp/render2-goal295-draft-after-ack.png` inspeccionada. Volver manualmente a copyA confirmado y blur limpió el aviso sin otro envío; recarga recuperó copyA.
