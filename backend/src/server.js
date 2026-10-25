@@ -90,6 +90,7 @@ import { canRecordProduction, getProductionProgress, isProductionComplete, getPr
 import { assertProductionTaskFinalization, normalizeExpectedProductionVisit } from './production-task-finalization.js';
 import { assertCurrentTaskWriteActor } from './task-state-authority.js';
 import { applyTaskBulkAction } from './task-bulk-actions.js';
+import { deleteLegacyTask } from './task-deletion.js';
 import { captureLegacyProductionActor, retainLegacyProductionActor, retainIntegrationProductionLeader, assertLegacyProductionTaskAccess } from './legacy-production-authority.js';
 import { getTaskSearchTerms } from "./task-search.js";
 import { rankTaskPriorities } from "./task-priority.js";
@@ -2243,20 +2244,16 @@ router.patch("/tareas/:id/produccion/registros/:recordId", async (req, res, next
 
 router.delete("/tareas/:id", requireRole("admin"), async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const esRenderOS = req.query.workspace === "render_os";
-    const result = await pool.query(
-      `DELETE FROM tareas
-       WHERE id = $1${esRenderOS ? " AND propiedades_extra->>'workspace' = 'render_os'" : ""}
-       RETURNING id`,
-      [id],
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Tarea no encontrada." });
-    }
-    res.json({ ok: true });
+    const rawId = req.params.id;
+    const id = typeof rawId === 'string' && /^[1-9]\d*$/.test(rawId) ? Number(rawId) : NaN;
+    if (req.query.workspace !== undefined && typeof req.query.workspace !== 'string')
+      return res.status(400).json({ error:'Contexto de tarea inválido.' });
+    res.json(await deleteLegacyTask(pool, {
+      auth:req.auth, id, renderOs:req.query.workspace === "render_os",
+    }));
   } catch (error) {
     if (error.code === "23503") return res.status(409).json({ error: "La tarea tiene registros vinculados. Conservá su historial; no se puede eliminar." });
+    if (error.status) return res.status(error.status).json({ error:error.message });
     next(error);
   }
 });
