@@ -1392,7 +1392,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
         `SELECT token,actor_id,grupo_id,payload,informante_actor_id,informante_actor_nombre,expires_at
          FROM integracion_confirmaciones
          WHERE token=$1 AND integracion='wilson' AND canal='whatsapp' AND operacion='revisar_lote'
-           AND grupo_id=$2 AND used_at IS NULL AND expires_at>NOW() FOR UPDATE`,
+           AND grupo_id=$2 AND used_at IS NULL AND expires_at>clock_timestamp() FOR UPDATE`,
         [token, req.wilson.groupId],
       );
       const confirmation = confirmationResult.rows[0];
@@ -1421,8 +1421,18 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
         const task = currentById.get(Number(snapshot.id));
         return !task || reviewBatchSnapshotChanged(task, snapshot);
       });
+      // Lock waits can outlive the token. Authorize at this atomic wall-clock
+      // claim, immediately before the first domain write, never at BEGIN.
+      // A later failure rolls back both consumption and the domain changes.
+      const claimConfirmation = async () => {
+        const claim = await client.query(`UPDATE integracion_confirmaciones SET used_at=clock_timestamp()
+          WHERE token=$1 AND integracion='wilson' AND canal='whatsapp' AND operacion='revisar_lote'
+            AND grupo_id=$2 AND used_at IS NULL AND expires_at>clock_timestamp()
+          RETURNING 1 AS claimed`, [token, req.wilson.groupId]);
+        if (claim.rows.length !== 1) throw Object.assign(new Error('La confirmación venció o ya fue utilizada. Prepará un listado nuevo.'), { status: 409 });
+      };
       if (changed.length || currentResult.rows.length !== snapshots.length) {
-        await client.query(`UPDATE integracion_confirmaciones SET used_at=NOW() WHERE token=$1`, [token]);
+        await claimConfirmation();
         await writeWilsonAudit(client, req, {
           action: "cancelar_lote_revision", outcome: "conflicto",
           details: { token, informante: confirmation.informante_actor_nombre, changed_task_ids: changed.map((task) => task.id) },
@@ -1435,7 +1445,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
       }
       const invalidHandoff = currentResult.rows.find((task) => reviewHandoffError(task));
       if (invalidHandoff) {
-        await client.query(`UPDATE integracion_confirmaciones SET used_at=NOW() WHERE token=$1`, [token]);
+        await claimConfirmation();
         await writeWilsonAudit(client, req, {
           action: "cancelar_lote_revision", outcome: "validacion",
           details: { token, informante: confirmation.informante_actor_nombre, task_id: Number(invalidHandoff.id) },
@@ -1446,6 +1456,7 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
         });
       }
       const confirmedAt = new Date().toISOString();
+      await claimConfirmation();
       await client.query(
         `UPDATE tareas SET estado='en_revision',
           propiedades_extra=propiedades_extra||$2::jsonb,updated_at=NOW()
@@ -1456,7 +1467,6 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
           mia_revision_confirmada_por: req.wilson.actorName,
         })],
       );
-      await client.query(`UPDATE integracion_confirmaciones SET used_at=NOW() WHERE token=$1`, [token]);
       for (const snapshot of snapshots) {
         await writeWilsonAudit(client, req, {
           action: "pasar_a_revision_desde_mia", taskId: Number(snapshot.id),

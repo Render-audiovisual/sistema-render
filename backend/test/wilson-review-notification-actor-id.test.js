@@ -60,7 +60,11 @@ function fixture({ failure, changed = false, missingConfirmation = false } = {})
         pending.states = ['en_revision', 'en_revision']; return { rows: [] };
       }
       if (sql.includes('UPDATE integracion_confirmaciones')) {
-        assert.deepEqual(params, ['qa-review-token']); pending.tokenUsed = true; return { rows: [] };
+        assert.deepEqual(params, ['qa-review-token', 'qa-private-group']);
+        assert.match(compact, /SET used_at=clock_timestamp\(\)/);
+        assert.match(compact, /used_at IS NULL AND expires_at>clock_timestamp\(\)/);
+        assert.match(compact, /RETURNING 1 AS claimed$/);
+        pending.tokenUsed = true; return { rows: [{ claimed: 1 }] };
       }
       if (sql.includes('INSERT INTO integracion_auditoria')) {
         if (failure === 'audit') throw new Error('Synthetic audit failure');

@@ -6,7 +6,8 @@ import {createWilsonRouter,resolveWilsonUser} from '../src/wilson-integration.js
 const external='qa386-external',group='qa386-group',key='qa386-confirmation';
 const hash=createHash('sha256').update(external).digest('hex');
 const actorSql='SELECT id,usuario,nombre,rol,activo,whatsapp_id_hash,whatsapp_habilitado FROM usuarios WHERE id=$1 FOR SHARE';
-function fixture({change=()=>{},mutateSubject=false,failure,rollbackFails=false,reporter=external,assigned=7}={}) {
+function fixture({change=()=>{},mutateSubject=false,failure,rollbackFails=false,reporter=external,assigned=7,
+  branch='success',claimEmpty=false,clockSelect=false}={}) {
   const calls=[],notifications=[],errors=[],audits=[];
   const live={id:7,usuario:'qa386',nombre:'QA386 current name',rol:'admin',activo:true,
     whatsapp_id_hash:null,whatsapp_habilitado:true};
@@ -31,15 +32,33 @@ function fixture({change=()=>{},mutateSubject=false,failure,rollbackFails=false,
     }
     if(sql.includes('FROM integracion_confirmaciones')){
       assert.deepEqual(params,[key,group],'Token/group must retain original subject');
+      if(clockSelect)assert.match(sql,/expires_at\s*>\s*clock_timestamp\(\)/);
       return {rows:[{token:key,informante_actor_id:reporter,informante_actor_nombre:'Original reporter',
         payload:{tasks:[{id,titulo,asignado_a,estado,updated_at}]}}]};
     }
-    if(sql.includes('FROM tareas WHERE id=ANY')){assert.deepEqual(params,[[101]]);return {rows:[structuredClone(task)]};}
+    if(sql.includes('FROM tareas WHERE id=ANY')){
+      assert.deepEqual(params,[[101]]);const current=structuredClone(task);
+      if(branch==='conflict')current.updated_at='2026-10-25T13:00:00.000Z';
+      if(branch==='validation')Object.assign(current,{tipo_tarea:'produccion',subtipo:'visita',
+        propiedades_extra:{workspace:'render_os',videos_planificados:2}});
+      return {rows:[current]};
+    }
     if(sql.includes('SELECT tarea_id, usuario_id, tipo'))return {rows:[{tarea_id:101,usuario_id:assigned,tipo:'responsable'}]};
     if(sql.startsWith("UPDATE tareas SET estado='en_revision'")){
       if(failure==='write')throw primary;pending.written=true;return {rows:[]};
     }
-    if(sql.startsWith('UPDATE integracion_confirmaciones')){pending.used=true;return {rows:[]};}
+    if(sql.startsWith('UPDATE integracion_confirmaciones')){
+      if(sql.includes('clock_timestamp()')){
+        assert.match(sql,/SET used_at\s*=\s*clock_timestamp\(\)/);
+        assert.match(sql,/used_at IS NULL/);assert.match(sql,/expires_at\s*>\s*clock_timestamp\(\)/);
+        assert.match(sql,/RETURNING /);assert.match(sql,/integracion\s*=\s*'wilson'/);
+        assert.match(sql,/canal\s*=\s*'whatsapp'/);assert.match(sql,/operacion\s*=\s*'revisar_lote'/);
+        assert.ok(params.includes(key)&&params.includes(group));
+        if(claimEmpty)return {rows:[],rowCount:0};
+        pending.used=true;return {rows:[{claimed:1}],rowCount:1};
+      }
+      pending.used=true;return {rows:[]};
+    }
     if(sql.startsWith('INSERT INTO integracion_auditoria')){
       if(failure==='audit')throw primary;audits.push(structuredClone(params));return {rows:[]};
     }
@@ -127,3 +146,25 @@ for(const failure of ['write','audit','commit'])for(const rollbackFails of [fals
     assert.equal(f.releaseArg,rollbackFails?f.rollbackError:undefined);
     assert.deepEqual(f.calls.slice(-2).map(c=>c.sql),['ROLLBACK','RELEASE']);
   });
+
+for(const branch of ['success','conflict','validation']){
+  test(`wall-clock claim precedes all ${branch} task/audit writes and consumes once`,async()=>{
+    const f=fixture({branch,clockSelect:true}),res=await f.run();assert.deepEqual(f.errors,[]);
+    assert.equal(res.statusCode,branch==='success'?200:409);
+    const writes=dml(f),claims=writes.filter(c=>c.sql.startsWith('UPDATE integracion_confirmaciones'));
+    assert.equal(claims.length,1);assert.match(claims[0].sql,/expires_at\s*>\s*clock_timestamp\(\)/);
+    assert.equal(writes[0],claims[0],'No task or cancellation-audit write before conditional claim');
+    assert.deepEqual(f.state,{written:branch==='success',used:true});assert.equal(f.audits.length,1);
+    assert.equal(f.notifications.length,branch==='success'?1:0);
+    if(branch!=='success')assert.equal(f.audits[0][6],branch==='conflict'?'conflicto':'validacion');
+  });
+  test(`empty wall-clock claim after locks rejects ${branch} with409, rollback and no domain effects`,async()=>{
+    const f=fixture({branch,claimEmpty:true}),res=await f.run();
+    assert.equal(f.errors[0]?.status??res.statusCode,409);
+    const writes=dml(f);assert.equal(writes.length,1,'Only the zero-row conditional token UPDATE is attempted');
+    assert.match(writes[0].sql,/^UPDATE integracion_confirmaciones.*expires_at\s*>\s*clock_timestamp\(\).*RETURNING /);
+    assert.deepEqual(f.state,{written:false,used:false});assert.deepEqual(f.audits,[]);assert.deepEqual(f.notifications,[]);
+    assert.deepEqual(f.calls.slice(-2).map(c=>c.sql),['ROLLBACK','RELEASE']);assert.equal(f.releaseArg,undefined);
+    assert.ok(f.calls.findIndex(c=>c.sql.includes('FROM tareas WHERE id=ANY'))<f.calls.indexOf(writes[0]));
+  });
+}

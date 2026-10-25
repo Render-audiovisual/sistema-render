@@ -155,6 +155,64 @@ test('Wilson signed review batch retains current WhatsApp actor before consuming
       }
     });
   }
+  for (const resource of ['actor', 'token', 'task']) {
+    await t.test(`future TTL expires during observed ${resource} lock wait; old transaction time cannot consume batch`, async () => {
+      await restore(); const batch = await prepare();
+      let blocker, monitor, pending;
+      const noticeCount = notices.length;
+      try {
+        blocker = await auxiliary(); monitor = await auxiliary(); await blocker.query('BEGIN');
+        if (resource === 'actor') await blocker.query('SELECT id FROM usuarios WHERE id=$1 FOR UPDATE', [userId]);
+        if (resource === 'task') await blocker.query('SELECT id FROM tareas WHERE id=$1 FOR UPDATE', [batch.ids[0]]);
+        // A real future deadline, committed before HTTP BEGIN. Setting a past
+        // timestamp would not discriminate clock_timestamp() from old NOW().
+        await monitor.query(`UPDATE integracion_confirmaciones SET expires_at=clock_timestamp()+interval '2 seconds'
+          WHERE token=$1`, [batch.token]);
+        if (resource === 'token') await blocker.query('SELECT token FROM integracion_confirmaciones WHERE token=$1 FOR UPDATE', [batch.token]);
+        const before = await snapshot();
+        const promise = confirm(batch.token); operations.add(promise);
+        pending = {promise, settled: false}; promise.then(() => {pending.settled = true;}, () => {pending.settled = true;});
+        const actorQuery = 'SELECT id,usuario,nombre,rol,activo,whatsapp_id_hash,whatsapp_habilitado FROM usuarios WHERE id=$1 FOR SHARE';
+        const taskQuery = 'SELECT id,titulo,asignado_a,estado,tipo_tarea,subtipo,material_referencia, cliente_id,fecha_vencimiento,prioridad,propiedades_extra,updated_at FROM tareas WHERE id=ANY($1::int[]) FOR UPDATE';
+        const tokenPattern = 'SELECT token,actor_id,grupo_id,payload,informante_actor_id,informante_actor_nombre,expires_at FROM integracion_confirmaciones WHERE token=$1 %FOR UPDATE';
+        const deadline = Date.now() + 7000;
+        let writer = null, expiredWhileBlocked = false;
+        do {
+          assert.equal(pending.settled, false, 'Request ended before required expiry-under-lock evidence');
+          const {rows} = await monitor.query(`SELECT a.pid,a.xact_start<c.expires_at AS began_before_expiry,
+            clock_timestamp()>c.expires_at AS expired
+            FROM pg_stat_activity a CROSS JOIN integracion_confirmaciones c
+            WHERE c.token=$1 AND a.datname=current_database()
+              AND $2::int=ANY(pg_blocking_pids(a.pid)) AND a.pid<>ALL($3::int[]) AND a.state='active'
+              AND (CASE $4::text
+                WHEN 'actor' THEN regexp_replace(a.query,'[[:space:]]+',' ','g')=$5
+                WHEN 'task' THEN regexp_replace(a.query,'[[:space:]]+',' ','g')=$6
+                WHEN 'token' THEN regexp_replace(a.query,'[[:space:]]+',' ','g') LIKE $7
+                ELSE false END)`,
+          [batch.token, blocker.pid, [...connections].map(db => db.pid), resource, actorQuery, taskQuery, tokenPattern]);
+          if (rows.length) {
+            assert.equal(rows.length, 1, `Exactly one signed HTTP ${resource} waiter`);
+            assert.equal(rows[0].began_before_expiry, true, 'HTTP transaction began before the actual future expiry');
+            if (writer !== null) assert.equal(rows[0].pid, writer, 'Same transaction must remain blocked');
+            writer = rows[0].pid;
+            if (rows[0].expired) {expiredWhileBlocked = true; break;}
+          }
+          // Pacing only; PostgreSQL supplies both blocking and expiry oracles.
+          await new Promise(resolve => setTimeout(resolve, 10));
+        } while (Date.now() < deadline);
+        assert.ok(writer, `Required ${resource} blocking edge missing`);
+        assert.equal(expiredWhileBlocked, true, 'PostgreSQL clock must pass deadline before releasing resource');
+        await blocker.query('COMMIT');
+        const response = await promise;
+        assert.equal(response.status, 409, `Expired batch after ${resource} wait must not execute`);
+        await unused(batch.token); assert.deepEqual(await snapshot(), before); assert.equal(notices.length, noticeCount);
+      } finally {
+        if (blocker) await blocker.query('ROLLBACK').catch(() => {});
+        if (pending) await Promise.allSettled([pending.promise]);
+        try {await dispose(blocker);} finally {await dispose(monitor);}
+      }
+    });
+  }
   for (const renamed of [false, true]) {
     await t.test(`valid original mapped actor confirms exactly once; rename=${renamed}, browser session epoch irrelevant`, async () => {
       await restore(); const batch = await prepare();
