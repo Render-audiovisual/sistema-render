@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado381
+# Render 2.0 — corte de aceptación local372, actualizado382
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -69,6 +69,7 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - Integración379: confirmación web legacy revalida autoridad y membresía vigente, con orden actor→tarea→token y ACL posterior bajo READ COMMITTED.16 unitarias,6 físicas (incluida retirada de asignación durante espera comprobada por pg_blocking_pids), core31archivos305PASS/0FAIL/0SKIP; backend2486PASS/170SKIP/0FAIL. Rechazos sin consumo ni DML; positivo conserva registro/audit/mensaje/replay. No aceptación de proveedor/navegador ni TTL durante espera.
 - Integración380: reloj actual y consumo condicional por actor/token/vigencia antes de ejecutar,22 unitarias dentro de36 focales; física8PASS, dos vencimientos durante espera real (tarea/token) con108 tablas invariantes; core31archivos307PASS/0FAIL/0SKIP; backend2492PASS/170SKIP/0FAIL. Se autoriza vigencia al claim, no se exige COMMIT previo a expires_at. Sin proveedores/navegador/migraciones ni despliegue.
 - Integración381: Moodboards protege formulario/recuperación e imagen en lectura frente a preparación tardía.26 callbacks AST, frontend3251PASS y backend2492PASS/170SKIP/0FAIL; build index-CWnRw1Ja. Sin nuevo core/fixture físico/navegador; no confundir callbacks con aceptación nativa de la carrera.
+- Verificación382 parcial: navegador1280/PG propio, advisory lock y waiter reales; statement_timeout15000 ocurrió antes de liberar. Borrador/textos se conservaron y108 tablas quedaron invariantes, cleanup terminal0/ENOENT. No prueba éxito demorado ni móvil/FileReader. Control de Chrome se interrumpió en confirm de descarte; pestaña/viewport pendientes de restaurar, usuario avisado. Detalle en CURRENT_ACCEPTANCE.md.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
 

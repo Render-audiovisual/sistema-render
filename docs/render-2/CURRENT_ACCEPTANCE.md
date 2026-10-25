@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Moodboards: intento nativo con espera real, cobertura parcial — verificación382
+
+Fixture propio PG55969/HTTP52896, build index-CWnRw1Ja comprobado por DOM y cuenta cookie Franco QA. Cliente/tablero/categorías preparados antes del login nativo; baseline único postlogin de108 tablas JSON/xmin/ctid. Main retuvo el advisory lock real render:moodboards:initialize, pulsó Preparar clientes nuevos en1280×900 y verificó el waiter exacto mediante pg_blocking_pids. Abrió Nueva referencia y escribió título/notas sintéticos, sin guardar ni seleccionar/subir archivos. La solicitud llegó al statement_timeout15000 del harness antes de liberar el lock: el formulario y ambos textos siguieron visibles, sin error viejo publicado. Esto acredita únicamente el caso de error tardío observado, **no una respuesta exitosa demorada**.
+
+Tras liberar el lock, check y finish confirmaron108 tablas invariantes y cero referencias. Runner terminal0 y cleanup ENOENT cROHAB (/private/tmp/render2-goal382-native.log; runner /private/tmp/render2-goal382-native.mjs). No bases configuradas, proveedores ni producción. No se amplió el timeout global del harness ni se reinició un servicio ajeno para fabricar resultado.
+
+La repetición de éxito quedó interrumpida: click Cancelar abrió confirm nativo, accept/snapshot agotó el control, y dos recuperaciones de la misma pestaña1976879256 tampoco respondieron. No inferir si el descarte se completó. Pestaña/viewport1280×900 no pudieron restaurarse por falta de control; se pidió al usuario cerrar la confirmación si aparece. El fixture y PostgreSQL sí se retiraron y el proceso terminó. No hay captura guardada, prueba móvil, recarga o aceptación nativa de FileReader/éxito en382. Estas limitaciones quedan pendientes; sin nuevo código de producto ni suites globales renovadas, objetivo maestro activo.
+
 ### Moodboards: preparación tardía no descarta el editor ni la imagen pendiente — integración381
 
 Main corrigió prepareBoards de MoodboardPreview.jsx: no inicia sobre recovery/borrador pendiente, captura observación de tablero y de formularios y revalida ambas y owners antes de publicar catálogo o error. Los invocadores de nueva referencia/categorías/panel rotan la observación sincrónicamente, incluso al abrir prístinos. Se preservan scopes de sesión/montaje, navegación y consentimiento existentes. Editar→revertir o una operación terminada durante la espera también invalida la respuesta; no se reinicia automáticamente ni se afirma que el POST anterior haya sido revertido. Se conserva la activación normal en contexto limpio, sin añadir otro catálogo operativo ni cambiar applyLocation globalmente.
