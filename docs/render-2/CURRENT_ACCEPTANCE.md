@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Regresión integrada y prioridad de autoridad masiva — revisión337
+
+Core fijo16 suites:158PASS/0FAIL/0SKIP en PostgreSQL descartable (`/private/tmp/render2-goal337-core.log`, exit0). No se eligió destino de entorno; runner cleanEnvironment y fixtures propios. Regresión backend inicial encontró dos harness de UI obsoletos tras334/335: extracción de sugerencias terminaba en div eliminado y aserción Escape buscaba handler global eliminado. Main actualizó delimitador cerrado con aserciones de cuerpo puro y verificó Escape/cancel en kernel compartido más wiring/ref reales del calendario. Ocho focales PASS (`/private/tmp/render2-goal337-focal.log`); backend final2401PASS/161opt-inSKIP/0FAIL de2562 (`/private/tmp/render2-goal337-final-backend.log`). Sin producto/build/frontend nuevos en337; omitidas no cuentan como físicas ejecutadas.
+
+Harvey identificó prioridad funcional/seguridad por fuente, confirmada por main: POST `/tareas/acciones-masivas` en server.js usa req.auth seguido de pool.query sin actor retenido/revalidado en transacción, a diferencia de PATCH individual. Middleware inicial no cierra carrera con revocación confirmada mientras espera tareas. Hipótesis pendiente de explotación física, no incidente probado. Próxima integración: captura ID/rol/época, transacción con actor antes de dominio, locks ordenados y ACL vigente tras locks, atomicidad/DTO/papelera sin borrado/publicación/cuotas intactos. Probar barreras deterministas revocación anterior y posterior, retirada de asignación, lote mixto sin DML parcial y admin/miembro positivos. No considerar core verde prueba de esta carrera aún ausente. Sin producción/despliegue ni ampliación de Reportes pendiente de respuesta.
+
 ### Verificación nativa de diálogos y cierre móvil — integración336
 
 Main reutilizó el runner aislado331 sin modificarlo: dos bases frescas, puertos PG55946/HTTP52879, identidad comprobada por harness. Primera ejecución coordinador80352/HTTP80378, root render2-local-KqtSyN, build335: Nueva tarea :modal real, foco inicial cierre, ShiftTab→Cancelar, Tab→cierre, Escape→invocador. Calendario29: :modal, foco cierre44×44, ambos extremos Tab dentro, Escape→Ver resumen del29. En390×844 resumen ancho375 sin overflow de página y apertura de tarea desde fila correcta; captura `/private/tmp/render2-goal336-calendar-mobile.png` inspeccionada. No se prueba «más» con más de tres tareas en este fixture (esa evidencia sigue siendo test simulado335).

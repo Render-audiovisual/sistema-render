@@ -31,7 +31,9 @@ test("picker distinguishes duplicate names by ID and preserves IDs across rename
 });
 
 test("creation suggestions resolve only unique labels; ambiguous labels require manual choice", () => {
-  const body = section("  const applySuggestions =", "  return <div className=\"ros-drawer-backdrop ros-modal-backdrop\"");
+  const body = section("  const applySuggestions =", "  return <Modal native chrome={false}");
+  assert.ok(body.startsWith('  const applySuggestions =') && body.endsWith('  };\n'));
+  assert.doesNotMatch(body, /<Modal|<section/);
   const run = (users, suggestion) => {
     let message;
     const apply = new Function("users", "clients", "manuallyEdited", "getNewTaskSuggestions", "setSuggestionMessage", `${body}\nreturn applySuggestions;`)(
@@ -136,7 +138,11 @@ test("source contract: existing unsaved, keyboard, focus and mobile behavior rem
   assert.match(source, /\(isNewTaskDraftDirty\(draft\)\|\|creation.snapshot.locked\) && !window.confirm/);
   assert.match(source, /<DiscardChangesDialog open=\{discardDialogOpen\} busy=\{taskWriteBusy\}/);
   assert.match(source, /previousFocus\?\.isConnected/);
-  assert.match(source, /event.key === "Escape"/);
+  const modal = readFileSync(new URL('../../frontend/src/components/Modal.jsx', import.meta.url), 'utf8');
+  assert.match(modal, /event.key === "Escape"/);
+  assert.match(modal, /onCancel=\{native \? event => \{ event.preventDefault\(\); event.stopPropagation\(\); requestClose\(\); \}/);
+  assert.match(source, /<Modal native chrome=\{false\} overlayClassName="ros-day-preview-backdrop"/);
+  assert.match(source, /initialFocusRef=\{dayCloseRef\} returnFocusRef=\{dayInvokerRef\}/);
   assert.match(source, /useMediaQuery\(/);
 });
 
