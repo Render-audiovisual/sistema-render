@@ -27,6 +27,7 @@ export const coreAcceptanceFiles = Object.freeze([
   'test/render2-task-comment-actor-upgrade.integration.test.js',
   'test/render2-task-delete-authority.integration.test.js',
   'test/render2-subtask-consumer.integration.test.js',
+  'test/render2-audiovisual-cookie-concurrency.integration.test.js',
 ]);
 
 export function coreAcceptancePlan(args = []) {

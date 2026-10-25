@@ -79,7 +79,7 @@ export function createEditingDeliveriesRouter({ express, pool }) {
   const router = express.Router();
   router.use((_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   const handle = write => async (req, res, next) => {
-    let db;
+    let db, discard;
     try {
       const id = editingDeliveryTaskId(req.params.id);
       if (Object.keys(req.query ?? {}).length) throw fail('No se permiten parámetros de consulta.');
@@ -122,11 +122,11 @@ export function createEditingDeliveriesRouter({ express, pool }) {
       await db.query('COMMIT');
       res.status(write && !replayed ? 201 : 200).json(body);
     } catch (error) {
-      if (db) { try { await db.query('ROLLBACK'); } catch { /* preserve original fault */ } }
+      if (db) { try { await db.query('ROLLBACK'); } catch (rollbackError) { discard = rollbackError; } }
       if (error.status) res.status(error.status).json({ error: error.message });
       else if (domainConflict(error)) res.status(409).json({ error: 'La entrega cambió o dejó de ser compatible.' });
       else next(error);
-    } finally { db?.release(); }
+    } finally { db?.release(discard); }
   };
   router.get('/:id/entregas', handle(false));
   router.post('/:id/entregas', handle(true));

@@ -213,7 +213,9 @@ test('conflict refresh does not key forms by revision or silently discard unsave
   assert.match(source,/VisitDetail key=\{selected.id\}/);
   assert.doesNotMatch(source,/key=\{selected.revision\}/);
   assert.match(source,/useNavigationGuard/);
-  assert.match(source,/Hay cambios sin guardar/);
+  assert.match(source,/useNavigationConfirmation/);
+  assert.match(source,/confirm:intent=>contextConfirmation.request/);
+  assert.match(source,/onDiscard:\(\)=>dirty.current.clear\(\)/);
   assert.match(source,/throw error; \/\/ Never retry/);
 });
 

@@ -169,7 +169,7 @@ function visitLoader(request, {href=`https://render.test/producciones?visita=${i
   for(const method of ['pushState','replaceState'])window.history[method]=(saved,title,url)=>{historyEvents.push(method);window.location.href=String(url);};
   const write=new Function('window','notifyViewPreferenceChange',`${locationFns}return writeProductionLocation;`)(window,notifyViewPreferenceChange);
   const observer=createProductionVisitObserver(()=>0);
-  const context={observeProductionVisit:value=>observer.observe(value),mayLeave:()=>true,openVersion,assertProductionClient,productionLocation,window,clientId,tab,setCreating:()=>{},setSelected:value=>{state.selected=value;},setDetailLoading:value=>{state.busy=value;},setError:value=>{state.error=value;},
+  const context={observeProductionVisit:value=>observer.observe(value),mayLeave:action=>action(),openVersion,assertProductionClient,productionLocation,window,clientId,tab,setCreating:()=>{},setSelected:value=>{state.selected=value;},setDetailLoading:value=>{state.busy=value;},setError:value=>{state.error=value;},
     setMonth:value=>{state.month=value;},setDay:value=>{state.day=value;},verifiedProductionDraftVisit,apiRequest:request,writeProductionLocation:value=>{writes.push(value);write(value);}};
   const open=new Function(...Object.keys(context),`${extract(productions,'  const openVisit =','  const restoreProductionLocation =')}return openVisit;`)(...Object.values(context));
   return {open,state,writes,historyEvents,window};
@@ -244,14 +244,15 @@ test('popstate listener uses latest handler, cleans up and never stores business
 test('committed popstate restores UUID or calendar without a second dirty prompt or history rollback',async()=>{
   for(const [href,allow] of [[`https://render.test/producciones?visita=${id}`,true],['https://render.test/producciones?mes=2026-08',true],['https://render.test/producciones?mes=2026-08&dia=2026-08-21',true],[`https://render.test/producciones?visita=${id}`,false]]) {
     const calls=[];const state={selected:{id:'current'},month:'2026-10',day:null};
-    let prompts=0;
+    let prompts=0,invalidations=0;
     const context={window:{location:{href}},mayLeave:()=>{prompts++;return allow;},selected:{id:'current'},month:'2026-10',today:'2026-10-19',
-      productionLocation,productionCalendarDay,writeProductionLocation:value=>calls.push(['write',value]),openVisit:async(...args)=>calls.push(['open',...args]),openVersion:{current:0},
+      contextGate:{current:{invalidate:()=>{invalidations++;}}},productionLocation,productionCalendarDay,writeProductionLocation:value=>calls.push(['write',value]),openVisit:async(...args)=>calls.push(['open',...args]),openVersion:{current:0},
       readEpoch:{current:0},setListAvailable:()=>{},setContextError:()=>{},setClientId:()=>{},setTab:()=>{},setReload:()=>{},dirty:{current:new Set(['draft'])},
       setSelected:value=>{state.selected=value;},setCreating:()=>{},setDetailLoading:()=>{},setError:()=>{},setMonth:value=>{state.month=value;},setDay:value=>{state.day=value;}};
     const restore=new Function(...Object.keys(context),`${extract(productions,'  const restoreProductionLocation =','  navigationRef.current =')}return restoreProductionLocation;`)(...Object.values(context));
     await restore();
     assert.equal(prompts,0,'committed restoration never asks a second dirty prompt');
+    assert.equal(invalidations,1,'committed restoration invalidates pending context consent');
     assert.equal(context.readEpoch.current,1,'restoration fences earlier collection reads');
     assert.equal(context.dirty.current.size,1,'manual restoration is not a confirmed discard');
     if(href.includes('visita=')) assert.deepEqual(calls,[['open',id,{history:false,checkDirty:false,expectedClient:''}]]);

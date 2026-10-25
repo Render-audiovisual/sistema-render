@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { access, readFile, readdir } from 'node:fs/promises';
-import { startLocalHarness, request, fixturePassword } from '../scripts/render2-local-test.js';
+import pg from 'pg';
+import { startLocalHarness, assertFixtureIdentity, request, fixturePassword } from '../scripts/render2-local-test.js';
 
 const binding = 'revision_aprobada_entrega_id';
 test('editing approval: explicitly observed latest artifact, atomic task CAS and immutable legacy history', {
@@ -225,24 +226,33 @@ test('editing approval: explicitly observed latest artifact, atomic task CAS and
       await fixture.query("UPDATE usuarios SET rol='admin',activo=true WHERE id=109003");
       const token = await login('qa_approval_109003');
       const {task,version} = await seedReview(); const revision = (await row(task.id)).revision;
-      const before = await snapshot(); const marker = `qa_approval_revoke_${randomUUID().replaceAll('-','')}`;
-      let blocker, response;
-      const observe = async (sql, values = []) => {
-        for (let attempt=0;attempt<40;attempt++) {
-          if ((await fixture.query(sql,values)).length) return true;
-          await new Promise(resolve=>setTimeout(resolve,15));
-        }
-        return false;
-      };
+      const before = await snapshot();
+      const blocker = new pg.Client({host:'127.0.0.1',port:55617,user:'render2_fixture',password:'',database:'render2_local_test',ssl:false,
+        application_name:'render2_qa364_approval_barrier',statement_timeout:15000,lock_timeout:12000,connectionTimeoutMillis:5000});
+      let response,connected=false;
       try {
-        // One PostgreSQL query holds a single connection for the whole barrier.
-        blocker = fixture.query(`/* ${marker} */ BEGIN; UPDATE usuarios SET rol='edicion' WHERE id=109003; SELECT pg_sleep(1.2); COMMIT`);
-        assert.equal(await observe("SELECT 1 FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND query LIKE $1 AND wait_event='PgSleep'",[`%${marker}%`]),true);
+        await blocker.connect(); connected=true;
+        const identity=(await blocker.query(`SELECT current_database() database,current_user username,host(inet_server_addr()) address,
+          inet_server_port() port,current_setting('data_directory') directory`)).rows[0];
+        assertFixtureIdentity({root:fixture.root,cwd:fixture.root,port:55617,
+          url:'postgresql://render2_fixture@127.0.0.1:55617/render2_local_test',identity});
+        const pid=(await blocker.query('SELECT pg_backend_pid() pid')).rows[0].pid;
+        await blocker.query('BEGIN');
+        await blocker.query("UPDATE usuarios SET rol='edicion' WHERE id=109003");
         response = approve(task.id,mode,revision,version.id,token);
-        assert.equal(await observe("SELECT 1 FROM pg_stat_activity WHERE pid<>pg_backend_pid() AND wait_event_type='Lock' AND query ILIKE '%SELECT id,rol,activo,session_version FROM usuarios%' AND query ILIKE '%FOR SHARE%'"),true,'Approval must actually wait in its transactional actor check');
-        assert.equal((await response).status,401); await blocker;
+        const deadline=Date.now()+7000;
+        let waiting=false;
+        do {
+          const rows=await fixture.query(`SELECT query FROM pg_stat_activity WHERE datname=current_database()
+            AND $1::int=ANY(pg_blocking_pids(pid)) AND query ILIKE '%FROM usuarios%FOR SHARE%'`,[pid]);
+          if(rows.length){assert.equal(rows.length,1);waiting=true;break;}
+          await new Promise(resolve=>setTimeout(resolve,15));
+        }while(Date.now()<deadline);
+        assert.equal(waiting,true,`${mode}: approval must wait on this exact revoker in a transactional actor check`);
+        await blocker.query('COMMIT');
+        assert.equal((await response).status,401);
       } finally {
-        if (blocker) await blocker;
+        if (connected) {await blocker.query('ROLLBACK').catch(()=>{});await blocker.end();}
         if (response) await response;
         await fixture.query("UPDATE usuarios SET rol='admin' WHERE id=109003");
       }
