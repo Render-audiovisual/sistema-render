@@ -1,5 +1,6 @@
 import { annotateTaskAssignments, replaceTaskAssignments } from "./task-assignments.js";
 import { captureAssignmentNotification, lockAssignmentNotificationActor, readAssignmentNotificationMembers, buildAssignmentNotification } from './task-reassignment-notifications.js';
+import {captureTaskCreateReceipt,beginTaskCreateReceipt,readTaskCreateReceiptTask,recordTaskCreateReceipt} from './task-create-receipts.js';
 
 // Task fields and ID relations form a single commit. A failed relation write
 // must not leave a successfully saved task with missing access permissions.
@@ -12,6 +13,8 @@ export async function persistAssignedTask(pool, sql, values, assignment, afterSa
   const capture = assignment && (options.assignmentNotificationActor !== undefined || options.assignmentNotificationMode !== undefined)
     ? captureAssignmentNotification(options) : null;
   const created = capture?.mode === 'created';
+  const receipt=options.createReceipt===undefined?null:captureTaskCreateReceipt(options.createReceipt);
+  if(receipt&&!created)throw Object.assign(new Error('El recibo solo corresponde a una creación autorizada.'),{status:400});
   if (capture) {
     assignment = structuredClone(assignment);
     values = structuredClone(values);
@@ -21,6 +24,14 @@ export async function persistAssignedTask(pool, sql, values, assignment, afterSa
   try {
     await db.query("BEGIN");
     const actor = capture ? await lockAssignmentNotificationActor(db, capture) : null;
+    if(receipt){
+      const previous=await beginTaskCreateReceipt(db,receipt,capture.id);
+      if(previous){
+        const rows=await annotateTaskAssignments(db,[await readTaskCreateReceiptTask(db,previous)]);
+        await db.query('COMMIT');
+        return {rows,creationReplayed:true};
+      }
+    }
     if (beforeSave) await beforeSave(db);
     if (assignment) {
       const ids = [...new Set([assignment.ownerId, ...assignment.collaboratorIds].filter(id => id !== null))];
@@ -45,10 +56,12 @@ export async function persistAssignedTask(pool, sql, values, assignment, afterSa
     if (result.rows[0] && assignment) await replaceTaskAssignments(db, result.rows[0].id, assignment);
     if (result.rows[0] && afterSave) await afterSave(db, result.rows[0]);
     result.rows = await annotateTaskAssignments(db, result.rows);
+    if(receipt)await recordTaskCreateReceipt(db,receipt,capture.id,result.rows[0]);
     const notification = capture && result.rows[0]
       ? buildAssignmentNotification(result.rows[0], previous, await readAssignmentNotificationMembers(db, result.rows[0].id), actor) : null;
     await db.query("COMMIT");
     if (notification) result.assignmentNotification = notification;
+    if(receipt)result.creationReplayed=false;
     return result;
   } catch (error) {
     try { await db.query("ROLLBACK"); } catch (rollbackError) { discard = rollbackError; }

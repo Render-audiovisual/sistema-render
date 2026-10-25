@@ -2,7 +2,7 @@
 
 ## Estado y alcance
 
-Hallazgo306 reproducido en desarrollo local; **todavía no corregido**. Prioridad transversal para recorridos maestros Tareas y Audiovisual. No afecta la separación trabajo/publicación ya implementada, ni demuestra acceso no autorizado. No autoriza despliegue.
+Hallazgo306 reproducido en desarrollo local; **todavía no corregido en API/UI**. Corte307 incorpora base interna opt-in en task-persistence, módulo task-create-receipts y migración090 con pruebas de concurrencia/rollback/replay. Ningún caller HTTP la utiliza aún. Prioridad transversal para recorridos maestros Tareas y Audiovisual. No afecta la separación trabajo/publicación ya implementada, ni demuestra acceso no autorizado. No autoriza despliegue.
 
 Coordinador inspeccionó el flujo actual y ejecutó el diagnóstico; Harvey identificó la brecha y revisó el contrato sin escribir código ni ejecutar servicios. Superpowers orientó priorizar un fallo operativo reproducible sobre seguir renovando pruebas visuales de módulos ya comprobados.
 
