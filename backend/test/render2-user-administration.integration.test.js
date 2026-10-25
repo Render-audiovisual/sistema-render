@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { access } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { startLocalHarness, request, fixturePassword, assertFixtureIdentity } from '../scripts/render2-local-test.js';
 
 // Opt-in principal HTTP + disposable PostgreSQL only. No configured DB, mail
@@ -255,5 +256,25 @@ test('user administration preserves identities/history and current-session autho
     } }), 409);
     await unchanged(() => api('/usuarios/91001', { token: admin, method: 'DELETE' }), 409);
     checked(await api('/inicio', { token: admin }));
+  });
+
+  await t.test('an existing owner provisions two independent owners through authenticated administration, never a local selector', async () => {
+    const beforeHistory=await history(), accounts=[];
+    for(const suffix of ['a','b']) {
+      const usuario=`qa_owner332_${suffix}`, password=`Fixture-only-${suffix}-${randomUUID()}`;
+      const created=checked(await api('/usuarios',{token:admin,method:'POST',body:{usuario,
+        nombre:`QA332 Owner ${suffix}`,rol:'admin',password}}),201);
+      noSecrets(created);assert.equal(created.rol,'admin');
+      const authenticated=checked(await api('/login',{method:'POST',body:{usuario,password}}));
+      assert.equal(authenticated.usuario.id,created.id);assert.equal(authenticated.usuario.rol,'admin');
+      const catalog=checked(await api('/usuarios',{token:authenticated.token}));
+      assert.ok(catalog.some(row=>row.id===created.id));noSecrets(catalog);
+      accounts.push({id:created.id,usuario,password});
+    }
+    assert.notEqual(accounts[0].id,accounts[1].id);assert.equal(accounts[0].password===accounts[1].password,false);
+    for(const [own,other] of [[accounts[0],accounts[1]],[accounts[1],accounts[0]]]) {
+      checked(await api('/login',{method:'POST',body:{usuario:own.usuario,password:other.password}}),401);
+    }
+    assert.deepEqual(await history(),beforeHistory);
   });
 });

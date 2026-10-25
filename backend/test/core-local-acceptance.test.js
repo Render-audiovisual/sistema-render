@@ -9,13 +9,14 @@ test('core QA uses the fixed principal journeys, serially, with an isolated chil
   assert.equal(plan.command, process.execPath);
   assert.equal(plan.options.shell, false);
   assert.equal(plan.options.stdio, 'inherit');
-  assert.equal(coreAcceptanceFiles.length, 15);
-  assert.equal(new Set(coreAcceptanceFiles).size, 15);
+  assert.equal(coreAcceptanceFiles.length, 16);
+  assert.equal(new Set(coreAcceptanceFiles).size, 16);
   assert.ok(coreAcceptanceFiles.includes('test/render2-task-create-http.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-production-empty-registry-boundary.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-production-results.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-production-results-upgrade.integration.test.js'));
   assert.ok(coreAcceptanceFiles.includes('test/render2-production-result-edit-race.integration.test.js'));
+  assert.ok(coreAcceptanceFiles.includes('test/render2-user-administration.integration.test.js'));
   assert.equal(Object.isFrozen(coreAcceptanceFiles), true);
   assert.deepEqual(plan.args, ['--test', '--test-concurrency=1', ...coreAcceptanceFiles]);
   for (const file of coreAcceptanceFiles) {
@@ -34,7 +35,7 @@ test('core QA uses the fixed principal journeys, serially, with an isolated chil
   plan.options.env.DATABASE_URL = 'synthetic-not-a-real-target';
   plan.args.length = 0;
   assert.equal(Object.hasOwn(coreAcceptancePlan().options.env, 'DATABASE_URL'), false);
-  assert.equal(coreAcceptancePlan().args.length, 17);
+  assert.equal(coreAcceptancePlan().args.length, 18);
 });
 
 test('core QA refuses flags, URLs and fixture overrides instead of choosing a configured target', () => {

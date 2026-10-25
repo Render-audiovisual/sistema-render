@@ -4,6 +4,8 @@ Este procedimiento describe el contrato local de seguridad, no una aprobación d
 
 ## Separar build, migración y arranque
 
+El comando heredado `npm run seed:usuarios` está deshabilitado y no conecta a PostgreSQL: su roster compartido “Líder” y contraseña predeterminada no son un mecanismo de identidad válido para Render2. Con un administrador existente y accesible, crear los accesos independientes desde **Usuarios y equipo**, verificando el login propio de cada integrante antes de cambiar accesos antiguos. No se renombra, promueve, convierte ni elimina una cuenta existente automáticamente. No compartir credenciales ni usar el selector visual como autenticación. Esta vía no resuelve una instalación con cero administradores: el bootstrap inicial requiere un procedimiento separado y autorizado; no usar un seed histórico ni modificar roles a mano como solución implícita.
+
 El backend sirve /api y el frontend compilado desde un mismo proceso. El build no autoriza cambios de datos. `npm start`, `npm run start:hostinger` y `npm run dev:backend` no deben ejecutar migraciones, seeds ni jobs implícitos.
 
 - Instalar dependencias y compilar en una fase separada.
