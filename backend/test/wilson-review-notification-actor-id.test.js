@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createWilsonRouter } from '../src/wilson-integration.js';
 
 // Execute the real registered review-confirmation callback, not a copied
@@ -16,14 +17,27 @@ function fixture({ failure, changed = false, missingConfirmation = false } = {})
   const snapshots = tasks.map(({ id, titulo, asignado_a, estado, updated_at }) => ({ id, titulo, asignado_a, estado, updated_at }));
   let stored = { states: tasks.map(row => row.estado), tokenUsed: false, audits: 0 };
   let pending, released = false;
+  let currentActor;
+  const actorHash = createHash('sha256').update('qa-external-actor').digest('hex');
   const client = {
     async query(sql, params = []) {
       calls.push({ sql, params });
-      if (sql === 'BEGIN') { pending = structuredClone(stored); return { rows: [] }; }
+      if (sql === 'BEGIN ISOLATION LEVEL READ COMMITTED') { pending = structuredClone(stored); return { rows: [] }; }
       if (sql === 'ROLLBACK') { pending = undefined; return { rows: [] }; }
       if (sql === 'COMMIT') {
         if (failure === 'commit') throw new Error('Synthetic commit failure');
         stored = pending; pending = undefined; return { rows: [] };
+      }
+      const compact = sql.replace(/\s+/g, ' ').trim();
+      if (compact === 'SELECT id,usuario,nombre,rol,activo,whatsapp_id_hash,whatsapp_habilitado FROM usuarios WHERE id=$1 FOR SHARE') {
+        assert.deepEqual(params, [currentActor.id]); return { rows: [{ ...currentActor }] };
+      }
+      if (compact === 'SELECT actor_hash,usuario_id,enabled FROM mia_whatsapp_identities WHERE actor_hash=$1 FOR SHARE') {
+        assert.deepEqual(params, [actorHash]); return { rows: [] };
+      }
+      if (compact.startsWith('SELECT u.id FROM usuarios u WHERE u.whatsapp_habilitado IS TRUE')) {
+        assert.match(compact, /ORDER BY u.id FOR SHARE OF u$/);
+        assert.deepEqual(params, [actorHash]); return { rows: [{ id: currentActor.id }] };
       }
       if (sql.includes('FROM integracion_confirmaciones')) {
         assert.deepEqual(params, ['qa-review-token', 'qa-private-group']);
@@ -70,6 +84,8 @@ function fixture({ failure, changed = false, missingConfirmation = false } = {})
   return { calls, notifications, errors, pool, tasks,
     get stored() { return stored; }, get released() { return released; },
     async run({ actorName = 'QA renamed actor', userId = 11 } = {}) {
+      currentActor = { id: userId, usuario: 'qa-review', nombre: actorName, rol: 'edicion', activo: true,
+        whatsapp_id_hash: actorHash, whatsapp_habilitado: true };
       const res = { statusCode: 200, status(code) { this.statusCode = code; return this; },
         json(body) { this.body = body; return this; } };
       await route.route.stack[0].handle({ body: { confirmacion_token: 'qa-review-token' },
@@ -97,8 +113,8 @@ for (const actorName of ['QA renamed actor', 'Franco']) {
       assert.equal(Object.hasOwn(notification, 'destinatarioIds'), false, 'No recipient-policy migration in actor-ID plumbing');
     }
     assert.equal(f.released, true);
-    assert.deepEqual(f.calls.filter(({ sql }) => ['BEGIN', 'COMMIT', 'ROLLBACK', 'RELEASE'].includes(sql)).map(({ sql }) => sql),
-      ['BEGIN', 'COMMIT', 'RELEASE']);
+    assert.deepEqual(f.calls.filter(({ sql }) => ['BEGIN ISOLATION LEVEL READ COMMITTED', 'COMMIT', 'ROLLBACK', 'RELEASE'].includes(sql)).map(({ sql }) => sql),
+      ['BEGIN ISOLATION LEVEL READ COMMITTED', 'COMMIT', 'RELEASE']);
   });
 }
 

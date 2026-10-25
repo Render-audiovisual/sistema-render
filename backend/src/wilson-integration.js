@@ -1372,13 +1372,22 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
     } finally { client.release(); }
   });
 
-  router.post("/lotes/revision/confirmar", async (req, res, next) => {
+  router.post("/lotes/revision/confirmar", async (request, res, next) => {
+    // Capture the verified transport identity before leasing. Never authorize
+    // a queued write with a mutable request or its pre-transaction role.
+    const req = { wilson: Object.freeze({ ...request.wilson }) };
     if (req.wilson.channel !== "whatsapp") return res.status(400).json({ error: "Esta función se confirma desde WhatsApp." });
-    const token = String(req.body?.confirmacion_token || "").trim();
+    const token = String(request.body?.confirmacion_token || "").trim();
     if (!token) return res.status(400).json({ error: "Falta la confirmación del listado." });
-    const client = await pool.connect();
+    let client, discard;
     try {
-      await client.query("BEGIN");
+      client = await pool.connect();
+      await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+      const actor = await lockFeedbackActor(client, req.wilson, {
+        telegramUserId: telegramWilsonUserId(env, req.wilson.actorId),
+      });
+      req.wilson = Object.freeze({ ...req.wilson, actorName: actor.nombre,
+        actorRole: actor.rol, confirmedBy: actor.nombre, isLeader: actor.rol === 'admin' });
       const confirmationResult = await client.query(
         `SELECT token,actor_id,grupo_id,payload,informante_actor_id,informante_actor_nombre,expires_at
          FROM integracion_confirmaciones
@@ -1473,9 +1482,9 @@ export function createWilsonRouter({ pool, notifyAssignment, notifyTaskReceiptEm
         text: `Listo. ${req.wilson.actorName} confirmó y pasé ${ids.length} tarea${ids.length === 1 ? "" : "s"} a Revisar.`,
       });
     } catch (error) {
-      await client.query("ROLLBACK").catch(() => {});
+      if (client) try { await client.query("ROLLBACK"); } catch (rollbackError) { discard = rollbackError; }
       return next(error);
-    } finally { client.release(); }
+    } finally { client?.release(discard); }
   });
 
   router.post("/confirmaciones", async (req, res, next) => {

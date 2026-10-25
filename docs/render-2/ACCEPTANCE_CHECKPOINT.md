@@ -1,4 +1,4 @@
-# Render 2.0 — corte de aceptación local372, actualizado385
+# Render 2.0 — corte de aceptación local372, actualizado386
 
 Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la actualización373 corrige la proyección de Reportes descrita abajo. Rama `codex/render-2-rescue-local`. **El objetivo maestro no está completo ni aprobado para despliegue.** Este documento es un índice compacto; [CURRENT_ACCEPTANCE.md](CURRENT_ACCEPTANCE.md) conserva resultados, límites e intentos fallidos por integración.
 
@@ -11,7 +11,7 @@ Fecha: 2026-10-25. Base revisada372: `5ec8f11`; diagnóstico372: `fc36679`; la a
 | 2. Unificación | Un grafo comercial React/Vite → Express → PostgreSQL; tareas, clientes/cuotas, proyectos, registro audiovisual por video y editorial conectados; proyección de aprobación de Reportes corregida373 | Proveedor Drive real no certificado; aceptación transversal todavía parcial. |
 | 3. Diseño | Tokens y componentes compartidos, rutas reales, sidebar agrupada, modo claro; recorridos nativos concretos de escritorio/móvil | No hay aceptación poblada transversal de todas las secciones/roles, lectores de pantalla, zoom, teclado y dispositivos físicos independientes. |
 | 4. Funciones y experiencia | Persistencia, versiones, recibos, filtros, comentarios, protección de borradores y recuperación implementados por módulos | Reconciliar consumidores históricos restantes; avisos de revisión aún dependen de etiquetas. No afirmar que todo error de conexión/concurrencia esté cubierto. |
-| 5. Punta a punta | Cohorte fija33 archivos; recorridos A–F parcialmente acreditados con alcances explícitos abajo | Pruebas sintéticas/API y un navegador no equivalen a múltiples dispositivos, cuentas reales, proveedores ni aceptación completa. |
+| 5. Punta a punta | Cohorte fija34 archivos; recorridos A–F parcialmente acreditados con alcances explícitos abajo | Pruebas sintéticas/API y un navegador no equivalen a múltiples dispositivos, cuentas reales, proveedores ni aceptación completa. |
 
 ## Aplicación y fuente de datos
 
@@ -73,6 +73,8 @@ Todas estas filas describen implementación, no certificación exhaustiva. [App.
 - Integración383: confirmación de mensaje retiene el mismo destinatario activo por ID antes del claim;26 unitarias dentro de40 focales, física12PASS con desactivación durante espera real, core31archivos311PASS/0FAIL/0SKIP y backend2496PASS/170SKIP/0FAIL. Solo mensajes internos de fixture; sin proveedor, navegador ni política nueva de destinatarios. Mi lista tiene duplicación pendiente tras ACK perdido en Agregar bloque.
 
 Los logs en `/private/tmp` son evidencia efímera, no respaldo del negocio. Las pruebas solo acreditan las afirmaciones que realmente contienen.
+
+Integración386: confirmación de lote Wilson captura la identidad antes del lease y retiene actor activo/vínculo WhatsApp/rol vigente antes del token.17 unidades nuevas,70 focalesPASS y física firmada6PASS con revocaciones durante espera real/109 tablas; backend2551PASS/174SKIP/0FAIL. Core ampliado34archivos329PASS/0FAIL/0SKIP, terminal0. No cambia quién revisa ni destinatarios; TTL durante espera y validación explícita de workspace/ocultamiento al confirmar siguen pendientes separados. Sin proveedor, navegador, migración ni despliegue.
 
 Integración385: Drive no elige automáticamente la primera carpeta si hay duplicados normalizados o listado parcial. Exige ID/MIME válidos y coincidencia única; proveedor conserva metadatos de completitud.53 focalesPASS,24 físicas DrivePASS (nueva5 renovada/109 tablas invariantes) y backend2534PASS/173SKIP/0FAIL. Sin red a Google, sin nuevas UI/migración/build/core; límites en CURRENT_ACCEPTANCE. La integración real del proveedor sigue pendiente de autorización y no se declara certificada.
 

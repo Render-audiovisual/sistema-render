@@ -142,9 +142,23 @@ const actor = { userId: 11, actorRole: "edicion", actorName: "Franco", actorId: 
 
 test("batch confirmation rechecks ID membership after task row locks, before any task update", async () => {
   const calls = [];
+  const actorHash = crypto.createHash('sha256').update(actor.actorId).digest('hex');
   const task = { id: 100, titulo: "Carrusel", asignado_a: "Franco", estado: "pendiente", updated_at: "2026-10-19T12:00:00Z" };
-  const client = { release() {}, async query(sql) {
+  const client = { release() {}, async query(sql, params = []) {
     calls.push(sql);
+    const compact = sql.replace(/\s+/g, ' ').trim();
+    if (compact === 'SELECT id,usuario,nombre,rol,activo,whatsapp_id_hash,whatsapp_habilitado FROM usuarios WHERE id=$1 FOR SHARE') {
+      assert.deepEqual(params, [actor.userId]);
+      return { rows: [{ id: actor.userId, usuario: 'qa-identity', nombre: actor.actorName, rol: actor.actorRole,
+        activo: true, whatsapp_id_hash: actorHash, whatsapp_habilitado: true }] };
+    }
+    if (compact === 'SELECT actor_hash,usuario_id,enabled FROM mia_whatsapp_identities WHERE actor_hash=$1 FOR SHARE') {
+      assert.deepEqual(params, [actorHash]); return { rows: [] };
+    }
+    if (compact.startsWith('SELECT u.id FROM usuarios u WHERE u.whatsapp_habilitado IS TRUE')) {
+      assert.match(compact, /ORDER BY u.id FOR SHARE OF u$/);
+      assert.deepEqual(params, [actorHash]); return { rows: [{ id: actor.userId }] };
+    }
     if (sql.includes("FROM integracion_confirmaciones")) return { rows: [{ informante_actor_id: "external", payload: { tasks: [task] } }] };
     if (sql.includes("FROM tareas WHERE")) return { rows: [task] };
     if (sql.includes("SELECT tarea_id, usuario_id, tipo")) return { rows: [{ tarea_id: 100, usuario_id: 22, tipo: "responsable" }] };
@@ -153,6 +167,9 @@ test("batch confirmation rechecks ID membership after task row locks, before any
   const res = response();
   await route({ connect: async () => client }, "post", "/lotes/revision/confirmar")({ wilson: actor, body: { confirmacion_token: "token" } }, res, error => { throw error; });
   assert.equal(res.statusCode, 403);
+  assert.equal(calls[0], 'BEGIN ISOLATION LEVEL READ COMMITTED');
+  assert.ok(calls.findIndex(sql => sql.includes('FROM usuarios WHERE id=$1 FOR SHARE'))
+    < calls.findIndex(sql => sql.includes('FROM integracion_confirmaciones')));
   assert.ok(calls.findIndex(sql => /FROM tareas WHERE[\s\S]*FOR UPDATE/.test(sql)) < calls.findIndex(sql => sql.includes("SELECT tarea_id, usuario_id, tipo")));
   assert.equal(calls.some(sql => /UPDATE tareas/.test(sql)), false);
   assert.equal(calls.at(-1), "ROLLBACK");
