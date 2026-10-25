@@ -64,6 +64,11 @@ export function projectListLocation(href) {
 export function projectListLocationUrl(href, filters) {
   projectsListUrl(filters); // Same closed numeric/enum contract as the API builder.
   const url = new URL(href, 'https://local.invalid');
+  // Only an explicit valid filter action repairs malformed client-array keys.
+  // Leaving them behind would make the newly selected scalar invalid again.
+  for (const key of [...url.searchParams.keys()]) {
+    if (key.startsWith('cliente[')) url.searchParams.delete(key);
+  }
   const values = { cliente: filters.clientId ?? null, offset: filters.offset || null,
     estado: filters.estado || null, archivados: filters.archivados ? 'true' : null };
   for (const [key, value] of Object.entries(values)) value === null ? url.searchParams.delete(key) : url.searchParams.set(key, String(value));

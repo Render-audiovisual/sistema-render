@@ -4,6 +4,12 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Proyectos: recuperación explícita de filtros mal formados — corte250
+
+Erdos reprodujo que `cliente[]=11` o `cliente[0]=11` bloqueaban el listado incluso después de elegir un cliente válido o pulsar Limpiar filtros: el writer conservaba la clave inválida y el parser volvía a rechazarla. Coordinador añadió una regresión inicialmente roja y corrigió projectsModel.js: después de validar los nuevos filtros, el writer retira únicamente la familia `cliente[` que el parser rechaza. La lectura inicial sigue cerrada, sin GET global ni reparación silenciosa. No cambia permisos, DTO, backend ni persistencia.
+
+La prueba ejecuta los callbacks reales extraídos de Projects.jsx en seis combinaciones (tres URLs, limpiar/elegir): cero solicitudes iniciales, recuperación válida con una solicitud al alcance elegido y conservación de proyecto, período, hash e identidad exacta de formulario/selección con busy/uncertain. Son callbacks con transporte controlado, no React montado ni navegador/HTTP/PostgreSQL físico.26 pruebas focales aprobadas; regresión frontend2873 PASS,0 fallos/omisiones en /private/tmp/render2-goal250-frontend.log. Build válido index-B6WnmFKf.js, log /private/tmp/render2-goal250-build.log. Erdos revisó el diff sin bloqueos; Volta revisó Clientes/contexto de objetivos sin confirmar otro defecto alcanzable (39 focales según su ejecución). No se inició servicio ni se tocó base configurada, proveedor o producción. Sigue pendiente el recorrido nativo de cuenta secundaria/feed compartido y vistas recordadas; no aceptación global.
+
 ### Shell autenticado: fallo de módulo y recuperación real — corte248
 
 Se cerró el gate nativo acotado de247 con App, Sidebar, sesión cookie, API y PostgreSQL reales. Sin modificación de producto: runner /private/tmp/render2-goal248-shell-native.mjs creó cluster aislado55886, verificó identidad exacta, y lanzó child saneado que importa la app principal con startup/jobs deshabilitados y .env en/dev/null. Express exterior52841 sólo interceptó GET del módulo existente exacto /assets/Projects-ClQb-KPQ.js con throw sintético/no-store. Origen de cookies/CSRF permaneció52841; no proxy de Origin, auth middleware falso ni API sustituida. Todos los demás recursos/rutas provinieron de la app real. Guardas revisadas con Volta; Erdos preparó runner y coordinador lo inspeccionó/ejecutó.

@@ -121,6 +121,31 @@ test('actual invalid URL load and refresh dispatch no global list request until 
   assert.equal(h.calls.length, 1);
   assert.equal(h.effects.at(-1)[1].status, 'ready');
 });
+test('explicit clear or client choice recovers bracket-shaped filters without discarding project context', async () => {
+  for (const malformed of ['cliente[]=11', 'cliente[0]=11', 'cliente=11&cliente[nombre]=QA']) {
+    for (const action of ['clear', 'choose']) {
+      const h = fixture(`/proyectos?${malformed}&proyecto=${ID}&periodo=2026-10#detail`, async () => ({ proyectos: [], limit: 50, offset: 0, total: 0 }));
+      await h.load();
+      assert.equal(h.calls.length, 0);
+      assert.equal(h.filtersRef.current.invalid, true);
+      if (action === 'clear') h.changeListFilters({ clientId: null, offset: 0, estado: '', archivados: false, invalid: false });
+      else h.choose('22');
+      assert.equal(h.filtersRef.current.invalid, false, `${malformed}: ${action}`);
+      assert.equal(h.filtersRef.current.clientId, action === 'clear' ? null : 22);
+      assert.equal([...h.window.location.searchParams.keys()].some(key => key.startsWith('cliente[')), false);
+      assert.equal(h.window.location.searchParams.get('proyecto'), ID);
+      assert.equal(h.window.location.searchParams.get('periodo'), '2026-10');
+      assert.equal(h.window.location.hash, '#detail');
+      assert.equal(h.formRef.current, h.originalForm);
+      assert.equal(h.selectionRef.current, h.originalSelection);
+      await h.load();
+      assert.equal(h.calls.length, 1);
+      assert.equal(new URL(h.calls[0].url, 'https://render.test').searchParams.get('cliente_id'), action === 'clear' ? null : '22');
+      assert.equal(h.effects.at(-1)[1].status, 'ready');
+      h.dispose();
+    }
+  }
+});
 test('actual A→B→A loader rejects old successes/failures even when the final URL equals the original', async () => {
   for (const outcome of ['success', 'failure']) {
     const first = deferred(); let count = 0;
