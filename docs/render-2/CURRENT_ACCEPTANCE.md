@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Planilla de publicaciones: omisión de escrituras intactas — corte287
+
+`PublicacionesPlanillaTab` mantiene un baseline por ID separado del draft, instalado solo por lectura vigente o ACK válido. Omite campos equivalentes únicamente con capture/revisión válidos coincidentes y sin cola. Vacío/null se equipara solo para los inputs explícitos que representan null como vacío, sin trim nuevo. El enqueue invalida lecturas previas; GET no promueve baseline de filas pendientes; intento/fallo invalida su confianza y el fallo invalida GET pendientes. Conserva CAS capturado, dedupe adyacente y retorno A→B→A; no rebasa writes para evitar409.
+
+Coordinador implementó y ejecutó; Harvey revisó concurrencia y señaló el GET iniciado durante write, corregido con dos tests de ordenación. Cinco tests nuevos: intactos y fallo incierto en cookie/bearer, ACK válido, retorno pendiente al original con409 y GET antes/después de fallo.55focales PASS; frontend2980PASS/1SKIP/0FAIL, salida0; build index-B-tCTRf5 correcto. La primera regresión encontró cuatro fixtures de callbacks sin el nuevo ref; se actualizó la inyección conservando sus aserciones. Logs `/private/tmp/render2-goal287-{focal-final,frontend-final,build}.log`.
+
+Pruebas de callbacks reales con dependencias inyectadas, no React montado/navegador ni persistencia nueva. GET todavía puede sustituir filas editables: comportamiento previo no resuelto aquí. Creación/status sin baseline permanecen conservadoramente fuera de la optimización. Sin backend/migraciones/DB/proveedores/despliegue. Resta validación nativa y editor de administración de usuarios, además de los gates globales.
+
 ### Avisos de integración y renovación del núcleo — cortes284–286
 
 En `0a1f8f1`, el marcador histórico MIA `tarea_publicada` conserva su clave, ID y destino pero muestra «Tarea finalizada», no una publicación efectiva. Dos casos nuevos verifican también que renderizar no reescriba registros. En `6f782f6`, los callbacks reales de revisión por lote y confirmación de grabación propagan `req.wilson.userId` como `actorId`; no cambian la selección de destinatarios. Coordinador implementó y ejecutó; Harvey creó pruebas del callback de revisión y revisó los cambios. Las pruebas reprodujeron las omisiones antes de corregirlas.

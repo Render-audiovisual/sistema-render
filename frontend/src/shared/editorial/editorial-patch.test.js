@@ -60,7 +60,7 @@ function sheetFixture(page, request, observation = row()) {
   const scope = { current: () => true, assertCurrent() {}, async request(url, options) { requests.push({ url, options }); return request(url, options); } };
   const deps = { ...helpers, capture: () => scope, view: { role: 'admin' }, editorialFields,
     historias: rows, publicaciones: rows, deleting: { current: new Set() }, pendingWrites: { current: new Set() },
-    latestWrites: { current: new Map() }, writeQueues: { current: new Map() }, listGeneration: { current: 0 },
+    latestWrites: { current: new Map() }, writeQueues: { current: new Map() }, confirmedRows: { current: new Map() }, listGeneration: { current: 0 },
     cellDraft: { current: { model: createStoryCellDraft() } }, renderCellDraft() {},
     onCommittedChange(change) { committed.push(change); },
     enqueueStoryWrite(queues, id, run) {

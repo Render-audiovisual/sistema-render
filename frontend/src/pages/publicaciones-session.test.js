@@ -44,7 +44,7 @@ function sheetFixture(request, cookie = true) {
     editorialPatchBody, editorialPatchAck, mergeEditorialPatchEvidence, editorialPatchError,
     creation: { current: { model: createEditorialCreateIntent({ capture: f.capture, randomUUID: () => '11111111-1111-4111-8111-111111111111' }) } }, renderCreation() {},
     responsablesReady: true, responsableNuevoId: '9', responsables: [{ id: 9, nombre: 'Actual catalog person', activo: true }],
-    pendingWrites: { current: new Set() }, writeQueues: { current: new Map() }, latestWrites: { current: new Map() }, creating: { current: false },
+    pendingWrites: { current: new Set() }, writeQueues: { current: new Map() }, latestWrites: { current: new Map() }, confirmedRows: { current: new Map() }, creating: { current: false },
     listGeneration: { current: 0 }, loadingGeneration: { current: 0 }, enfocarProximoId: { current: null }, mesPrefix: '2026-10', hoyISO: '2026-10-20',
     setError: value => effects.push(['error', value]), setPublicaciones: value => { rows = typeof value === 'function' ? value(rows) : value; effects.push(['rows', rows]); }, setCargando: value => effects.push(['loading', value]),
     window: { confirm: () => true } };
@@ -177,6 +177,70 @@ test('render replacement of task attempt/capture fences held GET before passive 
     await settle(); assert.deepEqual(f.effects, before); assert.equal(f.requests.length, 1); cleanup();
   }
 });
+test('sheet skips intact confirmed fields, not an optimistic draft or an uncertain attempt', async () => {
+  for (const cookie of [false, true]) {
+    const row = { id: 5, cliente_id: 2, copy: null, idea: 'Original', fecha_programada: '2026-10-20', publicacion_evidencia: { revision: 0 } };
+    const f = sheetFixture(async (_url, options) => {
+      if (!options.method) return [row];
+      throw Error('Uncertain transport');
+    }, cookie);
+    await f.deps.cargar();
+    f.deps.publicaciones = [{ ...row, idea: 'Draft' }];
+    f.deps.guardarEnServidor = callback(sheet, 'guardarEnServidor', f.deps);
+    for (const fields of [{ copy: '' }, { idea: 'Original' }, { fecha_programada: '2026-10-20' }]) await f.deps.guardarEnServidor(5, fields);
+    assert.equal(f.requests.length, 1, 'Only the confirmed list read, no intact blur PATCH');
+    await f.deps.guardarEnServidor(5, { idea: 'Draft' });
+    assert.equal(f.requests.length, 2, 'Optimistic equality never suppresses a real edit');
+    await f.deps.guardarEnServidor(5, { idea: 'Original' });
+    assert.equal(f.requests.length, 3, 'Unknown result cannot use the pre-write baseline');
+  }
+});
+
+for (const getFirst of [false, true]) test(`sheet GET during uncertain write cannot revalidate baseline (GET first: ${getFirst})`, async () => {
+  const write = deferred(), read = deferred();
+  const row = { id: 5, cliente_id: 2, idea: 'A', publicacion_evidencia: { revision: 0 } };
+  const f = sheetFixture((_url, options) => options.method ? write.promise : read.promise);
+  const patch = f.deps.guardarEnServidor(5, { idea: 'B' }); await settle();
+  const load = f.deps.cargar();
+  if (getFirst) { read.resolve([row]); await load; }
+  write.reject(Error('Lost ACK')); await patch;
+  if (!getFirst) { read.resolve([row]); await load; }
+  assert.equal(f.deps.confirmedRows.current.has(5), false);
+});
+
+test('sheet valid ACK advances only confirmed baseline and pending return to original is retained', async () => {
+  const first = deferred();
+  const original = { id: 5, cliente_id: 2, idea: 'A', publicacion_evidencia: { revision: 0 } };
+  const f = sheetFixture(async (_url, options) => {
+    if (!options.method) return [original];
+    const body = JSON.parse(options.body);
+    if (body.idea === 'B') { await first.promise; return { ...original, idea: 'B', publicacion_evidencia: { revision: 1 } }; }
+    throw Object.assign(Error('Stale CAS'), { status: 409 });
+  });
+  await f.deps.cargar();
+  const b = f.deps.guardarEnServidor(5, { idea: 'B' }); await settle();
+  const a = f.deps.guardarEnServidor(5, { idea: 'A' });
+  first.resolve(); await Promise.all([a, b]);
+  assert.deepEqual(f.requests.filter(row => row.options.method).map(row => JSON.parse(row.options.body)), [
+    { idea: 'B', expected_revision: 0 }, { idea: 'A', expected_revision: 0 },
+  ], 'Return to original is not lost or silently rebased');
+  assert.equal(f.deps.confirmedRows.current.has(5), false, '409 invalidates baseline');
+});
+
+test('sheet accepted ACK skips subsequent untouched blur without overwriting a later local draft', async () => {
+  const row = { id: 5, idea: 'A', publicacion_evidencia: { revision: 0 } };
+  const saved = { ...row, idea: 'B', publicacion_evidencia: { revision: 1 } };
+  const f = sheetFixture(async () => saved);
+  f.deps.publicaciones = [row];
+  f.deps.guardarEnServidor = callback(sheet, 'guardarEnServidor', f.deps);
+  await f.deps.guardarEnServidor(5, { idea: 'B' });
+  f.deps.publicaciones = [{ ...saved, idea: 'Later draft' }];
+  f.deps.guardarEnServidor = callback(sheet, 'guardarEnServidor', f.deps);
+  await f.deps.guardarEnServidor(5, { idea: 'B' });
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.deps.confirmedRows.current.get(5).row.idea, 'B');
+});
+
 test('sheet captures cookie/bearer body before queue and serializes slow-first then latest, without duplicate adjacent dispatch', async () => {
   for (const cookie of [false, true]) {
     const first = deferred(), persisted = [];

@@ -731,6 +731,7 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
   const pendingWrites = useRef(new Set());
   const writeQueues = useRef(new Map());
   const latestWrites = useRef(new Map());
+  const confirmedRows = useRef(new Map());
   const creating = useRef(false);
   const creation = useRef(null);
   const [, renderCreation] = useState(0);
@@ -763,7 +764,10 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     return scope.request("/api/publicaciones", options)
       .then((data) => {
         if (!current()) return;
-        setPublicaciones(data.filter((p) => p.cliente_id === clienteId));
+        const rows = data.filter((p) => p.cliente_id === clienteId);
+        confirmedRows.current = new Map(rows.filter(row => !writeQueues.current.has(row.id))
+          .map(row => [row.id, { capture, row: { ...row } }]));
+        setPublicaciones(rows);
         onSnapshotLoaded?.(data);
         setError(null);
         return true;
@@ -823,6 +827,16 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     campos = editorialFields(publicaciones.find(p => p.id === id), campos, view.role === 'admin');
     if (!Object.keys(campos).length) return;
     const observed = publicaciones.find(p => p.id === id);
+    const confirmed = confirmedRows.current.get(id);
+    // Never compare against the optimistic draft, or skip an intent behind an
+    // intervening write. An uncertain attempt invalidates its baseline below.
+    if (!writeQueues.current.has(id) && confirmed?.capture === capture
+      && confirmed.row.publicacion_evidencia?.revision === observed?.publicacion_evidencia?.revision
+      && Number.isSafeInteger(confirmed.row.publicacion_evidencia?.revision)
+      && confirmed.row.publicacion_evidencia.revision >= 0
+      && Object.entries(campos).every(([key, value]) => confirmed.row[key] === value
+        || (['fecha_programada', 'idea', 'copy', 'material_referencia', 'aclaraciones', 'responsable'].includes(key)
+          && confirmed.row[key] == null && value === ''))) return;
     let body;
     try { body = editorialPatchBody(observed, campos); }
     catch (err) { if (scope.current()) setError(editorialPatchError(err)); return; }
@@ -831,20 +845,28 @@ export function PublicacionesPlanillaTab({ clienteId, clienteNombre, year, month
     // that must be sent again after an intervening B.
     if (writeQueues.current.has(id) && latestWrites.current.get(id) === body) return previous;
     latestWrites.current.set(id, body);
+    // A list read begun before this intent cannot establish a trusted baseline.
+    ++listGeneration.current;
     const run = async () => {
       try {
         scope.assertCurrent();
+        confirmedRows.current.delete(id);
         const saved = editorialPatchAck(observed, await scope.request(`/api/publicaciones/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body,
         }));
         scope.assertCurrent();
+        confirmedRows.current.set(id, { capture, row: { ...saved } });
         ++listGeneration.current;
         onCommittedChange?.({ row: saved });
         setPublicaciones(prev => prev.map(row => row.id === id ? mergeEditorialPatchEvidence(row, saved) : row));
       } catch (err) {
-        if (scope.current()) setError(editorialPatchError(err));
+        if (scope.current()) {
+          ++listGeneration.current;
+          confirmedRows.current.delete(id);
+          setError(editorialPatchError(err));
+        }
       }
     };
     const queued = previous.catch(() => {}).then(run);
