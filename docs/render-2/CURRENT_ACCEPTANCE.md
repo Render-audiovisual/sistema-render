@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Planilla: edición real, ACK y persistencia tras recarga — corte293
+
+Chrome/App292/index-BmE46sRf, backend285, PostgreSQL desechable55916/HTTP52860. En enlace directo Planilla/cliente1/octubre, usuario sintético qa_franco cambió copy de pieza1 a «QA293 copy editado». Antes de blur apareció aviso dirty; Tab produjo aviso pendiente con recovery deshabilitado; tras ACK statusCount0 sin errores de consola observados. Recarga recuperó el copy editado; segundo blur intacto no produjo otra revisión persistida. Viewport DOM1280×800, client/scroll1265/1265. Captura `/private/tmp/render2-goal293-planilla-saved.png` inspeccionada.
+
+Runner `/private/tmp/render2-goal293-native.mjs` verificó identidad/aislamiento, snapshot previo y cambio final exacto: pieza1 solo copy/updated_at, una fila de versión editorial revisión1/current_event_idnull, otras103tablas de dominio intactas (incluye eventos de publicación), todos los contadores usuarios intactos, index/entry intactos. Salida0 y cleanup ENOENT Iao9fi tras verificar PID5693/hijo5723 antes de TERM. Tab cerrada/viewport restaurado. `scope` impreso por el wrapper conserva texto heredado «no UI saves» y no describe esta cohorte: los asserts específicos y este recorrido documentan la única edición autorizada del fixture, no una invariancia global falsa.
+
+Coordinador realizó navegador y validación; Verification orientó UI→API→PG→recarga. No nuevos cambios de producto/build, datos reales/proveedores/despliegue. No acredita cambios rápidos/ACK perdido/conflicto físico, descarte cancelado, otro dispositivo ni toda la aceptación292. La tarea/copy editada no se contabilizó como publicación real. Aceptación global incompleta.
+
 ### Planilla: modelo compartido de protección de borradores — corte292
 
 Publicaciones reutiliza `createStoryCellDraft` de Historias: generaciones por campo e intenciones solo en memoria, sin textos persistidos/localStorage ni nueva fuente comercial. El modelo se renueva por capture y un layout effect limpia filas/baseline al cambiar contexto. GET conserva fila completa/CAS de ediciones/pending/bloqueos, incluso si no aparece en la respuesta; no instala baseline remoto de filas protegidas. Navegación incorpora dirty/busy/observation. Archivo se bloquea para fila protegida. Recovery explícita recarga el documento, con texto que aclara descarte local y que no revierte un write incierto.
