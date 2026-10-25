@@ -168,6 +168,9 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
   })(briefDraftOwner.current);
   const [comments, setComments] = useState([]);
   const [comment, setComment] = useState("");
+  const [subtaskRead, setSubtaskRead] = useState({loading:true,error:''});
+  const [subtaskRetry, setSubtaskRetry] = useState(0);
+  const subtaskReadOwner = useRef(null);
   const [, renderCommentCreation] = useState(0);
   const [, renderCommentRead] = useState(0);
   const commentDraftOwner = useRef(null);
@@ -303,11 +306,33 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
       .catch((reason) => {
         if (currentComments()) { owner.readError = reason.message || "No se pudieron cargar los comentarios."; renderCommentRead(value => value + 1); }
       });
-    onLoadSubtasks(task.id, { signal: controller.signal }).catch((reason) => {
-      if (guard.current() && !controller.signal.aborted) setCommentError(reason.message || "No se pudieron cargar las subtareas.");
-    });
     return () => controller.abort();
-  }, [task?.id, onLoadSubtasks, captureRequest]);
+  }, [task?.id, captureRequest]);
+
+  useEffect(() => {
+    if (!task) return;
+    const controller = new AbortController(), guard = captureRequest();
+    const owner = {loading:true,current:() => subtaskReadOwner.current === owner && guard.current() && !controller.signal.aborted};
+    subtaskReadOwner.current = owner;
+    setSubtaskRead({loading:true,error:''});
+    const read = async () => {
+      try {
+        guard.assertCurrent();
+        await onLoadSubtasks(task.id,{signal:controller.signal});
+        if (owner.current()) { owner.loading=false;setSubtaskRead({loading:false,error:''}); }
+      } catch (reason) {
+        if (owner.current()) { owner.loading=false;setSubtaskRead({loading:false,error:typeof reason?.message === 'string' && reason.message ? reason.message : 'No se pudieron cargar las subtareas.'}); }
+      }
+    };
+    void read();
+    return () => { controller.abort();if(subtaskReadOwner.current===owner)subtaskReadOwner.current=null; };
+  }, [task?.id,onLoadSubtasks,captureRequest,subtaskRetry]);
+  const retrySubtasks = () => {
+    const owner=subtaskReadOwner.current;
+    if (!owner?.current() || owner.loading) return;
+    owner.loading=true;
+    setSubtaskRetry(value=>value+1);
+  };
 
   useEffect(() => {
     if (!task) return;
@@ -848,7 +873,7 @@ function TaskDetail({ task, tasks, users, clients, sesion, onClose, onOpen, onLo
         {isProductionVisit&&registry.usesIndividual&&Array.isArray(metadata.produccion_registros)&&metadata.produccion_registros.length>0&&<section className="ros-work-block"><h4>Registro histórico de grabación</h4><p>Conservado sin modificar. Las nuevas grabaciones se registran por video en Producciones.</p><details><summary>Ver registros históricos</summary>{metadata.produccion_registros.slice().reverse().map((record,index)=><div key={record.id||index} style={{display:"grid",gap:4,paddingBlock:8,overflowWrap:"anywhere"}}><strong>+{record.cantidad} videos</strong><span>{formatDate(record.fecha)} · {record.usuario||'Equipo'}{record.corregido_at?` · Corregido por ${record.corregido_por}`:''}</span></div>)}</details></section>}
         </section>}
         <section className="ros-work-block"><div className="ros-block-heading"><div><h3>{isProductionVisit ? "Material de producción" : "Material y referencias"}</h3></div><small>Archivos y enlaces</small></div>{registry.vinculo?.tipo === "origen" && <p>Consultá el material de esta visita en Producciones. <a href={`/producciones?visita=${encodeURIComponent(registry.vinculo.id)}`}>Abrir visita en Producciones ↗</a></p>}{editing ? <><input className="ros-detail-input" placeholder={isProductionVisit ? "Pegá el enlace de la carpeta de Google Drive" : "https://…"} value={draft.material_referencia || ""} onChange={(event) => setDraft({ ...draft, material_referencia: event.target.value })}/>{isProductionVisit && registry.vinculo?.tipo !== "origen" && <small className="ros-drive-help">Este enlace es obligatorio para enviar la visita a edición.</small>}</> : <><div className="ros-material-grid">{task.material_referencia && <a className="ros-file" href={task.material_referencia} target="_blank" rel="noreferrer"><span>▣</span><div><strong>{isProductionVisit ? "Abrir carpeta en Google Drive" : (materialInfo?.etiqueta || "Material de referencia")}</strong><small>{materialInfo?.dominio || task.material_referencia}</small></div><b>↗</b></a>}{driveFiles.filter((file) => file.url !== task.material_referencia).map((file) => <a className="ros-file" href={file.url} target="_blank" rel="noreferrer" key={file.id}><span>▤</span><div><strong>{file.name}</strong><small>Google Drive · {file.uploaded_by || "Equipo"}</small></div><b>↗</b></a>)}{links.map((url) => { const info = obtenerInfoLinkTarea(url); return <a className="ros-file" href={url} target="_blank" rel="noreferrer" key={url}><span>↗</span><div><strong>{info.etiqueta}</strong><small>{info.dominio}</small></div><b>↗</b></a>; })}{registry.vinculo?.tipo !== "origen" && !task.material_referencia && driveFiles.length === 0 && links.length === 0 && <p className="ros-compact-empty">{isProductionVisit ? "Falta vincular la carpeta de Google Drive." : "Sin material vinculado."}</p>}</div><DriveUploader task={task} onUploaded={refreshUploadedTask} onDirty={setUploadDirty} onBusy={setUploadBusy}/></>}</section>
-        {(origin || task.tarea_padre_id || subtasks.length > 0) && <section className="ros-work-block ros-work-organization"><h3>Organización del trabajo</h3>{(origin || task.tarea_padre_id) && <div className="ros-context-list">{origin && <a className="ros-calendar-origin" href={origin.href}><div><span>{origin.calendarLabel}</span><strong>{origin.label}</strong><small>Fecha de publicación</small></div><time>{formatDate(origin.date)}</time><b>Ver calendario</b></a>}{task.tarea_padre_id && <button type="button" onClick={() => onOpen(Number(task.tarea_padre_id))}><strong>Depende de la tarea #{task.tarea_padre_id}</strong><span>Estado: {STATUSES.find((item) => item.id === canonicalTaskState(task.tarea_padre_estado))?.label || "Sin datos"}</span></button>}</div>}<div className="ros-subtasks">{subtasks.map((subtask) => <button type="button" key={subtask.id} onClick={() => onOpen(subtask.id)}><span>{subtask.titulo}</span><b>{STATUSES.find((item) => item.id === canonicalTaskState(subtask.estado))?.label || subtask.estado}</b></button>)}</div></section>}
+        {(origin || task.tarea_padre_id || subtasks.length > 0 || subtaskRead.loading || subtaskRead.error) && <section className="ros-work-block ros-work-organization"><h3>Organización del trabajo</h3>{subtaskRead.loading && <p role="status">Consultando subtareas…</p>}{subtaskRead.error && <div className="ros-inline-error" role="alert"><p>{subtaskRead.error}</p><button type="button" className="btn" disabled={subtaskRead.loading} onClick={retrySubtasks}>Reintentar subtareas</button></div>}{(origin || task.tarea_padre_id) && <div className="ros-context-list">{origin && <a className="ros-calendar-origin" href={origin.href}><div><span>{origin.calendarLabel}</span><strong>{origin.label}</strong><small>Fecha de publicación</small></div><time>{formatDate(origin.date)}</time><b>Ver calendario</b></a>}{task.tarea_padre_id && <button type="button" onClick={() => onOpen(Number(task.tarea_padre_id))}><strong>Depende de la tarea #{task.tarea_padre_id}</strong><span>Estado: {STATUSES.find((item) => item.id === canonicalTaskState(task.tarea_padre_estado))?.label || "Sin datos"}</span></button>}</div>}<div className="ros-subtasks">{subtasks.map((subtask) => <button type="button" key={subtask.id} onClick={() => onOpen(subtask.id)}><span>{subtask.titulo}</span><b>{STATUSES.find((item) => item.id === canonicalTaskState(subtask.estado))?.label || subtask.estado}</b></button>)}</div></section>}
         {task.tipo_tarea === "edicion" && metadata.workspace === "render_os" && <div ref={deliverySectionRef}><fieldset disabled={reviewDecisionBusy || reviewDecisionDirty || approving || saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}><EditingDeliveries task={task} sesion={sesion} onReviewContext={setEditingReview} onDirty={setDeliveryDirty} onBusy={setDeliveryBusy} onSaved={refreshEditingTaskAfterSave}/></fieldset><EditingReviews task={task} sesion={sesion} disabled={deliveryFormBusy || deliveryFormDirty || approving || saving || editing} onDirty={setReviewDecisionDirty} onBusy={setReviewDecisionBusy} onSaved={refreshEditingTaskAfterSave}/></div>}
           </main>
           <aside className="ros-task-context-rail">
