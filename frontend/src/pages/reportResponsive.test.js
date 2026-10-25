@@ -70,7 +70,7 @@ test('actual page SSR has three semantic tables with exact headers and unchanged
     assert.deepEqual(find(tables[i].children, n => n.props.className === 'rpr-cell-label').map(text), labels.slice(1));
   }
   assert.deepEqual(values(tables[0]), ['0', '2', '3', '4', '5', 'lista: 6']);
-  assert.deepEqual(values(tables[1]), ['0', 'No disponible', '0 visibles', '2 visibles']);
+  assert.deepEqual(values(tables[1]), ['0', 'No disponible', '0 confirmadas', '2 confirmadas']);
   assert.deepEqual(values(tables[2]), ['8', '1', '2', '3', '5', '0']);
   const html = renderToStaticMarkup(page);
   assert.equal((html.match(/<table\b/g) || []).length, 3);
@@ -78,6 +78,8 @@ test('actual page SSR has three semantic tables with exact headers and unchanged
   assert.match(html, /Cuotas en conflicto: no se infiere un valor\./);
   assert.match(html, /las columnas no se suman/);
   assert.match(html, /Finalizar una tarea no demuestra publicación real/);
+  assert.match(html, /Confirmaciones manuales de todo el equipo en el rango real/);
+  assert.doesNotMatch(html, /Solo incluye piezas visibles según tus permisos/);
 });
 
 test('one native person action retains exact ID, disclosure state and real toggle callback', () => {
@@ -99,6 +101,8 @@ test('one native person action retains exact ID, disclosure state and real toggl
     if (selectedId === 17) {
       assert.match(html, /href="\/workspace\/tareas\?task=41"/);
       assert.match(html, /estado almacenado: finalizada/);
+      assert.match(html, /Piezas vinculadas a esta persona/);
+      assert.doesNotMatch(html, /Mis piezas asignadas/);
     } else assert.equal(find(row.children, n => n.type === 'section').length, 0);
   }
 });
