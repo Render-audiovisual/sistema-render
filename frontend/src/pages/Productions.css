@@ -52,6 +52,9 @@
 .prod-empty h2{font-size:16px;color:var(--prod-text)}
 .prod-notice,.prod-error{padding:12px 16px;border-radius:10px;font-size:13px;overflow-wrap:anywhere}
 .prod-notice{background:var(--render-sidebar-raised);color:var(--render-accent);border:1px solid var(--render-line-strong)}
+.prod-date-context{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.prod-date-context p{flex:1 1 180px;min-width:0;margin:0}
+.prod-date-context button{min-height:44px}
 .prod-error{background:#fff1f0;color:#9c2525;border:1px solid #f2cccc}
 .prod-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:16px}
 .prod-wide{grid-column:1/-1}

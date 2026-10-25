@@ -45,6 +45,14 @@ function fixture() {
 }
 const observe = promise => promise.then(value => ({ value }), error => ({ error }));
 
+test('external reschedule updates the same detail and removes old-month membership without replacing the form context',async()=>{
+  const f=fixture(),pending=f.refresh(id);
+  f.held[0].resolve({...visit(2),fecha:'2026-11-03'});await pending;
+  assert.equal(f.selected.id,id);assert.equal(f.selected.fecha,'2026-11-03');
+  assert.deepEqual(f.visits,[]);assert.deepEqual(f.errors,[]);
+  assert.equal(f.deps.month,'2026-10','Refreshing alone must not silently navigate or discard a form');
+});
+
 test('latest same-UUID refresh wins when an older valid response arrives last', async () => {
   const f = fixture();
   const old = observe(f.refresh(id)), current = f.refresh(id);
