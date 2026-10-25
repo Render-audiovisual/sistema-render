@@ -4,6 +4,14 @@ El sistema canónico continúa en desarrollo local y no está aceptado globalmen
 
 ## Arquitectura y evidencia operativa
 
+### Cuenta secundaria: navegación histórica conectada — corte251
+
+Sobre build250 index-B6WnmFKf.js, Volta preparó /private/tmp/render2-goal251-client-context-native.mjs; coordinador inspeccionó/ejecutó runner y CUA; Erdos revisó contratos y límites sin otro defecto confirmado. PostgreSQL55887/HTTP52842, raíz /private/tmp/render2-local-wAZyMR, identidad física antes/después de importar app, cookies reales y ningún transporte interceptado. Feed sintético con cuentas A1/B2, objetivo septiembre de1 reel y octubre de2, tres tareas/piezas vinculadas aB. Setup histórico SQL deliberado, no preparación histórica mediante API ni datos comerciales.
+
+Luciano91003 inició sesión por formulario real desde operaciónB/septiembre. Clientes→objetivos conservó cliente2 y septiembre/cuota1; enlace individualB regresó al resumenB. Atrás volvió al objetivo; cambiar mes a octubre conservóB y mostró2 piezas. Reel1 mostró copy octubre1 y tarea2. Atrás con detalle abierto mantuvo URL octubre/contenido, avisó del destino diferido; Cerrar aplicó septiembre/cuota1. Recarga conservóB/septiembre. A390×844, objetivos→enlaceB volvió a operaciónB/septiembre; DOM client/scroll390 y captura /private/tmp/render2-goal251-client-mobile.png inspeccionada. La captura muestra cabecera/tareas, no todos los bloques inferiores.
+
+TERM sobre PID propio verificado25874 cerró child25900 con salida0;105 hashes de tablas de dominio (excluyendo auth/browser_session) invariantes después del baseline e index/entry sin cambios; cleanup ENOENT confirmado. Log /private/tmp/render2-goal251-native.log. Viewport restaurado y pestaña48 cerrada. Sin cambios funcionales ni regresiones/build nuevos. No prueba todos los feeds/roles, respuestas retenidas, edición/guardado/CAS, borradores inciertos, preferencias A/B/A, todos los assets o dispositivos independientes. El widget público Google apareció en login, no se utilizó; bloqueo fetch del child no equivale a ausencia global de red externa frontend. Sin bases configuradas ni despliegue; no aceptación global.
+
 ### Proyectos: recuperación explícita de filtros mal formados — corte250
 
 Erdos reprodujo que `cliente[]=11` o `cliente[0]=11` bloqueaban el listado incluso después de elegir un cliente válido o pulsar Limpiar filtros: el writer conservaba la clave inválida y el parser volvía a rechazarla. Coordinador añadió una regresión inicialmente roja y corrigió projectsModel.js: después de validar los nuevos filtros, el writer retira únicamente la familia `cliente[` que el parser rechaza. La lectura inicial sigue cerrada, sin GET global ni reparación silenciosa. No cambia permisos, DTO, backend ni persistencia.
